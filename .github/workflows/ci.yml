@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+# Stale runs of the same ref are cancelled so the shared runners are not blocked.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build-${{ matrix.name }}
+    runs-on: [self-hosted, '${{ matrix.label }}']
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, label: dotnet-linux, rid: linux-x64, binary: pagewing }
+          - { name: windows, label: dotnet-windows, rid: win-x64, binary: pagewing.exe }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
+        if: runner.os == 'Linux'
+        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
+        if: runner.os == 'Windows'
+        run: Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_INSTALL_DIR=$env:USERPROFILE\.dotnet"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # The Native AOT linker needs vswhere.exe on PATH; it takes effect from the next step on.
+      - name: Put vswhere on PATH
+        if: runner.os == 'Windows'
+        run: Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+
+      - name: Check the Native AOT prerequisites (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          command -v clang >/dev/null || { echo 'clang not found: install the clang package' >&2; exit 1; }
+          clang --version
+          test -f /usr/include/zlib.h || { echo 'zlib.h not found: install zlib1g-dev' >&2; exit 1; }
+
+      - name: Check the Native AOT prerequisites (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (-not (Get-Command vswhere -ErrorAction SilentlyContinue)) { throw 'vswhere not found: install Visual Studio Build Tools' }
+          $p = vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $p) { throw 'Visual Studio C++ build tools not found' }
+
+      - name: Restore
+        run: dotnet restore Pagewing.slnx
+
+      - name: Build
+        run: dotnet build Pagewing.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test Pagewing.slnx -c Release --no-build
+
+      - name: Format
+        run: dotnet format Pagewing.slnx --verify-no-changes --no-restore
+
+      - name: Publish the CLI (Native AOT)
+        run: dotnet publish src/Pagewing.Cli -c Release -r ${{ matrix.rid }} -o out/cli
+
+      - name: Smoke test of the CLI binary
+        run: dotnet run tools/smoke-cli.cs -- out/cli/${{ matrix.binary }}
+
+      - name: Publish the app (Native AOT)
+        run: dotnet publish src/Pagewing.App -c Release -r ${{ matrix.rid }} -o out/app

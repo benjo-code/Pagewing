@@ -1,0 +1,6 @@
+<Project>
+  <!-- The single-file tools pin their packages with #:package, not centrally. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

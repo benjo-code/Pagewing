@@ -1,0 +1,19 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+
+# IDE
+.vs/
+.idea/
+*.user
+
+# Tests
+TestResults/
+**/render-diff/
+
+# Secrets
+.env
+.env.*
+!.env.example

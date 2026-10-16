@@ -1,17 +1,101 @@
-# <Projektname>
+# Pagewing
 
-<1–2 Sätze: Was ist das Projekt, für wen, mit welchem Ziel?>
+Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux: PDFs ansehen, kommentieren, ausfüllen, unterschreiben, organisieren, schwärzen, per OCR durchsuchbar machen, als Desktop-App und als CLI mit gemeinsamem Kern. Geschwindigkeit (Start, Öffnen, Scrollen) ist das wichtigste Merkmal, gefolgt von gutem, modernem Design. Komplett offline, keine Telemetrie.
 
-- **Stack:** <z. B. .NET 10 / Unity 6 / Next.js 16>
-- **Sprache:** Doku und Commits <Deutsch> · Code und Kommentare <Englisch/Deutsch> · UI-Texte <…>
-- **Build:** `<befehl>` · **Test:** `<befehl>` · **Format/Lint:** `<befehl>`
+- **Stack:** .NET 10 (LTS) mit Native AOT · Avalonia 12.1 · PDFium (`bblanchon.PDFium.*`, ohne V8) über eigene `[LibraryImport]`-Bindings · später QPDF (Kandidat) und Tesseract über deren C-APIs
+- **Lizenz:** GPL-3.0-or-later ([LICENSE](LICENSE))
+- **Sprache:** Doku und Commits Deutsch · Code und Kommentare Englisch · UI-Texte Englisch und Deutsch (resx, Auswahl nach Systemsprache)
+- **Build:** `dotnet build Pagewing.slnx` · **Test:** `dotnet test Pagewing.slnx` · **Format/Lint:** `dotnet format Pagewing.slnx --verify-no-changes`
+- **AOT-Publish:** `dotnet publish src/Pagewing.App -c Release -r <win-x64|linux-x64>` (analog `src/Pagewing.Cli`); nur auf dem jeweiligen OS möglich
+- **Gesamt-Spec:** [Docs/superpowers/specs/2026-10-16-pagewing-design.md](Docs/superpowers/specs/2026-10-16-pagewing-design.md)
 - **Fahrplan:** [Docs/ROADMAP.md](Docs/ROADMAP.md) (generiert, Quelle [Docs/roadmap.json](Docs/roadmap.json), siehe „Roadmap pflegen“)
 - **Entscheidungen:** [Docs/DECISIONS.md](Docs/DECISIONS.md)
 - **Specs:** `Docs/superpowers/specs/` · **Pläne:** `Docs/superpowers/plans/`
 
 ## Projektspezifisches
 
-<Architektur, Konventionen, Besonderheiten, Stolperfallen – wächst mit dem Projekt.>
+### Architektur
+
+- Projekte und Abhängigkeitsrichtung laut Spec, Abschnitt 5.1: `Pagewing.App` und `Pagewing.Cli` → `Pagewing.Core` → `Pagewing.Pdfium` (später `Pagewing.Qpdf`, `Pagewing.Ocr`). App und CLI kennen keine PDFium-Typen.
+- **PDFium ist nicht thread-sicher**, auch nicht über verschiedene Dokumente hinweg (`fpdfview.h`: „None of the PDFium APIs are thread-safe“). Nur `Pagewing.Pdfium` ruft PDFium auf, und zwar ausschließlich über den `PdfiumThread`. Ein Aufruf von einem anderen Thread muss eine Exception auslösen. Kein paralleles Rendern über mehrere Threads.
+- Der UI-Thread wartet nie auf PDFium. Er stellt Render-Aufträge ein und bekommt Bitmaps zurück.
+- Render-Pipeline: Nur sichtbare Seiten plus Puffer werden gerendert. Zuerst kommt eine grobe Vorschau, dann folgen scharfe Kacheln, progressiv mit Pause und Abbruch veralteter Aufträge. Ein LRU-Cache mit Speicherbudget hält die Ergebnisse.
+- Bindings nur für Funktionen, die gebraucht werden. Konstanten (z. B. Speicher-Flags) immer gegen die Header der ausgelieferten PDFium-Version prüfen, weil sie sich ändern: `FPDF_REMOVE_SECURITY` ist seit `chromium/8100` 4 statt 3.
+- **Native AOT ist Pflicht** für App und CLI:
+  - kompilierte Bindings, keine XAML-Ladung zur Laufzeit, keine Reflection-basierte Serialisierung (JSON nur mit Source-Generator),
+  - `IsAotCompatible` in jedem Projekt unter `src/` (je Projekt gesetzt, nicht im Root), AOT- und Trim-Warnungen sind Fehler.
+  - Native AOT kompiliert nicht über Betriebssystemgrenzen hinweg: Windows-Binaries entstehen auf `dotnet-windows`, Linux-Binaries auf `dotnet-linux`.
+
+### Geschwindigkeit
+
+- Budgets (vorläufig, in M1 nach Vergleichsmessung endgültig festgelegt) stehen in der Roadmap unter „Geschwindigkeitsziele“. Ab M3 prüft der Startzeit-Check in der CI sie: Schalter `--measure-startup`, Skript `bench/startup`, Median aus 10 Läufen, Fehlschlag ab Budget + 25 %.
+- Nichts Neues im Startpfad ohne Messung. Bis zum ersten Frame wird nur geladen, was das Fenster braucht. PDFium startet beim ersten Öffnen eines Dokuments, Thumbnails, Textindex und OCR laufen erst nach dem ersten scharfen Seitenbild.
+- Single-Instance: Ein zweiter Aufruf übergibt die Datei an die laufende Instanz (Named Pipe bzw. Unix-Socket).
+- Budgets oder den Startzeit-Check nie lockern, nur damit etwas grün wird. Eine Budgetänderung ist eine Entscheidung in `Docs/DECISIONS.md`.
+
+### Abhängigkeiten
+
+- Vor jeder neuen Abhängigkeit prüfen:
+  - Lizenz GPL-3.0-kompatibel (MIT, BSD, Apache-2.0, zlib o. ä.). Kein AGPL, nichts Kommerzielles, kein Dual-Licensing mit kommerzieller Pflicht.
+  - Native-AOT-fähig (ohne Reflection.Emit).
+  - Eintrag in `Docs/DECISIONS.md`.
+- Ausdrücklich ausgeschlossen: MuPDF, iText, PDFsharp ab 6.5 (AGPL/kommerziell), PDFiumCore (wir nutzen eigene Bindings), die .NET-Wrapper für Tesseract (nicht AOT-fähig).
+- PDFium-Pakete ohne V8 verwenden: `bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux`, nicht `bblanchon.PDFiumV8.*`. Es gibt jede Woche ein Release, die Versionsnummer ist die Chromium-Buildnummer, damit ist jedes Update formal ein Major-Update. Dependabot-PRs der Gruppe `bblanchon.PDFium*` nur mergen, wenn die Render-Regression grün ist.
+- Drittlizenzen gehören ins Paket und in den Über-Dialog. PDFium bringt allein rund 20 mit (FreeType, ICU, libjpeg-turbo, OpenJPEG …).
+
+### Offline und Sicherheit
+
+- Keine Netzwerkzugriffe durch Pagewing selbst: keine Telemetrie, keine Update-Prüfung, keine Online-Dienste.
+- JavaScript in PDFs läuft nie (PDFium ohne V8 und ohne XFA). Launch-Aktionen und eingebettete Dateien werden nie automatisch ausgeführt oder geöffnet.
+- Externe Links öffnen erst nach Klick und einer Bestätigung, die die URL anzeigt.
+
+### Speichern
+
+- Normalfall ist inkrementelles Speichern: schnell, und vorhandene digitale Signaturen bleiben gültig.
+- Immer atomar: in eine temporäre Datei im Zielordner schreiben, sie mit PDFium wieder öffnen und prüfen, erst dann ersetzen. Das Original darf nie halb überschrieben werden.
+- Schwärzen und Seitenoperationen erzwingen einen vollständigen Neuschrieb. Ist das Dokument digital signiert, warnt die App vorher, dass die Signatur ungültig wird.
+
+### Fachliche Regeln
+
+- **Schwärzen entfernt den Inhalt wirklich.** Ein schwarzes Rechteck darüber reicht nicht.
+  - Textobjekte im Bereich werden aufgeteilt bzw. entfernt.
+  - Bildpixel werden überschrieben und das Bild neu kodiert.
+  - Vektorpfade und Form-XObjects werden rekursiv behandelt.
+  - Annotationen im Bereich werden gelöscht, Metadaten (Info-Dictionary, XMP) auf Wunsch entfernt.
+  - Danach folgt immer ein vollständiger Neuschrieb, nie inkrementell. Sonst bleibt die alte Revision samt Text in der Datei.
+  - Pflicht-Tests nach dem Schwärzen: Die Textextraktion findet nichts mehr, **und** auch die dekomprimierten Rohbytes der Datei enthalten den Text nicht. Fälle: Form-XObject, Annotation, Metadaten, ältere inkrementelle Revision, OCR-Textebene.
+- **Text bearbeiten ist bewusst begrenzt.** Vorhandene Zeilen und Tippfehler lassen sich korrigieren, für fehlende Zeichen springt eine Ersatzschrift ein. Nie Absatz-Bearbeitung wie in Word versprechen, weder in UI noch Doku. Der Grund: PDFs speichern Text als positionierte Zeichen ohne Absatzstruktur, Schriften sind oft nur teilweise eingebettet.
+- **Sichtbare Unterschrift** nie als „rechtsgültig“ bezeichnen. Der Dialog zeigt: „Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.“ (in der englischen UI sinngemäß übersetzt).
+- **Formulare:** Ohne V8 laufen keine JavaScript-Berechnungen. Berechnete Felder aktualisieren sich nicht, die App weist darauf hin.
+- **Digitale Signaturen mit Zertifikat, XFA, JavaScript, PDF→Word, Cloud/Konten/KI, Preflight, 3D/Multimedia, macOS/Mobil** sind Out of Scope (Roadmap). Nicht nebenbei anfangen.
+
+### Tests
+
+- **Render-Regression** (`tests/Pagewing.Render.Tests`): Die Test-PDFs aus `testdata/pdfs` werden pro Seite zu PNG gerendert und mit Referenzbildern verglichen, mit Toleranz. Läuft in der CI auf beiden OS und muss jedes PDFium-Update bestehen.
+- Referenzbilder werden nur bewusst aktualisiert, mit Sichtprüfung der Abweichungen und Begründung im PR. Nie pauschal, nur damit ein Update grün wird.
+- Test-PDFs nur mit klarer Lizenz, Herkunft und Lizenz pro Datei in `testdata/pdfs/LICENSES.md`.
+  - Bevorzugt: selbst erzeugte PDFs, PDFium `testing/resources` (BSD-3), veraPDF-Korpus (CC BY 4.0), pdf20examples (CC BY-SA 4.0).
+  - Den pdf.js-Korpus nicht einchecken (Einzellizenzen unklar).
+  - Nie private oder vertrauliche PDFs.
+- UI-Tests mit Avalonia.Headless, Benchmarks mit BenchmarkDotNet in `bench/`.
+
+### CI
+
+- Self-hosted Runner der Orga: `dotnet-linux` und `dotnet-windows`. Build, Test, Format und AOT-Publish laufen auf beiden.
+- Das Repo ist derzeit privat. Wird es öffentlich, vorher in den Actions-Einstellungen einstellen, dass PRs aus Forks vor dem Lauf freigegeben werden müssen. Sonst führen fremde PRs Code auf den eigenen Runnern aus.
+- Der Linux-Build ist an die glibc des Build-Rechners gebunden. Die älteste unterstützte Distribution wird in M8 festgelegt.
+- Voraussetzungen der Linux-Runner: `clang` und `zlib1g-dev` (`sudo apt-get install -y clang zlib1g-dev`). Der CI-Schritt „Check the Native AOT prerequisites (Linux)“ meldet, was fehlt.
+- Voraussetzungen des Windows-Runners (`vm-git-windows-dotnet`, Label `dotnet-windows`):
+  - Ausführungsrichtlinie `RemoteSigned` für LocalMachine (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer Windows PowerShell mit Administratorrechten). Sonst scheitert jeder `run:`-Schritt mit „Ausführung von Skripts ... deaktiviert“.
+  - Visual Studio Build Tools mit Workload „Desktopentwicklung mit C++“. Prüfen: `vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath` gibt einen Pfad aus.
+- Der Windows-Runner läuft derzeit als Dienst. GUI-Tests und der Startzeit-Check (M3) brauchen eine angemeldete Desktop-Sitzung; das wird in M3 geplant.
+
+### Build-Stolperfallen
+
+- Die Root-Dateien `Directory.Packages.props` (zentrale Paketverwaltung) und `Directory.Build.props` gelten auch für Einzeldatei-Werkzeuge. `tools/Directory.Build.props` und `tools/Directory.Packages.props` isolieren sie; ohne sie bricht `tools/roadmap.cs` mit NU1008.
+- xunit.v3 läuft auf Microsoft.Testing.Platform: `global.json` enthält den Runner. `Microsoft.NET.Test.Sdk` und `xunit.runner.visualstudio` nicht referenzieren.
+- Testnamen ohne Unterstriche (CA1707 unter `latest-recommended`).
+- Native AOT unter Windows braucht `vswhere.exe` im PATH (Ordner `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`) und die VS-Build-Tools mit C++-Workload; unter Linux `clang` und `zlib1g-dev`.
 
 ---
 

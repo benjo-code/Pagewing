@@ -1,36 +1,402 @@
 {
   "$schema": "./roadmap.schema.json",
   "schemaVersion": 1,
-  "title": "<Projektname>",
+  "title": "Pagewing",
+  "blocks": [
+    {
+      "title": "Geschwindigkeitsziele",
+      "text": "Geschwindigkeit ist das wichtigste Merkmal von Pagewing. Vorläufige Budgets (werden in M1 nach einer Vergleichsmessung mit Acrobat, Chrome und SumatraPDF endgültig festgelegt, ab M3 in der CI geprüft; Details in der [Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 5.4):\n\n| Messgröße | Ziel |\n|---|---|\n| Kaltstart bis erste Seite scharf (1-seitige Test-PDF, AOT) | ≤ 400 ms |\n| Warmstart bis erste Seite scharf | ≤ 200 ms |\n| Weitere Datei in laufender Instanz bis erste Seite | ≤ 100 ms |\n| 1000-seitige PDF öffnen bis erste Seite | ≤ 300 ms |"
+    },
+    {
+      "title": "Out of Scope",
+      "text": "Bewusst nicht umgesetzt:\n\n- Digitale Signatur mit Zertifikat (vorerst; kann später ergänzt werden)\n- XFA-Formulare\n- JavaScript in PDFs\n- PDF nach Word umwandeln\n- Cloud, Konten, KI-Assistent\n- Druckvorstufe (Preflight), 3D- und Multimedia-Inhalte\n- macOS und Mobilgeräte (Avalonia könnte es, wird aber weder gebaut noch getestet)\n- Automatische Online-Updates bzw. Update-Prüfung (komplett offline, keine Telemetrie)"
+    }
+  ],
   "subprojects": [
     {
       "number": 1,
-      "name": "<Name>",
-      "spec": { "text": "noch nicht erstellt (wird in M0 erstellt)" },
+      "name": "Fundament & Viewer",
+      "spec": { "link": "superpowers/specs/2026-10-16-pagewing-design.md" },
       "milestones": [
         {
           "id": "0",
           "title": "Repo-Grundgerüst & CI",
-          "status": "open",
-          "goal": "Leeres, aber vollständig aufgesetztes Repo, auf dem alle weiteren Milestones aufbauen.",
+          "status": "done",
+          "plan": "superpowers/plans/2026-10-16-milestone-00-grundgeruest.md",
+          "completedOn": "2026-10-16",
+          "goal": "Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI auf Linux und Windows, auf dem alle weiteren Milestones aufbauen.",
           "tasks": [
-            { "text": "Spec erstellen (Brainstorming): Ziel, Umfang, Stack, Teilprojekte; hier verlinken und die ersten Milestones eintragen", "done": false },
-            { "text": "Repo-Einrichtung laut README erledigt: `dev` als Default-Branch, Merge-Optionen, Branch Protection für `main` und `dev`", "done": false },
-            { "text": "Projekt-Kopf in `CLAUDE.md` und `README.md` ausfüllen, Template-Abschnitt aus der README entfernen", "done": false },
-            { "text": "Stackspezifische `.gitignore` (inkl. `.env`) und `.gitattributes`-Ergänzungen (z. B. Unity: Git LFS für große Assets)", "done": false },
-            { "text": "Projektgerüst inkl. Testprojekt", "done": false },
-            { "text": "`.env.example` mit Platzhaltern, falls Secrets benötigt werden", "done": false },
-            { "text": "CI (GitHub Actions): Build, Test und Format/Lint auf PRs nach `dev` und `main`; der Job `roadmap` aus `.github/workflows/roadmap.yml` bleibt", "done": false },
-            { "text": "CI-Jobs (`roadmap` und der Job für Build, Test, Lint) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen", "done": false },
-            { "text": "Dependabot für das Paket-Ökosystem und GitHub Actions", "done": false }
+            { "text": "Spec erstellen (Brainstorming): Ziel, Umfang, Stack, Teilprojekte; hier verlinken und die ersten Milestones eintragen", "done": true },
+            { "text": "Repo-Einrichtung laut README erledigt: `dev` als Default-Branch, Merge-Optionen, Branch Protection für `main` und `dev`", "done": true },
+            { "text": "Projekt-Kopf in `CLAUDE.md` und `README.md` ausfüllen, Template-Abschnitt aus der README entfernen", "done": true },
+            { "text": "`LICENSE` mit GPL-3.0 (Lizenz: GPL-3.0-or-later)", "done": true },
+            { "text": "Self-hosted Windows-Runner mit Label `dotnet-windows` in der Orga `benjo-code` einrichten (Projektinhaber)", "done": true },
+            { "text": "`.gitignore` für .NET (inkl. `.env`, `bin/`, `obj/`, Render-Diff-Ausgaben), `NuGet.config` (nur nuget.org, Source-Mapping) und C#-Stilregeln in `.editorconfig`", "done": true },
+            { "text": "Solution-Gerüst laut Spec, Abschnitt 5.1: `Pagewing.slnx`, `global.json` (inkl. Test-Runner Microsoft.Testing.Platform), `Directory.Build.props` (Nullable, Warnungen als Fehler, Analyse-Stufe, deterministischer Build, Version; `IsAotCompatible` je `src/`-Projekt), `Directory.Packages.props`, Isolation der Einzeldatei-Werkzeuge in `tools/`, Projekte `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-12-Fenster), `Pagewing.Cli` (`--version`) mit Smoke-Skript `tools/smoke-cli.cs`, `Pagewing.Core.Tests` (xunit.v3)", "done": true },
+            { "text": "CI (GitHub Actions) auf PRs nach `dev` und `main`: Build, Test und `dotnet format --verify-no-changes` auf `dotnet-linux` und `dotnet-windows`, AOT-Publish von App und CLI pro OS als Smoke-Test; der Job `roadmap` bleibt", "done": true },
+            { "text": "CI-Jobs (`roadmap` und die Build/Test/Lint-Jobs beider OS) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen", "done": true },
+            { "text": "Dependabot für NuGet (Gruppe `bblanchon.PDFium*`, ohne Filter auf minor/patch) und GitHub Actions", "done": true },
+            { "text": "Stolperfallen in `CLAUDE.md`, Entscheidungen in `Docs/DECISIONS.md` und Setup in `README.md` nachtragen", "done": true }
           ],
           "acceptance": [
-            { "text": "Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)", "done": false },
-            { "text": "CI ist auf einem PR nach `dev` grün", "done": false },
-            { "text": "Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Check Pflicht, kein Force-Push, kein Löschen", "done": false, "evidence": "`gh api repos/benjo-code/<name>/branches/<branch>/protection`" }
+            { "text": "Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)", "done": true, "evidence": "`dotnet build Pagewing.slnx` (0 Warnungen, 0 Fehler), `dotnet test Pagewing.slnx` (1/1), `dotnet format Pagewing.slnx --verify-no-changes` (Exit 0) — Ausgabe der Abschlussprüfung" },
+            { "text": "AOT-Publish von `Pagewing.App` und `Pagewing.Cli` läuft ohne AOT-/Trim-Warnungen auf Linux und Windows; `pagewing --version` des AOT-Binaries gibt die Version aus", "done": true, "evidence": "CI-Lauf 38933844896 (PR #1): `build-linux` und `build-windows` veröffentlichen CLI und App per Native AOT ohne Warnungen; `dotnet run tools/smoke-cli.cs` meldet auf beiden „Smoke-Test bestanden (0.0.0)“" },
+            { "text": "CI ist auf einem PR nach `dev` auf beiden Runnern grün", "done": true, "evidence": "PR #1: `roadmap`, `build-linux`, `build-windows` grün (Lauf 38933844896, Commit f038a45)" },
+            { "text": "Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Checks Pflicht, kein Force-Push, kein Löschen", "done": true, "evidence": "`gh api repos/benjo-code/Pagewing/branches/{main,dev}/protection` (2026-10-16): Pflicht-Checks `roadmap`, `build-linux`, `build-windows`, strict, PR Pflicht, Force-Push und Löschen verboten" }
+          ]
+        },
+        {
+          "id": "1",
+          "title": "PDFium-Anbindung & Render-Kern",
+          "status": "open",
+          "prerequisites": ["0"],
+          "goal": "Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nachweisbar über die CLI, Render-Regressionstests und Benchmarks.",
+          "tasks": [
+            { "text": "`bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux` (ohne V8) einbinden, Drittlizenzen der Pakete erfassen", "done": false },
+            { "text": "`Pagewing.Pdfium`: `[LibraryImport]`-Bindings nur für benötigte Funktionen, SafeHandles, `PdfiumThread` (alle Aufrufe auf einem Thread, Fremd-Thread-Aufruf löst Exception aus)", "done": false },
+            { "text": "Öffnen aus Datei, auch passwortgeschützte PDFs; verständliche Fehler bei kaputten oder verschlüsselten Dateien", "done": false },
+            { "text": "Rendern ganzer Seiten und einzelner Kacheln (Matrix + Clipping), progressiv mit Pause und Abbruch", "done": false },
+            { "text": "Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)", "done": false },
+            { "text": "CLI `pagewing info|render|text`", "done": false },
+            { "text": "`testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS", "done": false },
+            { "text": "`Pagewing.Benchmarks` (BenchmarkDotNet): Öffnen und Rendern", "done": false },
+            { "text": "Vergleichsmessung Acrobat, Chrome, SumatraPDF auf dem Rechner des Projektinhabers; Budgets in Roadmap, `CLAUDE.md` und Spec endgültig festlegen", "done": false }
+          ],
+          "acceptance": [
+            { "text": "`pagewing render` erzeugt für alle Test-PDFs PNGs, die mit den Referenzbildern übereinstimmen (Render-Tests grün auf Linux und Windows)", "done": false },
+            { "text": "Test belegt, dass ein PDFium-Aufruf von einem fremden Thread eine Exception auslöst", "done": false },
+            { "text": "Passwortgeschützte Test-PDF öffnet mit richtigem Passwort und scheitert mit falschem mit klarer Meldung (Test)", "done": false },
+            { "text": "Vergleichsmessung dokumentiert (Werte und Methode in `Docs/DECISIONS.md`), Budgets festgelegt", "done": false }
+          ]
+        },
+        {
+          "id": "2",
+          "title": "Designrichtungen",
+          "status": "open",
+          "prerequisites": ["0"],
+          "goal": "Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt, und sie ist als Design-Spec mit Tokens festgehalten.",
+          "tasks": [
+            { "text": "Mindestens 3 unterschiedliche, zum Projekt passende Designrichtungen als HTML-Mockups (Artifacts): Hauptfenster mit geöffnetem PDF, Seitenleiste und Werkzeugleiste, jeweils hell und dunkel", "done": false },
+            { "text": "Entscheidung des Projektinhabers einholen und in `Docs/DECISIONS.md` festhalten (inkl. verworfener Richtungen)", "done": false },
+            { "text": "Design-Spec unter `Docs/superpowers/specs/` mit Tokens (Farben hell/dunkel, Typografie, Abstände, Radien, Icons), Fenster-Layout und Verhalten der wichtigsten Bereiche", "done": false },
+            { "text": "App-Name-Schriftzug und Icon-Richtung festlegen (Grundlage für M8)", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Mindestens 3 Richtungen wurden als Artifacts bereitgestellt (Links in der Design-Spec)", "done": false },
+            { "text": "Projektinhaber hat eine Richtung ausdrücklich gewählt", "done": false },
+            { "text": "Design-Spec ist committet und in der Roadmap verlinkt", "done": false }
+          ]
+        },
+        {
+          "id": "3",
+          "title": "App-Shell & schnelles Öffnen",
+          "status": "open",
+          "prerequisites": ["1", "2"],
+          "goal": "Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch alle Seiten, innerhalb der Startzeit-Budgets.",
+          "tasks": [
+            { "text": "Hauptfenster nach Design-Spec, UI-Texte lokalisierbar (resx, Englisch und Deutsch)", "done": false },
+            { "text": "Öffnen per Kommandozeilenargument, Dateidialog und Drag & Drop", "done": false },
+            { "text": "Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)", "done": false },
+            { "text": "Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget", "done": false },
+            { "text": "Zoom (Strg+Mausrad, Strg+Plus/Minus)", "done": false },
+            { "text": "Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)", "done": false },
+            { "text": "`Pagewing.App.Tests` mit Avalonia.Headless", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Startzeit-Check in der CI grün auf beiden Runnern, Werte als Artefakt", "done": false },
+            { "text": "Weitere Datei bei laufender Instanz öffnet als neuer Inhalt im selben Prozess (Test + manuelle Prüfung)", "done": false },
+            { "text": "Schnelles Scrollen durch eine 1000-seitige Test-PDF ohne Ruckler des UI-Threads (manuelle Prüfung, Messwert notieren)", "done": false }
+          ]
+        },
+        {
+          "id": "4",
+          "title": "Navigation",
+          "status": "open",
+          "prerequisites": ["3"],
+          "goal": "Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzeichnis, Layouts und Zoom-Modi bequem navigieren.",
+          "tasks": [
+            { "text": "Tabs (öffnen, schließen, wechseln, Reihenfolge ändern)", "done": false },
+            { "text": "Seitenleiste mit Seitenvorschau (Thumbnails im Hintergrund, nach dem ersten Seitenbild)", "done": false },
+            { "text": "Inhaltsverzeichnis/Lesezeichen aus dem PDF anzeigen und anspringen", "done": false },
+            { "text": "Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)", "done": false },
+            { "text": "Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom", "done": false },
+            { "text": "Gehe zu Seite", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün", "done": false },
+            { "text": "Startzeit-Budgets weiter eingehalten (CI)", "done": false }
+          ]
+        },
+        {
+          "id": "5",
+          "title": "Text & Suche",
+          "status": "open",
+          "prerequisites": ["4"],
+          "goal": "Text lässt sich durchsuchen, markieren und kopieren, Links funktionieren.",
+          "tasks": [
+            { "text": "Volltextsuche im Dokument mit Treffermarkierung und Weiter/Zurück, Suche im Hintergrund ohne UI-Blockade", "done": false },
+            { "text": "Text markieren und in die Zwischenablage kopieren", "done": false },
+            { "text": "Interne Links (Sprung zu Seite/Ziel) und externe Links (Öffnen nach Bestätigung mit angezeigter URL)", "done": false },
+            { "text": "CLI `pagewing search`", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Suchtests auf Test-PDFs (Treffer und Positionen) grün", "done": false },
+            { "text": "Externer Link öffnet erst nach Bestätigung (Test)", "done": false },
+            { "text": "Benchmark: Suche in 1000-seitiger Test-PDF, Wert notiert", "done": false }
+          ]
+        },
+        {
+          "id": "6",
+          "title": "Komfort",
+          "status": "open",
+          "prerequisites": ["5"],
+          "goal": "Pagewing lässt sich weitgehend per Tastatur bedienen und merkt sich Einstellungen und zuletzt geöffnete Dateien.",
+          "tasks": [
+            { "text": "Dunkler Modus (folgt dem System, umschaltbar), optional dunkle Seitendarstellung", "done": false },
+            { "text": "Tastenkürzel für alle Viewer-Aktionen, Übersicht im Hilfe-Dialog", "done": false },
+            { "text": "Befehlspalette (Strg+K) mit allen Aktionen und zuletzt geöffneten Dateien", "done": false },
+            { "text": "Zuletzt geöffnete Dateien (lokal gespeichert)", "done": false },
+            { "text": "Einstellungen (Sprache, Theme, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Headless-Tests für Befehlspalette und Theme-Wechsel grün", "done": false },
+            { "text": "Einstellungen und zuletzt geöffnete Dateien überleben einen Neustart (Test)", "done": false }
+          ]
+        },
+        {
+          "id": "7",
+          "title": "Drucken",
+          "status": "open",
+          "prerequisites": ["6"],
+          "goal": "PDFs lassen sich unter Windows und Linux drucken.",
+          "tasks": [
+            { "text": "Abstraktion `IPrintService` in Core", "done": false },
+            { "text": "Windows: Druckdialog per Win32, Ausgabe mit `FPDF_RenderPage` auf den Drucker-HDC", "done": false },
+            { "text": "Linux: Übergabe an CUPS, eigener Avalonia-Dialog (Drucker, Seitenbereich, Kopien)", "done": false },
+            { "text": "Seitenbereich, Kopien, Anpassen an Papiergröße", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Druck einer Test-PDF auf einen echten Drucker unter Windows und Linux (manuelle Prüfung durch den Projektinhaber)", "done": false },
+            { "text": "Druck in PDF-Drucker (Microsoft Print to PDF bzw. CUPS-PDF) ergibt korrekte Seiten (manuelle Prüfung)", "done": false }
+          ]
+        },
+        {
+          "id": "8",
+          "title": "Verteilung",
+          "status": "open",
+          "prerequisites": ["7"],
+          "goal": "Pagewing lässt sich unter Windows und Linux installieren und als Standardprogramm für PDFs festlegen.",
+          "tasks": [
+            { "text": "Windows: Installer und portable ZIP, Registrierung als PDF-Standardprogramm", "done": false },
+            { "text": "Linux: AppImage und .deb mit `.desktop`-Datei und MIME-Zuordnung; älteste unterstützte Distribution (glibc) festlegen", "done": false },
+            { "text": "Lizenzhinweise aller Drittbibliotheken (PDFium-Drittlizenzen, Avalonia usw.) im Paket und im Über-Dialog", "done": false },
+            { "text": "Release-Artefakte per CI bauen und an das GitHub-Release hängen", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Installation, Doppelklick auf PDF und Deinstallation auf frischem Windows und frischer Linux-Distribution (manuelle Prüfung)", "done": false },
+            { "text": "Lizenzhinweise vollständig (Abgleich mit den Lizenzdateien der Pakete)", "done": false }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "name": "Annotieren, Ausfüllen, Unterschreiben",
+      "spec": { "text": "noch nicht erstellt (wird in M9 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6" },
+      "milestones": [
+        {
+          "id": "9",
+          "title": "Speichern & Textmarkierungen",
+          "status": "open",
+          "prerequisites": ["8"],
+          "goal": "Text lässt sich hervorheben, unter- und durchstreichen und kommentieren, und Änderungen werden sicher gespeichert.",
+          "tasks": [
+            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 2", "done": false },
+            { "text": "Speicher-Pipeline: inkrementell, atomar (temporäre Datei, Prüfung, Ersetzen), Speichern unter, Ungespeichert-Hinweis", "done": false },
+            { "text": "Hervorheben, Unterstreichen, Durchstreichen", "done": false },
+            { "text": "Kommentare mit Seitenleiste", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Gespeicherte Annotationen erscheinen in einem anderen Viewer (z. B. Chrome) korrekt (manuelle Prüfung)", "done": false },
+            { "text": "Abbruch während des Speicherns lässt das Original unverändert (Test)", "done": false },
+            { "text": "Digital signierte Test-PDF: Signatur bleibt nach Annotieren gültig (Test oder Prüfung in Acrobat Reader)", "done": false }
+          ]
+        },
+        {
+          "id": "10",
+          "title": "Zeichnen & Formen",
+          "status": "open",
+          "prerequisites": ["9"],
+          "goal": "Freihandzeichnungen, Formen und Textfelder lassen sich hinzufügen, bearbeiten und speichern.",
+          "tasks": [
+            { "text": "Freihand zeichnen", "done": false },
+            { "text": "Formen: Rechteck, Kreis, Linie, Pfeil (Umsetzung für Linie/Pfeil laut Spec von Teilprojekt 2)", "done": false },
+            { "text": "Textfelder hinzufügen", "done": false },
+            { "text": "Annotationen auswählen, verschieben, löschen, Rückgängig/Wiederholen", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Round-Trip-Tests: angelegte Annotationen sind nach Speichern und Neuladen unverändert", "done": false }
+          ]
+        },
+        {
+          "id": "11",
+          "title": "Formulare",
+          "status": "open",
+          "prerequisites": ["9"],
+          "goal": "AcroForm-Formulare lassen sich ausfüllen und speichern.",
+          "tasks": [
+            { "text": "AcroForm-Felder ausfüllen (Text, Checkbox, Radio, Liste, Combo), Tab-Reihenfolge", "done": false },
+            { "text": "Speichern der Werte", "done": false },
+            { "text": "Hinweis bei berechneten Feldern (ohne V8 keine JavaScript-Berechnung)", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Ausgefüllte Test-Formulare zeigen die Werte in einem anderen Viewer (Test + manuelle Prüfung)", "done": false }
+          ]
+        },
+        {
+          "id": "12",
+          "title": "Sichtbare Unterschrift",
+          "status": "open",
+          "prerequisites": ["10"],
+          "goal": "Eine gezeichnete oder als Bild eingefügte Unterschrift lässt sich platzieren, speichern und wiederverwenden.",
+          "tasks": [
+            { "text": "Unterschrift zeichnen oder als Bild importieren", "done": false },
+            { "text": "Unterschriften lokal speichern und wiederverwenden", "done": false },
+            { "text": "Platzieren, skalieren, speichern", "done": false },
+            { "text": "Hinweis im Dialog: „Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.“ (keine Bezeichnung als „rechtsgültig“)", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Test prüft, dass der Hinweis im Dialog steht und „rechtsgültig“ in keinem UI-Text vorkommt", "done": false }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "name": "Seiten & Schwärzen",
+      "spec": { "text": "noch nicht erstellt (wird in M13 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6" },
+      "milestones": [
+        {
+          "id": "13",
+          "title": "Seiten organisieren",
+          "status": "open",
+          "prerequisites": ["11", "12"],
+          "goal": "Seiten lassen sich in App und CLI umsortieren, drehen, löschen, einfügen, zusammenführen, teilen und als Bild exportieren.",
+          "tasks": [
+            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 3, inkl. Entscheidung über QPDF (Lesezeichen beim Zusammenführen, Metadaten)", "done": false },
+            { "text": "Umsortieren, drehen, löschen, einfügen in der Seitenleiste", "done": false },
+            { "text": "PDFs zusammenführen und teilen", "done": false },
+            { "text": "Seiten als Bild exportieren", "done": false },
+            { "text": "CLI `pagewing merge|split|rotate|export`", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Tests für alle Seitenoperationen (Seitenzahl, Reihenfolge, Drehung, Inhalt) grün", "done": false }
+          ]
+        },
+        {
+          "id": "14",
+          "title": "Schwärzen",
+          "status": "open",
+          "prerequisites": ["13"],
+          "goal": "Bereiche und Textstellen lassen sich so schwärzen, dass der Inhalt nachweislich aus der Datei verschwindet.",
+          "tasks": [
+            { "text": "Bereich oder Textstelle schwärzen (Markieren, Vorschau, Anwenden)", "done": false },
+            { "text": "Textobjekte aufteilen bzw. entfernen, Bildpixel überschreiben, Vektorpfade und Form-XObjects rekursiv behandeln, Annotationen im Bereich löschen", "done": false },
+            { "text": "Metadaten entfernen (Info-Dictionary, XMP)", "done": false },
+            { "text": "Immer vollständiger Neuschrieb, Warnung bei digital signierten Dokumenten", "done": false },
+            { "text": "CLI `pagewing redact`", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Tests: nach dem Schwärzen enthält weder die Textextraktion noch der dekomprimierte Rohinhalt der Datei den geschwärzten Text (Fälle: Form-XObject, Annotation, Metadaten, ältere inkrementelle Revision)", "done": false },
+            { "text": "Tests: Bildpixel im geschwärzten Bereich sind im gespeicherten Bild überschrieben", "done": false }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "name": "OCR & Text bearbeiten",
+      "spec": { "text": "noch nicht erstellt (wird in M15 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6" },
+      "milestones": [
+        {
+          "id": "15",
+          "title": "OCR",
+          "status": "open",
+          "prerequisites": ["14"],
+          "goal": "Gescannte PDFs lassen sich offline durchsuchbar machen.",
+          "tasks": [
+            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 4, inkl. Auslieferung von Tesseract und Sprachdaten", "done": false },
+            { "text": "`Pagewing.Ocr`: eigene `[LibraryImport]`-Bindings auf die Tesseract-C-API, erst bei Nutzung geladen", "done": false },
+            { "text": "Unsichtbare Textebene erzeugen, im Hintergrund mit Fortschritt und Abbruch", "done": false },
+            { "text": "CLI `pagewing ocr`", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Gescannte Test-PDF ist nach OCR durchsuchbar, Treffer liegen an der richtigen Stelle (Test)", "done": false },
+            { "text": "Startzeit-Budgets unverändert eingehalten (Tesseract wird beim Start nicht geladen)", "done": false }
+          ]
+        },
+        {
+          "id": "16",
+          "title": "Text bearbeiten",
+          "status": "open",
+          "prerequisites": ["15"],
+          "goal": "Vorhandene Textzeilen und Tippfehler lassen sich korrigieren, mit Ersatzschrift für fehlende Zeichen.",
+          "tasks": [
+            { "text": "Vorhandene Zeile auswählen und bearbeiten (bewusst keine Absatz-Bearbeitung)", "done": false },
+            { "text": "Ersatzschrift für Zeichen, die in der eingebetteten Teilschrift fehlen", "done": false },
+            { "text": "Hinweis in der UI auf die Grenzen der Textbearbeitung", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Tests: korrigierte Zeile wird extrahiert wie erwartet, übrige Seite unverändert (Render-Vergleich)", "done": false }
           ]
         }
       ]
     }
+  ],
+  "releases": [
+    {
+      "version": "0.1.0",
+      "title": "schneller Viewer",
+      "status": "open",
+      "afterMilestone": "8",
+      "covers": ["0", "1", "2", "3", "4", "5", "6", "7", "8"],
+      "intro": "Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projektinhaber.",
+      "acceptance": [
+        { "text": "Eine Woche Alltagsnutzung als Standard-PDF-Programm unter Windows und Linux ohne Rückgriff auf Acrobat zum Lesen", "done": false },
+        { "text": "Startzeit-Budgets auf dem Rechner des Projektinhabers eingehalten (Messwerte notieren)", "done": false }
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "title": "annotieren, ausfüllen, unterschreiben",
+      "status": "open",
+      "afterMilestone": "12",
+      "covers": ["9", "10", "11", "12"]
+    },
+    {
+      "version": "0.3.0",
+      "title": "Seiten organisieren und schwärzen",
+      "status": "open",
+      "afterMilestone": "14",
+      "covers": ["13", "14"]
+    },
+    {
+      "version": "1.0.0",
+      "title": "OCR und Textbearbeitung",
+      "status": "open",
+      "afterMilestone": "16",
+      "covers": ["15", "16"]
+    }
+  ],
+  "backlog": [
+    { "title": "Worker-Prozesse für paralleles Rendern", "text": "PDFium ist nicht thread-sicher; echte Parallelität nur über mehrere Prozesse. Nur angehen, wenn Messungen es nötig machen." },
+    { "title": "Natives Wayland", "text": "Avalonia 12.1 bietet Wayland experimentell als Opt-in (`UseWaylandWithFallback`); Standard bleibt X11/XWayland." },
+    { "title": "Flatpak/Flathub", "text": "Einreichung muss laut Flathub-Regeln ein Mensch vornehmen; Native AOT im Flatpak-Build erst erproben, Dateizugriff über Portale." },
+    { "title": "Code-Signierung über SignPath Foundation", "text": "Kostenlos für OSS; setzt öffentliches Repo und ein veröffentlichtes Release voraus, Herausgeber ist dann die SignPath Foundation." },
+    { "title": "Microsoft Store (MSIX)", "text": "Registrierung für Einzelentwickler kostenlos, der Store signiert MSIX selbst." },
+    { "title": "Sitzung wiederherstellen", "text": "Beim Start die zuletzt offenen Tabs mit Position wieder öffnen." },
+    { "title": "Präsentationsmodus", "text": "Vollbild, eine Seite pro Bildschirm, Weiter mit Leertaste/Pfeiltasten." },
+    { "title": "Erweiterte Barrierefreiheit", "text": "Über die Grundlagen hinaus: Screenreader-Unterstützung für Seiteninhalt (UIA unter Windows, AT-SPI2 unter Linux)." },
+    { "title": "arm64-Builds", "text": "Die PDFium-Pakete enthalten bereits win-arm64 und linux-arm64; braucht passende Runner." }
   ]
 }
