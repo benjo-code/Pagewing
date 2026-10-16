@@ -48,7 +48,7 @@
         {
           "id": "1",
           "title": "PDFium-Anbindung & Render-Kern",
-          "status": "planned",
+          "status": "in-progress",
           "plan": "superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md",
           "prerequisites": ["0"],
           "goal": "Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nachweisbar über die CLI, Render-Regressionstests und Benchmarks.",
