@@ -86,7 +86,8 @@
         {
           "id": "2",
           "title": "Designrichtungen",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-16-milestone-02-designrichtungen.md",
           "prerequisites": ["0"],
           "goal": "Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt, und sie ist als Design-Spec mit Tokens festgehalten.",
           "tasks": [
