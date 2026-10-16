@@ -15,6 +15,17 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-16 – Offene Punkte für den Render-Scheduler (M3)
+**Kontext:** Die abschließende Review von Milestone 1 hat Eigenschaften des Render-Kerns festgestellt, die für den Render-Scheduler und den Kachel-Cache (M3) wichtig sind. Sie sind in M1 kein Fehler, weil es dort weder Scheduler noch Cache gibt. Festgestellt wurde:
+- `PdfiumThread` reiht schrittweise Arbeit nach jedem Schritt vorne in ihre Prioritätsklasse ein (`AddFirst`). Verschränkt wird deshalb nur Background mit Interactive: Ein interaktives Rendern läuft bis zum Ende, bevor ein anderer interaktiver Auftrag beginnt.
+- Der Abbruch eines eingereihten, noch nicht begonnenen Auftrags wird erst beim Herausnehmen aus der Warteschlange bemerkt. Für ein promptes Verwerfen veralteter Kachelaufträge muss der Scheduler eine Registrierung am `CancellationToken` nutzen.
+- Die zurückgegebenen Bilder liegen in gepinnten Arrays (Pinned Object Heap). Bei Kacheln mit Überlapp bleibt das Array so groß wie das Bitmap samt der bis zu 64 px Überlapp-Spalten, auch nachdem diese entfernt sind. Die Speicherabrechnung des Caches muss die Array-Länge verwenden; Pooling oder nicht verwaltete Puffer sind zu prüfen.
+- `PdfEngine.OpenAsync` übersetzt Ausnahmen von `Path.GetFullPath` (`ArgumentException`, `PathTooLongException`, `NotSupportedException`) nicht. Die App muss sie abfangen oder auf `PdfOpenError.CannotRead` abbilden; die CLI tut das bereits (`CliApp`).
+- `PdfDocument.GetPageSizeAsync` nutzt `FPDF_GetPageSizeByIndexF` und lädt die Seite nicht mehr. Die Seitengrößen aller Seiten eines Dokuments für das Layout sind damit billig.
+**Entscheidung:** Die Punkte gehen in die Planung von M3 ein; in M1 bleibt der Code dazu unverändert (außer der Seitengröße, die schon umgestellt ist).
+**Begründung:** Scheduler, Cache und App-Fehlerbehandlung gehören zu M3. Ohne diese Notiz müssten die Eigenschaften dort neu ermittelt werden.
+**Verworfene Alternativen:** Die Punkte schon in M1 zu ändern: Das nähme Architekturentscheidungen des Schedulers vorweg (CLAUDE.md, „Milestone-Workflow“).
+
 ## 2026-10-16 – Benchmark-Basiswerte für den Render-Kern (M1)
 **Kontext:** `bench/Pagewing.Benchmarks` misst Öffnen, Rendern und Textextraktion des Kerns in-process. Die Werte sind der Ausgangspunkt für den Vergleich mit dem Render-Scheduler (M3). Sie sind **nicht** das Ergebnis der Budgetmessung „1000-seitige PDF öffnen bis erste Seite“ (≤ 300 ms, Roadmap „Geschwindigkeitsziele“): Diese Messung gehört zur Vergleichsmessung (`bench/compare`) und ist noch offen.
 **Entscheidung:** Als Basiswerte gelten die Messungen vom 2026-10-16 mit `dotnet run -c Release --project bench/Pagewing.Benchmarks -- --filter "*" --job short` (BenchmarkDotNet 0.15.8, 3 Iterationen). Rechner: Windows 11 (10.0.26200.9711, 25H2), AMD Ryzen 7 3800X 3,90 GHz, 6 Kerne, .NET SDK 10.0.302, .NET 10.0.10 X64 RyuJIT x86-64-v3, JIT (nicht AOT).
