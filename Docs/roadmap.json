@@ -91,8 +91,10 @@
         {
           "id": "2",
           "title": "Designrichtungen",
-          "status": "in-progress",
+          "status": "done",
+          "completedOn": "2026-10-17",
           "plan": "superpowers/plans/2026-10-16-milestone-02-designrichtungen.md",
+          "spec": "superpowers/specs/2026-10-17-designsystem.md",
           "prerequisites": ["0"],
           "goal": "Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt, und sie ist als Design-Spec mit Tokens festgehalten.",
           "tasks": [
@@ -104,7 +106,7 @@
           "acceptance": [
             { "text": "Mindestens 3 Richtungen wurden als Artifacts bereitgestellt (Links in der Design-Spec)", "done": true, "evidence": "Design-Spec Abschnitt 3: https://claude.ai/artifact/He1E7CwqM3d8eQTxC2pnPs (A), https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y (B), https://claude.ai/artifact/GqTxJnQPUbhrRoX9bjQ1ae (C); WCAG-2.2-AA-Kontrast für alle 56 Paare je Richtung und Theme bestanden, Sichtprüfung hell/dunkel bei 1440 px und 375 px" },
             { "text": "Projektinhaber hat eine Richtung ausdrücklich gewählt", "done": true, "evidence": "2026-10-17: Wahl von Richtung B „Werkbank“ in der überarbeiteten Fassung (Artifact-Version 2), Wortlaut „ja passt ich nehme richtung B“; Eintrag „Designrichtung: B „Werkbank“ (überarbeitete Fassung)“ in `Docs/DECISIONS.md`, Design-Spec Abschnitt 4" },
-            { "text": "Design-Spec ist committet und in der Roadmap verlinkt", "done": false }
+            { "text": "Design-Spec ist committet und in der Roadmap verlinkt", "done": true, "evidence": "`Docs/superpowers/specs/2026-10-17-designsystem.md` (Status „abgestimmt“), committet auf `feature/m02-designrichtungen` ab Commit 43dd11d; im M2-Eintrag als `spec` verlinkt; `dotnet run tools/roadmap.cs -- check` grün" }
           ]
         },
         {

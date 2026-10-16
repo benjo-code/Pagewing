@@ -25,7 +25,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 |---|---|---|---|---|---|
 | 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | 2026-10-16 |
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) | 2026-10-16 |
-| 2 | Designrichtungen | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) | – |
+| 2 | Designrichtungen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) | 2026-10-17 |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 4 | Navigation | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 5 | Text & Suche | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -128,7 +128,7 @@ Ziel: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nac
 - [x] Vergleichsmessung dokumentiert (Werte und Methode in `Docs/DECISIONS.md`), Budgets festgelegt – Rohwerte `bench/compare/results/2026-10-16-WIN11-UNITY.csv` (40 Läufe) mit Begleitnotiz `2026-10-16-WIN11-UNITY.md`; Werte, Methode, Regel und Grenzen im Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“ in `Docs/DECISIONS.md`. Gemessen wurde nur Chrome 155.0.8059.80 (Acrobat und SumatraPDF nicht installiert); das genügt der Entscheidungsregel, die sich nur auf Chrome stützt. Ergebnis: Die vier vorläufigen Budgets (400 / 200 / 100 / 300 ms) bleiben unverändert und sind laut Projektinhaber (2026-10-16) endgültig. Chrome-Mediane (`t_visually_complete`): 1487,1 / 1537,3 / 613,3 / 1738,7 ms
 
 ## Milestone 2 – Designrichtungen
-**Status:** 🔵 in Arbeit · **Plan:** [2026-10-16-milestone-02-designrichtungen.md](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) · **Voraussetzungen:** M0
+**Status:** ✅ fertig (2026-10-17) · **Plan:** [2026-10-16-milestone-02-designrichtungen.md](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) · **Spec:** [2026-10-17-designsystem.md](superpowers/specs/2026-10-17-designsystem.md) · **Voraussetzungen:** M0
 
 Ziel: Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt, und sie ist als Design-Spec mit Tokens festgehalten.
 
@@ -141,7 +141,7 @@ Ziel: Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt,
 **Abnahmekriterien**
 - [x] Mindestens 3 Richtungen wurden als Artifacts bereitgestellt (Links in der Design-Spec) – Design-Spec Abschnitt 3: https://claude.ai/artifact/He1E7CwqM3d8eQTxC2pnPs (A), https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y (B), https://claude.ai/artifact/GqTxJnQPUbhrRoX9bjQ1ae (C); WCAG-2.2-AA-Kontrast für alle 56 Paare je Richtung und Theme bestanden, Sichtprüfung hell/dunkel bei 1440 px und 375 px
 - [x] Projektinhaber hat eine Richtung ausdrücklich gewählt – 2026-10-17: Wahl von Richtung B „Werkbank“ in der überarbeiteten Fassung (Artifact-Version 2), Wortlaut „ja passt ich nehme richtung B“; Eintrag „Designrichtung: B „Werkbank“ (überarbeitete Fassung)“ in `Docs/DECISIONS.md`, Design-Spec Abschnitt 4
-- [ ] Design-Spec ist committet und in der Roadmap verlinkt
+- [x] Design-Spec ist committet und in der Roadmap verlinkt – `Docs/superpowers/specs/2026-10-17-designsystem.md` (Status „abgestimmt“), committet auf `feature/m02-designrichtungen` ab Commit 43dd11d; im M2-Eintrag als `spec` verlinkt; `dotnet run tools/roadmap.cs -- check` grün
 
 ## Milestone 3 – App-Shell & schnelles Öffnen
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M1, M2

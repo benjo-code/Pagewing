@@ -35,6 +35,14 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Single-Instance: Ein zweiter Aufruf übergibt die Datei an die laufende Instanz (Named Pipe bzw. Unix-Socket).
 - Budgets oder den Startzeit-Check nie lockern, nur damit etwas grün wird. Eine Budgetänderung ist eine Entscheidung in `Docs/DECISIONS.md`.
 
+### Design
+
+- Verbindlich für alle UI-Arbeit ist die Design-Spec [Docs/superpowers/specs/2026-10-17-designsystem.md](Docs/superpowers/specs/2026-10-17-designsystem.md) (Richtung B „Werkbank“, überarbeitet): Tokens, Maße, Layout und Verhalten. Weichen Mockup und Spec ab, gilt die Spec. Tokens und Maße nur dort ändern; jede Änderung ist ein Eintrag in `Docs/DECISIONS.md`.
+- Gelb ist nie Akzent, sondern nur für Suchtreffer (Markierungsfarben sind PDF-Inhalt). Zustände nie nur über Farbe kennzeichnen. Ein neues Farbpaar vor der Verwendung auf WCAG 2.2 AA prüfen (Text 4,5:1, Icons, Ränder und Fokus 3:1).
+- Icons: Tabler outline mit 2 px Strich, nur die genutzten Pfade kopieren. `PathIcon` füllt nur, deshalb braucht es ein eigenes Icon-Control mit Strich.
+- Die Leseansicht zeigt keine Bearbeitungswerkzeuge. Funktionen späterer Versionen erscheinen nicht ausgegraut in der UI.
+- Mockup-Quellen liegen unter `Docs/design/mockups/` (eigenständige HTML-Seiten ohne Dokument-Rahmen, lokal im Browser zu öffnen). Icon-Entwurf und Schriftzug (vorläufig) liegen unter `Docs/design/`.
+
 ### Abhängigkeiten
 
 - Vor jeder neuen Abhängigkeit prüfen:

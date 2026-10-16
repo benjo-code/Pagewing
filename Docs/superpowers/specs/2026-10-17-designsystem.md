@@ -1,6 +1,6 @@
 # Pagewing – Designsystem
 
-**Stand:** 2026-10-17 · **Status:** in Arbeit (Milestone 2) · **Gesamt-Spec:** [2026-10-16-pagewing-design.md](2026-10-16-pagewing-design.md) · **Roadmap:** [Milestone 2](../../ROADMAP.md) · **Plan:** [2026-10-16-milestone-02-designrichtungen.md](../plans/2026-10-16-milestone-02-designrichtungen.md)
+**Stand:** 2026-10-17 · **Status:** abgestimmt (Milestone 2, Wahl des Projektinhabers am 2026-10-17) · **Gesamt-Spec:** [2026-10-16-pagewing-design.md](2026-10-16-pagewing-design.md) · **Roadmap:** [Milestone 2](../../ROADMAP.md) · **Plan:** [2026-10-16-milestone-02-designrichtungen.md](../plans/2026-10-16-milestone-02-designrichtungen.md)
 
 ## 1. Ziel
 
