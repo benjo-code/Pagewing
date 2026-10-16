@@ -23,7 +23,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 | # | Milestone | Teilprojekt | Status | Plan | Fertig am |
 |---|---|---|---|---|---|
-| 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | ⬜ offen | – | – |
+| 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | – |
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -80,7 +80,7 @@ Bewusst nicht umgesetzt:
 **Spec:** [2026-10-16-pagewing-design.md](superpowers/specs/2026-10-16-pagewing-design.md)
 
 ## Milestone 0 – Repo-Grundgerüst & CI
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** keine
+**Status:** 🟡 geplant · **Plan:** [2026-10-16-milestone-00-grundgeruest.md](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) · **Voraussetzungen:** keine
 
 Ziel: Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI auf Linux und Windows, auf dem alle weiteren Milestones aufbauen.
 
@@ -89,12 +89,13 @@ Ziel: Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI a
 - [x] Repo-Einrichtung laut README erledigt: `dev` als Default-Branch, Merge-Optionen, Branch Protection für `main` und `dev`
 - [x] Projekt-Kopf in `CLAUDE.md` und `README.md` ausfüllen, Template-Abschnitt aus der README entfernen
 - [x] `LICENSE` mit GPL-3.0 (Lizenz: GPL-3.0-or-later)
-- [ ] Self-hosted Windows-Runner mit Label `dotnet-windows` in der Orga `benjo-code` einrichten (Projektinhaber)
-- [ ] `.gitignore` für .NET (inkl. `.env`, `bin/`, `obj/`, Render-Diff-Ausgaben)
-- [ ] Solution-Gerüst laut Spec, Abschnitt 5.1: `Pagewing.slnx`, `global.json`, `Directory.Build.props` (Nullable, Warnungen als Fehler, `IsAotCompatible`), `Directory.Packages.props`, Projekte `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-12-Fenster), `Pagewing.Cli` (`--version`), `Pagewing.Core.Tests`
+- [x] Self-hosted Windows-Runner mit Label `dotnet-windows` in der Orga `benjo-code` einrichten (Projektinhaber)
+- [ ] `.gitignore` für .NET (inkl. `.env`, `bin/`, `obj/`, Render-Diff-Ausgaben), `NuGet.config` (nur nuget.org, Source-Mapping) und C#-Stilregeln in `.editorconfig`
+- [ ] Solution-Gerüst laut Spec, Abschnitt 5.1: `Pagewing.slnx`, `global.json` (inkl. Test-Runner Microsoft.Testing.Platform), `Directory.Build.props` (Nullable, Warnungen als Fehler, `IsAotCompatible`), `Directory.Packages.props`, Isolation der Einzeldatei-Werkzeuge in `tools/`, Projekte `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-12-Fenster), `Pagewing.Cli` (`--version`) mit Smoke-Skript `tools/smoke-cli.cs`, `Pagewing.Core.Tests` (xunit.v3)
 - [ ] CI (GitHub Actions) auf PRs nach `dev` und `main`: Build, Test und `dotnet format --verify-no-changes` auf `dotnet-linux` und `dotnet-windows`, AOT-Publish von App und CLI pro OS als Smoke-Test; der Job `roadmap` bleibt
 - [ ] CI-Jobs (`roadmap` und die Build/Test/Lint-Jobs beider OS) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen
 - [ ] Dependabot für NuGet (Gruppe `bblanchon.PDFium*`, ohne Filter auf minor/patch) und GitHub Actions
+- [ ] Stolperfallen in `CLAUDE.md`, Entscheidungen in `Docs/DECISIONS.md` und Setup in `README.md` nachtragen
 
 **Abnahmekriterien**
 - [ ] Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)
