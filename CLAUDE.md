@@ -43,6 +43,8 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
   - Eintrag in `Docs/DECISIONS.md`.
 - Ausdrücklich ausgeschlossen: MuPDF, iText, PDFsharp ab 6.5 (AGPL/kommerziell), PDFiumCore (wir nutzen eigene Bindings), die .NET-Wrapper für Tesseract (nicht AOT-fähig).
 - PDFium-Pakete ohne V8 verwenden: `bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux`, nicht `bblanchon.PDFiumV8.*`. Es gibt jede Woche ein Release, die Versionsnummer ist die Chromium-Buildnummer, damit ist jedes Update formal ein Major-Update. Dependabot-PRs der Gruppe `bblanchon.PDFium*` nur mergen, wenn die Render-Regression grün ist.
+  - Die Schrittzahl-Prüfungen in `tests/Pagewing.Core.Tests/Pdfium/PdfiumRenderWorkTests.cs` (`StepCount > 2` in `InterleavedTileRendersMatchSequentialRenders`, das Pausieren bei Zeitscheibe 0 in `ZeroTimeSliceYieldsAndUnlimitedSliceRendersInOneStep`) hängen davon ab, wie oft PDFium den Pause-Callback abfragt. Schlagen sie nach einem Update fehl, die Ursache prüfen und die Testseite oder Erwartung bewusst anpassen, nicht die Prüfung entfernen.
+  - Beim nächsten PDFium-Update einen Test ergänzen, der prüft, dass `bblanchon.PDFium.Linux` und `bblanchon.PDFium.Win32` in `Directory.Packages.props` dieselbe Version haben. `NativeBindingsTests.ConstantsMatchThePackageHeaders` liest nur die Header des Win32-Pakets; eine halb gemergte Dependabot-Gruppe fiele sonst nicht auf.
 - Drittlizenzen gehören ins Paket und in den Über-Dialog. PDFium bringt allein rund 20 mit (FreeType, ICU, libjpeg-turbo, OpenJPEG …).
 
 ### Offline und Sicherheit
