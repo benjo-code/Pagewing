@@ -6,6 +6,9 @@ namespace Pagewing.Core.Tests.Pdfium;
 
 public sealed class PdfiumDocumentTests
 {
+    /// <summary>User password of the encrypted PDFium test files (see <c>testdata/pdfs/LICENSES.md</c>).</summary>
+    private const string UserPassword = "hôtel";
+
     [Fact]
     public async Task CallFromForeignThreadThrows()
     {
@@ -18,6 +21,7 @@ public sealed class PdfiumDocumentTests
             Assert.Throws<PdfiumThreadViolationException>(() => document.PageCount);
             Assert.Throws<PdfiumThreadViolationException>(() => document.FileVersion);
             Assert.Throws<PdfiumThreadViolationException>(() => document.LoadPage(0));
+            Assert.Throws<PdfiumThreadViolationException>(() => document.GetPageSize(0));
             Assert.Throws<PdfiumThreadViolationException>(() => document.GetMetaText("Title"));
             Assert.Throws<PdfiumThreadViolationException>(() => PdfiumDocument.Open(thread, path, null));
 
@@ -86,11 +90,53 @@ public sealed class PdfiumDocumentTests
                 using var document = PdfiumDocument.Open(thread, TestData.Pdf("text-basic.pdf"), null);
                 Assert.Throws<ArgumentOutOfRangeException>(() => document.LoadPage(-1));
                 Assert.Throws<ArgumentOutOfRangeException>(() => document.LoadPage(document.PageCount));
+                Assert.Throws<ArgumentOutOfRangeException>(() => document.GetPageSize(-1));
+                Assert.Throws<ArgumentOutOfRangeException>(() => document.GetPageSize(document.PageCount));
                 using var last = document.LoadPage(document.PageCount - 1);
                 Assert.Equal(300, last.Width);
                 Assert.Equal(200, last.Height);
+                Assert.Equal((300d, 200d), document.GetPageSize(document.PageCount - 1));
             },
             cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task PageSizeWithoutLoadingMatchesTheLoadedPageForEveryTestPdf()
+    {
+        var thread = PdfiumThread.Shared;
+        var files = Directory.GetFiles(Path.Combine(TestData.Root, "testdata", "pdfs"), "*.pdf")
+            .Where(static file => Path.GetFileName(file) is not ("not-a-pdf.pdf" or "empty.pdf"))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        var mismatches = await thread.InvokeAsync(
+            () =>
+            {
+                var found = new List<string>();
+                foreach (var file in files)
+                {
+                    var password = Path.GetFileName(file).StartsWith("encrypted_", StringComparison.Ordinal) ? UserPassword : null;
+                    using var document = PdfiumDocument.Open(thread, file, password);
+                    for (var index = 0; index < document.PageCount; index++)
+                    {
+                        var cheap = document.GetPageSize(index);
+                        using var page = document.LoadPage(index);
+                        if (cheap != (page.Width, page.Height))
+                        {
+                            found.Add($"{Path.GetFileName(file)} page {index + 1}: {cheap} != ({page.Width}, {page.Height})");
+                        }
+                    }
+                }
+
+                return found;
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Includes rotated-page.pdf (/Rotate 90), cropbox.pdf (CropBox smaller than MediaBox) and the encrypted files.
+        Assert.Contains(files, static file => file.EndsWith("rotated-page.pdf", StringComparison.Ordinal));
+        Assert.Contains(files, static file => file.EndsWith("cropbox.pdf", StringComparison.Ordinal));
+        Assert.Contains(files, static file => file.EndsWith("encrypted_hello_world_r6.pdf", StringComparison.Ordinal));
+        Assert.Empty(mismatches);
     }
 
     [Fact]

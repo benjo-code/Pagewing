@@ -58,7 +58,10 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
             cancellationToken);
     }
 
-    /// <summary>Gets the size of a page in points, after rotation and CropBox.</summary>
+    /// <summary>
+    /// Gets the size of a page in points, after rotation and CropBox. Reads only the page dictionary, not the
+    /// page content, so it stays cheap for every page of a large document.
+    /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
     public Task<PdfPageSize> GetPageSizeAsync(int pageIndex, CancellationToken cancellationToken = default)
@@ -69,8 +72,8 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
         return document.Thread.InvokeAsync(
             () =>
             {
-                using var page = document.LoadPage(pageIndex);
-                return new PdfPageSize(page.Width, page.Height);
+                var (width, height) = document.GetPageSize(pageIndex);
+                return new PdfPageSize(width, height);
             },
             PdfiumPriority.Interactive,
             cancellationToken);

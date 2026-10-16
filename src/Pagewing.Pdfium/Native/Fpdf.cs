@@ -43,6 +43,10 @@ internal static unsafe partial class Fpdf
 
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_GetPageSizeByIndexF(nint document, int pageIndex, FsSizeF* size);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint FPDF_LoadPage(nint document, int pageIndex);
 
     [LibraryImport(Library)]
@@ -121,6 +125,17 @@ internal unsafe struct FpdfFileAccess
 
     /// <summary>Passed as the first argument of <see cref="GetBlock"/> (<c>m_Param</c>).</summary>
     public void* Param;
+}
+
+/// <summary><c>FS_SIZEF</c> from <c>fpdfview.h</c>: a size in points.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FsSizeF
+{
+    /// <summary>Width in points (<c>width</c>).</summary>
+    public float Width;
+
+    /// <summary>Height in points (<c>height</c>).</summary>
+    public float Height;
 }
 
 /// <summary><c>IFSDK_PAUSE</c> from <c>fpdf_progressive.h</c>: lets progressive rendering yield.</summary>

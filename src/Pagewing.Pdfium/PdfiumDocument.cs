@@ -127,6 +127,29 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets the size of a page in points, after rotation and CropBox, like <see cref="PdfiumPage.Width"/> and
+    /// <see cref="PdfiumPage.Height"/>. Unlike <see cref="LoadPage"/> it reads only the page dictionary: it does
+    /// not parse the content stream and loads no fonts.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidDataException">PDFium could not read the page object.</exception>
+    public (double Width, double Height) GetPageSize(int index)
+    {
+        var document = Access();
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Fpdf.FPDF_GetPageCount(document));
+
+        FsSizeF size;
+        if (Fpdf.FPDF_GetPageSizeByIndexF(document, index, &size) == 0)
+        {
+            // A BCL exception, so no PDFium type leaks through the public Core API.
+            throw new InvalidDataException($"Page {index + 1} could not be loaded.");
+        }
+
+        return (size.Width, size.Height);
+    }
+
     /// <summary>Loads a page. The page keeps the document open until it is disposed.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not a page of the document.</exception>
     /// <exception cref="InvalidDataException">PDFium could not load the page (damaged page object).</exception>
