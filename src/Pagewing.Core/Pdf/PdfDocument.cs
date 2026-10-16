@@ -91,8 +91,18 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Renders one tile of a page: the pixels <paramref name="tile"/> of the page rendered at
-    /// <paramref name="scale"/>, identical to the same area of <see cref="RenderPageAsync"/>.
+    /// <paramref name="scale"/>, in the same pixel grid as <see cref="RenderPageAsync"/>.
     /// </summary>
+    /// <remarks>
+    /// The tile matches the corresponding area of the whole-page render up to PDFium's float rounding at the
+    /// tile edges: usually by at most 1 per channel, but not bit for bit in general. Known exceptions are an
+    /// edge shifted by one pixel row or column (difference up to 255 along that edge), resampled images (up to
+    /// about 15), annotation appearances and rotated text at tile edges, and glyphs that reach more than 64 pixels
+    /// right of their origin. Tiles are rendered with up to 64 pixels of overlap to the left, which are dropped
+    /// before the image is returned; this avoids a PDFium error with glyphs cut by the left tile edge. Details:
+    /// <c>Docs/DECISIONS.md</c>, entry "Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht
+    /// allgemein bitgleich".
+    /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
     /// Invalid page index, scale or time slice, or the tile is empty or not within <see cref="PdfPageSize.ToPixels"/>.
     /// </exception>
