@@ -113,7 +113,7 @@ Ziel: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nac
 - [x] `Pagewing.Pdfium`: `[LibraryImport]`-Bindings nur für benötigte Funktionen, SafeHandles, `PdfiumThread` (alle Aufrufe auf einem Thread, Fremd-Thread-Aufruf löst Exception aus)
 - [x] Öffnen aus Datei, auch passwortgeschützte PDFs; verständliche Fehler bei kaputten oder verschlüsselten Dateien
 - [x] Rendern ganzer Seiten und einzelner Kacheln (Matrix + Clipping), progressiv mit Pause und Abbruch
-- [ ] Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)
+- [x] Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)
 - [ ] CLI `pagewing info|render|text`
 - [ ] `testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS
 - [ ] `Pagewing.Benchmarks` (BenchmarkDotNet): Öffnen und Rendern

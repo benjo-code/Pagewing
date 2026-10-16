@@ -77,6 +77,30 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Extracts the text of a page. Lines are separated by <c>\n</c> (PDFium reports <c>\r\n</c>); a page
+    /// without text gives an empty string. Runs with <see cref="PdfPriority.Background"/>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the extraction ran.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<string> GetTextAsync(int pageIndex, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(pageIndex, pageCount);
+        return document.Thread.InvokeAsync(
+            () =>
+            {
+                using var page = document.LoadPage(pageIndex);
+                using var textPage = page.LoadTextPage();
+                return textPage.GetText().Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Renders a whole page at <paramref name="scale"/> pixels per point (1 = 72 dpi) on white, without rotation
     /// beyond the page's own. The image size is <see cref="PdfPageSize.ToPixels"/>. The render runs in time
     /// slices on the PDFium thread, so other requests can run in between.

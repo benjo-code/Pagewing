@@ -26,5 +26,41 @@ internal sealed class PdfiumPage : IDisposable
     /// <summary>Gets the native page, for PDFium calls on the page's thread.</summary>
     internal PageHandle Handle => handle;
 
+    /// <summary>Loads the text of the page. Must be called on the PDFium thread; the text page keeps this page open.</summary>
+    /// <exception cref="InvalidDataException">PDFium could not load the text of the page.</exception>
+    public PdfiumTextPage LoadTextPage()
+    {
+        handle.OwningThread.VerifyAccess();
+        ObjectDisposedException.ThrowIf(handle.IsClosed, this);
+
+        var textHandle = new TextPageHandle(handle.OwningThread, handle);
+        try
+        {
+            var value = Fpdf.FPDFText_LoadPage(handle.DangerousGetHandle());
+            if (value == 0)
+            {
+                // A BCL exception, so no PDFium type leaks through the public Core API.
+                throw new InvalidDataException("The text of the page could not be loaded.");
+            }
+
+            try
+            {
+                textHandle.Attach(value);
+            }
+            catch
+            {
+                Fpdf.FPDFText_ClosePage(value);
+                throw;
+            }
+
+            return new PdfiumTextPage(textHandle);
+        }
+        catch
+        {
+            textHandle.Dispose();
+            throw;
+        }
+    }
+
     public void Dispose() => handle.Dispose();
 }
