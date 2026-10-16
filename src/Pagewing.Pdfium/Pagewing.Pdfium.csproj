@@ -2,4 +2,8 @@
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pagewing.Core" />
+    <InternalsVisibleTo Include="Pagewing.Core.Tests" />
+  </ItemGroup>
 </Project>
