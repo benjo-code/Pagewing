@@ -7,7 +7,7 @@ namespace Pagewing.Render.Tests;
 
 /// <summary>
 /// Renders every PDF of <see cref="RenderCorpus"/> through <c>pagewing render</c> and compares each page with its
-/// reference image in <c>testdata/references/&lt;stem&gt;/</c>. With <c>PAGEWING_UPDATE_REFERENCES=1</c> the
+/// reference image in <c>testdata/references/&lt;stem&gt;/</c>, in the <see cref="CompareMode"/> of its case. With <c>PAGEWING_UPDATE_REFERENCES=1</c> the
 /// renderings become the new references and the test fails on purpose, so an update is always reviewed.
 /// </summary>
 public sealed class RenderRegressionTests : IDisposable
@@ -41,7 +41,7 @@ public sealed class RenderRegressionTests : IDisposable
 
         if (Environment.GetEnvironmentVariable(UpdateVariable) == "1")
         {
-            var updated = await UpdateReferencesAsync(rendered, referenceDirectory, stale, ct);
+            var updated = await UpdateReferencesAsync(rendered, referenceDirectory, stale, renderCase.Mode, ct);
             Assert.Fail($"{updated} references updated — review the differences and commit them ({referenceDirectory}).");
         }
 
@@ -64,7 +64,7 @@ public sealed class RenderRegressionTests : IDisposable
             var actualPng = await File.ReadAllBytesAsync(file, ct);
             var expected = Rgb.Decode(await File.ReadAllBytesAsync(referencePath, ct));
             var actual = Rgb.Decode(actualPng);
-            var result = ImageComparer.Compare(expected, actual, RenderTolerance.Default);
+            var result = ImageComparer.Compare(expected, actual, renderCase.Mode);
             if (result.Passed)
             {
                 continue;
@@ -75,8 +75,8 @@ public sealed class RenderRegressionTests : IDisposable
             var actualPath = Path.Combine(diffDirectory, $"{baseName}.actual.png");
             var diffPath = Path.Combine(diffDirectory, $"{baseName}.diff.png");
             await File.WriteAllBytesAsync(actualPath, actualPng, ct);
-            await File.WriteAllBytesAsync(diffPath, ImageComparer.CreateDiffPng(expected, actual, RenderTolerance.Default), ct);
-            failures.AppendLine(CultureInfo.InvariantCulture, $"{name}: {Describe(expected, actual, result)}");
+            await File.WriteAllBytesAsync(diffPath, ImageComparer.CreateDiffPng(expected, actual, renderCase.Mode), ct);
+            failures.AppendLine(CultureInfo.InvariantCulture, $"{name}: {result.Summary}");
             failures.AppendLine(CultureInfo.InvariantCulture, $"  reference: {referencePath}");
             failures.AppendLine(CultureInfo.InvariantCulture, $"  actual:    {actualPath}");
             failures.AppendLine(CultureInfo.InvariantCulture, $"  diff:      {diffPath}");
@@ -99,35 +99,50 @@ public sealed class RenderRegressionTests : IDisposable
     }
 
     [Fact]
-    public async Task ComparerDetectsAOnePixelShift()
+    public async Task StrictComparisonDetectsAOnePixelShift()
     {
-        var page = await RenderTextBasicPageOneAsync();
-        var shifted = new byte[page.Pixels.Length];
-        Array.Fill(shifted, (byte)0xFF);
-        for (var y = 0; y < page.Height; y++)
-        {
-            var row = y * page.Width * 3;
-            Array.Copy(page.Pixels, row, shifted, row + 3, (page.Width - 1) * 3);
-        }
+        var page = await RenderPageOneAsync("vector-shapes.pdf", CompareMode.Strict);
 
-        var result = ImageComparer.Compare(page, page with { Pixels = shifted }, RenderTolerance.Default);
-
-        TestContext.Current.TestOutputHelper?.WriteLine(Describe(page, page, result));
-        Assert.False(result.Passed, Describe(page, page, result));
+        AssertDetected(page, ShiftRight(page, 1), CompareMode.Strict);
     }
 
     [Fact]
-    public async Task ComparerDetectsMissingText()
+    public async Task TolerantComparisonDetectsMissingText()
     {
-        var page = await RenderTextBasicPageOneAsync();
+        var page = await RenderPageOneAsync("text-basic.pdf", CompareMode.Tolerant);
         var (top, bottom) = FirstTextLine(page);
         var blanked = (byte[])page.Pixels.Clone();
         Array.Fill(blanked, (byte)0xFF, top * page.Width * 3, (bottom - top) * page.Width * 3);
 
-        var result = ImageComparer.Compare(page, page with { Pixels = blanked }, RenderTolerance.Default);
+        AssertDetected(page, page with { Pixels = blanked }, CompareMode.Tolerant);
+    }
 
-        TestContext.Current.TestOutputHelper?.WriteLine($"rows {top}..{bottom - 1}: {Describe(page, page, result)}");
-        Assert.False(result.Passed, Describe(page, page, result));
+    [Fact]
+    public async Task TolerantComparisonDetectsAnEightPixelShift()
+    {
+        var page = await RenderPageOneAsync("text-basic.pdf", CompareMode.Tolerant);
+
+        AssertDetected(page, ShiftRight(page, 8), CompareMode.Tolerant);
+    }
+
+    [Fact]
+    public async Task TolerantComparisonDetectsAColourChange()
+    {
+        // A 40 x 40 patch inside the filled Square annotation, at the worst block alignment (offset 4 to the 8 x 8 grid).
+        const int Left = 140, Top = 260, Size = 40;
+        var page = await RenderPageOneAsync("annotations.pdf", CompareMode.Tolerant);
+        var changed = (byte[])page.Pixels.Clone();
+        var fill = page.Pixel(Left, Top);
+        for (var y = Top; y < Top + Size; y++)
+        {
+            for (var x = Left; x < Left + Size; x++)
+            {
+                Assert.Equal(fill, page.Pixel(x, y)); // the patch lies in a flat filled area
+                changed[(((y * page.Width) + x) * 3) + 1] = (byte)Math.Max(0, fill.G - 60);
+            }
+        }
+
+        AssertDetected(page, page with { Pixels = changed }, CompareMode.Tolerant);
     }
 
     [Theory]
@@ -149,14 +164,26 @@ public sealed class RenderRegressionTests : IDisposable
         }
     }
 
-    private static string Describe(Rgb expected, Rgb actual, ComparisonResult result) =>
-        result.SizeMatches
-            ? string.Create(
-                CultureInfo.InvariantCulture,
-                $"{result.DifferingPixels} of {(long)expected.Width * expected.Height} pixels differ (fraction {result.Fraction:0.######}, allowed {RenderTolerance.Default.MaxDifferingFraction}), max channel delta {result.MaxDelta} (allowed {RenderTolerance.Default.MaxChannelDelta}).")
-            : string.Create(
-                CultureInfo.InvariantCulture,
-                $"size {actual.Width} x {actual.Height} differs from the reference {expected.Width} x {expected.Height}.");
+    private static void AssertDetected(Rgb page, Rgb mutated, CompareMode mode)
+    {
+        var report = ImageComparer.Compare(page, mutated, mode);
+        TestContext.Current.TestOutputHelper?.WriteLine(report.Summary);
+        Assert.False(report.Passed, $"The mutation was not detected: {report.Summary}");
+    }
+
+    /// <summary>Moves the image <paramref name="dx"/> pixels to the right; the uncovered columns are white.</summary>
+    private static Rgb ShiftRight(Rgb image, int dx)
+    {
+        var shifted = new byte[image.Pixels.Length];
+        Array.Fill(shifted, (byte)0xFF);
+        for (var y = 0; y < image.Height; y++)
+        {
+            var row = y * image.Width * 3;
+            Array.Copy(image.Pixels, row, shifted, row + (dx * 3), (image.Width - dx) * 3);
+        }
+
+        return image with { Pixels = shifted };
+    }
 
     /// <summary>The first band of rows that contains non-white pixels: [top, bottom).</summary>
     private static (int Top, int Bottom) FirstTextLine(Rgb page)
@@ -182,7 +209,7 @@ public sealed class RenderRegressionTests : IDisposable
     /// Writes the renderings that are missing as references or deviate beyond the tolerance and deletes stale
     /// references; renderings within the tolerance keep their reference, so a run on another OS does not churn them.
     /// </summary>
-    private static async Task<int> UpdateReferencesAsync(IReadOnlyList<string> rendered, string referenceDirectory, IReadOnlyList<string> stale, CancellationToken ct)
+    private static async Task<int> UpdateReferencesAsync(IReadOnlyList<string> rendered, string referenceDirectory, IReadOnlyList<string> stale, CompareMode mode, CancellationToken ct)
     {
         var updated = 0;
         Directory.CreateDirectory(referenceDirectory);
@@ -191,7 +218,7 @@ public sealed class RenderRegressionTests : IDisposable
             var referencePath = Path.Combine(referenceDirectory, Path.GetFileName(file));
             var png = await File.ReadAllBytesAsync(file, ct);
             if (File.Exists(referencePath)
-                && ImageComparer.Compare(Rgb.Decode(await File.ReadAllBytesAsync(referencePath, ct)), Rgb.Decode(png), RenderTolerance.Default).Passed)
+                && ImageComparer.Compare(Rgb.Decode(await File.ReadAllBytesAsync(referencePath, ct)), Rgb.Decode(png), mode).Passed)
             {
                 continue;
             }
@@ -209,10 +236,13 @@ public sealed class RenderRegressionTests : IDisposable
         return updated;
     }
 
-    private async Task<Rgb> RenderTextBasicPageOneAsync()
+    /// <summary>Renders page 1 of a corpus PDF and checks that the corpus compares it in <paramref name="mode"/>.</summary>
+    private async Task<Rgb> RenderPageOneAsync(string pdfName, CompareMode mode)
     {
         var ct = TestContext.Current.CancellationToken;
-        var files = await RenderCorpus.RenderAsync(RenderCorpus.Get("text-basic.pdf"), workDirectory.FullName, ct, pages: "1");
+        var renderCase = RenderCorpus.Get(pdfName);
+        Assert.Equal(mode, renderCase.Mode);
+        var files = await RenderCorpus.RenderAsync(renderCase, Path.Combine(workDirectory.FullName, "mutation"), ct, pages: "1");
         return Rgb.Decode(await File.ReadAllBytesAsync(Assert.Single(files), ct));
     }
 }

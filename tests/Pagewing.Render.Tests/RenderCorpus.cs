@@ -6,9 +6,11 @@ namespace Pagewing.Render.Tests;
 
 /// <summary>One PDF of the render corpus.</summary>
 /// <param name="PdfName">File name in <c>testdata/pdfs</c>.</param>
+/// <param name="Mode">How its pages are compared with the references.</param>
+/// <param name="Reason">Why this mode, in one line.</param>
 /// <param name="Password">User password, <see langword="null"/> for unencrypted files.</param>
 /// <param name="Pages">Page selection for <c>--pages</c>, <see langword="null"/> for all pages.</param>
-internal sealed record RenderCase(string PdfName, string? Password = null, string? Pages = null)
+internal sealed record RenderCase(string PdfName, CompareMode Mode, string Reason, string? Password = null, string? Pages = null)
 {
     /// <summary>The file name without extension; also the name of the reference directory.</summary>
     public string Stem => Path.GetFileNameWithoutExtension(PdfName);
@@ -26,21 +28,25 @@ internal static class RenderCorpus
     /// <summary>User password of the encrypted PDFium test files (see <c>testdata/pdfs/LICENSES.md</c>).</summary>
     private const string UserPassword = "hôtel";
 
+    private const string NoText = "no text: renders nearly identically on Windows and Linux";
+
+    private const string FontSubstitution = "text: the substitute fonts for the non-embedded standard fonts differ between Windows and Linux";
+
     /// <summary>The rendered PDFs.</summary>
     public static IReadOnlyList<RenderCase> Cases { get; } =
     [
-        new("annotations.pdf"),
-        new("cropbox.pdf"),
-        new("encrypted_hello_world_r3.pdf", UserPassword),
-        new("encrypted_hello_world_r6.pdf", UserPassword),
-        new("hello_world.pdf"),
-        new("image-rgb.pdf"),
-        new("rotated-page.pdf"),
-        new("text-basic.pdf"),
-        new("thousand-pages.pdf", Pages: "1,1000"), // the first and the last page are enough
-        new("transparency.pdf"),
-        new("vector-shapes.pdf"),
-        new("wide-page.pdf"),
+        new("annotations.pdf", CompareMode.Tolerant, FontSubstitution),
+        new("cropbox.pdf", CompareMode.Tolerant, FontSubstitution),
+        new("encrypted_hello_world_r3.pdf", CompareMode.Tolerant, FontSubstitution, UserPassword),
+        new("encrypted_hello_world_r6.pdf", CompareMode.Tolerant, FontSubstitution, UserPassword),
+        new("hello_world.pdf", CompareMode.Tolerant, FontSubstitution),
+        new("image-rgb.pdf", CompareMode.Strict, NoText),
+        new("rotated-page.pdf", CompareMode.Tolerant, FontSubstitution),
+        new("text-basic.pdf", CompareMode.Tolerant, FontSubstitution),
+        new("thousand-pages.pdf", CompareMode.Tolerant, FontSubstitution, Pages: "1,1000"), // the first and the last page are enough
+        new("transparency.pdf", CompareMode.Strict, NoText),
+        new("vector-shapes.pdf", CompareMode.Strict, NoText),
+        new("wide-page.pdf", CompareMode.Tolerant, FontSubstitution),
     ];
 
     /// <summary>Test PDFs that cannot be rendered on purpose (error cases).</summary>

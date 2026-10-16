@@ -15,6 +15,54 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-16 – Render-Regression: zwei Vergleichsmodi, ein gemeinsamer Referenzsatz
+**Kontext:** `tests/Pagewing.Render.Tests` vergleicht jede Seite der Test-PDFs (`pagewing render --dpi 144`) mit einem Referenzbild aus `testdata/references`, erzeugt unter Windows. Geplant war ein pixelweiser Vergleich (Pixel weicht ab ab Δ > 16 je Kanal, höchstens 0,2 % abweichende Pixel), kalibriert auf das Doppelte der gemessenen Abweichung zwischen Windows und Linux, ohne dass eine Verschiebung um 1 Pixel durchrutscht. Die CI unter Linux (Lauf 38956332818) zeigte:
+- Die Seiten ohne Text (`vector-shapes`, `image-rgb`, `transparency`) bestehen den pixelweisen Vergleich.
+- Alle Seiten mit Text weichen ab. PDFium ersetzt die nicht eingebetteten Standardschriften je Betriebssystem durch andere Systemschriften. Layout und Tintenflächen sind gleich (gleiche Begrenzungsrahmen), Glyphenränder und Kantenglättung nicht.
+- Anteil der Pixel mit Δ > 16 (größtes Δ):
+  - `thousand-pages` S. 1000: 1,874 % (211); S. 1: 1,130 % (211)
+  - `hello_world` und die verschlüsselten r3/r6: je 1,033 % (153)
+  - `wide-page`: 1,001 % (179)
+  - `rotated-page`: 0,979 % (226)
+  - `text-basic` S. 1: 0,814 % (211); S. 2: 0,699 % (255)
+  - `annotations`: 0,765 % (238)
+  - `cropbox`: 0,568 % (140)
+- Eine Verschiebung von `text-basic` S. 1 um 1 Pixel ergibt nur 1,36 %. Eine pixelweise Toleranz, die Linux besteht, übersieht sie also; das gilt auch für die Schwellen Δ > 32, 64 und 96.
+- Mittelwerte über 8 × 8 Pixel, größte Abweichung eines Blocks je Seite:
+  - `text-basic` S. 2: 44,22 (5 von 3750 Blöcken über 40 = 0,133 %)
+  - `rotated-page`: 32,23
+  - `thousand-pages` S. 1000: 26,03
+  - `wide-page`: 23,27
+  - `annotations`: 20,08
+  - `text-basic` S. 1 und `thousand-pages` S. 1: je 18,59
+  - `hello_world`, r3, r6: je 15,66
+  - `cropbox`: 13,33
+  - Bei 4 × 4 Blöcken sind es bis 116, zu viel.
+
+**Entscheidung:** Ein gemeinsamer Referenzsatz (unter Windows erzeugt), zwei Vergleichsmodi. Der Modus steht ausdrücklich je Fall in `RenderCorpus.Cases`, mit einer Begründung in einer Zeile, und wird nicht automatisch erkannt.
+- `CompareMode.Strict` für Seiten ohne Text (`vector-shapes`, `image-rgb`, `transparency`): pixelweise, `RenderTolerance(MaxChannelDelta: 16, MaxDifferingFraction: 0.002)`.
+- `CompareMode.Tolerant` für Seiten mit Text (alle übrigen, auch die PDFium-Dateien): Tiefpass über Blockmittelwerte, `BlockTolerance(BlockSize: 8, MaxBlockDelta: 40, MaxDifferingFraction: 0.0027, HardBlockDelta: 89)`. Ein Block weicht ab, wenn ein Kanalmittel um mehr als 40 abweicht. Der Vergleich scheitert bei anderer Größe, bei mehr als 0,27 % abweichenden Blöcken (das Doppelte der gemessenen 0,133 %, aufgerundet) oder wenn ein einzelner Block um mehr als 89 abweicht (2 × 44,22, aufgerundet).
+- Nachweis der Mutationstests (`RenderRegressionTests`, Faktor = Messwert ÷ Grenze):
+  - streng, `vector-shapes` um 1 px verschoben: 1,698 % der Pixel, Grenze 0,2 %, Faktor 8,5
+  - tolerant, Textzeile von `text-basic` S. 1 geleert: 3,57 % der Blöcke (Faktor 13), größter Block 191,5 (Faktor 2,15 zur harten Grenze)
+  - tolerant, `text-basic` S. 1 um 8 px verschoben: 2,96 % der Blöcke (Faktor 11), größter Block 191,3
+  - tolerant, Farbänderung (Grünkanal −60 auf 40 × 40 px in der gefüllten Square-Annotation von `annotations`, ungünstigste Lage zum Blockraster): 0,427 % der Blöcke, Faktor 1,58
+- Bei Abweichungen schreiben beide Modi `.actual.png` und `.diff.png` (im toleranten Modus sind ganze abweichende Blöcke rot markiert) und nennen Anteil, größtes Delta und Grenzen.
+
+**Begründung:** Die Textabweichung zwischen den Betriebssystemen ist legitim (andere Ersatzschrift, gleiche Metrik) und sitzt nur an Glyphenrändern. Ein Tiefpass glättet sie weg, fehlende, verschobene oder umgefärbte Inhalte bleiben sichtbar. Seiten ohne Text behalten die volle Strenge.
+
+**Verworfene Alternativen:**
+- Großes `MaxChannelDelta` (128 bis 160) im pixelweisen Vergleich: würde zwar die 1-px-Verschiebung trennen, macht aber Farbänderungen bis zu dieser Größe auf allen Seiten unsichtbar.
+- Referenzsätze je Betriebssystem: verdoppeln die Pflege bei jedem wöchentlichen PDFium-Update und brauchen zum Erzeugen einen Linux-Rechner.
+- Nur eingebettete Schriften in den eigenen Test-PDFs: hilft nicht bei den unverändert übernommenen PDFium-Dateien (`hello_world`, `encrypted_hello_world_r3/r6`) mit nicht eingebetteten Schriften. Bleibt eine Option für später, um für die eigenen PDFs die pixelweise Strenge zurückzugewinnen.
+- Blöcke von 4 × 4: Linux weicht dort bis 116 je Block ab, zu nah an echten Änderungen.
+
+**Folgen:**
+- Auf Seiten mit Text erkennt die Render-Regression keine Änderungen in der Größenordnung von 1 px oder der Kantenglättung; eine 1-px-Verschiebung ergibt dort höchstens 31,9 je Block. Ebenso unerkannt bleiben flächige Farbänderungen bis 40 je Kanal und kleine lokale Änderungen unter etwa 0,27 % der Blöcke.
+- Exakte Prüfungen auf demselben Betriebssystem bleiben bestehen:
+  - `RenderRegressionTests.RenderingTwiceIsBitIdentical` (Determinismus)
+  - in `Pagewing.Core.Tests` u. a. der Kacheltest `RenderTests.TilesStitchToTheFullPage`
+
 ## 2026-10-16 – Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht allgemein bitgleich
 **Kontext:** Der Kacheltest `RenderTests.TilesStitchToTheFullPage` (`wide-page.pdf`, Maßstab 1,5, Kacheln 128 × 128) soll exakt dem Ganzseiten-Rendering entsprechen, ersatzweise Δ ≤ 2 je Kanal bei höchstens 0,1 % der Pixel. Mit dem geplanten Verfahren (`FPDF_RenderPageBitmap_Start`, Start bei minus Kachel-Offset, Größe der ganzen Seite, Bitmap in Kachelgröße) wichen 282 von 162 000 Pixeln ab (0,17 %), maximal um 134 – beides über der Ersatzgrenze. Betroffen waren nur Glyphen, die von der **linken** Kante einer Kachel geschnitten werden (Spalten 384 und 512, nur in der Textzeile).
 **Befund:**
