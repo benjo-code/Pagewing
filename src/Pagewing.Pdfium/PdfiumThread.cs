@@ -1,3 +1,5 @@
+using Pagewing.Pdfium.Native;
+
 namespace Pagewing.Pdfium;
 
 /// <summary>
@@ -7,6 +9,9 @@ namespace Pagewing.Pdfium;
 /// </summary>
 internal sealed class PdfiumThread : IDisposable
 {
+    private static readonly Lazy<PdfiumThread> SharedThread =
+        new(() => new PdfiumThread(Fpdf.FPDF_InitLibrary, Fpdf.FPDF_DestroyLibrary));
+
     private readonly object gate = new();
     private readonly LinkedList<WorkItem> interactive = new();
     private readonly LinkedList<WorkItem> background = new();
@@ -22,6 +27,12 @@ internal sealed class PdfiumThread : IDisposable
         thread = new Thread(Run) { IsBackground = true, Name = name };
         thread.Start();
     }
+
+    /// <summary>
+    /// Gets the process-wide PDFium thread, created on first use. It initializes PDFium on start and is never
+    /// disposed in production, so <c>FPDF_DestroyLibrary</c> does not run at process exit.
+    /// </summary>
+    public static PdfiumThread Shared => SharedThread.Value;
 
     /// <summary>Gets a value indicating whether the calling thread is the PDFium thread.</summary>
     public bool IsCurrent => Environment.CurrentManagedThreadId == thread.ManagedThreadId;

@@ -15,6 +15,27 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-16 – PDFium-Anbindung: Version 157.0.8100, Dateizugriff, `CULong`, Handles, gemeinsamer Thread
+**Kontext:** Milestone 1 bindet PDFium erstmals ein. Festzulegen waren die Paketversion, wie PDFium die Datei liest, wie plattformabhängige C-Typen gebunden werden, wie native Objekte freigegeben werden und wie Kacheln gerendert werden. Grundlage ist der Eintrag „PDFium: ein Thread, eigene Bindings, Pakete ohne V8, Dependabot“.
+**Entscheidung:**
+- `bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux` in Version `157.0.8100` (Release `chromium/8100`), zentral in `Directory.Packages.props`, referenziert nur von `Pagewing.Pdfium`. Lizenzen: Paket Apache-2.0, PDFium BSD-3 + Apache-2.0, mitgelinkte Bibliotheken siehe `third-party/pdfium/` (alle GPL-3.0-kompatibel). Native Bibliothek, keine Reflection, damit AOT-fähig.
+- Die Drittlizenzen stehen in `third-party/pdfium/`, übernommen aus den Release-Archiven, weil das NuGet-Paket keine Lizenzdateien enthält (Herkunft und Prüfsummen in `third-party/pdfium/README.md`).
+- Dateizugriff über `FPDF_LoadCustomDocument` mit `FPDF_FILEACCESS` und Lese-Callback. `FPDF_LoadDocument` und `FPDF_LoadMemDocument*` werden nicht gebunden.
+- Jedes `unsigned long` der PDFium-API wird als `CULong` gebunden (`FPDF_GetLastError`, `FPDF_GetMetaText`, `FPDF_FILEACCESS`). Folge: Unter Windows lassen sich Dateien über 4 GiB nicht öffnen.
+- Handles (`PdfiumHandle` in `src/Pagewing.Pdfium/Native/Handles.cs`): Native Objekte werden nur auf dem `PdfiumThread` geschlossen. Wird ein Handle auf einem anderen Thread freigegeben oder finalisiert, reiht es das Schließen per `PdfiumThread.Post` ein. Kind-Handles (Seite, Textseite) halten per `DangerousAddRef` eine Referenz auf ihr Eltern-Handle, bis sie selbst geschlossen sind. `DocumentHandle` gibt nach `FPDF_CloseDocument` den nativ allokierten `FPDF_FILEACCESS` und den Lese-Kontext frei.
+- Ein gemeinsamer Thread je Prozess: `PdfiumThread.Shared` ruft beim Start einmal `FPDF_InitLibrary`. Er wird nie beendet, `FPDF_DestroyLibrary` entfällt beim Prozessende.
+- Kacheln werden mit `FPDF_RenderPageBitmap_Start` gerendert: Bitmap in Kachelgröße, Start bei minus Kachel-Offset, Größe der ganzen Seite in Pixeln (so rendert Chrome). `FPDF_RenderPageBitmapWithMatrix` wird nicht gebunden.
+**Begründung:**
+- `FPDF_LoadCustomDocument` liest lazy (schnell auch bei 1000 Seiten), hat keine Probleme mit der Pfadkodierung und erlaubt, die Datei mit `FileShare.ReadWrite | FileShare.Delete` zu öffnen, sodass atomares Ersetzen beim Speichern (M9) nicht blockiert wird.
+- `unsigned long` ist unter Windows 32 Bit und unter Linux 64 Bit breit. Mit `uint` oder `ulong` wäre eine der beiden Plattformen falsch gebunden.
+- PDFium ist nicht thread-sicher. Ein Finalizer läuft auf einem beliebigen Thread und darf PDFium deshalb nicht direkt aufrufen. Seiten und Textseiten verweisen auf ihr Dokument, das deshalb erst schließen darf, wenn keine Seite mehr offen ist.
+- `FPDF_RenderPageBitmapWithMatrix` ist nicht progressiv, Pause und Abbruch wären damit nicht möglich.
+**Verworfene Alternativen:**
+- `FPDF_LoadDocument` mit Pfad: Pfadkodierung je Plattform, PDFium hält die Datei selbst offen.
+- `FPDF_LoadMemDocument64`: liest die ganze Datei vorab in den Speicher, langsam bei großen Dateien.
+- Kacheln über `FPDF_RenderPageBitmapWithMatrix` mit Matrix und Clipping: nicht progressiv. Weicht vom Wortlaut der Roadmap („Matrix + Clipping“) und der Spec (Abschnitt 5.3) ab; beides wird am Ende von Milestone 1 nachgetragen.
+- Handles ohne Thread-Bindung beim Schließen: Ein Finalizer würde PDFium von einem fremden Thread aufrufen.
+
 ## 2026-10-16 – Testframework xunit.v3 4.0.2 mit Microsoft.Testing.Platform
 **Kontext:** Für die Testprojekte war ein Framework zu wählen. Die UI-Tests (ab M3) laufen mit Avalonia.Headless.
 **Entscheidung:** xunit.v3 4.0.2 auf Microsoft.Testing.Platform. `global.json` enthält den Test-Runner; `Microsoft.NET.Test.Sdk` und `xunit.runner.visualstudio` werden nicht referenziert.

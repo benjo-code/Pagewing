@@ -7,4 +7,8 @@
     <PackageReference Include="xunit.v3" />
     <ProjectReference Include="..\..\src\Pagewing.Core\Pagewing.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Lets NativeBindingsTests find the PDFium headers of the restored package. -->
+    <AssemblyMetadata Include="NuGetPackageRoot" Value="$(NuGetPackageRoot)" />
+  </ItemGroup>
 </Project>
