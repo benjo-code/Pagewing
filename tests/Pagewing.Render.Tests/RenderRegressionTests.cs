@@ -8,7 +8,8 @@ namespace Pagewing.Render.Tests;
 /// <summary>
 /// Renders every PDF of <see cref="RenderCorpus"/> through <c>pagewing render</c> and compares each page with its
 /// reference image in <c>testdata/references/&lt;stem&gt;/</c>, in the <see cref="CompareMode"/> of its case. With <c>PAGEWING_UPDATE_REFERENCES=1</c> the
-/// renderings become the new references and the test fails on purpose, so an update is always reviewed.
+/// renderings become the new references and the test fails on purpose, so an update is always reviewed. The update
+/// mode runs only on Windows, where the shared reference set is generated; elsewhere it fails without writing.
 /// </summary>
 public sealed class RenderRegressionTests : IDisposable
 {
@@ -41,6 +42,12 @@ public sealed class RenderRegressionTests : IDisposable
 
         if (Environment.GetEnvironmentVariable(UpdateVariable) == "1")
         {
+            // The one shared reference set is generated on Windows; Linux renders must never be mixed into it.
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.Fail($"{UpdateVariable}=1 is only supported on Windows: the shared reference set is generated there.");
+            }
+
             var updated = await UpdateReferencesAsync(rendered, referenceDirectory, stale, renderCase.Mode, ct);
             Assert.Fail($"{updated} references updated — review the differences and commit them ({referenceDirectory}).");
         }
