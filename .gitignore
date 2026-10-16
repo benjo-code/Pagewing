@@ -17,3 +17,6 @@ TestResults/
 .env
 .env.*
 !.env.example
+
+# Benchmarks
+BenchmarkDotNet.Artifacts/

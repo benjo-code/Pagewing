@@ -116,7 +116,7 @@ Ziel: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nac
 - [x] Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)
 - [x] CLI `pagewing info|render|text`
 - [x] `testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS
-- [ ] `Pagewing.Benchmarks` (BenchmarkDotNet): Öffnen und Rendern
+- [x] `Pagewing.Benchmarks` (BenchmarkDotNet): Öffnen und Rendern
 - [ ] Vergleichsmessung Acrobat, Chrome, SumatraPDF auf dem Rechner des Projektinhabers; Budgets in Roadmap, `CLAUDE.md` und Spec endgültig festlegen
 
 **Abnahmekriterien**

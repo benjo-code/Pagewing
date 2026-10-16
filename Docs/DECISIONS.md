@@ -15,6 +15,14 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-16 – BenchmarkDotNet 0.15.8 als reine Entwicklungsabhängigkeit in bench/
+**Kontext:** Die Geschwindigkeitsziele (Roadmap, „Geschwindigkeitsziele“) brauchen reproduzierbare Messungen für Öffnen, Rendern und Textextraktion, zuerst in M1 (`Pagewing.Benchmarks`), später als Vergleichsbasis für den Render-Scheduler (M3). Die Messwerte müssen Aufwärmphase, Ausreißer und Speicherverbrauch sauber behandeln.
+**Entscheidung:** `BenchmarkDotNet` 0.15.8 (zentral in `Directory.Packages.props`) wird ausschließlich vom Projekt `bench/Pagewing.Benchmarks` referenziert. Das Projekt ist nicht packbar, läuft mit JIT, hat kein `IsAotCompatible` und wird von der CI nur gebaut, nie ausgeführt. Aufruf: `dotnet run -c Release --project bench/Pagewing.Benchmarks -- --filter "*"`.
+**Begründung:** Lizenz MIT, damit GPL-3.0-kompatibel (die Abhängigkeiten wie Perfolizer und Iced sind ebenfalls MIT). Die Abhängigkeit liegt nur unter `bench/`, wird nie ausgeliefert und ist nicht Teil der AOT-Apps (App, CLI, Core, Pdfium); sie verletzt daher weder die Native-AOT-Pflicht noch die Offline-Regeln (BenchmarkDotNet läuft nur auf der Entwicklermaschine und sendet keine Telemetrie).
+**Verworfene Alternativen:**
+- Selbst geschriebene `Stopwatch`-Schleifen: keine Statistik, keine Aufwärmphase, keine Ausreißerbehandlung, kein Speicher-Diagnoser; Ergebnisse wären zwischen Läufen und Rechnern kaum vergleichbar.
+- NBomber und ähnliche Werkzeuge: zielen auf Last- und Lasttests von Diensten, nicht auf Mikro-Benchmarks; hier nicht nötig.
+
 ## 2026-10-16 – Render-Regression: zwei Vergleichsmodi, ein gemeinsamer Referenzsatz
 **Kontext:** `tests/Pagewing.Render.Tests` vergleicht jede Seite der Test-PDFs (`pagewing render --dpi 144`) mit einem Referenzbild aus `testdata/references`, erzeugt unter Windows. Geplant war ein pixelweiser Vergleich (Pixel weicht ab ab Δ > 16 je Kanal, höchstens 0,2 % abweichende Pixel), kalibriert auf das Doppelte der gemessenen Abweichung zwischen Windows und Linux, ohne dass eine Verschiebung um 1 Pixel durchrutscht. Die CI unter Linux (Lauf 38956332818) zeigte:
 - Die Seiten ohne Text (`vector-shapes`, `image-rgb`, `transparency`) bestehen den pixelweisen Vergleich.
