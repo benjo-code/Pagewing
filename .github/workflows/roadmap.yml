@@ -1,0 +1,39 @@
+name: Roadmap
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+# Stale runs of the same ref are cancelled so the shared runners are not blocked.
+concurrency:
+  group: roadmap-${{ github.ref }}
+  cancel-in-progress: true
+
+# No artifacts and no cache: the job only reads the repository and writes nothing the runner has to keep.
+jobs:
+  roadmap:
+    name: roadmap
+    runs-on: [self-hosted, dotnet-linux]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the .NET SDK into HOME (no root on the runner)
+        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # The fixtures belong to the template; a repository created from it may leave them out.
+      - name: Self-test of the generator
+        if: ${{ hashFiles('tools/roadmap-fixtures/**') != '' }}
+        run: dotnet run tools/roadmap.cs -- selftest
+
+      - name: Check the roadmap
+        run: dotnet run tools/roadmap.cs -- check

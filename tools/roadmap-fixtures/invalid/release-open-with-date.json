@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "title": "Ungültig",
+  "subprojects": [
+    { "number": 1, "name": "Kern", "milestones": [
+      { "id": "0", "title": "A", "status": "open", "goal": "g", "tasks": [], "acceptance": [] }
+    ] }
+  ],
+  "releases": [ { "version": "0.1.0", "title": "R", "status": "open", "date": "2026-10-04", "afterMilestone": "0" } ]
+}

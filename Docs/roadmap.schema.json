@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Roadmap",
+  "description": "Maschinenlesbare Roadmap eines Repos. Quelle der Wahrheit, Docs/ROADMAP.md wird daraus erzeugt. Optionale Felder werden weggelassen, nie auf null gesetzt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "title", "subprojects"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "title": { "$ref": "#/$defs/line" },
+    "scopeChanges": { "type": "array", "items": { "$ref": "#/$defs/scopeChange" } },
+    "backlog": { "type": "array", "items": { "$ref": "#/$defs/backlogItem" } },
+    "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
+    "subprojects": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/subproject" } },
+    "releases": { "type": "array", "items": { "$ref": "#/$defs/release" } }
+  },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "line": { "type": "string", "minLength": 1, "pattern": "^[^\\n\\r\\f\\u0085\\u2028\\u2029]+(?![\\s\\S])" },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])" },
+    "docPath": { "type": "string", "pattern": "^[^\\s|)]+(?![\\s\\S])" },
+    "milestoneId": { "type": "string", "pattern": "^[0-9]+([.][0-9]+)*(?![\\s\\S])" },
+    "status": { "enum": ["open", "planned", "in-progress", "done"] },
+    "scopeChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "context", "text"],
+      "properties": {
+        "date": { "$ref": "#/$defs/date" },
+        "context": { "$ref": "#/$defs/line" },
+        "text": { "$ref": "#/$defs/text" }
+      }
+    },
+    "backlogItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "text"],
+      "properties": {
+        "title": { "$ref": "#/$defs/line" },
+        "text": { "$ref": "#/$defs/text" },
+        "idea": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "done"],
+      "properties": {
+        "text": { "$ref": "#/$defs/text" },
+        "done": { "type": "boolean" }
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "done"],
+      "properties": {
+        "text": { "$ref": "#/$defs/text" },
+        "done": { "type": "boolean" },
+        "evidence": { "$ref": "#/$defs/text" }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "text"],
+      "properties": {
+        "title": { "$ref": "#/$defs/line" },
+        "text": { "$ref": "#/$defs/text" }
+      }
+    },
+    "specRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "text": { "$ref": "#/$defs/text" },
+        "link": { "$ref": "#/$defs/docPath" }
+      }
+    },
+    "milestone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "status", "goal", "tasks", "acceptance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/milestoneId" },
+        "title": { "$ref": "#/$defs/line" },
+        "status": { "$ref": "#/$defs/status" },
+        "completedOn": { "$ref": "#/$defs/date" },
+        "plan": { "$ref": "#/$defs/docPath" },
+        "spec": { "$ref": "#/$defs/docPath" },
+        "prerequisites": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/milestoneId" } },
+        "prerequisitesNote": { "$ref": "#/$defs/line" },
+        "goal": { "$ref": "#/$defs/line" },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "acceptance": { "type": "array", "items": { "$ref": "#/$defs/criterion" } },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "done" } }, "required": ["status"] },
+          "then": { "required": ["completedOn"] },
+          "else": { "properties": { "completedOn": false } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "open" } }, "required": ["status"] },
+          "else": { "required": ["plan"] }
+        }
+      ]
+    },
+    "subproject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "name", "milestones"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "name": { "$ref": "#/$defs/line" },
+        "spec": { "$ref": "#/$defs/specRef" },
+        "milestones": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/milestone" } }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "title", "status", "afterMilestone"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^[0-9]+[.][0-9]+[.][0-9]+(?![\\s\\S])" },
+        "title": { "$ref": "#/$defs/line" },
+        "status": { "$ref": "#/$defs/status" },
+        "date": { "$ref": "#/$defs/date" },
+        "afterMilestone": { "$ref": "#/$defs/milestoneId" },
+        "covers": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/milestoneId" } },
+        "intro": { "$ref": "#/$defs/text" },
+        "acceptance": { "type": "array", "items": { "$ref": "#/$defs/criterion" } },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "done" } }, "required": ["status"] },
+          "then": { "required": ["date"] },
+          "else": { "properties": { "date": false } }
+        }
+      ]
+    }
+  }
+}

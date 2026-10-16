@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../Docs/roadmap.schema.json",
+  "schemaVersion": 1,
+  "title": "Beispiel",
+  "subprojects": [
+    {
+      "number": 1,
+      "name": "Fundament",
+      "milestones": [
+        {
+          "id": "0",
+          "title": "Repo-Grundgerüst",
+          "status": "open",
+          "goal": "Ein leeres, aufgesetztes Repo.",
+          "tasks": [],
+          "acceptance": []
+        }
+      ]
+    }
+  ]
+}

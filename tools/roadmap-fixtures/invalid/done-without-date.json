@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "title": "Ungültig",
+  "subprojects": [
+    { "number": 1, "name": "Kern", "milestones": [ { "id": "0", "title": "A", "status": "done", "plan": "p.md", "goal": "g", "tasks": [], "acceptance": [] } ] }
+  ]
+}

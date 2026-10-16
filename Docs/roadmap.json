@@ -1,0 +1,36 @@
+{
+  "$schema": "./roadmap.schema.json",
+  "schemaVersion": 1,
+  "title": "<Projektname>",
+  "subprojects": [
+    {
+      "number": 1,
+      "name": "<Name>",
+      "spec": { "text": "noch nicht erstellt (wird in M0 erstellt)" },
+      "milestones": [
+        {
+          "id": "0",
+          "title": "Repo-Grundgerüst & CI",
+          "status": "open",
+          "goal": "Leeres, aber vollständig aufgesetztes Repo, auf dem alle weiteren Milestones aufbauen.",
+          "tasks": [
+            { "text": "Spec erstellen (Brainstorming): Ziel, Umfang, Stack, Teilprojekte; hier verlinken und die ersten Milestones eintragen", "done": false },
+            { "text": "Repo-Einrichtung laut README erledigt: `dev` als Default-Branch, Merge-Optionen, Branch Protection für `main` und `dev`", "done": false },
+            { "text": "Projekt-Kopf in `CLAUDE.md` und `README.md` ausfüllen, Template-Abschnitt aus der README entfernen", "done": false },
+            { "text": "Stackspezifische `.gitignore` (inkl. `.env`) und `.gitattributes`-Ergänzungen (z. B. Unity: Git LFS für große Assets)", "done": false },
+            { "text": "Projektgerüst inkl. Testprojekt", "done": false },
+            { "text": "`.env.example` mit Platzhaltern, falls Secrets benötigt werden", "done": false },
+            { "text": "CI (GitHub Actions): Build, Test und Format/Lint auf PRs nach `dev` und `main`; der Job `roadmap` aus `.github/workflows/roadmap.yml` bleibt", "done": false },
+            { "text": "CI-Jobs (`roadmap` und der Job für Build, Test, Lint) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen", "done": false },
+            { "text": "Dependabot für das Paket-Ökosystem und GitHub Actions", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)", "done": false },
+            { "text": "CI ist auf einem PR nach `dev` grün", "done": false },
+            { "text": "Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Check Pflicht, kein Force-Push, kein Löschen", "done": false, "evidence": "`gh api repos/benjo-code/<name>/branches/<branch>/protection`" }
+          ]
+        }
+      ]
+    }
+  ]
+}
