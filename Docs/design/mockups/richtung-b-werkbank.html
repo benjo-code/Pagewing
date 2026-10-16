@@ -190,6 +190,25 @@ kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid v
 .recent a{display:grid;grid-template-columns:18px 1fr auto;gap:12px;align-items:center;padding:9px 10px;border-radius:var(--radius-control);color:var(--color-text-primary);text-decoration:none}
 .recent a .ic{width:18px;height:18px;color:var(--color-text-secondary)}
 .recent a small{color:var(--color-text-secondary);font-size:12px}
+.win[data-view="narrow"]{width:680px;box-shadow:0 0 0 1px var(--color-border-strong)}
+.win[data-view="narrow"] .status .lbl,.win[data-view="narrow"] .status .infotxt{display:none}
+.tabmore{border:0;background:transparent;color:var(--color-text-secondary);height:30px;padding:0 4px 0 8px;border-radius:var(--radius-control);display:flex;align-items:center;gap:2px;font:inherit;font-variant-numeric:tabular-nums}
+.tabmore .ic{width:14px;height:14px}
+.notice{flex:1;display:grid;place-items:center;padding:24px}
+.card{width:420px;display:grid;gap:14px;padding:24px;background:var(--color-surface-raised);border-radius:var(--radius-overlay);box-shadow:0 0 0 1px var(--color-border-subtle),0 12px 32px -12px var(--color-page-shadow)}
+.card .badge{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--color-accent-subtle);color:var(--color-accent-default)}
+.card .badge.bad{background:var(--color-surface-hover);color:var(--color-danger-default)}
+.card .badge .ic{width:22px;height:22px}
+.card h3{margin:0;font-size:16px;font-weight:600}
+.card p{margin:0;color:var(--color-text-secondary);line-height:1.5}
+.card label{display:grid;gap:6px;font-weight:500}
+.card input{height:34px;padding:0 10px;font:inherit;letter-spacing:.2em;color:var(--color-text-primary);background:var(--color-surface-raised);border:1px solid var(--color-danger-default);border-radius:var(--radius-control);outline:2px solid var(--color-focus-ring);outline-offset:1px}
+.card .err{color:var(--color-danger-default);font-size:12.5px;display:flex;gap:6px;align-items:center}
+.card .err .ic{width:15px;height:15px}
+.card .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.secondary{border:1px solid var(--color-border-strong);background:var(--color-surface-raised);color:var(--color-text-primary);height:32px;padding:0 14px;border-radius:var(--radius-control);font:inherit}
+.card details{font-size:12.5px;color:var(--color-text-secondary)}
+.card details code{display:block;margin-top:6px;padding:8px 10px;background:var(--color-surface-window);border-radius:var(--radius-control);color:var(--color-text-primary);white-space:normal}
 .recent a:first-of-type{background:var(--color-surface-raised);box-shadow:0 0 0 1px var(--color-border-subtle)}
 </style>
 
@@ -217,16 +236,21 @@ kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid v
           <button type="button" id="vw-comment" data-view-set="comment" aria-pressed="false">Kommentieren (ab v0.2)</button>
           <button type="button" id="vw-start" data-view-set="start" aria-pressed="false">Startbildschirm</button>
           <button type="button" id="vw-linux" data-view-set="linux" aria-pressed="false">Linux-Titelleiste</button>
+          <button type="button" id="vw-narrow" data-view-set="narrow" aria-pressed="false">Schmales Fenster</button>
+          <button type="button" id="vw-password" data-view-set="password" aria-pressed="false">Passwort</button>
+          <button type="button" id="vw-error" data-view-set="error" aria-pressed="false">Fehler</button>
         </span></div>
     </div>
   </header>
 
   <div class="stage">
     <div class="win" data-view="doc" data-density="normal">
-      <div class="titlebar" data-show="doc search comment">
+      <div class="titlebar" data-show="doc search comment password error">
         <span class="appmark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg></span>
         <div class="tabs">
-          <div class="tab active" title="Benutzerhandbuch MS-20.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Benutzerhandbuch MS-20.pdf</span><i class="dirty" aria-label="Nicht gespeichert"></i><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+          <div class="tab active" data-show="doc search comment" title="Benutzerhandbuch MS-20.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Benutzerhandbuch MS-20.pdf</span><i class="dirty" aria-label="Nicht gespeichert"></i><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+          <div class="tab active" data-show="password" hidden title="Protokoll Vorstandssitzung.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg><span>Protokoll Vorstandssitzung.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+          <div class="tab active" data-show="error" hidden title="Scan 2019.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 9v4" /> <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" /> <path d="M12 16h.01" /></svg><span>Scan 2019.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
           <div class="tab" title="Vortrag Jahrestreffen Wetterdienst 2026.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Vortrag Jahres…dienst 2026.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
         </div>
         <button class="iconbtn" type="button" aria-label="Datei öffnen (Strg+O)" title="Datei öffnen (Strg+O)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg></button>
@@ -238,6 +262,17 @@ kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid v
         <span class="appmark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg></span><span class="apptitle">Pagewing</span>
         <span class="drag"></span>
         <button class="cmdbtn" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg>Suchen oder Befehl<kbd>Strg K</kbd></button>
+        <span class="caption" aria-hidden="true"><span><svg viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span></span>
+      </div>
+      <div class="titlebar" data-show="narrow" hidden>
+        <span class="appmark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg></span>
+        <div class="tabs">
+          <div class="tab active" title="Benutzerhandbuch MS-20.pdf" style="max-width:220px"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Benutzerhandbuch MS-20.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+        </div>
+        <button class="tabmore" type="button" aria-label="Alle Tabs (2)" title="Alle Tabs (2)">2<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6l6 -6" /></svg></button>
+        <button class="iconbtn" type="button" aria-label="Datei öffnen (Strg+O)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg></button>
+        <span class="drag"></span>
+        <button class="iconbtn" type="button" aria-label="Suchen oder Befehl (Strg+K)" title="Suchen oder Befehl (Strg+K)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg></button>
         <span class="caption" aria-hidden="true"><span><svg viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span></span>
       </div>
       <div class="linuxbar" data-show="linux" hidden>Benutzerhandbuch MS-20.pdf – Pagewing
@@ -254,7 +289,7 @@ kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid v
         <button class="cmdbtn" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg>Suchen oder Befehl<kbd>Strg K</kbd></button>
       </div>
 
-      <div class="body" data-show="doc search comment linux">
+      <div class="body" data-show="doc search comment linux narrow password error">
         <nav class="rail" aria-label="Bereiche">
           <button data-r="pages" type="button" aria-label="Seiten" title="Seiten"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M14 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M4 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M14 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /></svg></button>
           <button data-r="toc" type="button" aria-label="Inhalt" title="Inhalt"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h11" /> <path d="M12 12h8" /> <path d="M15 18h5" /> <path d="M5 6v.01" /> <path d="M8 12v.01" /> <path d="M11 18v.01" /></svg></button>
@@ -302,7 +337,7 @@ kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid v
             <span class="esc"><kbd>Esc</kbd> beendet</span>
             <button class="primary" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12l5 5l10 -10" /></svg>Fertig</button>
           </div>
-          <div class="canvas" data-scroll-to="1040">
+          <div class="canvas" data-show="doc search comment linux narrow" data-scroll-to="1040">
             <div class="pdf-page pdf-blank" aria-label="Seite 2">
           <span class="pl w40 h"></span><span class="pl w90"></span><span class="pl w95"></span><span class="pl w85"></span><span class="pl w60"></span>
           <span class="pl w30 h gap"></span><span class="pl w95"></span><span class="pl w90"></span><span class="pl w92"></span><span class="pl w70"></span>
@@ -354,11 +389,30 @@ kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid v
         <div class="pdf-page pdf-loading" aria-label="Seite 5 wird geladen"><span class="loading-label">Seite 5</span></div>
 
           </div>
+          <div class="notice" data-show="password" hidden>
+            <form class="card" onsubmit="return false">
+              <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg></span>
+              <h3>Dieses PDF ist geschützt</h3>
+              <p>Geben Sie das Passwort ein, um „Protokoll Vorstandssitzung.pdf“ zu öffnen.</p>
+              <label for="b-pw">Passwort<input id="b-pw" type="text" value="••••••••" aria-invalid="true" aria-describedby="b-pw-err"></label>
+              <span class="err" id="b-pw-err"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 9v4" /> <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" /> <path d="M12 16h.01" /></svg>Das Passwort ist falsch. Achten Sie auf Groß- und Kleinschreibung.</span>
+              <div class="btns"><button class="secondary" type="button">Abbrechen</button><button class="primary" type="submit">Öffnen</button></div>
+            </form>
+          </div>
+          <div class="notice" data-show="error" hidden>
+            <div class="card" role="alert">
+              <span class="badge bad"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 9v4" /> <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" /> <path d="M12 16h.01" /></svg></span>
+              <h3>Diese Datei lässt sich nicht öffnen</h3>
+              <p>„Scan 2019.pdf“ ist beschädigt oder keine PDF-Datei. Haben Sie die Datei heruntergeladen, laden Sie sie erneut herunter.</p>
+              <details><summary>Technische Details</summary><code>Datei: Downloads › Scan 2019.pdf · Fehler: ungültiges Format</code></details>
+              <div class="btns"><button class="secondary" type="button">Tab schließen</button><button class="primary" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg>Andere Datei öffnen</button></div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="status" data-show="doc search comment linux">
+      <div class="status" data-show="doc search comment linux narrow">
         <button class="sbtn" type="button" aria-label="Vorherige Seite"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 6l-6 6l6 6" /></svg></button>
-        <span>Seite</span><input id="b-page" value="3" aria-label="Seite"><span>/ 24</span>
+        <span class="lbl">Seite</span><input id="b-page" value="3" aria-label="Seite"><span>/ 24</span>
         <button class="sbtn" type="button" aria-label="Nächste Seite"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6l6 6l-6 6" /></svg></button>
         <span class="vsep"></span>
         <button class="sbtn" type="button" aria-label="Verkleinern"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12l14 0" /></svg></button>
@@ -366,7 +420,7 @@ kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid v
         <button class="sbtn hover" type="button" aria-label="Vergrößern"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></button>
         <button class="sbtn" type="button" aria-label="Seitenbreite" title="Seitenbreite"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v6" /> <path d="M10 18h-7" /> <path d="M21 18h-7" /> <path d="M6 15l-3 3l3 3" /> <path d="M18 15l3 3l-3 3" /></svg></button>
         <span class="dirtytxt">Nicht gespeichert</span>
-        <button class="sbtn right" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /> <path d="M12 9h.01" /> <path d="M11 12h1v4h1" /></svg>Dokumentinfos</button>
+        <button class="sbtn right" type="button" aria-label="Dokumentinfos" title="Dokumentinfos"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /> <path d="M12 9h.01" /> <path d="M11 12h1v4h1" /></svg><span class="infotxt">Dokumentinfos</span></button>
       </div>
 
       <div class="start" data-show="start" hidden>
@@ -383,7 +437,7 @@ kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid v
       </div>
     </div>
   </div>
-  <p class="stage-note">Entwurf bei 1280 × 800 Pixeln, auf die Seitenbreite skaliert. Zustände im Bild: Hover auf „Vergrößern“ in der Statusleiste; bei „Suche“ Fokus im Suchfeld und Treffer 2 von 5 hervorgehoben; bei „Kommentieren“ eine ausgewählte Markierung auf der Seite und der Hinweis „Nicht gespeichert“. Das Dokument lässt sich scrollen; Seite 5 zeigt den Platzhalter, solange sie noch nicht gerendert ist.</p>
+  <p class="stage-note">Entwurf bei 1280 × 800 Pixeln, auf die Seitenbreite skaliert. Zustände im Bild: Hover auf „Vergrößern“ in der Statusleiste; bei „Suche“ Fokus im Suchfeld und Treffer 2 von 5 hervorgehoben; bei „Kommentieren“ eine ausgewählte Markierung auf der Seite und der Hinweis „Nicht gespeichert“; bei „Schmales Fenster“ 680 px Breite mit eingeklapptem Panel, Tab-Überlauf und Befehlsknopf als Symbol; bei „Passwort“ die Abfrage nach einem falschen Passwort; bei „Fehler“ eine beschädigte Datei. Das Dokument lässt sich scrollen; Seite 5 zeigt den Platzhalter, solange sie noch nicht gerendert ist.</p>
 
   <section class="block">
     <h2>Haltung</h2>

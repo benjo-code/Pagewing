@@ -49,6 +49,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 - **2026-10-16 (M1: Kacheln über `FPDF_RenderPageBitmap_Start` mit Offset statt Matrix-API):** Kacheln werden nicht mit `FPDF_RenderPageBitmapWithMatrix` (Matrix + Clipping) gerendert, sondern mit `FPDF_RenderPageBitmap_Start`: Bitmap in Kachelgröße, Start bei minus Kachel-Offset, Größe der ganzen Seite in Pixeln. Grund: Die Matrix-API ist nicht progressiv, Pause und Abbruch wären damit nicht möglich. Folge: Spec 5.3 und die Roadmap-Aufgabe „Rendern ganzer Seiten und einzelner Kacheln“ sind angepasst. Kacheln sind in PDFium nicht allgemein bitgleich zum Ganzseiten-Rendering und werden deshalb mit 64 px Überlapp nach links gerendert; Scheduler und Kachelgröße (M3) müssen das berücksichtigen (Begründung in `Docs/DECISIONS.md`, Eintrag „Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht allgemein bitgleich“).
 - **2026-10-16 (M1: Vergleichsmessung nur mit Chrome):** Die Vergleichsmessung wurde nur mit Chrome durchgeführt; Acrobat und SumatraPDF sind auf dem Rechner des Projektinhabers nicht installiert und wurden nicht gemessen. Die Aufgabe „Vergleichsmessung“ in M1 ist entsprechend umformuliert. Das genügt der Entscheidungsregel in `bench/compare/README.md` („Regel für den Vorschlag“), die sich nur auf den schnellsten Browser (Chrome) stützt; Acrobat und SumatraPDF dienten dort nur der Einordnung. Die vier Budgets bleiben unverändert und sind endgültig (Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“). Offen bleibt der Vergleich mit Acrobat und SumatraPDF.
+- **2026-10-17 (M2: Design-Spec führt Dokumentinfos und zwei Einstellungen ein):** Die Design-Spec (`Docs/superpowers/specs/2026-10-17-designsystem.md`) sieht in der Statusleiste den Knopf „Dokumentinfos“ (Abschnitt 7.6) sowie die Einstellungen „Dichte“ (Normal/Kompakt, Abschnitt 5.4) und „Animationen reduzieren“ (Abschnitt 5.6; Avalonia 12.1 kennt keine Systemeinstellung dafür) vor. Folge: M4 bekommt die Aufgabe „Dokumentinfos in der Statusleiste“, die Einstellungen in M6 umfassen zusätzlich Dichte und Animationen reduzieren.
 
 ## Geschwindigkeitsziele
 
@@ -134,7 +135,7 @@ Ziel: Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt,
 **Aufgaben**
 - [x] Mindestens 3 unterschiedliche, zum Projekt passende Designrichtungen als HTML-Mockups (Artifacts): Hauptfenster mit geöffnetem PDF, Seitenleiste und Werkzeugleiste, jeweils hell und dunkel
 - [x] Entscheidung des Projektinhabers einholen und in `Docs/DECISIONS.md` festhalten (inkl. verworfener Richtungen)
-- [ ] Design-Spec unter `Docs/superpowers/specs/` mit Tokens (Farben hell/dunkel, Typografie, Abstände, Radien, Icons), Fenster-Layout und Verhalten der wichtigsten Bereiche
+- [x] Design-Spec unter `Docs/superpowers/specs/` mit Tokens (Farben hell/dunkel, Typografie, Abstände, Radien, Icons), Fenster-Layout und Verhalten der wichtigsten Bereiche
 - [ ] App-Name-Schriftzug und Icon-Richtung festlegen (Grundlage für M8)
 
 **Abnahmekriterien**
@@ -173,6 +174,7 @@ Ziel: Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzei
 - [ ] Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)
 - [ ] Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom
 - [ ] Gehe zu Seite
+- [ ] Dokumentinfos in der Statusleiste (Design-Spec 7.6: Datei, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Metadaten)
 
 **Abnahmekriterien**
 - [ ] Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün
@@ -204,7 +206,7 @@ Ziel: Pagewing lässt sich weitgehend per Tastatur bedienen und merkt sich Einst
 - [ ] Tastenkürzel für alle Viewer-Aktionen, Übersicht im Hilfe-Dialog
 - [ ] Befehlspalette (Strg+K) mit allen Aktionen und zuletzt geöffneten Dateien
 - [ ] Zuletzt geöffnete Dateien (lokal gespeichert)
-- [ ] Einstellungen (Sprache, Theme, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON
+- [ ] Einstellungen (Sprache, Theme, Dichte Normal/Kompakt, Animationen reduzieren, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON
 
 **Abnahmekriterien**
 - [ ] Headless-Tests für Befehlspalette und Theme-Wechsel grün

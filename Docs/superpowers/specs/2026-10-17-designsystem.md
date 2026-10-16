@@ -111,15 +111,195 @@ Die Abschnitte 5 bis 8 beschreiben diese Fassung verbindlich. Wo Mockup und Spec
 
 ## 5. Tokens
 
-*Wird in Task 4 ausgefüllt.*
+Die Werte stammen aus dem gewählten Mockup (B, Artifact-Version 3). Token-Namen stehen in Punkt-Notation und beschreiben die Rolle, nicht die Farbe. In M3 werden sie zu Avalonia-Ressourcen: aus `color.surface.window` werden `Pw.Color.Surface.Window` (`Color`) und `Pw.Brush.Surface.Window` (`SolidColorBrush`), hell und dunkel getrennt über `ThemeDictionaries` (`Light`/`Dark`). Eine Token-Änderung ist eine Entscheidung in `Docs/DECISIONS.md`.
+
+### 5.1 Farben
+
+| Token | Hell | Dunkel | Verwendung | Fluent-Rolle (Vorschlag) |
+|---|---|---|---|---|
+| `color.surface.window` | `#EEEFF2` | `#15171B` | Titelleiste, Aktionsleiste, Statusleiste, Startbildschirm-Rahmen | `RegionColor` |
+| `color.surface.toolbar` | `#F7F8FA` | `#1B1E23` | Werkzeugleiste eines Bearbeitungsmodus | – |
+| `color.surface.sidebar` | `#F7F8FA` | `#1B1E23` | Panel (Seiten, Inhalt, Suche) | – |
+| `color.surface.canvas` | `#E3E5EA` | `#0F1114` | Dokumentbereich hinter den Seiten, aktiver Tab | – |
+| `color.surface.raised` | `#FFFFFF` | `#24272E` | Eingabefelder, Karten, Menüs, Befehlspalette | – |
+| `color.surface.hover` | `#E3E5EA` | `#2A2E36` | Hover, Befehlsknopf | – |
+| `color.accent.subtle` | `#E2E5F8` | `#262B52` | Ausgewählt: aktive Seite, aktueller Treffer, aktiver Eintrag der Aktionsleiste, aktives Werkzeug | – |
+| `color.border.subtle` | `#DCDFE5` | `#2A2E36` | Trennlinien, sparsam (siehe 5.3) | – |
+| `color.border.strong` | `#7F848E` | `#6E7480` | Ränder von Eingabefeldern und sekundären Knöpfen | – |
+| `color.text.primary` | `#16181D` | `#E6E8EB` | Text, Icons in Werkzeugleisten | `BaseHigh` |
+| `color.text.secondary` | `#4F545E` | `#9BA1AC` | Beschriftungen, Statuswerte, Icons der Aktionsleiste | `BaseMedium` |
+| `color.text.disabled` | `#9399A3` | `#5E636D` | Deaktiviert (vom Kontrast ausgenommen) | – |
+| `color.accent.default` | `#3B48C4` | `#9DA7FF` | Indigo: aktive Elemente, Primärknopf, Links | `Accent` |
+| `color.accent.on` | `#FFFFFF` | `#121539` | Text und Icons auf `accent.default` | – |
+| `color.focus.ring` | `#3340B4` | `#B4BCFF` | Tastaturfokus | – |
+| `color.page.border` | `#00000014` | `#FFFFFF24` | Kante der PDF-Seite | – |
+| `color.page.shadow` | `#0000001A` | `#00000099` | Schatten der PDF-Seite, von Karten und Popups | – |
+| `color.search.hit` | `#FBE38A` | `#FBE38A` | Suchtreffer (auf der Seite und in der Trefferliste) | – |
+| `color.search.current` | `#F5A524` | `#F5A524` | Aktueller Suchtreffer, immer mit Rahmen | – |
+| `color.danger.default` | `#B42318` | `#FF8A80` | Fehlertext, Fehlersymbol, Rand eines fehlerhaften Felds | `ErrorText` |
+
+Regeln:
+
+- Der Akzent ist nie Gelb. Gelb (`search.*`) gehört nur Suchtreffern; Farben von Markierungen sind Inhalt des PDFs und keine Tokens.
+- Pagewing nutzt seine eigene Akzentfarbe, nicht die des Systems (Wiedererkennung, geprüfter Kontrast). Deshalb wird `Accent` in der Fluent-Palette immer gesetzt.
+- Die Spalte „Fluent-Rolle“ ist ein Vorschlag. Die übrigen Fluent-Farben (`Chrome*`, `Alt*`, `List*`) werden in M3 so gesetzt, dass Fluent-Controls (Textfeld, Knopf, Liste, Kontrollkästchen) zu den Tokens passen (Abschnitt 9).
+- Kontrast nach WCAG 2.2 AA, geprüft am 2026-10-17 in beiden Themes: `text.primary` auf allen Flächen ≥ 4,5:1, `text.secondary` auf allen Flächen außer `surface.canvas` ≥ 4,5:1, `accent.default` als Text auf `surface.window`, `surface.toolbar`, `surface.sidebar` und `surface.raised` ≥ 4,5:1, `accent.on` auf `accent.default` ≥ 4,5:1, `danger.default` auf `surface.raised` ≥ 4,5:1, `border.strong` auf `surface.window`, `surface.toolbar` und `surface.raised` ≥ 3:1, `focus.ring` auf allen Flächen ≥ 3:1, `accent.default` auf `accent.subtle` ≥ 3:1. Knappstes Paar: `border.strong` auf `surface.raised` (dunkel) 3,18:1. Neue Paare, etwa `text.secondary` auf `surface.canvas`, brauchen vorher eine Prüfung.
+
+### 5.2 Typografie
+
+- **Schrift:** Geist (Oberfläche, Schnitte 400, 500, 600) und Geist Mono (Tastenkürzel, Seitenmarken in der Trefferliste; 400, 500). Beide OFL-1.1 ohne Reserved Font Name, daher ist eine Teilmenge erlaubt. Eingebettet wird eine Teilmenge (Basis-Latein, Latin-1, Latin Extended-A, typografische Satzzeichen „“‚‘–—…€ und ẞ) als AvaloniaResource, mit `OFL.txt` im Paket.
+- **Fallback:** Windows Segoe UI (Mono: Cascadia Mono, Consolas), Linux die Standardschrift von fontconfig (`sans-serif`, Mono: `monospace`). Liegen die Startkosten der eingebetteten Schrift in M3 über dem Budget, nutzt Pagewing von Anfang an den Fallback. Eine Schrift wird nie erst nach dem ersten Frame gewechselt.
+- **Ziffern:** Seitenzahlen, Zoom und Trefferzahlen mit Tabellenziffern (`tnum`).
+
+| Rolle | Größe / Zeilenhöhe (px) | Gewicht | Verwendung |
+|---|---|---|---|
+| `type.title` | 22 / 28 | 600 | Überschrift des Startbildschirms |
+| `type.subtitle` | 16 / 22 | 600 | Titel von Karten (Passwort, Fehler) und Dialogen |
+| `type.strong` | 13 / 18 | 600 | Panel-Überschriften, aktiver Tab, Modusname |
+| `type.body` | 13 / 18 (Kompakt 12.5 / 17) | 400 | Grundschrift |
+| `type.caption` | 12 / 16 | 400 | Statusleiste, Zusammenfassungen, Hinweise |
+| `type.mono` | 11.5 / 16 | 400 | Tastenkürzel (`kbd`), Seitenmarken |
+
+### 5.3 Abstände, Radien, Ränder, Schatten
+
+- **Abstände** (4-px-Raster): `space.0` 2, `space.1` 4, `space.2` 8, `space.3` 12, `space.4` 16, `space.5` 24, `space.6` 32.
+- **Radien:** `radius.control` 6 (Knöpfe, Felder, Listeneinträge), `radius.overlay` 10 (Karten, Popups, Befehlspalette, obere linke Ecke von Panel bzw. Dokumentbereich), `radius.tab` 8 (obere Ecken eines Tabs), `radius.page` 0.
+- **Ränder:** Flächen trennen sich über Farbe, nicht über Linien. `border.subtle` (1 px) nur dort, wo gleichfarbige Flächen aneinanderstoßen (Unterkante der Werkzeugleiste eines Modus, Linux-Tab-Zeile). Eingabefelder und sekundäre Knöpfe haben 1 px `border.strong`.
+- **Fokus:** 2 px `focus.ring`, 1 px Abstand zum Element, nur bei Tastaturbedienung.
+- **Schatten** (Avalonia `BoxShadow`): Seite `0 0 0 1 page.border, 0 2 10 0 page.shadow`; Karte und Popup `0 0 0 1 border.subtle, 0 12 32 -12 page.shadow`.
+
+### 5.4 Dichte
+
+„Normal“ ist Standard, „Kompakt“ eine Einstellung für Vielnutzer (M6, Abschnitt 9).
+
+| Maß (px) | Normal | Kompakt |
+|---|---|---|
+| Titelleiste bzw. Linux-Tab-Zeile | 40 | 34 |
+| Aktionsleiste: Breite / Knopf | 52 / 40 | 44 / 34 |
+| Panel (Standardbreite) | 264 | 236 |
+| Statusleiste | 32 | 26 |
+| Werkzeugleiste eines Modus | 44 | 38 |
+| Rand um die Seiten | 32 | 20 |
+| Abstand zwischen Seiten | 20 | 20 |
+| Grundschrift | 13 | 12.5 |
+| Vorschaubilder je Zeile (Breite) | 1 (136) | 2 (Spaltenbreite) |
+
+### 5.5 Icons
+
+- **Satz:** Tabler Icons 3.49.0 (MIT), Variante „outline“, 24er-Raster, Strich 2 px, runde Enden und Ecken. Übernommen werden nur die genutzten Pfade; die Lizenz kommt zu den Drittlizenzen (M8).
+- **Größen:** 20 px in der Aktionsleiste, 18 px in Titel- und Werkzeugleisten, 16 px in Panel, Tabs und Statusleiste.
+- **Farbe:** `text.primary` in Werkzeugleisten, `text.secondary` in Aktions- und Statusleiste, `accent.default` für aktive Einträge, `danger.default` für Fehler.
+- **Umsetzung:** Tabler-Icons sind Linien, `PathIcon` füllt nur. Pagewing braucht deshalb ein eigenes Icon-Control: `Path` mit `Stroke`, `StrokeThickness` 2, `StrokeLineCap`/`StrokeJoin` rund, in einer 24×24-`Viewbox`.
+- **Belegung** (Tabler-Name): Dokument `file-text`, Datei öffnen `folder-open`, Suchen `search`, Seiten `layout-grid`, Inhalt `list-tree`, Einstellungen `settings`, Panel schließen `layout-sidebar-left-collapse`, Schließen `x`, Seite zurück/vor `chevron-left`/`chevron-right`, Menü `chevron-down`, Verkleinern/Vergrößern `minus`/`plus`, Seitenbreite `arrow-autofit-width`, Dokumentinfos `info-circle`, Passwort `lock`, Fehler `alert-triangle`; ab v0.2 Kommentieren `message`, Markieren `highlight`, Unterstreichen `underline`, Zeichnen `pencil`, Notiz `note`, Rückgängig `arrow-back-up`, Löschen `trash`, Fertig `check`.
+
+### 5.6 Bewegung
+
+- Hover- und Druckfarben wechseln ohne Animation. Panel und Popups öffnen mit 150 ms (ease-out), schließen mit 100 ms.
+- Grobe Vorschau und scharfes Seitenbild werden ohne Überblenden getauscht; Geschwindigkeit geht vor Effekt.
+- Bis zum ersten Frame läuft keine Animation.
+- Avalonia 12.1 kennt keine Systemeinstellung „Animationen reduzieren“ (Abschnitt 2.7). Pagewing bekommt dafür eine eigene Einstellung (M6), die alle Dauern auf 0 setzt.
 
 ## 6. Fenster-Layout
 
-*Wird in Task 4 ausgefüllt.*
+Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
+
+1. **Titelleiste (Windows):** Eigene Titelleiste (`WindowDecorations="Full"` mit `ExtendClientAreaToDecorationsHint`). Von links: App-Symbol (so breit wie die Aktionsleiste), Tabs, Knopf „Datei öffnen“, Zieh-Fläche (`ElementRole="TitleBar"`), Knopf „Suchen oder Befehl · Strg K“, Fensterknöpfe. Tabs und Knöpfe haben `ElementRole="User"`.
+2. **Titelleiste (Linux):** Die Titelleiste des Fenstermanagers bleibt. Darunter folgt eine Tab-Zeile in Titelleistenhöhe mit App-Symbol, Tabs, „Datei öffnen“, Zieh-Fläche und dem Befehlsknopf am Ende.
+3. **Mitte:** Aktionsleiste (52) | Panel (264, optional, ziehbar von 200 bis 400) | Dokumentbereich. Der Dokumentbereich hat `surface.canvas`; das Panel bzw. ohne Panel der Dokumentbereich hat oben links `radius.overlay` gegenüber der Aktionsleiste.
+4. **Werkzeugleiste eines Bearbeitungsmodus (ab v0.2):** 44 hoch über dem Dokumentbereich, `surface.toolbar`, Unterkante `border.subtle`. Von links: Modusname mit Icon (`accent.default`), Werkzeuge mit Icon und Beschriftung, Rückgängig und Löschen; rechts der Hinweis „Esc beendet“ und der Primärknopf „Fertig“.
+5. **Statusleiste:** 32 hoch, `surface.window`, links bündig mit dem Dokumentbereich (um die Aktionsleiste eingerückt): ‹ „Seite“ [Feld] „/ 24“ ›, Trenner, Zoom − [Wert] + [Seitenbreite], ab v0.2 der Änderungsstatus („Nicht gespeichert“ mit Punkt). Rechts „Dokumentinfos“.
+
+**Dokumentbereich:** Seiten zentriert untereinander, 20 Abstand, 32 Rand ringsum (auch unter der letzten Seite). Jede Seite hat Kante und Schatten (5.3).
+
+**Mindestgröße:** 640 × 480.
+
+**Schmales Fenster:**
+- Unter 900 px Breite liegt das Panel über dem Dokument, statt es zu verschieben, und schließt sich nach der Auswahl einer Seite oder eines Treffers. Der Befehlsknopf schrumpft auf sein Symbol.
+- Ist kein Platz mehr für alle Tabs, schrumpfen sie bis auf 120 px; danach zeigt die Leiste nur noch den aktiven Tab und daneben „Alle Tabs (n)“ als Menü.
+- Unter 760 px entfallen die Beschriftungen „Seite“ und „Dokumentinfos“ in der Statusleiste; die Symbole bleiben, mit Tooltip.
+- Das Mockup zeigt den Zustand bei 680 px.
 
 ## 7. Verhalten
 
-*Wird in Task 4 ausgefüllt.*
+### 7.1 Start und Startbildschirm
+
+- Der erste Frame zeigt Titelleiste und Startbildschirm, beim Start mit Dateiargument sofort die Dokumentansicht mit Platzhaltern in Seitengröße. Nichts im ersten Frame braucht PDFium.
+- Der Startbildschirm zeigt die Überschrift „Dokument öffnen“, den Hinweis „Pagewing arbeitet offline. Nichts verlässt diesen Rechner.“, den Primärknopf „Datei auswählen“ (Strg+O), den Hinweis auf Drag & Drop und ab M6 „Zuletzt geöffnet“.
+- „Zuletzt geöffnet“ liest nur die Einstellungsdatei. Ob die Dateien noch existieren, prüft Pagewing erst nach dem ersten Frame; fehlende Einträge werden ausgegraut und mit dem Hinweis „Nicht gefunden“ versehen.
+- Eine Datei, die ins Fenster gezogen wird, öffnet als neuer Tab, egal in welchem Zustand.
+
+### 7.2 Tabs
+
+- Ein neuer Tab erscheint rechts vom aktiven und wird aktiv.
+- Der Tab-Name ist der Dateiname, höchstens 280 px breit. Er wird in der Mitte gekürzt, sodass Anfang und Endung sichtbar bleiben. Der volle Pfad steht im Tooltip.
+- Der aktive Tab hat die Farbe des Dokumentbereichs und geht in ihn über; seine Schrift ist `type.strong`.
+- Schließen per ×, Mittelklick oder Strg+W. Die Reihenfolge lässt sich durch Ziehen ändern (M4).
+- Symbol im Tab: Dokument, Schloss während der Passwortabfrage, Warndreieck bei einem Fehler. Ab v0.2 steht bei ungespeicherten Änderungen ein Punkt vor dem ×.
+
+### 7.3 Aktionsleiste und Panel
+
+- Die Einträge der Aktionsleiste sind Seiten, Inhalt und Suche, ab v0.2 zusätzlich Kommentare; unten sitzen die Einstellungen.
+- Ein Klick öffnet das Panel mit diesem Inhalt; ein Klick auf den aktiven Eintrag schließt es. Der aktive Eintrag hat eine `accent.subtle`-Fläche und ein `accent.default`-Icon.
+- Es ist immer höchstens ein Panel offen.
+- Beim Öffnen eines Dokuments öffnet sich das Panel „Seiten“, sofern das Fenster mindestens 900 px breit ist und der Nutzer das Panel zuletzt nicht geschlossen hatte. Den zuletzt gewählten Zustand speichert Pagewing ab M6.
+- **Vorschaubilder:** Die aktuelle Seite hat eine `accent.subtle`-Fläche, 2 px Rahmen in `accent.default` und eine fette Nummer. Die Vorschaubilder werden erst nach dem ersten scharfen Seitenbild gerendert (Gesamt-Spec 5.4); bis dahin stehen leere Rahmen im Seitenformat da.
+- Die Panelbreite lässt sich ziehen; ein Doppelklick auf die Kante setzt die Standardbreite zurück.
+
+### 7.4 Suche
+
+- Strg+F öffnet das Panel „Suche“ mit dem Fokus im Suchfeld.
+- Die Suche läuft im Hintergrund, und die Trefferliste füllt sich nach und nach. Die Zusammenfassung zeigt dabei „Suche läuft …“, am Ende zum Beispiel „5 Treffer, alle auf Seite 3“ oder „12 Treffer auf 4 Seiten“.
+- Jeder Eintrag zeigt eine Seitenmarke in `type.mono` und einen Textausschnitt mit markiertem Treffer. Der aktuelle Treffer hat eine `accent.subtle`-Fläche und links eine 2 px breite Kante in `accent.default`.
+- Enter springt zum nächsten Treffer, Umschalt+Enter zum vorherigen, ein Klick zum gewählten.
+- Auf der Seite sind alle Treffer mit `search.hit` hinterlegt, der aktuelle mit `search.current` und einem 1,5 px Rahmen.
+- Esc im Suchfeld beendet die Suche: Die Markierungen verschwinden, und das Panel zeigt wieder, was vorher offen war.
+
+### 7.5 Dokumentbereich, Laden und Zoom
+
+- **Laden:** Erst steht ein Platzhalter in Seitengröße da (`surface.raised`, Kante `border.subtle`, Seitennummer klein in der Mitte), dann die grobe Vorschau, dann das scharfe Bild. Es gibt keinen Spinner.
+- **Dunkles Theme:** Die Seiten bleiben weiß (eine dunkle Seitendarstellung ist optional, M6). Die Kante `page.border` hebt die Seite vom Hintergrund ab, und der Dokumentbereich ist nie reines Schwarz.
+- **Zoom:** Strg+Mausrad sowie Strg+Plus/Minus. Ein Klick auf den Zoomwert in der Statusleiste öffnet ein Menü mit Stufen, Seitenbreite, ganzer Seite und tatsächlicher Größe (Zoom-Modi M4).
+- **Seitenfeld:** Eingabe und Enter springen zur Seite. Eine ungültige Eingabe setzt das Feld auf die aktuelle Seite zurück, ohne Fehlermeldung.
+
+### 7.6 Befehlspalette und Dokumentinfos
+
+- **Befehlspalette (M6):** „Suchen oder Befehl“ bzw. Strg+K öffnet ein Popup unter der Titelleiste (560 breit, `radius.overlay`). Oben steht ein Eingabefeld, darunter die Gruppen „Zuletzt geöffnet“, „Seiten“ (eine Zahl springt zur Seite) und „Befehle“ mit ihren Tastenkürzeln. Esc schließt das Popup. Solange die Palette nicht umgesetzt ist, entfällt der Knopf.
+- **Dokumentinfos:** Ein Popup über der Statusleiste mit Dateiname und Ordner, Seitenzahl, Seitenformat der aktuellen Seite (z. B. „A4 · 210 × 297 mm“), PDF-Version, Dateigröße sowie Titel, Autor und Erstelldatum aus den Metadaten, soweit vorhanden. Der Milestone dafür steht in Abschnitt 9.
+
+### 7.7 Bearbeitungsmodi (ab v0.2)
+
+- Die Leseansicht zeigt nie Bearbeitungswerkzeuge.
+- Ein Modus (Kommentieren, später Formulare, Seiten, Schwärzen) öffnet seine eigene Werkzeugleiste (Abschnitt 6, Punkt 4). „Fertig“ oder Esc beendet ihn.
+- Ungespeicherte Änderungen zeigen der Tab (Punkt) und die Statusleiste („Nicht gespeichert“).
+- Wie man einen Modus betritt und welche Werkzeuge es gibt, legt die Spec von Teilprojekt 2 fest.
+
+### 7.8 Passwort und Fehler
+
+- **Passwortabfrage** (`PasswordRequired`): Statt eines modalen Dialogs erscheint eine Karte im Dokumentbereich des Tabs, damit andere Tabs bedienbar bleiben. Sie enthält das Schloss-Symbol, den Titel „Dieses PDF ist geschützt“, den Text „Geben Sie das Passwort ein, um „<Dateiname>“ zu öffnen.“, ein Passwortfeld mit Fokus sowie die Knöpfe „Abbrechen“ (schließt den Tab) und „Öffnen“ (Enter).
+- **Falsches Passwort** (`PasswordIncorrect`): Das Feld bekommt einen Rand in `danger.default`, sein Inhalt bleibt markiert, und der Fokus bleibt im Feld. Darunter steht „Das Passwort ist falsch. Achten Sie auf Groß- und Kleinschreibung.“
+- **Fehler beim Öffnen:** Eine Karte im Dokumentbereich mit Warnsymbol (`danger.default`), Titel „Diese Datei lässt sich nicht öffnen“ und der Ursache in Alltagssprache je Fehlerart:
+  - `NotAPdf`: „ist beschädigt oder keine PDF-Datei“
+  - `FileNotFound`: „wurde nicht gefunden“
+  - `CannotRead`: „kann nicht gelesen werden (kein Zugriff oder zu groß)“
+- Darunter folgen aufklappbare „Technische Details“ (Pfad, Fehlerart) und die Knöpfe „Tab schließen“ und „Andere Datei öffnen“ (Primär).
+- Alle Texte gibt es auf Englisch und Deutsch (resx).
+
+### 7.9 Fokus und Tastatur
+
+- Der Fokusrahmen erscheint nur bei Tastaturbedienung (5.3).
+- Die Tab-Reihenfolge ist Titelleiste → Aktionsleiste → Panel → Dokument → Statusleiste. F6 springt zwischen diesen Bereichen.
+- Jeder Knopf ohne Beschriftung hat einen Tooltip und einen Automation-Namen; Tooltips nennen das Tastenkürzel, z. B. „Datei öffnen (Strg+O)“.
+
+### 7.10 Zustände nie nur über Farbe
+
+| Zustand | Kennzeichnung neben der Farbe |
+|---|---|
+| Aktiver Tab | geht in den Dokumentbereich über, fette Schrift |
+| Aktuelle Seite in den Vorschaubildern | Rahmen, fette Nummer |
+| Aktueller Suchtreffer | Rahmen auf der Seite, Kante in der Liste |
+| Aktiver Eintrag der Aktionsleiste und aktives Werkzeug | Fläche hinter dem Icon |
+| Fehler | Symbol und Text |
+| Ungespeichert | Punkt im Tab, Text in der Statusleiste |
 
 ## 8. Schriftzug und Icon
 
@@ -135,4 +315,12 @@ Prüfung in M3, wenn nicht anders angegeben:
 - Start- und Bildratenkosten von Mica gegenüber deckender Fläche, falls Mica gewünscht ist.
 - X11 mit und ohne Compositor: tatsächliches `ActualTransparencyLevel`, Titelleiste.
 - Tatsächliche Standardschrift auf den Ziel-Distributionen.
-- Darstellung bei Windows-Hochkontrast.
+- Darstellung bei Windows-Hochkontrast: Fluent wertet `ContrastPreference` nicht aus; ob und wie Pagewing eine Hochkontrast-Palette bekommt, entscheidet M6 (Komfort).
+- Geist und Geist Mono: Startkosten der eingebetteten Teilmenge messen. Liegen sie über dem Budget, nutzt Pagewing die Systemschrift (Fallback aus 5.2); das Ergebnis kommt als Eintrag in `Docs/DECISIONS.md`.
+- Fluent-Palette: übrige Rollen (`Chrome*`, `Alt*`, `List*`) so setzen, dass Textfeld, Knopf, Liste und Kontrollkästchen zu den Tokens in 5.1 passen; Prüfung per Sichtvergleich mit dem Mockup in beiden Themes.
+- Fensterknöpfe unter Windows: ob Avalonia sie bei `WindowDecorations="Full"` mit Hint selbst zeichnet oder das System; Höhe und Hover-Farben an die Titelleiste (40 bzw. 34 px) anpassen.
+
+Spätere Milestones (Zuordnung in der Roadmap, Abschnitt „Scope-Änderungen“, Eintrag vom 2026-10-17):
+
+- „Dokumentinfos“ (7.6) in M4 (Navigation).
+- Einstellungen „Dichte“ (Normal/Kompakt) und „Animationen reduzieren“ in M6 (Komfort), zusammen mit den übrigen Einstellungen.

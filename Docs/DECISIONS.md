@@ -15,6 +15,26 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Icons: Tabler Icons (Pfade kopiert, kein Paket)
+**Kontext:** Die gewählte Designrichtung B nutzt Linien-Icons. Geprüft wurden Fluent UI System Icons (MIT), Lucide (ISC, Feather-Anteil MIT), Phosphor (MIT) und Tabler (MIT); Lizenzen aus den LICENSE-Dateien der Repos, Details in `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 2.6.
+**Entscheidung:** Tabler Icons 3.49.0 (MIT, https://github.com/tabler/tabler-icons), Variante „outline“, 2 px Strich auf 24er-Raster. Übernommen werden nur die Pfade der genutzten Icons (Liste in der Design-Spec, Abschnitt 5.5), als Geometrie im Code bzw. kompiliertem XAML. Kein NuGet-Paket, keine Icon-Schrift. Gezeichnet wird mit einem eigenen Icon-Control (`Path` mit Strich in einer 24×24-`Viewbox`), weil `PathIcon` nur füllt. Der MIT-Lizenztext von Tabler samt Copyright-Zeile kommt zu den Drittlizenzen (M8).
+**Begründung:** MIT ist GPL-3.0-kompatibel. Kopierte Pfade sind AOT-sicher, kosten beim Start nichts und bringen nur die Icons mit, die gebraucht werden. Tabler hat anders als Lucide und Phosphor ein echtes Icon für „Seitenbreite“ (`arrow-autofit-width`) und einen Behelf für Schwärzen (`square-off`), und der Strich passt zur Schrift Geist.
+**Verworfene Alternativen:**
+- Fluent UI System Icons: flächige Konturen im Windows-Stil, passen zu Richtung A, nicht zu B.
+- Lucide: sehr ähnlich zu Tabler, aber ohne „Seitenbreite“-Icon und mit zwei Lizenztexten (ISC und MIT).
+- Phosphor: letzte Veröffentlichung 2024, ohne „Seitenbreite“-Icon.
+- Icon-Schrift oder NuGet-Paket: lädt alle Icons, Startkosten und Größe ohne Nutzen.
+
+## 2026-10-17 – Schrift: Geist und Geist Mono, als Teilmenge eingebettet (vorbehaltlich Messung in M3)
+**Kontext:** Die gewählte Designrichtung B ist mit Geist entworfen. Die Systemschrift unterscheidet sich je Betriebssystem und Distribution (Segoe UI unter Windows, fontconfig unter Linux); eine eingebettete Schrift sieht überall gleich aus, kostet aber Startzeit. Die Startkosten sind nicht belegt (Design-Spec, Abschnitt 2.5).
+**Entscheidung:** Geist und Geist Mono (OFL-1.1, ohne Reserved Font Name, https://github.com/vercel/geist-font; geprüft am 2026-10-16 in Version 1.8.1) werden als Teilmenge (Basis-Latein, Latin-1, Latin Extended-A, typografische Satzzeichen, ẞ) mit den Schnitten 400, 500 und 600 bzw. 400 und 500 als AvaloniaResource eingebettet und als eigene Datei mit `OFL.txt` ausgeliefert. Die genaue Version wird beim Einbinden in M3 festgelegt. Vorbehalt: M3 misst die Startkosten mit `--measure-startup`. Hält Pagewing damit die Budgets nicht ein, nutzt es von Anfang an die Systemschrift (Fallback in der Design-Spec, Abschnitt 5.2); das wird als eigener Eintrag festgehalten.
+**Begründung:** OFL-1.1 ist als eigene Datei neben dem GPL-Programm ein Aggregat (GPL-FAQ „MereAggregation“), und ohne Reserved Font Name ist eine Teilmenge ohne Umbenennung erlaubt. Geist ist klein (Variable-TTF etwa 169 KB, als Teilmenge weniger) und hat Tabellenziffern für Seitenzahlen und Zoom.
+**Verworfene Alternativen:**
+- Geist erst nach dem ersten Frame nachladen: Die Oberfläche bricht dann einmal sichtbar neu um.
+- Nur Systemschrift: uneinheitlich zwischen den Systemen und den Linux-Distributionen; bleibt der Fallback.
+- Inter über `Avalonia.Fonts.Inter`: rund 1,9 MB in sechs Schnitten, ohne OFL-Datei im Paket, passt nicht zum gewählten Entwurf.
+- IBM Plex Sans, Source Sans 3: Reserved Font Name, eine Teilmenge müsste umbenannt werden.
+
 ## 2026-10-17 – Designrichtung: B „Werkbank“ (überarbeitete Fassung)
 **Kontext:** Milestone 2 verlangt mindestens drei Designrichtungen als HTML-Mockups und eine ausdrückliche Wahl des Projektinhabers. Am 2026-10-17 standen drei Richtungen als Artifacts bereit (Links, Szene und Prüfung in `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 3; Quellen unter `Docs/design/mockups/`): A „Nativ & leise“ (Fluent/GNOME-nah, Systemschrift), B „Werkbank“ (aufgebaut wie ein Code-Editor, Akzent Textmarker-Gelb), C „Papier“ (Leseraum mit schwebender Werkzeugleiste). Der Projektinhaber bevorzugte B, wollte aber, dass sie wie ein eigenständiges Software-Produkt wirkt und nicht wie ein Code-Editor. Er brachte dazu Verbesserungsvorschläge einer anderen KI mit, ließ sie prüfen und B danach im Artifact überarbeiten.
 **Entscheidung:** Pagewing bekommt Richtung **B „Werkbank“ in der überarbeiteten Fassung** (Artifact-Version 2 vom 2026-10-17, Quelle `Docs/design/mockups/richtung-b-werkbank.html`). Wortlaut der Wahl am 2026-10-17: „ja passt ich nehme richtung B“. Die Überarbeitung gegenüber der ersten Fassung:

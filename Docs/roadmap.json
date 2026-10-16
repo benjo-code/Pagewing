@@ -12,6 +12,11 @@
       "date": "2026-10-16",
       "context": "M1: Vergleichsmessung nur mit Chrome",
       "text": "Die Vergleichsmessung wurde nur mit Chrome durchgeführt; Acrobat und SumatraPDF sind auf dem Rechner des Projektinhabers nicht installiert und wurden nicht gemessen. Die Aufgabe „Vergleichsmessung“ in M1 ist entsprechend umformuliert. Das genügt der Entscheidungsregel in `bench/compare/README.md` („Regel für den Vorschlag“), die sich nur auf den schnellsten Browser (Chrome) stützt; Acrobat und SumatraPDF dienten dort nur der Einordnung. Die vier Budgets bleiben unverändert und sind endgültig (Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“). Offen bleibt der Vergleich mit Acrobat und SumatraPDF."
+    },
+    {
+      "date": "2026-10-17",
+      "context": "M2: Design-Spec führt Dokumentinfos und zwei Einstellungen ein",
+      "text": "Die Design-Spec (`Docs/superpowers/specs/2026-10-17-designsystem.md`) sieht in der Statusleiste den Knopf „Dokumentinfos“ (Abschnitt 7.6) sowie die Einstellungen „Dichte“ (Normal/Kompakt, Abschnitt 5.4) und „Animationen reduzieren“ (Abschnitt 5.6; Avalonia 12.1 kennt keine Systemeinstellung dafür) vor. Folge: M4 bekommt die Aufgabe „Dokumentinfos in der Statusleiste“, die Einstellungen in M6 umfassen zusätzlich Dichte und Animationen reduzieren."
     }
   ],
   "blocks": [
@@ -93,7 +98,7 @@
           "tasks": [
             { "text": "Mindestens 3 unterschiedliche, zum Projekt passende Designrichtungen als HTML-Mockups (Artifacts): Hauptfenster mit geöffnetem PDF, Seitenleiste und Werkzeugleiste, jeweils hell und dunkel", "done": true },
             { "text": "Entscheidung des Projektinhabers einholen und in `Docs/DECISIONS.md` festhalten (inkl. verworfener Richtungen)", "done": true },
-            { "text": "Design-Spec unter `Docs/superpowers/specs/` mit Tokens (Farben hell/dunkel, Typografie, Abstände, Radien, Icons), Fenster-Layout und Verhalten der wichtigsten Bereiche", "done": false },
+            { "text": "Design-Spec unter `Docs/superpowers/specs/` mit Tokens (Farben hell/dunkel, Typografie, Abstände, Radien, Icons), Fenster-Layout und Verhalten der wichtigsten Bereiche", "done": true },
             { "text": "App-Name-Schriftzug und Icon-Richtung festlegen (Grundlage für M8)", "done": false }
           ],
           "acceptance": [
@@ -135,7 +140,8 @@
             { "text": "Inhaltsverzeichnis/Lesezeichen aus dem PDF anzeigen und anspringen", "done": false },
             { "text": "Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)", "done": false },
             { "text": "Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom", "done": false },
-            { "text": "Gehe zu Seite", "done": false }
+            { "text": "Gehe zu Seite", "done": false },
+            { "text": "Dokumentinfos in der Statusleiste (Design-Spec 7.6: Datei, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Metadaten)", "done": false }
           ],
           "acceptance": [
             { "text": "Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün", "done": false },
@@ -171,7 +177,7 @@
             { "text": "Tastenkürzel für alle Viewer-Aktionen, Übersicht im Hilfe-Dialog", "done": false },
             { "text": "Befehlspalette (Strg+K) mit allen Aktionen und zuletzt geöffneten Dateien", "done": false },
             { "text": "Zuletzt geöffnete Dateien (lokal gespeichert)", "done": false },
-            { "text": "Einstellungen (Sprache, Theme, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON", "done": false }
+            { "text": "Einstellungen (Sprache, Theme, Dichte Normal/Kompakt, Animationen reduzieren, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON", "done": false }
           ],
           "acceptance": [
             { "text": "Headless-Tests für Befehlspalette und Theme-Wechsel grün", "done": false },
