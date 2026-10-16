@@ -62,6 +62,9 @@ jobs:
       - name: Restore
         run: dotnet restore Pagewing.slnx
 
+      - name: Check the test PDFs
+        run: dotnet run tools/make-testpdfs.cs -- check
+
       - name: Build
         run: dotnet build Pagewing.slnx -c Release --no-restore
 

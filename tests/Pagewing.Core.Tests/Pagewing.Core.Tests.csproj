@@ -8,6 +8,9 @@
     <ProjectReference Include="..\..\src\Pagewing.Core\Pagewing.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\TestData.cs" Link="Shared\TestData.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- Lets NativeBindingsTests find the PDFium headers of the restored package. -->
     <AssemblyMetadata Include="NuGetPackageRoot" Value="$(NuGetPackageRoot)" />
   </ItemGroup>
