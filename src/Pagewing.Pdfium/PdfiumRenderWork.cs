@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Pagewing.Pdfium.Native;
@@ -319,7 +320,7 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
         var rounded = Math.Ceiling(size);
         if (!(rounded <= int.MaxValue))
         {
-            throw new PdfiumRenderException($"The page is too large at this scale ({size} pixels).");
+            throw new PdfiumRenderException(string.Create(CultureInfo.InvariantCulture, $"The page is too large at this scale ({size} pixels)."));
         }
 
         return Math.Max(1, (int)rounded);

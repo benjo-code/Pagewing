@@ -1,3 +1,4 @@
+using System.Globalization;
 using Pagewing.Pdfium;
 using Pagewing.TestSupport;
 using Xunit;
@@ -181,6 +182,23 @@ public sealed class PdfiumRenderWorkTests
         Assert.Throws<ArgumentOutOfRangeException>(() => PdfiumRenderWork.PagePixelSize(300, 200, -1));
         Assert.Throws<ArgumentOutOfRangeException>(() => PdfiumRenderWork.PagePixelSize(300, 200, double.NaN));
         Assert.Throws<ArgumentOutOfRangeException>(() => PdfiumRenderWork.PagePixelSize(300, 200, double.PositiveInfinity));
+    }
+
+    [Fact]
+    public void PageTooLargeMessageIsCultureInvariant()
+    {
+        var previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+        try
+        {
+            var exception = Assert.Throws<PdfiumRenderException>(() => PdfiumRenderWork.PagePixelSize(3_000_000_000.5, 1, 1));
+
+            Assert.Contains("(3000000000.5 pixels)", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
     }
 
     [Fact]
