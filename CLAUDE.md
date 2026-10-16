@@ -30,7 +30,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 
 ### Geschwindigkeit
 
-- Budgets (vorläufig, in M1 nach Vergleichsmessung endgültig festgelegt) stehen in der Roadmap unter „Geschwindigkeitsziele“. Ab M3 prüft der Startzeit-Check in der CI sie: Schalter `--measure-startup`, Skript `bench/startup`, Median aus 10 Läufen, Fehlschlag ab Budget + 25 %.
+- Budgets (seit M1 endgültig, Vergleichsmessung und Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“) stehen in der Roadmap unter „Geschwindigkeitsziele“. Ab M3 prüft der Startzeit-Check in der CI sie: Schalter `--measure-startup`, Skript `bench/startup`, Median aus 10 Läufen, Fehlschlag ab Budget + 25 %.
 - Nichts Neues im Startpfad ohne Messung. Bis zum ersten Frame wird nur geladen, was das Fenster braucht. PDFium startet beim ersten Öffnen eines Dokuments, Thumbnails, Textindex und OCR laufen erst nach dem ersten scharfen Seitenbild.
 - Single-Instance: Ein zweiter Aufruf übergibt die Datei an die laufende Instanz (Named Pipe bzw. Unix-Socket).
 - Budgets oder den Startzeit-Check nie lockern, nur damit etwas grün wird. Eine Budgetänderung ist eine Entscheidung in `Docs/DECISIONS.md`.

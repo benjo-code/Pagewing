@@ -102,7 +102,7 @@ testdata/pdfs/             Test-PDFs mit LICENSES.md je Herkunft
 
 - Bis zum ersten Frame wird nur geladen, was das Fenster braucht. PDFium wird beim ersten Öffnen eines Dokuments initialisiert. Thumbnails, Textindex und OCR laufen erst nach dem ersten scharfen Seitenbild.
 - **Single-Instance:** Läuft Pagewing bereits, übergibt ein neuer Aufruf den Dateipfad per Named Pipe (Windows) bzw. Unix-Socket (Linux) an die laufende Instanz und beendet sich. Die Datei öffnet als neuer Tab.
-- **Budgets** (vorläufig; M1 misst Vergleichswerte von Acrobat, Chrome und SumatraPDF auf dem Rechner des Projektinhabers und legt die Ziele endgültig fest):
+- **Budgets** (endgültig seit M1; Vergleichsmessung mit Chrome auf dem Rechner des Projektinhabers, Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“):
 
 | Messgröße | Ziel |
 |---|---|
@@ -252,7 +252,6 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 
 - **App-Start des Linux-AOT-Binaries ungeprüft:** CI veröffentlicht nur, ein Desktop fehlt auf den Runnern. Prüfung: `./out/app/Pagewing` nach `dotnet publish src/Pagewing.App -c Release -r linux-x64 -o out/app` auf einem Linux-Desktop bzw. ab M3 im Startzeit-Check der CI.
 - **Veröffentlichung des Repos:** Das Repo ist privat. Wann es öffentlich wird, ist noch offen, spätestens aber zu v0.1.0.
-- **Budgets:** werden in M1 nach der Vergleichsmessung endgültig festgelegt.
 - **Älteste unterstützte Linux-Distribution (glibc):** wird in M8 festgelegt.
 - **Auslieferung von Tesseract und Sprachdaten:** im Paket enthalten oder als optionale Komponente. Entscheidet die Spec von Teilprojekt 4.
 - **QPDF:** kommt es dazu oder nicht? Entscheidet die Spec von Teilprojekt 3, für Linie und Pfeil schon die Spec von Teilprojekt 2.
