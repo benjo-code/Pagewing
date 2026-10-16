@@ -22,7 +22,7 @@ Erzeugt von `tools/make-testpdfs.cs` (`dotnet run tools/make-testpdfs.cs -- gene
 
 ## Aus PDFium
 
-Aus `testing/resources` des PDFium-Repositorys (<https://pdfium.googlesource.com/pdfium>), Lizenz BSD-3-Clause, Copyright 2014 The PDFium Authors, Lizenztext in [LICENSE-pdfium.txt](LICENSE-pdfium.txt). Unverändert übernommen am 2026-10-16 vom Stand `main` = Commit `bb72e525b77a2e9dbc3eff126490b969e79808b7`, abgerufen über `https://pdfium.googlesource.com/pdfium/+/refs/heads/main/testing/resources/<Datei>?format=TEXT`.
+Aus `testing/resources` des PDFium-Repositorys (<https://pdfium.googlesource.com/pdfium>), Lizenz BSD-3-Clause (zusätzlich Apache-2.0 laut Repo-`LICENSE` von PDFium), Copyright 2014 The PDFium Authors, vollständiger Lizenztext (BSD-3-Clause-Hinweis, danach Apache License 2.0) in [LICENSE-pdfium.txt](LICENSE-pdfium.txt), übernommen am 2026-10-16 vom Stand `main` des PDFium-Repositorys. Unverändert übernommen am 2026-10-16 vom Stand `main` = Commit `bb72e525b77a2e9dbc3eff126490b969e79808b7`, abgerufen über `https://pdfium.googlesource.com/pdfium/+/refs/heads/main/testing/resources/<Datei>?format=TEXT`.
 
 | Datei | Zweck | Erwartete Fakten |
 | --- | --- | --- |
