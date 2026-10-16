@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\TestData.cs" Link="Shared\TestData.cs" />
+    <Compile Include="..\Shared\PngDecoder.cs" Link="Shared\PngDecoder.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Lets NativeBindingsTests find the PDFium headers of the restored package. -->
