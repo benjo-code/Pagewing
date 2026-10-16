@@ -24,7 +24,7 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 
 ## 2026-10-16 – Zentrale Paketverwaltung und Build-Einstellungen im Root, `tools/` isoliert
 **Kontext:** `Directory.Build.props` und `Directory.Packages.props` im Root gelten für alle Projekte darunter, auch für die Einzeldatei-Werkzeuge in `tools/` (zum Beispiel `tools/roadmap.cs`, `tools/smoke-cli.cs`). Diese pinnen ihre Pakete selbst mit `#:package <Name>@<Version>`. Beim Spike brach `tools/roadmap.cs` deshalb mit NU1008 (bei zentraler Paketverwaltung darf die Version nicht am Verweis stehen).
-**Entscheidung:** Versionen, Nullable, Warnungen als Fehler und `IsAotCompatible` stehen zentral im Root. `tools/Directory.Build.props` und `tools/Directory.Packages.props` isolieren die Werkzeuge davon.
+**Entscheidung:** Die Paketversionen stehen zentral in `Directory.Packages.props` im Root. Die gemeinsamen Build-Einstellungen (Zielframework, Nullable, Warnungen als Fehler, Analyse-Stufe, deterministischer Build, Version) stehen in `Directory.Build.props` im Root; `IsAotCompatible` setzt jedes Projekt selbst. `tools/Directory.Build.props` und `tools/Directory.Packages.props` isolieren die Werkzeuge davon.
 **Begründung:** Eine Stelle für alle Paketversionen macht Dependabot-Updates und Reviews einfach. Die Werkzeuge sind keine Produktcode-Projekte und brauchen weder die strengen Regeln noch die zentrale Verwaltung.
 **Verworfene Alternativen:**
 - Werkzeuge ebenfalls zentral verwalten: widerspricht dem `#:package`-Modell der Einzeldateien (NU1008).
