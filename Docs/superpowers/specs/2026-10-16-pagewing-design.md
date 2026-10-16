@@ -62,7 +62,7 @@ Alle Angaben wurden am 2026-10-16 geprüft.
 
 ### 5.1 Projektstruktur
 
-Eine Solution `Pagewing.slnx` mit zentraler Paketverwaltung (`Directory.Packages.props`), gemeinsamen Einstellungen (`Directory.Build.props`: Nullable, Warnungen als Fehler, `IsAotCompatible`) und `global.json`.
+Eine Solution `Pagewing.slnx` mit zentraler Paketverwaltung (`Directory.Packages.props`), gemeinsamen Einstellungen (`Directory.Build.props`: Nullable, Warnungen als Fehler, Analyse-Stufe, deterministischer Build, Version; `IsAotCompatible` je `src/`-Projekt) und `global.json`.
 
 ```
 src/
@@ -73,7 +73,7 @@ src/
   Pagewing.Qpdf/     (erst in Teilprojekt 3) QPDF-Bindings
   Pagewing.Ocr/      (erst in Teilprojekt 4) Tesseract-Bindings, wird erst bei Nutzung geladen
 tests/
-  Pagewing.Core.Tests/     Unit- und Integrationstests (xUnit)
+  Pagewing.Core.Tests/     Unit- und Integrationstests (xunit.v3, Microsoft.Testing.Platform, siehe Docs/DECISIONS.md)
   Pagewing.Render.Tests/   Render-Regression gegen Referenzbilder
   Pagewing.App.Tests/      Avalonia.Headless (ab der App-Shell)
 bench/
@@ -203,7 +203,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 
 ## 7. Tests und Qualität
 
-- **Unit- und Integrationstests** (xUnit) für Core und Pdfium, Avalonia.Headless für die App.
+- **Unit- und Integrationstests** (xunit.v3, Microsoft.Testing.Platform, siehe Docs/DECISIONS.md) für Core und Pdfium, Avalonia.Headless für die App.
 - **Render-Regression:**
   - `testdata/pdfs` wird pro Seite zu PNG gerendert und mit Referenzbildern verglichen, mit Toleranz pro Pixel und Anteil abweichender Pixel.
   - Läuft in der CI auf beiden Betriebssystemen und schlägt bei jedem PDFium-Update von Dependabot an.
@@ -217,8 +217,8 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 
 ## 8. CI und Infrastruktur
 
-- Self-hosted Runner der Orga: `dotnet-linux` (vorhanden) und `dotnet-windows` (richtet der Projektinhaber in M0 ein).
-- Pro PR nach `dev` und `main`: Build, Test, Format und Roadmap-Check auf beiden Betriebssystemen, AOT-Publish von App und CLI als Smoke-Test. Ab M1 kommt die Render-Regression dazu, ab M3 der Startzeit-Check.
+- Self-hosted Runner der Orga: `dotnet-linux` (vorhanden) und `dotnet-windows`.
+- Pro PR nach `dev` und `main`: Build, Test, Format und AOT-Publish von App und CLI als Smoke-Test (Jobs `build-linux` und `build-windows`, je auf dem Runner des Betriebssystems). Der Job `roadmap` (Roadmap-Check) läuft nur auf dem Linux-Runner (`.github/workflows/roadmap.yml`, Label `dotnet-linux`). Ab M1 kommt die Render-Regression dazu, ab M3 der Startzeit-Check.
 - Dependabot für NuGet (Gruppe `bblanchon.PDFium*`, nicht auf minor/patch filtern, weil jede PDFium-Version formal ein Major-Update ist) und für GitHub Actions.
 - **Sicherheit der Runner:** Das Repo ist derzeit privat. Wird es öffentlich, müssen PRs aus Forks vor dem Lauf auf selbst gehosteten Runnern freigegeben werden.
 - Der Linux-Build ist an die glibc des Build-Rechners gebunden. Die älteste unterstützte Distribution wird in M8 festgelegt.
@@ -248,7 +248,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 
 ## 11. Offene Punkte
 
-- **Windows-Runner:** muss mit dem Label `dotnet-windows` in der Orga eingerichtet werden. Das ist die Voraussetzung für die CI in M0.
+- **App-Start des Linux-AOT-Binaries ungeprüft:** CI veröffentlicht nur, ein Desktop fehlt auf den Runnern. Prüfung: `./out/app/Pagewing` nach `dotnet publish src/Pagewing.App -c Release -r linux-x64 -o out/app` auf einem Linux-Desktop bzw. ab M3 im Startzeit-Check der CI.
 - **Veröffentlichung des Repos:** Das Repo ist privat. Wann es öffentlich wird, ist noch offen, spätestens aber zu v0.1.0.
 - **Budgets:** werden in M1 nach der Vergleichsmessung endgültig festgelegt.
 - **Älteste unterstützte Linux-Distribution (glibc):** wird in M8 festgelegt.

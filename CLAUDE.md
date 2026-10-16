@@ -23,7 +23,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Bindings nur für Funktionen, die gebraucht werden. Konstanten (z. B. Speicher-Flags) immer gegen die Header der ausgelieferten PDFium-Version prüfen, weil sie sich ändern: `FPDF_REMOVE_SECURITY` ist seit `chromium/8100` 4 statt 3.
 - **Native AOT ist Pflicht** für App und CLI:
   - kompilierte Bindings, keine XAML-Ladung zur Laufzeit, keine Reflection-basierte Serialisierung (JSON nur mit Source-Generator),
-  - `IsAotCompatible` in allen Projekten, AOT- und Trim-Warnungen sind Fehler.
+  - `IsAotCompatible` in jedem Projekt unter `src/` (je Projekt gesetzt, nicht im Root), AOT- und Trim-Warnungen sind Fehler.
   - Native AOT kompiliert nicht über Betriebssystemgrenzen hinweg: Windows-Binaries entstehen auf `dotnet-windows`, Linux-Binaries auf `dotnet-linux`.
 
 ### Geschwindigkeit
