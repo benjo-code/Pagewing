@@ -21,7 +21,7 @@
         {
           "id": "0",
           "title": "Repo-Grundgerüst & CI",
-          "status": "planned",
+          "status": "in-progress",
           "plan": "superpowers/plans/2026-10-16-milestone-00-grundgeruest.md",
           "goal": "Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI auf Linux und Windows, auf dem alle weiteren Milestones aufbauen.",
           "tasks": [

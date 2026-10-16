@@ -23,7 +23,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 | # | Milestone | Teilprojekt | Status | Plan | Fertig am |
 |---|---|---|---|---|---|
-| 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | – |
+| 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | – |
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -80,7 +80,7 @@ Bewusst nicht umgesetzt:
 **Spec:** [2026-10-16-pagewing-design.md](superpowers/specs/2026-10-16-pagewing-design.md)
 
 ## Milestone 0 – Repo-Grundgerüst & CI
-**Status:** 🟡 geplant · **Plan:** [2026-10-16-milestone-00-grundgeruest.md](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) · **Voraussetzungen:** keine
+**Status:** 🔵 in Arbeit · **Plan:** [2026-10-16-milestone-00-grundgeruest.md](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) · **Voraussetzungen:** keine
 
 Ziel: Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI auf Linux und Windows, auf dem alle weiteren Milestones aufbauen.
 
