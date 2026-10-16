@@ -6,6 +6,7 @@
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
     <ProjectReference Include="..\..\src\Pagewing.Core\Pagewing.Core.csproj" />
+    <ProjectReference Include="..\..\src\Pagewing.Cli\Pagewing.Cli.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\TestData.cs" Link="Shared\TestData.cs" />

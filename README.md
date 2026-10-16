@@ -46,6 +46,20 @@ dotnet publish src/Pagewing.App -c Release -r linux-x64   # bzw. win-x64, nur au
 
 Die Roadmap wird aus `Docs/roadmap.json` erzeugt: `dotnet run tools/roadmap.cs -- generate` (prüfen mit `-- check`).
 
+## CLI
+
+`pagewing` zeigt Informationen an, rendert Seiten als PNG und gibt den Text aus. Die Ausgaben sind englisch und stabil, damit Skripte sie auswerten können. Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf.
+
+```bash
+pagewing info dokument.pdf                       # Seitenzahl, PDF-Version, Metadaten, Seitengrößen
+pagewing render dokument.pdf --pages 1-3 --dpi 200 --output bilder
+pagewing render dokument.pdf --no-annotations    # ohne Annotationen, Dateien dokument-p001.png, …
+pagewing text dokument.pdf --pages 2 > seite2.txt
+pagewing --help
+```
+
+`--pages` nimmt `3`, `2-5`, `1,3,5-7` oder `all`. `text` gibt UTF-8 ohne BOM aus und hängt nach jeder Seite ein Form-Feed an. Das Passwort einer verschlüsselten Datei kommt mit `--password` oder besser aus der Umgebungsvariable `PAGEWING_PASSWORD`, denn Kommandozeilenargumente sind für andere Prozesse sichtbar.
+
 ## Lizenz
 
 [GPL-3.0-or-later](LICENSE). Drittbibliotheken stehen unter eigenen, GPL-kompatiblen Lizenzen (unter anderem PDFium: BSD-3-Clause/Apache-2.0, Avalonia: MIT). Die Lizenzhinweise werden mit der App ausgeliefert.

@@ -1,0 +1,189 @@
+using System.Text;
+using Pagewing.Cli.Commands;
+using Pagewing.Core;
+using Pagewing.Core.Pdf;
+
+namespace Pagewing.Cli;
+
+/// <summary>
+/// The command line of Pagewing: <c>info</c>, <c>render</c> and <c>text</c>. Exit codes: 0 success, 1 runtime
+/// error (<c>pagewing: &lt;message&gt;</c> on stderr), 2 usage error (message and usage text on stderr).
+/// </summary>
+public static class CliApp
+{
+    /// <summary>Name of the environment variable that holds the password of an encrypted PDF.</summary>
+    internal const string PasswordVariable = "PAGEWING_PASSWORD";
+
+    private const string Usage =
+        """
+        Usage:
+          pagewing info   <file> [--password <pw>]
+          pagewing render <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--password <pw>]
+          pagewing text   <file> [--pages <range>] [--password <pw>]
+          pagewing --version
+          pagewing --help
+
+        """;
+
+    private const string Help =
+        """
+
+        Commands:
+          info     Print page count, PDF version, metadata and page sizes.
+          render   Render pages as PNG files <name>-p<NNN>.png and print their paths.
+          text     Print the text of the pages, each page followed by a form feed (U+000C).
+
+        Options:
+          --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all).
+          --dpi <n>          Resolution of rendered pages (default: 144).
+          --output <dir>     Directory for the PNG files, created if missing (default: .).
+          --no-annotations   Render without annotations.
+          --password <pw>    Password of an encrypted PDF.
+
+        The password can also be given in the environment variable PAGEWING_PASSWORD;
+        the option wins. Command-line arguments are visible to other processes on this
+        computer (for example in the process list), so prefer the environment variable.
+
+        Exit codes: 0 success, 1 error, 2 invalid command line.
+
+        """;
+
+    private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+
+    /// <summary>Runs the command line.</summary>
+    /// <param name="args">The arguments after the program name.</param>
+    /// <param name="stdout">Receives the output as UTF-8 without BOM; stays open.</param>
+    /// <param name="stderr">Receives error messages and the usage text.</param>
+    /// <param name="getEnvironmentVariable">Reads an environment variable, <see langword="null"/> when unset.</param>
+    /// <param name="ct">Cancels the command (Ctrl+C).</param>
+    /// <returns>The exit code.</returns>
+    public static async Task<int> RunAsync(
+        string[] args,
+        Stream stdout,
+        TextWriter stderr,
+        Func<string, string?> getEnvironmentVariable,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        ArgumentNullException.ThrowIfNull(stdout);
+        ArgumentNullException.ThrowIfNull(stderr);
+        ArgumentNullException.ThrowIfNull(getEnvironmentVariable);
+
+        var output = new StreamWriter(stdout, Utf8WithoutBom, bufferSize: 4096, leaveOpen: true) { NewLine = "\n" };
+        try
+        {
+            return await ExecuteAsync(args, output, getEnvironmentVariable, ct).ConfigureAwait(false);
+        }
+        catch (UsageException ex)
+        {
+            stderr.WriteLine($"pagewing: {ex.Message}");
+            stderr.WriteLine();
+            stderr.Write(Usage);
+            return 2;
+        }
+        catch (OperationCanceledException)
+        {
+            stderr.WriteLine("pagewing: Canceled.");
+            return 1;
+        }
+        catch (Exception ex) when (ex is CliException or PdfOpenException or PdfRenderException or IOException
+            or UnauthorizedAccessException or ArgumentException or NotSupportedException or InvalidDataException)
+        {
+            stderr.WriteLine($"pagewing: {ex.Message}");
+            return 1;
+        }
+        finally
+        {
+            try
+            {
+                await output.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+                // stdout is closed (for example a broken pipe); there is nobody left to tell.
+            }
+        }
+    }
+
+    /// <summary>Selects the pages of a document; a page beyond the end is a runtime error.</summary>
+    internal static IReadOnlyList<int> SelectPages(string? pages, int pageCount)
+    {
+        try
+        {
+            return PageRange.Parse(pages ?? "all", pageCount);
+        }
+        catch (ArgumentOutOfRangeException ex) when (ex.ActualValue is int page)
+        {
+            var noun = pageCount == 1 ? "page" : "pages";
+            throw new CliException($"Page {page} is out of range (the document has {pageCount} {noun}).");
+        }
+    }
+
+    private static async Task<int> ExecuteAsync(string[] args, StreamWriter output, Func<string, string?> getEnvironmentVariable, CancellationToken ct)
+    {
+        if (args.Length == 0)
+        {
+            throw new UsageException("No command given.");
+        }
+
+        if (args.Any(static arg => arg is "--help" or "-h"))
+        {
+            await output.WriteAsync($"{Usage}{Help}".AsMemory(), ct).ConfigureAwait(false);
+            return 0;
+        }
+
+        if (args is ["--version"])
+        {
+            await output.WriteAsync($"{AppInfo.Version}\n".AsMemory(), ct).ConfigureAwait(false);
+            return 0;
+        }
+
+        var options = CliOptions.Parse(args[0], args.AsSpan(1));
+        await using var document = await OpenAsync(options, getEnvironmentVariable, ct).ConfigureAwait(false);
+        switch (options.Command)
+        {
+            case "info":
+                await InfoCommand.RunAsync(document, options, output, ct).ConfigureAwait(false);
+                break;
+            case "render":
+                await RenderCommand.RunAsync(document, options, output, ct).ConfigureAwait(false);
+                break;
+            default:
+                await TextCommand.RunAsync(document, options, output, ct).ConfigureAwait(false);
+                break;
+        }
+
+        return 0;
+    }
+
+    private static async Task<PdfDocument> OpenAsync(CliOptions options, Func<string, string?> getEnvironmentVariable, CancellationToken ct)
+    {
+        var password = options.Password ?? getEnvironmentVariable(PasswordVariable);
+        if (string.IsNullOrEmpty(password))
+        {
+            password = null;
+        }
+
+        try
+        {
+            return await new PdfEngine().OpenAsync(options.File, password, ct).ConfigureAwait(false);
+        }
+        catch (PdfOpenException ex) when (ex.Error == PdfOpenError.PasswordRequired)
+        {
+            throw new CliException($"Password required. Use --password or the {PasswordVariable} environment variable.", ex);
+        }
+        catch (PdfOpenException ex) when (ex.Error == PdfOpenError.PasswordIncorrect)
+        {
+            throw new CliException(ex.Message, ex);
+        }
+        catch (PdfOpenException ex)
+        {
+            throw new CliException($"Cannot open '{options.File}': {ex.Message}", ex);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException)
+        {
+            // Path problems that PdfEngine does not translate: NUL in the path, too long, unsupported format.
+            throw new CliException($"Cannot open '{options.File}': {ex.Message}", ex);
+        }
+    }
+}

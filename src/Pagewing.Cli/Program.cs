@@ -1,10 +1,12 @@
-using Pagewing.Core;
+using Pagewing.Cli;
 
-if (args is ["--version"])
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
 {
-    Console.WriteLine(AppInfo.Version);
-    return 0;
-}
+    // Let the running command finish its cleanup and report "Canceled." instead of killing the process.
+    e.Cancel = true;
+    cancellation.Cancel();
+};
 
-Console.Error.WriteLine("Usage: pagewing --version");
-return 2;
+using var stdout = Console.OpenStandardOutput();
+return await CliApp.RunAsync(args, stdout, Console.Error, Environment.GetEnvironmentVariable, cancellation.Token);
