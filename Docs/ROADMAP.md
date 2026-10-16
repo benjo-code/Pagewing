@@ -24,7 +24,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | # | Milestone | Teilprojekt | Status | Plan | Fertig am |
 |---|---|---|---|---|---|
 | 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | 2026-10-16 |
-| 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ⬜ offen | – | – |
+| 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) | 2026-10-16 |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 4 | Navigation | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -47,11 +47,12 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 ## Scope-Änderungen
 
-_Noch keine._
+- **2026-10-16 (M1: Kacheln über `FPDF_RenderPageBitmap_Start` mit Offset statt Matrix-API):** Kacheln werden nicht mit `FPDF_RenderPageBitmapWithMatrix` (Matrix + Clipping) gerendert, sondern mit `FPDF_RenderPageBitmap_Start`: Bitmap in Kachelgröße, Start bei minus Kachel-Offset, Größe der ganzen Seite in Pixeln. Grund: Die Matrix-API ist nicht progressiv, Pause und Abbruch wären damit nicht möglich. Folge: Spec 5.3 und die Roadmap-Aufgabe „Rendern ganzer Seiten und einzelner Kacheln“ sind angepasst. Kacheln sind in PDFium nicht allgemein bitgleich zum Ganzseiten-Rendering und werden deshalb mit 64 px Überlapp nach links gerendert; Scheduler und Kachelgröße (M3) müssen das berücksichtigen (Begründung in `Docs/DECISIONS.md`, Eintrag „Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht allgemein bitgleich“).
+- **2026-10-16 (M1: Vergleichsmessung nur mit Chrome):** Die Vergleichsmessung wurde nur mit Chrome durchgeführt; Acrobat und SumatraPDF sind auf dem Rechner des Projektinhabers nicht installiert und wurden nicht gemessen. Die Aufgabe „Vergleichsmessung“ in M1 ist entsprechend umformuliert. Das genügt der Entscheidungsregel in `bench/compare/README.md` („Regel für den Vorschlag“), die sich nur auf den schnellsten Browser (Chrome) stützt; Acrobat und SumatraPDF dienten dort nur der Einordnung. Die vier Budgets bleiben unverändert und sind endgültig (Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“). Offen bleibt der Vergleich mit Acrobat und SumatraPDF.
 
 ## Geschwindigkeitsziele
 
-Geschwindigkeit ist das wichtigste Merkmal von Pagewing. Vorläufige Budgets (werden in M1 nach einer Vergleichsmessung mit Acrobat, Chrome und SumatraPDF endgültig festgelegt, ab M3 in der CI geprüft; Details in der [Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 5.4):
+Geschwindigkeit ist das wichtigste Merkmal von Pagewing. Die Budgets sind seit M1 endgültig (Vergleichsmessung mit Chrome, Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“) und werden ab M3 in der CI geprüft; Details in der [Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 5.4:
 
 | Messgröße | Ziel |
 |---|---|
@@ -104,26 +105,26 @@ Ziel: Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI a
 - [x] Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Checks Pflicht, kein Force-Push, kein Löschen – `gh api repos/benjo-code/Pagewing/branches/{main,dev}/protection` (2026-10-16): Pflicht-Checks `roadmap`, `build-linux`, `build-windows`, strict, PR Pflicht, Force-Push und Löschen verboten
 
 ## Milestone 1 – PDFium-Anbindung & Render-Kern
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M0
+**Status:** ✅ fertig (2026-10-16) · **Plan:** [2026-10-16-milestone-01-pdfium-render-kern.md](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) · **Voraussetzungen:** M0
 
 Ziel: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nachweisbar über die CLI, Render-Regressionstests und Benchmarks.
 
 **Aufgaben**
-- [ ] `bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux` (ohne V8) einbinden, Drittlizenzen der Pakete erfassen
-- [ ] `Pagewing.Pdfium`: `[LibraryImport]`-Bindings nur für benötigte Funktionen, SafeHandles, `PdfiumThread` (alle Aufrufe auf einem Thread, Fremd-Thread-Aufruf löst Exception aus)
-- [ ] Öffnen aus Datei, auch passwortgeschützte PDFs; verständliche Fehler bei kaputten oder verschlüsselten Dateien
-- [ ] Rendern ganzer Seiten und einzelner Kacheln (Matrix + Clipping), progressiv mit Pause und Abbruch
-- [ ] Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)
-- [ ] CLI `pagewing info|render|text`
-- [ ] `testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS
-- [ ] `Pagewing.Benchmarks` (BenchmarkDotNet): Öffnen und Rendern
-- [ ] Vergleichsmessung Acrobat, Chrome, SumatraPDF auf dem Rechner des Projektinhabers; Budgets in Roadmap, `CLAUDE.md` und Spec endgültig festlegen
+- [x] `bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux` (ohne V8) einbinden, Drittlizenzen der Pakete erfassen
+- [x] `Pagewing.Pdfium`: `[LibraryImport]`-Bindings nur für benötigte Funktionen, SafeHandles, `PdfiumThread` (alle Aufrufe auf einem Thread, Fremd-Thread-Aufruf löst Exception aus)
+- [x] Öffnen aus Datei, auch passwortgeschützte PDFs; verständliche Fehler bei kaputten oder verschlüsselten Dateien
+- [x] Rendern ganzer Seiten und einzelner Kacheln (über `FPDF_RenderPageBitmap_Start` mit Offset), progressiv mit Pause und Abbruch
+- [x] Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)
+- [x] CLI `pagewing info|render|text`
+- [x] `testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS
+- [x] `Pagewing.Benchmarks` (BenchmarkDotNet): Öffnen und Rendern
+- [x] Vergleichsmessung mit Chrome auf dem Rechner des Projektinhabers (Acrobat und SumatraPDF nicht installiert, nicht gemessen); Budgets in Roadmap, `CLAUDE.md` und Spec endgültig festlegen
 
 **Abnahmekriterien**
-- [ ] `pagewing render` erzeugt für alle Test-PDFs PNGs, die mit den Referenzbildern übereinstimmen (Render-Tests grün auf Linux und Windows)
-- [ ] Test belegt, dass ein PDFium-Aufruf von einem fremden Thread eine Exception auslöst
-- [ ] Passwortgeschützte Test-PDF öffnet mit richtigem Passwort und scheitert mit falschem mit klarer Meldung (Test)
-- [ ] Vergleichsmessung dokumentiert (Werte und Methode in `Docs/DECISIONS.md`), Budgets festgelegt
+- [x] `pagewing render` erzeugt für alle Test-PDFs PNGs, die mit den Referenzbildern übereinstimmen (Render-Tests grün auf Linux und Windows) – `RenderRegressionTests.PagesMatchTheReferenceImages` (Theory über alle Test-PDFs, rendert mit `CliApp.RunAsync` im Prozess, also über dieselbe Logik wie `pagewing render`; Modus `Strict` bzw. `Tolerant` je Fall; ergänzt durch `EveryTestPdfIsInTheCorpusOrExplicitlySkipped`, `RenderingTwiceIsBitIdentical` und die Mutationstests `StrictComparisonDetectsAOnePixelShift`, `TolerantComparisonDetectsMissingText`, `TolerantComparisonDetectsAnEightPixelShift`, `TolerantComparisonDetectsAColourChange`): `dotnet test Pagewing.slnx` lokal (Windows) 236 bestanden, 0 fehlgeschlagen; CI-Lauf 38963543241 (PR #2, Commit c7aaa49) und CI-Lauf 38964588665 (PR #2, Commit 4e1cc4e, nach dem Commit mit diesem Nachweis): `build-linux` und `build-windows` grün
+- [x] Test belegt, dass ein PDFium-Aufruf von einem fremden Thread eine Exception auslöst – `PdfiumDocumentTests.CallFromForeignThreadThrows` (und `PdfiumTextPageTests.CallFromForeignThreadThrows`), grün in `dotnet test Pagewing.slnx` lokal und im CI-Lauf 38963543241 (`build-linux`, `build-windows`)
+- [x] Passwortgeschützte Test-PDF öffnet mit richtigem Passwort und scheitert mit falschem mit klarer Meldung (Test) – `OpenTests.EncryptedFileOpensWithCorrectPassword`, `OpenTests.EncryptedFileWithWrongPasswordThrowsPasswordIncorrect`, `OpenTests.EncryptedFileWithoutPasswordThrowsPasswordRequired` (je für `encrypted_hello_world_r3.pdf` und `_r6.pdf`) sowie CLI-seitig `CliTests.WrongPasswordExitsWithOne` und `CliTests.EncryptedWithoutPasswordExitsWithOneAndHint`; grün lokal und im CI-Lauf 38963543241
+- [x] Vergleichsmessung dokumentiert (Werte und Methode in `Docs/DECISIONS.md`), Budgets festgelegt – Rohwerte `bench/compare/results/2026-10-16-WIN11-UNITY.csv` (40 Läufe) mit Begleitnotiz `2026-10-16-WIN11-UNITY.md`; Werte, Methode, Regel und Grenzen im Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“ in `Docs/DECISIONS.md`. Gemessen wurde nur Chrome 155.0.8059.80 (Acrobat und SumatraPDF nicht installiert); das genügt der Entscheidungsregel, die sich nur auf Chrome stützt. Ergebnis: Die vier vorläufigen Budgets (400 / 200 / 100 / 300 ms) bleiben unverändert und sind laut Projektinhaber (2026-10-16) endgültig. Chrome-Mediane (`t_visually_complete`): 1487,1 / 1537,3 / 613,3 / 1738,7 ms
 
 ## Milestone 2 – Designrichtungen
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M0
@@ -393,3 +394,4 @@ Bewusst nicht eingeplant. Ideen, die `/ideen` hier ablegt, stehen als Liste; bei
 - **Präsentationsmodus:** Vollbild, eine Seite pro Bildschirm, Weiter mit Leertaste/Pfeiltasten.
 - **Erweiterte Barrierefreiheit:** Über die Grundlagen hinaus: Screenreader-Unterstützung für Seiteninhalt (UIA unter Windows, AT-SPI2 unter Linux).
 - **arm64-Builds:** Die PDFium-Pakete enthalten bereits win-arm64 und linux-arm64; braucht passende Runner.
+- **Vergleichsmessung mit Acrobat und SumatraPDF nachholen:** Das Werkzeug `tools/measure-open.cs` und das Protokoll in `bench/compare/README.md` gibt es; die Befehle für Acrobat und SumatraPDF sind ungetestet (beide waren nicht installiert). Nur für die Einordnung im Vergleich nötig, nicht für die Budgetregel (die stützt sich nur auf Chrome).

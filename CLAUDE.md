@@ -21,6 +21,8 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Der UI-Thread wartet nie auf PDFium. Er stellt Render-Aufträge ein und bekommt Bitmaps zurück.
 - Render-Pipeline: Nur sichtbare Seiten plus Puffer werden gerendert. Zuerst kommt eine grobe Vorschau, dann folgen scharfe Kacheln, progressiv mit Pause und Abbruch veralteter Aufträge. Ein LRU-Cache mit Speicherbudget hält die Ergebnisse.
 - Bindings nur für Funktionen, die gebraucht werden. Konstanten (z. B. Speicher-Flags) immer gegen die Header der ausgelieferten PDFium-Version prüfen, weil sie sich ändern: `FPDF_REMOVE_SECURITY` ist seit `chromium/8100` 4 statt 3.
+- Plattformabhängige C-Typen: `unsigned long` ist unter Windows 32 Bit, unter Linux 64 Bit breit und wird deshalb immer als `CULong` gebunden (nie `uint`/`ulong`). Folge und Grenze: `PdfiumDocument.MaxFileLength`, siehe `Docs/DECISIONS.md`, Eintrag „PDFium-Anbindung“.
+- Rendern: `FPDF_RenderPageBitmap_Start` verlangt eine Pause-Struktur ungleich `null` (sonst `FPDF_RENDER_FAILED`), siehe `PdfiumRenderWork`. Kacheln rendert `PdfiumRenderWork` mit 64 px Überlapp nach links (`TileOverlap`) und sind nicht allgemein bitgleich zum Ganzseiten-Rendering, Begründung im `DECISIONS`-Eintrag „Kacheln mit 64 px Überlapp nach links …“.
 - **Native AOT ist Pflicht** für App und CLI:
   - kompilierte Bindings, keine XAML-Ladung zur Laufzeit, keine Reflection-basierte Serialisierung (JSON nur mit Source-Generator),
   - `IsAotCompatible` in jedem Projekt unter `src/` (je Projekt gesetzt, nicht im Root), AOT- und Trim-Warnungen sind Fehler.
@@ -28,7 +30,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 
 ### Geschwindigkeit
 
-- Budgets (vorläufig, in M1 nach Vergleichsmessung endgültig festgelegt) stehen in der Roadmap unter „Geschwindigkeitsziele“. Ab M3 prüft der Startzeit-Check in der CI sie: Schalter `--measure-startup`, Skript `bench/startup`, Median aus 10 Läufen, Fehlschlag ab Budget + 25 %.
+- Budgets (seit M1 endgültig, Vergleichsmessung und Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“) stehen in der Roadmap unter „Geschwindigkeitsziele“. Ab M3 prüft der Startzeit-Check in der CI sie: Schalter `--measure-startup`, Skript `bench/startup`, Median aus 10 Läufen, Fehlschlag ab Budget + 25 %.
 - Nichts Neues im Startpfad ohne Messung. Bis zum ersten Frame wird nur geladen, was das Fenster braucht. PDFium startet beim ersten Öffnen eines Dokuments, Thumbnails, Textindex und OCR laufen erst nach dem ersten scharfen Seitenbild.
 - Single-Instance: Ein zweiter Aufruf übergibt die Datei an die laufende Instanz (Named Pipe bzw. Unix-Socket).
 - Budgets oder den Startzeit-Check nie lockern, nur damit etwas grün wird. Eine Budgetänderung ist eine Entscheidung in `Docs/DECISIONS.md`.
@@ -41,6 +43,8 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
   - Eintrag in `Docs/DECISIONS.md`.
 - Ausdrücklich ausgeschlossen: MuPDF, iText, PDFsharp ab 6.5 (AGPL/kommerziell), PDFiumCore (wir nutzen eigene Bindings), die .NET-Wrapper für Tesseract (nicht AOT-fähig).
 - PDFium-Pakete ohne V8 verwenden: `bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux`, nicht `bblanchon.PDFiumV8.*`. Es gibt jede Woche ein Release, die Versionsnummer ist die Chromium-Buildnummer, damit ist jedes Update formal ein Major-Update. Dependabot-PRs der Gruppe `bblanchon.PDFium*` nur mergen, wenn die Render-Regression grün ist.
+  - Die Schrittzahl-Prüfungen in `tests/Pagewing.Core.Tests/Pdfium/PdfiumRenderWorkTests.cs` (`StepCount > 2` in `InterleavedTileRendersMatchSequentialRenders`, das Pausieren bei Zeitscheibe 0 in `ZeroTimeSliceYieldsAndUnlimitedSliceRendersInOneStep`) hängen davon ab, wie oft PDFium den Pause-Callback abfragt. Schlagen sie nach einem Update fehl, die Ursache prüfen und die Testseite oder Erwartung bewusst anpassen, nicht die Prüfung entfernen.
+  - Beim nächsten PDFium-Update einen Test ergänzen, der prüft, dass `bblanchon.PDFium.Linux` und `bblanchon.PDFium.Win32` in `Directory.Packages.props` dieselbe Version haben. `NativeBindingsTests.ConstantsMatchThePackageHeaders` liest nur die Header des Win32-Pakets; eine halb gemergte Dependabot-Gruppe fiele sonst nicht auf.
 - Drittlizenzen gehören ins Paket und in den Über-Dialog. PDFium bringt allein rund 20 mit (FreeType, ICU, libjpeg-turbo, OpenJPEG …).
 
 ### Offline und Sicherheit
@@ -73,6 +77,10 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 
 - **Render-Regression** (`tests/Pagewing.Render.Tests`): Die Test-PDFs aus `testdata/pdfs` werden pro Seite zu PNG gerendert und mit Referenzbildern verglichen, mit Toleranz. Läuft in der CI auf beiden OS und muss jedes PDFium-Update bestehen.
 - Referenzbilder werden nur bewusst aktualisiert, mit Sichtprüfung der Abweichungen und Begründung im PR. Nie pauschal, nur damit ein Update grün wird.
+  - Aktualisieren nur mit `PAGEWING_UPDATE_REFERENCES=1 dotnet test tests/Pagewing.Render.Tests`; der Lauf schlägt absichtlich immer fehl, damit eine Aktualisierung nie unbemerkt bleibt. Referenzen entstehen unter Windows, es gibt einen gemeinsamen Satz für beide OS.
+  - Der Vergleich hat zwei Modi je Fall in `RenderCorpus`: `Strict` (pixelweise, Seiten ohne Text) und `Tolerant` (8×8-Blockmittel, Seiten mit Text), weil PDFium die Ersatzschriften je OS unterschiedlich wählt. Grenzwerte und Begründung: `Docs/DECISIONS.md`, Eintrag „Render-Regression: zwei Vergleichsmodi …“.
+- Die Test-PDFs erzeugt `tools/make-testpdfs.cs` (`generate` schreibt, `check` prüft in der CI die Reproduzierbarkeit). Sie sind deterministisch und unkomprimiert; PDFs aus PDFium `testing/resources` bleiben unverändert.
+- Vergleichsmessung der Viewer: Protokoll `bench/compare/README.md`, Werkzeug `tools/measure-open.cs` (nur Windows, angemeldete Desktop-Sitzung; Ergebnisse als CSV nach `bench/compare/results/`).
 - Test-PDFs nur mit klarer Lizenz, Herkunft und Lizenz pro Datei in `testdata/pdfs/LICENSES.md`.
   - Bevorzugt: selbst erzeugte PDFs, PDFium `testing/resources` (BSD-3), veraPDF-Korpus (CC BY 4.0), pdf20examples (CC BY-SA 4.0).
   - Den pdf.js-Korpus nicht einchecken (Einzellizenzen unklar).
@@ -95,6 +103,8 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Die Root-Dateien `Directory.Packages.props` (zentrale Paketverwaltung) und `Directory.Build.props` gelten auch für Einzeldatei-Werkzeuge. `tools/Directory.Build.props` und `tools/Directory.Packages.props` isolieren sie; ohne sie bricht `tools/roadmap.cs` mit NU1008.
 - xunit.v3 läuft auf Microsoft.Testing.Platform: `global.json` enthält den Runner. `Microsoft.NET.Test.Sdk` und `xunit.runner.visualstudio` nicht referenzieren.
 - Testnamen ohne Unterstriche (CA1707 unter `latest-recommended`).
+- Die native PDFium-Bibliothek liegt neben dem AOT-Binary (`pdfium.dll` bzw. `libpdfium.so`). `tools/smoke-cli.cs` prüft das, indem es `info`, `render` und `text` auf `testdata/pdfs/text-basic.pdf` ausführt; es läuft aus dem Repo-Root, z. B. `dotnet run tools/smoke-cli.cs -- <pagewing.exe>`.
+- CLI-Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf. Das Passwort verschlüsselter PDFs kommt aus `PAGEWING_PASSWORD` oder `--password`; Ausgaben sind englisch und stabil (Skriptnutzung).
 - Native AOT unter Windows braucht `vswhere.exe` im PATH (Ordner `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`) und die VS-Build-Tools mit C++-Workload; unter Linux `clang` und `zlib1g-dev`.
 
 ---

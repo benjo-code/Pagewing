@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/bench/">
+    <Project Path="bench/Pagewing.Benchmarks/Pagewing.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Pagewing.App/Pagewing.App.csproj" />
     <Project Path="src/Pagewing.Cli/Pagewing.Cli.csproj" />
@@ -7,5 +10,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pagewing.Core.Tests/Pagewing.Core.Tests.csproj" />
+    <Project Path="tests/Pagewing.Render.Tests/Pagewing.Render.Tests.csproj" />
   </Folder>
 </Solution>

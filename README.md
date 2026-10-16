@@ -28,7 +28,7 @@ Architektur und Entscheidungen stehen in der [Gesamt-Spec](Docs/superpowers/spec
 
 ## Setup
 
-Das Code-Grundgerüst steht (Milestone 0): Solution mit `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-Fenster) und `Pagewing.Cli` (`--version`), jeweils als Native-AOT-Binary baubar, dazu CI auf Linux und Windows. Die PDF-Funktionen folgen ab Milestone 1.
+Das Code-Grundgerüst steht (Milestone 0): Solution mit `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-Fenster) und `Pagewing.Cli`, jeweils als Native-AOT-Binary baubar, dazu CI auf Linux und Windows. Milestone 1 ist in Arbeit: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nutzbar über die CLI (`pagewing info`, `render`, `text`, siehe unten). Die App selbst zeigt noch kein PDF; das folgt ab Milestone 3.
 
 **Voraussetzungen:** .NET-10-SDK. Für den AOT-Publish braucht es zusätzlich die nativen Build-Werkzeuge:
 
@@ -44,7 +44,32 @@ dotnet format Pagewing.slnx --verify-no-changes
 dotnet publish src/Pagewing.App -c Release -r linux-x64   # bzw. win-x64, nur auf dem jeweiligen OS
 ```
 
+Weitere Befehle:
+
+```bash
+dotnet test tests/Pagewing.Render.Tests                                              # Render-Regression gegen die Referenzbilder
+PAGEWING_UPDATE_REFERENCES=1 dotnet test tests/Pagewing.Render.Tests                 # Referenzbilder bewusst neu erzeugen (der Lauf schlägt absichtlich fehl; Bilder prüfen, dann committen)
+dotnet run -c Release --project bench/Pagewing.Benchmarks -- --filter "*"            # Benchmarks (Öffnen, Rendern, Text)
+dotnet run tools/make-testpdfs.cs -- check                                           # Test-PDFs auf Reproduzierbarkeit prüfen (`generate` schreibt sie neu)
+```
+
+Die Vergleichsmessung der Viewer (Acrobat, Chrome, SumatraPDF; bisher nur Chrome gemessen) läuft mit `tools/measure-open.cs`, das Protokoll steht in `bench/compare/README.md`.
+
 Die Roadmap wird aus `Docs/roadmap.json` erzeugt: `dotnet run tools/roadmap.cs -- generate` (prüfen mit `-- check`).
+
+## CLI
+
+`pagewing` zeigt Informationen an, rendert Seiten als PNG und gibt den Text aus. Die Ausgaben sind englisch und stabil, damit Skripte sie auswerten können. Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf.
+
+```bash
+pagewing info dokument.pdf                       # Seitenzahl, PDF-Version, Metadaten, Seitengrößen
+pagewing render dokument.pdf --pages 1-3 --dpi 200 --output bilder
+pagewing render dokument.pdf --no-annotations    # ohne Annotationen, Dateien dokument-p001.png, …
+pagewing text dokument.pdf --pages 2 > seite2.txt
+pagewing --help
+```
+
+`--pages` nimmt `3`, `2-5`, `1,3,5-7` oder `all`. `text` gibt UTF-8 ohne BOM aus und hängt nach jeder Seite ein Form-Feed an. Das Passwort einer verschlüsselten Datei kommt mit `--password` oder besser aus der Umgebungsvariable `PAGEWING_PASSWORD`, denn Kommandozeilenargumente sind für andere Prozesse sichtbar.
 
 ## Lizenz
 
