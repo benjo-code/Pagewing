@@ -77,8 +77,9 @@ tests/
   Pagewing.Render.Tests/   Render-Regression gegen Referenzbilder
   Pagewing.App.Tests/      Avalonia.Headless (ab der App-Shell)
 bench/
-  Pagewing.Benchmarks/     BenchmarkDotNet: Öffnen, Rendern, Suche
-  startup/                 Skript für die Startzeitmessung der AOT-Binaries
+  Pagewing.Benchmarks/     BenchmarkDotNet: Öffnen, Rendern, Textextraktion (Suche ab M5)
+  compare/                 Protokoll der Vergleichsmessung (Werkzeug: tools/measure-open.cs)
+  startup/                 Skript für die Startzeitmessung der AOT-Binaries (ab M3)
 testdata/pdfs/             Test-PDFs mit LICENSES.md je Herkunft
 ```
 
@@ -93,7 +94,7 @@ testdata/pdfs/             Test-PDFs mit LICENSES.md je Herkunft
 ### 5.3 Render-Pipeline
 
 1. Die Ansicht meldet den sichtbaren Bereich, also die sichtbaren Seiten plus einen Puffer davor und danach.
-2. Der Scheduler auf dem PdfiumThread priorisiert: zuerst eine **grobe Vorschau** der ganzen Seite in niedriger Auflösung, dann **scharfe Kacheln** (Richtwert 512×512 Gerätepixel, `FPDF_RenderPageBitmapWithMatrix` mit Clipping).
+2. Der Scheduler auf dem PdfiumThread priorisiert: zuerst eine **grobe Vorschau** der ganzen Seite in niedriger Auflösung, dann **scharfe Kacheln** (Richtwert 512×512 Gerätepixel). Eine Kachel ist ein Bitmap in Kachelgröße, das über `FPDF_RenderPageBitmap_Start` mit negativem Kachel-Offset als Startpunkt und der Größe der ganzen Seite in Pixeln gerendert wird. `FPDF_RenderPageBitmapWithMatrix` (Matrix + Clipping) wird nicht verwendet, weil es nicht progressiv ist. Kacheln werden mit 64 px Überlapp nach links gerendert und sind in PDFium nicht allgemein bitgleich zum Ganzseiten-Rendering; Begründung und offene Punkte stehen in `Docs/DECISIONS.md`, Eintrag „Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht allgemein bitgleich“.
 3. Gerendert wird **progressiv** (`FPDF_RenderPageBitmap_Start` mit Pause-Callback). Aufträge für Seiten, die nicht mehr sichtbar sind, werden abgebrochen (`FPDF_RenderPage_Close`).
 4. Ein **LRU-Cache** hält Vorschauen und Kacheln mit einem Speicherbudget. Beim schnellen Scrollen zeigt die Ansicht zuerst die Vorschau aus dem Cache und dann die scharfen Kacheln.
 
@@ -206,6 +207,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 - **Unit- und Integrationstests** (xunit.v3, Microsoft.Testing.Platform, siehe Docs/DECISIONS.md) für Core und Pdfium, Avalonia.Headless für die App.
 - **Render-Regression:**
   - `testdata/pdfs` wird pro Seite zu PNG gerendert und mit Referenzbildern verglichen, mit Toleranz pro Pixel und Anteil abweichender Pixel.
+  - Zwei Vergleichsmodi: `Strict` (pixelweise) für Seiten ohne Text und `Tolerant` (Mittelwerte über 8×8-Blöcke) für Seiten mit Text, weil PDFium die Ersatzschriften je Betriebssystem unterschiedlich wählt. Der Referenzsatz ist für beide Betriebssysteme derselbe; Begründung und Grenzwerte stehen in `Docs/DECISIONS.md`, Eintrag „Render-Regression: zwei Vergleichsmodi, ein gemeinsamer Referenzsatz“.
   - Läuft in der CI auf beiden Betriebssystemen und schlägt bei jedem PDFium-Update von Dependabot an.
   - Referenzbilder werden nur bewusst aktualisiert, mit Sichtprüfung der Abweichungen im PR.
 - **Test-PDFs:**
@@ -213,7 +215,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
   - Bevorzugt selbst erzeugte PDFs und Dateien aus PDFium `testing/resources` (BSD-3), ergänzt um veraPDF-Korpus (CC BY 4.0) und pdf20examples (CC BY-SA 4.0) mit Namensnennung.
   - Der pdf.js-Korpus hat keine klaren Einzellizenzen und wird nicht eingecheckt.
   - Keine privaten PDFs.
-- **Benchmarks** (BenchmarkDotNet) für Öffnen, Rendern und Suche, dazu der Startzeit-Check aus 5.4.
+- **Benchmarks** (BenchmarkDotNet) für Öffnen, Rendern, Textextraktion und (ab M5) Suche, dazu der Startzeit-Check aus 5.4.
 
 ## 8. CI und Infrastruktur
 

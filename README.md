@@ -28,7 +28,7 @@ Architektur und Entscheidungen stehen in der [Gesamt-Spec](Docs/superpowers/spec
 
 ## Setup
 
-Das Code-Grundgerüst steht (Milestone 0): Solution mit `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-Fenster) und `Pagewing.Cli` (`--version`), jeweils als Native-AOT-Binary baubar, dazu CI auf Linux und Windows. Die PDF-Funktionen folgen ab Milestone 1.
+Das Code-Grundgerüst steht (Milestone 0): Solution mit `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-Fenster) und `Pagewing.Cli`, jeweils als Native-AOT-Binary baubar, dazu CI auf Linux und Windows. Milestone 1 ist in Arbeit: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nutzbar über die CLI (`pagewing info`, `render`, `text`, siehe unten). Die App selbst zeigt noch kein PDF; das folgt ab Milestone 3.
 
 **Voraussetzungen:** .NET-10-SDK. Für den AOT-Publish braucht es zusätzlich die nativen Build-Werkzeuge:
 
@@ -43,6 +43,17 @@ dotnet test Pagewing.slnx
 dotnet format Pagewing.slnx --verify-no-changes
 dotnet publish src/Pagewing.App -c Release -r linux-x64   # bzw. win-x64, nur auf dem jeweiligen OS
 ```
+
+Weitere Befehle:
+
+```bash
+dotnet test tests/Pagewing.Render.Tests                                              # Render-Regression gegen die Referenzbilder
+PAGEWING_UPDATE_REFERENCES=1 dotnet test tests/Pagewing.Render.Tests                 # Referenzbilder bewusst neu erzeugen (der Lauf schlägt absichtlich fehl; Bilder prüfen, dann committen)
+dotnet run -c Release --project bench/Pagewing.Benchmarks -- --filter "*"            # Benchmarks (Öffnen, Rendern, Text)
+dotnet run tools/make-testpdfs.cs -- check                                           # Test-PDFs auf Reproduzierbarkeit prüfen (`generate` schreibt sie neu)
+```
+
+Die Vergleichsmessung der Viewer (Acrobat, Chrome, SumatraPDF) läuft mit `tools/measure-open.cs`, das Protokoll steht in `bench/compare/README.md`.
 
 Die Roadmap wird aus `Docs/roadmap.json` erzeugt: `dotnet run tools/roadmap.cs -- generate` (prüfen mit `-- check`).
 

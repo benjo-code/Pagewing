@@ -21,6 +21,8 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Der UI-Thread wartet nie auf PDFium. Er stellt Render-Aufträge ein und bekommt Bitmaps zurück.
 - Render-Pipeline: Nur sichtbare Seiten plus Puffer werden gerendert. Zuerst kommt eine grobe Vorschau, dann folgen scharfe Kacheln, progressiv mit Pause und Abbruch veralteter Aufträge. Ein LRU-Cache mit Speicherbudget hält die Ergebnisse.
 - Bindings nur für Funktionen, die gebraucht werden. Konstanten (z. B. Speicher-Flags) immer gegen die Header der ausgelieferten PDFium-Version prüfen, weil sie sich ändern: `FPDF_REMOVE_SECURITY` ist seit `chromium/8100` 4 statt 3.
+- Plattformabhängige C-Typen: `unsigned long` ist unter Windows 32 Bit, unter Linux 64 Bit breit und wird deshalb immer als `CULong` gebunden (nie `uint`/`ulong`). Folge und Grenze: `PdfiumDocument.MaxFileLength`, siehe `Docs/DECISIONS.md`, Eintrag „PDFium-Anbindung“.
+- Rendern: `FPDF_RenderPageBitmap_Start` verlangt eine Pause-Struktur ungleich `null` (sonst `FPDF_RENDER_FAILED`), siehe `PdfiumRenderWork`. Kacheln rendert `PdfiumRenderWork` mit 64 px Überlapp nach links (`TileOverlap`) und sind nicht allgemein bitgleich zum Ganzseiten-Rendering, Begründung im `DECISIONS`-Eintrag „Kacheln mit 64 px Überlapp nach links …“.
 - **Native AOT ist Pflicht** für App und CLI:
   - kompilierte Bindings, keine XAML-Ladung zur Laufzeit, keine Reflection-basierte Serialisierung (JSON nur mit Source-Generator),
   - `IsAotCompatible` in jedem Projekt unter `src/` (je Projekt gesetzt, nicht im Root), AOT- und Trim-Warnungen sind Fehler.
@@ -73,6 +75,10 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 
 - **Render-Regression** (`tests/Pagewing.Render.Tests`): Die Test-PDFs aus `testdata/pdfs` werden pro Seite zu PNG gerendert und mit Referenzbildern verglichen, mit Toleranz. Läuft in der CI auf beiden OS und muss jedes PDFium-Update bestehen.
 - Referenzbilder werden nur bewusst aktualisiert, mit Sichtprüfung der Abweichungen und Begründung im PR. Nie pauschal, nur damit ein Update grün wird.
+  - Aktualisieren nur mit `PAGEWING_UPDATE_REFERENCES=1 dotnet test tests/Pagewing.Render.Tests`; der Lauf schlägt absichtlich immer fehl, damit eine Aktualisierung nie unbemerkt bleibt. Referenzen entstehen unter Windows, es gibt einen gemeinsamen Satz für beide OS.
+  - Der Vergleich hat zwei Modi je Fall in `RenderCorpus`: `Strict` (pixelweise, Seiten ohne Text) und `Tolerant` (8×8-Blockmittel, Seiten mit Text), weil PDFium die Ersatzschriften je OS unterschiedlich wählt. Grenzwerte und Begründung: `Docs/DECISIONS.md`, Eintrag „Render-Regression: zwei Vergleichsmodi …“.
+- Die Test-PDFs erzeugt `tools/make-testpdfs.cs` (`generate` schreibt, `check` prüft in der CI die Reproduzierbarkeit). Sie sind deterministisch und unkomprimiert; PDFs aus PDFium `testing/resources` bleiben unverändert.
+- Vergleichsmessung der Viewer: Protokoll `bench/compare/README.md`, Werkzeug `tools/measure-open.cs` (nur Windows, angemeldete Desktop-Sitzung; Ergebnisse als CSV nach `bench/compare/results/`).
 - Test-PDFs nur mit klarer Lizenz, Herkunft und Lizenz pro Datei in `testdata/pdfs/LICENSES.md`.
   - Bevorzugt: selbst erzeugte PDFs, PDFium `testing/resources` (BSD-3), veraPDF-Korpus (CC BY 4.0), pdf20examples (CC BY-SA 4.0).
   - Den pdf.js-Korpus nicht einchecken (Einzellizenzen unklar).
@@ -95,6 +101,8 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Die Root-Dateien `Directory.Packages.props` (zentrale Paketverwaltung) und `Directory.Build.props` gelten auch für Einzeldatei-Werkzeuge. `tools/Directory.Build.props` und `tools/Directory.Packages.props` isolieren sie; ohne sie bricht `tools/roadmap.cs` mit NU1008.
 - xunit.v3 läuft auf Microsoft.Testing.Platform: `global.json` enthält den Runner. `Microsoft.NET.Test.Sdk` und `xunit.runner.visualstudio` nicht referenzieren.
 - Testnamen ohne Unterstriche (CA1707 unter `latest-recommended`).
+- Die native PDFium-Bibliothek liegt neben dem AOT-Binary (`pdfium.dll` bzw. `libpdfium.so`). `tools/smoke-cli.cs` prüft das, indem es `info`, `render` und `text` auf `testdata/pdfs/text-basic.pdf` ausführt; es läuft aus dem Repo-Root, z. B. `dotnet run tools/smoke-cli.cs -- <pagewing.exe>`.
+- CLI-Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf. Das Passwort verschlüsselter PDFs kommt aus `PAGEWING_PASSWORD` oder `--password`; Ausgaben sind englisch und stabil (Skriptnutzung).
 - Native AOT unter Windows braucht `vswhere.exe` im PATH (Ordner `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`) und die VS-Build-Tools mit C++-Workload; unter Linux `clang` und `zlib1g-dev`.
 
 ---

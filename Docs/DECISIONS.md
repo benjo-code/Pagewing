@@ -15,13 +15,37 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-16 – Benchmark-Basiswerte für den Render-Kern (M1)
+**Kontext:** `bench/Pagewing.Benchmarks` misst Öffnen, Rendern und Textextraktion des Kerns in-process. Die Werte sind der Ausgangspunkt für den Vergleich mit dem Render-Scheduler (M3). Sie sind **nicht** das Ergebnis der Budgetmessung „1000-seitige PDF öffnen bis erste Seite“ (≤ 300 ms, Roadmap „Geschwindigkeitsziele“): Diese Messung gehört zur Vergleichsmessung (`bench/compare`) und ist noch offen.
+**Entscheidung:** Als Basiswerte gelten die Messungen vom 2026-10-16 mit `dotnet run -c Release --project bench/Pagewing.Benchmarks -- --filter "*" --job short` (BenchmarkDotNet 0.15.8, 3 Iterationen). Rechner: Windows 11 (10.0.26200.9711, 25H2), AMD Ryzen 7 3800X 3,90 GHz, 6 Kerne, .NET SDK 10.0.302, .NET 10.0.10 X64 RyuJIT x86-64-v3, JIT (nicht AOT).
+
+| Benchmark | Mittelwert | Fehler | Allokiert |
+|---|---:|---:|---:|
+| `OpenSmall` (`text-basic.pdf`) | 543,9 µs | 127,5 µs | 1,41 KB |
+| `OpenThousandPages` | 1,353 ms | 446,8 µs | 1,41 KB |
+| `OpenThousandPagesAndRenderFirstPage` (Seite 1 bei Maßstab 2) | 3,423 ms | 1,698 ms | 314,87 KB |
+| `RenderFirstPage144Dpi` (`vector-shapes.pdf`, 600 × 600 px) | 2,752 ms | 795 µs | 1,38 MB |
+| `RenderTile512At200Percent` (`vector-shapes.pdf`, Kachel 512 × 512 ab 88/88) | 2,677 ms | 150 µs | 1,13 MB |
+| `GetTextOfFirstPage` (`text-basic.pdf`) | 215,8 µs | 213,6 µs | 789 B |
+
+**Einschränkungen (die Werte sind Untergrenzen, kein Budgetnachweis):**
+- Alle Test-PDFs sind winzig (größte Seite 600 × 120 pt, die Seiten von `thousand-pages.pdf` 200 × 100 pt). Es gibt keine A4-Seite (rund 1190 × 1684 px bei 144 dpi); `OpenThousandPagesAndRenderFirstPage` misst deshalb vor allem das Öffnen.
+- Die Render-Benchmarks nutzen `vector-shapes.pdf` (600 × 600 px), weil eine 512er-Kachel bei 200 % auf `text-basic.pdf` (600 × 400 px) nicht passt. Die Werte beider PDFs sind nicht vergleichbar.
+- Die Open-Benchmarks laufen im warmen Zustand (PDFium-Thread in `GlobalSetup` gestartet, Datei im Cache). Kaltstart, Prozessstart und UI fehlen.
+- Gemessen wurde mit JIT, nicht mit Native AOT.
+- `--job short` (3 Iterationen) hat große Fehlerbereiche. Für belastbare Werte den Standard-Job verwenden.
+- Nur Windows gemessen, keine Linux-Werte.
+
+**Begründung:** Die Zahlen halten fest, dass Öffnen und Rendern des Kerns bei kleinen Seiten im Millisekundenbereich liegen und nicht den Engpass bilden. Der Ausgangspunkt für spätere Regressionen ist ein Standard-Job-Lauf mit einer A4-Test-PDF; eine passend lizenzierte Datei gibt es bisher nicht.
+**Verworfene Alternativen:** Die Werte als Budgetnachweis zu führen: Die Einschränkungen oben machen sie dafür ungeeignet.
+
 ## 2026-10-16 – BenchmarkDotNet 0.15.8 als reine Entwicklungsabhängigkeit in bench/
 **Kontext:** Die Geschwindigkeitsziele (Roadmap, „Geschwindigkeitsziele“) brauchen reproduzierbare Messungen für Öffnen, Rendern und Textextraktion, zuerst in M1 (`Pagewing.Benchmarks`), später als Vergleichsbasis für den Render-Scheduler (M3). Die Messwerte müssen Aufwärmphase, Ausreißer und Speicherverbrauch sauber behandeln.
 **Entscheidung:** `BenchmarkDotNet` 0.15.8 (zentral in `Directory.Packages.props`) wird ausschließlich vom Projekt `bench/Pagewing.Benchmarks` referenziert. Das Projekt ist nicht packbar, läuft mit JIT, hat kein `IsAotCompatible` und wird von der CI nur gebaut, nie ausgeführt. Aufruf: `dotnet run -c Release --project bench/Pagewing.Benchmarks -- --filter "*"`.
 **Begründung:** Lizenz MIT, damit GPL-3.0-kompatibel (die Abhängigkeiten wie Perfolizer und Iced sind ebenfalls MIT). Die Abhängigkeit liegt nur unter `bench/`, wird nie ausgeliefert und ist nicht Teil der AOT-Apps (App, CLI, Core, Pdfium); sie verletzt daher weder die Native-AOT-Pflicht noch die Offline-Regeln (BenchmarkDotNet läuft nur auf der Entwicklermaschine und sendet keine Telemetrie).
 **Verworfene Alternativen:**
 - Selbst geschriebene `Stopwatch`-Schleifen: keine Statistik, keine Aufwärmphase, keine Ausreißerbehandlung, kein Speicher-Diagnoser; Ergebnisse wären zwischen Läufen und Rechnern kaum vergleichbar.
-- NBomber und ähnliche Werkzeuge: zielen auf Last- und Lasttests von Diensten, nicht auf Mikro-Benchmarks; hier nicht nötig.
+- NBomber und ähnliche Werkzeuge: zielen auf Last- und Stresstests von Diensten, nicht auf Mikro-Benchmarks; hier nicht nötig.
 
 ## 2026-10-16 – Render-Regression: zwei Vergleichsmodi, ein gemeinsamer Referenzsatz
 **Kontext:** `tests/Pagewing.Render.Tests` vergleicht jede Seite der Test-PDFs (`pagewing render --dpi 144`) mit einem Referenzbild aus `testdata/references`, erzeugt unter Windows. Geplant war ein pixelweiser Vergleich (Pixel weicht ab ab Δ > 16 je Kanal, höchstens 0,2 % abweichende Pixel), kalibriert auf das Doppelte der gemessenen Abweichung zwischen Windows und Linux, ohne dass eine Verschiebung um 1 Pixel durchrutscht. Die CI unter Linux (Lauf 38956332818) zeigte:

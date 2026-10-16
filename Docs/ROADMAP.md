@@ -47,7 +47,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 ## Scope-Änderungen
 
-_Noch keine._
+- **2026-10-16 (M1: Kacheln über `FPDF_RenderPageBitmap_Start` mit Offset statt Matrix-API):** Kacheln werden nicht mit `FPDF_RenderPageBitmapWithMatrix` (Matrix + Clipping) gerendert, sondern mit `FPDF_RenderPageBitmap_Start`: Bitmap in Kachelgröße, Start bei minus Kachel-Offset, Größe der ganzen Seite in Pixeln. Grund: Die Matrix-API ist nicht progressiv, Pause und Abbruch wären damit nicht möglich. Folge: Spec 5.3 und die Roadmap-Aufgabe „Rendern ganzer Seiten und einzelner Kacheln“ sind angepasst. Kacheln sind in PDFium nicht allgemein bitgleich zum Ganzseiten-Rendering und werden deshalb mit 64 px Überlapp nach links gerendert; Scheduler und Kachelgröße (M3) müssen das berücksichtigen (Begründung in `Docs/DECISIONS.md`, Eintrag „Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht allgemein bitgleich“).
 
 ## Geschwindigkeitsziele
 
@@ -112,7 +112,7 @@ Ziel: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nac
 - [x] `bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux` (ohne V8) einbinden, Drittlizenzen der Pakete erfassen
 - [x] `Pagewing.Pdfium`: `[LibraryImport]`-Bindings nur für benötigte Funktionen, SafeHandles, `PdfiumThread` (alle Aufrufe auf einem Thread, Fremd-Thread-Aufruf löst Exception aus)
 - [x] Öffnen aus Datei, auch passwortgeschützte PDFs; verständliche Fehler bei kaputten oder verschlüsselten Dateien
-- [x] Rendern ganzer Seiten und einzelner Kacheln (Matrix + Clipping), progressiv mit Pause und Abbruch
+- [x] Rendern ganzer Seiten und einzelner Kacheln (über `FPDF_RenderPageBitmap_Start` mit Offset), progressiv mit Pause und Abbruch
 - [x] Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)
 - [x] CLI `pagewing info|render|text`
 - [x] `testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS
@@ -120,9 +120,9 @@ Ziel: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nac
 - [ ] Vergleichsmessung Acrobat, Chrome, SumatraPDF auf dem Rechner des Projektinhabers; Budgets in Roadmap, `CLAUDE.md` und Spec endgültig festlegen
 
 **Abnahmekriterien**
-- [ ] `pagewing render` erzeugt für alle Test-PDFs PNGs, die mit den Referenzbildern übereinstimmen (Render-Tests grün auf Linux und Windows)
-- [ ] Test belegt, dass ein PDFium-Aufruf von einem fremden Thread eine Exception auslöst
-- [ ] Passwortgeschützte Test-PDF öffnet mit richtigem Passwort und scheitert mit falschem mit klarer Meldung (Test)
+- [x] `pagewing render` erzeugt für alle Test-PDFs PNGs, die mit den Referenzbildern übereinstimmen (Render-Tests grün auf Linux und Windows) – `RenderRegressionTests.PagesMatchTheReferenceImages` (Theory über alle Test-PDFs, rendert mit `CliApp.RunAsync` im Prozess, also über dieselbe Logik wie `pagewing render`; Modus `Strict` bzw. `Tolerant` je Fall; ergänzt durch `EveryTestPdfIsInTheCorpusOrExplicitlySkipped`, `RenderingTwiceIsBitIdentical` und die Mutationstests): `dotnet test Pagewing.slnx` lokal (Windows) 236 bestanden, 0 fehlgeschlagen; CI-Lauf 38963543241 (PR #2, Commit c7aaa49): `build-linux` und `build-windows` grün. Der Lauf nach dem Commit mit diesem Nachweis steht aus
+- [x] Test belegt, dass ein PDFium-Aufruf von einem fremden Thread eine Exception auslöst – `PdfiumDocumentTests.CallFromForeignThreadThrows` (und `PdfiumTextPageTests.CallFromForeignThreadThrows`), grün in `dotnet test Pagewing.slnx` lokal und im CI-Lauf 38963543241 (`build-linux`, `build-windows`)
+- [x] Passwortgeschützte Test-PDF öffnet mit richtigem Passwort und scheitert mit falschem mit klarer Meldung (Test) – `OpenTests.EncryptedFileOpensWithCorrectPassword`, `OpenTests.EncryptedFileWithWrongPasswordThrowsPasswordIncorrect`, `OpenTests.EncryptedFileWithoutPasswordThrowsPasswordRequired` (je für `encrypted_hello_world_r3.pdf` und `_r6.pdf`) sowie CLI-seitig `CliTests.WrongPasswordExitsWithOne` und `CliTests.EncryptedWithoutPasswordExitsWithOneAndHint`; grün lokal und im CI-Lauf 38963543241
 - [ ] Vergleichsmessung dokumentiert (Werte und Methode in `Docs/DECISIONS.md`), Budgets festgelegt
 
 ## Milestone 2 – Designrichtungen
