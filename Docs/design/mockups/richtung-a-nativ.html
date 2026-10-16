@@ -1,0 +1,422 @@
+<title>Pagewing Richtung A</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&display=swap">
+<style>
+/* Layout: native window chrome (Fluent / libadwaita), document dominates; tokens shared by all three directions */
+:root{--color-surface-window:#F3F4F6;--color-surface-toolbar:#FBFBFC;--color-surface-sidebar:#F6F7F9;--color-surface-canvas:#E4E6EA;--color-surface-raised:#FFFFFF;--color-surface-hover:#E9EBEF;--color-accent-subtle:#DCE5F8;--color-border-subtle:#DEE1E6;--color-border-strong:#868C98;--color-text-primary:#1B1D22;--color-text-secondary:#555B67;--color-text-disabled:#9AA0AB;--color-accent-default:#2457C5;--color-accent-on:#FFFFFF;--color-focus-ring:#1B4FB8;--color-page-border:#00000017;--color-page-shadow:#00000024;--color-search-hit:#FBE38A;--color-search-current:#F5A524;--color-danger-default:#B42318;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--color-surface-window:#1C1D21;--color-surface-toolbar:#26272C;--color-surface-sidebar:#222327;--color-surface-canvas:#141518;--color-surface-raised:#2D2E34;--color-surface-hover:#34363C;--color-accent-subtle:#22345C;--color-border-subtle:#34363C;--color-border-strong:#7C818C;--color-text-primary:#ECEDEF;--color-text-secondary:#A9ADB6;--color-text-disabled:#6B6F78;--color-accent-default:#7AA5FF;--color-accent-on:#0B1A33;--color-focus-ring:#9DBCFF;--color-page-border:#FFFFFF29;--color-page-shadow:#000000A6;--color-search-hit:#FBE38A;--color-search-current:#F5A524;--color-danger-default:#FF8A80;color-scheme:dark;}}
+:root[data-theme="dark"]{--color-surface-window:#1C1D21;--color-surface-toolbar:#26272C;--color-surface-sidebar:#222327;--color-surface-canvas:#141518;--color-surface-raised:#2D2E34;--color-surface-hover:#34363C;--color-accent-subtle:#22345C;--color-border-subtle:#34363C;--color-border-strong:#7C818C;--color-text-primary:#ECEDEF;--color-text-secondary:#A9ADB6;--color-text-disabled:#6B6F78;--color-accent-default:#7AA5FF;--color-accent-on:#0B1A33;--color-focus-ring:#9DBCFF;--color-page-border:#FFFFFF29;--color-page-shadow:#000000A6;--color-search-hit:#FBE38A;--color-search-current:#F5A524;--color-danger-default:#FF8A80;color-scheme:dark;}
+:root{--font-ui:"Segoe UI Variable Text","Segoe UI",Cantarell,"Noto Sans",system-ui,sans-serif;--font-display:"Segoe UI Variable Display","Segoe UI",Cantarell,"Noto Sans",system-ui,sans-serif;--font-mono:"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;--radius-control:4px;--radius-overlay:8px}
+/* ---------- shared: artifact page frame ---------- */
+*,*::before,*::after{box-sizing:border-box}
+body{background:var(--color-surface-window);color:var(--color-text-primary);font-family:var(--font-ui);font-size:15px;line-height:1.55;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.frame{max-width:1320px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:40px}
+.frame>*,.intro>*{min-width:0}
+.intro{display:grid;gap:14px;max-width:72ch}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-text-secondary);margin:0}
+.intro h1{font-family:var(--font-display);font-size:clamp(28px,4vw,40px);line-height:1.1;margin:0;text-wrap:balance}
+.intro p{margin:0;color:var(--color-text-secondary)}
+.intro p strong{color:var(--color-text-primary);font-weight:600}
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--color-border-strong);border-radius:8px;padding:2px;gap:2px;background:var(--color-surface-raised)}
+.seg button{font:inherit;font-size:13px;border:0;background:transparent;color:var(--color-text-primary);padding:5px 12px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--color-accent-default);color:var(--color-accent-on)}
+.seg button:focus-visible,.win button:focus-visible,.win input:focus-visible{outline:2px solid var(--color-focus-ring);outline-offset:1px}
+.ctl-label{font-size:13px;color:var(--color-text-secondary);margin-right:6px}
+.stage{position:relative;width:100%;aspect-ratio:1280/800;max-width:100%;overflow:hidden;border-radius:10px;box-shadow:0 0 0 1px var(--color-border-subtle),0 18px 50px -20px var(--color-page-shadow)}
+.stage-note{font-size:13px;color:var(--color-text-secondary);margin:-28px 0 0}
+.win{position:absolute;top:0;left:0;width:1280px;height:800px;transform-origin:0 0;overflow:hidden;font-family:var(--font-ui);font-size:13px;line-height:1.35;color:var(--color-text-primary)}
+.win [hidden]{display:none!important}
+.ic{width:20px;height:20px;flex:none;display:block}
+section.block{display:grid;gap:18px}
+section.block h2{font-family:var(--font-display);font-size:22px;margin:0;text-wrap:balance}
+section.block>p{margin:0;max-width:72ch;color:var(--color-text-secondary)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:24px 32px}
+.cols>*{min-width:0}
+.cols h3{font-size:15px;margin:0 0 8px}
+.cols ul{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--color-text-secondary)}
+.cols ul strong{color:var(--color-text-primary);font-weight:600}
+.table-wrap{overflow-x:auto;border:1px solid var(--color-border-subtle);border-radius:8px;background:var(--color-surface-raised)}
+table.tokens{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
+table.tokens th,table.tokens td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--color-border-subtle);vertical-align:middle}
+table.tokens th{font-weight:600;color:var(--color-text-secondary);font-size:12px}
+table.tokens tr:last-child td{border-bottom:0}
+table.tokens td.num,code{font-family:var(--font-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.sw{display:inline-block;width:22px;height:22px;border-radius:5px;margin-right:4px;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(128,128,128,.45)}
+.scale{display:grid;gap:10px}
+.scale div{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+.scale span:first-child{font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);min-width:150px}
+.spaces{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+.spaces div{display:grid;gap:6px;justify-items:start;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.spaces i{display:block;height:14px;background:var(--color-accent-default);border-radius:2px}
+.radii{display:flex;flex-wrap:wrap;gap:16px}
+.radii div{display:grid;gap:6px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.radii i{display:block;width:72px;height:48px;border:2px solid var(--color-border-strong);background:var(--color-surface-raised)}
+.icon-gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 12px}
+.icon-gallery li{display:flex;gap:10px;align-items:center;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);padding:5px 0;min-width:0}
+.icon-gallery li span{overflow-wrap:anywhere}
+.icon-gallery .ic{color:var(--color-text-primary)}
+
+/* ---------- shared: PDF pages (content is always paper-white, independent of theme) ---------- */
+.pdf-page{--paper:#ffffff;--ink:#1d1d1b;--ink-2:#55554f;--rule:#c9c9c2;position:relative;flex:none;width:560px;height:792px;background:var(--paper);color:var(--ink);padding:52px 56px 40px;font-family:"Source Serif 4",Georgia,"Times New Roman",serif;font-size:10.6px;line-height:1.5;box-shadow:0 0 0 1px var(--color-page-border),0 2px 10px var(--color-page-shadow);display:flex;flex-direction:column}
+.pdf-page h2{font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:19px;font-weight:600;margin:14px 0 8px;letter-spacing:-.01em}
+.pdf-page h3{font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:12.5px;font-weight:600;margin:12px 0 4px}
+.pdf-page p{margin:0 0 7px;hyphens:auto}
+.pdf-run{display:flex;justify-content:space-between;font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:8.5px;color:var(--ink-2);border-bottom:.6px solid var(--rule);padding-bottom:4px;margin-bottom:6px}
+.pdf-page figure{margin:6px 0 4px}
+.pdf-page figure svg{width:100%;height:auto;display:block}
+.pdf-page figcaption,.pdf-page caption{font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:8.8px;color:var(--ink-2);text-align:left;padding:3px 0}
+.pdf-page table{border-collapse:collapse;width:100%;margin:4px 0 9px;font-size:9.6px;font-variant-numeric:tabular-nums}
+.pdf-page caption{caption-side:top}
+.pdf-page th{text-align:left;font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-weight:600;border-bottom:.8px solid var(--ink);padding:3px 6px 3px 0}
+.pdf-page td{border-bottom:.5px solid var(--rule);padding:3px 6px 3px 0}
+.pfoot{margin-top:auto;align-self:center;font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:8.5px;color:var(--ink-2)}
+mark.hit{background:var(--color-search-hit);color:inherit;border-radius:1px;padding:0 1px}
+mark.hit-current{background:var(--color-search-current);box-shadow:0 0 0 1.5px var(--ink)}
+.pl{display:block;height:5px;border-radius:2px;background:#e3e3de;margin:0 0 7px}
+.pl.h{height:9px;background:#cfcfc8;margin-top:6px}.pl.gap{margin-top:16px}
+.pblock{display:block;height:120px;margin:8px 0 12px;background:#efefeb;border:.6px solid #dcdcd5}
+.w30{width:30%}.w40{width:40%}.w50{width:50%}.w60{width:60%}.w70{width:70%}.w80{width:80%}.w85{width:85%}.w88{width:88%}.w90{width:90%}.w92{width:92%}.w93{width:93%}.w95{width:95%}
+.pdf-loading{background:var(--color-surface-raised);box-shadow:0 0 0 1px var(--color-border-subtle);align-items:center;justify-content:center}
+.loading-label{font-family:var(--font-ui);font-size:12px;color:var(--color-text-secondary)}
+
+/* ---------- shared: thumbnails (mini page drawn from bars) ---------- */
+.tp{display:flex;flex-direction:column;gap:3px;width:100%;aspect-ratio:210/297;background:#fff;padding:12% 11%;box-shadow:0 0 0 1px var(--color-page-border),0 1px 3px var(--color-page-shadow)}
+.tp i{display:block;height:2px;background:#d9d9d3;border-radius:1px;width:100%}
+.tp i.h{height:4px;background:#bdbdb6;margin-top:3px}
+.tp b.tf{display:block;height:18%;background:#ececE7;margin:2px 0}
+.tp b.tf.tbl{height:11%;background:repeating-linear-gradient(#ececE7 0 2px,#fff 2px 5px)}
+.tp-cover{justify-content:center}.tp b.tall{height:34%}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---------- direction A: window ---------- */
+.win{background:var(--color-surface-window);display:flex;flex-direction:column}
+.titlebar{height:40px;display:flex;align-items:flex-end;padding-left:10px;flex:none}
+.appmark{width:32px;height:40px;display:grid;place-items:center;color:var(--color-accent-default)}
+.apptitle{align-self:center;font-size:12px;color:var(--color-text-secondary);margin-left:2px}
+.tabs{display:flex;align-items:flex-end;gap:2px;height:40px;min-width:0}
+.tab{flex:none;display:flex;align-items:center;gap:8px;height:34px;padding:0 6px 0 12px;border-radius:8px 8px 0 0;color:var(--color-text-secondary);max-width:280px;min-width:0}
+.tab .ic{width:16px;height:16px}
+.tab span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab.active{background:var(--color-surface-toolbar);color:var(--color-text-primary);box-shadow:0 0 0 1px var(--color-border-subtle);clip-path:inset(-1px -1px 0 -1px)}
+.tab button,.newtab{border:0;background:transparent;color:inherit;width:24px;height:24px;border-radius:var(--radius-control);display:grid;place-items:center;padding:0;flex:none}
+.tab button .ic,.newtab .ic{width:14px;height:14px}
+.newtab{align-self:center;margin:3px 0 0 4px}
+.drag{flex:1}
+.caption{display:flex;align-self:flex-start}
+.caption span{width:46px;height:32px;display:grid;place-items:center;color:var(--color-text-primary)}
+.caption svg{width:10px;height:10px}
+.linuxbar{height:38px;flex:none;display:flex;align-items:center;justify-content:center;position:relative;background:var(--color-surface-window);border-bottom:1px solid var(--color-border-subtle);font-weight:600;font-size:13px}
+.linuxbar .lx{position:absolute;right:10px;display:flex;gap:10px}
+.linuxbar .lx span{width:22px;height:22px;border-radius:50%;background:var(--color-surface-hover);display:grid;place-items:center}
+.linuxbar .lx svg{width:8px;height:8px}
+.tabrow{height:38px;flex:none;display:flex;align-items:flex-end;padding-left:8px}
+.toolbar{height:48px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--color-surface-toolbar);border-bottom:1px solid var(--color-border-subtle)}
+.tb{border:0;background:transparent;color:var(--color-text-primary);height:32px;min-width:32px;padding:0 6px;border-radius:var(--radius-control);display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;position:relative}
+.tb.pressed{background:var(--color-accent-subtle)}
+.tb.hover{background:var(--color-surface-hover)}
+.tb:disabled{color:var(--color-text-disabled)}
+.sep{width:1px;height:20px;background:var(--color-border-subtle);margin:0 6px}
+.pagefield{display:flex;align-items:center;gap:6px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
+.pagefield input{width:40px;height:28px;text-align:center;font:inherit;color:var(--color-text-primary);background:var(--color-surface-raised);border:1px solid var(--color-border-strong);border-radius:var(--radius-control);outline:2px solid var(--color-focus-ring);outline-offset:1px}
+.zoomval{min-width:68px;justify-content:space-between;padding:0 8px;font-variant-numeric:tabular-nums}
+.zoomval .ic{width:14px;height:14px}
+.modes{display:flex;gap:2px;margin-left:auto;padding:2px;border-radius:6px;background:var(--color-surface-window)}
+.modes .tb{height:30px}
+.modes .tb.active{background:var(--color-surface-raised);box-shadow:0 0 0 1px var(--color-border-subtle);font-weight:600}
+.tip{position:absolute;top:38px;left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--color-surface-raised);color:var(--color-text-primary);border:1px solid var(--color-border-subtle);border-radius:var(--radius-overlay);padding:6px 10px;font-size:12px;box-shadow:0 6px 18px var(--color-page-shadow);z-index:5;font-weight:400;text-align:left}
+.tip small{display:block;color:var(--color-text-secondary);font-size:11.5px}
+.search{margin-left:12px;display:flex;align-items:center;gap:6px;width:250px;height:32px;padding:0 4px 0 8px;background:var(--color-surface-raised);border:1px solid var(--color-border-strong);border-radius:var(--radius-control);border-bottom:2px solid var(--color-accent-default)}
+.search .ic{width:16px;height:16px;color:var(--color-text-secondary)}
+.search .q{flex:1;white-space:nowrap}
+.search .count{color:var(--color-text-secondary);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.search .tb{height:24px;min-width:24px;padding:0}
+.search .tb .ic{width:14px;height:14px;color:var(--color-text-primary)}
+.up{transform:rotate(180deg)}
+.main{flex:1;display:flex;min-height:0}
+.sidebar{width:232px;flex:none;background:var(--color-surface-sidebar);border-right:1px solid var(--color-border-subtle);display:flex;flex-direction:column;min-height:0}
+.sidetabs{display:flex;gap:2px;margin:10px;padding:2px;background:var(--color-surface-window);border-radius:6px}
+.sidetabs .tb{flex:1;height:28px;font-size:12.5px}
+.sidetabs .tb.active{background:var(--color-surface-raised);box-shadow:0 0 0 1px var(--color-border-subtle);font-weight:600}
+.sidetabs .ic{width:16px;height:16px}
+.thumbs{flex:1;overflow:auto;display:grid;justify-items:center;gap:14px;padding:6px 0 16px}
+.thumb{border:0;background:transparent;padding:0;display:grid;justify-items:center;gap:6px;width:112px;font:inherit;color:var(--color-text-secondary)}
+.thumb .tp{border-radius:1px}
+.thumb.is-current .tp{outline:2px solid var(--color-accent-default);outline-offset:3px}
+.thumb-num{font-size:12px;font-variant-numeric:tabular-nums;padding:0 7px;border-radius:9px;line-height:18px}
+.thumb.is-current .thumb-num{background:var(--color-accent-default);color:var(--color-accent-on);font-weight:600}
+.canvas{flex:1;overflow:auto;background:var(--color-surface-canvas);display:flex;flex-direction:column;align-items:center;gap:16px;padding:24px}
+.start{flex:1;background:var(--color-surface-canvas);display:grid;place-items:center;border-top:1px solid var(--color-border-subtle)}
+.start-card{width:520px;display:grid;gap:20px}
+.start h2{font-family:var(--font-display);font-size:24px;font-weight:600;margin:0}
+.start p{margin:0;color:var(--color-text-secondary)}
+.drop{display:grid;justify-items:center;gap:12px;padding:32px;border:1.5px dashed var(--color-border-strong);border-radius:var(--radius-overlay);background:var(--color-surface-raised);text-align:center}
+.primary{border:0;background:var(--color-accent-default);color:var(--color-accent-on);height:34px;padding:0 16px;border-radius:var(--radius-control);font:inherit;font-weight:600;display:inline-flex;gap:8px;align-items:center}
+.primary .ic{width:16px;height:16px}
+kbd{font-family:var(--font-ui);font-size:11.5px;padding:1px 6px;border:1px solid var(--color-border-strong);border-bottom-width:2px;border-radius:4px;color:var(--color-text-secondary);background:var(--color-surface-raised)}
+.primary kbd{background:transparent;color:inherit;border-color:currentColor;opacity:.85}
+.recent{display:grid;gap:2px}
+.recent h3{font-size:12px;font-weight:600;color:var(--color-text-secondary);margin:0 0 6px}
+.recent a{display:grid;grid-template-columns:20px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:var(--radius-control);color:var(--color-text-primary);text-decoration:none}
+.recent a .ic{width:18px;height:18px;color:var(--color-text-secondary)}
+.recent a small{color:var(--color-text-secondary);font-size:12px}
+.recent a:first-of-type{background:var(--color-surface-hover)}
+</style>
+
+<div class="frame">
+  <header class="intro">
+    <p class="eyebrow">Pagewing · Designrichtung A von 3</p>
+    <h1>Nativ &amp; leise</h1>
+    <p><strong>Pagewing sieht aus, als gehöre es zum System.</strong> Die Oberfläche folgt Windows 11 (Fluent) und GNOME: neutrale Flächen, eine Akzentfarbe, eine klassische Werkzeugleiste. Alles Bunte gehört dem Dokument. Wer von Acrobat oder dem Browser kommt, findet sich sofort zurecht.</p>
+    <div class="controls">
+        <div><span class="ctl-label" id="lbl-theme">Darstellung</span>
+          <span class="seg" role="group" aria-labelledby="lbl-theme">
+            <button type="button" id="th-system" data-theme-set="system" aria-pressed="true">System</button>
+            <button type="button" id="th-light" data-theme-set="light" aria-pressed="false">Hell</button>
+            <button type="button" id="th-dark" data-theme-set="dark" aria-pressed="false">Dunkel</button>
+          </span></div>
+        <div><span class="ctl-label" id="lbl-view">Ansicht</span>
+          <span class="seg" role="group" aria-labelledby="lbl-view">
+            <button type="button" id="vw-doc" data-view-set="doc" aria-pressed="true">Dokument offen</button>
+            <button type="button" id="vw-start" data-view-set="start" aria-pressed="false">Startbildschirm</button>
+            <button type="button" id="vw-linux" data-view-set="linux" aria-pressed="false">Linux-Titelleiste</button>
+          </span></div>
+      </div>
+
+  </header>
+
+  <div class="stage">
+    <div class="win" data-view="doc">
+      <!-- Windows: tabs drawn into the title bar -->
+      <div class="titlebar" data-show="doc">
+        <span class="appmark"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg></span>
+        <div class="tabs">
+          <div class="tab active" title="Benutzerhandbuch MS-20.pdf"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg><span>Benutzerhandbuch MS-20.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="m4.09 4.22.06-.07a.5.5 0 0 1 .63-.06l.07.06L10 9.29l5.15-5.14a.5.5 0 0 1 .63-.06l.07.06c.18.17.2.44.06.63l-.06.07L10.71 10l5.14 5.15c.18.17.2.44.06.63l-.06.07a.5.5 0 0 1-.63.06l-.07-.06L10 10.71l-5.15 5.14a.5.5 0 0 1-.63.06l-.07-.06a.5.5 0 0 1-.06-.63l.06-.07L9.29 10 4.15 4.85a.5.5 0 0 1-.06-.63l.06-.07z"/></svg></button></div>
+          <div class="tab" title="Vortrag Jahrestreffen Wetterdienst 2026.pdf"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg><span>Vortrag Jahres…dienst 2026.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="m4.09 4.22.06-.07a.5.5 0 0 1 .63-.06l.07.06L10 9.29l5.15-5.14a.5.5 0 0 1 .63-.06l.07.06c.18.17.2.44.06.63l-.06.07L10.71 10l5.14 5.15c.18.17.2.44.06.63l-.06.07a.5.5 0 0 1-.63.06l-.07-.06L10 10.71l-5.15 5.14a.5.5 0 0 1-.63.06l-.07-.06a.5.5 0 0 1-.06-.63l.06-.07L9.29 10 4.15 4.85a.5.5 0 0 1-.06-.63l.06-.07z"/></svg></button></div>
+          <button class="newtab" type="button" aria-label="Datei öffnen"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 2.5c.28 0 .5.22.5.5v6.5H17a.5.5 0 0 1 0 1h-6.5V17a.5.5 0 0 1-1 0v-6.5H3a.5.5 0 0 1 0-1h6.5V3c0-.28.22-.5.5-.5"/></svg></button>
+        </div>
+        <span class="drag"></span>
+        <span class="caption" aria-hidden="true"><span><svg viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span></span>
+      </div>
+      <div class="titlebar" data-show="start" hidden>
+        <span class="appmark"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg></span><span class="apptitle">Pagewing</span>
+        <span class="drag"></span>
+        <span class="caption" aria-hidden="true"><span><svg viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span></span>
+      </div>
+      <!-- Linux (X11): title bar of the window manager, tabs in their own row -->
+      <div class="linuxbar" data-show="linux" hidden>Benutzerhandbuch MS-20.pdf – Pagewing
+        <span class="lx" aria-hidden="true"><span><svg viewBox="0 0 8 8"><path d="M0 4h8" stroke="currentColor" stroke-width="1.3"/></svg></span><span><svg viewBox="0 0 8 8"><rect x=".6" y=".6" width="6.8" height="6.8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></span><span><svg viewBox="0 0 8 8"><path d="M0 0l8 8M8 0L0 8" stroke="currentColor" stroke-width="1.3"/></svg></span></span>
+      </div>
+      <div class="tabrow" data-show="linux" hidden>
+        <div class="tabs">
+          <div class="tab active" title="Benutzerhandbuch MS-20.pdf"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg><span>Benutzerhandbuch MS-20.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="m4.09 4.22.06-.07a.5.5 0 0 1 .63-.06l.07.06L10 9.29l5.15-5.14a.5.5 0 0 1 .63-.06l.07.06c.18.17.2.44.06.63l-.06.07L10.71 10l5.14 5.15c.18.17.2.44.06.63l-.06.07a.5.5 0 0 1-.63.06l-.07-.06L10 10.71l-5.15 5.14a.5.5 0 0 1-.63.06l-.07-.06a.5.5 0 0 1-.06-.63l.06-.07L9.29 10 4.15 4.85a.5.5 0 0 1-.06-.63l.06-.07z"/></svg></button></div>
+          <div class="tab" title="Vortrag Jahrestreffen Wetterdienst 2026.pdf"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg><span>Vortrag Jahres…dienst 2026.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="m4.09 4.22.06-.07a.5.5 0 0 1 .63-.06l.07.06L10 9.29l5.15-5.14a.5.5 0 0 1 .63-.06l.07.06c.18.17.2.44.06.63l-.06.07L10.71 10l5.14 5.15c.18.17.2.44.06.63l-.06.07a.5.5 0 0 1-.63.06l-.07-.06L10 10.71l-5.15 5.14a.5.5 0 0 1-.63.06l-.07-.06a.5.5 0 0 1-.06-.63l.06-.07L9.29 10 4.15 4.85a.5.5 0 0 1-.06-.63l.06-.07z"/></svg></button></div>
+          <button class="newtab" type="button" aria-label="Datei öffnen"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 2.5c.28 0 .5.22.5.5v6.5H17a.5.5 0 0 1 0 1h-6.5V17a.5.5 0 0 1-1 0v-6.5H3a.5.5 0 0 1 0-1h6.5V3c0-.28.22-.5.5-.5"/></svg></button>
+        </div>
+      </div>
+
+      <div class="toolbar" data-show="doc linux">
+        <button class="tb pressed" type="button" aria-label="Seitenleiste" aria-pressed="true"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15 4a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zM8.5 15H15a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H8.5zM5 5a2 2 0 0 0-2 2v6c0 1.1.9 2 2 2h2.5V5z"/></svg></button>
+        <button class="tb" type="button" aria-label="Öffnen"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 5.5v6.6l1.5-2.6A3 3 0 0 1 7.1 8H15v-.5c0-.83-.67-1.5-1.5-1.5h-4a.5.5 0 0 1-.35-.15l-1.71-1.7A.5.5 0 0 0 7.09 4H4.5C3.67 4 3 4.67 3 5.5m1.28 10.48.22.02h9.4a2 2 0 0 0 1.73-1l2.17-3.75A1.5 1.5 0 0 0 16.5 9H7.1a2 2 0 0 0-1.73 1L3.2 13.75a1.5 1.5 0 0 0 1.08 2.23M2 14.46V5.5A2.5 2.5 0 0 1 4.5 3h2.59c.4 0 .78.16 1.06.44L9.7 5h3.79A2.5 2.5 0 0 1 16 7.5V8h.5a2.5 2.5 0 0 1 2.16 3.75L16.5 15.5a3 3 0 0 1-2.6 1.5H4.5a2.5 2.5 0 0 1-1.62-.6A2.5 2.5 0 0 1 2 14.46"/></svg></button>
+        <span class="sep"></span>
+        <button class="tb" type="button" aria-label="Vorherige Seite"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12.35 15.85a.5.5 0 0 1-.7 0L6.16 10.4a.55.55 0 0 1 0-.78l5.49-5.46a.5.5 0 1 1 .7.7L7.2 10l5.16 5.15c.2.2.2.5 0 .7"/></svg></button>
+        <label class="pagefield"><input id="a-page" value="3" aria-label="Seite"> / 24</label>
+        <button class="tb" type="button" aria-label="Nächste Seite"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7.65 4.15c.2-.2.5-.2.7 0l5.49 5.46c.21.22.21.57 0 .78l-5.49 5.47a.5.5 0 0 1-.7-.71L12.8 10 7.65 4.85a.5.5 0 0 1 0-.7"/></svg></button>
+        <span class="sep"></span>
+        <button class="tb" type="button" aria-label="Verkleinern"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M11 8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1zM8.5 2a6.5 6.5 0 0 1 4.94 10.73l3.41 3.42a.5.5 0 0 1-.63.76l-.07-.06-3.42-3.41A6.5 6.5 0 1 1 8.5 2m0 1a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11"/></svg></button>
+        <button class="tb zoomval" type="button" aria-label="Zoom">70 %<svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15.85 7.65c.2.2.2.5 0 .7l-5.46 5.49a.55.55 0 0 1-.78 0L4.15 8.35a.5.5 0 1 1 .7-.7L10 12.8l5.15-5.16c.2-.2.5-.2.7 0"/></svg></button>
+        <button class="tb" type="button" aria-label="Vergrößern"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8.5 5.5c.28 0 .5.22.5.5v2h2a.5.5 0 0 1 0 1H9v2a.5.5 0 0 1-1 0V9H6a.5.5 0 0 1 0-1h2V6c0-.28.22-.5.5-.5m0-3.5a6.5 6.5 0 0 1 4.94 10.73l3.41 3.42a.5.5 0 0 1-.63.76l-.07-.06-3.42-3.41A6.5 6.5 0 1 1 8.5 2m0 1a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11"/></svg></button>
+        <button class="tb" type="button" aria-label="Seitenbreite"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="m16.37 15-1.18 1.14a.5.5 0 1 0 .7.72l1.88-1.82c.3-.3.3-.78 0-1.08l-1.88-1.82a.5.5 0 1 0-.7.72L16.38 14H12.5a.5.5 0 1 0 0 1zM15 3a2 2 0 0 1 2 2v4.5a.5.5 0 0 1-1 0V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v4.5a.5.5 0 0 1-1 0V5c0-1.1.9-2 2-2zM4.81 16.14 3.63 15H7.5a.5.5 0 1 0 0-1H3.63l1.18-1.14a.5.5 0 0 0-.7-.72l-1.88 1.82c-.3.3-.3.79 0 1.08l1.89 1.82a.5.5 0 1 0 .69-.72"/></svg></button>
+        <div class="modes" role="group" aria-label="Modus">
+          <button class="tb active" type="button" aria-pressed="true"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3.26 11.6A7 7 0 0 1 10 6c3.2 0 6.06 2.33 6.74 5.6a.5.5 0 0 0 .98-.2A8 8 0 0 0 10 5a8 8 0 0 0-7.72 6.4.5.5 0 0 0 .98.2M10 8a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7m-2.5 3.5a2.5 2.5 0 1 1 5 0 2.5 2.5 0 0 1-5 0"/></svg>Ansehen</button>
+          <button class="tb" type="button" disabled aria-label="Kommentieren (ab v0.2)"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10.48 13.84h4.92c.9 0 1.6-.71 1.6-1.56V5.57C17 4.7 16.3 4 15.4 4H4.6C3.7 4 3 4.71 3 5.57v6.7c0 .86.7 1.57 1.6 1.57h1.6V17zM6.8 17.8a1 1 0 0 1-1.4-.2 1 1 0 0 1-.2-.59v-2.17h-.6A2.6 2.6 0 0 1 2 12.28V5.57A2.6 2.6 0 0 1 4.6 3h10.8C16.84 3 18 4.15 18 5.57v6.7a2.6 2.6 0 0 1-2.6 2.57h-4.59z"/></svg></button>
+          <button class="tb hover" type="button" disabled aria-label="Ausfüllen &amp; unterschreiben (ab v0.2)"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12.02 2.77a2.44 2.44 0 1 1 3.46 3.46L14.2 7.5l.08.09a2 2 0 0 1 0 2.82l-1.44 1.44a.5.5 0 0 1-.7-.7l1.44-1.44a1 1 0 0 0 0-1.42l-.09-.08-6.65 6.64a1 1 0 0 1-.23.14l-4 1a.5.5 0 0 1-.6-.65l1.26-3.75a1 1 0 0 1 .12-.2zm2.75.7a1.44 1.44 0 0 0-2.04 0l-8.54 8.55-.93 2.77 2.98-.74 8.53-8.53c.57-.56.57-1.48 0-2.04M3.22 16.88l.05.03C4 17.44 5.1 18 6.5 18c.74 0 1.42-.26 2.03-.6.6-.35 1.16-.8 1.66-1.2l.12-.1q.68-.57 1.23-.91c.4-.24.64-.27.8-.22.27.1.42.3.68 1.17q.13.46.47.87c.23.26.57.49 1.01.49.47 0 .94-.23 1.3-.44a13 13 0 0 0 .97-.64 5 5 0 0 1 .82-.42l.04-.02h.01a.5.5 0 0 0-.28-.96h-.01l-.02.01-.31.12q-.3.13-.8.43l-.33.23q-.28.2-.6.39-.5.3-.79.3-.1.02-.26-.15-.17-.2-.26-.5c-.24-.8-.5-1.55-1.32-1.82-.59-.2-1.16.02-1.63.3-.44.25-.9.63-1.34.99l-.13.1q-.74.63-1.53 1.1-.77.46-1.53.48c-.75 0-1.4-.2-1.93-.47zM17.5 15.5l-.14-.48z"/></svg><span class="tip" role="tooltip">Ausfüllen &amp; unterschreiben<small>Kommt mit v0.2</small></span></button>
+          <button class="tb" type="button" disabled aria-label="Seiten (ab v0.3)"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4 4c0-1.1.9-2 2-2h3.59c.4 0 .78.16 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 9 6.5V3zm4 .2v3.3c0 .28.22.5.5.5h3.3zM17 9a1 1 0 0 0-1-1v6a3 3 0 0 1-3 3H6a1 1 0 0 0 1 1h6.06A3.94 3.94 0 0 0 17 14.06z"/></svg></button>
+          <button class="tb" type="button" disabled aria-label="Schwärzen (ab v0.3)"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M11.2 2.44a1.5 1.5 0 0 1 2.12 0l4.24 4.24a1.5 1.5 0 0 1 0 2.12L9.36 17h5.14a.5.5 0 1 1 0 1H7.82a1.5 1.5 0 0 1-1.14-.44l-4.24-4.24a1.5 1.5 0 0 1 0-2.12zm1.41.7a.5.5 0 0 0-.7 0L5.53 9.52l4.95 4.95 6.36-6.36a.5.5 0 0 0 0-.71zM9.78 15.18l-4.95-4.95-1.69 1.69a.5.5 0 0 0 0 .7l4.25 4.25c.2.2.5.2.7 0z"/></svg></button>
+        </div>
+        <div class="search" role="search"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M13.73 14.44a6.5 6.5 0 1 1 .7-.7l3.42 3.4a.5.5 0 0 1-.63.77l-.07-.06zm-.71-.71A5.5 5.5 0 0 0 15 9.5a5.5 5.5 0 1 0-1.98 4.23"/></svg><span class="q">Kalibrierung</span><span class="count">2 von 5</span><button class="tb" type="button" aria-label="Vorheriger Treffer"><span class="up"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15.85 7.65c.2.2.2.5 0 .7l-5.46 5.49a.55.55 0 0 1-.78 0L4.15 8.35a.5.5 0 1 1 .7-.7L10 12.8l5.15-5.16c.2-.2.5-.2.7 0"/></svg></span></button><button class="tb" type="button" aria-label="Nächster Treffer"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15.85 7.65c.2.2.2.5 0 .7l-5.46 5.49a.55.55 0 0 1-.78 0L4.15 8.35a.5.5 0 1 1 .7-.7L10 12.8l5.15-5.16c.2-.2.5-.2.7 0"/></svg></button></div>
+        <button class="tb" type="button" aria-label="Weitere Aktionen"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.25 10a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0m5 0a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0M15 11.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5"/></svg></button>
+      </div>
+
+      <div class="main" data-show="doc linux">
+        <aside class="sidebar" aria-label="Seitenleiste">
+          <div class="sidetabs" role="tablist">
+            <button class="tb active" type="button" role="tab" aria-selected="true"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7.5 11c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4A1.5 1.5 0 0 1 2 16.5v-4c0-.83.67-1.5 1.5-1.5zm9 0c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5v-4c0-.83.67-1.5 1.5-1.5zm-9 1h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m9 0h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m-9-10C8.33 2 9 2.67 9 3.5v4C9 8.33 8.33 9 7.5 9h-4A1.5 1.5 0 0 1 2 7.5v-4C2 2.67 2.67 2 3.5 2zm9 0c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4A1.5 1.5 0 0 1 11 7.5v-4c0-.83.67-1.5 1.5-1.5zm-9 1h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m9 0h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5"/></svg>Seiten</button>
+            <button class="tb" type="button" role="tab" aria-selected="false"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 5.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2m3-1c0-.28.22-.5.5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5m0 5c0-.28.22-.5.5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5m4.5 4.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm-2.5.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0m-5-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg>Inhalt</button>
+          </div>
+          <div class="thumbs" data-scroll-to="190">
+            <button class="thumb" type="button" aria-label="Seite 1"><span class="tp tp-cover"><i class="w60 h"></i><i class="w40"></i><b class="tf tall"></b><i class="w30"></i></span><span class="thumb-num">1</span></button>
+            <button class="thumb" type="button" aria-label="Seite 2"><span class="tp"><i class="w40 h"></i><i></i><i></i><i class="w60"></i><i class="w30 h"></i><i></i><i></i><b class="tf"></b><i></i><i class="w50"></i></span><span class="thumb-num">2</span></button>
+            <button class="thumb is-current" type="button" aria-label="Seite 3, aktuelle Seite" aria-current="page"><span class="tp"><i class="w50 h"></i><i></i><i class="w70"></i><i class="w30 h"></i><i></i><i class="w80"></i><b class="tf"></b><i class="w30 h"></i><i></i><i class="w90"></i><b class="tf tbl"></b><i class="w70"></i></span><span class="thumb-num">3</span></button>
+            <button class="thumb" type="button" aria-label="Seite 4"><span class="tp"><i class="w30 h"></i><i></i><i></i><i class="w80"></i><i></i><i class="w60"></i><i></i><b class="tf"></b><i></i><i class="w50"></i></span><span class="thumb-num">4</span></button>
+            <button class="thumb" type="button" aria-label="Seite 5"><span class="tp"><i class="w40 h"></i><i></i><i></i><b class="tf tbl"></b><i></i><i class="w70"></i><i></i><i class="w80"></i></span><span class="thumb-num">5</span></button>
+            <button class="thumb" type="button" aria-label="Seite 6"><span class="tp"><i class="w30 h"></i><i></i><i class="w90"></i><i></i><i></i><i class="w60"></i><i class="w40 h"></i><i></i><i class="w80"></i></span><span class="thumb-num">6</span></button>
+
+          </div>
+        </aside>
+        <div class="canvas" data-scroll-to="1046">
+          <div class="pdf-page pdf-blank" aria-label="Seite 2">
+          <span class="pl w40 h"></span><span class="pl w90"></span><span class="pl w95"></span><span class="pl w85"></span><span class="pl w60"></span>
+          <span class="pl w30 h gap"></span><span class="pl w95"></span><span class="pl w90"></span><span class="pl w92"></span><span class="pl w70"></span>
+          <span class="pblock"></span>
+          <span class="pl w95"></span><span class="pl w88"></span><span class="pl w93"></span><span class="pl w50"></span>
+          <span class="pfoot">2</span>
+        </div>
+        <article class="pdf-page" aria-label="Seite 3">
+          <header class="pdf-run"><span>Messstation MS-20 · Benutzerhandbuch</span><span>Kapitel 2</span></header>
+          <h2>2&#8194;Erste Schritte</h2>
+          <p>Dieses Kapitel beschreibt, wie Sie die Messstation aufstellen, mit Strom versorgen und vor der ersten Messung einrichten. Planen Sie dafür etwa 20 Minuten ein.</p>
+          <h3>2.1&#8194;Aufstellen</h3>
+          <p>Stellen Sie die Station auf eine ebene, erschütterungsfreie Fläche, mindestens 1,5 m über dem Boden und nicht in direkter Sonne. Halten Sie zu Wänden mindestens 30 cm Abstand, damit die Luft frei an den Sensoren vorbeiströmt.</p>
+          <figure>
+            <svg viewBox="-30 0 470 120" role="img" aria-label="Rückseite der Messstation mit Anschlüssen">
+              <rect x="120" y="14" width="200" height="92" rx="6" fill="#f4f4f2" stroke="#2b2b2b" stroke-width="1.4"/>
+              <circle cx="160" cy="46" r="12" fill="#fff" stroke="#2b2b2b" stroke-width="1.4"/>
+              <rect x="196" y="36" width="44" height="20" rx="3" fill="#fff" stroke="#2b2b2b" stroke-width="1.4"/>
+              <rect x="262" y="72" width="30" height="18" rx="2" fill="#2b2b2b"/>
+              <path d="M148 46h-60M218 36V24h120M277 90v14h70" fill="none" stroke="#2b2b2b" stroke-width="0.9"/>
+              <text x="84" y="42" text-anchor="end" font-size="10" fill="#2b2b2b">Temperaturfühler</text>
+              <text x="342" y="27" font-size="10" fill="#2b2b2b">Drucksensor</text>
+              <text x="351" y="107" font-size="10" fill="#2b2b2b">Anschluss 12 V</text>
+            </svg>
+            <figcaption>Abb. 2.1&#8194;Anschlüsse auf der Rückseite</figcaption>
+          </figure>
+          <h3>2.2&#8194;<mark class="hit">Kalibrierung</mark></h3>
+          <p>Vor der ersten Messung und nach jedem Standortwechsel ist eine <mark class="hit hit-current">Kalibrierung</mark> nötig. Die Station vergleicht dabei ihre Sensoren mit den Referenzwerten aus Tabelle 2.1. Starten Sie die <mark class="hit">Kalibrierung</mark> über <em>Einstellungen › Sensoren</em>.</p>
+          <table>
+            <caption>Tabelle 2.1&#8194;Referenzwerte für die <mark class="hit">Kalibrierung</mark></caption>
+            <thead><tr><th>Messgröße</th><th>Referenz</th><th>Toleranz</th></tr></thead>
+            <tbody>
+              <tr><td>Luftdruck</td><td>1013,25 hPa</td><td>± 0,5 hPa</td></tr>
+              <tr><td>Temperatur</td><td>20,0 °C</td><td>± 0,2 K</td></tr>
+              <tr><td>Luftfeuchte</td><td>50 % rF</td><td>± 2 % rF</td></tr>
+            </tbody>
+          </table>
+          <p>Die <mark class="hit">Kalibrierung</mark> dauert etwa drei Minuten. Bewegen Sie die Station in dieser Zeit nicht und öffnen Sie das Gehäuse nicht.</p>
+          <footer class="pfoot">3</footer>
+        </article>
+        <article class="pdf-page" aria-label="Seite 4">
+          <header class="pdf-run"><span>Messstation MS-20 · Benutzerhandbuch</span><span>Kapitel 2</span></header>
+          <h3>2.3&#8194;Erste Messung</h3>
+          <p>Nach der Einrichtung beginnt die Station automatisch mit der Aufzeichnung. Die Anzeige wechselt alle zehn Sekunden zwischen Luftdruck, Temperatur und Luftfeuchte. Ein Punkt rechts unten zeigt an, dass Messwerte gespeichert werden.</p>
+          <p>Die Station speichert bis zu 30 Tage im internen Speicher. Danach überschreibt sie die ältesten Werte. Übertragen Sie die Daten rechtzeitig, wie in Kapitel 4 beschrieben.</p>
+          <span class="pl w90"></span><span class="pl w95"></span><span class="pl w80"></span><span class="pblock"></span><span class="pl w93"></span><span class="pl w60"></span>
+          <footer class="pfoot">4</footer>
+        </article>
+        <div class="pdf-page pdf-loading" aria-label="Seite 5 wird geladen"><span class="loading-label">Seite 5</span></div>
+
+        </div>
+      </div>
+
+      <div class="start" data-show="start" hidden>
+        <div class="start-card">
+          <div><h2>PDF öffnen</h2><p>Pagewing zeigt PDFs offline an. Nichts verlässt diesen Rechner.</p></div>
+          <div class="drop">
+            <button class="primary" type="button"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 5.5v6.6l1.5-2.6A3 3 0 0 1 7.1 8H15v-.5c0-.83-.67-1.5-1.5-1.5h-4a.5.5 0 0 1-.35-.15l-1.71-1.7A.5.5 0 0 0 7.09 4H4.5C3.67 4 3 4.67 3 5.5m1.28 10.48.22.02h9.4a2 2 0 0 0 1.73-1l2.17-3.75A1.5 1.5 0 0 0 16.5 9H7.1a2 2 0 0 0-1.73 1L3.2 13.75a1.5 1.5 0 0 0 1.08 2.23M2 14.46V5.5A2.5 2.5 0 0 1 4.5 3h2.59c.4 0 .78.16 1.06.44L9.7 5h3.79A2.5 2.5 0 0 1 16 7.5V8h.5a2.5 2.5 0 0 1 2.16 3.75L16.5 15.5a3 3 0 0 1-2.6 1.5H4.5a2.5 2.5 0 0 1-1.62-.6A2.5 2.5 0 0 1 2 14.46"/></svg>Datei auswählen <kbd>Strg+O</kbd></button>
+            <p>oder eine PDF-Datei hierher ziehen</p>
+          </div>
+          <div class="recent">
+            <h3>Zuletzt geöffnet</h3>
+            <a href="#"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg><span>Benutzerhandbuch MS-20.pdf<br><small>Dokumente › Handbücher</small></span><small>heute</small></a>
+            <a href="#"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg><span>Vortrag Jahrestreffen Wetterdienst 2026.pdf<br><small>Downloads</small></span><small>gestern</small></a>
+            <a href="#"><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg><span>Mietvertrag Entwurf.pdf<br><small>Dokumente › Wohnung</small></span><small>12.10.</small></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="stage-note">Entwurf bei 1280 × 800 Pixeln, auf die Seitenbreite skaliert. Zustände im Bild: Fokus im Seitenfeld, Hover mit Tooltip auf „Ausfüllen &amp; unterschreiben“, Suchtreffer 2 von 5 mit Rahmen. Das Dokument lässt sich scrollen; Seite 5 zeigt den Platzhalter, solange sie noch nicht gerendert ist.</p>
+
+  <section class="block">
+    <h2>Haltung</h2>
+    <div class="cols">
+      <div><h3>Was sie ausmacht</h3><ul>
+        <li><strong>Systemschrift:</strong> Segoe UI (Variable ab Windows 11), unter Linux die Schrift des Desktops. Kein Laden einer Schrift beim Start.</li>
+        <li><strong>Eine Akzentfarbe</strong> für Auswahl, Fokus und den Primärknopf. Auf Wunsch die Akzentfarbe des Systems.</li>
+        <li><strong>Klassische Werkzeugleiste</strong> mit Seitenfeld, Zoom und Suche. Spätere Modi (Kommentieren, Ausfüllen &amp; unterschreiben, Seiten, Schwärzen) sitzen als Umschalter in derselben Leiste.</li>
+        <li><strong>Seitenleiste links</strong> mit Vorschaubildern und Inhaltsverzeichnis, ein- und ausklappbar.</li>
+      </ul></div>
+      <div><h3>Stärken und Risiken</h3><ul>
+        <li><strong>Stärke:</strong> geringstes Umsetzungsrisiko, das Fluent-Theme von Avalonia liefert fast alles.</li>
+        <li><strong>Stärke:</strong> schnellster Start, weil keine Schrift eingebettet wird.</li>
+        <li><strong>Risiko:</strong> wenig Wiedererkennung. Unter Linux sieht die Schrift je nach Distribution anders aus.</li>
+        <li><strong>Risiko:</strong> Die Werkzeugleiste wird mit den Werkzeugen ab v0.2 voll und braucht ein gutes Überlaufmenü.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Tokens dieser Richtung</h2>
+    <p>Alle drei Richtungen nutzen dieselben Token-Namen. Die Kontrastprüfung nach WCAG 2.2 AA ist für beide Themes bestanden.</p>
+    <div class="table-wrap"><table class="tokens"><thead><tr><th>Hell / Dunkel</th><th>Token</th><th>Hell</th><th>Dunkel</th><th>Verwendung</th></tr></thead><tbody><tr><td><span class="sw" style="background:#F3F4F6"></span><span class="sw" style="background:#1C1D21"></span></td><td><code>color.surface.window</code></td><td class="num">#F3F4F6</td><td class="num">#1C1D21</td><td>Titelleiste, Tab-Leiste</td></tr><tr><td><span class="sw" style="background:#FBFBFC"></span><span class="sw" style="background:#26272C"></span></td><td><code>color.surface.toolbar</code></td><td class="num">#FBFBFC</td><td class="num">#26272C</td><td>Aktiver Tab, Werkzeugleiste</td></tr><tr><td><span class="sw" style="background:#F6F7F9"></span><span class="sw" style="background:#222327"></span></td><td><code>color.surface.sidebar</code></td><td class="num">#F6F7F9</td><td class="num">#222327</td><td>Seitenleiste</td></tr><tr><td><span class="sw" style="background:#E4E6EA"></span><span class="sw" style="background:#141518"></span></td><td><code>color.surface.canvas</code></td><td class="num">#E4E6EA</td><td class="num">#141518</td><td>Dokumentbereich hinter den Seiten</td></tr><tr><td><span class="sw" style="background:#FFFFFF"></span><span class="sw" style="background:#2D2E34"></span></td><td><code>color.surface.raised</code></td><td class="num">#FFFFFF</td><td class="num">#2D2E34</td><td>Eingabefelder, Menüs, Dialoge</td></tr><tr><td><span class="sw" style="background:#E9EBEF"></span><span class="sw" style="background:#34363C"></span></td><td><code>color.surface.hover</code></td><td class="num">#E9EBEF</td><td class="num">#34363C</td><td>Hover auf Knöpfen und Listeneinträgen</td></tr><tr><td><span class="sw" style="background:#DCE5F8"></span><span class="sw" style="background:#22345C"></span></td><td><code>color.accent.subtle</code></td><td class="num">#DCE5F8</td><td class="num">#22345C</td><td>Ausgewählt: aktive Seite, aktiver Modus</td></tr><tr><td><span class="sw" style="background:#DEE1E6"></span><span class="sw" style="background:#34363C"></span></td><td><code>color.border.subtle</code></td><td class="num">#DEE1E6</td><td class="num">#34363C</td><td>Trennlinien</td></tr><tr><td><span class="sw" style="background:#868C98"></span><span class="sw" style="background:#7C818C"></span></td><td><code>color.border.strong</code></td><td class="num">#868C98</td><td class="num">#7C818C</td><td>Ränder von Eingabefeldern und Bedienelementen</td></tr><tr><td><span class="sw" style="background:#1B1D22"></span><span class="sw" style="background:#ECEDEF"></span></td><td><code>color.text.primary</code></td><td class="num">#1B1D22</td><td class="num">#ECEDEF</td><td>Text, Icons</td></tr><tr><td><span class="sw" style="background:#555B67"></span><span class="sw" style="background:#A9ADB6"></span></td><td><code>color.text.secondary</code></td><td class="num">#555B67</td><td class="num">#A9ADB6</td><td>Beschriftungen, Seitenzahlen</td></tr><tr><td><span class="sw" style="background:#9AA0AB"></span><span class="sw" style="background:#6B6F78"></span></td><td><code>color.text.disabled</code></td><td class="num">#9AA0AB</td><td class="num">#6B6F78</td><td>Deaktiviert (vom Kontrast ausgenommen)</td></tr><tr><td><span class="sw" style="background:#2457C5"></span><span class="sw" style="background:#7AA5FF"></span></td><td><code>color.accent.default</code></td><td class="num">#2457C5</td><td class="num">#7AA5FF</td><td>Primärknopf, Auswahlrand, Links</td></tr><tr><td><span class="sw" style="background:#FFFFFF"></span><span class="sw" style="background:#0B1A33"></span></td><td><code>color.accent.on</code></td><td class="num">#FFFFFF</td><td class="num">#0B1A33</td><td>Text auf Akzentfläche</td></tr><tr><td><span class="sw" style="background:#1B4FB8"></span><span class="sw" style="background:#9DBCFF"></span></td><td><code>color.focus.ring</code></td><td class="num">#1B4FB8</td><td class="num">#9DBCFF</td><td>Tastaturfokus (2 px)</td></tr><tr><td><span class="sw" style="background:#00000017"></span><span class="sw" style="background:#FFFFFF29"></span></td><td><code>color.page.border</code></td><td class="num">#00000017</td><td class="num">#FFFFFF29</td><td>Kante der PDF-Seite</td></tr><tr><td><span class="sw" style="background:#00000024"></span><span class="sw" style="background:#000000A6"></span></td><td><code>color.page.shadow</code></td><td class="num">#00000024</td><td class="num">#000000A6</td><td>Schatten der PDF-Seite</td></tr><tr><td><span class="sw" style="background:#FBE38A"></span><span class="sw" style="background:#FBE38A"></span></td><td><code>color.search.hit</code></td><td class="num">#FBE38A</td><td class="num">#FBE38A</td><td>Suchtreffer auf der Seite</td></tr><tr><td><span class="sw" style="background:#F5A524"></span><span class="sw" style="background:#F5A524"></span></td><td><code>color.search.current</code></td><td class="num">#F5A524</td><td class="num">#F5A524</td><td>Aktueller Suchtreffer (mit Rahmen)</td></tr><tr><td><span class="sw" style="background:#B42318"></span><span class="sw" style="background:#FF8A80"></span></td><td><code>color.danger.default</code></td><td class="num">#B42318</td><td class="num">#FF8A80</td><td>Fehler</td></tr></tbody></table></div>
+    <div class="cols">
+      <div><h3>Schrift</h3><div class="scale">
+        <div><span>type.title · 20/28 600</span><span style="font-size:20px;font-weight:600">Benutzerhandbuch</span></div>
+        <div><span>type.subtitle · 15/20 600</span><span style="font-size:15px;font-weight:600">Zuletzt geöffnet</span></div>
+        <div><span>type.body · 13/18 400</span><span style="font-size:13px">Ausfüllen &amp; unterschreiben</span></div>
+        <div><span>type.caption · 12/16 400</span><span style="font-size:12px;color:var(--color-text-secondary)">2 von 5 Treffern</span></div>
+      </div></div>
+      <div><h3>Abstände (4-px-Raster)</h3><div class="spaces">
+        <div><i style="width:4px"></i>space.1 · 4</div><div><i style="width:8px"></i>space.2 · 8</div><div><i style="width:12px"></i>space.3 · 12</div><div><i style="width:16px"></i>space.4 · 16</div><div><i style="width:24px"></i>space.5 · 24</div><div><i style="width:32px"></i>space.6 · 32</div>
+      </div>
+      <h3 style="margin-top:20px">Radien</h3><div class="radii">
+        <div><i style="border-radius:4px"></i>radius.control · 4</div><div><i style="border-radius:8px"></i>radius.overlay · 8</div><div><i style="border-radius:0"></i>radius.page · 0</div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Icons: Fluent UI System Icons, 20 px Regular</h2>
+    <p>MIT-Lizenz, Version 1.1.344. Flächige Konturen, passend zu Windows 11. In M3 werden nur diese Pfade übernommen.</p>
+    <ul class="icon-gallery"><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15 4a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zM8.5 15H15a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H8.5zM5 5a2 2 0 0 0-2 2v6c0 1.1.9 2 2 2h2.5V5z"/></svg><span>panel_left</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 5.5v6.6l1.5-2.6A3 3 0 0 1 7.1 8H15v-.5c0-.83-.67-1.5-1.5-1.5h-4a.5.5 0 0 1-.35-.15l-1.71-1.7A.5.5 0 0 0 7.09 4H4.5C3.67 4 3 4.67 3 5.5m1.28 10.48.22.02h9.4a2 2 0 0 0 1.73-1l2.17-3.75A1.5 1.5 0 0 0 16.5 9H7.1a2 2 0 0 0-1.73 1L3.2 13.75a1.5 1.5 0 0 0 1.08 2.23M2 14.46V5.5A2.5 2.5 0 0 1 4.5 3h2.59c.4 0 .78.16 1.06.44L9.7 5h3.79A2.5 2.5 0 0 1 16 7.5V8h.5a2.5 2.5 0 0 1 2.16 3.75L16.5 15.5a3 3 0 0 1-2.6 1.5H4.5a2.5 2.5 0 0 1-1.62-.6A2.5 2.5 0 0 1 2 14.46"/></svg><span>folder_open</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8.5 5.5c.28 0 .5.22.5.5v2h2a.5.5 0 0 1 0 1H9v2a.5.5 0 0 1-1 0V9H6a.5.5 0 0 1 0-1h2V6c0-.28.22-.5.5-.5m0-3.5a6.5 6.5 0 0 1 4.94 10.73l3.41 3.42a.5.5 0 0 1-.63.76l-.07-.06-3.42-3.41A6.5 6.5 0 1 1 8.5 2m0 1a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11"/></svg><span>zoom_in</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M11 8a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1zM8.5 2a6.5 6.5 0 0 1 4.94 10.73l3.41 3.42a.5.5 0 0 1-.63.76l-.07-.06-3.42-3.41A6.5 6.5 0 1 1 8.5 2m0 1a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11"/></svg><span>zoom_out</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="m16.37 15-1.18 1.14a.5.5 0 1 0 .7.72l1.88-1.82c.3-.3.3-.78 0-1.08l-1.88-1.82a.5.5 0 1 0-.7.72L16.38 14H12.5a.5.5 0 1 0 0 1zM15 3a2 2 0 0 1 2 2v4.5a.5.5 0 0 1-1 0V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v4.5a.5.5 0 0 1-1 0V5c0-1.1.9-2 2-2zM4.81 16.14 3.63 15H7.5a.5.5 0 1 0 0-1H3.63l1.18-1.14a.5.5 0 0 0-.7-.72l-1.88 1.82c-.3.3-.3.79 0 1.08l1.89 1.82a.5.5 0 1 0 .69-.72"/></svg><span>arrow_autofit_width</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M13.73 14.44a6.5 6.5 0 1 1 .7-.7l3.42 3.4a.5.5 0 0 1-.63.77l-.07-.06zm-.71-.71A5.5 5.5 0 0 0 15 9.5a5.5 5.5 0 1 0-1.98 4.23"/></svg><span>search</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></svg><span>document_text</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 5.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2m3-1c0-.28.22-.5.5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5m0 5c0-.28.22-.5.5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5m4.5 4.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm-2.5.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0m-5-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg><span>text_bullet_list_tree</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7.5 11c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4A1.5 1.5 0 0 1 2 16.5v-4c0-.83.67-1.5 1.5-1.5zm9 0c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5v-4c0-.83.67-1.5 1.5-1.5zm-9 1h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m9 0h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m-9-10C8.33 2 9 2.67 9 3.5v4C9 8.33 8.33 9 7.5 9h-4A1.5 1.5 0 0 1 2 7.5v-4C2 2.67 2.67 2 3.5 2zm9 0c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4A1.5 1.5 0 0 1 11 7.5v-4c0-.83.67-1.5 1.5-1.5zm-9 1h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m9 0h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5"/></svg><span>grid</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3.5 2c.28 0 .5.22.5.5v4c0 .28.22.5.5.5h11a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 1 0v4c0 .65-.42 1.2-1 1.41V9a2 2 0 0 1-2 2v2.07a2 2 0 0 1-1.1 1.8l-6.18 3.08A.5.5 0 0 1 6 17.5V11a2 2 0 0 1-2-2V7.91c-.58-.2-1-.76-1-1.41v-4c0-.28.22-.5.5-.5M5 8v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8zm2 3v5.7l5.45-2.73a1 1 0 0 0 .55-.9V11z"/></svg><span>highlight</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M17.18 2.93a2.97 2.97 0 0 0-4.26-.06l-9.37 9.38q-.5.5-.66 1.2l-.88 3.94a.5.5 0 0 0 .6.6l3.92-.88q.72-.16 1.24-.67l7.98-7.98.34.33a1 1 0 0 1 0 1.42l-.94.94a.5.5 0 0 0 .7.7l.94-.94a2 2 0 0 0 0-2.82l-.33-.34.67-.67a2.97 2.97 0 0 0 .05-4.15m-3.55.65a1.97 1.97 0 0 1 2.79 2.8l-9.36 9.35q-.31.31-.74.4l-3.16.71.7-3.18q.1-.41.4-.7z"/></svg><span>pen</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12.02 2.77a2.44 2.44 0 1 1 3.46 3.46L14.2 7.5l.08.09a2 2 0 0 1 0 2.82l-1.44 1.44a.5.5 0 0 1-.7-.7l1.44-1.44a1 1 0 0 0 0-1.42l-.09-.08-6.65 6.64a1 1 0 0 1-.23.14l-4 1a.5.5 0 0 1-.6-.65l1.26-3.75a1 1 0 0 1 .12-.2zm2.75.7a1.44 1.44 0 0 0-2.04 0l-8.54 8.55-.93 2.77 2.98-.74 8.53-8.53c.57-.56.57-1.48 0-2.04M3.22 16.88l.05.03C4 17.44 5.1 18 6.5 18c.74 0 1.42-.26 2.03-.6.6-.35 1.16-.8 1.66-1.2l.12-.1q.68-.57 1.23-.91c.4-.24.64-.27.8-.22.27.1.42.3.68 1.17q.13.46.47.87c.23.26.57.49 1.01.49.47 0 .94-.23 1.3-.44a13 13 0 0 0 .97-.64 5 5 0 0 1 .82-.42l.04-.02h.01a.5.5 0 0 0-.28-.96h-.01l-.02.01-.31.12q-.3.13-.8.43l-.33.23q-.28.2-.6.39-.5.3-.79.3-.1.02-.26-.15-.17-.2-.26-.5c-.24-.8-.5-1.55-1.32-1.82-.59-.2-1.16.02-1.63.3-.44.25-.9.63-1.34.99l-.13.1q-.74.63-1.53 1.1-.77.46-1.53.48c-.75 0-1.4-.2-1.93-.47zM17.5 15.5l-.14-.48z"/></svg><span>signature</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M11.2 2.44a1.5 1.5 0 0 1 2.12 0l4.24 4.24a1.5 1.5 0 0 1 0 2.12L9.36 17h5.14a.5.5 0 1 1 0 1H7.82a1.5 1.5 0 0 1-1.14-.44l-4.24-4.24a1.5 1.5 0 0 1 0-2.12zm1.41.7a.5.5 0 0 0-.7 0L5.53 9.52l4.95 4.95 6.36-6.36a.5.5 0 0 0 0-.71zM9.78 15.18l-4.95-4.95-1.69 1.69a.5.5 0 0 0 0 .7l4.25 4.25c.2.2.5.2.7 0z"/></svg><span>eraser</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 3a7 7 0 0 1 3.6 13H16a.5.5 0 0 1 0 1h-3.5a.5.5 0 0 1-.5-.5V13a.5.5 0 0 1 1 0v2.2A6 6 0 1 0 4 10a.5.5 0 0 1-1 0 7 7 0 0 1 7-7m0 5a2 2 0 1 1 0 4 2 2 0 0 1 0-4m0 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2"/></svg><span>arrow_rotate_clockwise</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M5 4.5C5 3.67 5.67 3 6.5 3h7c.83 0 1.5.67 1.5 1.5V5h.5A2.5 2.5 0 0 1 18 7.5v5c0 .83-.67 1.5-1.5 1.5H15v1.5c0 .83-.67 1.5-1.5 1.5h-7A1.5 1.5 0 0 1 5 15.5V14H3.5A1.5 1.5 0 0 1 2 12.5v-5A2.5 2.5 0 0 1 4.5 5H5zM6 5h8v-.5a.5.5 0 0 0-.5-.5h-7a.5.5 0 0 0-.5.5zm-1 8v-1.5c0-.83.67-1.5 1.5-1.5h7c.83 0 1.5.67 1.5 1.5V13h1.5a.5.5 0 0 0 .5-.5v-5c0-.83-.67-1.5-1.5-1.5h-11C3.67 6 3 6.67 3 7.5v5c0 .28.22.5.5.5zm1.5-2a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h7a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5z"/></svg><span>print</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M1.91 7.38A8.5 8.5 0 0 1 3.7 4.3a.5.5 0 0 1 .54-.13l1.92.68a1 1 0 0 0 1.32-.76l.36-2a.5.5 0 0 1 .4-.4 9 9 0 0 1 3.55 0q.32.08.38.4l.37 2a1 1 0 0 0 1.32.76l1.92-.68a.5.5 0 0 1 .54.13 8.5 8.5 0 0 1 1.78 3.08q.08.31-.15.54l-1.56 1.32a1 1 0 0 0 0 1.52l1.56 1.32a.5.5 0 0 1 .15.54 8.5 8.5 0 0 1-1.78 3.08.5.5 0 0 1-.54.13l-1.92-.68a1 1 0 0 0-1.32.76l-.37 2a.5.5 0 0 1-.38.4 8.5 8.5 0 0 1-3.56 0 .5.5 0 0 1-.39-.4l-.36-2a1 1 0 0 0-1.32-.76l-1.92.68a.5.5 0 0 1-.54-.13 8.5 8.5 0 0 1-1.78-3.08.5.5 0 0 1 .15-.54l1.56-1.32a1 1 0 0 0 0-1.52L2.06 7.92a.5.5 0 0 1-.15-.54m1.06 0 1.3 1.1a2 2 0 0 1 0 3.04l-1.3 1.1q.45 1.19 1.25 2.16l1.6-.58a2 2 0 0 1 2.63 1.53l.3 1.67a8 8 0 0 0 2.5 0l.3-1.67a2 2 0 0 1 2.64-1.53l1.6.58a8 8 0 0 0 1.24-2.16l-1.3-1.1a2 2 0 0 1 0-3.04l1.3-1.1a8 8 0 0 0-1.25-2.16l-1.6.58a2 2 0 0 1-2.63-1.53l-.3-1.67a8 8 0 0 0-2.5 0l-.3 1.67A2 2 0 0 1 5.81 5.8l-1.6-.58a8 8 0 0 0-1.24 2.16M7.5 10a2.5 2.5 0 1 1 5 0 2.5 2.5 0 0 1-5 0m1 0a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0"/></svg><span>settings</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6.25 10a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0m5 0a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0M15 11.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5"/></svg><span>more_horizontal</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="m4.09 4.22.06-.07a.5.5 0 0 1 .63-.06l.07.06L10 9.29l5.15-5.14a.5.5 0 0 1 .63-.06l.07.06c.18.17.2.44.06.63l-.06.07L10.71 10l5.14 5.15c.18.17.2.44.06.63l-.06.07a.5.5 0 0 1-.63.06l-.07-.06L10 10.71l-5.15 5.14a.5.5 0 0 1-.63.06l-.07-.06a.5.5 0 0 1-.06-.63l.06-.07L9.29 10 4.15 4.85a.5.5 0 0 1-.06-.63l.06-.07z"/></svg><span>dismiss</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12.35 15.85a.5.5 0 0 1-.7 0L6.16 10.4a.55.55 0 0 1 0-.78l5.49-5.46a.5.5 0 1 1 .7.7L7.2 10l5.16 5.15c.2.2.2.5 0 .7"/></svg><span>chevron_left</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7.65 4.15c.2-.2.5-.2.7 0l5.49 5.46c.21.22.21.57 0 .78l-5.49 5.47a.5.5 0 0 1-.7-.71L12.8 10 7.65 4.85a.5.5 0 0 1 0-.7"/></svg><span>chevron_right</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15.85 7.65c.2.2.2.5 0 .7l-5.46 5.49a.55.55 0 0 1-.78 0L4.15 8.35a.5.5 0 1 1 .7-.7L10 12.8l5.15-5.16c.2-.2.5-.2.7 0"/></svg><span>chevron_down</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 2c.28 0 .5.22.5.5v1a.5.5 0 0 1-1 0v-1c0-.28.22-.5.5-.5m0 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8m0-1a3 3 0 1 1 0-6 3 3 0 0 1 0 6m7.5-2.5a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1zM10 16c.28 0 .5.22.5.5v1a.5.5 0 0 1-1 0v-1c0-.28.22-.5.5-.5m-6.5-5.5a.5.5 0 0 0 0-1H2.46a.5.5 0 0 0 0 1zm.65-6.35c.2-.2.5-.2.7 0l1 1a.5.5 0 1 1-.7.7l-1-1a.5.5 0 0 1 0-.7m.7 11.7a.5.5 0 0 1-.7-.7l1-1a.5.5 0 0 1 .7.7zm11-11.7a.5.5 0 0 0-.7 0l-1 1a.5.5 0 0 0 .7.7l1-1a.5.5 0 0 0 0-.7m-.7 11.7a.5.5 0 0 0 .7-.7l-1-1a.5.5 0 0 0-.7.7z"/></svg><span>weather_sunny</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15.5 13.5A6.98 6.98 0 0 1 4 14.39c2.83-1.09 4.56-2.42 5.6-4.4 1.04-2 1.33-4.16.75-6.9q1.36.17 2.58.87a7 7 0 0 1 2.55 9.54M5.45 16.92A7.98 7.98 0 1 0 9.88 2.04a.6.6 0 0 0-.61.73c.69 2.82.43 4.88-.55 6.76-.94 1.78-2.55 3.03-5.55 4.1a.6.6 0 0 0-.3.9 8 8 0 0 0 2.59 2.39"/></svg><span>weather_moon</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M5.5 4C6.33 4 7 4.67 7 5.5V7H5.5a1.5 1.5 0 1 1 0-3M8 7V5.5A2.5 2.5 0 1 0 5.5 8H7v4H5.5A2.5 2.5 0 1 0 8 14.5V13h4v1.5a2.5 2.5 0 1 0 2.5-2.5H13V8h1.5A2.5 2.5 0 1 0 12 5.5V7zm0 1h4v4H8zm5-1V5.5A1.5 1.5 0 1 1 14.5 7zm0 6h1.5a1.5 1.5 0 1 1-1.5 1.5zm-6 0v1.5A1.5 1.5 0 1 1 5.5 13z"/></svg><span>key_command</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 2.5c.28 0 .5.22.5.5v6.5H17a.5.5 0 0 1 0 1h-6.5V17a.5.5 0 0 1-1 0v-6.5H3a.5.5 0 0 1 0-1h6.5V3c0-.28.22-.5.5-.5"/></svg><span>add</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 10c0-.28.22-.5.5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 3 10"/></svg><span>subtract</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 1a4 4 0 0 1 4 4v2.05a2.5 2.5 0 0 1 2 2.45v6a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 4 15.5v-6c0-1.2.86-2.22 2-2.45V5a4 4 0 0 1 4-4M6.5 8C5.67 8 5 8.67 5 9.5v6c0 .83.67 1.5 1.5 1.5h7c.83 0 1.5-.67 1.5-1.5v-6c0-.83-.67-1.5-1.5-1.5zm3.5 3.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2M10 2a3 3 0 0 0-3 3v2h6V5a3 3 0 0 0-3-3"/></svg><span>lock_closed</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7.37 3.56a3 3 0 0 1 5.26 0l5.5 10A3 3 0 0 1 15.5 18h-11a3 3 0 0 1-2.63-4.44zm4.38.48a2 2 0 0 0-3.5 0l-5.5 10A2 2 0 0 0 4.5 17h11a2 2 0 0 0 1.75-2.96zM10 12.75a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5m0-6.25c.28 0 .5.22.5.5v4a.5.5 0 0 1-1 0V7c0-.28.22-.5.5-.5"/></svg><span>warning</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3.26 11.6A7 7 0 0 1 10 6c3.2 0 6.06 2.33 6.74 5.6a.5.5 0 0 0 .98-.2A8 8 0 0 0 10 5a8 8 0 0 0-7.72 6.4.5.5 0 0 0 .98.2M10 8a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7m-2.5 3.5a2.5 2.5 0 1 1 5 0 2.5 2.5 0 0 1-5 0"/></svg><span>eye</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10.48 13.84h4.92c.9 0 1.6-.71 1.6-1.56V5.57C17 4.7 16.3 4 15.4 4H4.6C3.7 4 3 4.71 3 5.57v6.7c0 .86.7 1.57 1.6 1.57h1.6V17zM6.8 17.8a1 1 0 0 1-1.4-.2 1 1 0 0 1-.2-.59v-2.17h-.6A2.6 2.6 0 0 1 2 12.28V5.57A2.6 2.6 0 0 1 4.6 3h10.8C16.84 3 18 4.15 18 5.57v6.7a2.6 2.6 0 0 1-2.6 2.57h-4.59z"/></svg><span>comment</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4 4c0-1.1.9-2 2-2h3.59c.4 0 .78.16 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 9 6.5V3zm4 .2v3.3c0 .28.22.5.5.5h3.3zM17 9a1 1 0 0 0-1-1v6a3 3 0 0 1-3 3H6a1 1 0 0 0 1 1h6.06A3.94 3.94 0 0 0 17 14.06z"/></svg><span>document_multiple</span></li><li><svg class="ic" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M5 12.5c0-.28.22-.5.5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5M11.5 8a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5m3.75-.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0M5.5 8a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5m2.25 1.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m2.25.75A.75.75 0 1 0 10 9a.75.75 0 0 0 0 1.5m3.76-.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0M8.5 8a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M2 5.5C2 4.67 2.67 4 3.5 4h13c.83 0 1.5.67 1.5 1.5v8c0 .83-.67 1.5-1.5 1.5h-13A1.5 1.5 0 0 1 2 13.5zM3.5 5a.5.5 0 0 0-.5.5v8c0 .28.22.5.5.5h13a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5z"/></svg><span>keyboard</span></li></ul>
+  </section>
+
+  <section class="block">
+    <h2>Umsetzung in Avalonia</h2>
+    <div class="cols">
+      <div><h3>Nötig</h3><ul>
+        <li><code>FluentTheme</code> mit eigener Palette (<code>ColorPaletteResources</code>) für Hell und Dunkel, Radien über <code>ControlCornerRadius</code> und <code>OverlayCornerRadius</code>.</li>
+        <li>Windows: Tabs in der Titelleiste über <code>ExtendClientAreaToDecorationsHint</code> mit <code>WindowDecorations="Full"</code>, Tab-Leiste als <code>ElementRole="TitleBar"</code>, Tabs als <code>User</code>.</li>
+        <li>Linux: Titelleiste des Fenstermanagers, Tabs in einer eigenen Zeile (Ansicht „Linux-Titelleiste“ oben).</li>
+      </ul></div>
+      <div><h3>Bis zum ersten Frame</h3><ul>
+        <li>Fenster, Titelleiste und Startbildschirm. Keine Schriftdatei, kein Effekt, keine Animation.</li>
+        <li>Mica unter Windows 11 wäre möglich, ist hier aber nicht vorgesehen: deckende Flächen sehen auf allen Systemen gleich aus.</li>
+      </ul></div>
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  const root = document.documentElement;
+  const stage = document.querySelector(".stage");
+  const win = stage.querySelector(".win");
+  const fit = () => { win.style.transform = `scale(${stage.clientWidth / 1280})`; };
+  new ResizeObserver(fit).observe(stage);
+  fit();
+
+  const press = (attr, value) => document.querySelectorAll(`[${attr}]`).forEach(b =>
+    b.setAttribute("aria-pressed", String(b.getAttribute(attr) === value)));
+
+  document.querySelectorAll("[data-theme-set]").forEach(b => b.addEventListener("click", () => {
+    const v = b.dataset.themeSet;
+    if (v === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", v);
+    press("data-theme-set", v);
+  }));
+
+  // "doc" = Windows window with a document, "start" = no document, "linux" = document with system title bar.
+  document.querySelectorAll("[data-view-set]").forEach(b => b.addEventListener("click", () => {
+    const v = b.dataset.viewSet;
+    win.dataset.view = v;
+    win.querySelectorAll("[data-show]").forEach(el => { el.hidden = !el.dataset.show.split(" ").includes(v); });
+    press("data-view-set", v);
+    scrollDoc();
+  }));
+
+  const scrollDoc = () => win.querySelectorAll("[data-scroll-to]").forEach(el => { el.scrollTop = Number(el.dataset.scrollTo); });
+  scrollDoc();
+})();
+</script>
+

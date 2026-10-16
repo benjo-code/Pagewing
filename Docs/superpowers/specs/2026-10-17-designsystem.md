@@ -77,7 +77,20 @@ Geprüft am 2026-10-16 und 2026-10-17 gegen Avalonia 12.1.4 (Quellcode des Tags 
 
 ## 3. Richtungen
 
-*Wird in Task 2 ausgefüllt.*
+Drei Richtungen, veröffentlicht am 2026-10-17 als Artifacts (privat, nur für den Projektinhaber sichtbar). Die HTML-Quellen liegen unter [`Docs/design/mockups/`](../../design/mockups/); sie lassen sich lokal im Browser öffnen.
+
+Alle drei zeigen dieselbe Szene, damit sie vergleichbar sind: zwei Tabs (einer mit langem Namen, in der Mitte gekürzt), Werkzeugleiste mit Seitenfeld, Zoom und Seitenbreite, Suche mit Treffer 2 von 5, Seitenleiste mit Vorschaubildern und Reiter „Inhalt“, Seite 3 eines selbst geschriebenen Handbuchs und den Anfang von Seite 4, einen Platzhalter für eine noch nicht gerenderte Seite und einen Moduswechsel für die Werkzeuge ab v0.2 und v0.3. Umschaltbar sind hell, dunkel und System sowie die Ansichten „Dokument offen“, „Startbildschirm“ und „Linux-Titelleiste“. Jede Seite listet ihre Tokens (gleiche Namen in allen drei), Schriftgrößen, Abstände, Radien, die Icons und die Umsetzung in Avalonia.
+
+| Richtung | Artifact | Quelle | Leitidee |
+|---|---|---|---|
+| A „Nativ & leise“ | https://claude.ai/artifact/He1E7CwqM3d8eQTxC2pnPs | [richtung-a-nativ.html](../../design/mockups/richtung-a-nativ.html) | Sieht aus wie ein Teil des Systems (Fluent, GNOME): neutrale Flächen, eine Akzentfarbe, klassische Werkzeugleiste, Systemschrift, Fluent UI System Icons. Geringstes Risiko, schnellster Start, wenig Wiedererkennung. |
+| B „Werkbank“ | https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y | [richtung-b-werkbank.html](../../design/mockups/richtung-b-werkbank.html) | Aufgebaut wie ein Code-Editor: Aktivitätsleiste, Panel, Modus-Reiter, Befehlspalette in der Titelleiste, Statusleiste mit Dokumentdaten. Dicht, tastaturfreundlich, dunkel zuerst, Akzent Textmarker-Gelb; Geist und Geist Mono, Tabler Icons. |
+| C „Papier“ | https://claude.ai/artifact/GqTxJnQPUbhrRoX9bjQ1ae | [richtung-c-papier.html](../../design/mockups/richtung-c-papier.html) | Ruhiger Leseraum: Fenster und Dokumentbereich im selben Papierton, schwebende Werkzeugleiste unten, Seitenübersicht als Panel bei Bedarf, Tintenblau als Akzent; Atkinson Hyperlegible Next, Literata für den Schriftzug, Phosphor Icons (Light). |
+
+**Prüfung (2026-10-17):**
+- Kontrast nach WCAG 2.2 AA für alle drei Token-Sätze in beiden Themes: 56 Paare je Richtung (Text auf allen Flächen ≥ 4,5:1, Akzent als Text ≥ 4,5:1, Ränder und Fokus ≥ 3:1), alle bestanden. Knappstes Paar je Richtung: `border.strong` auf `surface.window` (hell) mit 3,07 (A), 3,20 (B) und 3,34 (C).
+- Sichtprüfung je Richtung in hell und dunkel bei 1440 px sowie bei 375 px Viewport-Breite: kein horizontales Scrollen (Inhaltsbreite 360 px bei 375 px), lange deutsche Beschriftungen („Ausfüllen & unterschreiben“, langer Dateiname) passen oder sind sauber gekürzt, die weiße Seite hat im dunklen Theme eine sichtbare Kante, aktive Seite, aktiver Tab und aktueller Suchtreffer sind nicht nur über Farbe erkennbar (Rahmen, Nummernmarke bzw. Unterstreichung, Form).
+- Gefunden und behoben: In B passte die Befehlspalette bei 1280 px nicht mehr in die Kontextleiste; sie sitzt jetzt in der Titelleiste (unter Linux am Ende der Tab-Zeile).
 
 ## 4. Entscheidung
 
