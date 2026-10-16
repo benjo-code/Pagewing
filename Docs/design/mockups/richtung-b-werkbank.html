@@ -1,0 +1,550 @@
+<title>Pagewing Richtung B</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&display=swap">
+<style>
+/* Layout: clear work tool: tabs + command button on top, narrow action rail with one panel on demand, status bar with page and zoom; the document gets the room */
+:root{--color-surface-window:#EEEFF2;--color-surface-toolbar:#F7F8FA;--color-surface-sidebar:#F7F8FA;--color-surface-canvas:#E3E5EA;--color-surface-raised:#FFFFFF;--color-surface-hover:#E3E5EA;--color-accent-subtle:#E2E5F8;--color-border-subtle:#DCDFE5;--color-border-strong:#7F848E;--color-text-primary:#16181D;--color-text-secondary:#4F545E;--color-text-disabled:#9399A3;--color-accent-default:#3B48C4;--color-accent-on:#FFFFFF;--color-focus-ring:#3340B4;--color-page-border:#00000014;--color-page-shadow:#0000001A;--color-search-hit:#FBE38A;--color-search-current:#F5A524;--color-search-on:#16181D;--color-danger-default:#B42318;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--color-surface-window:#15171B;--color-surface-toolbar:#1B1E23;--color-surface-sidebar:#1B1E23;--color-surface-canvas:#0F1114;--color-surface-raised:#24272E;--color-surface-hover:#2A2E36;--color-accent-subtle:#262B52;--color-border-subtle:#2A2E36;--color-border-strong:#6E7480;--color-text-primary:#E6E8EB;--color-text-secondary:#9BA1AC;--color-text-disabled:#5E636D;--color-accent-default:#9DA7FF;--color-accent-on:#121539;--color-focus-ring:#B4BCFF;--color-page-border:#FFFFFF24;--color-page-shadow:#00000099;--color-search-hit:#FBE38A;--color-search-current:#F5A524;--color-search-on:#16181D;--color-danger-default:#FF8A80;color-scheme:dark;}}
+:root[data-theme="dark"]{--color-surface-window:#15171B;--color-surface-toolbar:#1B1E23;--color-surface-sidebar:#1B1E23;--color-surface-canvas:#0F1114;--color-surface-raised:#24272E;--color-surface-hover:#2A2E36;--color-accent-subtle:#262B52;--color-border-subtle:#2A2E36;--color-border-strong:#6E7480;--color-text-primary:#E6E8EB;--color-text-secondary:#9BA1AC;--color-text-disabled:#5E636D;--color-accent-default:#9DA7FF;--color-accent-on:#121539;--color-focus-ring:#B4BCFF;--color-page-border:#FFFFFF24;--color-page-shadow:#00000099;--color-search-hit:#FBE38A;--color-search-current:#F5A524;--color-search-on:#16181D;--color-danger-default:#FF8A80;color-scheme:dark;}
+:root{--font-ui:"Geist","Segoe UI",system-ui,sans-serif;--font-display:"Geist","Segoe UI",system-ui,sans-serif;--font-mono:"Geist Mono",Consolas,"DejaVu Sans Mono",monospace;--radius-control:6px;--radius-overlay:10px}
+/* ---------- shared: artifact page frame ---------- */
+*,*::before,*::after{box-sizing:border-box}
+body{background:var(--color-surface-window);color:var(--color-text-primary);font-family:var(--font-ui);font-size:15px;line-height:1.55;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.frame{max-width:1320px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:40px}
+.frame>*,.intro>*{min-width:0}
+.intro{display:grid;gap:14px;max-width:72ch}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-text-secondary);margin:0}
+.intro h1{font-family:var(--font-display);font-size:clamp(28px,4vw,40px);line-height:1.1;margin:0;text-wrap:balance}
+.intro p{margin:0;color:var(--color-text-secondary)}
+.intro p strong{color:var(--color-text-primary);font-weight:600}
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--color-border-strong);border-radius:8px;padding:2px;gap:2px;background:var(--color-surface-raised)}
+.seg button{font:inherit;font-size:13px;border:0;background:transparent;color:var(--color-text-primary);padding:5px 12px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--color-accent-default);color:var(--color-accent-on)}
+.seg button:focus-visible,.win button:focus-visible,.win input:focus-visible{outline:2px solid var(--color-focus-ring);outline-offset:1px}
+.ctl-label{font-size:13px;color:var(--color-text-secondary);margin-right:6px}
+.stage{position:relative;width:100%;aspect-ratio:1280/800;max-width:100%;overflow:hidden;border-radius:10px;box-shadow:0 0 0 1px var(--color-border-subtle),0 18px 50px -20px var(--color-page-shadow)}
+.stage-note{font-size:13px;color:var(--color-text-secondary);margin:-28px 0 0}
+.win{position:absolute;top:0;left:0;width:1280px;height:800px;transform-origin:0 0;overflow:hidden;font-family:var(--font-ui);font-size:13px;line-height:1.35;color:var(--color-text-primary)}
+.win [hidden]{display:none!important}
+.ic{width:20px;height:20px;flex:none;display:block}
+section.block{display:grid;gap:18px}
+section.block h2{font-family:var(--font-display);font-size:22px;margin:0;text-wrap:balance}
+section.block>p{margin:0;max-width:72ch;color:var(--color-text-secondary)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:24px 32px}
+.cols>*{min-width:0}
+.cols h3{font-size:15px;margin:0 0 8px}
+.cols ul{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--color-text-secondary)}
+.cols ul strong{color:var(--color-text-primary);font-weight:600}
+.table-wrap{overflow-x:auto;border:1px solid var(--color-border-subtle);border-radius:8px;background:var(--color-surface-raised)}
+table.tokens{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
+table.tokens th,table.tokens td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--color-border-subtle);vertical-align:middle}
+table.tokens th{font-weight:600;color:var(--color-text-secondary);font-size:12px}
+table.tokens tr:last-child td{border-bottom:0}
+table.tokens td.num,code{font-family:var(--font-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.sw{display:inline-block;width:22px;height:22px;border-radius:5px;margin-right:4px;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(128,128,128,.45)}
+.scale{display:grid;gap:10px}
+.scale div{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+.scale span:first-child{font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);min-width:150px}
+.spaces{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+.spaces div{display:grid;gap:6px;justify-items:start;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.spaces i{display:block;height:14px;background:var(--color-accent-default);border-radius:2px}
+.radii{display:flex;flex-wrap:wrap;gap:16px}
+.radii div{display:grid;gap:6px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary)}
+.radii i{display:block;width:72px;height:48px;border:2px solid var(--color-border-strong);background:var(--color-surface-raised)}
+.icon-gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 12px}
+.icon-gallery li{display:flex;gap:10px;align-items:center;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);padding:5px 0;min-width:0}
+.icon-gallery li span{overflow-wrap:anywhere}
+.icon-gallery .ic{color:var(--color-text-primary)}
+
+/* ---------- shared: PDF pages (content is always paper-white, independent of theme) ---------- */
+.pdf-page{--paper:#ffffff;--ink:#1d1d1b;--ink-2:#55554f;--rule:#c9c9c2;position:relative;flex:none;width:560px;height:792px;background:var(--paper);color:var(--ink);padding:52px 56px 40px;font-family:"Source Serif 4",Georgia,"Times New Roman",serif;font-size:10.6px;line-height:1.5;box-shadow:0 0 0 1px var(--color-page-border),0 2px 10px var(--color-page-shadow);display:flex;flex-direction:column}
+.pdf-page h2{font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:19px;font-weight:600;margin:14px 0 8px;letter-spacing:-.01em}
+.pdf-page h3{font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:12.5px;font-weight:600;margin:12px 0 4px}
+.pdf-page p{margin:0 0 7px;hyphens:auto}
+.pdf-run{display:flex;justify-content:space-between;font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:8.5px;color:var(--ink-2);border-bottom:.6px solid var(--rule);padding-bottom:4px;margin-bottom:6px}
+.pdf-page figure{margin:6px 0 4px}
+.pdf-page figure svg{width:100%;height:auto;display:block}
+.pdf-page figcaption,.pdf-page caption{font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:8.8px;color:var(--ink-2);text-align:left;padding:3px 0}
+.pdf-page table{border-collapse:collapse;width:100%;margin:4px 0 9px;font-size:9.6px;font-variant-numeric:tabular-nums}
+.pdf-page caption{caption-side:top}
+.pdf-page th{text-align:left;font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-weight:600;border-bottom:.8px solid var(--ink);padding:3px 6px 3px 0}
+.pdf-page td{border-bottom:.5px solid var(--rule);padding:3px 6px 3px 0}
+.pfoot{margin-top:auto;align-self:center;font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:8.5px;color:var(--ink-2)}
+mark.hit{background:var(--color-search-hit);color:inherit;border-radius:1px;padding:0 1px}
+mark.hit-current{background:var(--color-search-current);box-shadow:0 0 0 1.5px var(--ink)}
+.pl{display:block;height:5px;border-radius:2px;background:#e3e3de;margin:0 0 7px}
+.pl.h{height:9px;background:#cfcfc8;margin-top:6px}.pl.gap{margin-top:16px}
+.pblock{display:block;height:120px;margin:8px 0 12px;background:#efefeb;border:.6px solid #dcdcd5}
+.w30{width:30%}.w40{width:40%}.w50{width:50%}.w60{width:60%}.w70{width:70%}.w80{width:80%}.w85{width:85%}.w88{width:88%}.w90{width:90%}.w92{width:92%}.w93{width:93%}.w95{width:95%}
+.pdf-loading{background:var(--color-surface-raised);box-shadow:0 0 0 1px var(--color-border-subtle);align-items:center;justify-content:center}
+.loading-label{font-family:var(--font-ui);font-size:12px;color:var(--color-text-secondary)}
+
+/* ---------- shared: thumbnails (mini page drawn from bars) ---------- */
+.tp{display:flex;flex-direction:column;gap:3px;width:100%;aspect-ratio:210/297;background:#fff;padding:12% 11%;box-shadow:0 0 0 1px var(--color-page-border),0 1px 3px var(--color-page-shadow)}
+.tp i{display:block;height:2px;background:#d9d9d3;border-radius:1px;width:100%}
+.tp i.h{height:4px;background:#bdbdb6;margin-top:3px}
+.tp b.tf{display:block;height:18%;background:#ececE7;margin:2px 0}
+.tp b.tf.tbl{height:11%;background:repeating-linear-gradient(#ececE7 0 2px,#fff 2px 5px)}
+.tp-cover{justify-content:center}.tp b.tall{height:34%}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---------- direction B: density ---------- */
+.win{--tb-h:40px;--rail-w:52px;--rail-btn:40px;--panel-w:264px;--status-h:32px;--fs:13px;--thumb-cols:1;--thumb-w:136px;--canvas-pad:32px;--ctx-h:44px}
+.win[data-density="compact"]{--tb-h:34px;--rail-w:44px;--rail-btn:34px;--panel-w:236px;--status-h:26px;--fs:12.5px;--thumb-cols:2;--thumb-w:100%;--canvas-pad:20px;--ctx-h:38px}
+
+/* ---------- direction B: window ---------- */
+.win{background:var(--color-surface-window);display:flex;flex-direction:column;font-size:var(--fs)}
+.ic{width:18px;height:18px}
+.titlebar{height:var(--tb-h);flex:none;display:flex;align-items:center}
+.appmark{width:var(--rail-w);align-self:stretch;display:grid;place-items:center;color:var(--color-accent-default)}
+.apptitle{font-weight:600;padding-left:2px}
+.tabs{display:flex;align-self:stretch;align-items:flex-end;gap:2px;min-width:0}
+.tab{flex:none;display:flex;align-items:center;gap:8px;height:calc(var(--tb-h) - 6px);padding:0 6px 0 12px;max-width:280px;color:var(--color-text-secondary);border-radius:8px 8px 0 0}
+.tab span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab .ic{width:15px;height:15px}
+.tab.active{background:var(--color-surface-canvas);color:var(--color-text-primary);font-weight:500}
+.tab .dirty{display:none;width:7px;height:7px;border-radius:50%;background:var(--color-text-primary)}
+.win[data-view="comment"] .tab.active .dirty{display:block}
+.tab button{border:0;background:transparent;color:inherit;width:22px;height:22px;border-radius:var(--radius-control);display:grid;place-items:center;padding:0}
+.tab button .ic{width:14px;height:14px}
+.iconbtn{border:0;background:transparent;color:var(--color-text-primary);width:32px;height:30px;border-radius:var(--radius-control);display:grid;place-items:center;padding:0;flex:none}
+.tabs+.iconbtn{margin-left:4px}
+.drag{flex:1;align-self:stretch}
+.cmdbtn{display:flex;align-items:center;gap:8px;height:28px;padding:0 6px 0 10px;border:0;border-radius:var(--radius-control);background:var(--color-surface-hover);color:var(--color-text-secondary);font:inherit;white-space:nowrap;margin-right:8px}
+.cmdbtn .ic{width:15px;height:15px}
+kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid var(--color-border-strong);border-radius:4px;color:var(--color-text-secondary);background:var(--color-surface-raised);line-height:16px}
+.caption{display:flex;align-self:stretch}
+.caption span{width:46px;display:grid;place-items:center;color:var(--color-text-primary)}
+.caption svg{width:10px;height:10px}
+.linuxbar{height:38px;flex:none;display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--color-border-subtle);font-weight:600;font-size:13px;font-family:Cantarell,"Noto Sans",system-ui,sans-serif}
+.linuxbar .lx{position:absolute;right:10px;display:flex;gap:10px}
+.linuxbar .lx span{width:22px;height:22px;border-radius:50%;background:var(--color-surface-hover);display:grid;place-items:center}
+.linuxbar .lx svg{width:8px;height:8px}
+.tabrow{height:var(--tb-h);flex:none;display:flex;align-items:center}
+.body{flex:1;display:flex;min-height:0}
+.rail{width:var(--rail-w);flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0 8px}
+.rail button{width:var(--rail-btn);height:var(--rail-btn);border:0;background:transparent;color:var(--color-text-secondary);display:grid;place-items:center;border-radius:var(--radius-control);position:relative}
+.rail button .ic{width:20px;height:20px}
+.rail .spacer{flex:1}
+.win:is([data-view="doc"],[data-view="linux"]) .rail [data-r="pages"],.win[data-view="search"] .rail [data-r="search"]{color:var(--color-accent-default);background:var(--color-accent-subtle)}
+.panel{width:var(--panel-w);flex:none;background:var(--color-surface-sidebar);border-radius:10px 0 0 0;display:flex;flex-direction:column;min-height:0}
+.panel-head{height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 6px 0 14px;font-weight:600}
+.panel-head .n{font-family:var(--font-mono);font-weight:400;font-size:12px;color:var(--color-text-secondary)}
+.panel-head .iconbtn{margin-left:auto;color:var(--color-text-secondary);width:28px;height:28px}
+.panel-head .iconbtn .ic{width:16px;height:16px}
+.thumbs{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(var(--thumb-cols),1fr);justify-items:center;align-content:start;gap:16px 10px;padding:4px 14px 18px}
+.thumb{border:0;background:transparent;padding:6px;display:grid;justify-items:center;gap:6px;font:inherit;color:var(--color-text-secondary);border-radius:8px;width:var(--thumb-w)}
+.thumb.is-current{background:var(--color-accent-subtle);color:var(--color-text-primary)}
+.thumb.is-current .tp{box-shadow:0 0 0 2px var(--color-accent-default)}
+.thumb-num{font-size:12px;font-variant-numeric:tabular-nums}
+.thumb.is-current .thumb-num{font-weight:600}
+.sfield{margin:0 12px;display:flex;align-items:center;gap:8px;height:32px;padding:0 4px 0 10px;background:var(--color-surface-raised);border:1px solid var(--color-border-strong);border-radius:var(--radius-control);outline:2px solid var(--color-focus-ring);outline-offset:1px}
+.sfield .ic{width:16px;height:16px;color:var(--color-text-secondary)}
+.sfield .q{flex:1}
+.ssum{margin:12px 14px 6px;font-size:12px;color:var(--color-text-secondary)}
+.hits{list-style:none;margin:0;padding:0 8px;display:grid;gap:2px;overflow:auto}
+.hits li{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:8px;border-radius:var(--radius-control);line-height:1.45}
+.hits .pg{font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary);padding-top:1px}
+.hits mark{background:var(--color-search-hit);color:var(--color-search-on);border-radius:2px;padding:0 1px}
+.hits li.cur{background:var(--color-accent-subtle);box-shadow:inset 2px 0 0 var(--color-accent-default)}
+.hits li.cur mark{background:var(--color-search-current)}
+.shint{margin-top:auto;padding:10px 14px;font-size:12px;color:var(--color-text-secondary);display:flex;flex-wrap:wrap;gap:4px 12px}
+.col{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--color-surface-canvas);border-radius:10px 0 0 0}
+.win[data-view="comment"] .col{border-radius:0}
+.panel+.col{border-radius:0}
+.ctx{height:var(--ctx-h);flex:none;display:flex;align-items:center;gap:4px;padding:0 10px;background:var(--color-surface-toolbar);border-bottom:1px solid var(--color-border-subtle)}
+.ctx-label{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--color-accent-default);padding:0 8px 0 4px}
+.tool{border:0;background:transparent;color:var(--color-text-primary);height:32px;padding:0 10px;border-radius:var(--radius-control);display:inline-flex;align-items:center;gap:6px;font:inherit}
+.tool.on{background:var(--color-accent-subtle);color:var(--color-accent-default);font-weight:500}
+.tool.hover{background:var(--color-surface-hover)}
+.vsep{width:1px;height:22px;background:var(--color-border-subtle);margin:0 6px}
+.grow{flex:1}
+.esc{font-size:12px;color:var(--color-text-secondary);margin-right:8px}
+.primary{border:0;background:var(--color-accent-default);color:var(--color-accent-on);height:32px;padding:0 14px;border-radius:var(--radius-control);font:inherit;font-weight:600;display:inline-flex;gap:6px;align-items:center}
+.primary .ic{width:16px;height:16px}
+.canvas{flex:1;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:20px;padding:var(--canvas-pad)}
+.win:not([data-view="search"]) .canvas mark.hit{background:none;box-shadow:none;padding:0}
+.win[data-view="comment"] .canvas .anno{background:#FFE46BB3;box-shadow:0 0 0 1.5px var(--color-accent-default);border-radius:1px}
+.status{height:var(--status-h);flex:none;display:flex;align-items:center;gap:6px;padding:0 8px 0 calc(var(--rail-w) + 4px);background:var(--color-surface-window);font-size:12.5px;color:var(--color-text-secondary);white-space:nowrap;font-variant-numeric:tabular-nums}
+.status .sbtn{border:0;background:transparent;color:var(--color-text-primary);height:24px;min-width:24px;padding:0 4px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;gap:5px;font:inherit}
+.status .sbtn .ic{width:15px;height:15px}
+.status .sbtn.hover{background:var(--color-surface-hover)}
+.status input{width:34px;height:22px;text-align:center;font:inherit;color:var(--color-text-primary);background:var(--color-surface-raised);border:1px solid var(--color-border-strong);border-radius:4px}
+.status .zoomval{min-width:44px}
+.status .dirtytxt{display:none;align-items:center;gap:6px;color:var(--color-text-primary);margin-left:10px}
+.status .dirtytxt::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.win[data-view="comment"] .status .dirtytxt{display:flex}
+.status .right{margin-left:auto}
+.start{flex:1;display:grid;place-items:center;background:var(--color-surface-canvas);border-radius:10px 10px 0 0;margin:0 8px}
+.start-in{width:540px;display:grid;gap:22px}
+.start h2{font-size:22px;font-weight:600;margin:0;letter-spacing:-.01em}
+.start p{margin:0;color:var(--color-text-secondary)}
+.start .row{display:flex;align-items:center;gap:14px}
+.start .primary{height:36px;padding:0 16px}
+.start .primary kbd{background:transparent;color:inherit;border-color:currentColor;opacity:.85}
+.recent{display:grid;gap:2px}
+.recent h3{font-size:12px;font-weight:600;color:var(--color-text-secondary);margin:0 0 6px}
+.recent a{display:grid;grid-template-columns:18px 1fr auto;gap:12px;align-items:center;padding:9px 10px;border-radius:var(--radius-control);color:var(--color-text-primary);text-decoration:none}
+.recent a .ic{width:18px;height:18px;color:var(--color-text-secondary)}
+.recent a small{color:var(--color-text-secondary);font-size:12px}
+.win[data-view="narrow"]{width:680px;box-shadow:0 0 0 1px var(--color-border-strong)}
+.win[data-view="narrow"] .status .lbl,.win[data-view="narrow"] .status .infotxt{display:none}
+.tabmore{border:0;background:transparent;color:var(--color-text-secondary);height:30px;padding:0 4px 0 8px;border-radius:var(--radius-control);display:flex;align-items:center;gap:2px;font:inherit;font-variant-numeric:tabular-nums}
+.tabmore .ic{width:14px;height:14px}
+.notice{flex:1;display:grid;place-items:center;padding:24px}
+.card{width:420px;display:grid;gap:14px;padding:24px;background:var(--color-surface-raised);border-radius:var(--radius-overlay);box-shadow:0 0 0 1px var(--color-border-subtle),0 12px 32px -12px var(--color-page-shadow)}
+.card .badge{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--color-accent-subtle);color:var(--color-accent-default)}
+.card .badge.bad{background:var(--color-surface-hover);color:var(--color-danger-default)}
+.card .badge .ic{width:22px;height:22px}
+.card h3{margin:0;font-size:16px;font-weight:600}
+.card p{margin:0;color:var(--color-text-secondary);line-height:1.5}
+.card label{display:grid;gap:6px;font-weight:500}
+.card input{height:34px;padding:0 10px;font:inherit;letter-spacing:.2em;color:var(--color-text-primary);background:var(--color-surface-raised);border:1px solid var(--color-danger-default);border-radius:var(--radius-control);outline:2px solid var(--color-focus-ring);outline-offset:1px}
+.card .err{color:var(--color-danger-default);font-size:12.5px;display:flex;gap:6px;align-items:center}
+.card .err .ic{width:15px;height:15px}
+.card .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.secondary{border:1px solid var(--color-border-strong);background:var(--color-surface-raised);color:var(--color-text-primary);height:32px;padding:0 14px;border-radius:var(--radius-control);font:inherit}
+.card details{font-size:12.5px;color:var(--color-text-secondary)}
+.card details code{display:block;margin-top:6px;padding:8px 10px;background:var(--color-surface-window);border-radius:var(--radius-control);color:var(--color-text-primary);white-space:normal}
+.recent a:first-of-type{background:var(--color-surface-raised);box-shadow:0 0 0 1px var(--color-border-subtle)}
+</style>
+
+<div class="frame">
+  <header class="intro">
+    <p class="eyebrow">Pagewing · Designrichtung B von 3 · überarbeitet am 2026-10-17</p>
+    <h1>Werkbank</h1>
+    <p><strong>Pagewing als klares, schnelles Arbeitswerkzeug.</strong> Oben die Dokument-Tabs und ein Knopf für Suche und Befehle, links eine schmale Aktionsleiste, deren Panel nur offen ist, wenn es gebraucht wird, unten Seite und Zoom. Das Dokument bekommt den meisten Platz. Bearbeitungsmodi ab v0.2 bringen eine eigene, klar abgegrenzte Werkzeugleiste mit „Fertig“ mit; die Leseansicht bleibt ruhig. Akzent ist ein gedecktes Indigo, Gelb gehört nur Suchtreffern und Markierungen.</p>
+    <div class="controls">
+      <div><span class="ctl-label" id="lbl-theme">Darstellung</span>
+        <span class="seg" role="group" aria-labelledby="lbl-theme">
+          <button type="button" id="th-system" data-theme-set="system" aria-pressed="true">System</button>
+          <button type="button" id="th-light" data-theme-set="light" aria-pressed="false">Hell</button>
+          <button type="button" id="th-dark" data-theme-set="dark" aria-pressed="false">Dunkel</button>
+        </span></div>
+      <div><span class="ctl-label" id="lbl-density">Dichte</span>
+        <span class="seg" role="group" aria-labelledby="lbl-density">
+          <button type="button" id="dn-normal" data-density-set="normal" aria-pressed="true">Normal</button>
+          <button type="button" id="dn-compact" data-density-set="compact" aria-pressed="false">Kompakt</button>
+        </span></div>
+      <div><span class="ctl-label" id="lbl-view">Ansicht</span>
+        <span class="seg" role="group" aria-labelledby="lbl-view">
+          <button type="button" id="vw-doc" data-view-set="doc" aria-pressed="true">Dokument offen</button>
+          <button type="button" id="vw-search" data-view-set="search" aria-pressed="false">Suche</button>
+          <button type="button" id="vw-comment" data-view-set="comment" aria-pressed="false">Kommentieren (ab v0.2)</button>
+          <button type="button" id="vw-start" data-view-set="start" aria-pressed="false">Startbildschirm</button>
+          <button type="button" id="vw-linux" data-view-set="linux" aria-pressed="false">Linux-Titelleiste</button>
+          <button type="button" id="vw-narrow" data-view-set="narrow" aria-pressed="false">Schmales Fenster</button>
+          <button type="button" id="vw-password" data-view-set="password" aria-pressed="false">Passwort</button>
+          <button type="button" id="vw-error" data-view-set="error" aria-pressed="false">Fehler</button>
+        </span></div>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="win" data-view="doc" data-density="normal">
+      <div class="titlebar" data-show="doc search comment password error">
+        <span class="appmark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg></span>
+        <div class="tabs">
+          <div class="tab active" data-show="doc search comment" title="Benutzerhandbuch MS-20.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Benutzerhandbuch MS-20.pdf</span><i class="dirty" aria-label="Nicht gespeichert"></i><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+          <div class="tab active" data-show="password" hidden title="Protokoll Vorstandssitzung.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg><span>Protokoll Vorstandssitzung.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+          <div class="tab active" data-show="error" hidden title="Scan 2019.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 9v4" /> <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" /> <path d="M12 16h.01" /></svg><span>Scan 2019.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+          <div class="tab" title="Vortrag Jahrestreffen Wetterdienst 2026.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Vortrag Jahres…dienst 2026.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+        </div>
+        <button class="iconbtn" type="button" aria-label="Datei öffnen (Strg+O)" title="Datei öffnen (Strg+O)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg></button>
+        <span class="drag"></span>
+        <button class="cmdbtn" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg>Suchen oder Befehl<kbd>Strg K</kbd></button>
+        <span class="caption" aria-hidden="true"><span><svg viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span></span>
+      </div>
+      <div class="titlebar" data-show="start" hidden>
+        <span class="appmark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg></span><span class="apptitle">Pagewing</span>
+        <span class="drag"></span>
+        <button class="cmdbtn" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg>Suchen oder Befehl<kbd>Strg K</kbd></button>
+        <span class="caption" aria-hidden="true"><span><svg viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span></span>
+      </div>
+      <div class="titlebar" data-show="narrow" hidden>
+        <span class="appmark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg></span>
+        <div class="tabs">
+          <div class="tab active" title="Benutzerhandbuch MS-20.pdf" style="max-width:220px"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Benutzerhandbuch MS-20.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+        </div>
+        <button class="tabmore" type="button" aria-label="Alle Tabs (2)" title="Alle Tabs (2)">2<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6l6 -6" /></svg></button>
+        <button class="iconbtn" type="button" aria-label="Datei öffnen (Strg+O)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg></button>
+        <span class="drag"></span>
+        <button class="iconbtn" type="button" aria-label="Suchen oder Befehl (Strg+K)" title="Suchen oder Befehl (Strg+K)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg></button>
+        <span class="caption" aria-hidden="true"><span><svg viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span></span>
+      </div>
+      <div class="linuxbar" data-show="linux" hidden>Benutzerhandbuch MS-20.pdf – Pagewing
+        <span class="lx" aria-hidden="true"><span><svg viewBox="0 0 8 8"><path d="M0 4h8" stroke="currentColor" stroke-width="1.3"/></svg></span><span><svg viewBox="0 0 8 8"><rect x=".6" y=".6" width="6.8" height="6.8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></span><span><svg viewBox="0 0 8 8"><path d="M0 0l8 8M8 0L0 8" stroke="currentColor" stroke-width="1.3"/></svg></span></span>
+      </div>
+      <div class="tabrow" data-show="linux" hidden>
+        <span class="appmark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg></span>
+        <div class="tabs">
+          <div class="tab active" title="Benutzerhandbuch MS-20.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Benutzerhandbuch MS-20.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+          <div class="tab" title="Vortrag Jahrestreffen Wetterdienst 2026.pdf"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Vortrag Jahres…dienst 2026.pdf</span><button type="button" aria-label="Tab schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+        </div>
+        <button class="iconbtn" type="button" aria-label="Datei öffnen (Strg+O)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg></button>
+        <span class="drag"></span>
+        <button class="cmdbtn" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg>Suchen oder Befehl<kbd>Strg K</kbd></button>
+      </div>
+
+      <div class="body" data-show="doc search comment linux narrow password error">
+        <nav class="rail" aria-label="Bereiche">
+          <button data-r="pages" type="button" aria-label="Seiten" title="Seiten"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M14 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M4 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M14 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /></svg></button>
+          <button data-r="toc" type="button" aria-label="Inhalt" title="Inhalt"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h11" /> <path d="M12 12h8" /> <path d="M15 18h5" /> <path d="M5 6v.01" /> <path d="M8 12v.01" /> <path d="M11 18v.01" /></svg></button>
+          <button data-r="search" type="button" aria-label="Suche" title="Suche (Strg+F)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg></button>
+          <span class="spacer"></span>
+          <button type="button" aria-label="Einstellungen" title="Einstellungen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065" /> <path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></svg></button>
+        </nav>
+        <aside class="panel" aria-label="Seiten" data-show="doc linux">
+          <div class="panel-head">Seiten <span class="n">24</span><button class="iconbtn" type="button" aria-label="Panel schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" /> <path d="M9 4v16" /> <path d="M15 10l-2 2l2 2" /></svg></button></div>
+          <div class="thumbs" data-scroll-to="230">
+            <button class="thumb" type="button" aria-label="Seite 1"><span class="tp tp-cover"><i class="w60 h"></i><i class="w40"></i><b class="tf tall"></b><i class="w30"></i></span><span class="thumb-num">1</span></button>
+            <button class="thumb" type="button" aria-label="Seite 2"><span class="tp"><i class="w40 h"></i><i></i><i></i><i class="w60"></i><i class="w30 h"></i><i></i><i></i><b class="tf"></b><i></i><i class="w50"></i></span><span class="thumb-num">2</span></button>
+            <button class="thumb is-current" type="button" aria-label="Seite 3, aktuelle Seite" aria-current="page"><span class="tp"><i class="w50 h"></i><i></i><i class="w70"></i><i class="w30 h"></i><i></i><i class="w80"></i><b class="tf"></b><i class="w30 h"></i><i></i><i class="w90"></i><b class="tf tbl"></b><i class="w70"></i></span><span class="thumb-num">3</span></button>
+            <button class="thumb" type="button" aria-label="Seite 4"><span class="tp"><i class="w30 h"></i><i></i><i></i><i class="w80"></i><i></i><i class="w60"></i><i></i><b class="tf"></b><i></i><i class="w50"></i></span><span class="thumb-num">4</span></button>
+            <button class="thumb" type="button" aria-label="Seite 5"><span class="tp"><i class="w40 h"></i><i></i><i></i><b class="tf tbl"></b><i></i><i class="w70"></i><i></i><i class="w80"></i></span><span class="thumb-num">5</span></button>
+            <button class="thumb" type="button" aria-label="Seite 6"><span class="tp"><i class="w30 h"></i><i></i><i class="w90"></i><i></i><i></i><i class="w60"></i><i class="w40 h"></i><i></i><i class="w80"></i></span><span class="thumb-num">6</span></button>
+
+          </div>
+        </aside>
+        <aside class="panel" aria-label="Suche" data-show="search" hidden>
+          <div class="panel-head">Suche<button class="iconbtn" type="button" aria-label="Panel schließen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" /> <path d="M9 4v16" /> <path d="M15 10l-2 2l2 2" /></svg></button></div>
+          <div class="sfield" role="search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg><span class="q">Kalibrierung</span><button class="iconbtn" type="button" aria-label="Suchbegriff löschen" style="width:24px;height:24px"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg></button></div>
+          <p class="ssum">5 Treffer, alle auf Seite 3</p>
+          <ol class="hits">
+            <li><span class="pg">S. 3</span><span>2.2 <mark>Kalibrierung</mark></span></li>
+            <li class="cur" aria-current="true"><span class="pg">S. 3</span><span>… nach jedem Standortwechsel ist eine <mark>Kalibrierung</mark> nötig.</span></li>
+            <li><span class="pg">S. 3</span><span>Starten Sie die <mark>Kalibrierung</mark> über Einstellungen › Sensoren.</span></li>
+            <li><span class="pg">S. 3</span><span>Tabelle 2.1 Referenzwerte für die <mark>Kalibrierung</mark></span></li>
+            <li><span class="pg">S. 3</span><span>Die <mark>Kalibrierung</mark> dauert etwa drei Minuten.</span></li>
+          </ol>
+          <p class="shint"><span><kbd>Enter</kbd> nächster</span><span><kbd>Umschalt+Enter</kbd> vorheriger</span></p>
+        </aside>
+        <div class="col">
+          <div class="ctx" data-show="comment" hidden role="toolbar" aria-label="Kommentieren">
+            <span class="ctx-label"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 9h8" /> <path d="M8 13h6" /> <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12" /></svg>Kommentieren</span>
+            <span class="vsep"></span>
+            <button class="tool on" type="button" aria-pressed="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 19h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /> <path d="M12.5 5.5l4 4" /> <path d="M4.5 13.5l4 4" /> <path d="M21 15v4h-8l4 -4l4 0" /></svg>Markieren</button>
+            <button class="tool" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 5v5a5 5 0 0 0 10 0v-5" /> <path d="M5 19h14" /></svg>Unterstreichen</button>
+            <button class="tool hover" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /> <path d="M13.5 6.5l4 4" /></svg>Zeichnen</button>
+            <button class="tool" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M13 20l7 -7" /> <path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>Notiz</button>
+            <span class="vsep"></span>
+            <button class="tool" type="button" aria-label="Rückgängig"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 14l-4 -4l4 -4" /> <path d="M5 10h11a4 4 0 1 1 0 8h-1" /></svg></button>
+            <button class="tool" type="button" aria-label="Löschen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7l16 0" /> <path d="M10 11l0 6" /> <path d="M14 11l0 6" /> <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" /> <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" /></svg></button>
+            <span class="grow"></span>
+            <span class="esc"><kbd>Esc</kbd> beendet</span>
+            <button class="primary" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12l5 5l10 -10" /></svg>Fertig</button>
+          </div>
+          <div class="canvas" data-show="doc search comment linux narrow" data-scroll-to="1040">
+            <div class="pdf-page pdf-blank" aria-label="Seite 2">
+          <span class="pl w40 h"></span><span class="pl w90"></span><span class="pl w95"></span><span class="pl w85"></span><span class="pl w60"></span>
+          <span class="pl w30 h gap"></span><span class="pl w95"></span><span class="pl w90"></span><span class="pl w92"></span><span class="pl w70"></span>
+          <span class="pblock"></span>
+          <span class="pl w95"></span><span class="pl w88"></span><span class="pl w93"></span><span class="pl w50"></span>
+          <span class="pfoot">2</span>
+        </div>
+        <article class="pdf-page" aria-label="Seite 3">
+          <header class="pdf-run"><span>Messstation MS-20 · Benutzerhandbuch</span><span>Kapitel 2</span></header>
+          <h2>2&#8194;Erste Schritte</h2>
+          <p>Dieses Kapitel beschreibt, wie Sie die Messstation aufstellen, mit Strom versorgen und vor der ersten Messung einrichten. Planen Sie dafür etwa 20 Minuten ein.</p>
+          <h3>2.1&#8194;Aufstellen</h3>
+          <p>Stellen Sie die Station auf eine ebene, erschütterungsfreie Fläche, mindestens 1,5 m über dem Boden und <span class="anno">nicht in direkter Sonne</span>. Halten Sie zu Wänden mindestens 30 cm Abstand, damit die Luft frei an den Sensoren vorbeiströmt.</p>
+          <figure>
+            <svg viewBox="-30 0 470 120" role="img" aria-label="Rückseite der Messstation mit Anschlüssen">
+              <rect x="120" y="14" width="200" height="92" rx="6" fill="#f4f4f2" stroke="#2b2b2b" stroke-width="1.4"/>
+              <circle cx="160" cy="46" r="12" fill="#fff" stroke="#2b2b2b" stroke-width="1.4"/>
+              <rect x="196" y="36" width="44" height="20" rx="3" fill="#fff" stroke="#2b2b2b" stroke-width="1.4"/>
+              <rect x="262" y="72" width="30" height="18" rx="2" fill="#2b2b2b"/>
+              <path d="M148 46h-60M218 36V24h120M277 90v14h70" fill="none" stroke="#2b2b2b" stroke-width="0.9"/>
+              <text x="84" y="42" text-anchor="end" font-size="10" fill="#2b2b2b">Temperaturfühler</text>
+              <text x="342" y="27" font-size="10" fill="#2b2b2b">Drucksensor</text>
+              <text x="351" y="107" font-size="10" fill="#2b2b2b">Anschluss 12 V</text>
+            </svg>
+            <figcaption>Abb. 2.1&#8194;Anschlüsse auf der Rückseite</figcaption>
+          </figure>
+          <h3>2.2&#8194;<mark class="hit">Kalibrierung</mark></h3>
+          <p>Vor der ersten Messung und nach jedem Standortwechsel ist eine <mark class="hit hit-current">Kalibrierung</mark> nötig. Die Station vergleicht dabei ihre Sensoren mit den Referenzwerten aus Tabelle 2.1. Starten Sie die <mark class="hit">Kalibrierung</mark> über <em>Einstellungen › Sensoren</em>.</p>
+          <table>
+            <caption>Tabelle 2.1&#8194;Referenzwerte für die <mark class="hit">Kalibrierung</mark></caption>
+            <thead><tr><th>Messgröße</th><th>Referenz</th><th>Toleranz</th></tr></thead>
+            <tbody>
+              <tr><td>Luftdruck</td><td>1013,25 hPa</td><td>± 0,5 hPa</td></tr>
+              <tr><td>Temperatur</td><td>20,0 °C</td><td>± 0,2 K</td></tr>
+              <tr><td>Luftfeuchte</td><td>50 % rF</td><td>± 2 % rF</td></tr>
+            </tbody>
+          </table>
+          <p>Die <mark class="hit">Kalibrierung</mark> dauert etwa drei Minuten. Bewegen Sie die Station in dieser Zeit nicht und öffnen Sie das Gehäuse nicht.</p>
+          <footer class="pfoot">3</footer>
+        </article>
+        <article class="pdf-page" aria-label="Seite 4">
+          <header class="pdf-run"><span>Messstation MS-20 · Benutzerhandbuch</span><span>Kapitel 2</span></header>
+          <h3>2.3&#8194;Erste Messung</h3>
+          <p>Nach der Einrichtung beginnt die Station automatisch mit der Aufzeichnung. Die Anzeige wechselt alle zehn Sekunden zwischen Luftdruck, Temperatur und Luftfeuchte. Ein Punkt rechts unten zeigt an, dass Messwerte gespeichert werden.</p>
+          <p>Die Station speichert bis zu 30 Tage im internen Speicher. Danach überschreibt sie die ältesten Werte. Übertragen Sie die Daten rechtzeitig, wie in Kapitel 4 beschrieben.</p>
+          <span class="pl w90"></span><span class="pl w95"></span><span class="pl w80"></span><span class="pblock"></span><span class="pl w93"></span><span class="pl w60"></span>
+          <footer class="pfoot">4</footer>
+        </article>
+        <div class="pdf-page pdf-loading" aria-label="Seite 5 wird geladen"><span class="loading-label">Seite 5</span></div>
+
+          </div>
+          <div class="notice" data-show="password" hidden>
+            <form class="card" onsubmit="return false">
+              <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg></span>
+              <h3>Dieses PDF ist geschützt</h3>
+              <p>Geben Sie das Passwort ein, um „Protokoll Vorstandssitzung.pdf“ zu öffnen.</p>
+              <label for="b-pw">Passwort<input id="b-pw" type="text" value="••••••••" aria-invalid="true" aria-describedby="b-pw-err"></label>
+              <span class="err" id="b-pw-err"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 9v4" /> <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" /> <path d="M12 16h.01" /></svg>Das Passwort ist falsch. Achten Sie auf Groß- und Kleinschreibung.</span>
+              <div class="btns"><button class="secondary" type="button">Abbrechen</button><button class="primary" type="submit">Öffnen</button></div>
+            </form>
+          </div>
+          <div class="notice" data-show="error" hidden>
+            <div class="card" role="alert">
+              <span class="badge bad"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 9v4" /> <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" /> <path d="M12 16h.01" /></svg></span>
+              <h3>Diese Datei lässt sich nicht öffnen</h3>
+              <p>„Scan 2019.pdf“ ist beschädigt oder keine PDF-Datei. Haben Sie die Datei heruntergeladen, laden Sie sie erneut herunter.</p>
+              <details><summary>Technische Details</summary><code>Datei: Downloads › Scan 2019.pdf · Fehler: ungültiges Format</code></details>
+              <div class="btns"><button class="secondary" type="button">Tab schließen</button><button class="primary" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg>Andere Datei öffnen</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="status" data-show="doc search comment linux narrow">
+        <button class="sbtn" type="button" aria-label="Vorherige Seite"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 6l-6 6l6 6" /></svg></button>
+        <span class="lbl">Seite</span><input id="b-page" value="3" aria-label="Seite"><span>/ 24</span>
+        <button class="sbtn" type="button" aria-label="Nächste Seite"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6l6 6l-6 6" /></svg></button>
+        <span class="vsep"></span>
+        <button class="sbtn" type="button" aria-label="Verkleinern"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12l14 0" /></svg></button>
+        <button class="sbtn zoomval" type="button" aria-label="Zoom">70 %</button>
+        <button class="sbtn hover" type="button" aria-label="Vergrößern"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg></button>
+        <button class="sbtn" type="button" aria-label="Seitenbreite" title="Seitenbreite"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v6" /> <path d="M10 18h-7" /> <path d="M21 18h-7" /> <path d="M6 15l-3 3l3 3" /> <path d="M18 15l3 3l-3 3" /></svg></button>
+        <span class="dirtytxt">Nicht gespeichert</span>
+        <button class="sbtn right" type="button" aria-label="Dokumentinfos" title="Dokumentinfos"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /> <path d="M12 9h.01" /> <path d="M11 12h1v4h1" /></svg><span class="infotxt">Dokumentinfos</span></button>
+      </div>
+
+      <div class="start" data-show="start" hidden>
+        <div class="start-in">
+          <div><h2>Dokument öffnen</h2><p>Pagewing arbeitet offline. Nichts verlässt diesen Rechner.</p></div>
+          <div class="row"><button class="primary" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg>Datei auswählen <kbd>Strg O</kbd></button><p>oder eine PDF-Datei in dieses Fenster ziehen</p></div>
+          <div class="recent">
+            <h3>Zuletzt geöffnet</h3>
+            <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Benutzerhandbuch MS-20.pdf<br><small>Dokumente › Handbücher</small></span><small>heute</small></a>
+            <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Vortrag Jahrestreffen Wetterdienst 2026.pdf<br><small>Downloads</small></span><small>gestern</small></a>
+            <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>Mietvertrag Entwurf.pdf<br><small>Dokumente › Wohnung</small></span><small>12.10.</small></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="stage-note">Entwurf bei 1280 × 800 Pixeln, auf die Seitenbreite skaliert. Zustände im Bild: Hover auf „Vergrößern“ in der Statusleiste; bei „Suche“ Fokus im Suchfeld und Treffer 2 von 5 hervorgehoben; bei „Kommentieren“ eine ausgewählte Markierung auf der Seite und der Hinweis „Nicht gespeichert“; bei „Schmales Fenster“ 680 px Breite mit eingeklapptem Panel, Tab-Überlauf und Befehlsknopf als Symbol; bei „Passwort“ die Abfrage nach einem falschen Passwort; bei „Fehler“ eine beschädigte Datei. Das Dokument lässt sich scrollen; Seite 5 zeigt den Platzhalter, solange sie noch nicht gerendert ist.</p>
+
+  <section class="block">
+    <h2>Haltung</h2>
+    <div class="cols">
+      <div><h3>Was sie ausmacht</h3><ul>
+        <li><strong>Oben nur Dokumente:</strong> Tabs, „Datei öffnen“ und ein kompakter Knopf „Suchen oder Befehl“ (Strg+K), der die Befehlspalette erst beim Aktivieren öffnet.</li>
+        <li><strong>Aktionsleiste mit einem Panel:</strong> Seiten, Inhalt, Suche. Beim Öffnen eines Dokuments zeigt das Panel die Vorschaubilder, beim Suchen die Trefferliste, nie beides. Ein Klick auf das aktive Symbol schließt es.</li>
+        <li><strong>Statusleiste</strong> mit Seite, Zoom und ab v0.2 dem Änderungsstatus. Seitenformat, PDF-Version und Dateigröße stehen unter „Dokumentinfos“.</li>
+        <li><strong>Bearbeitungsmodi ab v0.2</strong> öffnen eine eigene Werkzeugleiste über dem Dokument mit sichtbarem „Fertig“. So wird nichts aus Versehen bearbeitet, und die Leseansicht hat keine ausgegrauten Werkzeuge.</li>
+        <li><strong>Zwei Dichten:</strong> „Normal“ als Standard, „Kompakt“ für Vielnutzer (in den Einstellungen, M6).</li>
+      </ul></div>
+      <div><h3>Gegenüber der ersten Fassung geändert</h3><ul>
+        <li>Akzent Indigo statt Gelb; Gelb nur noch für Suchtreffer und Markierungen.</li>
+        <li>Befehlspalette als Knopf statt als Eingabefeld; Modus-Reiter mit „v0.2“/„v0.3“ entfernt.</li>
+        <li>Suche im Panel statt als schwebendes Fenster; Statusleiste ohne Dokumentdaten.</li>
+        <li>Weniger Rahmen: Flächen trennen sich über Farbe, das Dokument liegt in einer abgerundeten Fläche. Mehr Luft um die Seite.</li>
+        <li>Tabler-Icons mit 2 px Strich statt 1,75 px.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Tokens dieser Richtung</h2>
+    <p>Alle drei Richtungen nutzen dieselben Token-Namen. Die Kontrastprüfung nach WCAG 2.2 AA ist für beide Themes bestanden.</p>
+    <div class="table-wrap"><table class="tokens"><thead><tr><th>Hell / Dunkel</th><th>Token</th><th>Hell</th><th>Dunkel</th><th>Verwendung</th></tr></thead><tbody><tr><td><span class="sw" style="background:#EEEFF2"></span><span class="sw" style="background:#15171B"></span></td><td><code>color.surface.window</code></td><td class="num">#EEEFF2</td><td class="num">#15171B</td><td>Titelleiste, Aktionsleiste, Statusleiste</td></tr><tr><td><span class="sw" style="background:#F7F8FA"></span><span class="sw" style="background:#1B1E23"></span></td><td><code>color.surface.toolbar</code></td><td class="num">#F7F8FA</td><td class="num">#1B1E23</td><td>Werkzeugleiste eines Bearbeitungsmodus, aktiver Tab</td></tr><tr><td><span class="sw" style="background:#F7F8FA"></span><span class="sw" style="background:#1B1E23"></span></td><td><code>color.surface.sidebar</code></td><td class="num">#F7F8FA</td><td class="num">#1B1E23</td><td>Panel (Seiten, Inhalt, Suche)</td></tr><tr><td><span class="sw" style="background:#E3E5EA"></span><span class="sw" style="background:#0F1114"></span></td><td><code>color.surface.canvas</code></td><td class="num">#E3E5EA</td><td class="num">#0F1114</td><td>Dokumentbereich hinter den Seiten</td></tr><tr><td><span class="sw" style="background:#FFFFFF"></span><span class="sw" style="background:#24272E"></span></td><td><code>color.surface.raised</code></td><td class="num">#FFFFFF</td><td class="num">#24272E</td><td>Eingabefelder, Menüs, Befehlspalette</td></tr><tr><td><span class="sw" style="background:#E3E5EA"></span><span class="sw" style="background:#2A2E36"></span></td><td><code>color.surface.hover</code></td><td class="num">#E3E5EA</td><td class="num">#2A2E36</td><td>Hover</td></tr><tr><td><span class="sw" style="background:#E2E5F8"></span><span class="sw" style="background:#262B52"></span></td><td><code>color.accent.subtle</code></td><td class="num">#E2E5F8</td><td class="num">#262B52</td><td>Ausgewählt: aktuelle Seite, aktueller Treffer</td></tr><tr><td><span class="sw" style="background:#DCDFE5"></span><span class="sw" style="background:#2A2E36"></span></td><td><code>color.border.subtle</code></td><td class="num">#DCDFE5</td><td class="num">#2A2E36</td><td>Trennlinien (sparsam)</td></tr><tr><td><span class="sw" style="background:#7F848E"></span><span class="sw" style="background:#6E7480"></span></td><td><code>color.border.strong</code></td><td class="num">#7F848E</td><td class="num">#6E7480</td><td>Ränder von Eingabefeldern und Bedienelementen</td></tr><tr><td><span class="sw" style="background:#16181D"></span><span class="sw" style="background:#E6E8EB"></span></td><td><code>color.text.primary</code></td><td class="num">#16181D</td><td class="num">#E6E8EB</td><td>Text, Icons</td></tr><tr><td><span class="sw" style="background:#4F545E"></span><span class="sw" style="background:#9BA1AC"></span></td><td><code>color.text.secondary</code></td><td class="num">#4F545E</td><td class="num">#9BA1AC</td><td>Beschriftungen, Statuswerte</td></tr><tr><td><span class="sw" style="background:#9399A3"></span><span class="sw" style="background:#5E636D"></span></td><td><code>color.text.disabled</code></td><td class="num">#9399A3</td><td class="num">#5E636D</td><td>Deaktiviert (vom Kontrast ausgenommen)</td></tr><tr><td><span class="sw" style="background:#3B48C4"></span><span class="sw" style="background:#9DA7FF"></span></td><td><code>color.accent.default</code></td><td class="num">#3B48C4</td><td class="num">#9DA7FF</td><td>Indigo: Auswahl, Fokus, Primäraktion</td></tr><tr><td><span class="sw" style="background:#FFFFFF"></span><span class="sw" style="background:#121539"></span></td><td><code>color.accent.on</code></td><td class="num">#FFFFFF</td><td class="num">#121539</td><td>Text auf Akzentfläche</td></tr><tr><td><span class="sw" style="background:#3340B4"></span><span class="sw" style="background:#B4BCFF"></span></td><td><code>color.focus.ring</code></td><td class="num">#3340B4</td><td class="num">#B4BCFF</td><td>Tastaturfokus (2 px)</td></tr><tr><td><span class="sw" style="background:#00000014"></span><span class="sw" style="background:#FFFFFF24"></span></td><td><code>color.page.border</code></td><td class="num">#00000014</td><td class="num">#FFFFFF24</td><td>Kante der PDF-Seite</td></tr><tr><td><span class="sw" style="background:#0000001A"></span><span class="sw" style="background:#00000099"></span></td><td><code>color.page.shadow</code></td><td class="num">#0000001A</td><td class="num">#00000099</td><td>Schatten der PDF-Seite</td></tr><tr><td><span class="sw" style="background:#FBE38A"></span><span class="sw" style="background:#FBE38A"></span></td><td><code>color.search.hit</code></td><td class="num">#FBE38A</td><td class="num">#FBE38A</td><td>Suchtreffer (Gelb nur für Suche und Markierungen)</td></tr><tr><td><span class="sw" style="background:#F5A524"></span><span class="sw" style="background:#F5A524"></span></td><td><code>color.search.current</code></td><td class="num">#F5A524</td><td class="num">#F5A524</td><td>Aktueller Suchtreffer (mit Rahmen)</td></tr><tr><td><span class="sw" style="background:#16181D"></span><span class="sw" style="background:#16181D"></span></td><td><code>color.search.on</code></td><td class="num">#16181D</td><td class="num">#16181D</td><td>Text auf Suchtreffern (beide Themes gleich)</td></tr><tr><td><span class="sw" style="background:#B42318"></span><span class="sw" style="background:#FF8A80"></span></td><td><code>color.danger.default</code></td><td class="num">#B42318</td><td class="num">#FF8A80</td><td>Fehler</td></tr></tbody></table></div>
+    <div class="cols">
+      <div><h3>Schrift</h3><div class="scale">
+        <div><span>type.title · 22/28 600</span><span style="font-size:22px;font-weight:600">Dokument öffnen</span></div>
+        <div><span>type.strong · 13/18 600</span><span style="font-size:13px;font-weight:600">Seiten</span></div>
+        <div><span>type.body · 13/18 400</span><span style="font-size:13px">Ausfüllen &amp; unterschreiben</span></div>
+        <div><span>type.caption · 12/16 400</span><span style="font-size:12px;color:var(--color-text-secondary)">5 Treffer, alle auf Seite 3</span></div>
+        <div><span>type.mono · 11.5/16 400</span><span style="font-size:11.5px;font-family:var(--font-mono)">Strg K · S. 3</span></div>
+      </div></div>
+      <div><h3>Dichte: Normal / Kompakt</h3><div class="table-wrap"><table class="tokens" style="min-width:0">
+        <thead><tr><th>Maß</th><th>Normal</th><th>Kompakt</th></tr></thead>
+        <tbody>
+          <tr><td>Titelleiste</td><td class="num">40</td><td class="num">34</td></tr>
+          <tr><td>Aktionsleiste (Breite / Knopf)</td><td class="num">52 / 40</td><td class="num">44 / 34</td></tr>
+          <tr><td>Panel</td><td class="num">264</td><td class="num">236</td></tr>
+          <tr><td>Statusleiste</td><td class="num">32</td><td class="num">26</td></tr>
+          <tr><td>Werkzeugleiste eines Modus</td><td class="num">44</td><td class="num">38</td></tr>
+          <tr><td>Rand um die Seiten</td><td class="num">32</td><td class="num">20</td></tr>
+          <tr><td>Grundschrift</td><td class="num">13</td><td class="num">12.5</td></tr>
+          <tr><td>Vorschaubilder je Zeile</td><td class="num">1</td><td class="num">2</td></tr>
+        </tbody></table></div>
+      <h3 style="margin-top:20px">Radien</h3><div class="radii">
+        <div><i style="border-radius:6px"></i>radius.control · 6</div><div><i style="border-radius:10px"></i>radius.overlay · 10</div><div><i style="border-radius:0"></i>radius.page · 0</div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Icons: Tabler Icons, Strich 2 px</h2>
+    <p>MIT-Lizenz, Version 3.49.0. Linien-Icons auf 24er-Raster mit 2 px Strich, damit sie bei 18 bis 20 px auf normalen Bildschirmen kräftig genug bleiben. In M3 werden nur diese Pfade übernommen.</p>
+    <ul class="icon-gallery"><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" /> <path d="M9 4v16" /> <path d="M15 10l-2 2l2 2" /></svg><span>layout-sidebar-left-collapse</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2" /></svg><span>folder-open</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M7 10l6 0" /> <path d="M10 7l0 6" /> <path d="M21 21l-6 -6" /></svg><span>zoom-in</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M7 10l6 0" /> <path d="M21 21l-6 -6" /></svg><span>zoom-out</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v6" /> <path d="M10 18h-7" /> <path d="M21 18h-7" /> <path d="M6 15l-3 3l3 3" /> <path d="M18 15l3 3l-3 3" /></svg><span>arrow-autofit-width</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /> <path d="M21 21l-6 -6" /></svg><span>search</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v4a1 1 0 0 0 1 1h4" /> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /> <path d="M9 9l1 0" /> <path d="M9 13l6 0" /> <path d="M9 17l6 0" /></svg><span>file-text</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h11" /> <path d="M12 12h8" /> <path d="M15 18h5" /> <path d="M5 6v.01" /> <path d="M8 12v.01" /> <path d="M11 18v.01" /></svg><span>list-tree</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M14 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M4 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /> <path d="M14 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /></svg><span>layout-grid</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 19h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /> <path d="M12.5 5.5l4 4" /> <path d="M4.5 13.5l4 4" /> <path d="M21 15v4h-8l4 -4l4 0" /></svg><span>highlight</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /> <path d="M13.5 6.5l4 4" /></svg><span>pencil</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 17c3.333 -3.333 5 -6 5 -8c0 -3 -1 -3 -2 -3s-2.032 1.085 -2 3c.034 2.048 1.658 4.877 2.5 6c1.5 2 2.5 2.5 3.5 1l2 -3c.333 2.667 1.333 4 3 4c.53 0 2.639 -2 3 -2c.517 0 1.517 .667 3 2" /></svg><span>signature</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 4h10a2 2 0 0 1 2 2v10m-.584 3.412a2 2 0 0 1 -1.416 .588h-12a2 2 0 0 1 -2 -2v-12c0 -.552 .224 -1.052 .586 -1.414" /> <path d="M3 3l18 18" /></svg><span>square-off</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4.05 11a8 8 0 1 1 .5 4m-.5 5v-5h5" /></svg><span>rotate-clockwise</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2" /> <path d="M17 9v-4a2 2 0 0 0 -2 -2h-6a2 2 0 0 0 -2 2v4" /> <path d="M7 15a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2l0 -4" /></svg><span>printer</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065" /> <path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></svg><span>settings</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg><span>dots</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6l-12 12" /> <path d="M6 6l12 12" /></svg><span>x</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 6l-6 6l6 6" /></svg><span>chevron-left</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6l6 6l-6 6" /></svg><span>chevron-right</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6l6 -6" /></svg><span>chevron-down</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /> <path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7" /></svg><span>sun</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454l0 .008" /></svg><span>moon</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 9a2 2 0 1 1 2 -2v10a2 2 0 1 1 -2 -2h10a2 2 0 1 1 -2 2v-10a2 2 0 1 1 2 2h-10" /></svg><span>command</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5l0 14" /> <path d="M5 12l14 0" /></svg><span>plus</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12l14 0" /></svg><span>minus</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6" /> <path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /> <path d="M8 11v-4a4 4 0 1 1 8 0v4" /></svg><span>lock</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 9v4" /> <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" /> <path d="M12 16h.01" /></svg><span>alert-triangle</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /> <path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" /></svg><span>eye</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 9h8" /> <path d="M8 13h6" /> <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12" /></svg><span>message</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 3v4a1 1 0 0 0 1 1h4" /> <path d="M18 17h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h4l5 5v7a2 2 0 0 1 -2 2" /> <path d="M16 17v2a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h2" /></svg><span>files</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 8a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2l0 -8" /> <path d="M6 10l0 .01" /> <path d="M10 10l0 .01" /> <path d="M14 10l0 .01" /> <path d="M18 10l0 .01" /> <path d="M6 14l0 .01" /> <path d="M18 14l0 .01" /> <path d="M10 14l4 .01" /></svg><span>keyboard</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /> <path d="M12 9h.01" /> <path d="M11 12h1v4h1" /></svg><span>info-circle</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 5v5a5 5 0 0 0 10 0v-5" /> <path d="M5 19h14" /></svg><span>underline</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M13 20l7 -7" /> <path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg><span>note</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7l16 0" /> <path d="M10 11l0 6" /> <path d="M14 11l0 6" /> <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" /> <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" /></svg><span>trash</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 14l-4 -4l4 -4" /> <path d="M5 10h11a4 4 0 1 1 0 8h-1" /></svg><span>arrow-back-up</span></li><li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12l5 5l10 -10" /></svg><span>check</span></li></ul>
+  </section>
+
+  <section class="block">
+    <h2>Umsetzung in Avalonia</h2>
+    <div class="cols">
+      <div><h3>Nötig</h3><ul>
+        <li><code>FluentTheme</code> mit eigener Palette für Hell und Dunkel; Dichte über eigene Ressourcen (Normal) bzw. zusätzlich <code>DensityStyle="Compact"</code> (Kompakt).</li>
+        <li>Aktionsleiste, Panel, Statusleiste und Modus-Werkzeugleiste sind einfache eigene Controls; die Befehlspalette ist ein Popup mit gefilterter Liste (Befehle ab M6).</li>
+        <li>Windows: Tabs und Knöpfe in der Titelleiste (<code>ElementRole="User"</code>); Linux: Titelleiste des Fenstermanagers, Tabs in eigener Zeile.</li>
+      </ul></div>
+      <div><h3>Bis zum ersten Frame</h3><ul>
+        <li>Fenster, Aktionsleiste und Startbildschirm. Die Liste „Zuletzt geöffnet“ liest nur die Einstellungsdatei und prüft die Dateien erst danach.</li>
+        <li>Schrift: Geist und Geist Mono als Teilmenge eingebettet. Eine Schrift erst nach dem ersten Frame zu laden, würde die Oberfläche einmal neu umbrechen lassen. Deshalb misst M3 die Startkosten; liegen sie über dem Budget, nutzt Pagewing von Anfang an die Systemschrift.</li>
+      </ul></div>
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  const root = document.documentElement;
+  const stage = document.querySelector(".stage");
+  const win = stage.querySelector(".win");
+  const fit = () => { win.style.transform = `scale(${stage.clientWidth / 1280})`; };
+  new ResizeObserver(fit).observe(stage);
+  fit();
+
+  const press = (attr, value) => document.querySelectorAll(`[${attr}]`).forEach(b =>
+    b.setAttribute("aria-pressed", String(b.getAttribute(attr) === value)));
+
+  document.querySelectorAll("[data-theme-set]").forEach(b => b.addEventListener("click", () => {
+    const v = b.dataset.themeSet;
+    if (v === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", v);
+    press("data-theme-set", v);
+  }));
+
+  // "doc" = Windows window with a document, "start" = no document, "linux" = document with system title bar.
+  document.querySelectorAll("[data-view-set]").forEach(b => b.addEventListener("click", () => {
+    const v = b.dataset.viewSet;
+    win.dataset.view = v;
+    win.querySelectorAll("[data-show]").forEach(el => { el.hidden = !el.dataset.show.split(" ").includes(v); });
+    press("data-view-set", v);
+    scrollDoc();
+  }));
+
+  // Density: "normal" (default) or "compact"; only direction B offers the switch.
+  document.querySelectorAll("[data-density-set]").forEach(b => b.addEventListener("click", () => {
+    win.dataset.density = b.dataset.densitySet;
+    press("data-density-set", b.dataset.densitySet);
+  }));
+
+  const scrollDoc = () => win.querySelectorAll("[data-scroll-to]").forEach(el => { el.scrollTop = Number(el.dataset.scrollTo); });
+  scrollDoc();
+})();
+</script>
+

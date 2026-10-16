@@ -15,6 +15,49 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – App-Icon und Schriftzug: Variante 1 „Flügelecke“ (vorläufig)
+**Kontext:** Milestone 2 legt Schriftzug und Icon-Richtung als Grundlage für die Icon-Dateien in M8 fest. Drei Varianten im Stil der Designrichtung B standen als Artifact bereit (Design-Spec `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 8; Quelle `Docs/design/mockups/schriftzug-icon.html`): 1 „Flügelecke“, 2 „Gefächerte Seiten“, 3 „Seite mit Schwinge“.
+**Entscheidung:** Variante 1 „Flügelecke“: eine Seite auf einer Indigo-Kachel, deren Eselsohr sich als Flügelspitze hebt, dazu der Schriftzug „Pagewing“ in Geist Semibold. Die Dateien liegen unter `Docs/design/` (`icon-entwurf.svg`, `icon-entwurf-einfarbig.svg`, `schriftzug.svg`). Die Wahl ist **vorläufig**; Wortlaut am 2026-10-17: „Erstmal 1, denke iwann wenn ich lust habe mach ich dann mal neues logo“. Ein späteres eigenes Logo ersetzt diesen Entwurf mit einem neuen Eintrag.
+**Begründung:** Vom Projektinhaber gewählt, ohne weitere Gründe. Einschätzung des Entwurfs: Die Variante ist bei 16 px als Seite erkennbar, nutzt die Akzentfarbe der Oberfläche und unterscheidet sich von Acrobat und den Browser-Icons.
+**Verworfene Alternativen:**
+- Variante 2 „Gefächerte Seiten“ und Variante 3 „Seite mit Schwinge“: vom Projektinhaber ohne Angabe von Gründen nicht gewählt. Bei Variante 3 hatte der Entwurf selbst auf die Ähnlichkeit der drei Bögen mit einem WLAN- bzw. Kontaktlos-Symbol hingewiesen.
+
+## 2026-10-17 – Icons: Tabler Icons (Pfade kopiert, kein Paket)
+**Kontext:** Die gewählte Designrichtung B nutzt Linien-Icons. Geprüft wurden Fluent UI System Icons (MIT), Lucide (ISC, Feather-Anteil MIT), Phosphor (MIT) und Tabler (MIT); Lizenzen aus den LICENSE-Dateien der Repos, Details in `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 2.6.
+**Entscheidung:** Tabler Icons 3.49.0 (MIT, https://github.com/tabler/tabler-icons), Variante „outline“, 2 px Strich auf 24er-Raster. Übernommen werden nur die Pfade der genutzten Icons (Liste in der Design-Spec, Abschnitt 5.5), als Geometrie im Code bzw. kompiliertem XAML. Kein NuGet-Paket, keine Icon-Schrift. Gezeichnet wird mit einem eigenen Icon-Control (`Path` mit Strich in einer 24×24-`Viewbox`), weil `PathIcon` nur füllt. Der MIT-Lizenztext von Tabler samt Copyright-Zeile kommt zu den Drittlizenzen (M8).
+**Begründung:** MIT ist GPL-3.0-kompatibel. Kopierte Pfade sind AOT-sicher, kosten beim Start nichts und bringen nur die Icons mit, die gebraucht werden. Tabler hat anders als Lucide und Phosphor ein echtes Icon für „Seitenbreite“ (`arrow-autofit-width`) und einen Behelf für Schwärzen (`square-off`), und der Strich passt zur Schrift Geist.
+**Verworfene Alternativen:**
+- Fluent UI System Icons: flächige Konturen im Windows-Stil, passen zu Richtung A, nicht zu B.
+- Lucide: sehr ähnlich zu Tabler, aber ohne „Seitenbreite“-Icon und mit zwei Lizenztexten (ISC und MIT).
+- Phosphor: letzte Veröffentlichung 2024, ohne „Seitenbreite“-Icon.
+- Icon-Schrift oder NuGet-Paket: lädt alle Icons, Startkosten und Größe ohne Nutzen.
+
+## 2026-10-17 – Schrift: Geist und Geist Mono, als Teilmenge eingebettet (vorbehaltlich Messung in M3)
+**Kontext:** Die gewählte Designrichtung B ist mit Geist entworfen. Die Systemschrift unterscheidet sich je Betriebssystem und Distribution (Segoe UI unter Windows, fontconfig unter Linux); eine eingebettete Schrift sieht überall gleich aus, kostet aber Startzeit. Die Startkosten sind nicht belegt (Design-Spec, Abschnitt 2.5).
+**Entscheidung:** Geist und Geist Mono (OFL-1.1, ohne Reserved Font Name, https://github.com/vercel/geist-font; geprüft am 2026-10-16 in Version 1.8.1) werden als Teilmenge (Basis-Latein, Latin-1, Latin Extended-A, typografische Satzzeichen, ẞ) mit den Schnitten 400, 500 und 600 bzw. 400 und 500 als AvaloniaResource eingebettet und als eigene Datei mit `OFL.txt` ausgeliefert. Die genaue Version wird beim Einbinden in M3 festgelegt. Vorbehalt: M3 misst die Startkosten mit `--measure-startup`. Hält Pagewing damit die Budgets nicht ein, nutzt es von Anfang an die Systemschrift (Fallback in der Design-Spec, Abschnitt 5.2); das wird als eigener Eintrag festgehalten.
+**Begründung:** OFL-1.1 ist als eigene Datei neben dem GPL-Programm ein Aggregat (GPL-FAQ „MereAggregation“), und ohne Reserved Font Name ist eine Teilmenge ohne Umbenennung erlaubt. Geist ist klein (Variable-TTF etwa 169 KB, als Teilmenge weniger) und hat Tabellenziffern für Seitenzahlen und Zoom.
+**Verworfene Alternativen:**
+- Geist erst nach dem ersten Frame nachladen: Die Oberfläche bricht dann einmal sichtbar neu um.
+- Nur Systemschrift: uneinheitlich zwischen den Systemen und den Linux-Distributionen; bleibt der Fallback.
+- Inter über `Avalonia.Fonts.Inter`: rund 1,9 MB in sechs Schnitten, ohne OFL-Datei im Paket, passt nicht zum gewählten Entwurf.
+- IBM Plex Sans, Source Sans 3: Reserved Font Name, eine Teilmenge müsste umbenannt werden.
+
+## 2026-10-17 – Designrichtung: B „Werkbank“ (überarbeitete Fassung)
+**Kontext:** Milestone 2 verlangt mindestens drei Designrichtungen als HTML-Mockups und eine ausdrückliche Wahl des Projektinhabers. Am 2026-10-17 standen drei Richtungen als Artifacts bereit (Links, Szene und Prüfung in `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 3; Quellen unter `Docs/design/mockups/`): A „Nativ & leise“ (Fluent/GNOME-nah, Systemschrift), B „Werkbank“ (aufgebaut wie ein Code-Editor, Akzent Textmarker-Gelb), C „Papier“ (Leseraum mit schwebender Werkzeugleiste). Der Projektinhaber bevorzugte B, wollte aber, dass sie wie ein eigenständiges Software-Produkt wirkt und nicht wie ein Code-Editor. Er brachte dazu Verbesserungsvorschläge einer anderen KI mit, ließ sie prüfen und B danach im Artifact überarbeiten.
+**Entscheidung:** Pagewing bekommt Richtung **B „Werkbank“ in der überarbeiteten Fassung** (Artifact-Version 2 vom 2026-10-17, Quelle `Docs/design/mockups/richtung-b-werkbank.html`). Wortlaut der Wahl am 2026-10-17: „ja passt ich nehme richtung B“. Die Überarbeitung gegenüber der ersten Fassung:
+- Akzent gedecktes Indigo für Auswahl, Fokus und Primäraktion; Gelb nur für Suchtreffer und Markierungen.
+- Oben nur Tabs, „Datei öffnen“ und ein kompakter Knopf „Suchen oder Befehl · Strg K“, der die Befehlspalette erst beim Aktivieren öffnet.
+- Keine ausgegrauten Modus-Reiter für spätere Versionen. Die Leseansicht hat keine Werkzeugleiste; Bearbeitungsmodi ab v0.2 öffnen eine eigene Werkzeugleiste über dem Dokument mit sichtbarem „Fertig“.
+- Schmale Aktionsleiste links (Seiten, Inhalt, Suche) mit einem Panel, das nur bei Bedarf offen ist: Vorschaubilder nach dem Öffnen, Trefferliste beim Suchen, nie beides.
+- Statusleiste nur mit Seite, Zoom und ab v0.2 dem Änderungsstatus; Seitenformat, PDF-Version und Dateigröße unter „Dokumentinfos“.
+- Weniger Rahmen, mehr Luft um die Seite; zwei Dichten, „Normal“ als Standard und „Kompakt“.
+- Tabler Icons mit 2 px Strich; Schrift Geist und Geist Mono.
+**Begründung:** Der Projektinhaber nannte keine Gründe über seine Vorliebe für B hinaus; die folgende Begründung ist die Einschätzung des Entwurfs. B wächst am besten mit den Funktionen der Teilprojekte 2 bis 4 (Modi mit eigener Werkzeugleiste statt einer immer volleren Leiste) und ist per Tastatur gut bedienbar. Die Überarbeitung nimmt die Informationshierarchie von A (klare Statusleiste, wenig gleichzeitig sichtbar) und die Ruhe von C (Dokument im Mittelpunkt) auf. Gelb als Akzent wäre mit Suchtreffern und Textmarkierungen verwechselbar gewesen.
+**Verworfene Alternativen:**
+- A „Nativ & leise“ und C „Papier“: vom Projektinhaber ohne Angabe von Gründen verworfen; Ideen aus beiden sind in die Überarbeitung von B eingeflossen (siehe Begründung).
+- B in der ersten Fassung: wirkte wie ein Code-Editor; Akzent Gelb, immer sichtbare Modus-Reiter mit „v0.2“/„v0.3“, schwebendes Suchfenster und Dokumentdaten in der Statusleiste.
+- Geist erst nach dem ersten Frame nachladen (Teil der Vorschläge): verworfen, weil die Oberfläche dann einmal sichtbar neu umbricht. Stattdessen wird eine Teilmenge eingebettet, und M3 misst die Startkosten; liegen sie über dem Budget, nutzt Pagewing von Anfang an die Systemschrift.
+
 ## 2026-10-16 – Vergleichsmessung und endgültige Geschwindigkeitsbudgets
 **Kontext:** Die Budgets der Roadmap („Geschwindigkeitsziele“) waren vorläufig; M1 sollte sie nach einer Vergleichsmessung endgültig festlegen. Die Messung führte der Projektinhaber am 2026-10-16 auf seinem Rechner durch (WIN11-UNITY, Windows 11 Pro, Windows Defender als einziger Virenscanner). Gemessen wurde nur **Chrome 155.0.8059.80**: Acrobat und SumatraPDF sind dort nicht installiert und wurden nicht gemessen. Der PDF-Viewer von Chrome ist PDFium, also dieselbe Bibliothek wie in Pagewing; Chrome ist die engste Vergleichsgröße.
 **Methode:** `tools/measure-open.cs` nach `bench/compare/README.md` (Befehle für Chrome mit eigenem `--user-data-dir` und `--allow-running`). Das Werkzeug kopiert den Seitenbereich des Fensters vom Bildschirm und liefert je Lauf zwei Zeiten ab unmittelbar vor dem Prozessstart: `t_first_content` (erster lesbarer Seiteninhalt) und `t_visually_complete` (letzte sichtbare Änderung vor 500 ms Stillstand; das ist „bis erste Seite scharf“). Vier Fälle mit je 10 Läufen: (a) Start und (b) Warmstart mit `text-basic.pdf`, (c) `thousand-pages.pdf`, (d) zweite Datei (`hello_world.pdf`) als Tab im laufenden Chrome. Alle 40 Läufe sind eingeschwungen (`settled`). Zeitauflösung: Bildabstand im Median etwa 70 ms (55 bis 92 ms); jeder Zeitstempel ist eine obere Schranke. Rohwerte und Begleitnotiz: `bench/compare/results/2026-10-16-WIN11-UNITY.csv` und `.md`.
