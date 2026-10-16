@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Pagewing.Pdfium;
 using Pagewing.Pdfium.Native;
+using Pagewing.TestSupport;
 using Xunit;
 
 namespace Pagewing.Core.Tests.Pdfium;
@@ -34,11 +35,19 @@ public sealed partial class NativeBindingsTests
     [Fact]
     public async Task NativeLibraryLoadsAndInitializes()
     {
-        var lastError = await PdfiumThread.Shared.InvokeAsync(
-            () => Fpdf.FPDF_GetLastError(),
+        // The value of FPDF_GetLastError is not asserted: without a directly preceding failing call it is
+        // unspecified and can be stale (for example 4 after an earlier failed open in the same process on Linux).
+        // The call only has to resolve and return; a functional probe proves that the library is initialized.
+        var pageCount = await PdfiumThread.Shared.InvokeAsync(
+            () =>
+            {
+                _ = Fpdf.FPDF_GetLastError();
+                using var document = PdfiumDocument.Open(PdfiumThread.Shared, TestData.Pdf("text-basic.pdf"), null);
+                return document.PageCount;
+            },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0u, lastError.Value);
+        Assert.Equal(2, pageCount);
     }
 
     [Fact]
