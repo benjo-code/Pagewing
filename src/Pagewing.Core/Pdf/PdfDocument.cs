@@ -156,7 +156,11 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
         }
     }
 
-    /// <summary>Closes the document on the PDFium thread and completes once it (and its file) is closed.</summary>
+    /// <summary>
+    /// Closes the document on the PDFium thread and completes once the PDFium thread has processed the close.
+    /// The native document and its file are closed when the last page, render or text-page reference is released,
+    /// which may be later if work for this document is still in flight.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref disposed, 1) != 0)
