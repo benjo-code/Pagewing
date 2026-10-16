@@ -24,7 +24,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | # | Milestone | Teilprojekt | Status | Plan | Fertig am |
 |---|---|---|---|---|---|
 | 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | 2026-10-16 |
-| 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ⬜ offen | – | – |
+| 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) | – |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 4 | Navigation | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -104,7 +104,7 @@ Ziel: Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI a
 - [x] Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Checks Pflicht, kein Force-Push, kein Löschen – `gh api repos/benjo-code/Pagewing/branches/{main,dev}/protection` (2026-10-16): Pflicht-Checks `roadmap`, `build-linux`, `build-windows`, strict, PR Pflicht, Force-Push und Löschen verboten
 
 ## Milestone 1 – PDFium-Anbindung & Render-Kern
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M0
+**Status:** 🟡 geplant · **Plan:** [2026-10-16-milestone-01-pdfium-render-kern.md](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) · **Voraussetzungen:** M0
 
 Ziel: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nachweisbar über die CLI, Render-Regressionstests und Benchmarks.
 
