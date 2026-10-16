@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pagewing.Core.Tests/Pagewing.Core.Tests.csproj" />
+    <Project Path="tests/Pagewing.Render.Tests/Pagewing.Render.Tests.csproj" />
   </Folder>
 </Solution>

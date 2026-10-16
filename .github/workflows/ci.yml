@@ -71,6 +71,15 @@ jobs:
       - name: Test
         run: dotnet test Pagewing.slnx -c Release --no-build
 
+      # Renderings and diff images of failed render regression tests (see tests/Pagewing.Render.Tests).
+      - name: Upload the render diffs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: render-diff-${{ matrix.name }}
+          path: tests/Pagewing.Render.Tests/**/render-diff/**
+          if-no-files-found: ignore
+
       - name: Format
         run: dotnet format Pagewing.slnx --verify-no-changes --no-restore
 
