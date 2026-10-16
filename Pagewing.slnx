@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Pagewing.Cli/Pagewing.Cli.csproj" />
     <Project Path="src/Pagewing.Core/Pagewing.Core.csproj" />
     <Project Path="src/Pagewing.Pdfium/Pagewing.Pdfium.csproj" />
   </Folder>
