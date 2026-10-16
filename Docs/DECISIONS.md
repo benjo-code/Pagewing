@@ -15,6 +15,13 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – App-Icon und Schriftzug: Variante 1 „Flügelecke“ (vorläufig)
+**Kontext:** Milestone 2 legt Schriftzug und Icon-Richtung als Grundlage für die Icon-Dateien in M8 fest. Drei Varianten im Stil der Designrichtung B standen als Artifact bereit (Design-Spec `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 8; Quelle `Docs/design/mockups/schriftzug-icon.html`): 1 „Flügelecke“, 2 „Gefächerte Seiten“, 3 „Seite mit Schwinge“.
+**Entscheidung:** Variante 1 „Flügelecke“: eine Seite auf einer Indigo-Kachel, deren Eselsohr sich als Flügelspitze hebt, dazu der Schriftzug „Pagewing“ in Geist Semibold. Die Dateien liegen unter `Docs/design/` (`icon-entwurf.svg`, `icon-entwurf-einfarbig.svg`, `schriftzug.svg`). Die Wahl ist **vorläufig**; Wortlaut am 2026-10-17: „Erstmal 1, denke iwann wenn ich lust habe mach ich dann mal neues logo“. Ein späteres eigenes Logo ersetzt diesen Entwurf mit einem neuen Eintrag.
+**Begründung:** Vom Projektinhaber gewählt. Die Variante ist bei 16 px als Seite erkennbar, nutzt die Akzentfarbe der Oberfläche und unterscheidet sich von Acrobat und den Browser-Icons.
+**Verworfene Alternativen:**
+- Variante 2 „Gefächerte Seiten“ und Variante 3 „Seite mit Schwinge“: vom Projektinhaber ohne Angabe von Gründen nicht gewählt. Bei Variante 3 hatte der Entwurf selbst auf die Ähnlichkeit der drei Bögen mit einem WLAN- bzw. Kontaktlos-Symbol hingewiesen.
+
 ## 2026-10-17 – Icons: Tabler Icons (Pfade kopiert, kein Paket)
 **Kontext:** Die gewählte Designrichtung B nutzt Linien-Icons. Geprüft wurden Fluent UI System Icons (MIT), Lucide (ISC, Feather-Anteil MIT), Phosphor (MIT) und Tabler (MIT); Lizenzen aus den LICENSE-Dateien der Repos, Details in `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 2.6.
 **Entscheidung:** Tabler Icons 3.49.0 (MIT, https://github.com/tabler/tabler-icons), Variante „outline“, 2 px Strich auf 24er-Raster. Übernommen werden nur die Pfade der genutzten Icons (Liste in der Design-Spec, Abschnitt 5.5), als Geometrie im Code bzw. kompiliertem XAML. Kein NuGet-Paket, keine Icon-Schrift. Gezeichnet wird mit einem eigenen Icon-Control (`Path` mit Strich in einer 24×24-`Viewbox`), weil `PathIcon` nur füllt. Der MIT-Lizenztext von Tabler samt Copyright-Zeile kommt zu den Drittlizenzen (M8).

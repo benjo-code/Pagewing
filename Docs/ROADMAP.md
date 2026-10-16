@@ -136,7 +136,7 @@ Ziel: Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt,
 - [x] Mindestens 3 unterschiedliche, zum Projekt passende Designrichtungen als HTML-Mockups (Artifacts): Hauptfenster mit geöffnetem PDF, Seitenleiste und Werkzeugleiste, jeweils hell und dunkel
 - [x] Entscheidung des Projektinhabers einholen und in `Docs/DECISIONS.md` festhalten (inkl. verworfener Richtungen)
 - [x] Design-Spec unter `Docs/superpowers/specs/` mit Tokens (Farben hell/dunkel, Typografie, Abstände, Radien, Icons), Fenster-Layout und Verhalten der wichtigsten Bereiche
-- [ ] App-Name-Schriftzug und Icon-Richtung festlegen (Grundlage für M8)
+- [x] App-Name-Schriftzug und Icon-Richtung festlegen (Grundlage für M8)
 
 **Abnahmekriterien**
 - [x] Mindestens 3 Richtungen wurden als Artifacts bereitgestellt (Links in der Design-Spec) – Design-Spec Abschnitt 3: https://claude.ai/artifact/He1E7CwqM3d8eQTxC2pnPs (A), https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y (B), https://claude.ai/artifact/GqTxJnQPUbhrRoX9bjQ1ae (C); WCAG-2.2-AA-Kontrast für alle 56 Paare je Richtung und Theme bestanden, Sichtprüfung hell/dunkel bei 1440 px und 375 px

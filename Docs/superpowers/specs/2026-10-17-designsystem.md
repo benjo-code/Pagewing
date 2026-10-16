@@ -303,7 +303,18 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 
 ## 8. Schriftzug und Icon
 
-*Wird in Task 5 ausgefüllt.*
+Drei Varianten standen am 2026-10-17 als Artifact zur Wahl: https://claude.ai/artifact/8JufHaAKLfawx5aqJHa7p3, Quelle [schriftzug-icon.html](../../design/mockups/schriftzug-icon.html). Gewählt wurde **Variante 1 „Flügelecke“, vorläufig**: Der Projektinhaber will später eventuell ein eigenes Logo entwerfen. Bis dahin gilt dieser Entwurf (Entscheidung in `Docs/DECISIONS.md`, Eintrag „App-Icon und Schriftzug: Variante 1 „Flügelecke“ (vorläufig)“).
+
+- **Idee:** Eine Seite, deren Eselsohr sich wie eine Flügelspitze nach oben hebt. Die Seite steht für PDF, die angehobene Ecke für Leichtigkeit und Tempo.
+- **Dateien:** [`Docs/design/icon-entwurf.svg`](../../design/icon-entwurf.svg) (farbig), [`Docs/design/icon-entwurf-einfarbig.svg`](../../design/icon-entwurf-einfarbig.svg) (eine Farbe, `currentColor`, Flügelspitze mit 55 % Deckkraft, ohne Kachel), [`Docs/design/schriftzug.svg`](../../design/schriftzug.svg) (Schriftzug als Pfade, `currentColor`).
+- **Geometrie:** 64er-Raster. Kachel 64 × 64 mit Radius 15, Seite von x 16 bis 47 und y 13 bis 53 mit ausgeschnittener Ecke, Flügelspitze von der Ecke bis (57, 5), drei Zeilen als 3er-Striche.
+- **Farben:** Kachel `#3B48C4` (= `color.accent.default` hell), Seite `#FFFFFF`, Flügelspitze `#B9C0FF`, Zeilen `#3B48C4` mit 38 % Deckkraft. Die Kachel bleibt in beiden Themes gleich.
+- **Kleine Größen:** Ab 16 px ist die Form erkennbar (Pixelansicht im Artifact). Für 16 und 24 px erzeugt M8 eine vereinfachte Fassung ohne Zeilen, weil die Striche dort verschwimmen.
+- **Schriftzug:** „Pagewing“ in Geist Semibold (600), Laufweite −0,025 em, mit Kerning, in Pfade umgewandelt (aus Glyphen-Pfaden erlaubt, OFL-FAQ 1.1). Farbe `text.primary` des jeweiligen Themes (hell `#16181D`, dunkel `#E6E8EB`).
+- **Wortbildmarke (Icon + Schriftzug):** Icon-Höhe = 1,375 × Schriftgröße, Abstand = 0,44 × Schriftgröße, beide vertikal mittig. Ringsum ein Schutzraum von einem Viertel der Icon-Höhe.
+- **Einfarbige Fassung** für symbolische Icons (z. B. GNOME) und Overlays: `icon-entwurf-einfarbig.svg`.
+- **Abgrenzung:** kein Rot und kein Dreieck-Schwung wie bei Acrobat, keine Browser-Kreise. Seiten mit Eselsohr nutzen viele Dokument-Icons; dieser Entwurf hebt sich durch die Flügelspitze und die Indigo-Kachel ab.
+- **Was M8 daraus erzeugt:** `.ico` für Windows (16, 20, 24, 32, 40, 48, 64, 256 px), PNG für Linux (hicolor 16, 24, 32, 48, 64, 128, 256, 512 px), SVG (`scalable`) und ein symbolisches SVG (einfarbig). Der Schriftzug wird für den Über-Dialog und die Paketbeschreibungen genutzt.
 
 ## 9. Offene Punkte
 
