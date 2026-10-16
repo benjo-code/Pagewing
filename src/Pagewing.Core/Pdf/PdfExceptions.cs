@@ -65,3 +65,25 @@ public sealed class PdfOpenException : Exception
         _ => "The file could not be opened.",
     };
 }
+
+/// <summary>
+/// A page could not be rendered: the bitmap would be larger than 268 435 456 pixels (256 Mpx), it could not
+/// be created, or PDFium failed. <see cref="Exception.Message"/> is a short English explanation.
+/// </summary>
+public sealed class PdfRenderException : Exception
+{
+    public PdfRenderException()
+        : base("The page could not be rendered.")
+    {
+    }
+
+    public PdfRenderException(string message)
+        : base(message)
+    {
+    }
+
+    public PdfRenderException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}

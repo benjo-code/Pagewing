@@ -61,3 +61,22 @@ internal sealed class PdfiumOpenException : Exception
     /// <summary>Gets the PDFium error code.</summary>
     public PdfiumError Error { get; }
 }
+
+/// <summary>A page could not be rendered: too large, no bitmap, or PDFium reported a failure.</summary>
+internal sealed class PdfiumRenderException : Exception
+{
+    public PdfiumRenderException()
+        : base("The page could not be rendered.")
+    {
+    }
+
+    public PdfiumRenderException(string message)
+        : base(message)
+    {
+    }
+
+    public PdfiumRenderException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}

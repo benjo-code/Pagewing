@@ -23,5 +23,8 @@ internal sealed class PdfiumPage : IDisposable
     /// <summary>Gets the page height in points, after rotation and CropBox.</summary>
     public double Height { get; }
 
+    /// <summary>Gets the native page, for PDFium calls on the page's thread.</summary>
+    internal PageHandle Handle => handle;
+
     public void Dispose() => handle.Dispose();
 }

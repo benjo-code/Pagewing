@@ -76,6 +76,40 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
             cancellationToken);
     }
 
+    /// <summary>
+    /// Renders a whole page at <paramref name="scale"/> pixels per point (1 = 72 dpi) on white, without rotation
+    /// beyond the page's own. The image size is <see cref="PdfPageSize.ToPixels"/>. The render runs in time
+    /// slices on the PDFium thread, so other requests can run in between.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">Invalid page index, scale or time slice.</exception>
+    /// <exception cref="PdfRenderException">The image would exceed 256 Mpx, or rendering failed.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the render finished.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<RenderedImage> RenderPageAsync(int pageIndex, double scale, RenderOptions? options = null, CancellationToken cancellationToken = default) =>
+        RenderAsync(pageIndex, scale, tile: null, options, cancellationToken);
+
+    /// <summary>
+    /// Renders one tile of a page: the pixels <paramref name="tile"/> of the page rendered at
+    /// <paramref name="scale"/>, identical to the same area of <see cref="RenderPageAsync"/>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Invalid page index, scale or time slice, or the tile is empty or not within <see cref="PdfPageSize.ToPixels"/>.
+    /// </exception>
+    /// <exception cref="PdfRenderException">The tile would exceed 256 Mpx, the page size in pixels exceeds the int range, or rendering failed.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the render finished.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<RenderedImage> RenderTileAsync(int pageIndex, double scale, PixelRect tile, RenderOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        if (tile.Width <= 0 || tile.Height <= 0 || tile.X < 0 || tile.Y < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(tile), tile, "The tile must not be empty and must lie within the page.");
+        }
+
+        return RenderAsync(pageIndex, scale, new PdfiumPixelRect(tile.X, tile.Y, tile.Width, tile.Height), options, cancellationToken);
+    }
+
     /// <summary>Closes the document. The close is queued to the PDFium thread; this call does not wait.</summary>
     public void Dispose()
     {
@@ -102,6 +136,43 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
             // The PDFium thread is gone (tests only); nothing can be closed on it any more.
             document.Dispose();
         }
+    }
+
+    private static async Task<RenderedImage> AwaitRender(Task<PdfiumImage> render)
+    {
+        try
+        {
+            var image = await render.ConfigureAwait(false);
+            return new RenderedImage(image.Width, image.Height, image.Stride, image.Pixels);
+        }
+        catch (PdfiumRenderException ex)
+        {
+            throw new PdfRenderException(ex.Message, ex);
+        }
+    }
+
+    /// <summary>Checks what can be checked without PDFium, then queues the render.</summary>
+    private Task<RenderedImage> RenderAsync(int pageIndex, double scale, PdfiumPixelRect? tile, RenderOptions? options, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(pageIndex, pageCount);
+        if (!double.IsFinite(scale) || scale <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(scale), scale, "The scale must be finite and greater than 0.");
+        }
+
+        options ??= RenderOptions.Default;
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.TimeSlice, TimeSpan.Zero, nameof(options));
+        var annotations = options.Annotations;
+        var slice = options.TimeSlice;
+        var priority = options.Priority == PdfPriority.Background ? PdfiumPriority.Background : PdfiumPriority.Interactive;
+
+        // The work is created on the PDFium thread: it loads the page and checks the tile against the page size.
+        return AwaitRender(document.Thread.InvokeSteppedAsync(
+            () => new PdfiumRenderWork(document, pageIndex, scale, tile, annotations, slice),
+            priority,
+            cancellationToken));
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
