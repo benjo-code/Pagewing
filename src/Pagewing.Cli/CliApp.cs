@@ -44,6 +44,8 @@ public static class CliApp
         the option wins. Command-line arguments are visible to other processes on this
         computer (for example in the process list), so prefer the environment variable.
 
+        Ctrl+C cancels the command and exits with code 1. Press Ctrl+C again to abort immediately.
+
         Exit codes: 0 success, 1 error, 2 invalid command line.
 
         """;

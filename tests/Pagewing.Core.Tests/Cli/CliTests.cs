@@ -340,6 +340,7 @@ public sealed class CliTests : IDisposable
         Assert.Contains("Usage:", result.Output, StringComparison.Ordinal);
         Assert.Contains("PAGEWING_PASSWORD", result.Output, StringComparison.Ordinal);
         Assert.Contains("visible to other processes", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Press Ctrl+C again to abort immediately.", result.Output, StringComparison.Ordinal);
     }
 
     [Fact]

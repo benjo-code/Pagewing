@@ -1,12 +1,10 @@
 using Pagewing.Cli;
 
 using var cancellation = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) =>
-{
-    // Let the running command finish its cleanup and report "Canceled." instead of killing the process.
-    e.Cancel = true;
-    cancellation.Cancel();
-};
+var cancelKey = new CancelKeyHandler(cancellation);
+
+// First press: the running command finishes its cleanup and reports "Canceled.". Second press: terminate now.
+Console.CancelKeyPress += (_, e) => e.Cancel = cancelKey.OnPress();
 
 using var stdout = Console.OpenStandardOutput();
 return await CliApp.RunAsync(args, stdout, Console.Error, Environment.GetEnvironmentVariable, cancellation.Token);
