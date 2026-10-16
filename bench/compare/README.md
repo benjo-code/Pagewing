@@ -6,7 +6,7 @@ Die Messung führt der Projektinhaber auf seinem Rechner durch (Acrobat, Sumatra
 
 ## Was gemessen wird
 
-Das Werkzeug `tools/measure-open.cs` startet das Programm, beobachtet etwa alle 10 ms den Fensterinhalt und liefert je Lauf zwei Zeiten in Millisekunden, jeweils ab unmittelbar vor dem Prozessstart:
+Das Werkzeug `tools/measure-open.cs` startet das Programm, beobachtet den Fensterinhalt so schnell, wie die Bildschirmkopie es erlaubt (Ziel: alle 10 ms; erreicht wird oft deutlich weniger, siehe „Zeitauflösung“ unten), und liefert je Lauf zwei Zeiten in Millisekunden, jeweils ab unmittelbar vor dem Prozessstart:
 
 | Messgröße | Bedeutung |
 |---|---|
@@ -16,6 +16,8 @@ Das Werkzeug `tools/measure-open.cs` startet das Programm, beobachtet etwa alle 
 Beide Größen werden auf den **Seitenbereich** bezogen (mittlerer Teil des Fensters: 20–80 % der Breite, 12–92 % der Höhe). Tab-Leisten, Avatare und Ladeanimationen des Fensterrahmens ändern sich besonders bei Browsern noch lange und gehören nicht zum Öffnen der Seite.
 
 Das Werkzeug kopiert den Fensterbereich **vom Bildschirm** (GDI `BitBlt` des Desktops in einen DIB-Abschnitt, im Speicher ausgewertet). `PrintWindow` liefert bei GPU-Fenstern schwarze Bilder, deshalb die Bildschirmkopie (dasselbe wie `Graphics.CopyFromScreen`, aber ohne `System.Drawing`). Es werden **keine Bilder gespeichert**, nur die Zeiten. Das Werkzeug läuft nur unter Windows und braucht keine Pakete.
+
+**Stand der Prüfung:** Das Werkzeug wurde ausschließlich mit **Edge und Chrome** (Test-PDF `text-basic.pdf`, auch ein Tab-Fall mit zweiter Datei in Chrome) geprüft. Die Kommandozeilen für **Acrobat und SumatraPDF**, der Titelfilter für Acrobat und `-reuse-instance` für SumatraPDF sind **ungetestet** (beide Programme waren auf dem Entwicklungsrechner nicht installiert). Vor der echten Messung ist deshalb je Programm ein Probelauf mit `--runs 1 --trace` **Pflicht** (siehe „Vor der ersten Messung“).
 
 Pro Lauf beendet es den gestarteten Prozessbaum (und alle neu entstandenen Prozesse gleichen Namens) und wartet `--pause-ms` (Standard 2000) bis zum nächsten Lauf.
 
@@ -47,7 +49,7 @@ Hinweise:
 - Virenscanner: Ein Echtzeitscanner (auch Windows Defender) verlängert Programmstarts, besonders den ersten. Nicht abschalten, aber **in der CSV-Begleitnotiz vermerken**, welcher Scanner aktiv war, und für alle Programme dieselbe Konfiguration lassen. Wer Ausschlüsse setzt, tut das für alle Programme gleich.
 - Browser **ohne Erweiterungen und ohne Sitzungswiederherstellung**, mit eigenem Profilordner (siehe Befehle).
 - Acrobat: Der „Geschützte Modus beim Start“ (Voreinstellungen → Sicherheit (erweitert)) verlangsamt den Start deutlich. Messung mit der **Standardeinstellung** des Nutzers; die Einstellung in der Begleitnotiz festhalten. Acrobat startet Hintergrunddienste (zum Beispiel Updater, Cloud-Sync), die nicht beendet werden. Läuft Acrobat beim Start der Messung schon, weigert sich das Werkzeug (Exit 2).
-- Laufen Programme gleichen Namens bereits (zum Beispiel das eigene Chrome), bricht das Werkzeug mit Exit 2 ab, weil die Datei sonst an die laufende Instanz übergeben würde. Ausnahme: Browser mit eigenem `--user-data-dir` laufen als eigene Instanz; dann `--allow-running` angeben.
+- Laufen Programme gleichen Namens bereits (zum Beispiel das eigene Chrome), bricht das Werkzeug mit Exit 2 ab, weil die Datei sonst an die laufende Instanz übergeben würde. Ausnahme: Browser mit eigenem `--user-data-dir` laufen als eigene Instanz; dann `--allow-running` angeben. **Warnung:** `--allow-running` hebt die Schutzprüfung auf. Ohne isolierten Profilordner kann der Beenden-Schritt des Werkzeugs auch neu entstandene Prozesse gleichen Namens des **eigenen** Browsers beenden (zum Beispiel ein Chrome-Fenster, das Sie während der Messung öffnen). Deshalb `--allow-running` nur zusammen mit eigenem `--user-data-dir` verwenden und während der Läufe keine gleichnamigen Programme starten.
 
 ## Befehle
 
@@ -97,10 +99,10 @@ $acrobat = "C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe"
 Invoke-Expression "$measure --exe '$acrobat' --args '{pdf}' --pdf $one --window-title-contains text-basic --runs 10 --pause-ms 5000 --label acrobat --case a-start --out $out"
 Invoke-Expression "$measure --exe '$acrobat' --args '{pdf}' --pdf $one --window-title-contains text-basic --runs 10 --warmup 3 --pause-ms 500 --label acrobat --case b-warm --out $out"
 Invoke-Expression "$measure --exe '$acrobat' --args '{pdf}' --pdf $many --window-title-contains thousand-pages --runs 10 --warmup 3 --pause-ms 500 --label acrobat --case c-1000 --out $out"
-Invoke-Expression "$measure --exe '$acrobat' --args '{pdf}' --pdf $one --second-pdf $two --runs 10 --warmup 1 --label acrobat --case d-second --out $out"
+Invoke-Expression "$measure --exe '$acrobat' --args '{pdf}' --pdf $one --second-pdf $two --window-title-contains text-basic --runs 10 --warmup 1 --label acrobat --case d-second --out $out"
 ```
 
-`--window-title-contains` wählt das Fenster mit dem Dateinamen im Titel. Acrobat zeigt zuerst die Startseite (weiß mit Text), die sonst als Seiteninhalt gelten würde. Der Titel enthält den Dateinamen, sobald das Dokument geöffnet ist. Bei den Läufen mit zweiter Datei entfällt der Filter; das Werkzeug bleibt beim Fenster der ersten Datei. Ob der Titel bei der verwendeten Version wirklich den Dateinamen enthält, zuerst mit `--runs 1 --trace` prüfen.
+`--window-title-contains` wählt das Fenster mit dem Dateinamen im Titel. Acrobat zeigt zuerst die Startseite (weiß mit Text), die sonst als Seiteninhalt gelten würde. Der Titel enthält den Dateinamen, sobald das Dokument geöffnet ist. Bei den Läufen mit zweiter Datei (`--second-pdf`) gilt der Filter für die **erste** Datei (Name der ersten Datei verwenden, hier `text-basic`): Damit wird die Startseite nicht als Inhalt der ersten Datei gewertet, und das Werkzeug merkt sich das gefundene Fenster. Für die **zweite** Datei wird genau dieses Fenster weiterverwendet; ihr Titel wird nicht mehr geprüft. Als Inhalt der zweiten Datei zählt, wie unter „Fälle“ beschrieben, eine Änderung des Seitenbereichs gegenüber dem fertigen Bild der ersten Datei. Ob der Titel bei der verwendeten Version wirklich den Dateinamen enthält, zuerst mit `--runs 1 --trace` prüfen.
 
 ### SumatraPDF
 
@@ -118,7 +120,7 @@ SumatraPDF öffnet bei einem zweiten Aufruf standardmäßig ein neues Fenster od
 ### Vor der ersten Messung (je Programm)
 
 1. `dotnet run tools/measure-open.cs -- --selftest` (Logik ohne Fenster).
-2. Ein einzelner Probelauf mit Tracing, ohne Ergebnis zu behalten: `… --runs 1 --trace --out $env:TEMP\probe.csv`. Das Tracing schreibt je Frame eine Zeile (Zeit, Weißanteil, Textpixel, Inhalt erkannt, Dauer der Bildschirmkopie). Es muss gelten: Fenster liegt oben (Weißanteil und Text erscheinen), `content yes` kommt kurz vor oder zusammen mit dem sichtbaren Seitenbild.
+2. **Pflicht, weil Acrobat und SumatraPDF ungetestet sind:** je Programm ein einzelner Probelauf mit Tracing, ohne Ergebnis zu behalten (auch für Chrome): `… --runs 1 --trace --out $env:TEMP\probe.csv`. Das Tracing schreibt je Frame eine Zeile (Zeit, Weißanteil, Textpixel, Inhalt erkannt, Dauer der Bildschirmkopie). Es muss gelten: Fenster liegt oben (Weißanteil und Text erscheinen), `content yes` kommt kurz vor oder zusammen mit dem sichtbaren Seitenbild.
 3. Danach die Fälle der Reihe nach, Bildschirm unberührt lassen.
 
 Exit-Code 0: Messung vollständig. 1: Fenster oder Seiteninhalt erschien nicht innerhalb von `--timeout-ms` (Standard 30 s); die bisherigen Läufe stehen in der CSV. 2: Aufruf falsch oder Messung ungeeignet (laufende Instanz).
@@ -150,13 +152,17 @@ Als Messgröße „bis erste Seite scharf“ gilt `t_visually_complete`; `t_firs
 
 Das Verfahren ist grob und für den Vergleich mehrerer Programme unter gleichen Bedingungen gedacht, nicht für Millisekunden-genaue Absolutwerte.
 
-- **Zeitauflösung.** Eine Bildschirmkopie kostet je nach Grafikstapel 10–80 ms. Das Werkzeug gibt den erreichten Bildabstand an (`frame_interval_ms` in der CSV und als „Zeitauflösung“ in der Ausgabe). Zielwert sind etwa 10 ms. Auf einem Testrechner mit virtualisiertem oder langsamem Grafiktreiber lag der Abstand bei etwa 70 ms. Werte unter dieser Auflösung sind nicht belastbar; der Median aus 10 Läufen glättet nur den Zufall, nicht die Granularität. Der Zeitstempel eines Frames ist die Mitte der Bildschirmkopie.
+- **Zeitauflösung.** Eine Bildschirmkopie dauert je nach Rechner unterschiedlich lang (beobachtet: 10–100 ms). Das Werkzeug gibt den erreichten Bildabstand an (`frame_interval_ms` in der CSV und als „Zeitauflösung“ in der Ausgabe). Zielwert sind etwa 10 ms. Auf dem Testrechner gemessen: 50–80 ms je Bildschirmkopie, unabhängig von der Fenstergröße; der Bildabstand lag dort bei etwa 70 ms. Werte unter dieser Auflösung sind nicht belastbar; der Median aus 10 Läufen glättet nur den Zufall, nicht die Granularität. Der Zeitstempel eines Frames ist die Mitte der Bildschirmkopie.
+  - **Ein Zeitstempel ist eine obere Schranke.** Das echte Ereignis (Seite erscheint, letzte Änderung) liegt bis zu einem Bildabstand **vor** dem Zeitstempel. Die gemessenen Zeiten sind also eher zu groß als zu klein.
+  - **Regel.** Liegt der Median von `frame_interval_ms` über etwa **25 ms**, sind der Vergleich der Programme und die Rundung auf 50 ms in der Entscheidungsregel nur im Rahmen dieser Unsicherheit belastbar, und das 100-ms-Budget aus Fall (d) lässt sich nicht auflösen. Dann **muss der Projektinhaber darüber informiert werden**, und der Budgetvorschlag nennt die Unsicherheit ausdrücklich (zum Beispiel „Chrome 520 ms, Auflösung 70 ms“).
+  - **Wo ablesen.** CSV-Spalte `frame_interval_ms` (je Lauf), die Konsolenzeile „Zeitauflösung“ am Ende jeder Messung (Median und Maximum der Läufe) und die Ausgabe von `--trace` (Zeit jeder Aufnahme und Dauer der Bildschirmkopie `copy`). Auf dem eigenen Rechner im Probelauf ansehen, bevor gemessen wird.
 - **Splashscreens und Animationen.** Ein eigener Splash (Acrobat) oder ein Einblendeffekt des Fensters verzögert das erste Bild, gehört aber zum Nutzererlebnis. Das Werkzeug wählt das größte sichtbare Fenster des Prozesses (mindestens 400 × 300 Pixel); kleinere Splash-Fenster zählen nicht. Dauernde Animationen im Seitenbereich verhindern 500 ms Stillstand; nach 10 s ohne Stillstand endet der Lauf, `settled` ist `false`, und `t_visually_complete` ist die letzte Änderung.
 - **Verdeckung.** Weil der Bildschirm kopiert wird, verfälscht jedes darüberliegende Fenster (Terminal, Benachrichtigungen, Mauszeiger-Tooltips) die Messung. Der Mauszeiger selbst wird nicht kopiert.
 - **DPI.** Das Werkzeug arbeitet DPI-bewusst (Pixel des Bildschirms). Verschiedene Skalierungen verändern Fenstergröße und damit Renderzeiten; deshalb gleiche Skalierung für alle Programme.
 - **Seitenerkennung ist heuristisch.** „Seitenfläche weiß“ und „dunkle Textpixel“ setzt hellen Papierhintergrund und dunklen Text voraus. Ein dunkles Farbschema der Anwendung mit weißer Seite funktioniert; eine Seite, die selbst dunkel dargestellt wird (Nachtmodus), nicht. Startseiten mit weißem Hintergrund und Text (Acrobat Home) lassen sich nur über `--window-title-contains` ausschließen.
 - **Fenstererkennung.** Das Fenster wird über die Prozess-ID gesucht, bei Programmen mit mehreren Prozessen (Browser) zusätzlich über alle während des Laufs neu entstandenen Prozesse gleichen Namens. Der Fenstertitelfilter wählt unter mehreren Fenstern aus.
 - **Kaltstart.** Der Datei-Cache lässt sich nicht zuverlässig leeren (siehe Fälle). Windows-Prefetch und SuperFetch machen den echten Kaltstart nur direkt nach dem Neustart nachvollziehbar.
+- **Beobachtereffekt.** Die laufenden Bildschirmkopien belasten den gemessenen Rechner (CPU, Grafiktreiber) und können die Programme geringfügig verlangsamen. Das gilt für alle gemessenen Programme gleichermaßen und beeinflusst den Vergleich daher kaum, die Absolutwerte aber leicht.
 - **Netzwerk.** Das Messwerkzeug selbst nutzt kein Netzwerk. Die Vergleichsprogramme dürfen eigene Hintergrundzugriffe haben (Updates, Telemetrie); sie beeinflussen die Messung und sind Teil des Vergleichs.
 
 ## Dateien
