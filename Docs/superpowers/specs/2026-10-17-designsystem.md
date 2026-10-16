@@ -72,26 +72,26 @@ Geprüft am 2026-10-16 und 2026-10-17 gegen Avalonia 12.1.4 (Quellcode des Tags 
 ### 2.7 Barrierefreiheit und Systemeinstellungen
 
 - Windows liefert über `PlatformColorValues` Theme-Variante, `ContrastPreference` (Hochkontrast) und Akzentfarbe, mit Änderungsereignis (SRC `src/Windows/Avalonia.Win32/Win32PlatformSettings.cs`). Linux liefert Theme-Variante und Akzentfarbe über das XDG-Portal, keinen Kontrastwunsch (SRC `src/Avalonia.FreeDesktop/DBusPlatformSettings.cs`).
-- Das Fluent-Theme wertet Hochkontrast nicht aus; Pagewing muss es selbst umsetzen. Eine API für „Animationen reduzieren“ gibt es in Avalonia 12.1 nicht.
+- Das Fluent-Theme wertet Hochkontrast nicht aus (keine Fundstelle für `ContrastPreference` in SRC `src/Avalonia.Themes.Fluent/`); Pagewing muss es selbst umsetzen. Eine API für „Animationen reduzieren“ gibt es in Avalonia 12.1 nicht (keine Fundstelle für `ReducedMotion` oder `ClientAreaAnimation` in SRC `src/`). Beides wurde am 2026-10-16 im Quellcode von Tag 12.1.4 gesucht; ein Fehlen ist nur so sicher wie diese Suche.
 - **Folge:** Animationen sind kurz und verzichtbar; eine Einstellung „Animationen reduzieren“ in Pagewing ersetzt die fehlende Systemabfrage (M6). Hochkontrast ist ein offener Punkt (Abschnitt 9).
 
 ## 3. Richtungen
 
-Drei Richtungen, veröffentlicht am 2026-10-17 als Artifacts (privat, nur für den Projektinhaber sichtbar). Die HTML-Quellen liegen unter [`Docs/design/mockups/`](../../design/mockups/); sie lassen sich lokal im Browser öffnen.
+Drei Richtungen, veröffentlicht am 2026-10-17 als Artifacts (privat, nur für den Projektinhaber sichtbar). Die HTML-Quellen liegen unter [`Docs/design/mockups/`](../../design/mockups/). Es sind Artifact-Quellen ohne Dokument-Rahmen (`<!doctype>`, Zeichensatz-Angabe): Ein Browser zeigt sie lokal im Quirks-Modus und lädt die Schriften von Google Fonts. Maßgeblich für Layout und Schrift ist die Artifact-Ansicht.
 
 Alle drei zeigen dieselbe Szene, damit sie vergleichbar sind: zwei Tabs (einer mit langem Namen, in der Mitte gekürzt), Werkzeugleiste mit Seitenfeld, Zoom und Seitenbreite, Suche mit Treffer 2 von 5, Seitenleiste mit Vorschaubildern und Reiter „Inhalt“, Seite 3 eines selbst geschriebenen Handbuchs und den Anfang von Seite 4, einen Platzhalter für eine noch nicht gerenderte Seite und einen Moduswechsel für die Werkzeuge ab v0.2 und v0.3. Umschaltbar sind hell, dunkel und System sowie die Ansichten „Dokument offen“, „Startbildschirm“ und „Linux-Titelleiste“. Jede Seite listet ihre Tokens (gleiche Namen in allen drei), Schriftgrößen, Abstände, Radien, die Icons und die Umsetzung in Avalonia.
 
 | Richtung | Artifact | Quelle | Leitidee |
 |---|---|---|---|
 | A „Nativ & leise“ | https://claude.ai/artifact/He1E7CwqM3d8eQTxC2pnPs | [richtung-a-nativ.html](../../design/mockups/richtung-a-nativ.html) | Sieht aus wie ein Teil des Systems (Fluent, GNOME): neutrale Flächen, eine Akzentfarbe, klassische Werkzeugleiste, Systemschrift, Fluent UI System Icons. Geringstes Risiko, schnellster Start, wenig Wiedererkennung. |
-| B „Werkbank“ | https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y | [richtung-b-werkbank.html](../../design/mockups/richtung-b-werkbank.html) | Erste Fassung (Artifact-Version 1): aufgebaut wie ein Code-Editor, mit Aktivitätsleiste, Panel, Modus-Reitern, Befehlspalette in der Titelleiste und Statusleiste mit Dokumentdaten. Dicht, tastaturfreundlich, dunkel zuerst, Akzent Textmarker-Gelb; Geist und Geist Mono, Tabler Icons. Am 2026-10-17 nach Rückmeldung des Projektinhabers überarbeitet (Version 2, siehe Abschnitt 4); die Quelle im Repo ist Version 2. |
+| B „Werkbank“ | https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y | [richtung-b-werkbank.html](../../design/mockups/richtung-b-werkbank.html) | Erste Fassung (Artifact-Version 1): aufgebaut wie ein Code-Editor, mit Aktivitätsleiste, Panel, Modus-Reitern, Befehlspalette in der Titelleiste und Statusleiste mit Dokumentdaten. Dicht, tastaturfreundlich, dunkel zuerst, Akzent Textmarker-Gelb; Geist und Geist Mono, Tabler Icons. Am 2026-10-17 nach Rückmeldung des Projektinhabers überarbeitet (Version 2, siehe Abschnitt 4). Version 3 ergänzt die Zustände „Schmales Fenster“, „Passwort“ und „Fehler“, Version 4 das Token `search.on`; die übrigen Tokens sind seit Version 2 unverändert. Die Quelle im Repo ist Version 4. |
 | C „Papier“ | https://claude.ai/artifact/GqTxJnQPUbhrRoX9bjQ1ae | [richtung-c-papier.html](../../design/mockups/richtung-c-papier.html) | Ruhiger Leseraum: Fenster und Dokumentbereich im selben Papierton, schwebende Werkzeugleiste unten, Seitenübersicht als Panel bei Bedarf, Tintenblau als Akzent; Atkinson Hyperlegible Next, Literata für den Schriftzug, Phosphor Icons (Light). |
 
 **Prüfung (2026-10-17):**
-- Kontrast nach WCAG 2.2 AA für alle drei Token-Sätze in beiden Themes: 56 Paare je Richtung (Text auf allen Flächen ≥ 4,5:1, Akzent als Text ≥ 4,5:1, Ränder und Fokus ≥ 3:1), alle bestanden. Knappstes Paar je Richtung: `border.strong` auf `surface.window` (hell) mit 3,07 (A), 3,20 (B) und 3,34 (C).
+- Kontrast nach WCAG 2.2 AA für alle drei Token-Sätze in beiden Themes: 28 Paare je Theme, also 56 Prüfungen je Richtung (Text auf allen Flächen ≥ 4,5:1, Akzent als Text ≥ 4,5:1, Ränder und Fokus ≥ 3:1), alle bestanden. Knappstes Paar je Richtung: `border.strong` auf `surface.window` (hell) mit 3,07 (A), 3,20 (B) und 3,34 (C).
 - Sichtprüfung je Richtung in hell und dunkel bei 1440 px sowie bei 375 px Viewport-Breite: kein horizontales Scrollen (Inhaltsbreite 360 px bei 375 px), lange deutsche Beschriftungen („Ausfüllen & unterschreiben“, langer Dateiname) passen oder sind sauber gekürzt, die weiße Seite hat im dunklen Theme eine sichtbare Kante, aktive Seite, aktiver Tab und aktueller Suchtreffer sind nicht nur über Farbe erkennbar (Rahmen, Nummernmarke bzw. Unterstreichung, Form).
 - Gefunden und behoben: In B passte die Befehlspalette bei 1280 px nicht mehr in die Kontextleiste; sie sitzt jetzt in der Titelleiste (unter Linux am Ende der Tab-Zeile).
-- B Version 2 (2026-10-17) erneut geprüft: Kontrast der neuen Tokens bestanden (56 Paare, knappstes `border.strong` auf `surface.raised`, dunkel, 3,18), Sichtprüfung aller Ansichten (Dokument offen, Suche, Kommentieren, Startbildschirm, Linux-Titelleiste) hell und dunkel, in beiden Dichten und bei 375 px ohne horizontales Scrollen.
+- B Version 2 (2026-10-17) erneut geprüft: Kontrast der neuen Tokens bestanden (56 Prüfungen, knappstes `border.strong` auf `surface.raised`, dunkel, 3,18), Sichtprüfung aller Ansichten (Dokument offen, Suche, Kommentieren, Startbildschirm, Linux-Titelleiste) hell und dunkel, in beiden Dichten und bei 375 px ohne horizontales Scrollen.
 
 ## 4. Entscheidung
 
@@ -111,7 +111,7 @@ Die Abschnitte 5 bis 8 beschreiben diese Fassung verbindlich. Wo Mockup und Spec
 
 ## 5. Tokens
 
-Die Werte stammen aus dem gewählten Mockup (B, Artifact-Version 3). Token-Namen stehen in Punkt-Notation und beschreiben die Rolle, nicht die Farbe. In M3 werden sie zu Avalonia-Ressourcen: aus `color.surface.window` werden `Pw.Color.Surface.Window` (`Color`) und `Pw.Brush.Surface.Window` (`SolidColorBrush`), hell und dunkel getrennt über `ThemeDictionaries` (`Light`/`Dark`). Eine Token-Änderung ist eine Entscheidung in `Docs/DECISIONS.md`.
+Die Werte stammen aus dem gewählten Mockup (B, Artifact-Version 4). Token-Namen stehen in Punkt-Notation und beschreiben die Rolle, nicht die Farbe. In M3 werden sie zu Avalonia-Ressourcen: aus `color.surface.window` werden `Pw.Color.Surface.Window` (`Color`) und `Pw.Brush.Surface.Window` (`SolidColorBrush`), hell und dunkel getrennt über `ThemeDictionaries` (`Light`/`Dark`). Eine Token-Änderung ist eine Entscheidung in `Docs/DECISIONS.md`.
 
 ### 5.1 Farben
 
@@ -136,6 +136,7 @@ Die Werte stammen aus dem gewählten Mockup (B, Artifact-Version 3). Token-Namen
 | `color.page.shadow` | `#0000001A` | `#00000099` | Schatten der PDF-Seite, von Karten und Popups | – |
 | `color.search.hit` | `#FBE38A` | `#FBE38A` | Suchtreffer (auf der Seite und in der Trefferliste) | – |
 | `color.search.current` | `#F5A524` | `#F5A524` | Aktueller Suchtreffer, immer mit Rahmen | – |
+| `color.search.on` | `#16181D` | `#16181D` | Text auf `search.hit` und `search.current` (in der Trefferliste); nie `text.primary`, das im dunklen Theme auf Gelb nur 1,04:1 erreicht | – |
 | `color.danger.default` | `#B42318` | `#FF8A80` | Fehlertext, Fehlersymbol, Rand eines fehlerhaften Felds | `ErrorText` |
 
 Regeln:
@@ -143,7 +144,7 @@ Regeln:
 - Der Akzent ist nie Gelb. Gelb (`search.*`) gehört nur Suchtreffern; Farben von Markierungen sind Inhalt des PDFs und keine Tokens.
 - Pagewing nutzt seine eigene Akzentfarbe, nicht die des Systems (Wiedererkennung, geprüfter Kontrast). Deshalb wird `Accent` in der Fluent-Palette immer gesetzt.
 - Die Spalte „Fluent-Rolle“ ist ein Vorschlag. Die übrigen Fluent-Farben (`Chrome*`, `Alt*`, `List*`) werden in M3 so gesetzt, dass Fluent-Controls (Textfeld, Knopf, Liste, Kontrollkästchen) zu den Tokens passen (Abschnitt 9).
-- Kontrast nach WCAG 2.2 AA, geprüft am 2026-10-17 in beiden Themes: `text.primary` auf allen Flächen ≥ 4,5:1, `text.secondary` auf allen Flächen außer `surface.canvas` ≥ 4,5:1, `accent.default` als Text auf `surface.window`, `surface.toolbar`, `surface.sidebar` und `surface.raised` ≥ 4,5:1, `accent.on` auf `accent.default` ≥ 4,5:1, `danger.default` auf `surface.raised` ≥ 4,5:1, `border.strong` auf `surface.window`, `surface.toolbar` und `surface.raised` ≥ 3:1, `focus.ring` auf allen Flächen ≥ 3:1, `accent.default` auf `accent.subtle` ≥ 3:1. Knappstes Paar: `border.strong` auf `surface.raised` (dunkel) 3,18:1. Neue Paare, etwa `text.secondary` auf `surface.canvas`, brauchen vorher eine Prüfung.
+- Kontrast nach WCAG 2.2 AA, geprüft am 2026-10-17 in beiden Themes: `text.primary` auf allen Flächen ≥ 4,5:1, `text.secondary` auf allen Flächen außer `surface.canvas` ≥ 4,5:1, `accent.default` als Text auf `surface.window`, `surface.toolbar`, `surface.sidebar` und `surface.raised` ≥ 4,5:1, `accent.on` auf `accent.default` ≥ 4,5:1, `danger.default` auf `surface.raised` ≥ 4,5:1, `border.strong` auf `surface.window`, `surface.toolbar` und `surface.raised` ≥ 3:1, `focus.ring` auf allen Flächen ≥ 3:1, `accent.default` auf `accent.subtle` ≥ 3:1, `search.on` auf `search.hit` (13,9:1) und `search.current` (8,7:1) ≥ 4,5:1. Knappstes Paar: `border.strong` auf `surface.raised` (dunkel) 3,18:1. Neue Paare, etwa `text.secondary` auf `surface.canvas`, brauchen vorher eine Prüfung.
 
 ### 5.2 Typografie
 
@@ -215,7 +216,8 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 
 **Schmales Fenster:**
 - Unter 900 px Breite liegt das Panel über dem Dokument, statt es zu verschieben, und schließt sich nach der Auswahl einer Seite oder eines Treffers. Der Befehlsknopf schrumpft auf sein Symbol.
-- Ist kein Platz mehr für alle Tabs, schrumpfen sie bis auf 120 px; danach zeigt die Leiste nur noch den aktiven Tab und daneben „Alle Tabs (n)“ als Menü.
+- Die Zieh-Fläche der Titelleiste ist immer mindestens 48 px breit, damit sich das Fenster verschieben lässt. Dafür schrumpfen zuerst die Tabs bis auf 120 px; reicht das nicht, zeigt die Leiste nur noch den aktiven Tab (ebenfalls bis 120 px) und daneben „Alle Tabs (n)“ als Menü. Bei 640 px Mindestbreite bleiben damit für die Zieh-Fläche rund 216 px (Aktionsleiste 52, Tab 120, „Alle Tabs“ 50, „Datei öffnen“ 32, Befehlsknopf 32, Fensterknöpfe 138).
+- Werkzeugleiste eines Bearbeitungsmodus (ab v0.2), wenn sie nicht passt, in dieser Reihenfolge: zuerst entfällt „Esc beendet“, dann die Beschriftungen der Werkzeuge (Icons mit Tooltip bleiben), dann wandern Rückgängig und Löschen und danach die hinteren Werkzeuge ins Menü „⋯“. Modusname und „Fertig“ bleiben immer sichtbar. Die Spec von Teilprojekt 2 kann das für ihre Werkzeuge verfeinern.
 - Unter 760 px entfallen die Beschriftungen „Seite“ und „Dokumentinfos“ in der Statusleiste; die Symbole bleiben, mit Tooltip.
 - Das Mockup zeigt den Zustand bei 680 px.
 
@@ -223,7 +225,7 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 
 ### 7.1 Start und Startbildschirm
 
-- Der erste Frame zeigt Titelleiste und Startbildschirm, beim Start mit Dateiargument sofort die Dokumentansicht mit Platzhaltern in Seitengröße. Nichts im ersten Frame braucht PDFium.
+- Der erste Frame zeigt Titelleiste und Startbildschirm. Beim Start mit Dateiargument zeigt er stattdessen den Tab mit dem Dateinamen und einen leeren Dokumentbereich; die Platzhalter in Seitengröße folgen, sobald der Kern die Seitengrößen liefert. Nichts im ersten Frame braucht PDFium.
 - Der Startbildschirm zeigt die Überschrift „Dokument öffnen“, den Hinweis „Pagewing arbeitet offline. Nichts verlässt diesen Rechner.“, den Primärknopf „Datei auswählen“ (Strg+O), den Hinweis auf Drag & Drop und ab M6 „Zuletzt geöffnet“.
 - „Zuletzt geöffnet“ liest nur die Einstellungsdatei. Ob die Dateien noch existieren, prüft Pagewing erst nach dem ersten Frame; fehlende Einträge werden ausgegraut und mit dem Hinweis „Nicht gefunden“ versehen.
 - Eine Datei, die ins Fenster gezogen wird, öffnet als neuer Tab, egal in welchem Zustand.
@@ -281,6 +283,8 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
   - `NotAPdf`: „ist beschädigt oder keine PDF-Datei“
   - `FileNotFound`: „wurde nicht gefunden“
   - `CannotRead`: „kann nicht gelesen werden (kein Zugriff oder zu groß)“
+  - `UnsupportedEncryption`: „ist mit einem Verfahren verschlüsselt, das Pagewing nicht unterstützt“
+  - `Unknown`: „konnte aus einem unbekannten Grund nicht geöffnet werden“
 - Darunter folgen aufklappbare „Technische Details“ (Pfad, Fehlerart) und die Knöpfe „Tab schließen“ und „Andere Datei öffnen“ (Primär).
 - Alle Texte gibt es auf Englisch und Deutsch (resx).
 
@@ -326,7 +330,7 @@ Prüfung in M3, wenn nicht anders angegeben:
 - Start- und Bildratenkosten von Mica gegenüber deckender Fläche, falls Mica gewünscht ist.
 - X11 mit und ohne Compositor: tatsächliches `ActualTransparencyLevel`, Titelleiste.
 - Tatsächliche Standardschrift auf den Ziel-Distributionen.
-- Darstellung bei Windows-Hochkontrast: Fluent wertet `ContrastPreference` nicht aus; ob und wie Pagewing eine Hochkontrast-Palette bekommt, entscheidet M6 (Komfort).
+- Darstellung bei Windows-Hochkontrast: Fluent wertet `ContrastPreference` nicht aus; ob und wie Pagewing eine Hochkontrast-Palette bekommt, entscheidet M6 (Komfort, eigene Aufgabe in der Roadmap).
 - Geist und Geist Mono: Startkosten der eingebetteten Teilmenge messen. Liegen sie über dem Budget, nutzt Pagewing die Systemschrift (Fallback aus 5.2); das Ergebnis kommt als Eintrag in `Docs/DECISIONS.md`.
 - Fluent-Palette: übrige Rollen (`Chrome*`, `Alt*`, `List*`) so setzen, dass Textfeld, Knopf, Liste und Kontrollkästchen zu den Tokens in 5.1 passen; Prüfung per Sichtvergleich mit dem Mockup in beiden Themes.
 - Fensterknöpfe unter Windows: ob Avalonia sie bei `WindowDecorations="Full"` mit Hint selbst zeichnet oder das System; Höhe und Hover-Farben an die Titelleiste (40 bzw. 34 px) anpassen.
@@ -335,3 +339,4 @@ Spätere Milestones (Zuordnung in der Roadmap, Abschnitt „Scope-Änderungen“
 
 - „Dokumentinfos“ (7.6) in M4 (Navigation).
 - Einstellungen „Dichte“ (Normal/Kompakt) und „Animationen reduzieren“ in M6 (Komfort), zusammen mit den übrigen Einstellungen.
+- Hochkontrast (Windows `ContrastPreference`) in M6: entscheiden und gegebenenfalls umsetzen.

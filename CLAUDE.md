@@ -41,7 +41,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Gelb ist nie Akzent, sondern nur für Suchtreffer (Markierungsfarben sind PDF-Inhalt). Zustände nie nur über Farbe kennzeichnen. Ein neues Farbpaar vor der Verwendung auf WCAG 2.2 AA prüfen (Text 4,5:1, Icons, Ränder und Fokus 3:1).
 - Icons: Tabler outline mit 2 px Strich, nur die genutzten Pfade kopieren. `PathIcon` füllt nur, deshalb braucht es ein eigenes Icon-Control mit Strich.
 - Die Leseansicht zeigt keine Bearbeitungswerkzeuge. Funktionen späterer Versionen erscheinen nicht ausgegraut in der UI.
-- Mockup-Quellen liegen unter `Docs/design/mockups/` (eigenständige HTML-Seiten ohne Dokument-Rahmen, lokal im Browser zu öffnen). Icon-Entwurf und Schriftzug (vorläufig) liegen unter `Docs/design/`.
+- Mockup-Quellen liegen unter `Docs/design/mockups/` (Artifact-Quellen ohne Dokument-Rahmen; lokal nur eingeschränkt darstellbar, maßgeblich ist die Artifact-Ansicht). Icon-Entwurf und Schriftzug (vorläufig) liegen unter `Docs/design/`.
 
 ### Abhängigkeiten
 

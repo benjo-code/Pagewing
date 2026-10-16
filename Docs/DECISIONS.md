@@ -18,7 +18,7 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 ## 2026-10-17 – App-Icon und Schriftzug: Variante 1 „Flügelecke“ (vorläufig)
 **Kontext:** Milestone 2 legt Schriftzug und Icon-Richtung als Grundlage für die Icon-Dateien in M8 fest. Drei Varianten im Stil der Designrichtung B standen als Artifact bereit (Design-Spec `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 8; Quelle `Docs/design/mockups/schriftzug-icon.html`): 1 „Flügelecke“, 2 „Gefächerte Seiten“, 3 „Seite mit Schwinge“.
 **Entscheidung:** Variante 1 „Flügelecke“: eine Seite auf einer Indigo-Kachel, deren Eselsohr sich als Flügelspitze hebt, dazu der Schriftzug „Pagewing“ in Geist Semibold. Die Dateien liegen unter `Docs/design/` (`icon-entwurf.svg`, `icon-entwurf-einfarbig.svg`, `schriftzug.svg`). Die Wahl ist **vorläufig**; Wortlaut am 2026-10-17: „Erstmal 1, denke iwann wenn ich lust habe mach ich dann mal neues logo“. Ein späteres eigenes Logo ersetzt diesen Entwurf mit einem neuen Eintrag.
-**Begründung:** Vom Projektinhaber gewählt. Die Variante ist bei 16 px als Seite erkennbar, nutzt die Akzentfarbe der Oberfläche und unterscheidet sich von Acrobat und den Browser-Icons.
+**Begründung:** Vom Projektinhaber gewählt, ohne weitere Gründe. Einschätzung des Entwurfs: Die Variante ist bei 16 px als Seite erkennbar, nutzt die Akzentfarbe der Oberfläche und unterscheidet sich von Acrobat und den Browser-Icons.
 **Verworfene Alternativen:**
 - Variante 2 „Gefächerte Seiten“ und Variante 3 „Seite mit Schwinge“: vom Projektinhaber ohne Angabe von Gründen nicht gewählt. Bei Variante 3 hatte der Entwurf selbst auf die Ähnlichkeit der drei Bögen mit einem WLAN- bzw. Kontaktlos-Symbol hingewiesen.
 
@@ -52,7 +52,7 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 - Statusleiste nur mit Seite, Zoom und ab v0.2 dem Änderungsstatus; Seitenformat, PDF-Version und Dateigröße unter „Dokumentinfos“.
 - Weniger Rahmen, mehr Luft um die Seite; zwei Dichten, „Normal“ als Standard und „Kompakt“.
 - Tabler Icons mit 2 px Strich; Schrift Geist und Geist Mono.
-**Begründung:** B wächst am besten mit den Funktionen der Teilprojekte 2 bis 4 (Modi mit eigener Werkzeugleiste statt einer immer volleren Leiste) und ist per Tastatur gut bedienbar. Die Überarbeitung nimmt die Informationshierarchie von A (klare Statusleiste, wenig gleichzeitig sichtbar) und die Ruhe von C (Dokument im Mittelpunkt) auf. Gelb als Akzent wäre mit Suchtreffern und Textmarkierungen verwechselbar gewesen.
+**Begründung:** Der Projektinhaber nannte keine Gründe über seine Vorliebe für B hinaus; die folgende Begründung ist die Einschätzung des Entwurfs. B wächst am besten mit den Funktionen der Teilprojekte 2 bis 4 (Modi mit eigener Werkzeugleiste statt einer immer volleren Leiste) und ist per Tastatur gut bedienbar. Die Überarbeitung nimmt die Informationshierarchie von A (klare Statusleiste, wenig gleichzeitig sichtbar) und die Ruhe von C (Dokument im Mittelpunkt) auf. Gelb als Akzent wäre mit Suchtreffern und Textmarkierungen verwechselbar gewesen.
 **Verworfene Alternativen:**
 - A „Nativ & leise“ und C „Papier“: vom Projektinhaber ohne Angabe von Gründen verworfen; Ideen aus beiden sind in die Überarbeitung von B eingeflossen (siehe Begründung).
 - B in der ersten Fassung: wirkte wie ein Code-Editor; Akzent Gelb, immer sichtbare Modus-Reiter mit „v0.2“/„v0.3“, schwebendes Suchfenster und Dokumentdaten in der Statusleiste.
