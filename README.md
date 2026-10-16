@@ -28,9 +28,14 @@ Architektur und Entscheidungen stehen in der [Gesamt-Spec](Docs/superpowers/spec
 
 ## Setup
 
-Das Code-Grundgerüst entsteht in Milestone 0. Bis dahin gibt es nur Planungsdokumente.
+Das Code-Grundgerüst steht (Milestone 0): Solution mit `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-Fenster) und `Pagewing.Cli` (`--version`), jeweils als Native-AOT-Binary baubar, dazu CI auf Linux und Windows. Die PDF-Funktionen folgen ab Milestone 1.
 
-**Voraussetzungen:** .NET-10-SDK. Für den AOT-Publish braucht es zusätzlich die nativen Build-Werkzeuge: unter Windows Visual Studio Build Tools mit „Desktopentwicklung mit C++“, unter Linux `clang` und `zlib1g-dev`.
+**Voraussetzungen:** .NET-10-SDK. Für den AOT-Publish braucht es zusätzlich die nativen Build-Werkzeuge:
+
+- Windows: Visual Studio Build Tools mit „Desktopentwicklung mit C++“, und `vswhere.exe` im PATH (Ordner `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`).
+- Linux: `clang` und `zlib1g-dev` (`sudo apt-get install -y clang zlib1g-dev`).
+
+Für die self-hosted CI-Runner kommt unter Windows hinzu: die PowerShell-Ausführungsrichtlinie `RemoteSigned` für LocalMachine (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer Windows PowerShell mit Administratorrechten). Details stehen in `CLAUDE.md`, Abschnitt „CI“.
 
 ```bash
 dotnet build Pagewing.slnx

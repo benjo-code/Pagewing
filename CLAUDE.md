@@ -5,7 +5,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - **Stack:** .NET 10 (LTS) mit Native AOT · Avalonia 12.1 · PDFium (`bblanchon.PDFium.*`, ohne V8) über eigene `[LibraryImport]`-Bindings · später QPDF (Kandidat) und Tesseract über deren C-APIs
 - **Lizenz:** GPL-3.0-or-later ([LICENSE](LICENSE))
 - **Sprache:** Doku und Commits Deutsch · Code und Kommentare Englisch · UI-Texte Englisch und Deutsch (resx, Auswahl nach Systemsprache)
-- **Build:** `dotnet build Pagewing.slnx` · **Test:** `dotnet test Pagewing.slnx` · **Format/Lint:** `dotnet format Pagewing.slnx --verify-no-changes` (Solution entsteht in M0)
+- **Build:** `dotnet build Pagewing.slnx` · **Test:** `dotnet test Pagewing.slnx` · **Format/Lint:** `dotnet format Pagewing.slnx --verify-no-changes`
 - **AOT-Publish:** `dotnet publish src/Pagewing.App -c Release -r <win-x64|linux-x64>` (analog `src/Pagewing.Cli`); nur auf dem jeweiligen OS möglich
 - **Gesamt-Spec:** [Docs/superpowers/specs/2026-10-16-pagewing-design.md](Docs/superpowers/specs/2026-10-16-pagewing-design.md)
 - **Fahrplan:** [Docs/ROADMAP.md](Docs/ROADMAP.md) (generiert, Quelle [Docs/roadmap.json](Docs/roadmap.json), siehe „Roadmap pflegen“)
@@ -84,6 +84,18 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Self-hosted Runner der Orga: `dotnet-linux` und `dotnet-windows`. Build, Test, Format und AOT-Publish laufen auf beiden.
 - Das Repo ist derzeit privat. Wird es öffentlich, vorher in den Actions-Einstellungen einstellen, dass PRs aus Forks vor dem Lauf freigegeben werden müssen. Sonst führen fremde PRs Code auf den eigenen Runnern aus.
 - Der Linux-Build ist an die glibc des Build-Rechners gebunden. Die älteste unterstützte Distribution wird in M8 festgelegt.
+- Voraussetzungen der Linux-Runner: `clang` und `zlib1g-dev` (`sudo apt-get install -y clang zlib1g-dev`). Der CI-Schritt „Check the Native AOT prerequisites (Linux)“ meldet, was fehlt.
+- Voraussetzungen des Windows-Runners (`vm-git-windows-dotnet`, Label `dotnet-windows`):
+  - Ausführungsrichtlinie `RemoteSigned` für LocalMachine (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer Windows PowerShell mit Administratorrechten). Sonst scheitert jeder `run:`-Schritt mit „Ausführung von Skripts ... deaktiviert“.
+  - Visual Studio Build Tools mit Workload „Desktopentwicklung mit C++“. Prüfen: `vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath` gibt einen Pfad aus.
+- Der Windows-Runner läuft derzeit als Dienst. GUI-Tests und der Startzeit-Check (M3) brauchen eine angemeldete Desktop-Sitzung; das wird in M3 geplant.
+
+### Build-Stolperfallen
+
+- Die zentrale Paketverwaltung im Root (`Directory.Packages.props`, `Directory.Build.props`) gilt auch für Einzeldatei-Werkzeuge. `tools/Directory.Build.props` und `tools/Directory.Packages.props` isolieren sie; ohne sie bricht `tools/roadmap.cs` mit NU1008.
+- xunit.v3 läuft auf Microsoft.Testing.Platform: `global.json` enthält den Runner. `Microsoft.NET.Test.Sdk` und `xunit.runner.visualstudio` nicht referenzieren.
+- Testnamen ohne Unterstriche (CA1707 unter `latest-recommended`).
+- Native AOT unter Windows braucht `vswhere.exe` im PATH (Ordner `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`) und die VS-Build-Tools mit C++-Workload; unter Linux `clang` und `zlib1g-dev`.
 
 ---
 

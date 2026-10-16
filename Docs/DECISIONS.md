@@ -15,6 +15,21 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-16 – Testframework xunit.v3 4.0.2 mit Microsoft.Testing.Platform
+**Kontext:** Für die Testprojekte war ein Framework zu wählen. Die UI-Tests (ab M3) laufen mit Avalonia.Headless.
+**Entscheidung:** xunit.v3 4.0.2 auf Microsoft.Testing.Platform. `global.json` enthält den Test-Runner; `Microsoft.NET.Test.Sdk` und `xunit.runner.visualstudio` werden nicht referenziert.
+**Begründung:** `Avalonia.Headless.XUnit` 12.1.4 hängt von `xunit.v3.extensibility.core` 3.2.2 ab. Dazu passt xunit v2 nicht.
+**Verworfene Alternativen:** xunit v2 mit VSTest: passt nicht zu `Avalonia.Headless.XUnit`.
+**Offener Punkt:** Die Verträglichkeit von `Avalonia.Headless.XUnit` mit xunit.v3 4.0.x wird in M3 geprüft.
+
+## 2026-10-16 – Zentrale Paketverwaltung und Build-Einstellungen im Root, `tools/` isoliert
+**Kontext:** `Directory.Build.props` und `Directory.Packages.props` im Root gelten für alle Projekte darunter, auch für die Einzeldatei-Werkzeuge in `tools/` (zum Beispiel `tools/roadmap.cs`, `tools/smoke-cli.cs`). Diese pinnen ihre Pakete selbst mit `#:package <Name>@<Version>`. Beim Spike brach `tools/roadmap.cs` deshalb mit NU1008 (bei zentraler Paketverwaltung darf die Version nicht am Verweis stehen).
+**Entscheidung:** Versionen, Nullable, Warnungen als Fehler und `IsAotCompatible` stehen zentral im Root. `tools/Directory.Build.props` und `tools/Directory.Packages.props` isolieren die Werkzeuge davon.
+**Begründung:** Eine Stelle für alle Paketversionen macht Dependabot-Updates und Reviews einfach. Die Werkzeuge sind keine Produktcode-Projekte und brauchen weder die strengen Regeln noch die zentrale Verwaltung.
+**Verworfene Alternativen:**
+- Werkzeuge ebenfalls zentral verwalten: widerspricht dem `#:package`-Modell der Einzeldateien (NU1008).
+- Zentrale Verwaltung ganz abschalten: verliert die einheitlichen Versionen für die Projekte.
+
 ## 2026-10-16 – Sprachen: Doku Deutsch, Code Englisch, UI Englisch und Deutsch
 **Kontext:** Das Template gibt Deutsch für Doku und Commits vor. Pagewing ist aber Open Source und für ein internationales Publikum interessant.
 **Entscheidung:**

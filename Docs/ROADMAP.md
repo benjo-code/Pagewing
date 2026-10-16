@@ -23,7 +23,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 | # | Milestone | Teilprojekt | Status | Plan | Fertig am |
 |---|---|---|---|---|---|
-| 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | – |
+| 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | 2026-10-16 |
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -80,7 +80,7 @@ Bewusst nicht umgesetzt:
 **Spec:** [2026-10-16-pagewing-design.md](superpowers/specs/2026-10-16-pagewing-design.md)
 
 ## Milestone 0 – Repo-Grundgerüst & CI
-**Status:** 🔵 in Arbeit · **Plan:** [2026-10-16-milestone-00-grundgeruest.md](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) · **Voraussetzungen:** keine
+**Status:** ✅ fertig (2026-10-16) · **Plan:** [2026-10-16-milestone-00-grundgeruest.md](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) · **Voraussetzungen:** keine
 
 Ziel: Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI auf Linux und Windows, auf dem alle weiteren Milestones aufbauen.
 
@@ -90,18 +90,18 @@ Ziel: Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI a
 - [x] Projekt-Kopf in `CLAUDE.md` und `README.md` ausfüllen, Template-Abschnitt aus der README entfernen
 - [x] `LICENSE` mit GPL-3.0 (Lizenz: GPL-3.0-or-later)
 - [x] Self-hosted Windows-Runner mit Label `dotnet-windows` in der Orga `benjo-code` einrichten (Projektinhaber)
-- [ ] `.gitignore` für .NET (inkl. `.env`, `bin/`, `obj/`, Render-Diff-Ausgaben), `NuGet.config` (nur nuget.org, Source-Mapping) und C#-Stilregeln in `.editorconfig`
-- [ ] Solution-Gerüst laut Spec, Abschnitt 5.1: `Pagewing.slnx`, `global.json` (inkl. Test-Runner Microsoft.Testing.Platform), `Directory.Build.props` (Nullable, Warnungen als Fehler, `IsAotCompatible`), `Directory.Packages.props`, Isolation der Einzeldatei-Werkzeuge in `tools/`, Projekte `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-12-Fenster), `Pagewing.Cli` (`--version`) mit Smoke-Skript `tools/smoke-cli.cs`, `Pagewing.Core.Tests` (xunit.v3)
-- [ ] CI (GitHub Actions) auf PRs nach `dev` und `main`: Build, Test und `dotnet format --verify-no-changes` auf `dotnet-linux` und `dotnet-windows`, AOT-Publish von App und CLI pro OS als Smoke-Test; der Job `roadmap` bleibt
-- [ ] CI-Jobs (`roadmap` und die Build/Test/Lint-Jobs beider OS) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen
-- [ ] Dependabot für NuGet (Gruppe `bblanchon.PDFium*`, ohne Filter auf minor/patch) und GitHub Actions
-- [ ] Stolperfallen in `CLAUDE.md`, Entscheidungen in `Docs/DECISIONS.md` und Setup in `README.md` nachtragen
+- [x] `.gitignore` für .NET (inkl. `.env`, `bin/`, `obj/`, Render-Diff-Ausgaben), `NuGet.config` (nur nuget.org, Source-Mapping) und C#-Stilregeln in `.editorconfig`
+- [x] Solution-Gerüst laut Spec, Abschnitt 5.1: `Pagewing.slnx`, `global.json` (inkl. Test-Runner Microsoft.Testing.Platform), `Directory.Build.props` (Nullable, Warnungen als Fehler, `IsAotCompatible`), `Directory.Packages.props`, Isolation der Einzeldatei-Werkzeuge in `tools/`, Projekte `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-12-Fenster), `Pagewing.Cli` (`--version`) mit Smoke-Skript `tools/smoke-cli.cs`, `Pagewing.Core.Tests` (xunit.v3)
+- [x] CI (GitHub Actions) auf PRs nach `dev` und `main`: Build, Test und `dotnet format --verify-no-changes` auf `dotnet-linux` und `dotnet-windows`, AOT-Publish von App und CLI pro OS als Smoke-Test; der Job `roadmap` bleibt
+- [x] CI-Jobs (`roadmap` und die Build/Test/Lint-Jobs beider OS) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen
+- [x] Dependabot für NuGet (Gruppe `bblanchon.PDFium*`, ohne Filter auf minor/patch) und GitHub Actions
+- [x] Stolperfallen in `CLAUDE.md`, Entscheidungen in `Docs/DECISIONS.md` und Setup in `README.md` nachtragen
 
 **Abnahmekriterien**
-- [ ] Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)
-- [ ] AOT-Publish von `Pagewing.App` und `Pagewing.Cli` läuft ohne AOT-/Trim-Warnungen auf Linux und Windows; `pagewing --version` des AOT-Binaries gibt die Version aus
-- [ ] CI ist auf einem PR nach `dev` auf beiden Runnern grün
-- [ ] Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Checks Pflicht, kein Force-Push, kein Löschen – `gh api repos/benjo-code/Pagewing/branches/<branch>/protection`
+- [x] Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`) – `dotnet build Pagewing.slnx` (0 Warnungen, 0 Fehler), `dotnet test Pagewing.slnx` (1/1), `dotnet format Pagewing.slnx --verify-no-changes` (Exit 0) — Ausgabe der Abschlussprüfung
+- [x] AOT-Publish von `Pagewing.App` und `Pagewing.Cli` läuft ohne AOT-/Trim-Warnungen auf Linux und Windows; `pagewing --version` des AOT-Binaries gibt die Version aus – CI-Lauf 38933844896 (PR #1): `build-linux` und `build-windows` veröffentlichen CLI und App per Native AOT ohne Warnungen; `dotnet run tools/smoke-cli.cs` meldet auf beiden „Smoke-Test bestanden (0.0.0)“
+- [x] CI ist auf einem PR nach `dev` auf beiden Runnern grün – PR #1: `roadmap`, `build-linux`, `build-windows` grün (Lauf 38933844896, Commit f038a45)
+- [x] Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Checks Pflicht, kein Force-Push, kein Löschen – `gh api repos/benjo-code/Pagewing/branches/{main,dev}/protection` (2026-10-16): Pflicht-Checks `roadmap`, `build-linux`, `build-windows`, strict, PR Pflicht, Force-Push und Löschen verboten
 
 ## Milestone 1 – PDFium-Anbindung & Render-Kern
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M0

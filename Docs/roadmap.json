@@ -21,8 +21,9 @@
         {
           "id": "0",
           "title": "Repo-Grundgerüst & CI",
-          "status": "in-progress",
+          "status": "done",
           "plan": "superpowers/plans/2026-10-16-milestone-00-grundgeruest.md",
+          "completedOn": "2026-10-16",
           "goal": "Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI auf Linux und Windows, auf dem alle weiteren Milestones aufbauen.",
           "tasks": [
             { "text": "Spec erstellen (Brainstorming): Ziel, Umfang, Stack, Teilprojekte; hier verlinken und die ersten Milestones eintragen", "done": true },
@@ -30,18 +31,18 @@
             { "text": "Projekt-Kopf in `CLAUDE.md` und `README.md` ausfüllen, Template-Abschnitt aus der README entfernen", "done": true },
             { "text": "`LICENSE` mit GPL-3.0 (Lizenz: GPL-3.0-or-later)", "done": true },
             { "text": "Self-hosted Windows-Runner mit Label `dotnet-windows` in der Orga `benjo-code` einrichten (Projektinhaber)", "done": true },
-            { "text": "`.gitignore` für .NET (inkl. `.env`, `bin/`, `obj/`, Render-Diff-Ausgaben), `NuGet.config` (nur nuget.org, Source-Mapping) und C#-Stilregeln in `.editorconfig`", "done": false },
-            { "text": "Solution-Gerüst laut Spec, Abschnitt 5.1: `Pagewing.slnx`, `global.json` (inkl. Test-Runner Microsoft.Testing.Platform), `Directory.Build.props` (Nullable, Warnungen als Fehler, `IsAotCompatible`), `Directory.Packages.props`, Isolation der Einzeldatei-Werkzeuge in `tools/`, Projekte `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-12-Fenster), `Pagewing.Cli` (`--version`) mit Smoke-Skript `tools/smoke-cli.cs`, `Pagewing.Core.Tests` (xunit.v3)", "done": false },
-            { "text": "CI (GitHub Actions) auf PRs nach `dev` und `main`: Build, Test und `dotnet format --verify-no-changes` auf `dotnet-linux` und `dotnet-windows`, AOT-Publish von App und CLI pro OS als Smoke-Test; der Job `roadmap` bleibt", "done": false },
-            { "text": "CI-Jobs (`roadmap` und die Build/Test/Lint-Jobs beider OS) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen", "done": false },
-            { "text": "Dependabot für NuGet (Gruppe `bblanchon.PDFium*`, ohne Filter auf minor/patch) und GitHub Actions", "done": false },
-            { "text": "Stolperfallen in `CLAUDE.md`, Entscheidungen in `Docs/DECISIONS.md` und Setup in `README.md` nachtragen", "done": false }
+            { "text": "`.gitignore` für .NET (inkl. `.env`, `bin/`, `obj/`, Render-Diff-Ausgaben), `NuGet.config` (nur nuget.org, Source-Mapping) und C#-Stilregeln in `.editorconfig`", "done": true },
+            { "text": "Solution-Gerüst laut Spec, Abschnitt 5.1: `Pagewing.slnx`, `global.json` (inkl. Test-Runner Microsoft.Testing.Platform), `Directory.Build.props` (Nullable, Warnungen als Fehler, `IsAotCompatible`), `Directory.Packages.props`, Isolation der Einzeldatei-Werkzeuge in `tools/`, Projekte `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-12-Fenster), `Pagewing.Cli` (`--version`) mit Smoke-Skript `tools/smoke-cli.cs`, `Pagewing.Core.Tests` (xunit.v3)", "done": true },
+            { "text": "CI (GitHub Actions) auf PRs nach `dev` und `main`: Build, Test und `dotnet format --verify-no-changes` auf `dotnet-linux` und `dotnet-windows`, AOT-Publish von App und CLI pro OS als Smoke-Test; der Job `roadmap` bleibt", "done": true },
+            { "text": "CI-Jobs (`roadmap` und die Build/Test/Lint-Jobs beider OS) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen", "done": true },
+            { "text": "Dependabot für NuGet (Gruppe `bblanchon.PDFium*`, ohne Filter auf minor/patch) und GitHub Actions", "done": true },
+            { "text": "Stolperfallen in `CLAUDE.md`, Entscheidungen in `Docs/DECISIONS.md` und Setup in `README.md` nachtragen", "done": true }
           ],
           "acceptance": [
-            { "text": "Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)", "done": false },
-            { "text": "AOT-Publish von `Pagewing.App` und `Pagewing.Cli` läuft ohne AOT-/Trim-Warnungen auf Linux und Windows; `pagewing --version` des AOT-Binaries gibt die Version aus", "done": false },
-            { "text": "CI ist auf einem PR nach `dev` auf beiden Runnern grün", "done": false },
-            { "text": "Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Checks Pflicht, kein Force-Push, kein Löschen", "done": false, "evidence": "`gh api repos/benjo-code/Pagewing/branches/<branch>/protection`" }
+            { "text": "Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)", "done": true, "evidence": "`dotnet build Pagewing.slnx` (0 Warnungen, 0 Fehler), `dotnet test Pagewing.slnx` (1/1), `dotnet format Pagewing.slnx --verify-no-changes` (Exit 0) — Ausgabe der Abschlussprüfung" },
+            { "text": "AOT-Publish von `Pagewing.App` und `Pagewing.Cli` läuft ohne AOT-/Trim-Warnungen auf Linux und Windows; `pagewing --version` des AOT-Binaries gibt die Version aus", "done": true, "evidence": "CI-Lauf 38933844896 (PR #1): `build-linux` und `build-windows` veröffentlichen CLI und App per Native AOT ohne Warnungen; `dotnet run tools/smoke-cli.cs` meldet auf beiden „Smoke-Test bestanden (0.0.0)“" },
+            { "text": "CI ist auf einem PR nach `dev` auf beiden Runnern grün", "done": true, "evidence": "PR #1: `roadmap`, `build-linux`, `build-windows` grün (Lauf 38933844896, Commit f038a45)" },
+            { "text": "Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Checks Pflicht, kein Force-Push, kein Löschen", "done": true, "evidence": "`gh api repos/benjo-code/Pagewing/branches/{main,dev}/protection` (2026-10-16): Pflicht-Checks `roadmap`, `build-linux`, `build-windows`, strict, PR Pflicht, Force-Push und Löschen verboten" }
           ]
         },
         {
