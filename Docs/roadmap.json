@@ -59,7 +59,7 @@
             { "text": "Rendern ganzer Seiten und einzelner Kacheln (Matrix + Clipping), progressiv mit Pause und Abbruch", "done": true },
             { "text": "Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)", "done": true },
             { "text": "CLI `pagewing info|render|text`", "done": true },
-            { "text": "`testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS", "done": false },
+            { "text": "`testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS", "done": true },
             { "text": "`Pagewing.Benchmarks` (BenchmarkDotNet): Öffnen und Rendern", "done": false },
             { "text": "Vergleichsmessung Acrobat, Chrome, SumatraPDF auf dem Rechner des Projektinhabers; Budgets in Roadmap, `CLAUDE.md` und Spec endgültig festlegen", "done": false }
           ],
