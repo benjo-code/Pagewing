@@ -57,22 +57,37 @@ public static class CliApp
     /// <param name="getEnvironmentVariable">Reads an environment variable, <see langword="null"/> when unset.</param>
     /// <param name="ct">Cancels the command (Ctrl+C).</param>
     /// <returns>The exit code.</returns>
-    public static async Task<int> RunAsync(
+    public static Task<int> RunAsync(
         string[] args,
         Stream stdout,
         TextWriter stderr,
         Func<string, string?> getEnvironmentVariable,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        RunAsync(args, stdout, stderr, getEnvironmentVariable, openDocument: null, runCommand: null, ct);
+
+    /// <summary>
+    /// <see cref="RunAsync(string[], Stream, TextWriter, Func{string, string?}, CancellationToken)"/> with seams for tests:
+    /// <paramref name="openDocument"/> replaces opening the file, <paramref name="runCommand"/> replaces the command.
+    /// </summary>
+    internal static async Task<int> RunAsync(
+        string[] args,
+        Stream stdout,
+        TextWriter stderr,
+        Func<string, string?> getEnvironmentVariable,
+        Func<string, string?, CancellationToken, Task<PdfDocument>>? openDocument,
+        Func<PdfDocument, CliOptions, TextWriter, CancellationToken, Task>? runCommand,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(stdout);
         ArgumentNullException.ThrowIfNull(stderr);
         ArgumentNullException.ThrowIfNull(getEnvironmentVariable);
 
-        var output = new StreamWriter(stdout, Utf8WithoutBom, bufferSize: 4096, leaveOpen: true) { NewLine = "\n" };
+        StreamWriter? output = null;
         try
         {
-            return await ExecuteAsync(args, output, getEnvironmentVariable, ct).ConfigureAwait(false);
+            output = new StreamWriter(stdout, Utf8WithoutBom, bufferSize: 4096, leaveOpen: true) { NewLine = "\n" };
+            return await ExecuteAsync(args, output, getEnvironmentVariable, openDocument, runCommand, ct).ConfigureAwait(false);
         }
         catch (UsageException ex)
         {
@@ -92,15 +107,26 @@ public static class CliApp
             stderr.WriteLine($"pagewing: {ex.Message}");
             return 1;
         }
+        catch (Exception ex)
+        {
+            // Anything else (a missing or mismatched PDFium library, out of memory, a bug) is not something the
+            // user can fix by changing the command line; name the type so the report is useful, but never print
+            // a stack trace and never let the exception escape.
+            stderr.WriteLine($"pagewing: Internal error ({ex.GetType().Name}): {ex.Message}");
+            return 1;
+        }
         finally
         {
             try
             {
-                await output.DisposeAsync().ConfigureAwait(false);
+                if (output is not null)
+                {
+                    await output.DisposeAsync().ConfigureAwait(false);
+                }
             }
-            catch (IOException)
+            catch (Exception)
             {
-                // stdout is closed (for example a broken pipe); there is nobody left to tell.
+                // stdout is closed or broken (for example a broken pipe); there is nobody left to tell.
             }
         }
     }
@@ -119,7 +145,13 @@ public static class CliApp
         }
     }
 
-    private static async Task<int> ExecuteAsync(string[] args, StreamWriter output, Func<string, string?> getEnvironmentVariable, CancellationToken ct)
+    private static async Task<int> ExecuteAsync(
+        string[] args,
+        StreamWriter output,
+        Func<string, string?> getEnvironmentVariable,
+        Func<string, string?, CancellationToken, Task<PdfDocument>>? openDocument,
+        Func<PdfDocument, CliOptions, TextWriter, CancellationToken, Task>? runCommand,
+        CancellationToken ct)
     {
         if (args.Length == 0)
         {
@@ -139,24 +171,26 @@ public static class CliApp
         }
 
         var options = CliOptions.Parse(args[0], args.AsSpan(1));
-        await using var document = await OpenAsync(options, getEnvironmentVariable, ct).ConfigureAwait(false);
-        switch (options.Command)
-        {
-            case "info":
-                await InfoCommand.RunAsync(document, options, output, ct).ConfigureAwait(false);
-                break;
-            case "render":
-                await RenderCommand.RunAsync(document, options, output, ct).ConfigureAwait(false);
-                break;
-            default:
-                await TextCommand.RunAsync(document, options, output, ct).ConfigureAwait(false);
-                break;
-        }
 
+        // The document is disposed inside the try block of RunAsync, so a failure while closing it is reported, too.
+        await using var document = await OpenAsync(options, getEnvironmentVariable, openDocument, ct).ConfigureAwait(false);
+        await (runCommand ?? RunCommandAsync)(document, options, output, ct).ConfigureAwait(false);
         return 0;
     }
 
-    private static async Task<PdfDocument> OpenAsync(CliOptions options, Func<string, string?> getEnvironmentVariable, CancellationToken ct)
+    private static Task RunCommandAsync(PdfDocument document, CliOptions options, TextWriter output, CancellationToken ct) =>
+        options.Command switch
+        {
+            "info" => InfoCommand.RunAsync(document, options, output, ct),
+            "render" => RenderCommand.RunAsync(document, options, output, ct),
+            _ => TextCommand.RunAsync(document, options, output, ct),
+        };
+
+    private static async Task<PdfDocument> OpenAsync(
+        CliOptions options,
+        Func<string, string?> getEnvironmentVariable,
+        Func<string, string?, CancellationToken, Task<PdfDocument>>? openDocument,
+        CancellationToken ct)
     {
         var password = options.Password ?? getEnvironmentVariable(PasswordVariable);
         if (string.IsNullOrEmpty(password))
@@ -166,7 +200,7 @@ public static class CliApp
 
         try
         {
-            return await new PdfEngine().OpenAsync(options.File, password, ct).ConfigureAwait(false);
+            return await (openDocument ?? new PdfEngine().OpenAsync)(options.File, password, ct).ConfigureAwait(false);
         }
         catch (PdfOpenException ex) when (ex.Error == PdfOpenError.PasswordRequired)
         {

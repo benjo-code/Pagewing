@@ -379,6 +379,91 @@ public sealed class CliTests : IDisposable
         Assert.Equal(new UTF8Encoding(false, true).GetBytes("Größe äöü\f"), text.OutputBytes);
     }
 
+    [Theory]
+    [InlineData(typeof(DllNotFoundException), "pdfium")]
+    [InlineData(typeof(EntryPointNotFoundException), "FPDF_InitLibrary")]
+    [InlineData(typeof(BadImageFormatException), "wrong architecture")]
+    [InlineData(typeof(InvalidOperationException), "bad state")]
+    [InlineData(typeof(ObjectDisposedException), "disposed")]
+    [InlineData(typeof(OutOfMemoryException), "no memory")]
+    public async Task UnexpectedFailureWhileOpeningExitsWithOneAndNamesTheType(Type type, string message)
+    {
+        var result = await RunWithFailureAsync(
+            ["info", TestData.Pdf("text-basic.pdf")],
+            openDocument: (_, _, _) => throw CreateException(type, message),
+            runCommand: null);
+
+        AssertInternalError(result, type, message);
+    }
+
+    [Theory]
+    [InlineData("info")]
+    [InlineData("render")]
+    [InlineData("text")]
+    public async Task UnexpectedFailureWhileRunningTheCommandExitsWithOneAndNamesTheType(string command)
+    {
+        var result = await RunWithFailureAsync(
+            [command, TestData.Pdf("text-basic.pdf")],
+            openDocument: null,
+            runCommand: (_, _, _, _) => throw new InvalidOperationException("render went wrong"));
+
+        AssertInternalError(result, typeof(InvalidOperationException), "render went wrong");
+    }
+
+    [Fact]
+    public async Task UnexpectedFailureInAnAsyncCommandAfterOutputExitsWithOne()
+    {
+        var result = await RunWithFailureAsync(
+            ["text", TestData.Pdf("text-basic.pdf")],
+            openDocument: null,
+            runCommand: async (_, _, output, _) =>
+            {
+                await output.WriteAsync("partial");
+                await Task.Yield();
+                throw CreateException(typeof(OutOfMemoryException), "bitmap");
+            });
+
+        AssertInternalError(result, typeof(OutOfMemoryException), "bitmap");
+        Assert.Equal("partial", result.Output);
+    }
+
+    [Fact]
+    public async Task ClosedStdoutDoesNotMakeTheRunThrow()
+    {
+        using var stderr = new StringWriter();
+        var stdout = new MemoryStream();
+        stdout.Dispose();
+
+        var exitCode = await CliApp.RunAsync(["text", TestData.Pdf("text-basic.pdf")], stdout, stderr, _ => null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.StartsWith("pagewing: ", stderr.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("   at ", stderr.ToString(), StringComparison.Ordinal);
+    }
+
+    private static Exception CreateException(Type type, string message) => type == typeof(ObjectDisposedException)
+        ? new ObjectDisposedException(message)
+        : (Exception)Activator.CreateInstance(type, message)!;
+
+    private static void AssertInternalError(CliResult result, Type type, string message)
+    {
+        Assert.Equal(1, result.ExitCode);
+        Assert.StartsWith($"pagewing: Internal error ({type.Name}): ", result.Error, StringComparison.Ordinal);
+        Assert.Contains(message, result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("   at ", result.Error, StringComparison.Ordinal);
+    }
+
+    private static async Task<CliResult> RunWithFailureAsync(
+        string[] args,
+        Func<string, string?, CancellationToken, Task<PdfDocument>>? openDocument,
+        Func<PdfDocument, CliOptions, TextWriter, CancellationToken, Task>? runCommand)
+    {
+        using var stdout = new MemoryStream();
+        using var stderr = new StringWriter();
+        var exitCode = await CliApp.RunAsync(args, stdout, stderr, _ => null, openDocument, runCommand, TestContext.Current.CancellationToken);
+        return new CliResult(exitCode, stdout.ToArray(), stderr.ToString());
+    }
+
     private static Task<CliResult> RunAsync(params string[] args) => RunAsync(environment: null, CancellationToken.None, args);
 
     private static Task<CliResult> RunAsync(Dictionary<string, string> environment, params string[] args) =>
