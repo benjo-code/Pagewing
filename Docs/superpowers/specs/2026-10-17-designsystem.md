@@ -84,17 +84,30 @@ Alle drei zeigen dieselbe Szene, damit sie vergleichbar sind: zwei Tabs (einer m
 | Richtung | Artifact | Quelle | Leitidee |
 |---|---|---|---|
 | A „Nativ & leise“ | https://claude.ai/artifact/He1E7CwqM3d8eQTxC2pnPs | [richtung-a-nativ.html](../../design/mockups/richtung-a-nativ.html) | Sieht aus wie ein Teil des Systems (Fluent, GNOME): neutrale Flächen, eine Akzentfarbe, klassische Werkzeugleiste, Systemschrift, Fluent UI System Icons. Geringstes Risiko, schnellster Start, wenig Wiedererkennung. |
-| B „Werkbank“ | https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y | [richtung-b-werkbank.html](../../design/mockups/richtung-b-werkbank.html) | Aufgebaut wie ein Code-Editor: Aktivitätsleiste, Panel, Modus-Reiter, Befehlspalette in der Titelleiste, Statusleiste mit Dokumentdaten. Dicht, tastaturfreundlich, dunkel zuerst, Akzent Textmarker-Gelb; Geist und Geist Mono, Tabler Icons. |
+| B „Werkbank“ | https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y | [richtung-b-werkbank.html](../../design/mockups/richtung-b-werkbank.html) | Erste Fassung (Artifact-Version 1): aufgebaut wie ein Code-Editor, mit Aktivitätsleiste, Panel, Modus-Reitern, Befehlspalette in der Titelleiste und Statusleiste mit Dokumentdaten. Dicht, tastaturfreundlich, dunkel zuerst, Akzent Textmarker-Gelb; Geist und Geist Mono, Tabler Icons. Am 2026-10-17 nach Rückmeldung des Projektinhabers überarbeitet (Version 2, siehe Abschnitt 4); die Quelle im Repo ist Version 2. |
 | C „Papier“ | https://claude.ai/artifact/GqTxJnQPUbhrRoX9bjQ1ae | [richtung-c-papier.html](../../design/mockups/richtung-c-papier.html) | Ruhiger Leseraum: Fenster und Dokumentbereich im selben Papierton, schwebende Werkzeugleiste unten, Seitenübersicht als Panel bei Bedarf, Tintenblau als Akzent; Atkinson Hyperlegible Next, Literata für den Schriftzug, Phosphor Icons (Light). |
 
 **Prüfung (2026-10-17):**
 - Kontrast nach WCAG 2.2 AA für alle drei Token-Sätze in beiden Themes: 56 Paare je Richtung (Text auf allen Flächen ≥ 4,5:1, Akzent als Text ≥ 4,5:1, Ränder und Fokus ≥ 3:1), alle bestanden. Knappstes Paar je Richtung: `border.strong` auf `surface.window` (hell) mit 3,07 (A), 3,20 (B) und 3,34 (C).
 - Sichtprüfung je Richtung in hell und dunkel bei 1440 px sowie bei 375 px Viewport-Breite: kein horizontales Scrollen (Inhaltsbreite 360 px bei 375 px), lange deutsche Beschriftungen („Ausfüllen & unterschreiben“, langer Dateiname) passen oder sind sauber gekürzt, die weiße Seite hat im dunklen Theme eine sichtbare Kante, aktive Seite, aktiver Tab und aktueller Suchtreffer sind nicht nur über Farbe erkennbar (Rahmen, Nummernmarke bzw. Unterstreichung, Form).
 - Gefunden und behoben: In B passte die Befehlspalette bei 1280 px nicht mehr in die Kontextleiste; sie sitzt jetzt in der Titelleiste (unter Linux am Ende der Tab-Zeile).
+- B Version 2 (2026-10-17) erneut geprüft: Kontrast der neuen Tokens bestanden (56 Paare, knappstes `border.strong` auf `surface.raised`, dunkel, 3,18), Sichtprüfung aller Ansichten (Dokument offen, Suche, Kommentieren, Startbildschirm, Linux-Titelleiste) hell und dunkel, in beiden Dichten und bei 375 px ohne horizontales Scrollen.
 
 ## 4. Entscheidung
 
-*Wird in Task 3 ausgefüllt.*
+Der Projektinhaber hat am 2026-10-17 **Richtung B „Werkbank“ in der überarbeiteten Fassung** gewählt (Artifact-Version 2, Quelle [richtung-b-werkbank.html](../../design/mockups/richtung-b-werkbank.html)). Begründung, Wortlaut der Wahl und verworfene Richtungen stehen in [`Docs/DECISIONS.md`](../../DECISIONS.md), Eintrag „Designrichtung: B „Werkbank“ (überarbeitete Fassung)“.
+
+Änderungen gegenüber der ersten Fassung von B, alle im Mockup umgesetzt:
+
+- Akzent gedecktes Indigo statt Textmarker-Gelb; Gelb nur für Suchtreffer und Markierungen.
+- Befehlspalette als kompakter Knopf „Suchen oder Befehl · Strg K“ in der Titelleiste, kein Eingabefeld.
+- Keine Modus-Reiter in v0.1; Bearbeitungsmodi ab v0.2 öffnen eine eigene Werkzeugleiste mit „Fertig“ (Ansicht „Kommentieren (ab v0.2)“ im Mockup).
+- Panel nur bei Bedarf: Vorschaubilder nach dem Öffnen, Trefferliste beim Suchen.
+- Statusleiste mit Seite, Zoom, Änderungsstatus (ab v0.2) und „Dokumentinfos“.
+- Weniger Rahmen, mehr Luft um die Seite; Dichte „Normal“ (Standard) und „Kompakt“.
+- Tabler Icons mit 2 px statt 1,75 px Strich.
+
+Die Abschnitte 5 bis 8 beschreiben diese Fassung verbindlich. Wo Mockup und Spec abweichen, gilt die Spec.
 
 ## 5. Tokens
 
