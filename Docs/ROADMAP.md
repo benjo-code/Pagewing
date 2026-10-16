@@ -394,3 +394,4 @@ Bewusst nicht eingeplant. Ideen, die `/ideen` hier ablegt, stehen als Liste; bei
 - **Präsentationsmodus:** Vollbild, eine Seite pro Bildschirm, Weiter mit Leertaste/Pfeiltasten.
 - **Erweiterte Barrierefreiheit:** Über die Grundlagen hinaus: Screenreader-Unterstützung für Seiteninhalt (UIA unter Windows, AT-SPI2 unter Linux).
 - **arm64-Builds:** Die PDFium-Pakete enthalten bereits win-arm64 und linux-arm64; braucht passende Runner.
+- **Vergleichsmessung mit Acrobat und SumatraPDF nachholen:** Das Werkzeug `tools/measure-open.cs` und das Protokoll in `bench/compare/README.md` gibt es; die Befehle für Acrobat und SumatraPDF sind ungetestet (beide waren nicht installiert). Nur für die Einordnung im Vergleich nötig, nicht für die Budgetregel (die stützt sich nur auf Chrome).

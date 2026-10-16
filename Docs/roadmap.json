@@ -411,6 +411,7 @@
     { "title": "Sitzung wiederherstellen", "text": "Beim Start die zuletzt offenen Tabs mit Position wieder öffnen." },
     { "title": "Präsentationsmodus", "text": "Vollbild, eine Seite pro Bildschirm, Weiter mit Leertaste/Pfeiltasten." },
     { "title": "Erweiterte Barrierefreiheit", "text": "Über die Grundlagen hinaus: Screenreader-Unterstützung für Seiteninhalt (UIA unter Windows, AT-SPI2 unter Linux)." },
-    { "title": "arm64-Builds", "text": "Die PDFium-Pakete enthalten bereits win-arm64 und linux-arm64; braucht passende Runner." }
+    { "title": "arm64-Builds", "text": "Die PDFium-Pakete enthalten bereits win-arm64 und linux-arm64; braucht passende Runner." },
+    { "title": "Vergleichsmessung mit Acrobat und SumatraPDF nachholen", "text": "Das Werkzeug `tools/measure-open.cs` und das Protokoll in `bench/compare/README.md` gibt es; die Befehle für Acrobat und SumatraPDF sind ungetestet (beide waren nicht installiert). Nur für die Einordnung im Vergleich nötig, nicht für die Budgetregel (die stützt sich nur auf Chrome)." }
   ]
 }

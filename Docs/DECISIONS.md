@@ -28,16 +28,16 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 
 Das Verhältnis bezieht sich auf `t_visually_complete`. In Fall (d) beziehen sich die Zeiten auf den Start des zweiten Prozesses; die erste Datei brauchte dort im Median 1399,9 ms bis zum ersten Bild.
 **Entscheidung:** Die vier Budgets sind **endgültig und unverändert**: Kaltstart bis erste Seite scharf ≤ 400 ms, Warmstart ≤ 200 ms, weitere Datei in laufender Instanz ≤ 100 ms, 1000-seitige PDF bis erste Seite ≤ 300 ms. Der Projektinhaber hat das am 2026-10-16 bestätigt. Angewandt wurde die Regel aus dem README („Regel für den Vorschlag“): Vorschlag = Chrome-Median (`t_visually_complete`), auf 50 ms aufgerundet, höchstens das vorläufige Budget. Das ergibt (a) min(1500, 400) = 400, (b) min(1550, 200) = 200, (c) min(1750, 300) = 300, (d) min(650, 100) = 100. Gegenprobe bestanden: Die Kernzeit aus dem Eintrag „Benchmark-Basiswerte für den Render-Kern (M1)“ (`OpenThousandPagesAndRenderFirstPage` 3,4 ms) plus 50 ms für den Fensterstart liegt unter jedem Budget. Der Startzeit-Check ab M3 (`--measure-startup`, `bench/startup`) nutzt diese Budgets und schlägt ab Budget + 25 % fehl.
-**Begründung:** Chrome braucht für alle vier Fälle ein Vielfaches der vorläufigen Budgets (3,7- bis 7,7-fach). Die Budgets liegen damit deutlich vor dem schnellsten gemessenen Vergleichsprogramm, und die Kernzeit zeigt, dass sie technisch erreichbar sind. Die Regel verbietet, Budgets zu lockern; eine Straffung ist nicht begründbar, weil die Messung nur eine obere Schranke mit etwa 70 ms Auflösung liefert.
+**Begründung:** Chrome braucht für alle vier Fälle ein Vielfaches der vorläufigen Budgets (3,7- bis 7,7-fach). Die Budgets liegen damit deutlich unter den gemessenen Chrome-Werten, und die Kernzeit zeigt, dass sie technisch erreichbar sind. Die Regel verbietet, Budgets zu lockern; eine Straffung ist nicht begründbar, weil die Messung nur eine obere Schranke mit etwa 70 ms Auflösung liefert.
 **Verworfene Alternativen:**
-- Budgets auf die Chrome-Werte lockern: widerspricht der Regel (nie lockern) und dem Ziel, deutlich schneller als die Konkurrenz zu sein.
+- Budgets auf die Chrome-Werte lockern: widerspricht der Regel (nie lockern) und dem Ziel, deutlich unter den gemessenen Chrome-Werten zu bleiben.
 - Budgets straffen: sinnvoll nicht möglich, die Messung ist dafür zu grob, und der Startzeit-Check von M3 prüft erst, was Pagewing mit Avalonia tatsächlich erreicht.
 - Auf Messungen von Acrobat und SumatraPDF warten: nicht nötig, die Regel stützt sich nur auf den schnellsten Browser (Chrome); die beiden anderen dienen der Einordnung.
 
 **Grenzen der Messung:**
 - Nur Chrome gemessen; Acrobat und SumatraPDF fehlen, der Vergleich mit ihnen ist offen.
 - Die Auflösung liegt bei etwa 70 ms, die Zeitstempel sind obere Schranken. Das 100-ms-Budget aus Fall (d) lässt sich mit diesem Werkzeug nicht auflösen.
-- Fall (b) ist nicht schneller als Fall (a): Der Start war kein echter Kaltstart (kein Neustart vor der Messung).
+- Fall (b) war nicht schneller als Fall (a); ein echter Kaltstart (Neustart direkt davor) ist daher nicht belegt.
 - Monitor und Skalierung wurden nicht festgehalten.
 - Ob Pagewing mit Avalonia die Budgets erreicht, prüft erst der Startzeit-Check in M3. Er misst von innen (`--measure-startup`), nicht per Bildschirmkopie; die Werte beider Verfahren sind nicht dasselbe.
 

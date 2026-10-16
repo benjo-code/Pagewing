@@ -53,7 +53,7 @@ dotnet run -c Release --project bench/Pagewing.Benchmarks -- --filter "*"       
 dotnet run tools/make-testpdfs.cs -- check                                           # Test-PDFs auf Reproduzierbarkeit prüfen (`generate` schreibt sie neu)
 ```
 
-Die Vergleichsmessung der Viewer (Acrobat, Chrome, SumatraPDF) läuft mit `tools/measure-open.cs`, das Protokoll steht in `bench/compare/README.md`.
+Die Vergleichsmessung der Viewer (Acrobat, Chrome, SumatraPDF; bisher nur Chrome gemessen) läuft mit `tools/measure-open.cs`, das Protokoll steht in `bench/compare/README.md`.
 
 Die Roadmap wird aus `Docs/roadmap.json` erzeugt: `dotnet run tools/roadmap.cs -- generate` (prüfen mit `-- check`).
 

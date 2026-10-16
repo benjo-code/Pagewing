@@ -1,6 +1,6 @@
 # Vergleichsmessung: Öffnen von PDFs in Acrobat, Chrome und SumatraPDF
 
-Dieses Protokoll gehört zu Milestone 1 (Roadmap-Aufgabe „Vergleichsmessung Acrobat, Chrome, SumatraPDF …; Budgets festlegen“). Es legt fest, wie die Öffnungszeiten der Vergleichs-Viewer gemessen werden, damit daraus die endgültigen Geschwindigkeitsbudgets von Pagewing abgeleitet werden können. Dasselbe Werkzeug misst ab Milestone 3 Pagewing selbst.
+Dieses Protokoll gehört zu Milestone 1 (Roadmap-Aufgabe „Vergleichsmessung mit Chrome auf dem Rechner des Projektinhabers (Acrobat und SumatraPDF nicht installiert, nicht gemessen); Budgets in Roadmap, `CLAUDE.md` und Spec endgültig festlegen“). Es legt fest, wie die Öffnungszeiten der Vergleichs-Viewer gemessen werden, damit daraus die endgültigen Geschwindigkeitsbudgets von Pagewing abgeleitet werden können. Dasselbe Werkzeug misst ab Milestone 3 Pagewing selbst.
 
 Die Messung führt der Projektinhaber auf seinem Rechner durch (Acrobat, SumatraPDF und eine angemeldete Desktop-Sitzung sind nötig). Die Ergebnisse kommen als CSV nach `bench/compare/results/` und werden eingecheckt.
 
@@ -130,6 +130,8 @@ Exit-Code 0: Messung vollständig. 1: Fenster oder Seiteninhalt erschien nicht i
 Die Auswertung macht Claude (Task 12) aus den CSV-Dateien; die endgültige Festlegung trifft der Projektinhaber.
 
 Vorläufige Budgets (Roadmap „Geschwindigkeitsziele“):
+
+Stand vor der Messung; seit 2026-10-16 endgültig und unverändert, siehe `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“.
 
 | Messgröße | Vorläufiges Budget | Vergleichsfall |
 |---|---|---|
