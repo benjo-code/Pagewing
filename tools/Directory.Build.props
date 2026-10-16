@@ -1,0 +1,3 @@
+<Project>
+  <!-- Isolates the single-file tools (tools/*.cs) from the solution-wide settings in the repository root. -->
+</Project>
