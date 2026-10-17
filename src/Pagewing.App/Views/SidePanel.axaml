@@ -16,14 +16,13 @@
   <UserControl.Resources>
     <!--
       Content of each panel, keyed by the name of its SidePanelKind; SidePanel.axaml.cs builds it when that panel opens
-      and drops it when it closes or another opens. The built view inherits the tab as its DataContext. Placeholders until
-      the table of contents (Contents) comes.
+      and drops it when it closes or another opens. The built view inherits the tab as its DataContext.
     -->
     <DataTemplate x:Key="Pages">
       <views:PagesPanel Name="PagesContent" />
     </DataTemplate>
     <DataTemplate x:Key="Contents">
-      <Border Name="ContentsContent" />
+      <views:OutlinePanel Name="ContentsContent" />
     </DataTemplate>
   </UserControl.Resources>
 

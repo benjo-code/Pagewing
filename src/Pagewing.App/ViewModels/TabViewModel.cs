@@ -43,6 +43,13 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     // The thumbnails this tab handed out for its current document (EnsureThumbnails), released when it becomes inactive.
     private ThumbnailSource? _thumbnails;
 
+    // The outline of the current document: read once, when "Contents" first opens for it (EnsureOutlineAsync).
+    private IReadOnlyList<OutlineNodeViewModel>? _outline;
+    private OutlineState _outlineState;
+    private PdfDocument? _outlineDocument;
+    private CancellationTokenSource? _outlineCancellation;
+    private Task _outlineLoad = Task.CompletedTask;
+
     // A new session is active (ViewerSession.SetActive).
     private bool _isActive = true;
     private bool _disposed;
@@ -313,12 +320,65 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         set => SetProperty(ref _layoutMode, value);
     }
 
-    /// <summary>Gets or sets the side panel of this tab; kept when the document changes.</summary>
+    /// <summary>
+    /// Gets or sets the side panel of this tab; kept when the document changes. Opening "Contents" reads the outline of
+    /// the document the first time (<see cref="EnsureOutlineAsync"/>).
+    /// </summary>
     public SidePanelKind SidePanel
     {
         get => _sidePanel;
-        set => SetProperty(ref _sidePanel, value);
+        set
+        {
+            if (SetProperty(ref _sidePanel, value) && value == SidePanelKind.Contents)
+            {
+                _ = EnsureOutlineAsync();
+            }
+        }
     }
+
+    /// <summary>
+    /// Gets the outline (table of contents) of the open document, top level first, or <see langword="null"/> while it
+    /// is not read (<see cref="OutlineState"/>). Each tab keeps its own; a new document or closing the tab drops it.
+    /// </summary>
+    public IReadOnlyList<OutlineNodeViewModel>? Outline
+    {
+        get => _outline;
+        private set
+        {
+            if (SetProperty(ref _outline, value))
+            {
+                OnPropertyChanged(nameof(OutlineMessage));
+            }
+        }
+    }
+
+    /// <summary>Gets how far the outline of the open document is read.</summary>
+    public OutlineState OutlineState
+    {
+        get => _outlineState;
+        private set
+        {
+            if (SetProperty(ref _outlineState, value))
+            {
+                OnPropertyChanged(nameof(OutlineMessage));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the text the "Contents" panel shows instead of the tree: "This document has no table of contents." or
+    /// "The table of contents could not be read."; <see langword="null"/> otherwise (also while it is read).
+    /// </summary>
+    public string? OutlineMessage => OutlineState switch
+    {
+        OutlineState.Loaded when Outline is { Count: 0 } => Strings.OutlineEmpty,
+        OutlineState.Failed => Strings.OutlineFailed,
+        _ => null,
+    };
+
+    /// <summary>Gets or sets how the outline is read: <see cref="PdfDocument.GetOutlineAsync"/> (replaceable for tests).</summary>
+    internal Func<PdfDocument, CancellationToken, Task<IReadOnlyList<PdfOutlineItem>>> OutlineReader { get; set; } =
+        static (document, cancellationToken) => document.GetOutlineAsync(cancellationToken);
 
     /// <summary>
     /// Gets or sets where the document was shown when the document view last left this tab, or
@@ -454,6 +514,34 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// Reads the outline of the open document unless it is read or being read already: at most once per document, in
+    /// the background on the PDFium thread, never in the startup path (only "Contents" asks for it). A result that
+    /// arrives after the document changed or the tab was closed is dropped, and the read is cancelled; a failure ends in
+    /// <see cref="OutlineState.Failed"/>, never in an exception.
+    /// </summary>
+    /// <returns>Completes when the read has ended; it never fails. Without an open document it is complete at once.</returns>
+    public Task EnsureOutlineAsync()
+    {
+        if (_disposed || _document is not { } document)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (ReferenceEquals(document, _outlineDocument))
+        {
+            return _outlineLoad;
+        }
+
+        ResetOutline();
+        var cancellation = new CancellationTokenSource();
+        _outlineDocument = document;
+        _outlineCancellation = cancellation;
+        OutlineState = OutlineState.Loading;
+        _outlineLoad = LoadOutlineAsync(document, cancellation);
+        return _outlineLoad;
+    }
+
+    /// <summary>
     /// Gets the page thumbnails of the open document (<see cref="ViewerSession.EnsureThumbnails"/>), or
     /// <see langword="null"/> unless the document is open. The tab remembers them, so that it stops their work and
     /// empties their cache when it becomes inactive: an inactive tab keeps no thumbnails.
@@ -483,6 +571,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
         _disposed = true;
         _session.Changed -= OnSessionChanged;
+        ResetOutline();
         _checkingPassword = false;
         Password = string.Empty;
         _session.Dispose();
@@ -552,6 +641,58 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         {
             thumbnails.Scheduler.Update([]);
             thumbnails.Cache.Clear();
+        }
+    }
+
+    /// <summary>Reads the outline on the PDFium thread and shows it, unless the tab moved on meanwhile (UI thread).</summary>
+    private async Task LoadOutlineAsync(PdfDocument document, CancellationTokenSource cancellation)
+    {
+        IReadOnlyList<PdfOutlineItem>? items = null;
+        try
+        {
+            items = await OutlineReader(document, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Another document or a closed tab (ResetOutline): nothing to show.
+            return;
+        }
+        catch (Exception)
+        {
+            // Any failure of the read (a damaged outline, a document closed meanwhile): the panel says so below.
+        }
+
+        if (_disposed || !ReferenceEquals(cancellation, _outlineCancellation))
+        {
+            return;
+        }
+
+        _outlineCancellation = null;
+        cancellation.Dispose();
+        if (items is null)
+        {
+            OutlineState = OutlineState.Failed;
+            return;
+        }
+
+        Outline = OutlineNodeViewModel.Create(items);
+        OutlineState = OutlineState.Loaded;
+    }
+
+    /// <summary>Drops the outline and cancels a read that is still running; its result will be ignored.</summary>
+    private void ResetOutline()
+    {
+        // Cleared before cancelling: a continuation that runs inside Cancel sees that it is stale.
+        var cancellation = _outlineCancellation;
+        _outlineCancellation = null;
+        _outlineDocument = null;
+        _outlineLoad = Task.CompletedTask;
+        Outline = null;
+        OutlineState = OutlineState.NotLoaded;
+        if (cancellation is not null)
+        {
+            cancellation.Cancel();
+            cancellation.Dispose();
         }
     }
 
@@ -652,6 +793,11 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
         var isNewDocument = document is not null && !ReferenceEquals(document, _document);
         _document = document;
+        if (_outlineDocument is not null && !ReferenceEquals(_outlineDocument, document))
+        {
+            // The outline belongs to the document that was replaced or closed.
+            ResetOutline();
+        }
 
         // A failed file dialog shows the error card until the next open; the session is closed meanwhile.
         if (_pickerFailure is not null)
@@ -699,6 +845,12 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         if (passwordRejected)
         {
             PasswordRejected?.Invoke();
+        }
+
+        // "Contents" is open while a new document arrives: its outline is read now.
+        if (isNewDocument && SidePanel == SidePanelKind.Contents)
+        {
+            _ = EnsureOutlineAsync();
         }
     }
 }

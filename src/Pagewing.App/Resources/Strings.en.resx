@@ -210,4 +210,19 @@
   <data name="ThumbnailCurrentSuffix" xml:space="preserve">
     <value>, current page</value>
   </data>
+  <data name="OutlineList" xml:space="preserve">
+    <value>Table of contents</value>
+  </data>
+  <data name="OutlineNoTitle" xml:space="preserve">
+    <value>(untitled)</value>
+  </data>
+  <data name="OutlineNoTarget" xml:space="preserve">
+    <value>No destination in this document</value>
+  </data>
+  <data name="OutlineEmpty" xml:space="preserve">
+    <value>This document has no table of contents.</value>
+  </data>
+  <data name="OutlineFailed" xml:space="preserve">
+    <value>The table of contents could not be read.</value>
+  </data>
 </root>

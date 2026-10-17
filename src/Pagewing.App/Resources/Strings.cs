@@ -97,6 +97,11 @@ public static class Strings
     public static string ThumbnailList => Get("ThumbnailList");
     public static string ThumbnailName => Get("ThumbnailName");
     public static string ThumbnailCurrentSuffix => Get("ThumbnailCurrentSuffix");
+    public static string OutlineList => Get("OutlineList");
+    public static string OutlineNoTitle => Get("OutlineNoTitle");
+    public static string OutlineNoTarget => Get("OutlineNoTarget");
+    public static string OutlineEmpty => Get("OutlineEmpty");
+    public static string OutlineFailed => Get("OutlineFailed");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

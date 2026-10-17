@@ -1,0 +1,121 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             xmlns:views="using:Pagewing.App.Views"
+             x:Class="Pagewing.App.Views.OutlinePanel"
+             x:DataType="vm:TabViewModel">
+  <!--
+    Content of the "Contents" panel (design system 5.2, 5.5, 7.3, 7.9 and 7.10): the outline of the tab in the
+    DataContext as a tree. An entry shows its title in type.body and, right-aligned, its page number in type.mono
+    (text.secondary). An entry without a target (no destination, or a page outside the document) has its title in
+    text.secondary, no page number, no hover surface and the hint "No destination in this document" as tooltip and in its
+    automation name, so it is not marked by colour alone. Instead of the tree a hint (type.caption, text.secondary) says
+    that the document has no outline or that it could not be read. Every level is virtualized and the view models of
+    children are created only when an entry is shown (Docs/DECISIONS.md, "Inhaltsverzeichnis: erst beim Öffnen lesen,
+    Kinder erst bei Bedarf (M4)"). Built only when the panel opens (SidePanel), so nothing of it is in the startup path;
+    its styles live here for the same reason.
+  -->
+  <UserControl.Styles>
+    <Style Selector="TreeView.outline">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="6,0,6,10" />
+    </Style>
+
+    <!--
+      An entry: radius.control, no Fluent selection colours (the selection is only the keyboard cursor, shown by the focus
+      ring of the design system); hover shows surface.hover, but only on entries with a target. Children are virtualized
+      like the top level.
+    -->
+    <Style Selector="TreeView.outline TreeViewItem" x:DataType="vm:OutlineNodeViewModel">
+      <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+      <Setter Property="views:OutlinePanel.IsJumpTarget" Value="{Binding CanJump}" />
+      <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="0,0,8,0" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="FocusAdorner">
+        <FocusAdornerTemplate>
+          <Border Margin="-3" BorderThickness="2" CornerRadius="9" AdornerLayer.IsClipEnabled="False"
+                  BorderBrush="{DynamicResource Pw.Brush.Focus.Ring}" />
+        </FocusAdornerTemplate>
+      </Setter>
+      <Setter Property="ItemsPanel">
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="TreeView.outline TreeViewItem /template/ Border#PART_LayoutRoot">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="TreeView.outline TreeViewItem.jump /template/ Border#PART_LayoutRoot:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    </Style>
+
+    <!-- The expander: a Tabler chevron (16 px, text.secondary), right when closed and down when open. -->
+    <Style Selector="TreeView.outline TreeViewItem /template/ Panel#PART_ExpandCollapseChevronContainer">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Margin" Value="2,0,4,0" />
+    </Style>
+    <Style Selector="TreeView.outline TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="Transparent">
+            <ctl:StrokeIcon Name="ChevronIcon" Width="16" Height="16"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Brush="{DynamicResource Pw.Brush.Text.Secondary}"
+                            Data="{StaticResource Pw.Icon.ChevronRight}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="TreeView.outline TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron:checked /template/ ctl|StrokeIcon#ChevronIcon">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.ChevronDown}" />
+    </Style>
+
+    <Style Selector="TextBlock.outlineTitle">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="TextBlock.outlineTitle.noTarget">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="TextBlock.outlinePage">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <TreeView Name="OutlineTree" Classes="outline"
+              ItemsSource="{Binding Outline}"
+              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+              AutomationProperties.Name="{x:Static res:Strings.OutlineList}">
+      <TreeView.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </TreeView.ItemsPanel>
+      <TreeView.ItemTemplate>
+        <TreeDataTemplate x:DataType="vm:OutlineNodeViewModel" ItemsSource="{Binding Children}">
+          <Grid Name="OutlineRow" ColumnDefinitions="*,Auto" Background="Transparent" ToolTip.Tip="{Binding ToolTip}">
+            <TextBlock Name="OutlineTitle" Classes="body outlineTitle" Classes.noTarget="{Binding !CanJump}"
+                       Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            <TextBlock Name="OutlinePage" Grid.Column="1" Classes="mono num outlinePage"
+                       Text="{Binding PageText}" IsVisible="{Binding CanJump}"
+                       Margin="8,0,0,0" VerticalAlignment="Center" />
+          </Grid>
+        </TreeDataTemplate>
+      </TreeView.ItemTemplate>
+    </TreeView>
+    <TextBlock Name="OutlineMessage" Classes="caption"
+               Text="{Binding OutlineMessage}"
+               IsVisible="{Binding OutlineMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+               Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+               TextWrapping="Wrap" Margin="14,4,14,0" />
+  </Panel>
+</UserControl>

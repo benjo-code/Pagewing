@@ -210,4 +210,19 @@
   <data name="ThumbnailCurrentSuffix" xml:space="preserve">
     <value>, aktuelle Seite</value>
   </data>
+  <data name="OutlineList" xml:space="preserve">
+    <value>Inhaltsverzeichnis</value>
+  </data>
+  <data name="OutlineNoTitle" xml:space="preserve">
+    <value>(ohne Titel)</value>
+  </data>
+  <data name="OutlineNoTarget" xml:space="preserve">
+    <value>Kein Ziel in diesem Dokument</value>
+  </data>
+  <data name="OutlineEmpty" xml:space="preserve">
+    <value>Dieses Dokument hat kein Inhaltsverzeichnis.</value>
+  </data>
+  <data name="OutlineFailed" xml:space="preserve">
+    <value>Das Inhaltsverzeichnis konnte nicht gelesen werden.</value>
+  </data>
 </root>

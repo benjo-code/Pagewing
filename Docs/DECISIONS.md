@@ -15,6 +15,19 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-18 – Inhaltsverzeichnis: erst beim Öffnen lesen, Kinder erst bei Bedarf (M4)
+**Kontext:** Das Panel „Inhalt“ zeigt die Lesezeichen des PDFs als Baum. `PdfDocument.GetOutlineAsync` liefert den ganzen Baum auf einmal (höchstens 20 000 Einträge, 32 Ebenen, Zyklen abgefangen). Offen war, wann gelesen wird und wie ein großer Baum die Oberfläche nicht einfriert.
+**Entscheidung:**
+- Gelesen wird erst, wenn „Inhalt“ für ein Dokument zum ersten Mal geöffnet wird (`TabViewModel.EnsureOutlineAsync`, ausgelöst vom Setter von `SidePanel` und bei einem neuen Dokument, während „Inhalt“ offen ist), mit `PdfiumPriority.Background`, höchstens einmal je Dokument. Jeder Tab behält sein Inhaltsverzeichnis (samt aufgeklapptem Zustand); ein neues Dokument oder das Schließen des Tabs verwirft es und bricht ein laufendes Lesen ab (`CancellationToken`), ein spät eintreffendes Ergebnis wird ignoriert. Fehler enden in `OutlineState.Failed` und einem Hinweis im Panel, nie in einer unbeobachteten Exception.
+- `OutlineNodeViewModel` erzeugt die View-Models seiner Kinder erst beim ersten Zugriff (der Baum fragt nur für angezeigte Einträge danach). Die oberste Ebene entsteht vollständig (bei 20 000 Einträgen einige Millisekunden).
+- Der `TreeView` in `Views/OutlinePanel` nutzt auf jeder Ebene ein `VirtualizingStackPanel` (Wurzel über `ItemsPanel`, Kinder per Style auf `TreeViewItem`). Gemessen headless mit Release-Build: 20 000 Einträge auf oberster Ebene bzw. ein offener Eintrag mit 19 999 Kindern öffnen in 20 bis 140 ms (kalt, mit erstem Aufbau des Panels) mit rund 20 Containern, ein Sprung in die Mitte dauert 11 bis 70 ms. Mit dem Standard-`StackPanel` brauchten 20 000 Einträge im Debug-Build rund 30 s und 20 000 Container.
+- Enter fängt das Panel selbst ab (Tunnel): Mit Ziel springt es zur Seite, ohne Ziel klappt es den Eintrag auf oder zu. Grund: Avalonias `TreeViewItem` reicht Enter auf einem Blatt an den Elterneintrag weiter, der dann zuklappt und den Fokus verliert.
+**Begründung:** Nichts davon gehört in den Startpfad, und das Inhaltsverzeichnis wird in vielen Sitzungen nie geöffnet. Lesen und Anzeigen kosten so nur, was der Nutzer sieht.
+**Verworfene Alternativen:**
+- Den Baum schon nach dem ersten scharfen Seitenbild im Hintergrund lesen: spart beim ersten Öffnen kaum etwas (das Lesen dauert bei üblichen Dokumenten nur Millisekunden) und kostet PDFium-Zeit in jeder Sitzung.
+- Den Baum zu einer flachen, virtualisierten Liste mit Einrückung umbauen (`ListBox`): eigene Tastaturlogik für Auf- und Zuklappen; das verschachtelte `VirtualizingStackPanel` reicht für 20 000 Einträge.
+- Kinder im Kern erst bei Bedarf lesen: hieße, PDFium-Handles über den Aufruf hinaus zu halten; der Kern liefert den Baum bewusst als fertige Daten.
+
 ## 2026-10-17 – Seitenvorschau: nur realisierte Einträge, Cache nur im aktiven Tab (M4)
 **Kontext:** Das Panel „Seiten“ zeigt je Seite ein Vorschaubild (Designsystem 7.3). Jeder Tab hat dafür eine eigene `ThumbnailSource` mit 48 MiB Cache und eigenem Scheduler (`ViewerSession.EnsureThumbnails`). Offen war, wann gerendert wird, was ein inaktiver Tab behält und wie scharf die Bilder bei gebrochener Skalierung sind.
 **Entscheidung:**
