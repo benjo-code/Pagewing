@@ -61,12 +61,40 @@ public sealed class ViewportPlannerTests
     [Fact]
     public void ARequestFloodIsCapped()
     {
+        // Zoom 0.1: a page is about 112 DIPs high plus a 20 DIP gap. In the middle of the document a tall viewport
+        // shows about 25 pages and has about 49 more above and below it, so visible plus buffer clearly exceed the cap.
         var layout = Pages(1000, 0.1);
+        var viewport = new DipRect(0, 50000, 1200, 3240);
+        var (firstVisible, lastVisible) = layout.GetVisiblePages(viewport.Y, viewport.Bottom);
+        var (firstBuffer, lastBuffer) = layout.GetVisiblePages(viewport.Y - viewport.Height, viewport.Bottom + viewport.Height);
+        var visibleCount = lastVisible - firstVisible + 1;
+        var wanted = lastBuffer - firstBuffer + 1;
+        Assert.True(visibleCount < ViewportPlanner.MaxPreviewRequests, "The visible pages alone must stay below the cap.");
+        Assert.True(wanted > ViewportPlanner.MaxPreviewRequests, $"The test needs more than the cap, but only {wanted} pages are in range.");
 
-        var plan = ViewportPlanner.Plan(layout, new DipRect(0, 0, 1200, 1080), 1.0);
+        var plan = ViewportPlanner.Plan(layout, viewport, 1.0);
 
-        Assert.InRange(plan.Count(request => request.Key.IsPreview), 1, ViewportPlanner.MaxPreviewRequests);
+        var previews = plan.Where(request => request.Key.IsPreview).ToArray();
+        Assert.Equal(ViewportPlanner.MaxPreviewRequests, previews.Length);
         Assert.True(plan.Count < 200, $"Planned {plan.Count} requests.");
+
+        // Visible previews are never cut; the buffer previews that stay are the nearest ones to the viewport center.
+        var visiblePreviews = previews.Where(request => !request.Background).Select(request => request.Key.Page).Order().ToArray();
+        Assert.Equal(Enumerable.Range(firstVisible, visibleCount), visiblePreviews);
+        var centerY = viewport.Y + (viewport.Height / 2);
+        double Distance(int page)
+        {
+            var rect = layout.GetPageRect(page);
+            return Math.Abs(rect.Y + (rect.Height / 2) - centerY);
+        }
+
+        var keptBuffer = previews.Where(request => request.Background).Select(request => request.Key.Page).ToHashSet();
+        Assert.Equal(ViewportPlanner.MaxPreviewRequests - visibleCount, keptBuffer.Count);
+        var omitted = Enumerable.Range(firstBuffer, wanted)
+            .Where(page => (page < firstVisible || page > lastVisible) && !keptBuffer.Contains(page))
+            .ToArray();
+        Assert.NotEmpty(omitted);
+        Assert.True(keptBuffer.Max(Distance) <= omitted.Min(Distance), "A buffer page that was cut is nearer than one that was kept.");
     }
 
     [Fact]

@@ -8,7 +8,12 @@ namespace Pagewing.Core.Viewing;
 /// </summary>
 public static class ViewportPlanner
 {
-    /// <summary>The most preview jobs one plan contains; the visible pages come first, so the buffer is cut off.</summary>
+    /// <summary>
+    /// The limit for the preview jobs of one plan. Only the background previews of the buffer pages are cut
+    /// (the nearest ones stay); the previews of the visible pages are never cut. That is bounded in practice:
+    /// at the minimum zoom (<see cref="ZoomSteps.Min"/>) a viewport shows a few dozen pages at most, and the
+    /// sharp tiles of the visible pages are limited by the viewport as well.
+    /// </summary>
     public const int MaxPreviewRequests = 48;
 
     /// <summary>Plans the jobs for <paramref name="viewport"/>, most important first.</summary>
