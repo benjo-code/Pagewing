@@ -18,6 +18,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 
 - Projekte und Abhängigkeitsrichtung laut Spec, Abschnitt 5.1: `Pagewing.App` und `Pagewing.Cli` → `Pagewing.Core` → `Pagewing.Pdfium` (später `Pagewing.Qpdf`, `Pagewing.Ocr`). App und CLI kennen keine PDFium-Typen.
 - **PDFium ist nicht thread-sicher**, auch nicht über verschiedene Dokumente hinweg (`fpdfview.h`: „None of the PDFium APIs are thread-safe“). Nur `Pagewing.Pdfium` ruft PDFium auf, und zwar ausschließlich über den `PdfiumThread`. Ein Aufruf von einem anderen Thread muss eine Exception auslösen. Kein paralleles Rendern über mehrere Threads.
+- Native AOT (.NET 10): `AppContext` muss initialisiert sein, bevor der erste zusätzliche Thread startet, sonst stürzt der Start sporadisch mit `0xC0000602` ab. Das erledigt der Konstruktor von `PdfiumThread`; wer früher einen Thread startet, muss es vorher tun. Siehe `Docs/DECISIONS.md`, Eintrag „Startabsturz 0xC0000602 …“.
 - Der UI-Thread wartet nie auf PDFium. Er stellt Render-Aufträge ein und bekommt Bitmaps zurück.
 - Render-Pipeline: Nur sichtbare Seiten plus Puffer werden gerendert. Zuerst kommt eine grobe Vorschau, dann folgen scharfe Kacheln, progressiv mit Pause und Abbruch veralteter Aufträge. Ein LRU-Cache mit Speicherbudget hält die Ergebnisse.
 - Bindings nur für Funktionen, die gebraucht werden. Konstanten (z. B. Speicher-Flags) immer gegen die Header der ausgelieferten PDFium-Version prüfen, weil sie sich ändern: `FPDF_REMOVE_SECURITY` ist seit `chromium/8100` 4 statt 3.
