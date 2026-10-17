@@ -106,6 +106,8 @@ internal static partial class Program
         StartupPhases.Mark("platform-detected");
         if (softwareRendering)
         {
+            // Software as the only mode: Avalonia's Win32 platform then creates no platform graphics at all (no
+            // Direct3D device, no ANGLE display) and registers no composition (WinUI, DirectComposition, DXGI).
             builder = builder.With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
         }
 
@@ -164,9 +166,10 @@ internal static partial class Program
     };
 
     /// <summary>
-    /// Windows only, before Avalonia starts and never in a later launch that hands over: software rendering when the
-    /// machine has no hardware graphics adapter (<see cref="RenderingModeSelector"/>), otherwise Avalonia's default.
-    /// Measured in the startup path as the phase <c>rendering-software</c> or <c>rendering-default</c>.
+    /// Once per process, before Avalonia starts and never in a later launch that hands over: on Windows software
+    /// rendering unless <c>PAGEWING_RENDERING=default</c> asks for Avalonia's default, the GPU path
+    /// (<see cref="RenderingModeSelector"/>); elsewhere Avalonia's default. Marked on Windows as the phase
+    /// <c>rendering-software</c> or <c>rendering-default</c>.
     /// </summary>
     private static bool UseSoftwareRendering()
     {
@@ -176,7 +179,7 @@ internal static partial class Program
         }
 
         var software = RenderingModeSelector.UseSoftwareRendering(
-            Environment.GetEnvironmentVariable(RenderingModeSelector.OverrideVariable), KmtAdapters.TryEnumerate);
+            Environment.GetEnvironmentVariable(RenderingModeSelector.OverrideVariable), isWindows: true);
         StartupPhases.Mark(software ? "rendering-software" : "rendering-default");
         return software;
     }
