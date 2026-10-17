@@ -16,6 +16,10 @@
     <EmbeddedResource Update="Resources\Strings.de.resx" WithCulture="false" LogicalName="Pagewing.App.Resources.Strings.de.resources" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Geist / Geist Mono subset, licence in third-party/geist (selected in Styles/Fonts.axaml). -->
+    <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
