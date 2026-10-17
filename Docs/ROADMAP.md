@@ -26,7 +26,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | 2026-10-16 |
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) | 2026-10-16 |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) | 2026-10-17 |
-| 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ⬜ offen | – | – |
+| 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | – |
 | 4 | Navigation | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 5 | Text & Suche | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 6 | Komfort | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -50,6 +50,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 - **2026-10-16 (M1: Kacheln über `FPDF_RenderPageBitmap_Start` mit Offset statt Matrix-API):** Kacheln werden nicht mit `FPDF_RenderPageBitmapWithMatrix` (Matrix + Clipping) gerendert, sondern mit `FPDF_RenderPageBitmap_Start`: Bitmap in Kachelgröße, Start bei minus Kachel-Offset, Größe der ganzen Seite in Pixeln. Grund: Die Matrix-API ist nicht progressiv, Pause und Abbruch wären damit nicht möglich. Folge: Spec 5.3 und die Roadmap-Aufgabe „Rendern ganzer Seiten und einzelner Kacheln“ sind angepasst. Kacheln sind in PDFium nicht allgemein bitgleich zum Ganzseiten-Rendering und werden deshalb mit 64 px Überlapp nach links gerendert; Scheduler und Kachelgröße (M3) müssen das berücksichtigen (Begründung in `Docs/DECISIONS.md`, Eintrag „Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht allgemein bitgleich“).
 - **2026-10-16 (M1: Vergleichsmessung nur mit Chrome):** Die Vergleichsmessung wurde nur mit Chrome durchgeführt; Acrobat und SumatraPDF sind auf dem Rechner des Projektinhabers nicht installiert und wurden nicht gemessen. Die Aufgabe „Vergleichsmessung“ in M1 ist entsprechend umformuliert. Das genügt der Entscheidungsregel in `bench/compare/README.md` („Regel für den Vorschlag“), die sich nur auf den schnellsten Browser (Chrome) stützt; Acrobat und SumatraPDF dienten dort nur der Einordnung. Die vier Budgets bleiben unverändert und sind endgültig (Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“). Offen bleibt der Vergleich mit Acrobat und SumatraPDF.
 - **2026-10-17 (M2: Design-Spec führt Dokumentinfos und zwei Einstellungen ein):** Die Design-Spec (`Docs/superpowers/specs/2026-10-17-designsystem.md`) sieht in der Statusleiste den Knopf „Dokumentinfos“ (Abschnitt 7.6) sowie die Einstellungen „Dichte“ (Normal/Kompakt, Abschnitt 5.4) und „Animationen reduzieren“ (Abschnitt 5.6; Avalonia 12.1 kennt keine Systemeinstellung dafür) vor. Folge: M4 bekommt die Aufgabe „Dokumentinfos in der Statusleiste“, die Einstellungen in M6 umfassen zusätzlich Dichte und Animationen reduzieren, und M6 bekommt die Aufgabe „Hochkontrast“ (Fluent wertet die Hochkontrast-Einstellung von Windows nicht aus, Design-Spec Abschnitte 2.7 und 9).
+- **2026-10-17 (M3: Ein Dokument pro Fenster, keine Aktionsleiste und kein Panel):** M3 ist eine schlanke Leseansicht mit einem Dokument pro Fenster (mit dem Projektinhaber am 2026-10-17 abgestimmt). Eine zweite Datei (Argument, Pipe, Drop) ersetzt das offene Dokument; die Gesamt-Spec 5.4 spricht von einem neuen Tab, den es erst mit M4 gibt. Die Aktionsleiste und das Panel (Vorschaubilder, Inhalt, Suche) entfallen bis M4 bis M5, weil die Design-Spec keine ausgegrauten Platzhalter erlaubt. Das Seitenfeld der Statusleiste (Anzeige, Eingabe mit Enter, Pfeile) gehört schon zu M3; „Gehe zu Seite“ in M4 ergänzt weitere Wege dorthin. Details: Plan `superpowers/plans/2026-10-17-milestone-03-app-shell.md`, Abschnitt „Scope dieses Plans“.
 
 ## Geschwindigkeitsziele
 
@@ -144,7 +145,7 @@ Ziel: Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt,
 - [x] Design-Spec ist committet und in der Roadmap verlinkt – `Docs/superpowers/specs/2026-10-17-designsystem.md` (Status „abgestimmt“), committet auf `feature/m02-designrichtungen` ab Commit 43dd11d; im M2-Eintrag als `spec` verlinkt; `dotnet run tools/roadmap.cs -- check` grün
 
 ## Milestone 3 – App-Shell & schnelles Öffnen
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M1, M2
+**Status:** 🟡 geplant · **Plan:** [2026-10-17-milestone-03-app-shell.md](superpowers/plans/2026-10-17-milestone-03-app-shell.md) · **Voraussetzungen:** M1, M2
 
 Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch alle Seiten, innerhalb der Startzeit-Budgets.
 
