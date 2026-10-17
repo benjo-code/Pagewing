@@ -68,6 +68,10 @@ public sealed class ViewerSession : IDisposable
     private readonly Func<string, string?, CancellationToken, Task<PdfDocument>> open;
     private readonly Func<PdfDocument, int, int, PdfPriority, CancellationToken, Task<IReadOnlyList<PdfPageSize>>> loadSizes;
 
+    // Serializes SetActive, so two concurrent calls cannot apply their budgets in the wrong order. Taken before
+    // gate, never the other way round; the cache has its own lock and calls nothing back.
+    private readonly object budgetGate = new();
+
     // Guards everything below up to "raising". Never held while an event is raised or anything is disposed.
     private readonly object gate = new();
     private ViewerState state;
@@ -82,10 +86,6 @@ public sealed class ViewerSession : IDisposable
     private long generation;
     private volatile bool disposed;
     private bool active = true;
-
-    // Serializes SetActive, so two concurrent calls cannot apply their budgets in the wrong order. Taken before
-    // gate, never the other way round; the cache has its own lock and calls nothing back.
-    private readonly object budgetGate = new();
 
     // The number of Changed invocations that are running or about to; Dispose waits for it to drop to zero.
     private int raising;
@@ -111,6 +111,18 @@ public sealed class ViewerSession : IDisposable
     /// properties of the session to see what changed; marshal to the UI thread if needed.
     /// </summary>
     public event Action? Changed;
+
+    /// <summary>Gets whether the tab of the session is shown; see <see cref="SetActive"/> (for tests).</summary>
+    internal bool IsActive
+    {
+        get
+        {
+            lock (gate)
+            {
+                return active;
+            }
+        }
+    }
 
     /// <summary>Gets the current state.</summary>
     public ViewerState State

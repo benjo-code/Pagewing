@@ -569,8 +569,10 @@ public sealed class ViewerSessionTests
         session.Dispose();
 
         session.SetActive(false);
-        session.SetActive(true);
 
+        // Dispose released the session's cache, so the budget of the captured cache cannot show the guard;
+        // the flag can.
+        Assert.True(session.IsActive);
         Assert.Equal(TabBudget.ActiveBytes, cache.BudgetBytes);
     }
 
