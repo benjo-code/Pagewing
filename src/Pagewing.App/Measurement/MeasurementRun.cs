@@ -1,0 +1,302 @@
+using System.ComponentModel;
+using Avalonia.Threading;
+using Pagewing.App.ViewModels;
+using Pagewing.App.Views;
+using Pagewing.Core.Viewing;
+
+namespace Pagewing.App.Measurement;
+
+/// <summary>Where a measurement writes its result line and its error, and how it ends the app.</summary>
+/// <param name="Output">Receives the result line (stdout in the app).</param>
+/// <param name="Error">Receives <c>error: …</c> (stderr in the app).</param>
+/// <param name="Exit">Asked once to end the app with the exit code.</param>
+/// <param name="Phases">The startup phases written after <c>first-sharp</c> (<see cref="StartupPhases"/>), or <see langword="null"/>.</param>
+/// <param name="ProcessStart">
+/// The origin of the phases; <see langword="null"/> reads the process start (<see cref="PhaseRecorder.ProcessStartTimestamp"/>).
+/// </param>
+internal sealed record MeasurementOutput(TextWriter Output, TextWriter Error, Action<int> Exit, PhaseRecorder? Phases = null, Func<long>? ProcessStart = null);
+
+/// <summary>
+/// A run of one of the hidden measurement switches (<c>--measure-startup</c>, <c>--measure-second</c>,
+/// <c>--measure-scroll</c>, see <c>bench/startup/README.md</c>): opens its file in the window, waits for the first
+/// sharp image of page 1 to be drawn, measures, writes one result line and asks to exit with 0. A file that does not
+/// open ends with exit code 1, no result within the time limit with 3; both write <c>error: …</c>.
+/// </summary>
+/// <remarks>UI thread only, except the time limit, which posts to it.</remarks>
+internal abstract class MeasurementRun : IDisposable
+{
+    /// <summary>Exit code of a successful measurement.</summary>
+    public const int Success = 0;
+
+    /// <summary>Exit code of a measurement whose file could not be opened.</summary>
+    public const int Failure = 1;
+
+    /// <summary>Exit code of a measurement that did not finish within its time limit.</summary>
+    public const int TimedOut = 3;
+
+    /// <summary>The time limit of a measurement in the app.</summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+
+    private readonly MeasurementOutput _output;
+    private readonly TimeSpan _timeout;
+    private Timer? _timer;
+    private bool _started;
+
+    protected MeasurementRun(MainViewModel viewModel, DocumentView view, string path, MeasurementOutput output, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        ArgumentNullException.ThrowIfNull(view);
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(output);
+        ViewModel = viewModel;
+        View = view;
+        Path = path;
+        _output = output;
+        _timeout = timeout;
+    }
+
+    /// <summary>Gets whether the measurement wrote its result or its error and asked to exit.</summary>
+    public bool IsFinished { get; private set; }
+
+    /// <summary>Gets the view model of the window.</summary>
+    protected MainViewModel ViewModel { get; }
+
+    /// <summary>Gets the document view of the window.</summary>
+    protected DocumentView View { get; }
+
+    /// <summary>Gets the file the measurement opens first, as given on the command line.</summary>
+    protected string Path { get; }
+
+    /// <summary>
+    /// Creates the measurement the options ask for (<c>--measure-startup</c> before <c>--measure-second</c> before
+    /// <c>--measure-scroll</c>), or <see langword="null"/> without a measurement switch.
+    /// </summary>
+    public static MeasurementRun? Create(StartupOptions options, MainViewModel viewModel, DocumentView view, MeasurementOutput output)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return options switch
+        {
+            { MeasureStartup: { } path } => new StartupMeasurement(viewModel, view, path, null, output, DefaultTimeout, StartupMeasurement.DefaultSettleDelay),
+            { MeasureSecond: var (first, second) } => new StartupMeasurement(viewModel, view, first, second, output, DefaultTimeout, StartupMeasurement.DefaultSettleDelay),
+            { MeasureScroll: { } path } => ScrollMeasurement.TryParseZoomPercent(options.MeasureZoom, out var zoom)
+                ? new ScrollMeasurement(viewModel, view, path, output, DefaultTimeout, ScrollMeasurement.DefaultSteps, zoom)
+                : new InvalidMeasurement(viewModel, view, path, output, $"--zoom takes a whole percentage from {ScrollMeasurement.MinZoomPercent} to {ScrollMeasurement.MaxZoomPercent}, not '{options.MeasureZoom}'"),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Starts the measurement: from now on the time limit runs. Opens the file, unless the session already opens it
+    /// (<see cref="Program.Main"/> starts opening the file before the window exists, as for a normal launch).
+    /// </summary>
+    public void Start()
+    {
+        if (_started)
+        {
+            return;
+        }
+
+        _started = true;
+        View.FirstSharpTileDrawn += OnFirstSharpTileDrawn;
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        _timer = new Timer(_ => Post(() => Fail(TimedOut, $"no sharp image of page 1 within {_timeout.TotalSeconds:0.###} s")), null, _timeout, Timeout.InfiniteTimeSpan);
+
+        if (ArgumentError is { } argumentError)
+        {
+            Fail(Failure, argumentError);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Path))
+        {
+            Fail(Failure, "no file to measure");
+            return;
+        }
+
+        Open(Path);
+        CheckState();
+    }
+
+    public void Dispose()
+    {
+        Unsubscribe();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Gets why the arguments of the measurement are invalid, or <see langword="null"/>; checked first by <see cref="Start"/>.</summary>
+    protected virtual string? ArgumentError => null;
+
+    /// <summary>The first sharp image of page 1 of the document now shown was drawn (UI thread).</summary>
+    protected abstract void OnFirstSharpImage();
+
+    /// <summary>Opens <paramref name="path"/>, unless the session already holds or opens exactly that file.</summary>
+    protected void Open(string path)
+    {
+        if (!string.Equals(ViewModel.Session.Path, FullPathOrAsGiven(path), StringComparison.Ordinal))
+        {
+            _ = ViewModel.OpenAsync(path);
+        }
+    }
+
+    /// <summary>Writes the result line and asks to exit with 0.</summary>
+    protected void Succeed(string line)
+    {
+        Report(line);
+        Succeed();
+    }
+
+    /// <summary>Asks to exit with 0 (the result lines are written).</summary>
+    protected void Succeed()
+    {
+        if (IsFinished)
+        {
+            return;
+        }
+
+        IsFinished = true;
+        Unsubscribe();
+        _output.Exit(Success);
+    }
+
+    /// <summary>Writes the result line without exiting (a measurement with more than one line).</summary>
+    protected void Report(string line)
+    {
+        if (!IsFinished)
+        {
+            _output.Output.WriteLine(line);
+            _output.Output.Flush();
+        }
+    }
+
+    /// <summary>
+    /// Writes the startup phases (<c>phase &lt;name&gt; &lt;ms&gt;</c>), if there are any. Only after the result line
+    /// that the script times: reading the process start costs time of its own. The phases are only information: when
+    /// the process start cannot be read, nothing is written and the measurement still succeeds.
+    /// </summary>
+    protected void ReportPhases()
+    {
+        if (IsFinished || _output.Phases is not { } phases)
+        {
+            return;
+        }
+
+        IReadOnlyList<string> lines;
+        try
+        {
+            lines = phases.Lines((_output.ProcessStart ?? PhaseRecorder.ProcessStartTimestamp)());
+        }
+        catch (Exception)
+        {
+            // For example no access to the process information: the measured result line is already written.
+            return;
+        }
+
+        foreach (var line in lines)
+        {
+            _output.Output.WriteLine(line);
+        }
+
+        _output.Output.Flush();
+    }
+
+    /// <summary>Writes <c>warning: <paramref name="message"/></c> to the error output; the measurement goes on.</summary>
+    protected void Warn(string message)
+    {
+        if (!IsFinished)
+        {
+            _output.Error.WriteLine($"warning: {message}");
+            _output.Error.Flush();
+        }
+    }
+
+    /// <summary>Writes <c>error: <paramref name="message"/></c> and asks to exit with <paramref name="exitCode"/>.</summary>
+    protected void Fail(int exitCode, string message)
+    {
+        if (IsFinished)
+        {
+            return;
+        }
+
+        IsFinished = true;
+        Unsubscribe();
+        _output.Error.WriteLine($"error: {message}");
+        _output.Error.Flush();
+        _output.Exit(exitCode);
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the UI thread; does nothing while the dispatcher shuts down.</summary>
+    protected static void Post(Action action)
+    {
+        try
+        {
+            Dispatcher.UIThread.Post(action);
+        }
+        catch (Exception)
+        {
+            // The dispatcher is shutting down: the app ends anyway.
+        }
+    }
+
+    private static string FullPathOrAsGiven(string path)
+    {
+        try
+        {
+            return System.IO.Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException)
+        {
+            return path;
+        }
+    }
+
+    private void OnFirstSharpTileDrawn()
+    {
+        if (!IsFinished)
+        {
+            OnFirstSharpImage();
+        }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.State))
+        {
+            CheckState();
+        }
+    }
+
+    /// <summary>A file that fails or needs a password never shows a sharp image: the measurement fails at once.</summary>
+    private void CheckState()
+    {
+        var path = ViewModel.FullPath ?? Path;
+        switch (ViewModel.State)
+        {
+            case ViewerState.Failed:
+                Fail(Failure, $"cannot open {path}: {ViewModel.Error}");
+                break;
+            case ViewerState.PasswordRequired or ViewerState.PasswordIncorrect:
+                Fail(Failure, $"cannot open {path}: it needs a password");
+                break;
+        }
+    }
+
+    private void Unsubscribe()
+    {
+        View.FirstSharpTileDrawn -= OnFirstSharpTileDrawn;
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        _timer?.Dispose();
+        _timer = null;
+    }
+}
+
+/// <summary>A measurement whose arguments are invalid: it fails at once with exit code 1 (<c>error: …</c>).</summary>
+internal sealed class InvalidMeasurement(MainViewModel viewModel, DocumentView view, string path, MeasurementOutput output, string error)
+    : MeasurementRun(viewModel, view, path, output, DefaultTimeout)
+{
+    protected override string? ArgumentError => error;
+
+    protected override void OnFirstSharpImage()
+    {
+        // Never reached: Start fails before it opens anything.
+    }
+}

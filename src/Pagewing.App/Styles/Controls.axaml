@@ -1,0 +1,199 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Control styles of the design system (Docs/superpowers/specs/2026-10-17-designsystem.md, sections 5.2 and 5.3).
+    They override FluentTheme through ordinary styles and use only the Pw.* tokens, so colours follow the theme variant.
+    No new colours: states reuse tokens (hover surface.hover, pressed accent.subtle, disabled text.disabled).
+  -->
+
+  <!-- Window: base size and colours. FontFamily comes from Fonts.axaml via ContentControlThemeFontFamily. -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Window}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <!--
+    Type roles (section 5.2): Classes="title|subtitle|strong|body|caption|mono" on a TextBlock; add "num" for tabular
+    figures (page numbers, zoom, hit counts). Size and line height in px, weights 400 and 600.
+  -->
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontSize" Value="22" />
+    <Setter Property="LineHeight" Value="28" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.subtitle">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="LineHeight" Value="22" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.strong">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="LineHeight" Value="18" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.body">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="LineHeight" Value="18" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="TextBlock.caption">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="LineHeight" Value="16" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Pw.Font.Mono}" />
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="LineHeight" Value="16" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="TextBlock.num">
+    <Setter Property="FontFeatures" Value="+tnum" />
+  </Style>
+
+  <!--
+    Focus ring (section 5.3): 2 px focus.ring with 1 px gap around the element, only for keyboard focus. Avalonia shows
+    the FocusAdorner only when the focus arrives by Tab or arrow keys, never after a mouse click.
+    IsClipEnabled=False keeps the adorner from being clipped to the bounds of the focused element.
+    Add controls to the selector list when they are restyled.
+  -->
+  <Style Selector="Button, ToggleButton, RepeatButton, TextBox, CheckBox, RadioButton, ComboBox, ListBoxItem, TabItem">
+    <Setter Property="FocusAdorner">
+      <FocusAdornerTemplate>
+        <Border Margin="-3" BorderThickness="2" CornerRadius="9" AdornerLayer.IsClipEnabled="False"
+                BorderBrush="{DynamicResource Pw.Brush.Focus.Ring}" />
+      </FocusAdornerTemplate>
+    </Setter>
+  </Style>
+
+  <!-- Secondary button (default): raised surface, 1 px border.strong. -->
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+    <Setter Property="Padding" Value="12,5" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <!-- Hover and press change colours only: no press scale, no transition (section 5.6). -->
+    <Setter Property="Transitions" Value="{x:Null}" />
+  </Style>
+  <Style Selector="Button:pressed">
+    <Setter Property="RenderTransform" Value="none" />
+  </Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+  </Style>
+  <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+  </Style>
+  <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Disabled}" />
+  </Style>
+
+  <!-- Primary button (Classes="primary"): accent.default with accent.on. Hover and press fade the button into the surface behind it (Pw.Opacity.* in Metrics.axaml, checked for AA on every surface). -->
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.On}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.On}" />
+    <Setter Property="Opacity" Value="{DynamicResource Pw.Opacity.PrimaryHover}" />
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.On}" />
+    <Setter Property="Opacity" Value="{DynamicResource Pw.Opacity.PrimaryPressed}" />
+  </Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Disabled}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <!-- Icon button (Classes="icon"): no border, transparent; content is usually a StrokeIcon that follows the foreground. -->
+  <Style Selector="Button.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinWidth" Value="32" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.icon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.icon:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.icon:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Disabled}" />
+  </Style>
+
+  <!--
+    Text box: raised surface with 1 px border.strong (section 5.3). Focus turns the border accent.default and keeps the
+    caret; Classes="invalid" (or a validation error) turns it danger.default, with the message always shown as text.
+  -->
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Pw.Brush.Accent.On}" />
+    <Setter Property="PlaceholderForeground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="Padding" Value="8,5" />
+  </Style>
+  <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="TextBox:error /template/ Border#PART_BorderElement, TextBox.invalid /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Danger.Default}" />
+  </Style>
+  <Style Selector="TextBox:disabled">
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Disabled}" />
+  </Style>
+  <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+  </Style>
+
+  <!-- Tooltip: raised surface, 1 px border.subtle, caption size. -->
+  <Style Selector="ToolTip">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+</Styles>

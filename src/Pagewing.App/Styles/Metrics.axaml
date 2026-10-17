@@ -1,0 +1,29 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Spacing (4 px grid), radii: Docs/superpowers/specs/2026-10-17-designsystem.md, section 5.3. -->
+  <x:Double x:Key="Pw.Space.0">2</x:Double>
+  <x:Double x:Key="Pw.Space.1">4</x:Double>
+  <x:Double x:Key="Pw.Space.2">8</x:Double>
+  <x:Double x:Key="Pw.Space.3">12</x:Double>
+  <x:Double x:Key="Pw.Space.4">16</x:Double>
+  <x:Double x:Key="Pw.Space.5">24</x:Double>
+  <x:Double x:Key="Pw.Space.6">32</x:Double>
+
+  <!-- Buttons, fields, list entries / cards, popups, command palette / upper corners of a tab. The PDF page has radius 0. -->
+  <CornerRadius x:Key="Pw.Radius.Control">6</CornerRadius>
+  <CornerRadius x:Key="Pw.Radius.Overlay">10</CornerRadius>
+  <CornerRadius x:Key="Pw.Radius.Tab">8,8,0,0</CornerRadius>
+
+  <!--
+    Opacity of the primary button while hovered and pressed. Text and background fade into the surface behind the
+    button, so accent.on on accent.default must keep 4.5:1 after blending on every surface (window, toolbar, sidebar,
+    canvas, raised) in both themes; ControlStyleTests.PrimaryButtonStatesKeepAAContrastOnEverySurface checks it.
+    Lowest value that passes: 0.80 (4.56:1). Pressed stays clearly dimmer than hover.
+  -->
+  <x:Double x:Key="Pw.Opacity.PrimaryHover">0.9</x:Double>
+  <x:Double x:Key="Pw.Opacity.PrimaryPressed">0.82</x:Double>
+
+  <!-- The Fluent controls read their corner radii from these two resources (spec section 2.4). -->
+  <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+  <CornerRadius x:Key="OverlayCornerRadius">10</CornerRadius>
+</ResourceDictionary>

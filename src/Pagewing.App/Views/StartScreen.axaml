@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.StartScreen"
+             x:DataType="vm:MainViewModel">
+  <!--
+    Start screen (design system section 7.1): heading, offline note, primary button "Choose file" with its
+    shortcut, drag-and-drop hint. "Recently opened" follows in M6. text.secondary on surface.canvas is checked
+    by MainWindowTests.SecondaryTextOnTheCanvasMeetsAA.
+  -->
+  <Border Margin="8,0" CornerRadius="10,10,0,0" Background="{DynamicResource Pw.Brush.Surface.Canvas}">
+    <StackPanel MaxWidth="540" Margin="24" Spacing="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+      <StackPanel Spacing="4">
+        <TextBlock Name="StartTitle" Classes="title" Text="{x:Static res:Strings.StartTitle}" TextWrapping="Wrap" />
+        <TextBlock Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.StartOffline}" />
+      </StackPanel>
+
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+        <Button Name="ChooseFileButton" Classes="primary" Height="36" Padding="16,0" VerticalAlignment="Center"
+                Command="{Binding OpenCommand}"
+                ToolTip.Tip="{x:Static res:Strings.OpenFileTooltip}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.FolderOpen}" />
+            <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.ChooseFile}" />
+            <!-- kbd: Geist Mono in a 1 px frame of the button text colour. -->
+            <Border Padding="5,0" CornerRadius="4" BorderThickness="1" VerticalAlignment="Center"
+                    BorderBrush="{DynamicResource Pw.Brush.Accent.On}">
+              <TextBlock Classes="mono" Text="{x:Static res:Strings.ChooseFileShortcut}" />
+            </Border>
+          </StackPanel>
+        </Button>
+        <TextBlock Grid.Column="1" Classes="body" TextWrapping="Wrap" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.StartDropHint}" />
+      </Grid>
+    </StackPanel>
+  </Border>
+</UserControl>

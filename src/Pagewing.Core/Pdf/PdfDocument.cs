@@ -80,6 +80,52 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets the sizes in points of <paramref name="count"/> consecutive pages, after rotation and CropBox, in a
+    /// single request to the PDFium thread (much cheaper than one request per page for a large document).
+    /// A page whose size cannot be read reports A4 (595.28 × 841.89 pt) instead of failing the whole batch.
+    /// </summary>
+    /// <param name="firstPage">The index of the first page.</param>
+    /// <param name="count">The number of pages; 0 gives an empty list.</param>
+    /// <param name="priority">The scheduling class of the request.</param>
+    /// <param name="cancellationToken">Cancels the request before it runs, or between two pages.</param>
+    /// <exception cref="ArgumentOutOfRangeException">The range is not within the pages of the document.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the sizes were read.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<IReadOnlyList<PdfPageSize>> GetPageSizesAsync(int firstPage, int count, PdfPriority priority = PdfPriority.Interactive, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfNegative(firstPage);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        if (firstPage > pageCount || count > pageCount - firstPage)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), count, "The pages must lie within the document.");
+        }
+
+        return document.Thread.InvokeAsync<IReadOnlyList<PdfPageSize>>(
+            () =>
+            {
+                var result = new PdfPageSize[count];
+                for (var i = 0; i < count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var (width, height) = document.GetPageSize(firstPage + i);
+                        result[i] = new PdfPageSize(width, height);
+                    }
+                    catch (InvalidDataException)
+                    {
+                        result[i] = PdfPageSize.A4;
+                    }
+                }
+
+                return result;
+            },
+            priority == PdfPriority.Background ? PdfiumPriority.Background : PdfiumPriority.Interactive,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Extracts the text of a page. Lines are separated by <c>\n</c> (PDFium reports <c>\r\n</c>); a page
     /// without text gives an empty string. Runs with <see cref="PdfPriority.Background"/>.
     /// </summary>

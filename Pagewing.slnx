@@ -9,6 +9,7 @@
     <Project Path="src/Pagewing.Pdfium/Pagewing.Pdfium.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Pagewing.App.Tests/Pagewing.App.Tests.csproj" />
     <Project Path="tests/Pagewing.Core.Tests/Pagewing.Core.Tests.csproj" />
     <Project Path="tests/Pagewing.Render.Tests/Pagewing.Render.Tests.csproj" />
   </Folder>

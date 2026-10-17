@@ -6,7 +6,22 @@
     <PublishAot>true</PublishAot>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Needed for three uses: [LibraryImport] (Program.AllowSetForegroundWindow) generates its marshalling as unsafe code
+         (SYSLIB1062), and Controls/PageShadowPainter.cs and Controls/TileBitmaps.cs contain unsafe blocks (CS0227). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pagewing.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Both languages are embedded in this assembly (no satellite assemblies, see DECISIONS.md). -->
+    <EmbeddedResource Update="Resources\Strings.en.resx" WithCulture="false" LogicalName="Pagewing.App.Resources.Strings.en.resources" />
+    <EmbeddedResource Update="Resources\Strings.de.resx" WithCulture="false" LogicalName="Pagewing.App.Resources.Strings.de.resources" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Geist / Geist Mono subset, licence in third-party/geist (selected in Styles/Fonts.axaml). -->
+    <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />

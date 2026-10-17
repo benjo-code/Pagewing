@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.StatusBar"
+             x:DataType="vm:MainViewModel"
+             Height="32" FontSize="12"
+             Background="{DynamicResource Pw.Brush.Surface.Window}"
+             Foreground="{DynamicResource Pw.Brush.Text.Secondary}">
+  <!--
+    Status bar (design system section 6, item 5): ‹ "Page" [field] "of N" ›, separator, zoom − [value] +.
+    Text type.caption in text.secondary, icons 16 px. Below 760 px the word "Page" goes (code-behind); the icons
+    stay, with their tooltips. The page field jumps on Enter; an invalid entry, or leaving the field without Enter,
+    puts the current page back (design system 7.5).
+  -->
+  <UserControl.Styles>
+    <Style Selector="Button.status">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0" VerticalAlignment="Center">
+    <Button Name="PreviousPageButton" Classes="icon status"
+            Command="{Binding PreviousPageCommand}"
+            ToolTip.Tip="{x:Static res:Strings.PreviousPage}"
+            AutomationProperties.Name="{x:Static res:Strings.PreviousPage}">
+      <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronLeft}" />
+    </Button>
+    <TextBlock Name="PageLabel" VerticalAlignment="Center" Text="{x:Static res:Strings.PageLabel}" />
+    <TextBox Name="PageField"
+             Width="40" Height="22" MinHeight="22" Padding="2,0" FontSize="12" FontFeatures="+tnum"
+             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+             Text="{Binding PageFieldText}"
+             AutomationProperties.Name="{x:Static res:Strings.PageLabel}">
+      <TextBox.KeyBindings>
+        <KeyBinding Gesture="Enter" Command="{Binding CommitPageFieldCommand}" />
+      </TextBox.KeyBindings>
+    </TextBox>
+    <TextBlock Name="PageCountText" Classes="num" VerticalAlignment="Center" Text="{Binding PageCountText}" />
+    <Button Name="NextPageButton" Classes="icon status"
+            Command="{Binding NextPageCommand}"
+            ToolTip.Tip="{x:Static res:Strings.NextPage}"
+            AutomationProperties.Name="{x:Static res:Strings.NextPage}">
+      <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronRight}" />
+    </Button>
+
+    <Border Width="1" Height="22" Margin="6,0" Background="{DynamicResource Pw.Brush.Border.Subtle}" />
+
+    <Button Name="ZoomOutButton" Classes="icon status"
+            Command="{Binding ZoomOutCommand}"
+            ToolTip.Tip="{x:Static res:Strings.ZoomOut}"
+            AutomationProperties.Name="{x:Static res:Strings.ZoomOut}">
+      <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Minus}" />
+    </Button>
+    <TextBlock Name="ZoomValueText" Classes="num" MinWidth="44" TextAlignment="Center" VerticalAlignment="Center"
+               Text="{Binding ZoomText}"
+               AutomationProperties.Name="{x:Static res:Strings.ZoomValue}" />
+    <Button Name="ZoomInButton" Classes="icon status"
+            Command="{Binding ZoomInCommand}"
+            ToolTip.Tip="{x:Static res:Strings.ZoomIn}"
+            AutomationProperties.Name="{x:Static res:Strings.ZoomIn}">
+      <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Plus}" />
+    </Button>
+  </StackPanel>
+</UserControl>

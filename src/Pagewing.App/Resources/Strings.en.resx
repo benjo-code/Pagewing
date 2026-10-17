@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppName" xml:space="preserve">
+    <value>Pagewing</value>
+  </data>
+  <data name="OpenFile" xml:space="preserve">
+    <value>Open file</value>
+  </data>
+  <data name="OpenFileTooltip" xml:space="preserve">
+    <value>Open file (Ctrl+O)</value>
+  </data>
+  <data name="PdfFileType" xml:space="preserve">
+    <value>PDF documents</value>
+  </data>
+  <data name="CloseTab" xml:space="preserve">
+    <value>Close tab (Ctrl+W)</value>
+  </data>
+  <data name="StartTitle" xml:space="preserve">
+    <value>Open a document</value>
+  </data>
+  <data name="StartHint" xml:space="preserve">
+    <value>Press Ctrl+O to choose a PDF file.</value>
+  </data>
+  <data name="StartOffline" xml:space="preserve">
+    <value>Pagewing works offline. Nothing leaves this computer.</value>
+  </data>
+  <data name="StartDropHint" xml:space="preserve">
+    <value>Or drop a PDF file into this window.</value>
+  </data>
+  <data name="ChooseFile" xml:space="preserve">
+    <value>Choose file</value>
+  </data>
+  <data name="ChooseFileShortcut" xml:space="preserve">
+    <value>Ctrl+O</value>
+  </data>
+  <data name="PasswordTitle" xml:space="preserve">
+    <value>This PDF is protected</value>
+  </data>
+  <data name="PasswordPrompt" xml:space="preserve">
+    <value>Enter the password to open “{0}”.</value>
+  </data>
+  <data name="PasswordIncorrect" xml:space="preserve">
+    <value>The password is incorrect. Check upper and lower case.</value>
+  </data>
+  <data name="PasswordField" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="PasswordCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="PasswordOpen" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="ErrorTitle" xml:space="preserve">
+    <value>This file cannot be opened</value>
+  </data>
+  <data name="ErrorCause" xml:space="preserve">
+    <value>“{0}” {1}.</value>
+  </data>
+  <data name="ErrorCauseNoFile" xml:space="preserve">
+    <value>The file {0}.</value>
+  </data>
+  <data name="ErrorNotAPdf" xml:space="preserve">
+    <value>is damaged or not a PDF file</value>
+  </data>
+  <data name="ErrorFileNotFound" xml:space="preserve">
+    <value>was not found</value>
+  </data>
+  <data name="ErrorCannotRead" xml:space="preserve">
+    <value>cannot be read (no access or too large)</value>
+  </data>
+  <data name="ErrorUnsupportedEncryption" xml:space="preserve">
+    <value>is encrypted with a method Pagewing does not support</value>
+  </data>
+  <data name="ErrorUnknown" xml:space="preserve">
+    <value>could not be opened for an unknown reason</value>
+  </data>
+  <data name="ErrorDetails" xml:space="preserve">
+    <value>Technical details</value>
+  </data>
+  <data name="ErrorDetailsPath" xml:space="preserve">
+    <value>Path</value>
+  </data>
+  <data name="ErrorDetailsKind" xml:space="preserve">
+    <value>Error kind</value>
+  </data>
+  <data name="ErrorDetailsNoPath" xml:space="preserve">
+    <value>(none)</value>
+  </data>
+  <data name="ErrorDetailsMessage" xml:space="preserve">
+    <value>Message</value>
+  </data>
+  <data name="ErrorCloseTab" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="ErrorOpenOther" xml:space="preserve">
+    <value>Open another file</value>
+  </data>
+  <data name="PageLabel" xml:space="preserve">
+    <value>Page</value>
+  </data>
+  <data name="PageOf" xml:space="preserve">
+    <value>of {0}</value>
+  </data>
+  <data name="PreviousPage" xml:space="preserve">
+    <value>Previous page (Page Up)</value>
+  </data>
+  <data name="NextPage" xml:space="preserve">
+    <value>Next page (Page Down)</value>
+  </data>
+  <data name="ZoomOut" xml:space="preserve">
+    <value>Zoom out (Ctrl+Minus)</value>
+  </data>
+  <data name="ZoomIn" xml:space="preserve">
+    <value>Zoom in (Ctrl+Plus)</value>
+  </data>
+  <data name="ZoomValue" xml:space="preserve">
+    <value>Zoom level</value>
+  </data>
+  <data name="PagePlaceholderFailed" xml:space="preserve">
+    <value>This page could not be displayed</value>
+  </data>
+</root>

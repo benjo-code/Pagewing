@@ -1,6 +1,0 @@
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Pagewing.App.MainWindow"
-        Title="Pagewing" Width="900" Height="600">
-  <TextBlock Text="Pagewing" HorizontalAlignment="Center" VerticalAlignment="Center" />
-</Window>

@@ -5,4 +5,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Pagewing.Pdfium\Pagewing.Pdfium.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pagewing.Core.Tests" />
+    <!-- The UI tests drive a ViewerSession with its test constructor (failing or delayed opens). -->
+    <InternalsVisibleTo Include="Pagewing.App.Tests" />
+  </ItemGroup>
 </Project>

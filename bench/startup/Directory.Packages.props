@@ -1,0 +1,6 @@
+<Project>
+  <!-- The single-file script uses no packages; central package management stays off, like in tools/. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

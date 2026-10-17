@@ -1,0 +1,337 @@
+# Hardware measurement: startup time and scrolling smoothness on the project owner's main PC (real GPU).
+#
+# SECURITY: This workflow executes repository code on the owner's personal PC, with the owner's user rights.
+# - It runs only on an explicit manual trigger: `workflow_dispatch`, or a collaborator adding the label
+#   `hardware-measure` to a pull request. There is deliberately no `pull_request` opened/synchronize trigger,
+#   no `pull_request_target` and no `issue_comment` trigger.
+# - A pull request from a fork never runs it: the job requires the head repository to be this repository
+#   (and fork PRs cannot be labelled into a run by anyone without write access anyway).
+# - The runner is registered with the label `dotnet-windows-gpu` only, not with the labels of ci.yml
+#   (`dotnet-windows`, `dotnet-linux`), so the CI jobs can never land on it and this job never lands on the CI runners.
+# - The owner starts the runner by hand (run.cmd in the logged-in session) when asked and stops it afterwards;
+#   it is not a service. Do not rely on it being online. No secrets are used or needed.
+# Setup and procedure: bench/startup/README.md, section "Messung auf echter Hardware (Haupt-PC)".
+name: Hardware measurement
+
+on:
+  workflow_dispatch:
+  # A new workflow file cannot be dispatched before it exists on the default branch; the label lets us run it from a PR branch.
+  pull_request:
+    types: [labeled]
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: measure-windows-gpu
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'hardware-measure' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, dotnet-windows-gpu]
+    timeout-minutes: 30
+    # On the job (not the workflow) so that runs skipped by the `if` above, e.g. for other labels, never take the group.
+    # Two runs must never overlap on the one runner; a running measurement is never cancelled.
+    concurrency:
+      group: hardware-measure
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same step as in ci.yml. On this PC git is usually on PATH and the checkout has current file times already; the
+      # step is cheap and guards against the zip-extraction case described in ci.yml (stale cached build of
+      # bench/startup/startup.cs in %TEMP% from an earlier run). The .git directory is skipped because git marks its
+      # pack files read-only; other files that cannot be touched are skipped, but startup.cs itself must change.
+      - name: Refresh the file times of the checkout
+        run: |
+          $before = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
+          $now = [DateTime]::UtcNow
+          $skipped = 0
+          Get-ChildItem -Recurse -File -Force |
+            Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } |
+            ForEach-Object {
+              try { $_.LastWriteTimeUtc = $now } catch { $skipped++ }
+            }
+          $after = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
+          if ($after -le $before) { throw "bench/startup/startup.cs konnte nicht aktualisiert werden (vorher $before, nachher $after)" }
+          if ($skipped -gt 0) { Write-Host "$skipped Datei(en) nicht anfassbar (schreibgeschuetzt oder gesperrt), uebersprungen" }
+          Write-Host ('bench/startup/startup.cs: {0:yyyy-MM-dd HH:mm:ss} UTC aus dem Checkout, gesetzt auf {1:yyyy-MM-dd HH:mm:ss} UTC' -f $before, $now)
+
+      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
+        run: Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_INSTALL_DIR=$env:USERPROFILE\.dotnet"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # The Native AOT linker needs vswhere.exe on PATH; it takes effect from the next step on.
+      - name: Put vswhere on PATH
+        run: Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+
+      - name: Check the prerequisites
+        run: |
+          if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'dotnet not found: install the .NET SDK 10 or let actions/setup-dotnet install it' }
+          $sdk = (dotnet --version).Trim()
+          Write-Host "dotnet SDK $sdk"
+          if (-not $sdk.StartsWith('10.')) { throw "the .NET SDK 10 is required, found $sdk" }
+          if (-not (Get-Command vswhere -ErrorAction SilentlyContinue)) { throw 'vswhere not found: install the Visual Studio Build Tools with the workload "Desktop development with C++"' }
+          $p = vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $p) { throw 'Visual Studio C++ build tools not found: install the workload "Desktop development with C++"' }
+          Write-Host "Visual Studio C++ build tools: $p"
+          if (-not [Environment]::UserInteractive) {
+            Write-Host '::warning title=Hardware measurement::The runner does not run in an interactive session (is it a service?). The app gets no desktop and the numbers are invalid. Start run.cmd in the logged-in session.'
+          }
+          if (Test-Path out) { Remove-Item -Recurse -Force out }
+          New-Item -ItemType Directory -Force out/startup | Out-Null
+
+      - name: Publish the app (Native AOT)
+        id: publish
+        run: dotnet publish src/Pagewing.App -c Release -r win-x64 -o out/app
+
+      - name: Hardware report
+        id: hardware
+        run: |
+          $lines = [System.Collections.Generic.List[string]]::new()
+          $lines.Add("Date (UTC): {0:yyyy-MM-dd HH:mm:ss}" -f [DateTime]::UtcNow)
+          $lines.Add("Commit: $env:GITHUB_SHA ($env:GITHUB_REF)")
+          $os = Get-CimInstance Win32_OperatingSystem
+          $lines.Add("Windows: $($os.Caption), version $($os.Version), build $($os.BuildNumber)")
+          foreach ($cpu in @(Get-CimInstance Win32_Processor)) { $lines.Add("CPU: $($cpu.Name.Trim())") }
+          foreach ($gpu in @(Get-CimInstance Win32_VideoController)) {
+            $lines.Add("GPU: $($gpu.Name), driver $($gpu.DriverVersion), $($gpu.CurrentHorizontalResolution) x $($gpu.CurrentVerticalResolution) at $($gpu.CurrentRefreshRate) Hz")
+          }
+          $lines.Add("Power plan: " + ((powercfg /getactivescheme) -join ' '))
+          $battery = @(Get-CimInstance Win32_Battery)
+          if ($battery.Count -eq 0) { $lines.Add('Battery: none (mains power)') } else { foreach ($b in $battery) { $lines.Add("Battery: status $($b.BatteryStatus) (2 = on mains power), $($b.EstimatedChargeRemaining) % charge") } }
+          $lines.Add("PAGEWING_RENDERING in the runner environment: '$env:PAGEWING_RENDERING'")
+          $lines | ForEach-Object { Write-Host $_ }
+          Set-Content -Path out/startup/hardware.txt -Value $lines -Encoding utf8
+
+      # The four cases of ci.yml, strict: budgets and verdict logic are unchanged, a red result is a real finding.
+      # The default rendering path is measured (software rendering on Windows), so PAGEWING_RENDERING is removed from the
+      # environment of the child processes. All four cases run so that every log exists; the step fails afterwards if one
+      # of them failed.
+      - name: Startup check (default rendering, software)
+        id: startup
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        run: |
+          Remove-Item Env:PAGEWING_RENDERING -ErrorAction SilentlyContinue
+          if ($env:PAGEWING_RENDERING) { throw 'PAGEWING_RENDERING is still set' }
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $failed = $false
+          $cases = @(
+            @('--pdf', 'testdata/pdfs/text-basic.pdf', '--case', 'cold', '--out', 'out/startup/cold.csv'),
+            @('--pdf', 'testdata/pdfs/text-basic.pdf', '--case', 'warm', '--out', 'out/startup/warm.csv', '--phases'),
+            @('--pdf', 'testdata/pdfs/thousand-pages.pdf', '--case', 'thousand', '--out', 'out/startup/thousand.csv'),
+            @('--pdf', 'testdata/pdfs/text-basic.pdf', '--second-pdf', 'testdata/pdfs/hello_world.pdf', '--case', 'second', '--out', 'out/startup/second.csv')
+          )
+          foreach ($case in $cases) {
+            $log = "out/startup/$($case[[array]::IndexOf($case, '--case') + 1]).log"
+            dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe @case | ForEach-Object { Write-Host $_; Add-Content -Path $log -Value $_ -Encoding utf8 }
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+
+      # Informational: no budget exists for scrolling. A non-zero exit code of the app (1 error, 3 timeout) fails the step.
+      # Start-Process with redirected output is the way to read the stdout of the GUI (WinExe) binary.
+      - name: Scroll measurement
+        id: scroll
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        run: |
+          Remove-Item Env:PAGEWING_RENDERING -ErrorAction SilentlyContinue
+          $work = (Get-Location).Path
+          $exe = (Resolve-Path 'out/app/Pagewing.exe').Path
+          $outDir = Join-Path $work 'out/startup'
+          $scrollFile = Join-Path $outDir 'scroll.txt'
+          Set-Content -Path $scrollFile -Value @() -Encoding utf8
+          $failed = $false
+          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf') {
+            $pdf = (Resolve-Path "testdata/pdfs/$file").Path
+            for ($run = 1; $run -le 3; $run++) {
+              $stdout = Join-Path $outDir "scroll-$file-$run.out"
+              $stderr = Join-Path $outDir "scroll-$file-$run.err"
+              $p = Start-Process -FilePath $exe -ArgumentList @('--measure-scroll', "`"$pdf`"") -WorkingDirectory $work `
+                -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+              $exit = $p.ExitCode
+              $line = Get-Content -Path $stdout -ErrorAction SilentlyContinue | Where-Object { $_ -match '^scroll frames=' } | Select-Object -Last 1
+              $detail = Get-Content -Path $stdout -ErrorAction SilentlyContinue | Where-Object { $_ -match '^scroll-detail ' } | Select-Object -Last 1
+              $warning = Get-Content -Path $stderr -ErrorAction SilentlyContinue | Where-Object { $_ -like 'warning: *' } | Select-Object -First 1
+              if ($exit -ne 0 -or -not $line) {
+                $err = (Get-Content -Path $stderr -ErrorAction SilentlyContinue) -join ' '
+                Write-Host "::error title=Scroll measurement::$file run ${run}: exit code $exit, result line: '$line' $err"
+                $failed = $true
+                continue
+              }
+              Write-Host "$file run ${run}: $line | $detail $warning"
+              Add-Content -Path $scrollFile -Value "$file run ${run}: $line | $detail" -Encoding utf8
+              if ($warning) { Add-Content -Path $scrollFile -Value "  $warning" -Encoding utf8 }
+            }
+          }
+          if ($failed) { exit 1 }
+
+      # Informational only (continue-on-error): the warm case on the GPU path (PAGEWING_RENDERING=default, Avalonia's own
+      # default: ANGLE over Direct3D 11 on DXGI adapter 0), with --phases, so that the cost of the GPU bring-up stays
+      # visible over time (Docs/DECISIONS.md, entry "Software-Rendering als Windows-Standard (M3)"). A median above the
+      # limit is a result here, not a failure; only a missing result fails the step.
+      - name: Startup warm on the GPU path with PAGEWING_RENDERING=default (informational)
+        id: gpu
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          PAGEWING_RENDERING: default
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/text-basic.pdf --case warm --out out/startup/warm-gpu.csv --phases | ForEach-Object { Write-Host $_; Add-Content -Path out/startup/warm-gpu.log -Value $_ -Encoding utf8 }
+          Add-Content -Path out/startup/warm-gpu.log -Value "script exit code: $LASTEXITCODE" -Encoding utf8
+          if (-not (Get-Content out/startup/warm-gpu.log -Encoding utf8 | Select-String -Pattern '^warm: Median' -Quiet)) { exit 1 }
+
+      # Informational only (continue-on-error): scrolling with --zoom 100 and 400, on the default path (software rendering,
+      # PAGEWING_RENDERING not set) and on the GPU path (PAGEWING_RENDERING=default), 2 runs each, alternating the paths.
+      # Writes out/startup/scroll-compare.csv. No budget exists for scrolling.
+      - name: Scrolling with zoom, software against GPU (informational)
+        id: scroll-compare
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 8
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $work = (Get-Location).Path
+          $exe = (Resolve-Path 'out/app/Pagewing.exe').Path
+          $outDir = Join-Path $work 'out/startup'
+          $csv = Join-Path $outDir 'scroll-compare.csv'
+          Set-Content -Path $csv -Value 'file,zoom,path,run,exit,frames,p99_ms,max_ms,mean_ms,over20_pct,over30_pct,range_dips' -Encoding utf8
+          $failed = $false
+          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf') {
+            $pdf = (Resolve-Path "testdata/pdfs/$file").Path
+            $stem = [System.IO.Path]::GetFileNameWithoutExtension($file)
+            foreach ($zoom in 100, 400) {
+              for ($run = 1; $run -le 2; $run++) {
+                foreach ($path in 'software', 'gpu') {
+                  if ($path -eq 'gpu') { $env:PAGEWING_RENDERING = 'default' } else { Remove-Item Env:PAGEWING_RENDERING -ErrorAction SilentlyContinue }
+                  $stdout = Join-Path $outDir "scroll-compare-$stem-z$zoom-$path-$run.out"
+                  $stderr = Join-Path $outDir "scroll-compare-$stem-z$zoom-$path-$run.err"
+                  $p = Start-Process -FilePath $exe -ArgumentList @('--measure-scroll', "`"$pdf`"", '--zoom', "$zoom") -WorkingDirectory $work `
+                    -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+                  $exit = $p.ExitCode
+                  $text = @(Get-Content -Path $stdout -ErrorAction SilentlyContinue)
+                  $line = $text | Where-Object { $_ -match '^scroll frames=' } | Select-Object -Last 1
+                  $detail = $text | Where-Object { $_ -match '^scroll-detail ' } | Select-Object -Last 1
+                  $m = [regex]::Match("$line", '^scroll frames=(\d+) p99-ms=([0-9.]+) max-ms=([0-9.]+)$')
+                  $d = [regex]::Match("$detail", '^scroll-detail zoom-pct=(\d+) mean-ms=([0-9.]+) over-20ms-pct=([0-9.]+) over-30ms-pct=([0-9.]+) range-dips=(\d+)$')
+                  if ($exit -ne 0 -or -not $m.Success -or -not $d.Success) {
+                    $err = (Get-Content -Path $stderr -ErrorAction SilentlyContinue) -join ' '
+                    Write-Host "::warning title=Scrolling, software against GPU::$file zoom $zoom $path run ${run}: exit code $exit, lines '$line' '$detail' $err"
+                    Add-Content -Path $csv -Value "$file,$zoom,$path,$run,$exit,,,,,,," -Encoding utf8
+                    $failed = $true
+                    continue
+                  }
+                  Write-Host "$file zoom $zoom $path run ${run}: $line | $detail"
+                  Add-Content -Path $csv -Value ("{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11}" -f $file, $zoom, $path, $run, $exit, $m.Groups[1].Value, $m.Groups[2].Value, $m.Groups[3].Value, $d.Groups[2].Value, $d.Groups[3].Value, $d.Groups[4].Value, $d.Groups[5].Value) -Encoding utf8
+                }
+              }
+            }
+          }
+          Remove-Item Env:PAGEWING_RENDERING -ErrorAction SilentlyContinue
+          if ($failed) { exit 1 }
+
+      # Facts only: hardware, median per case against budget and limit (as printed by startup.cs), scroll values.
+      - name: Summary
+        if: always()
+        run: |
+          $md = [System.Collections.Generic.List[string]]::new()
+          $md.Add('## Hardware measurement')
+          $md.Add('')
+          $md.Add("Commit ``$env:GITHUB_SHA``")
+          $md.Add('')
+          $md.Add('### Hardware')
+          $md.Add('')
+          $md.Add('```')
+          if (Test-Path out/startup/hardware.txt) { foreach ($l in Get-Content out/startup/hardware.txt) { $md.Add($l) } } else { $md.Add('(no hardware report)') }
+          $md.Add('```')
+          $md.Add('')
+          $md.Add('### Startup (default rendering: software; median of 10 runs)')
+          $md.Add('')
+          $md.Add('| Case | Median (ms) | Budget (ms) | Limit (ms) | Result |')
+          $md.Add('|---|---:|---:|---:|---|')
+          foreach ($name in 'cold', 'warm', 'thousand', 'second') {
+            $log = "out/startup/$name.log"
+            $row = "| $name | - | - | - | no result |"
+            if (Test-Path $log) {
+              $text = Get-Content $log
+              $m = $text | Select-String -Pattern ('^' + $name + ': Median ([0-9.]+) ms.*Budget ([0-9]+) ms, Grenze ([0-9]+) ms') | Select-Object -First 1
+              if ($m) {
+                $g = $m.Matches[0].Groups
+                $median = [double]::Parse($g[1].Value, [cultureinfo]::InvariantCulture)
+                $verdict = if ($median -gt [double]$g[3].Value) { 'over the limit (check fails)' } elseif ($median -gt [double]$g[2].Value) { 'over the budget, within the limit' } else { 'within the budget' }
+                $row = "| $name | $($g[1].Value) | $($g[2].Value) | $($g[3].Value) | $verdict |"
+              }
+            }
+            $md.Add($row)
+          }
+          foreach ($name in 'cold', 'warm', 'thousand', 'second') {
+            $log = "out/startup/$name.log"
+            if (Test-Path $log) { foreach ($w in (Get-Content $log | Select-String -Pattern '^(Warnung|Ergebnis unter Vorbehalt):')) { $md.Add(''); $md.Add("${name}: $($w.Line)") } }
+          }
+          if (Test-Path out/startup/warm.log) {
+            $phases = Get-Content out/startup/warm.log
+            $start = -1
+            for ($i = 0; $i -lt $phases.Count; $i++) { if ($phases[$i] -like 'Phasen (Median*') { $start = $i; break } }
+            if ($start -ge 0) { $md.Add(''); $md.Add('Phases of the warm case:'); $md.Add(''); $md.Add('```'); foreach ($l in $phases[$start..($phases.Count - 1)]) { $md.Add($l) }; $md.Add('```') }
+          }
+          $md.Add('')
+          $md.Add('### Scrolling (informational, no budget)')
+          $md.Add('')
+          $md.Add('```')
+          if (Test-Path out/startup/scroll.txt) { foreach ($l in Get-Content out/startup/scroll.txt) { $md.Add($l) } } else { $md.Add('(no scroll result)') }
+          $md.Add('```')
+          $md.Add('')
+          $md.Add('### Warm, software (default) against the GPU path (informational)')
+          $md.Add('')
+          $md.Add('Medians of 10 runs. "windowing" = `windowing-ready` - `windowing-init` (window system, graphics and composition), "first frame" = `frame-after-tile` - `tile-drawn`. Only the default path counts for the check.')
+          $md.Add('')
+          $md.Add('| Path | Warm median (ms) | windowing (ms) | first frame (ms) |')
+          $md.Add('|---|---:|---:|---:|')
+          $inv = [cultureinfo]::InvariantCulture
+          foreach ($entry in @(@('software (default)', 'out/startup/warm.log'), @('GPU (`PAGEWING_RENDERING=default`)', 'out/startup/warm-gpu.log'))) {
+            $label = $entry[0]
+            $log = $entry[1]
+            if (-not (Test-Path $log)) { $md.Add("| $label | no result | - | - |"); continue }
+            $text = @(Get-Content $log -Encoding utf8)
+            $m = $text | Select-String -Pattern '^warm: Median ([0-9.]+) ms' | Select-Object -First 1
+            $median = if ($m) { $m.Matches[0].Groups[1].Value } else { 'no result' }
+            $phase = @{}
+            foreach ($l in $text) {
+              $pm = [regex]::Match($l, '^\s{2}(\S+)\s+([0-9.]+) ms')
+              if ($pm.Success) { $phase[$pm.Groups[1].Value] = [double]::Parse($pm.Groups[2].Value, $inv) }
+            }
+            $windowing = if ($phase.ContainsKey('windowing-init') -and $phase.ContainsKey('windowing-ready')) { ($phase['windowing-ready'] - $phase['windowing-init']).ToString('0.0', $inv) } else { '-' }
+            $firstFrame = if ($phase.ContainsKey('tile-drawn') -and $phase.ContainsKey('frame-after-tile')) { ($phase['frame-after-tile'] - $phase['tile-drawn']).ToString('0.0', $inv) } else { '-' }
+            $md.Add("| $label | $median | $windowing | $firstFrame |")
+          }
+          $md.Add('')
+          $md.Add('### Scrolling with zoom, software (default) against GPU (informational, 600 frames per run)')
+          $md.Add('')
+          $md.Add('"Range" is the scroll range in DIPs; at 0 the content fits the viewport, nothing scrolls, and the intervals show Avalonia''s frame pacing without changes (about 31 ms), not the drawing.')
+          $md.Add('')
+          $md.Add('| File | Zoom (%) | Path | Run | p99 (ms) | max (ms) | mean (ms) | > 20 ms (%) | > 30 ms (%) | Range (DIPs) |')
+          $md.Add('|---|---:|---|---:|---:|---:|---:|---:|---:|---:|')
+          if (Test-Path out/startup/scroll-compare.csv) {
+            foreach ($r in @(Import-Csv out/startup/scroll-compare.csv -Encoding UTF8)) {
+              if ($r.exit -ne '0' -or -not $r.p99_ms) { $md.Add("| $($r.file) | $($r.zoom) | $($r.path) | $($r.run) | failed (exit code $($r.exit)) | | | | | |"); continue }
+              $md.Add("| $($r.file) | $($r.zoom) | $($r.path) | $($r.run) | $($r.p99_ms) | $($r.max_ms) | $($r.mean_ms) | $($r.over20_pct) | $($r.over30_pct) | $($r.range_dips) |")
+            }
+          } else { $md.Add('| (no comparison run) | | | | | | | | | |') }
+          $md | ForEach-Object { Write-Host $_ }
+          [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, (($md -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+
+      - name: Upload the measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hardware-measure
+          path: out/startup/*
+          if-no-files-found: warn

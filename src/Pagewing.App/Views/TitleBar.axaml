@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             xmlns:chrome="using:Avalonia.Controls.Chrome"
+             x:Class="Pagewing.App.Views.TitleBar"
+             x:DataType="vm:MainViewModel"
+             Height="40">
+  <!--
+    Title bar (Windows) or tab row below the system title bar (Linux), design system sections 2.2, 6 and 7.2.
+    From the left: app symbol (as wide as the later action bar), the tab (or the app name without a document),
+    "Open file", the drag area and, on Windows, the space of the system caption buttons. The drag area is marked
+    TitleBar (the system moves and maximizes the window from it); the tab and the buttons are marked User.
+    Width budget at the 640 px minimum (Windows): 52 + tab 280 + 36 + caption buttons 140 leaves 132 px to drag.
+  -->
+  <UserControl.Styles>
+    <!-- Linux: the tab row meets the system title bar of the same colour, so it gets a border.subtle top edge (section 5.3). -->
+    <Style Selector="Border#Root.linux">
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="Root" Classes.linux="{Binding !IsWindowsTitleBar}">
+    <Grid ColumnDefinitions="52,Auto,Auto,*,Auto">
+      <Border Name="AppMark" Background="Transparent" chrome:WindowDecorationProperties.ElementRole="TitleBar">
+        <ctl:StrokeIcon Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Data="{StaticResource Pw.Icon.FileText}"
+                        Brush="{DynamicResource Pw.Brush.Accent.Default}" />
+      </Border>
+
+      <TextBlock Name="AppTitle" Grid.Column="1" Classes="strong"
+                 Margin="2,0,0,0" VerticalAlignment="Center" Background="Transparent"
+                 Text="{x:Static res:Strings.AppName}"
+                 IsVisible="{Binding IsEmpty}"
+                 chrome:WindowDecorationProperties.ElementRole="TitleBar" />
+
+      <!-- The tab of the one document: file name cut in the middle, full path as tooltip, close button. -->
+      <Border Name="Tab" Grid.Column="1"
+              Height="34" MinWidth="120" MaxWidth="280" VerticalAlignment="Bottom"
+              Padding="12,0,6,0"
+              CornerRadius="{StaticResource Pw.Radius.Tab}"
+              Background="{DynamicResource Pw.Brush.Surface.Canvas}"
+              IsVisible="{Binding HasDocument}"
+              ToolTip.Tip="{Binding FullPath}"
+              AutomationProperties.Name="{Binding FileName}"
+              chrome:WindowDecorationProperties.ElementRole="User">
+        <DockPanel>
+          <!-- Symbol (section 7.2): document, lock during the password prompt, warning triangle after a failure. -->
+          <Panel DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+            <ctl:StrokeIcon Name="TabDocumentIcon" Data="{StaticResource Pw.Icon.FileText}" IsVisible="{Binding IsDocumentIcon}" />
+            <ctl:StrokeIcon Name="TabLockIcon" Data="{StaticResource Pw.Icon.Lock}" IsVisible="{Binding IsPasswordPrompt}" />
+            <ctl:StrokeIcon Name="TabErrorIcon" Data="{StaticResource Pw.Icon.AlertTriangle}" IsVisible="{Binding IsFailed}"
+                            Brush="{DynamicResource Pw.Brush.Danger.Default}" />
+          </Panel>
+          <Button Name="CloseTabButton" DockPanel.Dock="Right" Classes="icon"
+                  Width="22" Height="22" MinWidth="0" MinHeight="0" Margin="8,0,0,0"
+                  Command="{Binding CloseCommand}"
+                  ToolTip.Tip="{x:Static res:Strings.CloseTab}"
+                  AutomationProperties.Name="{x:Static res:Strings.CloseTab}"
+                  chrome:WindowDecorationProperties.ElementRole="User">
+            <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+          </Button>
+          <ctl:MiddleEllipsisTextBlock Name="TabName" VerticalAlignment="Center" FontWeight="SemiBold"
+                                       Text="{Binding FileName}" />
+        </DockPanel>
+      </Border>
+
+      <Button Name="OpenButton" Grid.Column="2" Classes="icon"
+              Width="32" Height="30" Margin="4,0,0,0"
+              IsVisible="{Binding HasDocument}"
+              Command="{Binding OpenCommand}"
+              ToolTip.Tip="{x:Static res:Strings.OpenFileTooltip}"
+              AutomationProperties.Name="{x:Static res:Strings.OpenFile}"
+              chrome:WindowDecorationProperties.ElementRole="User">
+        <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.FolderOpen}" />
+      </Button>
+
+      <Border Name="DragArea" Grid.Column="3" MinWidth="48" Background="Transparent"
+              chrome:WindowDecorationProperties.ElementRole="TitleBar" />
+
+      <!-- Avalonia draws minimize, maximize and close over this space (Pw.WindowDecorations in MainWindow.axaml). -->
+      <Border Name="CaptionButtonsSpace" Grid.Column="4" Width="140" IsVisible="{Binding IsWindowsTitleBar}" />
+    </Grid>
+  </Border>
+</UserControl>
