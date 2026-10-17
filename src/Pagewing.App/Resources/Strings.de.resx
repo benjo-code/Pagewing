@@ -27,6 +27,18 @@
   <data name="CloseTab" xml:space="preserve">
     <value>Tab schließen (Strg+W)</value>
   </data>
+  <data name="CloseTabTooltip" xml:space="preserve">
+    <value>Tab schließen</value>
+  </data>
+  <data name="CloseTabMenu" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="AllTabs" xml:space="preserve">
+    <value>Alle Tabs ({0})</value>
+  </data>
+  <data name="AllTabsTooltip" xml:space="preserve">
+    <value>Alle Tabs ({0}): zu einem anderen Tab wechseln</value>
+  </data>
   <data name="StartTitle" xml:space="preserve">
     <value>Dokument öffnen</value>
   </data>

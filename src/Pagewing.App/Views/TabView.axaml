@@ -1,0 +1,40 @@
+<Decorator xmlns="https://github.com/avaloniaui"
+           xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+           xmlns:vm="using:Pagewing.App.ViewModels"
+           xmlns:ctl="using:Pagewing.App.Controls"
+           xmlns:chrome="using:Avalonia.Controls.Chrome"
+           x:Class="Pagewing.App.Views.TabView"
+           x:DataType="vm:TabViewModel">
+  <!--
+    One tab of the tab strip (design system 7.2): symbol, file name cut in the middle, full path as tooltip, close
+    button. The active tab has the colour of the document area and bold text (Styles/Controls.axaml, Border.tab.active);
+    the tab strip lays the tabs out and handles click, middle click, the context menu and dragging (TabStrip.axaml.cs). The names below
+    belong to the active tab only: the other tabs drop them (TabView constructor), so they are unique in the window.
+    A Decorator, not a UserControl: the border is its child at once, without a template, also while the strip is hidden.
+  -->
+  <Border Name="Tab" Classes="tab"
+          Height="34" VerticalAlignment="Bottom"
+          Padding="12,0,6,0"
+          CornerRadius="{StaticResource Pw.Radius.Tab}"
+          ToolTip.Tip="{Binding FullPath}"
+          AutomationProperties.Name="{Binding FileName}"
+          AutomationProperties.AutomationId="Tab"
+          chrome:WindowDecorationProperties.ElementRole="User">
+    <DockPanel>
+      <!-- Symbol: document, lock during the password prompt, warning triangle after a failure. -->
+      <Panel DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+        <ctl:StrokeIcon Name="TabDocumentIcon" Data="{StaticResource Pw.Icon.FileText}" IsVisible="{Binding IsDocumentIcon, FallbackValue=False}" />
+        <ctl:StrokeIcon Name="TabLockIcon" Data="{StaticResource Pw.Icon.Lock}" IsVisible="{Binding IsPasswordPrompt, FallbackValue=False}" />
+        <ctl:StrokeIcon Name="TabErrorIcon" Data="{StaticResource Pw.Icon.AlertTriangle}" IsVisible="{Binding IsFailed, FallbackValue=False}"
+                        Brush="{DynamicResource Pw.Brush.Danger.Default}" />
+      </Panel>
+      <Button Name="CloseTabButton" DockPanel.Dock="Right" Classes="icon"
+              Width="22" Height="22" MinWidth="0" MinHeight="0" Margin="8,0,0,0"
+              Command="{Binding CloseCommand}"
+              chrome:WindowDecorationProperties.ElementRole="User">
+        <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+      </Button>
+      <ctl:MiddleEllipsisTextBlock Name="TabName" VerticalAlignment="Center" Text="{Binding FileName}" />
+    </DockPanel>
+  </Border>
+</Decorator>

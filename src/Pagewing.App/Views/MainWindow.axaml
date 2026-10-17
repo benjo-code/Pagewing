@@ -15,6 +15,9 @@
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
     <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseActiveTabCommand}" />
+    <!-- Tabs (design system 7.2): the next and the previous one, wrapping around. Ctrl+1 to 9 stay free (Ctrl+1 is actual size). -->
+    <KeyBinding Gesture="Ctrl+Tab" Command="{Binding NextTabCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding PreviousTabCommand}" />
     <!-- Zoom (design system 7.5): the plus and minus keys of the main block and of the number pad; Shift+= is "+" on US layouts. -->
     <KeyBinding Gesture="Ctrl+OemPlus" Command="{Binding ActiveTab.ZoomInCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+OemPlus" Command="{Binding ActiveTab.ZoomInCommand}" />

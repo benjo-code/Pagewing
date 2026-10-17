@@ -1,7 +1,7 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <!--
-    Path data of the Tabler Icons 3.49.0 "outline" icons used in Milestone 3 (MIT, Copyright (c) 2020-2026 Pawel Kuna,
+    Path data of the Tabler Icons 3.49.0 "outline" icons used since Milestone 3 (MIT, Copyright (c) 2020-2026 Pawel Kuna,
     licence text in third-party/tabler-icons/LICENSE; source https://github.com/tabler/tabler-icons, tag v3.49.0).
     24 x 24 grid, no fill, 2 unit round stroke: draw them with Controls/StrokeIcon, not with PathIcon. The paths of one
     icon are joined into one geometry. Add only the icons that are used.
@@ -16,6 +16,8 @@
   <StreamGeometry x:Key="Pw.Icon.ChevronLeft">M15 6l-6 6l6 6</StreamGeometry>
   <!-- chevron-right -->
   <StreamGeometry x:Key="Pw.Icon.ChevronRight">M9 6l6 6l-6 6</StreamGeometry>
+  <!-- chevron-down -->
+  <StreamGeometry x:Key="Pw.Icon.ChevronDown">M6 9l6 6l6 -6</StreamGeometry>
   <!-- minus -->
   <StreamGeometry x:Key="Pw.Icon.Minus">M5 12l14 0</StreamGeometry>
   <!-- plus -->

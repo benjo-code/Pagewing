@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="using:Pagewing.App.Controls">
   <!--
     Control styles of the design system (Docs/superpowers/specs/2026-10-17-designsystem.md, sections 5.2 and 5.3).
     They override FluentTheme through ordinary styles and use only the Pw.* tokens, so colours follow the theme variant.
@@ -184,6 +185,27 @@
   <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+  </Style>
+
+  <!--
+    Tab of the tab strip (Views/TabView.axaml, section 7.2): inactive tabs lie on the title bar surface and show
+    surface.hover under the pointer; the active tab has the colour of the document area and merges into it, with bold
+    text (type.strong), so it is never marked by colour alone (section 7.10).
+  -->
+  <Style Selector="Border.tab">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Border.tab:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+  </Style>
+  <Style Selector="Border.tab.active, Border.tab.active:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Canvas}" />
+  </Style>
+  <Style Selector="Border.tab ctl|MiddleEllipsisTextBlock">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Border.tab.active ctl|MiddleEllipsisTextBlock">
+    <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
   <!-- Tooltip: raised surface, 1 px border.subtle, caption size. -->
