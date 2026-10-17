@@ -14,16 +14,16 @@
         DragDrop.AllowDrop="True">
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
-    <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseCommand}" />
+    <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseActiveTabCommand}" />
     <!-- Zoom (design system 7.5): the plus and minus keys of the main block and of the number pad; Shift+= is "+" on US layouts. -->
-    <KeyBinding Gesture="Ctrl+OemPlus" Command="{Binding ZoomInCommand}" />
-    <KeyBinding Gesture="Ctrl+Shift+OemPlus" Command="{Binding ZoomInCommand}" />
-    <KeyBinding Gesture="Ctrl+Add" Command="{Binding ZoomInCommand}" />
-    <KeyBinding Gesture="Ctrl+OemMinus" Command="{Binding ZoomOutCommand}" />
-    <KeyBinding Gesture="Ctrl+Subtract" Command="{Binding ZoomOutCommand}" />
+    <KeyBinding Gesture="Ctrl+OemPlus" Command="{Binding ActiveTab.ZoomInCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+OemPlus" Command="{Binding ActiveTab.ZoomInCommand}" />
+    <KeyBinding Gesture="Ctrl+Add" Command="{Binding ActiveTab.ZoomInCommand}" />
+    <KeyBinding Gesture="Ctrl+OemMinus" Command="{Binding ActiveTab.ZoomOutCommand}" />
+    <KeyBinding Gesture="Ctrl+Subtract" Command="{Binding ActiveTab.ZoomOutCommand}" />
     <!-- Page by page, as the tooltips of the status bar arrows say. -->
-    <KeyBinding Gesture="PageUp" Command="{Binding PreviousPageCommand}" />
-    <KeyBinding Gesture="PageDown" Command="{Binding NextPageCommand}" />
+    <KeyBinding Gesture="PageUp" Command="{Binding ActiveTab.PreviousPageCommand}" />
+    <KeyBinding Gesture="PageDown" Command="{Binding ActiveTab.NextPageCommand}" />
   </Window.KeyBindings>
   <Window.Resources>
     <!--
@@ -48,11 +48,12 @@
   </Window.Resources>
 
   <!--
-    Window layout of the design system, section 6, for Milestone 3: one document per window, no action bar, no panel.
-    Windows draws its own title bar with the tab in it (client area extended into the decorations); Linux keeps the
-    system title bar and shows the same row as a tab row below it (section 2.2). The row of the status bar is there as
-    soon as a file loads, so the viewport keeps its height when the document is ready, but not under the password and
-    the error card; its content appears with the open document.
+    Window layout of the design system, section 6: the tabs of the window, no action bar, no panel yet. Windows draws
+    its own title bar with the tab in it (client area extended into the decorations); Linux keeps the system title bar
+    and shows the same row as a tab row below it (section 2.2). The document area and the status bar show the active
+    tab (their DataContext). The row of the status bar is there as soon as a file loads, so the viewport keeps its
+    height when the document is ready, but not under the password and the error card; its content appears with the
+    open document.
   -->
   <Grid RowDefinitions="Auto,*,Auto">
     <views:TitleBar Name="TitleBar" />
@@ -60,25 +61,29 @@
     <Panel Grid.Row="1">
       <views:StartScreen Name="StartScreen" IsVisible="{Binding IsEmpty}" />
       <!--
-        Document area: surface.canvas with radius.overlay at the top left. The document view shows the open document;
-        while a file loads it stays empty, and the password and the error card lie over it (design system 7.8).
+        Document area: surface.canvas with radius.overlay at the top left. The document view shows the open document
+        of the active tab; while a file loads it stays empty, and the password and the error card lie over it (design
+        system 7.8). Switching the tab switches the DataContext, and with it the document the view shows.
       -->
       <Border Name="DocumentArea"
-              IsVisible="{Binding HasDocument}"
+              IsVisible="{Binding HasTabs}"
               Background="{DynamicResource Pw.Brush.Surface.Canvas}"
               CornerRadius="10,0,0,0">
         <Panel>
-          <views:DocumentView Name="DocumentView" />
-          <views:PasswordCard Name="PasswordCard" IsVisible="{Binding IsPasswordPrompt}" />
-          <views:ErrorCard Name="ErrorCard" IsVisible="{Binding IsFailed}" />
+          <views:DocumentView Name="DocumentView" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel" />
+          <views:PasswordCard Name="PasswordCard" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel"
+                              IsVisible="{Binding IsPasswordPrompt, FallbackValue=False}" />
+          <views:ErrorCard Name="ErrorCard" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel"
+                           IsVisible="{Binding IsFailed, FallbackValue=False}" />
         </Panel>
       </Border>
     </Panel>
 
     <Border Name="StatusBarRow" Grid.Row="2" Height="32"
-            IsVisible="{Binding HasStatusBarRow}"
+            IsVisible="{Binding ActiveTab.HasStatusBarRow, FallbackValue=False}"
             Background="{DynamicResource Pw.Brush.Surface.Window}">
-      <views:StatusBar Name="StatusBar" IsVisible="{Binding IsReady}" />
+      <views:StatusBar Name="StatusBar" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel"
+                       IsVisible="{Binding IsReady, FallbackValue=False}" />
     </Border>
   </Grid>
 </Window>

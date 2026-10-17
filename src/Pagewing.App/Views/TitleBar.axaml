@@ -9,7 +9,7 @@
              Height="40">
   <!--
     Title bar (Windows) or tab row below the system title bar (Linux), design system sections 2.2, 6 and 7.2.
-    From the left: app symbol (as wide as the later action bar), the tab (or the app name without a document),
+    From the left: app symbol (as wide as the later action bar), the active tab (or the app name without a tab),
     "Open file", the drag area and, on Windows, the space of the system caption buttons. The drag area is marked
     TitleBar (the system moves and maximizes the window from it); the tab and the buttons are marked User.
     Width budget at the 640 px minimum (Windows): 52 + tab 280 + 36 + caption buttons 140 leaves 132 px to drag.
@@ -36,40 +36,43 @@
                  IsVisible="{Binding IsEmpty}"
                  chrome:WindowDecorationProperties.ElementRole="TitleBar" />
 
-      <!-- The tab of the one document: file name cut in the middle, full path as tooltip, close button. -->
+      <!--
+        The active tab (the tab strip with all tabs follows in Task 8 of Milestone 4): file name cut in the middle,
+        full path as tooltip, close button.
+      -->
       <Border Name="Tab" Grid.Column="1"
               Height="34" MinWidth="120" MaxWidth="280" VerticalAlignment="Bottom"
               Padding="12,0,6,0"
               CornerRadius="{StaticResource Pw.Radius.Tab}"
               Background="{DynamicResource Pw.Brush.Surface.Canvas}"
-              IsVisible="{Binding HasDocument}"
-              ToolTip.Tip="{Binding FullPath}"
-              AutomationProperties.Name="{Binding FileName}"
+              IsVisible="{Binding HasTabs}"
+              ToolTip.Tip="{Binding ActiveTab.FullPath}"
+              AutomationProperties.Name="{Binding ActiveTab.FileName}"
               chrome:WindowDecorationProperties.ElementRole="User">
         <DockPanel>
           <!-- Symbol (section 7.2): document, lock during the password prompt, warning triangle after a failure. -->
           <Panel DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
-            <ctl:StrokeIcon Name="TabDocumentIcon" Data="{StaticResource Pw.Icon.FileText}" IsVisible="{Binding IsDocumentIcon}" />
-            <ctl:StrokeIcon Name="TabLockIcon" Data="{StaticResource Pw.Icon.Lock}" IsVisible="{Binding IsPasswordPrompt}" />
-            <ctl:StrokeIcon Name="TabErrorIcon" Data="{StaticResource Pw.Icon.AlertTriangle}" IsVisible="{Binding IsFailed}"
+            <ctl:StrokeIcon Name="TabDocumentIcon" Data="{StaticResource Pw.Icon.FileText}" IsVisible="{Binding ActiveTab.IsDocumentIcon, FallbackValue=False}" />
+            <ctl:StrokeIcon Name="TabLockIcon" Data="{StaticResource Pw.Icon.Lock}" IsVisible="{Binding ActiveTab.IsPasswordPrompt, FallbackValue=False}" />
+            <ctl:StrokeIcon Name="TabErrorIcon" Data="{StaticResource Pw.Icon.AlertTriangle}" IsVisible="{Binding ActiveTab.IsFailed, FallbackValue=False}"
                             Brush="{DynamicResource Pw.Brush.Danger.Default}" />
           </Panel>
           <Button Name="CloseTabButton" DockPanel.Dock="Right" Classes="icon"
                   Width="22" Height="22" MinWidth="0" MinHeight="0" Margin="8,0,0,0"
-                  Command="{Binding CloseCommand}"
+                  Command="{Binding CloseActiveTabCommand}"
                   ToolTip.Tip="{x:Static res:Strings.CloseTab}"
                   AutomationProperties.Name="{x:Static res:Strings.CloseTab}"
                   chrome:WindowDecorationProperties.ElementRole="User">
             <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
           </Button>
           <ctl:MiddleEllipsisTextBlock Name="TabName" VerticalAlignment="Center" FontWeight="SemiBold"
-                                       Text="{Binding FileName}" />
+                                       Text="{Binding ActiveTab.FileName}" />
         </DockPanel>
       </Border>
 
       <Button Name="OpenButton" Grid.Column="2" Classes="icon"
               Width="32" Height="30" Margin="4,0,0,0"
-              IsVisible="{Binding HasDocument}"
+              IsVisible="{Binding HasTabs}"
               Command="{Binding OpenCommand}"
               ToolTip.Tip="{x:Static res:Strings.OpenFileTooltip}"
               AutomationProperties.Name="{x:Static res:Strings.OpenFile}"

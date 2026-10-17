@@ -12,7 +12,7 @@ namespace Pagewing.App.Views;
 /// </summary>
 public sealed partial class PasswordCard : UserControl
 {
-    private MainViewModel? _viewModel;
+    private TabViewModel? _viewModel;
 
     public PasswordCard()
     {
@@ -28,7 +28,7 @@ public sealed partial class PasswordCard : UserControl
             _viewModel.PasswordRejected -= OnPasswordRejected;
         }
 
-        _viewModel = DataContext as MainViewModel;
+        _viewModel = DataContext as TabViewModel;
         if (_viewModel is not null)
         {
             _viewModel.PasswordRejected += OnPasswordRejected;

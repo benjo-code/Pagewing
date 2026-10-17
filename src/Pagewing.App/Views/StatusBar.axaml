@@ -4,7 +4,7 @@
              xmlns:ctl="using:Pagewing.App.Controls"
              xmlns:res="using:Pagewing.App.Resources"
              x:Class="Pagewing.App.Views.StatusBar"
-             x:DataType="vm:MainViewModel"
+             x:DataType="vm:TabViewModel"
              Height="32" FontSize="12"
              Background="{DynamicResource Pw.Brush.Surface.Window}"
              Foreground="{DynamicResource Pw.Brush.Text.Secondary}">

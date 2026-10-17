@@ -14,16 +14,18 @@ namespace Pagewing.App.Views;
 /// <summary>
 /// The open document: continuous scrolling over all pages, zoom with Ctrl+wheel (around the pointer) and through the
 /// view model (Ctrl+Plus/Minus, status bar), page jumps, and the current page for the status bar. Its
-/// <c>DataContext</c> is the <see cref="MainViewModel"/>; it mirrors the document of the view model's session.
+/// <c>DataContext</c> is the active <see cref="TabViewModel"/> of the window; it mirrors the document of the tab's
+/// session. A change of the <c>DataContext</c> (another tab) disconnects from the old tab and shows the new one.
 /// </summary>
 /// <remarks>
 /// The view owns the <see cref="DocumentLayout"/> and the scroll position; <see cref="DocumentCanvas"/> draws and
-/// plans from them. A new document starts at the top with 100 %. While more page sizes arrive, the position at the
+/// plans from them. A shown document starts at the top with the zoom of its tab (100 % for a new document, see
+/// <see cref="TabViewModel.Zoom"/>). While more page sizes arrive, the position at the
 /// top of the viewport stays where it is. UI thread only; the session's events are posted to it.
 /// </remarks>
 public sealed partial class DocumentView : UserControl
 {
-    private MainViewModel? _viewModel;
+    private TabViewModel? _viewModel;
     private ViewerSession? _session;
     private PdfDocument? _document;
     private DocumentLayout? _layout;
@@ -98,7 +100,7 @@ public sealed partial class DocumentView : UserControl
     /// <summary>Follows the view model in <c>DataContext</c> and its session.</summary>
     private void Connect()
     {
-        if (_viewModel is not null || DataContext is not MainViewModel viewModel)
+        if (_viewModel is not null || DataContext is not TabViewModel viewModel)
         {
             return;
         }
@@ -194,16 +196,15 @@ public sealed partial class DocumentView : UserControl
         var layout = new DocumentLayout(pageCount, sizes.Count > 0 ? sizes[0] : default);
         var known = Math.Min(sizes.Count, pageCount);
         layout.SetSizes(0, known == sizes.Count ? sizes : sizes.Take(known).ToArray());
-        layout.Zoom = ZoomSteps.Default;
+
+        // The zoom of the tab: the tab reset it for a new document before this runs (it subscribed to the session
+        // first), and an inactive tab kept its own.
+        layout.Zoom = _viewModel?.Zoom ?? ZoomSteps.Default;
 
         _document = document;
         _layout = layout;
         _loadedSizes = known;
         PageCanvas.Attach(layout, scheduler, cache);
-        if (_viewModel is not null)
-        {
-            _viewModel.Zoom = ZoomSteps.Default;
-        }
 
         ChangeLayout(new Vector(0, 0));
         _focusPending = true;
@@ -397,11 +398,11 @@ public sealed partial class DocumentView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.Zoom) && _viewModel is not null)
+        if (e.PropertyName == nameof(TabViewModel.Zoom) && _viewModel is not null)
         {
             ApplyZoom(_viewModel.Zoom);
         }
-        else if (e.PropertyName == nameof(MainViewModel.IsPasswordPrompt) && _focusPending)
+        else if (e.PropertyName == nameof(TabViewModel.IsPasswordPrompt) && _focusPending)
         {
             FocusLater();
         }

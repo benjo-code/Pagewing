@@ -39,6 +39,7 @@ internal abstract class MeasurementRun : IDisposable
 
     private readonly MeasurementOutput _output;
     private readonly TimeSpan _timeout;
+    private TabViewModel? _watchedTab;
     private Timer? _timer;
     private bool _started;
 
@@ -58,7 +59,7 @@ internal abstract class MeasurementRun : IDisposable
     /// <summary>Gets whether the measurement wrote its result or its error and asked to exit.</summary>
     public bool IsFinished { get; private set; }
 
-    /// <summary>Gets the view model of the window.</summary>
+    /// <summary>Gets the view model of the window; the measured document is the one of its active tab.</summary>
     protected MainViewModel ViewModel { get; }
 
     /// <summary>Gets the document view of the window.</summary>
@@ -99,6 +100,7 @@ internal abstract class MeasurementRun : IDisposable
         _started = true;
         View.FirstSharpTileDrawn += OnFirstSharpTileDrawn;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        WatchActiveTab();
         _timer = new Timer(_ => Post(() => Fail(TimedOut, $"no sharp image of page 1 within {_timeout.TotalSeconds:0.###} s")), null, _timeout, Timeout.InfiniteTimeSpan);
 
         if (ArgumentError is { } argumentError)
@@ -129,10 +131,10 @@ internal abstract class MeasurementRun : IDisposable
     /// <summary>The first sharp image of page 1 of the document now shown was drawn (UI thread).</summary>
     protected abstract void OnFirstSharpImage();
 
-    /// <summary>Opens <paramref name="path"/>, unless the session already holds or opens exactly that file.</summary>
+    /// <summary>Opens <paramref name="path"/>, unless the session of the active tab already holds or opens exactly that file.</summary>
     protected void Open(string path)
     {
-        if (!string.Equals(ViewModel.Session.Path, FullPathOrAsGiven(path), StringComparison.Ordinal))
+        if (!string.Equals(ViewModel.ActiveTab?.Session.Path, FullPathOrAsGiven(path), StringComparison.Ordinal))
         {
             _ = ViewModel.OpenAsync(path);
         }
@@ -259,20 +261,49 @@ internal abstract class MeasurementRun : IDisposable
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.State))
+        if (e.PropertyName == nameof(MainViewModel.ActiveTab))
+        {
+            WatchActiveTab();
+            CheckState();
+        }
+    }
+
+    private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TabViewModel.State))
         {
             CheckState();
+        }
+    }
+
+    /// <summary>Follows the state of the active tab (a later file opens in a tab of its own).</summary>
+    private void WatchActiveTab()
+    {
+        if (_watchedTab is not null)
+        {
+            _watchedTab.PropertyChanged -= OnTabPropertyChanged;
+        }
+
+        _watchedTab = ViewModel.ActiveTab;
+        if (_watchedTab is not null)
+        {
+            _watchedTab.PropertyChanged += OnTabPropertyChanged;
         }
     }
 
     /// <summary>A file that fails or needs a password never shows a sharp image: the measurement fails at once.</summary>
     private void CheckState()
     {
-        var path = ViewModel.FullPath ?? Path;
-        switch (ViewModel.State)
+        if (ViewModel.ActiveTab is not { } tab)
+        {
+            return;
+        }
+
+        var path = tab.FullPath ?? Path;
+        switch (tab.State)
         {
             case ViewerState.Failed:
-                Fail(Failure, $"cannot open {path}: {ViewModel.Error}");
+                Fail(Failure, $"cannot open {path}: {tab.Error}");
                 break;
             case ViewerState.PasswordRequired or ViewerState.PasswordIncorrect:
                 Fail(Failure, $"cannot open {path}: it needs a password");
@@ -284,6 +315,12 @@ internal abstract class MeasurementRun : IDisposable
     {
         View.FirstSharpTileDrawn -= OnFirstSharpTileDrawn;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_watchedTab is not null)
+        {
+            _watchedTab.PropertyChanged -= OnTabPropertyChanged;
+            _watchedTab = null;
+        }
+
         _timer?.Dispose();
         _timer = null;
     }

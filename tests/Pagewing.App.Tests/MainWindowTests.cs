@@ -28,12 +28,11 @@ public sealed class MainWindowTests : IDisposable
 
     private readonly CultureInfo _originalCulture = Strings.Culture;
     private readonly List<IDisposable> _cleanup = [];
-    private readonly Dictionary<MainViewModel, ViewerSession> _sessions = [];
     private string? _tempDirectory;
 
     public void Dispose()
     {
-        // Windows close before their sessions are disposed.
+        // Windows close before their view models (and the sessions of their tabs) are disposed.
         for (var i = _cleanup.Count - 1; i >= 0; i--)
         {
             var item = _cleanup[i];
@@ -53,7 +52,8 @@ public sealed class MainWindowTests : IDisposable
     {
         var (window, viewModel) = Show();
 
-        Assert.Equal(ViewerState.Empty, viewModel.State);
+        Assert.True(viewModel.IsEmpty);
+        Assert.Null(viewModel.ActiveTab);
         Assert.True(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
         Assert.True(Find<Button>(window, "ChooseFileButton").IsEffectivelyVisible);
         Assert.False(Find<Control>(window, "Tab").IsEffectivelyVisible);
@@ -97,14 +97,15 @@ public sealed class MainWindowTests : IDisposable
 
         var tab = Find<Control>(window, "Tab");
         var name = Find<MiddleEllipsisTextBlock>(window, "TabName");
+        var tabViewModel = viewModel.ActiveTab!;
 
-        Assert.Equal(ViewerState.Ready, viewModel.State);
+        Assert.Equal(ViewerState.Ready, tabViewModel.State);
         Assert.True(tab.IsEffectivelyVisible);
         Assert.False(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
-        Assert.Equal(LongName, viewModel.FileName);
-        Assert.Equal(Path.GetFullPath(path), viewModel.FullPath);
+        Assert.Equal(LongName, tabViewModel.FileName);
+        Assert.Equal(Path.GetFullPath(path), tabViewModel.FullPath);
         Assert.Equal(LongName, name.Text);
-        Assert.Equal(viewModel.FullPath, ToolTip.GetTip(tab));
+        Assert.Equal(tabViewModel.FullPath, ToolTip.GetTip(tab));
 
         // The long name is cut in the middle, and the tab keeps to 280 px.
         Assert.StartsWith("Sehr", name.DisplayText, StringComparison.Ordinal);
@@ -117,7 +118,7 @@ public sealed class MainWindowTests : IDisposable
         // Closing the tab returns to the start screen.
         Find<Button>(window, "CloseTabButton").Command!.Execute(null);
         Settle(window);
-        Assert.Equal(ViewerState.Empty, viewModel.State);
+        Assert.Empty(viewModel.Tabs);
         Assert.False(tab.IsEffectivelyVisible);
         Assert.True(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
     }
@@ -141,10 +142,11 @@ public sealed class MainWindowTests : IDisposable
         window.Width = 760;
         Settle(window);
         Assert.True(Find<Control>(window, "PageLabel").IsEffectivelyVisible);
-        Assert.Equal(1, viewModel.CurrentPage);
-        Assert.True(viewModel.PageCount > 0);
+        var tab = viewModel.ActiveTab!;
+        Assert.Equal(1, tab.CurrentPage);
+        Assert.True(tab.PageCount > 0);
         Assert.Equal("1", Find<TextBox>(window, "PageField").Text);
-        Assert.Equal(Strings.PageOf.Replace("{0}", viewModel.PageCount.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal), Find<TextBlock>(window, "PageCountText").Text);
+        Assert.Equal(Strings.PageOf.Replace("{0}", tab.PageCount.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal), Find<TextBlock>(window, "PageCountText").Text);
     }
 
     [AvaloniaTheory]
@@ -284,10 +286,8 @@ public sealed class MainWindowTests : IDisposable
 
     private (MainWindow Window, MainViewModel ViewModel) Show(double width = 1024, double height = 720, bool? windowsTitleBar = null)
     {
-        var session = new ViewerSession(new PdfEngine());
-        _cleanup.Add(session);
-        var viewModel = new MainViewModel(session, new NoFilePicker());
-        _sessions.Add(viewModel, session);
+        var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker());
+        _cleanup.Add(viewModel);
         if (windowsTitleBar is { } value)
         {
             viewModel.IsWindowsTitleBar = value;
@@ -300,9 +300,9 @@ public sealed class MainWindowTests : IDisposable
         return (window, viewModel);
     }
 
-    private async Task OpenAsync(Window window, MainViewModel viewModel, string path)
+    private static async Task OpenAsync(Window window, MainViewModel viewModel, string path)
     {
-        await _sessions[viewModel].OpenAsync(path);
+        await viewModel.OpenAsync(path);
         Settle(window);
     }
 

@@ -23,5 +23,5 @@ public sealed partial class StatusBar : UserControl
         PageLabel.IsVisible = e.NewSize.Width >= NarrowWidth;
     }
 
-    private void OnPageFieldLostFocus(object? sender, RoutedEventArgs e) => (DataContext as MainViewModel)?.ResetPageField();
+    private void OnPageFieldLostFocus(object? sender, RoutedEventArgs e) => (DataContext as TabViewModel)?.ResetPageField();
 }

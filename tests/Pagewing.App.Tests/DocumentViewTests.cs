@@ -31,7 +31,7 @@ public sealed class DocumentViewTests : IDisposable
 
     public void Dispose()
     {
-        // Windows close before their sessions are disposed.
+        // Windows close before their view models (and the sessions of their tabs) are disposed.
         for (var i = _cleanup.Count - 1; i >= 0; i--)
         {
             _cleanup[i].Dispose();
@@ -46,20 +46,29 @@ public sealed class DocumentViewTests : IDisposable
         var (window, viewModel, view) = Show();
         var path = TestData.Pdf("text-basic.pdf");
 
-        // Subscribed after the view: this job runs right after the view took the document (same priority, in order)
-        // and before any rendered tile can arrive, because the tiles are only requested by that job.
+        // Subscribed after the view (which connects to the new tab as soon as it is the active one, before the open
+        // starts): this job runs right after the view took the document (same priority, in order) and before any
+        // rendered tile can arrive, because the tiles are only requested by that job.
         FramePixels? first = null;
         var bitmapsAtFirstFrame = -1;
         DipRect pageAtFirstFrame = default;
-        viewModel.Session.Changed += () => Dispatcher.UIThread.Post(() =>
+        viewModel.PropertyChanged += (_, e) =>
         {
-            if (first is null && view.Layout is { } layout && view.Document is not null)
+            if (e.PropertyName != nameof(MainViewModel.ActiveTab) || viewModel.ActiveTab is not { } tab)
             {
-                bitmapsAtFirstFrame = view.Canvas.Bitmaps.Count;
-                pageAtFirstFrame = ToViewport(view, layout.GetPageRect(0));
-                first = FramePixels.Snapshot(view.Canvas);
+                return;
             }
-        });
+
+            tab.Session.Changed += () => Dispatcher.UIThread.Post(() =>
+            {
+                if (first is null && view.Layout is { } layout && view.Document is not null)
+                {
+                    bitmapsAtFirstFrame = view.Canvas.Bitmaps.Count;
+                    pageAtFirstFrame = ToViewport(view, layout.GetPageRect(0));
+                    first = FramePixels.Snapshot(view.Canvas);
+                }
+            });
+        };
 
         await viewModel.OpenAsync(path);
         await WaitUntilAsync(window, () => first is not null);
@@ -100,7 +109,7 @@ public sealed class DocumentViewTests : IDisposable
         Assert.All(requests, request => Assert.InRange(request.Key.Page, first, last));
         Assert.Contains(requests, request => request.Key.Page == 499 && request.Key.IsPreview && !request.Background);
         Assert.Contains(requests, request => request.Key.Page == 499 && !request.Key.IsPreview);
-        Assert.Equal(500, viewModel.CurrentPage);
+        Assert.Equal(500, viewModel.ActiveTab!.CurrentPage);
     }
 
     [AvaloniaTheory]
@@ -110,7 +119,7 @@ public sealed class DocumentViewTests : IDisposable
     {
         var (window, viewModel, view) = Show();
         await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
-        viewModel.Zoom = zoom;
+        viewModel.ActiveTab!.Zoom = zoom;
         var scheduler = view.Canvas.Scheduler!;
         var height = view.Layout!.ContentHeight;
 
@@ -143,7 +152,7 @@ public sealed class DocumentViewTests : IDisposable
             window.MouseWheel(inWindow, new Vector(0, delta), RawInputModifiers.Control);
             Settle(window);
 
-            Assert.Equal(expectedZoom, viewModel.Zoom);
+            Assert.Equal(expectedZoom, viewModel.ActiveTab!.Zoom);
             Assert.Equal(expectedZoom, view.Layout!.Zoom);
             var after = canvas.PagePointAt(inCanvas);
             Assert.NotNull(after);
@@ -163,7 +172,7 @@ public sealed class DocumentViewTests : IDisposable
         var offset = view.ScrollViewer.Offset.Y;
         window.MouseWheel(inWindow, new Vector(0, -1), RawInputModifiers.None);
         Settle(window);
-        Assert.Equal(0.75, viewModel.Zoom);
+        Assert.Equal(0.75, viewModel.ActiveTab!.Zoom);
         Assert.True(view.ScrollViewer.Offset.Y > offset);
     }
 
@@ -172,28 +181,28 @@ public sealed class DocumentViewTests : IDisposable
     {
         var (window, viewModel, view) = Show();
         await OpenAsync(window, viewModel, view, "text-basic.pdf");
-        Assert.Equal(1.0, viewModel.Zoom);
+        Assert.Equal(1.0, viewModel.ActiveTab!.Zoom);
 
         Press(window, Key.OemPlus, PhysicalKey.Equal, RawInputModifiers.Control);
-        Assert.Equal(1.25, viewModel.Zoom);
+        Assert.Equal(1.25, viewModel.ActiveTab!.Zoom);
         Assert.Equal(1.25, view.Layout!.Zoom);
 
         Press(window, Key.OemMinus, PhysicalKey.Minus, RawInputModifiers.Control);
-        Assert.Equal(1.0, viewModel.Zoom);
+        Assert.Equal(1.0, viewModel.ActiveTab!.Zoom);
 
         Press(window, Key.Subtract, PhysicalKey.NumPadSubtract, RawInputModifiers.Control);
-        Assert.Equal(0.75, viewModel.Zoom);
+        Assert.Equal(0.75, viewModel.ActiveTab!.Zoom);
         Assert.Equal(0.75, view.Layout.Zoom);
 
         Press(window, Key.Add, PhysicalKey.NumPadAdd, RawInputModifiers.Control);
-        Assert.Equal(1.0, viewModel.Zoom);
+        Assert.Equal(1.0, viewModel.ActiveTab!.Zoom);
 
         // "+" on a US layout is Shift+"=".
         Press(window, Key.OemPlus, PhysicalKey.Equal, RawInputModifiers.Control | RawInputModifiers.Shift);
-        Assert.Equal(1.25, viewModel.Zoom);
+        Assert.Equal(1.25, viewModel.ActiveTab!.Zoom);
 
         // The status bar shows the value and its buttons step the same way.
-        Assert.Equal(viewModel.ZoomText, Find<TextBlock>(window, "ZoomValueText").Text);
+        Assert.Equal(viewModel.ActiveTab!.ZoomText, Find<TextBlock>(window, "ZoomValueText").Text);
         Find<Button>(window, "ZoomOutButton").Command!.Execute(null);
         Settle(window);
         Assert.Equal(1.0, view.Layout.Zoom);
@@ -212,7 +221,7 @@ public sealed class DocumentViewTests : IDisposable
             Press(window, Key.OemMinus, PhysicalKey.Minus, RawInputModifiers.Control);
         }
 
-        Assert.Equal(ZoomSteps.Min, viewModel.Zoom);
+        Assert.Equal(ZoomSteps.Min, viewModel.ActiveTab!.Zoom);
         Assert.Equal(ZoomSteps.Min, view.Layout!.Zoom);
         Assert.False(zoomOut.IsEffectivelyEnabled);
         Assert.True(zoomIn.IsEffectivelyEnabled);
@@ -223,16 +232,16 @@ public sealed class DocumentViewTests : IDisposable
             Press(window, Key.OemPlus, PhysicalKey.Equal, RawInputModifiers.Control);
         }
 
-        Assert.Equal(ZoomSteps.Max, viewModel.Zoom);
+        Assert.Equal(ZoomSteps.Max, viewModel.ActiveTab!.Zoom);
         Assert.Equal(ZoomSteps.Max, view.Layout.Zoom);
         Assert.False(zoomIn.IsEffectivelyEnabled);
         Assert.True(zoomOut.IsEffectivelyEnabled);
 
-        viewModel.Zoom = 100;
-        Assert.Equal(ZoomSteps.Max, viewModel.Zoom);
-        viewModel.Zoom = 0.001;
+        viewModel.ActiveTab!.Zoom = 100;
+        Assert.Equal(ZoomSteps.Max, viewModel.ActiveTab!.Zoom);
+        viewModel.ActiveTab!.Zoom = 0.001;
         Settle(window);
-        Assert.Equal(ZoomSteps.Min, viewModel.Zoom);
+        Assert.Equal(ZoomSteps.Min, viewModel.ActiveTab!.Zoom);
         Assert.Equal(ZoomSteps.Min, view.Layout.Zoom);
     }
 
@@ -245,7 +254,7 @@ public sealed class DocumentViewTests : IDisposable
         field.Focus();
 
         Commit(window, field, "500");
-        Assert.Equal(500, viewModel.CurrentPage);
+        Assert.Equal(500, viewModel.ActiveTab!.CurrentPage);
         Assert.Equal("500", field.Text);
         var offset = view.ScrollViewer.Offset.Y;
         Assert.Equal(view.Layout!.GetPageRect(499).Y - DocumentLayout.Margin, offset, 3);
@@ -254,7 +263,7 @@ public sealed class DocumentViewTests : IDisposable
         {
             Commit(window, field, invalid);
             Assert.Equal("500", field.Text);
-            Assert.Equal(500, viewModel.CurrentPage);
+            Assert.Equal(500, viewModel.ActiveTab!.CurrentPage);
             Assert.Equal(offset, view.ScrollViewer.Offset.Y);
         }
 
@@ -267,15 +276,15 @@ public sealed class DocumentViewTests : IDisposable
         // The arrows go one page on.
         Find<Button>(window, "NextPageButton").Command!.Execute(null);
         Settle(window);
-        Assert.Equal(501, viewModel.CurrentPage);
+        Assert.Equal(501, viewModel.ActiveTab!.CurrentPage);
         Assert.Equal(view.Layout.GetPageRect(500).Y - DocumentLayout.Margin, view.ScrollViewer.Offset.Y, 3);
         Find<Button>(window, "PreviousPageButton").Command!.Execute(null);
         Settle(window);
-        Assert.Equal(500, viewModel.CurrentPage);
+        Assert.Equal(500, viewModel.ActiveTab!.CurrentPage);
 
         // The last page cannot reach the top of the viewport, but it is the current page.
         Commit(window, field, "1000");
-        Assert.Equal(1000, viewModel.CurrentPage);
+        Assert.Equal(1000, viewModel.ActiveTab!.CurrentPage);
         Assert.False(Find<Button>(window, "NextPageButton").IsEffectivelyEnabled);
     }
 
@@ -292,19 +301,19 @@ public sealed class DocumentViewTests : IDisposable
         Settle(window);
 
         Press(window, Key.PageDown, PhysicalKey.PageDown, RawInputModifiers.None);
-        Assert.Equal(2, viewModel.CurrentPage);
+        Assert.Equal(2, viewModel.ActiveTab!.CurrentPage);
         Assert.Equal(view.Layout!.GetPageRect(1).Y - DocumentLayout.Margin, view.ScrollViewer.Offset.Y, 3);
 
         Press(window, Key.PageDown, PhysicalKey.PageDown, RawInputModifiers.None);
-        Assert.Equal(3, viewModel.CurrentPage);
+        Assert.Equal(3, viewModel.ActiveTab!.CurrentPage);
 
         Press(window, Key.PageUp, PhysicalKey.PageUp, RawInputModifiers.None);
-        Assert.Equal(2, viewModel.CurrentPage);
+        Assert.Equal(2, viewModel.ActiveTab!.CurrentPage);
         Assert.Equal(view.Layout.GetPageRect(1).Y - DocumentLayout.Margin, view.ScrollViewer.Offset.Y, 3);
 
         Press(window, Key.PageUp, PhysicalKey.PageUp, RawInputModifiers.None);
         Press(window, Key.PageUp, PhysicalKey.PageUp, RawInputModifiers.None);
-        Assert.Equal(1, viewModel.CurrentPage);
+        Assert.Equal(1, viewModel.ActiveTab!.CurrentPage);
         Assert.Equal(0, view.ScrollViewer.Offset.Y, 3);
     }
 
@@ -346,14 +355,14 @@ public sealed class DocumentViewTests : IDisposable
         // End and Home: the end and the start of the document; the current page follows.
         Press(window, Key.End, PhysicalKey.End, RawInputModifiers.None);
         Assert.Equal(bottom, scroller.Offset.Y, 6);
-        Assert.Equal(view.Layout!.GetMostVisiblePage(bottom, bottom + height) + 1, viewModel.CurrentPage);
-        Assert.True(viewModel.CurrentPage > 990);
+        Assert.Equal(view.Layout!.GetMostVisiblePage(bottom, bottom + height) + 1, viewModel.ActiveTab!.CurrentPage);
+        Assert.True(viewModel.ActiveTab!.CurrentPage > 990);
         Press(window, Key.Down, PhysicalKey.ArrowDown, RawInputModifiers.None);
         Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.None);
         Assert.Equal(bottom, scroller.Offset.Y, 6);
         Press(window, Key.Home, PhysicalKey.Home, RawInputModifiers.None);
         Assert.Equal(0, scroller.Offset.Y);
-        Assert.Equal(1, viewModel.CurrentPage);
+        Assert.Equal(1, viewModel.ActiveTab!.CurrentPage);
         Press(window, Key.End, PhysicalKey.End, RawInputModifiers.Control);
         Assert.Equal(bottom, scroller.Offset.Y, 6);
         Press(window, Key.Home, PhysicalKey.Home, RawInputModifiers.Control);
@@ -361,9 +370,9 @@ public sealed class DocumentViewTests : IDisposable
 
         // The page-by-page and the zoom keys of the window still work while the document has the focus.
         Press(window, Key.PageDown, PhysicalKey.PageDown, RawInputModifiers.None);
-        Assert.Equal(2, viewModel.CurrentPage);
+        Assert.Equal(2, viewModel.ActiveTab!.CurrentPage);
         Press(window, Key.OemPlus, PhysicalKey.Equal, RawInputModifiers.Control);
-        Assert.Equal(1.25, viewModel.Zoom);
+        Assert.Equal(1.25, viewModel.ActiveTab!.Zoom);
         Assert.True(view.IsFocused);
     }
 
@@ -378,7 +387,7 @@ public sealed class DocumentViewTests : IDisposable
         Press(window, Key.Right, PhysicalKey.ArrowRight, RawInputModifiers.None);
         Assert.Equal(0, scroller.Offset.X);
 
-        viewModel.Zoom = 4;
+        viewModel.ActiveTab!.Zoom = 4;
         Settle(window);
         Assert.True(scroller.Extent.Width > scroller.Viewport.Width);
         var x = scroller.Offset.X;
@@ -424,7 +433,7 @@ public sealed class DocumentViewTests : IDisposable
     {
         var (window, viewModel, view) = Show();
         await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
-        viewModel.GoToPage(10);
+        viewModel.ActiveTab!.GoToPage(10);
         Settle(window);
         var offset = view.ScrollViewer.Offset;
         var field = Find<TextBox>(window, "PageField");
@@ -452,7 +461,7 @@ public sealed class DocumentViewTests : IDisposable
     {
         var (window, viewModel, view) = Show();
         await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.PasswordRequired);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab!.State == ViewerState.PasswordRequired);
         var field = Find<TextBox>(window, "PasswordField");
         Assert.True(field.IsFocused);
 
@@ -462,13 +471,13 @@ public sealed class DocumentViewTests : IDisposable
         window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
         window.KeyTextInput("b");
         Settle(window);
-        Assert.Equal("a b", viewModel.Password);
+        Assert.Equal("a b", viewModel.ActiveTab!.Password);
         Assert.True(field.IsFocused);
 
         // The right password opens the document, which then has the keys (the field is gone).
         field.Text = "hôtel";
-        viewModel.SubmitPasswordCommand.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready && view.Document is not null);
+        viewModel.ActiveTab!.SubmitPasswordCommand.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab!.State == ViewerState.Ready && view.Document is not null);
         Assert.True(view.IsFocused);
     }
 
@@ -481,16 +490,16 @@ public sealed class DocumentViewTests : IDisposable
         var field = Find<TextBox>(window, "PageField");
 
         Scroll(window, view, layout.GetPageRect(249).Y);
-        Assert.Equal(250, viewModel.CurrentPage);
+        Assert.Equal(250, viewModel.ActiveTab!.CurrentPage);
         Assert.Equal("250", field.Text);
 
         // The previous page just left the viewport.
         var next = layout.GetPageRect(250);
         Scroll(window, view, next.Y - (DocumentLayout.PageGap / 2));
-        Assert.Equal(251, viewModel.CurrentPage);
+        Assert.Equal(251, viewModel.ActiveTab!.CurrentPage);
 
         Scroll(window, view, 0);
-        Assert.Equal(1, viewModel.CurrentPage);
+        Assert.Equal(1, viewModel.ActiveTab!.CurrentPage);
         Assert.Equal("1", field.Text);
     }
 
@@ -500,7 +509,7 @@ public sealed class DocumentViewTests : IDisposable
         // The first batch is real; the later batches wait for the test and come with other sizes than the estimate.
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var engine = new PdfEngine();
-        var session = new ViewerSession(
+        var (window, viewModel, view) = Show(() => new ViewerSession(
             engine.OpenAsync,
             async (document, firstPage, count, priority, cancellationToken) =>
             {
@@ -511,9 +520,7 @@ public sealed class DocumentViewTests : IDisposable
 
                 await gate.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
                 return Enumerable.Repeat(new PdfPageSize(400, 300), count).ToArray();
-            });
-        _cleanup.Add(session);
-        var (window, viewModel, view) = Show(session);
+            }));
         await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
         var layout = view.Layout!;
         Assert.Equal(32, layout.KnownPageCount);
@@ -532,7 +539,7 @@ public sealed class DocumentViewTests : IDisposable
         Assert.Equal(anchor.Page, after.Page);
         Assert.Equal(anchor.Fraction, after.Fraction, 6);
         var top = view.ScrollViewer.Offset.Y;
-        Assert.Equal(layout.GetMostVisiblePage(top, top + view.ScrollViewer.Viewport.Height) + 1, viewModel.CurrentPage);
+        Assert.Equal(layout.GetMostVisiblePage(top, top + view.ScrollViewer.Viewport.Height) + 1, viewModel.ActiveTab!.CurrentPage);
     }
 
     [AvaloniaFact]
@@ -567,7 +574,7 @@ public sealed class DocumentViewTests : IDisposable
         await WaitUntilAsync(window, () => received);
         Assert.False(view.Canvas.Bitmaps.Contains(sharp));
         Assert.DoesNotContain(view.Canvas.Bitmaps.Keys, key => key.Page == 299);
-        Assert.True(viewModel.Session.Cache!.Contains(sharp));
+        Assert.True(viewModel.ActiveTab!.Session.Cache!.Contains(sharp));
     }
 
     [AvaloniaFact]
@@ -654,20 +661,24 @@ public sealed class DocumentViewTests : IDisposable
     {
         var (window, viewModel, view) = Show();
         await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
-        viewModel.Zoom = 2;
+        viewModel.ActiveTab!.Zoom = 2;
         Settle(window);
-        viewModel.GoToPage(400);
+        viewModel.ActiveTab!.GoToPage(400);
         Settle(window);
-        Assert.Equal(400, viewModel.CurrentPage);
+        Assert.Equal(400, viewModel.ActiveTab!.CurrentPage);
         Assert.True(view.ScrollViewer.Offset.Y > 0);
 
-        await OpenAsync(window, viewModel, view, "text-basic.pdf");
+        // Replaced in the same tab ("Open another file"); a new tab starts like this anyway (TabsTests).
+        var tab = viewModel.ActiveTab!;
+        await tab.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        await WaitUntilAsync(window, () => view.Document is { } document && ReferenceEquals(document, tab.Session.Document) && view.Canvas.LastRequests.Count > 0);
 
+        Assert.Same(tab, Assert.Single(viewModel.Tabs));
         Assert.Equal(2, view.Layout!.PageCount);
-        Assert.Equal(1.0, viewModel.Zoom);
+        Assert.Equal(1.0, viewModel.ActiveTab!.Zoom);
         Assert.Equal(1.0, view.Layout.Zoom);
         Assert.Equal(default, view.ScrollViewer.Offset);
-        Assert.Equal(1, viewModel.CurrentPage);
+        Assert.Equal(1, viewModel.ActiveTab!.CurrentPage);
         Assert.Equal("1", Find<TextBox>(window, "PageField").Text);
         Assert.All(view.Canvas.LastRequests, request => Assert.InRange(request.Key.Page, 0, 1));
     }
@@ -736,7 +747,7 @@ public sealed class DocumentViewTests : IDisposable
         await OpenAsync(window, viewModel, view, "text-basic.pdf");
 
         // At 800 % the page has more than 4 Mpx at every scaling, so it is rendered in 512 px tiles.
-        viewModel.Zoom = 8;
+        viewModel.ActiveTab!.Zoom = 8;
         Settle(window);
         view.ScrollViewer.Offset = new Vector(300, 300);
         Settle(window);
@@ -790,7 +801,7 @@ public sealed class DocumentViewTests : IDisposable
         Assert.True(sharpWhenRaised);
 
         // Zooming and scrolling draw new sharp tiles, but the first one of this document was reported.
-        viewModel.Zoom = 2;
+        viewModel.ActiveTab!.Zoom = 2;
         await WaitUntilAsync(window, () => view.Canvas.Bitmaps.Keys.Any(key => !key.IsPreview && key.ScaleKey == TileKey.ToScaleKey(DocumentLayout.DipsPerPoint * 2)));
         Settle(window);
         Assert.Equal(1, raised);
@@ -799,16 +810,11 @@ public sealed class DocumentViewTests : IDisposable
         await WaitUntilAsync(window, () => raised == 2);
     }
 
-    private (MainWindow Window, MainViewModel ViewModel, DocumentView View) Show(ViewerSession? session = null)
+    private (MainWindow Window, MainViewModel ViewModel, DocumentView View) Show(Func<ViewerSession>? factory = null)
     {
-        if (session is null)
-        {
-            session = new ViewerSession(new PdfEngine());
-            _cleanup.Add(session);
-        }
-
         // Forced, so the layout is the same on Windows and Linux runners.
-        var viewModel = new MainViewModel(session, new NoFilePicker()) { IsWindowsTitleBar = true };
+        var viewModel = new MainViewModel(factory ?? (() => new ViewerSession(new PdfEngine())), new NoFilePicker()) { IsWindowsTitleBar = true };
+        _cleanup.Add(viewModel);
         var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720, RequestedThemeVariant = ThemeVariant.Light };
         _cleanup.Add(new Closer(window));
         window.Show();
@@ -819,7 +825,7 @@ public sealed class DocumentViewTests : IDisposable
     private static async Task OpenAsync(Window window, MainViewModel viewModel, DocumentView view, string name)
     {
         await viewModel.OpenAsync(TestData.Pdf(name));
-        await WaitUntilAsync(window, () => view.Document is { } document && ReferenceEquals(document, viewModel.Session.Document) && view.Canvas.LastRequests.Count > 0);
+        await WaitUntilAsync(window, () => view.Document is { } document && ReferenceEquals(document, viewModel.ActiveTab?.Session.Document) && view.Canvas.LastRequests.Count > 0);
     }
 
     private static void Scroll(Window window, DocumentView view, double y)

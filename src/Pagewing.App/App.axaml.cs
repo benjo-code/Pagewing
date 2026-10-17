@@ -15,7 +15,9 @@ using Pagewing.Core.Viewing;
 namespace Pagewing.App;
 
 /// <summary>What <see cref="Program.Main"/> prepared before Avalonia started.</summary>
-/// <param name="Session">The session, possibly already opening the file of the command line.</param>
+/// <param name="Session">
+/// The session, possibly already opening the file of the command line; the first tab of the window when it does.
+/// </param>
 /// <param name="Instance">The primary single instance, or <see langword="null"/> for an extra instance or a measurement.</param>
 /// <param name="Measurement">The options of a measurement switch, or <see langword="null"/> for a normal launch.</param>
 internal sealed record AppStartup(ViewerSession Session, SingleInstance? Instance, StartupOptions? Measurement = null);
@@ -24,7 +26,7 @@ public sealed class App : Application
 {
     private readonly AppStartup? _startup;
 
-    /// <summary>Creates the app without startup state (tests, designer): it creates its own session.</summary>
+    /// <summary>Creates the app without startup state (tests, designer): its window starts without a tab.</summary>
     public App()
     {
     }
@@ -54,12 +56,20 @@ public sealed class App : Application
         StartupPhases.Mark("app-initialized");
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // Creating the engine does not start PDFium; that happens with the first document.
-            var session = _startup?.Session ?? new ViewerSession(new PdfEngine());
+            // Creating an engine does not start PDFium; that happens with the first document.
+            var session = _startup?.Session;
             var instance = _startup?.Instance;
             var window = new MainWindow();
             StartupPhases.Mark("window-created");
-            var viewModel = new MainViewModel(session, new AvaloniaFilePicker(window));
+            var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new AvaloniaFilePicker(window));
+            var adopted = false;
+            if (session is not null && session.State != ViewerState.Empty)
+            {
+                // The file of the command line, already opening since Program.Main: the first tab, in the first frame.
+                viewModel.AdoptSession(session);
+                adopted = true;
+            }
+
             window.DataContext = viewModel;
             desktop.MainWindow = window;
 
@@ -96,7 +106,12 @@ public sealed class App : Application
             desktop.Exit += (_, _) =>
             {
                 instance?.Dispose();
-                session.Dispose();
+                viewModel.Dispose();
+                if (!adopted)
+                {
+                    // Unused (no file on the command line); a tab owns and releases an adopted one.
+                    session?.Dispose();
+                }
             };
         }
 

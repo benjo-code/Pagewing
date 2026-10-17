@@ -31,7 +31,7 @@ public sealed partial class MeasurementTests : IDisposable
 
     public void Dispose()
     {
-        // Windows close before their sessions are disposed.
+        // Windows close before their view models (and the sessions of their tabs) are disposed.
         for (var i = _cleanup.Count - 1; i >= 0; i--)
         {
             _cleanup[i].Dispose();
@@ -57,7 +57,7 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.Contains(view.Canvas.Bitmaps.Keys, key => key.Page == 0 && !key.IsPreview);
 
         // Later sharp images (zoom, another document) report nothing more and do not exit again.
-        viewModel.Zoom = 2;
+        viewModel.ActiveTab!.Zoom = 2;
         Settle(window);
         var drawn = false;
         view.FirstSharpTileDrawn += () => drawn = true;
@@ -163,9 +163,10 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.True(match.Success, $"unexpected line '{lines[1]}'");
         Assert.True(double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) > 0);
 
-        // The second file came in like a later launch and is the one shown now.
-        Assert.Equal(Path.GetFullPath(second), viewModel.Session.Path);
-        Assert.Equal(viewModel.Session.Document, view.Document);
+        // The second file came in like a later launch and is the one shown now, in a tab of its own.
+        Assert.Equal(2, viewModel.Tabs.Count);
+        Assert.Equal(Path.GetFullPath(second), viewModel.ActiveTab!.Session.Path);
+        Assert.Equal(viewModel.ActiveTab.Session.Document, view.Document);
     }
 
     [AvaloniaFact]
@@ -190,10 +191,9 @@ public sealed partial class MeasurementTests : IDisposable
     public async Task MeasurementWithoutASharpImageTimesOutWithThree()
     {
         // A view that is not in a window never draws, so the first sharp image never comes.
-        var session = new ViewerSession(new PdfEngine());
-        _cleanup.Add(session);
-        var viewModel = new MainViewModel(session, new NoFilePicker());
-        var view = new DocumentView { DataContext = viewModel };
+        var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker());
+        _cleanup.Add(viewModel);
+        var view = new DocumentView();
         using var measurement = new StartupMeasurement(viewModel, view, TestData.Pdf("text-basic.pdf"), null, Sink(), TimeSpan.FromMilliseconds(200), TimeSpan.Zero);
 
         measurement.Start();
@@ -264,7 +264,7 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.Equal("200", ScrollDetailLine().Match(lines[1]).Groups[1].Value);
 
         // Scrolled at 200 % from the top to the very bottom.
-        Assert.Equal(2, viewModel.Zoom);
+        Assert.Equal(2, viewModel.ActiveTab!.Zoom);
         Assert.Equal(2, view.Layout!.Zoom);
         var scroller = view.ScrollViewer;
         Assert.Equal(scroller.Extent.Height - scroller.Viewport.Height, scroller.Offset.Y, 3);
@@ -452,11 +452,9 @@ public sealed partial class MeasurementTests : IDisposable
 
     private (MainWindow Window, MainViewModel ViewModel, DocumentView View) Show()
     {
-        var session = new ViewerSession(new PdfEngine());
-        _cleanup.Add(session);
-
         // Forced, so the layout is the same on Windows and Linux runners.
-        var viewModel = new MainViewModel(session, new NoFilePicker()) { IsWindowsTitleBar = true };
+        var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker()) { IsWindowsTitleBar = true };
+        _cleanup.Add(viewModel);
         var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720, RequestedThemeVariant = ThemeVariant.Light };
         _cleanup.Add(new Closer(window));
         window.Show();

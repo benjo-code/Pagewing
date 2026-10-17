@@ -7,8 +7,8 @@ using Pagewing.App.ViewModels;
 namespace Pagewing.App.Views;
 
 /// <summary>
-/// The main window; its <c>DataContext</c> is a <see cref="MainViewModel"/>. Opens dropped files and comes to the
-/// front when a later launch hands its files over.
+/// The main window; its <c>DataContext</c> is a <see cref="MainViewModel"/>. Opens dropped files in tabs, comes to the
+/// front when a later launch hands its files over and closes when its view model asks for it.
 /// </summary>
 public sealed partial class MainWindow : Window
 {
@@ -23,27 +23,28 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Gets the local path of the item a drop opens: the first file or folder (a folder fails to open with
-    /// "cannot be read"), or <see langword="null"/> when the data holds no local storage item (text, links, ...).
+    /// Gets the local paths of the items a drop opens, in their order: files and folders (a folder fails to open with
+    /// "cannot be read", in its own tab); empty when the data holds no local storage item (text, links, ...).
     /// </summary>
-    internal static string? DroppedPath(IDataTransfer data)
+    internal static IReadOnlyList<string> DroppedPaths(IDataTransfer data)
     {
         ArgumentNullException.ThrowIfNull(data);
         var items = data.TryGetFiles();
         if (items is null)
         {
-            return null;
+            return [];
         }
 
+        var paths = new List<string>();
         foreach (var item in items)
         {
             if (item.TryGetLocalPath() is { Length: > 0 } path)
             {
-                return path;
+                paths.Add(path);
             }
         }
 
-        return null;
+        return paths;
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -52,12 +53,14 @@ public sealed partial class MainWindow : Window
         if (_viewModel is not null)
         {
             _viewModel.ActivationRequested -= BringToFront;
+            _viewModel.CloseWindowRequested -= Close;
         }
 
         _viewModel = DataContext as MainViewModel;
         if (_viewModel is not null)
         {
             _viewModel.ActivationRequested += BringToFront;
+            _viewModel.CloseWindowRequested += Close;
         }
     }
 
@@ -89,10 +92,10 @@ public sealed partial class MainWindow : Window
     private void OnDrop(object? sender, DragEventArgs e)
     {
         e.Handled = true;
-        if (_viewModel is not null && DroppedPath(e.DataTransfer) is { } path)
+        if (_viewModel is not null && DroppedPaths(e.DataTransfer) is { Count: > 0 } paths)
         {
-            // Opens in this window whatever it shows (design system 7.1); the one document is replaced.
-            _ = _viewModel.OpenAsync(path);
+            // Opens in this window whatever it shows (design system 7.1), each file in a tab of its own.
+            _ = _viewModel.OpenManyAsync(paths);
         }
     }
 }
