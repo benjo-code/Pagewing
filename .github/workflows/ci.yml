@@ -64,8 +64,10 @@ jobs:
       - name: Restore
         run: dotnet restore Pagewing.slnx
 
+      # Every file-based script runs with --no-cache: without git on the Windows runner, actions/checkout extracts a
+      # zip whose file times can lie before the cached build of the script, and dotnet run then ran a stale copy.
       - name: Check the test PDFs
-        run: dotnet run tools/make-testpdfs.cs -- check
+        run: dotnet run --no-cache tools/make-testpdfs.cs -- check
 
       - name: Build
         run: dotnet build Pagewing.slnx -c Release --no-restore
@@ -89,13 +91,13 @@ jobs:
         run: dotnet publish src/Pagewing.Cli -c Release -r ${{ matrix.rid }} -o out/cli
 
       - name: Smoke test of the CLI binary
-        run: dotnet run tools/smoke-cli.cs -- out/cli/${{ matrix.binary }}
+        run: dotnet run --no-cache tools/smoke-cli.cs -- out/cli/${{ matrix.binary }}
 
       - name: Publish the app (Native AOT)
         run: dotnet publish src/Pagewing.App -c Release -r ${{ matrix.rid }} -o out/app
 
       - name: Self-test of the startup check
-        run: dotnet run bench/startup/startup.cs -- selftest
+        run: dotnet run --no-cache bench/startup/startup.cs -- selftest
 
       # Median of 10 runs per case against the budgets, fails above budget + 25 % (bench/startup/README.md).
       # All four cases run, so that every CSV exists; the step fails afterwards if one of them failed.
@@ -103,7 +105,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           status=0
-          check() { xvfb-run -a dotnet run bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" "$@" || status=1; }
+          check() { xvfb-run -a dotnet run --no-cache bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" "$@" || status=1; }
           check --pdf testdata/pdfs/text-basic.pdf --case cold --out out/startup/cold.csv
           check --pdf testdata/pdfs/text-basic.pdf --case warm --out out/startup/warm.csv --phases
           check --pdf testdata/pdfs/thousand-pages.pdf --case thousand --out out/startup/thousand.csv
@@ -121,7 +123,7 @@ jobs:
             @('--pdf', 'testdata/pdfs/text-basic.pdf', '--second-pdf', 'testdata/pdfs/hello_world.pdf', '--case', 'second', '--out', 'out/startup/second.csv')
           )
           foreach ($case in $cases) {
-            dotnet run bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" @case
+            dotnet run --no-cache bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" @case
             if ($LASTEXITCODE -ne 0) { $failed = $true }
           }
           if ($failed) { exit 1 }
