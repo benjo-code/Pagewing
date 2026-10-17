@@ -5,6 +5,9 @@ namespace Pagewing.Core.Pdf;
 /// <summary>Size of a page in points (1/72 inch), after rotation and CropBox.</summary>
 public readonly record struct PdfPageSize(double Width, double Height)
 {
+    /// <summary>A4 portrait (595.28 × 841.89 pt): the stand-in for a page whose size cannot be read.</summary>
+    internal static readonly PdfPageSize A4 = new(595.28, 841.89);
+
     /// <summary>
     /// Gets the size in pixels of the page rendered at <paramref name="scale"/> pixels per point: each side
     /// rounded up, at least 1. This is exactly the size <see cref="PdfDocument.RenderPageAsync"/> produces,
