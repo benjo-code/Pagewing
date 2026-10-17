@@ -37,6 +37,11 @@ internal static partial class Program
         // statement; measured at about 0.08 ms.
         _ = AppContext.GetData("System.GC.Server");
         var mainEntered = Stopwatch.GetTimestamp();
+        if (OperatingSystem.IsWindows() && args is ["--diag-graphics-adapters"])
+        {
+            // TEMPORARY diagnostics, reverted after the CI run.
+            return DiagAdapters.Print();
+        }
 
         var options = StartupOptions.Parse(args);
         if (options.IsMeasurement)
