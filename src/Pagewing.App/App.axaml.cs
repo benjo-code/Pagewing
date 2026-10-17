@@ -29,16 +29,23 @@ public sealed class App : Application
 
     internal App(AppStartup startup) => _startup = startup;
 
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        // The platform (windowing, graphics) is initialized before this.
+        StartupPhases.Mark("app-initialize");
+        AvaloniaXamlLoader.Load(this);
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
+        StartupPhases.Mark("app-initialized");
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Creating the engine does not start PDFium; that happens with the first document.
             var session = _startup?.Session ?? new ViewerSession(new PdfEngine());
             var instance = _startup?.Instance;
             var window = new MainWindow();
+            StartupPhases.Mark("window-created");
             var viewModel = new MainViewModel(session, new AvaloniaFilePicker(window));
             window.DataContext = viewModel;
             desktop.MainWindow = window;
@@ -53,8 +60,16 @@ public sealed class App : Application
 
             if (_startup?.Measurement is { } measure)
             {
+                // The first frame of the window: the first tick of the render loop after it opened.
+                window.Opened += (_, _) =>
+                {
+                    StartupPhases.Mark("window-opened");
+                    window.RequestAnimationFrame(_ => StartupPhases.Mark("first-frame"));
+                };
+
                 // Started before the window opens, so no sharp image can come before the measurement listens.
-                var output = new MeasurementOutput(Console.Out, Console.Error, code => Dispatcher.UIThread.Post(() => desktop.Shutdown(code)));
+                var output = new MeasurementOutput(
+                    Console.Out, Console.Error, code => Dispatcher.UIThread.Post(() => desktop.Shutdown(code)), StartupPhases.Current);
                 MeasurementRun.Create(measure, viewModel, window.DocumentView, output)?.Start();
             }
 

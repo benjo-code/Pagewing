@@ -10,7 +10,8 @@ namespace Pagewing.App.Measurement;
 /// <param name="Output">Receives the result line (stdout in the app).</param>
 /// <param name="Error">Receives <c>error: …</c> (stderr in the app).</param>
 /// <param name="Exit">Asked once to end the app with the exit code.</param>
-internal sealed record MeasurementOutput(TextWriter Output, TextWriter Error, Action<int> Exit);
+/// <param name="Phases">The startup phases written after <c>first-sharp</c> (<see cref="StartupPhases"/>), or <see langword="null"/>.</param>
+internal sealed record MeasurementOutput(TextWriter Output, TextWriter Error, Action<int> Exit, PhaseRecorder? Phases = null);
 
 /// <summary>
 /// A run of one of the hidden measurement switches (<c>--measure-startup</c>, <c>--measure-second</c>,
@@ -126,6 +127,13 @@ internal abstract class MeasurementRun : IDisposable
     /// <summary>Writes the result line and asks to exit with 0.</summary>
     protected void Succeed(string line)
     {
+        Report(line);
+        Succeed();
+    }
+
+    /// <summary>Asks to exit with 0 (the result lines are written).</summary>
+    protected void Succeed()
+    {
         if (IsFinished)
         {
             return;
@@ -133,8 +141,6 @@ internal abstract class MeasurementRun : IDisposable
 
         IsFinished = true;
         Unsubscribe();
-        _output.Output.WriteLine(line);
-        _output.Output.Flush();
         _output.Exit(Success);
     }
 
@@ -146,6 +152,25 @@ internal abstract class MeasurementRun : IDisposable
             _output.Output.WriteLine(line);
             _output.Output.Flush();
         }
+    }
+
+    /// <summary>
+    /// Writes the startup phases (<c>phase &lt;name&gt; &lt;ms&gt;</c>), if there are any. Only after the result line
+    /// that the script times: reading the process start costs time of its own.
+    /// </summary>
+    protected void ReportPhases()
+    {
+        if (IsFinished || _output.Phases is not { } phases)
+        {
+            return;
+        }
+
+        foreach (var line in phases.Lines(PhaseRecorder.ProcessStartTimestamp()))
+        {
+            _output.Output.WriteLine(line);
+        }
+
+        _output.Output.Flush();
     }
 
     /// <summary>Writes <c>error: <paramref name="message"/></c> and asks to exit with <paramref name="exitCode"/>.</summary>

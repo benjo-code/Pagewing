@@ -4,6 +4,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Pagewing.App.Measurement;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Viewing;
@@ -328,10 +329,12 @@ internal sealed class DocumentCanvas : Control
         if (drewFirstSharpTile && !source.FirstSharpTileReported)
         {
             source.FirstSharpTileReported = true;
+            StartupPhases.Mark("tile-drawn");
             TopLevel.GetTopLevel(this)?.RequestAnimationFrame(_ =>
             {
                 if (ReferenceEquals(_source, source))
                 {
+                    StartupPhases.Mark("frame-after-tile");
                     FirstSharpTileDrawn?.Invoke();
                 }
             });
@@ -427,6 +430,10 @@ internal sealed class DocumentCanvas : Control
         {
             AddBitmap(key, image);
             InvalidateVisual();
+            if (key.Page == 0)
+            {
+                StartupPhases.Mark(key.IsPreview ? "preview-applied" : "tile-applied");
+            }
         }
 
         TileReceived?.Invoke(key);

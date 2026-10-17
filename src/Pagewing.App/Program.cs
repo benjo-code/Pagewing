@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -33,8 +34,15 @@ internal static partial class Program
         // "Startabsturz 0xC0000602: AppContext vor dem PDFium-Thread initialisieren (M3)"). Keep this the first
         // statement; measured at about 0.08 ms.
         _ = AppContext.GetData("System.GC.Server");
+        var mainEntered = Stopwatch.GetTimestamp();
 
         var options = StartupOptions.Parse(args);
+        if (options.IsMeasurement)
+        {
+            // Diagnostic phases of a measurement run only (bench/startup/README.md, "Phasen").
+            StartupPhases.Enable().Mark("main", mainEntered);
+        }
+
         if (options.Language is { } language)
         {
             try
@@ -56,11 +64,23 @@ internal static partial class Program
         // Primary, a measurement, or an extra instance without the lock when handing over failed (the running one
         // hangs or is closing).
         var session = new ViewerSession(new PdfEngine());
+        if (options.IsMeasurement)
+        {
+            session.Changed += () =>
+            {
+                if (session.State == ViewerState.Ready)
+                {
+                    StartupPhases.Mark("session-ready");
+                }
+            };
+        }
+
         var path = options.IsMeasurement ? options.MeasurementPath : options.Paths.Count > 0 ? options.Paths[0] : null;
         if (!string.IsNullOrEmpty(path))
         {
             // Sets Loading with the path at once and continues on the PDFium thread; failures end in an error card.
             _ = session.OpenAsync(path);
+            StartupPhases.Mark("session-open-started");
         }
 
         if (options.IsMeasurement)

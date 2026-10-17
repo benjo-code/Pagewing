@@ -68,6 +68,65 @@ public sealed partial class MeasurementTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task StartupMeasurementWritesThePhasesAfterFirstSharp()
+    {
+        var (window, viewModel, view) = Show();
+        var phases = new PhaseRecorder();
+        phases.Mark("main", System.Diagnostics.Stopwatch.GetTimestamp());
+        using var measurement = new StartupMeasurement(viewModel, view, TestData.Pdf("text-basic.pdf"), null, Sink(phases), Timeout, TimeSpan.Zero);
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        // "first-sharp" comes first: the script times its arrival, reading the process start must not delay it.
+        var lines = Lines(_output);
+        Assert.Equal("first-sharp", lines[0]);
+        Assert.Equal(2, lines.Count);
+        Assert.Matches(PhaseLine(), lines[1]);
+        Assert.StartsWith("phase main ", lines[1], StringComparison.Ordinal);
+        Assert.Equal([0], _exits);
+    }
+
+    [Fact]
+    public void PhaseRecorderKeepsTheFirstMarkOfEachPhaseInOrder()
+    {
+        var recorder = new PhaseRecorder();
+        var origin = 1_000_000L;
+        var tick = System.Diagnostics.Stopwatch.Frequency / 1000; // 1 ms
+        recorder.Mark("main", origin + (12 * tick));
+        recorder.Mark("window-opened", origin + (150 * tick));
+        recorder.Mark("main", origin + (400 * tick));
+        recorder.Mark("tile-applied", origin + (170 * tick));
+
+        Assert.Equal(["phase main 12.0", "phase window-opened 150.0", "phase tile-applied 170.0"], recorder.Lines(origin));
+    }
+
+    [Fact]
+    public void PhaseLinesUseTheInvariantCulture()
+    {
+        var culture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            Assert.Equal("phase frame-after-tile 1234.6", PhaseRecorder.Format("frame-after-tile", 1234.56));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    [Fact]
+    public void TheProcessStartLiesBeforeNow()
+    {
+        var start = PhaseRecorder.ProcessStartTimestamp();
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(start);
+
+        // The test process started before this test and less than a day ago.
+        Assert.InRange(elapsed, TimeSpan.Zero, TimeSpan.FromDays(1));
+    }
+
+    [AvaloniaFact]
     public async Task MeasureSecondReportsAPositiveTime()
     {
         var (window, viewModel, view) = Show();
@@ -215,7 +274,7 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.Null(options.MeasurementPath);
     }
 
-    private MeasurementOutput Sink() => new(_output, _error, _exits.Add);
+    private MeasurementOutput Sink(PhaseRecorder? phases = null) => new(_output, _error, _exits.Add, phases);
 
     private static List<string> Lines(StringWriter writer) =>
         writer.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -267,6 +326,9 @@ public sealed partial class MeasurementTests : IDisposable
 
     [GeneratedRegex(@"^second-sharp (\d+\.\d)$")]
     private static partial Regex SecondSharpLine();
+
+    [GeneratedRegex(@"^phase [a-z-]+ \d+\.\d$")]
+    private static partial Regex PhaseLine();
 
     [GeneratedRegex(@"^scroll frames=(\d+) p99-ms=(\d+\.\d) max-ms=(\d+\.\d)$")]
     private static partial Regex ScrollLine();

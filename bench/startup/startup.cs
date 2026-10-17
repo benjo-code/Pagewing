@@ -1,6 +1,6 @@
 // Startup-time check of the published app (CI and local), protocol in bench/startup/README.md.
 //   dotnet run bench/startup/startup.cs -- --exe <app binary> --pdf <pdf> --case cold|warm|thousand|second
-//        [--second-pdf <pdf>] [--out <csv>]
+//        [--second-pdf <pdf>] [--out <csv>] [--phases]
 //   dotnet run bench/startup/startup.cs -- selftest
 // Per run the script starts the app with a hidden measurement switch and redirected stdout (the app is a GUI
 // program; its stdout only reaches a parent that redirects it):
@@ -10,6 +10,8 @@
 //                         inside the app from handing the second file over to its drawn first sharp image.
 // 10 runs per case; cold with 5 s pause and no warm-up, warm and thousand with 3 warm-up runs and 500 ms pause,
 // second with 1 warm-up run and 500 ms pause. Prints every run, median, min and max, and writes case,run,ms to --out.
+// --phases also prints the median of every startup phase the app writes after "first-sharp" ("phase <name> <ms>",
+// milliseconds since its process start) over the measured runs; informational, it never changes the verdict.
 // Budgets (Docs/ROADMAP.md, "Geschwindigkeitsziele"): cold 400, warm 200, second 100, thousand 300 ms. The check
 // fails when the MEDIAN is above budget × 1.25. "cold" cannot empty the file cache of the operating system.
 // On Linux the binary needs an X server; the CI runs the whole script under xvfb-run -a. On Windows the script first
@@ -23,7 +25,7 @@ using System.Text;
 
 const string Usage =
     "Aufruf: dotnet run bench/startup/startup.cs -- --exe <App-Binary> --pdf <PDF> --case cold|warm|thousand|second\n" +
-    "          [--second-pdf <PDF>] [--out <CSV>]\n" +
+    "          [--second-pdf <PDF>] [--out <CSV>] [--phases]\n" +
     "       dotnet run bench/startup/startup.cs -- selftest";
 
 if (args is ["selftest"])
@@ -63,6 +65,7 @@ sealed class Options
     public string Pdf { get; private set; } = string.Empty;
     public string? SecondPdf { get; private set; }
     public string? Out { get; private set; }
+    public bool Phases { get; private set; }
     public Case Case { get; private set; } = Case.All[0];
 
     public static Options? Parse(string[] args, out string error)
@@ -72,6 +75,12 @@ sealed class Options
         for (var i = 0; i < args.Length; i++)
         {
             var name = args[i];
+            if (name == "--phases")
+            {
+                o.Phases = true;
+                continue;
+            }
+
             if (i + 1 >= args.Length)
             {
                 error = $"Zu {name} fehlt der Wert.";
@@ -152,6 +161,8 @@ static class Check
         }
 
         var times = new List<double>();
+        var phaseRuns = new List<IReadOnlyList<(string Name, double Ms)>>();
+        var beforeProcess = new List<double>();
         string? failure = null;
         for (var run = -c.Warmup + 1; run <= c.Runs; run++)
         {
@@ -167,11 +178,24 @@ static class Check
             if (run > 0)
             {
                 times.Add(result.Milliseconds);
+                phaseRuns.Add(result.Phases);
+                if (!c.IsSecond && Phases.Find(result.Phases, "frame-after-tile") is { } frame)
+                {
+                    beforeProcess.Add(result.Milliseconds - frame);
+                }
             }
 
             if (run < c.Runs)
             {
                 Thread.Sleep(c.PauseMs);
+            }
+        }
+
+        if (options.Phases)
+        {
+            foreach (var line in Phases.Report(phaseRuns, beforeProcess))
+            {
+                Console.WriteLine(line);
             }
         }
 
@@ -217,8 +241,8 @@ static class Check
         }
     }
 
-    /// <summary>One launch of the app; the time or why it failed.</summary>
-    private static (double Milliseconds, string? Error) RunOnce(string exe, string[] arguments, bool second)
+    /// <summary>One launch of the app; the time and the phases the app wrote, or why it failed.</summary>
+    private static (double Milliseconds, string? Error, IReadOnlyList<(string Name, double Ms)> Phases) RunOnce(string exe, string[] arguments, bool second)
     {
         var info = new ProcessStartInfo(exe)
         {
@@ -237,12 +261,13 @@ static class Check
         using var process = Process.Start(info);
         if (process is null)
         {
-            return (0, $"{exe} konnte nicht gestartet werden");
+            return (0, $"{exe} konnte nicht gestartet werden", []);
         }
 
         // stdout is read line by line on a thread of its own, so the time is taken right when the line arrives.
         double? firstSharp = null;
         double? secondSharp = null;
+        var phases = new List<(string Name, double Ms)>();
         var output = new StringBuilder();
         var reader = new Thread(() =>
         {
@@ -260,6 +285,10 @@ static class Check
                     {
                         secondSharp ??= value;
                     }
+                    else if (Phases.TryParse(line, out var phase, out var phaseMs))
+                    {
+                        phases.Add((phase, phaseMs));
+                    }
                 }
             }
         })
@@ -271,26 +300,28 @@ static class Check
         {
             process.Kill(entireProcessTree: true);
             process.WaitForExit();
-            return (0, $"Zeitlimit {RunTimeout.TotalSeconds:0} s überschritten, Prozess beendet");
+            return (0, $"Zeitlimit {RunTimeout.TotalSeconds:0} s überschritten, Prozess beendet", []);
         }
 
         reader.Join(TimeSpan.FromSeconds(5));
         var error = errorTask.GetAwaiter().GetResult().Trim();
         string text;
+        (string Name, double Ms)[] phaseLines;
         lock (output)
         {
             text = output.ToString().Trim();
+            phaseLines = [.. phases];
         }
 
         if (process.ExitCode != 0)
         {
-            return (0, $"Exit-Code {process.ExitCode}{(error.Length > 0 ? $", stderr: {error}" : string.Empty)}{(text.Length > 0 ? $", stdout: {text}" : string.Empty)}");
+            return (0, $"Exit-Code {process.ExitCode}{(error.Length > 0 ? $", stderr: {error}" : string.Empty)}{(text.Length > 0 ? $", stdout: {text}" : string.Empty)}", []);
         }
 
         var value = second ? secondSharp : firstSharp;
         return value is { } ms
-            ? (ms, null)
-            : (0, $"keine Zeile \"{(second ? "second-sharp <ms>" : "first-sharp")}\" auf stdout (stdout: '{text}', stderr: '{error}')");
+            ? (ms, null, phaseLines)
+            : (0, $"keine Zeile \"{(second ? "second-sharp <ms>" : "first-sharp")}\" auf stdout (stdout: '{text}', stderr: '{error}')", []);
     }
 
     private static void WriteCsv(string path, string caseName, List<double> times)
@@ -343,6 +374,91 @@ static class Stats
         return line.StartsWith(Prefix, StringComparison.Ordinal)
             && double.TryParse(line.AsSpan(Prefix.Length), NumberStyles.Float, CultureInfo.InvariantCulture, out milliseconds)
             && milliseconds >= 0;
+    }
+}
+
+/// <summary>
+/// The startup phases the app writes after "first-sharp" in a measurement run ("phase &lt;name&gt; &lt;ms&gt;",
+/// milliseconds since its own process start; src/Pagewing.App/Measurement/StartupPhases.cs). Informational only.
+/// </summary>
+static class Phases
+{
+    /// <summary>Reads "phase &lt;name&gt; &lt;ms&gt;" (invariant culture; the name has no spaces).</summary>
+    public static bool TryParse(string line, out string name, out double milliseconds)
+    {
+        name = string.Empty;
+        milliseconds = 0;
+        if (line.Split(' ') is not ["phase", { Length: > 0 } phase, var value]
+            || !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out milliseconds))
+        {
+            return false;
+        }
+
+        name = phase;
+        return true;
+    }
+
+    /// <summary>The value of the phase <paramref name="name"/> in one run, or <see langword="null"/>.</summary>
+    public static double? Find(IReadOnlyList<(string Name, double Ms)> run, string name)
+    {
+        foreach (var (phase, ms) in run)
+        {
+            if (phase == name)
+            {
+                return ms;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The median of every phase over the runs, in the order the phases first appear, and how many runs had it.</summary>
+    public static IReadOnlyList<(string Name, double Median, int Count)> Medians(IReadOnlyList<IReadOnlyList<(string Name, double Ms)>> runs)
+    {
+        var order = new List<string>();
+        var values = new Dictionary<string, List<double>>();
+        foreach (var run in runs)
+        {
+            foreach (var (name, ms) in run)
+            {
+                if (!values.TryGetValue(name, out var list))
+                {
+                    values[name] = list = [];
+                    order.Add(name);
+                }
+
+                list.Add(ms);
+            }
+        }
+
+        return [.. order.Select(name => (name, Stats.Median(values[name]), values[name].Count))];
+    }
+
+    /// <summary>
+    /// The lines printed with --phases: one per phase (median and runs), then the median of the time of the script
+    /// minus the phase "frame-after-tile" per run: from just before Process.Start to the process start, plus the way
+    /// of the line through the pipe.
+    /// </summary>
+    public static IReadOnlyList<string> Report(IReadOnlyList<IReadOnlyList<(string Name, double Ms)>> runs, IReadOnlyCollection<double> beforeProcess)
+    {
+        var medians = Medians(runs);
+        if (medians.Count == 0)
+        {
+            return ["Phasen (Median): keine Zeilen \"phase <Name> <ms>\" erhalten."];
+        }
+
+        var lines = new List<string> { "Phasen (Median, ms seit Prozessstart; nur zur Information):" };
+        foreach (var (name, median, count) in medians)
+        {
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"  {name,-26} {median,7:0.0} ms ({count} Läufe)"));
+        }
+
+        if (beforeProcess.Count > 0)
+        {
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"  {"Skript - frame-after-tile",-26} {Stats.Median(beforeProcess),7:0.0} ms ({beforeProcess.Count} Läufe; vor dem Prozessstart und Weg der Zeile)"));
+        }
+
+        return lines;
     }
 }
 
@@ -467,6 +583,29 @@ static class SelfTest
         Expect("second-sharp lesen", Stats.TryParseSecondSharp("second-sharp 42.5", out var ms) ? ms : -1, 42.5);
         Expect("second-sharp ohne Wert", Stats.TryParseSecondSharp("second-sharp ", out _), false);
         Expect("andere Zeile", Stats.TryParseSecondSharp("first-sharp", out _), false);
+
+        Expect("phase lesen", Phases.TryParse("phase tile-applied 123.4", out var phaseName, out var phaseMs) ? $"{phaseName}={phaseMs.ToString(CultureInfo.InvariantCulture)}" : "-", "tile-applied=123.4");
+        Expect("phase ohne Wert", Phases.TryParse("phase main", out _, out _), false);
+        Expect("phase mit Leerzeichen im Namen", Phases.TryParse("phase a b 1.0", out _, out _), false);
+        Expect("phase ohne Zahl", Phases.TryParse("phase main x", out _, out _), false);
+        Expect("first-sharp ist keine Phase", Phases.TryParse("first-sharp", out _, out _), false);
+        IReadOnlyList<IReadOnlyList<(string Name, double Ms)>> phaseRuns =
+        [
+            [("main", 10), ("window-opened", 100), ("frame-after-tile", 300)],
+            [("main", 30), ("window-opened", 120), ("frame-after-tile", 310)],
+            [("main", 20), ("frame-after-tile", 290), ("extra", 5)],
+        ];
+        Expect("Phasen-Median", string.Join(',', Phases.Medians(phaseRuns).Select(p => string.Create(CultureInfo.InvariantCulture, $"{p.Name}:{p.Median}:{p.Count}"))),
+            "main:20:3,window-opened:110:2,frame-after-tile:300:3,extra:5:1");
+        Expect("Phase finden", Phases.Find(phaseRuns[0], "frame-after-tile"), 300);
+        Expect("Phase fehlt", Phases.Find(phaseRuns[2], "window-opened"), null);
+        var phaseReport = Phases.Report(phaseRuns, [12, 10, 11]);
+        Expect("Phasen-Bericht Zeilen", phaseReport.Count, 6);
+        Expect("Phasen-Bericht Kopf", phaseReport[0], "Phasen (Median, ms seit Prozessstart; nur zur Information):");
+        Expect("Phasen-Bericht Zeile", phaseReport[2], "  window-opened                110.0 ms (2 Läufe)");
+        Expect("Phasen-Bericht Skript", phaseReport[5].StartsWith("  Skript - frame-after-tile     11.0 ms (3 Läufe;", StringComparison.Ordinal), true);
+        Expect("Phasen-Bericht ohne Zeilen", Phases.Report([], [])[0].StartsWith("Phasen (Median): keine Zeilen", StringComparison.Ordinal), true);
+        Expect("--phases braucht keinen Wert", Options.Parse(["--phases", "--case", "warm"], out var phasesError) is null && phasesError.StartsWith("--exe", StringComparison.Ordinal), true);
 
         Expect("Fälle vollständig", string.Join(',', Case.All.Select(c => $"{c.Name}:{c.BudgetMs}:{c.Runs}:{c.Warmup}:{c.PauseMs}")),
             "cold:400:10:0:5000,warm:200:10:3:500,thousand:300:10:3:500,second:100:10:1:500");

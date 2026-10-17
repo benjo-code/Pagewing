@@ -48,13 +48,15 @@ internal sealed class StartupMeasurement : MeasurementRun
             return;
         }
 
+        // The script takes its time when "first-sharp" arrives; the phases come after it.
+        Report("first-sharp");
+        ReportPhases();
         if (_secondPath is null)
         {
-            Succeed("first-sharp");
+            Succeed();
             return;
         }
 
-        Report("first-sharp");
         if (string.IsNullOrWhiteSpace(_secondPath))
         {
             Fail(Failure, "no second file to measure");
