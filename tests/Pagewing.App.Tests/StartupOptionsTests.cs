@@ -82,6 +82,32 @@ public sealed class StartupOptionsTests
     }
 
     [Fact]
+    public void EmptyAndWhitespaceArgumentsAreSkipped()
+    {
+        var options = StartupOptions.Parse(["", "   ", "doc.pdf", "\t"]);
+
+        Assert.Equal([Path.GetFullPath("doc.pdf")], options.Paths);
+    }
+
+    [Fact]
+    public void DoubleDashAloneIsIgnored()
+    {
+        var options = StartupOptions.Parse(["--"]);
+
+        Assert.Empty(options.Paths);
+        Assert.Null(options.Language);
+    }
+
+    [Fact]
+    public void InvalidPathTextIsKeptInsteadOfFailing()
+    {
+        // GetFullPath rejects a NUL character; the path is kept as given and fails later as a CannotRead error card.
+        var options = StartupOptions.Parse(["bad\0name.pdf"]);
+
+        Assert.Equal(["bad\0name.pdf"], options.Paths);
+    }
+
+    [Fact]
     public void OptionWithoutValueAtTheEndIsIgnored()
     {
         var options = StartupOptions.Parse(["doc.pdf", "--lang"]);

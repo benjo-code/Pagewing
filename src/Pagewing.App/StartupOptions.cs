@@ -30,9 +30,15 @@ public sealed record StartupOptions(
         for (var i = 0; i < args.Length; i++)
         {
             var arg = args[i];
+            if (string.IsNullOrWhiteSpace(arg))
+            {
+                // An empty argument ("" from a script) names no file.
+                continue;
+            }
+
             if (!arg.StartsWith("--", StringComparison.Ordinal))
             {
-                paths.Add(Path.GetFullPath(arg));
+                paths.Add(FullPathOrAsGiven(arg));
                 continue;
             }
 
@@ -59,5 +65,19 @@ public sealed record StartupOptions(
         }
 
         return new StartupOptions(paths, measureStartup, measureSecond, measureScroll, language);
+    }
+
+    // A path the system rejects (for example with a NUL character) must not stop the start: it is kept as given
+    // and fails when it is opened, as a "cannot be read" error card (ViewerSession.OpenAsync).
+    private static string FullPathOrAsGiven(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException)
+        {
+            return path;
+        }
     }
 }
