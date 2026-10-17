@@ -5,6 +5,7 @@
     <IsAotCompatible>true</IsAotCompatible>
     <PublishAot>true</PublishAot>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\pagewing.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <!-- Needed for three uses: [LibraryImport] (Program.AllowSetForegroundWindow) generates its marshalling as unsafe code
          (SYSLIB1062), and Controls/PageShadowPainter.cs and Controls/TileBitmaps.cs contain unsafe blocks (CS0227). -->
@@ -21,6 +22,10 @@
   <ItemGroup>
     <!-- Geist / Geist Mono subset, licence in third-party/geist (selected in Styles/Fonts.axaml). -->
     <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Window icon for the platforms that do not take it from the executable (Windows does, see ApplicationIcon). -->
+    <AvaloniaResource Include="Assets\pagewing-128.png" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />

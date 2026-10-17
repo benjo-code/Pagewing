@@ -335,3 +335,4 @@ jobs:
           name: hardware-measure
           path: out/startup/*
           if-no-files-found: warn
+          retention-days: 7

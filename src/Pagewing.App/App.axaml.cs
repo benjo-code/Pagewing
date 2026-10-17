@@ -1,6 +1,8 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Pagewing.App.Measurement;
 using Pagewing.App.Services;
@@ -69,6 +71,13 @@ public sealed class App : Application
                     DispatcherPriority.Background);
             }
 
+            if (!OperatingSystem.IsWindows())
+            {
+                // Windows takes the icon of the executable (ApplicationIcon); elsewhere the window carries it. Decoding
+                // it is not part of the startup path.
+                window.Opened += (_, _) => Dispatcher.UIThread.Post(() => SetWindowIcon(window), DispatcherPriority.Background);
+            }
+
             if (_startup?.Measurement is { } measure)
             {
                 // The first frame of the window: the first tick of the render loop after it opened.
@@ -92,6 +101,14 @@ public sealed class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static void SetWindowIcon(Window window) => window.Icon = LoadWindowIcon();
+
+    internal static WindowIcon LoadWindowIcon()
+    {
+        using var stream = AssetLoader.Open(new Uri("avares://Pagewing/Assets/pagewing-128.png"));
+        return new WindowIcon(stream);
     }
 
     private static void StartListening(SingleInstance instance, MainViewModel viewModel)
