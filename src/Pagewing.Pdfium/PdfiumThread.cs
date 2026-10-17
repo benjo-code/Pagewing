@@ -121,11 +121,14 @@ internal sealed class PdfiumThread : IDisposable
     /// <summary>
     /// Runs the class constructor of <see cref="AppContext"/> on the starting thread, before the PDFium thread
     /// exists. Under Native AOT (.NET 10) the new thread must not be the first to need it: its first P/Invoke runs
-    /// the class constructor of <c>UTF8Encoding</c>; when the lock of the class constructors is contended there (the
-    /// app's main thread runs Avalonia's class constructors meanwhile) for the first time in the process, the lock
-    /// reads its spin settings from <see cref="AppContext"/>, whose class constructor needs <c>Encoding.UTF8</c>, still
-    /// <see langword="null"/> on this thread. <see cref="AppContext"/> then stays broken for the whole process and the
-    /// next exception ends it with <c>0xC0000602</c>. Details: <c>Docs/DECISIONS.md</c>, entry
+    /// the class constructor of <c>UTF8Encoding</c>. When another thread runs a class constructor at the same time
+    /// (in the crashes the app's main thread, running Avalonia's), the new thread waits for the global class
+    /// constructor lock; on the first contended wait in the process the lock reads its spin settings from
+    /// <see cref="AppContext"/>, whose class constructor needs <c>Encoding.UTF8</c>. That is still
+    /// <see langword="null"/>, because this very thread is inside the class constructor of <c>UTF8Encoding</c>.
+    /// <see cref="AppContext"/> then stays broken for the whole process and the next exception ends it with
+    /// <c>0xC0000602</c>. <c>Program.Main</c> of the app and the CLI does the same as its first statement; this call
+    /// keeps the guarantee for any other host. Details: <c>Docs/DECISIONS.md</c>, entry
     /// "Startabsturz 0xC0000602: AppContext vor dem PDFium-Thread initialisieren (M3)".
     /// </summary>
     private static void InitializeAppContext() => _ = AppContext.GetData("System.GC.Server");

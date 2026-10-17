@@ -29,6 +29,11 @@ internal static partial class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Native AOT: AppContext must be initialized before any other thread starts (Docs/DECISIONS.md, entry
+        // "Startabsturz 0xC0000602: AppContext vor dem PDFium-Thread initialisieren (M3)"). Keep this the first
+        // statement; measured at about 0.08 ms.
+        _ = AppContext.GetData("System.GC.Server");
+
         var options = StartupOptions.Parse(args);
         if (options.Language is { } language)
         {
