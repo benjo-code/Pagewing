@@ -30,6 +30,7 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.RenderToBeContinued)] = "FPDF_RENDER_TOBECONTINUED",
         [nameof(FpdfConstants.RenderDone)] = "FPDF_RENDER_DONE",
         [nameof(FpdfConstants.RenderFailed)] = "FPDF_RENDER_FAILED",
+        [nameof(FpdfConstants.ActionGoTo)] = "PDFACTION_GOTO",
     };
 
     [Fact]
@@ -62,7 +63,7 @@ public sealed partial class NativeBindingsTests
             "include",
             "pdfium");
         var defines = new Dictionary<string, long>();
-        foreach (var header in new[] { "fpdfview.h", "fpdf_progressive.h" })
+        foreach (var header in new[] { "fpdfview.h", "fpdf_progressive.h", "fpdf_doc.h" })
         {
             foreach (Match match in DefinePattern().Matches(File.ReadAllText(Path.Combine(headerDirectory, header))))
             {

@@ -44,4 +44,7 @@ internal static class FpdfConstants
 
     /// <summary><c>FPDF_RENDER_FAILED</c>.</summary>
     public const int RenderFailed = 3;
+
+    /// <summary><c>PDFACTION_GOTO</c> (<c>fpdf_doc.h</c>): go to a destination in the same document.</summary>
+    public const int ActionGoTo = 1;
 }
