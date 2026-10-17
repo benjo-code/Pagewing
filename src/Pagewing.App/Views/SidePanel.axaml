@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.SidePanel"
+             x:DataType="vm:TabViewModel">
+  <!--
+    Side panel (design system sections 5.3, 6 and 7.3): surface.sidebar with radius.overlay at the top left, against the
+    action bar. Header 40 px: the title in type.strong and "Close panel" (layout-sidebar-left-collapse, 16 px,
+    text.secondary). Below it the content of the open panel (Kind). Over the document (narrow window, class "overlay")
+    the panel gets a border.subtle edge on the document side and no shadow. The DataContext is the active tab; the
+    window builds the panel only when a panel opens for the first time (MainWindow.Panel.cs).
+  -->
+  <UserControl.Resources>
+    <!--
+      Content of each panel, keyed by the name of its SidePanelKind; SidePanel.axaml.cs builds it when that panel opens
+      and drops it when it closes or another opens. The built view inherits the tab as its DataContext. Placeholders until
+      the thumbnails (Pages) and the table of contents (Contents) come.
+    -->
+    <DataTemplate x:Key="Pages">
+      <Border Name="PagesContent" />
+    </DataTemplate>
+    <DataTemplate x:Key="Contents">
+      <Border Name="ContentsContent" />
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="Border#PanelFrame.overlay">
+      <Setter Property="BorderThickness" Value="0,0,1,0" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="PanelFrame"
+          Background="{DynamicResource Pw.Brush.Surface.Sidebar}"
+          CornerRadius="10,0,0,0"
+          ClipToBounds="True">
+    <DockPanel>
+      <Grid Name="PanelHeader" DockPanel.Dock="Top" Height="40" Margin="14,0,6,0" ColumnDefinitions="*,Auto">
+        <TextBlock Name="PanelTitle" Classes="strong" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <Button Name="ClosePanelButton" Grid.Column="1" Classes="icon"
+                Width="28" Height="28" MinWidth="0" MinHeight="0"
+                Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                ToolTip.Tip="{x:Static res:Strings.ClosePanel}"
+                AutomationProperties.Name="{x:Static res:Strings.ClosePanel}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.LayoutSidebarLeftCollapse}" />
+        </Button>
+      </Grid>
+      <ContentControl Name="PanelContent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+    </DockPanel>
+  </Border>
+</UserControl>

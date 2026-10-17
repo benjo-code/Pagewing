@@ -18,6 +18,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InitializePanel();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
     }
@@ -50,6 +51,7 @@ public sealed partial class MainWindow : Window
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
+        var old = _viewModel;
         if (_viewModel is not null)
         {
             _viewModel.ActivationRequested -= BringToFront;
@@ -62,6 +64,8 @@ public sealed partial class MainWindow : Window
             _viewModel.ActivationRequested += BringToFront;
             _viewModel.CloseWindowRequested += Close;
         }
+
+        AttachPanel(old, _viewModel);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

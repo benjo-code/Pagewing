@@ -97,6 +97,12 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     /// <summary>Raised when the page field of the status bar should take the keyboard focus.</summary>
     public event Action? PageFieldFocusRequested;
 
+    /// <summary>
+    /// Raised after a page was chosen in the side panel (<see cref="ShowPageFromPanel"/>): a narrow window closes the
+    /// panel that lies over the document (design system 6, narrow window).
+    /// </summary>
+    public event Action? PanelPagePicked;
+
     /// <summary>Gets the session the tab owns and mirrors; the document view draws its document.</summary>
     internal ViewerSession Session => _session;
 
@@ -411,6 +417,21 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         CurrentPageLast = page;
         ResetPageField();
         PageRequested?.Invoke(page);
+    }
+
+    /// <summary>
+    /// Shows a page chosen in the side panel (a thumbnail, a bookmark): <see cref="GoToPage"/>, then
+    /// <see cref="PanelPagePicked"/>. A page outside the document does nothing.
+    /// </summary>
+    public void ShowPageFromPanel(int page)
+    {
+        if (!IsReady || page < 1 || page > PageCount)
+        {
+            return;
+        }
+
+        GoToPage(page);
+        PanelPagePicked?.Invoke();
     }
 
     /// <summary>Puts the current page back into the page field (an edit that was not committed, for example on leaving the field).</summary>

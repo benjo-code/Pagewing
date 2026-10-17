@@ -32,6 +32,12 @@
   <StreamGeometry x:Key="Pw.Icon.LayoutColumns">M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12 M12 4l0 16</StreamGeometry>
   <!-- book (layout: two pages with cover) -->
   <StreamGeometry x:Key="Pw.Icon.Book">M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0 M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0 M3 6l0 13 M12 6l0 13 M21 6l0 13</StreamGeometry>
+  <!-- layout-grid (action bar: pages) -->
+  <StreamGeometry x:Key="Pw.Icon.LayoutGrid">M4 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4 M14 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4 M4 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4 M14 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4</StreamGeometry>
+  <!-- list-tree (action bar: contents) -->
+  <StreamGeometry x:Key="Pw.Icon.ListTree">M9 6h11 M12 12h8 M15 18h5 M5 6v.01 M8 12v.01 M11 18v.01</StreamGeometry>
+  <!-- layout-sidebar-left-collapse (close the panel) -->
+  <StreamGeometry x:Key="Pw.Icon.LayoutSidebarLeftCollapse">M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12 M9 4v16 M15 10l-2 2l2 2</StreamGeometry>
   <!-- lock -->
   <StreamGeometry x:Key="Pw.Icon.Lock">M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6 M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0 M8 11v-4a4 4 0 1 1 8 0v4</StreamGeometry>
   <!-- alert-triangle -->

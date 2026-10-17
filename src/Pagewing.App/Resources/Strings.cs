@@ -89,6 +89,11 @@ public static class Strings
     public static string LayoutTwoPagesCover => Get("LayoutTwoPagesCover");
     public static string LayoutTooltip => Get("LayoutTooltip");
     public static string PagePlaceholderFailed => Get("PagePlaceholderFailed");
+    public static string PagesPanelTitle => Get("PagesPanelTitle");
+    public static string ContentsPanelTitle => Get("ContentsPanelTitle");
+    public static string ClosePanel => Get("ClosePanel");
+    public static string PagesTooltip => Get("PagesTooltip");
+    public static string ContentsTooltip => Get("ContentsTooltip");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

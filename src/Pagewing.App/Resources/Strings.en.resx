@@ -186,4 +186,19 @@
   <data name="PagePlaceholderFailed" xml:space="preserve">
     <value>This page could not be displayed</value>
   </data>
+  <data name="PagesPanelTitle" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="ContentsPanelTitle" xml:space="preserve">
+    <value>Contents</value>
+  </data>
+  <data name="ClosePanel" xml:space="preserve">
+    <value>Close panel</value>
+  </data>
+  <data name="PagesTooltip" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="ContentsTooltip" xml:space="preserve">
+    <value>Contents</value>
+  </data>
 </root>

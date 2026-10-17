@@ -1162,6 +1162,17 @@ public sealed class DocumentViewTests : IDisposable
     {
         await viewModel.OpenAsync(TestData.Pdf(name));
         await WaitUntilAsync(window, () => view.Document is { } document && ReferenceEquals(document, viewModel.ActiveTab?.Session.Document) && view.Canvas.LastRequests.Count > 0);
+
+        // A wide window opens the "Pages" panel in the frame after the first sharp tile (PanelTests). These tests are
+        // about the document view: wait for that and close the panel again, so the document keeps the whole width.
+        await WaitUntilAsync(window, () => view.Canvas.Bitmaps.Keys.Any(key => key.Page == 0 && !key.IsPreview));
+        Settle(window);
+        Settle(window);
+        if (viewModel.ActivePanel != SidePanelKind.None)
+        {
+            viewModel.CloseSidePanelCommand.Execute(null);
+            await WaitUntilAsync(window, () => !Find<Control>(window, "PanelHost").IsVisible);
+        }
     }
 
     /// <summary>Opens a test file in a new tab and waits until the view shows it; returns that tab.</summary>
@@ -1170,6 +1181,17 @@ public sealed class DocumentViewTests : IDisposable
         await viewModel.OpenAsync(TestData.Pdf(name));
         var tab = viewModel.ActiveTab ?? throw new InvalidOperationException("No active tab after opening.");
         await WaitUntilAsync(window, () => ReferenceEquals(view.Document, tab.Session.Document) && view.Canvas.LastRequests.Count > 0);
+
+        // A wide window opens the "Pages" panel in the frame after the first sharp tile (PanelTests). These tests are
+        // about the document view: wait for that and close the panel again, so the document keeps the whole width.
+        await WaitUntilAsync(window, () => view.Canvas.Bitmaps.Keys.Any(key => key.Page == 0 && !key.IsPreview));
+        Settle(window);
+        Settle(window);
+        if (viewModel.ActivePanel != SidePanelKind.None)
+        {
+            viewModel.CloseSidePanelCommand.Execute(null);
+            await WaitUntilAsync(window, () => !Find<Control>(window, "PanelHost").IsVisible);
+        }
         return tab;
     }
 

@@ -61,24 +61,40 @@
   </Window.Resources>
 
   <!--
-    Window layout of the design system, section 6: the tabs of the window, no action bar, no panel yet. Windows draws
-    its own title bar with the tab in it (client area extended into the decorations); Linux keeps the system title bar
-    and shows the same row as a tab row below it (section 2.2). The document area and the status bar show the active
-    tab (their DataContext). The row of the status bar is there as soon as a file loads, so the viewport keeps its
-    height when the document is ready, but not under the password and the error card; its content appears with the
-    open document.
+    Window layout of the design system, section 6. Windows draws its own title bar with the tab in it (client area
+    extended into the decorations); Linux keeps the system title bar and shows the same row as a tab row below it
+    (section 2.2). Below it, with a tab: action bar | panel (optional) | document area. The panel, the document area
+    and the status bar show the active tab (their DataContext). The row of the status bar is there as soon as a file
+    loads, so the viewport keeps its height when the document is ready, but not under the password and the error card;
+    its content appears with the open document, indented by the action bar.
   -->
   <Grid RowDefinitions="Auto,*,Auto">
     <views:TitleBar Name="TitleBar" />
 
-    <Panel Grid.Row="1">
-      <views:StartScreen Name="StartScreen" IsVisible="{Binding IsEmpty}" />
+    <!--
+      Columns: action bar (only with a tab), the panel when it lies beside the document (MainWindow.Panel.cs sets the
+      width; 0 while it is closed or lies over the document), the document area. The order is the tab order of section
+      7.9: action bar, panel, document.
+    -->
+    <Grid Name="WorkArea" Grid.Row="1" ColumnDefinitions="Auto,0,*">
+      <views:StartScreen Name="StartScreen" Grid.ColumnSpan="3" IsVisible="{Binding IsEmpty}" />
+
+      <views:ActionBar Name="ActionBar" IsVisible="{Binding HasTabs}" />
+
       <!--
-        Document area: surface.canvas with radius.overlay at the top left. The document view shows the open document
-        of the active tab; while a file loads it stays empty, and the password and the error card lie over it (design
-        system 7.8). Switching the tab switches the DataContext, and with it the document the view shows.
+        Holds the side panel, which MainWindow.Panel.cs creates only when a panel opens for the first time (nothing of
+        it is built in the startup path). It spans the document column, so it can lie over the document in a narrow
+        window; beside the document it is exactly as wide as the panel column.
       -->
-      <Border Name="DocumentArea"
+      <Panel Name="PanelHost" Grid.Column="1" Grid.ColumnSpan="2" HorizontalAlignment="Left" ZIndex="1" IsVisible="False" Opacity="0" />
+
+      <!--
+        Document area: surface.canvas with radius.overlay at the top left, unless the panel beside it takes that corner.
+        The document view shows the open document of the active tab; while a file loads it stays empty, and the password
+        and the error card lie over it (design system 7.8). Switching the tab switches the DataContext, and with it the
+        document the view shows.
+      -->
+      <Border Name="DocumentArea" Grid.Column="2"
               IsVisible="{Binding HasTabs}"
               Background="{DynamicResource Pw.Brush.Surface.Canvas}"
               CornerRadius="10,0,0,0">
@@ -90,7 +106,16 @@
                            IsVisible="{Binding IsFailed, FallbackValue=False}" />
         </Panel>
       </Border>
-    </Panel>
+
+      <!--
+        The edge between the panel and the document: dragging it sets the panel width (200 to 400), a double click puts
+        264 back (design system 7.3). It straddles the edge, 3 px on each side, and is invisible: the surfaces part by
+        colour (section 5.3). Only while the panel lies beside the document.
+      -->
+      <GridSplitter Name="PanelSplitter" Grid.Column="1" ZIndex="2"
+                    Width="6" Margin="0,0,-3,0" MinWidth="0" HorizontalAlignment="Right"
+                    ResizeDirection="Columns" Background="Transparent" Focusable="False" IsVisible="False" />
+    </Grid>
 
     <Border Name="StatusBarRow" Grid.Row="2" Height="32"
             IsVisible="{Binding ActiveTab.HasStatusBarRow, FallbackValue=False}"

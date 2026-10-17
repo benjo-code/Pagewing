@@ -17,6 +17,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The most files one open (dialog, drop, later launch) opens as tabs; the rest is ignored.</summary>
     public const int MaxFilesPerOpen = 20;
 
+    /// <summary>Default width of the side panel (design system 5.4), also what a double click on its edge restores.</summary>
+    public const double DefaultPanelWidth = 264;
+
+    /// <summary>Narrowest the side panel can be dragged (design system 6).</summary>
+    public const double MinPanelWidth = 200;
+
+    /// <summary>Widest the side panel can be dragged (design system 6).</summary>
+    public const double MaxPanelWidth = 400;
+
+    /// <summary>Below this window width the side panel lies over the document instead of beside it (design system 6).</summary>
+    public const double NarrowWindowWidth = 900;
+
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -29,6 +41,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private TabViewModel? _activeTab;
     private bool _picking;
     private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
+    private double _panelWidth = DefaultPanelWidth;
+    private bool _isNarrowWindow;
+
+    // The user opened or closed a panel in this window: the first sharp tile no longer opens "Pages".
+    private bool _panelChosenByUser;
+
+    // The first sharp tile of this window was drawn: its one chance to open "Pages" has passed.
+    private bool _firstSharpTileSeen;
 
     /// <param name="sessionFactory">Creates the session of each new tab; the tab owns it.</param>
     /// <param name="picker">The file dialog.</param>
@@ -60,6 +80,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 MoveToNewWindowRequested?.Invoke(tab);
             }
         });
+        ToggleSidePanelCommand = new RelayCommand<SidePanelKind>(ToggleSidePanel);
+        CloseSidePanelCommand = new RelayCommand(() => ToggleSidePanel(SidePanelKind.None));
     }
 
     /// <summary>Raised on the UI thread when the window should come to the front (a later launch handed over).</summary>
@@ -89,6 +111,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(IsEmpty));
                 OnPropertyChanged(nameof(HasTabs));
                 OnPropertyChanged(nameof(WindowTitle));
+                RaiseActivePanelChanged();
                 _closeActiveTabCommand.RaiseCanExecuteChanged();
             }
         }
@@ -118,6 +141,45 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         get => _isWindowsTitleBar;
         set => SetProperty(ref _isWindowsTitleBar, value);
     }
+
+    /// <summary>
+    /// Gets or sets the width of the side panel of this window (all its tabs share it), limited to
+    /// <see cref="MinPanelWidth"/> to <see cref="MaxPanelWidth"/>; <see cref="DefaultPanelWidth"/> at first.
+    /// </summary>
+    public double PanelWidth
+    {
+        get => _panelWidth;
+        set => SetProperty(ref _panelWidth, double.IsNaN(value) ? DefaultPanelWidth : Math.Clamp(value, MinPanelWidth, MaxPanelWidth));
+    }
+
+    /// <summary>
+    /// Gets or sets whether the window is narrower than <see cref="NarrowWindowWidth"/>: the side panel then lies over
+    /// the document and closes after a page was chosen in it. Set by the window.
+    /// </summary>
+    public bool IsNarrowWindow
+    {
+        get => _isNarrowWindow;
+        set => SetProperty(ref _isNarrowWindow, value);
+    }
+
+    /// <summary>Gets the side panel of the active tab (<see cref="SidePanelKind.None"/> without a tab).</summary>
+    public SidePanelKind ActivePanel => ActiveTab?.SidePanel ?? SidePanelKind.None;
+
+    /// <summary>Gets whether the active tab shows the page thumbnails ("Pages" is the active entry of the action bar).</summary>
+    public bool IsPagesPanelOpen => ActivePanel == SidePanelKind.Pages;
+
+    /// <summary>Gets whether the active tab shows the table of contents ("Contents" is the active entry of the action bar).</summary>
+    public bool IsContentsPanelOpen => ActivePanel == SidePanelKind.Contents;
+
+    /// <summary>
+    /// An entry of the action bar (parameter: the <see cref="SidePanelKind"/>): opens its panel in the active tab, or
+    /// closes it when it is the open one; another open panel is replaced, so at most one is open.
+    /// <see cref="SidePanelKind.None"/> closes the panel.
+    /// </summary>
+    public ICommand ToggleSidePanelCommand { get; }
+
+    /// <summary>The close button of the side panel: closes the panel of the active tab.</summary>
+    public ICommand CloseSidePanelCommand { get; }
 
     /// <summary>Shows the file dialog and opens the chosen file in a new tab (Ctrl+O, "Choose file", "Open file").</summary>
     public ICommand OpenCommand { get; }
@@ -248,6 +310,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         return true;
     }
 
+    /// <summary>Sets <see cref="PanelWidth"/> back to <see cref="DefaultPanelWidth"/> (double click on the edge of the panel).</summary>
+    public void ResetPanelWidth() => PanelWidth = DefaultPanelWidth;
+
+    /// <summary>
+    /// The first sharp tile of this window was drawn (the document view tells the window once per document): the first
+    /// time, "Pages" opens in the active tab when it shows no panel, the window is at least
+    /// <see cref="NarrowWindowWidth"/> wide and the user has not opened or closed a panel in this window yet (design
+    /// system 7.3; remembering the choice comes in M6). Later calls do nothing.
+    /// </summary>
+    internal void OnFirstSharpTileDrawn()
+    {
+        if (_firstSharpTileSeen)
+        {
+            return;
+        }
+
+        _firstSharpTileSeen = true;
+        if (!_panelChosenByUser && !IsNarrowWindow && ActiveTab is { SidePanel: SidePanelKind.None } tab)
+        {
+            tab.SidePanel = SidePanelKind.Pages;
+        }
+    }
+
     /// <summary>Releases every tab and its session. May be called more than once.</summary>
     public void Dispose()
     {
@@ -313,6 +398,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (old is not null)
         {
             old.PropertyChanged -= OnActiveTabPropertyChanged;
+            old.PanelPagePicked -= OnPanelPagePicked;
             old.IsActive = false;
         }
 
@@ -320,6 +406,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             next.IsActive = true;
             next.PropertyChanged += OnActiveTabPropertyChanged;
+            next.PanelPagePicked += OnPanelPagePicked;
         }
 
         ActiveTab = next;
@@ -330,6 +417,37 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (e.PropertyName == nameof(TabViewModel.FileName))
         {
             OnPropertyChanged(nameof(WindowTitle));
+        }
+        else if (e.PropertyName == nameof(TabViewModel.SidePanel))
+        {
+            RaiseActivePanelChanged();
+        }
+    }
+
+    private void RaiseActivePanelChanged()
+    {
+        OnPropertyChanged(nameof(ActivePanel));
+        OnPropertyChanged(nameof(IsPagesPanelOpen));
+        OnPropertyChanged(nameof(IsContentsPanelOpen));
+    }
+
+    private void ToggleSidePanel(SidePanelKind kind)
+    {
+        if (ActiveTab is not { } tab || !Enum.IsDefined(kind))
+        {
+            return;
+        }
+
+        _panelChosenByUser = true;
+        tab.SidePanel = tab.SidePanel == kind ? SidePanelKind.None : kind;
+    }
+
+    // Over the document (narrow window) the panel gets out of the way once a page was chosen in it.
+    private void OnPanelPagePicked()
+    {
+        if (IsNarrowWindow && ActiveTab is { } tab)
+        {
+            tab.SidePanel = SidePanelKind.None;
         }
     }
 

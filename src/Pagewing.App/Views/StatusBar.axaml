@@ -34,7 +34,8 @@
     </Style>
   </UserControl.Styles>
 
-  <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0" VerticalAlignment="Center">
+  <!-- Indented by the action bar (52) plus 4 (design system 6, item 5); the bar itself spans the window, so its width is the window width. -->
+  <StackPanel Orientation="Horizontal" Spacing="6" Margin="56,0,8,0" VerticalAlignment="Center">
     <Button Name="PreviousPageButton" Classes="icon status"
             Command="{Binding PreviousPageCommand}"
             ToolTip.Tip="{x:Static res:Strings.PreviousPage}"
