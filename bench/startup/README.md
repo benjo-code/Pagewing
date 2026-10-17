@@ -105,6 +105,7 @@ Der Startzeit-Check der CI läuft auf einem Runner ohne GPU und misst dort den S
 4. „Scroll measurement“: `Pagewing.exe --measure-scroll` auf `thousand-pages.pdf` und `vector-shapes.pdf`, je 3 Läufe, die Zeilen `scroll frames=… p99-ms=… max-ms=…` nach `out/startup/scroll.txt`. Für das Scrollen gibt es kein Budget; nur ein Exit-Code der App ungleich 0 oder eine fehlende Ergebniszeile färbt den Schritt rot.
 5. Zur Information (`continue-on-error`): der Fall `warm` mit `PAGEWING_RENDERING=software`, zum Vergleich mit dem Standardpfad.
 6. Zusammenfassung des Laufs (Hardware, Median je Fall gegen Budget und Grenze, Scrollwerte) und Artefakt `hardware-measure` mit allem aus `out/startup/` (CSV, Logs, `hardware.txt`, `scroll.txt`).
+7. **Vorübergehend:** die Variantenmatrix (siehe unten), zur Information (`continue-on-error`); sie ändert keinen der strikten Schritte.
 
 **Auslösen:** Der Runner hat das Label `dotnet-windows-gpu` (nicht `dotnet-windows` oder `dotnet-linux`, die CI-Jobs landen deshalb nie dort) und liegt in der Runner-Gruppe `main-pc`, deren Repository-Zugriff der Projektinhaber auf Pagewing beschränkt. Der Workflow startet nur auf ausdrücklichen Befehl:
 
@@ -128,3 +129,27 @@ Ohne online laufenden Runner bleibt der Job in der Warteschlange; auf diesen Run
 4. Gemessen wird nur, wenn der Projektinhaber den Runner auf Zuruf startet: `run.cmd` im Runner-Ordner, in der angemeldeten Desktop-Sitzung. Nach dem Lauf mit Strg+C beenden.
 
 **Bedingungen während der Messung** (sonst sind die Zahlen nicht gültig): Bildschirm an und entsperrt, Netzbetrieb, Energiesparplan „Höchstleistung“ oder „Ausbalanciert“ ohne Sparmodus, nichts Schweres im Hintergrund (Spiele, Builds, Videos), kein anderes Pagewing offen. Läuft der Runner als Dienst, gibt der Workflow eine Warnung aus: Die App bekäme keinen Desktop. Die Warnung des Skripts zum Frame-Takt (siehe oben) gilt auch hier.
+
+## Variantenmatrix auf dem Haupt-PC (vorübergehend)
+
+Nur zur Untersuchung der langsamen Startzeit auf Rechnern mit GPU (`Docs/DECISIONS.md`, Eintrag „Messmatrix auf echter Hardware: Startzeit mit GPU (M3)“). Code und Workflow-Schritte sind mit `DIAG-TEMP` markiert und gehen mit `git revert` ihres Commits wieder; die Phasen und `--zoom` bleiben.
+
+- **Varianten:** Im Messmodus wählt die Umgebungsvariable `PAGEWING_DIAG_WIN32` Avalonias Win32-Optionen (`src/Pagewing.App/Platform/DiagWin32Variants.cs`) und ersetzt dabei die Rendering-Wahl der App. Außerhalb des Messmodus wird sie ignoriert; im Messmodus endet ein unbekannter Wert (oder jeder Wert außerhalb von Windows) vor dem Start von Avalonia mit Exit-Code 1 und `error: unknown PAGEWING_DIAG_WIN32 value …`. Ein Modus, der nicht funktioniert, endet mit Exit-Code 1 und `error: PAGEWING_DIAG_WIN32=<Name>: the start failed: …`. Außer `default` hat keine Variante Avalonias Rückfall auf Software-Rendering: Sonst würde unter falschem Namen Software gemessen.
+
+  | Variante | Win32-Optionen |
+  |---|---|
+  | `default` | keine (Avalonias Standard: ANGLE, sonst Software; WinUI-, DirectComposition-, Redirection-Komposition); die Adapter-Erkennung der App läuft, ihre Wahl gilt aber nicht |
+  | `software` | `RenderingMode = [Software]` (wie `PAGEWING_RENDERING=software`) |
+  | `angle-d3d11`, `angle-d3d9` | `RenderingMode = [AngleEgl]`, `AngleOptions.AllowedPlatformApis = [DirectX11]` bzw. `[DirectX9]` |
+  | `wgl`, `vulkan` | `RenderingMode = [Wgl]` bzw. `[Vulkan]` |
+  | `winui-composition`, `direct-composition`, `lowlatency-dxgi`, `redirection-surface` | `RenderingMode = [AngleEgl]`, `CompositionMode` mit genau diesem einen Modus |
+  | `redirection-surface-ui-thread` | wie `redirection-surface`, dazu `ShouldRenderOnUIThread = true` |
+  | `adapter-0`, `adapter-1`, `adapter-2` | `RenderingMode = [AngleEgl]`, `GraphicsAdapterSelectionCallback` wählt den DXGI-Adapter mit diesem Index (Reihenfolge von `EnumAdapters1`; ohne Rückruf nimmt Avalonia den Adapter 0). Der Rückruf setzt die Phase `adapter-selection` und schreibt die Liste als `diag adapter <i> …` auf stderr; ein Index jenseits der Liste endet mit Fehler. |
+
+  Nicht umgesetzt: Skia-Optionen (`SkiaOptions` regeln Ressourcen-Cache, Opacity-Layer und Stencil, nicht das Hochfahren der GPU) und eine Abschaltung der Hochleistungs-GPU-Präferenz (Avalonia wählt keine Präferenz, sondern den DXGI-Adapter 0; die Reihenfolge legt Windows fest, ggf. über die Grafikeinstellungen je App).
+- **Schritt „Variant matrix (informational) - warm start …“:** je Variante ein Probelauf der App mit mitgeschriebener Ausgabe (`out/startup/matrix-probe-<Variante>.out` und `.err`, darin Phasen, Adapterliste oder Fehlermeldung), danach, wenn er gelang, der Fall `warm` des unveränderten Skripts mit `--phases` (10 Läufe, 3 Aufwärmläufe; `matrix-warm-<Variante>.log` und `.csv`). Ein Median über der Grenze ist hier ein Ergebnis, kein Fehler.
+- **Schritt „Variant matrix (informational) - scrolling with zoom …“:** `--measure-scroll` auf `thousand-pages.pdf` und `vector-shapes.pdf` mit `--zoom` 100, 200, 400 und 800, je 2 Läufe mit Standard-Rendering (Erkennung, auf dem Haupt-PC ANGLE) und mit `PAGEWING_RENDERING=software`, abwechselnd; Ergebnis `out/startup/matrix-scroll.csv` (Datei, Zoom, Modus, Lauf, Exit-Code, Frames, p99, Max, Mittel, Anteil über 20 und 30 ms).
+- **Zusammenfassung „Variant matrix summary“:** je Variante der Median und die Phasen `windowing-init`, `adapter-selection`, `windowing-ready`, `app-initialize`, `window-opened`, `tile-drawn`, `frame-after-tile`, dazu „windowing“ (`windowing-ready` − `windowing-init`, der Aufbau von Fenstersystem, Grafik und Komposition) und „first frame“ (`frame-after-tile` − `tile-drawn`); die DXGI-Adapterliste; alle Phasenmediane aufklappbar; die Scrolltabelle.
+- **Dauer:** Schätzung rund 20 Minuten für den ganzen Lauf (Veröffentlichen 3 bis 4, strikte Schritte rund 4, Varianten rund 4 bis 5, Scrollmatrix rund 8 Minuten: 32 Läufe zu 10 bis 20 s). Die Matrixschritte haben eigene Zeitlimits (8 und 12 Minuten), damit Zusammenfassung und Artefakt im Zeitlimit des Jobs (30 Minuten) bleiben.
+
+**So liest man die Matrix:** Liegt die Zeit vor `app-initialize` im Schritt „windowing“ (zwischen `windowing-init` und `windowing-ready`), kostet das Hochfahren von Grafik und Komposition. Bei den `adapter-N`-Varianten teilt `adapter-selection` diesen Schritt: davor DXGI-Fabrik und Aufzählung der Adapter, danach `D3D11CreateDevice`, ANGLE-Display und Komposition. Vergleiche: `angle-d3d11` gegen `default` (nur D3D11 zugelassen), die Kompositionsmodi untereinander, `adapter-0` gegen `adapter-1` (welche GPU), `wgl`/`vulkan` gegen ANGLE, `software` als Untergrenze. Steckt die Zeit dagegen vor `windowing-init` (`runtime-*`, `render-*`), ist es nicht die Grafik.
