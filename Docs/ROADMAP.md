@@ -160,7 +160,7 @@ Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch 
 - [x] `Pagewing.App.Tests` mit Avalonia.Headless
 
 **Abnahmekriterien**
-- [ ] Startzeit-Check in der CI grün auf beiden Runnern, Werte als Artefakt
+- [x] Startzeit-Check in der CI grün auf beiden Runnern, Werte als Artefakt – CI-Lauf 39033433468 (PR #4, Commit 82e3049): `build-linux` und `build-windows` grün, Schritt „Startup check“ besteht; Artefakte `startup-windows` und `startup-linux` mit den CSV-Werten. Mediane in ms (Budget): Windows cold 148,1 (400), warm 146,9 (200), thousand 143,9 (300), second 46,3 (100); Linux unter Xvfb cold 148,0, warm 146,8, thousand 145,0, second 43,4. Einschränkung: Der Windows-Runner ist eine VM ohne GPU und misst den Software-Renderpfad (Erkennung ohne Hardware-Grafikadapter, Eintrag „Software-Rendering ohne Hardware-Grafikadapter“ in `Docs/DECISIONS.md`); Werte für Rechner mit GPU sind nicht gemessen (Backlog „Startzeit-Messung auf echter Hardware“). `cold` leert den Datei-Cache nicht.
 - [x] Weitere Datei bei laufender Instanz öffnet als neuer Inhalt im selben Prozess (Test + manuelle Prüfung) – Tests `OpenFlowTests.ExternalOpenReplacesTheDocument` und `SingleInstanceTests.PathsArriveAtThePrimary` grün (`dotnet test Pagewing.slnx`, M3 Task 13). Manuell am AOT-Binary (win-x64) am 2026-10-17: laufende Instanz mit `text-basic.pdf`, dann `Pagewing.exe hello_world.pdf` (relativer Pfad) und ein Pfad mit Leerzeichen; beide späteren Aufrufe enden mit Exit 0, die laufende Instanz zeigt danach die neue Datei im Fenstertitel, es bleibt ein Pagewing-Prozess. Nur unter Windows geprüft.
 - [ ] Schnelles Scrollen durch eine 1000-seitige Test-PDF ohne Ruckler des UI-Threads (manuelle Prüfung, Messwert notieren)
 
