@@ -150,12 +150,12 @@
         {
           "id": "4",
           "title": "Navigation",
-          "status": "planned",
+          "status": "in-progress",
           "plan": "superpowers/plans/2026-10-17-milestone-04-navigation.md",
           "prerequisites": ["3"],
           "goal": "Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzeichnis, Layouts und Zoom-Modi bequem navigieren.",
           "tasks": [
-            { "text": "Tabs (öffnen, schließen, wechseln, Reihenfolge ändern)", "done": false },
+            { "text": "Tabs (öffnen, schließen, wechseln, Reihenfolge ändern)", "done": true },
             { "text": "Seitenleiste mit Seitenvorschau (Thumbnails im Hintergrund, nach dem ersten Seitenbild)", "done": false },
             { "text": "Inhaltsverzeichnis/Lesezeichen aus dem PDF anzeigen und anspringen", "done": false },
             { "text": "Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)", "done": false },
