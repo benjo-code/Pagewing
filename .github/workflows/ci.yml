@@ -151,11 +151,7 @@ jobs:
         continue-on-error: true
         run: |
           Get-CimInstance Win32_VideoController | Format-Table Name, DriverVersion, VideoModeDescription -AutoSize | Out-String | Write-Host
-          $variants = @(
-            'default||', 'dcomp||', 'redirect||', 'lowlatency||', 'software||', 'software-uithread||', 'wgl||', 'vulkan||',
-            'default|noime|', 'default|notsf|', 'software|noime|',
-            'default||noshadow', 'default||nodraw', 'software||noshadow', 'default|noime|noshadow'
-          )
+          $variants = @('default||', 'software||', 'software-uithread||', 'default||noshadow', 'default||nodraw')
           foreach ($variant in $variants) {
             $win32, $ime, $canvas = $variant.Split('|')
             Write-Host "=== PAGEWING_DIAG_WIN32=$win32 PAGEWING_DIAG_IME=$ime PAGEWING_DIAG_CANVAS=$canvas"
@@ -163,6 +159,16 @@ jobs:
             $env:PAGEWING_DIAG_IME = $ime
             $env:PAGEWING_DIAG_CANVAS = $canvas
             dotnet run --no-cache bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" --pdf testdata/pdfs/text-basic.pdf --case warm --phases
+          }
+          foreach ($variant in @('default||', 'software||', 'default||noshadow')) {
+            $win32, $ime, $canvas = $variant.Split('|')
+            $env:PAGEWING_DIAG_WIN32 = $win32
+            $env:PAGEWING_DIAG_IME = $ime
+            $env:PAGEWING_DIAG_CANVAS = $canvas
+            foreach ($i in 1..3) {
+              $line = & "out/app/${{ matrix.app }}" --measure-scroll testdata/pdfs/thousand-pages.pdf | Out-String
+              Write-Host "=== scroll $variant run $i exit $LASTEXITCODE : $($line.Trim())"
+            }
           }
           $env:PAGEWING_DIAG_WIN32 = $null
           $env:PAGEWING_DIAG_IME = $null
