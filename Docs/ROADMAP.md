@@ -176,8 +176,8 @@ Ziel: Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzei
 - [ ] Seitenleiste mit Seitenvorschau (Thumbnails im Hintergrund, nach dem ersten Seitenbild)
 - [ ] Inhaltsverzeichnis/Lesezeichen aus dem PDF anzeigen und anspringen
 - [ ] Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)
-- [ ] Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom
-- [ ] Gehe zu Seite
+- [x] Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom
+- [x] Gehe zu Seite
 - [ ] Dokumentinfos in der Statusleiste (Design-Spec 7.6: Datei, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Metadaten)
 
 **Abnahmekriterien**
