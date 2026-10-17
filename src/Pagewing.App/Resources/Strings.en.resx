@@ -39,6 +39,9 @@
   <data name="ChooseFile" xml:space="preserve">
     <value>Choose file</value>
   </data>
+  <data name="ChooseFileShortcut" xml:space="preserve">
+    <value>Ctrl+O</value>
+  </data>
   <data name="PasswordTitle" xml:space="preserve">
     <value>This PDF is protected</value>
   </data>

@@ -39,6 +39,9 @@
   <data name="ChooseFile" xml:space="preserve">
     <value>Datei auswählen</value>
   </data>
+  <data name="ChooseFileShortcut" xml:space="preserve">
+    <value>Strg+O</value>
+  </data>
   <data name="PasswordTitle" xml:space="preserve">
     <value>Dieses PDF ist geschützt</value>
   </data>

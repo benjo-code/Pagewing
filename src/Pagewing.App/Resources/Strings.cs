@@ -40,6 +40,7 @@ public static class Strings
     public static string StartOffline => Get("StartOffline");
     public static string StartDropHint => Get("StartDropHint");
     public static string ChooseFile => Get("ChooseFile");
+    public static string ChooseFileShortcut => Get("ChooseFileShortcut");
     public static string PasswordTitle => Get("PasswordTitle");
     public static string PasswordPrompt => Get("PasswordPrompt");
     public static string PasswordIncorrect => Get("PasswordIncorrect");
