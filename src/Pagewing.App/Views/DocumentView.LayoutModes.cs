@@ -25,8 +25,9 @@ public sealed partial class DocumentView
 
     /// <summary>
     /// Arranges the pages as the tab says and keeps the current page: in the single-page layout that page alone from its
-    /// top, otherwise the current page where it was in the viewport (and the same spot in the middle horizontally). A
-    /// fit mode then fits the new rows (two pages fill the width as a spread).
+    /// top, in "whole page" its row from the top, otherwise the current page where it was in the viewport (and the same
+    /// spot in the middle horizontally). A fit mode fits the new rows first (two pages fill the width as a spread), so
+    /// the position is set for the zoom the pages end up with.
     /// </summary>
     private void ApplyLayoutMode()
     {
@@ -45,21 +46,24 @@ public sealed partial class DocumentView
         }
 
         var fromCentre = offset.X - CentringShift(layout) + (Scroller.Viewport.Width / 2) - (layout.ContentWidth / 2);
+        var oldZoom = layout.Zoom;
 
         layout.Mode = tab.LayoutMode;
-        var y = 0.0;
         if (layout.Mode == PageLayoutMode.SinglePage)
         {
             layout.ShowPage(page);
         }
-        else
-        {
-            y = layout.GetOffset(anchor);
-        }
 
-        ChangeLayout(new Vector(fromCentre + (layout.ContentWidth / 2) - (Scroller.Viewport.Width / 2) + CentringShift(layout), y));
+        // The fit zooms around the middle of the viewport (and "whole page" scrolls); the position below replaces that.
         ShowCurrentRow(page);
         Refit(chosen: false);
+
+        var y = layout.Mode == PageLayoutMode.SinglePage ? 0
+            : tab.ZoomMode == ZoomMode.FitPage ? layout.GetPageRect(page).Y - DocumentLayout.Margin
+            : layout.GetOffset(anchor);
+        var x = (fromCentre * layout.Zoom / oldZoom) + (layout.ContentWidth / 2) - (Scroller.Viewport.Width / 2) + CentringShift(layout);
+        ChangeLayout(new Vector(x, y));
+        ShowCurrentRow(page);
     }
 
     /// <summary>Makes the row of <paramref name="page"/> (0-based) the current one: its first and its last page.</summary>

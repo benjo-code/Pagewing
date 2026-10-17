@@ -561,6 +561,73 @@ public sealed class LayoutModeTests : IDisposable
         Assert.Equal(scroller.Viewport.Width, layout.GetPageRect(0).Width + (2 * DocumentLayout.Margin), 0.5);
     }
 
+    [AvaloniaFact]
+    public async Task SwitchingToSinglePageInFitWidthStartsAtTheTop()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenTabAsync(window, viewModel, view, "outline.pdf");
+        var scroller = view.ScrollViewer;
+        tab.SetZoomModeCommand.Execute(ZoomMode.FitWidth);
+        tab.SetLayoutModeCommand.Execute(PageLayoutMode.TwoPages);
+        Settle(window);
+        tab.GoToPage(3);
+        Settle(window);
+        var spreadZoom = tab.Zoom;
+
+        // The single page fits the width alone (about twice the zoom) and is taller than the viewport: from its top.
+        tab.SetLayoutModeCommand.Execute(PageLayoutMode.SinglePage);
+        Settle(window);
+        var layout = view.Layout!;
+        Assert.True(tab.Zoom > spreadZoom * 1.5, $"zoom {tab.Zoom} after {spreadZoom}");
+        Assert.True(scroller.Extent.Height > scroller.Viewport.Height + 100, $"extent {scroller.Extent}, viewport {scroller.Viewport}");
+        Assert.Equal(3, tab.CurrentPage);
+        Assert.True(layout.IsShown(2));
+        Assert.Equal(0, scroller.Offset.Y);
+        Assert.Equal(scroller.Viewport.Width, layout.GetPageRect(2).Width + (2 * DocumentLayout.Margin), 0.5);
+    }
+
+    [AvaloniaFact]
+    public async Task SwitchingToSinglePageInFitPageStartsAtTheTop()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenTabAsync(window, viewModel, view, "outline.pdf");
+        var scroller = view.ScrollViewer;
+        tab.SetZoomModeCommand.Execute(ZoomMode.FitPage);
+        tab.SetLayoutModeCommand.Execute(PageLayoutMode.TwoPages);
+        Settle(window);
+        tab.GoToPage(3);
+        Settle(window);
+
+        tab.SetLayoutModeCommand.Execute(PageLayoutMode.SinglePage);
+        Settle(window);
+        var page = view.Layout!.GetPageRect(2);
+        Assert.Equal(3, tab.CurrentPage);
+        Assert.Equal(0, scroller.Offset.Y);
+        Assert.Equal(scroller.Viewport.Height, page.Height + (2 * DocumentLayout.Margin), 0.5);
+    }
+
+    [AvaloniaFact]
+    public async Task SwitchingLayoutsInFitWidthKeepsTheCurrentPageAtTheTop()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenTabAsync(window, viewModel, view, "outline.pdf");
+        var scroller = view.ScrollViewer;
+        tab.SetZoomModeCommand.Execute(ZoomMode.FitWidth);
+        Settle(window);
+        tab.GoToPage(3);
+        Settle(window);
+
+        // The zoom halves for the spread and doubles back; page 3 stays at the top of the viewport each time.
+        foreach (var mode in new[] { PageLayoutMode.TwoPages, PageLayoutMode.Continuous })
+        {
+            tab.SetLayoutModeCommand.Execute(mode);
+            Settle(window);
+            var top = view.Layout!.GetPageRect(2).Y;
+            Assert.Equal(3, tab.CurrentPage);
+            Assert.True(top >= scroller.Offset.Y && top <= scroller.Offset.Y + DocumentLayout.Margin + 0.5, $"{mode}: page 3 at {top}, offset {scroller.Offset.Y}");
+        }
+    }
+
     private (MainWindow Window, MainViewModel ViewModel, DocumentView View) Show(double width = 1024)
     {
         // Forced, so the layout is the same on Windows and Linux runners.
