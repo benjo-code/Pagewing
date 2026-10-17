@@ -56,6 +56,9 @@ internal sealed class DocumentCanvas : Control
     // Sharp tiles are drawn 1:1 onto device pixels, so nothing may be interpolated (bilinear would soften them).
     private static readonly RenderOptions SharpOptions = new() { BitmapInterpolationMode = BitmapInterpolationMode.None };
 
+    // TEMPORARY diagnostics.
+    private static readonly string? DiagCanvas = StartupPhases.Current is null ? null : Environment.GetEnvironmentVariable("PAGEWING_DIAG_CANVAS");
+
     private readonly TileBitmaps _bitmaps = new();
     private readonly HashSet<int> _failedPages = [];
     private Source? _source;
@@ -269,6 +272,12 @@ internal sealed class DocumentCanvas : Control
         var drewFirstSharpTile = false;
         _lastSharpDestinations.Clear();
 
+        if (DiagCanvas == "nodraw")
+        {
+            drewFirstSharpTile = HasSharpTile(0, scaleKey);
+            first = last + 1;
+        }
+
         using (context.PushClip(new RoundedRect(new Rect(Bounds.Size), CornerRadius)))
         {
             for (var page = first; page <= last; page++)
@@ -285,7 +294,7 @@ internal sealed class DocumentCanvas : Control
                     continue;
                 }
 
-                context.DrawRectangle(Brushes.White, null, new RoundedRect(pageRect), PageShadow);
+                context.DrawRectangle(Brushes.White, null, new RoundedRect(pageRect), DiagCanvas == "noshadow" ? default : PageShadow);
                 using (context.PushClip(pageRect))
                 {
                     if (preview is not null)

@@ -60,6 +60,28 @@ public sealed class App : Application
 
             if (_startup?.Measurement is { } measure)
             {
+                // TEMPORARY diagnostics: finer phases between window-created and window-opened.
+                StartupPhases.Mark("x-datacontext-set");
+                desktop.Startup += (_, _) => StartupPhases.Mark("x-lifetime-startup");
+                window.LayoutUpdated += (_, _) => StartupPhases.Mark("x-first-layout-updated");
+                window.Activated += (_, _) => StartupPhases.Mark("x-activated");
+                window.Loaded += (_, _) => StartupPhases.Mark("x-loaded");
+                window.GotFocus += (_, _) => StartupPhases.Mark("x-got-focus");
+                if (OperatingSystem.IsWindows())
+                {
+                    var opened = false;
+                    window.Opened += (_, _) => opened = true;
+                    Avalonia.Controls.Win32Properties.AddWndProcHookCallback(window, (IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+                    {
+                        if (!opened)
+                        {
+                            StartupPhases.Mark(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"x-wm-{msg:x4}"));
+                        }
+
+                        return IntPtr.Zero;
+                    });
+                }
+
                 // The first frame of the window: the first tick of the render loop after it opened.
                 window.Opened += (_, _) =>
                 {
