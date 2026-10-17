@@ -11,7 +11,7 @@ Pagewing bettet die Schriften **Geist** (Schnitte 400, 500, 600) und **Geist Mon
 
 ## Teilmenge
 
-Zeichen: Basis-Latein (U+0020–007E), Latin-1 (U+00A0–00FF), Latin Extended-A (U+0100–017F), die typografischen Satzzeichen – — ‘ ’ ‚ “ ” „ … € (U+2013, 2014, 2018, 2019, 201A, 201C, 201D, 201E, 2026, 20AC) und ẞ (U+1E9E). Der Apostroph ’ (U+2019) ist gegenüber der Liste der Design-Spec ergänzt, weil er im Deutschen und Englischen häufig vorkommt.
+Zeichen: Basis-Latein (U+0020–007E), Latin-1 (U+00A0–00FF), Latin Extended-A (U+0100–017F), die typografischen Satzzeichen – — ‘ ’ ‚ “ ” „ … € (U+2013, 2014, 2018, 2019, 201A, 201C, 201D, 201E, 2026, 20AC) und ẞ (U+1E9E). Gegenüber der Liste der Design-Spec (Abschnitt 5.2) sind zwei Zeichen ergänzt: der Apostroph ’ (U+2019), weil er im Deutschen und Englischen häufig vorkommt, und das schließende Anführungszeichen ” (U+201D), das die englischen UI-Texte verwenden (etwa “Dateiname”).
 
 Layout-Merkmale: `kern,liga,tnum,ccmp,locl,mark,mkmk` (vorhandene davon; Geist Mono hat kein `kern`, `tnum`, `ccmp`).
 

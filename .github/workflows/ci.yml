@@ -52,6 +52,7 @@ jobs:
           clang --version
           test -f /usr/include/zlib.h || { echo 'zlib.h not found: install zlib1g-dev' >&2; exit 1; }
           command -v xvfb-run >/dev/null || { echo 'xvfb-run not found (startup check): install the xvfb package' >&2; exit 1; }
+          ldconfig -p | grep -q libfontconfig.so.1 || { echo 'libfontconfig.so.1 not found (Skia in the headless UI tests and the app): install the libfontconfig1 package' >&2; exit 1; }
 
       - name: Check the Native AOT prerequisites (Windows)
         if: runner.os == 'Windows'
