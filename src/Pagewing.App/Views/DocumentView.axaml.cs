@@ -19,8 +19,9 @@ namespace Pagewing.App.Views;
 /// </summary>
 /// <remarks>
 /// The view owns the <see cref="DocumentLayout"/> and the scroll position; <see cref="DocumentCanvas"/> draws and
-/// plans from them. A shown document starts at the top with the zoom of its tab (100 % for a new document, see
-/// <see cref="TabViewModel.Zoom"/>). While more page sizes arrive, the position at the
+/// plans from them. A shown document takes the zoom of its tab (100 % for a new document, which starts at the top, see
+/// <see cref="TabViewModel.Zoom"/>); a tab that was shown before comes back at its saved position
+/// (<see cref="TabViewModel.SavedView"/>). While more page sizes arrive, the position at the
 /// top of the viewport stays where it is. UI thread only; the session's events are posted to it.
 /// </remarks>
 public sealed partial class DocumentView : UserControl
@@ -115,6 +116,7 @@ public sealed partial class DocumentView : UserControl
 
     private void Disconnect()
     {
+        SaveView();
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -130,6 +132,39 @@ public sealed partial class DocumentView : UserControl
 
         CloseDocument();
     }
+
+    /// <summary>
+    /// Remembers where the tab being left is shown, as page and fraction (not pixels, so a resize meanwhile does not
+    /// matter) and the horizontal distance from the centre line. Only for the document the tab holds now: while a
+    /// replacement loads, the view still shows the old one, which the tab no longer owns.
+    /// </summary>
+    private void SaveView()
+    {
+        if (_viewModel is not { } tab || _layout is not { } layout || _document is null || !ReferenceEquals(_document, _session?.Document))
+        {
+            return;
+        }
+
+        var offset = Scroller.Offset;
+        var viewportLeft = offset.X - CentringShift(layout);
+        tab.SavedView = new ViewState(layout.GetAnchor(offset.Y), viewportLeft - (layout.ContentWidth / 2));
+    }
+
+    /// <summary>The scroll offset for a saved view in the current layout.</summary>
+    private Vector RestoredOffset(DocumentLayout layout, ViewState view)
+    {
+        if (view.Anchor.Page < 0 || view.Anchor.Page >= layout.PageCount)
+        {
+            return default;
+        }
+
+        // The scroll viewer limits the offset to the content, whatever size the viewport has now.
+        var x = view.HorizontalFromCentre + (layout.ContentWidth / 2) + CentringShift(layout);
+        return new Vector(x, layout.GetOffset(view.Anchor));
+    }
+
+    /// <summary>How far content narrower than the viewport is moved right to centre it (0 when it is wider).</summary>
+    private double CentringShift(DocumentLayout layout) => Math.Max(0, (Scroller.Viewport.Width - layout.ContentWidth) / 2);
 
     // Any thread: must not wait and must never throw (the session would rethrow it on the thread pool).
     private void OnSessionChanged()
@@ -152,6 +187,10 @@ public sealed partial class DocumentView : UserControl
         {
             return;
         }
+
+        // The tab first: a document that is new to it resets its zoom (and drops the saved view) before the view reads
+        // them below, whichever of the two posted jobs for this change of the session runs first.
+        _viewModel?.Refresh();
 
         var document = session.State == ViewerState.Ready ? session.Document : null;
         var scheduler = session.Scheduler;
@@ -197,16 +236,18 @@ public sealed partial class DocumentView : UserControl
         var known = Math.Min(sizes.Count, pageCount);
         layout.SetSizes(0, known == sizes.Count ? sizes : sizes.Take(known).ToArray());
 
-        // The zoom of the tab: the tab reset it for a new document before this runs (it subscribed to the session
-        // first), and an inactive tab kept its own.
-        layout.Zoom = _viewModel?.Zoom ?? ZoomSteps.Default;
+        // Zoom, layout and position belong to the tab: a new document starts at the top with the default zoom (the
+        // tab reset both in Sync), a tab shown again gets back where the view left it.
+        var tab = _viewModel;
+        layout.Mode = tab?.LayoutMode ?? PageLayoutMode.Continuous;
+        layout.Zoom = tab?.Zoom ?? ZoomSteps.Default;
 
         _document = document;
         _layout = layout;
         _loadedSizes = known;
         PageCanvas.Attach(layout, scheduler, cache);
 
-        ChangeLayout(new Vector(0, 0));
+        ChangeLayout(tab?.SavedView is { } saved ? RestoredOffset(layout, saved) : default);
         _focusPending = true;
         FocusLater();
     }

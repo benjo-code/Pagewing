@@ -684,6 +684,225 @@ public sealed class DocumentViewTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task SwitchingTabsRestoresPageZoomAndScrollPosition()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "thousand-pages.pdf");
+        a.Zoom = 2;
+        Settle(window);
+        a.GoToPage(3);
+        Settle(window);
+        view.ScrollViewer.Offset = new Vector(0, view.ScrollViewer.Offset.Y + 37);
+        Settle(window);
+        var offset = view.ScrollViewer.Offset;
+        var pageBefore = a.CurrentPage;
+        var anchor = view.Layout!.GetAnchor(offset.Y);
+        Assert.Equal(2, anchor.Page);
+
+        var b = await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+        Assert.Equal(1.0, view.Layout!.Zoom);
+        Assert.Equal(anchor, a.SavedView!.Anchor);
+
+        viewModel.ActivateTabCommand.Execute(a);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, a.Session.Document) && view.Canvas.LastRequests.Count > 0);
+
+        Assert.Equal(2.0, a.Zoom);
+        Assert.Equal(2.0, view.Layout!.Zoom);
+        var restored = view.Layout.GetAnchor(view.ScrollViewer.Offset.Y);
+        Assert.Equal(anchor.Page, restored.Page);
+        Assert.Equal(offset.Y, view.ScrollViewer.Offset.Y, 1);
+        Assert.Equal(offset.X, view.ScrollViewer.Offset.X, 1);
+        Assert.Equal(pageBefore, a.CurrentPage);
+        Assert.Equal(1.0, b.Zoom);
+    }
+
+    [AvaloniaFact]
+    public async Task SwitchingTabsRestoresTheHorizontalPositionOfWidePages()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "wide-page.pdf");
+        a.Zoom = 4;
+        Settle(window);
+        Assert.True(view.ScrollViewer.Extent.Width > view.ScrollViewer.Viewport.Width + 300);
+        view.ScrollViewer.Offset = new Vector(300, 10);
+        Settle(window);
+        var offset = view.ScrollViewer.Offset;
+        Assert.Equal(300, offset.X);
+
+        await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+        viewModel.ActivateTabCommand.Execute(a);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, a.Session.Document) && view.Canvas.LastRequests.Count > 0);
+
+        Assert.Equal(4.0, view.Layout!.Zoom);
+        Assert.Equal(offset.X, view.ScrollViewer.Offset.X, 1);
+        Assert.Equal(offset.Y, view.ScrollViewer.Offset.Y, 1);
+    }
+
+    [AvaloniaFact]
+    public async Task ANewTabStartsAtTheTopWithDefaultZoom()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "thousand-pages.pdf");
+        a.Zoom = 2;
+        Settle(window);
+        a.GoToPage(40);
+        Settle(window);
+        Assert.True(view.ScrollViewer.Offset.Y > 0);
+
+        var b = await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+
+        Assert.Equal(1.0, b.Zoom);
+        Assert.Equal(1.0, view.Layout!.Zoom);
+        Assert.Equal(default, view.ScrollViewer.Offset);
+        Assert.Equal(1, b.CurrentPage);
+        Assert.Null(b.SavedView);
+        Assert.Equal(2.0, a.Zoom);
+    }
+
+    [AvaloniaFact]
+    public async Task ADocumentShownBeforeItsTabRefreshedStillStartsAtTheTopWithDefaultZoom()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "thousand-pages.pdf");
+        a.Zoom = 2;
+        Settle(window);
+        a.GoToPage(40);
+        Settle(window);
+        var b = await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+        Assert.NotNull(a.SavedView);
+
+        // A new document arrives in the inactive tab; the jobs of the UI thread (the refresh of the tab) do not run
+        // before the tab becomes the active one again.
+        var replacement = a.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        var deadline = DateTime.UtcNow + Timeout;
+        while (a.Session.State != ViewerState.Ready || a.Session.Path != TestData.Pdf("hello_world.pdf"))
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the replacement did not open");
+            Thread.Sleep(5);
+        }
+
+        Assert.Equal(2.0, a.Zoom);
+        viewModel.ActivateTabCommand.Execute(a);
+
+        // Without any further job: the view already shows the new document at the default zoom, at the top.
+        Assert.Same(a.Session.Document, view.Document);
+        Assert.Equal(1.0, a.Zoom);
+        Assert.Equal(1.0, view.Layout!.Zoom);
+        Assert.Equal(default, view.ScrollViewer.Offset);
+        Assert.Null(a.SavedView);
+        await replacement;
+        Settle(window);
+        Assert.Equal(1.0, view.Layout.Zoom);
+        Assert.Equal(default, view.ScrollViewer.Offset);
+        Assert.Equal(1, a.CurrentPage);
+        Assert.Equal(1.0, b.Zoom);
+    }
+
+    [AvaloniaFact]
+    public async Task InactiveTabsRequestNoRendering()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "thousand-pages.pdf");
+        a.Zoom = 0.5;
+        Settle(window);
+        view.ScrollViewer.Offset = new Vector(0, view.Layout!.GetPageRect(300).Y);
+        Settle(window);
+        Assert.NotEmpty(view.Canvas.LastRequests);
+
+        var b = await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+
+        // The old tab has no wish list any more, whatever it was rendering; the canvas serves the new tab.
+        Assert.Equal(0, a.Session.Scheduler!.PendingCount);
+        Assert.Same(b.Session.Scheduler, view.Canvas.Scheduler);
+        await Task.Delay(100);
+        Settle(window);
+        Assert.Equal(0, a.Session.Scheduler.PendingCount);
+        Assert.All(view.Canvas.LastRequests, request => Assert.InRange(request.Key.Page, 0, 40));
+
+        // And back: the other tab is the quiet one.
+        viewModel.ActivateTabCommand.Execute(a);
+        Assert.Equal(0, b.Session.Scheduler!.PendingCount);
+        Assert.Same(a.Session.Scheduler, view.Canvas.Scheduler);
+    }
+
+    [AvaloniaFact]
+    public async Task SwitchingBackShowsCachedTilesWithoutRendering()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+        var preview = new TileKey(0, TileKey.PreviewScaleKey, 0, 0);
+        await WaitUntilAsync(window, () => HasSharpTile(view, 0) && view.Canvas.Bitmaps.Contains(preview));
+        await OpenTabAsync(window, viewModel, view, "hello_world.pdf");
+
+        viewModel.ActivateTabCommand.Execute(a);
+
+        // No job ran since: the cache of the tab delivers the images in the same call that shows the document.
+        Assert.Same(a.Session.Document, view.Document);
+        Assert.True(view.Canvas.Bitmaps.Contains(preview));
+        Assert.True(HasSharpTile(view, 0));
+        Assert.Equal(0, a.Session.Scheduler!.PendingCount);
+    }
+
+    [AvaloniaFact]
+    public async Task ClosingTheActiveTabShowsTheNeighbourAtItsSavedPosition()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+        var b = await OpenTabAsync(window, viewModel, view, "thousand-pages.pdf");
+        b.Zoom = 1.5;
+        Settle(window);
+        b.GoToPage(10);
+        Settle(window);
+        view.ScrollViewer.Offset = new Vector(view.ScrollViewer.Offset.X, view.ScrollViewer.Offset.Y + 50);
+        Settle(window);
+        var offset = view.ScrollViewer.Offset;
+        var pageBefore = b.CurrentPage;
+        var c = await OpenTabAsync(window, viewModel, view, "hello_world.pdf");
+        Assert.Equal([a, b, c], viewModel.Tabs);
+
+        viewModel.CloseActiveTabCommand.Execute(null);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, b.Session.Document) && view.Canvas.LastRequests.Count > 0);
+
+        Assert.Same(b, viewModel.ActiveTab);
+        Assert.Equal(1.5, view.Layout!.Zoom);
+        Assert.Equal(offset.Y, view.ScrollViewer.Offset.Y, 1);
+        Assert.Equal(offset.X, view.ScrollViewer.Offset.X, 1);
+        Assert.Equal(pageBefore, b.CurrentPage);
+        Assert.Equal(pageBefore.ToString(CultureInfo.InvariantCulture), Find<TextBox>(window, "PageField").Text);
+    }
+
+    [AvaloniaFact]
+    public async Task ResizeWhileAnotherTabIsActiveKeepsTheSavedAnchor()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "thousand-pages.pdf");
+        a.Zoom = 2;
+        Settle(window);
+        a.GoToPage(5);
+        Settle(window);
+        view.ScrollViewer.Offset = new Vector(view.ScrollViewer.Offset.X, view.ScrollViewer.Offset.Y + 90);
+        Settle(window);
+        var anchor = view.Layout!.GetAnchor(view.ScrollViewer.Offset.Y);
+        await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+        Assert.Equal(anchor, a.SavedView!.Anchor);
+
+        window.Width = 700;
+        window.Height = 500;
+        Settle(window);
+        Assert.Equal(anchor, a.SavedView.Anchor);
+
+        viewModel.ActivateTabCommand.Execute(a);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, a.Session.Document) && view.Canvas.LastRequests.Count > 0);
+
+        // Page and fraction, not pixels: the same spot of the page is at the top of the smaller window.
+        var restored = view.Layout!.GetAnchor(view.ScrollViewer.Offset.Y);
+        Assert.Equal(anchor.Page, restored.Page);
+        Assert.Equal(anchor.Fraction, restored.Fraction, 3);
+        Assert.Equal(2.0, view.Layout.Zoom);
+        Assert.Equal(5, a.CurrentPage);
+    }
+
+    [AvaloniaFact]
     public async Task RenderScalingOf150PercentRendersAtTheDevicePixelSize()
     {
         var (window, viewModel, view) = Show();
@@ -826,6 +1045,15 @@ public sealed class DocumentViewTests : IDisposable
     {
         await viewModel.OpenAsync(TestData.Pdf(name));
         await WaitUntilAsync(window, () => view.Document is { } document && ReferenceEquals(document, viewModel.ActiveTab?.Session.Document) && view.Canvas.LastRequests.Count > 0);
+    }
+
+    /// <summary>Opens a test file in a new tab and waits until the view shows it; returns that tab.</summary>
+    private static async Task<TabViewModel> OpenTabAsync(Window window, MainViewModel viewModel, DocumentView view, string name)
+    {
+        await viewModel.OpenAsync(TestData.Pdf(name));
+        var tab = viewModel.ActiveTab ?? throw new InvalidOperationException("No active tab after opening.");
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, tab.Session.Document) && view.Canvas.LastRequests.Count > 0);
+        return tab;
     }
 
     private static void Scroll(Window window, DocumentView view, double y)

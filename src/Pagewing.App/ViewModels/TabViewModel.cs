@@ -472,8 +472,11 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
     private void OnSessionChanged() => Dispatcher.UIThread.Post(Refresh);
 
-    /// <summary>Reads the session; runs on the UI thread.</summary>
-    private void Refresh()
+    /// <summary>
+    /// Reads the session; runs on the UI thread. Idempotent: the document view calls it before it shows the document of
+    /// the session, so the tab (zoom of a new document) is up to date whatever order the posted jobs run in.
+    /// </summary>
+    internal void Refresh()
     {
         // A change posted before the tab was closed: the closed tab keeps what it showed last.
         if (_disposed)
