@@ -126,6 +126,11 @@ internal sealed class ThumbnailList : ListBox
         ContainerIndexChanged += (_, _) => SchedulePlan();
         AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
         AddHandler(TappedEvent, OnTapped);
+
+        // Key bindings of the window (Page Up/Down turn the document's pages) are matched from the focused element
+        // upwards before any key event is raised, so the list claims these two keys with bindings of its own.
+        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageDown), Command = new RelayCommand(() => MoveByPage(forward: true)) });
+        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageUp), Command = new RelayCommand(() => MoveByPage(forward: false)) });
     }
 
     /// <summary>Raised on the UI thread for every rendered thumbnail that reaches the list, wanted or not (for tests).</summary>
@@ -646,6 +651,47 @@ internal sealed class ThumbnailList : ListBox
         {
             e.Handled = true;
             ShowPage(index);
+        }
+    }
+
+    /// <summary>
+    /// Moves the cursor of the list by about a view (as many entries as are in view, less one, so the old entry stays in
+    /// sight); the document keeps its page.
+    /// </summary>
+    private void MoveByPage(bool forward)
+    {
+        if (_items.Length == 0)
+        {
+            return;
+        }
+
+        var current = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is Visual focused
+            && focused.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { } container
+                ? IndexFromContainer(container)
+                : -1;
+        if (current < 0)
+        {
+            current = Math.Max(SelectedIndex, 0);
+        }
+
+        var inView = 0;
+        foreach (var realized in GetRealizedContainers())
+        {
+            if (realized.TranslatePoint(default, this) is { } origin
+                && origin.Y >= -1
+                && origin.Y + realized.Bounds.Height <= Bounds.Height + 1)
+            {
+                inView++;
+            }
+        }
+
+        var step = Math.Max(1, inView - 1);
+        var target = Math.Clamp(forward ? current + step : current - step, 0, _items.Length - 1);
+        SelectedIndex = target;
+        ScrollIntoView(target);
+        if (ContainerFromIndex(target) is { } targetContainer)
+        {
+            targetContainer.Focus(NavigationMethod.Directional);
         }
     }
 

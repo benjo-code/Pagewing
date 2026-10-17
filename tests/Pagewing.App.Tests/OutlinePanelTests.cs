@@ -395,6 +395,59 @@ public sealed class OutlinePanelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task RightAndLeftWorkOnAnEntryFocusedByTab()
+    {
+        var (window, viewModel) = Show(1024);
+        var tab = await OpenAsync(window, viewModel, "outline.pdf");
+        await OpenContentsAsync(window, viewModel, tab);
+
+        // Tab puts the focus on the closed "Kapitel 2" without selecting it: Right opens it, Left closes it again.
+        var chapter2 = ItemOf(window, "Kapitel 2");
+        Assert.False(chapter2.IsExpanded);
+        chapter2.Focus(NavigationMethod.Tab);
+        Settle(window);
+        Assert.Same(chapter2, window.FocusManager!.GetFocusedElement());
+        Press(window, Key.Right);
+        Assert.True(chapter2.IsExpanded);
+        Assert.True(tab.Outline![1].IsExpanded);
+        Press(window, Key.Left);
+        Assert.False(chapter2.IsExpanded);
+        Assert.Same(chapter2, window.FocusManager!.GetFocusedElement());
+
+        // The same on the open "Kapitel 1": Left closes it, Right opens it.
+        var chapter1 = ItemOf(window, "Kapitel 1");
+        Assert.True(chapter1.IsExpanded);
+        chapter1.Focus(NavigationMethod.Tab);
+        Settle(window);
+        Press(window, Key.Left);
+        Assert.False(chapter1.IsExpanded);
+        Assert.False(tab.Outline![0].IsExpanded);
+        Press(window, Key.Right);
+        Assert.True(chapter1.IsExpanded);
+        Assert.Equal(1, tab.CurrentPage);
+    }
+
+    [AvaloniaFact]
+    public async Task ModifiedPageKeysAreNotHijackedInTheTree()
+    {
+        var (window, viewModel) = Show(1024);
+        var tab = await OpenAsync(window, viewModel, "outline.pdf");
+        await OpenContentsAsync(window, viewModel, tab);
+        var chapter1 = ItemOf(window, "Kapitel 1");
+        chapter1.Focus(NavigationMethod.Tab);
+        Settle(window);
+
+        // With Shift or Ctrl held the tree does not move by itself, and nothing throws.
+        foreach (var modifiers in new[] { RawInputModifiers.Shift, RawInputModifiers.Control })
+        {
+            Press(window, Key.PageDown, modifiers);
+            Assert.Same(chapter1, window.FocusManager!.GetFocusedElement());
+            Press(window, Key.PageUp, modifiers);
+            Assert.Same(chapter1, window.FocusManager!.GetFocusedElement());
+        }
+    }
+
+    [AvaloniaFact]
     public async Task SwitchingTabsKeepsEachTabsOutline()
     {
         Strings.Culture = new CultureInfo("en");
@@ -735,10 +788,10 @@ public sealed class OutlinePanelTests : IDisposable
         Settle(window);
     }
 
-    private static void Press(Window window, Key key)
+    private static void Press(Window window, Key key, RawInputModifiers modifiers = RawInputModifiers.None)
     {
-        window.KeyPress(key, RawInputModifiers.None, PhysicalKeyOf(key), null);
-        window.KeyRelease(key, RawInputModifiers.None, PhysicalKeyOf(key), null);
+        window.KeyPress(key, modifiers, PhysicalKeyOf(key), null);
+        window.KeyRelease(key, modifiers, PhysicalKeyOf(key), null);
         Settle(window);
     }
 

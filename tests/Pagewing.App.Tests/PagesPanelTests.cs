@@ -252,6 +252,92 @@ public sealed class PagesPanelTests : IDisposable
         Assert.Equal(1, tab.CurrentPage);
     }
 
+    [AvaloniaFact]
+    public async Task KeyboardMovesThroughAThousandThumbnails()
+    {
+        var (window, viewModel, _) = Show(1024);
+        var tab = await OpenAsync(window, viewModel, "thousand-pages.pdf");
+        // The wide window opens "Pages" beside the document, which stays open when a page is picked.
+        var list = await WaitForListAsync(window, tab);
+        Assert.Equal(1, tab.CurrentPage);
+        list.ScrollIntoView(0);
+        Settle(window);
+        Assert.IsType<ListBoxItem>(list.ContainerFromIndex(0)).Focus(NavigationMethod.Tab);
+        Settle(window);
+        AssertFocusedThumbnail(window, list, 0);
+
+        // Down and Up go entry by entry, far beyond the entries that were realized at first, each one scrolled into view.
+        for (var i = 1; i <= 60; i++)
+        {
+            Press(window, Key.Down);
+            AssertFocusedThumbnail(window, list, i);
+        }
+
+        for (var i = 1; i <= 10; i++)
+        {
+            Press(window, Key.Up);
+            AssertFocusedThumbnail(window, list, 60 - i);
+        }
+
+        // The window binds Page Down and Page Up to the pages of the document; in the list they move the cursor of
+        // the list (about a view) and the document stays where it is.
+        Press(window, Key.PageDown);
+        Assert.Equal(1, tab.CurrentPage);
+        var afterPage = AssertFocusedThumbnail(window, list, null);
+        Assert.InRange(afterPage, 52, 50 + 200);
+        Assert.True(afterPage > 51, "Page Down moved by more than one entry");
+        Assert.Equal(1, tab.CurrentPage);
+        Press(window, Key.PageUp);
+        var afterPageUp = AssertFocusedThumbnail(window, list, null);
+        Assert.True(afterPageUp < afterPage, "Page Up moved back");
+        Assert.Equal(1, tab.CurrentPage);
+
+        // End goes to the last entry, Home back to the first one.
+        Press(window, Key.End);
+        AssertFocusedThumbnail(window, list, 999);
+        Press(window, Key.Down);
+        AssertFocusedThumbnail(window, list, 999);
+        Press(window, Key.PageDown);
+        AssertFocusedThumbnail(window, list, 999);
+        Press(window, Key.Home);
+        AssertFocusedThumbnail(window, list, 0);
+        Press(window, Key.PageUp);
+        AssertFocusedThumbnail(window, list, 0);
+        Assert.Equal(1, tab.CurrentPage);
+
+        // Enter and Space on a focused entry far down still jump.
+        Press(window, Key.End);
+        Press(window, Key.Enter);
+        Assert.Equal(1000, tab.CurrentPage);
+        AssertFocusedThumbnail(window, list, 999);
+        Press(window, Key.Home);
+        AssertFocusedThumbnail(window, list, 0);
+        Press(window, Key.Space);
+        Assert.Equal(1, tab.CurrentPage);
+    }
+
+    [AvaloniaFact]
+    public async Task ModifiedPageKeysDoNotMoveTheThumbnailCursor()
+    {
+        var (window, viewModel, _) = Show(1024);
+        var tab = await OpenAsync(window, viewModel, "thousand-pages.pdf");
+        // The wide window opens "Pages" beside the document, which stays open when a page is picked.
+        var list = await WaitForListAsync(window, tab);
+        list.ScrollIntoView(0);
+        Settle(window);
+        Assert.IsType<ListBoxItem>(list.ContainerFromIndex(0)).Focus(NavigationMethod.Tab);
+        Settle(window);
+
+        // With Shift or Ctrl held nothing is hijacked and nothing throws.
+        foreach (var modifiers in new[] { RawInputModifiers.Shift, RawInputModifiers.Control })
+        {
+            Press(window, Key.PageDown, modifiers);
+            Press(window, Key.PageUp, modifiers);
+        }
+
+        Assert.IsType<ListBoxItem>(window.FocusManager!.GetFocusedElement());
+    }
+
     [AvaloniaTheory]
     [InlineData("Light")]
     [InlineData("Dark")]
@@ -644,11 +730,32 @@ public sealed class PagesPanelTests : IDisposable
         Settle(window);
     }
 
-    private static void Press(Window window, Key key)
+    private static void Press(Window window, Key key, RawInputModifiers modifiers = RawInputModifiers.None)
     {
-        window.KeyPress(key, RawInputModifiers.None, PhysicalKeyOf(key), null);
-        window.KeyRelease(key, RawInputModifiers.None, PhysicalKeyOf(key), null);
+        window.KeyPress(key, modifiers, PhysicalKeyOf(key), null);
+        window.KeyRelease(key, modifiers, PhysicalKeyOf(key), null);
         Settle(window);
+    }
+
+    /// <summary>
+    /// Asserts that the keyboard focus is on the thumbnail <paramref name="index"/> (any entry when null), that it is the
+    /// selected one and that it lies within the visible part of the list; returns its index.
+    /// </summary>
+    private static int AssertFocusedThumbnail(Window window, ThumbnailList list, int? index)
+    {
+        var item = Assert.IsType<ListBoxItem>(window.FocusManager!.GetFocusedElement());
+        var focused = list.IndexFromContainer(item);
+        if (index is not null)
+        {
+            Assert.Equal(index, focused);
+        }
+
+        Assert.Equal(focused, list.SelectedIndex);
+        var scroller = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+        var top = item.TranslatePoint(default, scroller)!.Value.Y;
+        // Bringing an entry into view may leave it a pixel short of the edge (layout rounding of the estimated extents).
+        Assert.InRange(top, -2, scroller.Viewport.Height - item.Bounds.Height + 2);
+        return focused;
     }
 
     private static PhysicalKey PhysicalKeyOf(Key key) => key switch
@@ -657,6 +764,10 @@ public sealed class PagesPanelTests : IDisposable
         Key.Up => PhysicalKey.ArrowUp,
         Key.Enter => PhysicalKey.Enter,
         Key.Space => PhysicalKey.Space,
+        Key.PageDown => PhysicalKey.PageDown,
+        Key.PageUp => PhysicalKey.PageUp,
+        Key.Home => PhysicalKey.Home,
+        Key.End => PhysicalKey.End,
         _ => PhysicalKey.None,
     };
 
