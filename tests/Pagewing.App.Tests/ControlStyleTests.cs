@@ -107,6 +107,40 @@ public sealed class ControlStyleTests
         window.Close();
     }
 
+    public static TheoryData<string, string, string> PrimaryStates()
+    {
+        var data = new TheoryData<string, string, string>();
+        foreach (var theme in new[] { "Light", "Dark" })
+        {
+            foreach (var surface in new[] { "Window", "Toolbar", "Sidebar", "Canvas", "Raised" })
+            {
+                foreach (var state in new[] { "Hover", "Pressed" })
+                {
+                    data.Add(theme, surface, state);
+                }
+            }
+        }
+
+        return data;
+    }
+
+    [AvaloniaTheory]
+    [MemberData(nameof(PrimaryStates))]
+    public void PrimaryButtonStatesKeepAAContrastOnEverySurface(string theme, string surface, string state)
+    {
+        var variant = Variant(theme);
+        var opacity = Assert.IsType<double>(TokenTests.Resource($"Pw.Opacity.Primary{state}", variant));
+        var behind = TokenTests.Token($"Surface.{surface}", variant);
+
+        // Opacity is set on the content presenter, so background and text both fade into the surface.
+        var background = Blend(TokenTests.Token("Accent.Default", variant), behind, opacity);
+        var text = Blend(TokenTests.Token("Accent.On", variant), behind, opacity);
+
+        var ratio = Wcag.Contrast(background, text);
+        Assert.True(ratio >= 4.5, $"{theme}/{surface}/{state} at opacity {opacity}: {ratio:F2}:1");
+        Assert.True(opacity < 1, "the state must differ from the resting button");
+    }
+
     [AvaloniaFact]
     public void FluentCornerRadiiFollowTheMetrics()
     {
@@ -147,6 +181,11 @@ public sealed class ControlStyleTests
 
         window.Close();
     }
+
+    private static Color Blend(Color top, Color behind, double opacity) => Color.FromRgb(
+        (byte)Math.Round((top.R * opacity) + (behind.R * (1 - opacity))),
+        (byte)Math.Round((top.G * opacity) + (behind.G * (1 - opacity))),
+        (byte)Math.Round((top.B * opacity) + (behind.B * (1 - opacity))));
 
     private static ThemeVariant Variant(string theme) => theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
 

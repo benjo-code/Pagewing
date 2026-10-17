@@ -99,7 +99,7 @@
     <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Disabled}" />
   </Style>
 
-  <!-- Primary button (Classes="primary"): accent.default with accent.on. Hover and press dim the button (no extra colour token). -->
+  <!-- Primary button (Classes="primary"): accent.default with accent.on. Hover and press fade the button into the surface behind it (Pw.Opacity.* in Metrics.axaml, checked for AA on every surface). -->
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
     <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.On}" />
@@ -109,13 +109,13 @@
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
     <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.On}" />
-    <Setter Property="Opacity" Value="0.88" />
+    <Setter Property="Opacity" Value="{DynamicResource Pw.Opacity.PrimaryHover}" />
   </Style>
   <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
     <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.On}" />
-    <Setter Property="Opacity" Value="0.76" />
+    <Setter Property="Opacity" Value="{DynamicResource Pw.Opacity.PrimaryPressed}" />
   </Style>
   <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
