@@ -57,6 +57,7 @@ internal sealed class DocumentCanvas : Control
     private static readonly RenderOptions SharpOptions = new() { BitmapInterpolationMode = BitmapInterpolationMode.None };
 
     private readonly TileBitmaps _bitmaps = new();
+    private readonly PageShadowPainter _shadows = new();
     private readonly HashSet<int> _failedPages = [];
     private Source? _source;
     private DipRect _viewport;
@@ -100,7 +101,10 @@ internal sealed class DocumentCanvas : Control
         set => SetValue(PlaceholderTextBrushProperty, value);
     }
 
-    /// <summary>Edge and shadow of a page (design system 5.3: <c>Pw.Shadow.Page</c>).</summary>
+    /// <summary>
+    /// Edge and shadow of a page (design system 5.3: <c>Pw.Shadow.Page</c>). Drawn from a pre-rendered image
+    /// (<see cref="PageShadowPainter"/>), never as a box shadow of the page rectangle.
+    /// </summary>
     public BoxShadows PageShadow
     {
         get => GetValue(PageShadowProperty);
@@ -285,7 +289,8 @@ internal sealed class DocumentCanvas : Control
                     continue;
                 }
 
-                context.DrawRectangle(Brushes.White, null, new RoundedRect(pageRect), PageShadow);
+                _shadows.Draw(context, pageRect, PageShadow, _renderScaling);
+                context.DrawRectangle(Brushes.White, null, pageRect);
                 using (context.PushClip(pageRect))
                 {
                     if (preview is not null)
@@ -345,6 +350,17 @@ internal sealed class DocumentCanvas : Control
     {
         base.OnDetachedFromVisualTree(e);
         Detach();
+        _shadows.Clear();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == PageShadowProperty)
+        {
+            // Another theme variant: the images of the old shadow are not needed any more.
+            _shadows.Clear();
+        }
     }
 
     private double Snap(double value) => Math.Round(value * _renderScaling) / _renderScaling;
@@ -364,7 +380,8 @@ internal sealed class DocumentCanvas : Control
 
     private void DrawPlaceholder(DrawingContext context, Rect pageRect, int page)
     {
-        context.DrawRectangle(PlaceholderBrush, null, new RoundedRect(pageRect), PageShadow);
+        _shadows.Draw(context, pageRect, PageShadow, _renderScaling);
+        context.DrawRectangle(PlaceholderBrush, null, pageRect);
         if (PlaceholderBorderBrush is { } border)
         {
             context.DrawRectangle(new Pen(border, 1), pageRect.Deflate(0.5));
