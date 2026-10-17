@@ -153,8 +153,8 @@ Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch 
 - [x] Hauptfenster nach Design-Spec, UI-Texte lokalisierbar (resx, Englisch und Deutsch)
 - [x] Öffnen per Kommandozeilenargument, Dateidialog und Drag & Drop
 - [x] Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)
-- [ ] Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget
-- [ ] Zoom (Strg+Mausrad, Strg+Plus/Minus)
+- [x] Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget
+- [x] Zoom (Strg+Mausrad, Strg+Plus/Minus)
 - [ ] Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)
 - [x] `Pagewing.App.Tests` mit Avalonia.Headless
 

@@ -125,8 +125,8 @@
             { "text": "Hauptfenster nach Design-Spec, UI-Texte lokalisierbar (resx, Englisch und Deutsch)", "done": true },
             { "text": "Öffnen per Kommandozeilenargument, Dateidialog und Drag & Drop", "done": true },
             { "text": "Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)", "done": true },
-            { "text": "Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget", "done": false },
-            { "text": "Zoom (Strg+Mausrad, Strg+Plus/Minus)", "done": false },
+            { "text": "Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget", "done": true },
+            { "text": "Zoom (Strg+Mausrad, Strg+Plus/Minus)", "done": true },
             { "text": "Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)", "done": false },
             { "text": "`Pagewing.App.Tests` mit Avalonia.Headless", "done": true }
           ],

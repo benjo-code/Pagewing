@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -21,6 +22,21 @@ internal sealed class FramePixels : IDisposable
         _rowBytes = locked.RowBytes;
         _pixels = new byte[locked.RowBytes * locked.Size.Height];
         Marshal.Copy(locked.Address, _pixels, 0, _pixels.Length);
+    }
+
+    /// <summary>Renders <paramref name="visual"/> on its own (no dispatcher jobs run, unlike a window capture) and reads the pixels.</summary>
+    public static FramePixels Snapshot(Visual visual)
+    {
+        var size = new PixelSize((int)Math.Ceiling(visual.Bounds.Width), (int)Math.Ceiling(visual.Bounds.Height));
+        using var rendered = new RenderTargetBitmap(size);
+        rendered.Render(visual);
+        var copy = new WriteableBitmap(size, new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        using (var target = copy.Lock())
+        {
+            rendered.CopyPixels(target);
+        }
+
+        return new FramePixels(copy);
     }
 
     public int Width => _frame.PixelSize.Width;

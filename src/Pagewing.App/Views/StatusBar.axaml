@@ -11,7 +11,8 @@
   <!--
     Status bar (design system section 6, item 5): ‹ "Page" [field] "of N" ›, separator, zoom − [value] +.
     Text type.caption in text.secondary, icons 16 px. Below 760 px the word "Page" goes (code-behind); the icons
-    stay, with their tooltips. Page and zoom commands are wired in Task 11.
+    stay, with their tooltips. The page field jumps on Enter; an invalid entry, or leaving the field without Enter,
+    puts the current page back (design system 7.5).
   -->
   <UserControl.Styles>
     <Style Selector="Button.status">
@@ -32,10 +33,14 @@
     </Button>
     <TextBlock Name="PageLabel" VerticalAlignment="Center" Text="{x:Static res:Strings.PageLabel}" />
     <TextBox Name="PageField"
-             Width="40" Height="22" MinHeight="22" Padding="2,0" FontSize="12"
+             Width="40" Height="22" MinHeight="22" Padding="2,0" FontSize="12" FontFeatures="+tnum"
              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-             Text="{Binding CurrentPage, Mode=OneWay}"
-             AutomationProperties.Name="{x:Static res:Strings.PageLabel}" />
+             Text="{Binding PageFieldText}"
+             AutomationProperties.Name="{x:Static res:Strings.PageLabel}">
+      <TextBox.KeyBindings>
+        <KeyBinding Gesture="Enter" Command="{Binding CommitPageFieldCommand}" />
+      </TextBox.KeyBindings>
+    </TextBox>
     <TextBlock Name="PageCountText" Classes="num" VerticalAlignment="Center" Text="{Binding PageCountText}" />
     <Button Name="NextPageButton" Classes="icon status"
             Command="{Binding NextPageCommand}"

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Windows.Input;
 using Avalonia.Threading;
@@ -18,6 +19,10 @@ public sealed class MainViewModel : ViewModelBase
     private readonly ViewerSession _session;
     private readonly IFilePicker _picker;
     private readonly RelayCommand _closeCommand;
+    private readonly RelayCommand _zoomInCommand;
+    private readonly RelayCommand _zoomOutCommand;
+    private readonly RelayCommand _previousPageCommand;
+    private readonly RelayCommand _nextPageCommand;
     private PdfDocument? _document;
     private ViewerState _state;
     private string? _fullPath;
@@ -27,6 +32,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _picking;
     private int _pageCount;
     private int _currentPage;
+    private string _pageFieldText = "0";
     private double _zoom = ZoomSteps.Default;
     private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
 
@@ -43,11 +49,15 @@ public sealed class MainViewModel : ViewModelBase
         SubmitPasswordCommand = new RelayCommand(SubmitPassword);
         CancelPasswordCommand = new RelayCommand(Close);
 
-        // Scaffolding: page and zoom navigation arrive in Task 11.
-        ZoomInCommand = new RelayCommand(static () => { }, static () => false);
-        ZoomOutCommand = new RelayCommand(static () => { }, static () => false);
-        PreviousPageCommand = new RelayCommand(static () => { }, static () => false);
-        NextPageCommand = new RelayCommand(static () => { }, static () => false);
+        _zoomInCommand = new RelayCommand(() => Zoom = ZoomSteps.Next(Zoom), () => IsReady && Zoom < ZoomSteps.Max);
+        ZoomInCommand = _zoomInCommand;
+        _zoomOutCommand = new RelayCommand(() => Zoom = ZoomSteps.Previous(Zoom), () => IsReady && Zoom > ZoomSteps.Min);
+        ZoomOutCommand = _zoomOutCommand;
+        _previousPageCommand = new RelayCommand(() => GoToPage(CurrentPage - 1), () => IsReady && CurrentPage > 1);
+        PreviousPageCommand = _previousPageCommand;
+        _nextPageCommand = new RelayCommand(() => GoToPage(CurrentPage + 1), () => IsReady && CurrentPage < PageCount);
+        NextPageCommand = _nextPageCommand;
+        CommitPageFieldCommand = new RelayCommand(CommitPageField);
 
         _session.Changed += OnSessionChanged;
         Refresh();
@@ -58,6 +68,15 @@ public sealed class MainViewModel : ViewModelBase
 
     /// <summary>Raised on the UI thread when a password check ended with a wrong password (also a repeated one).</summary>
     public event Action? PasswordRejected;
+
+    /// <summary>
+    /// Raised when the document view should show a page (1-based) with its top edge at the margin: the page field,
+    /// the arrows of the status bar and Page Up/Page Down.
+    /// </summary>
+    public event Action<int>? PageRequested;
+
+    /// <summary>Gets the session the window mirrors; the document view draws its document.</summary>
+    internal ViewerSession Session => _session;
 
     /// <summary>Gets the state of the session, as last seen on the UI thread.</summary>
     public ViewerState State
@@ -72,6 +91,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsReady));
                 OnPropertyChanged(nameof(IsFailed));
                 _closeCommand.RaiseCanExecuteChanged();
+                RaiseNavigationCanExecuteChanged();
             }
 
             // Also when the state stays the same: the password check depends on more than the state.
@@ -181,11 +201,32 @@ public sealed class MainViewModel : ViewModelBase
     /// <summary>Gets the page count as shown after the page field ("of 24").</summary>
     public string PageCountText => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.PageOf), PageCount);
 
-    /// <summary>Gets or sets the current page, 1-based (0 when no document is open).</summary>
+    /// <summary>
+    /// Gets or sets the current page, 1-based (0 when no document is open). The document view sets it to the page
+    /// that fills most of the viewport; setting it does not scroll (see <see cref="GoToPage"/>).
+    /// </summary>
     public int CurrentPage
     {
         get => _currentPage;
-        set => SetProperty(ref _currentPage, value);
+        set
+        {
+            if (SetProperty(ref _currentPage, value))
+            {
+                RaiseNavigationCanExecuteChanged();
+                ResetPageField();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the text of the page field. Typing changes only the text; Enter (<see cref="CommitPageFieldCommand"/>)
+    /// jumps, and anything that is not a page of the document puts the current page back without a message (design
+    /// system 7.5).
+    /// </summary>
+    public string PageFieldText
+    {
+        get => _pageFieldText;
+        set => SetProperty(ref _pageFieldText, value ?? string.Empty);
     }
 
     /// <summary>Gets or sets the zoom (1 = 100 %), limited to <see cref="ZoomSteps.Min"/> to <see cref="ZoomSteps.Max"/>.</summary>
@@ -197,6 +238,8 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _zoom, ZoomSteps.Clamp(value)))
             {
                 OnPropertyChanged(nameof(ZoomText));
+                _zoomInCommand.RaiseCanExecuteChanged();
+                _zoomOutCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -226,13 +269,20 @@ public sealed class MainViewModel : ViewModelBase
     /// <summary>"Cancel" on the password card: closes the tab.</summary>
     public ICommand CancelPasswordCommand { get; }
 
+    /// <summary>The next zoom step ("+" in the status bar, Ctrl+Plus).</summary>
     public ICommand ZoomInCommand { get; }
 
+    /// <summary>The previous zoom step ("−" in the status bar, Ctrl+Minus).</summary>
     public ICommand ZoomOutCommand { get; }
 
+    /// <summary>The page before the current one (‹ in the status bar, Page Up).</summary>
     public ICommand PreviousPageCommand { get; }
 
+    /// <summary>The page after the current one (› in the status bar, Page Down).</summary>
     public ICommand NextPageCommand { get; }
+
+    /// <summary>Enter in the page field: jumps to the typed page or resets the field.</summary>
+    public ICommand CommitPageFieldCommand { get; }
 
     /// <summary>Opens a file and replaces the current document (one document per window).</summary>
     /// <param name="path">Path of the file; an empty path does nothing.</param>
@@ -248,6 +298,22 @@ public sealed class MainViewModel : ViewModelBase
         Password = string.Empty;
         return _session.OpenAsync(path);
     }
+
+    /// <summary>Asks the document view to show <paramref name="page"/> (1-based); a page outside the document does nothing.</summary>
+    public void GoToPage(int page)
+    {
+        if (!IsReady || page < 1 || page > PageCount)
+        {
+            return;
+        }
+
+        CurrentPage = page;
+        ResetPageField();
+        PageRequested?.Invoke(page);
+    }
+
+    /// <summary>Puts the current page back into the page field (an edit that was not committed, for example on leaving the field).</summary>
+    public void ResetPageField() => PageFieldText = CurrentPage.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Handles the files a later launch handed over (single instance). May be called on any thread: opens the
@@ -303,6 +369,26 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    private void CommitPageField()
+    {
+        if (int.TryParse(PageFieldText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var page) && IsReady && page >= 1 && page <= PageCount)
+        {
+            GoToPage(page);
+        }
+        else
+        {
+            ResetPageField();
+        }
+    }
+
+    private void RaiseNavigationCanExecuteChanged()
+    {
+        _zoomInCommand.RaiseCanExecuteChanged();
+        _zoomOutCommand.RaiseCanExecuteChanged();
+        _previousPageCommand.RaiseCanExecuteChanged();
+        _nextPageCommand.RaiseCanExecuteChanged();
+    }
+
     private void SubmitPassword()
     {
         // Ignored while a check is running (Enter pressed twice) and outside the password card.
@@ -349,6 +435,7 @@ public sealed class MainViewModel : ViewModelBase
         FullPath = _session.Path;
         Error = state == ViewerState.Failed ? _session.Error : null;
         PageCount = pageCount;
+        _nextPageCommand.RaiseCanExecuteChanged();
         if (isNewDocument)
         {
             CurrentPage = 1;

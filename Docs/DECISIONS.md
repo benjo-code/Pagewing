@@ -15,6 +15,19 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Dokumentansicht: Zeichenfläche unter dem ScrollViewer, Zeichnen in Viewport-Koordinaten (M3)
+**Kontext:** Die Dokumentansicht (`Views/DocumentView`, `Controls/DocumentCanvas`, `Controls/TileBitmaps`) zeigt alle Seiten fortlaufend. Bei 1000 Seiten und 800 % ist der Inhalt rund 9 Mio. DIP hoch. Skia rechnet beim Zeichnen mit `float` (24 Bit Mantisse); Koordinaten dieser Größe haben nur noch eine Auflösung von etwa 1 DIP, Kacheln würden um Bruchteile eines Pixels gegeneinander verrutschen.
+**Entscheidung:**
+- Der `ScrollViewer` scrollt nur eine leere Fläche in Inhaltsgröße (`Extent`, `ContentWidth` × `ContentHeight` aus `DocumentLayout`). Die `DocumentCanvas` liegt in Viewport-Größe darunter, nimmt keine Eingaben an und zeichnet die sichtbaren Seiten in Viewport-Koordinaten (Inhaltskoordinate minus Scroll-Offset in `double`). Der Seitenursprung wird auf ganze Gerätepixel gerundet, damit Kacheln nahtlos und pixelgenau liegen (auch bei 125 %/150 % Skalierung).
+- `DocumentView` besitzt `DocumentLayout` und Scroll-Position (neues Dokument: oben, 100 %; nachgeladene Seitengrößen: Anker der obersten Viewport-Position bleibt; Zoom um Zeiger bzw. Viewport-Mitte). Ändert sich die Inhaltsgröße, wird erst das Layout ausgeführt und dann der Offset gesetzt, sonst begrenzt der `ScrollViewer` ihn auf die alte Größe.
+- `DocumentCanvas` plant bei jeder Änderung (`ViewportPlanner.Plan` → `RenderScheduler.Update`), holt Bilder, die schon im Cache liegen, sofort als Bitmap (der Scheduler meldet Cache-Treffer nicht) und macht aus `TileReady` nur dann eine Bitmap, wenn der Schlüssel noch sichtbar gewünscht ist. Vorschauen des Hintergrund-Puffers bleiben bis zur Anzeige im Cache. `TileBitmaps` hält nur gewünschte Schlüssel.
+- Die Ereignisse von Scheduler und Session werden nur per `Dispatcher.UIThread.Post` weitergereicht (kein Warten, keine Ausnahme); ein später eintreffender Auftrag eines abgelösten Dokuments wird über die Identität der Anbindung verworfen.
+- Die Zeile der Statusleiste ist ab dem Öffnen (Laden) reserviert, damit sich die Viewport-Höhe nach dem ersten scharfen Bild nicht ändert.
+**Begründung:** Kleine Koordinaten halten Kacheln bei jeder Dokumentlänge exakt; der `ScrollViewer` liefert Scrollleisten, Mausrad und Touch ohne eigenen Code. Sichtprüfung der Kachelgrenzen bei 150 % Skalierung und 800 % ohne Nähte.
+**Verworfene Alternativen:**
+- Zeichenfläche in Inhaltsgröße als Kind des `ScrollViewer` (Plan): bei langen Dokumenten und hohem Zoom Subpixel-Versatz zwischen Kacheln.
+- `ILogicalScrollable` selbst implementieren: mehr eigener Code für Offset, Extent und Scroll-Invalidierung, ohne Vorteil gegenüber der leeren Fläche.
+
 ## 2026-10-17 – Design-Tokens, Schrift und Icons in Avalonia umgesetzt (M3)
 **Kontext:** Die Design-Spec (Abschnitte 5.1 bis 5.5) legt Tokens, Schrift und Icons fest; M3 setzt sie in `Pagewing.App` um (`Styles/Tokens.axaml`, `Metrics.axaml`, `Fonts.axaml`, `Icons.axaml`, `Controls.axaml`, `Controls/StrokeIcon.cs`).
 **Entscheidung:**
