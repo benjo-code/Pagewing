@@ -41,7 +41,9 @@ Das Skript startet die App mit einem versteckten Messschalter und liest ihre Sta
 Ein dritter Schalter misst das Scrollen und gehört nicht zum Check: `Pagewing --measure-scroll <pdf> [--zoom <Prozent>]` stellt nach dem ersten scharfen Bild den Zoom ein (Standard 100; ganze Zahl von 10 bis 800, sonst endet die App mit Exit-Code 1 und `error: --zoom …`), springt an den Anfang, wartet einen Frame (der Frame mit dem neuen Zoom zählt nicht mit) und scrollt dann in 600 gleichen Schritten, einem pro Frame, von oben nach unten. Er schreibt zwei Zeilen über die Abstände zwischen den Frames:
 
 - `scroll frames=<n> p99-ms=<x> max-ms=<y>`: 99. Perzentil nach dem Nearest-Rank-Verfahren und Maximum (Format unverändert, Auswertungen lesen diese Zeile).
-- `scroll-detail zoom-pct=<z> mean-ms=<m> over-20ms-pct=<a> over-30ms-pct=<b>`: Zoom, mittlerer Abstand und Anteil der Abstände über 20 bzw. 30 ms in Prozent. Ein Takt von 30 Bildern pro Sekunde zeigt sich als Mittel um 33 ms und ein hoher Anteil über 30 ms; einzelne Ausreißer bei 60 Hz als kleiner Anteil über 20 ms.
+- `scroll-detail zoom-pct=<z> mean-ms=<m> over-20ms-pct=<a> over-30ms-pct=<b> range-dips=<r>`: Zoom, mittlerer Abstand, Anteil der Abstände über 20 bzw. 30 ms in Prozent und der Scrollweg (Höhe des Inhalts minus Höhe des Viewports, in ganzen DIP aufgerundet). Ein Takt von 30 Bildern pro Sekunde zeigt sich als Mittel um 33 ms und ein hoher Anteil über 30 ms; einzelne Ausreißer bei 60 Hz als kleiner Anteil über 20 ms.
+
+**Scrollweg 0:** Passt der Inhalt in den Viewport (etwa `vector-shapes.pdf`, eine Seite von 300 × 300 pt, bei 100 %), scrollt nichts und es ändert sich nichts. Avalonia ruft die Frame-Rückrufe dann über einen 16-ms-Timer auf, unter Windows rund alle 31 ms; die Abstände zeigen diesen Takt, nicht das Zeichnen. Die App schreibt dann `warning: nothing to scroll at <Zoom> %: …` auf stderr, Ergebnis und Exit-Code bleiben (`Docs/DECISIONS.md`, Eintrag „Scrollmessung: Takt von rund 31 ms ohne Scrollweg ist ein Messartefakt (M3)“).
 
 `--zoom` gilt nur zusammen mit `--measure-scroll`; bei einem normalen Start und den anderen Messschaltern wird es ignoriert.
 
@@ -63,7 +65,7 @@ In den Start- und Zweitdatei-Messläufen (`--measure-startup`, `--measure-second
 |---|---|
 | `main` | Eintritt in `Program.Main` (nach der `AppContext`-Initialisierung) |
 | `session-open-started` | das frühe Öffnen der Datei ist gestartet |
-| `rendering-software`, `rendering-default` | nur Windows: Rendering-Modus gewählt (Abstand zur Phase davor = Kosten der Adapter-Erkennung; `Docs/DECISIONS.md`, Eintrag „Software-Rendering ohne Hardware-Grafikadapter (M3)“) |
+| `rendering-software`, `rendering-default` | nur Windows: Rendering-Modus gewählt (`rendering-default` nur mit `PAGEWING_RENDERING=default`; `Docs/DECISIONS.md`, Eintrag „Software-Rendering als Windows-Standard (M3)“) |
 | `session-ready` | die Session meldet `Ready` (PDFium-Thread) |
 | `avalonia-configure` | vor `AppBuilder.Configure` (in `Program.Run`) |
 | `platform-detected` | nach `UsePlatformDetect()`: Subsysteme gewählt, noch nichts initialisiert |
@@ -71,7 +73,7 @@ In den Start- und Zweitdatei-Messläufen (`--measure-startup`, `--measure-second
 | `runtime-init`, `runtime-ready` | Avalonias Laufzeit-Subsystem (Assets, Plattformdienste) |
 | `text-shaping-init`, `text-shaping-ready` | Textformung (HarfBuzz) |
 | `render-init`, `render-ready` | Render-Subsystem (Skia) |
-| `windowing-init`, `windowing-ready` | Fenstersystem (`Win32Platform.Initialize` bzw. X11); unter Windows samt Grafik (ANGLE mit Direct3D-11-Gerät, nichts bei Software-Rendering) und Komposition (WinUI, DirectComposition …) |
+| `windowing-init`, `windowing-ready` | Fenstersystem (`Win32Platform.Initialize` bzw. X11); unter Windows auf dem GPU-Pfad (`PAGEWING_RENDERING=default`) samt Grafik (ANGLE mit Direct3D-11-Gerät) und Komposition (WinUI, DirectComposition …), bei Software-Rendering ohne beides |
 | `platform-services-setup` | `AfterPlatformServicesSetup`: alle Subsysteme initialisiert |
 | `app-created` | Konstruktor von `App` (Avalonia erzeugt die App nach den Subsystemen) |
 | `app-register-services` | `App.RegisterServices` |
@@ -95,16 +97,17 @@ Genauigkeit: Der Ursprung ist die Erzeugungszeit des Prozesses laut Betriebssyst
 
 ## Messung auf echter Hardware (Haupt-PC)
 
-Der Startzeit-Check der CI läuft auf einem Runner ohne GPU und misst dort den Software-Renderpfad (`Docs/DECISIONS.md`, Eintrag „Software-Rendering ohne Hardware-Grafikadapter (M3)“). Zahlen für Rechner mit GPU liefert der Workflow `.github/workflows/hardware-measure.yml` („Hardware measurement“) auf dem Haupt-PC des Projektinhabers. Begründung und Grenzen: `Docs/DECISIONS.md`, Eintrag „Messung auf echter Hardware: manueller Runner des Haupt-PCs (M3)“.
+Unter Windows ist Software-Rendering der Standard (`Docs/DECISIONS.md`, Eintrag „Software-Rendering als Windows-Standard (M3)“): Der Startzeit-Check der CI (Runner ohne GPU) und die strikten Schritte auf dem Haupt-PC messen beide diesen Pfad. Den GPU-Pfad (`PAGEWING_RENDERING=default`) misst nur ein informativer Schritt auf dem Haupt-PC. Zahlen für Rechner mit GPU liefert der Workflow `.github/workflows/hardware-measure.yml` („Hardware measurement“) auf dem Haupt-PC des Projektinhabers. Begründung und Grenzen: `Docs/DECISIONS.md`, Eintrag „Messung auf echter Hardware: manueller Runner des Haupt-PCs (M3)“.
 
 **Was der Workflow tut** (Job `measure-windows-gpu`, höchstens 30 Minuten, Läufe nie parallel):
 
 1. Auschecken, .NET 10 einrichten, Voraussetzungen prüfen (`dotnet` 10, `vswhere`, C++-Build-Tools), die App als Native AOT für `win-x64` veröffentlichen.
 2. „Hardware report“: Grafikkarte(n) mit Treiber, Windows-Build, CPU, Energiesparplan, Akkustatus nach `out/startup/hardware.txt`.
-3. „Startup check (default rendering)“: die vier Fälle aus „Fälle und Budgets“ wie in der CI, mit `--phases` im Fall `warm`, mit unveränderten Budgets und Grenzen. `PAGEWING_RENDERING` ist dabei nicht gesetzt (Standard-Renderpfad). Ein roter Fall ist ein echter Befund und färbt den Schritt rot.
-4. „Scroll measurement“: `Pagewing.exe --measure-scroll` auf `thousand-pages.pdf` und `vector-shapes.pdf`, je 3 Läufe, die Zeilen `scroll frames=… p99-ms=… max-ms=…` nach `out/startup/scroll.txt`. Für das Scrollen gibt es kein Budget; nur ein Exit-Code der App ungleich 0 oder eine fehlende Ergebniszeile färbt den Schritt rot.
-5. Zur Information (`continue-on-error`): der Fall `warm` mit `PAGEWING_RENDERING=software`, zum Vergleich mit dem Standardpfad.
-6. Zusammenfassung des Laufs (Hardware, Median je Fall gegen Budget und Grenze, Scrollwerte) und Artefakt `hardware-measure` mit allem aus `out/startup/` (CSV, Logs, `hardware.txt`, `scroll.txt`).
+3. „Startup check (default rendering, software)“: die vier Fälle aus „Fälle und Budgets“ wie in der CI, mit `--phases` im Fall `warm`, mit unveränderten Budgets und Grenzen. `PAGEWING_RENDERING` ist dabei nicht gesetzt (Standard-Renderpfad, unter Windows Software). Ein roter Fall ist ein echter Befund und färbt den Schritt rot.
+4. „Scroll measurement“: `Pagewing.exe --measure-scroll` auf `thousand-pages.pdf` und `vector-shapes.pdf` (Standardpfad, 100 %), je 3 Läufe, die Zeilen `scroll frames=…` und `scroll-detail …` samt einer Warnung bei Scrollweg 0 nach `out/startup/scroll.txt`. Für das Scrollen gibt es kein Budget; nur ein Exit-Code der App ungleich 0 oder eine fehlende Ergebniszeile färbt den Schritt rot.
+5. Zur Information (`continue-on-error`): der Fall `warm` auf dem GPU-Pfad (`PAGEWING_RENDERING=default`) mit `--phases` (`warm-gpu.log`, `warm-gpu.csv`), damit die Kosten des GPU-Hochfahrens über die Zeit sichtbar bleiben. Ein Median über der Grenze ist dort ein Ergebnis; nur ein fehlendes Ergebnis färbt den Schritt rot.
+6. Zur Information (`continue-on-error`, höchstens 8 Minuten): `--measure-scroll` mit `--zoom` 100 und 400 auf `thousand-pages.pdf` und `vector-shapes.pdf`, je 2 Läufe auf dem Standardpfad (Software) und auf dem GPU-Pfad, abwechselnd; Ergebnis `out/startup/scroll-compare.csv` (Datei, Zoom, Pfad, Lauf, Exit-Code, Frames, p99, Max, Mittel, Anteil über 20 und 30 ms, Scrollweg).
+7. Zusammenfassung des Laufs (Hardware, Median je Fall gegen Budget und Grenze, Phasen des Falls `warm`, Scrollwerte, Warmstart mit „windowing“ und „erster Frame“ für Software und GPU-Pfad, Scrollvergleich) und Artefakt `hardware-measure` mit allem aus `out/startup/` (CSV, Logs, `hardware.txt`, `scroll.txt`).
 
 **Auslösen:** Der Runner hat das Label `dotnet-windows-gpu` (nicht `dotnet-windows` oder `dotnet-linux`, die CI-Jobs landen deshalb nie dort) und liegt in der Runner-Gruppe `main-pc`, deren Repository-Zugriff der Projektinhaber auf Pagewing beschränkt. Der Workflow startet nur auf ausdrücklichen Befehl:
 

@@ -15,7 +15,58 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Software-Rendering als Windows-Standard (M3)
+**Kontext:** Die Messmatrix des Eintrags „Messmatrix auf echter Hardware: Startzeit mit GPU (M3)“ lief auf dem Haupt-PC (Lauf 39041482043 des Workflows „Hardware measurement“ auf PR #4; Ryzen 7 7800X3D, NVIDIA GeForce RTX 4070 SUPER mit Treiber 32.0.16.1692 und AMD-Radeon-iGPU, Windows 11 Build 26300, 1920 × 1080 bei 60 Hz, Netzbetrieb, Energiesparplan „Ausbalanciert“). Fall `warm` mit `text-basic.pdf` je Grafikpfad (Median aus 10 Läufen, 3 Aufwärmläufe, ms; „windowing“ = `windowing-ready` − `windowing-init`, also Fenstersystem, Grafik und Komposition; „erster Frame“ = `frame-after-tile` − `tile-drawn`):
+
+| Grafikpfad (Win32-Optionen von Avalonia 12.1.4) | warm | windowing | erster Frame |
+|---|---:|---:|---:|
+| Avalonias Standard (ANGLE über Direct3D 11, DXGI-Adapter 0 = NVIDIA) | 457,4 | 230,9 | 76,2 |
+| `Software` | 186,3 | 15,3 | 15,8 |
+| ANGLE nur Direct3D 11 | 450,0 | 223,4 | 80,0 |
+| Kompositionsmodi `WinUIComposition`, `DirectComposition`, `LowLatencyDxgiSwapChain`, `RedirectionSurface`, `RedirectionSurface` mit Rendern im UI-Thread | 437,1 bis 506,4 | 217,0 bis 258,4 | 72,8 bis 90,4 |
+| `Wgl` | 421,8 | 227,9 | 28,3 |
+| `Vulkan` | 1417,9 | 811,3 | 461,1 |
+| ANGLE auf DXGI-Adapter 0 (NVIDIA, über `GraphicsAdapterSelectionCallback`) | 454,3 | 227,8 | 85,4 |
+| ANGLE auf DXGI-Adapter 1 (AMD-iGPU) | 309,6 | 70,8 | 84,2 |
+| ANGLE auf DXGI-Adapter 2 (Microsoft Basic Render Driver, WARP) | 258,7 | 39,1 | 69,9 |
+| ANGLE nur Direct3D 9 | startet nicht („No available renderers“) | | |
+
+Bis `windowing-init` liegen alle Pfade gleichauf (76,8 bis 86,5 ms seit Prozessstart). Im strikten Check desselben Laufs (Standardpfad, damals ANGLE): cold 455,5, warm 470,9, thousand 472,6, second 13,9 ms (Grenzen 500/250/375/125); warm mit `PAGEWING_RENDERING=software` 182,4 ms. Scrollen (`--measure-scroll`, 600 Frames, je 2 Läufe, p99 in ms, Standard / Software): `thousand-pages.pdf` bei 100 % 11,4–12,1 / 16,6–16,7, bei 200 % 12,3–12,6 / 7,5–7,9, bei 400 % 12,3–12,6 / 11,3–12,2, bei 800 % 12,4–17,0 / 16,7–17,2, höchstens 0,5 % der Abstände über 20 ms; `vector-shapes.pdf` bei 200 bis 800 % 8,1–12,2 / 9,3–12,5, kein Abstand über 20 ms. `vector-shapes.pdf` bei 100 % lag in beiden Modi bei p99 rund 33 ms; dort gibt es nichts zu scrollen (Eintrag „Scrollmessung: Takt von rund 31 ms ohne Scrollweg ist ein Messartefakt (M3)“).
+**Entscheidung:** (Projektinhaber)
+- Unter Windows rendert Pagewing immer in Software, auf Rechnern mit und ohne GPU: `Win32PlatformOptions.RenderingMode = [Software]` als einziger Modus (`Program.Run`, Regel in `RenderingModeSelector`). Laut Quelltext von Avalonia 12.1.4 (`Win32GlManager.InitializeCore`) erzeugt dieser Modus keine Plattformgrafik (kein Direct3D-Gerät, kein ANGLE-Display) und registriert keine Komposition. Lokal geprüft (Entwicklungs-VM, AOT, je 3 Läufe): „windowing“ 11 bis 15 ms ohne Variable, 45 bis 135 ms mit `PAGEWING_RENDERING=default`.
+- `PAGEWING_RENDERING=default` wählt Avalonias Standard (den GPU-Pfad), `software` bleibt gültig und ändert nichts, jeder andere Wert behält den Standard; der Wert wird getrimmt, Groß- und Kleinschreibung zählen nicht. Die Wahl fällt einmal je Prozess vor dem Start von Avalonia, nach der Single-Instance-Wahl; ein späterer Aufruf, der seine Datei übergibt, erreicht sie nie. Im Messmodus zeigt die Phase `rendering-software` bzw. `rendering-default` die Wahl.
+- Andere Systeme (Linux) bleiben unverändert bei Avalonias Standard.
+- Die Erkennung der Grafikadapter entfällt (`KmtAdapters` mit D3DKMT, `GraphicsAdapter`, ihre Tests). `AllowUnsafeBlocks` bleibt im App-Projekt: der `[LibraryImport]` von `AllowSetForegroundWindow` verlangt es (ohne: SYSLIB1062).
+- Die vorübergehende Variantenmatrix (`PAGEWING_DIAG_WIN32`) ist zurückgenommen (`git revert` von 973d846); Phasen und `--zoom` bleiben. Der Hardware-Workflow misst strikt den neuen Standard und zur Information den Fall `warm` auf dem GPU-Pfad (`PAGEWING_RENDERING=default`, mit `--phases`) sowie Scrollen mit Zoom 100 und 400 % auf beiden Pfaden (`bench/startup/README.md`, Abschnitt „Messung auf echter Hardware (Haupt-PC)“).
+**Begründung:**
+- Belegt (Lauf oben): Der Abstand des GPU-Pfads liegt fast ganz im Schritt „windowing“ (NVIDIA rund 231 ms, AMD-iGPU rund 71 ms, WARP rund 39 ms, Software rund 15 ms) und im ersten Frame (70 bis 90 ms mit ANGLE gegen rund 16 ms in Software). Nur in Software liegt der Warmstart auf diesem PC innerhalb des Budgets (182 bis 186 ms, Budget 200 ms). Das Scrollen ist bei 1920 × 1080 und 60 Hz auf diesem PC in beiden Modi gleichwertig (siehe Kontext).
+- Geschlossen, nicht belegt: Die Kosten von „windowing“ entstehen beim Hochfahren des GPU-Treibers (Direct3D-11-Gerät und ANGLE-Display; beim NVIDIA-Treiber am teuersten). Welcher Schritt darin wie viel kostet, ist nicht getrennt gemessen.
+**Folgen und Grenzen:**
+- Gemessen ist nur ein Rechner: eine schnelle CPU, 1920 × 1080 bei 60 Hz. Nicht gemessen: 4K und hohe Skalierung, 120/144 Hz, schwache CPUs, Akkubetrieb, Linux mit GPU. Software-Rendering rastert jeden Frame auf der CPU; beim Scrollen lag der mittlere Frame-Abstand in Software teils höher (bei `thousand-pages.pdf` 5,2 bis 8,4 gegen 4,4 bis 5,1 ms), die Reserve schrumpft mit der Pixelzahl.
+- Der GPU-Pfad bleibt über `PAGEWING_RENDERING=default` erreichbar. Eine Einstellung „Hardwarebeschleunigung“ (etwa in M6) ist nur eine Idee (Roadmap, Backlog).
+- Der Windows-Runner der CI (ohne GPU) maß schon den Software-Pfad; jetzt messen CI und Haupt-PC denselben Standardpfad. Ein grüner Check sagt nichts über den GPU-Pfad; den zeigt der informative Schritt des Hardware-Workflows.
+**Verworfene Alternativen:**
+- Die günstigste Hardware-GPU wählen (iGPU über `GraphicsAdapterSelectionCallback`): warm 309,6 ms, über der Grenze, und die Wahl des Adapters hinge vom Rechner ab.
+- ANGLE über WARP (Adapter 2): warm 258,7 ms, über der Grenze, und der erste Frame kostet trotzdem rund 70 ms.
+- Andere ANGLE- und Kompositionsoptionen (nur Direct3D 11, die vier Kompositionsmodi, Rendern im UI-Thread): 437 bis 506 ms, keine Wirkung.
+- `Wgl` (421,8 ms, „windowing“ 228 ms), `Vulkan` (1417,9 ms), ANGLE über Direct3D 9 (startet nicht).
+- Die Erkennung behalten (Software nur ohne Hardware-GPU): Auf Rechnern mit GPU, dem Normalfall, bliebe der Warmstart bei rund 457 ms.
+
+## 2026-10-17 – Scrollmessung: Takt von rund 31 ms ohne Scrollweg ist ein Messartefakt (M3)
+**Kontext:** Auf dem Haupt-PC lag `--measure-scroll` mit `vector-shapes.pdf` bei 100 % in beiden Grafikpfaden bei p99 32,9 bis 33,7 ms, Mittel 24,0 bis 25,2 ms, 35,5 bis 42,3 % der Abstände über 30 ms (Lauf 39041482043; ebenso Lauf 39035639908), bei 200 bis 800 % dagegen bei p99 8 bis 13 ms; `thousand-pages.pdf` bei 100 % bei p99 11 bis 17 ms.
+**Befund (belegt):** Mit vorübergehenden Zählern (wieder entfernt) in der Entwicklungs-VM (AOT, Viewport 648 DIP hoch):
+- `vector-shapes.pdf` hat eine Seite von 300 × 300 pt; bei 100 % ist der Inhalt mit den Rändern 464 DIP hoch, kleiner als der Viewport. Der Scrollweg ist 0: In 600 Schritten gab es einen einzigen Offset, `DocumentCanvas.Render` lief im ganzen Lauf zweimal, ein Schritt kostete 0,02 ms. Die Abstände fielen in zwei Gruppen, 15 bis 18 ms und 29 bis 34 ms (Mittel 27,0 bzw. 27,5 ms, p99 33,7 bzw. 38,6 ms in Software bzw. auf dem GPU-Pfad), dasselbe Bild wie auf dem Haupt-PC.
+- Dieselbe Datei und derselbe Zoom mit einem erzwungenen `InvalidateVisual` je Schritt: Mittel 16,3 ms, 2,3 % über 30 ms. Bei 200 % (864 DIP, also Scrollweg) 600 Offsets, 604 Zeichnungen, Mittel 16,6 ms; `thousand-pages.pdf` bei 100 % 600 Offsets, 0,9 ms je Schritt, Mittel 16,2 ms (beides Software).
+- Ursache laut Quelltext von Avalonia 12.1.4: Ohne Änderung gibt es keinen Commit an den Compositor; dann ruft `MediaContext.RenderCore` die Rückrufe von `RequestAnimationFrame` über einen `DispatcherTimer` mit 16 ms auf, unter Windows ein `SetTimer` (`Win32DispatcherImpl.UpdateTimer`). Mit Commit kommt der nächste Rückruf, sobald der Compositor den Batch verarbeitet hat. Dass der Timer auf rund 31 ms aufrundet, ist aus der Standard-Timerauflösung von Windows (15,6 ms) geschlossen und passt zu den gemessenen 29 bis 34 ms.
+Ein Ruckeln für Nutzer ist das nicht: Es ändert sich nichts, also muss nichts gezeichnet werden.
+**Entscheidung:** `--measure-scroll` hängt an die Zeile `scroll-detail` das Feld `range-dips=<n>` an (Scrollweg: Höhe des Inhalts minus Höhe des Viewports, in ganzen DIP aufgerundet) und schreibt bei einem Scrollweg von 0 die Warnung `warning: nothing to scroll at <Zoom> %: …` auf stderr. Ergebnis, Zeile `scroll frames=…` und Exit-Code bleiben gleich. Der Hardware-Workflow zeigt den Scrollweg in seinen Tabellen. Tests: `MeasurementTests.ScrollMeasurementWarnsWhenTheContentFitsTheViewport`, `OnlyARunWithoutScrollRangeWarns`, `ScrollDetailShowsTheMeanAndTheShareOfSlowFrames`.
+**Verworfene Alternativen:**
+- Die Messung bei Scrollweg 0 scheitern lassen: Der strikte Scrollschritt des Hardware-Workflows würde für eine Datei rot, die nur klein ist; dass die App startet, scrollt und sich beendet, prüft er weiterhin.
+- In der Messung je Schritt neu zeichnen lassen: mäße Arbeit, die die App ohne Änderung nie tut.
+- Eine andere Datei messen: `vector-shapes.pdf` ist ab 200 % aussagekräftig und bleibt.
+
 ## 2026-10-17 – Messmatrix auf echter Hardware: Startzeit mit GPU (M3)
+**Abgeschlossen:** ausgewertet mit Lauf 39041482043, die vorübergehenden Varianten sind zurückgenommen. Abgelöst durch: „Software-Rendering als Windows-Standard (M3)“; zum 30-Hz-Befund bei `vector-shapes.pdf` siehe „Scrollmessung: Takt von rund 31 ms ohne Scrollweg ist ein Messartefakt (M3)“.
 **Kontext:** Der erste Lauf des Workflows „Hardware measurement“ (Lauf 39035639908, Haupt-PC: Ryzen 7 7800X3D, NVIDIA RTX 4070 SUPER und AMD-Radeon-iGPU, Windows 11 Build 26300, 1920 × 1080 bei 60 Hz, Energiesparplan „Ausbalanciert“) ergab auf dem Standard-Renderpfad (ANGLE, die Erkennung wählt dort keinen Software-Modus): cold 432 ms, warm 438 ms, thousand 453 ms, second 17 ms (Budgets 400/200/300/100, Grenzen 500/250/375/125 ms). Mit `PAGEWING_RENDERING=software` lag warm auf demselben PC bei 152 ms. Phasenmediane warm (ms seit Prozessstart), Standard gegen Software: `main` 74 / 69, `session-open-started` 74 / 69, `rendering-default` bzw. `rendering-software` 75 / 70, `session-ready` 76 / 72, `app-initialize` 303 / 83, `app-initialized` 310 / 90, `window-created` 327 / 109, `window-opened` 351 / 135, `first-frame` 352 / 136, `preview-applied` 353 / 137, `tile-applied` 353 / 137, `tile-drawn` 353 / 137, `frame-after-tile` 438 / 151. Rund 225 ms entstehen also vor `app-initialize`, d. h. zwischen dem eigenen frühen Code und dem Ende von Avalonias Plattform-Aufbau (`AppBuilder.Configure … UsePlatformDetect … StartWithClassicDesktopLifetime`), dazu rund 85 ms im ersten Frame (Software: 14 ms). Scrollen auf dem Standardpfad (600 Frames): `thousand-pages.pdf` p99 12 ms, Max 20 bis 23 ms; `vector-shapes.pdf` in allen Läufen p99 33,4 ms, Max 34 bis 35 ms (sieht nach einem 30-Hz-Takt aus, ungeklärt).
 **Frage:** Woher kommen die rund 225 ms vor `app-initialize` auf einem Rechner mit GPU, und was hilft dagegen? Vermutet, nicht belegt: Erzeugen des Direct3D-11-Geräts für ANGLE mit dem NVIDIA-Treiber, Aufzählen der Adapter bei zwei GPUs, Initialisierung der Win32-Plattform oder der Komposition. Die Ursache ist nicht belegt; dieser Eintrag beschreibt nur die Messung, keine Lösung.
 **Entscheidung:**
@@ -44,6 +95,7 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 - Nicht auf einem Runner geprüft: Der Workflow ist bisher nur statisch geprüft (YAML, PowerShell-Syntax, Auszug der Zusammenfassung mit erfundenen Logs), gelaufen ist er noch nicht.
 
 ## 2026-10-17 – Software-Rendering ohne Hardware-Grafikadapter (M3)
+**Abgelöst durch:** „Software-Rendering als Windows-Standard (M3)“ (Software-Rendering unter Windows für alle Rechner, die Adapter-Erkennung entfällt).
 **Kontext:** Ohne Hardware-GPU kostet der erste Frame nach der ersten scharfen Kachel auf Avalonias Standardpfad (ANGLE, also Direct3D 11 über WARP) rund 200 ms, mit `Win32RenderingMode.Software` 22 bis 32 ms (Eintrag „Windows-Warmstart: Phasenmessung auf dem Runner (M3)“). Der Projektinhaber hat entschieden: Der Windows-Runner ohne GPU ist die Referenz für schwache Rechner, Budgets und Check bleiben, das Produkt wird schneller.
 **Entscheidung:**
 - `Program.Main` wählt unter Windows `Win32RenderingMode.Software` nur, wenn der Rechner **keinen Grafikadapter hat, auf dem Hardware rendert**; sonst bleibt Avalonias Standard unverändert (es wird nichts gesetzt). Linux bleibt unverändert.
