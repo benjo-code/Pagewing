@@ -1,0 +1,27 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Path data of the Tabler Icons 3.49.0 "outline" icons used in Milestone 3 (MIT, Copyright (c) 2020-2026 Pawel Kuna,
+    licence text in third-party/tabler-icons/LICENSE; source https://github.com/tabler/tabler-icons, tag v3.49.0).
+    24 x 24 grid, no fill, 2 unit round stroke: draw them with Controls/StrokeIcon, not with PathIcon. The paths of one
+    icon are joined into one geometry. Add only the icons that are used.
+  -->
+  <!-- file-text -->
+  <StreamGeometry x:Key="Pw.Icon.FileText">M14 3v4a1 1 0 0 0 1 1h4 M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2 M9 9l1 0 M9 13l6 0 M9 17l6 0</StreamGeometry>
+  <!-- folder-open -->
+  <StreamGeometry x:Key="Pw.Icon.FolderOpen">M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2</StreamGeometry>
+  <!-- x -->
+  <StreamGeometry x:Key="Pw.Icon.X">M18 6l-12 12 M6 6l12 12</StreamGeometry>
+  <!-- chevron-left -->
+  <StreamGeometry x:Key="Pw.Icon.ChevronLeft">M15 6l-6 6l6 6</StreamGeometry>
+  <!-- chevron-right -->
+  <StreamGeometry x:Key="Pw.Icon.ChevronRight">M9 6l6 6l-6 6</StreamGeometry>
+  <!-- minus -->
+  <StreamGeometry x:Key="Pw.Icon.Minus">M5 12l14 0</StreamGeometry>
+  <!-- plus -->
+  <StreamGeometry x:Key="Pw.Icon.Plus">M12 5l0 14 M5 12l14 0</StreamGeometry>
+  <!-- lock -->
+  <StreamGeometry x:Key="Pw.Icon.Lock">M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6 M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0 M8 11v-4a4 4 0 1 1 8 0v4</StreamGeometry>
+  <!-- alert-triangle -->
+  <StreamGeometry x:Key="Pw.Icon.AlertTriangle">M12 9v4 M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0 M12 16h.01</StreamGeometry>
+</ResourceDictionary>

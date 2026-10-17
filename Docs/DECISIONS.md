@@ -15,6 +15,21 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Design-Tokens, Schrift und Icons in Avalonia umgesetzt (M3)
+**Kontext:** Die Design-Spec (Abschnitte 5.1 bis 5.5) legt Tokens, Schrift und Icons fest; M3 setzt sie in `Pagewing.App` um (`Styles/Tokens.axaml`, `Metrics.axaml`, `Fonts.axaml`, `Icons.axaml`, `Controls.axaml`, `Controls/StrokeIcon.cs`).
+**Entscheidung:**
+- Jedes Farb-Token ist je Theme (`ThemeDictionaries` Light/Dark) als `Pw.Color.*` und `Pw.Brush.*` mit denselben Werten angelegt, dazu `Pw.Shadow.Page` und `Pw.Shadow.Card`. Die Spec schreibt Alphawerte CSS-artig (`#RRGGBBAA`), Avalonia liest `#AARRGGBB`; die Werte stehen umgerechnet in `Tokens.axaml`, `TokenTests` prüft jeden Wert gegen die Spec-Schreibweise. Die Kontrastpaare der Regelliste in 5.1 sind als Test hinterlegt.
+- Die Fluent-Palette (`FluentTheme.Palettes`) wiederholt die Token-Werte als Literale, weil `ColorPaletteResources` keine Ressourcen referenzieren kann. `Accent`, `RegionColor`, `BaseHigh`, `BaseMedium` und `ErrorText` folgen der Spec; `Alt*`, `Chrome*`, `List*` und die übrigen `Base*` sind auf das nächste Token gesetzt. Der Sichtvergleich mit dem Mockup folgt in M3, Task 13.
+- Schrift: Geist 1.8.1 und Geist Mono als Teilmenge (Befehl in `third-party/geist/README.md`) als `AvaloniaResource`. Gegenüber der Liste in der Spec kommt U+2019 (’) dazu, weil der Apostroph in deutschen und englischen Texten häufig ist. `Fonts.axaml` ist die einzige Stelle der Schriftwahl; die Systemschrift ist ein Austausch von zwei Zeilen (`Segoe UI, sans-serif`, `Cascadia Mono, Consolas, monospace`), ohne Laufzeitlogik. Das Ergebnis der Startmessung (Task 13) entscheidet.
+- Icons: Pfaddaten von Tabler 3.49.0 (`outline`) als `StreamGeometry`, gezeichnet vom eigenen `StrokeIcon` (24er-Raster, Strich 2/24 der Größe, runde Enden und Ecken, Pinsel `null` = geerbte `TextElement.Foreground`, damit Icons in Knöpfen den Zustandsfarben folgen).
+- Fokusring: `FocusAdorner` (2 px, 1 px Abstand) per Stil auf die umgestalteten Steuerelemente; Avalonia zeigt ihn nur bei Fokus per Tab oder Pfeiltasten. `AdornerLayer.IsClipEnabled="False"` ist nötig, sonst schneidet Avalonia den Ring auf die Grenzen des Elements ab.
+- Primärknopf: Hover und Druck dunkeln den Knopf über `Opacity` (0,88 und 0,76) statt über neue Farbwerte, weil die Spec dafür kein Token hat und neue Farbpaare erst auf WCAG zu prüfen wären. Kein Skalieren beim Drücken, keine Übergänge (5.6).
+**Begründung:** Ressourcen als Literale je Theme sind AOT-sicher und brauchen keine Laufzeit-Reflection; Tests fixieren die Spec-Werte, damit Änderungen bewusst über `Docs/DECISIONS.md` laufen. Der Fokusring nach Tastaturbedienung entspricht 5.3 und 7.9.
+**Verworfene Alternativen:**
+- `PathIcon`: füllt nur, Linien-Icons würden zu Flächen.
+- Hover-/Press-Farben als neue Tokens: nicht in der Spec, jedes neue Paar bräuchte eine eigene Kontrastprüfung.
+- Fluent-Ressourcen (`ButtonBackground` usw.) überschreiben: hängt von der Auflösungsreihenfolge zwischen Anwendungsressourcen und Theme ab; direkte Stile sind eindeutig.
+
 ## 2026-10-17 – Avalonia.Headless.XUnit als Testabhängigkeit (mit xunit.v3 3.2.2 nur in App.Tests)
 **Kontext:** Die UI-Tests von `Pagewing.App` (M3) laufen ohne Fenstersystem. Dafür braucht es die Headless-Plattform von Avalonia samt xunit-Integration (`[AvaloniaFact]`, `[AvaloniaTheory]`).
 **Entscheidung:**

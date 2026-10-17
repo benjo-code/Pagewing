@@ -1,0 +1,142 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Colour tokens of Docs/superpowers/specs/2026-10-17-designsystem.md, section 5.1.
+    Pw.Color.<Group>.<Name> is the Color, Pw.Brush.<Group>.<Name> the SolidColorBrush (same values).
+    Avalonia reads 8-digit colours as #AARRGGBB, the spec writes CSS #RRGGBBAA: the alpha ones are converted here
+    (page.border light #00000014 -> #14000000). TokenTests check every value against the spec.
+    Reference the brushes with DynamicResource so they follow the theme variant.
+  -->
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <!-- Surface -->
+      <Color x:Key="Pw.Color.Surface.Window">#EEEFF2</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Window" Color="#EEEFF2" />
+      <Color x:Key="Pw.Color.Surface.Toolbar">#F7F8FA</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Toolbar" Color="#F7F8FA" />
+      <Color x:Key="Pw.Color.Surface.Sidebar">#F7F8FA</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Sidebar" Color="#F7F8FA" />
+      <Color x:Key="Pw.Color.Surface.Canvas">#E3E5EA</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Canvas" Color="#E3E5EA" />
+      <Color x:Key="Pw.Color.Surface.Raised">#FFFFFF</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Raised" Color="#FFFFFF" />
+      <Color x:Key="Pw.Color.Surface.Hover">#E3E5EA</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Hover" Color="#E3E5EA" />
+
+      <!-- Accent -->
+      <Color x:Key="Pw.Color.Accent.Subtle">#E2E5F8</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Accent.Subtle" Color="#E2E5F8" />
+
+      <!-- Border -->
+      <Color x:Key="Pw.Color.Border.Subtle">#DCDFE5</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Border.Subtle" Color="#DCDFE5" />
+      <Color x:Key="Pw.Color.Border.Strong">#7F848E</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Border.Strong" Color="#7F848E" />
+
+      <!-- Text -->
+      <Color x:Key="Pw.Color.Text.Primary">#16181D</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Text.Primary" Color="#16181D" />
+      <Color x:Key="Pw.Color.Text.Secondary">#4F545E</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Text.Secondary" Color="#4F545E" />
+      <Color x:Key="Pw.Color.Text.Disabled">#9399A3</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Text.Disabled" Color="#9399A3" />
+
+      <!-- Accent -->
+      <Color x:Key="Pw.Color.Accent.Default">#3B48C4</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Accent.Default" Color="#3B48C4" />
+      <Color x:Key="Pw.Color.Accent.On">#FFFFFF</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Accent.On" Color="#FFFFFF" />
+
+      <!-- Focus -->
+      <Color x:Key="Pw.Color.Focus.Ring">#3340B4</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Focus.Ring" Color="#3340B4" />
+
+      <!-- Page -->
+      <Color x:Key="Pw.Color.Page.Border">#14000000</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Page.Border" Color="#14000000" />
+      <Color x:Key="Pw.Color.Page.Shadow">#1A000000</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Page.Shadow" Color="#1A000000" />
+
+      <!-- Search -->
+      <Color x:Key="Pw.Color.Search.Hit">#FBE38A</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.Hit" Color="#FBE38A" />
+      <Color x:Key="Pw.Color.Search.Current">#F5A524</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.Current" Color="#F5A524" />
+      <Color x:Key="Pw.Color.Search.On">#16181D</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.On" Color="#16181D" />
+
+      <!-- Danger -->
+      <Color x:Key="Pw.Color.Danger.Default">#B42318</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Danger.Default" Color="#B42318" />
+
+      <!-- Shadows (section 5.3) -->
+      <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #14000000, 0 2 10 0 #1A000000</BoxShadows>
+      <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #DCDFE5, 0 12 32 -12 #1A000000</BoxShadows>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Dark">
+      <!-- Surface -->
+      <Color x:Key="Pw.Color.Surface.Window">#15171B</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Window" Color="#15171B" />
+      <Color x:Key="Pw.Color.Surface.Toolbar">#1B1E23</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Toolbar" Color="#1B1E23" />
+      <Color x:Key="Pw.Color.Surface.Sidebar">#1B1E23</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Sidebar" Color="#1B1E23" />
+      <Color x:Key="Pw.Color.Surface.Canvas">#0F1114</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Canvas" Color="#0F1114" />
+      <Color x:Key="Pw.Color.Surface.Raised">#24272E</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Raised" Color="#24272E" />
+      <Color x:Key="Pw.Color.Surface.Hover">#2A2E36</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Surface.Hover" Color="#2A2E36" />
+
+      <!-- Accent -->
+      <Color x:Key="Pw.Color.Accent.Subtle">#262B52</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Accent.Subtle" Color="#262B52" />
+
+      <!-- Border -->
+      <Color x:Key="Pw.Color.Border.Subtle">#2A2E36</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Border.Subtle" Color="#2A2E36" />
+      <Color x:Key="Pw.Color.Border.Strong">#6E7480</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Border.Strong" Color="#6E7480" />
+
+      <!-- Text -->
+      <Color x:Key="Pw.Color.Text.Primary">#E6E8EB</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Text.Primary" Color="#E6E8EB" />
+      <Color x:Key="Pw.Color.Text.Secondary">#9BA1AC</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Text.Secondary" Color="#9BA1AC" />
+      <Color x:Key="Pw.Color.Text.Disabled">#5E636D</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Text.Disabled" Color="#5E636D" />
+
+      <!-- Accent -->
+      <Color x:Key="Pw.Color.Accent.Default">#9DA7FF</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Accent.Default" Color="#9DA7FF" />
+      <Color x:Key="Pw.Color.Accent.On">#121539</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Accent.On" Color="#121539" />
+
+      <!-- Focus -->
+      <Color x:Key="Pw.Color.Focus.Ring">#B4BCFF</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Focus.Ring" Color="#B4BCFF" />
+
+      <!-- Page -->
+      <Color x:Key="Pw.Color.Page.Border">#24FFFFFF</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Page.Border" Color="#24FFFFFF" />
+      <Color x:Key="Pw.Color.Page.Shadow">#99000000</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Page.Shadow" Color="#99000000" />
+
+      <!-- Search -->
+      <Color x:Key="Pw.Color.Search.Hit">#FBE38A</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.Hit" Color="#FBE38A" />
+      <Color x:Key="Pw.Color.Search.Current">#F5A524</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.Current" Color="#F5A524" />
+      <Color x:Key="Pw.Color.Search.On">#16181D</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.On" Color="#16181D" />
+
+      <!-- Danger -->
+      <Color x:Key="Pw.Color.Danger.Default">#FF8A80</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Danger.Default" Color="#FF8A80" />
+
+      <!-- Shadows (section 5.3) -->
+      <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #24FFFFFF, 0 2 10 0 #99000000</BoxShadows>
+      <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #2A2E36, 0 12 32 -12 #99000000</BoxShadows>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>
