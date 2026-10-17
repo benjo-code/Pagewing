@@ -113,24 +113,6 @@ internal static partial class Program
             builder = builder.With(win32);
         }
 
-        // TEMPORARY diagnostics: input method (IMM32/TSF) setup on the first activation, measurement runs only.
-        if (startup.Measurement is not null && OperatingSystem.IsWindows()
-            && Environment.GetEnvironmentVariable("PAGEWING_DIAG_IME") is { Length: > 0 } ime)
-        {
-            switch (ime)
-            {
-                case "noime":
-                    _ = ImmDisableIME(0);
-                    break;
-                case "notsf":
-                    _ = ImmDisableTextFrameService(0);
-                    break;
-                default:
-                    Console.Error.WriteLine($"error: unknown PAGEWING_DIAG_IME variant '{ime}'");
-                    return 2;
-            }
-        }
-
         return builder.StartWithClassicDesktopLifetime(args);
     }
 
@@ -221,14 +203,4 @@ internal static partial class Program
     [LibraryImport("user32.dll")]
     [SupportedOSPlatform("windows")]
     private static partial int AllowSetForegroundWindow(int processId);
-
-    // TEMPORARY diagnostics, see Run.
-    [LibraryImport("imm32.dll")]
-    [SupportedOSPlatform("windows")]
-    private static partial int ImmDisableIME(uint threadId);
-
-    // TEMPORARY diagnostics, see Run.
-    [LibraryImport("imm32.dll")]
-    [SupportedOSPlatform("windows")]
-    private static partial int ImmDisableTextFrameService(uint threadId);
 }
