@@ -532,6 +532,83 @@ public sealed class DocumentViewTests : IDisposable
         Assert.DoesNotContain(view.Canvas.Bitmaps.Keys, key => !key.IsPreview && key.ScaleKey != 2000);
     }
 
+    [AvaloniaTheory]
+    [InlineData(1.0, 1333)]
+    [InlineData(1.25, 1667)]
+    public async Task SharpImagesAreDrawnOneToOneOnDevicePixels(double scaling, int scaleKey)
+    {
+        // At 100 % the scale keys are rounded (1.3333… → 1.333, 1.6666… → 1.667): the image must still map 1:1.
+        var (window, viewModel, view) = Show();
+        window.SetRenderScaling(scaling);
+        Settle(window);
+        await OpenAsync(window, viewModel, view, "text-basic.pdf");
+        var key = new TileKey(0, scaleKey, 0, 0);
+        Assert.Contains(view.Canvas.LastRequests, request => request.Key == key);
+
+        await WaitUntilAsync(window, () => view.Canvas.LastSharpDestinations.Any(drawn => drawn.Key == key));
+        Assert.True(view.Canvas.Bitmaps.TryGet(key, out var bitmap));
+        var destination = view.Canvas.LastSharpDestinations.First(drawn => drawn.Key == key).Destination;
+
+        Assert.Equal(bitmap.PixelSize.Width / scaling, destination.Width, 9);
+        Assert.Equal(bitmap.PixelSize.Height / scaling, destination.Height, 9);
+        AssertOnDevicePixel(destination.X, scaling);
+        AssertOnDevicePixel(destination.Y, scaling);
+
+        // The canvas itself sits on the device grid, so canvas coordinates on it are device pixels of the window.
+        var origin = view.Canvas.TranslatePoint(default, window)!.Value;
+        AssertOnDevicePixel(origin.X, scaling);
+        AssertOnDevicePixel(origin.Y, scaling);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    public async Task TilesOfALargePageAbutExactlyOnDevicePixels(double scaling)
+    {
+        var (window, viewModel, view) = Show();
+        window.SetRenderScaling(scaling);
+        Settle(window);
+        await OpenAsync(window, viewModel, view, "text-basic.pdf");
+
+        // At 800 % the page has more than 4 Mpx at every scaling, so it is rendered in 512 px tiles.
+        viewModel.Zoom = 8;
+        Settle(window);
+        view.ScrollViewer.Offset = new Vector(300, 300);
+        Settle(window);
+        var tiles = view.Canvas.LastRequests.Where(request => !request.Key.IsPreview && request.Key.Page == 0).Select(request => request.Key).ToList();
+        Assert.True(tiles.Count >= 4, $"{tiles.Count} tiles");
+        Assert.All(tiles, key => Assert.Equal(TileKey.ToScaleKey(DocumentLayout.DipsPerPoint * 8 * scaling), key.ScaleKey));
+        await WaitUntilAsync(window, () => tiles.All(key => view.Canvas.LastSharpDestinations.Any(drawn => drawn.Key == key)));
+
+        var drawn = view.Canvas.LastSharpDestinations.Where(item => tiles.Contains(item.Key)).ToDictionary(item => item.Key, item => item.Destination);
+        var neighbours = 0;
+        foreach (var (key, rect) in drawn)
+        {
+            AssertOnDevicePixel(rect.X, scaling);
+            AssertOnDevicePixel(rect.Y, scaling);
+            Assert.True(view.Canvas.Bitmaps.TryGet(key, out var bitmap));
+            Assert.Equal(bitmap.PixelSize.Width / scaling, rect.Width, 9);
+            Assert.Equal(bitmap.PixelSize.Height / scaling, rect.Height, 9);
+
+            if (drawn.TryGetValue(key with { Column = key.Column + 1 }, out var right))
+            {
+                Assert.Equal(rect.Right, right.X, 9);
+                Assert.Equal(rect.Y, right.Y, 9);
+                neighbours++;
+            }
+
+            if (drawn.TryGetValue(key with { Row = key.Row + 1 }, out var below))
+            {
+                Assert.Equal(rect.Bottom, below.Y, 9);
+                Assert.Equal(rect.X, below.X, 9);
+                neighbours++;
+            }
+        }
+
+        Assert.True(neighbours >= 2, $"{neighbours} neighbouring pairs");
+    }
+
     [AvaloniaFact]
     public async Task FirstSharpTileDrawnIsRaisedOncePerDocument()
     {
@@ -600,6 +677,12 @@ public sealed class DocumentViewTests : IDisposable
         field.Text = text;
         Settle(window);
         Press(window, Key.Enter, PhysicalKey.Enter, RawInputModifiers.None);
+    }
+
+    private static void AssertOnDevicePixel(double dips, double scaling)
+    {
+        var pixels = dips * scaling;
+        Assert.True(Math.Abs(pixels - Math.Round(pixels)) < 1e-6, $"{dips} DIP is {pixels} device pixels, not on the grid");
     }
 
     private static bool HasSharpTile(DocumentView view, int page) =>

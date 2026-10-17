@@ -52,7 +52,8 @@ internal sealed class DocumentCanvas : Control
         AvaloniaProperty.Register<DocumentCanvas, CornerRadius>(nameof(CornerRadius));
 
     private static readonly RenderOptions PreviewOptions = new() { BitmapInterpolationMode = BitmapInterpolationMode.MediumQuality };
-    private static readonly RenderOptions SharpOptions = new() { BitmapInterpolationMode = BitmapInterpolationMode.LowQuality };
+    // Sharp tiles are drawn 1:1 onto device pixels, so nothing may be interpolated (bilinear would soften them).
+    private static readonly RenderOptions SharpOptions = new() { BitmapInterpolationMode = BitmapInterpolationMode.None };
 
     private readonly TileBitmaps _bitmaps = new();
     private readonly HashSet<int> _failedPages = [];
@@ -60,6 +61,7 @@ internal sealed class DocumentCanvas : Control
     private DipRect _viewport;
     private double _renderScaling = 1;
     private IReadOnlyList<RenderRequest> _lastRequests = [];
+    private readonly List<(TileKey Key, Rect Destination)> _lastSharpDestinations = [];
     private HashSet<TileKey> _wanted = [];
     private HashSet<TileKey> _shown = [];
 
@@ -113,6 +115,9 @@ internal sealed class DocumentCanvas : Control
 
     /// <summary>Gets the requests of the last plan, most important first (for tests).</summary>
     internal IReadOnlyList<RenderRequest> LastRequests => _lastRequests;
+
+    /// <summary>Gets where the last frame drew the sharp tiles, in canvas coordinates (for tests).</summary>
+    internal IReadOnlyList<(TileKey Key, Rect Destination)> LastSharpDestinations => _lastSharpDestinations;
 
     /// <summary>Gets the bitmaps the canvas holds (for tests).</summary>
     internal TileBitmaps Bitmaps => _bitmaps;
@@ -260,8 +265,8 @@ internal sealed class DocumentCanvas : Control
 
         var dipsPerPoint = DocumentLayout.DipsPerPoint * layout.Zoom;
         var scaleKey = TileKey.ToScaleKey(dipsPerPoint * _renderScaling);
-        var dipsPerPixel = dipsPerPoint / (scaleKey / 1000.0);
         var drewFirstSharpTile = false;
+        _lastSharpDestinations.Clear();
 
         using (context.PushClip(new RoundedRect(new Rect(Bounds.Size), CornerRadius)))
         {
@@ -301,12 +306,16 @@ internal sealed class DocumentCanvas : Control
                                     continue;
                                 }
 
+                                // One image pixel per device pixel: the scale key is rounded, so the image may be
+                                // up to a device pixel larger or smaller than the page rectangle. The clip cuts the
+                                // excess; a gap shows the preview below, never a hairline.
                                 var destination = new Rect(
-                                    pageRect.X + (key.Column * TilePlanner.TileSize * dipsPerPixel),
-                                    pageRect.Y + (key.Row * TilePlanner.TileSize * dipsPerPixel),
-                                    tile.PixelSize.Width * dipsPerPixel,
-                                    tile.PixelSize.Height * dipsPerPixel);
+                                    pageRect.X + (key.Column * TilePlanner.TileSize / _renderScaling),
+                                    pageRect.Y + (key.Row * TilePlanner.TileSize / _renderScaling),
+                                    tile.PixelSize.Width / _renderScaling,
+                                    tile.PixelSize.Height / _renderScaling);
                                 context.DrawImage(tile, new Rect(tile.Size), destination);
+                                _lastSharpDestinations.Add((key, destination));
                             }
                         }
 
