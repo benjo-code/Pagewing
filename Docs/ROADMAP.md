@@ -26,7 +26,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | 2026-10-16 |
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) | 2026-10-16 |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) | 2026-10-17 |
-| 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | – |
+| 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | 2026-10-17 |
 | 4 | Navigation | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 5 | Text & Suche | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 6 | Komfort | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -146,7 +146,7 @@ Ziel: Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt,
 - [x] Design-Spec ist committet und in der Roadmap verlinkt – `Docs/superpowers/specs/2026-10-17-designsystem.md` (Status „abgestimmt“), committet auf `feature/m02-designrichtungen` ab Commit 43dd11d; im M2-Eintrag als `spec` verlinkt; `dotnet run tools/roadmap.cs -- check` grün
 
 ## Milestone 3 – App-Shell & schnelles Öffnen
-**Status:** 🔵 in Arbeit · **Plan:** [2026-10-17-milestone-03-app-shell.md](superpowers/plans/2026-10-17-milestone-03-app-shell.md) · **Voraussetzungen:** M1, M2
+**Status:** ✅ fertig (2026-10-17) · **Plan:** [2026-10-17-milestone-03-app-shell.md](superpowers/plans/2026-10-17-milestone-03-app-shell.md) · **Voraussetzungen:** M1, M2
 
 Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch alle Seiten, innerhalb der Startzeit-Budgets.
 
@@ -160,9 +160,9 @@ Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch 
 - [x] `Pagewing.App.Tests` mit Avalonia.Headless
 
 **Abnahmekriterien**
-- [x] Startzeit-Check in der CI grün auf beiden Runnern, Werte als Artefakt – CI-Lauf 39033433468 (PR #4, Commit 82e3049): `build-linux` und `build-windows` grün, Schritt „Startup check“ besteht; Artefakte `startup-windows` und `startup-linux` mit den CSV-Werten. Mediane in ms (Budget): Windows cold 148,1 (400), warm 146,9 (200), thousand 143,9 (300), second 46,3 (100); Linux unter Xvfb cold 148,0, warm 146,8, thousand 145,0, second 43,4. Einschränkung: Der Windows-Runner ist eine VM ohne GPU und misst den Software-Renderpfad (Erkennung ohne Hardware-Grafikadapter, Eintrag „Software-Rendering ohne Hardware-Grafikadapter“ in `Docs/DECISIONS.md`); Werte für Rechner mit GPU sind nicht gemessen (Backlog „Startzeit-Messung auf echter Hardware“). `cold` leert den Datei-Cache nicht.
+- [x] Startzeit-Check in der CI grün auf beiden Runnern, Werte als Artefakt – CI-Lauf 39033433468 (PR #4, Commit 82e3049): `build-linux` und `build-windows` grün, Schritt „Startup check“ besteht; Artefakte `startup-windows` und `startup-linux` mit den CSV-Werten. Mediane in ms (Budget) im Lauf 39033433468: Windows cold 148,1 (400), warm 146,9 (200), thousand 143,9 (300), second 46,3 (100); Linux unter Xvfb cold 148,0, warm 146,8, thousand 145,0, second 43,4. Mit dem Standard „Software-Rendering unter Windows“ (Eintrag „Software-Rendering als Windows-Standard (M3)“ in `Docs/DECISIONS.md`) erneut grün, CI-Lauf 39044339823 (Commit ed52c2e): Windows cold 160,7, warm 147,3, thousand 147,5, second 47,7; Linux cold 163,9, warm 166,4, thousand 149,3, second 47,0. Einschränkung: Der Windows-Runner ist eine VM ohne GPU; `cold` leert den Datei-Cache nicht. Zusätzlich auf dem Haupt-PC des Projektinhabers (Ryzen 7 7800X3D, RTX 4070 SUPER, 1080p/60 Hz) gemessen, Workflow „Hardware measurement“, Lauf 39045832687: cold 200,0, warm 199,7, thousand 197,8, second 15,5 (alle im Budget, der Warmstart knapp); der GPU-Pfad (`PAGEWING_RENDERING=default`) liegt dort bei 472,7 ms warm.
 - [x] Weitere Datei bei laufender Instanz öffnet als neuer Inhalt im selben Prozess (Test + manuelle Prüfung) – Tests `OpenFlowTests.ExternalOpenReplacesTheDocument` und `SingleInstanceTests.PathsArriveAtThePrimary` grün (`dotnet test Pagewing.slnx`, M3 Task 13). Manuell am AOT-Binary (win-x64) am 2026-10-17: laufende Instanz mit `text-basic.pdf`, dann `Pagewing.exe hello_world.pdf` (relativer Pfad) und ein Pfad mit Leerzeichen; beide späteren Aufrufe enden mit Exit 0, die laufende Instanz zeigt danach die neue Datei im Fenstertitel, es bleibt ein Pagewing-Prozess. Nur unter Windows geprüft.
-- [ ] Schnelles Scrollen durch eine 1000-seitige Test-PDF ohne Ruckler des UI-Threads (manuelle Prüfung, Messwert notieren)
+- [x] Schnelles Scrollen durch eine 1000-seitige Test-PDF ohne Ruckler des UI-Threads (manuelle Prüfung, Messwert notieren) – Messwert (`--measure-scroll testdata/pdfs/thousand-pages.pdf`, 600 Schritte, Abstände der Frame-Rückrufe, nicht angezeigte Bilder) auf dem Haupt-PC des Projektinhabers (Ryzen 7 7800X3D, RTX 4070 SUPER, 1920 × 1080 bei 60 Hz), Workflow „Hardware measurement“, Lauf 39045832687, Software-Rendering (Standard): Zoom 100 % p99 15,5 bis 16,9 ms, max höchstens 19,1 ms, kein Frame über 20 ms; Zoom 400 % p99 10,6 bis 10,8 ms. Manuelle Prüfung durch den Projektinhaber am 2026-10-17 mit dem gebauten AOT-Binary und `thousand-pages.pdf`: Scrollen ist flüssig (Aussage des Projektinhabers: „ist flüssig“). Grenzen: nur dieser PC, 1080p/60 Hz; die Mittel der Abstände (4 bis 8 ms) liegen unter der Bildschirmperiode und sind unerklärt; 4K, 144 Hz und schwache CPUs sind nicht gemessen.
 
 ## Milestone 4 – Navigation
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M3
