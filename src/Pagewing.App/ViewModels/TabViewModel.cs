@@ -408,6 +408,25 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     internal void ApplyFitZoom(double zoom) => SetZoom(zoom);
 
     /// <summary>
+    /// Takes a document of the session that this tab has not seen yet (<see cref="Refresh"/>) and does nothing
+    /// otherwise: the document view calls it before it shows a document, so the tab (zoom and page of a new document)
+    /// is up to date whatever order the posted jobs run in, and costs nothing for the later page-size batches.
+    /// </summary>
+    internal void SyncDocumentFromSession()
+    {
+        if (_disposed || _session.State != ViewerState.Ready)
+        {
+            return;
+        }
+
+        var document = _session.Document;
+        if (document is not null && !ReferenceEquals(document, _document))
+        {
+            Refresh();
+        }
+    }
+
+    /// <summary>
     /// Shows the error card with the cause <see cref="PdfOpenError.Unknown"/>, no file and the type and message of
     /// <paramref name="exception"/> in the technical details (no stack trace); closes the document first.
     /// </summary>
@@ -472,11 +491,8 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
     private void OnSessionChanged() => Dispatcher.UIThread.Post(Refresh);
 
-    /// <summary>
-    /// Reads the session; runs on the UI thread. Idempotent: the document view calls it before it shows the document of
-    /// the session, so the tab (zoom of a new document) is up to date whatever order the posted jobs run in.
-    /// </summary>
-    internal void Refresh()
+    /// <summary>Reads the session; runs on the UI thread.</summary>
+    private void Refresh()
     {
         // A change posted before the tab was closed: the closed tab keeps what it showed last.
         if (_disposed)

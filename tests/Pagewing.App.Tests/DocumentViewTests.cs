@@ -739,6 +739,123 @@ public sealed class DocumentViewTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ResizeWhileTheTabIsInactiveKeepsTheCentreOfTheViewport()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "wide-page.pdf");
+        a.Zoom = 4;
+        Settle(window);
+        view.ScrollViewer.Offset = new Vector(300, 0);
+        Settle(window);
+        var centre = view.ScrollViewer.Offset.X + (view.ScrollViewer.Viewport.Width / 2);
+        var widthBefore = view.ScrollViewer.Viewport.Width;
+
+        await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+        window.Width = 800;
+        Settle(window);
+        viewModel.ActivateTabCommand.Execute(a);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, a.Session.Document) && view.Canvas.LastRequests.Count > 0);
+
+        // The same spot of the page stays in the middle of the narrower viewport (not the left edge).
+        var scroller = view.ScrollViewer;
+        Assert.True(scroller.Viewport.Width < widthBefore - 100);
+        Assert.Equal(centre, scroller.Offset.X + (scroller.Viewport.Width / 2), 1);
+
+        // Content narrower than the viewport stays centred in a wider window.
+        var b = viewModel.Tabs[1];
+        viewModel.ActivateTabCommand.Execute(b);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, b.Session.Document) && view.Canvas.LastRequests.Count > 0);
+        Assert.Equal(0, scroller.Offset.X);
+        viewModel.ActivateTabCommand.Execute(a);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, a.Session.Document) && view.Canvas.LastRequests.Count > 0);
+        window.Width = 1100;
+        Settle(window);
+        viewModel.ActivateTabCommand.Execute(b);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, b.Session.Document) && view.Canvas.LastRequests.Count > 0);
+        Assert.Equal(0, scroller.Offset.X);
+    }
+
+    [AvaloniaFact]
+    public async Task SwitchingAwayWhileTheTabLoadsAReplacementKeepsNoStalePosition()
+    {
+        // The open of the replacement waits for the test: the session stays in Loading with the old document.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = new PdfEngine();
+        var replacementPath = TestData.Pdf("hello_world.pdf");
+        var (window, viewModel, view) = Show(() => new ViewerSession(async (path, password, cancellationToken) =>
+        {
+            if (path == replacementPath)
+            {
+                await gate.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            return await engine.OpenAsync(path, password, cancellationToken).ConfigureAwait(false);
+        }));
+        var a = await OpenTabAsync(window, viewModel, view, "thousand-pages.pdf");
+        a.Zoom = 2;
+        Settle(window);
+        a.GoToPage(40);
+        Settle(window);
+        var b = await OpenTabAsync(window, viewModel, view, "text-basic.pdf");
+        viewModel.ActivateTabCommand.Execute(a);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, a.Session.Document) && view.Canvas.LastRequests.Count > 0);
+        var oldDocument = a.Session.Document;
+
+        // The replacement is loading (the session still holds the old document), and the tab is left before the
+        // posted job of the view, which would close the old document, ran.
+        var replacement = a.OpenAsync(replacementPath);
+        Assert.Equal(ViewerState.Loading, a.Session.State);
+        Assert.Same(oldDocument, a.Session.Document);
+        viewModel.ActivateTabCommand.Execute(b);
+        Assert.Null(a.SavedView);
+
+        gate.SetResult();
+        await replacement;
+        Settle(window);
+        viewModel.ActivateTabCommand.Execute(a);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, a.Session.Document) && view.Canvas.LastRequests.Count > 0);
+
+        // The new document starts at the top with the default zoom, not at the position of the old one.
+        Assert.NotSame(oldDocument, view.Document);
+        Assert.Equal(1.0, a.Zoom);
+        Assert.Equal(1.0, view.Layout!.Zoom);
+        Assert.Equal(default, view.ScrollViewer.Offset);
+        Assert.Equal(1, a.CurrentPage);
+    }
+
+    [AvaloniaFact]
+    public async Task SyncingAnUnchangedDocumentRaisesNothingOnTheTab()
+    {
+        var (window, viewModel, view) = Show();
+        var a = await OpenTabAsync(window, viewModel, view, "thousand-pages.pdf");
+        await WaitUntilAsync(window, () => a.Session.LoadedSizes.Count == 1000);
+        Settle(window);
+        var raised = new List<string?>();
+        a.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        // What the view does for every batch of page sizes: the document is the one the tab already has.
+        a.SyncDocumentFromSession();
+        Assert.Empty(raised);
+        Assert.Same(a.Session.Document, view.Document);
+
+        // A document the tab has not seen yet is taken at once.
+        a.Zoom = 2;
+        raised.Clear();
+        var replacement = a.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        var deadline = DateTime.UtcNow + Timeout;
+        while (a.Session.State != ViewerState.Ready || a.Session.Path != TestData.Pdf("hello_world.pdf"))
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the replacement did not open");
+            Thread.Sleep(5);
+        }
+
+        a.SyncDocumentFromSession();
+        Assert.Equal(1.0, a.Zoom);
+        Assert.Equal(a.Session.Document!.PageCount, a.PageCount);
+        await replacement;
+    }
+
+    [AvaloniaFact]
     public async Task ANewTabStartsAtTheTopWithDefaultZoom()
     {
         var (window, viewModel, view) = Show();

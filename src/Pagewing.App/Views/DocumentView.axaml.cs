@@ -135,19 +135,22 @@ public sealed partial class DocumentView : UserControl
 
     /// <summary>
     /// Remembers where the tab being left is shown, as page and fraction (not pixels, so a resize meanwhile does not
-    /// matter) and the horizontal distance from the centre line. Only for the document the tab holds now: while a
-    /// replacement loads, the view still shows the old one, which the tab no longer owns.
+    /// matter) and the distance of the viewport's centre from the centre line of the pages (so the same spot stays in
+    /// the middle when the window has another width). Only while the session is Ready with the document shown: during
+    /// the load of a replacement the session still holds the old document, but the tab has dropped its saved view
+    /// and the new document must not inherit the old position.
     /// </summary>
     private void SaveView()
     {
-        if (_viewModel is not { } tab || _layout is not { } layout || _document is null || !ReferenceEquals(_document, _session?.Document))
+        if (_viewModel is not { } tab || _layout is not { } layout || _document is null
+            || _session is not { State: ViewerState.Ready } session || !ReferenceEquals(_document, session.Document))
         {
             return;
         }
 
         var offset = Scroller.Offset;
-        var viewportLeft = offset.X - CentringShift(layout);
-        tab.SavedView = new ViewState(layout.GetAnchor(offset.Y), viewportLeft - (layout.ContentWidth / 2));
+        var viewportCentre = offset.X - CentringShift(layout) + (Scroller.Viewport.Width / 2);
+        tab.SavedView = new ViewState(layout.GetAnchor(offset.Y), viewportCentre - (layout.ContentWidth / 2));
     }
 
     /// <summary>The scroll offset for a saved view in the current layout.</summary>
@@ -159,7 +162,7 @@ public sealed partial class DocumentView : UserControl
         }
 
         // The scroll viewer limits the offset to the content, whatever size the viewport has now.
-        var x = view.HorizontalFromCentre + (layout.ContentWidth / 2) + CentringShift(layout);
+        var x = view.HorizontalFromCentre + (layout.ContentWidth / 2) - (Scroller.Viewport.Width / 2) + CentringShift(layout);
         return new Vector(x, layout.GetOffset(view.Anchor));
     }
 
@@ -190,7 +193,7 @@ public sealed partial class DocumentView : UserControl
 
         // The tab first: a document that is new to it resets its zoom (and drops the saved view) before the view reads
         // them below, whichever of the two posted jobs for this change of the session runs first.
-        _viewModel?.Refresh();
+        _viewModel?.SyncDocumentFromSession();
 
         var document = session.State == ViewerState.Ready ? session.Document : null;
         var scheduler = session.Scheduler;
