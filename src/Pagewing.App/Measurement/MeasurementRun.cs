@@ -98,6 +98,9 @@ internal abstract class MeasurementRun : IDisposable
         }
 
         _started = true;
+
+        // A measured window opens no panel: no extra work around first-sharp, the layout of the runs before the panel.
+        ViewModel.OpensPagesPanelAfterFirstSharpTile = false;
         View.FirstSharpTileDrawn += OnFirstSharpTileDrawn;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         WatchActiveTab();

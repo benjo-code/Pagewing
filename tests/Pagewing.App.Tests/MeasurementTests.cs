@@ -67,6 +67,41 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.Equal([0], _exits);
     }
 
+    [AvaloniaTheory]
+    [InlineData("--measure-startup")]
+    [InlineData("--measure-second")]
+    [InlineData("--measure-scroll")]
+    public async Task MeasurementRunsOpenNoPanel(string mode)
+    {
+        // The window is wide enough for the "Pages" panel to open after the first sharp tile in a normal run.
+        var (window, viewModel, view) = Show();
+        using var measurement = mode switch
+        {
+            "--measure-second" => MeasurementRun.Create(StartupOptions.Parse([mode, TestData.Pdf("text-basic.pdf"), TestData.Pdf("hello_world.pdf")]), viewModel, view, Sink())!,
+            "--measure-startup" => MeasurementRun.Create(StartupOptions.Parse([mode, TestData.Pdf("text-basic.pdf")]), viewModel, view, Sink())!,
+
+            // A few steps instead of the 600 of the switch, as in ScrollMeasurementReportsFramesAndPercentile.
+            _ => new ScrollMeasurement(viewModel, view, TestData.Pdf("thousand-pages.pdf"), Sink(), Timeout, steps: 12),
+        };
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+        Settle(window);
+
+        // The run measured as before and left every tab without a panel; nothing of the panel was built.
+        Assert.Equal([0], _exits);
+        Assert.Empty(_error.ToString());
+        var expected = mode switch
+        {
+            "--measure-startup" => "first-sharp",
+            "--measure-second" => "second-sharp",
+            _ => "scroll ",
+        };
+        Assert.Contains(Lines(_output), line => line.StartsWith(expected, StringComparison.Ordinal));
+        Assert.All(viewModel.Tabs, tab => Assert.Equal(SidePanelKind.None, tab.SidePanel));
+        Assert.Empty(window.GetVisualDescendants().OfType<SidePanel>());
+    }
+
     [AvaloniaFact]
     public async Task StartupMeasurementWritesThePhasesAfterFirstSharp()
     {

@@ -248,6 +248,45 @@ public sealed class PanelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AutoOpenRunsAfterTheFirstSharpTileHandlers()
+    {
+        var (window, viewModel, view) = Show(1024);
+        int? panelsInHandler = null;
+        SidePanelKind? kindInHandler = null;
+
+        // Subscribed after the window, like a measurement run: inside the handlers of the first sharp tile (where a
+        // measurement takes its time) the panel is neither chosen nor built.
+        view.FirstSharpTileDrawn += () =>
+        {
+            panelsInHandler ??= SidePanels(window).Count;
+            kindInHandler ??= viewModel.ActiveTab?.SidePanel;
+        };
+
+        await viewModel.OpenAsync(TestData.Pdf("outline.pdf"));
+        await WaitUntilAsync(window, () => panelsInHandler is not null);
+        Assert.Equal(0, panelsInHandler);
+        Assert.Equal(SidePanelKind.None, kindInHandler);
+
+        // A background job after the handlers opens it.
+        await WaitUntilAsync(window, () => IsPanelShown(window, SidePanelKind.Pages));
+    }
+
+    [AvaloniaFact]
+    public async Task StatusBarIsIndentedByTheActionBar()
+    {
+        var (window, viewModel, view) = Show(800);
+        await OpenTabAsync(window, viewModel, view, "outline.pdf");
+        await WaitUntilAsync(window, () => Find<Control>(window, "StatusBar").IsEffectivelyVisible);
+
+        // Design system 6, item 5: the status bar starts flush with the document area, right of the action bar.
+        var area = Find<Control>(window, "DocumentArea").TranslatePoint(default, window)!.Value.X;
+        var first = Find<Button>(window, "PreviousPageButton").TranslatePoint(default, window)!.Value.X;
+        Assert.Equal(52, area);
+        Assert.Equal(52 + 4, first);
+        Assert.True(first >= area);
+    }
+
+    [AvaloniaFact]
     public async Task PanelStaysClosedOnANarrowWindow()
     {
         var (window, viewModel, view) = Show(899);

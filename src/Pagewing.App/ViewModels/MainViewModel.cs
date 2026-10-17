@@ -162,6 +162,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         set => SetProperty(ref _isNarrowWindow, value);
     }
 
+    /// <summary>
+    /// Gets or sets whether the first sharp tile of the window may open "Pages" (<see cref="OnFirstSharpTileDrawn"/>);
+    /// on by default. A measurement run switches it off, so its window keeps the layout and the work of a run without
+    /// a panel (comparable with the measurements before the panel existed).
+    /// </summary>
+    internal bool OpensPagesPanelAfterFirstSharpTile { get; set; } = true;
+
     /// <summary>Gets the side panel of the active tab (<see cref="SidePanelKind.None"/> without a tab).</summary>
     public SidePanelKind ActivePanel => ActiveTab?.SidePanel ?? SidePanelKind.None;
 
@@ -316,8 +323,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// The first sharp tile of this window was drawn (the document view tells the window once per document): the first
     /// time, "Pages" opens in the active tab when it shows no panel, the window is at least
-    /// <see cref="NarrowWindowWidth"/> wide and the user has not opened or closed a panel in this window yet (design
-    /// system 7.3; remembering the choice comes in M6). Later calls do nothing.
+    /// <see cref="NarrowWindowWidth"/> wide, the user has not opened or closed a panel in this window yet (design
+    /// system 7.3; remembering the choice comes in M6) and <see cref="OpensPagesPanelAfterFirstSharpTile"/> holds.
+    /// The panel opens in a job of <see cref="DispatcherPriority.Background"/>, after every handler of the first sharp
+    /// tile (a measurement takes its time there) and after rendering. Later calls do nothing.
     /// </summary>
     internal void OnFirstSharpTileDrawn()
     {
@@ -327,9 +336,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         _firstSharpTileSeen = true;
-        if (!_panelChosenByUser && !IsNarrowWindow && ActiveTab is { SidePanel: SidePanelKind.None } tab)
+        if (OpensPagesPanelAfterFirstSharpTile)
         {
-            tab.SidePanel = SidePanelKind.Pages;
+            Dispatcher.UIThread.Post(OpenPagesPanelAfterFirstSharpTile, DispatcherPriority.Background);
         }
     }
 
@@ -429,6 +438,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ActivePanel));
         OnPropertyChanged(nameof(IsPagesPanelOpen));
         OnPropertyChanged(nameof(IsContentsPanelOpen));
+    }
+
+    // The conditions are checked again: the user may have chosen a panel, or the window may have narrowed meanwhile.
+    private void OpenPagesPanelAfterFirstSharpTile()
+    {
+        if (OpensPagesPanelAfterFirstSharpTile && !_panelChosenByUser && !IsNarrowWindow && ActiveTab is { SidePanel: SidePanelKind.None } tab)
+        {
+            tab.SidePanel = SidePanelKind.Pages;
+        }
     }
 
     private void ToggleSidePanel(SidePanelKind kind)

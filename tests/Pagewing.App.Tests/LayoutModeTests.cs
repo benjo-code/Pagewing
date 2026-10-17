@@ -647,16 +647,7 @@ public sealed class LayoutModeTests : IDisposable
         var tab = viewModel.ActiveTab ?? throw new InvalidOperationException("No active tab after opening.");
         await WaitUntilAsync(window, () => ReferenceEquals(view.Document, tab.Session.Document) && view.Canvas.LastRequests.Count > 0);
 
-        // A wide window opens the "Pages" panel in the frame after the first sharp tile (PanelTests). These tests are
-        // about the document view: wait for that and close the panel again, so the document keeps the whole width.
-        await WaitUntilAsync(window, () => view.Canvas.Bitmaps.Keys.Any(key => key.Page == 0 && !key.IsPreview));
-        Settle(window);
-        Settle(window);
-        if (viewModel.ActivePanel != SidePanelKind.None)
-        {
-            viewModel.CloseSidePanelCommand.Execute(null);
-            await WaitUntilAsync(window, () => !Find<Control>(window, "PanelHost").IsVisible);
-        }
+        await AutoOpenedPanel.CloseAsync(window, viewModel, view);
         return tab;
     }
 
