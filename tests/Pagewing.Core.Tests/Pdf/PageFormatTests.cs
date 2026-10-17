@@ -52,10 +52,12 @@ public sealed class PageFormatTests
     [Fact]
     public void NumbersFollowTheCulture()
     {
-        var arabic = new CultureInfo("ar-SA");
-        var expected = $"A4 · {210.ToString("N0", arabic)} × {297.ToString("N0", arabic)} mm";
+        // A culture built from the invariant one needs no ICU data.
+        var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.NumberGroupSeparator = "'";
 
-        Assert.Equal(expected, PageFormat.Describe(new PdfPageSize(595.28, 841.89), arabic));
+        Assert.Equal("1'000 × 2'000 mm", PageFormat.Describe(Mm(1000, 2000), culture));
+        Assert.Equal("1,000 × 2,000 mm", PageFormat.Describe(Mm(1000, 2000), Invariant));
     }
 
     [Theory]
