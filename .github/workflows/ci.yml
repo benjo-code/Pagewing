@@ -23,8 +23,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, label: dotnet-linux, rid: linux-x64, binary: pagewing }
-          - { name: windows, label: dotnet-windows, rid: win-x64, binary: pagewing.exe }
+          - { name: linux, label: dotnet-linux, rid: linux-x64, binary: pagewing, app: Pagewing }
+          - { name: windows, label: dotnet-windows, rid: win-x64, binary: pagewing.exe, app: Pagewing.exe }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -51,6 +51,7 @@ jobs:
           command -v clang >/dev/null || { echo 'clang not found: install the clang package' >&2; exit 1; }
           clang --version
           test -f /usr/include/zlib.h || { echo 'zlib.h not found: install zlib1g-dev' >&2; exit 1; }
+          command -v xvfb-run >/dev/null || { echo 'xvfb-run not found (startup check): install the xvfb package' >&2; exit 1; }
 
       - name: Check the Native AOT prerequisites (Windows)
         if: runner.os == 'Windows'
@@ -91,3 +92,43 @@ jobs:
 
       - name: Publish the app (Native AOT)
         run: dotnet publish src/Pagewing.App -c Release -r ${{ matrix.rid }} -o out/app
+
+      - name: Self-test of the startup check
+        run: dotnet run bench/startup/startup.cs -- selftest
+
+      # Median of 10 runs per case against the budgets, fails above budget + 25 % (bench/startup/README.md).
+      # All four cases run, so that every CSV exists; the step fails afterwards if one of them failed.
+      - name: Startup check
+        if: runner.os == 'Linux'
+        run: |
+          status=0
+          check() { xvfb-run -a dotnet run bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" "$@" || status=1; }
+          check --pdf testdata/pdfs/text-basic.pdf --case cold --out out/startup/cold.csv
+          check --pdf testdata/pdfs/text-basic.pdf --case warm --out out/startup/warm.csv
+          check --pdf testdata/pdfs/thousand-pages.pdf --case thousand --out out/startup/thousand.csv
+          check --pdf testdata/pdfs/text-basic.pdf --second-pdf testdata/pdfs/hello_world.pdf --case second --out out/startup/second.csv
+          exit $status
+
+      - name: Startup check
+        if: runner.os == 'Windows'
+        run: |
+          $failed = $false
+          $cases = @(
+            @('--pdf', 'testdata/pdfs/text-basic.pdf', '--case', 'cold', '--out', 'out/startup/cold.csv'),
+            @('--pdf', 'testdata/pdfs/text-basic.pdf', '--case', 'warm', '--out', 'out/startup/warm.csv'),
+            @('--pdf', 'testdata/pdfs/thousand-pages.pdf', '--case', 'thousand', '--out', 'out/startup/thousand.csv'),
+            @('--pdf', 'testdata/pdfs/text-basic.pdf', '--second-pdf', 'testdata/pdfs/hello_world.pdf', '--case', 'second', '--out', 'out/startup/second.csv')
+          )
+          foreach ($case in $cases) {
+            dotnet run bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" @case
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Upload the startup measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: startup-${{ matrix.name }}
+          path: out/startup/*.csv
+          if-no-files-found: warn

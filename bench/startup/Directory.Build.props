@@ -1,0 +1,3 @@
+<Project>
+  <!-- Isolates the single-file script (bench/startup/startup.cs) from the solution-wide settings in the repository root, like tools/. -->
+</Project>

@@ -15,6 +15,26 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Startzeitmessung: Definition und Grenzen (M3)
+**Kontext:** Ab M3 prüft die CI die Geschwindigkeitsbudgets (Roadmap „Geschwindigkeitsziele“, `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“) am veröffentlichten AOT-Binary auf beiden Runnern. Dafür braucht es eine feste Definition, was „bis erste Seite scharf“ heißt, und wie gemessen wird.
+**Entscheidung:**
+- Gemessen wird mit versteckten Schaltern der App (`src/Pagewing.App/Measurement/`) und dem Skript `bench/startup/startup.cs` (Protokoll `bench/startup/README.md`). Messpunkt ist das **erste scharfe Bild von Seite 1, nachdem es gezeichnet wurde**: `DocumentCanvas` meldet `FirstSharpTileDrawn` im Frame nach dem Zeichnen (`TopLevel.RequestAnimationFrame`), die App schreibt dann `first-sharp` auf stdout und beendet sich.
+- `cold`, `warm`, `thousand`: Zeit von unmittelbar vor `Process.Start` bis zum Lesen von `first-sharp` (das Skript leitet stdout um; ohne Umleitung kommt bei der `WinExe` nichts an). Die App nimmt dabei denselben Startpfad wie ein normaler Aufruf mit Datei (früher Öffnen-Start in `Program.Main`).
+- `second` („weitere Datei in laufender Instanz“): gemessen **in einem Prozess** von `MainViewModel.OnExternalOpen` (demselben Einstieg wie eine über die Pipe übergebene Datei) bis zum gezeichneten scharfen Bild der zweiten Datei, 500 ms nach dem ersten scharfen Bild der ersten Datei. Prozessstart des zweiten Aufrufs und Pipe gehören nicht dazu; die Pipe hat eigene Tests (`SingleInstance`).
+- Messläufe umgehen die Single-Instance-Wahl (`Program.ElectInstance`): Sie übergeben nichts an ein laufendes Pagewing und belegen weder Sperre noch Pipe, laufen also auch neben einer normalen Instanz.
+- Schwelle: je Fall **Median aus 10 Läufen**, Fehlschlag ab Median > Budget × 1,25 (`cold` 400 → 500, `warm` 200 → 250, `second` 100 → 125, `thousand` 300 → 375 ms). Aufwärmläufe: `warm` und `thousand` 3 (500 ms Pause), `second` 1, `cold` keiner (5 s Pause).
+- Linux läuft unter Xvfb (`xvfb-run -a`), Windows direkt. Jeder Lauf schreibt `case,run,ms` nach `out/startup/<fall>.csv`; die CI lädt die Dateien als Artefakt `startup-<linux|windows>` hoch, auch wenn der Check fehlschlägt.
+- `--measure-scroll` (600 Schritte, ein Schritt pro Frame, 99. Perzentil und Maximum der Frame-Abstände) ist ein Messwert ohne Budget und läuft nicht in der CI.
+**Begründung:** Der Frame nach dem Zeichnen ist der früheste Zeitpunkt, an dem das Bild sicher zur Anzeige übergeben ist, und lässt sich in der App ohne Bildschirmkopie bestimmen. Der Median aus 10 Läufen glättet Ausreißer einzelner Läufe (Virenscanner, andere Jobs auf dem Runner), ohne dass ein einzelner langsamer Lauf den Check kippt; die 25 % Spielraum fangen die Schwankung zwischen Runnern ab, ohne das Budget aufzuweichen. „Weitere Datei“ in einem Prozess zu messen trennt die Zeit der App von Prozessstart und Pipe, die sich in der CI nicht stabil messen lassen.
+**Grenzen:**
+- **Kein echter Kaltstart in der CI.** Der Datei-Cache des Betriebssystems lässt sich auf den Runnern nicht leeren; `cold` misst nur ohne Aufwärmlauf und mit Pause. Ein echter Kaltstart bleibt eine manuelle Messung des Projektinhabers direkt nach einem Neustart (`bench/compare/README.md`, Fall (a)).
+- **Xvfb hat keine GPU.** Unter Xvfb zeichnet Avalonia ohne Hardwarebeschleunigung; die Linux-Zeiten sind deshalb nicht direkt mit einem Desktop vergleichbar.
+- Der Messpunkt hängt am Frame-Takt des Fenstersystems: Kommt der nächste Frame spät (Fenstersitzung ohne Anzeige, Dienstsitzung unter Windows), wird die Zeit größer, obwohl das Bild schon gezeichnet ist. Der Windows-Runner braucht deshalb eine angemeldete Desktop-Sitzung, wenn der Dienst keine Frames liefert (`CLAUDE.md`, Abschnitt „CI“).
+**Verworfene Alternativen:**
+- Bildschirmkopie wie `tools/measure-open.cs`: nur Windows, angemeldete Sitzung und unverdecktes Fenster nötig, Zeitauflösung 50–80 ms; für den 100-ms-Fall zu grob.
+- Zeitpunkt „Kachel angewendet“ statt „gezeichnet“: früher, aber noch nicht auf dem Bildschirm.
+- Mittelwert statt Median: ein einzelner Ausreißer (erster Lauf, Hintergrundjob) verschiebt ihn stark.
+
 ## 2026-10-17 – Dokumentansicht: Zeichenfläche unter dem ScrollViewer, Zeichnen in Viewport-Koordinaten (M3)
 **Kontext:** Die Dokumentansicht (`Views/DocumentView`, `Controls/DocumentCanvas`, `Controls/TileBitmaps`) zeigt alle Seiten fortlaufend. Bei 1000 Seiten und 800 % ist der Inhalt rund 9 Mio. DIP hoch. Skia rechnet beim Zeichnen mit `float` (24 Bit Mantisse); Koordinaten dieser Größe haben nur noch eine Auflösung von etwa 1 DIP, Kacheln würden um Bruchteile eines Pixels gegeneinander verrutschen.
 **Entscheidung:**

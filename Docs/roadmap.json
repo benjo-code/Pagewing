@@ -127,7 +127,7 @@
             { "text": "Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)", "done": true },
             { "text": "Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget", "done": true },
             { "text": "Zoom (Strg+Mausrad, Strg+Plus/Minus)", "done": true },
-            { "text": "Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)", "done": false },
+            { "text": "Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)", "done": true },
             { "text": "`Pagewing.App.Tests` mit Avalonia.Headless", "done": true }
           ],
           "acceptance": [

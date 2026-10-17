@@ -31,6 +31,8 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 ### Geschwindigkeit
 
 - Budgets (seit M1 endgültig, Vergleichsmessung und Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“) stehen in der Roadmap unter „Geschwindigkeitsziele“. Ab M3 prüft der Startzeit-Check in der CI sie: Schalter `--measure-startup`, Skript `bench/startup`, Median aus 10 Läufen, Fehlschlag ab Budget + 25 %.
+- Versteckte Messschalter der App (nicht in der Hilfe): `--measure-startup <pdf>` schreibt `first-sharp` auf stdout, sobald das erste scharfe Bild von Seite 1 gezeichnet ist; `--measure-second <a> <b>` öffnet danach `b` wie ein späterer Aufruf (`MainViewModel.OnExternalOpen`) und schreibt `second-sharp <ms>`; `--measure-scroll <pdf>` schreibt `scroll frames=<n> p99-ms=<x> max-ms=<y>` (ohne Budget). Exit-Codes 0 / 1 (`error: …` auf stderr) / 3 (30 s Zeitlimit). Messläufe umgehen die Single-Instance-Wahl. Code: `src/Pagewing.App/Measurement/`.
+- `bench/startup/startup.cs` (`--case cold|warm|thousand|second`, `selftest`) misst damit die Budgets, Protokoll in `bench/startup/README.md`, Definition in `Docs/DECISIONS.md`, Eintrag „Startzeitmessung: Definition und Grenzen (M3)“.
 - Nichts Neues im Startpfad ohne Messung. Bis zum ersten Frame wird nur geladen, was das Fenster braucht. PDFium startet beim ersten Öffnen eines Dokuments, Thumbnails, Textindex und OCR laufen erst nach dem ersten scharfen Seitenbild.
 - Single-Instance: Ein zweiter Aufruf übergibt die Datei an die laufende Instanz (Named Pipe bzw. Unix-Socket).
 - Budgets oder den Startzeit-Check nie lockern, nur damit etwas grün wird. Eine Budgetänderung ist eine Entscheidung in `Docs/DECISIONS.md`.
@@ -101,10 +103,11 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Das Repo ist derzeit privat. Wird es öffentlich, vorher in den Actions-Einstellungen einstellen, dass PRs aus Forks vor dem Lauf freigegeben werden müssen. Sonst führen fremde PRs Code auf den eigenen Runnern aus.
 - Der Linux-Build ist an die glibc des Build-Rechners gebunden. Die älteste unterstützte Distribution wird in M8 festgelegt.
 - Voraussetzungen der Linux-Runner: `clang` und `zlib1g-dev` (`sudo apt-get install -y clang zlib1g-dev`). Der CI-Schritt „Check the Native AOT prerequisites (Linux)“ meldet, was fehlt.
+  - Für den Startzeit-Check zusätzlich Xvfb und die X11-/Schriftbibliotheken, die Avalonia laut seiner Docker-Anleitung braucht: `sudo apt-get install -y xvfb libx11-6 libice6 libsm6 libfontconfig1`. Der Schritt prüft nur `xvfb-run`; fehlende Bibliotheken zeigen sich erst als Fehler des Startzeit-Checks.
 - Voraussetzungen des Windows-Runners (`vm-git-windows-dotnet`, Label `dotnet-windows`):
   - Ausführungsrichtlinie `RemoteSigned` für LocalMachine (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer Windows PowerShell mit Administratorrechten). Sonst scheitert jeder `run:`-Schritt mit „Ausführung von Skripts ... deaktiviert“.
   - Visual Studio Build Tools mit Workload „Desktopentwicklung mit C++“. Prüfen: `vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath` gibt einen Pfad aus.
-- Der Windows-Runner läuft derzeit als Dienst. GUI-Tests und der Startzeit-Check (M3) brauchen eine angemeldete Desktop-Sitzung; das wird in M3 geplant.
+- Der Windows-Runner läuft derzeit als Dienst. Der Startzeit-Check startet die echte App mit Fenster; kann der Dienst keine sichtbaren Fenster erzeugen oder kommen dort keine Frames, muss der Projektinhaber den Runner in einer angemeldeten Desktop-Sitzung betreiben (Runner nicht als Dienst, sondern per `run.cmd` in der angemeldeten Sitzung, mit automatischer Anmeldung und ohne Sperrbildschirm). Bis das auf dem Runner geprüft ist, bleibt die Abnahme „Startzeit-Check grün auf beiden Runnern“ offen.
 
 ### Build-Stolperfallen
 
@@ -112,6 +115,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - xunit.v3 läuft auf Microsoft.Testing.Platform: `global.json` enthält den Runner. `Microsoft.NET.Test.Sdk` und `xunit.runner.visualstudio` nicht referenzieren.
 - Testnamen ohne Unterstriche (CA1707 unter `latest-recommended`).
 - Die native PDFium-Bibliothek liegt neben dem AOT-Binary (`pdfium.dll` bzw. `libpdfium.so`). `tools/smoke-cli.cs` prüft das, indem es `info`, `render` und `text` auf `testdata/pdfs/text-basic.pdf` ausführt; es läuft aus dem Repo-Root, z. B. `dotnet run tools/smoke-cli.cs -- <pagewing.exe>`.
+- Die App ist eine `WinExe`: Unter Windows kommt ihre Standardausgabe (z. B. `first-sharp` der Messschalter) nur an, wenn der Elternprozess sie umleitet (`RedirectStandardOutput`), wie in `bench/startup/startup.cs`. `bench/startup/Directory.Build.props` und `Directory.Packages.props` isolieren das Skript wie `tools/`.
 - CLI-Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf. Das Passwort verschlüsselter PDFs kommt aus `PAGEWING_PASSWORD` oder `--password`; Ausgaben sind englisch und stabil (Skriptnutzung).
 - Native AOT unter Windows braucht `vswhere.exe` im PATH (Ordner `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`) und die VS-Build-Tools mit C++-Workload; unter Linux `clang` und `zlib1g-dev`.
 
