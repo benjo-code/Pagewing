@@ -144,8 +144,9 @@ static class Check
             Console.WriteLine("Hinweis: \"cold\" leert den Datei-Cache des Betriebssystems nicht; ein echter Kaltstart ist eine manuelle Messung direkt nach einem Neustart.");
         }
 
-        // Only a warning: the check itself stays as it is, whatever the machine.
-        if (FrameCadence.Measure() is { } warning)
+        // Only a warning: the check itself stays as it is, whatever the machine. It is repeated next to the verdict.
+        var warning = FrameCadence.Measure();
+        if (warning is not null)
         {
             Console.WriteLine(warning);
         }
@@ -179,6 +180,7 @@ static class Check
             WriteCsv(outPath, c.Name, times);
         }
 
+        RepeatWarning(warning);
         if (failure is not null)
         {
             Console.Error.WriteLine($"FEHLGESCHLAGEN: {failure}");
@@ -200,6 +202,19 @@ static class Check
 
         Console.WriteLine($"{c.Name}: innerhalb der Grenze.");
         return 0;
+    }
+
+    /// <summary>
+    /// Repeats the composition warning next to the verdict, where a reader of the log looks, and as a GitHub Actions
+    /// annotation (<c>::warning::</c>), so it also shows on the summary of the run. Does not change the verdict.
+    /// </summary>
+    private static void RepeatWarning(string? warning)
+    {
+        if (warning is not null)
+        {
+            Console.WriteLine($"Ergebnis unter Vorbehalt: {warning}");
+            Console.WriteLine($"::warning title=Startzeit-Check::{FrameCadence.ForAnnotation(warning)}");
+        }
     }
 
     /// <summary>One launch of the app; the time or why it failed.</summary>
@@ -345,7 +360,14 @@ static class FrameCadence
     /// <summary>DwmFlush calls whose intervals are timed (after one call that only waits for the next composition).</summary>
     private const int Samples = 5;
 
-    /// <summary>Returns a warning line when the composition is missing or too slow, otherwise <see langword="null"/>.</summary>
+    /// <summary>The probe never holds up the check longer than this (6 compositions at 4 Hz take about 1.5 s).</summary>
+    public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Returns a warning line when the composition is missing or too slow, otherwise <see langword="null"/>. Never
+    /// throws and never takes much longer than <see cref="ProbeTimeout"/>: a failing or blocked probe counts as "no
+    /// composition".
+    /// </summary>
     public static string? Measure()
     {
         if (!OperatingSystem.IsWindows())
@@ -353,6 +375,28 @@ static class FrameCadence
             return null;
         }
 
+        try
+        {
+            // On a pool thread, so that a DwmFlush that does not return cannot stall the check.
+            var probe = Task.Run(Probe);
+            if (!probe.Wait(ProbeTimeout))
+            {
+                return AssessFailure($"DwmFlush kam nicht innerhalb von {ProbeTimeout.TotalSeconds:0} s zurück");
+            }
+
+            var (hr, median) = probe.Result;
+            return Assess(hr, median);
+        }
+        catch (Exception ex)
+        {
+            var inner = ex is AggregateException { InnerException: { } first } ? first : ex;
+            return AssessFailure($"{inner.GetType().Name}: {inner.Message}");
+        }
+    }
+
+    /// <summary>One DwmFlush to reach the next composition, then <see cref="Samples"/> timed intervals.</summary>
+    private static (int HResult, double MedianMs) Probe()
+    {
         var hr = DwmFlush();
         var intervals = new List<double>(Samples);
         var last = Stopwatch.GetTimestamp();
@@ -364,8 +408,16 @@ static class FrameCadence
             last = now;
         }
 
-        return hr != 0 ? Assess(hr, 0) : Assess(0, Stats.Median(intervals));
+        return hr != 0 ? (hr, 0) : (0, Stats.Median(intervals));
     }
+
+    /// <summary>The warning when the probe itself failed (exception or time limit): treated as no composition.</summary>
+    public static string AssessFailure(string reason) =>
+        $"Warnung: Keine Desktop-Komposition messbar ({reason}). Die App bekommt dann vermutlich keine oder nur wenige Frames, die Messung ist ungültig.";
+
+    /// <summary>A message for a GitHub Actions workflow command (escapes %, CR and LF).</summary>
+    public static string ForAnnotation(string message) =>
+        message.Replace("%", "%25", StringComparison.Ordinal).Replace("\r", "%0D", StringComparison.Ordinal).Replace("\n", "%0A", StringComparison.Ordinal);
 
     /// <summary>The warning for a DwmFlush result and the median interval between two compositions.</summary>
     public static string? Assess(int hresult, double medianIntervalMs)
@@ -423,6 +475,9 @@ static class SelfTest
         Expect("Komposition mit 30 Hz", FrameCadence.Assess(0, 33.4), null);
         Expect("Komposition mit 4 Hz warnt", FrameCadence.Assess(0, 253)?.StartsWith("Warnung: Die Desktop-Komposition zeigt nur alle 253 ms", StringComparison.Ordinal), true);
         Expect("keine Komposition warnt", FrameCadence.Assess(unchecked((int)0x80263001), 0)?.Contains("DwmFlush 0x80263001", StringComparison.Ordinal), true);
+        Expect("gescheiterte Messung warnt", FrameCadence.AssessFailure("DllNotFoundException: dwmapi.dll").StartsWith("Warnung: Keine Desktop-Komposition messbar (DllNotFoundException", StringComparison.Ordinal), true);
+        Expect("Annotation maskiert", FrameCadence.ForAnnotation("50 % \r\nweiter"), "50 %25 %0D%0Aweiter");
+        Expect("Messung höchstens 2 s", FrameCadence.ProbeTimeout, TimeSpan.FromSeconds(2));
 
         Console.WriteLine(s_failures == 0 ? $"selftest: {s_checks} Prüfungen bestanden." : $"selftest: {s_failures} von {s_checks} Prüfungen fehlgeschlagen.");
         return s_failures == 0 ? 0 : 1;
