@@ -60,17 +60,25 @@ public sealed class MainWindowTests : IDisposable
         Assert.True(Find<Control>(window, "AppTitle").IsEffectivelyVisible);
     }
 
-    [AvaloniaFact]
-    public async Task MinimumSizeIs640By480()
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MinimumSizeIs640By480(bool windowsTitleBar)
     {
-        var (window, viewModel) = Show(640, 480);
+        // Both variants are forced, so the test means the same on Windows and Linux runners.
+        var (window, viewModel) = Show(640, 480, windowsTitleBar);
         await OpenAsync(window, viewModel, CopyWithName(LongName));
 
         Assert.Equal(640, window.MinWidth);
         Assert.Equal(480, window.MinHeight);
 
-        // At the minimum size the title bar and the status bar still fit into the window.
-        foreach (var name in new[] { "CaptionButtonsSpace", "ZoomInButton", "DragArea" })
+        // At the minimum size the title bar (or tab row) and the status bar still fit into the window. Only the
+        // Windows title bar keeps room for the caption buttons; under the Linux system title bar there is none.
+        Assert.Equal(windowsTitleBar, Find<Control>(window, "CaptionButtonsSpace").IsEffectivelyVisible);
+        string[] mustFit = windowsTitleBar
+            ? ["Tab", "OpenButton", "DragArea", "CaptionButtonsSpace", "ZoomInButton"]
+            : ["Tab", "OpenButton", "DragArea", "ZoomInButton"];
+        foreach (var name in mustFit)
         {
             var control = Find<Control>(window, name);
             Assert.True(control.IsEffectivelyVisible, $"{name} is hidden");

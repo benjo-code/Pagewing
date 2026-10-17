@@ -1,5 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Pagewing.App.Controls;
 using Xunit;
@@ -49,7 +51,12 @@ public sealed class MiddleEllipsisTextBlockTests
     [AvaloniaFact]
     public void ArrangingNarrowerThanMeasuredShortensAgain()
     {
-        var text = new MiddleEllipsisTextBlock { Text = LongName };
+        // Outside a window the control would fall back to the system font, which differs per OS; use the embedded one.
+        var text = new MiddleEllipsisTextBlock
+        {
+            Text = LongName,
+            FontFamily = (FontFamily)TokenTests.Resource("Pw.Font.Sans", ThemeVariant.Light),
+        };
         text.Measure(new Avalonia.Size(400, 40));
         text.Arrange(new Avalonia.Rect(0, 0, 150, 40));
 
