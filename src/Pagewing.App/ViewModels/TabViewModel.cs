@@ -38,6 +38,10 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     private PageLayoutMode _layoutMode = PageLayoutMode.Continuous;
     private SidePanelKind _sidePanel = SidePanelKind.None;
     private ViewState? _savedView;
+    private bool _hasShownSharpPage;
+
+    // The thumbnails this tab handed out for its current document (EnsureThumbnails), released when it becomes inactive.
+    private ThumbnailSource? _thumbnails;
 
     // A new session is active (ViewerSession.SetActive).
     private bool _isActive = true;
@@ -327,6 +331,17 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// Gets or sets whether the document view has shown a sharp page of the current document (reset for every new
+    /// document). The page thumbnails render only after that (design system 7.3), so they never compete with the first
+    /// sharp page. Set by the document view.
+    /// </summary>
+    public bool HasShownSharpPage
+    {
+        get => _hasShownSharpPage;
+        internal set => SetProperty(ref _hasShownSharpPage, value);
+    }
+
+    /// <summary>
     /// Gets or sets whether this is the active tab of its window. Tells the session (<see cref="ViewerSession.SetActive"/>),
     /// so an inactive tab keeps only a small render cache.
     /// </summary>
@@ -337,6 +352,10 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         {
             SetProperty(ref _isActive, value);
             _session.SetActive(value);
+            if (!value)
+            {
+                ReleaseThumbnails();
+            }
         }
     }
 
@@ -434,6 +453,23 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         PanelPagePicked?.Invoke();
     }
 
+    /// <summary>
+    /// Gets the page thumbnails of the open document (<see cref="ViewerSession.EnsureThumbnails"/>), or
+    /// <see langword="null"/> unless the document is open. The tab remembers them, so that it stops their work and
+    /// empties their cache when it becomes inactive: an inactive tab keeps no thumbnails.
+    /// </summary>
+    internal ThumbnailSource? EnsureThumbnails()
+    {
+        if (_disposed)
+        {
+            return null;
+        }
+
+        var thumbnails = _session.EnsureThumbnails();
+        _thumbnails = thumbnails;
+        return thumbnails;
+    }
+
     /// <summary>Puts the current page back into the page field (an edit that was not committed, for example on leaving the field).</summary>
     public void ResetPageField() => PageFieldText = CurrentPage.ToString(CultureInfo.InvariantCulture);
 
@@ -502,6 +538,21 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         Refresh();
         OnPropertyChanged(nameof(ErrorCauseText));
         OnPropertyChanged(nameof(ErrorDetailsText));
+    }
+
+    /// <summary>
+    /// Stops the work of the thumbnails this tab handed out and empties their cache. The wish list goes first: it cancels
+    /// the running job, which then stores nothing, so the cache stays empty. Harmless on disposed thumbnails.
+    /// </summary>
+    private void ReleaseThumbnails()
+    {
+        var thumbnails = _thumbnails;
+        _thumbnails = null;
+        if (thumbnails is not null)
+        {
+            thumbnails.Scheduler.Update([]);
+            thumbnails.Cache.Clear();
+        }
     }
 
     private void SetZoom(double value)
@@ -615,6 +666,8 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         if (isNewDocument)
         {
             // Zoom mode, layout and panel belong to the tab and stay; a saved view brings its own zoom.
+            HasShownSharpPage = false;
+            _thumbnails = null;
             CurrentPage = 1;
             CurrentPageLast = 1;
             if (SavedView is null)
@@ -624,6 +677,8 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         }
         else if (document is null)
         {
+            HasShownSharpPage = false;
+            _thumbnails = null;
             CurrentPage = 0;
             CurrentPageLast = 0;
         }

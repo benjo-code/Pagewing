@@ -366,7 +366,7 @@ public sealed class ViewerSession : IDisposable
     /// object is returned until the document is replaced, closed or the session is disposed, which also disposes it
     /// (before the document). Returns <see langword="null"/> unless the state is <see cref="ViewerState.Ready"/>.
     /// The cache of the thumbnails keeps its budget when the tab becomes inactive; the UI stops the work with an empty
-    /// wish list instead.
+    /// wish list and empties the cache instead (<c>TabViewModel</c> in the app).
     /// </summary>
     public ThumbnailSource? EnsureThumbnails()
     {

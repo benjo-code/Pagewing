@@ -65,6 +65,7 @@ public sealed partial class DocumentView : UserControl
         Scroller.PropertyChanged += OnScrollerPropertyChanged;
         Scroller.AddHandler(PointerWheelChangedEvent, OnPointerWheel, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
+        PageCanvas.FirstSharpPageDrawn += OnFirstSharpPageDrawn;
     }
 
     /// <summary>Raised on the UI thread once per document, in the frame after the first sharp tile of the first page was drawn.</summary>
@@ -541,6 +542,19 @@ public sealed partial class DocumentView : UserControl
     }
 
     private void OnScalingChanged(object? sender, EventArgs e) => UpdateViewport();
+
+    /// <summary>
+    /// The canvas drew the first sharp page of the shown document: the tab may render its page thumbnails now
+    /// (<see cref="TabViewModel.HasShownSharpPage"/>). The canvas reports only for the document it still draws, which is
+    /// the document of this tab.
+    /// </summary>
+    private void OnFirstSharpPageDrawn()
+    {
+        if (_viewModel is { } tab && _document is not null && ReferenceEquals(_document, _session?.Document))
+        {
+            tab.HasShownSharpPage = true;
+        }
+    }
 
     /// <summary>Hands the visible part of the content to the canvas and updates the current row.</summary>
     private void UpdateViewport()

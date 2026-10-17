@@ -15,6 +15,19 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Seitenvorschau: nur realisierte Einträge, Cache nur im aktiven Tab (M4)
+**Kontext:** Das Panel „Seiten“ zeigt je Seite ein Vorschaubild (Designsystem 7.3). Jeder Tab hat dafür eine eigene `ThumbnailSource` mit 48 MiB Cache und eigenem Scheduler (`ViewerSession.EnsureThumbnails`). Offen war, wann gerendert wird, was ein inaktiver Tab behält und wie scharf die Bilder bei gebrochener Skalierung sind.
+**Entscheidung:**
+- `Controls/ThumbnailList` (ein `ListBox` mit `VirtualizingStackPanel`) plant nur die realisierten Einträge, gesammelt in einem Auftrag mit `DispatcherPriority.Background`, die Seite nächst der aktuellen zuerst; Bitmaps gibt es nur für realisierte Einträge.
+- Gerendert wird erst, wenn der Tab ein scharfes Seitenbild gezeigt hat (`TabViewModel.HasShownSharpPage`, gesetzt vom `DocumentView` nach dem ersten scharfen Bild einer beliebigen Seite, nicht nur von Seite 1, damit ein früher Sprung die Vorschau nicht blockiert).
+- Schließt der Nutzer das Panel, endet die Arbeit sofort (leere Wunschliste, auch während des Ausblendens); der Cache des aktiven Tabs bleibt, damit ein erneutes Öffnen sofort Bilder zeigt. Wird ein Tab inaktiv, leert `TabViewModel` die Wunschliste und danach den Vorschau-Cache (in dieser Reihenfolge, damit der laufende Auftrag nichts mehr ablegt): Ein inaktiver Tab hält keine Vorschaubilder.
+- `ThumbnailPlanner` senkt den Maßstab notfalls um die kleinsten Schritte (`Math.BitDecrement`), weil Seitenbreite × Maßstab bei gebrochener Skalierung einen Rundungsfehler über dem Ziel liegen kann (300 × 0,68 = 204,00000000000003) und die Pixelgröße aufrundet: sonst wäre das Bild bei 150 % 205 statt 204 Pixel breit und nicht mehr 1:1 auf Gerätepixeln.
+**Begründung:** Vorschaubilder dürfen nie mit dem ersten scharfen Seitenbild konkurrieren (Gesamt-Spec 5.4) und kosten bei 1000 Seiten nur, was sichtbar ist. 48 MiB je Tab wären bei vielen Tabs zu viel; der Kern behält das Budget bewusst unverändert (`EnsureThumbnails`), die App entscheidet über das Leeren.
+**Verworfene Alternativen:**
+- Den Vorschau-Cache schon beim Schließen des Panels leeren: Ein erneutes Öffnen im selben Tab müsste alles neu rendern.
+- Den Cache in `ViewerSession.SetActive` leeren: Die Session müsste die Thumbnails kennen, die die App angefordert hat; die App hält die Referenz ohnehin.
+- `HasShownSharpPage` an `FirstSharpTileDrawn` (nur Seite 1) koppeln: Ein Sprung vor dem ersten scharfen Bild von Seite 1 hätte die Vorschau dauerhaft verhindert.
+
 ## 2026-10-17 – CI-Artefakte: Aufbewahrung 3 Tage (Hardware-Messung 7)
 **Kontext:** In anderen Repos der Orga lief der Actions-Speicher (2 GB) schon voll. Gemessen am 2026-10-17: Pagewing hat 38 Artefakte mit zusammen rund 250 KB. Einzeln: `startup-*` je rund 0,8 KB (CSV), `hardware-measure` 6 bis 47 KB, `render-diff-*` rund 150 KB (nur bei roter Render-Regression). Die Aufbewahrung stand auf dem Standard des Repos (7 Tage, höher lässt die Einstellung für dieses Repo nicht zu).
 **Entscheidung:** `retention-days: 3` für `startup-*` und `render-diff-*` in `ci.yml`, `retention-days: 7` für `hardware-measure` in `hardware-measure.yml`.

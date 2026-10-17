@@ -201,4 +201,13 @@
   <data name="ContentsTooltip" xml:space="preserve">
     <value>Contents</value>
   </data>
+  <data name="ThumbnailList" xml:space="preserve">
+    <value>Page thumbnails</value>
+  </data>
+  <data name="ThumbnailName" xml:space="preserve">
+    <value>Page {0}</value>
+  </data>
+  <data name="ThumbnailCurrentSuffix" xml:space="preserve">
+    <value>, current page</value>
+  </data>
 </root>

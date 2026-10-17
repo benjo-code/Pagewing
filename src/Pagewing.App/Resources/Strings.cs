@@ -94,6 +94,9 @@ public static class Strings
     public static string ClosePanel => Get("ClosePanel");
     public static string PagesTooltip => Get("PagesTooltip");
     public static string ContentsTooltip => Get("ContentsTooltip");
+    public static string ThumbnailList => Get("ThumbnailList");
+    public static string ThumbnailName => Get("ThumbnailName");
+    public static string ThumbnailCurrentSuffix => Get("ThumbnailCurrentSuffix");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

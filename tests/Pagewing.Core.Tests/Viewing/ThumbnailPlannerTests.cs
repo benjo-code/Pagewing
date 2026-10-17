@@ -40,6 +40,26 @@ public sealed class ThumbnailPlannerTests
         Assert.Equal(A4.ToPixels(request.Scale), (request.Rect.Width, request.Rect.Height));
     }
 
+    [Theory]
+    [InlineData(300.0, 1.5, 204)]
+    [InlineData(300.0, 1.25, 170)]
+    [InlineData(300.0, 1.75, 238)]
+    [InlineData(200.0, 1.5, 204)]
+    [InlineData(612.0, 1.5, 204)]
+    [InlineData(595.28, 1.25, 170)]
+    [InlineData(100.0, 1.1, 150)]
+    public void ThumbnailIsExactlyTheWidthInDevicePixelsAtFractionalScalings(double pageWidth, double scaling, int pixels)
+    {
+        // Width × scale can come out a rounding error above the target (300 × 0.68 = 204.00000000000003), and the pixel
+        // size rounds up: the thumbnail would be a pixel wider than its 136 DIP on the screen.
+        var size = new PdfPageSize(pageWidth, 400);
+
+        var request = Assert.Single(ThumbnailPlanner.Plan([size], [0], scaling));
+
+        Assert.Equal(pixels, request.Rect.Width);
+        Assert.Equal(size.ToPixels(request.Scale), (request.Rect.Width, request.Rect.Height));
+    }
+
     [Fact]
     public void PlannerOrdersByDistanceToTheFirstPage()
     {

@@ -3,6 +3,7 @@
              xmlns:vm="using:Pagewing.App.ViewModels"
              xmlns:ctl="using:Pagewing.App.Controls"
              xmlns:res="using:Pagewing.App.Resources"
+             xmlns:views="using:Pagewing.App.Views"
              x:Class="Pagewing.App.Views.SidePanel"
              x:DataType="vm:TabViewModel">
   <!--
@@ -16,10 +17,10 @@
     <!--
       Content of each panel, keyed by the name of its SidePanelKind; SidePanel.axaml.cs builds it when that panel opens
       and drops it when it closes or another opens. The built view inherits the tab as its DataContext. Placeholders until
-      the thumbnails (Pages) and the table of contents (Contents) come.
+      the table of contents (Contents) comes.
     -->
     <DataTemplate x:Key="Pages">
-      <Border Name="PagesContent" />
+      <views:PagesPanel Name="PagesContent" />
     </DataTemplate>
     <DataTemplate x:Key="Contents">
       <Border Name="ContentsContent" />

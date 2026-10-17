@@ -66,7 +66,7 @@ public static class ThumbnailPlanner
             }
 
             var size = sizes[page];
-            var scale = Width * renderScaling / size.Width;
+            var scale = ScaleFor(size, renderScaling);
             (int Width, int Height) pixels;
             try
             {
@@ -87,6 +87,25 @@ public static class ThumbnailPlanner
         }
 
         return requests;
+    }
+
+    /// <summary>
+    /// The scale (pixels per point) at which the page is <see cref="Width"/> DIPs wide in device pixels. The product of
+    /// page width and scale can come out a rounding error above the wanted width (300 × 0.68 = 204.00000000000003), and
+    /// the pixel size rounds up, which would make the thumbnail a pixel wider than its place on the screen; the scale is
+    /// then lowered by the smallest steps until it fits.
+    /// </summary>
+    private static double ScaleFor(PdfPageSize size, double renderScaling)
+    {
+        var target = Width * renderScaling;
+        var wanted = Math.Ceiling(target - 1e-9);
+        var scale = target / size.Width;
+        for (var step = 0; step < 4 && size.Width * scale > wanted; step++)
+        {
+            scale = Math.BitDecrement(scale);
+        }
+
+        return scale;
     }
 
     private static bool IsUsable(PdfPageSize size) =>
