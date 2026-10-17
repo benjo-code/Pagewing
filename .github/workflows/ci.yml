@@ -145,7 +145,7 @@ jobs:
           foreach ($variant in @('default', 'dcomp', 'redirect', 'lowlatency', 'software', 'software-uithread', 'wgl', 'wgl-redirect', 'vulkan')) {
             Write-Host "=== PAGEWING_DIAG_WIN32=$variant"
             $env:PAGEWING_DIAG_WIN32 = $variant
-            dotnet run bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" --pdf testdata/pdfs/text-basic.pdf --case warm --phases
+            dotnet run --no-cache bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" --pdf testdata/pdfs/text-basic.pdf --case warm --phases
           }
           $env:PAGEWING_DIAG_WIN32 = $null
           exit 0
