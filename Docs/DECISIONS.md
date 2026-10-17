@@ -15,6 +15,48 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Windows-Warmstart: Phasenmessung auf dem Runner (M3)
+**Kontext:** Der Startzeit-Check misst auf dem Windows-Runner warm rund 340 ms (Budget 200, Grenze 250), unter Linux (Xvfb) rund 150 ms. Wohin die Differenz geht, war offen (Einträge „Schrift-Entscheidung nach Messung (M3) …“ und „Frame-Takt der Desktop-Komposition …“).
+**Methode:** Dauerhaft: Im Messmodus schreibt die App nach `first-sharp` Phasenzeiten seit Prozessstart, `bench/startup/startup.cs --phases` gibt ihre Mediane aus (`bench/startup/README.md`, Abschnitt „Phasen“). Vorübergehend (mit `git revert` wieder entfernt): eine Umgebungsvariable nur im Messmodus wählte `Win32PlatformOptions` (Komposition, Rendering), schaltete die Eingabemethode ab (`ImmDisableIME`, `ImmDisableTextFrameService`) oder ließ den Seitenschatten bzw. die ganze Seite weg; ein CI-Schritt maß jede Variante wie den Fall `warm` (10 Läufe, 3 Aufwärmläufe) und zusätzlich `--measure-scroll` (3 Läufe). Runner `dotnet-windows`: Proxmox/QEMU-VM ohne GPU, Anzeige „Microsoft Basic Display Adapter“ 1280 × 800, angemeldete Sitzung, keine Frame-Takt-Warnung; Avalonia 12.1.4 wählt dort ANGLE (D3D11 über WARP, also auf der CPU) mit `WinUIComposition`. Läufe 39026280725 (A) und 39027039821 (B) auf PR #4.
+**Ergebnisse (Median, ms seit Prozessstart; „Abstand“ = `tile-drawn` bis `frame-after-tile`; „warm“ = Ergebnis des Skripts):**
+
+| Variante | Lauf | `app-initialize` | `window-opened` | `tile-drawn` | `frame-after-tile` | Abstand | warm |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Standard (der Check selbst) | A | 56,0 | 121,7 | 124,5 | 328,9 | 204,4 | 336,2 |
+| Standard (der Check selbst) | B | 56,7 | 124,9 | 127,5 | 326,5 | 199,0 | 341,6 |
+| Standard | A / B | 59,6 / 60,2 | 130,4 / 127,0 | 132,8 / 129,9 | 336,8 / 339,2 | 204,0 / 209,3 | 338,7 / 349,4 |
+| `DirectComposition` | A | 53,8 | 125,4 | 132,5 | 355,6 | 223,1 | 366,7 |
+| `RedirectionSurface` (ANGLE) | A | 55,4 | 132,4 | 135,1 | 329,7 | 194,6 | 334,3 |
+| `LowLatencyDxgiSwapChain` | A | 53,8 | 128,0 | 130,5 | 344,6 | 214,1 | 347,0 |
+| `Software` | A / B | 36,9 / 37,8 | 113,0 / 115,5 | 117,9 / 117,9 | 141,4 / 149,8 | 23,5 / 31,9 | 143,5 / 151,2 |
+| `Software`, `RedirectionSurface`, Rendern im UI-Thread | A / B | 33,9 / 39,5 | 109,5 / 118,9 | 112,8 / 121,9 | 134,3 / 145,5 | 21,5 / 23,6 | 135,4 / 146,4 |
+| Standard ohne Seitenschatten | A / B | 60,0 / 61,4 | 125,0 / 135,7 | 128,5 / 138,8 | 251,6 / 267,3 | 123,1 / 128,5 | 257,8 / 268,4 |
+| Standard ohne Seite | A / B | 58,9 / 58,8 | 129,5 / 128,8 | 131,9 / 131,2 | 257,0 / 252,9 | 125,1 / 121,7 | 261,6 / 260,7 |
+| `Software` ohne Seitenschatten | A | 36,4 | 110,7 | 116,3 | 145,3 | 29,0 | 146,6 |
+| Standard, `ImmDisableIME` | A | 59,0 | 117,2 | 231,5 | 360,2 | 128,7 | 363,3 |
+| Standard, `ImmDisableTextFrameService` | A | 63,0 | 130,8 | 133,5 | 333,8 | 200,3 | 348,0 |
+| `Wgl`, `Vulkan` | A | Start bricht ab: „RenderingMode has a value of … but no options were applied“ ||||||
+| Linux (Xvfb), zum Vergleich | A | 85,8 | 111,4 | 151,3 | 167,5 | 16,2 | 162,1 |
+
+Scrollen (`--measure-scroll`, 1000 Seiten, 99. Perzentil der Frame-Abstände, Lauf B): Standard 51,1 / 50,8 / 51,7 ms, ohne Seitenschatten 47,6 / 48,1 / 47,6 ms, `Software` 17,1 / 17,6 / 17,4 ms.
+**Befund (belegt):**
+- Bis die erste scharfe Kachel gezeichnet ist (`tile-drawn`), ist Windows nicht langsamer als Linux (125 bis 133 gegen 133 bis 151 ms). Die gesamte Differenz von rund 180 ms liegt im ersten Frame danach: rund 200 ms bis zum nächsten `RequestAnimationFrame`-Rückruf mit ANGLE, 16 bis 21 ms unter Linux, 22 bis 32 ms mit `Software` auf demselben Runner. Mit `Software` liegt der Warmstart dort bei 135 bis 151 ms.
+- Die Kompositionsmodi ändern daran nichts (195 bis 223 ms). Der Abstand hängt am Rendern über ANGLE, nicht an DWM.
+- Rund 80 ms davon kostet der Seitenschatten (`BoxShadow` mit Unschärfe) im ersten Frame; ohne Seite bleiben rund 120 ms. Es sind einmalige Kosten: Beim Scrollen ändert der Schatten das 99. Perzentil kaum, mit `Software` kostet er im ersten Frame nur wenige Millisekunden.
+- ANGLE kostet zusätzlich rund 20 ms bei der Plattform-Initialisierung (`app-initialize` 54 bis 60 gegen 34 bis 40 ms).
+- Die Eingabemethode ist auf dem Runner nicht der Grund (zwischen `WM_ACTIVATE` und `WM_IME_SETCONTEXT` rund 10 ms; `ImmDisableIME` ändert den Warmstart nicht zum Besseren). Auf dem Entwicklungsrechner lagen dort rund 45 ms.
+- Der Ursprung „Prozessstart“ ist unter Windows auf wenige Millisekunden genau („Skript − `frame-after-tile`“ 1 bis 8 ms).
+**Geschlossen, nicht belegt:** Dass die rund 200 ms an der Grafik ohne GPU liegen (WARP rastert und übersetzt Shader auf der CPU; Erzeugen von Gerät, Swapchain und Skia-Kontext, Übersetzen der Shader für den ersten Frame). Welcher dieser Schritte wie viel kostet, ist ohne Profiler nicht gemessen. Ob ein Rechner mit GPU ähnliche Kosten im ersten Frame hat (die Shader übersetzt ANGLE auch dort auf der CPU), ist nicht gemessen; ein gültiger Abgleich mit dem Budget braucht weiter einen Rechner mit GPU und aktiver Anzeige (Roadmap, Backlog).
+**Entscheidung:** Das Produkt bleibt unverändert (Standardmodi von Avalonia, Schatten wie in der Design-Spec). `Software` als Standard tauscht auf Rechnern mit GPU Leistung und Qualität gegen die VM ohne GPU, das entscheidet der Projektinhaber. Budgets, Grenze und Check bleiben unverändert.
+**Empfehlung an den Projektinhaber (offen):**
+- `Software` nur wählen, wenn kein Hardware-Grafikadapter da ist (nur WARP bzw. „Microsoft Basic Display Adapter“): auf diesem Runner warm 340 → 145 ms und Scrollen 51 → 17 ms (99. Perzentil), auf Rechnern mit GPU keine Änderung. Kosten: eine Adapter-Abfrage im Startpfad (vorher messen), und der Windows-Check misst dann den GPU-Pfad gar nicht mehr. Ein grüner Check auf diesem Runner sagte damit nichts über Rechner mit GPU.
+- Den Seitenschatten als vorberechnetes Bild statt als `BoxShadow` zeichnen: spart mit ANGLE über WARP rund 80 ms im ersten Frame; auf Rechnern mit GPU ist der Gewinn nicht gemessen, das Aussehen muss gleich bleiben (Design-Spec).
+**Nebenbefund:** Auf dem Windows-Runner liefen die Einzeldatei-Skripte (`dotnet run <datei>.cs`) als veraltete Kopie, auch mit `--no-cache`: Ohne git im PATH lädt `actions/checkout` ein Zip, dessen Dateizeiten Stunden zurückliegen (`startup.cs` 01:48 UTC bei einem Checkout um 10:51 UTC), und der inkrementelle Build des in `%TEMP%` zwischengespeicherten Skripts hielt sich für aktuell. Der CI-Schritt „Refresh the file times of the checkout (Windows)“ setzt alle Dateizeiten auf jetzt; danach lief der neue Selbsttest (39 Prüfungen) auf beiden OS.
+**Verworfene Alternativen:**
+- `DirectComposition`, `RedirectionSurface`, `LowLatencyDxgiSwapChain`: kein Gewinn (siehe Tabelle).
+- `Wgl`, `Vulkan`: auf dem Runner nicht verfügbar, der Start bricht ab.
+- Eingabemethode abschalten: kein Gewinn auf dem Runner, und Eingaben über einen IME (etwa Chinesisch, Japanisch) gingen nicht mehr.
+
 ## 2026-10-17 – Scheiternder Dateidialog zeigt die Fehlerkarte (M3)
 **Kontext:** `OpenCommand` startet den Dateidialog ohne auf ihn zu warten. Wirft `IFilePicker.PickPdfAsync` (unter Linux etwa ohne Datei-Portal), blieb die Ausnahme unbeobachtet, und Strg+O tat nichts.
 **Entscheidung:** `MainViewModel` fängt die Ausnahme (außer `OperationCanceledException`, die wie Abbrechen nichts ändert) und behandelt sie wie ein gescheitertes Öffnen: Die Session wird geschlossen, die Fehlerkarte zeigt die Ursache `Unknown` ohne Dateinamen („Die Datei konnte aus einem unbekannten Grund nicht geöffnet werden.“), die technischen Details nennen keinen Pfad, die Fehlerart und Typ und Meldung der Ausnahme, keinen Stacktrace. Die Karte bleibt bis zum nächsten Öffnen oder „Tab schließen“ (`OpenFlowTests.FailingPickerShowsTheErrorCardWithAnUnknownCause`, `CloseTabAfterAFailingPickerReturnsToTheStartScreen`).

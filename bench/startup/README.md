@@ -8,7 +8,7 @@ Im Repository-Stammordner, nach `dotnet publish src/Pagewing.App -c Release -r <
 
 ```powershell
 dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/text-basic.pdf --case cold --out out/startup/cold.csv
-dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/text-basic.pdf --case warm --out out/startup/warm.csv
+dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/text-basic.pdf --case warm --out out/startup/warm.csv --phases
 dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/thousand-pages.pdf --case thousand --out out/startup/thousand.csv
 dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/text-basic.pdf --second-pdf testdata/pdfs/hello_world.pdf --case second --out out/startup/second.csv
 dotnet run bench/startup/startup.cs -- selftest
@@ -46,10 +46,30 @@ Für alle drei Schalter gilt: Die App nimmt nicht an der Single-Instance-Wahl te
 
 Der Messpunkt ist der Frame nach dem Zeichnen, und Avalonia richtet seine Frames unter Windows nach der Desktop-Komposition (DWM). Zeigt DWM nur wenige Bilder pro Sekunde, enthält jeder Lauf bis zu zwei solcher Wartezeiten, und die Zeiten sagen nichts über die App. Das Skript misst deshalb unter Windows vor den Läufen fünf Abstände von `DwmFlush` und schreibt eine `Warnung: …`, wenn der Median über 40 ms liegt (unter 25 Hz) oder es keine Komposition gibt (Dienstsitzung ohne Desktop). Scheitert die Messung selbst (Ausnahme oder kein Ergebnis nach 2 s), gilt das als „keine Komposition“; der Check läuft trotzdem weiter. Die Warnung steht vor den Läufen und noch einmal neben dem Ergebnis („Ergebnis unter Vorbehalt: …“), dazu als GitHub-Annotation (`::warning::`) in der Zusammenfassung des CI-Laufs. Sie ändert das Ergebnis des Checks nicht.
 
-**Fehlt die Warnung, sind die Zahlen damit nicht belegt gültig.** Die Schwelle liegt bei 25 Hz, ein Takt von 30 Hz bleibt still; unter Linux wird gar nicht gemessen. Beobachtet in derselben VM: Als `DwmFlush` dort zeitweise wieder alle ~16 ms zurückkam (keine Warnung), lag der Warmstart trotzdem bei 393 ms, weil der erste präsentierte Frame des Fensters weiter rund 170 ms nach dem Zeichnen kam (vermutlich wegen der Grafik ohne GPU; nicht weiter untersucht). Gültig sind nur Zahlen von einem Rechner mit GPU und aktiver Anzeige.
+**Fehlt die Warnung, sind die Zahlen damit nicht belegt gültig.** Die Schwelle liegt bei 25 Hz, ein Takt von 30 Hz bleibt still; unter Linux wird gar nicht gemessen. Beobachtet in derselben VM: Als `DwmFlush` dort zeitweise wieder alle ~16 ms zurückkam (keine Warnung), lag der Warmstart trotzdem bei 393 ms, weil der erste präsentierte Frame des Fensters weiter rund 170 ms nach dem Zeichnen kam. Auf dem CI-Runner (ebenfalls ohne GPU) ist dieser Abstand mit den Phasen gemessen: rund 200 ms im Standardmodus (ANGLE über WARP), rund 23 ms mit `Win32RenderingMode.Software` (`Docs/DECISIONS.md`, Eintrag „Windows-Warmstart: Phasenmessung auf dem Runner (M3)“). Gültig sind nur Zahlen von einem Rechner mit GPU und aktiver Anzeige.
 
 Beobachtet in einer QEMU-VM, deren einzige aktive Anzeige der „Red Hat VirtIO GPU DOD controller“ ist (ohne GPU): DWM zeigt dort nur alle 253 ms ein Bild, auch bei einem leeren Avalonia-Fenster. Gültige Zahlen gibt es nur auf einem Rechner mit GPU und aktiver Anzeige; Befund und verworfene Umgehungen: `Docs/DECISIONS.md`, Eintrag „Frame-Takt der Desktop-Komposition: Messumgebung statt Kompositionsmodus (M3)“.
 
+## Phasen
+
+In jedem Messlauf schreibt die App nach `first-sharp` (also nach dem Messpunkt, den das Skript stoppt) je erreichter Phase eine Zeile `phase <Name> <ms>`, die Millisekunden seit ihrem eigenen Prozessstart (`src/Pagewing.App/Measurement/StartupPhases.cs`). Mit `--phases` gibt das Skript nach den Läufen den Median jeder Phase über die gezählten Läufe aus („Phasen (Median …)“), dazu den Median von „Skript − `frame-after-tile`“ je Lauf (Zeit vor dem Prozessstart plus Weg der Zeile). Das ist nur eine Information; Ergebnis und Exit-Code des Checks ändern sich nicht. Die CI nutzt `--phases` im Fall `warm`.
+
+| Phase | Zeitpunkt |
+|---|---|
+| `main` | Eintritt in `Program.Main` (nach der `AppContext`-Initialisierung) |
+| `session-open-started` | das frühe Öffnen der Datei ist gestartet |
+| `session-ready` | die Session meldet `Ready` (PDFium-Thread) |
+| `app-initialize` | `App.Initialize`: Avalonia-Plattform (Fenstersystem, Grafik) ist initialisiert |
+| `app-initialized` | `OnFrameworkInitializationCompleted`: XAML der App geladen |
+| `window-created` | `MainWindow` erzeugt |
+| `window-opened` | `Window.Opened` (nach Layout und Anzeigen des Fensters) |
+| `first-frame` | erster `RequestAnimationFrame`-Rückruf nach `Opened` |
+| `preview-applied`, `tile-applied` | Vorschau bzw. erste scharfe Kachel von Seite 1 als Bitmap übernommen |
+| `tile-drawn` | `DocumentCanvas.Render` hat die erste scharfe Kachel gezeichnet |
+| `frame-after-tile` | der Frame danach; derselbe Zeitpunkt, zu dem `first-sharp` geschrieben wird |
+
+Genauigkeit: Der Ursprung ist die Erzeugungszeit des Prozesses laut Betriebssystem, gegen die Systemuhr neben der `Stopwatch` gelesen. Abstände zwischen Phasen sind genau. Der Ursprung selbst ist unter Windows auf etwa 1 ms genau (CI: „Skript − `frame-after-tile`“ 2 bis 6 ms), unter Linux nur auf einen Takt (10 ms): Dort liegen die Phasen um bis zu 10 ms zu spät, „Skript − `frame-after-tile`“ wird negativ (CI: −5 bis −8 ms).
+
 ## Selbsttest
 
-`selftest` prüft Median (ungerade und gerade Anzahl), Grenze je Fall, die Grenzentscheidung (ein Median genau auf der Grenze besteht, knapp darüber nicht), das Lesen von `second-sharp <ms>`, die Parameter der Fälle mit festen Werten die Schwelle der Frame-Takt-Warnung, die Warnung bei gescheiterter Messung, deren Zeitlimit und das Maskieren der GitHub-Annotation. Er läuft in der CI vor dem Check.
+`selftest` prüft Median (ungerade und gerade Anzahl), Grenze je Fall, die Grenzentscheidung (ein Median genau auf der Grenze besteht, knapp darüber nicht), das Lesen von `second-sharp <ms>` und `phase <Name> <ms>`, Median und Ausgabe der Phasen, dass `--phases` keinen Wert nimmt, die Parameter der Fälle mit festen Werten, die Schwelle der Frame-Takt-Warnung, die Warnung bei gescheiterter Messung, deren Zeitlimit und das Maskieren der GitHub-Annotation. Er läuft in der CI vor dem Check.
