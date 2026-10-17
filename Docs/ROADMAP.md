@@ -174,7 +174,7 @@ Ziel: Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzei
 **Aufgaben**
 - [x] Tabs (öffnen, schließen, wechseln, Reihenfolge ändern)
 - [x] Seitenleiste mit Seitenvorschau (Thumbnails im Hintergrund, nach dem ersten Seitenbild)
-- [ ] Inhaltsverzeichnis/Lesezeichen aus dem PDF anzeigen und anspringen
+- [x] Inhaltsverzeichnis/Lesezeichen aus dem PDF anzeigen und anspringen
 - [x] Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)
 - [x] Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom
 - [x] Gehe zu Seite
