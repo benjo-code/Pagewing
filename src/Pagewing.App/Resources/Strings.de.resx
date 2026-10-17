@@ -225,4 +225,7 @@
   <data name="OutlineFailed" xml:space="preserve">
     <value>Das Inhaltsverzeichnis konnte nicht gelesen werden.</value>
   </data>
+  <data name="OutlineEntryName" xml:space="preserve">
+    <value>{0}, Seite {1}</value>
+  </data>
 </root>

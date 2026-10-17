@@ -11,7 +11,8 @@ namespace Pagewing.App.Views;
 /// <summary>
 /// The content of the "Contents" panel: the outline of the active tab (<see cref="TabViewModel.Outline"/>) as a tree.
 /// A click on an entry with a target, or Enter or Space on it, shows its page (<see cref="TabViewModel.ShowPageFromPanel"/>);
-/// the arrow keys move the focus, Right and Left open and close an entry. Built when the panel opens, released when it
+/// Up, Down, Page Up, Page Down, Home and End move the focus over the shown entries (handled here, also beyond the
+/// realized containers), Right and Left open and close an entry. Built when the panel opens, released when it
 /// closes; the tab reads its outline when "Contents" opens (<see cref="TabViewModel.EnsureOutlineAsync"/>).
 /// </summary>
 public sealed partial class OutlinePanel : UserControl
@@ -31,7 +32,11 @@ public sealed partial class OutlinePanel : UserControl
         InitializeComponent();
         OutlineTree.AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
         OutlineTree.AddHandler(TappedEvent, OnTapped);
-        OutlineTree.AddHandler(GotFocusEvent, OnGotFocus);
+
+        // Key bindings of the window (Page Up/Down turn the document's pages) are matched from the focused element
+        // upwards before any key event is raised, so the tree claims these two keys with bindings of its own.
+        OutlineTree.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageDown), Command = new RelayCommand(() => Move(Key.PageDown)) });
+        OutlineTree.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageUp), Command = new RelayCommand(() => Move(Key.PageUp)) });
     }
 
     public static bool GetIsJumpTarget(TreeViewItem item)
@@ -54,39 +59,130 @@ public sealed partial class OutlinePanel : UserControl
             ? node
             : null;
 
-    // Enter and Space show the page of the focused entry, before the tree gets the keys. Enter on an entry without a
-    // target opens or closes it, as the tree would; it is handled here because the tree would pass it on to the parent
-    // entry when there is nothing to open, which then closes and takes the focus away.
+    // The panel handles Enter and Space (jump) and the moving keys itself, before the tree gets them:
+    // - Enter on an entry without a target opens or closes it, as the tree would; the tree would pass it on to the
+    //   parent entry when there is nothing to open, which then closes and takes the focus away.
+    // - Up, Down, Page Up, Page Down, Home and End move over the entries the tree shows (open entries included) and
+    //   bring the new one into view first: the tree only knows the realized containers, so with virtualized levels it
+    //   would have no Home, End or Page keys and could not rely on the next entry being realized (Docs/DECISIONS.md,
+    //   "Inhaltsverzeichnis: Tastatur selbst geführt (M4)"). Left and Right stay with the tree.
     private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
-        if (e.Handled || e.KeyModifiers != KeyModifiers.None || e.Key is not (Key.Enter or Key.Space)
-            || EntryOf(TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement()) is not { } node)
+        if (e.Handled || e.KeyModifiers != KeyModifiers.None)
         {
             return;
         }
 
-        if (node.CanJump)
+        var node = EntryOf(TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement());
+        switch (e.Key)
         {
-            e.Handled = true;
-            ShowPage(node);
-        }
-        else if (e.Key == Key.Enter)
-        {
-            e.Handled = true;
-            if (node.Children.Count > 0)
-            {
-                node.IsExpanded = !node.IsExpanded;
-            }
+            case Key.Enter or Key.Space when node is { CanJump: true }:
+                e.Handled = true;
+                ShowPage(node);
+                break;
+            case Key.Enter when node is not null:
+                e.Handled = true;
+                if (node.HasChildren)
+                {
+                    node.IsExpanded = !node.IsExpanded;
+                }
+
+                break;
+            case Key.Down or Key.Up or Key.PageDown or Key.PageUp or Key.Home or Key.End:
+                e.Handled = true;
+                Move(e.Key);
+                break;
         }
     }
 
-    // The tree moves with the arrow keys only from a selected entry; an entry reached by Tab becomes it, so the first
-    // arrow key already moves (instead of selecting the first entry).
-    private void OnGotFocus(object? sender, FocusChangedEventArgs e)
+    /// <summary>Moves the keyboard focus for a moving key (Up, Down, Page Up, Page Down, Home, End).</summary>
+    private void Move(Key key)
     {
-        if (OutlineTree.SelectedItem is null && e.Source is TreeViewItem { DataContext: OutlineNodeViewModel node })
+        if (DataContext is not TabViewModel { Outline: { Count: > 0 } roots })
         {
-            OutlineTree.SelectedItem = node;
+            return;
+        }
+
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+        var node = EntryOf(focused);
+        if (Target(key, node, roots, focused as Control) is { } target && !ReferenceEquals(target, node))
+        {
+            FocusEntry(target);
+        }
+    }
+
+    /// <summary>The entry a moving key goes to from <paramref name="node"/> (the first one when no entry has the focus).</summary>
+    private OutlineNodeViewModel? Target(Key key, OutlineNodeViewModel? node, IReadOnlyList<OutlineNodeViewModel> roots, Control? focused)
+    {
+        if (node is null || key == Key.Home)
+        {
+            return key == Key.End ? OutlineNodeViewModel.Last(roots) : roots[0];
+        }
+
+        switch (key)
+        {
+            case Key.End:
+                return OutlineNodeViewModel.Last(roots);
+            case Key.Down:
+                return node.Next(roots) ?? node;
+            case Key.Up:
+                return node.Previous(roots) ?? node;
+        }
+
+        // A page: as many entries as fit into the view, less one, so the old entry stays in sight.
+        var rowHeight = focused is TreeViewItem item && item.MinHeight > 0 ? item.MinHeight : 28;
+        var viewport = OutlineTree.Bounds.Height;
+        var steps = Math.Max(1, (int)(viewport / rowHeight) - 1);
+        var target = node;
+        for (var i = 0; i < steps; i++)
+        {
+            var next = key == Key.PageDown ? target.Next(roots) : target.Previous(roots);
+            if (next is null)
+            {
+                break;
+            }
+
+            target = next;
+        }
+
+        return target;
+    }
+
+    /// <summary>
+    /// Gives the keyboard focus to the entry of <paramref name="node"/>: realizes the container of every level on its
+    /// way down (each brought into view by its virtualizing panel), then focuses it, which selects it.
+    /// </summary>
+    private void FocusEntry(OutlineNodeViewModel node)
+    {
+        var path = new List<OutlineNodeViewModel>();
+        for (var step = node; step is not null; step = step.Parent)
+        {
+            path.Add(step);
+        }
+
+        ItemsControl level = OutlineTree;
+        TreeViewItem? container = null;
+        for (var i = path.Count - 1; i >= 0; i--)
+        {
+            var index = path[i].Index;
+            if (level.ContainerFromIndex(index) is null)
+            {
+                level.ScrollIntoView(index);
+            }
+
+            if (level.ContainerFromIndex(index) is not TreeViewItem realized)
+            {
+                return;
+            }
+
+            container = realized;
+            level = realized;
+        }
+
+        if (container is not null)
+        {
+            container.BringIntoView();
+            container.Focus(NavigationMethod.Directional);
         }
     }
 

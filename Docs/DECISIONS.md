@@ -15,6 +15,14 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-18 – Inhaltsverzeichnis: Tastatur selbst geführt (M4)
+**Kontext:** Im virtualisierten Baum des Panels „Inhalt“ (Eintrag darunter) gibt es Avalonias `TreeView` nur die realisierten Container. Seine Tastaturführung (`TreeView.OnKeyDown`, Avalonia 12.1.4) kennt nur Pfeiltasten über `ContainerFromIndex`, kein Pos1, Ende, Bild auf oder Bild ab. Außerdem prüft `KeyboardDevice` die `KeyBindings` vom fokussierten Element aufwärts, bevor überhaupt ein Key-Event geroutet wird: Die Fensterbindungen Bild auf/ab (Seite zurück/vor im Dokument) schlugen also auch im Baum zu, der Fokus blieb stehen und das Dokument blätterte. Nachgewiesen mit `OutlinePanelTests.KeyboardReachesEveryEntryOfALargeOutline` (20 000 Einträge).
+**Entscheidung:** `Views/OutlinePanel` führt Pfeil auf/ab, Bild auf/ab, Pos1 und Ende selbst: Es bestimmt den nächsten angezeigten Eintrag über die View-Models (`OutlineNodeViewModel.Next`, `Previous`, `Last`, mit `Parent` und `Index`), realisiert die Container auf dem Weg dorthin mit `ItemsControl.ScrollIntoView` Ebene für Ebene und fokussiert den Eintrag (das wählt ihn aus). Bild auf/ab beansprucht der Baum mit eigenen `KeyBindings`, die vor denen des Fensters greifen; eine Seite ist so viele Einträge, wie in die Ansicht passen, weniger einer. Pfeil links und rechts (zu- und aufklappen, zum Elterneintrag) bleiben beim `TreeView`.
+**Begründung:** Tastaturnutzer erreichen so jeden Eintrag auch weit außerhalb des realisierten Bereichs, unabhängig davon, wie viele Container das `VirtualizingStackPanel` gerade vorhält; Bild auf/ab im Panel blättert nicht mehr nebenbei das Dokument um.
+**Verworfene Alternativen:**
+- Nur Pos1, Ende und Bild auf/ab ergänzen und die Pfeiltasten beim `TreeView` lassen: Sie funktionierten im Test, hängen aber davon ab, dass der Nachbar-Container realisiert ist; eine einzige Navigationslogik ist einfacher zu prüfen.
+- Bild auf/ab in einem Tunnel-Handler abfangen: Kommt zu spät, die Fensterbindung hat das Ereignis dann schon behandelt.
+
 ## 2026-10-18 – Inhaltsverzeichnis: erst beim Öffnen lesen, Kinder erst bei Bedarf (M4)
 **Kontext:** Das Panel „Inhalt“ zeigt die Lesezeichen des PDFs als Baum. `PdfDocument.GetOutlineAsync` liefert den ganzen Baum auf einmal (höchstens 20 000 Einträge, 32 Ebenen, Zyklen abgefangen). Offen war, wann gelesen wird und wie ein großer Baum die Oberfläche nicht einfriert.
 **Entscheidung:**

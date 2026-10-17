@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -122,7 +121,7 @@ public sealed class OutlinePanelTests : IDisposable
             // Right-aligned: the numbers of all levels end at the same x, near the right edge of the tree.
             var right = pageText.TranslatePoint(new Point(pageText.Bounds.Width, 0), tree)!.Value.X;
             Assert.InRange(right, tree.Bounds.Width - 24, tree.Bounds.Width);
-            Assert.Equal($"{title}, {string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ThumbnailName), page)}", AutomationProperties.GetName(item));
+            Assert.Equal($"{title}, page {page}", AutomationProperties.GetName(item));
         }
 
         var numbers = EntriesWithTarget
@@ -254,6 +253,7 @@ public sealed class OutlinePanelTests : IDisposable
         var chevron = Find<ToggleButton>(chapter2, "PART_ExpandCollapseChevron");
         var icon = Assert.Single(chevron.GetVisualDescendants().OfType<StrokeIcon>());
         Assert.Equal(new Size(16, 16), icon.Bounds.Size);
+        Assert.Equal(20, Find<Panel>(chapter2, "PART_ExpandCollapseChevronContainer").Bounds.Width);
         Assert.Same(Application.Current!.FindResource("Pw.Icon.ChevronRight"), icon.Data);
         Click(window, chevron);
         Assert.Equal(1, tab.CurrentPage);
@@ -340,6 +340,7 @@ public sealed class OutlinePanelTests : IDisposable
         Assert.Equal(placeholder, new OutlineNodeViewModel(new PdfOutlineItem(string.Empty, 0, false, [])).Title);
         Assert.Equal(placeholder, new OutlineNodeViewModel(new PdfOutlineItem("  ", 0, false, [])).Title);
         Assert.Equal("Zeile 1 Zeile 2", new OutlineNodeViewModel(new PdfOutlineItem("Zeile 1\r\nZeile 2", 0, false, [])).Title);
+        Assert.Equal(language == "de" ? "A, Seite 2" : "A, page 2", new OutlineNodeViewModel(new PdfOutlineItem("A", 1, false, [])).AutomationName);
 
         // In the panel.
         var (window, viewModel) = Show(1024);
@@ -494,12 +495,7 @@ public sealed class OutlinePanelTests : IDisposable
     [AvaloniaFact]
     public async Task LargeOutlineBuildsOnlyWhatIsShown()
     {
-        // The most bookmarks the core returns: an open part with 9 999 sections, then 5 000 closed chapters with one
-        // section each.
-        var sections = Enumerable.Range(1, 9_999).Select(i => new PdfOutlineItem($"Abschnitt {i}", 0, false, [])).ToArray();
-        var chapters = Enumerable.Range(1, 5_000)
-            .Select(i => new PdfOutlineItem($"Kapitel {i}", 1, false, [new PdfOutlineItem($"Unterabschnitt {i}", 2, false, [])]));
-        IReadOnlyList<PdfOutlineItem> outline = [new PdfOutlineItem("Teil", 0, true, sections), .. chapters];
+        var outline = LargeOutline();
         Assert.Equal(PdfDocument.MaxOutlineItems, Count(outline));
 
         var (window, viewModel) = Show(1024);
@@ -523,7 +519,134 @@ public sealed class OutlinePanelTests : IDisposable
         Assert.Contains(ShownItems(tree), item => ((OutlineNodeViewModel)item.DataContext!).Title == "Kapitel 5000");
         Assert.InRange(tree.GetVisualDescendants().OfType<TreeViewItem>().Count(), 1, 200);
 
+        // The open part was scrolled out of view (its container recycled) and keeps its state; so do the closed chapters.
+        Assert.True(tab.Outline![0].IsExpanded);
+        Assert.Equal(["Teil", "Kapitel 5000"], tab.Outline!.Where(node => node.IsExpanded).Select(node => node.Title));
+        for (var i = 0; i < 20 && !ShownItems(tree).Any(item => ((OutlineNodeViewModel)item.DataContext!).Title == "Teil"); i++)
+        {
+            scroller.Offset = default;
+            Settle(window);
+        }
+
+        Assert.True(ItemOf(window, "Teil").IsExpanded);
+        Assert.True(tab.Outline![0].IsExpanded);
+        Assert.Contains(ShownItems(tree), item => ((OutlineNodeViewModel)item.DataContext!).Title == "Abschnitt 1");
+        Assert.Equal(["Teil", "Kapitel 5000"], tab.Outline!.Where(node => node.IsExpanded).Select(node => node.Title));
+
         static int Count(IReadOnlyList<PdfOutlineItem> items) => items.Sum(item => 1 + Count(item.Children));
+    }
+
+    [AvaloniaFact]
+    public async Task KeyboardReachesEveryEntryOfALargeOutline()
+    {
+        var (window, viewModel) = Show(1024);
+        var tab = await OpenAsync(window, viewModel, "outline.pdf");
+        var outline = LargeOutline();
+        tab.OutlineReader = (_, _) => Task.FromResult(outline);
+        var tree = await OpenContentsAsync(window, viewModel, tab);
+        ItemOf(window, "Teil").Focus(NavigationMethod.Tab);
+        Settle(window);
+
+        // Down goes entry by entry far beyond the entries that were realized at first, each one scrolled into view.
+        for (var i = 1; i <= 80; i++)
+        {
+            Press(window, Key.Down);
+            AssertFocused(window, tree, $"Abschnitt {i}");
+        }
+
+        // Page Down and Page Up move by about a page, Up by one entry.
+        Press(window, Key.PageDown);
+        var afterPage = SectionNumber(AssertFocused(window, tree, null));
+        Assert.InRange(afterPage, 90, 120);
+
+        // The window binds Page Down to the next page of the document; in the tree it moves the focus only.
+        Assert.Equal(1, tab.CurrentPage);
+        Press(window, Key.Up);
+        AssertFocused(window, tree, $"Abschnitt {afterPage - 1}");
+        Press(window, Key.PageUp);
+        var afterPageUp = SectionNumber(AssertFocused(window, tree, null));
+        Assert.InRange(afterPageUp, 60, afterPage - 11);
+
+        // Page Up left the entry at the top edge of the view: Up keeps going beyond it.
+        for (var i = 1; i <= 5; i++)
+        {
+            Press(window, Key.Up);
+            AssertFocused(window, tree, $"Abschnitt {afterPageUp - i}");
+        }
+
+        // End goes to the last entry (inside the open last chapter), Home back to the first one.
+        Press(window, Key.End);
+        AssertFocused(window, tree, "Unterabschnitt 5000");
+        Press(window, Key.Up);
+        AssertFocused(window, tree, "Kapitel 5000");
+        Press(window, Key.Up);
+        AssertFocused(window, tree, "Kapitel 4999");
+        Press(window, Key.Down);
+        Press(window, Key.Down);
+        AssertFocused(window, tree, "Unterabschnitt 5000");
+        Press(window, Key.Down);
+        AssertFocused(window, tree, "Unterabschnitt 5000");
+        Press(window, Key.Home);
+        AssertFocused(window, tree, "Teil");
+        Press(window, Key.Up);
+        AssertFocused(window, tree, "Teil");
+        Assert.Equal(1, tab.CurrentPage);
+
+        // Left closes the open part, Down then reaches the first chapter, Right opens it, Left on its child goes back up.
+        Press(window, Key.Left);
+        Assert.False(tab.Outline![0].IsExpanded);
+        Press(window, Key.Down);
+        AssertFocused(window, tree, "Kapitel 1");
+        Press(window, Key.Right);
+        Assert.True(tab.Outline![1].IsExpanded);
+        Press(window, Key.Down);
+        AssertFocused(window, tree, "Unterabschnitt 1");
+        Press(window, Key.Left);
+        AssertFocused(window, tree, "Kapitel 1");
+        Press(window, Key.Up);
+        AssertFocused(window, tree, "Teil");
+
+        // Enter on a focused entry far down still jumps.
+        Press(window, Key.End);
+        Press(window, Key.Enter);
+        Assert.Equal(3, tab.CurrentPage);
+    }
+
+    /// <summary>
+    /// The most bookmarks the core returns: an open part with 9 999 sections, then 5 000 closed chapters with one section
+    /// each, except the last one, which is open.
+    /// </summary>
+    private static IReadOnlyList<PdfOutlineItem> LargeOutline()
+    {
+        var sections = Enumerable.Range(1, 9_999).Select(i => new PdfOutlineItem($"Abschnitt {i}", 0, false, [])).ToArray();
+        var chapters = Enumerable.Range(1, 5_000)
+            .Select(i => new PdfOutlineItem($"Kapitel {i}", 1, i == 5_000, [new PdfOutlineItem($"Unterabschnitt {i}", 2, false, [])]));
+        return [new PdfOutlineItem("Teil", 0, true, sections), .. chapters];
+    }
+
+    private static int SectionNumber(string title) =>
+        int.Parse(title["Abschnitt ".Length..], CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Asserts that the keyboard focus is on the entry <paramref name="title"/> (any entry when null), that it is the
+    /// selected one and that it lies within the visible part of the tree; returns its title.
+    /// </summary>
+    private static string AssertFocused(Window window, TreeView tree, string? title)
+    {
+        var item = Assert.IsType<TreeViewItem>(window.FocusManager!.GetFocusedElement());
+        var node = Assert.IsType<OutlineNodeViewModel>(item.DataContext);
+        if (title is not null)
+        {
+            Assert.Equal(title, node.Title);
+        }
+
+        Assert.Same(node, tree.SelectedItem);
+        var header = Header(item);
+        var scroller = tree.GetVisualDescendants().OfType<ScrollViewer>().First();
+        var top = header.TranslatePoint(default, scroller)!.Value.Y;
+        // Bringing an entry into view may leave it a pixel short of the edge (layout rounding of the estimated extents).
+        Assert.InRange(top, -2, scroller.Viewport.Height - header.Bounds.Height + 2);
+        return node.Title;
     }
 
     private (MainWindow Window, MainViewModel ViewModel) Show(double width, ThemeVariant? theme = null)
@@ -627,6 +750,10 @@ public sealed class OutlinePanelTests : IDisposable
         Key.Right => PhysicalKey.ArrowRight,
         Key.Enter => PhysicalKey.Enter,
         Key.Space => PhysicalKey.Space,
+        Key.PageDown => PhysicalKey.PageDown,
+        Key.PageUp => PhysicalKey.PageUp,
+        Key.Home => PhysicalKey.Home,
+        Key.End => PhysicalKey.End,
         _ => PhysicalKey.None,
     };
 

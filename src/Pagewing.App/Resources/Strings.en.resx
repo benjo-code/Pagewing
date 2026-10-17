@@ -225,4 +225,7 @@
   <data name="OutlineFailed" xml:space="preserve">
     <value>The table of contents could not be read.</value>
   </data>
+  <data name="OutlineEntryName" xml:space="preserve">
+    <value>{0}, page {1}</value>
+  </data>
 </root>

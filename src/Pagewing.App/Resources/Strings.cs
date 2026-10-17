@@ -100,6 +100,7 @@ public static class Strings
     public static string OutlineList => Get("OutlineList");
     public static string OutlineNoTitle => Get("OutlineNoTitle");
     public static string OutlineNoTarget => Get("OutlineNoTarget");
+    public static string OutlineEntryName => Get("OutlineEntryName");
     public static string OutlineEmpty => Get("OutlineEmpty");
     public static string OutlineFailed => Get("OutlineFailed");
 
