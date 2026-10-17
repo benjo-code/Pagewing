@@ -53,7 +53,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 - Icons: Tabler outline mit 2 px Strich, nur die genutzten Pfade kopieren. `PathIcon` füllt nur, deshalb braucht es ein eigenes Icon-Control mit Strich.
 - Den Seitenschatten nie als `BoxShadow` zeichnen: `PageShadowPainter` berechnet ihn als Bild aus dem Token `Pw.Shadow.Page` (über ANGLE ohne GPU kostete der `BoxShadow` rund 60 bis 80 ms im ersten Frame; `Docs/DECISIONS.md`, Eintrag „Seitenschatten als vorberechnetes Bild (M3)“).
 - Die Leseansicht zeigt keine Bearbeitungswerkzeuge. Funktionen späterer Versionen erscheinen nicht ausgegraut in der UI.
-- Mockup-Quellen liegen unter `Docs/design/mockups/` (Artifact-Quellen ohne Dokument-Rahmen; lokal nur eingeschränkt darstellbar, maßgeblich ist die Artifact-Ansicht). Icon-Entwurf und Schriftzug (vorläufig) liegen unter `Docs/design/`.
+- Mockup-Quellen liegen unter `Docs/design/mockups/` (Artifact-Quellen ohne Dokument-Rahmen; lokal nur eingeschränkt darstellbar, maßgeblich ist die Artifact-Ansicht). Das App-Icon (Master, hicolor-Größen, `.desktop`-Vorlage) liegt unter `Docs/design/icons/`, die `.ico` bei der App unter `Assets/`, der Schriftzug unter `Docs/design/`. Windows nimmt das Icon über `ApplicationIcon`, Linux setzt `Window.Icon` nach dem ersten Frame.
 
 ### Abhängigkeiten
 

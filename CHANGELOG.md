@@ -17,6 +17,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 - Scrollen mit der Tastatur: Pfeiltasten, Leertaste (Umschalt+Leertaste zurück), Pos1 und Ende.
 - Oberfläche auf Deutsch und Englisch, nach Systemsprache.
 - Schnelleres Öffnen unter Windows: Die App zeichnet auf allen Rechnern ohne Direct3D (Software-Rendering), auch mit Grafikkarte; `PAGEWING_RENDERING=default` schaltet die Grafikbeschleunigung über Direct3D wieder ein.
+- Neues App-Icon (Seite mit Welle) für die Exe unter Windows und das Fenster unter Linux.
 
 ### Changed
 

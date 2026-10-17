@@ -15,6 +15,31 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – CI-Artefakte: Aufbewahrung 3 Tage (Hardware-Messung 7)
+**Kontext:** In anderen Repos der Orga lief der Actions-Speicher (2 GB) schon voll. Gemessen am 2026-10-17: Pagewing hat 38 Artefakte mit zusammen rund 250 KB. Einzeln: `startup-*` je rund 0,8 KB (CSV), `hardware-measure` 6 bis 47 KB, `render-diff-*` rund 150 KB (nur bei roter Render-Regression). Die Aufbewahrung stand auf dem Standard des Repos (7 Tage, höher lässt die Einstellung für dieses Repo nicht zu).
+**Entscheidung:** `retention-days: 3` für `startup-*` und `render-diff-*` in `ci.yml`, `retention-days: 7` für `hardware-measure` in `hardware-measure.yml`.
+**Begründung:** Beide CI-Artefakte dienen nur dazu, einen roten Lauf nachzuvollziehen, und der Lauf selbst zeigt die Zahlen im Log; drei Tage decken ein Wochenende ab. Die Hardware-Messung läuft nur von Hand auf dem Haupt-PC, ist der Beleg für Releases und Budgetentscheidungen und wiegt wenige KB; sie bleibt eine Woche, die Zahlen stehen zusätzlich in der Zusammenfassung des Laufs (`GITHUB_STEP_SUMMARY`).
+**Verworfene Alternativen:**
+- 1 Tag: spart bei rund 250 KB nichts Messbares, kostet aber die Spur eines roten Laufs über Nacht.
+- Artefakte ganz weglassen: Die `render-diff`-Bilder sind der einzige Weg, eine Abweichung der Render-Regression zu sehen, die nur auf dem Runner auftritt.
+**Hinweis:** Den Speicher füllen in der Orga andere Repos (Artefakte von `ScubaManTakesOff`, rund 214 MB; Caches von `ScubaSiege` und `Cloujo`, je rund 10 GB), nicht Pagewing.
+
+## 2026-10-17 – App-Icon: neues Icon „Seite mit Welle“ löst den Entwurf „Flügelecke“ ab
+**Kontext:** Der Projektinhaber wollte ein eigenes Logo entwerfen (siehe „App-Icon und Schriftzug: Variante 1 „Flügelecke“ (vorläufig)“) und hat ein Icon-Paket geliefert (`Docs/design/pagewing-icons.zip`): Master 1024 px, `.ico` mit 16 bis 256 px, hicolor-PNGs 16 bis 512 px, `.desktop`-Vorlage.
+**Entscheidung:** Das neue Icon gilt für die App. Eine weiße Seite mit Eselsohr auf dunkelblauer Kachel, deren unterer Rand in eine blauviolette Welle ausläuft. Es ist ein Rastermotiv (keine SVG-Quelle). Eingebunden ist es so:
+- Windows: `ApplicationIcon` in `Pagewing.App.csproj` (`Assets/pagewing.ico`). Avalonia übernimmt es für die Taskleiste, am laufenden Fenster per `WM_GETICON` geprüft; ein `Window.Icon` ist dort nicht nötig und würde ein einzelnes Bild skalieren.
+- Linux und übrige: `Window.Icon` aus `Assets/pagewing-128.png`, gesetzt erst nach dem ersten Frame (`Background`-Priorität in `App.OnFrameworkInitializationCompleted`), damit der Startpfad unverändert bleibt.
+- Das ganze Paket (Master, hicolor-Größen, `.desktop`-Vorlage) liegt unter `Docs/design/icons/` als Ausgangspunkt für die Pakete in M8.
+Die Entwürfe `icon-entwurf.svg` und `icon-entwurf-einfarbig.svg` sind entfernt, der Schriftzug (`schriftzug.svg`) bleibt.
+**Begründung:** Vom Projektinhaber gewählt. Geprüft: Die `.ico` enthält die erwarteten Größen (10 Bilder, 256 px als PNG); bei 16 und 24 px bleibt die Seite mit Eselsohr erkennbar, die Welle verschwimmt dort zu einem Farbfleck, was für ein Icon dieser Größe genügt. Die dunkle Kachel hebt sich auf hellem und dunklem Untergrund ab.
+**Offen:**
+- Kein SVG und keine einfarbige Fassung: Ein `scalable`-Icon und ein symbolisches Icon (GNOME) gibt es nicht und lassen sich aus dem Rastermotiv nicht ableiten; sie entstehen erst mit einem Vektorentwurf.
+- Herkunft und Lizenz des Motivs sind nicht festgehalten. Vor dem ersten Release klären und hier nachtragen.
+- Die `.desktop`-Vorlage braucht in M8 Anpassungen: `Exec=pagewing` muss zum Dateinamen des Binaries passen (die App heißt `Pagewing`), `StartupWMClass` zur tatsächlichen Fensterklasse, und `Comment` gibt es nur auf Deutsch (`Comment[en]` fehlt).
+**Verworfene Alternativen:**
+- Das Paket als `.zip` einchecken: nicht diffbar und nicht direkt nutzbar.
+- `Window.Icon` auch unter Windows: ein skaliertes Einzelbild statt der handgesetzten Größen der `.ico`, dazu Decodierzeit im Startpfad.
+
 ## 2026-10-17 – Software-Rendering als Windows-Standard (M3)
 **Kontext:** Die Messmatrix des Eintrags „Messmatrix auf echter Hardware: Startzeit mit GPU (M3)“ lief auf dem Haupt-PC (Lauf 39041482043 des Workflows „Hardware measurement“ auf PR #4; Ryzen 7 7800X3D, NVIDIA GeForce RTX 4070 SUPER mit Treiber 32.0.16.1692 und AMD-Radeon-iGPU, Windows 11 Build 26300, 1920 × 1080 bei 60 Hz, Netzbetrieb, Energiesparplan „Ausbalanciert“). Fall `warm` mit `text-basic.pdf` je Grafikpfad (Median aus 10 Läufen, 3 Aufwärmläufe, ms; „windowing“ = `windowing-ready` − `windowing-init`, also Fenstersystem, Grafik und Komposition; „erster Frame“ = `frame-after-tile` − `tile-drawn`):
 
@@ -389,6 +414,7 @@ Scrollen (`--measure-scroll`, 1000 Seiten, 99. Perzentil der Frame-Abstände, La
 **Kontext:** Milestone 2 legt Schriftzug und Icon-Richtung als Grundlage für die Icon-Dateien in M8 fest. Drei Varianten im Stil der Designrichtung B standen als Artifact bereit (Design-Spec `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 8; Quelle `Docs/design/mockups/schriftzug-icon.html`): 1 „Flügelecke“, 2 „Gefächerte Seiten“, 3 „Seite mit Schwinge“.
 **Entscheidung:** Variante 1 „Flügelecke“: eine Seite auf einer Indigo-Kachel, deren Eselsohr sich als Flügelspitze hebt, dazu der Schriftzug „Pagewing“ in Geist Semibold. Die Dateien liegen unter `Docs/design/` (`icon-entwurf.svg`, `icon-entwurf-einfarbig.svg`, `schriftzug.svg`). Die Wahl ist **vorläufig**; Wortlaut am 2026-10-17: „Erstmal 1, denke iwann wenn ich lust habe mach ich dann mal neues logo“. Ein späteres eigenes Logo ersetzt diesen Entwurf mit einem neuen Eintrag.
 **Begründung:** Vom Projektinhaber gewählt, ohne weitere Gründe. Einschätzung des Entwurfs: Die Variante ist bei 16 px als Seite erkennbar, nutzt die Akzentfarbe der Oberfläche und unterscheidet sich von Acrobat und den Browser-Icons.
+**Abgelöst durch:** App-Icon: neues Icon „Seite mit Welle“ löst den Entwurf „Flügelecke“ ab (nur das Icon; der Schriftzug gilt weiter).
 **Verworfene Alternativen:**
 - Variante 2 „Gefächerte Seiten“ und Variante 3 „Seite mit Schwinge“: vom Projektinhaber ohne Angabe von Gründen nicht gewählt. Bei Variante 3 hatte der Entwurf selbst auf die Ähnlichkeit der drei Bögen mit einem WLAN- bzw. Kontaktlos-Symbol hingewiesen.
 
