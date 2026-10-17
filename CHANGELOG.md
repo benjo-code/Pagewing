@@ -15,7 +15,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 - Fortlaufendes Scrollen durch alle Seiten: erst Platzhalter und grobe Vorschau, dann scharfe Kacheln, gerendert wird nur der sichtbare Bereich.
 - Zoom mit Strg+Mausrad, Strg+Plus/Minus und in der Statusleiste (10 % bis 800 %); Seitenwechsel mit Bild auf/ab und über das Seitenfeld.
 - Oberfläche auf Deutsch und Englisch, nach Systemsprache.
-- Startzeit-Check in der CI (`bench/startup`), der die Geschwindigkeitsbudgets am veröffentlichten Binary prüft.
 
 ### Changed
 
