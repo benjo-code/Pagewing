@@ -96,10 +96,45 @@ internal static partial class Program
 
     // Kept out of Main, so that a later launch that hands over never loads or initializes Avalonia.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int Run(string[] args, AppStartup startup) =>
-        AppBuilder.Configure(() => new App(startup))
-            .UsePlatformDetect()
-            .StartWithClassicDesktopLifetime(args);
+    private static int Run(string[] args, AppStartup startup)
+    {
+        var builder = AppBuilder.Configure(() => new App(startup)).UsePlatformDetect();
+
+        // TEMPORARY diagnostics (Windows warm start on the CI runner): measurement runs only, removed again.
+        if (startup.Measurement is not null && OperatingSystem.IsWindows()
+            && Environment.GetEnvironmentVariable("PAGEWING_DIAG_WIN32") is { Length: > 0 } variant)
+        {
+            if (DiagnosticWin32Options(variant) is not { } win32)
+            {
+                Console.Error.WriteLine($"error: unknown PAGEWING_DIAG_WIN32 variant '{variant}'");
+                return 2;
+            }
+
+            builder = builder.With(win32);
+        }
+
+        return builder.StartWithClassicDesktopLifetime(args);
+    }
+
+    // TEMPORARY diagnostics, see Run.
+    private static Win32PlatformOptions? DiagnosticWin32Options(string variant) => variant switch
+    {
+        "default" => new Win32PlatformOptions(),
+        "dcomp" => new Win32PlatformOptions { CompositionMode = [Win32CompositionMode.DirectComposition] },
+        "redirect" => new Win32PlatformOptions { CompositionMode = [Win32CompositionMode.RedirectionSurface] },
+        "lowlatency" => new Win32PlatformOptions { CompositionMode = [Win32CompositionMode.LowLatencyDxgiSwapChain] },
+        "software" => new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] },
+        "software-uithread" => new Win32PlatformOptions
+        {
+            RenderingMode = [Win32RenderingMode.Software],
+            CompositionMode = [Win32CompositionMode.RedirectionSurface],
+            ShouldRenderOnUIThread = true,
+        },
+        "wgl" => new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Wgl] },
+        "wgl-redirect" => new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Wgl], CompositionMode = [Win32CompositionMode.RedirectionSurface] },
+        "vulkan" => new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Vulkan] },
+        _ => null,
+    };
 
     /// <summary>
     /// Returns the primary instance, or no instance with <c>IsSecondary</c> set when another one runs. A measurement
