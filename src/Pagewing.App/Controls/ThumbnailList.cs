@@ -116,6 +116,9 @@ internal sealed class ThumbnailList : ListBox
     private double _renderScaling = 1;
     private IReadOnlyList<RenderRequest> _lastRequests = [];
 
+    // The pixel size the last plan asked for, per entry: a cached image of another size (another render scaling) is not shown.
+    private Dictionary<int, (int Width, int Height)> _plannedSizes = [];
+
     public ThumbnailList()
     {
         ContainerPrepared += (_, _) => SchedulePlan();
@@ -463,7 +466,28 @@ internal sealed class ThumbnailList : ListBox
         });
 
         var plan = ThumbnailPlanner.Plan(tab.Session.LoadedSizes, realized, _renderScaling);
+        var planned = new Dictionary<int, (int Width, int Height)>(plan.Count);
+        var stale = false;
+        foreach (var request in plan)
+        {
+            var size = (request.Rect.Width, request.Rect.Height);
+            planned[request.Key.Page] = size;
+            stale |= (source.Cache.TryGet(request.Key, out var cached) && (cached.Width, cached.Height) != size)
+                || (_items[request.Key.Page].Bitmap is { } shown && (shown.PixelSize.Width, shown.PixelSize.Height) != size);
+        }
+
+        if (stale)
+        {
+            // The keys do not carry the render scaling: the cache holds images of another scaling (rendered before the
+            // window moved to another monitor, also while the panel was closed). All of them are rendered again; the
+            // wish list goes first, so the running job stores nothing.
+            source.Scheduler.Update([]);
+            source.Cache.Clear();
+            ReleaseBitmaps(keep: null);
+        }
+
         source.Scheduler.Update(plan);
+        _plannedSizes = planned;
         _lastRequests = plan;
         if (plan.Count > 0)
         {
@@ -475,18 +499,23 @@ internal sealed class ThumbnailList : ListBox
         // The scheduler skips what the cache holds, so no TileReady comes for it.
         foreach (var index in realized)
         {
-            if (_items[index].Bitmap is null && source.Cache.TryGet(KeyOf(index), out var image))
+            if (_items[index].Bitmap is null && source.Cache.TryGet(KeyOf(index), out var image) && IsPlannedSize(index, image))
             {
                 SetBitmap(index, image);
             }
         }
     }
 
+    /// <summary>Whether <paramref name="image"/> has the pixel size the last plan asked for at entry <paramref name="index"/>.</summary>
+    private bool IsPlannedSize(int index, RenderedImage image) =>
+        _plannedSizes.TryGetValue(index, out var size) && size == (image.Width, image.Height);
+
     /// <summary>Empties the wish list of the thumbnail scheduler; does nothing when the session disposed it.</summary>
     private void StopWork()
     {
         _source?.Scheduler.Update([]);
         _lastRequests = [];
+        _plannedSizes = [];
     }
 
     private void AttachSource(ThumbnailSource source)
@@ -525,7 +554,15 @@ internal sealed class ThumbnailList : ListBox
         if (index >= 0 && index < _items.Length && _items[index].Bitmap is null && ContainerFromIndex(index) is not null
             && source.Cache.TryGet(key, out var image))
         {
-            SetBitmap(index, image);
+            if (IsPlannedSize(index, image))
+            {
+                SetBitmap(index, image);
+            }
+            else
+            {
+                // Rendered for another scaling or no longer planned: the next plan replaces it if it is still wanted.
+                SchedulePlan();
+            }
         }
 
         ThumbnailReceived?.Invoke(key);

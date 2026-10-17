@@ -467,6 +467,48 @@ public sealed class PagesPanelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ThumbnailsFollowAScalingChangeWhileThePanelIsOpen()
+    {
+        var (window, viewModel, _) = Show(1024);
+        var tab = await OpenAsync(window, viewModel, "outline.pdf");
+        var list = await WaitForListAsync(window, tab);
+        await WaitUntilAsync(window, () => list.Thumbnails[0].Bitmap is not null);
+        Assert.Equal(136, list.Thumbnails[0].Bitmap!.PixelSize.Width);
+
+        // Another monitor or another system scaling: the thumbnails are rendered again at the new pixel size.
+        window.SetRenderScaling(1.5);
+        await WaitUntilAsync(window, () => list.Thumbnails[0].Bitmap is { } bitmap && bitmap.PixelSize.Width == 204);
+        Assert.All(list.LastRequests, request => Assert.Equal(204, request.Rect.Width));
+        Assert.True(list.Source!.Cache.TryGet(new TileKey(0, TileKey.PreviewScaleKey, 0, 0), out var cached));
+        Assert.Equal(204, cached.Width);
+    }
+
+    [AvaloniaFact]
+    public async Task ThumbnailsFollowAScalingChangeWhileThePanelIsClosed()
+    {
+        var (window, viewModel, _) = Show(1024);
+        var tab = await OpenAsync(window, viewModel, "outline.pdf");
+        var list = await WaitForListAsync(window, tab);
+        await WaitUntilAsync(window, () => list.Thumbnails[0].Bitmap is not null);
+        Assert.Equal(136, list.Thumbnails[0].Bitmap!.PixelSize.Width);
+
+        // The active tab keeps its thumbnails while the panel is closed; they were rendered for 100 %.
+        viewModel.CloseSidePanelCommand.Execute(null);
+        await WaitUntilAsync(window, () => !Find<Control>(window, AutoOpenedPanel.HostName).IsVisible);
+        window.SetRenderScaling(1.5);
+        Settle(window);
+
+        // Opened again at 150 %, the panel shows thumbnails at the new pixel size, never the stale cached ones.
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        list = await WaitForListAsync(window, tab);
+        await WaitUntilAsync(window, () => list.Thumbnails[0].Bitmap is not null);
+        Assert.Equal(204, list.Thumbnails[0].Bitmap!.PixelSize.Width);
+        Assert.All(list.Thumbnails.Where(item => item.Bitmap is not null), item => Assert.Equal(204, item.Bitmap!.PixelSize.Width));
+        Assert.True(list.Source!.Cache.TryGet(new TileKey(0, TileKey.PreviewScaleKey, 0, 0), out var cached));
+        Assert.Equal(204, cached.Width);
+    }
+
+    [AvaloniaFact]
     public async Task NoThumbnailWorkForInactiveTabs()
     {
         var (window, viewModel, _) = Show(1024);
