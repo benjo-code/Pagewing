@@ -28,6 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Without git on PATH (Windows runner) actions/checkout extracts a zip from the REST API. Its file times can lie
+      # before the build of a file-based script (dotnet run <file>.cs) cached in %TEMP% by an earlier job, and the
+      # incremental build then keeps the stale copy. Every checked-out file gets the current time instead.
+      - name: Refresh the file times of the checkout (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $before = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
+          $now = [DateTime]::UtcNow
+          Get-ChildItem -Recurse -File -Force | ForEach-Object { $_.LastWriteTimeUtc = $now }
+          Write-Host ('bench/startup/startup.cs: {0:yyyy-MM-dd HH:mm:ss} UTC aus dem Checkout, gesetzt auf {1:yyyy-MM-dd HH:mm:ss} UTC' -f $before, $now)
+
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
         if: runner.os == 'Linux'
         run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
