@@ -167,7 +167,7 @@ Regeln:
 - **Radien:** `radius.control` 6 (Knöpfe, Felder, Listeneinträge), `radius.overlay` 10 (Karten, Popups, Befehlspalette, obere linke Ecke von Panel bzw. Dokumentbereich), `radius.tab` 8 (obere Ecken eines Tabs), `radius.page` 0.
 - **Ränder:** Flächen trennen sich über Farbe, nicht über Linien. `border.subtle` (1 px) nur dort, wo gleichfarbige Flächen aneinanderstoßen (Unterkante der Werkzeugleiste eines Modus, Linux-Tab-Zeile). Eingabefelder und sekundäre Knöpfe haben 1 px `border.strong`.
 - **Fokus:** 2 px `focus.ring`, 1 px Abstand zum Element, nur bei Tastaturbedienung.
-- **Schatten** (Avalonia `BoxShadow`): Seite `0 0 0 1 page.border, 0 2 10 0 page.shadow`; Karte und Popup `0 0 0 1 border.subtle, 0 12 32 -12 page.shadow`.
+- **Schatten** (Avalonia `BoxShadow`): Seite `0 0 0 1 page.border, 0 2 10 0 page.shadow`; Karte und Popup `0 0 0 1 border.subtle, 0 12 32 -12 page.shadow`. Der Seitenschatten wird aus diesem Token als vorberechnetes Bild gezeichnet, nicht als `BoxShadow` (Token unverändert; `Docs/DECISIONS.md`, Eintrag „Seitenschatten als vorberechnetes Bild (M3)“).
 
 ### 5.4 Dichte
 
