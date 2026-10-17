@@ -9,11 +9,13 @@
              Background="{DynamicResource Pw.Brush.Surface.Window}"
              Foreground="{DynamicResource Pw.Brush.Text.Secondary}">
   <!--
-    Status bar (design system section 6, item 5): ‹ "Page" [field] "of N" ›, separator, zoom − [value] +.
-    Text type.caption in text.secondary, icons 16 px. Below 760 px the word "Page" goes (code-behind); the icons
-    stay, with their tooltips. The page field jumps on Enter; an invalid entry, or leaving the field without Enter,
-    puts the current page back (design system 7.5). Ctrl+G gives it the focus with its content selected. A click on
-    the zoom value opens the zoom menu: the steps from 25 to 400 %, then page width, whole page and actual size.
+    Status bar (design system section 6, item 5): ‹ "Page" [field] "of N" ›, separator, zoom − [value] +, separator,
+    layout. Text type.caption in text.secondary, icons 16 px. Below 760 px the word "Page" and the name of the layout
+    go (code-behind); the icons stay, with their tooltips. The page field jumps on Enter; an invalid entry, or leaving
+    the field without Enter, puts the current page back (design system 7.5). Ctrl+G gives it the focus with its
+    content selected. A click on the zoom value opens the zoom menu: the steps from 25 to 400 %, then page width, whole
+    page and actual size. The layout button opens the layout menu: single page, continuous, two pages, two pages with
+    cover.
   -->
   <UserControl.Styles>
     <Style Selector="Button.status">
@@ -82,6 +84,23 @@
             ToolTip.Tip="{x:Static res:Strings.ZoomIn}"
             AutomationProperties.Name="{x:Static res:Strings.ZoomIn}">
       <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Plus}" />
+    </Button>
+
+    <Border Width="1" Height="22" Margin="6,0" Background="{DynamicResource Pw.Brush.Border.Subtle}" />
+
+    <!--
+      The layout: icon and name of the current layout (below 760 px the icon only), tooltip and automation name set in
+      code-behind; its menu entries are created when it opens (StatusBar.axaml.cs).
+    -->
+    <Button Name="LayoutButton" Classes="icon status-value" Padding="4,0">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <ctl:StrokeIcon Name="LayoutIcon" Width="16" Height="16" VerticalAlignment="Center"
+                        Data="{StaticResource Pw.Icon.LayoutRows}" />
+        <TextBlock Name="LayoutText" VerticalAlignment="Center" />
+      </StackPanel>
+      <Button.Flyout>
+        <MenuFlyout Placement="TopEdgeAlignedLeft" />
+      </Button.Flyout>
     </Button>
   </StackPanel>
 </UserControl>

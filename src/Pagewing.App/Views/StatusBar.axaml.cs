@@ -48,6 +48,9 @@ public sealed partial class StatusBar : UserControl
             // The entries hold the commands of their tab: a closed menu drops them.
             menu.Closed += (_, _) => _zoomMenuEntries.Clear();
         }
+
+        InitializeLayoutMenu();
+        UpdateLayoutButton();
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -56,19 +59,25 @@ public sealed partial class StatusBar : UserControl
         if (_tab is not null)
         {
             _tab.PageFieldFocusRequested -= OnPageFieldFocusRequested;
+            _tab.PropertyChanged -= OnTabPropertyChanged;
         }
 
         _tab = DataContext as TabViewModel;
         if (_tab is not null)
         {
             _tab.PageFieldFocusRequested += OnPageFieldFocusRequested;
+            _tab.PropertyChanged += OnTabPropertyChanged;
         }
+
+        UpdateLayoutButton();
     }
 
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
-        PageLabel.IsVisible = e.NewSize.Width >= NarrowWidth;
+        var wide = e.NewSize.Width >= NarrowWidth;
+        PageLabel.IsVisible = wide;
+        LayoutText.IsVisible = wide;
     }
 
     private void OnPageFieldLostFocus(object? sender, RoutedEventArgs e) => (DataContext as TabViewModel)?.ResetPageField();

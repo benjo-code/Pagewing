@@ -168,6 +168,21 @@
   <data name="GoToPageTooltip" xml:space="preserve">
     <value>Go to page (Ctrl+G)</value>
   </data>
+  <data name="LayoutSingle" xml:space="preserve">
+    <value>Single page</value>
+  </data>
+  <data name="LayoutContinuous" xml:space="preserve">
+    <value>Continuous</value>
+  </data>
+  <data name="LayoutTwoPages" xml:space="preserve">
+    <value>Two pages</value>
+  </data>
+  <data name="LayoutTwoPagesCover" xml:space="preserve">
+    <value>Two pages with cover</value>
+  </data>
+  <data name="LayoutTooltip" xml:space="preserve">
+    <value>Page layout: {0}</value>
+  </data>
   <data name="PagePlaceholderFailed" xml:space="preserve">
     <value>This page could not be displayed</value>
   </data>

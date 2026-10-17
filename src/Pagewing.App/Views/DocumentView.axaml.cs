@@ -12,9 +12,10 @@ using Pagewing.Core.Viewing;
 namespace Pagewing.App.Views;
 
 /// <summary>
-/// The open document: continuous scrolling over all pages, zoom with Ctrl+wheel (around the pointer) and through the
-/// view model (Ctrl+Plus/Minus, status bar), the zoom modes of the tab (page width, whole page, actual size; see
-/// <see cref="Refit"/>), page jumps, and the current page for the status bar. Its
+/// The open document: the pages in the layout of the tab (continuous, a single page, two pages with or without a cover;
+/// see DocumentView.LayoutModes.cs), zoom with Ctrl+wheel (around the pointer) and through the view model
+/// (Ctrl+Plus/Minus, status bar), the zoom modes of the tab (page width, whole page, actual size; see
+/// <see cref="Refit"/>), page jumps, and the current page (row) for the status bar. Its
 /// <c>DataContext</c> is the active <see cref="TabViewModel"/> of the window; it mirrors the document of the tab's
 /// session. A change of the <c>DataContext</c> (another tab) disconnects from the old tab and shows the new one.
 /// </summary>
@@ -264,6 +265,12 @@ public sealed partial class DocumentView : UserControl
         // tab reset both in Sync), a tab shown again gets back where the view left it.
         var tab = _viewModel;
         layout.Mode = tab?.LayoutMode ?? PageLayoutMode.Continuous;
+        if (layout.Mode == PageLayoutMode.SinglePage && pageCount > 0)
+        {
+            // The page the tab showed (the saved view refers to it), or the first page of a new document.
+            layout.ShowPage(Math.Clamp(tab?.SavedView?.Anchor.Page ?? 0, 0, pageCount - 1));
+        }
+
         layout.Zoom = tab?.Zoom ?? ZoomSteps.Default;
 
         _document = document;
@@ -319,7 +326,11 @@ public sealed partial class DocumentView : UserControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (!e.Handled && _layout is not null && ScrollFor(e.Key, e.KeyModifiers) is { } offset)
+        if (!e.Handled && _layout is not null && TryTurnPageWithSpace(e.Key, e.KeyModifiers))
+        {
+            e.Handled = true;
+        }
+        else if (!e.Handled && _layout is not null && ScrollFor(e.Key, e.KeyModifiers) is { } offset)
         {
             e.Handled = true;
             ScrollTo(offset);
@@ -403,9 +414,10 @@ public sealed partial class DocumentView : UserControl
         // Horizontally the centre of the pages stays in place.
         ChangeLayout(new Vector(offset.X + ((layout.ContentWidth - width) / 2), layout.GetOffset(anchor)));
 
-        // A fit that used the estimate for the current page fits its real size.
+        // A fit that used the estimate for a page of the current row fits its real size.
         var current = (_viewModel?.CurrentPage ?? 0) - 1;
-        if (current >= first && current < first + count)
+        var currentLast = Math.Max(current, (_viewModel?.CurrentPageLast ?? 0) - 1);
+        if (current < first + count && currentLast >= first)
         {
             Refit(chosen: false);
         }
@@ -530,7 +542,7 @@ public sealed partial class DocumentView : UserControl
 
     private void OnScalingChanged(object? sender, EventArgs e) => UpdateViewport();
 
-    /// <summary>Hands the visible part of the content to the canvas and updates the current page.</summary>
+    /// <summary>Hands the visible part of the content to the canvas and updates the current row.</summary>
     private void UpdateViewport()
     {
         var scaling = _topLevel?.RenderScaling ?? 1;
@@ -549,7 +561,7 @@ public sealed partial class DocumentView : UserControl
         PageCanvas.SetViewport(new DipRect(offset.X - shift, offset.Y, size.Width, size.Height), scaling);
         if (_viewModel is not null && layout.PageCount > 0 && size.Height > 0)
         {
-            _viewModel.CurrentPage = layout.GetMostVisiblePage(offset.Y, offset.Y + size.Height) + 1;
+            ShowCurrentRow(layout.GetMostVisiblePage(offset.Y, offset.Y + size.Height));
         }
     }
 
@@ -562,6 +574,10 @@ public sealed partial class DocumentView : UserControl
         else if (e.PropertyName == nameof(TabViewModel.ZoomMode))
         {
             Refit(chosen: true);
+        }
+        else if (e.PropertyName == nameof(TabViewModel.LayoutMode))
+        {
+            ApplyLayoutMode();
         }
         else if (e.PropertyName == nameof(TabViewModel.IsPasswordPrompt) && _focusPending)
         {
@@ -600,8 +616,18 @@ public sealed partial class DocumentView : UserControl
 
     private void OnPointerWheel(object? sender, PointerWheelEventArgs e)
     {
-        if ((e.KeyModifiers & KeyModifiers.Control) == 0 || _viewModel is null || _layout is null)
+        if (_viewModel is null || _layout is null)
         {
+            return;
+        }
+
+        if ((e.KeyModifiers & KeyModifiers.Control) == 0)
+        {
+            if (TryTurnPageWithWheel(e))
+            {
+                e.Handled = true;
+            }
+
             return;
         }
 
@@ -633,8 +659,9 @@ public sealed partial class DocumentView : UserControl
     }
 
     /// <summary>
-    /// Shows <paramref name="page"/> (1-based) with its top edge at the margin below the top of the viewport; a fit
-    /// mode first fits that page.
+    /// Shows the row of <paramref name="page"/> (1-based) with its top edge at the margin below the top of the
+    /// viewport (in the single-page layout that page alone, from its top); a fit mode first fits that row. The first
+    /// page of the row becomes the current page.
     /// </summary>
     private void OnPageRequested(int page)
     {
@@ -644,18 +671,19 @@ public sealed partial class DocumentView : UserControl
             return;
         }
 
-        if (_viewModel is not null)
+        var index = page - 1;
+        if (layout.Mode == PageLayoutMode.SinglePage)
         {
-            _viewModel.CurrentPage = page;
-            Refit(chosen: false);
+            layout.ShowPage(index);
         }
 
-        Scroller.Offset = new Vector(Scroller.Offset.X, layout.GetPageRect(page - 1).Y - DocumentLayout.Margin);
+        ShowCurrentRow(index);
+        Refit(chosen: false);
 
-        // Near the end the page cannot reach the top; the requested page still is the current one.
-        if (_viewModel is not null)
-        {
-            _viewModel.CurrentPage = page;
-        }
+        // The pages of a row are top-aligned. Through ChangeLayout: the single page may have changed the content size.
+        ChangeLayout(new Vector(Scroller.Offset.X, layout.GetPageRect(index).Y - DocumentLayout.Margin));
+
+        // Near the end the row cannot reach the top; the requested row still is the current one.
+        ShowCurrentRow(index);
     }
 }

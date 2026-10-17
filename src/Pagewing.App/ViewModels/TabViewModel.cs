@@ -62,10 +62,11 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         ZoomOutCommand = _zoomOutCommand;
         _previousPageCommand = new RelayCommand(() => GoToPage(CurrentPage - 1), () => IsReady && CurrentPage > 1);
         PreviousPageCommand = _previousPageCommand;
-        _nextPageCommand = new RelayCommand(() => GoToPage(CurrentPage + 1), () => IsReady && CurrentPage < PageCount);
+        _nextPageCommand = new RelayCommand(() => GoToPage(LastPageOfRow + 1), () => IsReady && LastPageOfRow < PageCount);
         NextPageCommand = _nextPageCommand;
         CommitPageFieldCommand = new RelayCommand(CommitPageField);
         SetZoomModeCommand = new RelayCommand<ZoomMode>(SelectZoomMode);
+        SetLayoutModeCommand = new RelayCommand<PageLayoutMode>(SelectLayoutMode);
         SetZoomCommand = new RelayCommand<double>(zoom =>
         {
             if (IsReady)
@@ -247,7 +248,13 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     public int CurrentPageLast
     {
         get => _currentPageLast;
-        set => SetProperty(ref _currentPageLast, value);
+        set
+        {
+            if (SetProperty(ref _currentPageLast, value))
+            {
+                _nextPageCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     /// <summary>
@@ -286,7 +293,10 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         set => SetProperty(ref _zoomMode, value);
     }
 
-    /// <summary>Gets or sets how the pages are arranged; kept when the document changes.</summary>
+    /// <summary>
+    /// Gets or sets how the pages are arranged; kept when the document changes. The document view keeps the current
+    /// page when it changes (<see cref="SetLayoutModeCommand"/>, layout button of the status bar).
+    /// </summary>
     public PageLayoutMode LayoutMode
     {
         get => _layoutMode;
@@ -345,10 +355,16 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     /// <summary>The previous zoom step ("−" in the status bar, Ctrl+Minus).</summary>
     public ICommand ZoomOutCommand { get; }
 
-    /// <summary>The page before the current one (‹ in the status bar, Page Up).</summary>
+    /// <summary>
+    /// The page before the current one (‹ in the status bar, Page Up). In the two-page layouts the document view shows
+    /// the spread of that page, whose first page becomes the current one: the spread before.
+    /// </summary>
     public ICommand PreviousPageCommand { get; }
 
-    /// <summary>The page after the current one (› in the status bar, Page Down).</summary>
+    /// <summary>
+    /// The page after the current row (› in the status bar, Page Down): the next page, or in the two-page layouts the
+    /// first page of the next spread.
+    /// </summary>
     public ICommand NextPageCommand { get; }
 
     /// <summary>Enter in the page field: jumps to the typed page or resets the field.</summary>
@@ -362,6 +378,9 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
     /// <summary>Sets the zoom to a step of the zoom menu (parameter: the zoom, 1 = 100 %) and leaves a fit mode.</summary>
     public ICommand SetZoomCommand { get; }
+
+    /// <summary>Chooses a <see cref="PageLayoutMode"/> (parameter: the layout; layout menu of the status bar).</summary>
+    public ICommand SetLayoutModeCommand { get; }
 
     /// <summary>Opens a file in this tab and replaces its document.</summary>
     /// <param name="path">Path of the file; an empty path does nothing.</param>
@@ -389,6 +408,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         }
 
         CurrentPage = page;
+        CurrentPageLast = page;
         ResetPageField();
         PageRequested?.Invoke(page);
     }
@@ -487,6 +507,14 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private void SelectLayoutMode(PageLayoutMode mode)
+    {
+        if (IsReady && Enum.IsDefined(mode))
+        {
+            LayoutMode = mode;
+        }
+    }
+
     private void CommitPageField()
     {
         if (int.TryParse(PageFieldText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var page) && IsReady && page >= 1 && page <= PageCount)
@@ -498,6 +526,9 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
             ResetPageField();
         }
     }
+
+    /// <summary>The last page of the current row; the current page when the view has not told it yet.</summary>
+    private int LastPageOfRow => Math.Max(CurrentPage, CurrentPageLast);
 
     private void RaiseNavigationCanExecuteChanged()
     {
@@ -564,6 +595,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         {
             // Zoom mode, layout and panel belong to the tab and stay; a saved view brings its own zoom.
             CurrentPage = 1;
+            CurrentPageLast = 1;
             if (SavedView is null)
             {
                 SetZoom(ZoomSteps.Default);
@@ -572,6 +604,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         else if (document is null)
         {
             CurrentPage = 0;
+            CurrentPageLast = 0;
         }
 
         // The password check is over once the session leaves Loading. The password stays only for another try.

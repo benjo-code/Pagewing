@@ -83,6 +83,11 @@ public static class Strings
     public static string ZoomActualSize => Get("ZoomActualSize");
     public static string ZoomActualSizeShortcut => Get("ZoomActualSizeShortcut");
     public static string GoToPageTooltip => Get("GoToPageTooltip");
+    public static string LayoutSingle => Get("LayoutSingle");
+    public static string LayoutContinuous => Get("LayoutContinuous");
+    public static string LayoutTwoPages => Get("LayoutTwoPages");
+    public static string LayoutTwoPagesCover => Get("LayoutTwoPagesCover");
+    public static string LayoutTooltip => Get("LayoutTooltip");
     public static string PagePlaceholderFailed => Get("PagePlaceholderFailed");
 
     private static ResourceManager Select(CultureInfo culture) =>
