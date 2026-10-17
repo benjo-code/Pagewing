@@ -6,7 +6,8 @@
     <PublishAot>true</PublishAot>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <!-- [LibraryImport] (Program.AllowSetForegroundWindow) generates its marshalling as unsafe code. -->
+    <!-- Needed for three uses: [LibraryImport] (Program.AllowSetForegroundWindow) generates its marshalling as unsafe code
+         (SYSLIB1062), and Controls/PageShadowPainter.cs and Controls/TileBitmaps.cs contain unsafe blocks (CS0227). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>

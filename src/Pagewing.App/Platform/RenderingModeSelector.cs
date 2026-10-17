@@ -7,7 +7,7 @@ namespace Pagewing.App.Platform;
 /// </summary>
 /// <remarks>
 /// Measured on a PC with a GPU, bringing up the graphics device and the composition costs far more in the startup path
-/// than software rendering does, and scrolling was equally smooth in both modes.
+/// than software rendering does, and scrolling showed the same <c>--measure-scroll</c> intervals on one PC.
 /// </remarks>
 internal static class RenderingModeSelector
 {
