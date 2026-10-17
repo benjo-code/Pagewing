@@ -42,6 +42,12 @@ Ein dritter Schalter misst das Scrollen und gehört nicht zum Check: `Pagewing -
 
 Für alle drei Schalter gilt: Die App nimmt nicht an der Single-Instance-Wahl teil (sie übergibt nichts an ein laufendes Pagewing und belegt weder Sperre noch Pipe), eine Datei, die sich nicht öffnen lässt, endet mit Exit-Code 1 und `error: …` auf stderr, und nach 30 s ohne Ergebnis endet die App mit Exit-Code 3. Das Skript bricht einen Lauf nach 45 s ab und beendet den Prozess.
 
+## Frame-Takt der Messumgebung
+
+Der Messpunkt ist der Frame nach dem Zeichnen, und Avalonia richtet seine Frames unter Windows nach der Desktop-Komposition (DWM). Zeigt DWM nur wenige Bilder pro Sekunde, enthält jeder Lauf bis zu zwei solcher Wartezeiten, und die Zeiten sagen nichts über die App. Das Skript misst deshalb unter Windows vor den Läufen fünf Abstände von `DwmFlush` und schreibt eine `Warnung: …`, wenn der Median über 40 ms liegt (unter 25 Hz) oder es keine Komposition gibt (Dienstsitzung ohne Desktop). Die Warnung ändert das Ergebnis des Checks nicht.
+
+Beobachtet in einer QEMU-VM, deren einzige aktive Anzeige der „Red Hat VirtIO GPU DOD controller“ ist (ohne GPU): DWM zeigt dort nur alle 253 ms ein Bild, auch bei einem leeren Avalonia-Fenster. Gültige Zahlen gibt es nur auf einem Rechner mit GPU und aktiver Anzeige; Befund und verworfene Umgehungen: `Docs/DECISIONS.md`, Eintrag „Frame-Takt der Desktop-Komposition: Messumgebung statt Kompositionsmodus (M3)“.
+
 ## Selbsttest
 
-`selftest` prüft Median (ungerade und gerade Anzahl), Grenze je Fall, die Grenzentscheidung (ein Median genau auf der Grenze besteht, knapp darüber nicht), das Lesen von `second-sharp <ms>` und die Parameter der Fälle mit festen Werten. Er läuft in der CI vor dem Check.
+`selftest` prüft Median (ungerade und gerade Anzahl), Grenze je Fall, die Grenzentscheidung (ein Median genau auf der Grenze besteht, knapp darüber nicht), das Lesen von `second-sharp <ms>`, die Parameter der Fälle mit festen Werten und die Schwelle der Frame-Takt-Warnung. Er läuft in der CI vor dem Check.

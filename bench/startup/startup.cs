@@ -12,7 +12,8 @@
 // second with 1 warm-up run and 500 ms pause. Prints every run, median, min and max, and writes case,run,ms to --out.
 // Budgets (Docs/ROADMAP.md, "Geschwindigkeitsziele"): cold 400, warm 200, second 100, thousand 300 ms. The check
 // fails when the MEDIAN is above budget × 1.25. "cold" cannot empty the file cache of the operating system.
-// On Linux the binary needs an X server; the CI runs the whole script under xvfb-run -a.
+// On Linux the binary needs an X server; the CI runs the whole script under xvfb-run -a. On Windows the script first
+// times the desktop composition (DwmFlush) and warns when it is missing or below 25 Hz: the times are then invalid.
 //
 // Exit codes: 0 within the limit, 1 above the limit or a failed run, 2 usage error.
 
@@ -141,6 +142,12 @@ static class Check
         if (c.Name == "cold")
         {
             Console.WriteLine("Hinweis: \"cold\" leert den Datei-Cache des Betriebssystems nicht; ein echter Kaltstart ist eine manuelle Messung direkt nach einem Neustart.");
+        }
+
+        // Only a warning: the check itself stays as it is, whatever the machine.
+        if (FrameCadence.Measure() is { } warning)
+        {
+            Console.WriteLine(warning);
         }
 
         var times = new List<double>();
@@ -324,6 +331,63 @@ static class Stats
     }
 }
 
+/// <summary>
+/// How often the desktop composition of Windows (DWM) shows a new image. The measuring point waits for the frame after
+/// the drawing, and Avalonia paces its frames on DWM: when DWM composes only a few times per second (seen in a VM
+/// whose only display is the VirtIO GPU DOD controller: one image every 253 ms), every run contains up to two of
+/// these waits and says nothing about the app. Not measured on Linux (Xvfb has no vertical sync).
+/// </summary>
+static class FrameCadence
+{
+    /// <summary>A median DWM interval above this (below 25 Hz) makes the measured times invalid.</summary>
+    public const double SlowIntervalMs = 40;
+
+    /// <summary>DwmFlush calls whose intervals are timed (after one call that only waits for the next composition).</summary>
+    private const int Samples = 5;
+
+    /// <summary>Returns a warning line when the composition is missing or too slow, otherwise <see langword="null"/>.</summary>
+    public static string? Measure()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        var hr = DwmFlush();
+        var intervals = new List<double>(Samples);
+        var last = Stopwatch.GetTimestamp();
+        for (var i = 0; i < Samples && hr == 0; i++)
+        {
+            hr = DwmFlush();
+            var now = Stopwatch.GetTimestamp();
+            intervals.Add(Stopwatch.GetElapsedTime(last, now).TotalMilliseconds);
+            last = now;
+        }
+
+        return hr != 0 ? Assess(hr, 0) : Assess(0, Stats.Median(intervals));
+    }
+
+    /// <summary>The warning for a DwmFlush result and the median interval between two compositions.</summary>
+    public static string? Assess(int hresult, double medianIntervalMs)
+    {
+        if (hresult != 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"Warnung: Keine Desktop-Komposition (DwmFlush 0x{hresult:X8}), etwa in einer Dienstsitzung ohne Desktop. Die App bekommt dann vermutlich keine Frames, die Messung ist ungültig.");
+        }
+
+        return medianIntervalMs > SlowIntervalMs
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"Warnung: Die Desktop-Komposition zeigt nur alle {medianIntervalMs:0} ms ein neues Bild ({1000 / medianIntervalMs:0.0} Hz, erwartet um 60 Hz). Jeder Lauf enthält bis zu zwei solcher Wartezeiten; die Zeiten sagen nichts über die App. Ursache ist meist eine VM ohne GPU (z. B. VirtIO-GPU-DOD); gültig misst ein Rechner mit GPU und angeschlossener oder aktiver Anzeige.")
+            : null;
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
+}
+
 static class SelfTest
 {
     private static int s_checks;
@@ -354,6 +418,11 @@ static class SelfTest
 
         Expect("Fälle vollständig", string.Join(',', Case.All.Select(c => $"{c.Name}:{c.BudgetMs}:{c.Runs}:{c.Warmup}:{c.PauseMs}")),
             "cold:400:10:0:5000,warm:200:10:3:500,thousand:300:10:3:500,second:100:10:1:500");
+
+        Expect("Komposition mit 60 Hz", FrameCadence.Assess(0, 16.7), null);
+        Expect("Komposition mit 30 Hz", FrameCadence.Assess(0, 33.4), null);
+        Expect("Komposition mit 4 Hz warnt", FrameCadence.Assess(0, 253)?.StartsWith("Warnung: Die Desktop-Komposition zeigt nur alle 253 ms", StringComparison.Ordinal), true);
+        Expect("keine Komposition warnt", FrameCadence.Assess(unchecked((int)0x80263001), 0)?.Contains("DwmFlush 0x80263001", StringComparison.Ordinal), true);
 
         Console.WriteLine(s_failures == 0 ? $"selftest: {s_checks} Prüfungen bestanden." : $"selftest: {s_failures} von {s_checks} Prüfungen fehlgeschlagen.");
         return s_failures == 0 ? 0 : 1;

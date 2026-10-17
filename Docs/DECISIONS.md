@@ -15,6 +15,19 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Frame-Takt der Desktop-Komposition: Messumgebung statt Kompositionsmodus (M3)
+**Kontext:** Auf dem Entwicklungsrechner (QEMU-VM, Windows 11, einzige aktive Anzeige „Red Hat VirtIO GPU DOD controller“, keine GPU) lagen alle Startzeit-Mediane weit über den Budgets (cold 505, warm 492, thousand 488, second 351 ms), `--measure-scroll` erreichte das Zeitlimit. Untersucht mit einer vorübergehenden Ablaufverfolgung (nicht committet) und einem leeren Avalonia-Fenster als Gegenprobe.
+**Befund:**
+- `DwmFlush` kehrt auf diesem Rechner nur alle 251–256 ms zurück, im Leerlauf wie unter Last; DWM zeigt also nur etwa 4 Bilder pro Sekunde, obwohl die Anzeige 64 Hz meldet.
+- Avalonia 12.1.4 richtet seine Frames in den Standard-Kompositionsmodi (`WinUIComposition`, ebenso `DirectComposition`) nach DWM. Ein leeres Fenster, das jeden Frame neu zeichnet, kommt dort auf 253 ms je Frame; mit `RedirectionSurface` auf 33 ms, mit `Software` + `RedirectionSurface` auf 16 ms.
+- Pagewing selbst ist schnell fertig: Warmstart `Main` 21 ms, `OnFrameworkInitializationCompleted` 88 ms, Dokument an die Ansicht übergeben 123 ms, Fenster `Opened` 168 ms, erste scharfe Kachel angewendet 175 ms, `Render` mit dieser Kachel 177 ms (Zeit ab Prozessstart). Der `RequestAnimationFrame`-Rückruf kommt erst 320 ms danach, nur wegen des DWM-Takts.
+**Entscheidung:** Pagewing behält die Standard-Kompositionsmodi von Avalonia. Gültige Messungen der Budgets gibt es nur auf einem Rechner mit GPU und aktiver Anzeige; `bench/startup/startup.cs` misst unter Windows vor den Läufen den DWM-Takt und schreibt eine Warnung unter 25 Hz oder ohne Komposition. Messdefinition, Budgets und Grenze bleiben unverändert.
+**Begründung:** Die Wartezeit liegt in der Messumgebung, nicht in der App. Auf diesem Rechner kommt jedes Bild ohnehin erst mit der nächsten DWM-Komposition auf den Bildschirm; ein anderer Modus würde nur den Messpunkt vorziehen, nicht das Bild. Auf echter Hardware mit 60 Hz kostet der Frame nach dem Zeichnen 1–2 Bildwechsel (17–33 ms).
+**Verworfene Alternativen:**
+- `Win32RenderingMode.Software` mit `RedirectionSurface`: lokal grün (warm 193, cold 193, thousand 190 ms; Scrollen p99 31 ms), aber nur, weil der Messpunkt nicht mehr auf DWM wartet. Rendert ohne GPU, also auf echter Hardware langsamer beim Scrollen und bei hoher Auflösung.
+- `RedirectionSurface` mit ANGLE: warm 380 ms, das Present wartet weiter auf DWM.
+- Messpunkt „`Render` mit der Kachel“ statt des Frames danach: zu früh, das Bild ist dann noch nicht an die Anzeige übergeben (Eintrag „Startzeitmessung: Definition und Grenzen (M3)“).
+
 ## 2026-10-17 – Startzeitmessung: Definition und Grenzen (M3)
 **Kontext:** Ab M3 prüft die CI die Geschwindigkeitsbudgets (Roadmap „Geschwindigkeitsziele“, `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“) am veröffentlichten AOT-Binary auf beiden Runnern. Dafür braucht es eine feste Definition, was „bis erste Seite scharf“ heißt, und wie gemessen wird.
 **Entscheidung:**
