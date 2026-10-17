@@ -31,12 +31,22 @@ jobs:
       # Without git on PATH (Windows runner) actions/checkout extracts a zip from the REST API. Its file times can lie
       # before the build of a file-based script (dotnet run <file>.cs) cached in %TEMP% by an earlier job, and the
       # incremental build then keeps the stale copy. Every checked-out file gets the current time instead.
+      # A .git directory (only where git is installed) is left alone: git marks its pack files read-only, and the
+      # refresh does not need them. Other files that cannot be touched are skipped; startup.cs itself must change.
       - name: Refresh the file times of the checkout (Windows)
         if: runner.os == 'Windows'
         run: |
           $before = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
           $now = [DateTime]::UtcNow
-          Get-ChildItem -Recurse -File -Force | ForEach-Object { $_.LastWriteTimeUtc = $now }
+          $skipped = 0
+          Get-ChildItem -Recurse -File -Force |
+            Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } |
+            ForEach-Object {
+              try { $_.LastWriteTimeUtc = $now } catch { $skipped++ }
+            }
+          $after = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
+          if ($after -le $before) { throw "bench/startup/startup.cs konnte nicht aktualisiert werden (vorher $before, nachher $after)" }
+          if ($skipped -gt 0) { Write-Host "$skipped Datei(en) nicht anfassbar (schreibgeschuetzt oder gesperrt), uebersprungen" }
           Write-Host ('bench/startup/startup.cs: {0:yyyy-MM-dd HH:mm:ss} UTC aus dem Checkout, gesetzt auf {1:yyyy-MM-dd HH:mm:ss} UTC' -f $before, $now)
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)

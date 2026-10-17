@@ -44,12 +44,21 @@ jobs:
 
       # Same step as in ci.yml. On this PC git is usually on PATH and the checkout has current file times already; the
       # step is cheap and guards against the zip-extraction case described in ci.yml (stale cached build of
-      # bench/startup/startup.cs in %TEMP% from an earlier run).
+      # bench/startup/startup.cs in %TEMP% from an earlier run). The .git directory is skipped because git marks its
+      # pack files read-only; other files that cannot be touched are skipped, but startup.cs itself must change.
       - name: Refresh the file times of the checkout
         run: |
           $before = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
           $now = [DateTime]::UtcNow
-          Get-ChildItem -Recurse -File -Force | ForEach-Object { $_.LastWriteTimeUtc = $now }
+          $skipped = 0
+          Get-ChildItem -Recurse -File -Force |
+            Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } |
+            ForEach-Object {
+              try { $_.LastWriteTimeUtc = $now } catch { $skipped++ }
+            }
+          $after = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
+          if ($after -le $before) { throw "bench/startup/startup.cs konnte nicht aktualisiert werden (vorher $before, nachher $after)" }
+          if ($skipped -gt 0) { Write-Host "$skipped Datei(en) nicht anfassbar (schreibgeschuetzt oder gesperrt), uebersprungen" }
           Write-Host ('bench/startup/startup.cs: {0:yyyy-MM-dd HH:mm:ss} UTC aus dem Checkout, gesetzt auf {1:yyyy-MM-dd HH:mm:ss} UTC' -f $before, $now)
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
