@@ -80,6 +80,7 @@ public sealed class ViewerSession : IDisposable
     private PdfDocument? document;
     private RenderCache? cache;
     private RenderScheduler? scheduler;
+    private ThumbnailSource? thumbnails;
     private IReadOnlyList<PdfPageSize> loadedSizes = [];
     private Exception? backgroundLoadFailure;
     private CancellationTokenSource? request;
@@ -303,6 +304,7 @@ public sealed class ViewerSession : IDisposable
         // Publish the result, unless a newer request or Close/Dispose has overtaken this one.
         PdfDocument? oldDocument;
         RenderScheduler? oldScheduler;
+        ThumbnailSource? oldThumbnails;
         bool publish;
         lock (gate)
         {
@@ -310,6 +312,7 @@ public sealed class ViewerSession : IDisposable
             {
                 oldDocument = null;
                 oldScheduler = null;
+                oldThumbnails = null;
                 publish = false;
             }
             else
@@ -317,6 +320,8 @@ public sealed class ViewerSession : IDisposable
                 publish = true;
                 oldDocument = document;
                 oldScheduler = scheduler;
+                oldThumbnails = thumbnails;
+                thumbnails = null;
                 if (opened is not null)
                 {
                     document = opened;
@@ -345,6 +350,7 @@ public sealed class ViewerSession : IDisposable
             return;
         }
 
+        oldThumbnails?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
         Raise(mine);
@@ -352,6 +358,26 @@ public sealed class ViewerSession : IDisposable
         if (opened is not null && firstCount < sizes!.Length)
         {
             _ = LoadRemainingSizesAsync(opened, mine, sizes, firstCount, source.Token);
+        }
+    }
+
+    /// <summary>
+    /// Gets the page thumbnails of the open document, creating them on the first call for each document; the same
+    /// object is returned until the document is replaced, closed or the session is disposed, which also disposes it
+    /// (before the document). Returns <see langword="null"/> unless the state is <see cref="ViewerState.Ready"/>.
+    /// The cache of the thumbnails keeps its budget when the tab becomes inactive; the UI stops the work with an empty
+    /// wish list instead.
+    /// </summary>
+    public ThumbnailSource? EnsureThumbnails()
+    {
+        lock (gate)
+        {
+            if (disposed || state != ViewerState.Ready || document is null)
+            {
+                return null;
+            }
+
+            return thumbnails ??= new ThumbnailSource(document);
         }
     }
 
@@ -388,6 +414,7 @@ public sealed class ViewerSession : IDisposable
     {
         RenderScheduler? oldScheduler;
         PdfDocument? oldDocument;
+        ThumbnailSource? oldThumbnails;
         CancellationTokenSource? superseded;
         long mine;
         lock (gate)
@@ -398,10 +425,11 @@ public sealed class ViewerSession : IDisposable
             }
 
             mine = Interlocked.Increment(ref generation);
-            (oldScheduler, oldDocument, superseded) = Reset();
+            (oldScheduler, oldDocument, oldThumbnails, superseded) = Reset();
         }
 
         Cancel(superseded);
+        oldThumbnails?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
         Raise(mine);
@@ -415,6 +443,7 @@ public sealed class ViewerSession : IDisposable
     {
         RenderScheduler? oldScheduler;
         PdfDocument? oldDocument;
+        ThumbnailSource? oldThumbnails;
         CancellationTokenSource? superseded;
         lock (gate)
         {
@@ -425,10 +454,11 @@ public sealed class ViewerSession : IDisposable
 
             disposed = true;
             Interlocked.Increment(ref generation);
-            (oldScheduler, oldDocument, superseded) = Reset();
+            (oldScheduler, oldDocument, oldThumbnails, superseded) = Reset();
         }
 
         Cancel(superseded);
+        oldThumbnails?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
 
@@ -464,15 +494,16 @@ public sealed class ViewerSession : IDisposable
     private static void Cancel(CancellationTokenSource? source) => _ = source?.CancelAsync();
 
     // Must run under the lock. Returns what the caller has to release after leaving the lock.
-    private (RenderScheduler? Scheduler, PdfDocument? Document, CancellationTokenSource? Request) Reset()
+    private (RenderScheduler? Scheduler, PdfDocument? Document, ThumbnailSource? Thumbnails, CancellationTokenSource? Request) Reset()
     {
-        var result = (scheduler, document, request);
+        var result = (scheduler, document, thumbnails, request);
         state = ViewerState.Empty;
         path = null;
         error = null;
         document = null;
         cache = null;
         scheduler = null;
+        thumbnails = null;
         loadedSizes = [];
         backgroundLoadFailure = null;
         request = null;
