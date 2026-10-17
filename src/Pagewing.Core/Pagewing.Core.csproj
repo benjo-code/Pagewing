@@ -5,4 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Pagewing.Pdfium\Pagewing.Pdfium.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pagewing.Core.Tests" />
+  </ItemGroup>
 </Project>

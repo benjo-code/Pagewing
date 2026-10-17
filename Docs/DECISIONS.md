@@ -15,6 +15,34 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Render-Scheduler und Kachelparameter (M3)
+**Kontext:** M3 schließt die Render-Pipeline aus Gesamt-Spec 5.3 an die App an: nur sichtbare Seiten plus Puffer, zuerst eine grobe Vorschau, dann scharfe Kacheln, veraltete Aufträge werden abgebrochen, ein LRU-Cache mit Speicherbudget hält die Ergebnisse. Die App ruft bei jedem Scroll-Ereignis vom UI-Thread aus `RenderScheduler.Update` auf; der UI-Thread darf dabei nie auf PDFium warten. Der Eintrag „Offene Punkte für den Render-Scheduler (M3)“ nennt Eigenschaften des Render-Kerns, die der Scheduler berücksichtigen muss.
+**Entscheidung:**
+- **Genau ein Auftrag des Schedulers gleichzeitig auf dem `PdfiumThread`.** Die Warteschlange liegt im Scheduler (`src/Pagewing.Core/Viewing/RenderScheduler.cs`), nicht im `PdfiumThread`. Ein einziger Worker-Task (geweckt über einen `SemaphoreSlim`) reicht den jeweils nächsten Auftrag an `PdfDocument.RenderPageAsync` (ganze Seite) bzw. `RenderTileAsync` (Kachel) weiter; `RenderRequest.Background` wird zu `PdfPriority.Background`.
+- `Update` ersetzt die Wunschliste, die Reihenfolge ist die Priorität. Schlüssel im Cache, früher fehlgeschlagene und doppelte Schlüssel werden übersprungen. Der laufende Auftrag läuft weiter, wenn er noch gewünscht ist (egal an welcher Stelle), sonst wird er über sein `CancellationToken` abgebrochen. `Update` hält nur kurz eine Sperre und rendert nie auf dem aufrufenden Thread.
+- **Abbruch ist prompt:** Der Scheduler bricht mit `CancellationTokenSource.CancelAsync` ab (das Flag gilt sofort, die Callbacks laufen auf einem Pool-Thread, nie auf dem UI-Thread). Der Worker wartet über eine Registrierung am Token nicht auf das Ende des abgebrochenen Auftrags, sondern startet sofort den nächsten. Der `PdfiumThread` verwirft den abgebrochenen Auftrag beim nächsten Schritt bzw. beim Herausnehmen aus der Warteschlange, ohne weiterzurendern; nicht abgebrochen ist also immer höchstens ein Auftrag des Schedulers. Ein Bild, das nach dem Abbruch doch noch eintrifft, wird verworfen: kein Cache-Eintrag, kein `TileReady`.
+- `TileReady` (nachdem das Bild im Cache liegt) und `TileFailed` kommen auf einem Pool-Thread. Ein fehlgeschlagener Schlüssel wird einmal gemeldet und bis `Dispose` nicht erneut versucht. Nach `Dispose` gibt es keine Ereignisse mehr; `Dispose` wartet dafür nur auf einen gerade laufenden Handler, nie auf PDFium.
+- **Kachelparameter** (Konstanten, Bestätigung durch die Messung in Task 13 des M3-Plans steht aus):
+  - Kachel 512 × 512 Pixel (`TilePlanner.TileSize`).
+  - Seiten bis 4 000 000 Pixel werden als **eine** Ganzseiten-Kachel gerendert (`TilePlanner.WholePageMaxPixels`, A4 bis etwa 200 %), größere im 512er-Raster.
+  - Vorschau mit 320 Pixeln an der längsten Seite (`TilePlanner.PreviewMaxSide`), höchstens 48 Vorschau-Aufträge je Plan (`ViewportPlanner.MaxPreviewRequests`).
+  - Cache 256 MiB (`RenderCache.DefaultBudgetBytes`).
+  - Zoom 10 % bis 800 % in den Stufen 10, 25, 50, 75, 100, 125, 150, 200, 300, 400, 600, 800 (`ZoomSteps`); 100 % = 96 dpi (1 pt = 96/72 DIP).
+- **Bezug auf „Offene Punkte für den Render-Scheduler (M3)“:**
+  - Verschränkung nur Background mit Interactive (`AddFirst`): betrifft den Scheduler nicht mehr, weil er nur einen Auftrag gleichzeitig einreiht; Reihenfolge und Umpriorisierung entscheidet er selbst.
+  - Abbruch eingereihter Aufträge erst beim Herausnehmen: gelöst durch die Registrierung am Token (siehe oben).
+  - Gepinnte Arrays größer als das Bild: `RenderCache.CostOf` rechnet mit der Länge des Backing-Arrays. Pooling oder nicht verwaltete Puffer werden in M3 nicht umgesetzt.
+  - `Path.GetFullPath`-Ausnahmen: werden laut Plan in `ViewerSession` (Task 5) auf `PdfOpenError.CannotRead` abgebildet, nicht im Scheduler.
+  - Billige Seitengrößen: genutzt über `PdfDocument.GetPageSizesAsync` (Stapel).
+- Zum offenen Punkt aus „Kacheln mit 64 px Überlapp nach links …“: Durch die Grenze von 4 Mpx haben übliche Seiten bis etwa 200 % keine Kachelnähte. Darüber bleiben die dort beschriebenen Abweichungen an Nähten möglich.
+
+**Begründung:** Liegt die Warteschlange im Scheduler, kann jede Wunschliste sie billig neu ordnen und Veraltetes verwerfen, ohne dass der `PdfiumThread` etwas davon wissen muss; dort läuft ohnehin alles nacheinander, mehrere eingereihte Aufträge brächten keine Parallelität, nur späteren Abbruch. Ohne die Registrierung am Token würde ein abgebrochener Hintergrund-Auftrag, der hinter anderer Arbeit wartet, den nächsten interaktiven Auftrag aufhalten. Ein fehlgeschlagener Schlüssel würde sonst bei jedem Scroll-Ereignis neu gerendert.
+**Verworfene Alternativen:**
+- Alle Aufträge sofort an den `PdfiumThread` geben und dort umpriorisieren: ändert dessen Schnittstelle, und ein interaktiver Auftrag läuft dort bis zum Ende, bevor ein anderer beginnt.
+- Auf das Ende des abgebrochenen Auftrags warten, bevor der nächste startet: einfacher, aber der nächste Auftrag hinge hinter der Arbeit, die vor dem abgebrochenen eingereiht ist.
+- Bilder abgebrochener Aufträge, die im Wettlauf doch fertig werden, in den Cache legen: spart selten ein Rendern, macht aber den Vertrag „abgebrochen heißt kein Ereignis“ unscharf.
+- Fehlgeschlagene Schlüssel erneut versuchen: Eine beschädigte Seite würde den Worker dauerhaft beschäftigen.
+
 ## 2026-10-17 – App-Icon und Schriftzug: Variante 1 „Flügelecke“ (vorläufig)
 **Kontext:** Milestone 2 legt Schriftzug und Icon-Richtung als Grundlage für die Icon-Dateien in M8 fest. Drei Varianten im Stil der Designrichtung B standen als Artifact bereit (Design-Spec `Docs/superpowers/specs/2026-10-17-designsystem.md`, Abschnitt 8; Quelle `Docs/design/mockups/schriftzug-icon.html`): 1 „Flügelecke“, 2 „Gefächerte Seiten“, 3 „Seite mit Schwinge“.
 **Entscheidung:** Variante 1 „Flügelecke“: eine Seite auf einer Indigo-Kachel, deren Eselsohr sich als Flügelspitze hebt, dazu der Schriftzug „Pagewing“ in Geist Semibold. Die Dateien liegen unter `Docs/design/` (`icon-entwurf.svg`, `icon-entwurf-einfarbig.svg`, `schriftzug.svg`). Die Wahl ist **vorläufig**; Wortlaut am 2026-10-17: „Erstmal 1, denke iwann wenn ich lust habe mach ich dann mal neues logo“. Ein späteres eigenes Logo ersetzt diesen Entwurf mit einem neuen Eintrag.
