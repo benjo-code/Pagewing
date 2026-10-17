@@ -74,3 +74,39 @@ Genauigkeit: Der Ursprung ist die Erzeugungszeit des Prozesses laut Betriebssyst
 ## Selbsttest
 
 `selftest` prüft Median (ungerade und gerade Anzahl), Grenze je Fall, die Grenzentscheidung (ein Median genau auf der Grenze besteht, knapp darüber nicht), das Lesen von `second-sharp <ms>` und `phase <Name> <ms>`, Median und Ausgabe der Phasen, dass `--phases` keinen Wert nimmt, die Parameter der Fälle mit festen Werten, die Schwelle der Frame-Takt-Warnung, die Warnung bei gescheiterter Messung, deren Zeitlimit und das Maskieren der GitHub-Annotation. Er läuft in der CI vor dem Check.
+
+## Messung auf echter Hardware (Haupt-PC)
+
+Der Startzeit-Check der CI läuft auf einem Runner ohne GPU und misst dort den Software-Renderpfad (`Docs/DECISIONS.md`, Eintrag „Software-Rendering ohne Hardware-Grafikadapter (M3)“). Zahlen für Rechner mit GPU liefert der Workflow `.github/workflows/hardware-measure.yml` („Hardware measurement“) auf dem Haupt-PC des Projektinhabers. Begründung und Grenzen: `Docs/DECISIONS.md`, Eintrag „Messung auf echter Hardware: manueller Runner des Haupt-PCs (M3)“.
+
+**Was der Workflow tut** (Job `measure-windows-gpu`, höchstens 30 Minuten, Läufe nie parallel):
+
+1. Auschecken, .NET 10 einrichten, Voraussetzungen prüfen (`dotnet` 10, `vswhere`, C++-Build-Tools), die App als Native AOT für `win-x64` veröffentlichen.
+2. „Hardware report“: Grafikkarte(n) mit Treiber, Windows-Build, CPU, Energiesparplan, Akkustatus nach `out/startup/hardware.txt`.
+3. „Startup check (default rendering)“: die vier Fälle aus „Fälle und Budgets“ wie in der CI, mit `--phases` im Fall `warm`, mit unveränderten Budgets und Grenzen. `PAGEWING_RENDERING` ist dabei nicht gesetzt (Standard-Renderpfad). Ein roter Fall ist ein echter Befund und färbt den Schritt rot.
+4. „Scroll measurement“: `Pagewing.exe --measure-scroll` auf `thousand-pages.pdf` und `vector-shapes.pdf`, je 3 Läufe, die Zeilen `scroll frames=… p99-ms=… max-ms=…` nach `out/startup/scroll.txt`. Für das Scrollen gibt es kein Budget; nur ein Exit-Code der App ungleich 0 oder eine fehlende Ergebniszeile färbt den Schritt rot.
+5. Zur Information (`continue-on-error`): der Fall `warm` mit `PAGEWING_RENDERING=software`, zum Vergleich mit dem Standardpfad.
+6. Zusammenfassung des Laufs (Hardware, Median je Fall gegen Budget und Grenze, Scrollwerte) und Artefakt `hardware-measure` mit allem aus `out/startup/` (CSV, Logs, `hardware.txt`, `scroll.txt`).
+
+**Auslösen:** Der Runner hat das Label `dotnet-windows-gpu` (nicht `dotnet-windows` oder `dotnet-linux`, die CI-Jobs landen deshalb nie dort) und liegt in der Runner-Gruppe `main-pc`, deren Repository-Zugriff der Projektinhaber auf Pagewing beschränkt. Der Workflow startet nur auf ausdrücklichen Befehl:
+
+- Im Actions-Tab über „Run workflow“ (`workflow_dispatch`), oder
+  `gh workflow run hardware-measure.yml --repo benjo-code/Pagewing --ref <branch>`; das geht erst, wenn die Datei auf dem Standardzweig (`dev`) liegt.
+- Vorher, und für Stände eines PR-Zweigs: das Label `hardware-measure` an einen PR nach `dev` oder `main` hängen (`pull_request` vom Typ `labeled`). PRs aus Forks starten den Workflow nie.
+
+Ohne online laufenden Runner bleibt der Job in der Warteschlange; auf diesen Runner ist nie Verlass.
+
+**Einrichtung durch den Projektinhaber** (einmalig, keine Zugangsdaten im Repository):
+
+1. Voraussetzungen auf dem Haupt-PC: .NET-SDK 10, Visual Studio Build Tools mit der Workload „Desktopentwicklung mit C++“, Windows-PowerShell-Ausführungsrichtlinie `RemoteSigned` für LocalMachine (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer PowerShell mit Administratorrechten).
+2. Auf GitHub: Settings → Actions → Runners → „New self-hosted runner“ (Windows x64), Anleitung und Token der Seite folgen; das Archiv in einen eigenen Ordner entpacken, z. B. `C:\actions-runner-hw`.
+3. Registrieren, mit dem Token der Seite (`<TOKEN>`; ein Registrierungstoken ist kurz gültig und gehört nirgends ins Repository):
+
+   ```powershell
+   .\config.cmd --url https://github.com/benjo-code --token <TOKEN> --runnergroup main-pc --labels dotnet-windows-gpu --name hauptpc --work _work
+   ```
+
+   Die Frage „run as service“ mit **N** beantworten. Die Runner-Gruppe `main-pc` vorher in den Einstellungen der Organisation anlegen und ihren Repository-Zugriff auf Pagewing beschränken.
+4. Gemessen wird nur, wenn der Projektinhaber den Runner auf Zuruf startet: `run.cmd` im Runner-Ordner, in der angemeldeten Desktop-Sitzung. Nach dem Lauf mit Strg+C beenden.
+
+**Bedingungen während der Messung** (sonst sind die Zahlen nicht gültig): Bildschirm an und entsperrt, Netzbetrieb, Energiesparplan „Höchstleistung“ oder „Ausbalanciert“ ohne Sparmodus, nichts Schweres im Hintergrund (Spiele, Builds, Videos), kein anderes Pagewing offen. Läuft der Runner als Dienst, gibt der Workflow eine Warnung aus: Die App bekäme keinen Desktop. Die Warnung des Skripts zum Frame-Takt (siehe oben) gilt auch hier.

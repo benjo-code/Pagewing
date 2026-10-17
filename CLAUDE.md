@@ -111,6 +111,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 ### CI
 
 - Self-hosted Runner der Orga: `dotnet-linux` und `dotnet-windows`. Build, Test, Format und AOT-Publish laufen auf beiden.
+- Messung auf echter Hardware: Workflow `hardware-measure.yml` („Hardware measurement“), Runner mit dem einzigen eigenen Label `dotnet-windows-gpu` (Name `hauptpc`, Runner-Gruppe `main-pc`) auf dem Haupt-PC des Projektinhabers. Er startet nur manuell (`workflow_dispatch` oder Label `hardware-measure` am PR), nie bei `push` oder `pull_request` ohne Label. Der Projektinhaber startet den Runner von Hand (`run.cmd` in seiner angemeldeten Sitzung), wenn Claude darum bittet, etwa vor einem Release; er ist kein Dienst, nie darauf verlassen, dass er online ist. Einrichtung und Ablauf: `bench/startup/README.md`, Abschnitt „Messung auf echter Hardware (Haupt-PC)“; Begründung: `Docs/DECISIONS.md`, Eintrag „Messung auf echter Hardware: manueller Runner des Haupt-PCs (M3)“.
 - Das Repo ist derzeit privat. Wird es öffentlich, vorher in den Actions-Einstellungen einstellen, dass PRs aus Forks vor dem Lauf freigegeben werden müssen. Sonst führen fremde PRs Code auf den eigenen Runnern aus.
 - Der Linux-Build ist an die glibc des Build-Rechners gebunden. Die älteste unterstützte Distribution wird in M8 festgelegt.
 - Voraussetzungen der Linux-Runner: `clang` und `zlib1g-dev` (`sudo apt-get install -y clang zlib1g-dev`). Der CI-Schritt „Check the Native AOT prerequisites (Linux)“ meldet, was fehlt.

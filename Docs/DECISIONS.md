@@ -15,6 +15,25 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Messung auf echter Hardware: manueller Runner des Haupt-PCs (M3)
+**Kontext:** Der Startzeit-Check der CI läuft auf dem Runner `dotnet-windows`, einer VM ohne GPU, und misst dort den Software-Renderpfad (Eintrag „Software-Rendering ohne Hardware-Grafikadapter (M3)“). Den Standardpfad (ANGLE auf einer GPU), die Kosten der Adapter-Erkennung auf einer GPU und das Scrollen auf echter Hardware misst die CI nicht (Roadmap, Backlog „Startzeit-Messung auf echter Hardware …“). Gültige Zahlen gibt es nur auf einem Rechner mit GPU und aktiver Anzeige (Eintrag „Frame-Takt der Desktop-Komposition: Messumgebung statt Kompositionsmodus (M3)“).
+**Entscheidung:** (Projektinhaber)
+- Neuer Workflow `.github/workflows/hardware-measure.yml` („Hardware measurement“) für den Haupt-PC des Projektinhabers. Auslöser nur `workflow_dispatch` und `pull_request` vom Typ `labeled` (Label genau `hardware-measure`, nur wenn der PR-Zweig aus diesem Repository stammt); die Label-Variante gibt es, weil sich eine neue Workflow-Datei erst vom Standardzweig aus manuell starten lässt. Kein `push`, kein `pull_request` bei `opened`/`synchronize`, kein `pull_request_target`, kein `issue_comment`.
+- Der Runner trägt genau ein eigenes Label, `dotnet-windows-gpu` (dazu die automatischen `self-hosted`, `Windows`, `X64`), den Namen `hauptpc` und liegt in der eigenen Runner-Gruppe `main-pc`, deren Repository-Zugriff der Projektinhaber auf Pagewing beschränkt. Er trägt nicht die Labels `dotnet-windows` oder `dotnet-linux`.
+- Der Projektinhaber startet den Runner von Hand (`run.cmd` in seiner angemeldeten Sitzung), wenn Claude ihn bittet, etwa vor einem Release, und beendet ihn danach mit Strg+C. Er ist kein Dienst.
+- Inhalt des Laufs: Hardware-Bericht (GPU mit Treiber, Windows-Build, CPU, Energiesparplan), die vier Fälle des Startzeit-Checks mit unverändertem Skript, Budgets und Grenzen (strikt; `PAGEWING_RENDERING` ausdrücklich nicht gesetzt, `--phases` im Fall `warm`), `--measure-scroll` auf `thousand-pages.pdf` und `vector-shapes.pdf` (je 3 Läufe, ohne Budget), zur Information der Fall `warm` mit `PAGEWING_RENDERING=software`, Zusammenfassung des Laufs und Artefakt `hardware-measure`. Ein roter Fall ist ein echter Befund; Budgets und Check werden nicht angepasst, um ihn grün zu machen.
+- Läufe überlappen nie (`concurrency` ohne Abbruch laufender Läufe, Zeitlimit 30 Minuten).
+**Begründung:** Ein eigener, manuell gestarteter Runner liefert reproduzierbar dieselbe Messung wie die CI (gleiches Skript, gleiche Befehle), auf der Hardware, auf der Nutzer Pagewing starten, ohne dass der Haupt-PC dauernd im Dienst der CI steht. Das eigene Label und die eigene Runner-Gruppe verhindern, dass CI-Jobs dort landen oder dieser Job auf die CI-Runner.
+**Verworfene Alternativen:**
+- Haupt-PC als dauerhafter Dienst-Runner: ein Dienst hat keine Desktop-Sitzung (kein DWM, ungültige Zahlen, siehe oben), der PC wäre ständig für Fremdcode erreichbar, und die Messung stört seine normale Nutzung.
+- Messung nur lokal von Hand: nicht reproduzierbar im Ablauf, kein Artefakt, kein Nachweis im CI-Lauf, und die Befehle der CI würden von Hand nachgebaut.
+- Das Label `dotnet-windows` mitverwenden: CI-Jobs könnten auf den Haupt-PC fallen, und die Messung könnte auf der VM landen.
+**Folgen und Grenzen:**
+- **Sicherheit:** Der Workflow führt Code aus dem Repository auf dem privaten Rechner des Projektinhabers aus, mit dessen Benutzerrechten. Deshalb nur manueller Auslöser; Fork-PRs starten ihn nie (Prüfung des Herkunfts-Repositories im Job); der Runner ist in einer eigenen Gruppe auf dieses Repository beschränkt; es werden keine Secrets gelesen oder gebraucht; der Checkout speichert keine Zugangsdaten (`persist-credentials: false`). Das Label `hardware-measure` darf nur an PR-Zweige gehängt werden, deren Code der Projektinhaber geprüft hat. Registrierungstokens gehören nicht ins Repository.
+- Ob der Runner online ist, ist unbekannt: nicht darauf verlassen; ohne Runner bleibt der Job in der Warteschlange.
+- Zahlen sind nur gültig bei Netzbetrieb, aktiver, entsperrter Anzeige und ruhigem Rechner (`bench/startup/README.md`, Abschnitt „Messung auf echter Hardware (Haupt-PC)“); der Workflow warnt, wenn er nicht in einer interaktiven Sitzung läuft.
+- Nicht auf einem Runner geprüft: Der Workflow ist bisher nur statisch geprüft (YAML, PowerShell-Syntax, Auszug der Zusammenfassung mit erfundenen Logs), gelaufen ist er noch nicht.
+
 ## 2026-10-17 – Software-Rendering ohne Hardware-Grafikadapter (M3)
 **Kontext:** Ohne Hardware-GPU kostet der erste Frame nach der ersten scharfen Kachel auf Avalonias Standardpfad (ANGLE, also Direct3D 11 über WARP) rund 200 ms, mit `Win32RenderingMode.Software` 22 bis 32 ms (Eintrag „Windows-Warmstart: Phasenmessung auf dem Runner (M3)“). Der Projektinhaber hat entschieden: Der Windows-Runner ohne GPU ist die Referenz für schwache Rechner, Budgets und Check bleiben, das Produkt wird schneller.
 **Entscheidung:**
