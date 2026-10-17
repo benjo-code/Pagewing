@@ -73,6 +73,25 @@ public sealed class StartupOptionsTests
     }
 
     [Fact]
+    public void ZoomOptionTakesTheNextArgumentAsGiven()
+    {
+        var options = StartupOptions.Parse(["--measure-scroll", "d.pdf", "--zoom", "200"]);
+
+        Assert.Equal("d.pdf", options.MeasureScroll);
+        Assert.Equal("200", options.MeasureZoom);
+        Assert.Empty(options.Paths);
+        Assert.Null(StartupOptions.Parse(["--measure-scroll", "d.pdf"]).MeasureZoom);
+    }
+
+    [Fact]
+    public void ZoomOptionWithoutValueIsKeptAsEmptySoTheMeasurementFails()
+    {
+        var options = StartupOptions.Parse(["--measure-scroll", "d.pdf", "--zoom"]);
+
+        Assert.Equal(string.Empty, options.MeasureZoom);
+    }
+
+    [Fact]
     public void MeasureSecondWithoutSecondArgumentIsIgnored()
     {
         var options = StartupOptions.Parse(["--measure-second", "b.pdf"]);

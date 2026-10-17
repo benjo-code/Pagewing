@@ -27,7 +27,18 @@ public sealed class App : Application
     {
     }
 
-    internal App(AppStartup startup) => _startup = startup;
+    internal App(AppStartup startup)
+    {
+        // Avalonia creates the app after the platform (windowing, graphics) is set up.
+        StartupPhases.Mark("app-created");
+        _startup = startup;
+    }
+
+    public override void RegisterServices()
+    {
+        StartupPhases.Mark("app-register-services");
+        base.RegisterServices();
+    }
 
     public override void Initialize()
     {

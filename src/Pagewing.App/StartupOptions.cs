@@ -6,12 +6,17 @@ namespace Pagewing.App;
 /// <param name="MeasureSecond">Hidden switch <c>--measure-second &lt;pdfA&gt; &lt;pdfB&gt;</c>.</param>
 /// <param name="MeasureScroll">Hidden switch <c>--measure-scroll &lt;pdf&gt;</c>.</param>
 /// <param name="Language">UI language override <c>--lang &lt;code&gt;</c> (testing and manual checks).</param>
+/// <param name="MeasureZoom">
+/// <c>--zoom &lt;percent&gt;</c> of <c>--measure-scroll</c> as given (checked by the measurement), an empty string when the
+/// value is missing, or <see langword="null"/> without the option.
+/// </param>
 public sealed record StartupOptions(
     IReadOnlyList<string> Paths,
     string? MeasureStartup,
     (string First, string Second)? MeasureSecond,
     string? MeasureScroll,
-    string? Language)
+    string? Language,
+    string? MeasureZoom = null)
 {
     /// <summary>Gets whether a hidden measurement switch was given (the run bypasses the single-instance election).</summary>
     public bool IsMeasurement => MeasureStartup is not null || MeasureSecond is not null || MeasureScroll is not null;
@@ -24,7 +29,8 @@ public sealed record StartupOptions(
 
     /// <summary>
     /// Parses the command line. Arguments without <c>--</c> are paths (made absolute against the working directory).
-    /// Unknown <c>--</c> options and options with missing values are ignored.
+    /// Unknown <c>--</c> options and options with missing values are ignored, except <c>--zoom</c> (see
+    /// <see cref="MeasureZoom"/>).
     /// </summary>
     public static StartupOptions Parse(string[] args)
     {
@@ -35,6 +41,7 @@ public sealed record StartupOptions(
         (string First, string Second)? measureSecond = null;
         string? measureScroll = null;
         string? language = null;
+        string? measureZoom = null;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -67,13 +74,17 @@ public sealed record StartupOptions(
                 case "--measure-scroll" when i + 1 < args.Length:
                     measureScroll = args[++i];
                     break;
+                case "--zoom":
+                    // Without a value the measurement fails instead of scrolling at 100 %.
+                    measureZoom = i + 1 < args.Length ? args[++i] : string.Empty;
+                    break;
                 case "--lang" when i + 1 < args.Length:
                     language = args[++i];
                     break;
             }
         }
 
-        return new StartupOptions(paths, measureStartup, measureSecond, measureScroll, language);
+        return new StartupOptions(paths, measureStartup, measureSecond, measureScroll, language, measureZoom);
     }
 
     // A path the system rejects (for example with a NUL character) must not stop the start: it is kept as given

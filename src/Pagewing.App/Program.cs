@@ -101,14 +101,67 @@ internal static partial class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Run(string[] args, AppStartup startup, bool softwareRendering)
     {
+        StartupPhases.Mark("avalonia-configure");
         var builder = AppBuilder.Configure(() => new App(startup)).UsePlatformDetect();
+        StartupPhases.Mark("platform-detected");
         if (softwareRendering)
         {
             builder = builder.With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
         }
 
+        if (StartupPhases.Current is { } phases)
+        {
+            builder = WithSetupPhases(builder, phases);
+        }
+
+        StartupPhases.Mark("desktop-lifetime-start");
         return builder.StartWithClassicDesktopLifetime(args);
     }
+
+    /// <summary>
+    /// Measurement runs only: records the setup steps of Avalonia as phases (<c>bench/startup/README.md</c>,
+    /// "Phasen"). Each subsystem initializer that <see cref="AppBuilderDesktopExtensions.UsePlatformDetect"/> chose
+    /// (runtime, text shaping, rendering, windowing; Avalonia runs them in this order) is wrapped in
+    /// <c>&lt;name&gt;-init</c> and <c>&lt;name&gt;-ready</c>; the windowing step on Windows includes the graphics
+    /// (ANGLE with its Direct3D device, or nothing for software rendering) and the composition. Two callbacks mark
+    /// the end of the platform setup (<c>platform-services-setup</c>) and the end of <c>Application.Initialize</c>
+    /// (<c>app-setup-done</c>). The chosen subsystems and their order are unchanged.
+    /// </summary>
+    internal static AppBuilder WithSetupPhases(AppBuilder builder, PhaseRecorder phases)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(phases);
+        if (builder.RuntimePlatformServicesInitializer is { } runtime)
+        {
+            builder = builder.UseRuntimePlatformSubsystem(Marked(runtime, "runtime", phases), builder.RuntimePlatformServicesName ?? string.Empty);
+        }
+
+        if (builder.TextShapingSubsystemInitializer is { } textShaping)
+        {
+            builder = builder.UseTextShapingSubsystem(Marked(textShaping, "text-shaping", phases), builder.TextShapingSubsystemName ?? string.Empty);
+        }
+
+        if (builder.RenderingSubsystemInitializer is { } rendering)
+        {
+            builder = builder.UseRenderingSubsystem(Marked(rendering, "render", phases), builder.RenderingSubsystemName ?? string.Empty);
+        }
+
+        if (builder.WindowingSubsystemInitializer is { } windowing)
+        {
+            builder = builder.UseWindowingSubsystem(Marked(windowing, "windowing", phases), builder.WindowingSubsystemName ?? string.Empty);
+        }
+
+        return builder
+            .AfterPlatformServicesSetup(_ => phases.Mark("platform-services-setup", Stopwatch.GetTimestamp()))
+            .AfterSetup(_ => phases.Mark("app-setup-done", Stopwatch.GetTimestamp()));
+    }
+
+    private static Action Marked(Action initializer, string name, PhaseRecorder phases) => () =>
+    {
+        phases.Mark(name + "-init", Stopwatch.GetTimestamp());
+        initializer();
+        phases.Mark(name + "-ready", Stopwatch.GetTimestamp());
+    };
 
     /// <summary>
     /// Windows only, before Avalonia starts and never in a later launch that hands over: software rendering when the

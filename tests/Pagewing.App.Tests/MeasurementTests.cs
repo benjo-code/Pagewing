@@ -222,13 +222,21 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.Empty(_error.ToString());
         Assert.Equal([0], _exits);
         var lines = Lines(_output);
-        Assert.Single(lines);
+        Assert.Equal(2, lines.Count);
         var match = ScrollLine().Match(lines[0]);
         Assert.True(match.Success, $"unexpected line '{lines[0]}'");
         Assert.Equal("12", match.Groups[1].Value);
         var p99 = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
         var max = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
         Assert.InRange(p99, 0, max);
+
+        // The detail line follows the line that existing parsers read, and does not match it.
+        var detail = ScrollDetailLine().Match(lines[1]);
+        Assert.True(detail.Success, $"unexpected line '{lines[1]}'");
+        Assert.Equal("100", detail.Groups[1].Value);
+        Assert.InRange(double.Parse(detail.Groups[2].Value, CultureInfo.InvariantCulture), 0, max);
+        Assert.DoesNotMatch(ScrollLine(), lines[1]);
+        Assert.Equal(1, view.Layout!.Zoom);
 
         // Scrolled from the top to the very bottom (all pages of this file have the same size, so the position does
         // not move when the last page sizes arrive).
@@ -238,6 +246,116 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.InRange(view.Layout!.GetPageRect(999).Bottom, scroller.Offset.Y, scroller.Offset.Y + scroller.Viewport.Height);
     }
 
+    [AvaloniaFact]
+    public async Task ScrollMeasurementScrollsAtTheRequestedZoom()
+    {
+        var (window, viewModel, view) = Show();
+        using var measurement = new ScrollMeasurement(viewModel, view, TestData.Pdf("thousand-pages.pdf"), Sink(), Timeout, steps: 12, zoomPercent: 200);
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        Assert.Empty(_error.ToString());
+        Assert.Equal([0], _exits);
+        var lines = Lines(_output);
+        Assert.Equal(2, lines.Count);
+        Assert.Equal("12", ScrollLine().Match(lines[0]).Groups[1].Value);
+        Assert.Equal("200", ScrollDetailLine().Match(lines[1]).Groups[1].Value);
+
+        // Scrolled at 200 % from the top to the very bottom.
+        Assert.Equal(2, viewModel.Zoom);
+        Assert.Equal(2, view.Layout!.Zoom);
+        var scroller = view.ScrollViewer;
+        Assert.Equal(scroller.Extent.Height - scroller.Viewport.Height, scroller.Offset.Y, 3);
+        Assert.InRange(view.Layout.GetPageRect(999).Bottom, scroller.Offset.Y, scroller.Offset.Y + scroller.Viewport.Height);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("0")]
+    [InlineData("9")]
+    [InlineData("801")]
+    [InlineData("")]
+    [InlineData("200%")]
+    [InlineData("-100")]
+    [InlineData("1.5")]
+    public async Task ScrollMeasurementWithAnInvalidZoomExitsWithOne(string zoom)
+    {
+        var (window, viewModel, view) = Show();
+        var options = StartupOptions.Parse(["--measure-scroll", TestData.Pdf("thousand-pages.pdf"), "--zoom", zoom]);
+        using var measurement = MeasurementRun.Create(options, viewModel, view, Sink());
+
+        Assert.NotNull(measurement);
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        Assert.Equal([1], _exits);
+        Assert.Empty(_output.ToString());
+        var error = Lines(_error);
+        Assert.Single(error);
+        Assert.StartsWith("error: --zoom takes a whole percentage from 10 to 800", error[0], StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null, true, 100)]
+    [InlineData("10", true, 10)]
+    [InlineData("100", true, 100)]
+    [InlineData("800", true, 800)]
+    [InlineData("0400", true, 400)]
+    [InlineData("9", false, 0)]
+    [InlineData("801", false, 0)]
+    [InlineData("", false, 0)]
+    [InlineData(" 200", false, 0)]
+    [InlineData("+200", false, 0)]
+    public void ZoomPercentIsAWholeNumberInTheZoomRange(string? text, bool valid, int expected)
+    {
+        Assert.Equal(valid, ScrollMeasurement.TryParseZoomPercent(text, out var percent));
+        if (valid)
+        {
+            Assert.Equal(expected, percent);
+        }
+    }
+
+    [Fact]
+    public void ScrollDetailShowsTheMeanAndTheShareOfSlowFrames()
+    {
+        // Mostly a 30-fps cadence: four intervals around 33.4 ms, one at 25 ms.
+        double[] intervals = [16.6, 33.4, 16.6, 33.4, 16.7, 33.3, 16.7, 33.3, 25.0, 15.0];
+
+        Assert.Equal(50, ScrollMeasurement.ShareAbove(intervals, 20));
+        Assert.Equal(40, ScrollMeasurement.ShareAbove(intervals, 30));
+        Assert.Equal(0, ScrollMeasurement.ShareAbove(intervals, 33.4));
+        Assert.Equal("scroll-detail zoom-pct=400 mean-ms=24.0 over-20ms-pct=50.0 over-30ms-pct=40.0", ScrollMeasurement.DetailLine(intervals, 400));
+    }
+
+    [Fact]
+    public void SetupPhasesWrapEverySubsystemInitializerInOrder()
+    {
+        var calls = new List<string>();
+        var builder = Avalonia.AppBuilder.Configure<App>()
+            .UseRuntimePlatformSubsystem(() => calls.Add("runtime"), "Runtime")
+            .UseTextShapingSubsystem(() => calls.Add("text"), "Text")
+            .UseRenderingSubsystem(() => calls.Add("render"), "Render")
+            .UseWindowingSubsystem(() => calls.Add("windowing"), "Windowing");
+        var phases = new PhaseRecorder();
+
+        builder = Program.WithSetupPhases(builder, phases);
+        builder.RuntimePlatformServicesInitializer!();
+        builder.TextShapingSubsystemInitializer!();
+        builder.RenderingSubsystemInitializer!();
+        builder.WindowingSubsystemInitializer!();
+
+        // The initializers still run, under their names; each is enclosed by its two phases.
+        Assert.Equal(["runtime", "text", "render", "windowing"], calls);
+        Assert.Equal("Runtime", builder.RuntimePlatformServicesName);
+        Assert.Equal("Text", builder.TextShapingSubsystemName);
+        Assert.Equal("Render", builder.RenderingSubsystemName);
+        Assert.Equal("Windowing", builder.WindowingSubsystemName);
+        Assert.Equal(
+            ["runtime-init", "runtime-ready", "text-shaping-init", "text-shaping-ready", "render-init", "render-ready", "windowing-init", "windowing-ready"],
+            phases.Lines(0).Select(line => line.Split(' ')[1]));
+        Assert.NotNull(builder.AfterSetupCallback);
+        Assert.NotNull(builder.AfterPlatformServicesSetupCallback);
+    }
     [Fact]
     public void PercentileUsesTheNearestRank()
     {
@@ -350,6 +468,9 @@ public sealed partial class MeasurementTests : IDisposable
 
     [GeneratedRegex(@"^scroll frames=(\d+) p99-ms=(\d+\.\d) max-ms=(\d+\.\d)$")]
     private static partial Regex ScrollLine();
+
+    [GeneratedRegex(@"^scroll-detail zoom-pct=(\d+) mean-ms=(\d+\.\d) over-20ms-pct=(\d+\.\d) over-30ms-pct=(\d+\.\d)$")]
+    private static partial Regex ScrollDetailLine();
 
     private sealed class Closer(Window window) : IDisposable
     {

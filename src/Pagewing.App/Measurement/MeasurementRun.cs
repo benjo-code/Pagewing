@@ -78,7 +78,9 @@ internal abstract class MeasurementRun : IDisposable
         {
             { MeasureStartup: { } path } => new StartupMeasurement(viewModel, view, path, null, output, DefaultTimeout, StartupMeasurement.DefaultSettleDelay),
             { MeasureSecond: var (first, second) } => new StartupMeasurement(viewModel, view, first, second, output, DefaultTimeout, StartupMeasurement.DefaultSettleDelay),
-            { MeasureScroll: { } path } => new ScrollMeasurement(viewModel, view, path, output, DefaultTimeout, ScrollMeasurement.DefaultSteps),
+            { MeasureScroll: { } path } => ScrollMeasurement.TryParseZoomPercent(options.MeasureZoom, out var zoom)
+                ? new ScrollMeasurement(viewModel, view, path, output, DefaultTimeout, ScrollMeasurement.DefaultSteps, zoom)
+                : new InvalidMeasurement(viewModel, view, path, output, $"--zoom takes a whole percentage from {ScrollMeasurement.MinZoomPercent} to {ScrollMeasurement.MaxZoomPercent}, not '{options.MeasureZoom}'"),
             _ => null,
         };
     }
@@ -99,6 +101,12 @@ internal abstract class MeasurementRun : IDisposable
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         _timer = new Timer(_ => Post(() => Fail(TimedOut, $"no sharp image of page 1 within {_timeout.TotalSeconds:0.###} s")), null, _timeout, Timeout.InfiniteTimeSpan);
 
+        if (ArgumentError is { } argumentError)
+        {
+            Fail(Failure, argumentError);
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(Path))
         {
             Fail(Failure, "no file to measure");
@@ -114,6 +122,9 @@ internal abstract class MeasurementRun : IDisposable
         Unsubscribe();
         GC.SuppressFinalize(this);
     }
+
+    /// <summary>Gets why the arguments of the measurement are invalid, or <see langword="null"/>; checked first by <see cref="Start"/>.</summary>
+    protected virtual string? ArgumentError => null;
 
     /// <summary>The first sharp image of page 1 of the document now shown was drawn (UI thread).</summary>
     protected abstract void OnFirstSharpImage();
@@ -265,5 +276,17 @@ internal abstract class MeasurementRun : IDisposable
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _timer?.Dispose();
         _timer = null;
+    }
+}
+
+/// <summary>A measurement whose arguments are invalid: it fails at once with exit code 1 (<c>error: …</c>).</summary>
+internal sealed class InvalidMeasurement(MainViewModel viewModel, DocumentView view, string path, MeasurementOutput output, string error)
+    : MeasurementRun(viewModel, view, path, output, DefaultTimeout)
+{
+    protected override string? ArgumentError => error;
+
+    protected override void OnFirstSharpImage()
+    {
+        // Never reached: Start fails before it opens anything.
     }
 }
