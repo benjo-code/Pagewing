@@ -25,6 +25,8 @@ internal sealed record AppStartup(ViewerSession Session, SingleInstance? Instanc
 public sealed class App : Application
 {
     private readonly AppStartup? _startup;
+    private bool _firstWindowCreated;
+    private WindowIcon? _windowIcon;
 
     /// <summary>Creates the app without startup state (tests, designer): its window starts without a tab.</summary>
     public App()
@@ -59,55 +61,26 @@ public sealed class App : Application
             // Creating an engine does not start PDFium; that happens with the first document.
             var session = _startup?.Session;
             var instance = _startup?.Instance;
-            var window = new MainWindow();
-            StartupPhases.Mark("window-created");
-            var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new AvaloniaFilePicker(window));
-            var adopted = false;
-            if (session is not null && session.State != ViewerState.Empty)
+
+            // The process ends with its last window, whichever it is (the default of the classic lifetime, made explicit).
+            desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
+
+            // Creates no window yet; every window gets its own file dialog.
+            var workspace = new Workspace(() => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window));
+
+            // The file of the command line, already opening since Program.Main: the first tab, in the first frame.
+            var firstTab = session is not null && session.State != ViewerState.Empty ? new TabViewModel(session) : null;
+            workspace.OpenWindow(firstTab, (window, viewModel) =>
             {
-                // The file of the command line, already opening since Program.Main: the first tab, in the first frame.
-                viewModel.AdoptSession(session);
-                adopted = true;
-            }
-
-            window.DataContext = viewModel;
-            desktop.MainWindow = window;
-
-            if (instance is not null)
-            {
-                // Later launches are accepted only after the first frame (startup path); Background runs after rendering.
-                window.Opened += (_, _) => Dispatcher.UIThread.Post(
-                    () => StartListening(instance, viewModel),
-                    DispatcherPriority.Background);
-            }
-
-            if (!OperatingSystem.IsWindows())
-            {
-                // Windows takes the icon of the executable (ApplicationIcon); elsewhere the window carries it. Decoding
-                // it is not part of the startup path.
-                window.Opened += (_, _) => Dispatcher.UIThread.Post(() => SetWindowIcon(window), DispatcherPriority.Background);
-            }
-
-            if (_startup?.Measurement is { } measure)
-            {
-                // The first frame of the window: the first tick of the render loop after it opened.
-                window.Opened += (_, _) =>
-                {
-                    StartupPhases.Mark("window-opened");
-                    window.RequestAnimationFrame(_ => StartupPhases.Mark("first-frame"));
-                };
-
-                // Started before the window opens, so no sharp image can come before the measurement listens.
-                var output = new MeasurementOutput(
-                    Console.Out, Console.Error, code => Dispatcher.UIThread.Post(() => desktop.Shutdown(code)), StartupPhases.Current);
-                MeasurementRun.Create(measure, viewModel, window.DocumentView, output)?.Start();
-            }
+                desktop.MainWindow = window;
+                ConfigureFirstWindow(desktop, (MainWindow)window, viewModel, workspace, instance);
+            });
 
             desktop.Exit += (_, _) =>
             {
                 instance?.Dispose();
-                viewModel.Dispose();
-                if (!adopted)
+                workspace.Dispose();
+                if (firstTab is null)
                 {
                     // Unused (no file on the command line); a tab owns and releases an adopted one.
                     session?.Dispose();
@@ -118,7 +91,64 @@ public sealed class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    private static void SetWindowIcon(Window window) => window.Icon = LoadWindowIcon();
+    /// <summary>
+    /// What only the first window does, before it is shown: accept later launches after its first frame, carry the
+    /// icon outside Windows and run a measurement switch on its view model.
+    /// </summary>
+    private void ConfigureFirstWindow(
+        IClassicDesktopStyleApplicationLifetime desktop, MainWindow window, MainViewModel viewModel, Workspace workspace, SingleInstance? instance)
+    {
+        if (instance is not null)
+        {
+            // Later launches are accepted only after the first frame (startup path); Background runs after rendering.
+            // Their files open in the window activated last.
+            window.Opened += (_, _) => Dispatcher.UIThread.Post(
+                () => StartListening(instance, workspace),
+                DispatcherPriority.Background);
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            // Windows takes the icon of the executable (ApplicationIcon); elsewhere the window carries it. Decoding
+            // it is not part of the startup path. Later windows get it when they are created (CreateWindow).
+            window.Opened += (_, _) => Dispatcher.UIThread.Post(() => window.Icon = _windowIcon ??= LoadWindowIcon(), DispatcherPriority.Background);
+        }
+
+        if (_startup?.Measurement is { } measure)
+        {
+            // The first frame of the window: the first tick of the render loop after it opened.
+            window.Opened += (_, _) =>
+            {
+                StartupPhases.Mark("window-opened");
+                window.RequestAnimationFrame(_ => StartupPhases.Mark("first-frame"));
+            };
+
+            // Started before the window opens, so no sharp image can come before the measurement listens.
+            var output = new MeasurementOutput(
+                Console.Out, Console.Error, code => Dispatcher.UIThread.Post(() => desktop.Shutdown(code)), StartupPhases.Current);
+            MeasurementRun.Create(measure, viewModel, window.DocumentView, output)?.Start();
+        }
+    }
+
+    /// <summary>
+    /// Creates a window of the workspace. The first one is part of the startup path (marked as a phase, icon after its
+    /// first frame); later ones carry the icon outside Windows from the start.
+    /// </summary>
+    private MainWindow CreateWindow()
+    {
+        var window = new MainWindow();
+        if (!_firstWindowCreated)
+        {
+            _firstWindowCreated = true;
+            StartupPhases.Mark("window-created");
+        }
+        else if (!OperatingSystem.IsWindows())
+        {
+            window.Icon = _windowIcon ??= LoadWindowIcon();
+        }
+
+        return window;
+    }
 
     internal static WindowIcon LoadWindowIcon()
     {
@@ -126,11 +156,11 @@ public sealed class App : Application
         return new WindowIcon(stream);
     }
 
-    private static void StartListening(SingleInstance instance, MainViewModel viewModel)
+    private static void StartListening(SingleInstance instance, Workspace workspace)
     {
         try
         {
-            instance.StartListening(viewModel.OnExternalOpen);
+            instance.StartListening(workspace.OnExternalOpen);
         }
         catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
         {

@@ -147,7 +147,8 @@ public sealed class TabStripTests : IDisposable
         var (window, viewModel) = Show();
         var tabs = await OpenTabsAsync(window, viewModel, 3);
 
-        // A right click does not activate the tab; its menu offers "Close" (Task 10 adds "Open in new window").
+        // A right click does not activate the tab; its menu offers "Close". "Open in new window" needs a workspace that
+        // takes the tab (WorkspaceTests.MoveToNewWindowIsOnlyOfferedWithTwoOrMoreTabs), which this window has not.
         Click(window, BodyPoint(window, ShownTabs(window)[0]), MouseButton.Right);
         Assert.Same(tabs[2], viewModel.ActiveTab);
         var close = Assert.Single(window.GetVisualDescendants().OfType<MenuItem>(), item => item.IsEffectivelyVisible);
@@ -354,6 +355,30 @@ public sealed class TabStripTests : IDisposable
         Click(window, CenterOf(window, allTabs), MouseButton.Left);
         Assert.Equal(tabs.Skip(1).Select(tab => tab.FileName), flyout.Items.OfType<MenuItem>().Select(item => item.Header as string));
         flyout.Hide();
+        Settle(window);
+
+        // The closed menu lets go of its entries, and with them of the tabs (a closed tab is not kept alive).
+        Assert.Empty(flyout.Items);
+    }
+
+    [AvaloniaFact]
+    public async Task AllTabsButtonIsHiddenWithoutTabs()
+    {
+        var (window, viewModel) = Show(640);
+        var tabs = await OpenTabsAsync(window, viewModel, 5);
+        var allTabs = Find<Button>(window, "AllTabsButton");
+        Assert.True(allTabs.IsEffectivelyVisible);
+
+        // All tabs closed at once, before the strip measures again: no "All tabs (0)" next to the start screen.
+        foreach (var tab in tabs)
+        {
+            viewModel.CloseTabCommand.Execute(tab);
+        }
+
+        Settle(window);
+        Assert.Empty(viewModel.Tabs);
+        Assert.False(allTabs.IsEffectivelyVisible);
+        Assert.False(Find<Control>(window, "OpenButton").IsEffectivelyVisible);
     }
 
     [AvaloniaTheory]

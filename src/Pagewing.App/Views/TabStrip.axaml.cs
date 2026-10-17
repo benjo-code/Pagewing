@@ -59,6 +59,9 @@ public sealed partial class TabStrip : UserControl
         {
             menu.ItemsSource = _menuEntries;
             menu.Opening += OnAllTabsMenuOpening;
+
+            // The entries hold their tabs (CommandParameter): a closed menu drops them, so a closed tab is not kept.
+            menu.Closed += (_, _) => _menuEntries.Clear();
         }
     }
 
@@ -289,7 +292,9 @@ public sealed partial class TabStrip : UserControl
     }
 
     /// <summary>
-    /// The context menu of a tab: "Close". Created when it is asked for, so a tab costs nothing for it before.
+    /// The context menu of a tab: "Open in new window" when the window has at least two tabs
+    /// (<see cref="MainViewModel.CanMoveTabToNewWindow"/>), and "Close". Created when it is asked for, so a tab costs
+    /// nothing for it before.
     /// </summary>
     private void OnPanelContextRequested(object? sender, ContextRequestedEventArgs e)
     {
@@ -298,13 +303,14 @@ public sealed partial class TabStrip : UserControl
             return;
         }
 
-        var menu = new ContextMenu
+        var items = new List<MenuItem>(2);
+        if (_viewModel.CanMoveTabToNewWindow)
         {
-            ItemsSource = new[]
-            {
-                new MenuItem { Header = Strings.CloseTabMenu, Command = _viewModel.CloseTabCommand, CommandParameter = tab },
-            },
-        };
+            items.Add(new MenuItem { Header = Strings.MoveToNewWindow, Command = _viewModel.MoveTabToNewWindowCommand, CommandParameter = tab });
+        }
+
+        items.Add(new MenuItem { Header = Strings.CloseTabMenu, Command = _viewModel.CloseTabCommand, CommandParameter = tab });
+        var menu = new ContextMenu { ItemsSource = items };
         menu.Open(ViewOf(tab));
         e.Handled = true;
     }

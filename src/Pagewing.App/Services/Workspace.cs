@@ -1,0 +1,219 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Threading;
+using Pagewing.App.ViewModels;
+using Pagewing.Core.Viewing;
+
+namespace Pagewing.App.Services;
+
+/// <summary>
+/// The windows of the app: opens them, knows the one activated last (where files of a later launch open) and moves a
+/// tab into a window of its own with its session, without opening the file again. The first window returns to the
+/// start screen when its last tab closes; every other window closes with its last tab (<see
+/// cref="MainViewModel.CloseWindowWhenEmpty"/>), and when the first one is closed, the next one takes its part. A closed
+/// window releases its tabs. Everything except <see cref="OnExternalOpen"/> is used on the UI thread.
+/// </summary>
+internal sealed class Workspace : IDisposable
+{
+    /// <summary>How far a new window is offset to the right and down from its source window, in device-independent pixels.</summary>
+    public const double NewWindowOffset = 32;
+
+    private readonly Func<ViewerSession> _sessionFactory;
+    private readonly Func<Window> _createWindow;
+    private readonly Func<Window, IFilePicker> _createPicker;
+    private readonly List<MainViewModel> _windows = [];
+    private readonly Dictionary<MainViewModel, Window> _views = [];
+
+    /// <param name="sessionFactory">Creates the session of each new tab, in every window.</param>
+    /// <param name="createWindow">Creates a window (a <see cref="Views.MainWindow"/> in the app).</param>
+    /// <param name="createPicker">Creates the file dialog of a window.</param>
+    public Workspace(Func<ViewerSession> sessionFactory, Func<Window> createWindow, Func<Window, IFilePicker> createPicker)
+    {
+        ArgumentNullException.ThrowIfNull(sessionFactory);
+        ArgumentNullException.ThrowIfNull(createWindow);
+        ArgumentNullException.ThrowIfNull(createPicker);
+        _sessionFactory = sessionFactory;
+        _createWindow = createWindow;
+        _createPicker = createPicker;
+    }
+
+    /// <summary>Gets the view models of the open windows, the oldest first.</summary>
+    public IReadOnlyList<MainViewModel> Windows => _windows;
+
+    /// <summary>
+    /// Gets the window that was activated last (<see cref="WindowBase.Activated"/>), or <see langword="null"/> when none
+    /// was activated yet or it has been closed since.
+    /// </summary>
+    public MainViewModel? ActiveWindow { get; private set; }
+
+    /// <summary>
+    /// Opens a window: creates it and its view model, adds <paramref name="firstTab"/> as its tab, sets the
+    /// <c>DataContext</c> and shows it. The caller makes the first window <c>desktop.MainWindow</c>. A window opened
+    /// while others are open lies next to the active one (see <see cref="MoveToNewWindow"/>).
+    /// </summary>
+    /// <param name="firstTab">The first tab of the window, for example the file of the command line; none for the start screen.</param>
+    /// <param name="beforeShow">
+    /// Called with the window and its view model right before the window is shown, for what has to see the window open
+    /// (the first frame of a measurement, for example).
+    /// </param>
+    public MainViewModel OpenWindow(TabViewModel? firstTab = null, Action<Window, MainViewModel>? beforeShow = null)
+    {
+        var source = ActiveWindow ?? (_windows.Count > 0 ? _windows[^1] : null);
+        return Open(firstTab, source is null ? null : _views[source], beforeShow);
+    }
+
+    /// <summary>Gets the window of an open window view model.</summary>
+    public Window WindowOf(MainViewModel viewModel) =>
+        _views.TryGetValue(viewModel, out var window) ? window : throw new ArgumentException("Not an open window of this workspace.", nameof(viewModel));
+
+    /// <summary>
+    /// "Open in new window": takes <paramref name="tab"/> out of <paramref name="source"/> without releasing it and
+    /// opens a window with it as its only, active tab, with the same session, document, page and zoom. The new window
+    /// has the size of the source window and lies <see cref="NewWindowOffset"/> to the right and down from it, on the
+    /// screen. Does nothing when <paramref name="source"/> has only this tab (it would make an equal window) or the
+    /// tab is not one of its tabs.
+    /// </summary>
+    public void MoveToNewWindow(MainViewModel source, TabViewModel tab)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(tab);
+        if (!_views.TryGetValue(source, out var sourceWindow) || source.Tabs.Count < 2 || source.Tabs.IndexOf(tab) < 0)
+        {
+            return;
+        }
+
+        // The document view of the source window saves where it showed the tab when it leaves it.
+        source.DetachTab(tab);
+        Open(tab, sourceWindow, beforeShow: null);
+    }
+
+    /// <summary>
+    /// Handles the files a later launch handed over (single instance). May be called on any thread: on the UI thread
+    /// they open as tabs of the window activated last, or of the first window when none was activated, which comes to
+    /// the front (<see cref="MainViewModel.OpenExternal"/>).
+    /// </summary>
+    public void OnExternalOpen(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        var copy = paths.ToArray();
+        Dispatcher.UIThread.Post(() =>
+        {
+            var target = ActiveWindow ?? (_windows.Count > 0 ? _windows[0] : null);
+            target?.OpenExternal(copy);
+        });
+    }
+
+    /// <summary>
+    /// Where a window of the size of <paramref name="source"/> goes next to it: <see cref="NewWindowOffset"/> (times
+    /// <paramref name="scaling"/>) to the right and down, moved back into <paramref name="workingArea"/> where it would
+    /// stick out; a window larger than the area starts at its top left. All in physical pixels.
+    /// </summary>
+    public static PixelPoint PlaceNextTo(PixelRect source, PixelRect? workingArea, double scaling)
+    {
+        var offset = (int)Math.Round(NewWindowOffset * scaling);
+        var x = source.X + offset;
+        var y = source.Y + offset;
+        if (workingArea is { } area)
+        {
+            x = Math.Max(area.X, Math.Min(x, area.Right - source.Width));
+            y = Math.Max(area.Y, Math.Min(y, area.Bottom - source.Height));
+        }
+
+        return new PixelPoint(x, y);
+    }
+
+    /// <summary>Closes every open window, which releases its tabs.</summary>
+    public void Dispose()
+    {
+        foreach (var viewModel in _windows.ToArray())
+        {
+            if (_views.TryGetValue(viewModel, out var window))
+            {
+                window.Close();
+            }
+        }
+
+        // A window whose close did not get through (the app is ending) still releases its tabs.
+        foreach (var viewModel in _windows.ToArray())
+        {
+            Forget(viewModel);
+        }
+    }
+
+    private MainViewModel Open(TabViewModel? firstTab, Window? source, Action<Window, MainViewModel>? beforeShow)
+    {
+        var window = _createWindow();
+        var viewModel = new MainViewModel(_sessionFactory, _createPicker(window));
+        if (source is not null)
+        {
+            PlaceNextTo(window, source);
+        }
+
+        viewModel.MoveToNewWindowRequested += tab => MoveToNewWindow(viewModel, tab);
+        window.Activated += (_, _) =>
+        {
+            if (_views.ContainsKey(viewModel))
+            {
+                ActiveWindow = viewModel;
+            }
+        };
+        window.Closed += (_, _) => Forget(viewModel);
+
+        _windows.Add(viewModel);
+        _views.Add(viewModel, window);
+        UpdateCloseWindowWhenEmpty();
+        if (firstTab is not null)
+        {
+            // Before the DataContext, so the first frame of the window shows the tab.
+            viewModel.AttachTab(firstTab);
+        }
+
+        window.DataContext = viewModel;
+        beforeShow?.Invoke(window, viewModel);
+        window.Show();
+        return viewModel;
+    }
+
+    /// <summary>Gives <paramref name="window"/> the size of <paramref name="source"/> and puts it next to it, on its screen.</summary>
+    private static void PlaceNextTo(Window window, Window source)
+    {
+        var size = source.ClientSize;
+        var scaling = source.DesktopScaling;
+        var frame = new PixelRect(source.Position, PixelSize.FromSize(size, scaling));
+        var area = source.Screens.ScreenFromWindow(source)?.WorkingArea;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Width = size.Width;
+        window.Height = size.Height;
+        window.Position = PlaceNextTo(frame, area, scaling);
+    }
+
+    /// <summary>A window closed: it leaves the list and releases its tabs.</summary>
+    private void Forget(MainViewModel viewModel)
+    {
+        if (!_views.Remove(viewModel, out var window))
+        {
+            return;
+        }
+
+        _windows.Remove(viewModel);
+        if (ReferenceEquals(ActiveWindow, viewModel))
+        {
+            ActiveWindow = null;
+        }
+
+        UpdateCloseWindowWhenEmpty();
+
+        // The views let go of the tabs before their sessions are released.
+        window.DataContext = null;
+        viewModel.Dispose();
+    }
+
+    /// <summary>The oldest window shows the start screen without tabs; every other one closes with its last tab.</summary>
+    private void UpdateCloseWindowWhenEmpty()
+    {
+        for (var i = 0; i < _windows.Count; i++)
+        {
+            _windows[i].CloseWindowWhenEmpty = i > 0;
+        }
+    }
+}

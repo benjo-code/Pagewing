@@ -23,6 +23,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly Func<ViewerSession> _sessionFactory;
     private readonly IFilePicker _picker;
     private readonly RelayCommand _closeActiveTabCommand;
+
+    // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private bool _picking;
     private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
@@ -50,6 +53,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ActivateTabCommand = new RelayCommand<TabViewModel>(tab => Tabs.Activate(tab));
         NextTabCommand = new RelayCommand(Tabs.ActivateNext);
         PreviousTabCommand = new RelayCommand(Tabs.ActivatePrevious);
+        MoveTabToNewWindowCommand = new RelayCommand<TabViewModel>(tab =>
+        {
+            if (CanMoveTabToNewWindow && Tabs.IndexOf(tab) >= 0)
+            {
+                MoveToNewWindowRequested?.Invoke(tab);
+            }
+        });
     }
 
     /// <summary>Raised on the UI thread when the window should come to the front (a later launch handed over).</summary>
@@ -57,6 +67,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Raised when the last tab was closed and <see cref="CloseWindowWhenEmpty"/> is set.</summary>
     public event Action? CloseWindowRequested;
+
+    /// <summary>
+    /// Raised by <see cref="MoveTabToNewWindowCommand"/> for a tab of this window that should move into a window of its
+    /// own ("Open in new window"); the workspace (<see cref="Services.Workspace"/>) moves it. Without a handler the
+    /// window does not offer it.
+    /// </summary>
+    public event Action<TabViewModel>? MoveToNewWindowRequested;
 
     /// <summary>Gets the tabs of the window, in the order of the tab strip.</summary>
     public TabList<TabViewModel> Tabs { get; } = new();
@@ -121,6 +138,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand PreviousTabCommand { get; }
 
     /// <summary>
+    /// "Open in new window" for the tab given as the parameter: raises <see cref="MoveToNewWindowRequested"/> while
+    /// <see cref="CanMoveTabToNewWindow"/> holds.
+    /// </summary>
+    public ICommand MoveTabToNewWindowCommand { get; }
+
+    /// <summary>
+    /// Gets whether a tab can move into a new window: the window has at least two tabs (moving the only one would only
+    /// make an equal window) and something takes the tab (<see cref="MoveToNewWindowRequested"/>).
+    /// </summary>
+    public bool CanMoveTabToNewWindow => Tabs.Count >= 2 && MoveToNewWindowRequested is not null;
+
+    /// <summary>
     /// Opens a file: a file that is already open in a tab activates that tab; otherwise a new tab to the right of the
     /// active one opens it.
     /// </summary>
@@ -175,14 +204,51 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(paths);
         var copy = paths.ToArray();
-        Dispatcher.UIThread.Post(() =>
-        {
-            _ = OpenManyAsync(copy);
-            ActivationRequested?.Invoke();
-        });
+        Dispatcher.UIThread.Post(() => OpenExternal(copy));
     }
 
-    /// <summary>Releases every tab and its session.</summary>
+    /// <summary>
+    /// <see cref="OnExternalOpen"/> on the UI thread: opens the files (<see cref="OpenManyAsync"/>) and brings the
+    /// window to the front.
+    /// </summary>
+    internal void OpenExternal(IReadOnlyList<string> paths)
+    {
+        _ = OpenManyAsync(paths);
+        ActivationRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Adds a tab that comes from another window, with its session and its state, and activates it; the tab is not
+    /// opened again.
+    /// </summary>
+    internal void AttachTab(TabViewModel tab)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+        if (Tabs.IndexOf(tab) < 0)
+        {
+            AddTab(tab);
+        }
+    }
+
+    /// <summary>
+    /// Takes a tab out of this window without releasing it (it moves to another window); the window stops listening to
+    /// it. Unlike closing, it never closes the window.
+    /// </summary>
+    /// <returns><see langword="true"/> when the tab was in this window.</returns>
+    internal bool DetachTab(TabViewModel tab)
+    {
+        if (Tabs.IndexOf(tab) < 0)
+        {
+            return false;
+        }
+
+        // The document view leaves the tab (with the change of the active tab) and saves where it showed it.
+        Tabs.Close(tab);
+        Unhook(tab);
+        return true;
+    }
+
+    /// <summary>Releases every tab and its session. May be called more than once.</summary>
     public void Dispose()
     {
         foreach (var tab in Tabs.ToArray())
@@ -205,10 +271,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private TabViewModel AddTab(TabViewModel tab)
     {
-        tab.CloseRequested += () => CloseTab(tab);
-        tab.OpenOtherRequested += () => _ = PickAndOpenAsync(tab);
+        var handlers = (Close: (Action)(() => CloseTab(tab)), OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)));
+        tab.CloseRequested += handlers.Close;
+        tab.OpenOtherRequested += handlers.OpenOther;
+        _tabHandlers[tab] = handlers;
         Tabs.Add(tab);
         return tab;
+    }
+
+    private void Unhook(TabViewModel tab)
+    {
+        if (_tabHandlers.Remove(tab, out var handlers))
+        {
+            tab.CloseRequested -= handlers.Close;
+            tab.OpenOtherRequested -= handlers.OpenOther;
+        }
     }
 
     private void CloseTab(TabViewModel? tab)
@@ -221,6 +298,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // The document view leaves the tab (with the change of the active tab) before its session is released; a
         // tab that is still loading is released the same way, the session cancels its request.
         Tabs.Close(tab);
+        Unhook(tab);
         tab.Dispose();
         if (Tabs.Count == 0 && CloseWindowWhenEmpty)
         {

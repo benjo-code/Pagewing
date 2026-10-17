@@ -38,6 +38,7 @@ public static class Strings
     public static string CloseTab => Get("CloseTab");
     public static string CloseTabTooltip => Get("CloseTabTooltip");
     public static string CloseTabMenu => Get("CloseTabMenu");
+    public static string MoveToNewWindow => Get("MoveToNewWindow");
     public static string AllTabs => Get("AllTabs");
     public static string AllTabsTooltip => Get("AllTabsTooltip");
     public static string StartTitle => Get("StartTitle");

@@ -16,11 +16,19 @@
   <DockPanel>
     <ctl:TabStripPanel Name="TabPanel" DockPanel.Dock="Left" ReservedWidth="36" IsVisible="{Binding HasTabs}" />
 
-    <!-- TabStripLayout.AllTabsButtonWidth (50) with its margin. The menu is filled when it opens. -->
+    <!--
+      TabStripLayout.AllTabsButtonWidth (50) with its margin. The menu is filled when it opens. HasTabs too, because the
+      panel recomputes ShowOnlyActive only when it measures, which it does not while it is hidden (no tabs).
+    -->
     <Button Name="AllTabsButton" DockPanel.Dock="Left" Classes="icon"
             Width="46" Height="30" Margin="4,0,0,0"
-            IsVisible="{Binding #TabPanel.ShowOnlyActive}"
             chrome:WindowDecorationProperties.ElementRole="User">
+      <Button.IsVisible>
+        <MultiBinding Converter="{x:Static BoolConverters.And}">
+          <Binding Path="HasTabs" />
+          <Binding Path="#TabPanel.ShowOnlyActive" />
+        </MultiBinding>
+      </Button.IsVisible>
       <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
         <TextBlock Name="AllTabsCount" Classes="num" VerticalAlignment="Center" />
         <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronDown}" />
