@@ -161,7 +161,7 @@
             { "text": "Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)", "done": true },
             { "text": "Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom", "done": true },
             { "text": "Gehe zu Seite", "done": true },
-            { "text": "Dokumentinfos in der Statusleiste (Design-Spec 7.6: Datei, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Metadaten)", "done": false }
+            { "text": "Dokumentinfos in der Statusleiste (Design-Spec 7.6: Datei, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Metadaten)", "done": true }
           ],
           "acceptance": [
             { "text": "Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün", "done": false },
