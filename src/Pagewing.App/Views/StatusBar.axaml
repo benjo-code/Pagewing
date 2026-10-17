@@ -12,7 +12,8 @@
     Status bar (design system section 6, item 5): ‹ "Page" [field] "of N" ›, separator, zoom − [value] +.
     Text type.caption in text.secondary, icons 16 px. Below 760 px the word "Page" goes (code-behind); the icons
     stay, with their tooltips. The page field jumps on Enter; an invalid entry, or leaving the field without Enter,
-    puts the current page back (design system 7.5).
+    puts the current page back (design system 7.5). Ctrl+G gives it the focus with its content selected. A click on
+    the zoom value opens the zoom menu: the steps from 25 to 400 %, then page width, whole page and actual size.
   -->
   <UserControl.Styles>
     <Style Selector="Button.status">
@@ -20,6 +21,13 @@
       <Setter Property="Height" Value="24" />
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="Button.status-value">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="2,0" />
       <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
     </Style>
   </UserControl.Styles>
@@ -36,6 +44,7 @@
              Width="40" Height="22" MinHeight="22" Padding="2,0" FontSize="12" FontFeatures="+tnum"
              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
              Text="{Binding PageFieldText}"
+             ToolTip.Tip="{x:Static res:Strings.GoToPageTooltip}"
              AutomationProperties.Name="{x:Static res:Strings.PageLabel}">
       <TextBox.KeyBindings>
         <KeyBinding Gesture="Enter" Command="{Binding CommitPageFieldCommand}" />
@@ -57,9 +66,17 @@
             AutomationProperties.Name="{x:Static res:Strings.ZoomOut}">
       <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Minus}" />
     </Button>
-    <TextBlock Name="ZoomValueText" Classes="num" MinWidth="44" TextAlignment="Center" VerticalAlignment="Center"
-               Text="{Binding ZoomText}"
-               AutomationProperties.Name="{x:Static res:Strings.ZoomValue}" />
+    <!-- The zoom value opens the zoom menu (design system 7.5); its entries are created when it opens (StatusBar.axaml.cs). -->
+    <Button Name="ZoomMenuButton" Classes="icon status-value"
+            ToolTip.Tip="{x:Static res:Strings.ZoomMenuTooltip}"
+            AutomationProperties.Name="{x:Static res:Strings.ZoomValue}">
+      <TextBlock Name="ZoomValueText" Classes="num" MinWidth="44" TextAlignment="Center" VerticalAlignment="Center"
+                 Text="{Binding ZoomText}"
+                 AutomationProperties.Name="{x:Static res:Strings.ZoomValue}" />
+      <Button.Flyout>
+        <MenuFlyout Placement="TopEdgeAlignedLeft" />
+      </Button.Flyout>
+    </Button>
     <Button Name="ZoomInButton" Classes="icon status"
             Command="{Binding ZoomInCommand}"
             ToolTip.Tip="{x:Static res:Strings.ZoomIn}"

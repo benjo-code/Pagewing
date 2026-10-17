@@ -65,6 +65,14 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         _nextPageCommand = new RelayCommand(() => GoToPage(CurrentPage + 1), () => IsReady && CurrentPage < PageCount);
         NextPageCommand = _nextPageCommand;
         CommitPageFieldCommand = new RelayCommand(CommitPageField);
+        SetZoomModeCommand = new RelayCommand<ZoomMode>(SelectZoomMode);
+        SetZoomCommand = new RelayCommand<double>(zoom =>
+        {
+            if (IsReady)
+            {
+                Zoom = zoom;
+            }
+        });
 
         _session.Changed += OnSessionChanged;
         Refresh();
@@ -268,7 +276,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>Gets the zoom as shown in the status bar ("100 %").</summary>
+    /// <summary>Gets the zoom as shown in the status bar ("100 %"); in a fit mode the zoom the document view computed.</summary>
     public string ZoomText => Zoom.ToString("P0", Strings.Culture);
 
     /// <summary>Gets or sets how the zoom follows the viewport; <see cref="ZoomMode.Free"/> by default. Kept when the document changes.</summary>
@@ -345,6 +353,15 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
     /// <summary>Enter in the page field: jumps to the typed page or resets the field.</summary>
     public ICommand CommitPageFieldCommand { get; }
+
+    /// <summary>
+    /// Chooses a <see cref="ZoomMode"/> (parameter: the mode; zoom menu, Ctrl+0, Ctrl+1, Ctrl+2).
+    /// The document view computes the zoom of a fit mode; choosing the active mode again fits again.
+    /// </summary>
+    public ICommand SetZoomModeCommand { get; }
+
+    /// <summary>Sets the zoom to a step of the zoom menu (parameter: the zoom, 1 = 100 %) and leaves a fit mode.</summary>
+    public ICommand SetZoomCommand { get; }
 
     /// <summary>Opens a file in this tab and replaces its document.</summary>
     /// <param name="path">Path of the file; an empty path does nothing.</param>
@@ -453,6 +470,20 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(ZoomText));
             _zoomInCommand.RaiseCanExecuteChanged();
             _zoomOutCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    private void SelectZoomMode(ZoomMode mode)
+    {
+        if (!IsReady || !Enum.IsDefined(mode))
+        {
+            return;
+        }
+
+        // The same mode once more still tells the view: after scrolling to a page of another size it fits that one.
+        if (!SetProperty(ref _zoomMode, mode, nameof(ZoomMode)))
+        {
+            OnPropertyChanged(nameof(ZoomMode));
         }
     }
 

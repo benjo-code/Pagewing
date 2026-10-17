@@ -75,6 +75,14 @@ public static class Strings
     public static string ZoomOut => Get("ZoomOut");
     public static string ZoomIn => Get("ZoomIn");
     public static string ZoomValue => Get("ZoomValue");
+    public static string ZoomMenuTooltip => Get("ZoomMenuTooltip");
+    public static string ZoomFitWidth => Get("ZoomFitWidth");
+    public static string ZoomFitWidthShortcut => Get("ZoomFitWidthShortcut");
+    public static string ZoomFitPage => Get("ZoomFitPage");
+    public static string ZoomFitPageShortcut => Get("ZoomFitPageShortcut");
+    public static string ZoomActualSize => Get("ZoomActualSize");
+    public static string ZoomActualSizeShortcut => Get("ZoomActualSizeShortcut");
+    public static string GoToPageTooltip => Get("GoToPageTooltip");
     public static string PagePlaceholderFailed => Get("PagePlaceholderFailed");
 
     private static ResourceManager Select(CultureInfo culture) =>

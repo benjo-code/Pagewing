@@ -4,11 +4,10 @@ namespace Pagewing.App.ViewModels;
 
 /// <summary>
 /// An <see cref="ICommand"/> that calls a delegate with its parameter; a parameter that is not a
-/// <typeparamref name="T"/> does nothing. Used on the UI thread only.
+/// <typeparamref name="T"/> (also <see langword="null"/> for a value type) does nothing. Used on the UI thread only.
 /// </summary>
 /// <typeparam name="T">The type of the command parameter.</typeparam>
 public sealed class RelayCommand<T> : ICommand
-    where T : class
 {
     private readonly Action<T> _execute;
 

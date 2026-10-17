@@ -13,7 +13,8 @@ namespace Pagewing.App.Views;
 
 /// <summary>
 /// The open document: continuous scrolling over all pages, zoom with Ctrl+wheel (around the pointer) and through the
-/// view model (Ctrl+Plus/Minus, status bar), page jumps, and the current page for the status bar. Its
+/// view model (Ctrl+Plus/Minus, status bar), the zoom modes of the tab (page width, whole page, actual size; see
+/// <see cref="Refit"/>), page jumps, and the current page for the status bar. Its
 /// <c>DataContext</c> is the active <see cref="TabViewModel"/> of the window; it mirrors the document of the tab's
 /// session. A change of the <c>DataContext</c> (another tab) disconnects from the old tab and shows the new one.
 /// </summary>
@@ -26,6 +27,25 @@ namespace Pagewing.App.Views;
 /// </remarks>
 public sealed partial class DocumentView : UserControl
 {
+    /// <summary>
+    /// A fit mode changes the zoom only when the zoom it computes differs from the current one by more than this, so
+    /// rounding and a viewport that changes by a fraction of a DIP leave the pages alone.
+    /// </summary>
+    private const double FitTolerance = 0.0005;
+
+    /// <summary>
+    /// How often one fit computes the zoom again because its own zoom brought or took away a scroll bar (which takes
+    /// its room from the viewport when it does not lie over the pages).
+    /// </summary>
+    private const int MaxFitPasses = 3;
+
+    /// <summary>
+    /// DIPs a fit leaves free in the viewport. Layout rounds the content size up to device pixels, so pages that fill
+    /// the viewport exactly up to a floating-point error (684.0000000000001) would be a pixel wider than it and bring a
+    /// scroll bar.
+    /// </summary>
+    private const double FitSlack = 0.01;
+
     private TabViewModel? _viewModel;
     private ViewerSession? _session;
     private PdfDocument? _document;
@@ -35,6 +55,7 @@ public sealed partial class DocumentView : UserControl
     private bool _focusPending;
     private Point? _zoomAnchor;
     private double _wheelSteps;
+    private bool _refitPosted;
     private TopLevel? _topLevel;
 
     public DocumentView()
@@ -251,6 +272,9 @@ public sealed partial class DocumentView : UserControl
         PageCanvas.Attach(layout, scheduler, cache);
 
         ChangeLayout(tab?.SavedView is { } saved ? RestoredOffset(layout, saved) : default);
+
+        // A fit mode of the tab fits the viewport as it is now (the window may have changed since the tab was left).
+        Refit(chosen: false);
         _focusPending = true;
         FocusLater();
     }
@@ -366,6 +390,7 @@ public sealed partial class DocumentView : UserControl
         var offset = Scroller.Offset;
         var anchor = layout.GetAnchor(offset.Y);
         var width = layout.ContentWidth;
+        var first = _loadedSizes;
         var added = new PdfPageSize[count];
         for (var i = 0; i < count; i++)
         {
@@ -377,6 +402,13 @@ public sealed partial class DocumentView : UserControl
 
         // Horizontally the centre of the pages stays in place.
         ChangeLayout(new Vector(offset.X + ((layout.ContentWidth - width) / 2), layout.GetOffset(anchor)));
+
+        // A fit that used the estimate for the current page fits its real size.
+        var current = (_viewModel?.CurrentPage ?? 0) - 1;
+        if (current >= first && current < first + count)
+        {
+            Refit(chosen: false);
+        }
     }
 
     /// <summary>
@@ -412,7 +444,88 @@ public sealed partial class DocumentView : UserControl
         if (!_changingLayout && (e.Property == ScrollViewer.OffsetProperty || e.Property == ScrollViewer.ViewportProperty))
         {
             UpdateViewport();
+            if (e.Property == ScrollViewer.ViewportProperty)
+            {
+                PostRefit();
+            }
         }
+    }
+
+    /// <summary>
+    /// Fits again after the viewport changed size. Not at once: the change arrives during a layout pass, in which the
+    /// new content size cannot be laid out before the scroll position is set (see <see cref="ChangeLayout"/>).
+    /// Several changes before the job runs fit once.
+    /// </summary>
+    private void PostRefit()
+    {
+        if (_refitPosted || _viewModel is not { ZoomMode: not ZoomMode.Free } || _layout is null)
+        {
+            return;
+        }
+
+        _refitPosted = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _refitPosted = false;
+            Refit(chosen: false);
+        });
+    }
+
+    /// <summary>
+    /// In a fit mode of the tab, zooms so that the row of the current page fits the viewport
+    /// (<see cref="DocumentLayout.FitZoom"/>), like a zoom step around the middle of the viewport; "whole page" then
+    /// shows that row from its top. Free zoom and a zoom that would change by no more than <see cref="FitTolerance"/>
+    /// leave the pages alone, so the fit never follows its own rounding. Called when a mode is chosen, a document is
+    /// shown, the viewport changes size and a page is requested, never while scrolling.
+    /// </summary>
+    /// <param name="chosen">
+    /// The mode was just chosen: "whole page" shows the row from its top even when the zoom stays.
+    /// </param>
+    /// <remarks>
+    /// A scroll bar that takes its room from the viewport can change the viewport in reply to the new zoom: the fit
+    /// then computes again for that viewport, but only towards a smaller zoom. A larger one would bring back the bar
+    /// that the smaller zoom took away, and the two would take turns forever.
+    /// </remarks>
+    private void Refit(bool chosen)
+    {
+        if (_viewModel is not { ZoomMode: not ZoomMode.Free } tab || _layout is not { PageCount: > 0 } layout)
+        {
+            return;
+        }
+
+        var mode = tab.ZoomMode;
+        var page = Math.Clamp(tab.CurrentPage - 1, 0, layout.PageCount - 1);
+        var changed = false;
+        for (var pass = 0; pass < MaxFitPasses; pass++)
+        {
+            var size = Scroller.Viewport;
+            if (!(size.Width > 0 && size.Height > 0))
+            {
+                // Not laid out yet: the first size of the viewport fits (OnScrollerPropertyChanged).
+                return;
+            }
+
+            var zoom = layout.FitZoom(mode, page, size.Width - FitSlack, size.Height - FitSlack);
+            if (Math.Abs(zoom - layout.Zoom) <= FitTolerance || (pass > 0 && zoom > layout.Zoom))
+            {
+                break;
+            }
+
+            ApplyZoom(zoom);
+            changed = true;
+            if (Scroller.Viewport == size)
+            {
+                break;
+            }
+        }
+
+        if (mode == ZoomMode.FitPage && (chosen || changed) && layout.IsShown(page))
+        {
+            var top = layout.GetPageRect(layout.PagesOfRow(layout.RowOf(page)).First).Y;
+            ScrollTo(new Vector(Scroller.Offset.X, top - DocumentLayout.Margin));
+        }
+
+        tab.ApplyFitZoom(layout.Zoom);
     }
 
     private void OnScalingChanged(object? sender, EventArgs e) => UpdateViewport();
@@ -445,6 +558,10 @@ public sealed partial class DocumentView : UserControl
         if (e.PropertyName == nameof(TabViewModel.Zoom) && _viewModel is not null)
         {
             ApplyZoom(_viewModel.Zoom);
+        }
+        else if (e.PropertyName == nameof(TabViewModel.ZoomMode))
+        {
+            Refit(chosen: true);
         }
         else if (e.PropertyName == nameof(TabViewModel.IsPasswordPrompt) && _focusPending)
         {
@@ -515,13 +632,22 @@ public sealed partial class DocumentView : UserControl
         _zoomAnchor = null;
     }
 
-    /// <summary>Shows <paramref name="page"/> (1-based) with its top edge at the margin below the top of the viewport.</summary>
+    /// <summary>
+    /// Shows <paramref name="page"/> (1-based) with its top edge at the margin below the top of the viewport; a fit
+    /// mode first fits that page.
+    /// </summary>
     private void OnPageRequested(int page)
     {
         var layout = _layout;
         if (layout is null || page < 1 || page > layout.PageCount)
         {
             return;
+        }
+
+        if (_viewModel is not null)
+        {
+            _viewModel.CurrentPage = page;
+            Refit(chosen: false);
         }
 
         Scroller.Offset = new Vector(Scroller.Offset.X, layout.GetPageRect(page - 1).Y - DocumentLayout.Margin);

@@ -144,6 +144,30 @@
   <data name="ZoomValue" xml:space="preserve">
     <value>Zoom level</value>
   </data>
+  <data name="ZoomMenuTooltip" xml:space="preserve">
+    <value>Choose zoom level or zoom mode</value>
+  </data>
+  <data name="ZoomFitWidth" xml:space="preserve">
+    <value>Page width</value>
+  </data>
+  <data name="ZoomFitWidthShortcut" xml:space="preserve">
+    <value>Ctrl+2</value>
+  </data>
+  <data name="ZoomFitPage" xml:space="preserve">
+    <value>Whole page</value>
+  </data>
+  <data name="ZoomFitPageShortcut" xml:space="preserve">
+    <value>Ctrl+0</value>
+  </data>
+  <data name="ZoomActualSize" xml:space="preserve">
+    <value>Actual size</value>
+  </data>
+  <data name="ZoomActualSizeShortcut" xml:space="preserve">
+    <value>Ctrl+1</value>
+  </data>
+  <data name="GoToPageTooltip" xml:space="preserve">
+    <value>Go to page (Ctrl+G)</value>
+  </data>
   <data name="PagePlaceholderFailed" xml:space="preserve">
     <value>This page could not be displayed</value>
   </data>

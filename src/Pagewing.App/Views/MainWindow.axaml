@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Pagewing.App.ViewModels"
         xmlns:views="using:Pagewing.App.Views"
+        xmlns:viewing="using:Pagewing.Core.Viewing"
         x:Class="Pagewing.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{Binding WindowTitle}"
@@ -24,6 +25,15 @@
     <KeyBinding Gesture="Ctrl+Add" Command="{Binding ActiveTab.ZoomInCommand}" />
     <KeyBinding Gesture="Ctrl+OemMinus" Command="{Binding ActiveTab.ZoomOutCommand}" />
     <KeyBinding Gesture="Ctrl+Subtract" Command="{Binding ActiveTab.ZoomOutCommand}" />
+    <!-- Zoom modes (zoom menu of the status bar): Ctrl+0 whole page, Ctrl+1 actual size, Ctrl+2 page width; main block and number pad. -->
+    <KeyBinding Gesture="Ctrl+D0" Command="{Binding ActiveTab.SetZoomModeCommand}" CommandParameter="{x:Static viewing:ZoomMode.FitPage}" />
+    <KeyBinding Gesture="Ctrl+NumPad0" Command="{Binding ActiveTab.SetZoomModeCommand}" CommandParameter="{x:Static viewing:ZoomMode.FitPage}" />
+    <KeyBinding Gesture="Ctrl+D1" Command="{Binding ActiveTab.SetZoomModeCommand}" CommandParameter="{x:Static viewing:ZoomMode.ActualSize}" />
+    <KeyBinding Gesture="Ctrl+NumPad1" Command="{Binding ActiveTab.SetZoomModeCommand}" CommandParameter="{x:Static viewing:ZoomMode.ActualSize}" />
+    <KeyBinding Gesture="Ctrl+D2" Command="{Binding ActiveTab.SetZoomModeCommand}" CommandParameter="{x:Static viewing:ZoomMode.FitWidth}" />
+    <KeyBinding Gesture="Ctrl+NumPad2" Command="{Binding ActiveTab.SetZoomModeCommand}" CommandParameter="{x:Static viewing:ZoomMode.FitWidth}" />
+    <!-- Go to page: the page field of the status bar takes the focus with its content selected. -->
+    <KeyBinding Gesture="Ctrl+G" Command="{Binding ActiveTab.FocusPageFieldCommand}" />
     <!-- Page by page, as the tooltips of the status bar arrows say. -->
     <KeyBinding Gesture="PageUp" Command="{Binding ActiveTab.PreviousPageCommand}" />
     <KeyBinding Gesture="PageDown" Command="{Binding ActiveTab.NextPageCommand}" />
