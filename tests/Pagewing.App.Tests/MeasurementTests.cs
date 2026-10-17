@@ -87,6 +87,24 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.Equal([0], _exits);
     }
 
+    [AvaloniaFact]
+    public async Task StartupMeasurementSucceedsWithoutPhasesWhenTheProcessStartCannotBeRead()
+    {
+        var (window, viewModel, view) = Show();
+        var phases = new PhaseRecorder();
+        phases.Mark("main", System.Diagnostics.Stopwatch.GetTimestamp());
+        var output = new MeasurementOutput(_output, _error, _exits.Add, phases, () => throw new InvalidOperationException("no process information"));
+        using var measurement = new StartupMeasurement(viewModel, view, TestData.Pdf("text-basic.pdf"), null, output, Timeout, TimeSpan.Zero);
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        // The phases are only information: the result line stands, no phase line, no error, exit code 0.
+        Assert.Equal(["first-sharp"], Lines(_output));
+        Assert.Empty(_error.ToString());
+        Assert.Equal([0], _exits);
+    }
+
     [Fact]
     public void PhaseRecorderKeepsTheFirstMarkOfEachPhaseInOrder()
     {

@@ -29,6 +29,7 @@ public sealed class PageShadowTests
     public static TheoryData<string, double> ThemesAndScalings => new()
     {
         { "Light", 1.0 },
+        { "Light", 1.25 },
         { "Light", 2.0 },
         { "Dark", 1.0 },
         { "Dark", 1.5 },
@@ -119,25 +120,34 @@ public sealed class PageShadowTests
         }
     }
 
-    [AvaloniaFact]
-    public void PageRectangleIsNeverDrawnWithTheBoxShadows()
+    [AvaloniaTheory]
+    [InlineData(false, 1.0)]
+    [InlineData(true, 1.0)]
+    [InlineData(true, 1.25)]
+    public void PageRectangleIsNeverDrawnWithTheBoxShadows(bool rendered, double scaling)
     {
         // An inset shadow is drawn by a box shadow of the page rectangle (inside the page) but never by the image:
-        // a red frame inside the page would mean the page is drawn with BoxShadows again.
-        var (frame, page) = RenderCanvas(ThemeVariant.Light, 1, BoxShadows.Parse("0 0 0 1 #14000000, inset 0 0 0 20 #FFFF0000"));
+        // a red frame inside the page would mean the page is drawn with BoxShadows again. Both draw paths: the
+        // placeholder, and a rendered page (a sharp tile of 1 × 1 pixel, so the page fill stays visible around it).
+        var (frame, page) = RenderCanvas(ThemeVariant.Light, scaling, BoxShadows.Parse("0 0 0 1 #14000000, inset 0 0 0 20 #FFFF0000"), rendered);
         using (frame)
         {
-            for (var y = (int)page.Y; y < (int)page.Bottom; y += 3)
+            var left = (int)Math.Round(page.X * scaling);
+            var top = (int)Math.Round(page.Y * scaling);
+            for (var y = top; y < (int)(page.Bottom * scaling); y += 3)
             {
-                for (var x = (int)page.X; x < (int)page.Right; x += 3)
+                for (var x = left; x < (int)(page.Right * scaling); x += 3)
                 {
                     var color = frame.GetColor(x, y);
                     Assert.False(color.R > 200 && color.G < 100, $"red at ({x}, {y})");
                 }
             }
 
+            // A rendered page is white around its tile (a placeholder has surface.raised, also white in the light theme).
+            Assert.Equal(Colors.White, frame.GetColor(left + 40, top + 40));
+
             // The outer part of the same value is drawn (the border left of the page).
-            Assert.NotEqual(TokenTests.Token("Surface.Canvas", ThemeVariant.Light), frame.GetColor((int)page.X - 1, (int)(page.Y + 50)));
+            Assert.NotEqual(TokenTests.Token("Surface.Canvas", ThemeVariant.Light), frame.GetColor(left - 1, (int)((page.Y + 50) * scaling)));
         }
     }
 
@@ -231,9 +241,9 @@ public sealed class PageShadowTests
         Assert.Equal(0, painter.CachedImages);
     }
 
-    private static (FramePixels Frame, Rect Page) RenderCanvas(ThemeVariant variant, double scaling, BoxShadows? shadows = null)
+    private static (FramePixels Frame, Rect Page) RenderCanvas(ThemeVariant variant, double scaling, BoxShadows? shadows = null, bool rendered = false)
     {
-        var (window, canvas, page) = ShowCanvasInWindow(variant, scaling, shadows);
+        var (window, canvas, page) = ShowCanvasInWindow(variant, scaling, shadows, rendered);
         try
         {
             return (Snapshot(window, canvas), page);
@@ -244,12 +254,21 @@ public sealed class PageShadowTests
         }
     }
 
-    /// <summary>A canvas filling a window with one 400 × 300 DIP placeholder page (its tiles never come) on surface.canvas.</summary>
-    private static (Window Window, DocumentCanvas Canvas, Rect Page) ShowCanvasInWindow(ThemeVariant variant, double scaling, BoxShadows? shadows = null)
+    /// <summary>
+    /// A canvas filling a window with one 400 × 300 DIP page on surface.canvas: a placeholder (its tiles never come)
+    /// or, with <paramref name="rendered"/>, a rendered page whose sharp tile is a single gray pixel (no preview).
+    /// </summary>
+    private static (Window Window, DocumentCanvas Canvas, Rect Page) ShowCanvasInWindow(ThemeVariant variant, double scaling, BoxShadows? shadows = null, bool rendered = false)
     {
         Strings.Culture = new CultureInfo("en");
         var cache = new RenderCache();
-        var scheduler = new RenderScheduler((_, _) => new TaskCompletionSource<RenderedImage>().Task, cache);
+        var scheduler = new RenderScheduler(
+            (request, _) => !rendered
+                ? new TaskCompletionSource<RenderedImage>().Task
+                : request.Key.IsPreview
+                    ? Task.FromException<RenderedImage>(new PdfRenderException("no preview in this test"))
+                    : Task.FromResult(new RenderedImage(1, 1, 4, new byte[] { 128, 128, 128, 255 })),
+            cache);
         var layout = new DocumentLayout(1, new PdfPageSize(300, 225));
         var canvas = new DocumentCanvas();
         canvas.Bind(DocumentCanvas.PlaceholderBrushProperty, canvas.GetResourceObservable("Pw.Brush.Surface.Raised"));
@@ -278,6 +297,14 @@ public sealed class PageShadowTests
         canvas.Attach(layout, scheduler, cache);
         canvas.SetViewport(viewport, scaling);
         Settle(window);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (rendered && canvas.LastSharpDestinations.Count == 0)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the sharp tile was not drawn");
+            Thread.Sleep(5);
+            Settle(window);
+        }
+
         var rect = layout.GetPageRect(0);
         return (window, canvas, new Rect(rect.X - viewport.X, rect.Y - viewport.Y, rect.Width, rect.Height));
     }

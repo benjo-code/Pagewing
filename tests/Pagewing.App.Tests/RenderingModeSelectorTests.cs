@@ -61,6 +61,8 @@ public sealed class RenderingModeSelectorTests
     [Theory]
     [InlineData("software", true)]
     [InlineData("Software", true)]
+    [InlineData(" software", true)]
+    [InlineData("default ", false)]
     [InlineData("default", false)]
     [InlineData("DEFAULT", false)]
     public void TheOverrideSkipsTheDetection(string value, bool software)

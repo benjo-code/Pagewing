@@ -36,7 +36,7 @@ internal static class RenderingModeSelector
 {
     /// <summary>
     /// Environment variable that skips the detection: <c>software</c> forces software rendering, <c>default</c> keeps
-    /// Avalonia's default. Any other value is ignored.
+    /// Avalonia's default (surrounding spaces ignored). Any other value is ignored.
     /// </summary>
     public const string OverrideVariable = "PAGEWING_RENDERING";
 
@@ -48,6 +48,7 @@ internal static class RenderingModeSelector
     public static bool UseSoftwareRendering(string? overrideValue, Func<IReadOnlyList<GraphicsAdapter>?> enumerateAdapters)
     {
         ArgumentNullException.ThrowIfNull(enumerateAdapters);
+        overrideValue = overrideValue?.Trim();
         if (string.Equals(overrideValue, "software", StringComparison.OrdinalIgnoreCase))
         {
             return true;

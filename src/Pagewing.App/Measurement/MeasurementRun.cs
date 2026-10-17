@@ -11,7 +11,10 @@ namespace Pagewing.App.Measurement;
 /// <param name="Error">Receives <c>error: …</c> (stderr in the app).</param>
 /// <param name="Exit">Asked once to end the app with the exit code.</param>
 /// <param name="Phases">The startup phases written after <c>first-sharp</c> (<see cref="StartupPhases"/>), or <see langword="null"/>.</param>
-internal sealed record MeasurementOutput(TextWriter Output, TextWriter Error, Action<int> Exit, PhaseRecorder? Phases = null);
+/// <param name="ProcessStart">
+/// The origin of the phases; <see langword="null"/> reads the process start (<see cref="PhaseRecorder.ProcessStartTimestamp"/>).
+/// </param>
+internal sealed record MeasurementOutput(TextWriter Output, TextWriter Error, Action<int> Exit, PhaseRecorder? Phases = null, Func<long>? ProcessStart = null);
 
 /// <summary>
 /// A run of one of the hidden measurement switches (<c>--measure-startup</c>, <c>--measure-second</c>,
@@ -156,7 +159,8 @@ internal abstract class MeasurementRun : IDisposable
 
     /// <summary>
     /// Writes the startup phases (<c>phase &lt;name&gt; &lt;ms&gt;</c>), if there are any. Only after the result line
-    /// that the script times: reading the process start costs time of its own.
+    /// that the script times: reading the process start costs time of its own. The phases are only information: when
+    /// the process start cannot be read, nothing is written and the measurement still succeeds.
     /// </summary>
     protected void ReportPhases()
     {
@@ -165,7 +169,18 @@ internal abstract class MeasurementRun : IDisposable
             return;
         }
 
-        foreach (var line in phases.Lines(PhaseRecorder.ProcessStartTimestamp()))
+        IReadOnlyList<string> lines;
+        try
+        {
+            lines = phases.Lines((_output.ProcessStart ?? PhaseRecorder.ProcessStartTimestamp)());
+        }
+        catch (Exception)
+        {
+            // For example no access to the process information: the measured result line is already written.
+            return;
+        }
+
+        foreach (var line in lines)
         {
             _output.Output.WriteLine(line);
         }
