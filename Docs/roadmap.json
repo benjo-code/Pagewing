@@ -156,7 +156,7 @@
           "goal": "Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzeichnis, Layouts und Zoom-Modi bequem navigieren.",
           "tasks": [
             { "text": "Tabs (öffnen, schließen, wechseln, Reihenfolge ändern)", "done": true },
-            { "text": "Seitenleiste mit Seitenvorschau (Thumbnails im Hintergrund, nach dem ersten Seitenbild)", "done": false },
+            { "text": "Seitenleiste mit Seitenvorschau (Thumbnails im Hintergrund, nach dem ersten Seitenbild)", "done": true },
             { "text": "Inhaltsverzeichnis/Lesezeichen aus dem PDF anzeigen und anspringen", "done": false },
             { "text": "Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)", "done": true },
             { "text": "Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom", "done": true },
