@@ -21,6 +21,9 @@
   <data name="OpenFileTooltip" xml:space="preserve">
     <value>Datei öffnen (Strg+O)</value>
   </data>
+  <data name="PdfFileType" xml:space="preserve">
+    <value>PDF-Dokumente</value>
+  </data>
   <data name="CloseTab" xml:space="preserve">
     <value>Tab schließen (Strg+W)</value>
   </data>
@@ -51,6 +54,9 @@
   <data name="PasswordIncorrect" xml:space="preserve">
     <value>Das Passwort ist falsch. Achten Sie auf Groß- und Kleinschreibung.</value>
   </data>
+  <data name="PasswordField" xml:space="preserve">
+    <value>Passwort</value>
+  </data>
   <data name="PasswordCancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>
@@ -59,6 +65,9 @@
   </data>
   <data name="ErrorTitle" xml:space="preserve">
     <value>Diese Datei lässt sich nicht öffnen</value>
+  </data>
+  <data name="ErrorCause" xml:space="preserve">
+    <value>„{0}“ {1}.</value>
   </data>
   <data name="ErrorNotAPdf" xml:space="preserve">
     <value>ist beschädigt oder keine PDF-Datei</value>
@@ -77,6 +86,12 @@
   </data>
   <data name="ErrorDetails" xml:space="preserve">
     <value>Technische Details</value>
+  </data>
+  <data name="ErrorDetailsPath" xml:space="preserve">
+    <value>Pfad</value>
+  </data>
+  <data name="ErrorDetailsKind" xml:space="preserve">
+    <value>Fehlerart</value>
   </data>
   <data name="ErrorCloseTab" xml:space="preserve">
     <value>Tab schließen</value>

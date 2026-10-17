@@ -243,7 +243,7 @@ public sealed class MainWindowTests : IDisposable
     {
         var session = new ViewerSession(new PdfEngine());
         _cleanup.Add(session);
-        var viewModel = new MainViewModel(session);
+        var viewModel = new MainViewModel(session, new NoFilePicker());
         _sessions.Add(viewModel, session);
         if (windowsTitleBar is { } value)
         {

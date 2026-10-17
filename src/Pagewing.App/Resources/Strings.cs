@@ -34,6 +34,7 @@ public static class Strings
     public static string AppName => Get("AppName");
     public static string OpenFile => Get("OpenFile");
     public static string OpenFileTooltip => Get("OpenFileTooltip");
+    public static string PdfFileType => Get("PdfFileType");
     public static string CloseTab => Get("CloseTab");
     public static string StartTitle => Get("StartTitle");
     public static string StartHint => Get("StartHint");
@@ -44,15 +45,19 @@ public static class Strings
     public static string PasswordTitle => Get("PasswordTitle");
     public static string PasswordPrompt => Get("PasswordPrompt");
     public static string PasswordIncorrect => Get("PasswordIncorrect");
+    public static string PasswordField => Get("PasswordField");
     public static string PasswordCancel => Get("PasswordCancel");
     public static string PasswordOpen => Get("PasswordOpen");
     public static string ErrorTitle => Get("ErrorTitle");
+    public static string ErrorCause => Get("ErrorCause");
     public static string ErrorNotAPdf => Get("ErrorNotAPdf");
     public static string ErrorFileNotFound => Get("ErrorFileNotFound");
     public static string ErrorCannotRead => Get("ErrorCannotRead");
     public static string ErrorUnsupportedEncryption => Get("ErrorUnsupportedEncryption");
     public static string ErrorUnknown => Get("ErrorUnknown");
     public static string ErrorDetails => Get("ErrorDetails");
+    public static string ErrorDetailsPath => Get("ErrorDetailsPath");
+    public static string ErrorDetailsKind => Get("ErrorDetailsKind");
     public static string ErrorCloseTab => Get("ErrorCloseTab");
     public static string ErrorOpenOther => Get("ErrorOpenOther");
     public static string PageLabel => Get("PageLabel");

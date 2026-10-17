@@ -21,6 +21,9 @@
   <data name="OpenFileTooltip" xml:space="preserve">
     <value>Open file (Ctrl+O)</value>
   </data>
+  <data name="PdfFileType" xml:space="preserve">
+    <value>PDF documents</value>
+  </data>
   <data name="CloseTab" xml:space="preserve">
     <value>Close tab (Ctrl+W)</value>
   </data>
@@ -51,6 +54,9 @@
   <data name="PasswordIncorrect" xml:space="preserve">
     <value>The password is incorrect. Check upper and lower case.</value>
   </data>
+  <data name="PasswordField" xml:space="preserve">
+    <value>Password</value>
+  </data>
   <data name="PasswordCancel" xml:space="preserve">
     <value>Cancel</value>
   </data>
@@ -59,6 +65,9 @@
   </data>
   <data name="ErrorTitle" xml:space="preserve">
     <value>This file cannot be opened</value>
+  </data>
+  <data name="ErrorCause" xml:space="preserve">
+    <value>“{0}” {1}.</value>
   </data>
   <data name="ErrorNotAPdf" xml:space="preserve">
     <value>is damaged or not a PDF file</value>
@@ -77,6 +86,12 @@
   </data>
   <data name="ErrorDetails" xml:space="preserve">
     <value>Technical details</value>
+  </data>
+  <data name="ErrorDetailsPath" xml:space="preserve">
+    <value>Path</value>
+  </data>
+  <data name="ErrorDetailsKind" xml:space="preserve">
+    <value>Error kind</value>
   </data>
   <data name="ErrorCloseTab" xml:space="preserve">
     <value>Close tab</value>

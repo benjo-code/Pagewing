@@ -2,36 +2,48 @@ using System.Text;
 using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
+using Pagewing.App.Services;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
 
 /// <summary>
-/// The state of the main window: one document per window (Milestone 3). Mirrors the <see cref="ViewerSession"/>,
-/// whose <see cref="ViewerSession.Changed"/> may come from any thread, on the UI thread.
+/// The state of the main window: one document per window (Milestone 3), so every open replaces the current
+/// document. Mirrors the <see cref="ViewerSession"/>, whose <see cref="ViewerSession.Changed"/> may come from any
+/// thread, on the UI thread. Everything except <see cref="OnExternalOpen"/> is used on the UI thread.
 /// </summary>
 public sealed class MainViewModel : ViewModelBase
 {
     private readonly ViewerSession _session;
+    private readonly IFilePicker _picker;
     private readonly RelayCommand _closeCommand;
     private PdfDocument? _document;
     private ViewerState _state;
     private string? _fullPath;
+    private PdfOpenError? _error;
+    private string _password = string.Empty;
+    private bool _checkingPassword;
+    private bool _picking;
     private int _pageCount;
     private int _currentPage;
     private double _zoom = ZoomSteps.Default;
     private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
 
-    public MainViewModel(ViewerSession session)
+    public MainViewModel(ViewerSession session, IFilePicker picker)
     {
         ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(picker);
         _session = session;
+        _picker = picker;
 
-        // Scaffolding: the file picker arrives in Task 10, page and zoom navigation in Task 11.
-        OpenCommand = new RelayCommand(static () => { });
-        _closeCommand = new RelayCommand(_session.Close, () => State != ViewerState.Empty);
+        OpenCommand = new RelayCommand(() => _ = PickAndOpenAsync());
+        _closeCommand = new RelayCommand(Close, () => State != ViewerState.Empty);
         CloseCommand = _closeCommand;
+        SubmitPasswordCommand = new RelayCommand(SubmitPassword);
+        CancelPasswordCommand = new RelayCommand(Close);
+
+        // Scaffolding: page and zoom navigation arrive in Task 11.
         ZoomInCommand = new RelayCommand(static () => { }, static () => false);
         ZoomOutCommand = new RelayCommand(static () => { }, static () => false);
         PreviousPageCommand = new RelayCommand(static () => { }, static () => false);
@@ -40,6 +52,12 @@ public sealed class MainViewModel : ViewModelBase
         _session.Changed += OnSessionChanged;
         Refresh();
     }
+
+    /// <summary>Raised on the UI thread when the window should come to the front (a later launch handed over).</summary>
+    public event Action? ActivationRequested;
+
+    /// <summary>Raised on the UI thread when a password check ended with a wrong password (also a repeated one).</summary>
+    public event Action? PasswordRejected;
 
     /// <summary>Gets the state of the session, as last seen on the UI thread.</summary>
     public ViewerState State
@@ -52,8 +70,14 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsEmpty));
                 OnPropertyChanged(nameof(HasDocument));
                 OnPropertyChanged(nameof(IsReady));
+                OnPropertyChanged(nameof(IsFailed));
                 _closeCommand.RaiseCanExecuteChanged();
             }
+
+            // Also when the state stays the same: the password check depends on more than the state.
+            OnPropertyChanged(nameof(IsPasswordPrompt));
+            OnPropertyChanged(nameof(IsPasswordIncorrect));
+            OnPropertyChanged(nameof(IsDocumentIcon));
         }
     }
 
@@ -65,6 +89,58 @@ public sealed class MainViewModel : ViewModelBase
 
     /// <summary>Gets whether the document is open: the status bar shows page and zoom.</summary>
     public bool IsReady => State == ViewerState.Ready;
+
+    /// <summary>
+    /// Gets whether the document area shows the password card: the file needs a password, or the entered one is
+    /// being checked (the card and the focus in its field stay while the file is opened again).
+    /// </summary>
+    public bool IsPasswordPrompt =>
+        State is ViewerState.PasswordRequired or ViewerState.PasswordIncorrect
+        || (State == ViewerState.Loading && _checkingPassword);
+
+    /// <summary>Gets whether the last password was wrong: the field gets a danger border and the message shows.</summary>
+    public bool IsPasswordIncorrect => State == ViewerState.PasswordIncorrect;
+
+    /// <summary>Gets whether the document area shows the error card.</summary>
+    public bool IsFailed => State == ViewerState.Failed;
+
+    /// <summary>Gets whether the tab shows the document symbol, not the lock or the warning triangle (design system 7.2).</summary>
+    public bool IsDocumentIcon => !IsPasswordPrompt && !IsFailed;
+
+    /// <summary>Gets or sets the password typed into the password card. Cleared as soon as it is no longer needed.</summary>
+    public string Password
+    {
+        get => _password;
+        set => SetProperty(ref _password, value ?? string.Empty);
+    }
+
+    /// <summary>Gets the text of the password card: "Enter the password to open “file name”."</summary>
+    public string PasswordPromptText =>
+        string.Format(Strings.Culture, CompositeFormat.Parse(Strings.PasswordPrompt), FileName);
+
+    /// <summary>Gets why the last open failed (only in <see cref="ViewerState.Failed"/>), or <see langword="null"/>.</summary>
+    public PdfOpenError? Error
+    {
+        get => _error;
+        private set
+        {
+            if (SetProperty(ref _error, value))
+            {
+                OnPropertyChanged(nameof(ErrorCauseText));
+                OnPropertyChanged(nameof(ErrorDetailsText));
+            }
+        }
+    }
+
+    /// <summary>Gets the cause on the error card in everyday words, for example "“file name” was not found."</summary>
+    public string ErrorCauseText => Error is { } error
+        ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ErrorCause), FileName, CauseOf(error))
+        : string.Empty;
+
+    /// <summary>Gets the technical details of the error card: full path and error kind.</summary>
+    public string ErrorDetailsText => Error is { } error
+        ? $"{Strings.ErrorDetailsPath}: {FullPath}\n{Strings.ErrorDetailsKind}: {error}"
+        : string.Empty;
 
     /// <summary>Gets the file name of the requested file, or <see langword="null"/>.</summary>
     public string? FileName => FullPath is { } path ? Path.GetFileName(path) : null;
@@ -79,6 +155,9 @@ public sealed class MainViewModel : ViewModelBase
             {
                 OnPropertyChanged(nameof(FileName));
                 OnPropertyChanged(nameof(WindowTitle));
+                OnPropertyChanged(nameof(PasswordPromptText));
+                OnPropertyChanged(nameof(ErrorCauseText));
+                OnPropertyChanged(nameof(ErrorDetailsText));
             }
         }
     }
@@ -135,9 +214,17 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _isWindowsTitleBar, value);
     }
 
+    /// <summary>Shows the file dialog and opens the chosen file (Ctrl+O, "Choose file", "Open another file").</summary>
     public ICommand OpenCommand { get; }
 
+    /// <summary>Closes the document and returns to the start screen (Ctrl+W, × on the tab, "Close tab").</summary>
     public ICommand CloseCommand { get; }
+
+    /// <summary>Opens the file again with <see cref="Password"/> ("Open" and Enter on the password card).</summary>
+    public ICommand SubmitPasswordCommand { get; }
+
+    /// <summary>"Cancel" on the password card: closes the tab.</summary>
+    public ICommand CancelPasswordCommand { get; }
 
     public ICommand ZoomInCommand { get; }
 
@@ -146,6 +233,94 @@ public sealed class MainViewModel : ViewModelBase
     public ICommand PreviousPageCommand { get; }
 
     public ICommand NextPageCommand { get; }
+
+    /// <summary>Opens a file and replaces the current document (one document per window).</summary>
+    /// <param name="path">Path of the file; an empty path does nothing.</param>
+    /// <returns>Completes when the session has a result (see <see cref="ViewerSession.OpenAsync"/>).</returns>
+    public Task OpenAsync(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return Task.CompletedTask;
+        }
+
+        _checkingPassword = false;
+        Password = string.Empty;
+        return _session.OpenAsync(path);
+    }
+
+    /// <summary>
+    /// Handles the files a later launch handed over (single instance). May be called on any thread: opens the
+    /// first path on the UI thread and brings the window to the front; an empty list only brings it to the front.
+    /// </summary>
+    public void OnExternalOpen(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        var first = paths.Count > 0 ? paths[0] : null;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!string.IsNullOrEmpty(first))
+            {
+                _ = OpenAsync(first);
+            }
+
+            ActivationRequested?.Invoke();
+        });
+    }
+
+    /// <summary>The cause on the error card for a failure (design system 7.8); password kinds never reach the card.</summary>
+    internal static string CauseOf(PdfOpenError error) => error switch
+    {
+        PdfOpenError.NotAPdf => Strings.ErrorNotAPdf,
+        PdfOpenError.FileNotFound => Strings.ErrorFileNotFound,
+        PdfOpenError.CannotRead => Strings.ErrorCannotRead,
+        PdfOpenError.UnsupportedEncryption => Strings.ErrorUnsupportedEncryption,
+        _ => Strings.ErrorUnknown,
+    };
+
+    private async Task PickAndOpenAsync()
+    {
+        // Ctrl+O while the dialog is open (where the platform lets it through) does not open a second dialog.
+        if (_picking)
+        {
+            return;
+        }
+
+        _picking = true;
+        string? path;
+        try
+        {
+            path = await _picker.PickPdfAsync();
+        }
+        finally
+        {
+            _picking = false;
+        }
+
+        if (path is not null)
+        {
+            await OpenAsync(path);
+        }
+    }
+
+    private void SubmitPassword()
+    {
+        // Ignored while a check is running (Enter pressed twice) and outside the password card.
+        if (State is not (ViewerState.PasswordRequired or ViewerState.PasswordIncorrect) || FullPath is not { } path)
+        {
+            return;
+        }
+
+        _checkingPassword = true;
+        _ = _session.OpenAsync(path, Password);
+    }
+
+    private void Close()
+    {
+        _checkingPassword = false;
+        Password = string.Empty;
+        _session.Close();
+    }
 
     private void OnSessionChanged() => Dispatcher.UIThread.Post(Refresh);
 
@@ -172,6 +347,7 @@ public sealed class MainViewModel : ViewModelBase
         _document = document;
 
         FullPath = _session.Path;
+        Error = state == ViewerState.Failed ? _session.Error : null;
         PageCount = pageCount;
         if (isNewDocument)
         {
@@ -183,6 +359,22 @@ public sealed class MainViewModel : ViewModelBase
             CurrentPage = 0;
         }
 
+        // The password check is over once the session leaves Loading. The password stays only for another try.
+        var passwordRejected = _checkingPassword && state == ViewerState.PasswordIncorrect;
+        if (state != ViewerState.Loading)
+        {
+            _checkingPassword = false;
+        }
+
+        if (state is ViewerState.Ready or ViewerState.Failed or ViewerState.Empty)
+        {
+            Password = string.Empty;
+        }
+
         State = state;
+        if (passwordRejected)
+        {
+            PasswordRejected?.Invoke();
+        }
     }
 }

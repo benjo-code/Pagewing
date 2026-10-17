@@ -26,7 +26,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 0 | Repo-Grundgerüst & CI | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-00-grundgeruest.md) | 2026-10-16 |
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) | 2026-10-16 |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) | 2026-10-17 |
-| 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | – |
+| 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | – |
 | 4 | Navigation | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 5 | Text & Suche | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 6 | Komfort | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -145,14 +145,14 @@ Ziel: Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt,
 - [x] Design-Spec ist committet und in der Roadmap verlinkt – `Docs/superpowers/specs/2026-10-17-designsystem.md` (Status „abgestimmt“), committet auf `feature/m02-designrichtungen` ab Commit 43dd11d; im M2-Eintrag als `spec` verlinkt; `dotnet run tools/roadmap.cs -- check` grün
 
 ## Milestone 3 – App-Shell & schnelles Öffnen
-**Status:** 🟡 geplant · **Plan:** [2026-10-17-milestone-03-app-shell.md](superpowers/plans/2026-10-17-milestone-03-app-shell.md) · **Voraussetzungen:** M1, M2
+**Status:** 🔵 in Arbeit · **Plan:** [2026-10-17-milestone-03-app-shell.md](superpowers/plans/2026-10-17-milestone-03-app-shell.md) · **Voraussetzungen:** M1, M2
 
 Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch alle Seiten, innerhalb der Startzeit-Budgets.
 
 **Aufgaben**
-- [ ] Hauptfenster nach Design-Spec, UI-Texte lokalisierbar (resx, Englisch und Deutsch)
-- [ ] Öffnen per Kommandozeilenargument, Dateidialog und Drag & Drop
-- [ ] Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)
+- [x] Hauptfenster nach Design-Spec, UI-Texte lokalisierbar (resx, Englisch und Deutsch)
+- [x] Öffnen per Kommandozeilenargument, Dateidialog und Drag & Drop
+- [x] Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)
 - [ ] Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget
 - [ ] Zoom (Strg+Mausrad, Strg+Plus/Minus)
 - [ ] Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)

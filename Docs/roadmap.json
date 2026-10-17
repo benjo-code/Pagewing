@@ -117,14 +117,14 @@
         {
           "id": "3",
           "title": "App-Shell & schnelles Öffnen",
-          "status": "planned",
+          "status": "in-progress",
           "plan": "superpowers/plans/2026-10-17-milestone-03-app-shell.md",
           "prerequisites": ["1", "2"],
           "goal": "Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch alle Seiten, innerhalb der Startzeit-Budgets.",
           "tasks": [
-            { "text": "Hauptfenster nach Design-Spec, UI-Texte lokalisierbar (resx, Englisch und Deutsch)", "done": false },
-            { "text": "Öffnen per Kommandozeilenargument, Dateidialog und Drag & Drop", "done": false },
-            { "text": "Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)", "done": false },
+            { "text": "Hauptfenster nach Design-Spec, UI-Texte lokalisierbar (resx, Englisch und Deutsch)", "done": true },
+            { "text": "Öffnen per Kommandozeilenargument, Dateidialog und Drag & Drop", "done": true },
+            { "text": "Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)", "done": true },
             { "text": "Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget", "done": false },
             { "text": "Zoom (Strg+Mausrad, Strg+Plus/Minus)", "done": false },
             { "text": "Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)", "done": false },

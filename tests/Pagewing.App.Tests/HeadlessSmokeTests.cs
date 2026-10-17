@@ -17,7 +17,7 @@ public sealed class HeadlessSmokeTests
     public void MainWindowShowsAndRendersAFrame()
     {
         using var session = new ViewerSession(new PdfEngine());
-        var window = new MainWindow { DataContext = new MainViewModel(session) };
+        var window = new MainWindow { DataContext = new MainViewModel(session, new NoFilePicker()) };
         window.Show();
         Dispatcher.UIThread.RunJobs();
 

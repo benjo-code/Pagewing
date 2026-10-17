@@ -10,7 +10,12 @@
         WindowDecorations="Full"
         ExtendClientAreaToDecorationsHint="{Binding IsWindowsTitleBar}"
         ExtendClientAreaTitleBarHeightHint="40"
-        WindowDecorationsTheme="{DynamicResource Pw.WindowDecorations}">
+        WindowDecorationsTheme="{DynamicResource Pw.WindowDecorations}"
+        DragDrop.AllowDrop="True">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
+    <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseCommand}" />
+  </Window.KeyBindings>
   <Window.Resources>
     <!--
       With the client area extended, Avalonia 12.1 draws the Windows caption buttons itself (Fluent theme
@@ -44,11 +49,19 @@
 
     <Panel Grid.Row="1">
       <views:StartScreen Name="StartScreen" IsVisible="{Binding IsEmpty}" />
-      <!-- Document area: surface.canvas with radius.overlay at the top left; the canvas follows in Task 11. -->
+      <!--
+        Document area: surface.canvas with radius.overlay at the top left; the canvas follows in Task 11. While a
+        file loads it stays empty; the password and the error card take its place (design system 7.8).
+      -->
       <Border Name="DocumentArea"
               IsVisible="{Binding HasDocument}"
               Background="{DynamicResource Pw.Brush.Surface.Canvas}"
-              CornerRadius="10,0,0,0" />
+              CornerRadius="10,0,0,0">
+        <Panel>
+          <views:PasswordCard Name="PasswordCard" IsVisible="{Binding IsPasswordPrompt}" />
+          <views:ErrorCard Name="ErrorCard" IsVisible="{Binding IsFailed}" />
+        </Panel>
+      </Border>
     </Panel>
 
     <views:StatusBar Name="StatusBar" Grid.Row="2" IsVisible="{Binding IsReady}" />

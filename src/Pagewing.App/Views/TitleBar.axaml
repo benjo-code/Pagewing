@@ -47,8 +47,13 @@
               AutomationProperties.Name="{Binding FileName}"
               chrome:WindowDecorationProperties.ElementRole="User">
         <DockPanel>
-          <ctl:StrokeIcon DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center"
-                          Data="{StaticResource Pw.Icon.FileText}" />
+          <!-- Symbol (section 7.2): document, lock during the password prompt, warning triangle after a failure. -->
+          <Panel DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+            <ctl:StrokeIcon Name="TabDocumentIcon" Data="{StaticResource Pw.Icon.FileText}" IsVisible="{Binding IsDocumentIcon}" />
+            <ctl:StrokeIcon Name="TabLockIcon" Data="{StaticResource Pw.Icon.Lock}" IsVisible="{Binding IsPasswordPrompt}" />
+            <ctl:StrokeIcon Name="TabErrorIcon" Data="{StaticResource Pw.Icon.AlertTriangle}" IsVisible="{Binding IsFailed}"
+                            Brush="{DynamicResource Pw.Brush.Danger.Default}" />
+          </Panel>
           <Button Name="CloseTabButton" DockPanel.Dock="Right" Classes="icon"
                   Width="22" Height="22" MinWidth="0" MinHeight="0" Margin="8,0,0,0"
                   Command="{Binding CloseCommand}"
