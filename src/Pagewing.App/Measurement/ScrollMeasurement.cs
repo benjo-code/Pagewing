@@ -13,9 +13,16 @@ namespace Pagewing.App.Measurement;
 /// zoom (default 100 %) and goes back to the top, waits one frame, then scrolls from the top to the bottom in equal
 /// steps, one per frame (<see cref="TopLevel.RequestAnimationFrame"/>), and writes over the intervals between the
 /// frames <c>scroll frames=&lt;n&gt; p99-ms=&lt;x&gt; max-ms=&lt;y&gt;</c> and then
-/// <c>scroll-detail zoom-pct=&lt;z&gt; mean-ms=&lt;m&gt; over-20ms-pct=&lt;a&gt; over-30ms-pct=&lt;b&gt;</c> (mean interval
-/// and share of the intervals above 20 and 30 ms, in percent). A measured value without a budget.
+/// <c>scroll-detail zoom-pct=&lt;z&gt; mean-ms=&lt;m&gt; over-20ms-pct=&lt;a&gt; over-30ms-pct=&lt;b&gt; range-dips=&lt;r&gt;</c>
+/// (mean interval, share of the intervals above 20 and 30 ms in percent, and the scroll range in DIPs). A measured
+/// value without a budget.
 /// </summary>
+/// <remarks>
+/// When the content fits the viewport (scroll range 0, for example a single small page at 100 %), nothing scrolls and
+/// no frame changes. Avalonia then commits nothing and runs the animation-frame callbacks from a 16 ms dispatcher timer,
+/// which on Windows (<c>SetTimer</c>, timer resolution 15.6 ms) fires about every 31 ms. The intervals then show that
+/// pacing, not the drawing, so the measurement writes a warning to the error output.
+/// </remarks>
 internal sealed class ScrollMeasurement : MeasurementRun
 {
     /// <summary>Number of scroll steps (frames) in the app.</summary>
@@ -94,15 +101,26 @@ internal sealed class ScrollMeasurement : MeasurementRun
         return 100.0 * values.Count(value => value > limit) / values.Count;
     }
 
-    /// <summary>The second result line (<c>scroll-detail …</c>) for the intervals and the zoom.</summary>
-    public static string DetailLine(IReadOnlyList<double> intervals, int zoomPercent)
+    /// <summary>
+    /// The second result line (<c>scroll-detail …</c>) for the intervals, the zoom and the scroll range (DIPs, as a
+    /// whole number; 0 means nothing scrolled).
+    /// </summary>
+    public static string DetailLine(IReadOnlyList<double> intervals, int zoomPercent, double scrollRange)
     {
         ArgumentNullException.ThrowIfNull(intervals);
         ArgumentOutOfRangeException.ThrowIfZero(intervals.Count);
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"scroll-detail zoom-pct={zoomPercent} mean-ms={intervals.Average():0.0} over-20ms-pct={ShareAbove(intervals, 20):0.0} over-30ms-pct={ShareAbove(intervals, 30):0.0}");
+            $"scroll-detail zoom-pct={zoomPercent} mean-ms={intervals.Average():0.0} over-20ms-pct={ShareAbove(intervals, 20):0.0} over-30ms-pct={ShareAbove(intervals, 30):0.0} range-dips={Math.Max(0, Math.Ceiling(scrollRange)):0}");
     }
+
+    /// <summary>The warning for a run in which nothing scrolled, or <see langword="null"/> when it scrolled.</summary>
+    public static string? NothingToScrollWarning(double scrollRange, int zoomPercent) =>
+        scrollRange > 0
+            ? null
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"nothing to scroll at {zoomPercent} %: the content fits the viewport, so no frame changed and the intervals show Avalonia's frame pacing without changes, not the drawing");
 
     protected override void OnFirstSharpImage()
     {
@@ -153,20 +171,25 @@ internal sealed class ScrollMeasurement : MeasurementRun
         }
 
         _lastFrame = now;
-        if (_step == _steps)
-        {
-            Report(string.Create(
-                CultureInfo.InvariantCulture,
-                $"scroll frames={_intervals.Count} p99-ms={Percentile(_intervals, 0.99):0.0} max-ms={_intervals.Max():0.0}"));
-            Succeed(DetailLine(_intervals, _zoomPercent));
-            return;
-        }
-
-        _step++;
 
         // The extent grows while page sizes arrive in the background: each step aims at its share of the current one.
         var scroller = View.ScrollViewer;
         var bottom = Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height);
+        if (_step == _steps)
+        {
+            if (NothingToScrollWarning(bottom, _zoomPercent) is { } warning)
+            {
+                Warn(warning);
+            }
+
+            Report(string.Create(
+                CultureInfo.InvariantCulture,
+                $"scroll frames={_intervals.Count} p99-ms={Percentile(_intervals, 0.99):0.0} max-ms={_intervals.Max():0.0}"));
+            Succeed(DetailLine(_intervals, _zoomPercent, bottom));
+            return;
+        }
+
+        _step++;
         scroller.Offset = new Vector(scroller.Offset.X, bottom * _step / _steps);
         RequestFrame();
     }

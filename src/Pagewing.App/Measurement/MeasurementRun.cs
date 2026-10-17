@@ -199,6 +199,16 @@ internal abstract class MeasurementRun : IDisposable
         _output.Output.Flush();
     }
 
+    /// <summary>Writes <c>warning: <paramref name="message"/></c> to the error output; the measurement goes on.</summary>
+    protected void Warn(string message)
+    {
+        if (!IsFinished)
+        {
+            _output.Error.WriteLine($"warning: {message}");
+            _output.Error.Flush();
+        }
+    }
+
     /// <summary>Writes <c>error: <paramref name="message"/></c> and asks to exit with <paramref name="exitCode"/>.</summary>
     protected void Fail(int exitCode, string message)
     {

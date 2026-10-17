@@ -237,10 +237,11 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.InRange(double.Parse(detail.Groups[2].Value, CultureInfo.InvariantCulture), 0, max);
         Assert.DoesNotMatch(ScrollLine(), lines[1]);
         Assert.Equal(1, view.Layout!.Zoom);
+        var scroller = view.ScrollViewer;
+        Assert.Equal(Math.Ceiling(scroller.Extent.Height - scroller.Viewport.Height), double.Parse(detail.Groups[5].Value, CultureInfo.InvariantCulture));
 
         // Scrolled from the top to the very bottom (all pages of this file have the same size, so the position does
         // not move when the last page sizes arrive).
-        var scroller = view.ScrollViewer;
         Assert.True(scroller.Offset.Y > 0);
         Assert.Equal(scroller.Extent.Height - scroller.Viewport.Height, scroller.Offset.Y, 3);
         Assert.InRange(view.Layout!.GetPageRect(999).Bottom, scroller.Offset.Y, scroller.Offset.Y + scroller.Viewport.Height);
@@ -324,7 +325,41 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.Equal(50, ScrollMeasurement.ShareAbove(intervals, 20));
         Assert.Equal(40, ScrollMeasurement.ShareAbove(intervals, 30));
         Assert.Equal(0, ScrollMeasurement.ShareAbove(intervals, 33.4));
-        Assert.Equal("scroll-detail zoom-pct=400 mean-ms=24.0 over-20ms-pct=50.0 over-30ms-pct=40.0", ScrollMeasurement.DetailLine(intervals, 400));
+        Assert.Equal("scroll-detail zoom-pct=400 mean-ms=24.0 over-20ms-pct=50.0 over-30ms-pct=40.0 range-dips=1201", ScrollMeasurement.DetailLine(intervals, 400, 1200.2));
+        Assert.EndsWith(" range-dips=0", ScrollMeasurement.DetailLine(intervals, 100, 0), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OnlyARunWithoutScrollRangeWarns()
+    {
+        Assert.Null(ScrollMeasurement.NothingToScrollWarning(0.5, 100));
+        Assert.Null(ScrollMeasurement.NothingToScrollWarning(152_730, 100));
+        Assert.StartsWith("nothing to scroll at 100 %: ", ScrollMeasurement.NothingToScrollWarning(0, 100), StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task ScrollMeasurementWarnsWhenTheContentFitsTheViewport()
+    {
+        // One page of 300 x 300 pt: 464 DIPs high with the margins at 100 %, less than the viewport of the window.
+        var (window, viewModel, view) = Show();
+        using var measurement = new ScrollMeasurement(viewModel, view, TestData.Pdf("vector-shapes.pdf"), Sink(), Timeout, steps: 12);
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        // Still a result (exit code 0, both lines), but the range says that nothing scrolled, and a warning says why
+        // the intervals mean nothing.
+        Assert.Equal([0], _exits);
+        var lines = Lines(_output);
+        Assert.Equal(2, lines.Count);
+        Assert.Matches(ScrollLine(), lines[0]);
+        var detail = ScrollDetailLine().Match(lines[1]);
+        Assert.True(detail.Success, $"unexpected line '{lines[1]}'");
+        Assert.Equal("0", detail.Groups[5].Value);
+        Assert.Equal(0, view.ScrollViewer.Offset.Y);
+        var error = Lines(_error);
+        Assert.Single(error);
+        Assert.StartsWith("warning: nothing to scroll at 100 %: ", error[0], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -469,7 +504,7 @@ public sealed partial class MeasurementTests : IDisposable
     [GeneratedRegex(@"^scroll frames=(\d+) p99-ms=(\d+\.\d) max-ms=(\d+\.\d)$")]
     private static partial Regex ScrollLine();
 
-    [GeneratedRegex(@"^scroll-detail zoom-pct=(\d+) mean-ms=(\d+\.\d) over-20ms-pct=(\d+\.\d) over-30ms-pct=(\d+\.\d)$")]
+    [GeneratedRegex(@"^scroll-detail zoom-pct=(\d+) mean-ms=(\d+\.\d) over-20ms-pct=(\d+\.\d) over-30ms-pct=(\d+\.\d) range-dips=(\d+)$")]
     private static partial Regex ScrollDetailLine();
 
     private sealed class Closer(Window window) : IDisposable
