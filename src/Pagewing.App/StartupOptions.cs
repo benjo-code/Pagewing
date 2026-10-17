@@ -13,6 +13,15 @@ public sealed record StartupOptions(
     string? MeasureScroll,
     string? Language)
 {
+    /// <summary>Gets whether a hidden measurement switch was given (the run bypasses the single-instance election).</summary>
+    public bool IsMeasurement => MeasureStartup is not null || MeasureSecond is not null || MeasureScroll is not null;
+
+    /// <summary>
+    /// Gets the file a measurement opens first (<c>--measure-startup</c> before <c>--measure-second</c> before
+    /// <c>--measure-scroll</c>, as in <c>MeasurementRun.Create</c>), or <see langword="null"/> without a measurement.
+    /// </summary>
+    public string? MeasurementPath => MeasureStartup ?? MeasureSecond?.First ?? MeasureScroll;
+
     /// <summary>
     /// Parses the command line. Arguments without <c>--</c> are paths (made absolute against the working directory).
     /// Unknown <c>--</c> options and options with missing values are ignored.

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using Pagewing.App.Measurement;
 using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
@@ -13,8 +14,9 @@ namespace Pagewing.App;
 
 /// <summary>What <see cref="Program.Main"/> prepared before Avalonia started.</summary>
 /// <param name="Session">The session, possibly already opening the file of the command line.</param>
-/// <param name="Instance">The primary single instance, or <see langword="null"/> for an extra instance.</param>
-internal sealed record AppStartup(ViewerSession Session, SingleInstance? Instance);
+/// <param name="Instance">The primary single instance, or <see langword="null"/> for an extra instance or a measurement.</param>
+/// <param name="Measurement">The options of a measurement switch, or <see langword="null"/> for a normal launch.</param>
+internal sealed record AppStartup(ViewerSession Session, SingleInstance? Instance, StartupOptions? Measurement = null);
 
 public sealed class App : Application
 {
@@ -47,6 +49,13 @@ public sealed class App : Application
                 window.Opened += (_, _) => Dispatcher.UIThread.Post(
                     () => StartListening(instance, viewModel),
                     DispatcherPriority.Background);
+            }
+
+            if (_startup?.Measurement is { } measure)
+            {
+                // Started before the window opens, so no sharp image can come before the measurement listens.
+                var output = new MeasurementOutput(Console.Out, Console.Error, code => Dispatcher.UIThread.Post(() => desktop.Shutdown(code)));
+                MeasurementRun.Create(measure, viewModel, window.DocumentView, output)?.Start();
             }
 
             desktop.Exit += (_, _) =>

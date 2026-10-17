@@ -1,0 +1,278 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
+using Avalonia.Styling;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Pagewing.App.Measurement;
+using Pagewing.App.Resources;
+using Pagewing.App.ViewModels;
+using Pagewing.App.Views;
+using Pagewing.Core.Pdf;
+using Pagewing.Core.Viewing;
+using Pagewing.TestSupport;
+using Xunit;
+
+namespace Pagewing.App.Tests;
+
+// The window reads Strings, whose culture is process-wide (see LocalizationTests).
+[Collection("Localization")]
+public sealed partial class MeasurementTests : IDisposable
+{
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+
+    private readonly CultureInfo _originalCulture = Strings.Culture;
+    private readonly List<IDisposable> _cleanup = [];
+    private readonly StringWriter _output = new();
+    private readonly StringWriter _error = new();
+    private readonly List<int> _exits = [];
+
+    public void Dispose()
+    {
+        // Windows close before their sessions are disposed.
+        for (var i = _cleanup.Count - 1; i >= 0; i--)
+        {
+            _cleanup[i].Dispose();
+        }
+
+        _output.Dispose();
+        _error.Dispose();
+        Strings.Culture = _originalCulture;
+    }
+
+    [AvaloniaFact]
+    public async Task StartupMeasurementWritesFirstSharpOnceAndRequestsExit()
+    {
+        var (window, viewModel, view) = Show();
+        using var measurement = new StartupMeasurement(viewModel, view, TestData.Pdf("text-basic.pdf"), null, Sink(), Timeout, TimeSpan.Zero);
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        Assert.Equal(["first-sharp"], Lines(_output));
+        Assert.Equal([0], _exits);
+        Assert.Empty(_error.ToString());
+        Assert.Contains(view.Canvas.Bitmaps.Keys, key => key.Page == 0 && !key.IsPreview);
+
+        // Later sharp images (zoom, another document) report nothing more and do not exit again.
+        viewModel.Zoom = 2;
+        Settle(window);
+        var drawn = false;
+        view.FirstSharpTileDrawn += () => drawn = true;
+        await viewModel.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        await WaitUntilAsync(window, () => drawn);
+        Assert.Equal(["first-sharp"], Lines(_output));
+        Assert.Equal([0], _exits);
+    }
+
+    [AvaloniaFact]
+    public async Task MeasureSecondReportsAPositiveTime()
+    {
+        var (window, viewModel, view) = Show();
+        var second = TestData.Pdf("hello_world.pdf");
+        using var measurement = new StartupMeasurement(viewModel, view, TestData.Pdf("text-basic.pdf"), second, Sink(), Timeout, TimeSpan.FromMilliseconds(50));
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        Assert.Empty(_error.ToString());
+        Assert.Equal([0], _exits);
+        var lines = Lines(_output);
+        Assert.Equal(2, lines.Count);
+        Assert.Equal("first-sharp", lines[0]);
+        var match = SecondSharpLine().Match(lines[1]);
+        Assert.True(match.Success, $"unexpected line '{lines[1]}'");
+        Assert.True(double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) > 0);
+
+        // The second file came in like a later launch and is the one shown now.
+        Assert.Equal(Path.GetFullPath(second), viewModel.Session.Path);
+        Assert.Equal(viewModel.Session.Document, view.Document);
+    }
+
+    [AvaloniaFact]
+    public async Task MeasureStartupWithAMissingFileExitsWithOne()
+    {
+        var (window, viewModel, view) = Show();
+        var missing = Path.Combine(Path.GetTempPath(), "pagewing-missing-" + Guid.NewGuid().ToString("N") + ".pdf");
+        using var measurement = new StartupMeasurement(viewModel, view, missing, null, Sink(), Timeout, TimeSpan.Zero);
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        Assert.Equal([1], _exits);
+        Assert.Empty(_output.ToString());
+        var error = Lines(_error);
+        Assert.Single(error);
+        Assert.StartsWith("error: ", error[0], StringComparison.Ordinal);
+        Assert.Contains(nameof(PdfOpenError.FileNotFound), error[0], StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task MeasurementWithoutASharpImageTimesOutWithThree()
+    {
+        // A view that is not in a window never draws, so the first sharp image never comes.
+        var session = new ViewerSession(new PdfEngine());
+        _cleanup.Add(session);
+        var viewModel = new MainViewModel(session, new NoFilePicker());
+        var view = new DocumentView { DataContext = viewModel };
+        using var measurement = new StartupMeasurement(viewModel, view, TestData.Pdf("text-basic.pdf"), null, Sink(), TimeSpan.FromMilliseconds(200), TimeSpan.Zero);
+
+        measurement.Start();
+        var deadline = DateTime.UtcNow + Timeout;
+        while (_exits.Count == 0)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the measurement did not time out");
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(10);
+        }
+
+        Assert.Equal([3], _exits);
+        Assert.Empty(_output.ToString());
+        Assert.StartsWith("error: ", _error.ToString(), StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task ScrollMeasurementReportsFramesAndPercentile()
+    {
+        var (window, viewModel, view) = Show();
+        using var measurement = new ScrollMeasurement(viewModel, view, TestData.Pdf("thousand-pages.pdf"), Sink(), Timeout, steps: 12);
+
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        Assert.Empty(_error.ToString());
+        Assert.Equal([0], _exits);
+        var lines = Lines(_output);
+        Assert.Single(lines);
+        var match = ScrollLine().Match(lines[0]);
+        Assert.True(match.Success, $"unexpected line '{lines[0]}'");
+        Assert.Equal("12", match.Groups[1].Value);
+        var p99 = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+        var max = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+        Assert.InRange(p99, 0, max);
+
+        // Scrolled from the top to the very bottom (all pages of this file have the same size, so the position does
+        // not move when the last page sizes arrive).
+        var scroller = view.ScrollViewer;
+        Assert.True(scroller.Offset.Y > 0);
+        Assert.Equal(scroller.Extent.Height - scroller.Viewport.Height, scroller.Offset.Y, 3);
+        Assert.InRange(view.Layout!.GetPageRect(999).Bottom, scroller.Offset.Y, scroller.Offset.Y + scroller.Viewport.Height);
+    }
+
+    [Fact]
+    public void PercentileUsesTheNearestRank()
+    {
+        var hundred = Enumerable.Range(1, 100).Select(value => (double)value).ToArray();
+        Assert.Equal(99, ScrollMeasurement.Percentile(hundred, 0.99));
+        Assert.Equal(100, ScrollMeasurement.Percentile(hundred, 1));
+        Assert.Equal(50, ScrollMeasurement.Percentile(hundred, 0.5));
+
+        // Unsorted input; with ten values the 99th percentile is the largest.
+        double[] ten = [16, 17, 15, 40, 16, 16, 18, 16, 17, 16];
+        Assert.Equal(40, ScrollMeasurement.Percentile(ten, 0.99));
+        Assert.Equal(7, ScrollMeasurement.Percentile([7], 0.99));
+    }
+
+    [Theory]
+    [InlineData("--measure-startup", "a.pdf")]
+    [InlineData("--measure-second", "a.pdf", "b.pdf")]
+    [InlineData("--measure-scroll", "a.pdf")]
+    public void MeasurementModesBypassTheSingleInstanceElection(params string[] args)
+    {
+        var options = StartupOptions.Parse(args);
+        var asked = false;
+
+        var (instance, isSecondary) = Program.ElectInstance(options, () =>
+        {
+            asked = true;
+            return null;
+        });
+
+        // Never asked: a measured run neither hands over to a running Pagewing nor holds the lock or the pipe.
+        Assert.False(asked);
+        Assert.Null(instance);
+        Assert.False(isSecondary);
+        Assert.Equal(Path.GetFullPath("a.pdf"), Path.GetFullPath(options.MeasurementPath!));
+    }
+
+    [Fact]
+    public void NormalLaunchesTakePartInTheSingleInstanceElection()
+    {
+        var options = StartupOptions.Parse(["a.pdf"]);
+        var asked = 0;
+
+        var (instance, isSecondary) = Program.ElectInstance(options, () =>
+        {
+            asked++;
+            return null;
+        });
+
+        Assert.Equal(1, asked);
+        Assert.Null(instance);
+        Assert.True(isSecondary);
+        Assert.Null(options.MeasurementPath);
+    }
+
+    private MeasurementOutput Sink() => new(_output, _error, _exits.Add);
+
+    private static List<string> Lines(StringWriter writer) =>
+        writer.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).ToList();
+
+    private (MainWindow Window, MainViewModel ViewModel, DocumentView View) Show()
+    {
+        var session = new ViewerSession(new PdfEngine());
+        _cleanup.Add(session);
+
+        // Forced, so the layout is the same on Windows and Linux runners.
+        var viewModel = new MainViewModel(session, new NoFilePicker()) { IsWindowsTitleBar = true };
+        var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720, RequestedThemeVariant = ThemeVariant.Light };
+        _cleanup.Add(new Closer(window));
+        window.Show();
+        Settle(window);
+        var view = window.GetVisualDescendants().OfType<DocumentView>().Single(control => control.Name == "DocumentView");
+        return (window, viewModel, view);
+    }
+
+    private static async Task WaitUntilAsync(Window window, Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + Timeout;
+        while (true)
+        {
+            Settle(window);
+            if (condition())
+            {
+                return;
+            }
+
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("The measurement did not reach the expected state.");
+            }
+
+            await Task.Delay(10);
+        }
+    }
+
+    private static void Settle(Window window)
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            window.UpdateLayout();
+        }
+    }
+
+    [GeneratedRegex(@"^second-sharp (\d+\.\d)$")]
+    private static partial Regex SecondSharpLine();
+
+    [GeneratedRegex(@"^scroll frames=(\d+) p99-ms=(\d+\.\d) max-ms=(\d+\.\d)$")]
+    private static partial Regex ScrollLine();
+
+    private sealed class Closer(Window window) : IDisposable
+    {
+        public void Dispose() => window.Close();
+    }
+}

@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Avalonia;
+using Pagewing.App.Measurement;
 using Pagewing.App.Resources;
 using Pagewing.Core.Hosting;
 using Pagewing.Core.Pdf;
@@ -15,11 +16,15 @@ internal static partial class Program
     /// <summary>How long a later launch tries to hand its files to the running instance.</summary>
     private static readonly TimeSpan HandOverTimeout = TimeSpan.FromSeconds(3);
 
+    /// <summary>A measurement whose UI thread hangs is ended this long after its own time limit (exit code 3).</summary>
+    private static readonly TimeSpan MeasurementWatchdogGrace = TimeSpan.FromSeconds(5);
+
     /// <summary>
     /// Startup order (startup path, keep it lean): parse the options; elect the single instance before Avalonia is
     /// loaded, and as a later launch hand the files over and exit; otherwise start opening the file of the command
     /// line at once, so PDFium loads on its own thread while Avalonia builds the window; show the window, whose first
     /// frame shows the tab with the file name; accept later launches after the first frame (<see cref="App"/>).
+    /// A measurement switch takes the same path, without the election (see <see cref="ElectInstance"/>).
     /// </summary>
     [STAThread]
     public static int Main(string[] args)
@@ -37,21 +42,28 @@ internal static partial class Program
             }
         }
 
-        var instance = ElectInstance(out var isSecondary);
+        var (instance, isSecondary) = ElectInstance(options, static () => SingleInstance.TryBecomePrimary(SingleInstance.DefaultName));
         if (isSecondary && HandOver(options.Paths))
         {
             return 0;
         }
 
-        // Primary, or an extra instance without the lock when handing over failed (the running one hangs or is closing).
+        // Primary, a measurement, or an extra instance without the lock when handing over failed (the running one
+        // hangs or is closing).
         var session = new ViewerSession(new PdfEngine());
-        if (options.Paths.Count > 0)
+        var path = options.IsMeasurement ? options.MeasurementPath : options.Paths.Count > 0 ? options.Paths[0] : null;
+        if (!string.IsNullOrEmpty(path))
         {
             // Sets Loading with the path at once and continues on the PDFium thread; failures end in an error card.
-            _ = session.OpenAsync(options.Paths[0]);
+            _ = session.OpenAsync(path);
         }
 
-        return Run(args, new AppStartup(session, instance));
+        if (options.IsMeasurement)
+        {
+            StartMeasurementWatchdog();
+        }
+
+        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null));
     }
 
     public static AppBuilder BuildAvaloniaApp() =>
@@ -64,22 +76,45 @@ internal static partial class Program
             .UsePlatformDetect()
             .StartWithClassicDesktopLifetime(args);
 
-    /// <summary>Returns the primary instance, or <see langword="null"/> with <paramref name="isSecondary"/> set when another one runs.</summary>
-    private static SingleInstance? ElectInstance(out bool isSecondary)
+    /// <summary>
+    /// Returns the primary instance, or no instance with <c>IsSecondary</c> set when another one runs. A measurement
+    /// never takes part: it must neither hand its file to a running Pagewing nor hold the lock and the pipe of one.
+    /// </summary>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="tryBecomePrimary"><see cref="SingleInstance.TryBecomePrimary"/> with the instance name.</param>
+    internal static (SingleInstance? Instance, bool IsSecondary) ElectInstance(StartupOptions options, Func<SingleInstance?> tryBecomePrimary)
     {
-        isSecondary = false;
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(tryBecomePrimary);
+        if (options.IsMeasurement)
+        {
+            return (null, false);
+        }
+
         try
         {
-            var instance = SingleInstance.TryBecomePrimary(SingleInstance.DefaultName);
-            isSecondary = instance is null;
-            return instance;
+            var instance = tryBecomePrimary();
+            return (instance, instance is null);
         }
         catch (ArgumentException)
         {
             // The user name makes no valid instance name: start uncoordinated rather than not at all.
-            return null;
+            return (null, false);
         }
     }
+
+    /// <summary>
+    /// Ends a measurement whose UI thread no longer reacts: its own time limit (<see cref="MeasurementRun"/>) is
+    /// posted to that thread and would never run.
+    /// </summary>
+    private static void StartMeasurementWatchdog() =>
+        new Thread(static () =>
+        {
+            Thread.Sleep(MeasurementRun.DefaultTimeout + MeasurementWatchdogGrace);
+            Console.Error.WriteLine("error: the measurement did not end (the UI thread does not respond)");
+            Environment.Exit(MeasurementRun.TimedOut);
+        })
+        { IsBackground = true, Name = "Measurement watchdog" }.Start();
 
     /// <summary>Hands the full paths (or, without paths, only the request to come to the front) to the running instance.</summary>
     private static bool HandOver(IReadOnlyList<string> paths)
