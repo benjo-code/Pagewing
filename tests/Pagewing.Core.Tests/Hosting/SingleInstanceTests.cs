@@ -270,6 +270,8 @@ public sealed class SingleInstanceTests
     {
         var name = UniqueName();
         using var primary = Primary(name);
+        var failures = Channel.CreateUnbounded<Exception>();
+        primary.CallbackFailed = failure => failures.Writer.TryWrite(failure);
         var received = Channel.CreateUnbounded<IReadOnlyList<string>>();
         var first = 1;
         primary.StartListening(paths =>
@@ -283,9 +285,123 @@ public sealed class SingleInstanceTests
 
         Assert.True(SingleInstance.TrySend(name, ["one.pdf"], Due));
         Assert.Equal(["one.pdf"], await NextAsync(received));
+        var failure = await failures.Reader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(Due, TestContext.Current.CancellationToken);
+        Assert.Equal("Callback failure.", failure.Message);
         Assert.True(SingleInstance.TrySend(name, ["two.pdf"], Due));
 
         Assert.Equal(["two.pdf"], await NextAsync(received));
+    }
+
+    [Fact]
+    public async Task SendWithABlockedPrimaryReturnsWithinTheTimeout()
+    {
+        var name = UniqueName();
+        using var release = new ManualResetEventSlim();
+        using var primary = Primary(name);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        primary.StartListening(_ =>
+        {
+            entered.TrySetResult();
+            release.Wait();
+        });
+
+        try
+        {
+            Assert.True(SingleInstance.TrySend(name, ["blocks.pdf"], Due));
+            await entered.Task.WaitAsync(Due, TestContext.Current.CancellationToken);
+            var timeout = TimeSpan.FromMilliseconds(500);
+
+            // The primary no longer reads. Whatever fits into the pipe may be accepted, the rest must not hang.
+            for (var i = 0; i < 5; i++)
+            {
+                var watch = Stopwatch.StartNew();
+                SingleInstance.TrySend(name, [$"queued-{i}.pdf"], timeout);
+                Assert.True(watch.Elapsed < timeout + TimeSpan.FromSeconds(2), $"Send {i} took {watch.Elapsed}.");
+            }
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Fact]
+    public void SendToAPrimaryThatNeverReadsFailsAtTheTimeout()
+    {
+        var name = UniqueName();
+        using var server = new NamedPipeServerStream(
+            SingleInstance.PipeNameFor(name),
+            PipeDirection.In,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        _ = server.WaitForConnectionAsync(TestContext.Current.CancellationToken);
+
+        // About 4 MB: far more than a pipe buffers, so the write blocks until the deadline.
+        var paths = Enumerable.Repeat(new string('ä', 32_768), 64).ToArray();
+        var timeout = TimeSpan.FromSeconds(1);
+        var watch = Stopwatch.StartNew();
+
+        var sent = SingleInstance.TrySend(name, paths, timeout);
+
+        watch.Stop();
+        Assert.False(sent);
+        Assert.InRange(watch.Elapsed, timeout - TimeSpan.FromMilliseconds(100), timeout + TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
+    public void InvalidNamesAreRejected()
+    {
+        Assert.Throws<ArgumentException>(() => SingleInstance.TryBecomePrimary(""));
+        Assert.Throws<ArgumentException>(() => SingleInstance.TryBecomePrimary("   "));
+        Assert.Throws<ArgumentException>(() => SingleInstance.TryBecomePrimary("anonymous"));
+        Assert.Throws<ArgumentException>(() => SingleInstance.TryBecomePrimary("Anonymous"));
+        Assert.Throws<ArgumentException>(() => SingleInstance.TrySend("", [], TimeSpan.Zero));
+        Assert.Throws<ArgumentException>(() => SingleInstance.TrySend("anonymous", [], TimeSpan.Zero));
+        Assert.Throws<ArgumentNullException>(() => SingleInstance.TryBecomePrimary(null!));
+    }
+
+    [Fact]
+    public void UnusableLockFileDegradesToAnUncoordinatedInstance()
+    {
+        var name = UniqueName();
+        var path = SingleInstance.LockPathFor(name);
+
+        // A directory in the place of the lock file cannot be opened as a file (access denied).
+        Directory.CreateDirectory(path);
+        try
+        {
+            using var instance = SingleInstance.TryBecomePrimary(name);
+
+            Assert.NotNull(instance);
+            Assert.False(instance.IsCoordinated);
+            instance.StartListening(_ => { });
+            Assert.False(SingleInstance.TrySend(name, ["x.pdf"], TimeSpan.FromMilliseconds(200)));
+        }
+        finally
+        {
+            Directory.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void RegularLockFileIsCoordinated()
+    {
+        using var instance = Primary(UniqueName());
+
+        Assert.True(instance.IsCoordinated);
+    }
+
+    [Fact]
+    public void RuntimeDirectoryIsOnlyUsedWhenItIsAnExistingAbsoluteDirectory()
+    {
+        var existing = Path.GetTempPath();
+
+        Assert.Equal(existing, SingleInstance.RuntimeDirectoryFrom(existing));
+        Assert.Null(SingleInstance.RuntimeDirectoryFrom(null));
+        Assert.Null(SingleInstance.RuntimeDirectoryFrom(""));
+        Assert.Null(SingleInstance.RuntimeDirectoryFrom("relative/dir"));
+        Assert.Null(SingleInstance.RuntimeDirectoryFrom(Path.Combine(existing, Guid.NewGuid().ToString("N"))));
     }
 
     [Fact]
@@ -308,7 +424,7 @@ public sealed class SingleInstanceTests
     {
         var name = UniqueName();
         var primary = Primary(name);
-        var done = new TaskCompletionSource();
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         primary.StartListening(_ =>
         {
             primary.Dispose();

@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.IO.Pipes;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -14,6 +14,13 @@ namespace Pagewing.Core.Hosting;
 /// (<see cref="FileShare.None"/>). The operating system releases the lock when the process ends, even
 /// after a crash, so there is no stale lock. A later launch calls <see cref="TrySend"/>, which connects
 /// to the primary's named pipe (a Unix domain socket on Linux) and sends the file paths.
+/// </para>
+/// <para>
+/// On Linux the lock file and the pipe live in <c>$XDG_RUNTIME_DIR</c> (private to the user) when it is
+/// set, otherwise in the temp directory. If the lock file cannot be used at all (for example because
+/// another user created it first in a shared temp directory), <see cref="TryBecomePrimary"/> still
+/// returns an instance so that the app starts; it is then uncoordinated and neither listens nor is
+/// reachable (best effort).
 /// </para>
 /// <para>
 /// Everything arriving on the pipe is untrusted: counts and lengths are bounded, truncated or garbled
@@ -45,17 +52,30 @@ public sealed class SingleInstance : IDisposable
     private static bool insideCallback;
 
     private readonly string name;
-    private readonly FileStream lockFile;
+    private readonly FileStream? lockFile;
     private readonly CancellationTokenSource stop = new();
     private readonly object gate = new();
     private Task? loop;
     private bool disposed;
 
-    private SingleInstance(string name, FileStream lockFile)
+    private SingleInstance(string name, FileStream? lockFile)
     {
         this.name = name;
         this.lockFile = lockFile;
     }
+
+    /// <summary>
+    /// Gets or sets what happens when the callback of <see cref="StartListening"/> throws. The default
+    /// rethrows the exception on a separate thread-pool work item, so it surfaces like any unhandled
+    /// exception while the listener keeps working. Set before <see cref="StartListening"/>; for tests.
+    /// </summary>
+    internal Action<Exception> CallbackFailed { get; set; } = RethrowOnThreadPool;
+
+    /// <summary>
+    /// Gets a value indicating whether the lock file is held. <see langword="false"/> for an
+    /// uncoordinated instance that could not use the lock file.
+    /// </summary>
+    internal bool IsCoordinated => lockFile is not null;
 
     /// <summary>Gets the instance name used by default: one instance per user.</summary>
     public static string DefaultName => "pagewing-" + Environment.UserName;
@@ -64,16 +84,24 @@ public sealed class SingleInstance : IDisposable
     /// Tries to become the primary instance by taking the exclusive lock file for <paramref name="name"/>.
     /// </summary>
     /// <param name="name">The instance name, for example <see cref="DefaultName"/>.</param>
-    /// <returns>The primary instance, or <see langword="null"/> when another process holds the lock.</returns>
+    /// <returns>
+    /// The primary instance, or <see langword="null"/> when another process holds the lock. When the lock
+    /// file cannot be used at all, an uncoordinated instance (see the class remarks) instead of an exception.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is empty or reserved.</exception>
     public static SingleInstance? TryBecomePrimary(string name)
     {
-        ArgumentNullException.ThrowIfNull(name);
+        ValidateName(name);
 
-        var path = Path.Combine(Path.GetTempPath(), FileSafeName(name) + ".lock");
         FileStream stream;
         try
         {
-            stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, bufferSize: 1);
+            stream = new FileStream(LockPathFor(name), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, bufferSize: 1);
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or DirectoryNotFoundException or PathTooLongException or NotSupportedException)
+        {
+            // The lock file is unusable (owned by someone else, no such directory, ...): do not keep the app from starting.
+            return new SingleInstance(name, null);
         }
         catch (IOException)
         {
@@ -94,10 +122,14 @@ public sealed class SingleInstance : IDisposable
     /// How long to keep trying. The primary opens its pipe only after the first frame, so the first
     /// attempts may find no listener yet.
     /// </param>
-    /// <returns><see langword="true"/> when everything was handed over; <see langword="false"/> otherwise.</returns>
+    /// <returns>
+    /// <see langword="true"/> when everything was handed over; <see langword="false"/> otherwise, also when
+    /// connecting or writing takes longer than <paramref name="timeout"/> in total.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is empty or reserved.</exception>
     public static bool TrySend(string name, IReadOnlyList<string> paths, TimeSpan timeout)
     {
-        ArgumentNullException.ThrowIfNull(name);
+        ValidateName(name);
         ArgumentNullException.ThrowIfNull(paths);
 
         foreach (var path in paths)
@@ -128,8 +160,40 @@ public sealed class SingleInstance : IDisposable
         return true;
     }
 
-    /// <summary>Gets the pipe name for an instance name.</summary>
-    internal static string PipeNameFor(string name) => FileSafeName(name);
+    /// <summary>
+    /// Gets the pipe name for an instance name: an absolute socket path in the runtime directory on
+    /// Linux when there is one (an absolute path works as pipe name on Unix), otherwise the plain name.
+    /// </summary>
+    internal static string PipeNameFor(string name)
+    {
+        var safe = FileSafeName(name);
+        var directory = RuntimeDirectory();
+        if (directory is not null)
+        {
+            var path = Path.Combine(directory, safe + ".pipe");
+
+            // The sun_path of a Unix socket holds about 108 bytes.
+            if (Encoding.UTF8.GetByteCount(path) < 100)
+            {
+                return path;
+            }
+        }
+
+        return safe;
+    }
+
+    /// <summary>Gets the path of the lock file for an instance name.</summary>
+    internal static string LockPathFor(string name) =>
+        Path.Combine(RuntimeDirectory() ?? Path.GetTempPath(), FileSafeName(name) + ".lock");
+
+    /// <summary>
+    /// Returns <paramref name="xdgRuntimeDir"/> when it is an existing absolute directory; otherwise
+    /// <see langword="null"/>.
+    /// </summary>
+    internal static string? RuntimeDirectoryFrom(string? xdgRuntimeDir) =>
+        !string.IsNullOrEmpty(xdgRuntimeDir) && Path.IsPathRooted(xdgRuntimeDir) && Directory.Exists(xdgRuntimeDir)
+            ? xdgRuntimeDir
+            : null;
 
     /// <summary>
     /// Parses a message. Returns <see langword="false"/> for anything that is not exactly one well-formed
@@ -182,7 +246,8 @@ public sealed class SingleInstance : IDisposable
     /// <summary>
     /// Starts accepting messages from later launches. <paramref name="onMessage"/> runs on a thread-pool
     /// thread, once per message; an empty list means "only activate". It must not block on the thread that
-    /// calls <see cref="Dispose"/>. Exceptions it throws are swallowed so that the listener keeps working.
+    /// calls <see cref="Dispose"/>. An exception it throws does not stop the listener; it is rethrown on a
+    /// separate thread-pool work item and so surfaces like any unhandled exception.
     /// </summary>
     /// <param name="onMessage">Receives the paths of one message.</param>
     public void StartListening(Action<IReadOnlyList<string>> onMessage)
@@ -195,6 +260,13 @@ public sealed class SingleInstance : IDisposable
             if (loop is not null)
             {
                 throw new InvalidOperationException("The instance is already listening.");
+            }
+
+            if (lockFile is null)
+            {
+                // Uncoordinated: listening could split the pipe with the real primary.
+                loop = Task.CompletedTask;
+                return;
             }
 
             var token = stop.Token;
@@ -220,17 +292,42 @@ public sealed class SingleInstance : IDisposable
             running = loop;
         }
 
-        stop.Cancel();
-        if (running is not null && !insideCallback)
+        try
         {
-            // The loop only ends by cancellation, and all failures are handled inside it.
-            running.GetAwaiter().GetResult();
-            stop.Dispose();
+            stop.Cancel();
+            if (running is not null && !insideCallback)
+            {
+                // The loop handles every failure itself and only ends by cancellation.
+                running.GetAwaiter().GetResult();
+                stop.Dispose();
+            }
         }
-
-        // The lock file stays behind on purpose: deleting it would race with a process that just opened it.
-        lockFile.Dispose();
+        finally
+        {
+            // The lock file stays behind on purpose: deleting it would race with a process that just opened it.
+            lockFile?.Dispose();
+        }
     }
+
+    private static void RethrowOnThreadPool(Exception exception)
+    {
+        var captured = ExceptionDispatchInfo.Capture(exception);
+        ThreadPool.UnsafeQueueUserWorkItem(static state => ((ExceptionDispatchInfo)state!).Throw(), captured);
+    }
+
+    private static void ValidateName(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        // .NET refuses "anonymous" as a pipe name on Unix.
+        if (string.Equals(FileSafeName(name), "anonymous", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("The name is reserved.", nameof(name));
+        }
+    }
+
+    private static string? RuntimeDirectory() =>
+        OperatingSystem.IsWindows() ? null : RuntimeDirectoryFrom(Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR"));
 
     private static string FileSafeName(string name)
     {
@@ -273,19 +370,22 @@ public sealed class SingleInstance : IDisposable
             var remaining = deadline - Environment.TickCount64;
             try
             {
-                using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly);
+                using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
 
                 // Short slices, so that a pipe that does not exist yet is retried until the deadline.
                 client.Connect((int)Math.Clamp(remaining, 1, 100));
-                client.Write(message);
-                client.Flush();
-                if (OperatingSystem.IsWindows())
-                {
-                    // Keep the connection open until the primary has read everything.
-                    client.WaitForPipeDrain();
-                }
 
+                // The write is bounded too: the primary may not be reading (stuck, or busy with a long callback).
+                // Closing the client afterwards is enough; the data stays in the pipe until the primary has read it.
+                using var writeLimit = new CancellationTokenSource();
+                writeLimit.CancelAfter((int)Math.Clamp(deadline - Environment.TickCount64, 1, int.MaxValue));
+                client.WriteAsync(message, writeLimit.Token).AsTask().GetAwaiter().GetResult();
                 return true;
+            }
+            catch (OperationCanceledException)
+            {
+                // The deadline passed while writing.
+                return false;
             }
             catch (TimeoutException)
             {
@@ -380,9 +480,11 @@ public sealed class SingleInstance : IDisposable
                 {
                     break;
                 }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                catch (Exception)
                 {
-                    // The pipe failed (for example a client vanished during connect). Start over after a pause.
+                    // The pipe failed: a client vanished during connect, or creating the pipe is not possible
+                    // (for example SocketException from a stale socket of another user, or a path that is too
+                    // long). Nothing here may end the listener, so start over after a pause.
                     if (waiting is not null)
                     {
                         await waiting.DisposeAsync().ConfigureAwait(false);
@@ -391,7 +493,7 @@ public sealed class SingleInstance : IDisposable
 
                     try
                     {
-                        await Task.Delay(100, token).ConfigureAwait(false);
+                        await Task.Delay(250, token).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
@@ -409,7 +511,7 @@ public sealed class SingleInstance : IDisposable
         }
     }
 
-    private static async Task HandleClientAsync(Stream client, Action<IReadOnlyList<string>> onMessage, CancellationToken token)
+    private async Task HandleClientAsync(Stream client, Action<IReadOnlyList<string>> onMessage, CancellationToken token)
     {
         var data = await ReadMessageAsync(client, token).ConfigureAwait(false);
         if (data is null || !TryParse(data, out var paths) || token.IsCancellationRequested)
@@ -424,8 +526,8 @@ public sealed class SingleInstance : IDisposable
         }
         catch (Exception exception)
         {
-            // A failing callback must not stop the listener; the owner of the callback is responsible for its errors.
-            Debug.WriteLine("Single-instance callback failed: " + exception.Message);
+            // A failing callback must not stop the listener.
+            CallbackFailed(exception);
         }
         finally
         {
