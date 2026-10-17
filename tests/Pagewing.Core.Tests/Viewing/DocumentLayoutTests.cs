@@ -243,6 +243,272 @@ public sealed class DocumentLayoutTests
         Assert.Equal((2 * LetterHeight) + (100 * DocumentLayout.DipsPerPoint) + (2 * 20) + (2 * 32), layout.ContentHeight, 6);
     }
 
+    private static readonly PdfPageSize Landscape = new(792, 612);
+
+    private static DocumentLayout Pages(int count, PageLayoutMode mode)
+    {
+        var layout = new DocumentLayout(count, Letter);
+        layout.SetSizes(0, Enumerable.Repeat(Letter, count).ToArray());
+        layout.Mode = mode;
+        return layout;
+    }
+
+    [Fact]
+    public void ContinuousModeIsUnchanged()
+    {
+        var layout = ThreeLetterPages();
+
+        Assert.Equal(PageLayoutMode.Continuous, layout.Mode);
+        Assert.Equal(3, layout.RowCount);
+        Assert.Equal(2, layout.RowOf(2));
+        Assert.Equal((1, 1), layout.PagesOfRow(1));
+        Assert.True(layout.IsShown(1));
+        Assert.Equal((612 * DocumentLayout.DipsPerPoint) + (2 * 32), layout.ContentWidth, 6);
+        Assert.Equal(32, layout.GetPageRect(0).X, 6);
+        Assert.Equal(32 + LetterHeight + 20, layout.GetPageRect(1).Y, 6);
+    }
+
+    [Fact]
+    public void TwoPagesPlacesSpreadsSideBySideOnTheCentreAxis()
+    {
+        var layout = Pages(4, PageLayoutMode.TwoPages);
+        var axis = layout.ContentWidth / 2;
+
+        var left = layout.GetPageRect(0);
+        var right = layout.GetPageRect(1);
+
+        Assert.Equal(2, layout.RowCount);
+        Assert.Equal(axis - (DocumentLayout.SpreadGap / 2), left.Right, 6);
+        Assert.Equal(axis + (DocumentLayout.SpreadGap / 2), right.X, 6);
+        Assert.Equal(left.Y, right.Y, 6);
+        Assert.Equal((2 * LetterHeight) + 20 + (2 * 32), layout.ContentHeight, 6);
+        Assert.Equal((2 * ((612 * DocumentLayout.DipsPerPoint) + (DocumentLayout.SpreadGap / 2))) + (2 * 32), layout.ContentWidth, 6);
+        Assert.Equal(layout.GetPageRect(0).Bottom + 20, layout.GetPageRect(2).Y, 6);
+    }
+
+    [Fact]
+    public void CoverPageStandsAloneOnTheRightHalf()
+    {
+        var layout = Pages(5, PageLayoutMode.TwoPagesWithCover);
+        var axis = layout.ContentWidth / 2;
+
+        Assert.Equal(3, layout.RowCount);
+        Assert.Equal(axis + (DocumentLayout.SpreadGap / 2), layout.GetPageRect(0).X, 6);
+        Assert.Equal((1, 2), layout.PagesOfRow(1));
+        Assert.Equal((3, 4), layout.PagesOfRow(2));
+        Assert.Equal(1, layout.RowOf(1));
+        Assert.Equal(1, layout.RowOf(2));
+        Assert.Equal(2, layout.RowOf(4));
+        Assert.Equal(axis - (DocumentLayout.SpreadGap / 2), layout.GetPageRect(1).Right, 6);
+        Assert.Equal(axis + (DocumentLayout.SpreadGap / 2), layout.GetPageRect(2).X, 6);
+    }
+
+    [Fact]
+    public void CoverModeWithOnePageStaysOnTheRight()
+    {
+        var layout = Pages(1, PageLayoutMode.TwoPagesWithCover);
+
+        Assert.Equal(1, layout.RowCount);
+        Assert.Equal((layout.ContentWidth / 2) + (DocumentLayout.SpreadGap / 2), layout.GetPageRect(0).X, 6);
+        Assert.Equal((2 * ((612 * DocumentLayout.DipsPerPoint) + (DocumentLayout.SpreadGap / 2))) + (2 * 32), layout.ContentWidth, 6);
+    }
+
+    [Fact]
+    public void LastOddPageStandsAloneOnTheLeftHalf()
+    {
+        var layout = Pages(3, PageLayoutMode.TwoPages);
+
+        Assert.Equal(2, layout.RowCount);
+        Assert.Equal((2, 2), layout.PagesOfRow(1));
+        Assert.Equal((layout.ContentWidth / 2) - (DocumentLayout.SpreadGap / 2), layout.GetPageRect(2).Right, 6);
+    }
+
+    [Fact]
+    public void RowHeightIsTheTallerPageAndPagesAreTopAligned()
+    {
+        var layout = new DocumentLayout(4, Letter);
+        layout.SetSizes(0, [Letter, Landscape, Letter, Letter]);
+        layout.Mode = PageLayoutMode.TwoPages;
+
+        var portrait = layout.GetPageRect(0);
+        var landscape = layout.GetPageRect(1);
+
+        Assert.Equal(portrait.Y, landscape.Y, 6);
+        Assert.Equal(612 * DocumentLayout.DipsPerPoint, landscape.Height, 6);
+        Assert.Equal(portrait.Bottom + 20, layout.GetPageRect(2).Y, 6);
+        Assert.Equal((2 * LetterHeight) + 20 + (2 * 32), layout.ContentHeight, 6);
+
+        // The wider page decides the width of the half pages.
+        Assert.Equal((2 * ((792 * DocumentLayout.DipsPerPoint) + (DocumentLayout.SpreadGap / 2))) + (2 * 32), layout.ContentWidth, 6);
+    }
+
+    [Fact]
+    public void SingleModeShowsOnlyTheChosenPage()
+    {
+        var layout = Pages(4, PageLayoutMode.SinglePage);
+
+        Assert.True(layout.IsShown(0));
+        layout.ShowPage(2);
+
+        Assert.True(layout.IsShown(2));
+        Assert.False(layout.IsShown(1));
+        Assert.Equal(LetterHeight + (2 * 32), layout.ContentHeight, 6);
+        Assert.Equal((2, 2), layout.GetVisiblePages(0, 99999));
+        Assert.Equal(32, layout.GetPageRect(2).Y, 6);
+        Assert.Equal(32, layout.GetPageRect(2).X, 6);
+        Assert.Throws<ArgumentOutOfRangeException>(() => layout.GetPageRect(1));
+        Assert.Equal(2, layout.GetMostVisiblePage(0, 99999));
+        Assert.Equal(2, layout.GetAnchor(500).Page);
+
+        // The page switches with ShowPage, the page numbers stay the document's.
+        layout.ShowPage(0);
+        Assert.Equal((0, 0), layout.GetVisiblePages(0, 99999));
+        Assert.Throws<ArgumentOutOfRangeException>(() => layout.ShowPage(4));
+    }
+
+    [Fact]
+    public void ShowPageHasNoEffectOutsideSingleMode()
+    {
+        var layout = Pages(4, PageLayoutMode.Continuous);
+
+        layout.ShowPage(2);
+
+        Assert.True(layout.IsShown(0));
+        Assert.Equal((0, 3), layout.GetVisiblePages(0, 99999));
+    }
+
+    [Fact]
+    public void VisiblePagesIncludeBothPagesOfARow()
+    {
+        // Row tops: 32, 1108. Row bottoms: 1088, 2164.
+        var layout = Pages(4, PageLayoutMode.TwoPages);
+
+        Assert.Equal((0, 1), layout.GetVisiblePages(0, 40));
+        Assert.Equal((2, 3), layout.GetVisiblePages(1200, 1300));
+        Assert.Equal((0, 3), layout.GetVisiblePages(1000, 1200));
+        Assert.Equal((0, -1), layout.GetVisiblePages(1090, 1100));
+    }
+
+    [Fact]
+    public void MostVisiblePageInATwoPageRowIsTheFirstOnATie()
+    {
+        var layout = Pages(4, PageLayoutMode.TwoPages);
+
+        Assert.Equal(0, layout.GetMostVisiblePage(100, 200));
+        Assert.Equal(2, layout.GetMostVisiblePage(1200, 1300));
+
+        // Only the gap in view: the nearest row wins, with its first page.
+        Assert.Equal(2, layout.GetMostVisiblePage(1095, 1105));
+    }
+
+    [Fact]
+    public void AnchorRoundTripsInTwoPageMode()
+    {
+        var layout = new DocumentLayout(5, Letter);
+        layout.SetSizes(0, [Letter, Landscape, Letter, Letter, Landscape]);
+        layout.Mode = PageLayoutMode.TwoPagesWithCover;
+
+        foreach (var y in new[] { 0.0, 10, 500, 1070, 1100, 1500, 2300, 9999 })
+        {
+            Assert.Equal(y, layout.GetOffset(layout.GetAnchor(y)), 6);
+        }
+    }
+
+    [Fact]
+    public void ModeChangesRelayoutTheSamePages()
+    {
+        var layout = Pages(4, PageLayoutMode.Continuous);
+        var continuousHeight = layout.ContentHeight;
+
+        layout.Mode = PageLayoutMode.TwoPages;
+        Assert.True(layout.ContentHeight < continuousHeight);
+
+        layout.Mode = PageLayoutMode.Continuous;
+        Assert.Equal(continuousHeight, layout.ContentHeight, 6);
+    }
+
+    [Fact]
+    public void FitWidthFillsTheViewportMinusMargins()
+    {
+        var layout = ThreeLetterPages();
+
+        var zoom = layout.FitZoom(ZoomMode.FitWidth, 0, 1000, 800);
+
+        Assert.Equal((1000 - 64) / (612 * DocumentLayout.DipsPerPoint), zoom, 9);
+        layout.Zoom = zoom;
+        Assert.Equal(1000, layout.ContentWidth, 6);
+    }
+
+    [Fact]
+    public void FitWidthInCoverModeUsesTheFullSpreadWidth()
+    {
+        var layout = Pages(5, PageLayoutMode.TwoPagesWithCover);
+
+        var zoom = layout.FitZoom(ZoomMode.FitWidth, 0, 1000, 800);
+
+        Assert.Equal((1000 - 64 - DocumentLayout.SpreadGap) / (2 * 612 * DocumentLayout.DipsPerPoint), zoom, 9);
+        layout.Zoom = zoom;
+        Assert.Equal(1000, layout.ContentWidth, 6);
+    }
+
+    [Fact]
+    public void FitPageUsesTheSmallerRatio()
+    {
+        var layout = ThreeLetterPages();
+
+        var heightBound = layout.FitZoom(ZoomMode.FitPage, 1, 1000, 500);
+        var widthBound = layout.FitZoom(ZoomMode.FitPage, 1, 400, 2000);
+
+        Assert.Equal((500 - 64) / (792 * DocumentLayout.DipsPerPoint), heightBound, 9);
+        Assert.Equal((400 - 64) / (612 * DocumentLayout.DipsPerPoint), widthBound, 9);
+    }
+
+    [Fact]
+    public void FitPageOfASpreadUsesTheTallerPage()
+    {
+        var layout = new DocumentLayout(2, Letter);
+        layout.SetSizes(0, [Letter, Landscape]);
+        layout.Mode = PageLayoutMode.TwoPages;
+
+        var zoom = layout.FitZoom(ZoomMode.FitPage, 1, 5000, 500);
+
+        Assert.Equal((500 - 64) / (792 * DocumentLayout.DipsPerPoint), zoom, 9);
+    }
+
+    [Fact]
+    public void ActualSizeIsOne()
+    {
+        var layout = ThreeLetterPages();
+        layout.Zoom = 3;
+
+        Assert.Equal(1, layout.FitZoom(ZoomMode.ActualSize, 0, 800, 600));
+        Assert.Equal(3, layout.FitZoom(ZoomMode.Free, 0, 800, 600));
+    }
+
+    [Fact]
+    public void FitIsClampedToTheZoomRange()
+    {
+        var layout = ThreeLetterPages();
+
+        Assert.Equal(ZoomSteps.Min, layout.FitZoom(ZoomMode.FitWidth, 0, 10, 10));
+        Assert.Equal(ZoomSteps.Min, layout.FitZoom(ZoomMode.FitPage, 0, 1000, 40));
+        Assert.Equal(ZoomSteps.Max, layout.FitZoom(ZoomMode.FitWidth, 0, 100000, 100000));
+        Assert.Equal(ZoomSteps.Min, Pages(2, PageLayoutMode.TwoPages).FitZoom(ZoomMode.FitWidth, 0, 70, 800));
+    }
+
+    [Fact]
+    public void FitZoomOfAnInvalidPageReturnsTheCurrentZoom()
+    {
+        var layout = ThreeLetterPages();
+        layout.Zoom = 2;
+
+        Assert.Equal(2, layout.FitZoom(ZoomMode.FitWidth, 3, 1000, 800));
+        Assert.Equal(2, layout.FitZoom(ZoomMode.FitWidth, -1, 1000, 800));
+        Assert.Equal(2, layout.FitZoom(ZoomMode.FitPage, 0, double.NaN, 800));
+        Assert.Equal(2, layout.FitZoom(ZoomMode.FitPage, 0, 1000, double.NaN));
+        Assert.Equal(ZoomSteps.Default, new DocumentLayout(0, Letter).FitZoom(ZoomMode.FitWidth, 0, 1000, 800));
+    }
+
     [Fact]
     public void ThousandPagesStayCheapToQuery()
     {

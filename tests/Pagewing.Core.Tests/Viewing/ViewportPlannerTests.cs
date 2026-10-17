@@ -42,6 +42,21 @@ public sealed class ViewportPlannerTests
     }
 
     [Fact]
+    public void TwoPageRowsGetPreviewsAndTilesForBothPages()
+    {
+        var layout = Pages(6, 0.5);
+        layout.Mode = PageLayoutMode.TwoPages;
+
+        var plan = ViewportPlanner.Plan(layout, new DipRect(0, 0, 1200, 600), 1.0);
+
+        var visiblePreviews = plan.TakeWhile(request => request.Key.IsPreview && !request.Background).ToArray();
+        Assert.Equal([0, 1], visiblePreviews.Select(request => request.Key.Page).Order());
+        var sharp = plan.Where(request => !request.Key.IsPreview).ToArray();
+        Assert.Equal([0, 1], sharp.Select(request => request.Key.Page).Distinct().Order());
+        Assert.All(plan.Where(request => request.Key.Page >= 2), request => Assert.True(request.Background));
+    }
+
+    [Fact]
     public void BufferPagesGetBackgroundPreviewsOnly()
     {
         var layout = Pages(10, 0.5);
