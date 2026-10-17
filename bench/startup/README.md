@@ -58,6 +58,7 @@ In jedem Messlauf schreibt die App nach `first-sharp` (also nach dem Messpunkt, 
 |---|---|
 | `main` | Eintritt in `Program.Main` (nach der `AppContext`-Initialisierung) |
 | `session-open-started` | das frühe Öffnen der Datei ist gestartet |
+| `rendering-software`, `rendering-default` | nur Windows: Rendering-Modus gewählt (Abstand zur Phase davor = Kosten der Adapter-Erkennung; `Docs/DECISIONS.md`, Eintrag „Software-Rendering ohne Hardware-Grafikadapter (M3)“) |
 | `session-ready` | die Session meldet `Ready` (PDFium-Thread) |
 | `app-initialize` | `App.Initialize`: Avalonia-Plattform (Fenstersystem, Grafik) ist initialisiert |
 | `app-initialized` | `OnFrameworkInitializationCompleted`: XAML der App geladen |

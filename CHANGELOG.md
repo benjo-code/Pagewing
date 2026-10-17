@@ -16,6 +16,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 - Zoom mit Strg+Mausrad, Strg+Plus/Minus und in der Statusleiste (10 % bis 800 %); Seitenwechsel mit Bild auf/ab und über das Seitenfeld.
 - Scrollen mit der Tastatur: Pfeiltasten, Leertaste (Umschalt+Leertaste zurück), Pos1 und Ende.
 - Oberfläche auf Deutsch und Englisch, nach Systemsprache.
+- Schnelleres Öffnen unter Windows auf Rechnern ohne Grafikbeschleunigung (etwa in virtuellen Maschinen): Die App zeichnet dort ohne Direct3D; `PAGEWING_RENDERING=software` oder `default` erzwingt einen Modus.
 
 ### Changed
 
