@@ -9,6 +9,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 ### Added
 
 - CLI `pagewing info`, `render`, `text`; PDFs öffnen (auch mit Passwort), Seiten und Kacheln rendern, Text extrahieren; Render-Regression und Benchmarks.
+- Desktop-App: Hauptfenster im Design „Werkbank“ (helles und dunkles Theme, unter Windows mit Tab in der Titelleiste), Startbildschirm, Passwortkarte und Fehlerkarte.
+- PDFs öffnen per Kommandozeilenargument, Dateidialog (Strg+O) und Drag & Drop.
+- Single-Instance: Ein weiterer Aufruf übergibt die Datei an das laufende Fenster.
+- Fortlaufendes Scrollen durch alle Seiten: erst Platzhalter und grobe Vorschau, dann scharfe Kacheln, gerendert wird nur der sichtbare Bereich.
+- Zoom mit Strg+Mausrad, Strg+Plus/Minus und in der Statusleiste (10 % bis 800 %); Seitenwechsel mit Bild auf/ab und über das Seitenfeld.
+- Oberfläche auf Deutsch und Englisch, nach Systemsprache.
+- Startzeit-Check in der CI (`bench/startup`), der die Geschwindigkeitsbudgets am veröffentlichten Binary prüft.
 
 ### Changed
 

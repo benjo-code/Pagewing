@@ -7,8 +7,8 @@
     Windows, fontconfig's sans-serif and monospace on Linux). To switch, swap the two FontFamily lines for these:
       <FontFamily x:Key="Pw.Font.Sans">Segoe UI, sans-serif</FontFamily>
       <FontFamily x:Key="Pw.Font.Mono">Cascadia Mono, Consolas, monospace</FontFamily>
-    Milestone 3, Task 13 decides by measuring the start cost (measure-startup switch). No runtime logic here: the font
-    is never changed after the first frame.
+    Milestone 3 measured the start cost and kept Geist (Docs/DECISIONS.md, "Schrift-Entscheidung nach Messung (M3)").
+    No runtime logic here: the font is never changed after the first frame.
   -->
   <FontFamily x:Key="Pw.Font.Sans">avares://Pagewing/Assets/Fonts#Geist</FontFamily>
   <FontFamily x:Key="Pw.Font.Mono">avares://Pagewing/Assets/Fonts#Geist Mono</FontFamily>

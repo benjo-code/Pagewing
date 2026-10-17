@@ -322,18 +322,23 @@ Drei Varianten standen am 2026-10-17 als Artifact zur Wahl: https://claude.ai/ar
 
 ## 9. Offene Punkte
 
-Prüfung in M3, wenn nicht anders angegeben:
+Stand nach M3 (Task 13, 2026-10-17).
 
-- Snap Layouts unter Windows 11 mit `ElementRole="MaximizeButton"` (Hover über Maximieren zeigt das Menü).
-- Minimieren-/Maximieren-Animationen bei `WindowDecorations="Full"` mit Hint unter 12.1.4.
-- Startkosten einer eingebetteten Schrift gegenüber der Systemschrift (`--measure-startup`).
-- Start- und Bildratenkosten von Mica gegenüber deckender Fläche, falls Mica gewünscht ist.
-- X11 mit und ohne Compositor: tatsächliches `ActualTransparencyLevel`, Titelleiste.
-- Tatsächliche Standardschrift auf den Ziel-Distributionen.
+Erledigt:
+
+- Startkosten der eingebetteten Schrift gegenüber der Systemschrift (Geist und Geist Mono): gemessen, Geist bleibt (Warmstart +4 ms, Regel höchstens +15 ms). `Docs/DECISIONS.md`, Eintrag „Schrift-Entscheidung nach Messung (M3) …“.
+- Fluent-Palette: übrige Rollen sind auf das nächste Token gesetzt (`Docs/DECISIONS.md`, Eintrag „Design-Tokens, Schrift und Icons in Avalonia umgesetzt (M3)“). Sichtvergleich der Headless-Aufnahmen (Startbildschirm, Passwort- und Fehlerkarte, Dokumentansicht; hell und dunkel; Deutsch und Englisch) gegen Tokens und Maße dieser Spec nach Augenmaß: keine erkennbare Abweichung. Offen bleibt der Vergleich mit dem Mockup im Artifact und von Hover-, Druck- und Fokuszuständen am echten Bildschirm.
+- Fensterknöpfe unter Windows: Avalonia 12.1.4 zeichnet sie bei `WindowDecorations="Full"` mit Hint selbst (Fluent `WindowDrawnDecorations`, 3 × 45 px); `MainWindow.axaml` blendet Titeltext und Vollbildknopf aus, `TitleBar.axaml` reserviert 140 px. Im AOT-Binary sichtbar und auf die 40-px-Titelleiste ausgerichtet (Fensteraufnahme). Offen: Aussehen und Hover-Farben auf einem echten 60-Hz-Bildschirm, Kompakt-Höhe 34 px (Dichte kommt in M6).
+
+Offen (wie zu prüfen):
+
+- Snap Layouts unter Windows 11 mit `ElementRole="MaximizeButton"`: Zeiger auf Maximieren halten, das Layout-Menü muss erscheinen (manuell auf Windows 11 mit echter Anzeige; in der Entwicklungs-VM nicht geprüft).
+- Minimieren-/Maximieren-Animationen bei `WindowDecorations="Full"` mit Hint unter 12.1.4: Fenster minimieren, wiederherstellen und maximieren und auf die Systemanimation achten (manuell, echte Anzeige).
+- Start- und Bildratenkosten von Mica gegenüber deckender Fläche, falls Mica gewünscht ist (`bench/startup` mit beiden Varianten auf einem Rechner mit GPU).
+- X11 mit und ohne Compositor: tatsächliches `ActualTransparencyLevel`, Titelleiste (manuell auf einem Linux-Desktop, z. B. Xfce mit ein- und ausgeschaltetem Compositor).
+- Tatsächliche Standardschrift auf den Ziel-Distributionen (`fc-match sans-serif` und `fc-match monospace` je Distribution; die Distributionen legt M8 fest).
 - Darstellung bei Windows-Hochkontrast: Fluent wertet `ContrastPreference` nicht aus; ob und wie Pagewing eine Hochkontrast-Palette bekommt, entscheidet M6 (Komfort, eigene Aufgabe in der Roadmap).
-- Geist und Geist Mono: Startkosten der eingebetteten Teilmenge messen. Liegen sie über dem Budget, nutzt Pagewing die Systemschrift (Fallback aus 5.2); das Ergebnis kommt als Eintrag in `Docs/DECISIONS.md`.
-- Fluent-Palette: übrige Rollen (`Chrome*`, `Alt*`, `List*`) so setzen, dass Textfeld, Knopf, Liste und Kontrollkästchen zu den Tokens in 5.1 passen; Prüfung per Sichtvergleich mit dem Mockup in beiden Themes.
-- Fensterknöpfe unter Windows: ob Avalonia sie bei `WindowDecorations="Full"` mit Hint selbst zeichnet oder das System; Höhe und Hover-Farben an die Titelleiste (40 bzw. 34 px) anpassen.
+- Linux-Titelleiste mit Tab-Zeile darunter (2.2): manuell auf einem Linux-Desktop prüfen; die Headless-Tests erzwingen die Windows-Titelleiste.
 
 Spätere Milestones (Zuordnung in der Roadmap, Abschnitt „Scope-Änderungen“, Eintrag vom 2026-10-17):
 
