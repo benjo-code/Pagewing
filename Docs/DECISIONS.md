@@ -15,6 +15,22 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Single-Instance: Sperrdatei und Named Pipe
+**Kontext:** Ein zweiter Aufruf von Pagewing soll die Datei an die laufende Instanz übergeben und sich beenden (Budget „weitere Datei in laufender Instanz bis erste Seite“ ≤ 100 ms, siehe Roadmap). Dafür braucht es eine verlässliche Wahl der primären Instanz und einen Übergabekanal, beides auf Windows und Linux mit demselben Code und ohne Reflection (Native AOT).
+**Entscheidung:** `Pagewing.Core.Hosting.SingleInstance` (`src/Pagewing.Core/Hosting/SingleInstance.cs`):
+- **Wahl der primären Instanz über eine exklusive Sperrdatei** (`FileStream` mit `FileShare.None` in `Path.GetTempPath()`, Name aus dem Instanznamen `pagewing-<Benutzername>`, auf `[A-Za-z0-9._-]` bereinigt, bei Änderung oder Länge über 64 mit angehängtem Kurz-Hash). Hält ein anderer Prozess die Sperre, ist die eigene Instanz sekundär. Das Betriebssystem gibt die Sperre bei jedem Prozessende frei (auch nach Absturz oder Kill), es gibt keine veraltete Sperre. Unter Linux emuliert .NET `FileShare.None` mit `flock`. Die Datei wird beim Beenden bewusst nicht gelöscht (Löschen würde mit einem gerade öffnenden Prozess um die Sperre konkurrieren; die leere Datei stört nicht).
+- **Übergabe über eine Named Pipe** (`NamedPipeServerStream`/`NamedPipeClientStream`, `PipeOptions.CurrentUserOnly`; .NET nutzt unter Linux Unix-Domain-Sockets, derselbe Code). Der primäre Prozess öffnet die Pipe erst nach dem ersten Frame; `TrySend` wiederholt die Verbindung deshalb bis zum Timeout. Eine leere Pfadliste heißt „nur in den Vordergrund holen“.
+- **Protokoll:** Eine Nachricht je Verbindung, vom Sender bis zum Verbindungsende geschrieben: `BinaryWriter` mit Anzahl (int32) und je Pfad ein UTF-8-String mit Längenpräfix. Kein Reflection-Serialisierer. Mehr als 64 Pfade sendet `TrySend` als mehrere Nachrichten.
+- **Eingang gilt als nicht vertrauenswürdig:** Nachrichten bis höchstens rund 6 MiB werden mit 3 s Zeitlimit komplett gelesen und erst dann geparst. Verworfen wird alles mit mehr als 64 Pfaden, einem Pfad über 32 768 Zeichen, ungültigem UTF-8, abgeschnittenem Inhalt oder überzähligen Bytes. Ein fehlerhafter Client stoppt die Annahmeschleife nicht; auch eine Ausnahme im Rückruf nicht. Vor jeder Bearbeitung wird bereits die nächste Pipe-Instanz angelegt, damit Clients die Pipe nie fehlend vorfinden.
+- Rückruf auf einem Pool-Thread; `Dispose` beendet die Schleife, wartet auf sie (nach `Dispose` kommt kein Rückruf mehr) und gibt die Sperre frei. Der Rückruf darf nicht auf den Thread warten, der `Dispose` aufruft.
+
+**Begründung:** Die Sperrdatei ist plattformübergreifend zuverlässig und braucht keine Aufräumlogik. Die Pipe liefert Übergabe und Verfügbarkeitsprüfung in einem, und `CurrentUserOnly` schützt vor Zugriff anderer Benutzer. Der Pfad des zweiten Aufrufs bleibt kurz, weil nur ein paar Bytes über einen bereits bestehenden Kanal laufen.
+**Verworfene Alternativen:**
+- *Wahl über die Pipe selbst* (`NamedPipeServerStream` mit `maxNumberOfServerInstances = 1`, wer die Pipe anlegen kann, ist primär): Der Primärprozess öffnet die Pipe erst nach dem ersten Frame, davor wäre die Wahl nicht eindeutig. Unter Unix hängt das Verhalten außerdem an einer Socket-Datei, die nach einem Absturz liegen bleiben kann.
+- *Benannter `Mutex`:* Unter Unix wird er in .NET über Shared-Memory-Dateien emuliert und verhält sich prozessübergreifend nicht zuverlässig (verwaiste Mutexe, Berechtigungen, Zugriff aus anderen Containern); er löst außerdem den Übergabekanal nicht.
+- *Sperrdatei mit Prozess-ID prüfen:* Anfällig für Wiederverwendung der PID und für Wettläufe; das Betriebssystem erledigt das mit der Dateisperre ohnehin richtig.
+- *Lokaler TCP-Port:* Netzwerk-Socket ohne Zugriffsschutz auf den Benutzer, verträgt sich schlecht mit „keine Netzwerkzugriffe“.
+
 ## 2026-10-17 – Render-Scheduler und Kachelparameter (M3)
 **Kontext:** M3 schließt die Render-Pipeline aus Gesamt-Spec 5.3 an die App an: nur sichtbare Seiten plus Puffer, zuerst eine grobe Vorschau, dann scharfe Kacheln, veraltete Aufträge werden abgebrochen, ein LRU-Cache mit Speicherbudget hält die Ergebnisse. Die App ruft bei jedem Scroll-Ereignis vom UI-Thread aus `RenderScheduler.Update` auf; der UI-Thread darf dabei nie auf PDFium warten. Der Eintrag „Offene Punkte für den Render-Scheduler (M3)“ nennt Eigenschaften des Render-Kerns, die der Scheduler berücksichtigen muss.
 **Entscheidung:**
