@@ -86,22 +86,12 @@ internal static partial class Program
         }
 
         var software = UseSoftwareRendering();
-        // DIAG-TEMP: a variant of the hardware measurement matrix (measurement runs only) replaces the rendering choice.
-        var (diagVariant, diagError) = DiagWin32Variants.Resolve(
-            options.IsMeasurement ? Environment.GetEnvironmentVariable(DiagWin32Variants.Variable) : null, options.IsMeasurement, OperatingSystem.IsWindows());
-        if (diagError is not null) // DIAG-TEMP
-        {
-            Console.Error.WriteLine($"error: {diagError}");
-            return 1;
-        }
-
-        software &= diagVariant is null; // DIAG-TEMP
         if (options.IsMeasurement)
         {
             StartMeasurementWatchdog();
         }
 
-        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null), software, diagVariant); // DIAG-TEMP: diagVariant
+        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null), software);
     }
 
     public static AppBuilder BuildAvaloniaApp() =>
@@ -109,7 +99,7 @@ internal static partial class Program
 
     // Kept out of Main, so that a later launch that hands over never loads or initializes Avalonia.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int Run(string[] args, AppStartup startup, bool softwareRendering, string? diagVariant) // DIAG-TEMP: diagVariant
+    private static int Run(string[] args, AppStartup startup, bool softwareRendering)
     {
         StartupPhases.Mark("avalonia-configure");
         var builder = AppBuilder.Configure(() => new App(startup)).UsePlatformDetect();
@@ -119,46 +109,13 @@ internal static partial class Program
             builder = builder.With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
         }
 
-        if (diagVariant is not null) // DIAG-TEMP
-        {
-            builder = DiagWin32Variants.Apply(builder, diagVariant, Console.Error);
-        }
-
         if (StartupPhases.Current is { } phases)
         {
             builder = WithSetupPhases(builder, phases);
         }
 
         StartupPhases.Mark("desktop-lifetime-start");
-        if (diagVariant is not null) // DIAG-TEMP
-        {
-            return StartDiagnosticVariant(builder, args, diagVariant);
-        }
-
         return builder.StartWithClassicDesktopLifetime(args);
-    }
-
-    /// <summary>
-    /// DIAG-TEMP: starts with a variant of <see cref="DiagWin32Variants"/>; a mode that does not work ends the measurement
-    /// with exit code 1 and <c>error: …</c> instead of a crash.
-    /// </summary>
-    private static int StartDiagnosticVariant(AppBuilder builder, string[] args, string variant)
-    {
-        try
-        {
-            return builder.StartWithClassicDesktopLifetime(args);
-        }
-        catch (Exception ex)
-        {
-            var message = new System.Text.StringBuilder($"error: {DiagWin32Variants.Variable}={variant}: the start failed:");
-            for (var inner = ex; inner is not null; inner = inner.InnerException)
-            {
-                message.Append(CultureInfo.InvariantCulture, $" {inner.GetType().Name}: {inner.Message}");
-            }
-
-            Console.Error.WriteLine(message.ToString());
-            return 1;
-        }
     }
 
     /// <summary>
