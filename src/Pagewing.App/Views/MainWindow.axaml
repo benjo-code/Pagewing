@@ -51,8 +51,8 @@
     Window layout of the design system, section 6, for Milestone 3: one document per window, no action bar, no panel.
     Windows draws its own title bar with the tab in it (client area extended into the decorations); Linux keeps the
     system title bar and shows the same row as a tab row below it (section 2.2). The row of the status bar is there as
-    soon as a file is requested, so the viewport keeps its height when the document is ready; its content appears
-    with the open document.
+    soon as a file loads, so the viewport keeps its height when the document is ready, but not under the password and
+    the error card; its content appears with the open document.
   -->
   <Grid RowDefinitions="Auto,*,Auto">
     <views:TitleBar Name="TitleBar" />
@@ -76,7 +76,7 @@
     </Panel>
 
     <Border Name="StatusBarRow" Grid.Row="2" Height="32"
-            IsVisible="{Binding HasDocument}"
+            IsVisible="{Binding HasStatusBarRow}"
             Background="{DynamicResource Pw.Brush.Surface.Window}">
       <views:StatusBar Name="StatusBar" IsVisible="{Binding IsReady}" />
     </Border>

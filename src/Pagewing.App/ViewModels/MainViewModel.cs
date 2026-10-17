@@ -96,6 +96,7 @@ public sealed class MainViewModel : ViewModelBase
 
             // Also when the state stays the same: the password check depends on more than the state.
             OnPropertyChanged(nameof(IsPasswordPrompt));
+            OnPropertyChanged(nameof(HasStatusBarRow));
             OnPropertyChanged(nameof(IsPasswordIncorrect));
             OnPropertyChanged(nameof(IsDocumentIcon));
         }
@@ -109,6 +110,12 @@ public sealed class MainViewModel : ViewModelBase
 
     /// <summary>Gets whether the document is open: the status bar shows page and zoom.</summary>
     public bool IsReady => State == ViewerState.Ready;
+
+    /// <summary>
+    /// Gets whether the row of the status bar is there: while a file loads (so the viewport keeps its height when the
+    /// document is ready) and once it is open; not under the password card or the error card.
+    /// </summary>
+    public bool HasStatusBarRow => State is ViewerState.Loading or ViewerState.Ready && !IsPasswordPrompt;
 
     /// <summary>
     /// Gets whether the document area shows the password card: the file needs a password, or the entered one is

@@ -87,9 +87,8 @@ public sealed class OpenFlowTests : IDisposable
         await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
 
         picker.Result = null;
+        // The fake picker completes synchronously, so the command has finished when Execute returns.
         viewModel.OpenCommand.Execute(null);
-        Settle(window);
-        await Task.Delay(50);
         Settle(window);
 
         Assert.Equal(2, picker.Calls);
@@ -158,18 +157,63 @@ public sealed class OpenFlowTests : IDisposable
         window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
         window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
 
-        // While the password is checked the card and the focus stay.
-        Settle(window);
-        if (viewModel.State == ViewerState.Loading)
-        {
-            Assert.True(card.IsEffectivelyVisible);
-            Assert.Same(field, window.FocusManager!.GetFocusedElement());
-        }
-
+        // That the card and the focus stay while the password is checked: StatusBarRowIsThereOnlyWhileLoadingOrReady.
         await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
         Assert.False(card.IsEffectivelyVisible);
         Assert.Equal(string.Empty, viewModel.Password);
         Assert.True(Find<Control>(window, "StatusBar").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task StatusBarRowIsThereOnlyWhileLoadingOrReady()
+    {
+        // Every open waits until the test releases it, so the loading states can be looked at.
+        using var gate = new SemaphoreSlim(0);
+        var engine = new PdfEngine();
+        var session = new ViewerSession(async (path, password, cancellationToken) =>
+        {
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return await engine.OpenAsync(path, password, cancellationToken).ConfigureAwait(false);
+        });
+        _cleanup.Add(session);
+        var (window, viewModel) = Show(new FakePicker(null), session);
+        var row = Find<Control>(window, "StatusBarRow");
+        Assert.False(row.IsEffectivelyVisible);
+
+        // Loading reserves the row, so the viewport keeps its height when the document is ready.
+        var opening = viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        Settle(window);
+        Assert.Equal(ViewerState.Loading, viewModel.State);
+        Assert.True(row.IsEffectivelyVisible);
+
+        // No empty strip under the password card, also not while the password is checked.
+        gate.Release();
+        await opening;
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.PasswordRequired);
+        var card = Find<Control>(window, "PasswordCard");
+        var field = Find<TextBox>(window, "PasswordField");
+        Assert.False(row.IsEffectivelyVisible);
+        window.KeyTextInput(UserPassword);
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+        window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+        Settle(window);
+        Assert.Equal(ViewerState.Loading, viewModel.State);
+        Assert.True(card.IsEffectivelyVisible);
+        Assert.Same(field, window.FocusManager!.GetFocusedElement());
+        Assert.False(row.IsEffectivelyVisible);
+
+        gate.Release();
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        Assert.True(row.IsEffectivelyVisible);
+        Assert.True(Find<Control>(window, "StatusBar").IsEffectivelyVisible);
+
+        // No empty strip under the error card either.
+        var failing = viewModel.OpenAsync(TestData.Pdf("not-a-pdf.pdf"));
+        gate.Release();
+        await failing;
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+        Assert.True(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
+        Assert.False(row.IsEffectivelyVisible);
     }
 
     [AvaloniaFact]
