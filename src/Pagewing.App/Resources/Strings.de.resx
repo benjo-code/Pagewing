@@ -228,4 +228,34 @@
   <data name="OutlineEntryName" xml:space="preserve">
     <value>{0}, Seite {1}</value>
   </data>
+  <data name="DocumentInfo" xml:space="preserve">
+    <value>Dokumentinfos</value>
+  </data>
+  <data name="InfoFile" xml:space="preserve">
+    <value>Datei</value>
+  </data>
+  <data name="InfoFolder" xml:space="preserve">
+    <value>Ordner</value>
+  </data>
+  <data name="InfoPages" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="InfoPageSize" xml:space="preserve">
+    <value>Seitenformat</value>
+  </data>
+  <data name="InfoPdfVersion" xml:space="preserve">
+    <value>PDF-Version</value>
+  </data>
+  <data name="InfoFileSize" xml:space="preserve">
+    <value>Dateigröße</value>
+  </data>
+  <data name="InfoTitle" xml:space="preserve">
+    <value>Titel</value>
+  </data>
+  <data name="InfoAuthor" xml:space="preserve">
+    <value>Autor</value>
+  </data>
+  <data name="InfoCreated" xml:space="preserve">
+    <value>Erstellt</value>
+  </data>
 </root>

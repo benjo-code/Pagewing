@@ -103,6 +103,16 @@ public static class Strings
     public static string OutlineEntryName => Get("OutlineEntryName");
     public static string OutlineEmpty => Get("OutlineEmpty");
     public static string OutlineFailed => Get("OutlineFailed");
+    public static string DocumentInfo => Get("DocumentInfo");
+    public static string InfoFile => Get("InfoFile");
+    public static string InfoFolder => Get("InfoFolder");
+    public static string InfoPages => Get("InfoPages");
+    public static string InfoPageSize => Get("InfoPageSize");
+    public static string InfoPdfVersion => Get("InfoPdfVersion");
+    public static string InfoFileSize => Get("InfoFileSize");
+    public static string InfoTitle => Get("InfoTitle");
+    public static string InfoAuthor => Get("InfoAuthor");
+    public static string InfoCreated => Get("InfoCreated");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

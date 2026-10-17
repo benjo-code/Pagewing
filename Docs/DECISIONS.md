@@ -15,6 +15,21 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-18 – Dokumentinfos: beim Öffnen lesen, Dateigröße in Einheiten von 1024, Popup ohne Box-Schatten (M4)
+**Kontext:** Der Knopf „Dokumentinfos“ der Statusleiste öffnet ein Popup mit Datei, Ordner, Seitenzahl, Format der aktuellen Seite, PDF-Version, Dateigröße, Titel, Autor und Erstelldatum (Designsystem 7.6). Offen waren, wann die Metadaten gelesen werden, wie die Dateigröße aussieht und wie die Karte ihren Schatten bekommt, denn ein `Popup` ist auf dem Desktop ein eigenes Fenster.
+**Entscheidung:**
+- Gelesen wird erst, wenn das Popup öffnet (`DocumentInfoViewModel.LoadAsync` über `DocumentInfoReader.ReadAsync`), bei jedem Öffnen neu, nie beim Öffnen des Dokuments. Popup und Inhalt entstehen erst beim ersten Klick, der Inhalt samt View-Model wird beim Schließen verworfen. Was ohne Lesen bekannt ist (Datei, Ordner, Seitenzahl, Seitenformat aus `ViewerSession.LoadedSizes`, PDF-Version), steht sofort da; ein Ergebnis für ein inzwischen ersetztes Dokument wird verworfen, ein Fehler lässt nur diese Angaben stehen. Ein neues Dokument, ein anderer Tab oder ein Tab, der nicht mehr bereit ist, schließt das Popup.
+- Dateigröße (`DocumentInfoViewModel.FormatFileSize`): unter 1024 Byte in „B“, sonst in KB, MB oder GB zu je 1024, unter 10 mit einer Nachkommastelle („1,5 MB“), ab 10 ganzzahlig („153 KB“), ohne Tausendertrennzeichen; was auf 1024 runden würde, steht in der nächsten Einheit („1 MB“ statt „1024 KB“). Das Dezimalzeichen folgt der UI-Kultur, die Einheiten sind in beiden Sprachen gleich.
+- Die Karte hat `radius.overlay`, `surface.raised` und 1 px `border.subtle` (die Kante aus dem Karten-Schatten von 5.3), aber keinen `BoxShadow`; den Schatten zeichnet das System (`Popup.WindowManagerAddShadowHint`). Token unverändert.
+**Begründung:**
+- Die Metadaten braucht nur, wer das Popup öffnet; der Startpfad und das Öffnen eines Dokuments bleiben unberührt. Neu lesen bei jedem Öffnen kostet einen kurzen Auftrag auf dem `PdfiumThread` und zeigt eine geänderte Dateigröße.
+- Einheiten von 1024 mit „KB“/„MB“ wie im Windows-Explorer; eine Nachkommastelle unter 10 reicht zum Unterscheiden, mehr wäre Scheingenauigkeit.
+- Ein Box-Schatten würde am Rand des Popup-Fensters abgeschnitten. Für ihn bräuchte das Popup einen transparenten Rand, und ein Klick dorthin träfe das Popup statt „daneben“ und schlösse es nicht.
+**Verworfene Alternativen:**
+- Metadaten beim Öffnen des Dokuments mitlesen: kostet jedes Öffnen, auch ohne Popup.
+- Dezimale Einheiten (1 kB = 1000 Byte): weicht vom Explorer ab, den Windows-Nutzer zum Vergleich heranziehen.
+- `Flyout` statt `Popup`: bringt die Ränder und Abstände des Fluent-`FlyoutPresenter` mit, die überschrieben werden müssten; Esc im Inhalt hätte ohnehin eigene Behandlung gebraucht (Avalonia 12.1.4 schließt einen Flyout per Esc nur über den Knopf, `Button.OnKeyDown`).
+
 ## 2026-10-18 – Inhaltsverzeichnis: Tastatur selbst geführt (M4)
 **Kontext:** Im virtualisierten Baum des Panels „Inhalt“ (Eintrag darunter) gibt es Avalonias `TreeView` nur die realisierten Container. Seine Tastaturführung (`TreeView.OnKeyDown`, Avalonia 12.1.4) kennt nur Pfeiltasten über `ContainerFromIndex`, kein Pos1, Ende, Bild auf oder Bild ab. Außerdem prüft `KeyboardDevice` die `KeyBindings` vom fokussierten Element aufwärts, bevor überhaupt ein Key-Event geroutet wird: Die Fensterbindungen Bild auf/ab (Seite zurück/vor im Dokument) schlugen also auch im Baum zu, der Fokus blieb stehen und das Dokument blätterte. Nachgewiesen mit `OutlinePanelTests.KeyboardReachesEveryEntryOfALargeOutline` (20 000 Einträge).
 **Entscheidung:** `Views/OutlinePanel` führt Pfeil auf/ab, Bild auf/ab, Pos1 und Ende selbst: Es bestimmt den nächsten angezeigten Eintrag über die View-Models (`OutlineNodeViewModel.Next`, `Previous`, `Last`, mit `Parent` und `Index`), realisiert die Container auf dem Weg dorthin mit `ItemsControl.ScrollIntoView` Ebene für Ebene und fokussiert den Eintrag (das wählt ihn aus). Bild auf/ab beansprucht der Baum mit eigenen `KeyBindings`, die vor denen des Fensters greifen; eine Seite ist so viele Einträge, wie in die Ansicht passen, weniger einer. Pfeil links und rechts (zu- und aufklappen, zum Elterneintrag) bleiben beim `TreeView`.

@@ -254,9 +254,42 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
             {
                 RaiseNavigationCanExecuteChanged();
                 ResetPageField();
+                OnPropertyChanged(nameof(CurrentPageSize));
             }
         }
     }
+
+    /// <summary>
+    /// Gets the size of <see cref="CurrentPage"/> once the session has loaded it (<see cref="ViewerSession.LoadedSizes"/>),
+    /// or <see langword="null"/>: no open document, or a page whose size is not loaded yet. Raised again after every
+    /// batch of page sizes, for the document info of the status bar.
+    /// </summary>
+    internal PdfPageSize? CurrentPageSize
+    {
+        get
+        {
+            if (!IsReady || _document is null || CurrentPage < 1)
+            {
+                return null;
+            }
+
+            var sizes = _session.LoadedSizes;
+            return CurrentPage <= sizes.Count ? sizes[CurrentPage - 1] : null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the open document this tab mirrors, or <see langword="null"/> unless it is <see cref="IsReady"/>. Raises
+    /// <see cref="ViewModelBase.PropertyChanged"/> when another document replaces it.
+    /// </summary>
+    internal PdfDocument? Document => _document;
+
+    /// <summary>
+    /// Gets or sets how the document info is read when its popup opens: <see cref="DocumentInfoReader.ReadAsync"/>
+    /// (replaceable for tests).
+    /// </summary>
+    internal Func<PdfDocument, string, CancellationToken, Task<DocumentInfo>> InfoReader { get; set; } =
+        static (document, fullPath, cancellationToken) => DocumentInfoReader.ReadAsync(document, fullPath, cancellationToken);
 
     /// <summary>
     /// Gets or sets the last page of the row of <see cref="CurrentPage"/> (the same page outside the two-page
@@ -792,6 +825,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         }
 
         var isNewDocument = document is not null && !ReferenceEquals(document, _document);
+        var documentChanged = !ReferenceEquals(document, _document);
         _document = document;
         if (_outlineDocument is not null && !ReferenceEquals(_outlineDocument, document))
         {
@@ -842,6 +876,13 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         }
 
         State = state;
+        if (documentChanged)
+        {
+            OnPropertyChanged(nameof(Document));
+        }
+
+        // A batch of page sizes may have brought the size of the current page.
+        OnPropertyChanged(nameof(CurrentPageSize));
         if (passwordRejected)
         {
             PasswordRejected?.Invoke();

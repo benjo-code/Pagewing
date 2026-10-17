@@ -15,7 +15,10 @@ namespace Pagewing.App.Views;
 
 public sealed partial class StatusBar : UserControl
 {
-    /// <summary>Below this width the status bar drops the word "Page" (design system section 6, narrow window).</summary>
+    /// <summary>
+    /// Below this width the status bar drops the word "Page", the name of the layout and the label "Document info"
+    /// (design system section 6, narrow window).
+    /// </summary>
     public const double NarrowWidth = 760;
 
     /// <summary>The smallest zoom step in the zoom menu (25 %).</summary>
@@ -51,11 +54,15 @@ public sealed partial class StatusBar : UserControl
 
         InitializeLayoutMenu();
         UpdateLayoutButton();
+        InitializeDocumentInfo();
     }
 
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
+
+        // The popup belongs to the tab it was opened for.
+        CloseDocumentInfo();
         if (_tab is not null)
         {
             _tab.PageFieldFocusRequested -= OnPageFieldFocusRequested;
@@ -78,6 +85,7 @@ public sealed partial class StatusBar : UserControl
         var wide = e.NewSize.Width >= NarrowWidth;
         PageLabel.IsVisible = wide;
         LayoutText.IsVisible = wide;
+        DocumentInfoText.IsVisible = wide;
     }
 
     private void OnPageFieldLostFocus(object? sender, RoutedEventArgs e) => (DataContext as TabViewModel)?.ResetPageField();

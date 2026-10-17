@@ -60,6 +60,8 @@ public sealed partial class StatusBar
         {
             UpdateLayoutButton();
         }
+
+        OnTabChangedForDocumentInfo(e);
     }
 
     /// <summary>Shows the layout of the tab on the button: its icon, its name, and the tooltip that names it.</summary>
