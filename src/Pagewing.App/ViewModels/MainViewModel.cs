@@ -30,6 +30,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _password = string.Empty;
     private bool _checkingPassword;
     private bool _picking;
+    private string? _pickerFailure;
     private int _pageCount;
     private int _currentPage;
     private string _pageFieldText = "0";
@@ -160,13 +161,20 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     /// <summary>Gets the cause on the error card in everyday words, for example "“file name” was not found."</summary>
+    /// <remarks>Without a file (the file dialog failed) the sentence starts with "The file".</remarks>
     public string ErrorCauseText => Error is { } error
-        ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ErrorCause), FileName, CauseOf(error))
+        ? FileName is { } name
+            ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ErrorCause), name, CauseOf(error))
+            : string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ErrorCauseNoFile), CauseOf(error))
         : string.Empty;
 
-    /// <summary>Gets the technical details of the error card: full path and error kind.</summary>
+    /// <summary>
+    /// Gets the technical details of the error card: full path and error kind; after a failed file dialog "none"
+    /// for the path and the type and message of the exception.
+    /// </summary>
     public string ErrorDetailsText => Error is { } error
-        ? $"{Strings.ErrorDetailsPath}: {FullPath}\n{Strings.ErrorDetailsKind}: {error}"
+        ? $"{Strings.ErrorDetailsPath}: {FullPath ?? Strings.ErrorDetailsNoPath}\n{Strings.ErrorDetailsKind}: {error}"
+            + (_pickerFailure is { } failure ? $"\n{Strings.ErrorDetailsMessage}: {failure}" : string.Empty)
         : string.Empty;
 
     /// <summary>Gets the file name of the requested file, or <see langword="null"/>.</summary>
@@ -302,6 +310,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _checkingPassword = false;
+        _pickerFailure = null;
         Password = string.Empty;
         return _session.OpenAsync(path);
     }
@@ -365,6 +374,18 @@ public sealed class MainViewModel : ViewModelBase
         {
             path = await _picker.PickPdfAsync();
         }
+        catch (OperationCanceledException)
+        {
+            // Treated like a cancelled dialog: nothing changes.
+            return;
+        }
+        catch (Exception ex)
+        {
+            // The dialog itself failed (for example no file chooser portal on Linux): the command must not end
+            // silently in an unobserved task. Like any failed open, it replaces the document with the error card.
+            ShowPickerFailure(ex);
+            return;
+        }
         finally
         {
             _picking = false;
@@ -374,6 +395,21 @@ public sealed class MainViewModel : ViewModelBase
         {
             await OpenAsync(path);
         }
+    }
+
+    /// <summary>
+    /// Shows the error card with the cause <see cref="PdfOpenError.Unknown"/>, no file and the type and message of
+    /// <paramref name="exception"/> in the technical details (no stack trace); closes the document first.
+    /// </summary>
+    private void ShowPickerFailure(Exception exception)
+    {
+        _checkingPassword = false;
+        Password = string.Empty;
+        _pickerFailure = $"{exception.GetType().FullName}: {exception.Message}";
+        _session.Close();
+        Refresh();
+        OnPropertyChanged(nameof(ErrorCauseText));
+        OnPropertyChanged(nameof(ErrorDetailsText));
     }
 
     private void CommitPageField()
@@ -412,6 +448,13 @@ public sealed class MainViewModel : ViewModelBase
     {
         _checkingPassword = false;
         Password = string.Empty;
+        if (_pickerFailure is not null)
+        {
+            // The session is already closed and raises no change: the card goes away here.
+            _pickerFailure = null;
+            Refresh();
+        }
+
         _session.Close();
     }
 
@@ -439,8 +482,14 @@ public sealed class MainViewModel : ViewModelBase
         var isNewDocument = document is not null && !ReferenceEquals(document, _document);
         _document = document;
 
+        // A failed file dialog shows the error card until the next open or close; the session is closed meanwhile.
+        if (_pickerFailure is not null)
+        {
+            state = ViewerState.Failed;
+        }
+
         FullPath = _session.Path;
-        Error = state == ViewerState.Failed ? _session.Error : null;
+        Error = _pickerFailure is not null ? PdfOpenError.Unknown : state == ViewerState.Failed ? _session.Error : null;
         PageCount = pageCount;
         _nextPageCommand.RaiseCanExecuteChanged();
         if (isNewDocument)

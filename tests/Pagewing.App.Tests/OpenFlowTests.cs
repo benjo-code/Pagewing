@@ -96,6 +96,78 @@ public sealed class OpenFlowTests : IDisposable
         Assert.Equal(TestData.Pdf("hello_world.pdf"), viewModel.FullPath);
     }
 
+    [AvaloniaTheory]
+    [InlineData("en", "The file could not be opened for an unknown reason.", "Path: (none)", "Message: ")]
+    [InlineData("de", "Die Datei konnte aus einem unbekannten Grund nicht geöffnet werden.", "Pfad: (keiner)", "Meldung: ")]
+    public async Task FailingPickerShowsTheErrorCardWithAnUnknownCause(string language, string cause, string pathLine, string messageLabel)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var picker = new FakePicker(TestData.Pdf("hello_world.pdf"));
+        var (window, viewModel) = Show(picker);
+        viewModel.OpenCommand.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+
+        // The dialog fails (no file chooser portal, for example): the error card replaces the document.
+        picker.Failure = new InvalidOperationException("No file chooser portal.");
+        viewModel.OpenCommand.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+
+        Assert.Equal(2, picker.Calls);
+        Assert.Equal(PdfOpenError.Unknown, viewModel.Error);
+        Assert.Null(viewModel.FullPath);
+        Assert.Null(viewModel.Session.Document);
+        Assert.True(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
+        Assert.False(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
+        Assert.Equal(cause, Find<TextBlock>(window, "ErrorCause").Text);
+
+        // The details name no path, the error kind and the type and message of the exception, but no stack trace.
+        var details = viewModel.ErrorDetailsText;
+        Assert.StartsWith(pathLine + "\n", details, StringComparison.Ordinal);
+        Assert.Contains("Unknown", details, StringComparison.Ordinal);
+        Assert.Contains(messageLabel + "System.InvalidOperationException: No file chooser portal.", details, StringComparison.Ordinal);
+        Assert.DoesNotContain(" at ", details, StringComparison.Ordinal);
+        Find<Expander>(window, "ErrorDetails").IsExpanded = true;
+        Settle(window);
+        Assert.Equal(details, Find<SelectableTextBlock>(window, "ErrorDetailsText").Text);
+
+        // A cancelled dialog (also as an exception) leaves the card; a working one opens the file.
+        picker.Failure = new OperationCanceledException();
+        viewModel.OpenCommand.Execute(null);
+        Settle(window);
+        picker.Failure = null;
+        picker.Result = null;
+        viewModel.OpenCommand.Execute(null);
+        Settle(window);
+        Assert.Equal(ViewerState.Failed, viewModel.State);
+        Assert.Equal(details, viewModel.ErrorDetailsText);
+
+        picker.Result = TestData.Pdf("text-basic.pdf");
+        Find<Button>(window, "ErrorOpenOtherButton").Command!.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        Assert.Equal(TestData.Pdf("text-basic.pdf"), viewModel.FullPath);
+        Assert.False(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
+        Assert.DoesNotContain(messageLabel, viewModel.ErrorDetailsText, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task CloseTabAfterAFailingPickerReturnsToTheStartScreen()
+    {
+        var picker = new FakePicker(null) { Failure = new IOException("Broken shell integration.") };
+        var (window, viewModel) = Show(picker);
+
+        Find<Button>(window, "ChooseFileButton").Command!.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+        Assert.True(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
+        Assert.Contains("System.IO.IOException: Broken shell integration.", viewModel.ErrorDetailsText, StringComparison.Ordinal);
+
+        Find<Button>(window, "ErrorCloseButton").Command!.Execute(null);
+        Settle(window);
+        Assert.Equal(ViewerState.Empty, viewModel.State);
+        Assert.Null(viewModel.Error);
+        Assert.True(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
+        Assert.False(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
+    }
+
     [AvaloniaFact]
     public async Task StartWithAFileShowsTheTabBeforeTheDocumentIsReady()
     {
@@ -555,10 +627,13 @@ public sealed class OpenFlowTests : IDisposable
 
         public int Calls { get; private set; }
 
+        /// <summary>When set, the dialog fails with it instead of returning <see cref="Result"/>.</summary>
+        public Exception? Failure { get; set; }
+
         public Task<string?> PickPdfAsync()
         {
             Calls++;
-            return Task.FromResult(Result);
+            return Failure is { } failure ? Task.FromException<string?>(failure) : Task.FromResult(Result);
         }
     }
 

@@ -368,6 +368,14 @@ internal sealed class DocumentCanvas : Control
         }
 
         var failed = _failedPages.Contains(page);
+
+        // A line of text is at least as high as the font size: when even that does not fit, the text below would not
+        // be drawn either, so it is not made (at low zoom this runs for every visible page in every frame).
+        if (pageRect.Height < PlaceholderFontSize || (failed && pageRect.Width < 48))
+        {
+            return;
+        }
+
         var text = new FormattedText(
             failed ? Strings.PagePlaceholderFailed : (page + 1).ToString(Strings.Culture),
             Strings.Culture,
@@ -380,7 +388,7 @@ internal sealed class DocumentCanvas : Control
             MaxTextWidth = Math.Max(1, pageRect.Width - 16),
         };
 
-        if (text.Height > pageRect.Height || (failed && pageRect.Width < 48))
+        if (text.Height > pageRect.Height)
         {
             // Too small to carry text (low zoom); the empty placeholder says enough.
             return;

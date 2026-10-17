@@ -233,6 +233,35 @@ public sealed class RenderSchedulerTests
     }
 
     [Fact]
+    public async Task ImageLargerThanTheCacheBudgetFailsOnceInsteadOfBeingRenderedAgain()
+    {
+        // 4 × 4 pixels cost 64 bytes; the cache holds 16.
+        var renderer = new FakeRenderer();
+        var cache = new RenderCache(budgetBytes: 16);
+        using var scheduler = new RenderScheduler(renderer.Render, cache);
+        using var events = new EventLog(scheduler);
+        var large = new RenderedImage(4, 4, 16, new byte[64]);
+        Assert.True(RenderCache.CostOf(large) > cache.BudgetBytes);
+
+        scheduler.Update([Request(1)]);
+        (await renderer.NextCallAsync()).Complete(large);
+        var (key, exception) = await events.NextFailedAsync();
+        Assert.Equal(Request(1).Key, key);
+        Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains("cache budget", exception.Message, StringComparison.Ordinal);
+        Assert.Empty(events.Ready);
+        Assert.False(cache.Contains(key));
+
+        // Planning the same view again does not render it again.
+        scheduler.Update([Request(1)]);
+        await renderer.AssertNoCallAsync();
+        await events.AssertNoReadyAsync();
+        Assert.Single(events.Failed);
+        Assert.Equal(1, renderer.CallCount);
+        Assert.Equal(0, scheduler.PendingCount);
+    }
+
+    [Fact]
     public async Task DisposeCancelsAndSilencesEvents()
     {
         var renderer = new FakeRenderer { HonorsCancellation = false };

@@ -50,6 +50,7 @@ public static class Strings
     public static string PasswordOpen => Get("PasswordOpen");
     public static string ErrorTitle => Get("ErrorTitle");
     public static string ErrorCause => Get("ErrorCause");
+    public static string ErrorCauseNoFile => Get("ErrorCauseNoFile");
     public static string ErrorNotAPdf => Get("ErrorNotAPdf");
     public static string ErrorFileNotFound => Get("ErrorFileNotFound");
     public static string ErrorCannotRead => Get("ErrorCannotRead");
@@ -58,6 +59,8 @@ public static class Strings
     public static string ErrorDetails => Get("ErrorDetails");
     public static string ErrorDetailsPath => Get("ErrorDetailsPath");
     public static string ErrorDetailsKind => Get("ErrorDetailsKind");
+    public static string ErrorDetailsNoPath => Get("ErrorDetailsNoPath");
+    public static string ErrorDetailsMessage => Get("ErrorDetailsMessage");
     public static string ErrorCloseTab => Get("ErrorCloseTab");
     public static string ErrorOpenOther => Get("ErrorOpenOther");
     public static string PageLabel => Get("PageLabel");

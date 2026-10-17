@@ -10,8 +10,9 @@ namespace Pagewing.Core.Viewing;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The queue lives here, not on the PDFium thread: exactly one request of the scheduler is live on the PDFium
-/// thread at any time, so a new wish list reorders the queue without touching work that PDFium already holds.
+/// The queue lives here, not on the PDFium thread: at most one request of the scheduler that is not cancelled is on
+/// the PDFium thread at any time (a cancelled one may still wait there until the PDFium thread drops it), so a new
+/// wish list reorders the queue without touching work that PDFium already holds.
 /// When the running request is cancelled, the scheduler stops waiting for it at once (a registration on its
 /// token) and starts the next one; the PDFium thread drops the cancelled request at its next step without
 /// rendering further. Details: <c>Docs/DECISIONS.md</c>, entry "Render-Scheduler und Kachelparameter (M3)".
@@ -75,8 +76,9 @@ public sealed class RenderScheduler : IDisposable
     public event Action<TileKey>? TileReady;
 
     /// <summary>
-    /// Occurs on a thread-pool thread when rendering a key failed. Each key is reported once and not tried again
-    /// for the lifetime of the scheduler.
+    /// Occurs on a thread-pool thread when rendering a key failed, or when its image is larger than the budget of the
+    /// cache (it could never be stored). Each key is reported once and not tried again for the lifetime of the
+    /// scheduler.
     /// </summary>
     public event Action<TileKey, Exception>? TileFailed;
 
@@ -287,10 +289,18 @@ public sealed class RenderScheduler : IDisposable
                 return;
             }
 
-            if (rendering.IsCompletedSuccessfully && rendering.Result is { } image)
+            if (rendering.IsCompletedSuccessfully && rendering.Result is { } image && RenderCache.CostOf(image) > cache.BudgetBytes)
+            {
+                // The cache would not store it, so a TileReady would send the handler to an empty cache, and the next
+                // Update would render it again, endlessly. Reported as failed instead, once.
+                error = new InvalidOperationException(
+                    $"The rendered image ({RenderCache.CostOf(image)} bytes) is larger than the cache budget ({cache.BudgetBytes} bytes).");
+                failed.Add(job.Request.Key);
+            }
+            else if (rendering.IsCompletedSuccessfully && rendering.Result is { } cached)
             {
                 // Stored under the lock, so that an Update never sees the key as neither running nor cached.
-                cache.Add(job.Request.Key, image);
+                cache.Add(job.Request.Key, cached);
             }
             else
             {

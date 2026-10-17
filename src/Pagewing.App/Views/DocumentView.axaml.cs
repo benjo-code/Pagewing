@@ -29,6 +29,7 @@ public sealed partial class DocumentView : UserControl
     private DocumentLayout? _layout;
     private int _loadedSizes;
     private bool _changingLayout;
+    private bool _focusPending;
     private Point? _zoomAnchor;
     private double _wheelSteps;
     private TopLevel? _topLevel;
@@ -38,6 +39,7 @@ public sealed partial class DocumentView : UserControl
         InitializeComponent();
         Scroller.PropertyChanged += OnScrollerPropertyChanged;
         Scroller.AddHandler(PointerWheelChangedEvent, OnPointerWheel, RoutingStrategies.Tunnel);
+        AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     /// <summary>Raised on the UI thread once per document, in the frame after the first sharp tile of the first page was drawn.</summary>
@@ -204,6 +206,91 @@ public sealed partial class DocumentView : UserControl
         }
 
         ChangeLayout(new Vector(0, 0));
+        _focusPending = true;
+        FocusLater();
+    }
+
+    /// <summary>After the bindings of the pending changes have run (the password card may be on its way out).</summary>
+    private void FocusLater() => Dispatcher.UIThread.Post(FocusIfFree, DispatcherPriority.Loaded);
+
+    /// <summary>
+    /// Gives the keys of a newly shown document to the view, unless the user types into a visible text field. Not a
+    /// keyboard navigation, so no focus ring appears.
+    /// </summary>
+    private void FocusIfFree()
+    {
+        if (!_focusPending || _layout is null)
+        {
+            return;
+        }
+
+        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox { IsEffectivelyVisible: true })
+        {
+            // The password field of the card that unlocked this document stays until the view model has seen the
+            // document (the session may be ahead of it); the view model's change tries again. Any other field keeps
+            // the focus for good.
+            _focusPending = _viewModel?.IsPasswordPrompt == true;
+            return;
+        }
+
+        _focusPending = false;
+        Focus(NavigationMethod.Unspecified);
+    }
+
+    // After the scroll viewer and the scroll bars had the press: a click on the pages (or their scroll bars) gives
+    // the keys to the document. With the pointer, so no focus ring appears.
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_layout is not null && !IsFocused)
+        {
+            Focus(NavigationMethod.Pointer, e.KeyModifiers);
+        }
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (!e.Handled && _layout is not null && ScrollFor(e.Key, e.KeyModifiers) is { } offset)
+        {
+            e.Handled = true;
+            ScrollTo(offset);
+        }
+    }
+
+    /// <summary>
+    /// The offset a key scrolls to: Up/Down a line, Left/Right a line sideways (only when the pages are wider than
+    /// the viewport), Space/Shift+Space a viewport height, Home/End (also with Ctrl) the start and end of the
+    /// document. Other keys, including Page Up/Page Down (page by page, a binding of the window), return
+    /// <see langword="null"/>.
+    /// </summary>
+    private Vector? ScrollFor(Key key, KeyModifiers modifiers)
+    {
+        var offset = Scroller.Offset;
+        var line = Scroller.SmallChange;
+        var viewport = Scroller.Viewport;
+        var wider = Scroller.Extent.Width > viewport.Width;
+        return (key, modifiers) switch
+        {
+            (Key.Up, KeyModifiers.None) => offset.WithY(offset.Y - line.Height),
+            (Key.Down, KeyModifiers.None) => offset.WithY(offset.Y + line.Height),
+            (Key.Left, KeyModifiers.None) when wider => offset.WithX(offset.X - line.Width),
+            (Key.Right, KeyModifiers.None) when wider => offset.WithX(offset.X + line.Width),
+            (Key.Space, KeyModifiers.None) => offset.WithY(offset.Y + viewport.Height),
+            (Key.Space, KeyModifiers.Shift) => offset.WithY(offset.Y - viewport.Height),
+            (Key.Home, KeyModifiers.None or KeyModifiers.Control) => offset.WithY(0),
+            (Key.End, KeyModifiers.None or KeyModifiers.Control) => offset.WithY(Scroller.Extent.Height),
+            _ => null,
+        };
+    }
+
+    /// <summary>Scrolls to <paramref name="offset"/>, limited to the content.</summary>
+    private void ScrollTo(Vector offset)
+    {
+        var extent = Scroller.Extent;
+        var viewport = Scroller.Viewport;
+        var x = Math.Clamp(offset.X, 0, Math.Max(0, extent.Width - viewport.Width));
+        var y = Math.Clamp(offset.Y, 0, Math.Max(0, extent.Height - viewport.Height));
+        ChangeLayout(new Vector(x, y));
     }
 
     private void CloseDocument()
@@ -216,6 +303,7 @@ public sealed partial class DocumentView : UserControl
         _document = null;
         _layout = null;
         _loadedSizes = 0;
+        _focusPending = false;
         PageCanvas.Detach();
         ChangeLayout(new Vector(0, 0));
     }
@@ -312,6 +400,10 @@ public sealed partial class DocumentView : UserControl
         if (e.PropertyName == nameof(MainViewModel.Zoom) && _viewModel is not null)
         {
             ApplyZoom(_viewModel.Zoom);
+        }
+        else if (e.PropertyName == nameof(MainViewModel.IsPasswordPrompt) && _focusPending)
+        {
+            FocusLater();
         }
     }
 

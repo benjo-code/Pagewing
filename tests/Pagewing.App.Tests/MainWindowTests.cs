@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -175,6 +176,48 @@ public sealed class MainWindowTests : IDisposable
         {
             Assert.Equal(WindowDecorationsElementRole.User, WindowDecorationProperties.GetElementRole(Find<Control>(window, name)));
         }
+    }
+
+    [AvaloniaFact]
+    public void WindowDecorationsHideTitleTextAndFullScreenButtonAndFitTheReservedSpace()
+    {
+        // Drift guard for Pw.WindowDecorations (MainWindow.axaml): it hides parts of the Fluent template by name, and
+        // TitleBar.axaml reserves 140 px for the caption buttons. The headless platform draws no decorations, so they
+        // are switched on through Avalonia's internal TopLevelHost.UpdateDrawnDecorations, with all parts (frame
+        // included, the widest case), as a window with drawn decorations gets them.
+        var (window, _) = Show(1024, 720, windowsTitleBar: true);
+        var host = window.GetVisualParent() ?? throw new InvalidOperationException("The window has no host.");
+        var update = host.GetType().GetMethod("UpdateDrawnDecorations", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException($"{host.GetType().Name}.UpdateDrawnDecorations is gone: adapt this test to the Avalonia version.");
+        var partsType = update.GetParameters()[0].ParameterType;
+        var allParts = Enum.Parse(Nullable.GetUnderlyingType(partsType) ?? partsType, "All");
+        update.Invoke(host, [allParts, WindowState.Normal, Assert.IsType<ControlTheme>(window.WindowDecorationsTheme)]);
+        Settle(window);
+
+        var parts = host.GetVisualDescendants().OfType<Control>().ToList();
+        T Part<T>(string name)
+            where T : Control =>
+            parts.OfType<T>().SingleOrDefault(control => control.Name == name)
+            ?? throw new InvalidOperationException($"No {typeof(T).Name} {name} in the decorations: the Avalonia template changed.");
+
+        // The title text the theme draws over the client area and the fullscreen button are hidden.
+        var titleText = Assert.Single(Part<Panel>("PART_TitleTextPanel").Children.OfType<TextBlock>());
+        Assert.False(titleText.IsVisible);
+        Assert.False(Part<Button>("PART_FullScreenButton").IsVisible);
+
+        // Minimize, maximize and close stay and fit into the space TitleBar.axaml reserves (to the outer frame edge).
+        foreach (var name in new[] { "PART_MinimizeButton", "PART_MaximizeButton", "PART_CloseButton" })
+        {
+            Assert.True(Part<Button>(name).IsEffectivelyVisible, $"{name} is hidden");
+        }
+
+        var buttons = Part<StackPanel>("PART_OverlayPanel");
+        var wrapper = Part<Panel>("PART_OverlayWrapper");
+        var left = buttons.TranslatePoint(default, host)!.Value.X;
+        var right = wrapper.TranslatePoint(new Point(wrapper.Bounds.Width, 0), host)!.Value.X;
+        var reserved = Find<Control>(window, "CaptionButtonsSpace").Bounds.Width;
+        Assert.Equal(140, reserved);
+        Assert.True(right - left <= reserved, $"the caption buttons take {right - left} px, {reserved} px are reserved");
     }
 
     [AvaloniaTheory]

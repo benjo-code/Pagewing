@@ -309,6 +309,170 @@ public sealed class DocumentViewTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ArrowKeysSpaceHomeAndEndScrollTheDocument()
+    {
+        var (window, viewModel, view) = Show();
+        await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
+        var scroller = view.ScrollViewer;
+        var line = scroller.SmallChange.Height;
+        var height = scroller.Viewport.Height;
+        var bottom = scroller.Extent.Height - height;
+        Assert.True(line > 0);
+
+        // The document has the keys as soon as it is ready, without a focus ring (no keyboard navigation).
+        Assert.True(view.IsFocused);
+        Assert.DoesNotContain(":focus-visible", view.Classes);
+
+        Press(window, Key.Down, PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Assert.Equal(line, scroller.Offset.Y, 6);
+        Press(window, Key.Down, PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Assert.Equal(2 * line, scroller.Offset.Y, 6);
+        Press(window, Key.Up, PhysicalKey.ArrowUp, RawInputModifiers.None);
+        Assert.Equal(line, scroller.Offset.Y, 6);
+
+        // Up at the top stays at the top.
+        Press(window, Key.Up, PhysicalKey.ArrowUp, RawInputModifiers.None);
+        Press(window, Key.Up, PhysicalKey.ArrowUp, RawInputModifiers.None);
+        Assert.Equal(0, scroller.Offset.Y);
+
+        // Space and Shift+Space go a viewport height.
+        Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.None);
+        Assert.Equal(height, scroller.Offset.Y, 6);
+        Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.None);
+        Assert.Equal(2 * height, scroller.Offset.Y, 6);
+        Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.Shift);
+        Assert.Equal(height, scroller.Offset.Y, 6);
+
+        // End and Home: the end and the start of the document; the current page follows.
+        Press(window, Key.End, PhysicalKey.End, RawInputModifiers.None);
+        Assert.Equal(bottom, scroller.Offset.Y, 6);
+        Assert.Equal(view.Layout!.GetMostVisiblePage(bottom, bottom + height) + 1, viewModel.CurrentPage);
+        Assert.True(viewModel.CurrentPage > 990);
+        Press(window, Key.Down, PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.None);
+        Assert.Equal(bottom, scroller.Offset.Y, 6);
+        Press(window, Key.Home, PhysicalKey.Home, RawInputModifiers.None);
+        Assert.Equal(0, scroller.Offset.Y);
+        Assert.Equal(1, viewModel.CurrentPage);
+        Press(window, Key.End, PhysicalKey.End, RawInputModifiers.Control);
+        Assert.Equal(bottom, scroller.Offset.Y, 6);
+        Press(window, Key.Home, PhysicalKey.Home, RawInputModifiers.Control);
+        Assert.Equal(0, scroller.Offset.Y);
+
+        // The page-by-page and the zoom keys of the window still work while the document has the focus.
+        Press(window, Key.PageDown, PhysicalKey.PageDown, RawInputModifiers.None);
+        Assert.Equal(2, viewModel.CurrentPage);
+        Press(window, Key.OemPlus, PhysicalKey.Equal, RawInputModifiers.Control);
+        Assert.Equal(1.25, viewModel.Zoom);
+        Assert.True(view.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public async Task LeftAndRightScrollOnlyWhenThePagesAreWiderThanTheViewport()
+    {
+        var (window, viewModel, view) = Show();
+        await OpenAsync(window, viewModel, view, "text-basic.pdf");
+        var scroller = view.ScrollViewer;
+        Assert.True(view.Layout!.ContentWidth < scroller.Viewport.Width);
+
+        Press(window, Key.Right, PhysicalKey.ArrowRight, RawInputModifiers.None);
+        Assert.Equal(0, scroller.Offset.X);
+
+        viewModel.Zoom = 4;
+        Settle(window);
+        Assert.True(scroller.Extent.Width > scroller.Viewport.Width);
+        var x = scroller.Offset.X;
+        Press(window, Key.Right, PhysicalKey.ArrowRight, RawInputModifiers.None);
+        Assert.Equal(x + scroller.SmallChange.Width, scroller.Offset.X, 6);
+        Press(window, Key.Left, PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        Assert.Equal(x, scroller.Offset.X, 6);
+
+        // Not past the left edge.
+        for (var i = 0; i < 200 && scroller.Offset.X > 0; i++)
+        {
+            Press(window, Key.Left, PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        }
+
+        Assert.Equal(0, scroller.Offset.X);
+        Press(window, Key.Left, PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        Assert.Equal(0, scroller.Offset.X);
+    }
+
+    [AvaloniaFact]
+    public async Task ClickOnThePagesGivesTheKeysToTheDocumentWithoutAFocusRing()
+    {
+        var (window, viewModel, view) = Show();
+        await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
+        var field = Find<TextBox>(window, "PageField");
+        field.Focus();
+        Settle(window);
+        Assert.False(view.IsFocused);
+
+        var point = view.Canvas.TranslatePoint(new Point(view.Canvas.Bounds.Width / 2, 200), window)!.Value;
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Settle(window);
+
+        Assert.True(view.IsFocused);
+        Assert.DoesNotContain(":focus-visible", view.Classes);
+        Press(window, Key.Down, PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Assert.Equal(view.ScrollViewer.SmallChange.Height, view.ScrollViewer.Offset.Y, 6);
+    }
+
+    [AvaloniaFact]
+    public async Task KeysInThePageFieldDoNotScrollTheDocument()
+    {
+        var (window, viewModel, view) = Show();
+        await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
+        viewModel.GoToPage(10);
+        Settle(window);
+        var offset = view.ScrollViewer.Offset;
+        var field = Find<TextBox>(window, "PageField");
+        field.Focus();
+        Settle(window);
+
+        foreach (var (key, physicalKey) in new[] { (Key.Down, PhysicalKey.ArrowDown), (Key.Up, PhysicalKey.ArrowUp), (Key.Home, PhysicalKey.Home), (Key.End, PhysicalKey.End), (Key.Right, PhysicalKey.ArrowRight) })
+        {
+            Press(window, key, physicalKey, RawInputModifiers.None);
+        }
+
+        window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+        window.KeyTextInput(" ");
+        window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+        Settle(window);
+
+        Assert.Equal(offset, view.ScrollViewer.Offset);
+        Assert.True(field.IsFocused);
+        Assert.False(view.IsFocused);
+        Assert.Contains(" ", field.Text, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task SpaceInThePasswordFieldTypesASpaceAndTheOpenedDocumentTakesTheFocus()
+    {
+        var (window, viewModel, view) = Show();
+        await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.PasswordRequired);
+        var field = Find<TextBox>(window, "PasswordField");
+        Assert.True(field.IsFocused);
+
+        window.KeyTextInput("a");
+        window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+        window.KeyTextInput(" ");
+        window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+        window.KeyTextInput("b");
+        Settle(window);
+        Assert.Equal("a b", viewModel.Password);
+        Assert.True(field.IsFocused);
+
+        // The right password opens the document, which then has the keys (the field is gone).
+        field.Text = "hôtel";
+        viewModel.SubmitPasswordCommand.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready && view.Document is not null);
+        Assert.True(view.IsFocused);
+    }
+
+    [AvaloniaFact]
     public async Task CurrentPageFollowsTheScrollPosition()
     {
         var (window, viewModel, view) = Show();

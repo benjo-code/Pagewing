@@ -69,6 +69,9 @@
   <data name="ErrorCause" xml:space="preserve">
     <value>“{0}” {1}.</value>
   </data>
+  <data name="ErrorCauseNoFile" xml:space="preserve">
+    <value>The file {0}.</value>
+  </data>
   <data name="ErrorNotAPdf" xml:space="preserve">
     <value>is damaged or not a PDF file</value>
   </data>
@@ -92,6 +95,12 @@
   </data>
   <data name="ErrorDetailsKind" xml:space="preserve">
     <value>Error kind</value>
+  </data>
+  <data name="ErrorDetailsNoPath" xml:space="preserve">
+    <value>(none)</value>
+  </data>
+  <data name="ErrorDetailsMessage" xml:space="preserve">
+    <value>Message</value>
   </data>
   <data name="ErrorCloseTab" xml:space="preserve">
     <value>Close tab</value>
