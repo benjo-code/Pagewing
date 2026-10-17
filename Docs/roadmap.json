@@ -5,6 +5,11 @@
   "scopeChanges": [
     {
       "date": "2026-10-17",
+      "context": "M4: Tabs in eigenes Fenster verschieben; Ziehgeste als neuer Milestone 4.1",
+      "text": "Auf Wunsch des Projektinhabers lassen sich Tabs in ein eigenes Fenster verschieben. M4 liefert das Menü „In neuem Fenster öffnen“ (der Tab wechselt samt Sitzung das Fenster, ohne die PDF neu zu öffnen) und die dafür nötige Architektur (`TabViewModel`, `Workspace`); das Herausziehen und Zurückziehen per Maus ist der neue Milestone 4.1 (Voraussetzung M4). Ebenfalls mit M4 statt M3: Aktionsleiste und Panel (Seiten, Inhalt; „Suche“ folgt in M5), ein Layout-Knopf und das Zoom-Menü in der Statusleiste, Tastenkürzel Strg+0/1/2/G. Plan: `superpowers/plans/2026-10-17-milestone-04-navigation.md`."
+    },
+    {
+      "date": "2026-10-17",
       "context": "M3: Scrollen mit der Tastatur kommt dazu",
       "text": "Das Abschluss-Review von M3 fand, dass in der Dokumentansicht nur Bild auf/ab wirkte: Pfeiltasten, Leertaste, Pos1 und Ende taten nichts, und kein Milestone sah sie vor. Sie gehören jetzt zum fortlaufenden Scrollen von M3 (`DocumentView`, Begründung in `Docs/DECISIONS.md`, Eintrag „Dokumentansicht: Zeichenfläche unter dem ScrollViewer …“). Die Aufgaben von M4 und M6 bleiben unverändert."
     },
@@ -145,7 +150,8 @@
         {
           "id": "4",
           "title": "Navigation",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-17-milestone-04-navigation.md",
           "prerequisites": ["3"],
           "goal": "Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzeichnis, Layouts und Zoom-Modi bequem navigieren.",
           "tasks": [
@@ -160,6 +166,22 @@
           "acceptance": [
             { "text": "Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün", "done": false },
             { "text": "Startzeit-Budgets weiter eingehalten (CI)", "done": false }
+          ]
+        },
+        {
+          "id": "4.1",
+          "title": "Tabs zwischen Fenstern ziehen",
+          "status": "open",
+          "prerequisites": ["4"],
+          "goal": "Ein Tab lässt sich per Maus aus der Tableiste ziehen und wird zu einem eigenen Fenster; ein Tab lässt sich in die Tableiste eines anderen Fensters zurückziehen.",
+          "tasks": [
+            { "text": "Ziehgeste: Tab aus der Leiste herausziehen erzeugt ein neues Fenster am Zeiger (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)", "done": false },
+            { "text": "Ablegen in der Tableiste eines anderen Fensters führt den Tab samt Sitzung dort ein (Position nach dem Zeiger)", "done": false },
+            { "text": "Verhalten unter Windows und Linux/X11 klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis)", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben)", "done": false },
+            { "text": "Manuelle Prüfung auf Windows und Linux/X11: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben", "done": false }
           ]
         },
         {

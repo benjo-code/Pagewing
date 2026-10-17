@@ -27,7 +27,8 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) | 2026-10-16 |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) | 2026-10-17 |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | 2026-10-17 |
-| 4 | Navigation | 1 – Fundament & Viewer | ⬜ offen | – | – |
+| 4 | Navigation | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-17-milestone-04-navigation.md) | – |
+| 4.1 | Tabs zwischen Fenstern ziehen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 5 | Text & Suche | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 6 | Komfort | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 7 | Drucken | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -47,6 +48,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 ## Scope-Änderungen
 
+- **2026-10-17 (M4: Tabs in eigenes Fenster verschieben; Ziehgeste als neuer Milestone 4.1):** Auf Wunsch des Projektinhabers lassen sich Tabs in ein eigenes Fenster verschieben. M4 liefert das Menü „In neuem Fenster öffnen“ (der Tab wechselt samt Sitzung das Fenster, ohne die PDF neu zu öffnen) und die dafür nötige Architektur (`TabViewModel`, `Workspace`); das Herausziehen und Zurückziehen per Maus ist der neue Milestone 4.1 (Voraussetzung M4). Ebenfalls mit M4 statt M3: Aktionsleiste und Panel (Seiten, Inhalt; „Suche“ folgt in M5), ein Layout-Knopf und das Zoom-Menü in der Statusleiste, Tastenkürzel Strg+0/1/2/G. Plan: `superpowers/plans/2026-10-17-milestone-04-navigation.md`.
 - **2026-10-17 (M3: Scrollen mit der Tastatur kommt dazu):** Das Abschluss-Review von M3 fand, dass in der Dokumentansicht nur Bild auf/ab wirkte: Pfeiltasten, Leertaste, Pos1 und Ende taten nichts, und kein Milestone sah sie vor. Sie gehören jetzt zum fortlaufenden Scrollen von M3 (`DocumentView`, Begründung in `Docs/DECISIONS.md`, Eintrag „Dokumentansicht: Zeichenfläche unter dem ScrollViewer …“). Die Aufgaben von M4 und M6 bleiben unverändert.
 - **2026-10-16 (M1: Kacheln über `FPDF_RenderPageBitmap_Start` mit Offset statt Matrix-API):** Kacheln werden nicht mit `FPDF_RenderPageBitmapWithMatrix` (Matrix + Clipping) gerendert, sondern mit `FPDF_RenderPageBitmap_Start`: Bitmap in Kachelgröße, Start bei minus Kachel-Offset, Größe der ganzen Seite in Pixeln. Grund: Die Matrix-API ist nicht progressiv, Pause und Abbruch wären damit nicht möglich. Folge: Spec 5.3 und die Roadmap-Aufgabe „Rendern ganzer Seiten und einzelner Kacheln“ sind angepasst. Kacheln sind in PDFium nicht allgemein bitgleich zum Ganzseiten-Rendering und werden deshalb mit 64 px Überlapp nach links gerendert; Scheduler und Kachelgröße (M3) müssen das berücksichtigen (Begründung in `Docs/DECISIONS.md`, Eintrag „Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht allgemein bitgleich“).
 - **2026-10-16 (M1: Vergleichsmessung nur mit Chrome):** Die Vergleichsmessung wurde nur mit Chrome durchgeführt; Acrobat und SumatraPDF sind auf dem Rechner des Projektinhabers nicht installiert und wurden nicht gemessen. Die Aufgabe „Vergleichsmessung“ in M1 ist entsprechend umformuliert. Das genügt der Entscheidungsregel in `bench/compare/README.md` („Regel für den Vorschlag“), die sich nur auf den schnellsten Browser (Chrome) stützt; Acrobat und SumatraPDF dienten dort nur der Einordnung. Die vier Budgets bleiben unverändert und sind endgültig (Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“). Offen bleibt der Vergleich mit Acrobat und SumatraPDF.
@@ -165,7 +167,7 @@ Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch 
 - [x] Schnelles Scrollen durch eine 1000-seitige Test-PDF ohne Ruckler des UI-Threads (manuelle Prüfung, Messwert notieren) – Messwert (`--measure-scroll testdata/pdfs/thousand-pages.pdf`, 600 Schritte, Abstände der Frame-Rückrufe, nicht angezeigte Bilder) auf dem Haupt-PC des Projektinhabers (Ryzen 7 7800X3D, RTX 4070 SUPER, 1920 × 1080 bei 60 Hz), Workflow „Hardware measurement“, Lauf 39045832687, Software-Rendering (Standard): Zoom 100 % p99 15,5 bis 16,9 ms, max höchstens 19,1 ms, kein Frame über 20 ms; Zoom 400 % p99 10,6 bis 10,8 ms. Manuelle Prüfung durch den Projektinhaber am 2026-10-17 mit dem gebauten AOT-Binary und `thousand-pages.pdf`: Scrollen ist flüssig (Aussage des Projektinhabers: „ist flüssig“). Grenzen: nur dieser PC, 1080p/60 Hz; die Mittel der Abstände (4 bis 8 ms) liegen unter der Bildschirmperiode und sind unerklärt; 4K, 144 Hz und schwache CPUs sind nicht gemessen.
 
 ## Milestone 4 – Navigation
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M3
+**Status:** 🟡 geplant · **Plan:** [2026-10-17-milestone-04-navigation.md](superpowers/plans/2026-10-17-milestone-04-navigation.md) · **Voraussetzungen:** M3
 
 Ziel: Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzeichnis, Layouts und Zoom-Modi bequem navigieren.
 
@@ -181,6 +183,20 @@ Ziel: Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzei
 **Abnahmekriterien**
 - [ ] Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün
 - [ ] Startzeit-Budgets weiter eingehalten (CI)
+
+## Milestone 4.1 – Tabs zwischen Fenstern ziehen
+**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M4
+
+Ziel: Ein Tab lässt sich per Maus aus der Tableiste ziehen und wird zu einem eigenen Fenster; ein Tab lässt sich in die Tableiste eines anderen Fensters zurückziehen.
+
+**Aufgaben**
+- [ ] Ziehgeste: Tab aus der Leiste herausziehen erzeugt ein neues Fenster am Zeiger (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)
+- [ ] Ablegen in der Tableiste eines anderen Fensters führt den Tab samt Sitzung dort ein (Position nach dem Zeiger)
+- [ ] Verhalten unter Windows und Linux/X11 klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis)
+
+**Abnahmekriterien**
+- [ ] Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben)
+- [ ] Manuelle Prüfung auf Windows und Linux/X11: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben
 
 ## Milestone 5 – Text & Suche
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M4
