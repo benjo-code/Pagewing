@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Avalonia;
 using Pagewing.App.Measurement;
+using Pagewing.App.Platform;
 using Pagewing.App.Resources;
 using Pagewing.Core.Hosting;
 using Pagewing.Core.Pdf;
@@ -23,8 +24,9 @@ internal static partial class Program
     /// <summary>
     /// Startup order (startup path, keep it lean): parse the options; elect the single instance before Avalonia is
     /// loaded, and as a later launch hand the files over and exit; otherwise start opening the file of the command
-    /// line at once, so PDFium loads on its own thread while Avalonia builds the window; show the window, whose first
-    /// frame shows the tab with the file name; accept later launches after the first frame (<see cref="App"/>).
+    /// line at once, so PDFium loads on its own thread while Avalonia builds the window; on Windows choose the rendering
+    /// mode (<see cref="UseSoftwareRendering"/>); show the window, whose first frame shows the tab with the file name;
+    /// accept later launches after the first frame (<see cref="App"/>).
     /// A measurement switch takes the same path, without the election (see <see cref="ElectInstance"/>).
     /// </summary>
     [STAThread]
@@ -83,12 +85,13 @@ internal static partial class Program
             StartupPhases.Mark("session-open-started");
         }
 
+        var software = UseSoftwareRendering();
         if (options.IsMeasurement)
         {
             StartMeasurementWatchdog();
         }
 
-        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null));
+        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null), software);
     }
 
     public static AppBuilder BuildAvaloniaApp() =>
@@ -96,10 +99,34 @@ internal static partial class Program
 
     // Kept out of Main, so that a later launch that hands over never loads or initializes Avalonia.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int Run(string[] args, AppStartup startup) =>
-        AppBuilder.Configure(() => new App(startup))
-            .UsePlatformDetect()
-            .StartWithClassicDesktopLifetime(args);
+    private static int Run(string[] args, AppStartup startup, bool softwareRendering)
+    {
+        var builder = AppBuilder.Configure(() => new App(startup)).UsePlatformDetect();
+        if (softwareRendering)
+        {
+            builder = builder.With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
+        }
+
+        return builder.StartWithClassicDesktopLifetime(args);
+    }
+
+    /// <summary>
+    /// Windows only, before Avalonia starts and never in a later launch that hands over: software rendering when the
+    /// machine has no hardware graphics adapter (<see cref="RenderingModeSelector"/>), otherwise Avalonia's default.
+    /// Measured in the startup path as the phase <c>rendering-software</c> or <c>rendering-default</c>.
+    /// </summary>
+    private static bool UseSoftwareRendering()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var software = RenderingModeSelector.UseSoftwareRendering(
+            Environment.GetEnvironmentVariable(RenderingModeSelector.OverrideVariable), KmtAdapters.TryEnumerate);
+        StartupPhases.Mark(software ? "rendering-software" : "rendering-default");
+        return software;
+    }
 
     /// <summary>
     /// Returns the primary instance, or no instance with <c>IsSecondary</c> set when another one runs. A measurement
