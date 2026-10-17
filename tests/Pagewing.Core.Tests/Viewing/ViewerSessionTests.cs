@@ -513,6 +513,76 @@ public sealed class ViewerSessionTests
         Assert.Equal(2, session.LoadedSizes.Count);
     }
 
+    [Fact]
+    public async Task InactiveSessionKeepsAtMostTheInactiveBudget()
+    {
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var cache = session.Cache!;
+        Assert.Equal(TabBudget.ActiveBytes, cache.BudgetBytes);
+        FillCache(cache, 4);
+        Assert.True(cache.UsedBytes > TabBudget.InactiveBytes);
+
+        session.SetActive(false);
+
+        Assert.Equal(TabBudget.InactiveBytes, cache.BudgetBytes);
+        Assert.True(cache.UsedBytes <= TabBudget.InactiveBytes);
+        Assert.True(cache.UsedBytes > 0);
+    }
+
+    [Fact]
+    public async Task ActivatingRestoresTheFullBudget()
+    {
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        session.SetActive(false);
+
+        session.SetActive(true);
+
+        Assert.Equal(TabBudget.ActiveBytes, session.Cache!.BudgetBytes);
+        FillCache(session.Cache, 4);
+        Assert.True(session.Cache.UsedBytes > TabBudget.InactiveBytes);
+    }
+
+    [Fact]
+    public async Task CacheOfADocumentOpenedWhileInactiveStartsSmall()
+    {
+        using var session = new ViewerSession(engine);
+        session.SetActive(false);
+
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+
+        Assert.Equal(TabBudget.InactiveBytes, session.Cache!.BudgetBytes);
+
+        // A document opened later while active gets the full budget again.
+        session.SetActive(true);
+        await session.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        Assert.Equal(TabBudget.ActiveBytes, session.Cache!.BudgetBytes);
+    }
+
+    [Fact]
+    public async Task SetActiveAfterDisposeDoesNothing()
+    {
+        var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var cache = session.Cache!;
+        session.Dispose();
+
+        session.SetActive(false);
+        session.SetActive(true);
+
+        Assert.Equal(TabBudget.ActiveBytes, cache.BudgetBytes);
+    }
+
+    // Fills the cache with images of 8 MiB each (they are not rendered, only stored).
+    private static void FillCache(RenderCache cache, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            cache.Add(new TileKey(i, 1000, 0, 0), new RenderedImage(1, 1, 4, new byte[8 * 1024 * 1024]));
+        }
+    }
+
     private static void AssertFailed(ViewerSession session, PdfOpenError error)
     {
         Assert.Equal(ViewerState.Failed, session.State);

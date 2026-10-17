@@ -185,6 +185,54 @@ public sealed class RenderCacheTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new RenderCache(0));
     }
 
+    [Fact]
+    public void SetBudgetEvictsLeastRecentlyUsedEntriesAtOnce()
+    {
+        var cache = new RenderCache(budgetBytes: 200);
+        cache.Add(Key(1), Image(40));
+        cache.Add(Key(2), Image(40));
+        cache.Add(Key(3), Image(40));
+        cache.Add(Key(4), Image(40));
+        Assert.True(cache.TryGet(Key(1), out _));
+
+        cache.SetBudget(90);
+
+        Assert.Equal(90, cache.BudgetBytes);
+        Assert.True(cache.UsedBytes <= 90);
+        Assert.Equal(80, cache.UsedBytes);
+        Assert.Equal(2, cache.Count);
+        Assert.True(cache.Contains(Key(1)));
+        Assert.True(cache.Contains(Key(4)));
+        Assert.False(cache.Contains(Key(2)));
+        Assert.False(cache.Contains(Key(3)));
+    }
+
+    [Fact]
+    public void SetBudgetToALargerValueKeepsEverything()
+    {
+        var cache = new RenderCache(budgetBytes: 100);
+        cache.Add(Key(1), Image(40));
+        cache.Add(Key(2), Image(40));
+
+        cache.SetBudget(1000);
+
+        Assert.Equal(1000, cache.BudgetBytes);
+        Assert.Equal(2, cache.Count);
+        Assert.Equal(80, cache.UsedBytes);
+    }
+
+    [Fact]
+    public void SetBudgetBelowOneThrows()
+    {
+        var cache = new RenderCache(budgetBytes: 100);
+        cache.Add(Key(1), Image(40));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => cache.SetBudget(0));
+
+        Assert.Equal(100, cache.BudgetBytes);
+        Assert.Equal(1, cache.Count);
+    }
+
     // Memory that is not exposed as an array, so CostOf has to use the pixel length.
     private sealed class NonArrayMemoryManager : MemoryManager<byte>
     {

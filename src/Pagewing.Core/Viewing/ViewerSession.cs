@@ -81,6 +81,11 @@ public sealed class ViewerSession : IDisposable
     private CancellationTokenSource? request;
     private long generation;
     private volatile bool disposed;
+    private bool active = true;
+
+    // Serializes SetActive, so two concurrent calls cannot apply their budgets in the wrong order. Taken before
+    // gate, never the other way round; the cache has its own lock and calls nothing back.
+    private readonly object budgetGate = new();
 
     // The number of Changed invocations that are running or about to; Dispose waits for it to drop to zero.
     private int raising;
@@ -303,7 +308,7 @@ public sealed class ViewerSession : IDisposable
                 if (opened is not null)
                 {
                     document = opened;
-                    cache = new RenderCache();
+                    cache = new RenderCache(TabBudget.For(active));
                     scheduler = new RenderScheduler(opened, cache);
                     loadedSizes = new ArraySegment<PdfPageSize>(sizes!, 0, firstCount);
                     backgroundLoadFailure = null;
@@ -335,6 +340,31 @@ public sealed class ViewerSession : IDisposable
         if (opened is not null && firstCount < sizes!.Length)
         {
             _ = LoadRemainingSizesAsync(opened, mine, sizes, firstCount, source.Token);
+        }
+    }
+
+    /// <summary>
+    /// Tells the session whether its tab is shown. An inactive session keeps its render cache within
+    /// <see cref="TabBudget.InactiveBytes"/> (evicting at once), an active one within <see cref="TabBudget.ActiveBytes"/>;
+    /// this also applies to every document opened later. A new session is active. Does nothing after <see cref="Dispose"/>.
+    /// </summary>
+    public void SetActive(bool active)
+    {
+        lock (budgetGate)
+        {
+            RenderCache? current;
+            lock (gate)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                this.active = active;
+                current = cache;
+            }
+
+            current?.SetBudget(TabBudget.For(active));
         }
     }
 

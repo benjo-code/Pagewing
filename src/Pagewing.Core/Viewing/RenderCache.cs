@@ -20,17 +20,20 @@ public sealed class RenderCache
     private readonly LinkedList<Entry> order = new();
     private long usedBytes;
 
+    // Written under the lock; volatile because the render scheduler reads BudgetBytes without it.
+    private long budgetBytes;
+
     /// <summary>Creates an empty cache.</summary>
     /// <param name="budgetBytes">The most bytes the cache may hold.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="budgetBytes"/> is less than 1.</exception>
     public RenderCache(long budgetBytes = DefaultBudgetBytes)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(budgetBytes, 1L);
-        BudgetBytes = budgetBytes;
+        this.budgetBytes = budgetBytes;
     }
 
-    /// <summary>Gets the most bytes the cache may hold.</summary>
-    public long BudgetBytes { get; }
+    /// <summary>Gets the most bytes the cache may hold; see <see cref="SetBudget"/>.</summary>
+    public long BudgetBytes => Volatile.Read(ref budgetBytes);
 
     /// <summary>Gets the bytes the cached images occupy, measured with <see cref="CostOf"/>.</summary>
     public long UsedBytes
@@ -106,17 +109,30 @@ public sealed class RenderCache
         lock (gate)
         {
             RemoveEntry(key);
-            if (cost > BudgetBytes)
+            if (cost > budgetBytes)
             {
                 return;
             }
 
             entries[key] = order.AddFirst(new Entry(key, image, cost));
             usedBytes += cost;
-            while (usedBytes > BudgetBytes && order.Last is { } oldest)
-            {
-                RemoveEntry(oldest.Value.Key);
-            }
+            Trim();
+        }
+    }
+
+    /// <summary>
+    /// Changes the budget. A smaller budget evicts the least recently used entries at once until the cache fits;
+    /// a larger one keeps everything.
+    /// </summary>
+    /// <param name="budgetBytes">The most bytes the cache may hold.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="budgetBytes"/> is less than 1.</exception>
+    public void SetBudget(long budgetBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(budgetBytes, 1L);
+        lock (gate)
+        {
+            Volatile.Write(ref this.budgetBytes, budgetBytes);
+            Trim();
         }
     }
 
@@ -128,6 +144,15 @@ public sealed class RenderCache
             entries.Clear();
             order.Clear();
             usedBytes = 0;
+        }
+    }
+
+    // Must run under the lock.
+    private void Trim()
+    {
+        while (usedBytes > budgetBytes && order.Last is { } oldest)
+        {
+            RemoveEntry(oldest.Value.Key);
         }
     }
 
