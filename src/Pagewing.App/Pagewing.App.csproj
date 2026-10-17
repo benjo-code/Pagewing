@@ -8,6 +8,14 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Pagewing.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Both languages are embedded in this assembly (no satellite assemblies, see DECISIONS.md). -->
+    <EmbeddedResource Update="Resources\Strings.en.resx" WithCulture="false" LogicalName="Pagewing.App.Resources.Strings.en.resources" />
+    <EmbeddedResource Update="Resources\Strings.de.resx" WithCulture="false" LogicalName="Pagewing.App.Resources.Strings.de.resources" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />

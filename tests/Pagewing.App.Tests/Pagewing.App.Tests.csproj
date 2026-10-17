@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Avalonia.Headless.XUnit 12.1.4 is built against xunit.v3 3.2.x and fails discovery with 4.0.x (see DECISIONS.md). -->
+    <PackageReference Include="xunit.v3" VersionOverride="3.2.2" />
+    <PackageReference Include="Avalonia.Headless.XUnit" />
+    <ProjectReference Include="..\..\src\Pagewing.App\Pagewing.App.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\TestData.cs" Link="Shared\TestData.cs" />
+  </ItemGroup>
+</Project>

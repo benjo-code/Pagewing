@@ -128,7 +128,7 @@
             { "text": "Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget", "done": false },
             { "text": "Zoom (Strg+Mausrad, Strg+Plus/Minus)", "done": false },
             { "text": "Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)", "done": false },
-            { "text": "`Pagewing.App.Tests` mit Avalonia.Headless", "done": false }
+            { "text": "`Pagewing.App.Tests` mit Avalonia.Headless", "done": true }
           ],
           "acceptance": [
             { "text": "Startzeit-Check in der CI grün auf beiden Runnern, Werte als Artefakt", "done": false },

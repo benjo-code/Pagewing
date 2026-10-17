@@ -1,0 +1,126 @@
+using System.Globalization;
+using System.Reflection;
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
+using Pagewing.App.Resources;
+using Pagewing.TestSupport;
+using Xunit;
+
+namespace Pagewing.App.Tests;
+
+// Strings.Culture is process-wide state; tests in one class run sequentially, but other test classes
+// that read Strings must join this collection.
+[Collection("Localization")]
+public sealed partial class LocalizationTests : IDisposable
+{
+    private readonly CultureInfo _originalCulture = Strings.Culture;
+
+    public void Dispose() => Strings.Culture = _originalCulture;
+
+    [Fact]
+    public void BothLanguagesDefineTheSameKeys()
+    {
+        var english = ReadKeys("Strings.en.resx").Keys.Order(StringComparer.Ordinal);
+        var german = ReadKeys("Strings.de.resx").Keys.Order(StringComparer.Ordinal);
+
+        Assert.Equal(english, german);
+    }
+
+    [Fact]
+    public void EveryKeyHasAnAccessorAndEveryAccessorAKey()
+    {
+        var keys = ReadKeys("Strings.en.resx").Keys.Order(StringComparer.Ordinal).ToArray();
+        var accessors = AccessorProperties().Select(property => property.Name).Order(StringComparer.Ordinal).ToArray();
+
+        Assert.NotEmpty(keys);
+        Assert.Equal(keys, accessors);
+    }
+
+    [Fact]
+    public void KnownKeysAreEmbeddedInTheAssembly()
+    {
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Pagewing", Strings.AppName);
+        Assert.Equal("Choose file", Strings.ChooseFile);
+
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Datei auswählen", Strings.ChooseFile);
+    }
+
+    [Fact]
+    public void GermanDiffersFromEnglishForUiTexts()
+    {
+        var english = ReadKeys("Strings.en.resx");
+        var german = ReadKeys("Strings.de.resx");
+        var same = english.Where(pair => pair.Key != "AppName" && german[pair.Key] == pair.Value)
+            .Select(pair => pair.Key)
+            .ToArray();
+
+        Assert.Empty(same);
+
+        // The accessors really return the text of the resx for the selected language.
+        foreach (var accessor in AccessorProperties())
+        {
+            Strings.Culture = new CultureInfo("en");
+            var en = (string)accessor.GetValue(null)!;
+            Strings.Culture = new CultureInfo("de");
+            var de = (string)accessor.GetValue(null)!;
+
+            Assert.Equal(english[accessor.Name], en);
+            Assert.Equal(german[accessor.Name], de);
+        }
+    }
+
+    [Fact]
+    public void UnknownLanguageFallsBackToEnglish()
+    {
+        Strings.Culture = new CultureInfo("fr");
+
+        Assert.Equal("Choose file", Strings.ChooseFile);
+    }
+
+    [Fact]
+    public void RegionalGermanCultureUsesGerman()
+    {
+        Strings.Culture = new CultureInfo("de-AT");
+
+        Assert.Equal("Datei auswählen", Strings.ChooseFile);
+    }
+
+    [Fact]
+    public void PlaceholdersMatchBetweenLanguages()
+    {
+        var english = ReadKeys("Strings.en.resx");
+        var german = ReadKeys("Strings.de.resx");
+
+        foreach (var (key, value) in english)
+        {
+            Assert.Equal(Placeholders(value), Placeholders(german[key]));
+        }
+
+        Assert.Equal(["{0}"], Placeholders(english["PasswordPrompt"]));
+        Assert.Equal(["{0}"], Placeholders(english["PageOf"]));
+    }
+
+    [GeneratedRegex(@"\{\d+\}")]
+    private static partial Regex PlaceholderPattern();
+
+    private static string[] Placeholders(string text) =>
+        PlaceholderPattern().Matches(text).Select(match => match.Value).Order(StringComparer.Ordinal).ToArray();
+
+    private static Dictionary<string, string> ReadKeys(string fileName)
+    {
+        var path = Path.Combine(TestData.Root, "src", "Pagewing.App", "Resources", fileName);
+        var document = XDocument.Load(path);
+
+        return document.Root!.Elements("data")
+            .ToDictionary(
+                data => (string)data.Attribute("name")!,
+                data => (string)data.Element("value")!,
+                StringComparer.Ordinal);
+    }
+
+    private static IEnumerable<PropertyInfo> AccessorProperties() =>
+        typeof(Strings).GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(property => property.PropertyType == typeof(string));
+}

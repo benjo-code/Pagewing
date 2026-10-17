@@ -15,6 +15,38 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-17 – Avalonia.Headless.XUnit als Testabhängigkeit (mit xunit.v3 3.2.2 nur in App.Tests)
+**Kontext:** Die UI-Tests von `Pagewing.App` (M3) laufen ohne Fenstersystem. Dafür braucht es die Headless-Plattform von Avalonia samt xunit-Integration (`[AvaloniaFact]`, `[AvaloniaTheory]`).
+**Entscheidung:**
+- `Avalonia.Headless.XUnit` 12.1.4 (MIT, Lizenz in der nuspec geprüft) als Paket nur im Testprojekt `tests/Pagewing.App.Tests`; es zieht `Avalonia.Headless` 12.1.4 nach. Es gelangt nicht in App oder CLI, das Binary ändert sich nicht. Die Version steht zentral in `Directory.Packages.props`, die Skia-Zeichnung kommt über `Avalonia.Desktop` (`UseSkia()` in `TestAppBuilder`, damit sich Bilder aufnehmen lassen).
+- **Abweichung bei xunit.v3:** `Avalonia.Headless.XUnit` 12.1.4 ist gegen `xunit.v3.extensibility.core` 3.2.2 gebaut. Mit `xunit.v3` 4.0.2 (Stand im Rest des Repos) lässt sich alles wiederherstellen und bauen, die Testentdeckung scheitert aber mit `MissingMethodException` (`TestIntrospectionHelper.GetTestCaseDetails`, Signatur in 4.0 geändert). Deshalb nutzt nur `Pagewing.App.Tests` `xunit.v3` 3.2.2 über `VersionOverride`; alle anderen Testprojekte bleiben bei 4.0.2. Beide laufen auf Microsoft.Testing.Platform, der Runner in `global.json` bleibt unverändert. Die Abweichung entfällt, sobald eine Version von `Avalonia.Headless.XUnit` gegen xunit.v3 4.x erscheint; dann den `VersionOverride` entfernen und `HeadlessSmokeTests` als Prüfung nutzen.
+**Begründung:** Die kleinste funktionierende Kombination hält die Abweichung auf ein Projekt begrenzt. `HeadlessSmokeTests` (Fenster zeigen, Bild aufnehmen) beweist, dass Entdeckung und Headless-Plattform zusammenarbeiten.
+**Verworfene Alternativen:**
+- Alle Testprojekte auf xunit.v3 3.2.2 zurücksetzen: unnötiger Rückschritt für Projekte, die nicht betroffen sind.
+- Eigene Headless-Integration ohne `Avalonia.Headless.XUnit`: mehr eigener Code, der mit Avalonia mitgepflegt werden müsste.
+
+## 2026-10-17 – Lokalisierung ohne Satellitenassemblies
+**Kontext:** UI-Texte gibt es auf Englisch und Deutsch (resx), die Auswahl folgt der Systemsprache. Die App ist Native AOT; Satellitenassemblies (`de/Pagewing.resources.dll`) müssen zur Laufzeit geladen werden, was unter AOT riskant ist und den Start verlängert.
+**Entscheidung:**
+- `Resources/Strings.en.resx` und `Resources/Strings.de.resx` werden beide mit `WithCulture="false"` und festem `LogicalName` (`Pagewing.App.Resources.Strings.en.resources` bzw. `.de.resources`) in die Haupt-Assembly eingebettet. Ohne `WithCulture="false"` würde das SDK `Strings.de.resx` anhand des Dateinamens als Kultur `de` erkennen und eine Satellitenassembly erzeugen.
+- `Strings` (`src/Pagewing.App/Resources/Strings.cs`) hält je Sprache einen `ResourceManager` auf die Haupt-Assembly und liest immer mit `CultureInfo.InvariantCulture`, es gibt also keine Kulturkette und keine Suche nach Satelliten. `Strings.Culture` (Start: `CurrentUICulture`) wählt Deutsch, wenn der Zwei-Buchstaben-Code `de` ist (auch `de-AT`), sonst Englisch. `--lang <code>` setzt `Culture` beim Start (Test und manuelle Prüfung; eine Einstellung folgt in M6).
+- Die statischen String-Properties sind von Hand geschrieben (das SDK erzeugt keinen Designer). `LocalizationTests` halten Schlüssel und Properties synchron: gleiche Schlüssel in beiden Dateien, zu jedem Schlüssel genau eine Property, gleiche `{n}`-Platzhalter, deutsche Texte weichen von den englischen ab (außer `AppName`), und ein Test liest einen bekannten Schlüssel aus der gebauten Assembly.
+- Die Ursachen-Texte der Fehlerkarte (`ErrorNotAPdf` usw.) sind wörtlich die Satzenden aus dem Designsystem, 7.8 („ist beschädigt oder keine PDF-Datei“), und werden hinter dem Dateinamen angezeigt.
+**Begründung:** Zwei eingebettete Ressourcen kosten nichts beim Start, brauchen kein Laden von Assemblies und funktionieren mit dem Trimmer. Die Sprache ändert sich im Betrieb nie (nur beim Start), mehr Kulturlogik ist nicht nötig.
+**Verworfene Alternativen:**
+- Standard-Satellitenassemblies: Laufzeitladen unter Native AOT, größere Auslieferung (Ordner je Sprache).
+- Quellgenerierte oder per Reflection gefundene Zugriffe: das SDK liefert keinen Designer, Reflection wäre AOT-feindlich; handgeschriebene Properties mit Test sind einfach genug.
+- Texte direkt als C#-Konstanten: widerspricht der Vorgabe „UI-Texte aus resx“ und erschwert Übersetzungen.
+**Offen:** Dass `--lang de` und `--lang en` im AOT-Binary tatsächlich verschiedene Texte zeigen, wird in M3 Task 13 am veröffentlichten Binary geprüft.
+
+## 2026-10-17 – Keine MVVM-Bibliothek (eigene ViewModelBase und RelayCommand)
+**Kontext:** Die App-Oberfläche (M3) braucht Bindungen, Befehle und Änderungsbenachrichtigung.
+**Entscheidung:** Eigene, kleine `ViewModelBase` (`INotifyPropertyChanged`) und `RelayCommand` (`ICommand`) in `Pagewing.App`; kompilierte Bindungen (`AvaloniaUseCompiledBindingsByDefault`) genügen. Keine Pakete wie CommunityToolkit.Mvvm oder ReactiveUI.
+**Begründung:** Weniger Abhängigkeiten (Lizenz, Update und AOT-Prüfung entfallen), nichts Zusätzliches im Startpfad, kein Quellgenerator und keine Reflection. Der Bedarf ist klein.
+**Verworfene Alternativen:**
+- CommunityToolkit.Mvvm (MIT, Quellgeneratoren): AOT-tauglich, aber eine Abhängigkeit mehr für wenige Zeilen Code.
+- ReactiveUI: Reflection-lastig, schlecht für Native AOT und Start.
+
 ## 2026-10-17 – Single-Instance: Sperrdatei und Named Pipe
 **Kontext:** Ein zweiter Aufruf von Pagewing soll die Datei an die laufende Instanz übergeben und sich beenden (Budget „weitere Datei in laufender Instanz bis erste Seite“ ≤ 100 ms, siehe Roadmap). Dafür braucht es eine verlässliche Wahl der primären Instanz und einen Übergabekanal, beides auf Windows und Linux mit demselben Code und ohne Reflection (Native AOT).
 **Entscheidung:** `Pagewing.Core.Hosting.SingleInstance` (`src/Pagewing.Core/Hosting/SingleInstance.cs`):

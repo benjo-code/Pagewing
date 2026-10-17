@@ -156,7 +156,7 @@ Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch 
 - [ ] Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget
 - [ ] Zoom (Strg+Mausrad, Strg+Plus/Minus)
 - [ ] Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)
-- [ ] `Pagewing.App.Tests` mit Avalonia.Headless
+- [x] `Pagewing.App.Tests` mit Avalonia.Headless
 
 **Abnahmekriterien**
 - [ ] Startzeit-Check in der CI grün auf beiden Runnern, Werte als Artefakt
