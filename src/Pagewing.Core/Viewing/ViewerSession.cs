@@ -66,6 +66,7 @@ public sealed class ViewerSession : IDisposable
     private static int handlerDepth;
 
     private readonly Func<string, string?, CancellationToken, Task<PdfDocument>> open;
+    private readonly Func<PdfDocument, int, int, PdfPriority, CancellationToken, Task<IReadOnlyList<PdfPageSize>>> loadSizes;
 
     // Guards everything below up to "raising". Never held while an event is raised or anything is disposed.
     private readonly object gate = new();
@@ -76,6 +77,7 @@ public sealed class ViewerSession : IDisposable
     private RenderCache? cache;
     private RenderScheduler? scheduler;
     private IReadOnlyList<PdfPageSize> loadedSizes = [];
+    private Exception? backgroundLoadFailure;
     private CancellationTokenSource? request;
     private long generation;
     private volatile bool disposed;
@@ -89,11 +91,14 @@ public sealed class ViewerSession : IDisposable
     {
     }
 
-    /// <summary>Creates a session with its own open function (for tests).</summary>
-    internal ViewerSession(Func<string, string?, CancellationToken, Task<PdfDocument>> open)
+    /// <summary>Creates a session with its own open and page-size functions (for tests).</summary>
+    internal ViewerSession(
+        Func<string, string?, CancellationToken, Task<PdfDocument>> open,
+        Func<PdfDocument, int, int, PdfPriority, CancellationToken, Task<IReadOnlyList<PdfPageSize>>>? loadSizes = null)
     {
         ArgumentNullException.ThrowIfNull(open);
         this.open = open;
+        this.loadSizes = loadSizes ?? LoadSizesFromDocument;
     }
 
     /// <summary>
@@ -194,6 +199,21 @@ public sealed class ViewerSession : IDisposable
     }
 
     /// <summary>
+    /// Gets the exception that stopped the background loading of the page sizes of the open document, or
+    /// <see langword="null"/>. The pages after the failed batch then report the A4 stand-in size (for diagnosis and tests).
+    /// </summary>
+    internal Exception? BackgroundLoadFailure
+    {
+        get
+        {
+            lock (gate)
+            {
+                return backgroundLoadFailure;
+            }
+        }
+    }
+
+    /// <summary>
     /// Opens a file; a request that is still running is superseded. Failures do not throw but end in
     /// <see cref="ViewerState.Failed"/>, <see cref="ViewerState.PasswordRequired"/> or
     /// <see cref="ViewerState.PasswordIncorrect"/>. After <see cref="Dispose"/> this does nothing.
@@ -248,7 +268,7 @@ public sealed class ViewerSession : IDisposable
             {
                 opened = await open(fullPath, password, source.Token).ConfigureAwait(false);
                 sizes = new PdfPageSize[opened.PageCount];
-                var first = await opened.GetPageSizesAsync(0, Math.Min(FirstBatchSize, sizes.Length), PdfPriority.Interactive, source.Token).ConfigureAwait(false);
+                var first = await loadSizes(opened, 0, Math.Min(FirstBatchSize, sizes.Length), PdfPriority.Interactive, source.Token).ConfigureAwait(false);
                 firstCount = first.Count;
                 for (var i = 0; i < firstCount; i++)
                 {
@@ -286,6 +306,7 @@ public sealed class ViewerSession : IDisposable
                     cache = new RenderCache();
                     scheduler = new RenderScheduler(opened, cache);
                     loadedSizes = new ArraySegment<PdfPageSize>(sizes!, 0, firstCount);
+                    backgroundLoadFailure = null;
                     state = ViewerState.Ready;
                     error = null;
                 }
@@ -381,6 +402,9 @@ public sealed class ViewerSession : IDisposable
         }
     }
 
+    private static Task<IReadOnlyList<PdfPageSize>> LoadSizesFromDocument(PdfDocument document, int firstPage, int count, PdfPriority priority, CancellationToken cancellationToken) =>
+        document.GetPageSizesAsync(firstPage, count, priority, cancellationToken);
+
     private static Func<string, string?, CancellationToken, Task<PdfDocument>> OpenWith(PdfEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -408,6 +432,7 @@ public sealed class ViewerSession : IDisposable
         cache = null;
         scheduler = null;
         loadedSizes = [];
+        backgroundLoadFailure = null;
         request = null;
         return result;
     }
@@ -423,7 +448,7 @@ public sealed class ViewerSession : IDisposable
             while (loaded < sizes.Length)
             {
                 var count = Math.Min(BackgroundBatchSize, sizes.Length - loaded);
-                var batch = await loading.GetPageSizesAsync(loaded, count, PdfPriority.Background, cancellationToken).ConfigureAwait(false);
+                var batch = await loadSizes(loading, loaded, count, PdfPriority.Background, cancellationToken).ConfigureAwait(false);
 
                 // Only the part beyond the published prefix is written, so a reader of a snapshot never sees it change.
                 for (var i = 0; i < count; i++)
@@ -445,10 +470,32 @@ public sealed class ViewerSession : IDisposable
                 Raise(mine);
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
-            // Superseded, closed or the PDFium thread is gone: nothing left to load. A page whose size cannot be
-            // read is already A4 (see PdfDocument.GetPageSizesAsync), so this is not a failure of the document.
+            // Superseded, closed or disposed meanwhile: nothing left to load, and nobody is interested any more.
+        }
+        catch (Exception ex)
+        {
+            // A real failure (for example a PDFium thread violation). Keep the document consistent instead of
+            // leaving a truncated page list: the pages that were not read get the A4 stand-in that
+            // PdfDocument.GetPageSizesAsync uses for a page it cannot read. Nothing escapes this task.
+            for (var i = loaded; i < sizes.Length; i++)
+            {
+                sizes[i] = PdfPageSize.A4;
+            }
+
+            lock (gate)
+            {
+                if (disposed || Volatile.Read(ref generation) != mine)
+                {
+                    return;
+                }
+
+                backgroundLoadFailure = ex;
+                loadedSizes = new ArraySegment<PdfPageSize>(sizes, 0, sizes.Length);
+            }
+
+            Raise(mine);
         }
     }
 

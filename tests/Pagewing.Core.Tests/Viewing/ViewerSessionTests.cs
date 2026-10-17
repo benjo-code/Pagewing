@@ -1,5 +1,6 @@
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Viewing;
+using Pagewing.Pdfium;
 using Pagewing.TestSupport;
 using Xunit;
 
@@ -411,6 +412,105 @@ public sealed class ViewerSessionTests
         await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
 
         Assert.Null(session.Document);
+    }
+
+    [Theory]
+    [InlineData(typeof(InvalidOperationException))]
+    [InlineData(typeof(PdfiumThreadViolationException))]
+    [InlineData(typeof(IOException))]
+    public async Task FailedBackgroundBatchFillsTheRestWithTheStandInAndReportsIt(Type exceptionType)
+    {
+        var failure = (Exception)Activator.CreateInstance(exceptionType, "batch failed")!;
+        using var session = new ViewerSession(
+            engine.OpenAsync,
+            (document, firstPage, count, priority, cancellationToken) =>
+                firstPage >= ViewerSession.FirstBatchSize + ViewerSession.BackgroundBatchSize
+                    ? Task.FromException<IReadOnlyList<PdfPageSize>>(failure)
+                    : document.GetPageSizesAsync(firstPage, count, priority, cancellationToken));
+        using var recorder = new Recorder(session);
+
+        await session.OpenAsync(TestData.Pdf("thousand-pages.pdf"));
+        await recorder.WaitUntilAsync(() => session.BackgroundLoadFailure is not null && session.LoadedSizes.Count == 1000);
+
+        // 32 + 256 sizes were read, the pages after the failed batch report the A4 stand-in.
+        var sizes = session.LoadedSizes;
+        Assert.Same(failure, session.BackgroundLoadFailure);
+        Assert.Equal(ViewerState.Ready, session.State);
+        Assert.All(sizes.Take(288), size => Assert.Equal(new PdfPageSize(200, 100), size));
+        Assert.All(sizes.Skip(288), size => Assert.Equal(new PdfPageSize(595.28, 841.89), size));
+
+        // The completed list is announced exactly once, and nothing follows.
+        var events = recorder.Events;
+        Assert.Equal(1, events.Count(e => e.Sizes == 1000));
+        Assert.Equal(1000, events[^1].Sizes);
+        var count = recorder.Count;
+        await Task.Delay(Quiet, TestContext.Current.CancellationToken);
+        Assert.Equal(count, recorder.Count);
+    }
+
+    [Theory]
+    [InlineData(typeof(OperationCanceledException))]
+    [InlineData(typeof(ObjectDisposedException))]
+    public async Task CanceledOrDisposedBackgroundBatchStaysSilent(Type exceptionType)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var session = new ViewerSession(
+            engine.OpenAsync,
+            async (document, firstPage, count, priority, cancellationToken) =>
+            {
+                if (firstPage < ViewerSession.FirstBatchSize)
+                {
+                    return await document.GetPageSizesAsync(firstPage, count, priority, cancellationToken);
+                }
+
+                entered.TrySetResult();
+                await release.Task;
+                throw (Exception)Activator.CreateInstance(exceptionType, "gone")!;
+            });
+        using var recorder = new Recorder(session);
+
+        await session.OpenAsync(TestData.Pdf("thousand-pages.pdf"));
+        await entered.Task.WaitAsync(Due, TestContext.Current.CancellationToken);
+        var count = recorder.Count;
+        release.SetResult();
+        await Task.Delay(Quiet, TestContext.Current.CancellationToken);
+
+        Assert.Equal(count, recorder.Count);
+        Assert.Null(session.BackgroundLoadFailure);
+        Assert.Equal(ViewerSession.FirstBatchSize, session.LoadedSizes.Count);
+    }
+
+    [Fact]
+    public async Task FailedBackgroundBatchOfASupersededRequestStaysSilent()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var session = new ViewerSession(
+            engine.OpenAsync,
+            async (document, firstPage, count, priority, cancellationToken) =>
+            {
+                if (document.PageCount != 1000 || firstPage < ViewerSession.FirstBatchSize)
+                {
+                    return await document.GetPageSizesAsync(firstPage, count, priority, cancellationToken);
+                }
+
+                entered.TrySetResult();
+                await release.Task;
+                throw new InvalidOperationException("late failure");
+            });
+        using var recorder = new Recorder(session);
+
+        await session.OpenAsync(TestData.Pdf("thousand-pages.pdf"));
+        await entered.Task.WaitAsync(Due, TestContext.Current.CancellationToken);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var count = recorder.Count;
+        release.SetResult();
+        await Task.Delay(Quiet, TestContext.Current.CancellationToken);
+
+        Assert.Equal(count, recorder.Count);
+        Assert.Null(session.BackgroundLoadFailure);
+        Assert.Equal(2, session.LoadedSizes.Count);
     }
 
     private static void AssertFailed(ViewerSession session, PdfOpenError error)
