@@ -336,6 +336,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // The document view leaves the tab (with the change of the active tab) and saves where it showed it.
         Tabs.Close(tab);
         Unhook(tab);
+
+        // The window it goes to has not drawn it yet: its thumbnails wait for the first sharp page there, which sets the
+        // flag again.
+        tab.HasShownSharpPage = false;
         return true;
     }
 

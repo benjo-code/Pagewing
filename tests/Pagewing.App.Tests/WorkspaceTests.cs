@@ -106,6 +106,64 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task MovedTabKeepsItsHorizontalPosition()
+    {
+        var workspace = CreateWorkspace();
+        var first = workspace.OpenWindow();
+        await OpenReadyAsync(workspace, first, "hello_world.pdf");
+        var tab = await OpenReadyAsync(workspace, first, "thousand-pages.pdf");
+        var firstView = Find<DocumentView>(workspace.WindowOf(first), "DocumentView");
+        await WaitUntilAsync(workspace, () => ReferenceEquals(firstView.Document, tab.Session.Document));
+
+        // "Pages" chosen by the user, so neither window opens it on its own later (which would narrow the viewport).
+        first.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+
+        // Zoomed wider than the viewport and scrolled right of the middle.
+        tab.Zoom = 8;
+        Settle(workspace);
+        var scroller = firstView.ScrollViewer;
+        Assert.True(scroller.Extent.Width > scroller.Viewport.Width + 400, $"extent {scroller.Extent}, viewport {scroller.Viewport}");
+        scroller.Offset = new Vector(((scroller.Extent.Width - scroller.Viewport.Width) / 2) + 150, scroller.Offset.Y);
+        Settle(workspace);
+        var before = CentreFromPageCentre(firstView);
+
+        workspace.MoveToNewWindow(first, tab);
+        var view = Find<DocumentView>(workspace.WindowOf(workspace.Windows[1]), "DocumentView");
+        await WaitUntilAsync(workspace, () => ReferenceEquals(view.Document, tab.Session.Document) && view.ScrollViewer.Viewport.Width > 0);
+
+        // The same spot of the pages is in the middle of the new window (same size as the source window).
+        Assert.Equal(8.0, view.Layout!.Zoom);
+        Assert.Equal(before, CentreFromPageCentre(view), 1.0);
+    }
+
+    [AvaloniaFact]
+    public async Task MovedTabWaitsForASharpPageOfItsNewWindow()
+    {
+        var workspace = CreateWorkspace();
+        var first = workspace.OpenWindow();
+        await OpenReadyAsync(workspace, first, "hello_world.pdf");
+        var tab = await OpenReadyAsync(workspace, first, "text-basic.pdf");
+        await WaitUntilAsync(workspace, () => tab.HasShownSharpPage);
+
+        // Whether the view of the new window had drawn a sharp tile, each time the flag changed.
+        var changes = new List<(bool Value, bool NewWindowDrewSharp)>();
+        tab.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(TabViewModel.HasShownSharpPage))
+            {
+                var newView = workspace.Windows.Count > 1 ? Find<DocumentView>(workspace.WindowOf(workspace.Windows[1]), "DocumentView") : null;
+                changes.Add((tab.HasShownSharpPage, newView?.Canvas.Bitmaps.Keys.Any(key => !key.IsPreview) == true));
+            }
+        };
+
+        workspace.MoveToNewWindow(first, tab);
+        await WaitUntilAsync(workspace, () => tab.HasShownSharpPage);
+
+        // Reset when it left the source window (so its thumbnails wait), set again by the sharp page of the new window.
+        Assert.Equal([(false, false), (true, true)], changes);
+    }
+
+    [AvaloniaFact]
     public async Task SourceWindowKeepsItsOtherTabs()
     {
         var workspace = CreateWorkspace();
@@ -482,6 +540,15 @@ public sealed class WorkspaceTests : IDisposable
                 workspace.WindowOf(viewModel).UpdateLayout();
             }
         }
+    }
+
+    /// <summary>How far the middle of the viewport lies from the centre line of the pages, in DIPs.</summary>
+    private static double CentreFromPageCentre(DocumentView view)
+    {
+        var scroller = view.ScrollViewer;
+        var contentWidth = view.Layout!.ContentWidth;
+        var shift = Math.Max(0, (scroller.Viewport.Width - contentWidth) / 2);
+        return scroller.Offset.X - shift + (scroller.Viewport.Width / 2) - (contentWidth / 2);
     }
 
     private static T Find<T>(Visual root, string name)

@@ -59,6 +59,10 @@ public sealed partial class DocumentView : UserControl
     private bool _refitPosted;
     private TopLevel? _topLevel;
 
+    // A saved view shown before the viewport had a size (a moved tab in a window not shown yet): restored again, once,
+    // when the viewport gets its first size, because its horizontal position depends on the viewport width.
+    private ViewState? _pendingRestore;
+
     public DocumentView()
     {
         InitializeComponent();
@@ -280,6 +284,7 @@ public sealed partial class DocumentView : UserControl
         PageCanvas.Attach(layout, scheduler, cache);
 
         ChangeLayout(tab?.SavedView is { } saved ? RestoredOffset(layout, saved) : default);
+        _pendingRestore = tab?.SavedView is { } pending && !(Scroller.Viewport.Width > 0) ? pending : null;
 
         // A fit mode of the tab fits the viewport as it is now (the window may have changed since the tab was left).
         Refit(chosen: false);
@@ -385,6 +390,7 @@ public sealed partial class DocumentView : UserControl
         _layout = null;
         _loadedSizes = 0;
         _focusPending = false;
+        _pendingRestore = null;
         PageCanvas.Detach();
         ChangeLayout(new Vector(0, 0));
     }
@@ -459,9 +465,32 @@ public sealed partial class DocumentView : UserControl
             UpdateViewport();
             if (e.Property == ScrollViewer.ViewportProperty)
             {
+                PostRestore();
                 PostRefit();
             }
         }
+    }
+
+    /// <summary>
+    /// Restores a saved view that was shown before the viewport had a size (<see cref="_pendingRestore"/>) once the
+    /// viewport has its first size; posted for the same reason as <see cref="PostRefit"/>, and before it, so a fit mode
+    /// fits around the restored position.
+    /// </summary>
+    private void PostRestore()
+    {
+        if (_pendingRestore is not { } view || _layout is not { } layout || !(Scroller.Viewport.Width > 0))
+        {
+            return;
+        }
+
+        _pendingRestore = null;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (ReferenceEquals(_layout, layout))
+            {
+                ChangeLayout(RestoredOffset(layout, view));
+            }
+        });
     }
 
     /// <summary>
@@ -686,6 +715,9 @@ public sealed partial class DocumentView : UserControl
         }
 
         var index = page - 1;
+
+        // A page asked for replaces a saved view that still waits for the viewport.
+        _pendingRestore = null;
         if (layout.Mode == PageLayoutMode.SinglePage)
         {
             layout.ShowPage(index);
