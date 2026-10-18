@@ -340,6 +340,14 @@ public sealed partial class DocumentView : UserControl
         {
             e.Handled = true;
         }
+        else if (!e.Handled && e.Key == Key.C && e.KeyModifiers is KeyModifiers.Control or (KeyModifiers.Control | KeyModifiers.Shift)
+            && HasCopyableSelection)
+        {
+            // Here and not as a key binding of the window: those run before every key event, also in a text field, and
+            // would take Ctrl+C away from the search field. The view only gets the key while it has the focus.
+            e.Handled = true;
+            _ = CopySelectionAsync(raw: e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift));
+        }
         else if (!e.Handled && _layout is not null && TryTurnPageWithSpace(e.Key, e.KeyModifiers))
         {
             e.Handled = true;

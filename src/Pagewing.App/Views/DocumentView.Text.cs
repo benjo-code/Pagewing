@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Pagewing.App.Controls;
 using Pagewing.App.Resources;
+using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Text;
@@ -44,6 +45,12 @@ public sealed partial class DocumentView
 
     // Pages of _texts whose text could not be read (damaged): the view does not ask for them again.
     private readonly HashSet<int> _failedTextPages = [];
+
+    // Where Ctrl+C puts the text; made on first use (see Clipboard).
+    private IClipboardService? _clipboard;
+
+    // Whether a copy is running: a second one is ignored.
+    private bool _copying;
 
     // The press of the left button that is going on (until it is released), or null.
     private TextPress? _press;
@@ -167,6 +174,114 @@ public sealed partial class DocumentView
         var last = Math.Clamp(lastCharExclusive, first, text.Chars.Count);
         tab.TextSelection = new TextSelection(new TextPosition(page, first), new TextPosition(page, last));
         return tab.TextSelection;
+    }
+
+    /// <summary>
+    /// Gets or sets where Ctrl+C puts the text: the clipboard of the window, made when the first copy needs it (nothing
+    /// is touched before, so it costs nothing at startup). Tests set a fake.
+    /// </summary>
+    internal IClipboardService Clipboard
+    {
+        get => _clipboard ??= new AvaloniaClipboardService(this);
+        set => _clipboard = value;
+    }
+
+    /// <summary>Gets or sets how long a copy waits before it tries again when the clipboard is locked (100 ms).</summary>
+    internal TimeSpan ClipboardRetryDelay { get; set; } = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// Gets whether Ctrl+C has something to copy: a selection that covers at least one caret step. Decides whether the
+    /// key is taken; without one it goes on to the window.
+    /// </summary>
+    private bool HasCopyableSelection => _viewModel?.TextSelection is { IsEmpty: false };
+
+    /// <summary>
+    /// Copies the selected text to the clipboard: as prose with formatting (plain text and HTML) or, with
+    /// <paramref name="raw"/>, as plain text with the line breaks of the PDF and no HTML. Without a selection, before the
+    /// first sharp page or when the selection holds no visible text, nothing is copied and the clipboard stays as it was.
+    /// </summary>
+    /// <remarks>
+    /// The text of every page of the selection is read one page at a time (<see cref="ReadText"/>, so a page the view
+    /// does not hold is read now, with <see cref="PdfPriority.Interactive"/>); the UI thread never waits for it. The
+    /// pages are held until the string is made, because paragraphs run across pages (about 100 to 300 KB per page: a
+    /// copy of 200 pages needs some 40 MB for a moment). The strings are made on the thread pool. A second copy while one
+    /// runs is ignored. A clipboard that another program holds is tried again once after <see cref="ClipboardRetryDelay"/>;
+    /// a failure after that is swallowed.
+    /// </remarks>
+    /// <param name="raw">Whether to copy plain text only, as the PDF has its lines.</param>
+    /// <returns>A task that ends when the clipboard is set or the copy was dropped.</returns>
+    internal async Task CopySelectionAsync(bool raw)
+    {
+        if (_copying || _viewModel is not { } tab || tab.TextSelection is not { IsEmpty: false } selection || TextSource() is not { } texts)
+        {
+            return;
+        }
+
+        _copying = true;
+        try
+        {
+            var pages = new Dictionary<int, PageText>();
+            for (var page = selection.Start.Page; page <= selection.End.Page; page++)
+            {
+                try
+                {
+                    pages[page] = await ReadText(texts, page, PdfPriority.Interactive);
+                }
+                catch (Exception)
+                {
+                    // The document went or a page is damaged: the selection cannot be copied as a whole.
+                    return;
+                }
+
+                // Back on the UI thread. Another document or tab meanwhile: its text is not on the clipboard to be.
+                if (!ReferenceEquals(tab, _viewModel) || !ReferenceEquals(texts, _texts))
+                {
+                    return;
+                }
+            }
+
+            var (plain, html) = await Task.Run(() => FormatSelection(selection, pages, raw));
+            if (plain.Length == 0)
+            {
+                return;
+            }
+
+            await SetClipboardAsync(plain, html);
+        }
+        finally
+        {
+            _copying = false;
+        }
+    }
+
+    private static (string Plain, string? Html) FormatSelection(TextSelection selection, Dictionary<int, PageText> pages, bool raw)
+    {
+        var slices = TextFlow.SlicesOf(selection, page => pages[page]);
+        return raw ? (TextFlow.Raw(slices), null) : (TextFlow.Plain(slices), TextFlow.Html(slices));
+    }
+
+    /// <summary>Puts the text on the clipboard; a locked clipboard is tried again once, a second failure is swallowed.</summary>
+    private async Task SetClipboardAsync(string plain, string? html)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await Clipboard.SetTextAsync(plain, html);
+                return;
+            }
+            catch (Exception)
+            {
+                // IOException or COMException of a clipboard that another program holds; the platform throws what it
+                // likes. A copy that fails must never take the window with it.
+                if (attempt >= 2)
+                {
+                    return;
+                }
+            }
+
+            await Task.Delay(ClipboardRetryDelay);
+        }
     }
 
     /// <summary>The text of the shown document, or <see langword="null"/> before its first sharp page (see the remarks).</summary>
