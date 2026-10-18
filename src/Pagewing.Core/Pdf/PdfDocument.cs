@@ -1,3 +1,4 @@
+using Pagewing.Core.Text;
 using Pagewing.Pdfium;
 
 namespace Pagewing.Core.Pdf;
@@ -169,6 +170,33 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
                 return textPage.GetText().Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
             },
             PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the characters (with boxes, font size, bold and italic) and the links of a page. The boxes are in
+    /// points from the top left of the displayed page. Links the viewer cannot follow (launch actions, files,
+    /// scripts) are left out. Runs with <see cref="PdfPriority.Interactive"/>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the page was read.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PageText> GetPageTextAsync(int pageIndex, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(pageIndex, pageCount);
+        return document.Thread.InvokeAsync(
+            () =>
+            {
+                using var page = document.LoadPage(pageIndex);
+                using var textPage = page.LoadTextPage();
+                var chars = PdfiumPageText.ReadChars(page, textPage, geometry: true, style: true);
+                var links = PdfiumPageText.ReadLinks(document, page, textPage);
+                return PageText.FromPdfium(pageIndex, page.Width, page.Height, chars, links);
+            },
+            PdfiumPriority.Interactive,
             cancellationToken);
     }
 
