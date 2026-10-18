@@ -29,7 +29,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | 2026-10-17 |
 | 4 | Navigation | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-17-milestone-04-navigation.md) | 2026-10-18 |
 | 4.1 | Tabs zwischen Fenstern ziehen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md) | 2026-10-18 |
-| 5 | Text & Suche | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-18-milestone-05-text-suche.md) | – |
+| 5 | Text & Suche | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-18-milestone-05-text-suche.md) | – |
 | 6 | Komfort | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 7 | Drucken | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 8 | Verteilung | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -201,7 +201,7 @@ Ziel: Ein Tab lässt sich per Maus aus der Tableiste ziehen, das neue Fenster h�
 - [x] Manuelle Prüfung auf Windows: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc (Linux/X11 siehe Backlog) – 2026-10-18, Release-Build, echte Maus (`SetCursorPos`/`mouse_event`) und echte Esc-Taste: Tab 50 px nach unten ziehen öffnet das Fenster nach rund 117 ms (unter 30 px kein Fenster), Titelzeile des neuen Fensters unter dem Zeiger, Fenster folgt; einziger Tab: Fenster folgt, über der Leiste des anderen Fensters geparkt, Marke sichtbar, Loslassen führt zusammen und schließt das leere Fenster; Esc stellt Tab und Fenster wieder her (erst nach dem Handler auch am schwebenden Fenster); Fokuswechsel mitten im Zug beendet die Geste ohne Verlust; nach den Korrekturen des Abschluss-Reviews wiederholt: inaktiver Tab hängt exakt am Zeiger, Esc, Zurückführen auf die eigene Leiste. Nicht geprüft: Alt+Tab, Monitore mit anderer Skalierung
 
 ## Milestone 5 – Text & Suche
-**Status:** 🟡 geplant · **Plan:** [2026-10-18-milestone-05-text-suche.md](superpowers/plans/2026-10-18-milestone-05-text-suche.md) · **Voraussetzungen:** M4
+**Status:** 🔵 in Arbeit · **Plan:** [2026-10-18-milestone-05-text-suche.md](superpowers/plans/2026-10-18-milestone-05-text-suche.md) · **Voraussetzungen:** M4
 
 Ziel: Text lässt sich durchsuchen, markieren und kopieren, Links funktionieren.
 
