@@ -19,12 +19,15 @@ public sealed class ThumbnailSource : IDisposable
 
     private int disposed;
 
-    /// <summary>Creates the source for <paramref name="document"/>. The source does not own the document; dispose it first.</summary>
-    internal ThumbnailSource(PdfDocument document)
+    /// <summary>
+    /// Creates the source for <paramref name="document"/>, rendering in <paramref name="pageTheme"/>. The source does not
+    /// own the document; dispose it first.
+    /// </summary>
+    internal ThumbnailSource(PdfDocument document, PageTheme pageTheme = PageTheme.Light)
     {
         ArgumentNullException.ThrowIfNull(document);
         Cache = new RenderCache(BudgetBytes);
-        Scheduler = new RenderScheduler(document, Cache);
+        Scheduler = new RenderScheduler(document, Cache, pageTheme);
     }
 
     /// <summary>Gets the cache that holds the thumbnails.</summary>
@@ -35,6 +38,23 @@ public sealed class ThumbnailSource : IDisposable
 
     /// <summary>Gets whether <see cref="Dispose"/> has been called (for tests).</summary>
     internal bool IsDisposed => Volatile.Read(ref disposed) != 0;
+
+    /// <summary>Gets the theme the thumbnails are rendered in.</summary>
+    public PageTheme PageTheme => Scheduler.PageTheme;
+
+    /// <summary>
+    /// Renders the thumbnails in <paramref name="theme"/> from now on: a change empties <see cref="Cache"/> and drops
+    /// the work of the old theme (<see cref="RenderScheduler.SetPageTheme"/>); plan again afterwards. The budget stays.
+    /// Does nothing after <see cref="Dispose"/>.
+    /// </summary>
+    public void SetPageTheme(PageTheme theme)
+    {
+        if (!IsDisposed)
+        {
+            // A Dispose that runs meanwhile disposes the scheduler, which then ignores the call.
+            Scheduler.SetPageTheme(theme);
+        }
+    }
 
     /// <summary>Stops the scheduler and empties the cache. Safe to call more than once.</summary>
     public void Dispose()

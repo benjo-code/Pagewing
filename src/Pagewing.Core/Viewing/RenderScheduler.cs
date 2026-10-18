@@ -21,15 +21,22 @@ namespace Pagewing.Core.Viewing;
 /// <see cref="Update"/> may be called from any thread, typically the UI thread on every scroll event. It only
 /// replaces the queue under a lock and never waits or renders on the calling thread. The events are raised on a
 /// thread-pool thread. Their handlers must be short and must not wait for the thread that calls
-/// <see cref="Dispose"/>, because <see cref="Dispose"/> waits for a handler that is running.
+/// <see cref="Dispose"/> or <see cref="SetPageTheme"/>, because both wait for a handler that is running.
+/// </para>
+/// <para>
+/// Every request renders in the <see cref="PageTheme"/> that was current when it started. <see cref="SetPageTheme"/>
+/// treats everything of the old theme like a request that is no longer wanted: the running request is cancelled
+/// and leaves no trace, and the queue, the cache and the failed keys are emptied.
 /// </para>
 /// </remarks>
 public sealed class RenderScheduler : IDisposable
 {
     private static readonly RenderOptions InteractiveOptions = new() { Priority = PdfPriority.Interactive };
     private static readonly RenderOptions BackgroundOptions = new() { Priority = PdfPriority.Background };
+    private static readonly RenderOptions DarkInteractiveOptions = InteractiveOptions with { PageTheme = PageTheme.Dark };
+    private static readonly RenderOptions DarkBackgroundOptions = BackgroundOptions with { PageTheme = PageTheme.Dark };
 
-    private readonly Func<RenderRequest, CancellationToken, Task<RenderedImage>> render;
+    private readonly Func<RenderRequest, RenderOptions, CancellationToken, Task<RenderedImage>> render;
     private readonly RenderCache cache;
 
     // Wakes the worker; released at most once until the worker finds the queue empty again.
@@ -44,9 +51,15 @@ public sealed class RenderScheduler : IDisposable
     private bool signalled;
     private bool disposed;
 
-    // Serializes raising the events with Dispose, so that no event starts after Dispose has returned.
+    // Serializes raising the events with Dispose and SetPageTheme, so that no event starts after Dispose has returned
+    // and no event of an old theme starts after SetPageTheme has returned. Taken before gate, never the other way round.
     private readonly object eventGate = new();
     private bool silenced;
+
+    // Changed only under eventGate and gate together, so either of them is enough to read them. The epoch counts the
+    // theme changes: a job of an earlier epoch belongs to an old theme, even after a switch back to its colours.
+    private PageTheme theme;
+    private long themeEpoch;
 
     /// <summary>Creates a scheduler that renders the pages of <paramref name="document"/> into <paramref name="cache"/>.</summary>
     /// <remarks>
@@ -54,18 +67,27 @@ public sealed class RenderScheduler : IDisposable
     /// background requests run with <see cref="PdfPriority.Background"/>. The scheduler does not own the document
     /// or the cache; dispose the scheduler before the document.
     /// </remarks>
-    public RenderScheduler(PdfDocument document, RenderCache cache)
-        : this(RenderWith(document), cache)
+    /// <param name="document">The document to render.</param>
+    /// <param name="cache">The cache the images are stored in.</param>
+    /// <param name="pageTheme">The theme the pages are rendered in until <see cref="SetPageTheme"/> changes it.</param>
+    public RenderScheduler(PdfDocument document, RenderCache cache, PageTheme pageTheme = PageTheme.Light)
+        : this(RenderWith(document), cache, pageTheme)
     {
     }
 
-    /// <summary>Creates a scheduler with its own render function (for tests).</summary>
-    internal RenderScheduler(Func<RenderRequest, CancellationToken, Task<RenderedImage>> render, RenderCache cache)
+    /// <summary>Creates a scheduler with its own render function, which gets the options of each request (for tests).</summary>
+    internal RenderScheduler(Func<RenderRequest, RenderOptions, CancellationToken, Task<RenderedImage>> render, RenderCache cache, PageTheme pageTheme = PageTheme.Light)
     {
         ArgumentNullException.ThrowIfNull(render);
         ArgumentNullException.ThrowIfNull(cache);
+        if (!Enum.IsDefined(pageTheme))
+        {
+            throw new ArgumentOutOfRangeException(nameof(pageTheme), pageTheme, "Unknown page theme.");
+        }
+
         this.render = render;
         this.cache = cache;
+        theme = pageTheme;
         _ = Task.Run(RunWorkerAsync);
     }
 
@@ -77,10 +99,22 @@ public sealed class RenderScheduler : IDisposable
 
     /// <summary>
     /// Occurs on a thread-pool thread when rendering a key failed, or when its image is larger than the budget of the
-    /// cache (it could never be stored). Each key is reported once and not tried again for the lifetime of the
-    /// scheduler.
+    /// cache (it could never be stored). Each key is reported once and not tried again until the scheduler is
+    /// disposed or <see cref="SetPageTheme"/> changes the theme.
     /// </summary>
     public event Action<TileKey, Exception>? TileFailed;
+
+    /// <summary>Gets the theme new requests are rendered in. Default: <see cref="PageTheme.Light"/>.</summary>
+    public PageTheme PageTheme
+    {
+        get
+        {
+            lock (gate)
+            {
+                return theme;
+            }
+        }
+    }
 
     /// <summary>Gets the number of wanted requests that are queued or running.</summary>
     public int PendingCount
@@ -145,6 +179,44 @@ public sealed class RenderScheduler : IDisposable
     }
 
     /// <summary>
+    /// Renders from now on in <paramref name="pageTheme"/>. A change cancels the running request, empties the queue,
+    /// the cache and the failed keys, and drops every result of the old theme that is still on its way: it is neither
+    /// stored nor reported (no <see cref="TileReady"/>, no <see cref="TileFailed"/>, not marked as failed). Plan again
+    /// with <see cref="Update"/> afterwards. Waits only for an event handler that is running, so no event of the old
+    /// theme starts after this returns. The same theme, and any call after <see cref="Dispose"/>, do nothing.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageTheme"/> is not a defined value.</exception>
+    public void SetPageTheme(PageTheme pageTheme)
+    {
+        if (!Enum.IsDefined(pageTheme))
+        {
+            throw new ArgumentOutOfRangeException(nameof(pageTheme), pageTheme, "Unknown page theme.");
+        }
+
+        lock (eventGate)
+        {
+            lock (gate)
+            {
+                if (disposed || pageTheme == theme)
+                {
+                    return;
+                }
+
+                theme = pageTheme;
+                themeEpoch++;
+                queue = [];
+                next = 0;
+                current?.Cancel();
+                failed.Clear();
+
+                // The cache has its own lock and calls nothing back; images are stored under this lock too, so none of
+                // the old theme can be added after this.
+                cache.Clear();
+            }
+        }
+    }
+
+    /// <summary>
     /// Stops the scheduler: the queue is dropped, the running request is cancelled, and no event is raised after
     /// this returns. Does not wait for the running request; it waits only for an event handler that is running.
     /// </summary>
@@ -170,15 +242,23 @@ public sealed class RenderScheduler : IDisposable
         }
     }
 
-    /// <summary>The render options for a request: the priority follows <see cref="RenderRequest.Background"/>.</summary>
-    internal static RenderOptions OptionsFor(RenderRequest request) => request.Background ? BackgroundOptions : InteractiveOptions;
+    /// <summary>
+    /// The render options for a request: the priority follows <see cref="RenderRequest.Background"/>, the page theme is
+    /// <paramref name="theme"/>.
+    /// </summary>
+    internal static RenderOptions OptionsFor(RenderRequest request, PageTheme theme = PageTheme.Light) => theme switch
+    {
+        PageTheme.Light => request.Background ? BackgroundOptions : InteractiveOptions,
+        PageTheme.Dark => request.Background ? DarkBackgroundOptions : DarkInteractiveOptions,
+        _ => (request.Background ? BackgroundOptions : InteractiveOptions) with { PageTheme = theme },
+    };
 
-    private static Func<RenderRequest, CancellationToken, Task<RenderedImage>> RenderWith(PdfDocument document)
+    private static Func<RenderRequest, RenderOptions, CancellationToken, Task<RenderedImage>> RenderWith(PdfDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        return (request, cancellationToken) => request.WholePage
-            ? document.RenderPageAsync(request.Key.Page, request.Scale, OptionsFor(request), cancellationToken)
-            : document.RenderTileAsync(request.Key.Page, request.Scale, request.Rect, OptionsFor(request), cancellationToken);
+        return (request, options, cancellationToken) => request.WholePage
+            ? document.RenderPageAsync(request.Key.Page, request.Scale, options, cancellationToken)
+            : document.RenderTileAsync(request.Key.Page, request.Scale, request.Rect, options, cancellationToken);
     }
 
     // Must run under the lock.
@@ -233,7 +313,7 @@ public sealed class RenderScheduler : IDisposable
                     continue;
                 }
 
-                job = new Job(request);
+                job = new Job(request, theme, themeEpoch);
                 current = job;
                 return true;
             }
@@ -249,7 +329,7 @@ public sealed class RenderScheduler : IDisposable
         Task<RenderedImage> rendering;
         try
         {
-            rendering = render(job.Request, job.Token) ?? Task.FromResult<RenderedImage>(null!);
+            rendering = render(job.Request, OptionsFor(job.Request, job.Theme), job.Token) ?? Task.FromResult<RenderedImage>(null!);
         }
         catch (Exception ex)
         {
@@ -282,9 +362,10 @@ public sealed class RenderScheduler : IDisposable
         {
             current = null;
 
-            // A cancelled job (no longer wanted, or disposed) leaves no trace, even if an image arrived in a race.
+            // A cancelled job (no longer wanted, of an old page theme, or disposed) leaves no trace, even if an image
+            // arrived in a race. SetPageTheme cancels the running job, so the theme check only states the rule.
             // Its token source is not disposed: the cancellation callbacks may still be running on a pool thread.
-            if (job.IsCancelled || !rendering.IsCompleted)
+            if (job.IsCancelled || !rendering.IsCompleted || job.ThemeEpoch != themeEpoch)
             {
                 return;
             }
@@ -311,7 +392,7 @@ public sealed class RenderScheduler : IDisposable
 
         // Not cancelled and no longer the running job: nothing can cancel it any more.
         job.Dispose();
-        Raise(job.Request.Key, error);
+        Raise(job, error);
     }
 
     private static Exception FailureOf(Task<RenderedImage> rendering)
@@ -330,11 +411,14 @@ public sealed class RenderScheduler : IDisposable
         return new InvalidOperationException("The renderer returned no image.");
     }
 
-    private void Raise(TileKey key, Exception? error)
+    private void Raise(Job job, Exception? error)
     {
+        var key = job.Request.Key;
         lock (eventGate)
         {
-            if (silenced)
+            // The theme may have changed between storing the result and here; then the result is already gone from the
+            // cache (and from the failed keys), and it is not reported either.
+            if (silenced || job.ThemeEpoch != themeEpoch)
             {
                 return;
             }
@@ -359,18 +443,25 @@ public sealed class RenderScheduler : IDisposable
         }
     }
 
-    /// <summary>The running request and the source of its cancellation.</summary>
+    /// <summary>The running request, its page theme and the source of its cancellation.</summary>
     private sealed class Job : IDisposable
     {
         private readonly CancellationTokenSource source = new();
 
-        public Job(RenderRequest request)
+        public Job(RenderRequest request, PageTheme theme, long themeEpoch)
         {
             Request = request;
+            Theme = theme;
+            ThemeEpoch = themeEpoch;
             Token = source.Token;
         }
 
         public RenderRequest Request { get; }
+
+        // The page theme the job renders in: the scheduler's theme when it started, and the epoch of that theme.
+        public PageTheme Theme { get; }
+
+        public long ThemeEpoch { get; }
 
         public CancellationToken Token { get; }
 

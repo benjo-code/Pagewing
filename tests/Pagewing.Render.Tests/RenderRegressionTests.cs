@@ -6,8 +6,9 @@ using Xunit;
 namespace Pagewing.Render.Tests;
 
 /// <summary>
-/// Renders every PDF of <see cref="RenderCorpus"/> through <c>pagewing render</c> and compares each page with its
-/// reference image in <c>testdata/references/&lt;stem&gt;/</c>, in the <see cref="CompareMode"/> of its case. With <c>PAGEWING_UPDATE_REFERENCES=1</c> the
+/// Renders every case of <see cref="RenderCorpus"/> (through <c>pagewing render</c> unless it has another page theme)
+/// and compares each page with its reference image in <c>testdata/references/&lt;case&gt;/</c>, in the
+/// <see cref="CompareMode"/> of its case. With <c>PAGEWING_UPDATE_REFERENCES=1</c> the
 /// renderings become the new references and the test fails on purpose, so an update is always reviewed. The update
 /// mode runs only on Windows, where the shared reference set is generated; elsewhere it fails without writing.
 /// </summary>
@@ -17,16 +18,16 @@ public sealed class RenderRegressionTests : IDisposable
 
     private readonly DirectoryInfo workDirectory = Directory.CreateTempSubdirectory("pagewing-render-tests-");
 
-    public static TheoryData<string> Corpus => [.. RenderCorpus.Cases.Select(c => c.PdfName)];
+    public static TheoryData<string> Corpus => [.. RenderCorpus.Cases.Select(c => c.Stem)];
 
     public void Dispose() => workDirectory.Delete(recursive: true);
 
     [Theory]
     [MemberData(nameof(Corpus))]
-    public async Task PagesMatchTheReferenceImages(string pdfName)
+    public async Task PagesMatchTheReferenceImages(string caseName)
     {
         var ct = TestContext.Current.CancellationToken;
-        var renderCase = RenderCorpus.Get(pdfName);
+        var renderCase = RenderCorpus.Get(caseName);
         var rendered = await RenderCorpus.RenderAsync(renderCase, workDirectory.FullName, ct);
         var referenceDirectory = TestData.ReferenceDir(renderCase.Stem);
         var diffDirectory = Path.Combine(AppContext.BaseDirectory, "render-diff", renderCase.Stem);
@@ -89,7 +90,7 @@ public sealed class RenderRegressionTests : IDisposable
             failures.AppendLine(CultureInfo.InvariantCulture, $"  diff:      {diffPath}");
         }
 
-        Assert.True(failures.Length == 0, $"{pdfName} does not match its reference images:\n{failures}");
+        Assert.True(failures.Length == 0, $"{caseName} does not match its reference images:\n{failures}");
     }
 
     [Fact]
@@ -99,16 +100,18 @@ public sealed class RenderRegressionTests : IDisposable
             .Select(path => Path.GetFileName(path))
             .Order(StringComparer.Ordinal)
             .ToList();
-        var covered = RenderCorpus.Cases.Select(c => c.PdfName).Concat(RenderCorpus.Skipped).ToList();
+        var covered = RenderCorpus.Cases.Select(c => c.PdfName).Distinct(StringComparer.Ordinal).Concat(RenderCorpus.Skipped).ToList();
+        var names = RenderCorpus.Cases.Select(c => c.Stem).ToList();
 
         Assert.Equal(covered.Count, covered.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(names.Count, names.Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(present, covered.Order(StringComparer.Ordinal).ToList());
     }
 
     [Fact]
     public async Task StrictComparisonDetectsAOnePixelShift()
     {
-        var page = await RenderPageOneAsync("vector-shapes.pdf", CompareMode.Strict);
+        var page = await RenderPageOneAsync("vector-shapes", CompareMode.Strict);
 
         AssertDetected(page, ShiftRight(page, 1), CompareMode.Strict);
     }
@@ -116,7 +119,7 @@ public sealed class RenderRegressionTests : IDisposable
     [Fact]
     public async Task TolerantComparisonDetectsMissingText()
     {
-        var page = await RenderPageOneAsync("text-basic.pdf", CompareMode.Tolerant);
+        var page = await RenderPageOneAsync("text-basic", CompareMode.Tolerant);
         var (top, bottom) = FirstTextLine(page);
         var blanked = (byte[])page.Pixels.Clone();
         Array.Fill(blanked, (byte)0xFF, top * page.Width * 3, (bottom - top) * page.Width * 3);
@@ -127,7 +130,7 @@ public sealed class RenderRegressionTests : IDisposable
     [Fact]
     public async Task TolerantComparisonDetectsAnEightPixelShift()
     {
-        var page = await RenderPageOneAsync("text-basic.pdf", CompareMode.Tolerant);
+        var page = await RenderPageOneAsync("text-basic", CompareMode.Tolerant);
 
         AssertDetected(page, ShiftRight(page, 8), CompareMode.Tolerant);
     }
@@ -137,7 +140,7 @@ public sealed class RenderRegressionTests : IDisposable
     {
         // A 40 x 40 patch inside the filled Square annotation, at the worst block alignment (offset 4 to the 8 x 8 grid).
         const int Left = 140, Top = 260, Size = 40;
-        var page = await RenderPageOneAsync("annotations.pdf", CompareMode.Tolerant);
+        var page = await RenderPageOneAsync("annotations", CompareMode.Tolerant);
         var changed = (byte[])page.Pixels.Clone();
         var fill = page.Pixel(Left, Top);
         for (var y = Top; y < Top + Size; y++)
@@ -154,10 +157,10 @@ public sealed class RenderRegressionTests : IDisposable
 
     [Theory]
     [MemberData(nameof(Corpus))]
-    public async Task RenderingTwiceIsBitIdentical(string pdfName)
+    public async Task RenderingTwiceIsBitIdentical(string caseName)
     {
         var ct = TestContext.Current.CancellationToken;
-        var renderCase = RenderCorpus.Get(pdfName);
+        var renderCase = RenderCorpus.Get(caseName);
 
         var first = await RenderCorpus.RenderAsync(renderCase, Path.Combine(workDirectory.FullName, "first"), ct);
         var second = await RenderCorpus.RenderAsync(renderCase, Path.Combine(workDirectory.FullName, "second"), ct);
@@ -243,11 +246,11 @@ public sealed class RenderRegressionTests : IDisposable
         return updated;
     }
 
-    /// <summary>Renders page 1 of a corpus PDF and checks that the corpus compares it in <paramref name="mode"/>.</summary>
-    private async Task<Rgb> RenderPageOneAsync(string pdfName, CompareMode mode)
+    /// <summary>Renders page 1 of a corpus case and checks that the corpus compares it in <paramref name="mode"/>.</summary>
+    private async Task<Rgb> RenderPageOneAsync(string caseName, CompareMode mode)
     {
         var ct = TestContext.Current.CancellationToken;
-        var renderCase = RenderCorpus.Get(pdfName);
+        var renderCase = RenderCorpus.Get(caseName);
         Assert.Equal(mode, renderCase.Mode);
         var files = await RenderCorpus.RenderAsync(renderCase, Path.Combine(workDirectory.FullName, "mutation"), ct, pages: "1");
         return Rgb.Decode(await File.ReadAllBytesAsync(Assert.Single(files), ct));

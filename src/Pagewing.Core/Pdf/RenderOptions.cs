@@ -17,6 +17,9 @@ public sealed record RenderOptions
     /// afterwards. <see cref="TimeSpan.Zero"/> yields at every chance. Must not be negative. Default: 4 ms.
     /// </summary>
     public TimeSpan TimeSlice { get; init; } = TimeSpan.FromMilliseconds(4);
+
+    /// <summary>Gets how the page is coloured. Default: <see cref="PageTheme.Light"/>, the page as the document says.</summary>
+    public PageTheme PageTheme { get; init; } = PageTheme.Light;
 }
 
 /// <summary>Scheduling class of a request on the PDFium thread.</summary>
