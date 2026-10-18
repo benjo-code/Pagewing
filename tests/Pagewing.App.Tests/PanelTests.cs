@@ -433,6 +433,32 @@ public sealed class PanelTests : IDisposable
         Assert.NotSame(built, Find<Control>(window, "ContentsContent"));
     }
 
+    [AvaloniaFact]
+    public async Task ACollapsedPanelHoldsNoTab()
+    {
+        var (window, viewModel, view) = Show(800);
+        var kept = await OpenTabAsync(window, viewModel, view, "hello_world.pdf");
+        var closed = await OpenTabAsync(window, viewModel, view, "outline.pdf");
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Contents);
+        Settle(window);
+        var panel = Assert.Single(SidePanels(window));
+        Assert.Same(closed, panel.DataContext);
+
+        // The tab closes and the other one shows no panel: the panel collapses and lets go of the closed tab.
+        viewModel.CloseTabCommand.Execute(closed);
+        await WaitUntilAsync(window, () => !panel.IsEffectivelyVisible);
+        Assert.Same(kept, viewModel.ActiveTab);
+        Assert.Null(panel.DataContext);
+
+        // Opened again, it shows the active tab; closed with the fade, it lets go of it as well.
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        await WaitUntilAsync(window, () => IsPanelShown(window, SidePanelKind.Pages));
+        Assert.Same(kept, panel.DataContext);
+        viewModel.CloseSidePanelCommand.Execute(null);
+        await WaitUntilAsync(window, () => !panel.IsEffectivelyVisible);
+        Assert.Null(panel.DataContext);
+    }
+
     [AvaloniaTheory]
     [InlineData("Light")]
     [InlineData("Dark")]

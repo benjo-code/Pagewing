@@ -797,7 +797,18 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         _ = _session.OpenAsync(path, Password);
     }
 
-    private void OnSessionChanged() => Dispatcher.UIThread.Post(Refresh);
+    // Any thread: must not wait and must never throw (the session would rethrow it on the thread pool).
+    private void OnSessionChanged()
+    {
+        try
+        {
+            Dispatcher.UIThread.Post(Refresh);
+        }
+        catch (Exception)
+        {
+            // The dispatcher is shutting down: nothing left to show.
+        }
+    }
 
     /// <summary>Reads the session; runs on the UI thread.</summary>
     private void Refresh()

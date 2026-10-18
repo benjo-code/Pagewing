@@ -450,16 +450,17 @@ public sealed class OpenFlowTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task DroppingSeveralFilesOpensTheFirst()
+    public async Task DroppingSeveralFilesOpensEachInATab()
     {
         var (window, viewModel) = Show(new FakePicker(null));
         var first = TestData.Pdf("text-basic.pdf");
+        var second = TestData.Pdf("hello_world.pdf");
 
-        Drop(window, await FileAsync(window, first), await FileAsync(window, TestData.Pdf("hello_world.pdf")));
+        Drop(window, await FileAsync(window, first), await FileAsync(window, second));
         await WaitUntilAsync(window, () => viewModel.Tabs.Count == 2 && viewModel.Tabs[0].State == ViewerState.Ready);
 
-        // The first file opens in the first tab (each file gets a tab of its own, see TabsTests).
-        Assert.Equal(first, viewModel.Tabs[0].FullPath);
+        // Each file gets a tab of its own, in their order (more in TabsTests).
+        Assert.Equal([first, second], viewModel.Tabs.Select(tab => tab.FullPath));
     }
 
     [AvaloniaFact]

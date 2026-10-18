@@ -15,7 +15,6 @@ namespace Pagewing.App.Views;
 public sealed partial class SidePanel : UserControl
 {
     private SidePanelKind _kind;
-    private bool _isOverlay;
 
     public SidePanel() => InitializeComponent();
 
@@ -42,12 +41,8 @@ public sealed partial class SidePanel : UserControl
     /// <summary>Gets or sets whether the panel lies over the document (narrow window): it then has a border.subtle edge on the document side.</summary>
     public bool IsOverlay
     {
-        get => _isOverlay;
-        set
-        {
-            _isOverlay = value;
-            PanelFrame.Classes.Set("overlay", value);
-        }
+        get => PanelFrame.Classes.Contains("overlay");
+        set => PanelFrame.Classes.Set("overlay", value);
     }
 
     /// <summary>Gets or sets the command of the close button (<see cref="MainViewModel.CloseSidePanelCommand"/>).</summary>

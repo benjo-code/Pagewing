@@ -25,7 +25,6 @@ public sealed partial class TabView : Decorator
     public TabView(bool isActive)
     {
         InitializeComponent();
-        IsActiveView = isActive;
         Tab.Classes.Set("active", isActive);
 
         // Ctrl+W closes the active tab only, so only its close button names the shortcut.
@@ -42,7 +41,4 @@ public sealed partial class TabView : Decorator
             }
         }
     }
-
-    /// <summary>Gets whether this is the view of the active tab.</summary>
-    public bool IsActiveView { get; }
 }

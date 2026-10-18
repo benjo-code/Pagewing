@@ -53,6 +53,14 @@ public sealed partial class MainWindow
         RequestAnimationFrame(_ => _animationsAllowed = true);
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+
+        // A fade-out that is still running does not collapse a closed window.
+        StopCloseTimer();
+    }
+
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
@@ -176,8 +184,10 @@ public sealed partial class MainWindow
         DocumentArea.CornerRadius = DocumentCorner;
         if (_sidePanel is not null)
         {
-            // Releases the content: a closed panel keeps nothing of it.
+            // Releases the content and the tab: a closed panel keeps nothing of them (the tab may be closed or moved
+            // to another window meanwhile).
             _sidePanel.Kind = SidePanelKind.None;
+            _sidePanel.DataContext = null;
         }
     }
 
