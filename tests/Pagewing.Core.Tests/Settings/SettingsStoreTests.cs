@@ -110,6 +110,14 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void MissingFieldsKeepTheirDefaults()
+    {
+        File.WriteAllText(FilePath, """{"Theme":"Dark"}""");
+
+        Assert.Equal(AppSettings.Default with { Theme = ThemeSetting.Dark }, new SettingsStore(FilePath).Load());
+    }
+
+    [Fact]
     public void EmptyFileGivesDefaults()
     {
         File.WriteAllText(FilePath, "");

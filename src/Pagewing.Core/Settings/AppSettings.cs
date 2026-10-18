@@ -78,8 +78,8 @@ public sealed record AppSettings
     /// <summary>The panel width in DIP used when none is stored.</summary>
     public const double DefaultPanelWidth = 264;
 
-    /// <summary>The settings with every default value.</summary>
-    public static AppSettings Default { get; } = new();
+    /// <summary>The settings with every default value; every call returns a new instance, so callers may not share state.</summary>
+    public static AppSettings Default => new();
 
     /// <summary>Version of the file format; a newer version than this app knows is tolerated.</summary>
     public int Version { get; set; } = 1;
