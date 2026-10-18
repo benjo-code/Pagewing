@@ -29,7 +29,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 ### Changed
 
 - Ein späterer Aufruf, das Ablegen einer Datei und Strg+O öffnen die Datei in einem neuen Tab, statt das angezeigte Dokument zu ersetzen; mehrere Dateien auf einmal öffnen höchstens 20 Tabs. Auch der erste Aufruf mit mehreren Dateien öffnet jede als Tab; der Tab der ersten Datei bleibt aktiv.
-- Weniger Arbeitsspeicher beim schnellen Scrollen durch große Dokumente (Speicherbereinigung gibt verdrängte Seitenbilder früher frei).
+- Weniger Arbeitsspeicher beim schnellen Scrollen durch große Dokumente.
 
 ### Fixed
 
