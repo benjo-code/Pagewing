@@ -297,11 +297,15 @@ public sealed partial class TabStrip : UserControl
         {
             case PointerUpdateKind.LeftButtonPressed:
                 EndPress(cancel: false);
+
+                // Before the activation: the active view is one control for every active tab, and its bounds still
+                // are the slot of the tab that was active.
+                var pressInTab = point.Position.X - ViewOf(tab).Bounds.X;
                 _viewModel.ActivateTabCommand.Execute(tab);
                 _pressedTab = tab;
                 _pressX = point.Position.X;
                 _pressY = point.Position.Y;
-                _pressInTab = point.Position.X - ViewOf(tab).Bounds.X;
+                _pressInTab = pressInTab;
                 _pressInTopLevel = TopLevel.GetTopLevel(this) is { } top ? e.GetPosition(top) : default;
                 _pressIndex = _viewModel.Tabs.IndexOf(tab);
                 _capturedPointer = e.Pointer;
@@ -378,24 +382,33 @@ public sealed partial class TabStrip : UserControl
         var scaling = top.RenderScaling;
         var stripLeft = TabPanel.TranslatePoint(default, top)?.X ?? 0;
         var grip = new PixelPoint(
-            (int)Math.Round((stripLeft + Math.Min(_pressInTab, TabStripLayout.MinTabWidth)) * scaling),
+            (int)Math.Round((stripLeft + Math.Clamp(_pressInTab, 0, TabStripLayout.MinTabWidth)) * scaling),
             (int)Math.Round(_pressInTopLevel.Y * scaling));
 
+        TabDrag? drag;
         _detaching = true;
         try
         {
-            _drag = host.BeginTabDrag(_viewModel!, _pressedTab, _lastScreen, grip);
+            drag = host.BeginTabDrag(_viewModel!, _pressedTab, _lastScreen, grip);
         }
         finally
         {
             _detaching = false;
         }
 
-        if (_drag is null)
+        if (drag is null)
         {
             return false;
         }
 
+        if (_pressedTab is null)
+        {
+            // The press ended while the window was being shown (the system took the pointer): nothing leads the drag.
+            drag.Complete(_lastScreen);
+            return true;
+        }
+
+        _drag = drag;
         // Esc must cancel wherever the system keeps the keyboard: with this window or with the one that follows the pointer.
         _floatingKeySource = _drag.FloatingWindow;
         _floatingKeySource?.AddHandler(KeyDownEvent, OnDragKeyDown, RoutingStrategies.Tunnel);

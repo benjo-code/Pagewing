@@ -24,6 +24,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private readonly Func<Window, IFilePicker> _createPicker;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
+    private readonly List<MainViewModel> _activationOrder = [];
     private TabDrag? _activeDrag;
 
     /// <param name="sessionFactory">Creates the session of each new tab, in every window.</param>
@@ -105,6 +106,12 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         TabDrag drag;
         if (source.Tabs.Count < 2)
         {
+            // A maximized or full-screen window cannot be moved as it is; the title bar does that.
+            if (sourceWindow.WindowState != WindowState.Normal)
+            {
+                return null;
+            }
+
             var position = sourceWindow.Position;
             var grab = new PixelPoint(pointer.X - position.X, pointer.Y - position.Y);
             drag = new TabDrag(this, source, tab, 0, source, grab, movesWholeWindow: true, position);
@@ -130,12 +137,8 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     /// </summary>
     internal (MainViewModel Target, int Index)? FindDropTarget(PixelPoint pointer, MainViewModel floating)
     {
-        var candidates = new List<MainViewModel>(_windows.Count);
-        if (ActiveWindow is not null)
-        {
-            candidates.Add(ActiveWindow);
-        }
-
+        // Front to back as far as it is known: the windows in the order they were activated, then the ones never activated, newest first.
+        var candidates = new List<MainViewModel>(_activationOrder);
         for (var i = _windows.Count - 1; i >= 0; i--)
         {
             if (!candidates.Contains(_windows[i]))
@@ -146,9 +149,20 @@ internal sealed class Workspace : IDisposable, ITabDragHost
 
         foreach (var candidate in candidates)
         {
-            if (!ReferenceEquals(candidate, floating) && _views[candidate] is MainWindow window && window.TabDropIndexAt(pointer) is { } index)
+            if (ReferenceEquals(candidate, floating) || _views[candidate] is not MainWindow { IsVisible: true, WindowState: not WindowState.Minimized } window)
+            {
+                continue;
+            }
+
+            if (window.TabDropIndexAt(pointer) is { } index)
             {
                 return (candidate, index);
+            }
+
+            // A window in front covers the strips behind it: the tab must not land in one the user cannot see.
+            if (new PixelRect(window.Position, PixelSize.FromSize(window.ClientSize, window.DesktopScaling)).Contains(pointer))
+            {
+                return null;
             }
         }
 
@@ -171,7 +185,9 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private MainViewModel OpenDetached(MainViewModel source, Window sourceWindow, TabViewModel tab, PixelPoint? position, bool showActivated)
     {
         source.DetachTab(tab);
-        return Open(tab, sourceWindow, beforeShow: null, position, showActivated);
+
+        // The tab brings its own choice of panel: the window must not open "Pages" on its own for the first sharp page.
+        return Open(tab, sourceWindow, static (_, viewModel) => viewModel.OpensPagesPanelAfterFirstSharpTile = false, position, showActivated);
     }
 
     /// <summary>
@@ -249,6 +265,8 @@ internal sealed class Workspace : IDisposable, ITabDragHost
             if (_views.ContainsKey(viewModel))
             {
                 ActiveWindow = viewModel;
+                _activationOrder.Remove(viewModel);
+                _activationOrder.Insert(0, viewModel);
             }
         };
         window.Closed += (_, _) => Forget(viewModel);
@@ -299,6 +317,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         }
 
         _windows.Remove(viewModel);
+        _activationOrder.Remove(viewModel);
         if (ReferenceEquals(ActiveWindow, viewModel))
         {
             ActiveWindow = null;

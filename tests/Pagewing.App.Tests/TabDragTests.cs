@@ -482,6 +482,69 @@ public sealed class TabDragTests : IDisposable
         Settle(workspace);
     }
 
+    [AvaloniaFact]
+    public async Task ADraggedTabKeepsItsPanelChoice()
+    {
+        var workspace = CreateWorkspace();
+        var first = workspace.OpenWindow();
+        first.OpensPagesPanelAfterFirstSharpTile = false;
+        await OpenReadyAsync(workspace, first, "hello_world.pdf");
+        var tab = await OpenReadyAsync(workspace, first, "text-basic.pdf");
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+        var drag = workspace.BeginTabDrag(first, tab, new PixelPoint(500, 300), new PixelPoint(60, 16))!;
+
+        // The new window draws the tab's first sharp page; that must not open "Pages" on its own.
+        await WaitUntilAsync(workspace, () => tab.HasShownSharpPage);
+        for (var i = 0; i < 5; i++)
+        {
+            Settle(workspace);
+        }
+
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+        drag.Cancel();
+        Settle(workspace);
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+    }
+
+    [AvaloniaFact]
+    public async Task AStripHiddenBehindAnotherWindowIsNoTarget()
+    {
+        var (workspace, a, b) = await TwoWindowsAsync(2, 1);
+
+        // B is in front (activated last) and covers the strip of A with its body, not with its own strip.
+        a.Window.Position = new PixelPoint(0, 0);
+        b.Window.Position = new PixelPoint(0, -200);
+        b.Window.Activate();
+        Settle(workspace);
+        var drag = workspace.BeginTabDrag(a.ViewModel, a.Tabs[1], new PixelPoint(300, 300), new PixelPoint(60, 16))!;
+        var point = new PixelPoint(300, 20);
+        Assert.NotNull(a.Window.TabDropIndexAt(point));
+
+        drag.MoveTo(point);
+
+        Assert.Null(a.ViewModel.TabDropIndex);
+        Assert.Null(b.ViewModel.TabDropIndex);
+        Assert.False(drag.IsParked);
+        drag.Cancel();
+    }
+
+    [AvaloniaFact]
+    public async Task AMaximizedWindowWithOneTabDoesNotMoveAsAWhole()
+    {
+        var workspace = CreateWorkspace();
+        var first = workspace.OpenWindow();
+        var tab = await OpenReadyAsync(workspace, first, "hello_world.pdf");
+        var window = workspace.WindowOf(first);
+        window.WindowState = WindowState.Maximized;
+        Settle(workspace);
+
+        Assert.Null(workspace.BeginTabDrag(first, tab, new PixelPoint(300, 20), new PixelPoint(60, 16)));
+
+        window.WindowState = WindowState.Normal;
+        Settle(workspace);
+        Assert.NotNull(workspace.BeginTabDrag(first, tab, new PixelPoint(300, 20), new PixelPoint(60, 16)));
+    }
+
     /// <summary>
     /// Two windows with the given numbers of tabs (named in order from a fixed list); the second lies far to the right
     /// on the screen, so their strips do not overlap.

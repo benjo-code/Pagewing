@@ -82,6 +82,67 @@ public sealed class TabDragGestureTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task PullingAnInactiveTabHoldsTheNewWindowAtThePointer()
+    {
+        // The pressed tab is left of the active one; its view is not the active view, whose slot is still the old one.
+        var (workspace, first) = await WindowWithTabsAsync(3);
+        var window = workspace.WindowOf(first);
+        Assert.Same(first.Tabs[2], first.ActiveTab);
+        var tab = first.Tabs[0];
+        var start = BodyPoint(window, tab);
+        var stripLeft = Find<TabStripPanel>(window, "TabPanel").TranslatePoint(default, window)!.Value.X;
+
+        window.MouseDown(start, MouseButton.Left);
+        Settle(workspace);
+        var pointer = start + new Point(0, 45);
+        MoveTo(workspace, window, pointer);
+
+        // The pointer holds the new tab where it held the old one: 30 px in (BodyPoint), at the height it was pressed.
+        var floating = workspace.WindowOf(workspace.Windows[1]);
+        var screen = window.PointToScreen(pointer);
+        Assert.Equal(screen.X - (stripLeft + 30), floating.Position.X, 1.0);
+        Assert.Equal(screen.Y - start.Y, floating.Position.Y, 1.0);
+        window.MouseUp(pointer, MouseButton.Left);
+        Settle(workspace);
+    }
+
+    [AvaloniaFact]
+    public async Task LosingThePointerWhileTheWindowOpensDoesNotLeaveADragBehind()
+    {
+        var (workspace, first) = await WindowWithTabsAsync(3);
+        var window = workspace.WindowOf(first);
+        IPointer? pointer = null;
+        window.AddHandler(InputElement.PointerPressedEvent, (_, e) => pointer = e.Pointer, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        var host = new CaptureLosingHost(workspace, () => pointer);
+        first.TabDragHost = host;
+        var start = BodyPoint(window, first.Tabs[1]);
+
+        window.MouseDown(start, MouseButton.Left);
+        MoveTo(workspace, window, start + new Point(0, 45));
+
+        // The press ended while the window was being shown: the drag ends at once and no other drag is blocked.
+        Assert.NotNull(host.LastDrag);
+        Assert.True(host.LastDrag.IsEnded);
+        Assert.Equal(2, workspace.Windows.Count);
+        first.TabDragHost = workspace;
+        window.MouseUp(start + new Point(0, 45), MouseButton.Left);
+        Settle(workspace);
+        Assert.NotNull(workspace.BeginTabDrag(first, first.Tabs[0], new PixelPoint(300, 20), new PixelPoint(60, 16)));
+    }
+
+    /// <summary>A host that takes the pointer away from the strip while the workspace opens the window, as a focus change can.</summary>
+    private sealed class CaptureLosingHost(Workspace inner, Func<IPointer?> pointer) : ITabDragHost
+    {
+        public TabDrag? LastDrag { get; private set; }
+
+        public TabDrag? BeginTabDrag(MainViewModel source, TabViewModel tab, PixelPoint position, PixelPoint grip)
+        {
+            pointer()?.Capture(null);
+            return LastDrag = inner.BeginTabDrag(source, tab, position, grip);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task PullingBelowTheThresholdOnlyReorders()
     {
         var (workspace, first) = await WindowWithTabsAsync(3);
