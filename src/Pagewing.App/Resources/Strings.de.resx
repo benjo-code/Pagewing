@@ -228,6 +228,54 @@
   <data name="OutlineEntryName" xml:space="preserve">
     <value>{0}, Seite {1}</value>
   </data>
+  <data name="SearchPanelTitle" xml:space="preserve">
+    <value>Suche</value>
+  </data>
+  <data name="SearchTooltip" xml:space="preserve">
+    <value>Suchen (Strg+F)</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>Im Dokument suchen</value>
+  </data>
+  <data name="SearchMatchCase" xml:space="preserve">
+    <value>Groß-/Kleinschreibung beachten</value>
+  </data>
+  <data name="SearchWholeWord" xml:space="preserve">
+    <value>Ganze Wörter</value>
+  </data>
+  <data name="SearchRunning" xml:space="preserve">
+    <value>Suche läuft …</value>
+  </data>
+  <data name="SearchNone" xml:space="preserve">
+    <value>Keine Treffer</value>
+  </data>
+  <data name="SearchSummaryOne" xml:space="preserve">
+    <value>1 Treffer auf Seite {0}</value>
+  </data>
+  <data name="SearchSummaryOnePage" xml:space="preserve">
+    <value>{0} Treffer, alle auf Seite {1}</value>
+  </data>
+  <data name="SearchSummaryPages" xml:space="preserve">
+    <value>{0} Treffer auf {1} Seiten</value>
+  </data>
+  <data name="SearchLimit" xml:space="preserve">
+    <value>Mehr als {0} Treffer</value>
+  </data>
+  <data name="SearchNoText" xml:space="preserve">
+    <value>Dieses Dokument enthält keinen durchsuchbaren Text. Gescannte Seiten brauchen eine Texterkennung (OCR), die Pagewing noch nicht hat.</value>
+  </data>
+  <data name="SearchNext" xml:space="preserve">
+    <value>Nächster Treffer (Enter)</value>
+  </data>
+  <data name="SearchPrevious" xml:space="preserve">
+    <value>Vorheriger Treffer (Umschalt+Enter)</value>
+  </data>
+  <data name="SearchHitName" xml:space="preserve">
+    <value>Seite {0}: {1}</value>
+  </data>
+  <data name="NoTextOnPage" xml:space="preserve">
+    <value>Auf dieser Seite gibt es keinen auswählbaren Text. Sie ist vielleicht ein Scan.</value>
+  </data>
   <data name="DocumentInfo" xml:space="preserve">
     <value>Dokumentinfos</value>
   </data>
@@ -257,5 +305,23 @@
   </data>
   <data name="InfoCreated" xml:space="preserve">
     <value>Erstellt</value>
+  </data>
+  <data name="LinkConfirmTitle" xml:space="preserve">
+    <value>Diese Webadresse öffnen?</value>
+  </data>
+  <data name="LinkConfirmText" xml:space="preserve">
+    <value>Dieses PDF möchte einen Link in Ihrem Browser öffnen. Fahren Sie nur fort, wenn Sie der Adresse vertrauen.</value>
+  </data>
+  <data name="LinkConfirmOpen" xml:space="preserve">
+    <value>Öffnen</value>
+  </data>
+  <data name="LinkConfirmCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="LinkWarningUserInfo" xml:space="preserve">
+    <value>Die Adresse enthält vor dem „@“ einen Benutzernamen. Der eigentliche Host ist {0}.</value>
+  </data>
+  <data name="LinkWarningPunycode" xml:space="preserve">
+    <value>Der Host nutzt Sonderzeichen und wird als {0} dargestellt.</value>
   </data>
 </root>

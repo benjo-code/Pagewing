@@ -127,7 +127,7 @@ Exit-Code 0: Messung vollständig. 1: Fenster oder Seiteninhalt erschien nicht i
 
 ## Auswertung und Budgetvorschlag
 
-Die Auswertung macht Claude (Task 12) aus den CSV-Dateien; die endgültige Festlegung trifft der Projektinhaber.
+Die Auswertung macht Claude aus den CSV-Dateien; die endgültige Festlegung trifft der Projektinhaber.
 
 Vorläufige Budgets (Roadmap „Geschwindigkeitsziele“):
 
@@ -145,7 +145,7 @@ Regel für den Vorschlag je Messgröße:
 1. Vorschlag = **Median des schnellsten Browsers (Chrome)**, nach oben auf 50 ms gerundet.
 2. Der Vorschlag ist **höchstens das vorläufige Budget**. Budgets werden nie gelockert; ist der Vorschlag größer, bleibt das vorläufige Budget bestehen.
 3. Acrobat und SumatraPDF dienen der Einordnung (wo steht Pagewing im Vergleich), nicht der Festlegung.
-4. Gegenprobe: Der Vorschlag muss mindestens die in Task 10 gemessene Kernzeit (Öffnen + erste Seite rendern, `bench/Pagewing.Benchmarks`) **plus 50 ms** für den Fensterstart betragen. Liegt er darunter, ist er unrealistisch; dann legt der Ausführer dem Projektinhaber beide Zahlen vor (Kernzeit + 50 ms und den Browserwert), statt selbst zu entscheiden.
+4. Gegenprobe: Der Vorschlag muss mindestens die in M1 gemessene Kernzeit (Öffnen + erste Seite rendern, `bench/Pagewing.Benchmarks`) **plus 50 ms** für den Fensterstart betragen. Liegt er darunter, ist er unrealistisch; dann legt der Ausführer dem Projektinhaber beide Zahlen vor (Kernzeit + 50 ms und den Browserwert), statt selbst zu entscheiden.
 5. Die endgültige Festlegung trifft der Projektinhaber auf Rückfrage mit einem konkreten Vorschlag. Das Ergebnis kommt als Eintrag in `Docs/DECISIONS.md` und in die Roadmap „Geschwindigkeitsziele“.
 
 Als Messgröße „bis erste Seite scharf“ gilt `t_visually_complete`; `t_first_content` zeigt, wann überhaupt etwas Lesbares erscheint (grobe Vorschau). Welche der beiden Größen ein Budget bindet, steht im Vorschlag; die Auswertung nennt beide Zahlen je Programm.

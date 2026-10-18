@@ -2,7 +2,8 @@ namespace Pagewing.Pdfium.Native;
 
 /// <summary>
 /// PDFium constants used by Pagewing. Values are checked against the headers of the shipped package by
-/// <c>NativeBindingsTests.ConstantsMatchThePackageHeaders</c>, because they change between PDFium versions.
+/// <c>NativeBindingsTests.ConstantsMatchThePackageHeaders</c>, because they change between PDFium versions. The
+/// font descriptor flags have no header define; that test checks them against the PDF specification instead.
 /// </summary>
 internal static class FpdfConstants
 {
@@ -47,4 +48,20 @@ internal static class FpdfConstants
 
     /// <summary><c>PDFACTION_GOTO</c> (<c>fpdf_doc.h</c>): go to a destination in the same document.</summary>
     public const int ActionGoTo = 1;
+
+    /// <summary><c>PDFACTION_URI</c> (<c>fpdf_doc.h</c>): open a URI.</summary>
+    public const int ActionUri = 3;
+
+    /// <summary>
+    /// Font descriptor flag <c>ForceBold</c> (bit 19), as returned by <c>FPDFText_GetFontInfo</c>. The PDFium headers
+    /// define no name for it; the value comes from the PDF specification (ISO 32000-1, table 123), which
+    /// <c>fpdf_text.h</c> refers to.
+    /// </summary>
+    public const int FontFlagForceBold = 0x40000;
+
+    /// <summary>
+    /// Font descriptor flag <c>Italic</c> (bit 7), as returned by <c>FPDFText_GetFontInfo</c>. Like
+    /// <see cref="FontFlagForceBold"/> it comes from the PDF specification, not from a header define.
+    /// </summary>
+    public const int FontFlagItalic = 0x40;
 }

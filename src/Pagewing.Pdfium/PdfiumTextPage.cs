@@ -53,7 +53,8 @@ internal sealed unsafe class PdfiumTextPage : IDisposable
         handle.Dispose();
     }
 
-    private nint Access()
+    /// <summary>Returns the native text page after checking the thread and that the text page is still open.</summary>
+    internal nint Access()
     {
         handle.OwningThread.VerifyAccess();
         ObjectDisposedException.ThrowIf(disposed, this);

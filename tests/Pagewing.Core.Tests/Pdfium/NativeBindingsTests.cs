@@ -31,6 +31,17 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.RenderDone)] = "FPDF_RENDER_DONE",
         [nameof(FpdfConstants.RenderFailed)] = "FPDF_RENDER_FAILED",
         [nameof(FpdfConstants.ActionGoTo)] = "PDFACTION_GOTO",
+        [nameof(FpdfConstants.ActionUri)] = "PDFACTION_URI",
+    };
+
+    /// <summary>
+    /// Constants without a header define: font descriptor flags returned by <c>FPDFText_GetFontInfo</c>, whose
+    /// header comment refers to the PDF specification (ISO 32000-1, table 123; flag bit n has the value 1 &lt;&lt; (n - 1)).
+    /// </summary>
+    private static readonly Dictionary<string, long> SpecificationValues = new()
+    {
+        [nameof(FpdfConstants.FontFlagForceBold)] = 1L << (19 - 1),
+        [nameof(FpdfConstants.FontFlagItalic)] = 1L << (7 - 1),
     };
 
     [Fact]
@@ -82,10 +93,19 @@ public sealed partial class NativeBindingsTests
         Assert.NotEmpty(constants);
         foreach (var constant in constants)
         {
+            if (SpecificationValues.TryGetValue(constant.Name, out var specified))
+            {
+                Assert.Equal(specified, Convert.ToInt64(constant.GetRawConstantValue(), CultureInfo.InvariantCulture));
+                continue;
+            }
+
             Assert.True(HeaderNames.TryGetValue(constant.Name, out var define), $"{constant.Name} has no header mapping.");
             Assert.True(defines.TryGetValue(define, out var expected), $"#define {define} not found in the headers.");
             Assert.Equal(expected, Convert.ToInt64(constant.GetRawConstantValue(), CultureInfo.InvariantCulture));
         }
+
+        // The specification values only hold while FPDFText_GetFontInfo still reports the font descriptor flags.
+        Assert.Contains("Font Descriptor Flags", File.ReadAllText(Path.Combine(headerDirectory, "fpdf_text.h")), StringComparison.Ordinal);
     }
 
     [Fact]

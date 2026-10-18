@@ -21,7 +21,7 @@
           (a palette cannot reference resources); TokenTests.FluentPaletteMapsTheSpecRoles checks the main roles.
           Accent, RegionColor, BaseHigh, BaseMedium and ErrorText are fixed by the spec; the Alt*, Base*Low/MediumHigh,
           Chrome* and List* roles map to the nearest token so unstyled Fluent controls (list, check box, menu) fit.
-          The visual comparison with the mockup happens in M3 Task 13.
+          The visual comparison with the mockup happened in M3.
         -->
         <ColorPaletteResources x:Key="Light"
                                Accent="#3B48C4" RegionColor="#EEEFF2" ErrorText="#B42318"

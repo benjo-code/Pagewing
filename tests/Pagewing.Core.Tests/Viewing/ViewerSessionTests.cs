@@ -640,6 +640,67 @@ public sealed class ViewerSessionTests
     }
 
     [Fact]
+    public async Task EnsurePageTextsIsNullBeforeReady()
+    {
+        using var session = new ViewerSession(engine);
+        Assert.Null(session.EnsurePageTexts());
+
+        await session.OpenAsync(TestData.Pdf("does-not-exist.pdf"));
+        Assert.Null(session.EnsurePageTexts());
+
+        await session.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        Assert.Null(session.EnsurePageTexts());
+
+        session.Dispose();
+        Assert.Null(session.EnsurePageTexts());
+    }
+
+    [Fact]
+    public async Task EnsurePageTextsReturnsTheSameSourceUntilTheDocumentChanges()
+    {
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+
+        var first = session.EnsurePageTexts();
+        var second = session.EnsurePageTexts();
+
+        Assert.NotNull(first);
+        Assert.Same(first, second);
+        var text = await first.GetAsync(0, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains("Hello", text.GetText(0, text.Chars.Count), StringComparison.Ordinal);
+
+        await session.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        var third = session.EnsurePageTexts();
+
+        Assert.NotNull(third);
+        Assert.NotSame(first, third);
+        Assert.True(first.IsDisposed);
+        Assert.False(third.IsDisposed);
+    }
+
+    [Fact]
+    public async Task EnsurePageTextsIsDisposedWithTheDocument()
+    {
+        var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var beforeClose = session.EnsurePageTexts()!;
+
+        session.Close();
+
+        Assert.True(beforeClose.IsDisposed);
+        Assert.Null(session.EnsurePageTexts());
+
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var beforeDispose = session.EnsurePageTexts()!;
+        Assert.False(beforeDispose.IsDisposed);
+
+        session.Dispose();
+
+        Assert.True(beforeDispose.IsDisposed);
+        Assert.Null(session.EnsurePageTexts());
+    }
+
+    [Fact]
     public async Task ThumbnailsRenderIntoTheirOwnCache()
     {
         using var session = new ViewerSession(engine);

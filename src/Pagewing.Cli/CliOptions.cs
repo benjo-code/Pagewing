@@ -33,7 +33,10 @@ internal sealed record CliOptions(
     double Dpi,
     string OutputDirectory,
     bool Annotations,
-    string? Password)
+    string? Password,
+    string? Query = null,
+    bool MatchCase = false,
+    bool WholeWord = false)
 {
     public const string DefaultDpi = "144";
 
@@ -41,7 +44,11 @@ internal sealed record CliOptions(
     public double Scale => Dpi / 72.0;
 
     /// <summary>Parses <c>args</c> (without the command name handled by the caller) for <paramref name="command"/>.</summary>
-    /// <exception cref="UsageException">An option is unknown, has no value or an invalid value, or the file is missing or given twice.</exception>
+    /// <remarks>
+    /// <c>search</c> takes two positional arguments, the file and then the query. A <c>--</c> ends option parsing, so
+    /// that a query may start with a dash.
+    /// </remarks>
+    /// <exception cref="UsageException">An option is unknown, has no value or an invalid value, or the file (or the query of <c>search</c>) is missing or given twice.</exception>
     public static CliOptions Parse(string command, ReadOnlySpan<string> args)
     {
         var allowed = command switch
@@ -49,10 +56,16 @@ internal sealed record CliOptions(
             "info" => new[] { "--password" },
             "render" => ["--pages", "--dpi", "--output", "--no-annotations", "--password"],
             "text" => ["--pages", "--password"],
+            "search" => ["--pages", "--match-case", "--whole-word", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
+        var isSearch = command == "search";
         string? file = null;
+        string? query = null;
+        var matchCase = false;
+        var wholeWord = false;
+        var optionsEnded = false;
         string? pages = null;
         string? dpiText = null;
         string output = ".";
@@ -61,7 +74,11 @@ internal sealed record CliOptions(
         for (var i = 0; i < args.Length; i++)
         {
             var arg = args[i];
-            if (arg.Length > 2 && arg.StartsWith("--", StringComparison.Ordinal))
+            if (!optionsEnded && arg == "--")
+            {
+                optionsEnded = true;
+            }
+            else if (!optionsEnded && arg.Length > 2 && arg.StartsWith("--", StringComparison.Ordinal))
             {
                 string name = arg;
                 string? value = null;
@@ -85,6 +102,25 @@ internal sealed record CliOptions(
                     }
 
                     annotations = false;
+                    continue;
+                }
+
+                if (name is "--match-case" or "--whole-word")
+                {
+                    if (value is not null)
+                    {
+                        throw new UsageException($"The option '{name}' takes no value.");
+                    }
+
+                    if (name == "--match-case")
+                    {
+                        matchCase = true;
+                    }
+                    else
+                    {
+                        wholeWord = true;
+                    }
+
                     continue;
                 }
 
@@ -114,7 +150,7 @@ internal sealed record CliOptions(
                         break;
                 }
             }
-            else if (arg.Length > 1 && arg[0] == '-')
+            else if (!optionsEnded && arg.Length > 1 && arg[0] == '-')
             {
                 throw new UsageException($"Unknown option '{arg}' for '{command}'.");
             }
@@ -122,15 +158,26 @@ internal sealed record CliOptions(
             {
                 file = arg;
             }
+            else if (isSearch && query is null)
+            {
+                query = arg;
+            }
             else
             {
-                throw new UsageException($"Unexpected argument '{arg}'; '{command}' takes a single file.");
+                throw new UsageException(isSearch
+                    ? $"Unexpected argument '{arg}'; 'search' takes a file and a query."
+                    : $"Unexpected argument '{arg}'; '{command}' takes a single file.");
             }
         }
 
         if (string.IsNullOrEmpty(file))
         {
             throw new UsageException($"The '{command}' command needs a PDF file.");
+        }
+
+        if (isSearch && string.IsNullOrWhiteSpace(query))
+        {
+            throw new UsageException("The 'search' command needs a non-empty query.");
         }
 
         if (pages is not null)
@@ -151,7 +198,7 @@ internal sealed record CliOptions(
             throw new UsageException("The option '--output' needs a directory.");
         }
 
-        return new CliOptions(command, file, pages, dpi, output, annotations, password);
+        return new CliOptions(command, file, pages, dpi, output, annotations, password, query, matchCase, wholeWord);
     }
 
     private static double ParseDpi(string text)

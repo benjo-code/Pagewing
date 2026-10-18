@@ -103,6 +103,22 @@ public static class Strings
     public static string OutlineEntryName => Get("OutlineEntryName");
     public static string OutlineEmpty => Get("OutlineEmpty");
     public static string OutlineFailed => Get("OutlineFailed");
+    public static string SearchPanelTitle => Get("SearchPanelTitle");
+    public static string SearchTooltip => Get("SearchTooltip");
+    public static string SearchPlaceholder => Get("SearchPlaceholder");
+    public static string SearchMatchCase => Get("SearchMatchCase");
+    public static string SearchWholeWord => Get("SearchWholeWord");
+    public static string SearchRunning => Get("SearchRunning");
+    public static string SearchNone => Get("SearchNone");
+    public static string SearchSummaryOne => Get("SearchSummaryOne");
+    public static string SearchSummaryOnePage => Get("SearchSummaryOnePage");
+    public static string SearchSummaryPages => Get("SearchSummaryPages");
+    public static string SearchLimit => Get("SearchLimit");
+    public static string SearchNoText => Get("SearchNoText");
+    public static string SearchNext => Get("SearchNext");
+    public static string SearchPrevious => Get("SearchPrevious");
+    public static string SearchHitName => Get("SearchHitName");
+    public static string NoTextOnPage => Get("NoTextOnPage");
     public static string DocumentInfo => Get("DocumentInfo");
     public static string InfoFile => Get("InfoFile");
     public static string InfoFolder => Get("InfoFolder");
@@ -113,6 +129,12 @@ public static class Strings
     public static string InfoTitle => Get("InfoTitle");
     public static string InfoAuthor => Get("InfoAuthor");
     public static string InfoCreated => Get("InfoCreated");
+    public static string LinkConfirmTitle => Get("LinkConfirmTitle");
+    public static string LinkConfirmText => Get("LinkConfirmText");
+    public static string LinkConfirmOpen => Get("LinkConfirmOpen");
+    public static string LinkConfirmCancel => Get("LinkConfirmCancel");
+    public static string LinkWarningUserInfo => Get("LinkWarningUserInfo");
+    public static string LinkWarningPunycode => Get("LinkWarningPunycode");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

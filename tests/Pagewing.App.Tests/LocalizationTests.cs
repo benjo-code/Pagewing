@@ -100,6 +100,49 @@ public sealed partial class LocalizationTests : IDisposable
 
         Assert.Equal(["{0}"], Placeholders(english["PasswordPrompt"]));
         Assert.Equal(["{0}"], Placeholders(english["PageOf"]));
+        Assert.Equal(["{0}"], Placeholders(english["SearchSummaryOne"]));
+        Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchSummaryOnePage"]));
+        Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchSummaryPages"]));
+        Assert.Equal(["{0}"], Placeholders(english["SearchLimit"]));
+        Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchHitName"]));
+        Assert.Equal(["{0}"], Placeholders(english["LinkWarningUserInfo"]));
+        Assert.Equal(["{0}"], Placeholders(english["LinkWarningPunycode"]));
+    }
+
+    [Fact]
+    public void SearchKeysAreEmbeddedInTheAssembly()
+    {
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Search", Strings.SearchPanelTitle);
+        Assert.Equal("Search in document", Strings.SearchPlaceholder);
+        Assert.Equal("Searching …", Strings.SearchRunning);
+
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Suche", Strings.SearchPanelTitle);
+        Assert.Equal("Im Dokument suchen", Strings.SearchPlaceholder);
+        Assert.Equal("Keine Treffer", Strings.SearchNone);
+    }
+
+    [Fact]
+    public void TextSelectionKeysAreEmbeddedInTheAssembly()
+    {
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("There is no selectable text on this page. It may be a scan.", Strings.NoTextOnPage);
+
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Auf dieser Seite gibt es keinen auswählbaren Text. Sie ist vielleicht ein Scan.", Strings.NoTextOnPage);
+    }
+
+    [Fact]
+    public void LinkKeysAreEmbeddedInTheAssembly()
+    {
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Open this web address?", Strings.LinkConfirmTitle);
+        Assert.Equal("Cancel", Strings.LinkConfirmCancel);
+
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Diese Webadresse öffnen?", Strings.LinkConfirmTitle);
+        Assert.Equal("Öffnen", Strings.LinkConfirmOpen);
     }
 
     [GeneratedRegex(@"\{\d+\}")]

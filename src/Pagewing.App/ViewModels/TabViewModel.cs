@@ -4,6 +4,7 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
@@ -14,7 +15,7 @@ namespace Pagewing.App.ViewModels;
 /// and the file dialog are the window's business (<see cref="CloseRequested"/>, <see cref="OpenOtherRequested"/>).
 /// UI thread only.
 /// </summary>
-public sealed class TabViewModel : ViewModelBase, IDisposable
+public sealed partial class TabViewModel : ViewModelBase, IDisposable
 {
     private readonly ViewerSession _session;
     private readonly RelayCommand _zoomInCommand;
@@ -39,6 +40,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     private SidePanelKind _sidePanel = SidePanelKind.None;
     private ViewState? _savedView;
     private bool _hasShownSharpPage;
+    private TextSelection? _textSelection;
 
     // The thumbnails this tab handed out for its current document (EnsureThumbnails), released when it becomes inactive.
     private ThumbnailSource? _thumbnails;
@@ -78,6 +80,16 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         CommitPageFieldCommand = new RelayCommand(CommitPageField);
         SetZoomModeCommand = new RelayCommand<ZoomMode>(SelectZoomMode);
         SetLayoutModeCommand = new RelayCommand<PageLayoutMode>(SelectLayoutMode);
+
+        // Only a search that exists can step; F3 never creates one (TabViewModel.Search.cs).
+        SearchNextCommand = new RelayCommand(() => _search?.NextCommand.Execute(null));
+        SearchPreviousCommand = new RelayCommand(() => _search?.PreviousCommand.Execute(null));
+
+        // The views left by link jumps (TabViewModel.Links.cs).
+        _backCommand = new RelayCommand(GoBack, () => CanGoBack);
+        BackCommand = _backCommand;
+        _forwardCommand = new RelayCommand(GoForward, () => CanGoForward);
+        ForwardCommand = _forwardCommand;
         SetZoomCommand = new RelayCommand<double>(zoom =>
         {
             if (IsReady)
@@ -355,14 +367,29 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// Gets or sets the side panel of this tab; kept when the document changes. Opening "Contents" reads the outline of
-    /// the document the first time (<see cref="EnsureOutlineAsync"/>).
+    /// the document the first time (<see cref="EnsureOutlineAsync"/>); opening "Search" remembers the panel shown before,
+    /// which the end of the search shows again (<see cref="SearchViewModel.EndCommand"/>).
     /// </summary>
     public SidePanelKind SidePanel
     {
         get => _sidePanel;
         set
         {
-            if (SetProperty(ref _sidePanel, value) && value == SidePanelKind.Contents)
+            var old = _sidePanel;
+            if (!SetProperty(ref _sidePanel, value))
+            {
+                return;
+            }
+
+            if (value == SidePanelKind.Search)
+            {
+                _panelBeforeSearch = old;
+                return;
+            }
+
+            // A focus request of Ctrl+F belongs to the panel it opened.
+            _searchFocusPending = false;
+            if (value == SidePanelKind.Contents)
             {
                 _ = EnsureOutlineAsync();
             }
@@ -433,6 +460,34 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         get => _hasShownSharpPage;
         internal set => SetProperty(ref _hasShownSharpPage, value);
     }
+
+    /// <summary>
+    /// Gets or sets the text selected in the document of this tab (made with the mouse in the document view), or
+    /// <see langword="null"/>. An empty selection is stored as <see langword="null"/>. It belongs to the tab: it stays
+    /// while another tab is shown and is cleared when another document replaces this one and when the tab closes.
+    /// </summary>
+    public TextSelection? TextSelection
+    {
+        get => _textSelection;
+        set
+        {
+            if (SetProperty(ref _textSelection, value is { IsEmpty: true } ? null : value))
+            {
+                OnPropertyChanged(nameof(HasTextSelection));
+            }
+        }
+    }
+
+    /// <summary>Gets whether some text is selected (<see cref="TextSelection"/>).</summary>
+    public bool HasTextSelection => _textSelection is not null;
+
+    /// <summary>
+    /// Gets the text of the pages of the open document (<see cref="ViewerSession.EnsurePageTexts"/>), or
+    /// <see langword="null"/>: before the first sharp page of the document (<see cref="HasShownSharpPage"/>; text is never
+    /// read in the startup path), without an open document and after <see cref="Dispose"/>. The source belongs to the
+    /// document; a caller asks again for every document instead of keeping it.
+    /// </summary>
+    internal PageTextSource? PageTexts => !_disposed && _hasShownSharpPage ? _session.EnsurePageTexts() : null;
 
     /// <summary>
     /// Gets or sets whether this is the active tab of its window. Tells the session (<see cref="ViewerSession.SetActive"/>),
@@ -605,6 +660,9 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         _disposed = true;
         _session.Changed -= OnSessionChanged;
         ResetOutline();
+        _search?.Dispose();
+        TextSelection = null;
+        ClearHistory();
         _checkingPassword = false;
         Password = string.Empty;
         _session.Dispose();
@@ -837,6 +895,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
         var isNewDocument = document is not null && !ReferenceEquals(document, _document);
         var documentChanged = !ReferenceEquals(document, _document);
+        var hadDocument = _document is not null;
         _document = document;
         if (_outlineDocument is not null && !ReferenceEquals(_outlineDocument, document))
         {
@@ -889,6 +948,20 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         State = state;
         if (documentChanged)
         {
+            // The search belongs to the document that was replaced or closed; a query typed while the first document (or
+            // the next one) loaded is searched once it is there.
+            if (hadDocument)
+            {
+                _search?.Reset();
+            }
+            else if (isNewDocument)
+            {
+                _search?.OnDocumentReady();
+            }
+
+            // So do the selection and the views left by link jumps: their positions mean nothing in another document.
+            TextSelection = null;
+            ClearHistory();
             OnPropertyChanged(nameof(Document));
         }
 

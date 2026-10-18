@@ -1,0 +1,66 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.LinkConfirmCard"
+             x:DataType="vm:MainViewModel"
+             Background="Transparent"
+             KeyboardNavigation.TabNavigation="Cycle"
+             AutomationProperties.Name="{x:Static res:Strings.LinkConfirmTitle}">
+  <!--
+    Confirmation before an address of the document is opened (MainViewModel.PendingLink), in the document area like the
+    password and the error card (design system 7.8): surface.raised, radius.overlay, card shadow (with its 1 px
+    border.subtle edge). Title, text, the full address in type.mono (wrapping, the host bold where it really stands,
+    code-behind), a warning line with symbol and text for a deceptive address, "Cancel" (the focus is there, Enter takes
+    it) and "Open". The transparent background covers the whole document area: a click beside the card does not reach
+    the document, so no other link can be clicked while it is up. Tab stays on the card. Esc cancels (a key binding of
+    the window). "Open" is disabled for a moment after the card was laid out (MainViewModel.LinkArmingDelay). For screen
+    readers the card is named by its title, and title and address are a polite live region, so the address is read out
+    when the card appears. Made in code when the first address asks for it (MainWindow.LinkCard.cs), never in the
+    startup path.
+  -->
+  <Border Name="LinkCardBox" MaxWidth="480" Margin="24" Padding="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Spacing="12">
+      <StackPanel Spacing="4">
+        <TextBlock Name="LinkTitle" Classes="subtitle" TextWrapping="Wrap" Text="{x:Static res:Strings.LinkConfirmTitle}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <TextBlock Name="LinkText" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.LinkConfirmText}" />
+      </StackPanel>
+
+      <!--
+        The runs are set in code-behind (Show). A long address (up to 2048 characters) scrolls within at most 180, so
+        the buttons always stay on the card.
+      -->
+      <ScrollViewer Name="LinkAddressScroller" MaxHeight="180"
+                    HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <SelectableTextBlock Name="LinkAddress" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                             FontFamily="{DynamicResource Pw.Font.Mono}" FontSize="11.5" LineHeight="16"
+                             Foreground="{DynamicResource Pw.Brush.Text.Primary}" />
+      </ScrollViewer>
+
+      <DockPanel Name="LinkWarning" IsVisible="False">
+        <ctl:StrokeIcon DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Top"
+                        Data="{StaticResource Pw.Icon.AlertTriangle}"
+                        Brush="{DynamicResource Pw.Brush.Danger.Default}" />
+        <TextBlock Name="LinkWarningText" Classes="caption" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Danger.Default}" />
+      </DockPanel>
+
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Name="LinkCancelButton"
+                Command="{Binding CancelLinkCommand}"
+                Content="{x:Static res:Strings.LinkConfirmCancel}" />
+        <Button Name="LinkOpenButton"
+                Command="{Binding ConfirmLinkCommand}"
+                Content="{x:Static res:Strings.LinkConfirmOpen}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

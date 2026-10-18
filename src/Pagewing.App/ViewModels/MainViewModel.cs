@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
+using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
@@ -35,6 +36,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly Func<ViewerSession> _sessionFactory;
     private readonly IFilePicker _picker;
     private readonly RelayCommand _closeActiveTabCommand;
+    private readonly RelayCommand _confirmLinkCommand;
+    private readonly RelayCommand _cancelLinkCommand;
+
+    // What opens a confirmed address; only ConfirmLink reaches it. Made on first use (nothing at startup).
+    private ILinkLauncher? _linkLauncher;
+    private PendingLink? _pendingLink;
+
+    // Since when the pending address is locked (Clock timestamp), for the arming delay of "Open": from its arrival, and
+    // again from when its card has been laid out (OnLinkCardShown), which is the later and the one that counts.
+    private long _pendingSince;
+
+    // Ends the lock of "Open" visibly (enables the button); made when a card is shown, never at startup.
+    private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
     private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther)> _tabHandlers = [];
@@ -83,6 +97,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         });
         ToggleSidePanelCommand = new RelayCommand<SidePanelKind>(ToggleSidePanel);
         CloseSidePanelCommand = new RelayCommand(() => ToggleSidePanel(SidePanelKind.None));
+        OpenSearchCommand = new RelayCommand(OpenSearch);
+        _confirmLinkCommand = new RelayCommand(ConfirmLink, () => IsLinkArmed);
+        ConfirmLinkCommand = _confirmLinkCommand;
+        _cancelLinkCommand = new RelayCommand(() => PendingLink = null, () => PendingLink is not null);
+        CancelLinkCommand = _cancelLinkCommand;
     }
 
     /// <summary>Raised on the UI thread when the window should come to the front (a later launch handed over).</summary>
@@ -195,6 +214,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Gets whether the active tab shows the table of contents ("Contents" is the active entry of the action bar).</summary>
     public bool IsContentsPanelOpen => ActivePanel == SidePanelKind.Contents;
 
+    /// <summary>Gets whether the active tab shows the search ("Search" is the active entry of the action bar).</summary>
+    public bool IsSearchPanelOpen => ActivePanel == SidePanelKind.Search;
+
     /// <summary>
     /// An entry of the action bar (parameter: the <see cref="SidePanelKind"/>): opens its panel in the active tab, or
     /// closes it when it is the open one; another open panel is replaced, so at most one is open.
@@ -204,6 +226,70 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>The close button of the side panel: closes the panel of the active tab.</summary>
     public ICommand CloseSidePanelCommand { get; }
+
+    /// <summary>
+    /// Ctrl+F: opens "Search" in the active tab with the focus in the search field (or puts the focus back there). Like a
+    /// click in the action bar it counts as the user choosing a panel, so "Pages" no longer opens by itself.
+    /// </summary>
+    public ICommand OpenSearchCommand { get; }
+
+    /// <summary>
+    /// Gets the address a link of the active tab asks to open, waiting for the user (the window shows it on a card over
+    /// the document), or <see langword="null"/>. At most one at a time: while one waits, further links are ignored. It is
+    /// dropped (never opened) when the active tab or its document changes. Nothing is ever remembered: every address is
+    /// asked for anew.
+    /// </summary>
+    public PendingLink? PendingLink
+    {
+        get => _pendingLink;
+        private set
+        {
+            if (value is not null)
+            {
+                _pendingSince = Clock.GetTimestamp();
+            }
+
+            if (SetProperty(ref _pendingLink, value))
+            {
+                StopArmingTimer();
+                _confirmLinkCommand.RaiseCanExecuteChanged();
+                _cancelLinkCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// "Open" on the link card: drops <see cref="PendingLink"/> and opens its address. The only way an address is opened.
+    /// Disabled (and ignored) until <see cref="LinkArmingDelay"/> has passed since the card was laid out
+    /// (<see cref="IsLinkArmed"/>), by pointer and by keyboard alike: the second click of a double click on the document
+    /// must not land on "Open" of the card that its first click brought up.
+    /// </summary>
+    public ICommand ConfirmLinkCommand { get; }
+
+    /// <summary>How long after its card is shown "Open" stays without effect; "Cancel" and Esc act at once.</summary>
+    internal static TimeSpan LinkArmingDelay { get; } = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>Gets or sets the clock (and timer) of <see cref="LinkArmingDelay"/> (the system clock; tests set a manual one).</summary>
+    internal TimeProvider Clock { get; set; } = TimeProvider.System;
+
+    /// <summary>
+    /// Gets whether an address waits and <see cref="LinkArmingDelay"/> has passed since its card was laid out
+    /// (<see cref="OnLinkCardShown"/>; before that, since it arrived, which is earlier and only matters when no card shows
+    /// it, so that "Open" cannot be reached anyway).
+    /// </summary>
+    internal bool IsLinkArmed => _pendingLink is not null && Clock.GetElapsedTime(_pendingSince) >= LinkArmingDelay;
+
+    /// <summary>"Cancel" on the link card, also Esc: drops <see cref="PendingLink"/> without opening it.</summary>
+    public ICommand CancelLinkCommand { get; }
+
+    /// <summary>
+    /// Sets what opens a confirmed address (<see cref="SystemLinkLauncher"/> unless set; tests set a fake that only
+    /// records). There is no getter: only <see cref="ConfirmLinkCommand"/> uses it.
+    /// </summary>
+    internal ILinkLauncher LinkLauncher
+    {
+        set => _linkLauncher = value ?? throw new ArgumentNullException(nameof(value));
+    }
 
     /// <summary>Shows the file dialog and opens the chosen file in a new tab (Ctrl+O, "Choose file", "Open file").</summary>
     public ICommand OpenCommand { get; }
@@ -402,6 +488,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Releases every tab and its session. May be called more than once.</summary>
     public void Dispose()
     {
+        StopArmingTimer();
         foreach (var tab in Tabs.ToArray())
         {
             tab.Dispose();
@@ -498,6 +585,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             old.PropertyChanged -= OnActiveTabPropertyChanged;
             old.PanelPagePicked -= OnPanelPagePicked;
+            old.ExternalLinkRequested -= OnExternalLinkRequested;
             old.IsActive = false;
         }
 
@@ -506,8 +594,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             next.IsActive = true;
             next.PropertyChanged += OnActiveTabPropertyChanged;
             next.PanelPagePicked += OnPanelPagePicked;
+            next.ExternalLinkRequested += OnExternalLinkRequested;
         }
 
+        // The address belongs to the tab the user clicked it in.
+        PendingLink = null;
         ActiveTab = next;
     }
 
@@ -516,6 +607,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (e.PropertyName == nameof(TabViewModel.FileName))
         {
             OnPropertyChanged(nameof(WindowTitle));
+        }
+        else if (e.PropertyName == nameof(TabViewModel.Document))
+        {
+            // Another document (or none): the address came from the one that went.
+            PendingLink = null;
         }
         else if (e.PropertyName == nameof(TabViewModel.SidePanel))
         {
@@ -528,6 +624,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ActivePanel));
         OnPropertyChanged(nameof(IsPagesPanelOpen));
         OnPropertyChanged(nameof(IsContentsPanelOpen));
+        OnPropertyChanged(nameof(IsSearchPanelOpen));
     }
 
     // The conditions are checked again: the user may have chosen a panel, or the window may have narrowed meanwhile.
@@ -548,6 +645,118 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         _panelChosenByUser = true;
         tab.SidePanel = tab.SidePanel == kind ? SidePanelKind.None : kind;
+    }
+
+    private void OpenSearch()
+    {
+        if (ActiveTab is { } tab)
+        {
+            _panelChosenByUser = true;
+            tab.OpenSearch();
+        }
+    }
+
+    // A link of the active tab asks to open an address (already accepted by ExternalLink.TryParse): ask the user. While
+    // one address waits, another is ignored, so the card never changes under the user's pointer.
+    private void OnExternalLinkRequested(ExternalLink link)
+    {
+        if (PendingLink is null)
+        {
+            PendingLink = new PendingLink(link);
+        }
+    }
+
+    /// <summary>The user confirmed the address on the card: the only call of the launcher.</summary>
+    private void ConfirmLink()
+    {
+        if (PendingLink is not { } pending || !IsLinkArmed)
+        {
+            return;
+        }
+
+        // Dropped first, so a second confirmation (Enter pressed twice) opens nothing.
+        PendingLink = null;
+        _ = LaunchAsync(_linkLauncher ??= new SystemLinkLauncher(), pending.Link);
+    }
+
+    /// <summary>
+    /// The card of <paramref name="link"/> has been laid out (UI thread): the lock of "Open" starts now, so a stall
+    /// between the arrival of the address and the first frame of the card does not shorten it, and a one-shot timer
+    /// enables "Open" when it ends. A card of an address that is no longer pending does nothing.
+    /// </summary>
+    internal void OnLinkCardShown(PendingLink link)
+    {
+        if (!ReferenceEquals(link, _pendingLink))
+        {
+            return;
+        }
+
+        _pendingSince = Clock.GetTimestamp();
+        _confirmLinkCommand.RaiseCanExecuteChanged();
+        StartArmingTimer(link);
+    }
+
+    /// <summary>Starts the timer that enables "Open" when the lock of <paramref name="link"/> ends.</summary>
+    private void StartArmingTimer(PendingLink link)
+    {
+        StopArmingTimer();
+        var remaining = LinkArmingDelay - Clock.GetElapsedTime(_pendingSince);
+        if (remaining <= TimeSpan.Zero)
+        {
+            _confirmLinkCommand.RaiseCanExecuteChanged();
+            return;
+        }
+
+        _armingTimer = Clock.CreateTimer(_ => PostArmed(link), null, remaining, Timeout.InfiniteTimeSpan);
+    }
+
+    // The timer's thread (any): must never throw.
+    private void PostArmed(PendingLink link)
+    {
+        try
+        {
+            Dispatcher.UIThread.Post(() => OnArmed(link));
+        }
+        catch (Exception)
+        {
+            // The dispatcher is shutting down: nobody sees the button any more.
+        }
+    }
+
+    private void OnArmed(PendingLink link)
+    {
+        if (!ReferenceEquals(link, _pendingLink))
+        {
+            return;
+        }
+
+        if (!IsLinkArmed)
+        {
+            // The timer fired a little before the clock says the lock is over: wait for the rest.
+            StartArmingTimer(link);
+            return;
+        }
+
+        StopArmingTimer();
+        _confirmLinkCommand.RaiseCanExecuteChanged();
+    }
+
+    private void StopArmingTimer()
+    {
+        _armingTimer?.Dispose();
+        _armingTimer = null;
+    }
+
+    private static async Task LaunchAsync(ILinkLauncher launcher, ExternalLink link)
+    {
+        try
+        {
+            await launcher.LaunchAsync(link);
+        }
+        catch (Exception)
+        {
+            // A launcher must not throw; if one does, the address simply does not open and the window stays.
+        }
     }
 
     // Over the document (narrow window) the panel gets out of the way once a page was chosen in it.

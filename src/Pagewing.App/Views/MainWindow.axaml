@@ -37,6 +37,18 @@
     <!-- Page by page, as the tooltips of the status bar arrows say. -->
     <KeyBinding Gesture="PageUp" Command="{Binding ActiveTab.PreviousPageCommand}" />
     <KeyBinding Gesture="PageDown" Command="{Binding ActiveTab.NextPageCommand}" />
+    <!--
+      Search (design system 7.4): Ctrl+F opens the panel with the focus in the search field (or puts the focus back there);
+      F3 and Shift+F3 step through the matches, also with the panel closed. None of them creates the search beforehand.
+    -->
+    <KeyBinding Gesture="Ctrl+F" Command="{Binding OpenSearchCommand}" />
+    <KeyBinding Gesture="F3" Command="{Binding ActiveTab.SearchNextCommand}" />
+    <KeyBinding Gesture="Shift+F3" Command="{Binding ActiveTab.SearchPreviousCommand}" />
+    <!-- Links: back to the view before the last link jump and forward again; only while there is one (else the key goes on). -->
+    <KeyBinding Gesture="Alt+Left" Command="{Binding ActiveTab.BackCommand}" />
+    <KeyBinding Gesture="Alt+Right" Command="{Binding ActiveTab.ForwardCommand}" />
+    <!-- Esc drops an address that waits for confirmation, wherever the focus is; without one the key goes on. -->
+    <KeyBinding Gesture="Escape" Command="{Binding CancelLinkCommand}" />
   </Window.KeyBindings>
   <Window.Resources>
     <!--
@@ -92,13 +104,14 @@
         Document area: surface.canvas with radius.overlay at the top left, unless the panel beside it takes that corner.
         The document view shows the open document of the active tab; while a file loads it stays empty, and the password
         and the error card lie over it (design system 7.8). Switching the tab switches the DataContext, and with it the
-        document the view shows.
+        document the view shows. The card that asks before an address of the document is opened is added to this panel
+        when it is first needed (MainWindow.LinkCard.cs).
       -->
       <Border Name="DocumentArea" Grid.Column="2"
               IsVisible="{Binding HasTabs}"
               Background="{DynamicResource Pw.Brush.Surface.Canvas}"
               CornerRadius="10,0,0,0">
-        <Panel>
+        <Panel Name="DocumentAreaLayers">
           <views:DocumentView Name="DocumentView" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel" />
           <views:PasswordCard Name="PasswordCard" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel"
                               IsVisible="{Binding IsPasswordPrompt, FallbackValue=False}" />

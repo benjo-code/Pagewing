@@ -1,3 +1,4 @@
+using Pagewing.Core.Text;
 using Pagewing.Pdfium;
 
 namespace Pagewing.Core.Pdf;
@@ -167,6 +168,114 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
                 using var page = document.LoadPage(pageIndex);
                 using var textPage = page.LoadTextPage();
                 return textPage.GetText().Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the characters (with boxes, font size, bold and italic) and the links of a page. The boxes are in
+    /// points from the top left of the displayed page. Links the viewer cannot follow (launch actions, files,
+    /// scripts) are left out. Runs with <see cref="PdfPriority.Interactive"/>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the page was read.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PageText> GetPageTextAsync(int pageIndex, CancellationToken cancellationToken = default) =>
+        GetPageTextAsync(pageIndex, PdfPriority.Interactive, cancellationToken);
+
+    /// <summary>
+    /// Reads the characters and links of a page like <see cref="GetPageTextAsync(int, CancellationToken)"/>, but with
+    /// the given <paramref name="priority"/>: <see cref="PdfPriority.Background"/> lets the main view's own
+    /// requests go first (used for the text a page is read for ahead of need).
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the page was read.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PageText> GetPageTextAsync(int pageIndex, PdfPriority priority, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(pageIndex, pageCount);
+        return document.Thread.InvokeAsync(
+            () =>
+            {
+                using var page = document.LoadPage(pageIndex);
+                using var textPage = page.LoadTextPage();
+                var chars = PdfiumPageText.ReadChars(page, textPage, geometry: true, style: true);
+                var links = PdfiumPageText.ReadLinks(document, page, textPage);
+                return PageText.FromPdfium(pageIndex, page.Width, page.Height, chars, links);
+            },
+            priority == PdfPriority.Background ? PdfiumPriority.Background : PdfiumPriority.Interactive,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Finds a query on one page (see <see cref="TextMatcher"/> for how text is compared). A single request to the
+    /// PDFium thread reads the characters without geometry, matches them, and reads the boxes only of the matched
+    /// characters. A page without text, and an empty or whitespace-only query, give an empty list. Runs with
+    /// <see cref="PdfPriority.Background"/>.
+    /// </summary>
+    /// <returns>The hits in text order.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="query"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the search finished.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<IReadOnlyList<SearchHit>> SearchPageAsync(int pageIndex, string query, SearchOptions options, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(pageIndex, pageCount);
+        ArgumentNullException.ThrowIfNull(query);
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return cancellationToken.IsCancellationRequested
+                ? Task.FromCanceled<IReadOnlyList<SearchHit>>(cancellationToken)
+                : Task.FromResult<IReadOnlyList<SearchHit>>([]);
+        }
+
+        return document.Thread.InvokeAsync<IReadOnlyList<SearchHit>>(
+            () =>
+            {
+                using var page = document.LoadPage(pageIndex);
+                using var textPage = page.LoadTextPage();
+                var read = PdfiumPageText.ReadChars(page, textPage, geometry: false, style: false);
+                var chars = new TextChar[read.Length];
+                for (var i = 0; i < read.Length; i++)
+                {
+                    chars[i] = PageText.FromPdfium(read[i]);
+                }
+
+                var matches = TextMatcher.Find(chars, query, options);
+                if (matches.Count == 0)
+                {
+                    return [];
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                var hits = new SearchHit[matches.Count];
+                for (var m = 0; m < hits.Length; m++)
+                {
+                    if ((m & 63) == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+
+                    var (first, last) = matches[m];
+                    var boxed = PdfiumPageText.ReadChars(page, textPage, first, last - first + 1, style: false);
+                    var range = new TextChar[boxed.Length];
+                    for (var i = 0; i < boxed.Length; i++)
+                    {
+                        range[i] = PageText.FromPdfium(boxed[i]);
+                    }
+
+                    hits[m] = new SearchHit(pageIndex, first, last, TextGeometry.RectsOf(range, 0, range.Length), TextMatcher.SnippetOf(chars, first, last));
+                }
+
+                return hits;
             },
             PdfiumPriority.Background,
             cancellationToken);

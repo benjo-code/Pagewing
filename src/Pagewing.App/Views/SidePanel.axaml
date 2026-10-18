@@ -24,6 +24,9 @@
     <DataTemplate x:Key="Contents">
       <views:OutlinePanel Name="ContentsContent" />
     </DataTemplate>
+    <DataTemplate x:Key="Search">
+      <views:SearchPanel Name="SearchContent" />
+    </DataTemplate>
   </UserControl.Resources>
 
   <UserControl.Styles>
