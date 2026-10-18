@@ -18,6 +18,10 @@
   <StreamGeometry x:Key="Pw.Icon.ChevronRight">M9 6l6 6l-6 6</StreamGeometry>
   <!-- chevron-down -->
   <StreamGeometry x:Key="Pw.Icon.ChevronDown">M6 9l6 6l6 -6</StreamGeometry>
+  <!-- chevron-up (search: previous match) -->
+  <StreamGeometry x:Key="Pw.Icon.ChevronUp">M6 15l6 -6l6 6</StreamGeometry>
+  <!-- search (action bar: search, search field) -->
+  <StreamGeometry x:Key="Pw.Icon.Search">M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0 M21 21l-6 -6</StreamGeometry>
   <!-- minus -->
   <StreamGeometry x:Key="Pw.Icon.Minus">M5 12l14 0</StreamGeometry>
   <!-- plus -->

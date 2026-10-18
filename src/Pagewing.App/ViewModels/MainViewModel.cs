@@ -195,6 +195,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Gets whether the active tab shows the table of contents ("Contents" is the active entry of the action bar).</summary>
     public bool IsContentsPanelOpen => ActivePanel == SidePanelKind.Contents;
 
+    /// <summary>Gets whether the active tab shows the search ("Search" is the active entry of the action bar).</summary>
+    public bool IsSearchPanelOpen => ActivePanel == SidePanelKind.Search;
+
     /// <summary>
     /// An entry of the action bar (parameter: the <see cref="SidePanelKind"/>): opens its panel in the active tab, or
     /// closes it when it is the open one; another open panel is replaced, so at most one is open.
@@ -528,6 +531,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ActivePanel));
         OnPropertyChanged(nameof(IsPagesPanelOpen));
         OnPropertyChanged(nameof(IsContentsPanelOpen));
+        OnPropertyChanged(nameof(IsSearchPanelOpen));
     }
 
     // The conditions are checked again: the user may have chosen a panel, or the window may have narrowed meanwhile.

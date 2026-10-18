@@ -11,8 +11,9 @@
     Action bar (design system sections 5.4, 5.5, 6 and 7.3): 52 px wide on surface.window, buttons 40 px with 20 px
     icons in text.secondary. A click opens the panel of the entry in the active tab, a click on the active entry closes
     it (MainViewModel.ToggleSidePanelCommand). The active entry has an accent.subtle surface behind an accent.default
-    icon, so it is not marked by colour alone (section 7.10); hovering it keeps that. Search (M5) and settings (M6)
-    follow when they exist. Part of the first frame with a tab, so it stays this small.
+    icon, so it is not marked by colour alone (section 7.10); hovering it keeps that. Entries: Pages, Contents, Search
+    (Ctrl+F opens it as well, with the focus in its field); settings (M6) follow when they exist. Part of the first frame
+    with a tab, so it stays this small: the panels are built only when they open.
   -->
   <UserControl.Styles>
     <Style Selector="Button.action">
@@ -44,6 +45,12 @@
             ToolTip.Tip="{x:Static res:Strings.ContentsTooltip}"
             AutomationProperties.Name="{x:Static res:Strings.ContentsTooltip}">
       <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.ListTree}" />
+    </Button>
+    <Button Name="SearchButton" Classes="icon action" Classes.active="{Binding IsSearchPanelOpen}"
+            Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Search}"
+            ToolTip.Tip="{x:Static res:Strings.SearchTooltip}"
+            AutomationProperties.Name="{x:Static res:Strings.SearchTooltip}">
+      <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Search}" />
     </Button>
   </StackPanel>
 </UserControl>

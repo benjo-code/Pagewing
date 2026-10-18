@@ -228,6 +228,51 @@
   <data name="OutlineEntryName" xml:space="preserve">
     <value>{0}, page {1}</value>
   </data>
+  <data name="SearchPanelTitle" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="SearchTooltip" xml:space="preserve">
+    <value>Search (Ctrl+F)</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>Search in document</value>
+  </data>
+  <data name="SearchMatchCase" xml:space="preserve">
+    <value>Match case</value>
+  </data>
+  <data name="SearchWholeWord" xml:space="preserve">
+    <value>Whole words</value>
+  </data>
+  <data name="SearchRunning" xml:space="preserve">
+    <value>Searching …</value>
+  </data>
+  <data name="SearchNone" xml:space="preserve">
+    <value>No matches</value>
+  </data>
+  <data name="SearchSummaryOne" xml:space="preserve">
+    <value>1 match on page {0}</value>
+  </data>
+  <data name="SearchSummaryOnePage" xml:space="preserve">
+    <value>{0} matches, all on page {1}</value>
+  </data>
+  <data name="SearchSummaryPages" xml:space="preserve">
+    <value>{0} matches on {1} pages</value>
+  </data>
+  <data name="SearchLimit" xml:space="preserve">
+    <value>More than {0} matches</value>
+  </data>
+  <data name="SearchNoText" xml:space="preserve">
+    <value>This document contains no searchable text. Scanned pages need text recognition (OCR), which Pagewing does not have yet.</value>
+  </data>
+  <data name="SearchNext" xml:space="preserve">
+    <value>Next match (Enter)</value>
+  </data>
+  <data name="SearchPrevious" xml:space="preserve">
+    <value>Previous match (Shift+Enter)</value>
+  </data>
+  <data name="SearchHitName" xml:space="preserve">
+    <value>Page {0}: {1}</value>
+  </data>
   <data name="DocumentInfo" xml:space="preserve">
     <value>Document info</value>
   </data>

@@ -100,6 +100,25 @@ public sealed partial class LocalizationTests : IDisposable
 
         Assert.Equal(["{0}"], Placeholders(english["PasswordPrompt"]));
         Assert.Equal(["{0}"], Placeholders(english["PageOf"]));
+        Assert.Equal(["{0}"], Placeholders(english["SearchSummaryOne"]));
+        Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchSummaryOnePage"]));
+        Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchSummaryPages"]));
+        Assert.Equal(["{0}"], Placeholders(english["SearchLimit"]));
+        Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchHitName"]));
+    }
+
+    [Fact]
+    public void SearchKeysAreEmbeddedInTheAssembly()
+    {
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Search", Strings.SearchPanelTitle);
+        Assert.Equal("Search in document", Strings.SearchPlaceholder);
+        Assert.Equal("Searching …", Strings.SearchRunning);
+
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Suche", Strings.SearchPanelTitle);
+        Assert.Equal("Im Dokument suchen", Strings.SearchPlaceholder);
+        Assert.Equal("Keine Treffer", Strings.SearchNone);
     }
 
     [GeneratedRegex(@"\{\d+\}")]
