@@ -336,7 +336,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         }
     }
 
-    private nint Access()
+    /// <summary>Returns the native document after checking the thread and that the document is still open.</summary>
+    internal nint Access()
     {
         Thread.VerifyAccess();
         ObjectDisposedException.ThrowIf(disposed, this);

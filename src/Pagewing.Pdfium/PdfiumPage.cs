@@ -63,4 +63,12 @@ internal sealed class PdfiumPage : IDisposable
     }
 
     public void Dispose() => handle.Dispose();
+
+    /// <summary>Returns the native page after checking the thread and that the page is still open.</summary>
+    internal nint Access()
+    {
+        handle.OwningThread.VerifyAccess();
+        ObjectDisposedException.ThrowIf(handle.IsClosed, this);
+        return handle.DangerousGetHandle();
+    }
 }
