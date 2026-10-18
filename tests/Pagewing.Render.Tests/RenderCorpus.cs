@@ -37,6 +37,7 @@ internal static class RenderCorpus
     [
         new("annotations.pdf", CompareMode.Tolerant, FontSubstitution),
         new("cropbox.pdf", CompareMode.Tolerant, FontSubstitution),
+        new("dark-sample.pdf", CompareMode.Tolerant, FontSubstitution),
         new("encrypted_hello_world_r3.pdf", CompareMode.Tolerant, FontSubstitution, UserPassword),
         new("encrypted_hello_world_r6.pdf", CompareMode.Tolerant, FontSubstitution, UserPassword),
         new("hello_world.pdf", CompareMode.Tolerant, FontSubstitution),

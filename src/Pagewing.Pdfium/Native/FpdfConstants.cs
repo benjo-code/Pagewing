@@ -10,6 +10,11 @@ internal static class FpdfConstants
     /// <summary><c>FPDF_ANNOT</c>: render annotations (except widgets and popups).</summary>
     public const int RenderAnnot = 0x01;
 
+    /// <summary>
+    /// <c>FPDF_CONVERT_FILL_TO_STROKE</c>: also stroke filled paths; only used together with a <c>FPDF_COLORSCHEME</c>.
+    /// </summary>
+    public const int RenderConvertFillToStroke = 0x20;
+
     /// <summary><c>FPDF_ERR_SUCCESS</c>.</summary>
     public const int ErrSuccess = 0;
 
