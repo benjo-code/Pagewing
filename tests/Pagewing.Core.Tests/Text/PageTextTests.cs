@@ -279,6 +279,81 @@ public sealed class PageTextTests
     }
 
     [Fact]
+    public void CaretAtFollowsVerticalTextTopToBottom()
+    {
+        // Text of a page rotated by 90 degrees: the chars of the line are stacked downwards.
+        var chars = new List<TextChar>();
+        AddVerticalLine(chars, "abc", 50, 20, down: true);
+        var text = new PageText(0, 200, 200, chars, []);
+
+        Assert.Equal(0, text.CaretAt(55, 21)); // above the centre of 'a'
+        Assert.Equal(1, text.CaretAt(55, 24)); // between 'a' and 'b'
+        Assert.Equal(2, text.CaretAt(55, 28));
+        Assert.Equal(3, text.CaretAt(55, 100)); // beyond the end of the line
+        Assert.Equal(0, text.CaretAt(55, 0)); // before its start
+        Assert.Equal(3, text.CaretAt(5, 22)); // left of the only line: after the last line
+        Assert.Equal(0, text.CaretAt(150, 22)); // right of it: before the first line
+    }
+
+    [Fact]
+    public void CaretAtFollowsVerticalTextBottomToTop()
+    {
+        // Text of a page rotated by 270 degrees: the chars of the line are stacked upwards.
+        var chars = new List<TextChar>();
+        AddVerticalLine(chars, "abc", 50, 20, down: false);
+        var text = new PageText(0, 200, 200, chars, []);
+
+        Assert.Equal(0, text.CaretAt(55, 34)); // below the centre of 'a', which is the lowest char
+        Assert.Equal(1, text.CaretAt(55, 31));
+        Assert.Equal(2, text.CaretAt(55, 26));
+        Assert.Equal(3, text.CaretAt(55, 0)); // beyond the end of the line
+        Assert.Equal(0, text.CaretAt(5, 22)); // left of the only line: before the first line
+        Assert.Equal(3, text.CaretAt(150, 22)); // right of it: after the last line
+    }
+
+    [Fact]
+    public void CaretAtNearestVerticalLineIsChosenByX()
+    {
+        // Lines of vertical text follow each other to the left: "ab" at x 100..110, then "cd" at x 86..96.
+        var chars = new List<TextChar>();
+        AddVerticalLine(chars, "ab", 100, 20, down: true);
+        chars.Add(new TextChar('\r', new PageRect(100, 30, 100, 30), TextCharTraits.Generated, 1));
+        chars.Add(new TextChar('\n', new PageRect(100, 30, 100, 30), TextCharTraits.Generated, 1));
+        AddVerticalLine(chars, "cd", 86, 20, down: true);
+        var text = new PageText(0, 200, 200, chars, []);
+
+        Assert.Equal(0, text.CaretAt(104, 22)); // in the first line
+        Assert.Equal(4, text.CaretAt(90, 22)); // in the second line
+        Assert.Equal(6, text.CaretAt(90, 28)); // after 'd', the end of the second line
+        Assert.Equal(2, text.CaretAt(104, 28)); // after 'b', before the line break
+        Assert.Equal(4, text.CaretAt(97, 22)); // in the gap, nearer to the second line
+        Assert.Equal(0, text.CaretAt(99, 22)); // in the gap, nearer to the first line
+        Assert.Equal(0, text.CaretAt(300, 28)); // right of all lines
+        Assert.Equal(6, text.CaretAt(0, 28)); // left of all lines
+    }
+
+    [Fact]
+    public async Task CaretAtFollowsTheTextOfARotatedPage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var document = await engine.OpenAsync(TestData.Pdf("rotated-page.pdf"), cancellationToken: ct);
+        var text = await document.GetPageTextAsync(0, ct);
+
+        var real = Enumerable.Range(0, text.Chars.Count).Where(i => !text.Chars[i].IsGenerated).Take(2).ToArray();
+        Assert.Equal(2, real.Length);
+        var a = text.Chars[real[0]].Box;
+        var b = text.Chars[real[1]].Box;
+        var centreX = (a.Left + a.Right) / 2;
+        var centreY = (a.Top + a.Bottom) / 2;
+        var stepX = (((b.Left + b.Right) / 2) - centreX) / 4; // a quarter of the way to the next char
+        var stepY = (((b.Top + b.Bottom) / 2) - centreY) / 4;
+
+        Assert.True(Math.Abs(stepY) > Math.Abs(stepX)); // the text of a page rotated by 90 degrees runs vertically
+        Assert.Equal(real[0], text.CaretAt(centreX - stepX, centreY - stepY)); // before the first char
+        Assert.Equal(real[0] + 1, text.CaretAt(centreX + stepX, centreY + stepY)); // after it
+    }
+
+    [Fact]
     public void WordAtSelectsTheWordAndPunctuationAloneIsOneChar()
     {
         var text = Page("Hello, world", "don't stop 42x");
@@ -503,6 +578,17 @@ public sealed class PageTextTests
         }
 
         return new PageText(0, 200, 200, chars, []);
+    }
+
+    /// <summary>Adds a vertical line of chars 10 wide and 5 high at x, stacked from top downwards (or, with <paramref name="down"/> false, upwards).</summary>
+    private static void AddVerticalLine(List<TextChar> chars, string line, double x, double top, bool down)
+    {
+        for (var i = 0; i < line.Length; i++)
+        {
+            var slot = down ? i : line.Length - 1 - i;
+            var charTop = top + (slot * 5);
+            chars.Add(new TextChar(line[i], new PageRect(x, charTop, x + 10, charTop + 5), TextCharTraits.None, 10));
+        }
     }
 
     private static void AddLine(List<TextChar> chars, string line, double x, double top, float size, bool hyphenated = false)

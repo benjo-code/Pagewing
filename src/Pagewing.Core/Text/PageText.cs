@@ -127,9 +127,17 @@ public sealed class PageText
     }
 
     /// <summary>
-    /// Gets the insertion position nearest to the point: above all text it is 0, below all text
-    /// <see cref="Chars"/>.Count; otherwise the line nearest in y (ties: nearest in x), and in it the position before
-    /// the first character whose centre is right of the point, else after the line's last character.
+    /// Gets the insertion position nearest to the point. The reading direction of each line is derived from its
+    /// characters (the vector from the centre of its first to that of its last character): a line is vertical if that
+    /// vector is more vertical than horizontal (text on a page rotated by 90 or 270 degrees), else horizontal; a line
+    /// of a single character counts as horizontal, left to right. The nearest line is the one whose extent is nearest
+    /// across its reading direction (for a vertical line in x, otherwise in y), ties go to the nearer one along it. In
+    /// that line the result is the position before the first character whose centre lies beyond the point in reading
+    /// direction, else after the line's last character. Beyond all lines across the reading direction of the text (the
+    /// orientation of the first line of more than one character) the result is 0 before the first line and
+    /// <see cref="Chars"/>.Count after the last one, whatever the position along the lines: for upright text above and
+    /// below all text; lines follow each other downwards for horizontal left-to-right text, to the left for vertical
+    /// top-to-bottom text (rotation by 90 degrees), to the right for vertical bottom-to-top text.
     /// </summary>
     /// <param name="x">The x coordinate in page points.</param>
     /// <param name="y">The y coordinate in page points.</param>
@@ -138,16 +146,25 @@ public sealed class PageText
     {
         var bestStart = -1;
         var bestEnd = -1;
-        var bestDy = double.PositiveInfinity;
-        var bestDx = double.PositiveInfinity;
-        var pageTop = double.PositiveInfinity;
-        var pageBottom = double.NegativeInfinity;
+        var bestVertical = false;
+        var bestSign = 1;
+        var bestPerp = double.PositiveInfinity;
+        var bestPar = double.PositiveInfinity;
+
+        // Extent of all lines across their reading direction, kept per orientation: [0] horizontal (y), [1] vertical (x).
+        Span<double> extentMin = stackalloc double[] { double.PositiveInfinity, double.PositiveInfinity };
+        Span<double> extentMax = stackalloc double[] { double.NegativeInfinity, double.NegativeInfinity };
+        var dominant = -1;
+        var dominantSign = 1;
+        var firstSegment = true;
 
         var start = 0;
         while (start < Chars.Count)
         {
             var end = SegmentEnd(start);
-            var found = false;
+            var first = -1;
+            var last = -1;
+            var count = 0;
             var left = double.PositiveInfinity;
             var top = double.PositiveInfinity;
             var right = double.NegativeInfinity;
@@ -160,41 +177,83 @@ public sealed class PageText
                     continue;
                 }
 
-                found = true;
+                first = first < 0 ? i : first;
+                last = i;
+                count++;
                 left = Math.Min(left, c.Box.Left);
                 top = Math.Min(top, c.Box.Top);
                 right = Math.Max(right, c.Box.Right);
                 bottom = Math.Max(bottom, c.Box.Bottom);
             }
 
-            if (found)
+            if (count > 0)
             {
-                pageTop = Math.Min(pageTop, top);
-                pageBottom = Math.Max(pageBottom, bottom);
-                var dy = Math.Max(Math.Max(top - y, y - bottom), 0);
-                var dx = Math.Max(Math.Max(left - x, x - right), 0);
-                if (dy < bestDy || (dy == bestDy && dx < bestDx))
+                var vertical = false;
+                var sign = 1;
+                if (count > 1)
                 {
-                    bestDy = dy;
-                    bestDx = dx;
+                    var a = Chars[first].Box;
+                    var b = Chars[last].Box;
+                    var along = ((b.Left + b.Right) - (a.Left + a.Right)) / 2;
+                    var down = ((b.Top + b.Bottom) - (a.Top + a.Bottom)) / 2;
+                    vertical = Math.Abs(down) > Math.Abs(along);
+                    sign = (vertical ? down : along) < 0 ? -1 : 1;
+                }
+
+                var orientation = vertical ? 1 : 0;
+                if (dominant < 0 && (count > 1 || firstSegment))
+                {
+                    dominant = orientation;
+                    dominantSign = sign;
+                }
+
+                firstSegment = false;
+                var perpStart = vertical ? left : top;
+                var perpEnd = vertical ? right : bottom;
+                extentMin[orientation] = Math.Min(extentMin[orientation], perpStart);
+                extentMax[orientation] = Math.Max(extentMax[orientation], perpEnd);
+
+                var perpPoint = vertical ? x : y;
+                var parPoint = vertical ? y : x;
+                var perp = Math.Max(Math.Max(perpStart - perpPoint, perpPoint - perpEnd), 0);
+                var parStart = vertical ? top : left;
+                var parEnd = vertical ? bottom : right;
+                var par = Math.Max(Math.Max(parStart - parPoint, parPoint - parEnd), 0);
+                if (perp < bestPerp || (perp == bestPerp && par < bestPar))
+                {
+                    bestPerp = perp;
+                    bestPar = par;
                     bestStart = start;
                     bestEnd = end;
+                    bestVertical = vertical;
+                    bestSign = sign;
                 }
             }
 
             start = end < Chars.Count && Chars[end].IsLineBreak ? end + 1 : end;
         }
 
-        if (bestStart < 0 || y < pageTop)
+        if (bestStart < 0)
         {
             return 0;
         }
 
-        if (y > pageBottom)
+        // Lines follow each other with the reading sign for horizontal text and against it for vertical text.
+        var lineSign = dominant == 1 ? -dominantSign : dominantSign;
+        var across = dominant == 1 ? x : y;
+        var beforeFirst = lineSign > 0 ? across < extentMin[dominant] : across > extentMax[dominant];
+        if (beforeFirst)
+        {
+            return 0;
+        }
+
+        var afterLast = lineSign > 0 ? across > extentMax[dominant] : across < extentMin[dominant];
+        if (afterLast)
         {
             return Chars.Count;
         }
 
+        var point = bestVertical ? y : x;
         var caret = bestStart;
         for (var i = bestStart; i < bestEnd; i++)
         {
@@ -204,7 +263,8 @@ public sealed class PageText
                 continue;
             }
 
-            if (x < (c.Box.Left + c.Box.Right) / 2)
+            var centre = bestVertical ? (c.Box.Top + c.Box.Bottom) / 2 : (c.Box.Left + c.Box.Right) / 2;
+            if ((point - centre) * bestSign < 0)
             {
                 return i;
             }
@@ -329,8 +389,9 @@ public sealed class PageText
     }
 
     /// <summary>
-    /// Gets the link under the point. Links come annotations first, then web addresses found in the text; where
-    /// several contain the point the first wins, so an explicit link annotation beats a detected address.
+    /// Gets the link under the point. "Topmost" means first in list order: links come annotations first, then web
+    /// addresses found in the text, and where several contain the point the first wins, so an explicit link
+    /// annotation beats a detected address.
     /// </summary>
     /// <param name="x">The x coordinate in page points.</param>
     /// <param name="y">The y coordinate in page points.</param>
