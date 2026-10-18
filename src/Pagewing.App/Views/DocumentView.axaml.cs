@@ -138,6 +138,7 @@ public sealed partial class DocumentView : UserControl
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
         viewModel.PageRequested += OnPageRequested;
         viewModel.DocumentFocusRequested += OnDocumentFocusRequested;
+        ConnectHighlights(viewModel);
         _session.Changed += OnSessionChanged;
         Sync();
     }
@@ -145,6 +146,7 @@ public sealed partial class DocumentView : UserControl
     private void Disconnect()
     {
         SaveView();
+        DisconnectHighlights();
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -284,6 +286,7 @@ public sealed partial class DocumentView : UserControl
         _layout = layout;
         _loadedSizes = known;
         PageCanvas.Attach(layout, scheduler, cache);
+        RefreshHighlights();
 
         ChangeLayout(tab?.SavedView is { } saved ? RestoredOffset(layout, saved) : default);
         _pendingRestore = tab?.SavedView is { } pending && !(Scroller.Viewport.Width > 0) ? pending : null;

@@ -15,6 +15,16 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-18 – Markierungen im Dokument: Multiplikation statt Deckfläche, Token `selection.page` (M5)
+**Kontext:** Die Seite wird als deckendes Bild gezeichnet; Treffer der Volltextsuche (`search.hit`, `search.current`) müssen sie „hinterlegen“ (Design-Spec 7.4), ohne den Text zu verdecken. Außerdem braucht die Textauswahl (Task 14) eine Farbe auf der Seite.
+**Entscheidung:**
+- `DocumentCanvas` zeichnet die Markierungen nach dem Seitenbild im Seitenclip, auf dem gerasterten Seitenursprung, Rechtecke in PDF-Punkten mal `DocumentLayout.DipsPerPoint * Zoom`. Treffer werden mit dem Seitenbild **multipliziert** (`BitmapBlendingMode.Multiply`), der aktuelle Treffer bekommt zusätzlich einen 1,5-DIP-Rahmen in `search.on`. Die Auswahl ist eine halbtransparente Fläche (`Pw.Brush.Selection.Page`, `#3B48C4` mit 30 % Deckkraft, in beiden Themes gleich, weil Seiten weiß bleiben; schwarzer Text darauf 12,8:1). Zeichenreihenfolge je Seite: Auswahl, Treffer, aktueller Treffer.
+- Avalonia wendet den Mischmodus nur auf Bilder an, nicht auf `DrawRectangle` (gemessen: ein Rechteck mit `Multiply` deckt den Text ab, ein Bild nicht). Die Farbe ist deshalb ein Ein-Pixel-Bild je Pinsel, über das Rechteck gestreckt (einmal erzeugt, bei Pinselwechsel neu).
+- Die Markierungen werden je `SetHighlights` einmal nach Seite gruppiert; `Render` schlägt nur sichtbare Seiten nach. Die Ansicht komponiert alle Markierungen an einer Stelle (`DocumentView.RefreshHighlights`) und hört nur auf die Suche des aktiven Tabs, die sie nie selbst anlegt (`TabViewModel.SearchCreated`).
+- Sprung zu einem Treffer (`TabViewModel.RevealRequested`, `DocumentView.OnRevealRequested`): scrollt nur, wenn das Rechteck nicht ganz im Viewport liegt; dann vertikal Mitte auf Mitte (begrenzt auf den Inhalt), seitwärts nur so weit wie nötig; im Einzelseiten-Layout wird die Seite vorher gezeigt. Der Tab springt nicht mehr vorher zur Seite (`GoToPage` nur noch ohne Ansicht oder ohne Geometrie), sonst scrollte die Ansicht zweimal und ein sichtbarer Treffer würde den Ausschnitt verschieben.
+- Das neue Token steht in der Design-Spec (5.1) und in `TokenTests`.
+**Verworfene Alternativen:** Deckende Gelbfläche über dem Seitenbild (verdeckt den Text); halbtransparentes Gelb (weicht vom Token ab und hellt den Text auf); `ICustomDrawOperation` mit Skia (zusätzliche direkte Abhängigkeit für denselben Effekt).
+
 ## 2026-10-18 – Tabs ziehen: Fenster hängt am Zeiger, Ablegen auf einer fremden Leiste (M4.1)
 **Kontext:** M4 lieferte „In neuem Fenster öffnen“ und die Architektur dafür (Tab besitzt seine Sitzung, `Workspace`); M4.1 ergänzt die Maus-Geste. Auf Wunsch des Projektinhabers soll das neue Fenster schon beim Ziehen am Zeiger hängen (Stil Chrome), nicht erst beim Loslassen entstehen. Ein Versuch auf Windows (Wegwerf-Code) zeigte vorab: Nach dem Herauslösen und Anzeigen des neuen Fensters unter dem Zeiger behält die Tableiste des Quellfensters den Zeiger-Fang und bekommt jede weitere Bewegung (42 von 42), auch wenn das neue Fenster beim Anzeigen aktiviert wird; `Window.Position` je Bewegung setzen lässt das Fenster mitwandern.
 **Entscheidung:**

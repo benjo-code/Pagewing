@@ -33,6 +33,7 @@ public sealed class TokenTests
         ("Search.Hit", "#FBE38A", "#FBE38A"),
         ("Search.Current", "#F5A524", "#F5A524"),
         ("Search.On", "#16181D", "#16181D"),
+        ("Selection.Page", "#3B48C44D", "#3B48C44D"),
         ("Danger.Default", "#B42318", "#FF8A80"),
     ];
 

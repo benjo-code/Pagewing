@@ -17,7 +17,8 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Raised when the document view should bring a search match into view: the 0-based page and the rectangle of the
-    /// match in page points from the top left of the page (the document view scrolls to it from Task 13 on).
+    /// match in page points from the top left of the page. The document view scrolls to it unless it is fully visible, and
+    /// makes its page the current one.
     /// </summary>
     public event Action<int, PageRect>? RevealRequested;
 
@@ -31,7 +32,22 @@ public sealed partial class TabViewModel
     /// Gets the search of this tab, created on the first access (only the "Search" panel and Ctrl+F get here, never the
     /// startup path). The tab disposes it; a new document clears it.
     /// </summary>
-    public SearchViewModel Search => _search ??= new SearchViewModel(this);
+    public SearchViewModel Search
+    {
+        get
+        {
+            if (_search is null)
+            {
+                _search = new SearchViewModel(this);
+                SearchCreated?.Invoke();
+            }
+
+            return _search;
+        }
+    }
+
+    /// <summary>Raised once, when <see cref="Search"/> was created: the document view then listens to its highlights.</summary>
+    internal event Action? SearchCreated;
 
     /// <summary>F3: the next match of the search, also with the panel closed; without a search it does nothing.</summary>
     public ICommand SearchNextCommand { get; }
@@ -65,8 +81,8 @@ public sealed partial class TabViewModel
     internal void ClearSearchFocusRequest() => _searchFocusPending = false;
 
     /// <summary>
-    /// Shows a search match: goes to its page (<see cref="GoToPage"/>) and asks the view to bring its rectangle into view
-    /// (<see cref="RevealRequested"/>); a match chosen in the panel (<paramref name="fromPanel"/>) then raises
+    /// Shows a search match: asks the view to bring its rectangle into view (<see cref="RevealRequested"/>; without a view
+    /// the page is made the current one with <see cref="GoToPage"/>); a match chosen in the panel (<paramref name="fromPanel"/>) then raises
     /// <see cref="PanelPagePicked"/>, so a narrow window closes the panel.
     /// </summary>
     internal void RevealSearchHit(SearchHit hit, bool fromPanel)
@@ -77,16 +93,22 @@ public sealed partial class TabViewModel
             return;
         }
 
-        GoToPage(hit.PageIndex + 1);
-        if (hit.Rects.Count > 0)
+        if (hit.Rects.Count > 0 && RevealRequested is { } reveal)
         {
+            // The view scrolls to the rectangle (not to the top of the page) and only when it is not fully visible; the
+            // page it ends on becomes the current page of the tab. A jump to the page first would scroll twice.
             var rect = hit.Rects[0];
             for (var i = 1; i < hit.Rects.Count; i++)
             {
                 rect = rect.Union(hit.Rects[i]);
             }
 
-            RevealRequested?.Invoke(hit.PageIndex, rect);
+            reveal(hit.PageIndex, rect);
+        }
+        else
+        {
+            // No view shows this tab (or the match has no geometry): at least the page is the current one.
+            GoToPage(hit.PageIndex + 1);
         }
 
         if (fromPanel)

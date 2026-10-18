@@ -65,6 +65,10 @@
       <Color x:Key="Pw.Color.Search.On">#16181D</Color>
       <SolidColorBrush x:Key="Pw.Brush.Search.On" Color="#16181D" />
 
+      <!-- Selection on the page: PDF content, the same in both themes (pages stay white); Avalonia reads #AARRGGBB -->
+      <Color x:Key="Pw.Color.Selection.Page">#4D3B48C4</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Selection.Page" Color="#4D3B48C4" />
+
       <!-- Danger -->
       <Color x:Key="Pw.Color.Danger.Default">#B42318</Color>
       <SolidColorBrush x:Key="Pw.Brush.Danger.Default" Color="#B42318" />
@@ -129,6 +133,10 @@
       <SolidColorBrush x:Key="Pw.Brush.Search.Current" Color="#F5A524" />
       <Color x:Key="Pw.Color.Search.On">#16181D</Color>
       <SolidColorBrush x:Key="Pw.Brush.Search.On" Color="#16181D" />
+
+      <!-- Selection on the page: PDF content, the same in both themes (pages stay white); Avalonia reads #AARRGGBB -->
+      <Color x:Key="Pw.Color.Selection.Page">#4D3B48C4</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Selection.Page" Color="#4D3B48C4" />
 
       <!-- Danger -->
       <Color x:Key="Pw.Color.Danger.Default">#FF8A80</Color>

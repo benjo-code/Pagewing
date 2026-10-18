@@ -137,6 +137,7 @@ Die Werte stammen aus dem gewählten Mockup (B, Artifact-Version 4). Token-Namen
 | `color.search.hit` | `#FBE38A` | `#FBE38A` | Suchtreffer (auf der Seite und in der Trefferliste) | – |
 | `color.search.current` | `#F5A524` | `#F5A524` | Aktueller Suchtreffer, immer mit Rahmen | – |
 | `color.search.on` | `#16181D` | `#16181D` | Text auf `search.hit` und `search.current` (in der Trefferliste); nie `text.primary`, das im dunklen Theme auf Gelb nur 1,04:1 erreicht | – |
+| `color.selection.page` | `#3B48C44D` | `#3B48C44D` | Ausgewählter Text auf der Seite (30 % Indigo über dem Seitenbild, in beiden Themes gleich, weil Seiten weiß bleiben); schwarzer Text darauf 12,8:1 | – |
 | `color.danger.default` | `#B42318` | `#FF8A80` | Fehlertext, Fehlersymbol, Rand eines fehlerhaften Felds | `ErrorText` |
 
 Regeln:
@@ -264,7 +265,8 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 - Die Suche läuft im Hintergrund, und die Trefferliste füllt sich nach und nach. Die Zusammenfassung zeigt dabei „Suche läuft …“, am Ende zum Beispiel „5 Treffer, alle auf Seite 3“ oder „12 Treffer auf 4 Seiten“.
 - Jeder Eintrag zeigt eine Seitenmarke in `type.mono` und einen Textausschnitt mit markiertem Treffer. Der aktuelle Treffer hat eine `accent.subtle`-Fläche und links eine 2 px breite Kante in `accent.default`.
 - Enter springt zum nächsten Treffer, Umschalt+Enter zum vorherigen, ein Klick zum gewählten.
-- Auf der Seite sind alle Treffer mit `search.hit` hinterlegt, der aktuelle mit `search.current` und einem 1,5 px Rahmen.
+- Auf der Seite sind alle Treffer mit `search.hit` hinterlegt, der aktuelle mit `search.current` und einem 1,5 px Rahmen in `search.on`. „Hinterlegt“ heißt: Die Farbe wird mit dem Seitenbild multipliziert (wie ein Textmarker), der Seitentext bleibt also schwarz lesbar.
+- Ein Sprung zu einem Treffer scrollt nur, wenn dessen Rechteck nicht ganz im sichtbaren Bereich liegt: Dann steht die Mitte des Rechtecks in der Mitte des Bereichs (soweit der Inhalt es zulässt), seitwärts wird nur so weit gescrollt wie nötig.
 - Esc im Suchfeld beendet die Suche: Die Markierungen verschwinden, und das Panel zeigt wieder, was vorher offen war.
 
 ### 7.5 Dokumentbereich, Laden und Zoom

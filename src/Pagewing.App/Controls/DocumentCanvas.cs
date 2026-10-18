@@ -1,8 +1,10 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Pagewing.App.Measurement;
 using Pagewing.App.Resources;
@@ -52,9 +54,34 @@ internal sealed class DocumentCanvas : Control
     public static readonly StyledProperty<CornerRadius> CornerRadiusProperty =
         AvaloniaProperty.Register<DocumentCanvas, CornerRadius>(nameof(CornerRadius));
 
+    public static readonly StyledProperty<IBrush?> SearchHitBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(SearchHitBrush));
+
+    public static readonly StyledProperty<IBrush?> SearchCurrentBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(SearchCurrentBrush));
+
+    public static readonly StyledProperty<IBrush?> SearchOnBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(SearchOnBrush));
+
+    public static readonly StyledProperty<IBrush?> SelectionBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(SelectionBrush));
+
+    /// <summary>Width of the frame around the current search match (design system 7.4).</summary>
+    private const double CurrentFrameThickness = 1.5;
+
     private static readonly RenderOptions PreviewOptions = new() { BitmapInterpolationMode = BitmapInterpolationMode.MediumQuality };
     // Sharp tiles are drawn 1:1 onto device pixels, so nothing may be interpolated (bilinear would soften them).
     private static readonly RenderOptions SharpOptions = new() { BitmapInterpolationMode = BitmapInterpolationMode.None };
+
+    // The yellow of a search match lies behind the text, as a marker pen does: multiplied with the page, so the black
+    // text stays black on it, whatever the page image is.
+    private static readonly RenderOptions MultiplyOptions = new()
+    {
+        BitmapBlendingMode = BitmapBlendingMode.Multiply,
+        BitmapInterpolationMode = BitmapInterpolationMode.None,
+    };
+
+    private static readonly HighlightKind[] DrawingOrder = [HighlightKind.Selection, HighlightKind.SearchHit, HighlightKind.SearchCurrent];
 
     private readonly TileBitmaps _bitmaps = new();
     private readonly PageShadowPainter _shadows = new();
@@ -67,10 +94,19 @@ internal sealed class DocumentCanvas : Control
     private HashSet<TileKey> _wanted = [];
     private HashSet<TileKey> _shown = [];
 
+    // The marks on the pages, grouped by page once per SetHighlights and sorted in drawing order; Render only looks up
+    // the visible pages.
+    private Dictionary<int, PageHighlight[]> _highlights = [];
+    private readonly List<(PageHighlight Highlight, Rect Destination)> _lastHighlightDestinations = [];
+    private Pen? _currentFrame;
+    private WriteableBitmap? _hitFill;
+    private WriteableBitmap? _currentFill;
+
     static DocumentCanvas()
     {
         AffectsRender<DocumentCanvas>(
-            PlaceholderBrushProperty, PlaceholderBorderBrushProperty, PlaceholderTextBrushProperty, PageShadowProperty, CornerRadiusProperty);
+            PlaceholderBrushProperty, PlaceholderBorderBrushProperty, PlaceholderTextBrushProperty, PageShadowProperty, CornerRadiusProperty,
+            SearchHitBrushProperty, SearchCurrentBrushProperty, SearchOnBrushProperty, SelectionBrushProperty);
         IsHitTestVisibleProperty.OverrideDefaultValue<DocumentCanvas>(false);
     }
 
@@ -124,6 +160,37 @@ internal sealed class DocumentCanvas : Control
         set => SetValue(CornerRadiusProperty, value);
     }
 
+    /// <summary>Fill of a search match (<c>Pw.Brush.Search.Hit</c>).</summary>
+    public IBrush? SearchHitBrush
+    {
+        get => GetValue(SearchHitBrushProperty);
+        set => SetValue(SearchHitBrushProperty, value);
+    }
+
+    /// <summary>Fill of the current search match (<c>Pw.Brush.Search.Current</c>).</summary>
+    public IBrush? SearchCurrentBrush
+    {
+        get => GetValue(SearchCurrentBrushProperty);
+        set => SetValue(SearchCurrentBrushProperty, value);
+    }
+
+    /// <summary>Frame of the current search match (<c>Pw.Brush.Search.On</c>), so the current match differs not by colour alone.</summary>
+    public IBrush? SearchOnBrush
+    {
+        get => GetValue(SearchOnBrushProperty);
+        set => SetValue(SearchOnBrushProperty, value);
+    }
+
+    /// <summary>Overlay of selected text (<c>Pw.Brush.Selection.Page</c>, translucent).</summary>
+    public IBrush? SelectionBrush
+    {
+        get => GetValue(SelectionBrushProperty);
+        set => SetValue(SelectionBrushProperty, value);
+    }
+
+    /// <summary>Gets where the last frame drew the highlights, in canvas coordinates (for tests).</summary>
+    internal IReadOnlyList<(PageHighlight Highlight, Rect Destination)> LastHighlightDestinations => _lastHighlightDestinations;
+
     /// <summary>Gets the requests of the last plan, most important first (for tests).</summary>
     internal IReadOnlyList<RenderRequest> LastRequests => _lastRequests;
 
@@ -169,6 +236,10 @@ internal sealed class DocumentCanvas : Control
         _shown = [];
         _failedPages.Clear();
         _bitmaps.Clear();
+
+        // The marks belong to the document that goes.
+        _highlights = [];
+        _lastHighlightDestinations.Clear();
         if (source is not null)
         {
             source.Scheduler.TileReady -= source.OnTileReady;
@@ -237,6 +308,58 @@ internal sealed class DocumentCanvas : Control
         InvalidateVisual();
     }
 
+    /// <summary>
+    /// Replaces all highlights (search matches and the selection together): groups them by page once, in drawing order
+    /// (the selection first, the current match last, so its frame stays on top), and redraws.
+    /// </summary>
+    internal void SetHighlights(IReadOnlyList<PageHighlight> highlights)
+    {
+        ArgumentNullException.ThrowIfNull(highlights);
+        if (highlights.Count == 0)
+        {
+            if (_highlights.Count > 0)
+            {
+                _highlights = [];
+                InvalidateVisual();
+            }
+
+            return;
+        }
+
+        var grouped = new Dictionary<int, List<PageHighlight>>();
+        foreach (var highlight in highlights)
+        {
+            if (!grouped.TryGetValue(highlight.Page, out var list))
+            {
+                grouped[highlight.Page] = list = [];
+            }
+
+            list.Add(highlight);
+        }
+
+        var ordered = new Dictionary<int, PageHighlight[]>(grouped.Count);
+        foreach (var (page, list) in grouped)
+        {
+            var array = new PageHighlight[list.Count];
+            var next = 0;
+            foreach (var kind in DrawingOrder)
+            {
+                foreach (var highlight in list)
+                {
+                    if (highlight.Kind == kind)
+                    {
+                        array[next++] = highlight;
+                    }
+                }
+            }
+
+            ordered[page] = array;
+        }
+
+        _highlights = ordered;
+        InvalidateVisual();
+    }
+
     /// <summary>Converts a point of the viewport (DIPs) to a page and a position on it in PDF points, or <see langword="null"/> off the pages.</summary>
     internal (int Page, Point Position)? PagePointAt(Point viewportPoint)
     {
@@ -279,6 +402,7 @@ internal sealed class DocumentCanvas : Control
         var drewFirstSharpTile = false;
         var drewSharpTile = false;
         _lastSharpDestinations.Clear();
+        _lastHighlightDestinations.Clear();
 
         using (context.PushClip(new RoundedRect(new Rect(Bounds.Size), CornerRadius)))
         {
@@ -335,6 +459,12 @@ internal sealed class DocumentCanvas : Control
                         drewFirstSharpTile |= page == 0;
                         drewSharpTile = true;
                     }
+
+                    // On the page image, so the marks stay glued to the text at every zoom (and on the snapped page rectangle).
+                    if (_highlights.Count > 0 && _highlights.TryGetValue(page, out var marks))
+                    {
+                        DrawHighlights(context, marks, pageRect, dipsPerPoint);
+                    }
                 }
             }
         }
@@ -377,6 +507,7 @@ internal sealed class DocumentCanvas : Control
         base.OnDetachedFromVisualTree(e);
         Detach();
         _shadows.Clear();
+        ClearFills();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -387,6 +518,96 @@ internal sealed class DocumentCanvas : Control
             // Another theme variant: the images of the old shadow are not needed any more.
             _shadows.Clear();
         }
+        else if (change.Property == SearchOnBrushProperty)
+        {
+            _currentFrame = null;
+        }
+        else if (change.Property == SearchHitBrushProperty || change.Property == SearchCurrentBrushProperty)
+        {
+            // Another theme variant or colour: the one-pixel images are made again from the new brushes.
+            ClearFills();
+        }
+    }
+
+    /// <summary>
+    /// Draws the marks of one page in canvas coordinates: a rectangle in page points becomes DIPs from the (snapped)
+    /// page origin. A search match is multiplied with the page, so its text stays; the selection is translucent.
+    /// </summary>
+    private void DrawHighlights(DrawingContext context, PageHighlight[] marks, Rect pageRect, double dipsPerPoint)
+    {
+        foreach (var mark in marks)
+        {
+            var rect = mark.Rect;
+            var destination = new Rect(
+                pageRect.X + (rect.Left * dipsPerPoint),
+                pageRect.Y + (rect.Top * dipsPerPoint),
+                rect.Width * dipsPerPoint,
+                rect.Height * dipsPerPoint);
+            if (!double.IsFinite(destination.X + destination.Y + destination.Width + destination.Height))
+            {
+                continue;
+            }
+
+            switch (mark.Kind)
+            {
+                case HighlightKind.SearchHit:
+                    FillMultiplied(context, SearchHitBrush, ref _hitFill, destination);
+                    break;
+                case HighlightKind.SearchCurrent:
+                    FillMultiplied(context, SearchCurrentBrush, ref _currentFill, destination);
+                    if (SearchOnBrush is { } on)
+                    {
+                        context.DrawRectangle(null, _currentFrame ??= new Pen(on, CurrentFrameThickness), destination);
+                    }
+
+                    break;
+                default:
+                    context.DrawRectangle(SelectionBrush, null, destination);
+                    break;
+            }
+
+            _lastHighlightDestinations.Add((mark, destination));
+        }
+    }
+
+    /// <summary>
+    /// Fills <paramref name="destination"/> with a colour multiplied with what is below (the page). Avalonia applies a
+    /// blend mode to images only, not to the fill of a rectangle, so the colour is a one-pixel image stretched over the
+    /// rectangle (made once per brush). A brush that is not a plain colour fills normally.
+    /// </summary>
+    private static void FillMultiplied(DrawingContext context, IBrush? brush, ref WriteableBitmap? fill, Rect destination)
+    {
+        fill ??= brush is ISolidColorBrush solid ? CreateFill(solid.Color) : null;
+        if (fill is null)
+        {
+            context.DrawRectangle(brush, null, destination);
+            return;
+        }
+
+        using (context.PushRenderOptions(MultiplyOptions))
+        {
+            context.DrawImage(fill, new Rect(fill.Size), destination);
+        }
+    }
+
+    private static WriteableBitmap CreateFill(Color color)
+    {
+        var bitmap = new WriteableBitmap(new PixelSize(1, 1), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        using var pixels = bitmap.Lock();
+
+        // Premultiplied alpha, blue first.
+        static byte Scale(byte channel, byte alpha) => (byte)((channel * alpha / 255) & 0xFF);
+        byte[] bgra = [Scale(color.B, color.A), Scale(color.G, color.A), Scale(color.R, color.A), color.A];
+        Marshal.Copy(bgra, 0, pixels.Address, bgra.Length);
+        return bitmap;
+    }
+
+    private void ClearFills()
+    {
+        _hitFill?.Dispose();
+        _currentFill?.Dispose();
+        _hitFill = null;
+        _currentFill = null;
     }
 
     private double Snap(double value) => Math.Round(value * _renderScaling) / _renderScaling;

@@ -24,7 +24,11 @@
                         PlaceholderBrush="{DynamicResource Pw.Brush.Surface.Raised}"
                         PlaceholderBorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
                         PlaceholderTextBrush="{DynamicResource Pw.Brush.Text.Secondary}"
-                        PageShadow="{DynamicResource Pw.Shadow.Page}" />
+                        PageShadow="{DynamicResource Pw.Shadow.Page}"
+                        SearchHitBrush="{DynamicResource Pw.Brush.Search.Hit}"
+                        SearchCurrentBrush="{DynamicResource Pw.Brush.Search.Current}"
+                        SearchOnBrush="{DynamicResource Pw.Brush.Search.On}"
+                        SelectionBrush="{DynamicResource Pw.Brush.Selection.Page}" />
     <ScrollViewer Name="Scroller"
                   Background="Transparent"
                   HorizontalScrollBarVisibility="Auto"
