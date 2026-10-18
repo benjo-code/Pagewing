@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Pagewing.App.Controls;
 using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
 using Pagewing.Core.Viewing;
@@ -79,6 +80,7 @@ public sealed partial class StatusBar
     /// <summary>Fills the layout menu when it opens: the four layouts, the current one with a check mark on the left.</summary>
     private void OnLayoutMenuOpening(object? sender, EventArgs e)
     {
+        MenuKeyboardFocus.EnsureRegistered();
         _layoutMenuEntries.Clear();
         if (DataContext is not TabViewModel tab)
         {

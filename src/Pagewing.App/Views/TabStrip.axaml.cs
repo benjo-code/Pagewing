@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using Pagewing.App.Controls;
 using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
 
@@ -310,6 +311,7 @@ public sealed partial class TabStrip : UserControl
         }
 
         items.Add(new MenuItem { Header = Strings.CloseTabMenu, Command = _viewModel.CloseTabCommand, CommandParameter = tab });
+        MenuKeyboardFocus.EnsureRegistered();
         var menu = new ContextMenu { ItemsSource = items };
         menu.Open(ViewOf(tab));
         e.Handled = true;
@@ -411,6 +413,7 @@ public sealed partial class TabStrip : UserControl
     /// </summary>
     private void OnAllTabsMenuOpening(object? sender, EventArgs e)
     {
+        MenuKeyboardFocus.EnsureRegistered();
         _menuEntries.Clear();
         if (_viewModel is not null)
         {

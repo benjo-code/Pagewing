@@ -337,6 +337,7 @@ Erledigt:
 
 - „Dokumentinfos“ (7.6) in M4: Popup über der Statusleiste (`Docs/DECISIONS.md`, Einträge „Dokumentinfos: beim Öffnen lesen …“ und „Dokumentinfos: Seitenformat-Namen …“).
 - Tabs mit Umsortieren, Kontextmenü und Überlauf (7.2), Aktionsleiste mit „Seiten“ und „Inhalt“ (7.3), Zoom-Menü, Zoom-Modi und Layout-Knopf (7.5) in M4; die Belegung der Icons (5.5) ist nachgezogen.
+- Menüs (Zoom, Layout, Tab-Kontextmenü, „Alle Tabs“) in M4 mit `surface.raised`, 1 px `border.subtle` und `radius.overlay` (5.1, 5.3), Einträge mit `surface.hover` und 2 px `focus.ring` bei Tastaturbedienung (`Docs/DECISIONS.md`, Eintrag „Menüs: Stile über dem Fluent-Flyout …“). Sichtprüfung der Headless-Aufnahmen hell und dunkel, Deutsch und Englisch: Im dunklen Theme ist der Rand `border.subtle` schwach, die Fläche `surface.raised` hebt das Menü aber vom Hintergrund ab.
 
 - Startkosten der eingebetteten Schrift gegenüber der Systemschrift (Geist und Geist Mono): gemessen, Geist bleibt (Warmstart +4 ms, Regel höchstens +15 ms). `Docs/DECISIONS.md`, Eintrag „Schrift-Entscheidung nach Messung (M3) …“.
 - Fluent-Palette: übrige Rollen sind auf das nächste Token gesetzt (`Docs/DECISIONS.md`, Eintrag „Design-Tokens, Schrift und Icons in Avalonia umgesetzt (M3)“). Sichtvergleich der Headless-Aufnahmen (Startbildschirm, Passwort- und Fehlerkarte, Dokumentansicht; hell und dunkel; Deutsch und Englisch) gegen Tokens und Maße dieser Spec nach Augenmaß: keine erkennbare Abweichung. Offen bleibt der Vergleich mit dem Mockup im Artifact und von Hover-, Druck- und Fokuszuständen am echten Bildschirm.
@@ -356,7 +357,7 @@ Offen (wie zu prüfen):
 - Linux: Das zweite Fenster zeigt das App-Icon (manuell auf einem Linux-Desktop).
 - Schatten des Popups „Dokumentinfos“ (`Popup.WindowManagerAddShadowHint`) auf echter Hardware unter Windows und Linux ansehen.
 - Einzelseite: Eine Touchpad-Geste mit Trägheit kann mehrere Seiten hintereinander blättern, wenn die Seite ganz in den Viewport passt; auf echter Hardware prüfen, ob eine Sperrzeit nötig ist.
-- Menüs (Zoom, Layout, Tab-Kontextmenü, „Alle Tabs“) nutzen noch das Fluent-Flyout, nicht `surface.raised`, `border.subtle` und `radius.overlay` aus 5.1 und 5.3; im dunklen Theme ist ihr Rand kaum zu sehen. Das Popup „Dokumentinfos“ öffnet ohne die 150-ms-Einblendung aus 5.6.
+- Das Popup „Dokumentinfos“ öffnet ohne die 150-ms-Einblendung aus 5.6.
 
 Spätere Milestones (Zuordnung in der Roadmap, Abschnitt „Scope-Änderungen“, Eintrag vom 2026-10-17):
 

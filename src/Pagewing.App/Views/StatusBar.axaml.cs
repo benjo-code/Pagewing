@@ -106,6 +106,7 @@ public sealed partial class StatusBar : UserControl
     /// </summary>
     private void OnZoomMenuOpening(object? sender, EventArgs e)
     {
+        MenuKeyboardFocus.EnsureRegistered();
         _zoomMenuEntries.Clear();
         if (DataContext is not TabViewModel tab)
         {
