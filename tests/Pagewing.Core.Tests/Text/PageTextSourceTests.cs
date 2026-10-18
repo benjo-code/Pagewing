@@ -207,9 +207,19 @@ public sealed class PageTextSourceTests
     {
         var ct = TestContext.Current.CancellationToken;
         await using var document = await engine.OpenAsync(TestData.Pdf("text-dense.pdf"), cancellationToken: ct);
-        var source = new PageTextSource(document);
-        var raised = 0;
-        source.Loaded += _ => Interlocked.Increment(ref raised);
+        var pageOne = await document.GetPageTextAsync(1, ct);
+
+        // Page 1 is held back until the test lets it go, so Dispose always comes while that load is running.
+        var gate = new TaskCompletionSource<PageText>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var source = new PageTextSource(document, (page, priority) => page == 1 ? gate.Task : document.GetPageTextAsync(page, priority, CancellationToken.None));
+        var raised = new List<int>();
+        source.Loaded += page =>
+        {
+            lock (raised)
+            {
+                raised.Add(page);
+            }
+        };
         await source.GetAsync(0, cancellationToken: ct);
 
         var running = source.GetAsync(1, cancellationToken: ct);
@@ -224,9 +234,13 @@ public sealed class PageTextSourceTests
         Assert.Equal(0, source.Count);
 
         // The caller that already waits still gets its text; it is not cached and raises nothing.
-        Assert.Equal(1, (await running.WaitAsync(Due, ct)).PageIndex);
+        gate.SetResult(pageOne);
+        Assert.Same(pageOne, await running.WaitAsync(Due, ct));
         Assert.Equal(0, source.Count);
-        Assert.Equal(1, Volatile.Read(ref raised));
+        lock (raised)
+        {
+            Assert.Equal([0], raised);
+        }
     }
 
     [Fact]

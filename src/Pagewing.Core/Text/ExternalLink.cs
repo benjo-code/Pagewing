@@ -42,7 +42,10 @@ public sealed class ExternalLink
         Warning = warning;
     }
 
-    /// <summary>Gets the address as given, without surrounding white space.</summary>
+    /// <summary>
+    /// Gets the address as given, without surrounding white space. This exact string is displayed in the confirmation
+    /// and is the only string that may be passed to the system launcher.
+    /// </summary>
     public string Url { get; }
 
     /// <summary>Gets the scheme in lower case: <c>http</c>, <c>https</c> or <c>mailto</c>.</summary>
@@ -60,10 +63,13 @@ public sealed class ExternalLink
     /// <summary>
     /// Accepts only absolute <c>http</c>, <c>https</c> and <c>mailto</c> addresses, not longer than
     /// <see cref="MaxLength"/> after trimming white space. Rejected: an address with a control, invisible or
-    /// direction-changing character (category Cc or Cf, line and paragraph separators, white space other than a plain
-    /// space), with a backslash (UNC and "https:\\host" forms), a web address that does not start with
-    /// <c>scheme://host</c>, one the .NET parser rejects, or a mail address with nothing after <c>mailto:</c>. The
-    /// scheme is compared case-insensitively.
+    /// direction-changing character (category Cc or Cf, line and paragraph separators, any white space), with a
+    /// character that is not valid unescaped in an address (<c>"</c>, <c>&lt;</c>, <c>&gt;</c>, <c>`</c>, <c>{</c>, <c>|</c>,
+    /// <c>}</c>, <c>^</c>) or a backslash (UNC forms), so nothing can break out of the quoting of a launcher; a web
+    /// address that does not start with <c>scheme://host</c>, one the .NET parser rejects, or a mail address with
+    /// nothing after <c>mailto:</c>. A mail address may only have the fields <c>to</c>, <c>cc</c>, <c>bcc</c>,
+    /// <c>subject</c> and <c>body</c> (so no <c>attach</c>), and no line break or NUL in a field other than <c>body</c>.
+    /// The scheme is compared case-insensitively.
     /// </summary>
     /// <param name="url">The address; may be <see langword="null"/>.</param>
     /// <param name="link">The parsed address, or <see langword="null"/>.</param>
@@ -161,9 +167,11 @@ public sealed class ExternalLink
     }
 
     /// <summary>
-    /// Reads the domains of the recipients of a mail address (the part before "?", percent-decoded, separated by
-    /// "," or ";"). The first domain is the host; a Punycode label in any of them counts. Fails if the decoded
-    /// recipients contain a control character, such as a line break smuggled in as "%0A".
+    /// Checks the fields of a mail address and reads the domains of its recipients (the part before "?" and the
+    /// values of <c>to</c>, <c>cc</c> and <c>bcc</c>, percent-decoded, separated by "," or ";"). The first domain is the
+    /// host; a Punycode label in any of them counts. Fails for a field other than <c>to</c>, <c>cc</c>, <c>bcc</c>,
+    /// <c>subject</c> and <c>body</c> (<c>attach</c> would send a local file), for a line break or NUL in any field but
+    /// <c>body</c> (header injection, for example "%0D%0ABcc:"), and for a recipient with a forbidden character.
     /// </summary>
     private static bool TryReadMailDomains(string text, out string host, out string idnHost, out bool punycode)
     {
@@ -171,38 +179,79 @@ public sealed class ExternalLink
         idnHost = string.Empty;
         punycode = false;
         var address = text[Mailto.Length..];
+        var fragment = address.IndexOf('#', StringComparison.Ordinal);
+        if (fragment >= 0)
+        {
+            address = address[..fragment];
+        }
+
+        var lists = new List<string>();
         var query = address.IndexOf('?', StringComparison.Ordinal);
         if (query >= 0)
         {
+            foreach (var field in address[(query + 1)..].Split('&'))
+            {
+                if (field.Length == 0)
+                {
+                    continue;
+                }
+
+                var equals = field.IndexOf('=', StringComparison.Ordinal);
+                var name = Uri.UnescapeDataString(equals < 0 ? field : field[..equals]).ToLowerInvariant();
+                var value = equals < 0 ? string.Empty : Uri.UnescapeDataString(field[(equals + 1)..]);
+                switch (name)
+                {
+                    case "to":
+                    case "cc":
+                    case "bcc":
+                        lists.Add(value);
+                        break;
+                    case "subject":
+                        break;
+                    case "body":
+                        continue;
+                    default:
+                        return false;
+                }
+
+                if (value.AsSpan().IndexOfAny('\r', '\n', '\0') >= 0)
+                {
+                    return false;
+                }
+            }
+
             address = address[..query];
         }
 
-        address = Uri.UnescapeDataString(address);
-        if (HasForbiddenCharacter(address))
+        lists.Insert(0, Uri.UnescapeDataString(address));
+        foreach (var list in lists)
         {
-            return false;
-        }
-
-        foreach (var recipient in address.Split(',', ';'))
-        {
-            var at = recipient.LastIndexOf('@');
-            if (at < 0)
+            if (HasForbiddenCharacter(list))
             {
-                continue;
+                return false;
             }
 
-            var domain = recipient[(at + 1)..].Trim().ToLowerInvariant();
-            if (domain.Length == 0)
+            foreach (var recipient in list.Split(',', ';'))
             {
-                continue;
-            }
+                var at = recipient.LastIndexOf('@');
+                if (at < 0)
+                {
+                    continue;
+                }
 
-            var ascii = AsciiOf(domain);
-            punycode |= HasPunycodeLabel(ascii);
-            if (host.Length == 0)
-            {
-                host = domain;
-                idnHost = ascii;
+                var domain = recipient[(at + 1)..].ToLowerInvariant();
+                if (domain.Length == 0)
+                {
+                    continue;
+                }
+
+                var ascii = AsciiOf(domain);
+                punycode |= HasPunycodeLabel(ascii);
+                if (host.Length == 0)
+                {
+                    host = domain;
+                    idnHost = ascii;
+                }
             }
         }
 
@@ -225,7 +274,7 @@ public sealed class ExternalLink
     {
         foreach (var rune in text.EnumerateRunes())
         {
-            if (rune.Value == '\\')
+            if (rune.Value is '\\' or ' ' or '"' or '<' or '>' or '`' or '{' or '|' or '}' or '^')
             {
                 return true;
             }
@@ -239,7 +288,7 @@ public sealed class ExternalLink
                     return true;
             }
 
-            if (Rune.IsWhiteSpace(rune) && rune.Value != ' ')
+            if (Rune.IsWhiteSpace(rune))
             {
                 return true;
             }

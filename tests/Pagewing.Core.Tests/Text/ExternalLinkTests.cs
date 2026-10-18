@@ -93,6 +93,86 @@ public sealed class ExternalLinkTests
         Assert.Equal("mailto", mail.Scheme);
     }
 
+    [Theory]
+    [InlineData("https://example.org/\" --new-window \"x")]
+    [InlineData("https://example.org/a b")]
+    [InlineData("https://example.org/?q=\"x")]
+    [InlineData("https://example.org/?q=a b")]
+    [InlineData("https://example.org/#\"x")]
+    [InlineData("https://exa mple.org/")]
+    [InlineData("https://example.org/a\"b")]
+    [InlineData("https://example.org/a<b")]
+    [InlineData("https://example.org/a>b")]
+    [InlineData("https://example.org/a`b")]
+    [InlineData("https://example.org/a{b")]
+    [InlineData("https://example.org/a|b")]
+    [InlineData("https://example.org/a}b")]
+    [InlineData("https://example.org/a^b")]
+    [InlineData("https://example.org/a\u00A0b")]
+    [InlineData("https://example.org/a\u3000b")]
+    [InlineData("mailto:a@b.c?subject=\" /a \"C:/Windows/win.ini")]
+    [InlineData("mailto:a@b.c?subject=a b")]
+    [InlineData("mailto:a b@c.d")]
+    [InlineData("mailto:a@b.c?body=\"x")]
+    [InlineData("mailto:a@b.c?body=a<b")]
+    public void CharactersThatBreakOutOfALauncherAreRejectedEverywhere(string url)
+    {
+        Assert.False(ExternalLink.TryParse(url, out _));
+    }
+
+    [Theory]
+    [InlineData("mailto:a@b.c?attach=/etc/passwd")]
+    [InlineData("mailto:?attach=/etc/passwd")]
+    [InlineData("mailto:a@b.c?attachment=file:///etc/passwd")]
+    [InlineData("mailto:a@b.c?cc=x%0D%0ABcc:evil@e.f")]
+    [InlineData("mailto:a@b.c?subject=Hi&attach=/etc/passwd")]
+    [InlineData("mailto:a@b.c?ATTACH=/etc/passwd")]
+    [InlineData("mailto:a@b.c?%61ttach=/etc/passwd")]
+    [InlineData("mailto:a@b.c?x-header=1")]
+    [InlineData("mailto:a@b.c?in-reply-to=x")]
+    [InlineData("mailto:a@b.c?subject=Hi%0D%0ABcc:evil@e.f")]
+    [InlineData("mailto:a@b.c?subject=Hi%0AX")]
+    [InlineData("mailto:a@b.c?subject=Hi%00")]
+    [InlineData("mailto:a@b.c?to=x%0Ay@z.d")]
+    [InlineData("mailto:a@b.c?bcc=x%0Dy@z.d")]
+    [InlineData("mailto:a@b.c?cc=%22x%22@z.d")]
+    [InlineData("mailto:a@b.c?cc=x@z.d%20,y@z.d")]
+    [InlineData("mailto:a@b.c?body=ok&attach=1")]
+    [InlineData("mailto:a@b.c?attach")]
+    public void MailFieldsOtherThanTheKnownOnesAreRejected(string url)
+    {
+        Assert.False(ExternalLink.TryParse(url, out _));
+    }
+
+    [Theory]
+    [InlineData("mailto:a@b.c?subject=Hi%20there&body=Line1%0D%0ALine2")]
+    [InlineData("mailto:a@b.c?SUBJECT=Hi&Body=x")]
+    [InlineData("mailto:a@b.c?cc=d@e.f&bcc=g@h.i&subject=S")]
+    [InlineData("mailto:?to=a@b.c&subject=Hi")]
+    [InlineData("mailto:a@b.c?body=a%0Ab%00c")]
+    [InlineData("mailto:a@b.c?subject=a&&body=b&")]
+    [InlineData("mailto:a@b.c?subject=Hi#frag")]
+    public void MailAddressesWithKnownFieldsAreAccepted(string url)
+    {
+        Assert.True(ExternalLink.TryParse(url, out var link));
+        Assert.Equal(url, link.Url);
+    }
+
+    [Fact]
+    public void RecipientsInMailFieldsAreCheckedLikeTheAddressPart()
+    {
+        Assert.True(ExternalLink.TryParse("mailto:?to=me@xn--pple-43d.com", out var puny));
+        Assert.Equal(ExternalLinkWarning.Punycode, puny.Warning);
+        Assert.Equal("xn--pple-43d.com", puny.Host);
+
+        Assert.True(ExternalLink.TryParse("mailto:a@example.org?cc=you@xn--pple-43d.com", out var cc));
+        Assert.Equal(ExternalLinkWarning.Punycode, cc.Warning);
+        Assert.Equal("example.org", cc.Host);
+
+        Assert.True(ExternalLink.TryParse("mailto:a@example.org?bcc=x@y.z,u@xn--pple-43d.com", out var several));
+        Assert.Equal(ExternalLinkWarning.Punycode, several.Warning);
+    }
+
     [Fact]
     public void UserInfoAndPunycodeAreFlagged()
     {

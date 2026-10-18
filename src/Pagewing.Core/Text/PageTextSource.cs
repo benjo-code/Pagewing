@@ -24,7 +24,7 @@ public sealed class PageTextSource : IDisposable
     /// <summary>The number of pages whose text is kept.</summary>
     public const int MaxCachedPages = 32;
 
-    private readonly PdfDocument document;
+    private readonly Func<int, PdfPriority, Task<PageText>> read;
 
     // Guards everything below. Never held while the document is called back into or an event is raised.
     private readonly object gate = new();
@@ -35,9 +35,15 @@ public sealed class PageTextSource : IDisposable
 
     /// <summary>Creates the source for <paramref name="document"/>. The source does not own the document; dispose it first.</summary>
     internal PageTextSource(PdfDocument document)
+        : this(document, null)
+    {
+    }
+
+    /// <summary>Creates the source with its own way to read a page (for tests); <see langword="null"/> reads from <paramref name="document"/>.</summary>
+    internal PageTextSource(PdfDocument document, Func<int, PdfPriority, Task<PageText>>? read)
     {
         ArgumentNullException.ThrowIfNull(document);
-        this.document = document;
+        this.read = read ?? ((page, priority) => document.GetPageTextAsync(page, priority, CancellationToken.None));
     }
 
     /// <summary>
@@ -174,7 +180,7 @@ public sealed class PageTextSource : IDisposable
         {
             // Without the token of a caller: the load is shared. The continuation runs on a pool thread because
             // the PDFium thread completes its tasks asynchronously.
-            text = await document.GetPageTextAsync(pageIndex, priority, CancellationToken.None).ConfigureAwait(false);
+            text = await read(pageIndex, priority).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
