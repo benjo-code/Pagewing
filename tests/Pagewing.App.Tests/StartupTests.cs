@@ -118,6 +118,66 @@ public sealed class StartupTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task MoreFilesOpenAfterTheFirstSharpPageWhenTheUserLeftPageOneBeforeItsTile()
+    {
+        var more = new[] { TestData.Pdf("text-basic.pdf"), TestData.Pdf("vector-shapes.pdf") };
+
+        // No fallback: only the first sharp page may start the opening here. The canvas draws nothing while it is hidden.
+        var (workspace, viewModel, first) = StartLikeProgram(
+            TestData.Pdf("thousand-pages.pdf"), more, fallbackDelay: System.Threading.Timeout.InfiniteTimeSpan, hideCanvas: true);
+        var view = ViewOf(workspace, viewModel);
+        var log = new List<string>();
+        view.FirstSharpTileDrawn += () => log.Add("page-1-tile");
+        first.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(TabViewModel.HasShownSharpPage) && first.HasShownSharpPage)
+            {
+                log.Add("sharp-page");
+            }
+        };
+        viewModel.Tabs.CollectionChanged += (_, _) => log.Add("tab");
+
+        // The user jumps far away before page 1 was drawn; then the canvas draws again.
+        await WaitUntilAsync(workspace, () => first.IsReady && view.Layout is not null);
+        Assert.Empty(log);
+        first.GoToPage(500);
+        view.Canvas.IsVisible = true;
+
+        await WaitUntilAsync(workspace, () => viewModel.Tabs.Count == 3);
+
+        // Page 1 never got its tile; the first sharp page (page 500) started the opening, behind the first tab.
+        Assert.Equal(["sharp-page", "tab", "tab"], log);
+        Assert.Equal(500, first.CurrentPage);
+        Assert.Same(first, viewModel.ActiveTab);
+        Assert.Equal(more, viewModel.Tabs.Skip(1).Select(tab => tab.Session.Path));
+    }
+
+    [AvaloniaFact]
+    public async Task MoreFilesOpenAfterTheFallbackDelayWhenNoSharpPageComes()
+    {
+        var more = new[] { TestData.Pdf("text-basic.pdf"), TestData.Pdf("vector-shapes.pdf") };
+        var (workspace, viewModel, first) = StartLikeProgram(TestData.Pdf("hello_world.pdf"), more, fallbackDelay: TimeSpan.FromMilliseconds(50), hideCanvas: true);
+        var view = ViewOf(workspace, viewModel);
+        var log = new List<string>();
+        view.FirstSharpTileDrawn += () => log.Add("page-1-tile");
+        first.PropertyChanged += (_, e) => log.Add(e.PropertyName == nameof(TabViewModel.HasShownSharpPage) && first.HasShownSharpPage ? "sharp-page" : "-");
+
+        // (Whether the first tab is Ready yet when the test subscribes depends on the speed of the machine.)
+        viewModel.Tabs.CollectionChanged += (_, _) => log.Add($"tab ready={first.State == ViewerState.Ready}");
+
+        // The hidden canvas never draws, so no sharp tile ever reaches the screen (as when page 1 fails to render).
+        await WaitUntilAsync(workspace, () => viewModel.Tabs.Count == 3);
+
+        // Only the delay after Ready can have started the opening: no sharp tile or page came, and the tabs came while
+        // the first tab was Ready, behind it.
+        Assert.Equal(["tab ready=True", "tab ready=True"], log.Where(entry => entry != "-"));
+        Assert.False(first.HasShownSharpPage);
+        Assert.Same(first, viewModel.ActiveTab);
+        Assert.True(first.IsActive);
+        Assert.Equal(more, viewModel.Tabs.Skip(1).Select(tab => tab.Session.Path));
+    }
+
+    [AvaloniaFact]
     public async Task MoreFilesOpenAtOnceWhenTheFirstFileFailsAndTheFailedTabStaysActive()
     {
         var missing = Path.Combine(Path.GetTempPath(), "pagewing-missing-first.pdf");
@@ -237,13 +297,20 @@ public sealed class StartupTests : IDisposable
     /// What <see cref="App"/> and <see cref="Program.Main"/> do with a command line: the early session of the first
     /// file becomes the first tab, and the window opens the other files behind it once the first sharp tile is drawn.
     /// </summary>
-    private (Workspace Workspace, MainViewModel ViewModel, TabViewModel First) StartLikeProgram(string firstPath, IReadOnlyList<string> more)
+    private (Workspace Workspace, MainViewModel ViewModel, TabViewModel First) StartLikeProgram(
+        string firstPath, IReadOnlyList<string> more, TimeSpan? fallbackDelay = null, bool hideCanvas = false)
     {
         var workspace = CreateWorkspace();
         var session = CreateSession();
         _ = session.OpenAsync(firstPath);
         var first = new TabViewModel(session);
-        var viewModel = workspace.OpenWindow(first, (window, model) => App.OpenMoreFilesAfterFirstSharpTile((MainWindow)window, model, first, more));
+        var delay = fallbackDelay ?? App.MoreFilesFallbackDelay;
+        var viewModel = workspace.OpenWindow(first, (window, model) =>
+        {
+            // Hidden before the window is shown: the canvas draws no page, so no sharp tile or page is reported.
+            ((MainWindow)window).DocumentView.Canvas.IsVisible = !hideCanvas;
+            App.OpenMoreFilesAfterFirstSharpTile((MainWindow)window, model, first, more, delay);
+        });
         return (workspace, viewModel, first);
     }
 

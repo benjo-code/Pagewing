@@ -120,7 +120,7 @@ public sealed class App : Application
 
         if (_startup?.MorePaths is { Count: > 0 } more && viewModel.ActiveTab is { } first)
         {
-            OpenMoreFilesAfterFirstSharpTile(window, viewModel, first, more);
+            OpenMoreFilesAfterFirstSharpTile(window, viewModel, first, more, MoreFilesFallbackDelay);
         }
 
         if (!OperatingSystem.IsWindows())
@@ -147,29 +147,51 @@ public sealed class App : Application
     }
 
     /// <summary>
+    /// How long the further files of the command line wait, from the moment the first file is
+    /// <see cref="ViewerState.Ready"/>, for its first sharp page before they open anyway (see
+    /// <see cref="OpenMoreFilesAfterFirstSharpTile"/>).
+    /// </summary>
+    internal static readonly TimeSpan MoreFilesFallbackDelay = TimeSpan.FromSeconds(3);
+
+    /// <summary>
     /// The further files of the command line (a first launch with several files; the first file opened early, in
     /// <see cref="Program.Main"/>) open as tabs behind the first one, so the startup path and the first document stay
-    /// as they are. They start once the first file has its first sharp tile (<see cref="DocumentView.FirstSharpTileDrawn"/>),
-    /// or at once when it will not get one: it failed or asks for a password, or its tab left the window. Then they open
-    /// in a job of <see cref="DispatcherPriority.Background"/> (<see cref="MainViewModel.OpenInBackgroundAsync"/>), which
-    /// never changes the active tab, so the document view is not touched. A window closed before the job runs opens
-    /// nothing.
+    /// as they are. They start once the first file has its first sharp tile of page 1
+    /// (<see cref="DocumentView.FirstSharpTileDrawn"/>) or of any other page (<see cref="TabViewModel.HasShownSharpPage"/>,
+    /// when the user left page 1 before it was drawn); at once when it will not get one (it failed or asks for a
+    /// password, or its tab left the window); and at the latest <paramref name="fallbackDelay"/> after it became
+    /// <see cref="ViewerState.Ready"/> (a page that fails to render). Then they open in a job of
+    /// <see cref="DispatcherPriority.Background"/> (<see cref="MainViewModel.OpenInBackgroundAsync"/>), which never
+    /// changes the active tab, so the document view is not touched. A window closed before that opens nothing.
     /// </summary>
-    internal static void OpenMoreFilesAfterFirstSharpTile(MainWindow window, MainViewModel viewModel, TabViewModel first, IReadOnlyList<string> paths)
+    /// <param name="fallbackDelay">
+    /// <see cref="MoreFilesFallbackDelay"/>, shorter in tests; <see cref="Timeout.InfiniteTimeSpan"/> waits without a limit.
+    /// </param>
+    internal static void OpenMoreFilesAfterFirstSharpTile(
+        MainWindow window, MainViewModel viewModel, TabViewModel first, IReadOnlyList<string> paths, TimeSpan fallbackDelay)
     {
-        var started = false;
+        var done = false;
+        IDisposable? fallback = null;
+
+        void Unhook()
+        {
+            done = true;
+            fallback?.Dispose();
+            fallback = null;
+            window.DocumentView.FirstSharpTileDrawn -= Start;
+            first.PropertyChanged -= OnFirstChanged;
+            viewModel.Tabs.CollectionChanged -= OnTabsChanged;
+            window.Closed -= OnWindowClosed;
+        }
 
         void Start()
         {
-            if (started)
+            if (done)
             {
                 return;
             }
 
-            started = true;
-            window.DocumentView.FirstSharpTileDrawn -= Start;
-            first.PropertyChanged -= OnFirstChanged;
-            viewModel.Tabs.CollectionChanged -= OnTabsChanged;
+            Unhook();
             Dispatcher.UIThread.Post(
                 () =>
                 {
@@ -181,20 +203,32 @@ public sealed class App : Application
                 DispatcherPriority.Background);
         }
 
-        // No sharp tile will come: the error card or the password prompt is what the first frame shows.
-        void StartUnlessLoadingOrReady()
+        void Check()
         {
-            if (first.State is not (ViewerState.Loading or ViewerState.Ready))
+            if (done)
             {
+                return;
+            }
+
+            if (first.State is not (ViewerState.Loading or ViewerState.Ready) || first.HasShownSharpPage)
+            {
+                // No sharp tile will come (the error card or the password prompt is what the first frame shows), or a
+                // sharp page of another page came first.
                 Start();
+            }
+            else if (first.State == ViewerState.Ready && fallback is null && fallbackDelay != Timeout.InfiniteTimeSpan)
+            {
+                // The document is open, so a sharp page should come soon; if none does (it fails to render), the files
+                // open after the delay anyway.
+                fallback = DispatcherTimer.RunOnce(Start, fallbackDelay, DispatcherPriority.Background);
             }
         }
 
         void OnFirstChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(TabViewModel.State))
+            if (e.PropertyName is nameof(TabViewModel.State) or nameof(TabViewModel.HasShownSharpPage))
             {
-                StartUnlessLoadingOrReady();
+                Check();
             }
         }
 
@@ -206,10 +240,13 @@ public sealed class App : Application
             }
         }
 
+        void OnWindowClosed(object? sender, EventArgs e) => Unhook();
+
         window.DocumentView.FirstSharpTileDrawn += Start;
         first.PropertyChanged += OnFirstChanged;
         viewModel.Tabs.CollectionChanged += OnTabsChanged;
-        StartUnlessLoadingOrReady();
+        window.Closed += OnWindowClosed;
+        Check();
     }
 
     /// <summary>
