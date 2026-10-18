@@ -134,7 +134,7 @@ public sealed class PageText
     /// across its reading direction (for a vertical line in x, otherwise in y), ties go to the nearer one along it. In
     /// that line the result is the position before the first character whose centre lies beyond the point in reading
     /// direction, else after the line's last character. Beyond all lines across the reading direction of the text (the
-    /// orientation of the first line of more than one character) the result is 0 before the first line and
+    /// orientation of the first line of more than one character; horizontal, left to right, if there is none) the result is 0 before the first line and
     /// <see cref="Chars"/>.Count after the last one, whatever the position along the lines: for upright text above and
     /// below all text; lines follow each other downwards for horizontal left-to-right text, to the left for vertical
     /// top-to-bottom text (rotation by 90 degrees), to the right for vertical bottom-to-top text.
@@ -156,7 +156,6 @@ public sealed class PageText
         Span<double> extentMax = stackalloc double[] { double.NegativeInfinity, double.NegativeInfinity };
         var dominant = -1;
         var dominantSign = 1;
-        var firstSegment = true;
 
         var start = 0;
         while (start < Chars.Count)
@@ -201,13 +200,12 @@ public sealed class PageText
                 }
 
                 var orientation = vertical ? 1 : 0;
-                if (dominant < 0 && (count > 1 || firstSegment))
+                if (dominant < 0 && count > 1)
                 {
                     dominant = orientation;
                     dominantSign = sign;
                 }
 
-                firstSegment = false;
                 var perpStart = vertical ? left : top;
                 var perpEnd = vertical ? right : bottom;
                 extentMin[orientation] = Math.Min(extentMin[orientation], perpStart);
@@ -237,6 +235,9 @@ public sealed class PageText
         {
             return 0;
         }
+
+        // Without a line of more than one character every line is horizontal, left to right.
+        dominant = Math.Max(dominant, 0);
 
         // Lines follow each other with the reading sign for horizontal text and against it for vertical text.
         var lineSign = dominant == 1 ? -dominantSign : dominantSign;

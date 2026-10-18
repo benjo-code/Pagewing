@@ -333,6 +333,23 @@ public sealed class PageTextTests
     }
 
     [Fact]
+    public void CaretAtIgnoresALeadingSingleCharSegmentWhenChoosingTheOrientation()
+    {
+        // A lone char (a page number, a bullet) comes first; the text after it runs top to bottom.
+        var chars = new List<TextChar>();
+        AddVerticalLine(chars, "x", 100, 20, down: true);
+        chars.Add(new TextChar('\r', new PageRect(100, 25, 100, 25), TextCharTraits.Generated, 1));
+        chars.Add(new TextChar('\n', new PageRect(100, 25, 100, 25), TextCharTraits.Generated, 1));
+        AddVerticalLine(chars, "abc", 86, 20, down: true); // indexes 3 to 5
+        var text = new PageText(0, 200, 200, chars, []);
+
+        Assert.Equal(3, text.CaretAt(90, 5)); // above the text but within the lines' x: before 'a', not 0
+        Assert.Equal(6, text.CaretAt(90, 100)); // after 'c'
+        Assert.Equal(6, text.CaretAt(0, 22)); // left of all lines of top-to-bottom text: after the last one
+        Assert.Equal(0, text.CaretAt(300, 22)); // right of them: before the first one
+    }
+
+    [Fact]
     public async Task CaretAtFollowsTheTextOfARotatedPage()
     {
         var ct = TestContext.Current.CancellationToken;
