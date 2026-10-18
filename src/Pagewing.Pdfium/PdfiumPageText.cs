@@ -48,7 +48,16 @@ internal static unsafe class PdfiumPageText
 
     /// <summary>Reads the characters <paramref name="start"/> to <paramref name="start"/> + <paramref name="count"/> - 1 with geometry and style.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The range is not inside the characters of the page.</exception>
-    public static PdfiumChar[] ReadChars(PdfiumPage page, PdfiumTextPage text, int start, int count)
+    public static PdfiumChar[] ReadChars(PdfiumPage page, PdfiumTextPage text, int start, int count) =>
+        ReadChars(page, text, start, count, style: true);
+
+    /// <summary>
+    /// Reads the characters <paramref name="start"/> to <paramref name="start"/> + <paramref name="count"/> - 1 with
+    /// geometry, and with style only if <paramref name="style"/> is set (otherwise the font size is 0 and Bold and
+    /// Italic are false).
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The range is not inside the characters of the page.</exception>
+    public static PdfiumChar[] ReadChars(PdfiumPage page, PdfiumTextPage text, int start, int count, bool style)
     {
         ArgumentNullException.ThrowIfNull(page);
         ArgumentNullException.ThrowIfNull(text);
@@ -59,7 +68,7 @@ internal static unsafe class PdfiumPageText
         ArgumentOutOfRangeException.ThrowIfNegative(count);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(start, total);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(count, total - start);
-        return Read(page, pageValue, textPage, start, count, geometry: true, style: true);
+        return Read(page, pageValue, textPage, start, count, geometry: true, style: style);
     }
 
     /// <summary>

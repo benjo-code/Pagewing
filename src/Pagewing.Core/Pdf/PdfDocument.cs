@@ -259,8 +259,13 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
                 var hits = new SearchHit[matches.Count];
                 for (var m = 0; m < hits.Length; m++)
                 {
+                    if ((m & 63) == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+
                     var (first, last) = matches[m];
-                    var boxed = PdfiumPageText.ReadChars(page, textPage, first, last - first + 1);
+                    var boxed = PdfiumPageText.ReadChars(page, textPage, first, last - first + 1, style: false);
                     var range = new TextChar[boxed.Length];
                     for (var i = 0; i < boxed.Length; i++)
                     {
