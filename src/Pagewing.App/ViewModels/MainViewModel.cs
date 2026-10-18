@@ -219,8 +219,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public bool CanMoveTabToNewWindow => Tabs.Count >= 2 && MoveToNewWindowRequested is not null;
 
     /// <summary>
-    /// Opens a file: a file that is already open in a tab activates that tab; otherwise a new tab to the right of the
-    /// active one opens it.
+    /// Opens a file: a file that is already open in a tab activates that tab; a tab that shows the error card for it
+    /// (the file may be readable now) is activated and tries again; otherwise a new tab to the right of the active one
+    /// opens it.
     /// </summary>
     /// <param name="path">Path of the file; an empty path does nothing.</param>
     /// <returns>Completes when the session of the tab has a result (see <see cref="ViewerSession.OpenAsync"/>).</returns>
@@ -234,7 +235,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (FindOpenTab(path) is { } open)
         {
             Tabs.Activate(open);
-            return Task.CompletedTask;
+
+            // A password prompt keeps its card (and what was typed); only a failed open is worth another try.
+            return open.IsFailed ? open.OpenAsync(path) : Task.CompletedTask;
         }
 
         return AddTab(new TabViewModel(_sessionFactory())).OpenAsync(path);

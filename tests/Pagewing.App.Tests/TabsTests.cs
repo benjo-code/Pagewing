@@ -95,6 +95,75 @@ public sealed class TabsTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task OpeningAFileWhoseTabFailedTriesAgainInThatTab()
+    {
+        var opens = 0;
+        var engine = new PdfEngine();
+        var (window, viewModel) = Show(factory: () => new ViewerSession((path, password, cancellationToken) =>
+        {
+            Interlocked.Increment(ref opens);
+            return engine.OpenAsync(path, password, cancellationToken);
+        }));
+        var path = Path.Combine(TempDirectory(), "later.pdf");
+        await viewModel.OpenAsync(path);
+        var failed = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => failed.State == ViewerState.Failed);
+        var other = await OpenReadyAsync(window, viewModel, "text-basic.pdf");
+        Assert.Equal(2, Volatile.Read(ref opens));
+
+        // Still missing: the same tab tries again, comes to the front and shows the error again; no second tab.
+        await viewModel.OpenAsync(path);
+        await WaitUntilAsync(window, () => failed.State == ViewerState.Failed);
+        Assert.Equal(3, Volatile.Read(ref opens));
+        Assert.Equal([failed, other], viewModel.Tabs);
+        Assert.Same(failed, viewModel.ActiveTab);
+        Assert.Equal(PdfOpenError.FileNotFound, failed.Error);
+
+        // Readable now (for example copied or unlocked meanwhile): the same tab opens it.
+        viewModel.ActivateTabCommand.Execute(other);
+        File.Copy(TestData.Pdf("hello_world.pdf"), path);
+        await viewModel.OpenAsync(path);
+        await WaitUntilAsync(window, () => failed.State == ViewerState.Ready);
+        Assert.Equal(4, Volatile.Read(ref opens));
+        Assert.Equal([failed, other], viewModel.Tabs);
+        Assert.Same(failed, viewModel.ActiveTab);
+        Assert.Equal(path, failed.FullPath);
+
+        // An open document is not opened again: its tab only comes to the front.
+        viewModel.ActivateTabCommand.Execute(other);
+        await viewModel.OpenAsync(path);
+        Settle(window);
+        Assert.Same(failed, viewModel.ActiveTab);
+        Assert.Equal(4, Volatile.Read(ref opens));
+    }
+
+    [AvaloniaFact]
+    public async Task OpeningAFileWhoseTabAsksForAPasswordOnlyActivatesIt()
+    {
+        var opens = 0;
+        var engine = new PdfEngine();
+        var (window, viewModel) = Show(factory: () => new ViewerSession((path, password, cancellationToken) =>
+        {
+            Interlocked.Increment(ref opens);
+            return engine.OpenAsync(path, password, cancellationToken);
+        }));
+        await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        var locked = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => locked.State == ViewerState.PasswordRequired);
+        var other = await OpenReadyAsync(window, viewModel, "text-basic.pdf");
+
+        // The password card stays as it is (with whatever was typed into it); nothing is opened again.
+        locked.Password = "typed";
+        await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        Settle(window);
+        Assert.Equal([locked, other], viewModel.Tabs);
+        Assert.Same(locked, viewModel.ActiveTab);
+        Assert.Equal(ViewerState.PasswordRequired, locked.State);
+        Assert.Equal("typed", locked.Password);
+        Assert.Equal(2, Volatile.Read(ref opens));
+    }
+
+    [AvaloniaFact]
     public async Task ClosingTheActiveTabActivatesTheRightNeighbour()
     {
         var (window, viewModel) = Show();
