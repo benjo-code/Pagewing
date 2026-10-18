@@ -20,7 +20,16 @@ namespace Pagewing.App;
 /// </param>
 /// <param name="Instance">The primary single instance, or <see langword="null"/> for an extra instance or a measurement.</param>
 /// <param name="Measurement">The options of a measurement switch, or <see langword="null"/> for a normal launch.</param>
-internal sealed record AppStartup(ViewerSession Session, SingleInstance? Instance, StartupOptions? Measurement = null);
+/// <param name="MorePaths">
+/// The further files of the command line (<see cref="StartupOptions.MorePaths"/>): they open as tabs after the first
+/// frame, behind the first one. Empty for a measurement.
+/// </param>
+internal sealed record AppStartup(
+    ViewerSession Session, SingleInstance? Instance, StartupOptions? Measurement = null, IReadOnlyList<string>? MorePaths = null)
+{
+    /// <summary>Gets the further files of the command line, none by default.</summary>
+    public IReadOnlyList<string> MorePaths { get; } = MorePaths ?? [];
+}
 
 public sealed class App : Application
 {
@@ -107,6 +116,11 @@ public sealed class App : Application
                 DispatcherPriority.Background);
         }
 
+        if (_startup?.MorePaths is { Count: > 0 } more)
+        {
+            OpenMoreFilesAfterFirstFrame(window, viewModel, more);
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             // Windows takes the icon of the executable (ApplicationIcon); elsewhere the window carries it. Decoding
@@ -129,6 +143,24 @@ public sealed class App : Application
             MeasurementRun.Create(measure, viewModel, window.DocumentView, output)?.Start();
         }
     }
+
+    /// <summary>
+    /// The further files of the command line (a first launch with several files; the first file opened early, in
+    /// <see cref="Program.Main"/>) open as tabs behind the first one, in a job of <see cref="DispatcherPriority.Background"/>
+    /// after the first frame of the window, so the startup path stays as it is. The first tab stays active unless the
+    /// user chose another one meanwhile (<see cref="MainViewModel.OpenInBackgroundAsync"/>). A window closed before the
+    /// job runs opens nothing.
+    /// </summary>
+    internal static void OpenMoreFilesAfterFirstFrame(Window window, MainViewModel viewModel, IReadOnlyList<string> paths) =>
+        window.Opened += (_, _) => Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (ReferenceEquals(window.DataContext, viewModel))
+                {
+                    _ = viewModel.OpenInBackgroundAsync(paths);
+                }
+            },
+            DispatcherPriority.Background);
 
     /// <summary>
     /// Creates a window of the workspace. The first one is part of the startup path (marked as a phase, icon after its

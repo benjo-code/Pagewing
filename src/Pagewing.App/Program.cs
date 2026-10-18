@@ -91,7 +91,7 @@ internal static partial class Program
             StartMeasurementWatchdog();
         }
 
-        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null), software);
+        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null, options.MorePaths), software);
     }
 
     public static AppBuilder BuildAvaloniaApp() =>

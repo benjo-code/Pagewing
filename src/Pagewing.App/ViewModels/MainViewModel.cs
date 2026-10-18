@@ -259,6 +259,25 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// Opens files like <see cref="OpenManyAsync"/>, but the tab that is active now stays active (the other files open
+    /// behind it); the files of a first launch with several files open this way. Without a tab the first new tab is active.
+    /// </summary>
+    /// <returns>Completes when every session has a result.</returns>
+    public Task OpenInBackgroundAsync(IReadOnlyList<string> paths)
+    {
+        var keep = ActiveTab;
+
+        // The tabs are added at once (the opens run on); only then does the active tab return.
+        var opens = OpenManyAsync(paths);
+        if (keep is not null && Tabs.IndexOf(keep) >= 0)
+        {
+            Tabs.Activate(keep);
+        }
+
+        return opens;
+    }
+
+    /// <summary>
     /// Adds a tab for a session that is already opening (the file of the command line, which <see cref="Program.Main"/>
     /// starts opening before the window exists) and activates it.
     /// </summary>
