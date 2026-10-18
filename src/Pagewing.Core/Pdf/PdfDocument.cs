@@ -182,7 +182,19 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the page was read.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
-    public Task<PageText> GetPageTextAsync(int pageIndex, CancellationToken cancellationToken = default)
+    public Task<PageText> GetPageTextAsync(int pageIndex, CancellationToken cancellationToken = default) =>
+        GetPageTextAsync(pageIndex, PdfPriority.Interactive, cancellationToken);
+
+    /// <summary>
+    /// Reads the characters and links of a page like <see cref="GetPageTextAsync(int, CancellationToken)"/>, but with
+    /// the given <paramref name="priority"/>: <see cref="PdfPriority.Background"/> lets the main view's own
+    /// requests go first (used for the text a page is read for ahead of need).
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the page was read.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PageText> GetPageTextAsync(int pageIndex, PdfPriority priority, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
@@ -196,7 +208,7 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
                 var links = PdfiumPageText.ReadLinks(document, page, textPage);
                 return PageText.FromPdfium(pageIndex, page.Width, page.Height, chars, links);
             },
-            PdfiumPriority.Interactive,
+            priority == PdfPriority.Background ? PdfiumPriority.Background : PdfiumPriority.Interactive,
             cancellationToken);
     }
 

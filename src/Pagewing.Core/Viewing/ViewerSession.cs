@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Text;
 
 namespace Pagewing.Core.Viewing;
 
@@ -81,6 +82,7 @@ public sealed class ViewerSession : IDisposable
     private RenderCache? cache;
     private RenderScheduler? scheduler;
     private ThumbnailSource? thumbnails;
+    private PageTextSource? pageTexts;
     private IReadOnlyList<PdfPageSize> loadedSizes = [];
     private Exception? backgroundLoadFailure;
     private CancellationTokenSource? request;
@@ -305,6 +307,7 @@ public sealed class ViewerSession : IDisposable
         PdfDocument? oldDocument;
         RenderScheduler? oldScheduler;
         ThumbnailSource? oldThumbnails;
+        PageTextSource? oldPageTexts;
         bool publish;
         lock (gate)
         {
@@ -313,6 +316,7 @@ public sealed class ViewerSession : IDisposable
                 oldDocument = null;
                 oldScheduler = null;
                 oldThumbnails = null;
+                oldPageTexts = null;
                 publish = false;
             }
             else
@@ -322,6 +326,8 @@ public sealed class ViewerSession : IDisposable
                 oldScheduler = scheduler;
                 oldThumbnails = thumbnails;
                 thumbnails = null;
+                oldPageTexts = pageTexts;
+                pageTexts = null;
                 if (opened is not null)
                 {
                     document = opened;
@@ -351,6 +357,7 @@ public sealed class ViewerSession : IDisposable
         }
 
         oldThumbnails?.Dispose();
+        oldPageTexts?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
         Raise(mine);
@@ -378,6 +385,25 @@ public sealed class ViewerSession : IDisposable
             }
 
             return thumbnails ??= new ThumbnailSource(document);
+        }
+    }
+
+    /// <summary>
+    /// Gets the text of the pages of the open document, creating the source on the first call for each document; the
+    /// same object is returned until the document is replaced, closed or the session is disposed, which also
+    /// disposes it (before the document). Returns <see langword="null"/> unless the state is
+    /// <see cref="ViewerState.Ready"/>. Creating it reads nothing; pages are read when asked for.
+    /// </summary>
+    public PageTextSource? EnsurePageTexts()
+    {
+        lock (gate)
+        {
+            if (disposed || state != ViewerState.Ready || document is null)
+            {
+                return null;
+            }
+
+            return pageTexts ??= new PageTextSource(document);
         }
     }
 
@@ -415,6 +441,7 @@ public sealed class ViewerSession : IDisposable
         RenderScheduler? oldScheduler;
         PdfDocument? oldDocument;
         ThumbnailSource? oldThumbnails;
+        PageTextSource? oldPageTexts;
         CancellationTokenSource? superseded;
         long mine;
         lock (gate)
@@ -425,11 +452,12 @@ public sealed class ViewerSession : IDisposable
             }
 
             mine = Interlocked.Increment(ref generation);
-            (oldScheduler, oldDocument, oldThumbnails, superseded) = Reset();
+            (oldScheduler, oldDocument, oldThumbnails, oldPageTexts, superseded) = Reset();
         }
 
         Cancel(superseded);
         oldThumbnails?.Dispose();
+        oldPageTexts?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
         Raise(mine);
@@ -444,6 +472,7 @@ public sealed class ViewerSession : IDisposable
         RenderScheduler? oldScheduler;
         PdfDocument? oldDocument;
         ThumbnailSource? oldThumbnails;
+        PageTextSource? oldPageTexts;
         CancellationTokenSource? superseded;
         lock (gate)
         {
@@ -454,11 +483,12 @@ public sealed class ViewerSession : IDisposable
 
             disposed = true;
             Interlocked.Increment(ref generation);
-            (oldScheduler, oldDocument, oldThumbnails, superseded) = Reset();
+            (oldScheduler, oldDocument, oldThumbnails, oldPageTexts, superseded) = Reset();
         }
 
         Cancel(superseded);
         oldThumbnails?.Dispose();
+        oldPageTexts?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
 
@@ -494,9 +524,9 @@ public sealed class ViewerSession : IDisposable
     private static void Cancel(CancellationTokenSource? source) => _ = source?.CancelAsync();
 
     // Must run under the lock. Returns what the caller has to release after leaving the lock.
-    private (RenderScheduler? Scheduler, PdfDocument? Document, ThumbnailSource? Thumbnails, CancellationTokenSource? Request) Reset()
+    private (RenderScheduler? Scheduler, PdfDocument? Document, ThumbnailSource? Thumbnails, PageTextSource? PageTexts, CancellationTokenSource? Request) Reset()
     {
-        var result = (scheduler, document, thumbnails, request);
+        var result = (scheduler, document, thumbnails, pageTexts, request);
         state = ViewerState.Empty;
         path = null;
         error = null;
@@ -504,6 +534,7 @@ public sealed class ViewerSession : IDisposable
         cache = null;
         scheduler = null;
         thumbnails = null;
+        pageTexts = null;
         loadedSizes = [];
         backgroundLoadFailure = null;
         request = null;
