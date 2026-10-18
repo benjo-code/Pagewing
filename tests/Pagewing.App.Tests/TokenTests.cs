@@ -6,42 +6,44 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
+using Pagewing.App.Services;
+using Pagewing.Core.Pdf;
 using Xunit;
 
 namespace Pagewing.App.Tests;
 
 public sealed class TokenTests
 {
-    /// <summary>Every colour token of Docs/superpowers/specs/2026-10-17-designsystem.md, section 5.1 (CSS notation, #RRGGBB or #RRGGBBAA).</summary>
-    private static readonly (string Name, string Light, string Dark)[] Spec =
+    /// <summary>Every colour token of Docs/superpowers/specs/2026-10-17-designsystem.md, section 5.1 (CSS notation, #RRGGBB or #RRGGBBAA): light, dark and high contrast (Styles/HighContrast.axaml).</summary>
+    private static readonly (string Name, string Light, string Dark, string HighContrast)[] Spec =
     [
-        ("Surface.Window", "#EEEFF2", "#15171B"),
-        ("Surface.Toolbar", "#F7F8FA", "#1B1E23"),
-        ("Surface.Sidebar", "#F7F8FA", "#1B1E23"),
-        ("Surface.Canvas", "#E3E5EA", "#0F1114"),
-        ("Surface.Raised", "#FFFFFF", "#24272E"),
-        ("Surface.Hover", "#E3E5EA", "#2A2E36"),
-        ("Accent.Subtle", "#E2E5F8", "#262B52"),
-        ("Border.Subtle", "#DCDFE5", "#2A2E36"),
-        ("Border.Strong", "#7F848E", "#6E7480"),
-        ("Text.Primary", "#16181D", "#E6E8EB"),
-        ("Text.Secondary", "#4F545E", "#9BA1AC"),
-        ("Text.Disabled", "#9399A3", "#5E636D"),
-        ("Accent.Default", "#3B48C4", "#9DA7FF"),
-        ("Accent.On", "#FFFFFF", "#121539"),
-        ("Focus.Ring", "#3340B4", "#B4BCFF"),
-        ("Page.Border", "#00000014", "#FFFFFF24"),
-        ("Page.Shadow", "#0000001A", "#00000099"),
-        ("Search.Hit", "#FBE38A", "#FBE38A"),
-        ("Search.Current", "#F5A524", "#F5A524"),
-        ("Search.On", "#16181D", "#16181D"),
-        ("Selection.Page", "#3B48C44D", "#3B48C44D"),
-        ("Danger.Default", "#B42318", "#FF8A80"),
-        ("Page.DarkBackground", "#1E2127", "#1E2127"),
-        ("Page.DarkForeground", "#E3E5E8", "#E3E5E8"),
-        ("Search.HitOnDark", "#FBE38A4D", "#FBE38A4D"),
-        ("Search.CurrentOnDark", "#F5A52473", "#F5A52473"),
-        ("Selection.PageOnDark", "#9DA7FF59", "#9DA7FF59"),
+        ("Surface.Window", "#EEEFF2", "#15171B", "#000000"),
+        ("Surface.Toolbar", "#F7F8FA", "#1B1E23", "#000000"),
+        ("Surface.Sidebar", "#F7F8FA", "#1B1E23", "#000000"),
+        ("Surface.Canvas", "#E3E5EA", "#0F1114", "#000000"),
+        ("Surface.Raised", "#FFFFFF", "#24272E", "#000000"),
+        ("Surface.Hover", "#E3E5EA", "#2A2E36", "#333333"),
+        ("Accent.Subtle", "#E2E5F8", "#262B52", "#3D3D00"),
+        ("Border.Subtle", "#DCDFE5", "#2A2E36", "#FFFFFF"),
+        ("Border.Strong", "#7F848E", "#6E7480", "#FFFFFF"),
+        ("Text.Primary", "#16181D", "#E6E8EB", "#FFFFFF"),
+        ("Text.Secondary", "#4F545E", "#9BA1AC", "#FFFFFF"),
+        ("Text.Disabled", "#9399A3", "#5E636D", "#A0A0A0"),
+        ("Accent.Default", "#3B48C4", "#9DA7FF", "#FFFF00"),
+        ("Accent.On", "#FFFFFF", "#121539", "#000000"),
+        ("Focus.Ring", "#3340B4", "#B4BCFF", "#00FFFF"),
+        ("Page.Border", "#00000014", "#FFFFFF24", "#FFFFFF"),
+        ("Page.Shadow", "#0000001A", "#00000099", "#00000099"),
+        ("Search.Hit", "#FBE38A", "#FBE38A", "#FBE38A"),
+        ("Search.Current", "#F5A524", "#F5A524", "#F5A524"),
+        ("Search.On", "#16181D", "#16181D", "#000000"),
+        ("Selection.Page", "#3B48C44D", "#3B48C44D", "#3B48C44D"),
+        ("Danger.Default", "#B42318", "#FF8A80", "#FF8080"),
+        ("Page.DarkBackground", "#1E2127", "#1E2127", "#1E2127"),
+        ("Page.DarkForeground", "#E3E5E8", "#E3E5E8", "#E3E5E8"),
+        ("Search.HitOnDark", "#FBE38A4D", "#FBE38A4D", "#FBE38A4D"),
+        ("Search.CurrentOnDark", "#F5A52473", "#F5A52473", "#F5A52473"),
+        ("Selection.PageOnDark", "#9DA7FF59", "#9DA7FF59", "#9DA7FF59"),
     ];
 
     private static readonly string[] Surfaces =
@@ -51,14 +53,22 @@ public sealed class TokenTests
 
     private static readonly string[] BorderSurfaces = ["Surface.Window", "Surface.Toolbar", "Surface.Raised"];
 
+    private static readonly ThemeVariant[] AllVariants = [ThemeVariant.Light, ThemeVariant.Dark, HighContrast.Variant];
+
+    // The high-contrast tokens, loaded on their own: the app has them only while the system asks for high contrast.
+    private static Styles.HighContrast? s_highContrast;
+
     public static TheoryData<string> Themes => ["Light", "Dark"];
 
+    /// <summary>The two themes and the high-contrast variant (Services/HighContrast).</summary>
+    public static TheoryData<string> AllThemes => ["Light", "Dark", "HighContrast"];
+
     [AvaloniaFact]
-    public void EveryTokenOfTheSpecExistsInBothThemes()
+    public void EveryTokenOfTheSpecExistsInEveryTheme()
     {
-        foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+        foreach (var variant in AllVariants)
         {
-            foreach (var (name, _, _) in Spec)
+            foreach (var (name, _, _, _) in Spec)
             {
                 var color = Assert.IsType<Color>(Resource($"Pw.Color.{name}", variant));
                 var brush = Assert.IsType<SolidColorBrush>(Resource($"Pw.Brush.{name}", variant));
@@ -71,10 +81,11 @@ public sealed class TokenTests
     public void TokenValuesMatchTheSpec()
     {
         // Compares every token against the spec value; the spec writes alpha last (#RRGGBBAA), Avalonia reads it first.
-        foreach (var (name, light, dark) in Spec)
+        foreach (var (name, light, dark, highContrast) in Spec)
         {
             Assert.Equal(FromCss(light), Token(name, ThemeVariant.Light));
             Assert.Equal(FromCss(dark), Token(name, ThemeVariant.Dark));
+            Assert.Equal(FromCss(highContrast), Token(name, HighContrast.Variant));
         }
 
         Assert.Equal(Color.FromRgb(0xEE, 0xEF, 0xF2), Token("Surface.Window", ThemeVariant.Light));
@@ -196,6 +207,19 @@ public sealed class TokenTests
             Assert.Equal(Token("Text.Secondary", variant), palette.BaseMedium);
             Assert.Equal(Token("Danger.Default", variant), palette.ErrorText);
         }
+
+        // High contrast cannot be a palette of FluentTheme.Palettes (only Light and Dark); Services/HighContrast gives
+        // its own Fluent theme the palette it builds from the tokens.
+        var highContrast = HighContrast.CreateFluentPalette(HighContrastTokens);
+        Assert.Equal(Token("Accent.Default", HighContrast.Variant), highContrast.Accent);
+        Assert.Equal(Token("Surface.Window", HighContrast.Variant), highContrast.RegionColor);
+        Assert.Equal(Token("Text.Primary", HighContrast.Variant), highContrast.BaseHigh);
+        Assert.Equal(Token("Text.Secondary", HighContrast.Variant), highContrast.BaseMedium);
+        Assert.Equal(Token("Danger.Default", HighContrast.Variant), highContrast.ErrorText);
+        Assert.Equal(Token("Text.Disabled", HighContrast.Variant), highContrast.ChromeDisabledLow);
+
+        // Fluent draws its check marks and switch knobs on the accent in ChromeWhite: on yellow that must be accent.on.
+        Assert.Equal(Token("Accent.On", HighContrast.Variant), highContrast.ChromeWhite);
     }
 
     [AvaloniaFact]
@@ -218,7 +242,7 @@ public sealed class TokenTests
     }
 
     [AvaloniaTheory]
-    [MemberData(nameof(Themes))]
+    [MemberData(nameof(AllThemes))]
     public void DarkPageMarksKeepThePageTextReadable(string theme)
     {
         // The marks on a dark page are drawn over it (not multiplied); the page text (page.darkForeground) stays readable
@@ -230,48 +254,63 @@ public sealed class TokenTests
         Assert.Equal(Color.FromRgb(0xE3, 0xE5, 0xE8), text);
         foreach (var name in new[] { "Search.HitOnDark", "Search.CurrentOnDark", "Selection.PageOnDark" })
         {
-            var mixed = Over(Token(name, variant), ground);
+            var mixed = ColorBlend.Over(Token(name, variant), ground);
             var ratio = Wcag.Contrast(text, mixed);
             Assert.True(ratio >= 4.5, $"{theme}: page text on {name} is {ratio:F2}:1, expected at least 4.5:1");
         }
 
         Assert.True(Wcag.Contrast(text, ground) >= 4.5);
-        Assert.True(Wcag.Contrast(text, Over(Token("Search.CurrentOnDark", variant), ground)) >= 3);
+        Assert.True(Wcag.Contrast(text, ColorBlend.Over(Token("Search.CurrentOnDark", variant), ground)) >= 3);
 
         // search.on would not frame the current match on a dark page.
         Assert.True(Wcag.Contrast(Token("Search.On", variant), ground) < 3);
     }
 
-    [AvaloniaFact]
-    public void ShadowTokensExistInBothThemes()
+    [AvaloniaTheory]
+    [MemberData(nameof(AllThemes))]
+    public void TheDarkPageTokensAreTheColoursPdfiumPaints(string theme)
     {
-        foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+        // PDFium paints a dark page with the constants of Pagewing.Core (PageThemeColors, ARGB); the view draws its
+        // placeholder, its thumbnail frame and the marks on it with the tokens. Both must be the same colours.
+        var variant = Variant(theme);
+        Assert.Equal(PageThemeColors.DarkBackground, Token("Page.DarkBackground", variant).ToUInt32());
+        Assert.Equal(PageThemeColors.DarkForeground, Token("Page.DarkForeground", variant).ToUInt32());
+    }
+
+    [AvaloniaFact]
+    public void ShadowTokensExistInEveryTheme()
+    {
+        foreach (var variant in AllVariants)
         {
             Assert.IsType<BoxShadows>(Resource("Pw.Shadow.Page", variant));
             Assert.IsType<BoxShadows>(Resource("Pw.Shadow.Card", variant));
         }
     }
 
+    /// <summary>
+    /// The resource <paramref name="key"/> of <paramref name="variant"/> as the app has it; for
+    /// <see cref="HighContrast.Variant"/> from the high-contrast tokens, which the app loads only on request.
+    /// </summary>
     internal static object Resource(string key, ThemeVariant variant)
     {
-        Assert.True(Application.Current!.TryGetResource(key, variant, out var value), $"Resource {key} ({variant}) is missing");
+        var found = Equals(variant, HighContrast.Variant)
+            ? HighContrastTokens.TryGetResource(key, variant, out var value)
+            : Application.Current!.TryGetResource(key, variant, out value);
+        Assert.True(found, $"Resource {key} ({variant}) is missing");
         return value!;
     }
+
+    private static Styles.HighContrast HighContrastTokens => s_highContrast ??= new Styles.HighContrast();
 
     internal static Color Token(string name, ThemeVariant variant) =>
         Assert.IsType<Color>(Resource($"Pw.Color.{name}", variant));
 
-    private static ThemeVariant Variant(string theme) => theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
-
-    /// <summary>Source-over of a translucent colour on an opaque one, rounded to 8 bits as the frame stores it.</summary>
-    private static Color Over(Color overlay, Color under)
+    private static ThemeVariant Variant(string theme) => theme switch
     {
-        var alpha = overlay.A / 255.0;
-        return Color.FromRgb(
-            (byte)Math.Round((overlay.R * alpha) + (under.R * (1 - alpha))),
-            (byte)Math.Round((overlay.G * alpha) + (under.G * (1 - alpha))),
-            (byte)Math.Round((overlay.B * alpha) + (under.B * (1 - alpha))));
-    }
+        "Dark" => ThemeVariant.Dark,
+        "HighContrast" => HighContrast.Variant,
+        _ => ThemeVariant.Light,
+    };
 
     /// <summary>Parses the CSS notation of the spec (#RRGGBB or #RRGGBBAA, alpha last) into an Avalonia colour.</summary>
     private static Color FromCss(string css)

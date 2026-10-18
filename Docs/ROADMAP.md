@@ -229,7 +229,7 @@ Ziel: Pagewing lässt sich weitgehend per Tastatur bedienen und merkt sich Einst
 - [ ] Befehlspalette (Strg+K) mit allen Aktionen und zuletzt geöffneten Dateien
 - [ ] Zuletzt geöffnete Dateien (lokal gespeichert)
 - [ ] Einstellungen (Sprache, Theme, Dichte Normal/Kompakt, Animationen reduzieren, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON
-- [ ] Hochkontrast (Windows `ContrastPreference`): entscheiden, ob Pagewing eine eigene Hochkontrast-Palette bekommt, und sie gegebenenfalls umsetzen (Design-Spec, Abschnitt 9)
+- [x] Hochkontrast (Windows `ContrastPreference`): entscheiden, ob Pagewing eine eigene Hochkontrast-Palette bekommt, und sie gegebenenfalls umsetzen (Design-Spec, Abschnitt 9). Umgesetzt als feste Palette (Design-Spec 5.1, Spalte „Hochkontrast“; Tests `HighContrastTests`, `TokenTests`); offen ist die Sichtprüfung an einem echten Windows-Kontrastdesign: `Pagewing.exe testdata/pdfs/text-rich.pdf`, dann Einstellungen → Barrierefreiheit → Kontrastdesigns → „Nachthimmel“ und zurück
 
 **Abnahmekriterien**
 - [ ] Headless-Tests für Befehlspalette und Theme-Wechsel grün

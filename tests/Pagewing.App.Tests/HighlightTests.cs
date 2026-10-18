@@ -336,7 +336,7 @@ public sealed class HighlightTests : IDisposable
 
         using var frame = FramePixels.Snapshot(view.Canvas);
         var middle = entry.Destination.Center;
-        var expected = Blend(TokenTests.Token("Selection.Page", ThemeVariant.Light), Colors.White);
+        var expected = ColorBlend.Over(TokenTests.Token("Selection.Page", ThemeVariant.Light), Colors.White);
         var actual = frame.GetColor((int)middle.X, (int)middle.Y);
         Assert.True(Near(actual, expected, 3), $"{actual} is not {expected}");
 
@@ -354,7 +354,7 @@ public sealed class HighlightTests : IDisposable
             // Pages stay white in both themes, so the overlay is the same: 30 % indigo on white against black text.
             var overlay = TokenTests.Token("Selection.Page", variant);
             Assert.Equal(Color.FromArgb(0x4D, 0x3B, 0x48, 0xC4), overlay);
-            var blended = Blend(overlay, Colors.White);
+            var blended = ColorBlend.Over(overlay, Colors.White);
             Assert.True(Wcag.Contrast(Colors.Black, blended) >= 4.5, $"{variant}: black text on the selection is {Wcag.Contrast(Colors.Black, blended):F2}:1");
 
             // The search colours keep black text readable, too (they are multiplied with the page).
@@ -367,15 +367,6 @@ public sealed class HighlightTests : IDisposable
             // The selection is not yellow (yellow is for search matches only).
             Assert.False(new HsvColor(blended).H is >= 40 and <= 70);
         }
-    }
-
-    private static Color Blend(Color overlay, Color under)
-    {
-        var alpha = overlay.A / 255.0;
-        return Color.FromRgb(
-            (byte)Math.Round((overlay.R * alpha) + (under.R * (1 - alpha))),
-            (byte)Math.Round((overlay.G * alpha) + (under.G * (1 - alpha))),
-            (byte)Math.Round((overlay.B * alpha) + (under.B * (1 - alpha))));
     }
 
     private static bool Near(Color color, Color expected, int tolerance = 12) =>

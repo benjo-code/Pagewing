@@ -36,6 +36,7 @@ Geprüft am 2026-10-16 und 2026-10-17 gegen Avalonia 12.1.4 (Quellcode des Tags 
 - `FluentTheme` lässt sich je `ThemeVariant` (nur Light und Dark) über `ColorPaletteResources` anpassen: `Accent`, `RegionColor`, `AltHigh` … `AltMediumLow`, `BaseHigh` … `BaseMediumLow`, `ChromeAltLow`, `ChromeBlackHigh` … `ChromeWhite`, `ErrorText`, `ListLow`, `ListMedium`. Nur `Accent` ist zur Laufzeit änderbar; ohne eigenen `Accent` gilt die Akzentfarbe des Systems. Quellen: SRC `src/Avalonia.Themes.Fluent/ColorPaletteResources.Properties.cs`, https://docs.avaloniaui.net/docs/styling/themes.
 - `DensityStyle` = `Normal` oder `Compact`. Eckenradien `ControlCornerRadius` (3) und `OverlayCornerRadius` (5) sind per `DynamicResource` gebunden und überschreibbar. Quelle: SRC `src/Avalonia.Themes.Fluent/FluentTheme.xaml.cs`, `Accents/BaseResources.xaml`.
 - **Folge:** Die Tokens werden in M3 auf die Fluent-Palette und eigene Ressourcen abgebildet. Jedes Farb-Token nennt die Fluent-Rolle, soweit es eine gibt (Abschnitt 5).
+- Eine eigene Variante in `FluentTheme.Palettes` ist nicht möglich: Avalonia 12.1.4 wirft für jede Variante außer Light und Dark eine `InvalidOperationException` („FluentTheme.Palettes only supports Light and Dark variants.“, SRC `src/Avalonia.Themes.Fluent/ColorPaletteResourcesCollection.cs`), und die Brushes der Fluent-Controls lesen die Palettenfarben einmal per `StaticResource`. Eine eigene `ThemeVariant` (mit `InheritVariant`) funktioniert dagegen als `RequestedThemeVariant` und in `ThemeDictionaries`. Der Hochkontrast (M6) nutzt deshalb eine eigene Variante für die Tokens und gibt ihr ein zweites `FluentTheme` mit der Hochkontrast-Palette als Dark-Palette (5.1, Regel „Hochkontrast“; geprüft am 2026-10-18 im Code von 12.1.4 und mit Headless-Tests).
 
 ### 2.5 Schriften
 
@@ -73,7 +74,7 @@ Geprüft am 2026-10-16 und 2026-10-17 gegen Avalonia 12.1.4 (Quellcode des Tags 
 
 - Windows liefert über `PlatformColorValues` Theme-Variante, `ContrastPreference` (Hochkontrast) und Akzentfarbe, mit Änderungsereignis (SRC `src/Windows/Avalonia.Win32/Win32PlatformSettings.cs`). Linux liefert Theme-Variante und Akzentfarbe über das XDG-Portal, keinen Kontrastwunsch (SRC `src/Avalonia.FreeDesktop/DBusPlatformSettings.cs`).
 - Das Fluent-Theme wertet Hochkontrast nicht aus (keine Fundstelle für `ContrastPreference` in SRC `src/Avalonia.Themes.Fluent/`); Pagewing muss es selbst umsetzen. Eine API für „Animationen reduzieren“ gibt es in Avalonia 12.1 nicht (keine Fundstelle für `ReducedMotion` oder `ClientAreaAnimation` in SRC `src/`). Beides wurde am 2026-10-16 im Quellcode von Tag 12.1.4 gesucht; ein Fehlen ist nur so sicher wie diese Suche.
-- **Folge:** Animationen sind kurz und verzichtbar; eine Einstellung „Animationen reduzieren“ in Pagewing ersetzt die fehlende Systemabfrage (M6). Hochkontrast ist ein offener Punkt (Abschnitt 9).
+- **Folge:** Animationen sind kurz und verzichtbar; eine Einstellung „Animationen reduzieren“ in Pagewing ersetzt die fehlende Systemabfrage (M6). Hochkontrast setzt Pagewing seit M6 unter Windows selbst um: eine feste Palette (5.1, Regel „Hochkontrast“), die der Laufzeitänderung von `ContrastPreference` folgt (`PlatformSettings.ColorValuesChanged`).
 
 ## 3. Richtungen
 
@@ -115,35 +116,35 @@ Die Werte stammen aus dem gewählten Mockup (B, Artifact-Version 4). Token-Namen
 
 ### 5.1 Farben
 
-| Token | Hell | Dunkel | Verwendung | Fluent-Rolle (Vorschlag) |
-|---|---|---|---|---|
-| `color.surface.window` | `#EEEFF2` | `#15171B` | Titelleiste, Aktionsleiste, Statusleiste, Startbildschirm-Rahmen | `RegionColor` |
-| `color.surface.toolbar` | `#F7F8FA` | `#1B1E23` | Werkzeugleiste eines Bearbeitungsmodus | – |
-| `color.surface.sidebar` | `#F7F8FA` | `#1B1E23` | Panel (Seiten, Inhalt, Suche) | – |
-| `color.surface.canvas` | `#E3E5EA` | `#0F1114` | Dokumentbereich hinter den Seiten, aktiver Tab | – |
-| `color.surface.raised` | `#FFFFFF` | `#24272E` | Eingabefelder, Karten, Menüs, Befehlspalette | – |
-| `color.surface.hover` | `#E3E5EA` | `#2A2E36` | Hover, Befehlsknopf | – |
-| `color.accent.subtle` | `#E2E5F8` | `#262B52` | Ausgewählt: aktive Seite, aktueller Treffer, aktiver Eintrag der Aktionsleiste, aktives Werkzeug | – |
-| `color.border.subtle` | `#DCDFE5` | `#2A2E36` | Trennlinien, sparsam (siehe 5.3) | – |
-| `color.border.strong` | `#7F848E` | `#6E7480` | Ränder von Eingabefeldern und sekundären Knöpfen | – |
-| `color.text.primary` | `#16181D` | `#E6E8EB` | Text, Icons in Werkzeugleisten | `BaseHigh` |
-| `color.text.secondary` | `#4F545E` | `#9BA1AC` | Beschriftungen, Statuswerte, Icons der Aktionsleiste | `BaseMedium` |
-| `color.text.disabled` | `#9399A3` | `#5E636D` | Deaktiviert (vom Kontrast ausgenommen) | – |
-| `color.accent.default` | `#3B48C4` | `#9DA7FF` | Indigo: aktive Elemente, Primärknopf, Links | `Accent` |
-| `color.accent.on` | `#FFFFFF` | `#121539` | Text und Icons auf `accent.default` | – |
-| `color.focus.ring` | `#3340B4` | `#B4BCFF` | Tastaturfokus | – |
-| `color.page.border` | `#00000014` | `#FFFFFF24` | Kante der PDF-Seite | – |
-| `color.page.shadow` | `#0000001A` | `#00000099` | Schatten der PDF-Seite, von Karten und Popups | – |
-| `color.search.hit` | `#FBE38A` | `#FBE38A` | Suchtreffer (auf der Seite und in der Trefferliste) | – |
-| `color.search.current` | `#F5A524` | `#F5A524` | Aktueller Suchtreffer, immer mit Rahmen | – |
-| `color.search.on` | `#16181D` | `#16181D` | Text auf `search.hit` und `search.current` (in der Trefferliste); nie `text.primary`, das im dunklen Theme auf Gelb nur 1,04:1 erreicht | – |
-| `color.selection.page` | `#3B48C44D` | `#3B48C44D` | Ausgewählter Text auf der Seite (30 % Indigo über dem Seitenbild, in beiden Themes gleich, weil Seiten weiß bleiben); schwarzer Text darauf 12,8:1 | – |
-| `color.danger.default` | `#B42318` | `#FF8A80` | Fehlertext, Fehlersymbol, Rand eines fehlerhaften Felds | `ErrorText` |
-| `color.page.darkBackground` | `#1E2127` | `#1E2127` | Grund einer dunklen Seite (M6) und ihres Platzhalters, auch des leeren Vorschaurahmens; so malt PDFium die dunkle Seite | – |
-| `color.page.darkForeground` | `#E3E5E8` | `#E3E5E8` | Text und Linien einer dunklen Seite (PDFium), Seitennummer auf ihrem Platzhalter, 1,5 px Rahmen des aktuellen Treffers auf ihr; 12,8:1 auf `page.darkBackground` | – |
-| `color.search.hitOnDark` | `#FBE38A4D` | `#FBE38A4D` | Suchtreffer auf einer dunklen Seite: über die Seite gelegt (30 %), nicht multipliziert; Seitentext darauf 5,3:1 | – |
-| `color.search.currentOnDark` | `#F5A52473` | `#F5A52473` | Aktueller Suchtreffer auf einer dunklen Seite (45 %), immer mit Rahmen in `page.darkForeground`; Seitentext darauf 4,8:1 | – |
-| `color.selection.pageOnDark` | `#9DA7FF59` | `#9DA7FF59` | Ausgewählter Text auf einer dunklen Seite (35 % Indigo); Seitentext darauf 6,2:1 | – |
+| Token | Hell | Dunkel | Hochkontrast | Verwendung | Fluent-Rolle (Vorschlag) |
+|---|---|---|---|---|---|
+| `color.surface.window` | `#EEEFF2` | `#15171B` | `#000000` | Titelleiste, Aktionsleiste, Statusleiste, Startbildschirm-Rahmen | `RegionColor` |
+| `color.surface.toolbar` | `#F7F8FA` | `#1B1E23` | `#000000` | Werkzeugleiste eines Bearbeitungsmodus | – |
+| `color.surface.sidebar` | `#F7F8FA` | `#1B1E23` | `#000000` | Panel (Seiten, Inhalt, Suche) | – |
+| `color.surface.canvas` | `#E3E5EA` | `#0F1114` | `#000000` | Dokumentbereich hinter den Seiten, aktiver Tab | – |
+| `color.surface.raised` | `#FFFFFF` | `#24272E` | `#000000` | Eingabefelder, Karten, Menüs, Befehlspalette | – |
+| `color.surface.hover` | `#E3E5EA` | `#2A2E36` | `#333333` | Hover, Befehlsknopf | – |
+| `color.accent.subtle` | `#E2E5F8` | `#262B52` | `#3D3D00` | Ausgewählt: aktive Seite, aktueller Treffer, aktiver Eintrag der Aktionsleiste, aktives Werkzeug | – |
+| `color.border.subtle` | `#DCDFE5` | `#2A2E36` | `#FFFFFF` | Trennlinien, sparsam (siehe 5.3) | – |
+| `color.border.strong` | `#7F848E` | `#6E7480` | `#FFFFFF` | Ränder von Eingabefeldern und sekundären Knöpfen | – |
+| `color.text.primary` | `#16181D` | `#E6E8EB` | `#FFFFFF` | Text, Icons in Werkzeugleisten | `BaseHigh` |
+| `color.text.secondary` | `#4F545E` | `#9BA1AC` | `#FFFFFF` | Beschriftungen, Statuswerte, Icons der Aktionsleiste | `BaseMedium` |
+| `color.text.disabled` | `#9399A3` | `#5E636D` | `#A0A0A0` | Deaktiviert (vom Kontrast ausgenommen) | – |
+| `color.accent.default` | `#3B48C4` | `#9DA7FF` | `#FFFF00` | Indigo: aktive Elemente, Primärknopf, Links | `Accent` |
+| `color.accent.on` | `#FFFFFF` | `#121539` | `#000000` | Text und Icons auf `accent.default` | – |
+| `color.focus.ring` | `#3340B4` | `#B4BCFF` | `#00FFFF` | Tastaturfokus | – |
+| `color.page.border` | `#00000014` | `#FFFFFF24` | `#FFFFFF` | Kante der PDF-Seite | – |
+| `color.page.shadow` | `#0000001A` | `#00000099` | `#00000099` | Schatten der PDF-Seite, von Karten und Popups | – |
+| `color.search.hit` | `#FBE38A` | `#FBE38A` | `#FBE38A` | Suchtreffer (auf der Seite und in der Trefferliste) | – |
+| `color.search.current` | `#F5A524` | `#F5A524` | `#F5A524` | Aktueller Suchtreffer, immer mit Rahmen | – |
+| `color.search.on` | `#16181D` | `#16181D` | `#000000` | Text auf `search.hit` und `search.current` (in der Trefferliste); nie `text.primary`, das im dunklen Theme auf Gelb nur 1,04:1 erreicht | – |
+| `color.selection.page` | `#3B48C44D` | `#3B48C44D` | `#3B48C44D` | Ausgewählter Text auf der Seite (30 % Indigo über dem Seitenbild, in beiden Themes gleich, weil Seiten weiß bleiben); schwarzer Text darauf 12,8:1 | – |
+| `color.danger.default` | `#B42318` | `#FF8A80` | `#FF8080` | Fehlertext, Fehlersymbol, Rand eines fehlerhaften Felds | `ErrorText` |
+| `color.page.darkBackground` | `#1E2127` | `#1E2127` | `#1E2127` | Grund einer dunklen Seite (M6) und ihres Platzhalters, auch des leeren Vorschaurahmens; so malt PDFium die dunkle Seite | – |
+| `color.page.darkForeground` | `#E3E5E8` | `#E3E5E8` | `#E3E5E8` | Text und Linien einer dunklen Seite (PDFium), Seitennummer auf ihrem Platzhalter, 1,5 px Rahmen des aktuellen Treffers auf ihr; 12,8:1 auf `page.darkBackground` | – |
+| `color.search.hitOnDark` | `#FBE38A4D` | `#FBE38A4D` | `#FBE38A4D` | Suchtreffer auf einer dunklen Seite: über die Seite gelegt (30 %), nicht multipliziert; Seitentext darauf 5,3:1 | – |
+| `color.search.currentOnDark` | `#F5A52473` | `#F5A52473` | `#F5A52473` | Aktueller Suchtreffer auf einer dunklen Seite (45 %), immer mit Rahmen in `page.darkForeground`; Seitentext darauf 4,8:1 | – |
+| `color.selection.pageOnDark` | `#9DA7FF59` | `#9DA7FF59` | `#9DA7FF59` | Ausgewählter Text auf einer dunklen Seite (35 % Indigo); Seitentext darauf 6,2:1 | – |
 
 Regeln:
 
@@ -151,6 +152,7 @@ Regeln:
 - Pagewing nutzt seine eigene Akzentfarbe, nicht die des Systems (Wiedererkennung, geprüfter Kontrast). Deshalb wird `Accent` in der Fluent-Palette immer gesetzt.
 - Die Spalte „Fluent-Rolle“ ist ein Vorschlag. Die übrigen Fluent-Farben (`Chrome*`, `Alt*`, `List*`) werden in M3 so gesetzt, dass Fluent-Controls (Textfeld, Knopf, Liste, Kontrollkästchen) zu den Tokens passen (Abschnitt 9).
 - Kontrast nach WCAG 2.2 AA, geprüft am 2026-10-17 in beiden Themes: `text.primary` auf allen Flächen ≥ 4,5:1, `text.secondary` auf allen Flächen außer `surface.canvas` ≥ 4,5:1, `accent.default` als Text auf `surface.window`, `surface.toolbar`, `surface.sidebar` und `surface.raised` ≥ 4,5:1, `accent.on` auf `accent.default` ≥ 4,5:1, `danger.default` auf `surface.raised` ≥ 4,5:1, `border.strong` auf `surface.window`, `surface.toolbar` und `surface.raised` ≥ 3:1, `focus.ring` auf allen Flächen ≥ 3:1, `accent.default` auf `accent.subtle` ≥ 3:1, `search.on` auf `search.hit` (13,9:1) und `search.current` (8,7:1) ≥ 4,5:1, `page.darkForeground` auf `page.darkBackground` mit darübergelegtem `search.hitOnDark`, `search.currentOnDark` und `selection.pageOnDark` ≥ 4,5:1 (geprüft am 2026-10-18). Knappstes Paar: `border.strong` auf `surface.raised` (dunkel) 3,18:1. Neue Paare, etwa `text.secondary` auf `surface.canvas`, brauchen vorher eine Prüfung.
+- **Hochkontrast (M6, nur Windows):** Fordert Windows Hochkontrast an (`ContrastPreference` = `High`, Einstellungen → Barrierefreiheit → Kontrastdesigns) und steht das Theme auf „System“, gilt die feste Palette der Spalte „Hochkontrast“, unabhängig vom gewählten Kontrastdesign; ein ausdrücklich gewähltes Hell oder Dunkel geht vor. Linux liefert keinen Kontrastwunsch (2.7). Grund schwarz, Text und Ränder weiß, Akzent und Links Gelb `#FFFF00` (wie in den Kontrastdesigns von Windows; die Regel „Akzent nie Gelb“ gilt hier nicht), Fokus Cyan, Gefahr `#FF8080`, deaktiviert `#A0A0A0`. Geprüft am 2026-10-18 mit 7:1 statt 4,5:1: `text.primary`, `text.secondary`, `accent.default`, `focus.ring`, `border.strong` und `border.subtle` auf allen Flächen einschließlich `surface.hover` und `accent.subtle`, `danger.default` und `text.disabled` auf den schwarzen Flächen, `accent.on` auf `accent.default`, `search.on` auf `search.hit` und `search.current`; knappste Paare `text.disabled` auf Schwarz 8,0:1 (deaktiviert, vom Kontrast ausgenommen) und `danger.default` auf Schwarz 8,6:1. Nicht geprüft und nicht vorgesehen: `danger.default` und `text.disabled` auf `surface.hover` (5,2:1 bzw. 4,8:1). Die Seiten bleiben PDF-Inhalt (schwarz auf weiß, auch wenn die Seitendarstellung dem Theme folgt): Treffer- und Auswahlfarben auf der Seite und die dunkle Seite behalten ihre Werte (schwarzer Seitentext auf ihnen ≥ 7:1, auf der dunklen Seite wie oben ≥ 4,5:1); `page.border` ist weiß, damit auch eine dunkle Seite sich von der schwarzen Dokumentfläche abhebt. Umsetzung: `Styles/HighContrast.axaml` und `Services/HighContrast` (Variante `HighContrast`, erbt Dark; wird erst bei Bedarf geladen).
 
 ### 5.2 Typografie
 
@@ -173,7 +175,7 @@ Regeln:
 - **Radien:** `radius.control` 6 (Knöpfe, Felder, Listeneinträge), `radius.overlay` 10 (Karten, Popups, Befehlspalette, obere linke Ecke von Panel bzw. Dokumentbereich), `radius.tab` 8 (obere Ecken eines Tabs), `radius.page` 0.
 - **Ränder:** Flächen trennen sich über Farbe, nicht über Linien. `border.subtle` (1 px) nur dort, wo gleichfarbige Flächen aneinanderstoßen (Unterkante der Werkzeugleiste eines Modus, Linux-Tab-Zeile). Eingabefelder und sekundäre Knöpfe haben 1 px `border.strong`.
 - **Fokus:** 2 px `focus.ring`, 1 px Abstand zum Element, nur bei Tastaturbedienung.
-- **Schatten** (Avalonia `BoxShadow`): Seite `0 0 0 1 page.border, 0 2 10 0 page.shadow`; Karte und Popup `0 0 0 1 border.subtle, 0 12 32 -12 page.shadow`. Der Seitenschatten wird aus diesem Token als vorberechnetes Bild gezeichnet, nicht als `BoxShadow` (Token unverändert; `Docs/DECISIONS.md`, Eintrag „Seitenschatten als vorberechnetes Bild (M3)“).
+- **Schatten** (Avalonia `BoxShadow`): Seite `0 0 0 1 page.border, 0 2 10 0 page.shadow`; Karte und Popup `0 0 0 1 border.subtle, 0 12 32 -12 page.shadow`. Im Hochkontrast sind `page.border` und `border.subtle` weiß, Seiten und Karten bekommen also eine weiße 1-px-Kante. Der Seitenschatten wird aus diesem Token als vorberechnetes Bild gezeichnet, nicht als `BoxShadow` (Token unverändert; `Docs/DECISIONS.md`, Eintrag „Seitenschatten als vorberechnetes Bild (M3)“).
 
 ### 5.4 Dichte
 
@@ -383,7 +385,7 @@ Offen (wie zu prüfen):
 - Start- und Bildratenkosten von Mica gegenüber deckender Fläche, falls Mica gewünscht ist (`bench/startup` mit beiden Varianten auf einem Rechner mit GPU).
 - X11 mit und ohne Compositor: tatsächliches `ActualTransparencyLevel`, Titelleiste (manuell auf einem Linux-Desktop, z. B. Xfce mit ein- und ausgeschaltetem Compositor).
 - Tatsächliche Standardschrift auf den Ziel-Distributionen (`fc-match sans-serif` und `fc-match monospace` je Distribution; die Distributionen legt M8 fest).
-- Darstellung bei Windows-Hochkontrast: Fluent wertet `ContrastPreference` nicht aus; ob und wie Pagewing eine Hochkontrast-Palette bekommt, entscheidet M6 (Komfort, eigene Aufgabe in der Roadmap).
+- Hochkontrast (M6) am echten Windows-Kontrastdesign: Tabs, Aktionsleiste, Panel, Karten, Menüs und Befehlspalette ansehen, auch das Umschalten bei laufender App (`Pagewing.exe testdata/pdfs/text-rich.pdf`, dann Einstellungen → Barrierefreiheit → Kontrastdesigns → „Nachthimmel“ und zurück; ebenso „Wüste“, das hell ist und trotzdem die schwarze Palette bekommt). Die Headless-Aufnahme zeigt keine Trennlinie zwischen Panel und Dokumentfläche und zwischen Titelleiste und Dokumentfläche, weil im Hochkontrast alle Flächen schwarz sind; ob das am Bildschirm stört, entscheidet die Sichtprüfung.
 - Linux-Titelleiste mit Tab-Zeile darunter (2.2): manuell auf einem Linux-Desktop prüfen; die Headless-Tests erzwingen die Windows-Titelleiste.
 - Hover-, Druck- und Fokuszustände der Elemente aus M4 (Tabs, Aktionsleiste, Panel, Statusleiste, Menüs) auf einem echten Bildschirm in beiden Themes ansehen; die Headless-Aufnahmen zeigen nur Ruhezustände.
 - „In neuem Fenster öffnen“ unter Windows und Linux (X11): Lage und Größe des neuen Fensters (32 px versetzt, ganz auf dem Bildschirm, auch am rechten oder unteren Rand und bei 125 %/150 % Skalierung; Quellfenster maximiert), welches Fenster nach vorn kommt, und Dateien eines späteren Aufrufs öffnen im zuletzt aktivierten Fenster (manuell, `pagewing <datei.pdf>` aus einem Terminal).
@@ -396,4 +398,4 @@ Offen (wie zu prüfen):
 Spätere Milestones (Zuordnung in der Roadmap, Abschnitt „Scope-Änderungen“, Eintrag vom 2026-10-17):
 
 - Einstellungen „Dichte“ (Normal/Kompakt) und „Animationen reduzieren“ in M6 (Komfort), zusammen mit den übrigen Einstellungen.
-- Hochkontrast (Windows `ContrastPreference`) in M6: entscheiden und gegebenenfalls umsetzen.
+- Hochkontrast (Windows `ContrastPreference`) in M6: entschieden und umgesetzt (feste Palette, 5.1); offen ist die Sichtprüfung oben.

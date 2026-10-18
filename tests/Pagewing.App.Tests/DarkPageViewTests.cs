@@ -294,8 +294,8 @@ public sealed class DarkPageViewTests : IDisposable
 
         var hitColor = TokenTests.Token("Search.HitOnDark", ThemeVariant.Light);
         var currentColor = TokenTests.Token("Search.CurrentOnDark", ThemeVariant.Light);
-        var hitGround = Blend(hitColor, DarkGround);
-        var currentGround = Blend(currentColor, DarkGround);
+        var hitGround = ColorBlend.Over(hitColor, DarkGround);
+        var currentGround = ColorBlend.Over(currentColor, DarkGround);
 
         // The page text stays readable on the mixed ground of both marks.
         Assert.True(Wcag.Contrast(DarkText, hitGround) >= 4.5, $"page text on a hit is {Wcag.Contrast(DarkText, hitGround):F2}:1");
@@ -334,7 +334,7 @@ public sealed class DarkPageViewTests : IDisposable
         var entry = Assert.Single(view.Canvas.LastHighlightDestinations);
 
         using var frame = FramePixels.Snapshot(view.Canvas);
-        var expected = Blend(TokenTests.Token("Selection.PageOnDark", ThemeVariant.Light), DarkGround);
+        var expected = ColorBlend.Over(TokenTests.Token("Selection.PageOnDark", ThemeVariant.Light), DarkGround);
         var actual = frame.GetColor((int)entry.Destination.Center.X, (int)entry.Destination.Center.Y);
         Assert.True(Near(actual, expected, 3), $"{actual} is not {expected}");
         Assert.False(Near(actual, DarkGround, 12), "the selection does not stand out from the dark page");
@@ -509,15 +509,6 @@ public sealed class DarkPageViewTests : IDisposable
     }
 
     private static RenderedImage Solid(Color color) => new(1, 1, 4, new byte[] { color.B, color.G, color.R, 255 });
-
-    private static Color Blend(Color overlay, Color under)
-    {
-        var alpha = overlay.A / 255.0;
-        return Color.FromRgb(
-            (byte)Math.Round((overlay.R * alpha) + (under.R * (1 - alpha))),
-            (byte)Math.Round((overlay.G * alpha) + (under.G * (1 - alpha))),
-            (byte)Math.Round((overlay.B * alpha) + (under.B * (1 - alpha))));
-    }
 
     private static bool Near(Color color, Color expected, int tolerance = 12) =>
         Math.Abs(color.R - expected.R) <= tolerance && Math.Abs(color.G - expected.G) <= tolerance && Math.Abs(color.B - expected.B) <= tolerance;

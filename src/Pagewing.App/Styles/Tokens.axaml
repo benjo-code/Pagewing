@@ -6,6 +6,8 @@
     Avalonia reads 8-digit colours as #AARRGGBB, the spec writes CSS #RRGGBBAA: the alpha ones are converted here
     (page.border light #00000014 -> #14000000). TokenTests check every value against the spec.
     Reference the brushes with DynamicResource so they follow the theme variant.
+    The high-contrast set (variant HighContrast, Windows only) has the same keys and lives in HighContrast.axaml; it is
+    loaded only when the system asks for it (Services/HighContrast). A new token goes into all three.
   -->
   <ResourceDictionary.ThemeDictionaries>
     <ResourceDictionary x:Key="Light">

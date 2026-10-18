@@ -1,0 +1,95 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    x:Class="Pagewing.App.Styles.HighContrast">
+  <!--
+    The fixed high-contrast palette (Docs/superpowers/specs/2026-10-17-designsystem.md, section 5.1, column
+    "Hochkontrast"): every key of the Light and Dark dictionaries of Tokens.axaml, with black ground, white text and
+    borders, yellow accent and links, cyan focus. UI pairs reach 7:1 (HighContrastTests.EveryTextPairReachesSevenToOne).
+    Not part of the app's resources and not in the startup path: Services/HighContrast puts this dictionary into the
+    app's theme dictionaries as the variant HighContrast (inherits Dark) only when Windows asks for high contrast and the
+    theme is "System". Avalonia reads 8-digit colours as #AARRGGBB (the spec writes CSS #RRGGBBAA).
+
+    The pages stay PDF content, black on white: the marks on a page (search, selection) and the dark page keep their
+    values; the 1 px page edge is white so that even a dark page stands off the black canvas.
+  -->
+
+  <!-- Surface: all black; hover and selected are dark greys (selected tinted towards the yellow accent). -->
+  <Color x:Key="Pw.Color.Surface.Window">#000000</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Surface.Window" Color="#000000" />
+  <Color x:Key="Pw.Color.Surface.Toolbar">#000000</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Surface.Toolbar" Color="#000000" />
+  <Color x:Key="Pw.Color.Surface.Sidebar">#000000</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Surface.Sidebar" Color="#000000" />
+  <Color x:Key="Pw.Color.Surface.Canvas">#000000</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Surface.Canvas" Color="#000000" />
+  <Color x:Key="Pw.Color.Surface.Raised">#000000</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Surface.Raised" Color="#000000" />
+  <Color x:Key="Pw.Color.Surface.Hover">#333333</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Surface.Hover" Color="#333333" />
+
+  <!-- Accent -->
+  <Color x:Key="Pw.Color.Accent.Subtle">#3D3D00</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Accent.Subtle" Color="#3D3D00" />
+
+  <!-- Border: white, also where same-coloured surfaces meet (all surfaces are black). -->
+  <Color x:Key="Pw.Color.Border.Subtle">#FFFFFF</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Border.Subtle" Color="#FFFFFF" />
+  <Color x:Key="Pw.Color.Border.Strong">#FFFFFF</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Border.Strong" Color="#FFFFFF" />
+
+  <!-- Text -->
+  <Color x:Key="Pw.Color.Text.Primary">#FFFFFF</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Text.Primary" Color="#FFFFFF" />
+  <Color x:Key="Pw.Color.Text.Secondary">#FFFFFF</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Text.Secondary" Color="#FFFFFF" />
+  <Color x:Key="Pw.Color.Text.Disabled">#A0A0A0</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Text.Disabled" Color="#A0A0A0" />
+
+  <!-- Accent: yellow, as in the contrast themes of Windows (links, active entries, primary button). -->
+  <Color x:Key="Pw.Color.Accent.Default">#FFFF00</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Accent.Default" Color="#FFFF00" />
+  <Color x:Key="Pw.Color.Accent.On">#000000</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Accent.On" Color="#000000" />
+
+  <!-- Focus -->
+  <Color x:Key="Pw.Color.Focus.Ring">#00FFFF</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Focus.Ring" Color="#00FFFF" />
+
+  <!-- Page: white edge (also around a dark page); the shadow vanishes on the black canvas and stays as in Dark. -->
+  <Color x:Key="Pw.Color.Page.Border">#FFFFFF</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Page.Border" Color="#FFFFFF" />
+  <Color x:Key="Pw.Color.Page.Shadow">#99000000</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Page.Shadow" Color="#99000000" />
+
+  <!-- Search: the colours of the page marks, with black text in the hit list. -->
+  <Color x:Key="Pw.Color.Search.Hit">#FBE38A</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Search.Hit" Color="#FBE38A" />
+  <Color x:Key="Pw.Color.Search.Current">#F5A524</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Search.Current" Color="#F5A524" />
+  <Color x:Key="Pw.Color.Search.On">#000000</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Search.On" Color="#000000" />
+
+  <!-- Selection on the page: PDF content, as in the other themes. -->
+  <Color x:Key="Pw.Color.Selection.Page">#4D3B48C4</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Selection.Page" Color="#4D3B48C4" />
+
+  <!-- Danger -->
+  <Color x:Key="Pw.Color.Danger.Default">#FF8080</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Danger.Default" Color="#FF8080" />
+
+  <!-- The dark page (the user's choice of page appearance): what PDFium paints, so the same as in the other themes. -->
+  <Color x:Key="Pw.Color.Page.DarkBackground">#1E2127</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Page.DarkBackground" Color="#1E2127" />
+  <Color x:Key="Pw.Color.Page.DarkForeground">#E3E5E8</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Page.DarkForeground" Color="#E3E5E8" />
+  <Color x:Key="Pw.Color.Search.HitOnDark">#4DFBE38A</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Search.HitOnDark" Color="#4DFBE38A" />
+  <Color x:Key="Pw.Color.Search.CurrentOnDark">#73F5A524</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Search.CurrentOnDark" Color="#73F5A524" />
+  <Color x:Key="Pw.Color.Selection.PageOnDark">#599DA7FF</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Selection.PageOnDark" Color="#599DA7FF" />
+
+  <!-- Shadows (section 5.3): page.border and border.subtle are white, so pages and cards get a 1 px white edge. -->
+  <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #FFFFFF, 0 2 10 0 #99000000</BoxShadows>
+  <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #FFFFFF, 0 12 32 -12 #99000000</BoxShadows>
+</ResourceDictionary>

@@ -12,6 +12,9 @@ internal interface IEffectiveTheme
     /// <summary>Raised when <see cref="EffectiveTheme"/> changes.</summary>
     event Action? EffectiveThemeChanged;
 
-    /// <summary>Gets the theme in effect (light or dark).</summary>
+    /// <summary>
+    /// Gets the theme in effect: light or dark, or <see cref="HighContrast.Variant"/>, which inherits Dark but leaves
+    /// the pages light.
+    /// </summary>
     ThemeVariant EffectiveTheme { get; }
 }
