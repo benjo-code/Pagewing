@@ -201,6 +201,70 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Finds a query on one page (see <see cref="TextMatcher"/> for how text is compared). A single request to the
+    /// PDFium thread reads the characters without geometry, matches them, and reads the boxes only of the matched
+    /// characters. A page without text, and an empty or whitespace-only query, give an empty list. Runs with
+    /// <see cref="PdfPriority.Background"/>.
+    /// </summary>
+    /// <returns>The hits in text order.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="query"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the search finished.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<IReadOnlyList<SearchHit>> SearchPageAsync(int pageIndex, string query, SearchOptions options, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(pageIndex, pageCount);
+        ArgumentNullException.ThrowIfNull(query);
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return cancellationToken.IsCancellationRequested
+                ? Task.FromCanceled<IReadOnlyList<SearchHit>>(cancellationToken)
+                : Task.FromResult<IReadOnlyList<SearchHit>>([]);
+        }
+
+        return document.Thread.InvokeAsync<IReadOnlyList<SearchHit>>(
+            () =>
+            {
+                using var page = document.LoadPage(pageIndex);
+                using var textPage = page.LoadTextPage();
+                var read = PdfiumPageText.ReadChars(page, textPage, geometry: false, style: false);
+                var chars = new TextChar[read.Length];
+                for (var i = 0; i < read.Length; i++)
+                {
+                    chars[i] = PageText.FromPdfium(read[i]);
+                }
+
+                var matches = TextMatcher.Find(chars, query, options);
+                if (matches.Count == 0)
+                {
+                    return [];
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                var hits = new SearchHit[matches.Count];
+                for (var m = 0; m < hits.Length; m++)
+                {
+                    var (first, last) = matches[m];
+                    var boxed = PdfiumPageText.ReadChars(page, textPage, first, last - first + 1);
+                    var range = new TextChar[boxed.Length];
+                    for (var i = 0; i < boxed.Length; i++)
+                    {
+                        range[i] = PageText.FromPdfium(boxed[i]);
+                    }
+
+                    hits[m] = new SearchHit(pageIndex, first, last, TextGeometry.RectsOf(range, 0, range.Length), TextMatcher.SnippetOf(chars, first, last));
+                }
+
+                return hits;
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Renders a whole page at <paramref name="scale"/> pixels per point (1 = 72 dpi) on white, without rotation
     /// beyond the page's own. The image size is <see cref="PdfPageSize.ToPixels"/>. The render runs in time
     /// slices on the PDFium thread, so other requests can run in between.

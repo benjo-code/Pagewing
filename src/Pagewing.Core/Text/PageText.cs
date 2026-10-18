@@ -324,13 +324,7 @@ public sealed class PageText
             return (charIndex, charIndex);
         }
 
-        var start = charIndex;
-        while (start > 0 && !EndsLine(start - 1))
-        {
-            start--;
-        }
-
-        return (start, SegmentEnd(charIndex));
+        return (TextGeometry.LineStart(Chars, charIndex), SegmentEnd(charIndex));
     }
 
     /// <summary>
@@ -348,45 +342,7 @@ public sealed class PageText
         ArgumentOutOfRangeException.ThrowIfGreaterThan(end, Chars.Count);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(start, end);
 
-        var rects = new List<PageRect>();
-        var i = start;
-        while (i < end)
-        {
-            var segmentEnd = Math.Min(SegmentEnd(i), end);
-            var first = -1;
-            var last = -1;
-            for (var k = i; k < segmentEnd; k++)
-            {
-                if (!Chars[k].IsGenerated)
-                {
-                    first = first < 0 ? k : first;
-                    last = k;
-                }
-            }
-
-            if (first >= 0)
-            {
-                var union = Chars[first].Box;
-                for (var k = first + 1; k <= last; k++)
-                {
-                    var box = Chars[k].Box;
-                    if (!Chars[k].IsGenerated || (box.Width > 0 && box.Height > 0))
-                    {
-                        union = union.Union(box);
-                    }
-                }
-
-                rects.Add(union);
-            }
-
-            i = segmentEnd;
-            if (i < end && Chars[i].IsLineBreak)
-            {
-                i++;
-            }
-        }
-
-        return rects;
+        return TextGeometry.RectsOf(Chars, start, end);
     }
 
     /// <summary>
@@ -423,30 +379,38 @@ public sealed class PageText
         return c.CodePoint is '\'' or '’' || (Rune.IsValid(c.CodePoint) && Rune.IsLetterOrDigit(new Rune(c.CodePoint)));
     }
 
-    /// <summary>Gets whether the character is the last one of its line: a generated line break or a line-end hyphen.</summary>
-    private bool EndsLine(int index) => Chars[index].IsLineBreak || (Chars[index].Flags & TextCharTraits.Hyphen) != 0;
-
     /// <summary>
     /// Gets the exclusive end of the line segment that contains <paramref name="from"/>: the index of the next line
     /// break, or the index after the next line-end hyphen, or <see cref="Chars"/>.Count. Lines are split the same way
     /// for selection rectangles and for copied text (<see cref="TextFlow"/>).
     /// </summary>
-    internal int SegmentEnd(int from)
-    {
-        for (var i = from; i < Chars.Count; i++)
-        {
-            if (Chars[i].IsLineBreak)
-            {
-                return i;
-            }
+    internal int SegmentEnd(int from) => TextGeometry.SegmentEnd(Chars, from);
 
-            if ((Chars[i].Flags & TextCharTraits.Hyphen) != 0)
-            {
-                return i + 1;
-            }
+    /// <summary>Maps a character the PDFium layer read to the Core model.</summary>
+    internal static TextChar FromPdfium(PdfiumChar c)
+    {
+        var flags = TextCharTraits.None;
+        if (c.Generated)
+        {
+            flags |= TextCharTraits.Generated;
         }
 
-        return Chars.Count;
+        if (c.Hyphen)
+        {
+            flags |= TextCharTraits.Hyphen;
+        }
+
+        if (c.Bold)
+        {
+            flags |= TextCharTraits.Bold;
+        }
+
+        if (c.Italic)
+        {
+            flags |= TextCharTraits.Italic;
+        }
+
+        return new TextChar(c.CodePoint, new PageRect(c.Left, c.Top, c.Right, c.Bottom), flags, c.FontSize);
     }
 
     /// <summary>Maps what the PDFium layer read for a page to the Core model; links the engine cannot follow are dropped.</summary>
@@ -455,29 +419,7 @@ public sealed class PageText
         var mapped = new TextChar[chars.Length];
         for (var i = 0; i < chars.Length; i++)
         {
-            var c = chars[i];
-            var flags = TextCharTraits.None;
-            if (c.Generated)
-            {
-                flags |= TextCharTraits.Generated;
-            }
-
-            if (c.Hyphen)
-            {
-                flags |= TextCharTraits.Hyphen;
-            }
-
-            if (c.Bold)
-            {
-                flags |= TextCharTraits.Bold;
-            }
-
-            if (c.Italic)
-            {
-                flags |= TextCharTraits.Italic;
-            }
-
-            mapped[i] = new TextChar(c.CodePoint, new PageRect(c.Left, c.Top, c.Right, c.Bottom), flags, c.FontSize);
+            mapped[i] = FromPdfium(chars[i]);
         }
 
         var mappedLinks = new List<PageLink>(links.Length);
