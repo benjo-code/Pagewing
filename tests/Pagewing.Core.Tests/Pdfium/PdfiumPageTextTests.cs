@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Pagewing.Pdfium;
 using Pagewing.TestSupport;
 using Xunit;
@@ -195,6 +197,35 @@ public sealed class PdfiumPageTextTests
     }
 
     [Fact]
+    public async Task OnlyGoToActionsAndPlainDestinationsArePageLinks()
+    {
+        // FPDFLink_GetDest also returns the /D of a GoToR or GoToE action (page index 1 here, a valid page of this
+        // document), so those links must be classified by their action type, never by the destination.
+        var path = Path.Combine(Path.GetTempPath(), $"pagewing-link-kinds-{Guid.NewGuid():N}.pdf");
+        await File.WriteAllBytesAsync(path, LinkKindsPdf(), TestContext.Current.CancellationToken);
+        try
+        {
+            var links = await ReadLinksAt(path, 0);
+
+            Assert.Equal(
+                [PdfiumLinkKind.Unsupported, PdfiumLinkKind.Unsupported, PdfiumLinkKind.Unsupported, PdfiumLinkKind.Page],
+                links.Select(l => l.Kind));
+            Assert.All(links[..3], l =>
+            {
+                Assert.Equal(-1, l.PageIndex);
+                Assert.Null(l.Top);
+                Assert.Null(l.Uri);
+            });
+            Assert.Equal(1, links[3].PageIndex);
+            Assert.Equal(300, links[3].Top);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void WebAddressAreasUnderALinkAnnotationAreDropped()
     {
         // No test PDF has a web address under a link annotation, so the merge rule is checked with synthetic links.
@@ -254,18 +285,57 @@ public sealed class PdfiumPageTextTests
             cancellationToken: TestContext.Current.CancellationToken);
     }
 
-    private static Task<PdfiumLink[]> ReadLinks(string file, int pageIndex)
+    private static Task<PdfiumLink[]> ReadLinks(string file, int pageIndex) => ReadLinksAt(TestData.Pdf(file), pageIndex);
+
+    private static Task<PdfiumLink[]> ReadLinksAt(string path, int pageIndex)
     {
         var thread = PdfiumThread.Shared;
         return thread.InvokeAsync(
             () =>
             {
-                using var document = PdfiumDocument.Open(thread, TestData.Pdf(file), null);
+                using var document = PdfiumDocument.Open(thread, path, null);
                 using var page = document.LoadPage(pageIndex);
                 using var text = page.LoadTextPage();
                 return PdfiumPageText.ReadLinks(document, page, text);
             },
             cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Two pages of 400 x 400. Page 1 has four link annotations in this order: GoToR to another file, GoToE, Launch
+    /// (all with a /D that names page index 1 where the action allows one) and a plain /Dest to page 2 at y = 100.
+    /// </summary>
+    private static byte[] LinkKindsPdf()
+    {
+        string[] objects =
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Annots [5 0 R 6 0 R 7 0 R 8 0 R] >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] >>",
+            "<< /Type /Annot /Subtype /Link /Rect [40 340 140 360] /A << /S /GoToR /F (other.pdf) /D [1 /XYZ 0 100 0] >> >>",
+            "<< /Type /Annot /Subtype /Link /Rect [40 300 140 320] /A << /S /GoToE /T << /R /C /N (attachment) >> /D [1 /XYZ 0 100 0] >> >>",
+            "<< /Type /Annot /Subtype /Link /Rect [40 260 140 280] /A << /S /Launch /F (calc.exe) >> >>",
+            "<< /Type /Annot /Subtype /Link /Rect [40 220 140 240] /Dest [4 0 R /XYZ 0 100 null] >>",
+        ];
+
+        var pdf = new StringBuilder("%PDF-1.7\n");
+        var offsets = new List<int>();
+        for (var i = 0; i < objects.Length; i++)
+        {
+            offsets.Add(pdf.Length);
+            pdf.Append(CultureInfo.InvariantCulture, $"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
+        }
+
+        var xref = pdf.Length;
+        pdf.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
+        foreach (var offset in offsets)
+        {
+            pdf.Append(CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
+        }
+
+        pdf.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        return Encoding.ASCII.GetBytes(pdf.ToString());
     }
 
     private static string Text(IEnumerable<PdfiumChar> chars) =>

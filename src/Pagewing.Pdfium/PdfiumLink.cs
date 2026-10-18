@@ -16,6 +16,10 @@ internal enum PdfiumLinkKind
 /// <summary>
 /// A link of a page: a link annotation or a web address PDFium detected in the text.
 /// </summary>
+/// <remarks>
+/// The generated equality compares <see cref="Rects"/> by list reference, not by content: two links read
+/// separately are never equal. Compare the members when value equality is needed.
+/// </remarks>
 /// <param name="Rects">The clickable areas in page points, origin at the top left of the displayed page.</param>
 /// <param name="Kind">What the link leads to.</param>
 /// <param name="PageIndex">The 0-based target page when <paramref name="Kind"/> is <see cref="PdfiumLinkKind.Page"/>, otherwise -1.</param>

@@ -279,21 +279,19 @@ internal static unsafe class PdfiumPageText
     }
 
     /// <summary>
-    /// The target of a link annotation: its destination, else its action (GoTo with a destination, URI);
-    /// everything else, and destinations outside the document, are <see cref="PdfiumLinkKind.Unsupported"/>.
+    /// The target of a link annotation. A link with an action is classified by the action type only: GoTo leads to
+    /// its destination, URI to its address, everything else (GoToR, GoToE, Launch, JavaScript …) is
+    /// <see cref="PdfiumLinkKind.Unsupported"/>. Only a link without an action uses its <c>/Dest</c>, because
+    /// <c>FPDFLink_GetDest</c> also returns the <c>/D</c> of GoToR and GoToE actions, which name a page of another
+    /// file. Destinations outside the document are unsupported as well.
     /// </summary>
     private static PdfiumLink ReadTarget(nint document, int pageCount, nint link, (double, double, double, double)[] rects)
     {
         var unsupported = new PdfiumLink(rects, PdfiumLinkKind.Unsupported, -1, null, null);
-        var dest = Fpdf.FPDFLink_GetDest(document, link);
-        if (dest == 0)
+        nint dest;
+        var action = Fpdf.FPDFLink_GetAction(link);
+        if (action != 0)
         {
-            var action = Fpdf.FPDFLink_GetAction(link);
-            if (action == 0)
-            {
-                return unsupported;
-            }
-
             switch (Fpdf.FPDFAction_GetType(action).Value)
             {
                 case FpdfConstants.ActionGoTo:
@@ -305,11 +303,15 @@ internal static unsafe class PdfiumPageText
                 default:
                     return unsupported;
             }
+        }
+        else
+        {
+            dest = Fpdf.FPDFLink_GetDest(document, link);
+        }
 
-            if (dest == 0)
-            {
-                return unsupported;
-            }
+        if (dest == 0)
+        {
+            return unsupported;
         }
 
         var pageIndex = Fpdf.FPDFDest_GetDestPageIndex(document, dest);
