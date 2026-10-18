@@ -49,8 +49,11 @@ internal static class RenderCorpus
         new("wide-page.pdf", CompareMode.Tolerant, FontSubstitution),
     ];
 
-    /// <summary>Test PDFs that cannot be rendered on purpose (error cases).</summary>
-    public static IReadOnlyList<string> Skipped { get; } = ["empty.pdf", "not-a-pdf.pdf"];
+    /// <summary>
+    /// Test PDFs that are not rendered on purpose: error cases, and files whose structure is the test subject
+    /// while the page content is a plain grey area (the outline files).
+    /// </summary>
+    public static IReadOnlyList<string> Skipped { get; } = ["empty.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf"];
 
     /// <summary>Looks up a case by its file name.</summary>
     public static RenderCase Get(string pdfName) => Cases.Single(c => c.PdfName == pdfName);

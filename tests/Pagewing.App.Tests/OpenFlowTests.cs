@@ -71,10 +71,10 @@ public sealed class OpenFlowTests : IDisposable
         var (window, viewModel) = Show(picker);
 
         Find<Button>(window, "ChooseFileButton").Command!.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Ready);
 
         Assert.Equal(1, picker.Calls);
-        Assert.Equal(path, viewModel.FullPath);
+        Assert.Equal(path, viewModel.ActiveTab!.FullPath);
         Assert.True(Find<Control>(window, "Tab").IsEffectivelyVisible);
     }
 
@@ -84,7 +84,7 @@ public sealed class OpenFlowTests : IDisposable
         var picker = new FakePicker(TestData.Pdf("hello_world.pdf"));
         var (window, viewModel) = Show(picker);
         viewModel.OpenCommand.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Ready);
 
         picker.Result = null;
         // The fake picker completes synchronously, so the command has finished when Execute returns.
@@ -92,8 +92,9 @@ public sealed class OpenFlowTests : IDisposable
         Settle(window);
 
         Assert.Equal(2, picker.Calls);
-        Assert.Equal(ViewerState.Ready, viewModel.State);
-        Assert.Equal(TestData.Pdf("hello_world.pdf"), viewModel.FullPath);
+        var tab = Assert.Single(viewModel.Tabs);
+        Assert.Equal(ViewerState.Ready, tab.State);
+        Assert.Equal(TestData.Pdf("hello_world.pdf"), tab.FullPath);
     }
 
     [AvaloniaTheory]
@@ -105,23 +106,27 @@ public sealed class OpenFlowTests : IDisposable
         var picker = new FakePicker(TestData.Pdf("hello_world.pdf"));
         var (window, viewModel) = Show(picker);
         viewModel.OpenCommand.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Ready);
+        var document = viewModel.ActiveTab!;
 
-        // The dialog fails (no file chooser portal, for example): the error card replaces the document.
+        // The dialog fails (no file chooser portal, for example): the error card shows in a tab of its own.
         picker.Failure = new InvalidOperationException("No file chooser portal.");
         viewModel.OpenCommand.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Failed);
+        var tab = viewModel.ActiveTab!;
 
         Assert.Equal(2, picker.Calls);
-        Assert.Equal(PdfOpenError.Unknown, viewModel.Error);
-        Assert.Null(viewModel.FullPath);
-        Assert.Null(viewModel.Session.Document);
+        Assert.Equal([document, tab], viewModel.Tabs);
+        Assert.Equal(ViewerState.Ready, document.State);
+        Assert.Equal(PdfOpenError.Unknown, tab.Error);
+        Assert.Null(tab.FullPath);
+        Assert.Null(tab.Session.Document);
         Assert.True(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
         Assert.False(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
         Assert.Equal(cause, Find<TextBlock>(window, "ErrorCause").Text);
 
         // The details name no path, the error kind and the type and message of the exception, but no stack trace.
-        var details = viewModel.ErrorDetailsText;
+        var details = tab.ErrorDetailsText;
         Assert.StartsWith(pathLine + "\n", details, StringComparison.Ordinal);
         Assert.Contains("Unknown", details, StringComparison.Ordinal);
         Assert.Contains(messageLabel + "System.InvalidOperationException: No file chooser portal.", details, StringComparison.Ordinal);
@@ -130,23 +135,26 @@ public sealed class OpenFlowTests : IDisposable
         Settle(window);
         Assert.Equal(details, Find<SelectableTextBlock>(window, "ErrorDetailsText").Text);
 
-        // A cancelled dialog (also as an exception) leaves the card; a working one opens the file.
+        // A cancelled dialog (also as an exception) leaves the card; a working one opens the file in this tab.
         picker.Failure = new OperationCanceledException();
-        viewModel.OpenCommand.Execute(null);
+        tab.OpenOtherCommand.Execute(null);
         Settle(window);
         picker.Failure = null;
         picker.Result = null;
         viewModel.OpenCommand.Execute(null);
+        tab.OpenOtherCommand.Execute(null);
         Settle(window);
-        Assert.Equal(ViewerState.Failed, viewModel.State);
-        Assert.Equal(details, viewModel.ErrorDetailsText);
+        Assert.Equal(ViewerState.Failed, tab.State);
+        Assert.Equal(details, tab.ErrorDetailsText);
+        Assert.Equal(2, viewModel.Tabs.Count);
 
         picker.Result = TestData.Pdf("text-basic.pdf");
         Find<Button>(window, "ErrorOpenOtherButton").Command!.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
-        Assert.Equal(TestData.Pdf("text-basic.pdf"), viewModel.FullPath);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Ready);
+        Assert.Equal(TestData.Pdf("text-basic.pdf"), tab.FullPath);
+        Assert.Equal([document, tab], viewModel.Tabs);
         Assert.False(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
-        Assert.DoesNotContain(messageLabel, viewModel.ErrorDetailsText, StringComparison.Ordinal);
+        Assert.DoesNotContain(messageLabel, tab.ErrorDetailsText, StringComparison.Ordinal);
     }
 
     [AvaloniaFact]
@@ -156,14 +164,14 @@ public sealed class OpenFlowTests : IDisposable
         var (window, viewModel) = Show(picker);
 
         Find<Button>(window, "ChooseFileButton").Command!.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Failed);
         Assert.True(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
-        Assert.Contains("System.IO.IOException: Broken shell integration.", viewModel.ErrorDetailsText, StringComparison.Ordinal);
+        Assert.Contains("System.IO.IOException: Broken shell integration.", viewModel.ActiveTab!.ErrorDetailsText, StringComparison.Ordinal);
 
         Find<Button>(window, "ErrorCloseButton").Command!.Execute(null);
         Settle(window);
-        Assert.Equal(ViewerState.Empty, viewModel.State);
-        Assert.Null(viewModel.Error);
+        Assert.Empty(viewModel.Tabs);
+        Assert.Null(viewModel.ActiveTab);
         Assert.True(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
         Assert.False(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
     }
@@ -183,11 +191,13 @@ public sealed class OpenFlowTests : IDisposable
         var path = TestData.Pdf("hello_world.pdf");
         var opening = session.OpenAsync(path);
 
-        var (window, viewModel) = Show(new FakePicker(null), session);
+        var (window, viewModel) = Show(new FakePicker(null), adopt: session);
 
         // The first frame: tab with the file name and an empty document area, no start screen, no card.
-        Assert.Equal(ViewerState.Loading, viewModel.State);
-        Assert.Equal("hello_world.pdf", viewModel.FileName);
+        var tab = Assert.Single(viewModel.Tabs);
+        Assert.Same(session, tab.Session);
+        Assert.Equal(ViewerState.Loading, tab.State);
+        Assert.Equal("hello_world.pdf", tab.FileName);
         Assert.True(Find<Control>(window, "Tab").IsEffectivelyVisible);
         Assert.Equal("hello_world.pdf", Find<MiddleEllipsisTextBlock>(window, "TabName").Text);
         Assert.True(Find<Control>(window, "DocumentArea").IsEffectivelyVisible);
@@ -202,7 +212,7 @@ public sealed class OpenFlowTests : IDisposable
         gate.SetResult();
         await opening;
         Settle(window);
-        Assert.Equal(ViewerState.Ready, viewModel.State);
+        Assert.Equal(ViewerState.Ready, tab.State);
     }
 
     [AvaloniaFact]
@@ -210,7 +220,8 @@ public sealed class OpenFlowTests : IDisposable
     {
         var (window, viewModel) = Show(new FakePicker(null));
         await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.PasswordRequired);
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.State == ViewerState.PasswordRequired);
 
         var card = Find<Control>(window, "PasswordCard");
         var field = Find<TextBox>(window, "PasswordField");
@@ -225,14 +236,14 @@ public sealed class OpenFlowTests : IDisposable
         // Typed into the focused field, submitted with Enter.
         window.KeyTextInput(UserPassword);
         Settle(window);
-        Assert.Equal(UserPassword, viewModel.Password);
+        Assert.Equal(UserPassword, tab.Password);
         window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
         window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
 
         // That the card and the focus stay while the password is checked: StatusBarRowIsThereOnlyWhileLoadingOrReady.
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Ready);
         Assert.False(card.IsEffectivelyVisible);
-        Assert.Equal(string.Empty, viewModel.Password);
+        Assert.Equal(string.Empty, tab.Password);
         Assert.True(Find<Control>(window, "StatusBar").IsEffectivelyVisible);
     }
 
@@ -242,26 +253,25 @@ public sealed class OpenFlowTests : IDisposable
         // Every open waits until the test releases it, so the loading states can be looked at.
         using var gate = new SemaphoreSlim(0);
         var engine = new PdfEngine();
-        var session = new ViewerSession(async (path, password, cancellationToken) =>
+        var (window, viewModel) = Show(new FakePicker(null), () => new ViewerSession(async (path, password, cancellationToken) =>
         {
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             return await engine.OpenAsync(path, password, cancellationToken).ConfigureAwait(false);
-        });
-        _cleanup.Add(session);
-        var (window, viewModel) = Show(new FakePicker(null), session);
+        }));
         var row = Find<Control>(window, "StatusBarRow");
         Assert.False(row.IsEffectivelyVisible);
 
         // Loading reserves the row, so the viewport keeps its height when the document is ready.
         var opening = viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
         Settle(window);
-        Assert.Equal(ViewerState.Loading, viewModel.State);
+        var tab = viewModel.ActiveTab!;
+        Assert.Equal(ViewerState.Loading, tab.State);
         Assert.True(row.IsEffectivelyVisible);
 
         // No empty strip under the password card, also not while the password is checked.
         gate.Release();
         await opening;
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.PasswordRequired);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.PasswordRequired);
         var card = Find<Control>(window, "PasswordCard");
         var field = Find<TextBox>(window, "PasswordField");
         Assert.False(row.IsEffectivelyVisible);
@@ -269,13 +279,13 @@ public sealed class OpenFlowTests : IDisposable
         window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
         window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
         Settle(window);
-        Assert.Equal(ViewerState.Loading, viewModel.State);
+        Assert.Equal(ViewerState.Loading, tab.State);
         Assert.True(card.IsEffectivelyVisible);
         Assert.Same(field, window.FocusManager!.GetFocusedElement());
         Assert.False(row.IsEffectivelyVisible);
 
         gate.Release();
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Ready);
         Assert.True(row.IsEffectivelyVisible);
         Assert.True(Find<Control>(window, "StatusBar").IsEffectivelyVisible);
 
@@ -283,7 +293,7 @@ public sealed class OpenFlowTests : IDisposable
         var failing = viewModel.OpenAsync(TestData.Pdf("not-a-pdf.pdf"));
         gate.Release();
         await failing;
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Failed);
         Assert.True(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
         Assert.False(row.IsEffectivelyVisible);
     }
@@ -294,13 +304,14 @@ public sealed class OpenFlowTests : IDisposable
         Strings.Culture = new CultureInfo("de");
         var (window, viewModel) = Show(new FakePicker(null));
         await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.PasswordRequired);
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.State == ViewerState.PasswordRequired);
         var field = Find<TextBox>(window, "PasswordField");
 
         window.KeyTextInput("falsch");
         window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
         window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.PasswordIncorrect);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.PasswordIncorrect);
 
         var message = Find<TextBlock>(window, "PasswordMessage");
         Assert.True(Find<Control>(window, "PasswordCard").IsEffectivelyVisible);
@@ -316,8 +327,8 @@ public sealed class OpenFlowTests : IDisposable
         window.KeyTextInput(UserPassword);
         Settle(window);
         Assert.Equal(UserPassword, field.Text);
-        viewModel.SubmitPasswordCommand.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        tab.SubmitPasswordCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Ready);
         Assert.DoesNotContain("invalid", field.Classes);
     }
 
@@ -326,12 +337,14 @@ public sealed class OpenFlowTests : IDisposable
     {
         var (window, viewModel) = Show(new FakePicker(null));
         await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.PasswordRequired);
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.State == ViewerState.PasswordRequired);
 
         Find<Button>(window, "PasswordCancelButton").Command!.Execute(null);
         Settle(window);
 
-        Assert.Equal(ViewerState.Empty, viewModel.State);
+        Assert.Empty(viewModel.Tabs);
+        Assert.Equal(ViewerState.Empty, tab.Session.State);
         Assert.False(Find<Control>(window, "Tab").IsEffectivelyVisible);
         Assert.False(Find<Control>(window, "PasswordCard").IsEffectivelyVisible);
         Assert.True(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
@@ -342,13 +355,12 @@ public sealed class OpenFlowTests : IDisposable
     public async Task ErrorCardTextMatchesEveryErrorKind(PdfOpenError error, string language)
     {
         Strings.Culture = new CultureInfo(language);
-        var session = new ViewerSession((_, _, _) => Task.FromException<PdfDocument>(new PdfOpenException(error)));
-        _cleanup.Add(session);
-        var (window, viewModel) = Show(new FakePicker(null), session);
+        var (window, viewModel) = Show(new FakePicker(null), () => new ViewerSession((_, _, _) => Task.FromException<PdfDocument>(new PdfOpenException(error))));
         var path = Path.Combine(Path.GetTempPath(), "report.pdf");
 
         await viewModel.OpenAsync(path);
         Settle(window);
+        var tab = viewModel.ActiveTab!;
 
         var errorCard = Find<Control>(window, "ErrorCard");
         var passwordCard = Find<Control>(window, "PasswordCard");
@@ -376,7 +388,7 @@ public sealed class OpenFlowTests : IDisposable
             _ => throw new InvalidOperationException($"No expected text for {error} in {language}."),
         };
 
-        Assert.Equal(ViewerState.Failed, viewModel.State);
+        Assert.Equal(ViewerState.Failed, tab.State);
         Assert.True(errorCard.IsEffectivelyVisible);
         Assert.False(passwordCard.IsEffectivelyVisible);
         Assert.Equal(title, Find<TextBlock>(window, "ErrorTitle").Text);
@@ -386,11 +398,11 @@ public sealed class OpenFlowTests : IDisposable
         var details = Find<Expander>(window, "ErrorDetails");
         Assert.False(details.IsExpanded);
         Assert.Equal(language == "de" ? "Technische Details" : "Technical details", details.Header);
-        Assert.Contains(path, viewModel.ErrorDetailsText, StringComparison.Ordinal);
-        Assert.Contains(error.ToString(), viewModel.ErrorDetailsText, StringComparison.Ordinal);
+        Assert.Contains(path, tab.ErrorDetailsText, StringComparison.Ordinal);
+        Assert.Contains(error.ToString(), tab.ErrorDetailsText, StringComparison.Ordinal);
         details.IsExpanded = true;
         Settle(window);
-        Assert.Equal(viewModel.ErrorDetailsText, Find<SelectableTextBlock>(window, "ErrorDetailsText").Text);
+        Assert.Equal(tab.ErrorDetailsText, Find<SelectableTextBlock>(window, "ErrorDetailsText").Text);
     }
 
     [AvaloniaFact]
@@ -399,7 +411,8 @@ public sealed class OpenFlowTests : IDisposable
         var picker = new FakePicker(TestData.Pdf("hello_world.pdf"));
         var (window, viewModel) = Show(picker);
         await viewModel.OpenAsync(TestData.Pdf("not-a-pdf.pdf"));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Failed);
 
         var close = Find<Button>(window, "ErrorCloseButton");
         var openOther = Find<Button>(window, "ErrorOpenOtherButton");
@@ -408,18 +421,19 @@ public sealed class OpenFlowTests : IDisposable
         Assert.Contains("primary", openOther.Classes);
         Assert.DoesNotContain("primary", close.Classes);
 
-        // "Open another file" goes through the file dialog.
+        // "Open another file" goes through the file dialog and opens in this tab.
         openOther.Command!.Execute(null);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Ready);
         Assert.Equal(1, picker.Calls);
+        Assert.Same(tab, Assert.Single(viewModel.Tabs));
         Assert.False(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
 
-        // "Close tab" returns to the start screen.
-        await viewModel.OpenAsync(TestData.Pdf("not-a-pdf.pdf"));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+        // "Close tab" closes the (only) tab and returns to the start screen.
+        await tab.OpenAsync(TestData.Pdf("not-a-pdf.pdf"));
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Failed);
         close.Command!.Execute(null);
         Settle(window);
-        Assert.Equal(ViewerState.Empty, viewModel.State);
+        Assert.Empty(viewModel.Tabs);
         Assert.True(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
     }
 
@@ -430,21 +444,23 @@ public sealed class OpenFlowTests : IDisposable
         var path = TestData.Pdf("hello_world.pdf");
 
         Drop(window, await FileAsync(window, path));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Ready);
 
-        Assert.Equal(path, viewModel.FullPath);
+        Assert.Equal(path, viewModel.ActiveTab!.FullPath);
     }
 
     [AvaloniaFact]
-    public async Task DroppingSeveralFilesOpensTheFirst()
+    public async Task DroppingSeveralFilesOpensEachInATab()
     {
         var (window, viewModel) = Show(new FakePicker(null));
         var first = TestData.Pdf("text-basic.pdf");
+        var second = TestData.Pdf("hello_world.pdf");
 
-        Drop(window, await FileAsync(window, first), await FileAsync(window, TestData.Pdf("hello_world.pdf")));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        Drop(window, await FileAsync(window, first), await FileAsync(window, second));
+        await WaitUntilAsync(window, () => viewModel.Tabs.Count == 2 && viewModel.Tabs[0].State == ViewerState.Ready);
 
-        Assert.Equal(first, viewModel.FullPath);
+        // Each file gets a tab of its own, in their order (more in TabsTests).
+        Assert.Equal([first, second], viewModel.Tabs.Select(tab => tab.FullPath));
     }
 
     [AvaloniaFact]
@@ -454,9 +470,10 @@ public sealed class OpenFlowTests : IDisposable
         var folder = TempDirectory();
 
         Drop(window, await FolderAsync(window, folder));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Failed);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Failed);
+        var tab = viewModel.ActiveTab!;
 
-        Assert.Equal(PdfOpenError.CannotRead, viewModel.Error);
+        Assert.Equal(PdfOpenError.CannotRead, tab.Error);
         Assert.True(Find<Control>(window, "ErrorCard").IsEffectivelyVisible);
 
         // Content that is not a file (text) is ignored.
@@ -464,12 +481,13 @@ public sealed class OpenFlowTests : IDisposable
         text.Add(DataTransferItem.CreateText("C:\\not\\a\\drop.pdf"));
         DropData(window, text);
         Settle(window);
-        Assert.Equal(ViewerState.Failed, viewModel.State);
-        Assert.Equal(Path.GetFullPath(folder), viewModel.FullPath);
+        Assert.Same(tab, Assert.Single(viewModel.Tabs));
+        Assert.Equal(ViewerState.Failed, tab.State);
+        Assert.Equal(Path.GetFullPath(folder), tab.FullPath);
     }
 
     [AvaloniaFact]
-    public async Task ExternalOpenReplacesTheDocument()
+    public async Task ExternalOpenShowsTheDocumentInANewTab()
     {
         var (window, viewModel) = Show(new FakePicker(null));
         var activations = 0;
@@ -477,12 +495,13 @@ public sealed class OpenFlowTests : IDisposable
         var first = TestData.Pdf("hello_world.pdf");
         var second = TestData.Pdf("text-basic.pdf");
         await viewModel.OpenAsync(first);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Ready);
 
         // As the single-instance listener does it: from a pool thread, in this process.
         await Task.Run(() => viewModel.OnExternalOpen([second]));
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready && viewModel.FullPath == second);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab is { State: ViewerState.Ready } tab && tab.FullPath == second);
 
+        Assert.Equal([first, second], viewModel.Tabs.Select(tab => tab.FullPath));
         Assert.Equal("text-basic.pdf", Find<MiddleEllipsisTextBlock>(window, "TabName").Text);
         Assert.Equal(1, activations);
     }
@@ -495,15 +514,16 @@ public sealed class OpenFlowTests : IDisposable
         viewModel.ActivationRequested += () => activations++;
         var path = TestData.Pdf("hello_world.pdf");
         await viewModel.OpenAsync(path);
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Ready);
         window.WindowState = WindowState.Minimized;
         Settle(window);
 
         await Task.Run(() => viewModel.OnExternalOpen([]));
         await WaitUntilAsync(window, () => activations == 1);
 
-        Assert.Equal(ViewerState.Ready, viewModel.State);
-        Assert.Equal(path, viewModel.FullPath);
+        var tab = Assert.Single(viewModel.Tabs);
+        Assert.Equal(ViewerState.Ready, tab.State);
+        Assert.Equal(path, tab.FullPath);
         Assert.NotEqual(WindowState.Minimized, window.WindowState);
     }
 
@@ -516,14 +536,15 @@ public sealed class OpenFlowTests : IDisposable
 
         window.KeyPress(Key.O, RawInputModifiers.Control, PhysicalKey.O, "o");
         window.KeyRelease(Key.O, RawInputModifiers.Control, PhysicalKey.O, "o");
-        await WaitUntilAsync(window, () => viewModel.State == ViewerState.Ready);
+        await WaitUntilAsync(window, () => viewModel.ActiveTab?.State == ViewerState.Ready);
         Assert.Equal(1, picker.Calls);
-        Assert.Equal(path, viewModel.FullPath);
+        Assert.Equal(path, viewModel.ActiveTab!.FullPath);
 
         window.KeyPress(Key.W, RawInputModifiers.Control, PhysicalKey.W, "w");
         window.KeyRelease(Key.W, RawInputModifiers.Control, PhysicalKey.W, "w");
         Settle(window);
-        Assert.Equal(ViewerState.Empty, viewModel.State);
+        Assert.Empty(viewModel.Tabs);
+        Assert.True(viewModel.IsEmpty);
         Assert.True(Find<Control>(window, "StartScreen").IsEffectivelyVisible);
     }
 
@@ -539,16 +560,20 @@ public sealed class OpenFlowTests : IDisposable
         Assert.True(ratio >= 3, $"{theme}: danger.default on surface.canvas is {ratio:F2}:1");
     }
 
-    private (MainWindow Window, MainViewModel ViewModel) Show(IFilePicker picker, ViewerSession? session = null)
+    /// <summary>
+    /// Shows a window whose tabs get their sessions from <paramref name="factory"/> (real ones by default); a session
+    /// in <paramref name="adopt"/> becomes the first tab, as the file of the command line does.
+    /// </summary>
+    private (MainWindow Window, MainViewModel ViewModel) Show(IFilePicker picker, Func<ViewerSession>? factory = null, ViewerSession? adopt = null)
     {
-        if (session is null)
+        // Forced, so the layout is the same on Windows and Linux runners.
+        var viewModel = new MainViewModel(factory ?? (() => new ViewerSession(new PdfEngine())), picker) { IsWindowsTitleBar = true };
+        _cleanup.Add(viewModel);
+        if (adopt is not null)
         {
-            session = new ViewerSession(new PdfEngine());
-            _cleanup.Add(session);
+            viewModel.AdoptSession(adopt);
         }
 
-        // Forced, so the layout is the same on Windows and Linux runners.
-        var viewModel = new MainViewModel(session, picker) { IsWindowsTitleBar = true };
         var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720 };
         _cleanup.Add(new Closer(window));
         window.Show();

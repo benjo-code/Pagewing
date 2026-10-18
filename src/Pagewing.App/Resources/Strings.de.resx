@@ -27,6 +27,21 @@
   <data name="CloseTab" xml:space="preserve">
     <value>Tab schließen (Strg+W)</value>
   </data>
+  <data name="CloseTabTooltip" xml:space="preserve">
+    <value>Tab schließen</value>
+  </data>
+  <data name="CloseTabMenu" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="MoveToNewWindow" xml:space="preserve">
+    <value>In neuem Fenster öffnen</value>
+  </data>
+  <data name="AllTabs" xml:space="preserve">
+    <value>Alle Tabs ({0})</value>
+  </data>
+  <data name="AllTabsTooltip" xml:space="preserve">
+    <value>Alle Tabs ({0}): zu einem anderen Tab wechseln</value>
+  </data>
   <data name="StartTitle" xml:space="preserve">
     <value>Dokument öffnen</value>
   </data>
@@ -129,7 +144,118 @@
   <data name="ZoomValue" xml:space="preserve">
     <value>Zoomstufe</value>
   </data>
+  <data name="ZoomMenuTooltip" xml:space="preserve">
+    <value>Zoomstufe oder Zoom-Modus wählen</value>
+  </data>
+  <data name="ZoomFitWidth" xml:space="preserve">
+    <value>Seitenbreite</value>
+  </data>
+  <data name="ZoomFitWidthShortcut" xml:space="preserve">
+    <value>Strg+2</value>
+  </data>
+  <data name="ZoomFitPage" xml:space="preserve">
+    <value>Ganze Seite</value>
+  </data>
+  <data name="ZoomFitPageShortcut" xml:space="preserve">
+    <value>Strg+0</value>
+  </data>
+  <data name="ZoomActualSize" xml:space="preserve">
+    <value>Tatsächliche Größe</value>
+  </data>
+  <data name="ZoomActualSizeShortcut" xml:space="preserve">
+    <value>Strg+1</value>
+  </data>
+  <data name="GoToPageTooltip" xml:space="preserve">
+    <value>Gehe zu Seite (Strg+G)</value>
+  </data>
+  <data name="LayoutSingle" xml:space="preserve">
+    <value>Einzelseite</value>
+  </data>
+  <data name="LayoutContinuous" xml:space="preserve">
+    <value>Fortlaufend</value>
+  </data>
+  <data name="LayoutTwoPages" xml:space="preserve">
+    <value>Doppelseitig</value>
+  </data>
+  <data name="LayoutTwoPagesCover" xml:space="preserve">
+    <value>Doppelseitig mit Deckblatt</value>
+  </data>
+  <data name="LayoutTooltip" xml:space="preserve">
+    <value>Seitenlayout: {0}</value>
+  </data>
   <data name="PagePlaceholderFailed" xml:space="preserve">
     <value>Diese Seite konnte nicht angezeigt werden</value>
+  </data>
+  <data name="PagesPanelTitle" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="ContentsPanelTitle" xml:space="preserve">
+    <value>Inhalt</value>
+  </data>
+  <data name="ClosePanel" xml:space="preserve">
+    <value>Panel schließen</value>
+  </data>
+  <data name="PagesTooltip" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="ContentsTooltip" xml:space="preserve">
+    <value>Inhalt</value>
+  </data>
+  <data name="ThumbnailList" xml:space="preserve">
+    <value>Seitenvorschau</value>
+  </data>
+  <data name="ThumbnailName" xml:space="preserve">
+    <value>Seite {0}</value>
+  </data>
+  <data name="ThumbnailCurrentSuffix" xml:space="preserve">
+    <value>, aktuelle Seite</value>
+  </data>
+  <data name="OutlineList" xml:space="preserve">
+    <value>Inhaltsverzeichnis</value>
+  </data>
+  <data name="OutlineNoTitle" xml:space="preserve">
+    <value>(ohne Titel)</value>
+  </data>
+  <data name="OutlineNoTarget" xml:space="preserve">
+    <value>Kein Ziel in diesem Dokument</value>
+  </data>
+  <data name="OutlineEmpty" xml:space="preserve">
+    <value>Dieses Dokument hat kein Inhaltsverzeichnis.</value>
+  </data>
+  <data name="OutlineFailed" xml:space="preserve">
+    <value>Das Inhaltsverzeichnis konnte nicht gelesen werden.</value>
+  </data>
+  <data name="OutlineEntryName" xml:space="preserve">
+    <value>{0}, Seite {1}</value>
+  </data>
+  <data name="DocumentInfo" xml:space="preserve">
+    <value>Dokumentinfos</value>
+  </data>
+  <data name="InfoFile" xml:space="preserve">
+    <value>Datei</value>
+  </data>
+  <data name="InfoFolder" xml:space="preserve">
+    <value>Ordner</value>
+  </data>
+  <data name="InfoPages" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="InfoPageSize" xml:space="preserve">
+    <value>Seitenformat</value>
+  </data>
+  <data name="InfoPdfVersion" xml:space="preserve">
+    <value>PDF-Version</value>
+  </data>
+  <data name="InfoFileSize" xml:space="preserve">
+    <value>Dateigröße</value>
+  </data>
+  <data name="InfoTitle" xml:space="preserve">
+    <value>Titel</value>
+  </data>
+  <data name="InfoAuthor" xml:space="preserve">
+    <value>Autor</value>
+  </data>
+  <data name="InfoCreated" xml:space="preserve">
+    <value>Erstellt</value>
   </data>
 </root>

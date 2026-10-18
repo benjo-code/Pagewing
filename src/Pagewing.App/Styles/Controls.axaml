@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="using:Pagewing.App.Controls">
   <!--
     Control styles of the design system (Docs/superpowers/specs/2026-10-17-designsystem.md, sections 5.2 and 5.3).
     They override FluentTheme through ordinary styles and use only the Pw.* tokens, so colours follow the theme variant.
@@ -184,6 +185,60 @@
   <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+  </Style>
+
+  <!--
+    Tab of the tab strip (Views/TabView.axaml, section 7.2): inactive tabs lie on the title bar surface and show
+    surface.hover under the pointer; the active tab has the colour of the document area and merges into it, with bold
+    text (type.strong), so it is never marked by colour alone (section 7.10).
+  -->
+  <Style Selector="Border.tab">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Border.tab:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+  </Style>
+  <Style Selector="Border.tab.active, Border.tab.active:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Canvas}" />
+  </Style>
+  <Style Selector="Border.tab ctl|MiddleEllipsisTextBlock">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Border.tab.active ctl|MiddleEllipsisTextBlock">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!--
+    Menus (zoom and layout menu of the status bar, tab context menu, "All tabs"; sections 5.1 and 5.3): raised surface,
+    1 px border.subtle, radius.overlay. Entries in text.primary; under the pointer and when selected (the entry the
+    keyboard is on) surface.hover, pressed accent.subtle. The check mark of the current choice is an icon, not a colour.
+    Keyboard focus: Avalonia flags an entry as focus-visible only when Tab reached it; with the arrow keys the menu gets
+    the class "keyboard" (Controls/MenuKeyboardFocus.cs). Both show the 2 px focus.ring inside the entry, whose padding
+    shrinks by the ring so the text does not move.
+  -->
+  <Style Selector="MenuFlyoutPresenter, ContextMenu">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Overlay}" />
+  </Style>
+  <Style Selector="MenuItem">
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+  </Style>
+  <Style Selector="MenuItem:pointerover /template/ Border#PART_LayoutRoot, MenuItem:selected /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+  </Style>
+  <Style Selector="MenuItem:pressed /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+  </Style>
+  <Style Selector="MenuItem:pointerover /template/ ContentPresenter#PART_HeaderPresenter, MenuItem:selected /template/ ContentPresenter#PART_HeaderPresenter, MenuItem:pressed /template/ ContentPresenter#PART_HeaderPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+  </Style>
+  <Style Selector="MenuItem:focus-visible /template/ Border#PART_LayoutRoot, MenuFlyoutPresenter.keyboard MenuItem:selected /template/ Border#PART_LayoutRoot, ContextMenu.keyboard MenuItem:selected /template/ Border#PART_LayoutRoot">
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Focus.Ring}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+    <Setter Property="Padding" Value="9,2,9,5" />
   </Style>
 
   <!-- Tooltip: raised surface, 1 px border.subtle, caption size. -->

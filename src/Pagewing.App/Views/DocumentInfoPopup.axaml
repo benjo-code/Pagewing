@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.DocumentInfoPopup"
+             x:DataType="vm:DocumentInfoViewModel"
+             Focusable="True"
+             AutomationProperties.Name="{x:Static res:Strings.DocumentInfo}">
+  <!--
+    Document info (design system 7.6), the content of the popup above the status bar; created when the popup opens
+    (StatusBar.DocumentInfo.cs). One line per value that is known: label in type.caption and text.secondary, value in
+    type.body and text.primary, the labels in one column. Card: radius.overlay, surface.raised, 1 px border.subtle (the
+    edge of the card shadow of section 5.3). The popup is its own window, which would cut off a box shadow; the platform
+    draws its drop shadow instead (Popup.WindowManagerAddShadowHint). It takes the keyboard focus when it opens, so Esc
+    reaches it.
+  -->
+  <Border Name="Card" MinWidth="240" MaxWidth="400" Padding="16,12"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
+          BorderThickness="1">
+    <ItemsControl Name="InfoRows" ItemsSource="{Binding Rows}" Grid.IsSharedSizeScope="True" Focusable="False">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Spacing="6" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:DocumentInfoRow">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <!-- 1 px down: the caption line (16) centred on the first body line (18). -->
+            <TextBlock Name="InfoLabel" Classes="caption" Margin="0,1,16,0" VerticalAlignment="Top"
+                       Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                       Text="{Binding Label}" />
+            <TextBlock Name="InfoValue" Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                       Text="{Binding Value}" />
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </Border>
+</UserControl>

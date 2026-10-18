@@ -16,8 +16,8 @@ public sealed class HeadlessSmokeTests
     [AvaloniaFact]
     public void MainWindowShowsAndRendersAFrame()
     {
-        using var session = new ViewerSession(new PdfEngine());
-        var window = new MainWindow { DataContext = new MainViewModel(session, new NoFilePicker()) };
+        using var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker());
+        var window = new MainWindow { DataContext = viewModel };
         window.Show();
         Dispatcher.UIThread.RunJobs();
 

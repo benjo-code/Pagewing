@@ -17,6 +17,8 @@ Erzeugt von `tools/make-testpdfs.cs` (`dotnet run tools/make-testpdfs.cs -- gene
 | `annotations.pdf` | Anmerkungen | 1 Seite 300 × 200. Text `Highlighted text` und `Link area` (Extraktion: beide Zeilen). Annotationen: Square (mit Appearance-Stream), Highlight (mit Appearance-Stream, Multiply) und Link (URI `https://example.com/pagewing`, ohne Appearance-Stream); Render-Flag `FPDF_ANNOT` nötig |
 | `wide-page.pdf` | Kacheltest | 1 Seite 600 × 120. Lineal-Striche alle 20 pt, Text `Pagewing wide page 600 x 120`, Farbverlauf (gelb nach blau) in der unteren Hälfte |
 | `thousand-pages.pdf` | Geschwindigkeit, viele Seiten | 1000 Seiten je 200 × 100. Seite N enthält den Text `Page N` (zum Beispiel `Page 1`, `Page 1000`) |
+| `outline.pdf` | Lesezeichen (Inhaltsverzeichnis) | 3 Seiten je 300 × 400, ohne Text (graue Fläche). Lesezeichen: `Kapitel 1` (offen, Ziel Seite 1) mit Kindern `Abschnitt 1.1` (Ziel Seite 2) und `Abschnitt 1.2` (ohne Ziel); `Kapitel 2` (zu, Ziel über GoTo-Aktion auf Seite 3) mit dem Kind `Über uns – 日本` (Ziel Seite 3, UTF-16BE-String); `Fern` (Ziel Seitenindex 99, den es nicht gibt) |
+| `outline-cycle.pdf` | Lesezeichen mit Zyklus | 3 Seiten je 300 × 400, ohne Text. Drei Geschwister `Eins`, `Zwei`, `Drei` (Ziele Seite 1 bis 3); `/Next` von `Drei` zeigt auf `Eins` |
 | `not-a-pdf.pdf` | Fehlerfall: kein PDF | 18 Byte Text `This is not a PDF.`; PDFium meldet `FPDF_ERR_FORMAT` |
 | `empty.pdf` | Fehlerfall: leere Datei | 0 Byte |
 

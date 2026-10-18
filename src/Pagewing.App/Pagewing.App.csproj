@@ -15,6 +15,12 @@
     <InternalsVisibleTo Include="Pagewing.App.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <!-- GC compacts the large object heap sooner: lower working set while scrolling, same startup and frame times
+         (measured, DECISIONS.md "Arbeitsspeicher beim Scrollen: GC-Einstellung ConserveMemory (M4)"). Native AOT bakes
+         this option into the binary; a runtimeconfig.template.json is not supported with PublishAot. -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- Both languages are embedded in this assembly (no satellite assemblies, see DECISIONS.md). -->
     <EmbeddedResource Update="Resources\Strings.en.resx" WithCulture="false" LogicalName="Pagewing.App.Resources.Strings.en.resources" />
     <EmbeddedResource Update="Resources\Strings.de.resx" WithCulture="false" LogicalName="Pagewing.App.Resources.Strings.de.resources" />

@@ -28,6 +28,14 @@ public sealed record StartupOptions(
     public string? MeasurementPath => MeasureStartup ?? MeasureSecond?.First ?? MeasureScroll;
 
     /// <summary>
+    /// Gets the files that open as further tabs after the first frame: the paths after the first one (which
+    /// <c>Program.Main</c> opens early), so that with it at most <see cref="ViewModels.MainViewModel.MaxFilesPerOpen"/>
+    /// files open. Empty for a measurement, which opens only its own file.
+    /// </summary>
+    public IReadOnlyList<string> MorePaths =>
+        IsMeasurement ? [] : [.. Paths.Skip(1).Take(ViewModels.MainViewModel.MaxFilesPerOpen - 1)];
+
+    /// <summary>
     /// Parses the command line. Arguments without <c>--</c> are paths (made absolute against the working directory).
     /// Unknown <c>--</c> options and options with missing values are ignored, except <c>--zoom</c> (see
     /// <see cref="MeasureZoom"/>).

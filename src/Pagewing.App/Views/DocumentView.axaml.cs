@@ -12,18 +12,42 @@ using Pagewing.Core.Viewing;
 namespace Pagewing.App.Views;
 
 /// <summary>
-/// The open document: continuous scrolling over all pages, zoom with Ctrl+wheel (around the pointer) and through the
-/// view model (Ctrl+Plus/Minus, status bar), page jumps, and the current page for the status bar. Its
-/// <c>DataContext</c> is the <see cref="MainViewModel"/>; it mirrors the document of the view model's session.
+/// The open document: the pages in the layout of the tab (continuous, a single page, two pages with or without a cover;
+/// see DocumentView.LayoutModes.cs), zoom with Ctrl+wheel (around the pointer) and through the view model
+/// (Ctrl+Plus/Minus, status bar), the zoom modes of the tab (page width, whole page, actual size; see
+/// <see cref="Refit"/>), page jumps, and the current page (row) for the status bar. Its
+/// <c>DataContext</c> is the active <see cref="TabViewModel"/> of the window; it mirrors the document of the tab's
+/// session. A change of the <c>DataContext</c> (another tab) disconnects from the old tab and shows the new one.
 /// </summary>
 /// <remarks>
 /// The view owns the <see cref="DocumentLayout"/> and the scroll position; <see cref="DocumentCanvas"/> draws and
-/// plans from them. A new document starts at the top with 100 %. While more page sizes arrive, the position at the
+/// plans from them. A shown document takes the zoom of its tab (100 % for a new document, which starts at the top, see
+/// <see cref="TabViewModel.Zoom"/>); a tab that was shown before comes back at its saved position
+/// (<see cref="TabViewModel.SavedView"/>). While more page sizes arrive, the position at the
 /// top of the viewport stays where it is. UI thread only; the session's events are posted to it.
 /// </remarks>
 public sealed partial class DocumentView : UserControl
 {
-    private MainViewModel? _viewModel;
+    /// <summary>
+    /// A fit mode changes the zoom only when the zoom it computes differs from the current one by more than this, so
+    /// rounding and a viewport that changes by a fraction of a DIP leave the pages alone.
+    /// </summary>
+    private const double FitTolerance = 0.0005;
+
+    /// <summary>
+    /// How often one fit computes the zoom again because its own zoom brought or took away a scroll bar (which takes
+    /// its room from the viewport when it does not lie over the pages).
+    /// </summary>
+    private const int MaxFitPasses = 3;
+
+    /// <summary>
+    /// DIPs a fit leaves free in the viewport. Layout rounds the content size up to device pixels, so pages that fill
+    /// the viewport exactly up to a floating-point error (684.0000000000001) would be a pixel wider than it and bring a
+    /// scroll bar.
+    /// </summary>
+    private const double FitSlack = 0.01;
+
+    private TabViewModel? _viewModel;
     private ViewerSession? _session;
     private PdfDocument? _document;
     private DocumentLayout? _layout;
@@ -32,7 +56,12 @@ public sealed partial class DocumentView : UserControl
     private bool _focusPending;
     private Point? _zoomAnchor;
     private double _wheelSteps;
+    private bool _refitPosted;
     private TopLevel? _topLevel;
+
+    // A saved view shown before the viewport had a size (a moved tab in a window not shown yet): restored again, once,
+    // when the viewport gets its first size, because its horizontal position depends on the viewport width.
+    private ViewState? _pendingRestore;
 
     public DocumentView()
     {
@@ -40,6 +69,7 @@ public sealed partial class DocumentView : UserControl
         Scroller.PropertyChanged += OnScrollerPropertyChanged;
         Scroller.AddHandler(PointerWheelChangedEvent, OnPointerWheel, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
+        PageCanvas.FirstSharpPageDrawn += OnFirstSharpPageDrawn;
     }
 
     /// <summary>Raised on the UI thread once per document, in the frame after the first sharp tile of the first page was drawn.</summary>
@@ -98,7 +128,7 @@ public sealed partial class DocumentView : UserControl
     /// <summary>Follows the view model in <c>DataContext</c> and its session.</summary>
     private void Connect()
     {
-        if (_viewModel is not null || DataContext is not MainViewModel viewModel)
+        if (_viewModel is not null || DataContext is not TabViewModel viewModel)
         {
             return;
         }
@@ -113,6 +143,7 @@ public sealed partial class DocumentView : UserControl
 
     private void Disconnect()
     {
+        SaveView();
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -128,6 +159,42 @@ public sealed partial class DocumentView : UserControl
 
         CloseDocument();
     }
+
+    /// <summary>
+    /// Remembers where the tab being left is shown, as page and fraction (not pixels, so a resize meanwhile does not
+    /// matter) and the distance of the viewport's centre from the centre line of the pages (so the same spot stays in
+    /// the middle when the window has another width). Only while the session is Ready with the document shown: during
+    /// the load of a replacement the session still holds the old document, but the tab has dropped its saved view
+    /// and the new document must not inherit the old position.
+    /// </summary>
+    private void SaveView()
+    {
+        if (_viewModel is not { } tab || _layout is not { } layout || _document is null
+            || _session is not { State: ViewerState.Ready } session || !ReferenceEquals(_document, session.Document))
+        {
+            return;
+        }
+
+        var offset = Scroller.Offset;
+        var viewportCentre = offset.X - CentringShift(layout) + (Scroller.Viewport.Width / 2);
+        tab.SavedView = new ViewState(layout.GetAnchor(offset.Y), viewportCentre - (layout.ContentWidth / 2));
+    }
+
+    /// <summary>The scroll offset for a saved view in the current layout.</summary>
+    private Vector RestoredOffset(DocumentLayout layout, ViewState view)
+    {
+        if (view.Anchor.Page < 0 || view.Anchor.Page >= layout.PageCount)
+        {
+            return default;
+        }
+
+        // The scroll viewer limits the offset to the content, whatever size the viewport has now.
+        var x = view.HorizontalFromCentre + (layout.ContentWidth / 2) - (Scroller.Viewport.Width / 2) + CentringShift(layout);
+        return new Vector(x, layout.GetOffset(view.Anchor));
+    }
+
+    /// <summary>How far content narrower than the viewport is moved right to centre it (0 when it is wider).</summary>
+    private double CentringShift(DocumentLayout layout) => Math.Max(0, (Scroller.Viewport.Width - layout.ContentWidth) / 2);
 
     // Any thread: must not wait and must never throw (the session would rethrow it on the thread pool).
     private void OnSessionChanged()
@@ -150,6 +217,10 @@ public sealed partial class DocumentView : UserControl
         {
             return;
         }
+
+        // The tab first: a document that is new to it resets its zoom (and drops the saved view) before the view reads
+        // them below, whichever of the two posted jobs for this change of the session runs first.
+        _viewModel?.SyncDocumentFromSession();
 
         var document = session.State == ViewerState.Ready ? session.Document : null;
         var scheduler = session.Scheduler;
@@ -194,18 +265,29 @@ public sealed partial class DocumentView : UserControl
         var layout = new DocumentLayout(pageCount, sizes.Count > 0 ? sizes[0] : default);
         var known = Math.Min(sizes.Count, pageCount);
         layout.SetSizes(0, known == sizes.Count ? sizes : sizes.Take(known).ToArray());
-        layout.Zoom = ZoomSteps.Default;
+
+        // Zoom, layout and position belong to the tab: a new document starts at the top with the default zoom (the
+        // tab reset both in Sync), a tab shown again gets back where the view left it.
+        var tab = _viewModel;
+        layout.Mode = tab?.LayoutMode ?? PageLayoutMode.Continuous;
+        if (layout.Mode == PageLayoutMode.SinglePage && pageCount > 0)
+        {
+            // The page the tab showed (the saved view refers to it), or the first page of a new document.
+            layout.ShowPage(Math.Clamp(tab?.SavedView?.Anchor.Page ?? 0, 0, pageCount - 1));
+        }
+
+        layout.Zoom = tab?.Zoom ?? ZoomSteps.Default;
 
         _document = document;
         _layout = layout;
         _loadedSizes = known;
         PageCanvas.Attach(layout, scheduler, cache);
-        if (_viewModel is not null)
-        {
-            _viewModel.Zoom = ZoomSteps.Default;
-        }
 
-        ChangeLayout(new Vector(0, 0));
+        ChangeLayout(tab?.SavedView is { } saved ? RestoredOffset(layout, saved) : default);
+        _pendingRestore = tab?.SavedView is { } pending && !(Scroller.Viewport.Width > 0) ? pending : null;
+
+        // A fit mode of the tab fits the viewport as it is now (the window may have changed since the tab was left).
+        Refit(chosen: false);
         _focusPending = true;
         FocusLater();
     }
@@ -250,7 +332,11 @@ public sealed partial class DocumentView : UserControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (!e.Handled && _layout is not null && ScrollFor(e.Key, e.KeyModifiers) is { } offset)
+        if (!e.Handled && _layout is not null && TryTurnPageWithSpace(e.Key, e.KeyModifiers))
+        {
+            e.Handled = true;
+        }
+        else if (!e.Handled && _layout is not null && ScrollFor(e.Key, e.KeyModifiers) is { } offset)
         {
             e.Handled = true;
             ScrollTo(offset);
@@ -304,6 +390,7 @@ public sealed partial class DocumentView : UserControl
         _layout = null;
         _loadedSizes = 0;
         _focusPending = false;
+        _pendingRestore = null;
         PageCanvas.Detach();
         ChangeLayout(new Vector(0, 0));
     }
@@ -321,6 +408,7 @@ public sealed partial class DocumentView : UserControl
         var offset = Scroller.Offset;
         var anchor = layout.GetAnchor(offset.Y);
         var width = layout.ContentWidth;
+        var first = _loadedSizes;
         var added = new PdfPageSize[count];
         for (var i = 0; i < count; i++)
         {
@@ -332,6 +420,14 @@ public sealed partial class DocumentView : UserControl
 
         // Horizontally the centre of the pages stays in place.
         ChangeLayout(new Vector(offset.X + ((layout.ContentWidth - width) / 2), layout.GetOffset(anchor)));
+
+        // A fit that used the estimate for a page of the current row fits its real size.
+        var current = (_viewModel?.CurrentPage ?? 0) - 1;
+        var currentLast = Math.Max(current, (_viewModel?.CurrentPageLast ?? 0) - 1);
+        if (current < first + count && currentLast >= first)
+        {
+            Refit(chosen: false);
+        }
     }
 
     /// <summary>
@@ -367,12 +463,129 @@ public sealed partial class DocumentView : UserControl
         if (!_changingLayout && (e.Property == ScrollViewer.OffsetProperty || e.Property == ScrollViewer.ViewportProperty))
         {
             UpdateViewport();
+            if (e.Property == ScrollViewer.ViewportProperty)
+            {
+                PostRestore();
+                PostRefit();
+            }
         }
+    }
+
+    /// <summary>
+    /// Restores a saved view that was shown before the viewport had a size (<see cref="_pendingRestore"/>) once the
+    /// viewport has its first size; posted for the same reason as <see cref="PostRefit"/>, and before it, so a fit mode
+    /// fits around the restored position.
+    /// </summary>
+    private void PostRestore()
+    {
+        if (_pendingRestore is not { } view || _layout is not { } layout || !(Scroller.Viewport.Width > 0))
+        {
+            return;
+        }
+
+        _pendingRestore = null;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (ReferenceEquals(_layout, layout))
+            {
+                ChangeLayout(RestoredOffset(layout, view));
+            }
+        });
+    }
+
+    /// <summary>
+    /// Fits again after the viewport changed size. Not at once: the change arrives during a layout pass, in which the
+    /// new content size cannot be laid out before the scroll position is set (see <see cref="ChangeLayout"/>).
+    /// Several changes before the job runs fit once.
+    /// </summary>
+    private void PostRefit()
+    {
+        if (_refitPosted || _viewModel is not { ZoomMode: not ZoomMode.Free } || _layout is null)
+        {
+            return;
+        }
+
+        _refitPosted = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _refitPosted = false;
+            Refit(chosen: false);
+        });
+    }
+
+    /// <summary>
+    /// In a fit mode of the tab, zooms so that the row of the current page fits the viewport
+    /// (<see cref="DocumentLayout.FitZoom"/>), like a zoom step around the middle of the viewport; "whole page" then
+    /// shows that row from its top. Free zoom and a zoom that would change by no more than <see cref="FitTolerance"/>
+    /// leave the pages alone, so the fit never follows its own rounding. Called when a mode is chosen, a document is
+    /// shown, the viewport changes size and a page is requested, never while scrolling.
+    /// </summary>
+    /// <param name="chosen">
+    /// The mode was just chosen: "whole page" shows the row from its top even when the zoom stays.
+    /// </param>
+    /// <remarks>
+    /// A scroll bar that takes its room from the viewport can change the viewport in reply to the new zoom: the fit
+    /// then computes again for that viewport, but only towards a smaller zoom. A larger one would bring back the bar
+    /// that the smaller zoom took away, and the two would take turns forever.
+    /// </remarks>
+    private void Refit(bool chosen)
+    {
+        if (_viewModel is not { ZoomMode: not ZoomMode.Free } tab || _layout is not { PageCount: > 0 } layout)
+        {
+            return;
+        }
+
+        var mode = tab.ZoomMode;
+        var page = Math.Clamp(tab.CurrentPage - 1, 0, layout.PageCount - 1);
+        var changed = false;
+        for (var pass = 0; pass < MaxFitPasses; pass++)
+        {
+            var size = Scroller.Viewport;
+            if (!(size.Width > 0 && size.Height > 0))
+            {
+                // Not laid out yet: the first size of the viewport fits (OnScrollerPropertyChanged).
+                return;
+            }
+
+            var zoom = layout.FitZoom(mode, page, size.Width - FitSlack, size.Height - FitSlack);
+            if (Math.Abs(zoom - layout.Zoom) <= FitTolerance || (pass > 0 && zoom > layout.Zoom))
+            {
+                break;
+            }
+
+            ApplyZoom(zoom);
+            changed = true;
+            if (Scroller.Viewport == size)
+            {
+                break;
+            }
+        }
+
+        if (mode == ZoomMode.FitPage && (chosen || changed) && layout.IsShown(page))
+        {
+            var top = layout.GetPageRect(layout.PagesOfRow(layout.RowOf(page)).First).Y;
+            ScrollTo(new Vector(Scroller.Offset.X, top - DocumentLayout.Margin));
+        }
+
+        tab.ApplyFitZoom(layout.Zoom);
     }
 
     private void OnScalingChanged(object? sender, EventArgs e) => UpdateViewport();
 
-    /// <summary>Hands the visible part of the content to the canvas and updates the current page.</summary>
+    /// <summary>
+    /// The canvas drew the first sharp page of the shown document: the tab may render its page thumbnails now
+    /// (<see cref="TabViewModel.HasShownSharpPage"/>). The canvas reports only for the document it still draws, which is
+    /// the document of this tab.
+    /// </summary>
+    private void OnFirstSharpPageDrawn()
+    {
+        if (_viewModel is { } tab && _document is not null && ReferenceEquals(_document, _session?.Document))
+        {
+            tab.HasShownSharpPage = true;
+        }
+    }
+
+    /// <summary>Hands the visible part of the content to the canvas and updates the current row.</summary>
     private void UpdateViewport()
     {
         var scaling = _topLevel?.RenderScaling ?? 1;
@@ -391,17 +604,25 @@ public sealed partial class DocumentView : UserControl
         PageCanvas.SetViewport(new DipRect(offset.X - shift, offset.Y, size.Width, size.Height), scaling);
         if (_viewModel is not null && layout.PageCount > 0 && size.Height > 0)
         {
-            _viewModel.CurrentPage = layout.GetMostVisiblePage(offset.Y, offset.Y + size.Height) + 1;
+            ShowCurrentRow(layout.GetMostVisiblePage(offset.Y, offset.Y + size.Height));
         }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.Zoom) && _viewModel is not null)
+        if (e.PropertyName == nameof(TabViewModel.Zoom) && _viewModel is not null)
         {
             ApplyZoom(_viewModel.Zoom);
         }
-        else if (e.PropertyName == nameof(MainViewModel.IsPasswordPrompt) && _focusPending)
+        else if (e.PropertyName == nameof(TabViewModel.ZoomMode))
+        {
+            Refit(chosen: true);
+        }
+        else if (e.PropertyName == nameof(TabViewModel.LayoutMode))
+        {
+            ApplyLayoutMode();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.IsPasswordPrompt) && _focusPending)
         {
             FocusLater();
         }
@@ -438,8 +659,18 @@ public sealed partial class DocumentView : UserControl
 
     private void OnPointerWheel(object? sender, PointerWheelEventArgs e)
     {
-        if ((e.KeyModifiers & KeyModifiers.Control) == 0 || _viewModel is null || _layout is null)
+        if (_viewModel is null || _layout is null)
         {
+            return;
+        }
+
+        if ((e.KeyModifiers & KeyModifiers.Control) == 0)
+        {
+            if (TryTurnPageWithWheel(e))
+            {
+                e.Handled = true;
+            }
+
             return;
         }
 
@@ -470,7 +701,11 @@ public sealed partial class DocumentView : UserControl
         _zoomAnchor = null;
     }
 
-    /// <summary>Shows <paramref name="page"/> (1-based) with its top edge at the margin below the top of the viewport.</summary>
+    /// <summary>
+    /// Shows the row of <paramref name="page"/> (1-based) with its top edge at the margin below the top of the
+    /// viewport (in the single-page layout that page alone, from its top); a fit mode first fits that row. The first
+    /// page of the row becomes the current page.
+    /// </summary>
     private void OnPageRequested(int page)
     {
         var layout = _layout;
@@ -479,12 +714,22 @@ public sealed partial class DocumentView : UserControl
             return;
         }
 
-        Scroller.Offset = new Vector(Scroller.Offset.X, layout.GetPageRect(page - 1).Y - DocumentLayout.Margin);
+        var index = page - 1;
 
-        // Near the end the page cannot reach the top; the requested page still is the current one.
-        if (_viewModel is not null)
+        // A page asked for replaces a saved view that still waits for the viewport.
+        _pendingRestore = null;
+        if (layout.Mode == PageLayoutMode.SinglePage)
         {
-            _viewModel.CurrentPage = page;
+            layout.ShowPage(index);
         }
+
+        ShowCurrentRow(index);
+        Refit(chosen: false);
+
+        // The pages of a row are top-aligned. Through ChangeLayout: the single page may have changed the content size.
+        ChangeLayout(new Vector(Scroller.Offset.X, layout.GetPageRect(index).Y - DocumentLayout.Margin));
+
+        // Near the end the row cannot reach the top; the requested row still is the current one.
+        ShowCurrentRow(index);
     }
 }

@@ -513,6 +513,161 @@ public sealed class ViewerSessionTests
         Assert.Equal(2, session.LoadedSizes.Count);
     }
 
+    [Fact]
+    public async Task InactiveSessionKeepsAtMostTheInactiveBudget()
+    {
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var cache = session.Cache!;
+        Assert.Equal(TabBudget.ActiveBytes, cache.BudgetBytes);
+        FillCache(cache, 4);
+        Assert.True(cache.UsedBytes > TabBudget.InactiveBytes);
+
+        session.SetActive(false);
+
+        Assert.Equal(TabBudget.InactiveBytes, cache.BudgetBytes);
+        Assert.True(cache.UsedBytes <= TabBudget.InactiveBytes);
+        Assert.True(cache.UsedBytes > 0);
+    }
+
+    [Fact]
+    public async Task ActivatingRestoresTheFullBudget()
+    {
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        session.SetActive(false);
+
+        session.SetActive(true);
+
+        Assert.Equal(TabBudget.ActiveBytes, session.Cache!.BudgetBytes);
+        FillCache(session.Cache, 4);
+        Assert.True(session.Cache.UsedBytes > TabBudget.InactiveBytes);
+    }
+
+    [Fact]
+    public async Task CacheOfADocumentOpenedWhileInactiveStartsSmall()
+    {
+        using var session = new ViewerSession(engine);
+        session.SetActive(false);
+
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+
+        Assert.Equal(TabBudget.InactiveBytes, session.Cache!.BudgetBytes);
+
+        // A document opened later while active gets the full budget again.
+        session.SetActive(true);
+        await session.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        Assert.Equal(TabBudget.ActiveBytes, session.Cache!.BudgetBytes);
+    }
+
+    [Fact]
+    public async Task SetActiveAfterDisposeDoesNothing()
+    {
+        var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var cache = session.Cache!;
+        session.Dispose();
+
+        session.SetActive(false);
+
+        // Dispose released the session's cache, so the budget of the captured cache cannot show the guard;
+        // the flag can.
+        Assert.True(session.IsActive);
+        Assert.Equal(TabBudget.ActiveBytes, cache.BudgetBytes);
+    }
+
+    [Fact]
+    public async Task EnsureThumbnailsIsNullBeforeReady()
+    {
+        using var session = new ViewerSession(engine);
+        Assert.Null(session.EnsureThumbnails());
+
+        await session.OpenAsync(TestData.Pdf("does-not-exist.pdf"));
+        Assert.Null(session.EnsureThumbnails());
+
+        await session.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        Assert.Equal(ViewerState.PasswordRequired, session.State);
+        Assert.Null(session.EnsureThumbnails());
+
+        session.Dispose();
+        Assert.Null(session.EnsureThumbnails());
+    }
+
+    [Fact]
+    public async Task EnsureThumbnailsReturnsTheSameSourceUntilTheDocumentChanges()
+    {
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+
+        var first = session.EnsureThumbnails();
+        var second = session.EnsureThumbnails();
+
+        Assert.NotNull(first);
+        Assert.Same(first, second);
+        Assert.Equal(ThumbnailSource.BudgetBytes, first.Cache.BudgetBytes);
+        Assert.NotSame(session.Cache, first.Cache);
+        Assert.NotSame(session.Scheduler, first.Scheduler);
+
+        await session.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        var third = session.EnsureThumbnails();
+
+        Assert.NotNull(third);
+        Assert.NotSame(first, third);
+        Assert.True(first.IsDisposed);
+        Assert.False(third.IsDisposed);
+    }
+
+    [Fact]
+    public async Task ThumbnailsAreDisposedWithTheDocument()
+    {
+        var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var beforeClose = session.EnsureThumbnails()!;
+
+        session.Close();
+
+        Assert.True(beforeClose.IsDisposed);
+        Assert.Null(session.EnsureThumbnails());
+
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var beforeDispose = session.EnsureThumbnails()!;
+        Assert.False(beforeDispose.IsDisposed);
+
+        session.Dispose();
+
+        Assert.True(beforeDispose.IsDisposed);
+        Assert.Null(session.EnsureThumbnails());
+    }
+
+    [Fact]
+    public async Task ThumbnailsRenderIntoTheirOwnCache()
+    {
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        var thumbnails = session.EnsureThumbnails()!;
+        var ready = new TaskCompletionSource<TileKey>(TaskCreationOptions.RunContinuationsAsynchronously);
+        thumbnails.Scheduler.TileReady += key => ready.TrySetResult(key);
+        var plan = ThumbnailPlanner.Plan(session.LoadedSizes, [0], 1.0);
+
+        thumbnails.Scheduler.Update(plan);
+        var key = await ready.Task.WaitAsync(Due, TestContext.Current.CancellationToken);
+
+        Assert.Equal(new TileKey(0, TileKey.PreviewScaleKey, 0, 0), key);
+        Assert.True(thumbnails.Cache.TryGet(key, out var image));
+        Assert.Equal(plan[0].Rect.Width, image.Width);
+        Assert.False(session.Cache!.Contains(key));
+        Assert.Equal(0, session.Cache.Count);
+    }
+
+    // Fills the cache with images of 8 MiB each (they are not rendered, only stored).
+    private static void FillCache(RenderCache cache, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            cache.Add(new TileKey(i, 1000, 0, 0), new RenderedImage(1, 1, 4, new byte[8 * 1024 * 1024]));
+        }
+    }
+
     private static void AssertFailed(ViewerSession session, PdfOpenError error)
     {
         Assert.Equal(ViewerState.Failed, session.State);

@@ -68,6 +68,10 @@ public sealed class ViewerSession : IDisposable
     private readonly Func<string, string?, CancellationToken, Task<PdfDocument>> open;
     private readonly Func<PdfDocument, int, int, PdfPriority, CancellationToken, Task<IReadOnlyList<PdfPageSize>>> loadSizes;
 
+    // Serializes SetActive, so two concurrent calls cannot apply their budgets in the wrong order. Taken before
+    // gate, never the other way round; the cache has its own lock and calls nothing back.
+    private readonly object budgetGate = new();
+
     // Guards everything below up to "raising". Never held while an event is raised or anything is disposed.
     private readonly object gate = new();
     private ViewerState state;
@@ -76,11 +80,13 @@ public sealed class ViewerSession : IDisposable
     private PdfDocument? document;
     private RenderCache? cache;
     private RenderScheduler? scheduler;
+    private ThumbnailSource? thumbnails;
     private IReadOnlyList<PdfPageSize> loadedSizes = [];
     private Exception? backgroundLoadFailure;
     private CancellationTokenSource? request;
     private long generation;
     private volatile bool disposed;
+    private bool active = true;
 
     // The number of Changed invocations that are running or about to; Dispose waits for it to drop to zero.
     private int raising;
@@ -106,6 +112,18 @@ public sealed class ViewerSession : IDisposable
     /// properties of the session to see what changed; marshal to the UI thread if needed.
     /// </summary>
     public event Action? Changed;
+
+    /// <summary>Gets whether the tab of the session is shown; see <see cref="SetActive"/> (for tests).</summary>
+    internal bool IsActive
+    {
+        get
+        {
+            lock (gate)
+            {
+                return active;
+            }
+        }
+    }
 
     /// <summary>Gets the current state.</summary>
     public ViewerState State
@@ -286,6 +304,7 @@ public sealed class ViewerSession : IDisposable
         // Publish the result, unless a newer request or Close/Dispose has overtaken this one.
         PdfDocument? oldDocument;
         RenderScheduler? oldScheduler;
+        ThumbnailSource? oldThumbnails;
         bool publish;
         lock (gate)
         {
@@ -293,6 +312,7 @@ public sealed class ViewerSession : IDisposable
             {
                 oldDocument = null;
                 oldScheduler = null;
+                oldThumbnails = null;
                 publish = false;
             }
             else
@@ -300,10 +320,12 @@ public sealed class ViewerSession : IDisposable
                 publish = true;
                 oldDocument = document;
                 oldScheduler = scheduler;
+                oldThumbnails = thumbnails;
+                thumbnails = null;
                 if (opened is not null)
                 {
                     document = opened;
-                    cache = new RenderCache();
+                    cache = new RenderCache(TabBudget.For(active));
                     scheduler = new RenderScheduler(opened, cache);
                     loadedSizes = new ArraySegment<PdfPageSize>(sizes!, 0, firstCount);
                     backgroundLoadFailure = null;
@@ -328,6 +350,7 @@ public sealed class ViewerSession : IDisposable
             return;
         }
 
+        oldThumbnails?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
         Raise(mine);
@@ -339,6 +362,51 @@ public sealed class ViewerSession : IDisposable
     }
 
     /// <summary>
+    /// Gets the page thumbnails of the open document, creating them on the first call for each document; the same
+    /// object is returned until the document is replaced, closed or the session is disposed, which also disposes it
+    /// (before the document). Returns <see langword="null"/> unless the state is <see cref="ViewerState.Ready"/>.
+    /// The cache of the thumbnails keeps its budget when the tab becomes inactive; the UI stops the work with an empty
+    /// wish list and empties the cache instead (<c>TabViewModel</c> in the app).
+    /// </summary>
+    public ThumbnailSource? EnsureThumbnails()
+    {
+        lock (gate)
+        {
+            if (disposed || state != ViewerState.Ready || document is null)
+            {
+                return null;
+            }
+
+            return thumbnails ??= new ThumbnailSource(document);
+        }
+    }
+
+    /// <summary>
+    /// Tells the session whether its tab is shown. An inactive session keeps its render cache within
+    /// <see cref="TabBudget.InactiveBytes"/> (evicting at once), an active one within <see cref="TabBudget.ActiveBytes"/>;
+    /// this also applies to every document opened later. A new session is active. Does nothing after <see cref="Dispose"/>.
+    /// </summary>
+    public void SetActive(bool active)
+    {
+        lock (budgetGate)
+        {
+            RenderCache? current;
+            lock (gate)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                this.active = active;
+                current = cache;
+            }
+
+            current?.SetBudget(TabBudget.For(active));
+        }
+    }
+
+    /// <summary>
     /// Returns to <see cref="ViewerState.Empty"/>: supersedes a request that is still running and releases the
     /// document, the cache and the scheduler. Does nothing (and raises nothing) on an empty session.
     /// </summary>
@@ -346,6 +414,7 @@ public sealed class ViewerSession : IDisposable
     {
         RenderScheduler? oldScheduler;
         PdfDocument? oldDocument;
+        ThumbnailSource? oldThumbnails;
         CancellationTokenSource? superseded;
         long mine;
         lock (gate)
@@ -356,10 +425,11 @@ public sealed class ViewerSession : IDisposable
             }
 
             mine = Interlocked.Increment(ref generation);
-            (oldScheduler, oldDocument, superseded) = Reset();
+            (oldScheduler, oldDocument, oldThumbnails, superseded) = Reset();
         }
 
         Cancel(superseded);
+        oldThumbnails?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
         Raise(mine);
@@ -373,6 +443,7 @@ public sealed class ViewerSession : IDisposable
     {
         RenderScheduler? oldScheduler;
         PdfDocument? oldDocument;
+        ThumbnailSource? oldThumbnails;
         CancellationTokenSource? superseded;
         lock (gate)
         {
@@ -383,10 +454,11 @@ public sealed class ViewerSession : IDisposable
 
             disposed = true;
             Interlocked.Increment(ref generation);
-            (oldScheduler, oldDocument, superseded) = Reset();
+            (oldScheduler, oldDocument, oldThumbnails, superseded) = Reset();
         }
 
         Cancel(superseded);
+        oldThumbnails?.Dispose();
         oldScheduler?.Dispose();
         oldDocument?.Dispose();
 
@@ -422,15 +494,16 @@ public sealed class ViewerSession : IDisposable
     private static void Cancel(CancellationTokenSource? source) => _ = source?.CancelAsync();
 
     // Must run under the lock. Returns what the caller has to release after leaving the lock.
-    private (RenderScheduler? Scheduler, PdfDocument? Document, CancellationTokenSource? Request) Reset()
+    private (RenderScheduler? Scheduler, PdfDocument? Document, ThumbnailSource? Thumbnails, CancellationTokenSource? Request) Reset()
     {
-        var result = (scheduler, document, request);
+        var result = (scheduler, document, thumbnails, request);
         state = ViewerState.Empty;
         path = null;
         error = null;
         document = null;
         cache = null;
         scheduler = null;
+        thumbnails = null;
         loadedSizes = [];
         backgroundLoadFailure = null;
         request = null;

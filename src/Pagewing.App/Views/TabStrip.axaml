@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             xmlns:chrome="using:Avalonia.Controls.Chrome"
+             x:Class="Pagewing.App.Views.TabStrip"
+             x:DataType="vm:MainViewModel">
+  <!--
+    The tab strip of the title bar (design system sections 6 and 7.2), between the app symbol and the caption buttons:
+    the tabs, "All tabs (n)" when only the active tab fits, "Open file" and the drag area, which keeps at least 48 px.
+    The DockPanel measures the tabs with the whole width of the strip; TabStripPanel leaves 36 px of it for "Open file"
+    (32 + 4 margin) and shares the rest with the drag area (TabStripLayout.Compute). The tabs and the buttons are marked
+    User, the drag area TitleBar. TabStrip.axaml.cs keeps the children of the panel in the order of the tabs.
+  -->
+  <DockPanel>
+    <ctl:TabStripPanel Name="TabPanel" DockPanel.Dock="Left" ReservedWidth="36" IsVisible="{Binding HasTabs}" />
+
+    <!--
+      TabStripLayout.AllTabsButtonWidth (50) with its margin. The menu is filled when it opens. HasTabs too, because the
+      panel recomputes ShowOnlyActive only when it measures, which it does not while it is hidden (no tabs).
+    -->
+    <Button Name="AllTabsButton" DockPanel.Dock="Left" Classes="icon"
+            Width="46" Height="30" Margin="4,0,0,0"
+            chrome:WindowDecorationProperties.ElementRole="User">
+      <Button.IsVisible>
+        <MultiBinding Converter="{x:Static BoolConverters.And}">
+          <Binding Path="HasTabs" />
+          <Binding Path="#TabPanel.ShowOnlyActive" />
+        </MultiBinding>
+      </Button.IsVisible>
+      <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <TextBlock Name="AllTabsCount" Classes="num" VerticalAlignment="Center" />
+        <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronDown}" />
+      </StackPanel>
+      <Button.Flyout>
+        <MenuFlyout Placement="BottomEdgeAlignedLeft" />
+      </Button.Flyout>
+    </Button>
+
+    <Button Name="OpenButton" DockPanel.Dock="Left" Classes="icon"
+            Width="32" Height="30" Margin="4,0,0,0"
+            IsVisible="{Binding HasTabs}"
+            Command="{Binding OpenCommand}"
+            ToolTip.Tip="{x:Static res:Strings.OpenFileTooltip}"
+            AutomationProperties.Name="{x:Static res:Strings.OpenFile}"
+            chrome:WindowDecorationProperties.ElementRole="User">
+      <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.FolderOpen}" />
+    </Button>
+
+    <Border Name="DragArea" MinWidth="48" Background="Transparent"
+            chrome:WindowDecorationProperties.ElementRole="TitleBar" />
+  </DockPanel>
+</UserControl>

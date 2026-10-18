@@ -128,6 +128,21 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     }
 
     /// <summary>
+    /// Reads the document outline (bookmarks) depth first. A bookmark that was seen before ends its sibling chain
+    /// (a damaged file can link a bookmark back to itself or an ancestor), and the limits cut the result
+    /// silently: at most <paramref name="maxItems"/> bookmarks in total, and only the top
+    /// <paramref name="maxDepth"/> levels (the top level is level 1).
+    /// </summary>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while reading.</exception>
+    public IReadOnlyList<PdfiumOutlineNode> ReadOutline(int maxItems, int maxDepth, CancellationToken cancellationToken = default)
+    {
+        var document = Access();
+        var budget = maxItems;
+        var pageCount = Fpdf.FPDF_GetPageCount(document);
+        return ReadOutlineLevel(document, pageCount, Fpdf.FPDFBookmark_GetFirstChild(document, 0), 1, maxDepth, ref budget, [], cancellationToken);
+    }
+
+    /// <summary>
     /// Gets the size of a page in points, after rotation and CropBox, like <see cref="PdfiumPage.Width"/> and
     /// <see cref="PdfiumPage.Height"/>. Unlike <see cref="LoadPage"/> it reads only the page dictionary: it does
     /// not parse the content stream and loads no fonts.
@@ -196,6 +211,86 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     {
         disposed = true;
         handle.Dispose();
+    }
+
+    private static List<PdfiumOutlineNode> ReadOutlineLevel(
+        nint document,
+        int pageCount,
+        nint first,
+        int depth,
+        int maxDepth,
+        ref int budget,
+        HashSet<nint> visited,
+        CancellationToken cancellationToken)
+    {
+        var nodes = new List<PdfiumOutlineNode>();
+        for (var bookmark = first; bookmark != 0 && budget > 0 && visited.Add(bookmark); bookmark = Fpdf.FPDFBookmark_GetNextSibling(document, bookmark))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            budget--;
+            var children = depth < maxDepth
+                ? ReadOutlineLevel(document, pageCount, Fpdf.FPDFBookmark_GetFirstChild(document, bookmark), depth + 1, maxDepth, ref budget, visited, cancellationToken)
+                : [];
+            nodes.Add(new PdfiumOutlineNode(
+                GetBookmarkTitle(bookmark),
+                GetBookmarkPageIndex(document, pageCount, bookmark),
+                Fpdf.FPDFBookmark_GetCount(bookmark) > 0,
+                children));
+        }
+
+        return nodes;
+    }
+
+    /// <summary>Reads a bookmark title (UTF-16LE, like <see cref="GetMetaText"/>); control characters become spaces.</summary>
+    private static string GetBookmarkTitle(nint bookmark)
+    {
+        // The length is in bytes of UTF-16LE and includes the 2-byte terminator.
+        var length = Fpdf.FPDFBookmark_GetTitle(bookmark, null, new CULong(0)).Value;
+        if (length <= 2 || length > int.MaxValue)
+        {
+            return string.Empty;
+        }
+
+        var buffer = new byte[(int)length];
+        nuint written;
+        fixed (byte* bufferPointer = buffer)
+        {
+            written = Fpdf.FPDFBookmark_GetTitle(bookmark, bufferPointer, new CULong(length)).Value;
+        }
+
+        var byteCount = (int)Math.Min(written, length) - 2;
+        if (byteCount <= 0)
+        {
+            return string.Empty;
+        }
+
+        var characters = Encoding.Unicode.GetString(buffer, 0, byteCount).ToCharArray();
+        for (var i = 0; i < characters.Length; i++)
+        {
+            if (characters[i] < ' ')
+            {
+                characters[i] = ' ';
+            }
+        }
+
+        return new string(characters);
+    }
+
+    /// <summary>The target page of a bookmark: its destination, else the destination of a GoTo action; -1 if there is none or it is not a page of the document.</summary>
+    private static int GetBookmarkPageIndex(nint document, int pageCount, nint bookmark)
+    {
+        var dest = Fpdf.FPDFBookmark_GetDest(document, bookmark);
+        if (dest == 0)
+        {
+            var action = Fpdf.FPDFBookmark_GetAction(bookmark);
+            if (action != 0 && Fpdf.FPDFAction_GetType(action).Value == FpdfConstants.ActionGoTo)
+            {
+                dest = Fpdf.FPDFAction_GetDest(document, action);
+            }
+        }
+
+        var index = dest == 0 ? -1 : Fpdf.FPDFDest_GetDestPageIndex(document, dest);
+        return index >= 0 && index < pageCount ? index : -1;
     }
 
     private static PdfiumError ToError(nuint lastError) =>

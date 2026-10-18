@@ -8,6 +8,12 @@ namespace Pagewing.Core.Pdf;
 /// </summary>
 public sealed class PdfDocument : IDisposable, IAsyncDisposable
 {
+    /// <summary>The most bookmarks <see cref="GetOutlineAsync"/> returns; further ones are cut off silently.</summary>
+    public const int MaxOutlineItems = 20_000;
+
+    /// <summary>The deepest bookmark level <see cref="GetOutlineAsync"/> returns (the top level is level 1).</summary>
+    public const int MaxOutlineDepth = 32;
+
     private readonly PdfiumDocument document;
     private readonly int pageCount;
     private readonly string pdfVersion;
@@ -55,6 +61,23 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
                 CreationDate: document.GetMetaText("CreationDate"),
                 ModDate: document.GetMetaText("ModDate")),
             PdfiumPriority.Interactive,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the outline (bookmarks, table of contents); a document without one gives an empty list. At most
+    /// <see cref="MaxOutlineItems"/> bookmarks and <see cref="MaxOutlineDepth"/> levels are returned, and a
+    /// bookmark that is linked back to itself or an ancestor ends the chain instead of looping. Runs with
+    /// <see cref="PdfPriority.Background"/>.
+    /// </summary>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the outline was read.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<IReadOnlyList<PdfOutlineItem>> GetOutlineAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return document.Thread.InvokeAsync<IReadOnlyList<PdfOutlineItem>>(
+            () => ToItems(document.ReadOutline(MaxOutlineItems, MaxOutlineDepth, cancellationToken)),
+            PdfiumPriority.Background,
             cancellationToken);
     }
 
@@ -223,6 +246,17 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
             // The PDFium thread is gone (tests only); nothing can be closed on it any more.
             document.Dispose();
         }
+    }
+
+    private static List<PdfOutlineItem> ToItems(IReadOnlyList<PdfiumOutlineNode> nodes)
+    {
+        var items = new List<PdfOutlineItem>(nodes.Count);
+        foreach (var node in nodes)
+        {
+            items.Add(new PdfOutlineItem(node.Title, node.PageIndex >= 0 ? node.PageIndex : null, node.IsOpen, ToItems(node.Children)));
+        }
+
+        return items;
     }
 
     private static async Task<RenderedImage> AwaitRender(Task<PdfiumImage> render)

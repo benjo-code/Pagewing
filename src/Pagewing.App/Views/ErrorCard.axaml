@@ -4,7 +4,7 @@
              xmlns:ctl="using:Pagewing.App.Controls"
              xmlns:res="using:Pagewing.App.Resources"
              x:Class="Pagewing.App.Views.ErrorCard"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:TabViewModel">
   <!--
     Error card (design system section 7.8) in the document area of the tab: warning symbol in danger.default, title,
     the cause in everyday words per error kind, collapsible "Technical details" (full path and error kind, selectable
@@ -37,7 +37,7 @@
                 Command="{Binding CloseCommand}"
                 Content="{x:Static res:Strings.ErrorCloseTab}" />
         <Button Name="ErrorOpenOtherButton" Classes="primary"
-                Command="{Binding OpenCommand}"
+                Command="{Binding OpenOtherCommand}"
                 Content="{x:Static res:Strings.ErrorOpenOther}" />
       </StackPanel>
     </StackPanel>

@@ -191,7 +191,7 @@ Regeln:
 - **Größen:** 20 px in der Aktionsleiste, 18 px in Titel- und Werkzeugleisten, 16 px in Panel, Tabs und Statusleiste.
 - **Farbe:** `text.primary` in Werkzeugleisten, `text.secondary` in Aktions- und Statusleiste, `accent.default` für aktive Einträge, `danger.default` für Fehler.
 - **Umsetzung:** Tabler-Icons sind Linien, `PathIcon` füllt nur. Pagewing braucht deshalb ein eigenes Icon-Control: `Path` mit `Stroke`, `StrokeThickness` 2, `StrokeLineCap`/`StrokeJoin` rund, in einer 24×24-`Viewbox`.
-- **Belegung** (Tabler-Name): Dokument `file-text`, Datei öffnen `folder-open`, Suchen `search`, Seiten `layout-grid`, Inhalt `list-tree`, Einstellungen `settings`, Panel schließen `layout-sidebar-left-collapse`, Schließen `x`, Seite zurück/vor `chevron-left`/`chevron-right`, Menü `chevron-down`, Verkleinern/Vergrößern `minus`/`plus`, Seitenbreite `arrow-autofit-width`, Dokumentinfos `info-circle`, Passwort `lock`, Fehler `alert-triangle`; ab v0.2 Kommentieren `message`, Markieren `highlight`, Unterstreichen `underline`, Zeichnen `pencil`, Notiz `note`, Rückgängig `arrow-back-up`, Löschen `trash`, Fertig `check`.
+- **Belegung** (Tabler-Name): Dokument `file-text`, Datei öffnen `folder-open`, Suchen `search`, Seiten `layout-grid`, Inhalt `list-tree`, Einstellungen `settings`, Panel schließen `layout-sidebar-left-collapse`, Schließen `x`, Seite zurück/vor `chevron-left`/`chevron-right`, Menü sowie Aufklappen im Inhaltsverzeichnis `chevron-down`, Verkleinern/Vergrößern `minus`/`plus`, aktuelle Wahl in Menüs (Häkchen) `check`, Layouts Einzelseite `file`, Fortlaufend `layout-rows`, Doppelseitig `layout-columns`, Doppelseitig mit Deckblatt `book`, Dokumentinfos `info-circle`, Passwort `lock`, Fehler `alert-triangle`; ab v0.2 Kommentieren `message`, Markieren `highlight`, Unterstreichen `underline`, Zeichnen `pencil`, Notiz `note`, Rückgängig `arrow-back-up`, Löschen `trash`, Fertig `check`. Bis M4 eingebunden (`src/Pagewing.App/Styles/Icons.axaml`) sind alle Einträge vor dem Semikolon außer `search` und `settings`. Seitenbreite hat seit M4 keinen eigenen Knopf mehr (7.5), `arrow-autofit-width` entfällt.
 
 ### 5.6 Bewegung
 
@@ -208,7 +208,7 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 2. **Titelleiste (Linux):** Die Titelleiste des Fenstermanagers bleibt. Darunter folgt eine Tab-Zeile in Titelleistenhöhe mit App-Symbol, Tabs, „Datei öffnen“, Zieh-Fläche und dem Befehlsknopf am Ende.
 3. **Mitte:** Aktionsleiste (52) | Panel (264, optional, ziehbar von 200 bis 400) | Dokumentbereich. Der Dokumentbereich hat `surface.canvas`; das Panel bzw. ohne Panel der Dokumentbereich hat oben links `radius.overlay` gegenüber der Aktionsleiste.
 4. **Werkzeugleiste eines Bearbeitungsmodus (ab v0.2):** 44 hoch über dem Dokumentbereich, `surface.toolbar`, Unterkante `border.subtle`. Von links: Modusname mit Icon (`accent.default`), Werkzeuge mit Icon und Beschriftung, Rückgängig und Löschen; rechts der Hinweis „Esc beendet“ und der Primärknopf „Fertig“.
-5. **Statusleiste:** 32 hoch, `surface.window`, links bündig mit dem Dokumentbereich (um die Aktionsleiste eingerückt): ‹ „Seite“ [Feld] „/ 24“ ›, Trenner, Zoom − [Wert] + [Seitenbreite], ab v0.2 der Änderungsstatus („Nicht gespeichert“ mit Punkt). Rechts „Dokumentinfos“.
+5. **Statusleiste:** 32 hoch, `surface.window`, links bündig mit dem Dokumentbereich (um die Aktionsleiste eingerückt): ‹ „Seite“ [Feld] „/ 24“ ›, Trenner, Zoom − [Wert] +, Trenner, Layout-Knopf (Icon und Name des Layouts), ab v0.2 der Änderungsstatus („Nicht gespeichert“ mit Punkt). Rechts „Dokumentinfos“. Der Zoomwert öffnet das Zoom-Menü (7.5); einen eigenen Knopf „Seitenbreite“ gibt es seit M4 nicht mehr.
 
 **Dokumentbereich:** Seiten zentriert untereinander, 20 Abstand, 32 Rand ringsum (auch unter der letzten Seite). Jede Seite hat Kante und Schatten (5.3).
 
@@ -218,7 +218,7 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 - Unter 900 px Breite liegt das Panel über dem Dokument, statt es zu verschieben, und schließt sich nach der Auswahl einer Seite oder eines Treffers. Der Befehlsknopf schrumpft auf sein Symbol.
 - Die Zieh-Fläche der Titelleiste ist immer mindestens 48 px breit, damit sich das Fenster verschieben lässt. Dafür schrumpfen zuerst die Tabs bis auf 120 px; reicht das nicht, zeigt die Leiste nur noch den aktiven Tab (ebenfalls bis 120 px) und daneben „Alle Tabs (n)“ als Menü. Bei 640 px Mindestbreite bleiben damit für die Zieh-Fläche rund 216 px (Aktionsleiste 52, Tab 120, „Alle Tabs“ 50, „Datei öffnen“ 32, Befehlsknopf 32, Fensterknöpfe 138).
 - Werkzeugleiste eines Bearbeitungsmodus (ab v0.2), wenn sie nicht passt, in dieser Reihenfolge: zuerst entfällt „Esc beendet“, dann die Beschriftungen der Werkzeuge (Icons mit Tooltip bleiben), dann wandern Rückgängig und Löschen und danach die hinteren Werkzeuge ins Menü „⋯“. Modusname und „Fertig“ bleiben immer sichtbar. Die Spec von Teilprojekt 2 kann das für ihre Werkzeuge verfeinern.
-- Unter 760 px entfallen die Beschriftungen „Seite“ und „Dokumentinfos“ in der Statusleiste; die Symbole bleiben, mit Tooltip.
+- Unter 760 px entfallen die Beschriftungen „Seite“, der Name des Layouts und „Dokumentinfos“ in der Statusleiste; die Symbole bleiben, mit Tooltip.
 - Das Mockup zeigt den Zustand bei 680 px.
 
 ## 7. Verhalten
@@ -235,17 +235,27 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 - Ein neuer Tab erscheint rechts vom aktiven und wird aktiv.
 - Der Tab-Name ist der Dateiname, höchstens 280 px breit. Er wird in der Mitte gekürzt, sodass Anfang und Endung sichtbar bleiben. Der volle Pfad steht im Tooltip.
 - Der aktive Tab hat die Farbe des Dokumentbereichs und geht in ihn über; seine Schrift ist `type.strong`.
-- Schließen per ×, Mittelklick oder Strg+W. Die Reihenfolge lässt sich durch Ziehen ändern (M4).
+- Schließen per ×, Mittelklick oder Strg+W (Strg+W schließt den aktiven Tab).
+- Ein Klick (Drücken) aktiviert den Tab. Ziehen ab 6 px ändert die Reihenfolge innerhalb der Leiste, die Nachbarn weichen sofort aus; Esc während des Ziehens stellt die alte Position wieder her (seit M4). Das Herausziehen in ein anderes Fenster folgt in M4.1.
+- Rechtsklick öffnet ein Kontextmenü mit „In neuem Fenster öffnen“ (nur ab zwei Tabs im Fenster; verschiebt den Tab samt Dokument, Seite und Zoom in ein neues Fenster gleicher Größe, 32 px versetzt) und „Schließen“.
+- Strg+Tab wechselt zum nächsten, Strg+Umschalt+Tab zum vorigen Tab, jeweils mit Umlauf.
+- Überlauf: Passen die Tabs auch mit 120 px nicht, zeigt die Leiste nur den aktiven Tab und „Alle Tabs (n)“ (Anzahl und `chevron-down`) als Menü mit allen Dateinamen in Tab-Reihenfolge, der aktive fett (Abschnitt 6, „Schmales Fenster“).
+- Dieselbe Datei ein zweites Mal öffnen aktiviert ihren Tab; mehrere Dateien auf einmal öffnen höchstens 20 Tabs, die letzte wird aktiv. Nach dem letzten Tab zeigt das erste Fenster den Startbildschirm, jedes weitere Fenster schließt sich.
 - Symbol im Tab: Dokument, Schloss während der Passwortabfrage, Warndreieck bei einem Fehler. Ab v0.2 steht bei ungespeicherten Änderungen ein Punkt vor dem ×.
+- Im hellen Theme ist `surface.hover` gleich `surface.canvas`: Ein inaktiver Tab unter dem Zeiger hat die Farbe des aktiven. Den aktiven kennzeichnen weiter fette Schrift und der Übergang in den Dokumentbereich (7.10); hingenommen (`Docs/DECISIONS.md`, Eintrag „Tableiste ohne `ItemsControl` (M4)“).
 
 ### 7.3 Aktionsleiste und Panel
 
 - Die Einträge der Aktionsleiste sind Seiten, Inhalt und Suche, ab v0.2 zusätzlich Kommentare; unten sitzen die Einstellungen.
 - Ein Klick öffnet das Panel mit diesem Inhalt; ein Klick auf den aktiven Eintrag schließt es. Der aktive Eintrag hat eine `accent.subtle`-Fläche und ein `accent.default`-Icon.
-- Es ist immer höchstens ein Panel offen.
-- Beim Öffnen eines Dokuments öffnet sich das Panel „Seiten“, sofern das Fenster mindestens 900 px breit ist und der Nutzer das Panel zuletzt nicht geschlossen hatte. Den zuletzt gewählten Zustand speichert Pagewing ab M6.
-- **Vorschaubilder:** Die aktuelle Seite hat eine `accent.subtle`-Fläche, 2 px Rahmen in `accent.default` und eine fette Nummer. Die Vorschaubilder werden erst nach dem ersten scharfen Seitenbild gerendert (Gesamt-Spec 5.4); bis dahin stehen leere Rahmen im Seitenformat da.
-- Die Panelbreite lässt sich ziehen; ein Doppelklick auf die Kante setzt die Standardbreite zurück.
+- Es ist immer höchstens ein Panel offen. Welches Panel offen ist, gehört zum Tab (ein Tab-Wechsel zeigt das Panel des anderen Tabs); die Breite gehört zum Fenster.
+- Umgesetzt in M4 sind Seiten und Inhalt; Suche (M5), Kommentare (ab v0.2) und Einstellungen (M6) erscheinen erst mit ihrem Milestone. Die Aktionsleiste ist sichtbar, sobald das Fenster einen Tab hat. Für Seiten und Inhalt gibt es noch kein Tastenkürzel.
+- Beim ersten scharfen Seitenbild eines Fensters öffnet sich das Panel „Seiten“ im aktiven Tab, einmal je Fenster und nur, wenn das Fenster mindestens 900 px breit ist und der Nutzer in diesem Fenster noch kein Panel geöffnet oder geschlossen hat. Ein weiterer Tab beginnt ohne Panel. Den zuletzt gewählten Zustand speichert Pagewing ab M6. Messläufe öffnen nie ein Panel.
+- Das Panel blendet beim Öffnen mit 150 ms ein und beim Schließen mit 100 ms aus (nur die Deckkraft, 5.6), nicht beim Tab-Wechsel.
+- Liegt das Panel neben dem Dokument, trägt es oben links `radius.overlay`, der Dokumentbereich keine Ecke; im schmalen Fenster (unter 900 px) liegt es über dem Dokument, mit 1 px `border.subtle` an der Kante zum Dokument und ohne Schatten, und schließt sich nach der Wahl einer Seite oder eines Eintrags.
+- **Vorschaubilder:** Die aktuelle Seite hat eine `accent.subtle`-Fläche, 2 px Rahmen in `accent.default` und eine fette Nummer. Die Vorschaubilder werden erst nach dem ersten scharfen Seitenbild gerendert (Gesamt-Spec 5.4); bis dahin stehen leere Rahmen im Seitenformat da. Klick, Enter oder Leertaste zeigen die Seite; Pfeiltasten, Bild auf/ab, Pos1 und Ende bewegen die Auswahl in der Liste, ohne das Dokument umzublättern.
+- **Inhalt:** die Lesezeichen des PDFs als Baum (gelesen beim ersten Öffnen), Einträge mit Ziel springen zur Seite, Einträge ohne Ziel klappen nur auf und zu; ohne Lesezeichen ein Hinweis im Panel.
+- Die Panelbreite lässt sich neben dem Dokument von 200 bis 400 px ziehen; ein Doppelklick auf die Kante setzt die Standardbreite zurück.
 
 ### 7.4 Suche
 
@@ -260,13 +270,15 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 
 - **Laden:** Erst steht ein Platzhalter in Seitengröße da (`surface.raised`, Kante `border.subtle`, Seitennummer klein in der Mitte), dann die grobe Vorschau, dann das scharfe Bild. Es gibt keinen Spinner.
 - **Dunkles Theme:** Die Seiten bleiben weiß (eine dunkle Seitendarstellung ist optional, M6). Die Kante `page.border` hebt die Seite vom Hintergrund ab, und der Dokumentbereich ist nie reines Schwarz.
-- **Zoom:** Strg+Mausrad sowie Strg+Plus/Minus. Ein Klick auf den Zoomwert in der Statusleiste öffnet ein Menü mit Stufen, Seitenbreite, ganzer Seite und tatsächlicher Größe (Zoom-Modi M4).
-- **Seitenfeld:** Eingabe und Enter springen zur Seite. Eine ungültige Eingabe setzt das Feld auf die aktuelle Seite zurück, ohne Fehlermeldung.
+- **Zoom:** Strg+Mausrad sowie Strg+Plus/Minus. Ein Klick auf den Zoomwert in der Statusleiste öffnet ein Menü nach oben: die Stufen 25 bis 400 %, ein Trenner, dann „Seitenbreite“, „Ganze Seite“ und „Tatsächliche Größe“ mit ihrem Tastenkürzel rechts in `text.secondary`. Ein Häkchen (`check`) markiert den aktiven Modus, im freien Zoom die passende Stufe.
+- **Zoom-Modi (M4):** Seitenbreite (Strg+2) und ganze Seite (Strg+0) passen die Zeile der aktuellen Seite ein, tatsächliche Größe (Strg+1) ist 100 %. Die Modi passen neu an, wenn der Modus gewählt wird, das Layout oder die Fenstergröße sich ändert oder zu einer Seite gesprungen wird, nicht beim Scrollen. Stufen, Strg+Mausrad und Strg+Plus/Minus beenden den Modus. Modus, Zoom und Layout gehören zum Tab.
+- **Layout (M4):** Der Layout-Knopf der Statusleiste zeigt Icon und Name des aktuellen Layouts (unter 760 px nur das Icon) und öffnet ein Menü mit Einzelseite (`file`), Fortlaufend (`layout-rows`), Doppelseitig (`layout-columns`) und Doppelseitig mit Deckblatt (`book`), das aktuelle mit Häkchen. Doppelseitig scrollt fortlaufend, die Seiten einer Zeile stehen oben bündig mit 8 px Abstand an der Mittelachse; mit Deckblatt steht die erste Seite allein rechts. In der Einzelseite blättern Bild auf/ab, die Pfeile der Statusleiste, die Leertaste am Seitenende und ein Mausradschritt über den Seitenrand hinaus.
+- **Seitenfeld:** Eingabe und Enter springen zur Seite. Eine ungültige Eingabe setzt das Feld auf die aktuelle Seite zurück, ohne Fehlermeldung. Strg+G setzt den Fokus mit markiertem Inhalt in das Feld (Gehe zu Seite); der Tooltip nennt das Kürzel.
 
 ### 7.6 Befehlspalette und Dokumentinfos
 
 - **Befehlspalette (M6):** „Suchen oder Befehl“ bzw. Strg+K öffnet ein Popup unter der Titelleiste (560 breit, `radius.overlay`). Oben steht ein Eingabefeld, darunter die Gruppen „Zuletzt geöffnet“, „Seiten“ (eine Zahl springt zur Seite) und „Befehle“ mit ihren Tastenkürzeln. Esc schließt das Popup. Solange die Palette nicht umgesetzt ist, entfällt der Knopf.
-- **Dokumentinfos:** Ein Popup über der Statusleiste mit Dateiname und Ordner, Seitenzahl, Seitenformat der aktuellen Seite (z. B. „A4 · 210 × 297 mm“), PDF-Version, Dateigröße sowie Titel, Autor und Erstelldatum aus den Metadaten, soweit vorhanden. Der Milestone dafür steht in Abschnitt 9.
+- **Dokumentinfos (M4):** Der Knopf „Dokumentinfos“ rechts in der Statusleiste (nur bei geöffnetem Dokument) öffnet ein Popup über der Statusleiste mit Dateiname und Ordner, Seitenzahl, Seitenformat der aktuellen Seite (z. B. „A4 · 210 × 297 mm“; A3 bis A6, Letter und Legal mit Namen, sonst „B × H mm“), PDF-Version, Dateigröße (Einheiten zu 1024, z. B. „1,5 MB“) sowie Titel, Autor und Erstelldatum aus den Metadaten, soweit vorhanden. Je Angabe eine Zeile: Bezeichnung in `type.caption` und `text.secondary`, Wert in `type.body` und `text.primary`. Karte mit `radius.overlay`, `surface.raised` und 1 px `border.subtle`; den Schatten zeichnet das System, weil das Popup ein eigenes Fenster ist. Die Metadaten werden erst beim Öffnen gelesen. Esc oder ein Klick daneben schließt das Popup (der Fokus geht zurück an den Knopf), ebenso ein anderer Tab oder ein anderes Dokument.
 
 ### 7.7 Bearbeitungsmodi (ab v0.2)
 
@@ -319,9 +331,13 @@ Der Schriftzug stammt aus dem Artifact vom 2026-10-17 (https://claude.ai/artifac
 
 ## 9. Offene Punkte
 
-Stand nach M3 (Task 13, 2026-10-17).
+Stand nach M4 (Task 17, 2026-10-18).
 
 Erledigt:
+
+- „Dokumentinfos“ (7.6) in M4: Popup über der Statusleiste (`Docs/DECISIONS.md`, Einträge „Dokumentinfos: beim Öffnen lesen …“ und „Dokumentinfos: Seitenformat-Namen …“).
+- Tabs mit Umsortieren, Kontextmenü und Überlauf (7.2), Aktionsleiste mit „Seiten“ und „Inhalt“ (7.3), Zoom-Menü, Zoom-Modi und Layout-Knopf (7.5) in M4; die Belegung der Icons (5.5) ist nachgezogen.
+- Menüs (Zoom, Layout, Tab-Kontextmenü, „Alle Tabs“) in M4 mit `surface.raised`, 1 px `border.subtle` und `radius.overlay` (5.1, 5.3), Einträge mit `surface.hover` und 2 px `focus.ring` bei Tastaturbedienung (`Docs/DECISIONS.md`, Eintrag „Menüs: Stile über dem Fluent-Flyout …“). Sichtprüfung der Headless-Aufnahmen hell und dunkel, Deutsch und Englisch: Im dunklen Theme ist der Rand `border.subtle` schwach, die Fläche `surface.raised` hebt das Menü aber vom Hintergrund ab.
 
 - Startkosten der eingebetteten Schrift gegenüber der Systemschrift (Geist und Geist Mono): gemessen, Geist bleibt (Warmstart +4 ms, Regel höchstens +15 ms). `Docs/DECISIONS.md`, Eintrag „Schrift-Entscheidung nach Messung (M3) …“.
 - Fluent-Palette: übrige Rollen sind auf das nächste Token gesetzt (`Docs/DECISIONS.md`, Eintrag „Design-Tokens, Schrift und Icons in Avalonia umgesetzt (M3)“). Sichtvergleich der Headless-Aufnahmen (Startbildschirm, Passwort- und Fehlerkarte, Dokumentansicht; hell und dunkel; Deutsch und Englisch) gegen Tokens und Maße dieser Spec nach Augenmaß: keine erkennbare Abweichung. Offen bleibt der Vergleich mit dem Mockup im Artifact und von Hover-, Druck- und Fokuszuständen am echten Bildschirm.
@@ -336,9 +352,14 @@ Offen (wie zu prüfen):
 - Tatsächliche Standardschrift auf den Ziel-Distributionen (`fc-match sans-serif` und `fc-match monospace` je Distribution; die Distributionen legt M8 fest).
 - Darstellung bei Windows-Hochkontrast: Fluent wertet `ContrastPreference` nicht aus; ob und wie Pagewing eine Hochkontrast-Palette bekommt, entscheidet M6 (Komfort, eigene Aufgabe in der Roadmap).
 - Linux-Titelleiste mit Tab-Zeile darunter (2.2): manuell auf einem Linux-Desktop prüfen; die Headless-Tests erzwingen die Windows-Titelleiste.
+- Hover-, Druck- und Fokuszustände der Elemente aus M4 (Tabs, Aktionsleiste, Panel, Statusleiste, Menüs) auf einem echten Bildschirm in beiden Themes ansehen; die Headless-Aufnahmen zeigen nur Ruhezustände.
+- „In neuem Fenster öffnen“ unter Windows und Linux (X11): Lage und Größe des neuen Fensters (32 px versetzt, ganz auf dem Bildschirm, auch am rechten oder unteren Rand und bei 125 %/150 % Skalierung; Quellfenster maximiert), welches Fenster nach vorn kommt, und Dateien eines späteren Aufrufs öffnen im zuletzt aktivierten Fenster (manuell, `pagewing <datei.pdf>` aus einem Terminal).
+- Linux: Das zweite Fenster zeigt das App-Icon (manuell auf einem Linux-Desktop).
+- Schatten des Popups „Dokumentinfos“ (`Popup.WindowManagerAddShadowHint`) auf echter Hardware unter Windows und Linux ansehen.
+- Einzelseite: Eine Touchpad-Geste mit Trägheit kann mehrere Seiten hintereinander blättern, wenn die Seite ganz in den Viewport passt; auf echter Hardware prüfen, ob eine Sperrzeit nötig ist.
+- Das Popup „Dokumentinfos“ öffnet ohne die 150-ms-Einblendung aus 5.6.
 
 Spätere Milestones (Zuordnung in der Roadmap, Abschnitt „Scope-Änderungen“, Eintrag vom 2026-10-17):
 
-- „Dokumentinfos“ (7.6) in M4 (Navigation).
 - Einstellungen „Dichte“ (Normal/Kompakt) und „Animationen reduzieren“ in M6 (Komfort), zusammen mit den übrigen Einstellungen.
 - Hochkontrast (Windows `ContrastPreference`) in M6: entscheiden und gegebenenfalls umsetzen.

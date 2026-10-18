@@ -35,6 +35,36 @@ public sealed class StartupOptionsTests
     }
 
     [Fact]
+    public void MorePathsAreAllButTheFirstInOrder()
+    {
+        Assert.Empty(StartupOptions.Parse([]).MorePaths);
+        Assert.Empty(StartupOptions.Parse(["a.pdf"]).MorePaths);
+        Assert.Equal(
+            [Path.GetFullPath("b.pdf"), Path.GetFullPath("c.pdf")],
+            StartupOptions.Parse(["a.pdf", "b.pdf", "c.pdf"]).MorePaths);
+    }
+
+    [Fact]
+    public void MorePathsKeepTheFirstFileWithinTheLimitOfOneOpen()
+    {
+        var args = Enumerable.Range(0, 30).Select(i => $"f{i}.pdf").ToArray();
+
+        var more = StartupOptions.Parse(args).MorePaths;
+
+        Assert.Equal(ViewModels.MainViewModel.MaxFilesPerOpen - 1, more.Count);
+        Assert.Equal(Path.GetFullPath("f1.pdf"), more[0]);
+        Assert.Equal(Path.GetFullPath("f19.pdf"), more[^1]);
+    }
+
+    [Fact]
+    public void MeasurementsHaveNoMorePaths()
+    {
+        Assert.Empty(StartupOptions.Parse(["--measure-startup", "a.pdf", "b.pdf", "c.pdf"]).MorePaths);
+        Assert.Empty(StartupOptions.Parse(["--measure-second", "a.pdf", "b.pdf", "c.pdf", "d.pdf"]).MorePaths);
+        Assert.Empty(StartupOptions.Parse(["--measure-scroll", "a.pdf", "b.pdf", "c.pdf"]).MorePaths);
+    }
+
+    [Fact]
     public void PathWithSpacesIsKeptAsOnePath()
     {
         var options = StartupOptions.Parse(["my documents/annual report.pdf"]);

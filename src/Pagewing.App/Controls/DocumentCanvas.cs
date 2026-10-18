@@ -77,6 +77,12 @@ internal sealed class DocumentCanvas : Control
     /// <summary>Raised on the UI thread once per document, in the frame after the first sharp tile of the first page was drawn.</summary>
     internal event Action? FirstSharpTileDrawn;
 
+    /// <summary>
+    /// Raised on the UI thread once per document, in the frame after the first sharp tile of any page was drawn (after
+    /// <see cref="FirstSharpTileDrawn"/> when both come in the same frame).
+    /// </summary>
+    internal event Action? FirstSharpPageDrawn;
+
     /// <summary>Raised on the UI thread for every rendered tile that reaches the canvas, wanted or not (for tests).</summary>
     internal event Action<TileKey>? TileReceived;
 
@@ -271,6 +277,7 @@ internal sealed class DocumentCanvas : Control
         var dipsPerPoint = DocumentLayout.DipsPerPoint * layout.Zoom;
         var scaleKey = TileKey.ToScaleKey(dipsPerPoint * _renderScaling);
         var drewFirstSharpTile = false;
+        var drewSharpTile = false;
         _lastSharpDestinations.Clear();
 
         using (context.PushClip(new RoundedRect(new Rect(Bounds.Size), CornerRadius)))
@@ -326,21 +333,40 @@ internal sealed class DocumentCanvas : Control
                         }
 
                         drewFirstSharpTile |= page == 0;
+                        drewSharpTile = true;
                     }
                 }
             }
         }
 
-        if (drewFirstSharpTile && !source.FirstSharpTileReported)
+        // In the startup path both come in the same frame and share one animation frame.
+        var reportFirstTile = drewFirstSharpTile && !source.FirstSharpTileReported;
+        var reportFirstPage = drewSharpTile && !source.FirstSharpPageReported;
+        if (reportFirstTile || reportFirstPage)
         {
-            source.FirstSharpTileReported = true;
-            StartupPhases.Mark("tile-drawn");
+            source.FirstSharpTileReported |= reportFirstTile;
+            source.FirstSharpPageReported = true;
+            if (reportFirstTile)
+            {
+                StartupPhases.Mark("tile-drawn");
+            }
+
             TopLevel.GetTopLevel(this)?.RequestAnimationFrame(_ =>
             {
-                if (ReferenceEquals(_source, source))
+                if (!ReferenceEquals(_source, source))
+                {
+                    return;
+                }
+
+                if (reportFirstTile)
                 {
                     StartupPhases.Mark("frame-after-tile");
                     FirstSharpTileDrawn?.Invoke();
+                }
+
+                if (reportFirstPage)
+                {
+                    FirstSharpPageDrawn?.Invoke();
                 }
             });
         }
@@ -475,6 +501,8 @@ internal sealed class DocumentCanvas : Control
         public RenderCache Cache { get; } = cache;
 
         public bool FirstSharpTileReported { get; set; }
+
+        public bool FirstSharpPageReported { get; set; }
 
         // Pool thread: must not block and must never throw (it would end the process).
         public void OnTileReady(TileKey key) => Post(() => owner.ApplyTile(this, key));

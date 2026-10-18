@@ -1,269 +1,139 @@
-using System.Globalization;
-using System.Text;
+using System.ComponentModel;
 using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
-using Pagewing.Core.Pdf;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
 
 /// <summary>
-/// The state of the main window: one document per window (Milestone 3), so every open replaces the current
-/// document. Mirrors the <see cref="ViewerSession"/>, whose <see cref="ViewerSession.Changed"/> may come from any
-/// thread, on the UI thread. Everything except <see cref="OnExternalOpen"/> is used on the UI thread.
+/// The state of a window: its tabs (<see cref="Tabs"/>), each with its own document, and the active one, which the
+/// document area, the status bar and the title bar show. Everything except <see cref="OnExternalOpen"/> is used on the
+/// UI thread.
 /// </summary>
-public sealed class MainViewModel : ViewModelBase
+public sealed class MainViewModel : ViewModelBase, IDisposable
 {
-    private readonly ViewerSession _session;
-    private readonly IFilePicker _picker;
-    private readonly RelayCommand _closeCommand;
-    private readonly RelayCommand _zoomInCommand;
-    private readonly RelayCommand _zoomOutCommand;
-    private readonly RelayCommand _previousPageCommand;
-    private readonly RelayCommand _nextPageCommand;
-    private PdfDocument? _document;
-    private ViewerState _state;
-    private string? _fullPath;
-    private PdfOpenError? _error;
-    private string _password = string.Empty;
-    private bool _checkingPassword;
-    private bool _picking;
-    private string? _pickerFailure;
-    private int _pageCount;
-    private int _currentPage;
-    private string _pageFieldText = "0";
-    private double _zoom = ZoomSteps.Default;
-    private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
+    /// <summary>The most files one open (dialog, drop, later launch) opens as tabs; the rest is ignored.</summary>
+    public const int MaxFilesPerOpen = 20;
 
-    public MainViewModel(ViewerSession session, IFilePicker picker)
+    /// <summary>Default width of the side panel (design system 5.4), also what a double click on its edge restores.</summary>
+    public const double DefaultPanelWidth = 264;
+
+    /// <summary>Narrowest the side panel can be dragged (design system 6).</summary>
+    public const double MinPanelWidth = 200;
+
+    /// <summary>Widest the side panel can be dragged (design system 6).</summary>
+    public const double MaxPanelWidth = 400;
+
+    /// <summary>Below this window width the side panel lies over the document instead of beside it (design system 6).</summary>
+    public const double NarrowWindowWidth = 900;
+
+    private static readonly StringComparison PathComparison =
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    private readonly Func<ViewerSession> _sessionFactory;
+    private readonly IFilePicker _picker;
+    private readonly RelayCommand _closeActiveTabCommand;
+
+    // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther)> _tabHandlers = [];
+    private TabViewModel? _activeTab;
+    private bool _picking;
+    private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
+    private double _panelWidth = DefaultPanelWidth;
+    private bool _isNarrowWindow;
+
+    // The user opened or closed a panel in this window: the first sharp tile no longer opens "Pages".
+    private bool _panelChosenByUser;
+
+    // The first sharp tile of this window was drawn: its one chance to open "Pages" has passed.
+    private bool _firstSharpTileSeen;
+
+    /// <param name="sessionFactory">Creates the session of each new tab; the tab owns it.</param>
+    /// <param name="picker">The file dialog.</param>
+    public MainViewModel(Func<ViewerSession> sessionFactory, IFilePicker picker)
     {
-        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(picker);
-        _session = session;
+        _sessionFactory = sessionFactory;
         _picker = picker;
 
-        OpenCommand = new RelayCommand(() => _ = PickAndOpenAsync());
-        _closeCommand = new RelayCommand(Close, () => State != ViewerState.Empty);
-        CloseCommand = _closeCommand;
-        SubmitPasswordCommand = new RelayCommand(SubmitPassword);
-        CancelPasswordCommand = new RelayCommand(Close);
+        Tabs.ActiveChanged += OnActiveTabChanged;
+        Tabs.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(HasTabs));
+        };
 
-        _zoomInCommand = new RelayCommand(() => Zoom = ZoomSteps.Next(Zoom), () => IsReady && Zoom < ZoomSteps.Max);
-        ZoomInCommand = _zoomInCommand;
-        _zoomOutCommand = new RelayCommand(() => Zoom = ZoomSteps.Previous(Zoom), () => IsReady && Zoom > ZoomSteps.Min);
-        ZoomOutCommand = _zoomOutCommand;
-        _previousPageCommand = new RelayCommand(() => GoToPage(CurrentPage - 1), () => IsReady && CurrentPage > 1);
-        PreviousPageCommand = _previousPageCommand;
-        _nextPageCommand = new RelayCommand(() => GoToPage(CurrentPage + 1), () => IsReady && CurrentPage < PageCount);
-        NextPageCommand = _nextPageCommand;
-        CommitPageFieldCommand = new RelayCommand(CommitPageField);
-
-        _session.Changed += OnSessionChanged;
-        Refresh();
+        OpenCommand = new RelayCommand(() => _ = PickAndOpenAsync(null));
+        _closeActiveTabCommand = new RelayCommand(() => CloseTab(ActiveTab), () => ActiveTab is not null);
+        CloseActiveTabCommand = _closeActiveTabCommand;
+        CloseTabCommand = new RelayCommand<TabViewModel>(CloseTab);
+        ActivateTabCommand = new RelayCommand<TabViewModel>(tab => Tabs.Activate(tab));
+        NextTabCommand = new RelayCommand(Tabs.ActivateNext);
+        PreviousTabCommand = new RelayCommand(Tabs.ActivatePrevious);
+        MoveTabToNewWindowCommand = new RelayCommand<TabViewModel>(tab =>
+        {
+            if (CanMoveTabToNewWindow && Tabs.IndexOf(tab) >= 0)
+            {
+                MoveToNewWindowRequested?.Invoke(tab);
+            }
+        });
+        ToggleSidePanelCommand = new RelayCommand<SidePanelKind>(ToggleSidePanel);
+        CloseSidePanelCommand = new RelayCommand(() => ToggleSidePanel(SidePanelKind.None));
     }
 
     /// <summary>Raised on the UI thread when the window should come to the front (a later launch handed over).</summary>
     public event Action? ActivationRequested;
 
-    /// <summary>Raised on the UI thread when a password check ended with a wrong password (also a repeated one).</summary>
-    public event Action? PasswordRejected;
+    /// <summary>Raised when the last tab was closed and <see cref="CloseWindowWhenEmpty"/> is set.</summary>
+    public event Action? CloseWindowRequested;
 
     /// <summary>
-    /// Raised when the document view should show a page (1-based) with its top edge at the margin: the page field,
-    /// the arrows of the status bar and Page Up/Page Down.
+    /// Raised by <see cref="MoveTabToNewWindowCommand"/> for a tab of this window that should move into a window of its
+    /// own ("Open in new window"); the workspace (<see cref="Services.Workspace"/>) moves it. Without a handler the
+    /// window does not offer it.
     /// </summary>
-    public event Action<int>? PageRequested;
+    public event Action<TabViewModel>? MoveToNewWindowRequested;
 
-    /// <summary>Gets the session the window mirrors; the document view draws its document.</summary>
-    internal ViewerSession Session => _session;
+    /// <summary>Gets the tabs of the window, in the order of the tab strip.</summary>
+    public TabList<TabViewModel> Tabs { get; } = new();
 
-    /// <summary>Gets the state of the session, as last seen on the UI thread.</summary>
-    public ViewerState State
+    /// <summary>Gets the active tab, or <see langword="null"/> without tabs.</summary>
+    public TabViewModel? ActiveTab
     {
-        get => _state;
+        get => _activeTab;
         private set
         {
-            if (SetProperty(ref _state, value))
+            if (SetProperty(ref _activeTab, value))
             {
                 OnPropertyChanged(nameof(IsEmpty));
-                OnPropertyChanged(nameof(HasDocument));
-                OnPropertyChanged(nameof(IsReady));
-                OnPropertyChanged(nameof(IsFailed));
-                _closeCommand.RaiseCanExecuteChanged();
-                RaiseNavigationCanExecuteChanged();
-            }
-
-            // Also when the state stays the same: the password check depends on more than the state.
-            OnPropertyChanged(nameof(IsPasswordPrompt));
-            OnPropertyChanged(nameof(HasStatusBarRow));
-            OnPropertyChanged(nameof(IsPasswordIncorrect));
-            OnPropertyChanged(nameof(IsDocumentIcon));
-        }
-    }
-
-    /// <summary>Gets whether no file is requested: the window shows the start screen and no tab.</summary>
-    public bool IsEmpty => State == ViewerState.Empty;
-
-    /// <summary>Gets whether a file is requested (loading, open, password prompt or failure): the window shows its tab.</summary>
-    public bool HasDocument => State != ViewerState.Empty;
-
-    /// <summary>Gets whether the document is open: the status bar shows page and zoom.</summary>
-    public bool IsReady => State == ViewerState.Ready;
-
-    /// <summary>
-    /// Gets whether the row of the status bar is there: while a file loads (so the viewport keeps its height when the
-    /// document is ready) and once it is open; not under the password card or the error card.
-    /// </summary>
-    public bool HasStatusBarRow => State is ViewerState.Loading or ViewerState.Ready && !IsPasswordPrompt;
-
-    /// <summary>
-    /// Gets whether the document area shows the password card: the file needs a password, or the entered one is
-    /// being checked (the card and the focus in its field stay while the file is opened again).
-    /// </summary>
-    public bool IsPasswordPrompt =>
-        State is ViewerState.PasswordRequired or ViewerState.PasswordIncorrect
-        || (State == ViewerState.Loading && _checkingPassword);
-
-    /// <summary>Gets whether the last password was wrong: the field gets a danger border and the message shows.</summary>
-    public bool IsPasswordIncorrect => State == ViewerState.PasswordIncorrect;
-
-    /// <summary>Gets whether the document area shows the error card.</summary>
-    public bool IsFailed => State == ViewerState.Failed;
-
-    /// <summary>Gets whether the tab shows the document symbol, not the lock or the warning triangle (design system 7.2).</summary>
-    public bool IsDocumentIcon => !IsPasswordPrompt && !IsFailed;
-
-    /// <summary>Gets or sets the password typed into the password card. Cleared as soon as it is no longer needed.</summary>
-    public string Password
-    {
-        get => _password;
-        set => SetProperty(ref _password, value ?? string.Empty);
-    }
-
-    /// <summary>Gets the text of the password card: "Enter the password to open “file name”."</summary>
-    public string PasswordPromptText =>
-        string.Format(Strings.Culture, CompositeFormat.Parse(Strings.PasswordPrompt), FileName);
-
-    /// <summary>Gets why the last open failed (only in <see cref="ViewerState.Failed"/>), or <see langword="null"/>.</summary>
-    public PdfOpenError? Error
-    {
-        get => _error;
-        private set
-        {
-            if (SetProperty(ref _error, value))
-            {
-                OnPropertyChanged(nameof(ErrorCauseText));
-                OnPropertyChanged(nameof(ErrorDetailsText));
-            }
-        }
-    }
-
-    /// <summary>Gets the cause on the error card in everyday words, for example "“file name” was not found."</summary>
-    /// <remarks>Without a file (the file dialog failed) the sentence starts with "The file".</remarks>
-    public string ErrorCauseText => Error is { } error
-        ? FileName is { } name
-            ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ErrorCause), name, CauseOf(error))
-            : string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ErrorCauseNoFile), CauseOf(error))
-        : string.Empty;
-
-    /// <summary>
-    /// Gets the technical details of the error card: full path and error kind; after a failed file dialog "none"
-    /// for the path and the type and message of the exception.
-    /// </summary>
-    public string ErrorDetailsText => Error is { } error
-        ? $"{Strings.ErrorDetailsPath}: {FullPath ?? Strings.ErrorDetailsNoPath}\n{Strings.ErrorDetailsKind}: {error}"
-            + (_pickerFailure is { } failure ? $"\n{Strings.ErrorDetailsMessage}: {failure}" : string.Empty)
-        : string.Empty;
-
-    /// <summary>Gets the file name of the requested file, or <see langword="null"/>.</summary>
-    public string? FileName => FullPath is { } path ? Path.GetFileName(path) : null;
-
-    /// <summary>Gets the full path of the requested file, or <see langword="null"/>.</summary>
-    public string? FullPath
-    {
-        get => _fullPath;
-        private set
-        {
-            if (SetProperty(ref _fullPath, value))
-            {
-                OnPropertyChanged(nameof(FileName));
+                OnPropertyChanged(nameof(HasTabs));
                 OnPropertyChanged(nameof(WindowTitle));
-                OnPropertyChanged(nameof(PasswordPromptText));
-                OnPropertyChanged(nameof(ErrorCauseText));
-                OnPropertyChanged(nameof(ErrorDetailsText));
+                RaiseActivePanelChanged();
+                _closeActiveTabCommand.RaiseCanExecuteChanged();
             }
         }
     }
 
-    /// <summary>Gets the window title: "file name – Pagewing", or the app name without a file.</summary>
-    public string WindowTitle => FileName is { } name ? $"{name} – {Strings.AppName}" : Strings.AppName;
+    /// <summary>Gets whether the window has no tab: it shows the start screen.</summary>
+    public bool IsEmpty => Tabs.Count == 0;
 
-    /// <summary>Gets the number of pages of the open document (0 when none is open).</summary>
-    public int PageCount
-    {
-        get => _pageCount;
-        private set
-        {
-            if (SetProperty(ref _pageCount, value))
-            {
-                OnPropertyChanged(nameof(PageCountText));
-            }
-        }
-    }
-
-    /// <summary>Gets the page count as shown after the page field ("of 24").</summary>
-    public string PageCountText => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.PageOf), PageCount);
+    /// <summary>Gets whether the window has at least one tab: it shows the document area.</summary>
+    public bool HasTabs => Tabs.Count > 0;
 
     /// <summary>
-    /// Gets or sets the current page, 1-based (0 when no document is open). The document view sets it to the page
-    /// that fills most of the viewport; setting it does not scroll (see <see cref="GoToPage"/>).
+    /// Gets or sets whether the last tab closes the window (<see cref="CloseWindowRequested"/>); otherwise the window
+    /// returns to the start screen. Off by default.
     /// </summary>
-    public int CurrentPage
-    {
-        get => _currentPage;
-        set
-        {
-            if (SetProperty(ref _currentPage, value))
-            {
-                RaiseNavigationCanExecuteChanged();
-                ResetPageField();
-            }
-        }
-    }
+    public bool CloseWindowWhenEmpty { get; set; }
+
+    /// <summary>Gets the window title: "file name – Pagewing" of the active tab, or the app name without a file.</summary>
+    public string WindowTitle => ActiveTab?.FileName is { } name ? $"{name} – {Strings.AppName}" : Strings.AppName;
 
     /// <summary>
-    /// Gets or sets the text of the page field. Typing changes only the text; Enter (<see cref="CommitPageFieldCommand"/>)
-    /// jumps, and anything that is not a page of the document puts the current page back without a message (design
-    /// system 7.5).
-    /// </summary>
-    public string PageFieldText
-    {
-        get => _pageFieldText;
-        set => SetProperty(ref _pageFieldText, value ?? string.Empty);
-    }
-
-    /// <summary>Gets or sets the zoom (1 = 100 %), limited to <see cref="ZoomSteps.Min"/> to <see cref="ZoomSteps.Max"/>.</summary>
-    public double Zoom
-    {
-        get => _zoom;
-        set
-        {
-            if (SetProperty(ref _zoom, ZoomSteps.Clamp(value)))
-            {
-                OnPropertyChanged(nameof(ZoomText));
-                _zoomInCommand.RaiseCanExecuteChanged();
-                _zoomOutCommand.RaiseCanExecuteChanged();
-            }
-        }
-    }
-
-    /// <summary>Gets the zoom as shown in the status bar ("100 %").</summary>
-    public string ZoomText => Zoom.ToString("P0", Strings.Culture);
-
-    /// <summary>
-    /// Gets or sets whether the window draws its own title bar with the tab in it (Windows) instead of keeping the
+    /// Gets or sets whether the window draws its own title bar with the tabs in it (Windows) instead of keeping the
     /// system title bar with a tab row below it (Linux, design system section 2.2). Settable for tests.
     /// </summary>
     public bool IsWindowsTitleBar
@@ -272,36 +142,89 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _isWindowsTitleBar, value);
     }
 
-    /// <summary>Shows the file dialog and opens the chosen file (Ctrl+O, "Choose file", "Open another file").</summary>
+    /// <summary>
+    /// Gets or sets the width of the side panel of this window (all its tabs share it), limited to
+    /// <see cref="MinPanelWidth"/> to <see cref="MaxPanelWidth"/>; <see cref="DefaultPanelWidth"/> at first.
+    /// </summary>
+    public double PanelWidth
+    {
+        get => _panelWidth;
+        set => SetProperty(ref _panelWidth, double.IsNaN(value) ? DefaultPanelWidth : Math.Clamp(value, MinPanelWidth, MaxPanelWidth));
+    }
+
+    /// <summary>
+    /// Gets or sets whether the window is narrower than <see cref="NarrowWindowWidth"/>: the side panel then lies over
+    /// the document and closes after a page was chosen in it. Set by the window.
+    /// </summary>
+    public bool IsNarrowWindow
+    {
+        get => _isNarrowWindow;
+        set => SetProperty(ref _isNarrowWindow, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether the first sharp tile of the window may open "Pages" (<see cref="OnFirstSharpTileDrawn"/>);
+    /// on by default. A measurement run switches it off, so its window keeps the layout and the work of a run without
+    /// a panel (comparable with the measurements before the panel existed).
+    /// </summary>
+    internal bool OpensPagesPanelAfterFirstSharpTile { get; set; } = true;
+
+    /// <summary>Gets the side panel of the active tab (<see cref="SidePanelKind.None"/> without a tab).</summary>
+    public SidePanelKind ActivePanel => ActiveTab?.SidePanel ?? SidePanelKind.None;
+
+    /// <summary>Gets whether the active tab shows the page thumbnails ("Pages" is the active entry of the action bar).</summary>
+    public bool IsPagesPanelOpen => ActivePanel == SidePanelKind.Pages;
+
+    /// <summary>Gets whether the active tab shows the table of contents ("Contents" is the active entry of the action bar).</summary>
+    public bool IsContentsPanelOpen => ActivePanel == SidePanelKind.Contents;
+
+    /// <summary>
+    /// An entry of the action bar (parameter: the <see cref="SidePanelKind"/>): opens its panel in the active tab, or
+    /// closes it when it is the open one; another open panel is replaced, so at most one is open.
+    /// <see cref="SidePanelKind.None"/> closes the panel.
+    /// </summary>
+    public ICommand ToggleSidePanelCommand { get; }
+
+    /// <summary>The close button of the side panel: closes the panel of the active tab.</summary>
+    public ICommand CloseSidePanelCommand { get; }
+
+    /// <summary>Shows the file dialog and opens the chosen file in a new tab (Ctrl+O, "Choose file", "Open file").</summary>
     public ICommand OpenCommand { get; }
 
-    /// <summary>Closes the document and returns to the start screen (Ctrl+W, × on the tab, "Close tab").</summary>
-    public ICommand CloseCommand { get; }
+    /// <summary>Closes the active tab (Ctrl+W).</summary>
+    public ICommand CloseActiveTabCommand { get; }
 
-    /// <summary>Opens the file again with <see cref="Password"/> ("Open" and Enter on the password card).</summary>
-    public ICommand SubmitPasswordCommand { get; }
+    /// <summary>Closes the tab given as the parameter.</summary>
+    public ICommand CloseTabCommand { get; }
 
-    /// <summary>"Cancel" on the password card: closes the tab.</summary>
-    public ICommand CancelPasswordCommand { get; }
+    /// <summary>Activates the tab given as the parameter.</summary>
+    public ICommand ActivateTabCommand { get; }
 
-    /// <summary>The next zoom step ("+" in the status bar, Ctrl+Plus).</summary>
-    public ICommand ZoomInCommand { get; }
+    /// <summary>Activates the tab to the right of the active one, wrapping around.</summary>
+    public ICommand NextTabCommand { get; }
 
-    /// <summary>The previous zoom step ("−" in the status bar, Ctrl+Minus).</summary>
-    public ICommand ZoomOutCommand { get; }
+    /// <summary>Activates the tab to the left of the active one, wrapping around.</summary>
+    public ICommand PreviousTabCommand { get; }
 
-    /// <summary>The page before the current one (‹ in the status bar, Page Up).</summary>
-    public ICommand PreviousPageCommand { get; }
+    /// <summary>
+    /// "Open in new window" for the tab given as the parameter: raises <see cref="MoveToNewWindowRequested"/> while
+    /// <see cref="CanMoveTabToNewWindow"/> holds.
+    /// </summary>
+    public ICommand MoveTabToNewWindowCommand { get; }
 
-    /// <summary>The page after the current one (› in the status bar, Page Down).</summary>
-    public ICommand NextPageCommand { get; }
+    /// <summary>
+    /// Gets whether a tab can move into a new window: the window has at least two tabs (moving the only one would only
+    /// make an equal window) and something takes the tab (<see cref="MoveToNewWindowRequested"/>).
+    /// </summary>
+    public bool CanMoveTabToNewWindow => Tabs.Count >= 2 && MoveToNewWindowRequested is not null;
 
-    /// <summary>Enter in the page field: jumps to the typed page or resets the field.</summary>
-    public ICommand CommitPageFieldCommand { get; }
-
-    /// <summary>Opens a file and replaces the current document (one document per window).</summary>
+    /// <summary>
+    /// Opens a file: a file that is already open in a tab activates that tab; a tab that shows the error card for it
+    /// (the file may be readable now) is activated and tries again; otherwise a new tab to the right of the active one
+    /// opens it.
+    /// </summary>
     /// <param name="path">Path of the file; an empty path does nothing.</param>
-    /// <returns>Completes when the session has a result (see <see cref="ViewerSession.OpenAsync"/>).</returns>
+    /// <returns>Completes when the session of the tab has a result (see <see cref="ViewerSession.OpenAsync"/>).</returns>
     public Task OpenAsync(string path)
     {
         if (string.IsNullOrEmpty(path))
@@ -309,58 +232,304 @@ public sealed class MainViewModel : ViewModelBase
             return Task.CompletedTask;
         }
 
-        _checkingPassword = false;
-        _pickerFailure = null;
-        Password = string.Empty;
-        return _session.OpenAsync(path);
-    }
-
-    /// <summary>Asks the document view to show <paramref name="page"/> (1-based); a page outside the document does nothing.</summary>
-    public void GoToPage(int page)
-    {
-        if (!IsReady || page < 1 || page > PageCount)
+        if (FindOpenTab(path) is { } open)
         {
-            return;
+            Tabs.Activate(open);
+
+            // A password prompt keeps its card (and what was typed); only a failed open is worth another try.
+            return open.IsFailed ? open.OpenAsync(path) : Task.CompletedTask;
         }
 
-        CurrentPage = page;
-        ResetPageField();
-        PageRequested?.Invoke(page);
+        return AddTab(new TabViewModel(_sessionFactory())).OpenAsync(path);
     }
 
-    /// <summary>Puts the current page back into the page field (an edit that was not committed, for example on leaving the field).</summary>
-    public void ResetPageField() => PageFieldText = CurrentPage.ToString(CultureInfo.InvariantCulture);
+    /// <summary>Opens up to <see cref="MaxFilesPerOpen"/> files in their order (see <see cref="OpenAsync"/>); the last one ends up active.</summary>
+    /// <returns>Completes when every session has a result.</returns>
+    public Task OpenManyAsync(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        var opens = new List<Task>();
+        foreach (var path in paths.Take(MaxFilesPerOpen))
+        {
+            opens.Add(OpenAsync(path));
+        }
+
+        return Task.WhenAll(opens);
+    }
 
     /// <summary>
-    /// Handles the files a later launch handed over (single instance). May be called on any thread: opens the
-    /// first path on the UI thread and brings the window to the front; an empty list only brings it to the front.
+    /// Opens up to <see cref="MaxFilesPerOpen"/> files as tabs behind the active one, in their order, without ever
+    /// changing the active tab (so the document view of the window is not touched): the new tabs are appended at the end
+    /// of the tab strip (<see cref="TabList{T}.AddInBackground"/>), and a file that is already open is skipped, not
+    /// activated. Only a window without a tab has to activate one: the first file's tab. The files of a first launch with
+    /// several files open this way.
+    /// </summary>
+    /// <returns>Completes when every session has a result.</returns>
+    public Task OpenInBackgroundAsync(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        var opens = new List<Task>();
+        foreach (var path in paths.Take(MaxFilesPerOpen))
+        {
+            if (!string.IsNullOrEmpty(path) && FindOpenTab(path) is null)
+            {
+                opens.Add(AddTab(new TabViewModel(_sessionFactory()), background: true).OpenAsync(path));
+            }
+        }
+
+        return Task.WhenAll(opens);
+    }
+
+    /// <summary>
+    /// Adds a tab for a session that is already opening (the file of the command line, which <see cref="Program.Main"/>
+    /// starts opening before the window exists) and activates it.
+    /// </summary>
+    public TabViewModel AdoptSession(ViewerSession session) => AddTab(new TabViewModel(session));
+
+    /// <summary>
+    /// Handles the files a later launch handed over (single instance). May be called on any thread: opens them on the
+    /// UI thread (<see cref="OpenManyAsync"/>) and brings the window to the front; an empty list only brings it to the
+    /// front.
     /// </summary>
     public void OnExternalOpen(IReadOnlyList<string> paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        var first = paths.Count > 0 ? paths[0] : null;
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (!string.IsNullOrEmpty(first))
-            {
-                _ = OpenAsync(first);
-            }
-
-            ActivationRequested?.Invoke();
-        });
+        var copy = paths.ToArray();
+        Dispatcher.UIThread.Post(() => OpenExternal(copy));
     }
 
-    /// <summary>The cause on the error card for a failure (design system 7.8); password kinds never reach the card.</summary>
-    internal static string CauseOf(PdfOpenError error) => error switch
+    /// <summary>
+    /// <see cref="OnExternalOpen"/> on the UI thread: opens the files (<see cref="OpenManyAsync"/>) and brings the
+    /// window to the front.
+    /// </summary>
+    internal void OpenExternal(IReadOnlyList<string> paths)
     {
-        PdfOpenError.NotAPdf => Strings.ErrorNotAPdf,
-        PdfOpenError.FileNotFound => Strings.ErrorFileNotFound,
-        PdfOpenError.CannotRead => Strings.ErrorCannotRead,
-        PdfOpenError.UnsupportedEncryption => Strings.ErrorUnsupportedEncryption,
-        _ => Strings.ErrorUnknown,
-    };
+        _ = OpenManyAsync(paths);
+        ActivationRequested?.Invoke();
+    }
 
-    private async Task PickAndOpenAsync()
+    /// <summary>
+    /// Adds a tab that comes from another window, with its session and its state, and activates it; the tab is not
+    /// opened again.
+    /// </summary>
+    internal void AttachTab(TabViewModel tab)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+        if (Tabs.IndexOf(tab) < 0)
+        {
+            AddTab(tab);
+        }
+    }
+
+    /// <summary>
+    /// Takes a tab out of this window without releasing it (it moves to another window); the window stops listening to
+    /// it. Unlike closing, it never closes the window.
+    /// </summary>
+    /// <returns><see langword="true"/> when the tab was in this window.</returns>
+    internal bool DetachTab(TabViewModel tab)
+    {
+        if (Tabs.IndexOf(tab) < 0)
+        {
+            return false;
+        }
+
+        // The document view leaves the tab (with the change of the active tab) and saves where it showed it.
+        Tabs.Close(tab);
+        Unhook(tab);
+
+        // The window it goes to has not drawn it yet: its thumbnails wait for the first sharp page there, which sets the
+        // flag again.
+        tab.HasShownSharpPage = false;
+        return true;
+    }
+
+    /// <summary>Sets <see cref="PanelWidth"/> back to <see cref="DefaultPanelWidth"/> (double click on the edge of the panel).</summary>
+    public void ResetPanelWidth() => PanelWidth = DefaultPanelWidth;
+
+    /// <summary>
+    /// The first sharp tile of this window was drawn (the document view tells the window once per document): the first
+    /// time, "Pages" opens in the active tab when it shows no panel, the window is at least
+    /// <see cref="NarrowWindowWidth"/> wide, the user has not opened or closed a panel in this window yet (design
+    /// system 7.3; remembering the choice comes in M6) and <see cref="OpensPagesPanelAfterFirstSharpTile"/> holds.
+    /// The panel opens in a job of <see cref="DispatcherPriority.Background"/>, after every handler of the first sharp
+    /// tile (a measurement takes its time there) and after rendering. Later calls do nothing.
+    /// </summary>
+    internal void OnFirstSharpTileDrawn()
+    {
+        if (_firstSharpTileSeen)
+        {
+            return;
+        }
+
+        _firstSharpTileSeen = true;
+        if (OpensPagesPanelAfterFirstSharpTile)
+        {
+            Dispatcher.UIThread.Post(OpenPagesPanelAfterFirstSharpTile, DispatcherPriority.Background);
+        }
+    }
+
+    /// <summary>Releases every tab and its session. May be called more than once.</summary>
+    public void Dispose()
+    {
+        foreach (var tab in Tabs.ToArray())
+        {
+            tab.Dispose();
+        }
+    }
+
+    private static string FullPathOrAsGiven(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException)
+        {
+            return path;
+        }
+    }
+
+    private TabViewModel? FindOpenTab(string path)
+    {
+        var fullPath = FullPathOrAsGiven(path);
+        foreach (var tab in Tabs)
+        {
+            if (string.Equals(tab.Session.Path, fullPath, PathComparison))
+            {
+                return tab;
+            }
+        }
+
+        return null;
+    }
+
+    private TabViewModel AddTab(TabViewModel tab, bool background = false)
+    {
+        var handlers = (Close: (Action)(() => CloseTab(tab)), OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)));
+        tab.CloseRequested += handlers.Close;
+        tab.OpenOtherRequested += handlers.OpenOther;
+        _tabHandlers[tab] = handlers;
+        if (background)
+        {
+            if (Tabs.Count > 0)
+            {
+                // A new tab starts active; one that is added behind the active tab never becomes it, so it keeps only the
+                // small render cache of an inactive tab (activating a tab sets it again).
+                tab.IsActive = false;
+            }
+
+            Tabs.AddInBackground(tab);
+        }
+        else
+        {
+            Tabs.Add(tab);
+        }
+
+        return tab;
+    }
+
+    private void Unhook(TabViewModel tab)
+    {
+        if (_tabHandlers.Remove(tab, out var handlers))
+        {
+            tab.CloseRequested -= handlers.Close;
+            tab.OpenOtherRequested -= handlers.OpenOther;
+        }
+    }
+
+    private void CloseTab(TabViewModel? tab)
+    {
+        if (tab is null || Tabs.IndexOf(tab) < 0)
+        {
+            return;
+        }
+
+        // The document view leaves the tab (with the change of the active tab) before its session is released; a
+        // tab that is still loading is released the same way, the session cancels its request.
+        Tabs.Close(tab);
+        Unhook(tab);
+        tab.Dispose();
+        if (Tabs.Count == 0 && CloseWindowWhenEmpty)
+        {
+            CloseWindowRequested?.Invoke();
+        }
+    }
+
+    private void OnActiveTabChanged()
+    {
+        var old = _activeTab;
+        var next = Tabs.Active;
+        if (old is not null)
+        {
+            old.PropertyChanged -= OnActiveTabPropertyChanged;
+            old.PanelPagePicked -= OnPanelPagePicked;
+            old.IsActive = false;
+        }
+
+        if (next is not null)
+        {
+            next.IsActive = true;
+            next.PropertyChanged += OnActiveTabPropertyChanged;
+            next.PanelPagePicked += OnPanelPagePicked;
+        }
+
+        ActiveTab = next;
+    }
+
+    private void OnActiveTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TabViewModel.FileName))
+        {
+            OnPropertyChanged(nameof(WindowTitle));
+        }
+        else if (e.PropertyName == nameof(TabViewModel.SidePanel))
+        {
+            RaiseActivePanelChanged();
+        }
+    }
+
+    private void RaiseActivePanelChanged()
+    {
+        OnPropertyChanged(nameof(ActivePanel));
+        OnPropertyChanged(nameof(IsPagesPanelOpen));
+        OnPropertyChanged(nameof(IsContentsPanelOpen));
+    }
+
+    // The conditions are checked again: the user may have chosen a panel, or the window may have narrowed meanwhile.
+    private void OpenPagesPanelAfterFirstSharpTile()
+    {
+        if (OpensPagesPanelAfterFirstSharpTile && !_panelChosenByUser && !IsNarrowWindow && ActiveTab is { SidePanel: SidePanelKind.None } tab)
+        {
+            tab.SidePanel = SidePanelKind.Pages;
+        }
+    }
+
+    private void ToggleSidePanel(SidePanelKind kind)
+    {
+        if (ActiveTab is not { } tab || !Enum.IsDefined(kind))
+        {
+            return;
+        }
+
+        _panelChosenByUser = true;
+        tab.SidePanel = tab.SidePanel == kind ? SidePanelKind.None : kind;
+    }
+
+    // Over the document (narrow window) the panel gets out of the way once a page was chosen in it.
+    private void OnPanelPagePicked()
+    {
+        if (IsNarrowWindow && ActiveTab is { } tab)
+        {
+            tab.SidePanel = SidePanelKind.None;
+        }
+    }
+
+    /// <summary>
+    /// Shows the file dialog. The chosen file opens in a new tab, or, for "Open another file" of a tab
+    /// (<paramref name="target"/>), replaces the document of that tab. A cancelled dialog changes nothing; a failing
+    /// one shows the error card in the target tab, or in a new tab.
+    /// </summary>
+    private async Task PickAndOpenAsync(TabViewModel? target)
     {
         // Ctrl+O while the dialog is open (where the platform lets it through) does not open a second dialog.
         if (_picking)
@@ -382,8 +551,13 @@ public sealed class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             // The dialog itself failed (for example no file chooser portal on Linux): the command must not end
-            // silently in an unobserved task. Like any failed open, it replaces the document with the error card.
-            ShowPickerFailure(ex);
+            // silently in an unobserved task. Like any failed open, it shows the error card in a tab.
+            if (target is null || Tabs.IndexOf(target) < 0)
+            {
+                target = AddTab(new TabViewModel(_sessionFactory()));
+            }
+
+            target.ShowPickerFailure(ex);
             return;
         }
         finally
@@ -391,133 +565,18 @@ public sealed class MainViewModel : ViewModelBase
             _picking = false;
         }
 
-        if (path is not null)
-        {
-            await OpenAsync(path);
-        }
-    }
-
-    /// <summary>
-    /// Shows the error card with the cause <see cref="PdfOpenError.Unknown"/>, no file and the type and message of
-    /// <paramref name="exception"/> in the technical details (no stack trace); closes the document first.
-    /// </summary>
-    private void ShowPickerFailure(Exception exception)
-    {
-        _checkingPassword = false;
-        Password = string.Empty;
-        _pickerFailure = $"{exception.GetType().FullName}: {exception.Message}";
-        _session.Close();
-        Refresh();
-        OnPropertyChanged(nameof(ErrorCauseText));
-        OnPropertyChanged(nameof(ErrorDetailsText));
-    }
-
-    private void CommitPageField()
-    {
-        if (int.TryParse(PageFieldText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var page) && IsReady && page >= 1 && page <= PageCount)
-        {
-            GoToPage(page);
-        }
-        else
-        {
-            ResetPageField();
-        }
-    }
-
-    private void RaiseNavigationCanExecuteChanged()
-    {
-        _zoomInCommand.RaiseCanExecuteChanged();
-        _zoomOutCommand.RaiseCanExecuteChanged();
-        _previousPageCommand.RaiseCanExecuteChanged();
-        _nextPageCommand.RaiseCanExecuteChanged();
-    }
-
-    private void SubmitPassword()
-    {
-        // Ignored while a check is running (Enter pressed twice) and outside the password card.
-        if (State is not (ViewerState.PasswordRequired or ViewerState.PasswordIncorrect) || FullPath is not { } path)
+        if (path is null)
         {
             return;
         }
 
-        _checkingPassword = true;
-        _ = _session.OpenAsync(path, Password);
-    }
-
-    private void Close()
-    {
-        _checkingPassword = false;
-        Password = string.Empty;
-        if (_pickerFailure is not null)
+        if (target is not null && Tabs.IndexOf(target) >= 0)
         {
-            // The session is already closed and raises no change: the card goes away here.
-            _pickerFailure = null;
-            Refresh();
+            await target.OpenAsync(path);
         }
-
-        _session.Close();
-    }
-
-    private void OnSessionChanged() => Dispatcher.UIThread.Post(Refresh);
-
-    /// <summary>Reads the session; runs on the UI thread.</summary>
-    private void Refresh()
-    {
-        var state = _session.State;
-        var document = state == ViewerState.Ready ? _session.Document : null;
-        var pageCount = 0;
-        if (document is not null)
+        else
         {
-            try
-            {
-                pageCount = document.PageCount;
-            }
-            catch (ObjectDisposedException)
-            {
-                // Replaced or closed meanwhile; the event of that change follows.
-                document = null;
-            }
-        }
-
-        var isNewDocument = document is not null && !ReferenceEquals(document, _document);
-        _document = document;
-
-        // A failed file dialog shows the error card until the next open or close; the session is closed meanwhile.
-        if (_pickerFailure is not null)
-        {
-            state = ViewerState.Failed;
-        }
-
-        FullPath = _session.Path;
-        Error = _pickerFailure is not null ? PdfOpenError.Unknown : state == ViewerState.Failed ? _session.Error : null;
-        PageCount = pageCount;
-        _nextPageCommand.RaiseCanExecuteChanged();
-        if (isNewDocument)
-        {
-            CurrentPage = 1;
-            Zoom = ZoomSteps.Default;
-        }
-        else if (document is null)
-        {
-            CurrentPage = 0;
-        }
-
-        // The password check is over once the session leaves Loading. The password stays only for another try.
-        var passwordRejected = _checkingPassword && state == ViewerState.PasswordIncorrect;
-        if (state != ViewerState.Loading)
-        {
-            _checkingPassword = false;
-        }
-
-        if (state is ViewerState.Ready or ViewerState.Failed or ViewerState.Empty)
-        {
-            Password = string.Empty;
-        }
-
-        State = state;
-        if (passwordRejected)
-        {
-            PasswordRejected?.Invoke();
+            await OpenAsync(path);
         }
     }
 }

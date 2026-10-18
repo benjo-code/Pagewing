@@ -1,11 +1,13 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Pagewing.App.Controls;
 using Xunit;
 
@@ -180,6 +182,143 @@ public sealed class ControlStyleTests
         }
 
         window.Close();
+    }
+
+    [AvaloniaTheory]
+    [MemberData(nameof(Themes))]
+    public void MenusUseTheRaisedSurfaceASubtleBorderAndTheOverlayRadius(string theme)
+    {
+        var variant = Variant(theme);
+        var (window, button, menu) = ShowMenu(variant);
+
+        Click(window, button);
+        var presenter = Assert.Single(window.GetVisualDescendants().OfType<MenuFlyoutPresenter>());
+        AssertMenuSurface(presenter, variant);
+        var entry = menu.Items.OfType<MenuItem>().First();
+        Assert.Equal(TokenTests.Token("Text.Primary", variant), Assert.IsAssignableFrom<ISolidColorBrush>(entry.Foreground).Color);
+
+        // The entry the menu selected when it opened has surface.hover, and no ring: it was opened with the pointer.
+        Assert.True(entry.IsSelected);
+        var root = LayoutRoot(entry);
+        Assert.Equal(TokenTests.Token("Surface.Hover", variant), Assert.IsAssignableFrom<ISolidColorBrush>(root.Background).Color);
+        Assert.Equal(default, root.BorderThickness);
+        menu.Hide();
+        Dispatcher.UIThread.RunJobs();
+
+        // The context menu looks the same.
+        var context = new ContextMenu { ItemsSource = new[] { new MenuItem { Header = "Close" } } };
+        context.Open(button);
+        Dispatcher.UIThread.RunJobs();
+        AssertMenuSurface(context, variant);
+        context.Close();
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [MemberData(nameof(Themes))]
+    public void MenuTextAndFocusRingKeepTheirContrastOnTheMenuSurfaces(string theme)
+    {
+        var variant = Variant(theme);
+        foreach (var surface in new[] { "Surface.Raised", "Surface.Hover" })
+        {
+            var behind = TokenTests.Token(surface, variant);
+
+            // Entries, and the shortcuts of the zoom menu (text.secondary).
+            Assert.True(Wcag.Contrast(TokenTests.Token("Text.Primary", variant), behind) >= 4.5, $"text.primary on {surface}");
+            Assert.True(Wcag.Contrast(TokenTests.Token("Text.Secondary", variant), behind) >= 4.5, $"text.secondary on {surface}");
+            Assert.True(Wcag.Contrast(TokenTests.Token("Focus.Ring", variant), behind) >= 3, $"focus.ring on {surface}");
+        }
+    }
+
+    [AvaloniaFact]
+    public void MenuFocusRingShowsOnlyWhileTheKeyboardMovesInTheMenu()
+    {
+        MenuKeyboardFocus.EnsureRegistered();
+        var variant = ThemeVariant.Light;
+        var (window, button, menu) = ShowMenu(variant);
+        var ring = TokenTests.Token("Focus.Ring", variant);
+        var hover = TokenTests.Token("Surface.Hover", variant);
+
+        // Opened with the pointer: the selected entry has no ring.
+        Click(window, button);
+        var entries = menu.Items.OfType<MenuItem>().ToList();
+        Assert.Equal(hover, EdgeColor(window, entries[0]));
+
+        // An arrow key moves the selection: the ring shows on the selected entry, the text stays where it was.
+        var textBefore = HeaderOrigin(window, entries[1]);
+        Press(window, Key.Down, PhysicalKey.ArrowDown);
+        Assert.True(entries[1].IsSelected);
+        Assert.Equal(ring, EdgeColor(window, entries[1]));
+        Assert.Equal(new Thickness(2), LayoutRoot(entries[1]).BorderThickness);
+        Assert.Equal(textBefore, HeaderOrigin(window, entries[1]));
+
+        // The pointer moving over the menu takes the ring away.
+        var presenter = Assert.Single(window.GetVisualDescendants().OfType<MenuFlyoutPresenter>());
+        window.MouseMove(presenter.TranslatePoint(new Point(presenter.Bounds.Width / 2, 4), window)!.Value);
+        Dispatcher.UIThread.RunJobs();
+        Assert.DoesNotContain(MenuKeyboardFocus.KeyboardClass, presenter.Classes);
+        Assert.Equal(default, LayoutRoot(entries[1]).BorderThickness);
+
+        // A key press, then closing the menu: opened again with the pointer, it shows no ring.
+        Press(window, Key.Down, PhysicalKey.ArrowDown);
+        Assert.Contains(MenuKeyboardFocus.KeyboardClass, presenter.Classes);
+        menu.Hide();
+        Dispatcher.UIThread.RunJobs();
+        Click(window, button);
+        Assert.DoesNotContain(MenuKeyboardFocus.KeyboardClass, Assert.Single(window.GetVisualDescendants().OfType<MenuFlyoutPresenter>()).Classes);
+        Assert.All(menu.Items.OfType<MenuItem>(), entry => Assert.Equal(default, LayoutRoot(entry).BorderThickness));
+        window.Close();
+    }
+
+    private static (Window Window, Button Button, MenuFlyout Menu) ShowMenu(ThemeVariant variant)
+    {
+        var menu = new MenuFlyout { Placement = PlacementMode.Bottom };
+        foreach (var text in new[] { "Single page", "Continuous", "Two pages" })
+        {
+            menu.Items.Add(new MenuItem { Header = text });
+        }
+
+        var button = new Button { Content = "Layout", Flyout = menu, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left };
+        var window = Show(new Window { Width = 400, Height = 300, Content = button }, variant);
+        return (window, button, menu);
+    }
+
+    private static void AssertMenuSurface(TemplatedControl menu, ThemeVariant variant)
+    {
+        Assert.Equal(TokenTests.Token("Surface.Raised", variant), Assert.IsAssignableFrom<ISolidColorBrush>(menu.Background).Color);
+        Assert.Equal(TokenTests.Token("Border.Subtle", variant), Assert.IsAssignableFrom<ISolidColorBrush>(menu.BorderBrush).Color);
+        Assert.Equal(new Thickness(1), menu.BorderThickness);
+        Assert.Equal(new CornerRadius(10), menu.CornerRadius);
+    }
+
+    private static Border LayoutRoot(MenuItem entry) =>
+        entry.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "PART_LayoutRoot");
+
+    private static Point HeaderOrigin(Window window, MenuItem entry) =>
+        entry.GetVisualDescendants().OfType<Control>().Single(control => control.Name == "PART_HeaderPresenter").TranslatePoint(default, window)!.Value;
+
+    /// <summary>The colour 1 px inside the left edge of an entry, halfway down (inside a 2 px ring).</summary>
+    private static Color EdgeColor(Window window, MenuItem entry)
+    {
+        var point = entry.TranslatePoint(new Point(1, entry.Bounds.Height / 2), window)!.Value;
+        using var frame = new FramePixels(window.CaptureRenderedFrame()!);
+        return frame.GetColor((int)Math.Round(point.X), (int)Math.Round(point.Y));
+    }
+
+    private static void Click(Window window, Control control)
+    {
+        var point = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+    }
+
+    private static void Press(Window window, Key key, PhysicalKey physicalKey)
+    {
+        window.KeyPress(key, RawInputModifiers.None, physicalKey, null);
+        window.KeyRelease(key, RawInputModifiers.None, physicalKey, null);
+        Dispatcher.UIThread.RunJobs();
     }
 
     private static Color Blend(Color top, Color behind, double opacity) => Color.FromRgb(

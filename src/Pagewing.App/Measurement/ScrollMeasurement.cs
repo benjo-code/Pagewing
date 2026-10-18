@@ -129,7 +129,11 @@ internal sealed class ScrollMeasurement : MeasurementRun
         {
             // The view keeps the middle of the viewport in place; the scroll starts at the top all the same. The frame
             // that lays out and draws the new zoom is not one of the measured intervals.
-            ViewModel.Zoom = _zoomPercent / 100.0;
+            if (ViewModel.ActiveTab is { } tab)
+            {
+                tab.Zoom = _zoomPercent / 100.0;
+            }
+
             var scroller = View.ScrollViewer;
             scroller.Offset = new Vector(scroller.Offset.X, 0);
             _settling = true;

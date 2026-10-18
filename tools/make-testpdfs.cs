@@ -101,6 +101,8 @@ static class TestPdfs
         new("annotations.pdf", Annotations()),
         new("wide-page.pdf", WidePage()),
         new("thousand-pages.pdf", ThousandPages()),
+        new("outline.pdf", Outline()),
+        new("outline-cycle.pdf", OutlineCycle()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -322,6 +324,63 @@ static class TestPdfs
         return doc.Build();
     }
 
+    // Three pages of 300 x 400 without text; the bookmarks carry the meaning:
+    //   Kapitel 1 (open, /Dest page 1)
+    //     Abschnitt 1.1 (/Dest page 2)
+    //     Abschnitt 1.2 (no destination)
+    //   Kapitel 2 (closed, GoTo action to page 3)
+    //     "Über uns – 日本" (/Dest page 3, UTF-16BE title)
+    //   Fern (/Dest with page index 99, which does not exist)
+    private static byte[] Outline()
+    {
+        var doc = new PdfDoc("Pagewing Lesezeichen");
+        var pages = ThreeEmptyPages(doc);
+        var root = doc.Reserve();
+        var chapter1 = doc.Reserve();
+        var section11 = doc.Reserve();
+        var section12 = doc.Reserve();
+        var chapter2 = doc.Reserve();
+        var about = doc.Reserve();
+        var far = doc.Reserve();
+        doc.Set(root, $"<< /Type /Outlines /First {chapter1} 0 R /Last {far} 0 R /Count 5 >>");
+        doc.Set(chapter1, $"<< /Title (Kapitel 1) /Parent {root} 0 R /Next {chapter2} 0 R /First {section11} 0 R /Last {section12} 0 R /Count 2 /Dest [{pages[0]} 0 R /Fit] >>");
+        doc.Set(section11, $"<< /Title (Abschnitt 1.1) /Parent {chapter1} 0 R /Next {section12} 0 R /Dest [{pages[1]} 0 R /Fit] >>");
+        doc.Set(section12, $"<< /Title (Abschnitt 1.2) /Parent {chapter1} 0 R /Prev {section11} 0 R >>");
+        doc.Set(chapter2, $"<< /Title (Kapitel 2) /Parent {root} 0 R /Prev {chapter1} 0 R /Next {far} 0 R /First {about} 0 R /Last {about} 0 R /Count -1 /A << /S /GoTo /D [{pages[2]} 0 R /Fit] >> >>");
+        doc.Set(about, $"<< /Title {PdfDoc.TextString("Über uns – 日本")} /Parent {chapter2} 0 R /Dest [{pages[2]} 0 R /Fit] >>");
+        doc.Set(far, $"<< /Title (Fern) /Parent {root} 0 R /Prev {chapter2} 0 R /Dest [99 /Fit] >>");
+        doc.CatalogEntries = $"/Outlines {root} 0 R /PageMode /UseOutlines";
+        return doc.Build();
+    }
+
+    // Three sibling bookmarks "Eins", "Zwei", "Drei"; the /Next of the last one points back to the first.
+    private static byte[] OutlineCycle()
+    {
+        var doc = new PdfDoc("Pagewing Lesezeichen-Zyklus");
+        var pages = ThreeEmptyPages(doc);
+        var root = doc.Reserve();
+        var first = doc.Reserve();
+        var second = doc.Reserve();
+        var third = doc.Reserve();
+        doc.Set(root, $"<< /Type /Outlines /First {first} 0 R /Last {third} 0 R /Count 3 >>");
+        doc.Set(first, $"<< /Title (Eins) /Parent {root} 0 R /Next {second} 0 R /Dest [{pages[0]} 0 R /Fit] >>");
+        doc.Set(second, $"<< /Title (Zwei) /Parent {root} 0 R /Prev {first} 0 R /Next {third} 0 R /Dest [{pages[1]} 0 R /Fit] >>");
+        doc.Set(third, $"<< /Title (Drei) /Parent {root} 0 R /Prev {second} 0 R /Next {first} 0 R /Dest [{pages[2]} 0 R /Fit] >>");
+        doc.CatalogEntries = $"/Outlines {root} 0 R /PageMode /UseOutlines";
+        return doc.Build();
+    }
+
+    private static int[] ThreeEmptyPages(PdfDoc doc)
+    {
+        var pages = new int[3];
+        for (var i = 0; i < pages.Length; i++)
+        {
+            pages[i] = doc.AddPage("/MediaBox [0 0 300 400]", "<< >>", "0.9 0.9 0.9 rg 20 20 260 360 re f");
+        }
+
+        return pages;
+    }
+
     private static byte[] Text(string value) => PdfDoc.Latin1(value);
 }
 
@@ -353,6 +412,18 @@ sealed class PdfDoc
         return bytes;
     }
 
+    // Extra entries for the catalog dictionary, for example "/Outlines 7 0 R".
+    public string CatalogEntries { get; set; } = string.Empty;
+
+    // Allocates an object id whose body is set later with Set (for forward references).
+    public int Reserve()
+    {
+        objects.Add(null);
+        return objects.Count;
+    }
+
+    public void Set(int id, string body) => objects[id - 1] = Latin1(body);
+
     public int Add(string body)
     {
         var id = Reserve();
@@ -381,7 +452,7 @@ sealed class PdfDoc
     public byte[] Build()
     {
         var kids = string.Join(' ', pages.Select(p => $"{p} 0 R"));
-        objects[catalog - 1] = Latin1($"<< /Type /Catalog /Pages {pagesRoot} 0 R >>");
+        objects[catalog - 1] = Latin1($"<< /Type /Catalog /Pages {pagesRoot} 0 R{(CatalogEntries.Length > 0 ? " " + CatalogEntries : string.Empty)} >>");
         objects[pagesRoot - 1] = Latin1($"<< /Type /Pages /Count {pages.Count} /Kids [{kids}] >>");
 
         var output = new MemoryStream();
@@ -411,7 +482,7 @@ sealed class PdfDoc
     }
 
     // ASCII text becomes a literal string; everything else a UTF-16BE string with byte order mark.
-    private static string TextString(string value)
+    public static string TextString(string value)
     {
         if (value.All(c => c is >= ' ' and <= '~'))
         {
@@ -425,11 +496,5 @@ sealed class PdfDoc
         }
 
         return hex.Append('>').ToString();
-    }
-
-    private int Reserve()
-    {
-        objects.Add(null);
-        return objects.Count;
     }
 }
