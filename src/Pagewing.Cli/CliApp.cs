@@ -6,7 +6,7 @@ using Pagewing.Core.Pdf;
 namespace Pagewing.Cli;
 
 /// <summary>
-/// The command line of Pagewing: <c>info</c>, <c>render</c> and <c>text</c>. Exit codes: 0 success, 1 runtime
+/// The command line of Pagewing: <c>info</c>, <c>render</c>, <c>text</c> and <c>search</c>. Exit codes: 0 success, 1 runtime
 /// error (<c>pagewing: &lt;message&gt;</c> on stderr), 2 usage error (message and usage text on stderr).
 /// </summary>
 public static class CliApp
@@ -20,6 +20,7 @@ public static class CliApp
           pagewing info   <file> [--password <pw>]
           pagewing render <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--password <pw>]
           pagewing text   <file> [--pages <range>] [--password <pw>]
+          pagewing search <file> <query> [--pages <range>] [--match-case] [--whole-word] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -32,12 +33,16 @@ public static class CliApp
           info     Print page count, PDF version, metadata and page sizes.
           render   Render pages as PNG files <name>-p<NNN>.png and print their paths.
           text     Print the text of the pages, each page followed by a form feed (U+000C).
+          search   Print one line per hit: <page> TAB <character index> TAB <before>[<match>]<after>
+                   (pages count from 1; use -- before a query that starts with a dash).
 
         Options:
           --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all).
           --dpi <n>          Resolution of rendered pages (default: 144).
           --output <dir>     Directory for the PNG files, created if missing (default: .).
           --no-annotations   Render without annotations.
+          --match-case       Search: distinguish upper and lower case (default: ignore case).
+          --whole-word       Search: match only whole words.
           --password <pw>    Password of an encrypted PDF.
 
         The password can also be given in the environment variable PAGEWING_PASSWORD;
@@ -185,6 +190,7 @@ public static class CliApp
         {
             "info" => InfoCommand.RunAsync(document, options, output, ct),
             "render" => RenderCommand.RunAsync(document, options, output, ct),
+            "search" => SearchCommand.RunAsync(document, options, output, ct),
             _ => TextCommand.RunAsync(document, options, output, ct),
         };
 
