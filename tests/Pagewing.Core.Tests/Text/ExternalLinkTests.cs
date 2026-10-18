@@ -149,9 +149,12 @@ public sealed class ExternalLinkTests
     [InlineData("mailto:a@b.c?SUBJECT=Hi&Body=x")]
     [InlineData("mailto:a@b.c?cc=d@e.f&bcc=g@h.i&subject=S")]
     [InlineData("mailto:?to=a@b.c&subject=Hi")]
-    [InlineData("mailto:a@b.c?body=a%0Ab%00c")]
     [InlineData("mailto:a@b.c?subject=a&&body=b&")]
-    [InlineData("mailto:a@b.c?subject=Hi#frag")]
+    [InlineData("mailto:a@b.c?subject=x%26attach%3D/etc/passwd")]
+    [InlineData("mailto:a@b.c?body=Line1%0D%0ALine2%09tab")]
+    [InlineData("mailto:a@b.c?to=d@e.f%2Cg@h.i")]
+    [InlineData("mailto:a@b.c?subject=a%20b%25c")]
+    [InlineData("https://example.org/a%20b#frag")]
     public void MailAddressesWithKnownFieldsAreAccepted(string url)
     {
         Assert.True(ExternalLink.TryParse(url, out var link));
@@ -171,6 +174,89 @@ public sealed class ExternalLinkTests
 
         Assert.True(ExternalLink.TryParse("mailto:a@example.org?bcc=x@y.z,u@xn--pple-43d.com", out var several));
         Assert.Equal(ExternalLinkWarning.Punycode, several.Warning);
+    }
+
+    [Theory]
+    [InlineData("mailto:a@b.c#?attach=/etc/passwd")]
+    [InlineData("mailto:a@b.c#x?attach=C:/Windows/win.ini")]
+    [InlineData("mailto:a@b.c?subject=Hi#&attach=/etc/passwd")]
+    [InlineData("mailto:a@b.c?subject=Hi#&cc=x%0D%0ABcc:e@f.g")]
+    [InlineData("mailto:#?attach=/etc/passwd")]
+    [InlineData("mailto:a@b.c?subject=Hi#frag")]
+    [InlineData("mailto:a@b.c?subject=x;attach=/etc/passwd")]
+    [InlineData("mailto:a@b.c;d@e.f")]
+    [InlineData("mailto:a@b.c?subject=x?attach=/etc/passwd")]
+    [InlineData("mailto:a@b.c?to=x@y.z%3Battach=/etc/passwd")]
+    [InlineData("mailto:a@b.c?to=x@y.z%26attach%3D/etc/passwd")]
+    [InlineData("mailto:a@b.c?cc=x@y.z%3Fattach")]
+    [InlineData("mailto:a@b.c?cc=x@y.z%23z")]
+    [InlineData("mailto:a@b.c%26attach%3D1")]
+    [InlineData("mailto:a%3Bb@c.d")]
+    [InlineData("mailto:a@b.c?subject=a%C2%85Bcc:%20e@f.g")]
+    [InlineData("mailto:a@b.c?subject=a%E2%80%A8Bcc")]
+    [InlineData("mailto:a@b.c?subject=a%E2%80%AEb")]
+    [InlineData("mailto:a@b.c?subject=a%1Bb")]
+    [InlineData("mailto:a@b.c?subject=a%09b")]
+    [InlineData("mailto:a@b.c?subject=a%7Fb")]
+    [InlineData("mailto:a@b.c?cc=a%09b@c.d")]
+    [InlineData("mailto:a@b.c?bcc=a%1B@c.d")]
+    [InlineData("mailto:a@b.c?body=a%0Ab%00c")]
+    [InlineData("mailto:a@b.c?body=a%1Bb")]
+    [InlineData("mailto:a@b.c?body=a%7Fb")]
+    [InlineData("mailto:a@b.c?body=a%C2%85b")]
+    [InlineData("mailto:a@b.c%0D%0ABcc:e@f.g")]
+    public void MailGrammarAndDecodedControlCharactersAreRejected(string url)
+    {
+        Assert.False(ExternalLink.TryParse(url, out _));
+    }
+
+    [Theory]
+    [InlineData("https://example.org/a%zz")]
+    [InlineData("https://example.org/a%")]
+    [InlineData("https://example.org/a%4")]
+    [InlineData("mailto:a@b.c?subject=%")]
+    [InlineData("mailto:a@b.c?subject=%G1")]
+    public void MalformedPercentEscapesAreRejected(string url)
+    {
+        Assert.False(ExternalLink.TryParse(url, out _));
+    }
+
+    [Theory]
+    [InlineData("https://example.org/ㅤ")]
+    [InlineData("https://example.org/ᅟ")]
+    [InlineData("https://example.org/ᅠ")]
+    [InlineData("https://example.org/⠀")]
+    [InlineData("https://example.org/ﾠ")]
+    [InlineData("https://example.org/᠎")]
+    [InlineData("https://exaㅤmple.org/")]
+    public void InvisibleFillersAreRejected(string url)
+    {
+        Assert.False(ExternalLink.TryParse(url, out _));
+    }
+
+    [Fact]
+    public void LoneSurrogatesAreRejected()
+    {
+        // Built at run time: a theory would round-trip the strings and turn a lone surrogate into U+FFFD.
+        string[] urls =
+        [
+            "https://example.org/" + '\uD800' + "x",
+            "https://example.org/x" + '\uDC00',
+            "https://example.org/" + '\uDC00' + '\uD800',
+            "https://example.org/" + '\uD800',
+            "mailto:a@b.c?subject=" + '\uD800',
+        ];
+        Assert.All(urls, url => Assert.False(ExternalLink.TryParse(url, out _), url));
+
+        // A real U+FFFD is a valid character.
+        Assert.True(ExternalLink.TryParse("https://example.org/" + '�', out _));
+    }
+
+    [Fact]
+    public void ValidSurrogatePairsAndEscapesStayAccepted()
+    {
+        Assert.True(ExternalLink.TryParse("https://example.org/😀%F0%9F%98%80", out _));
+        Assert.True(ExternalLink.TryParse("https://example.org/%41%2f%7E", out _));
     }
 
     [Fact]

@@ -61,15 +61,14 @@ public sealed class ExternalLink
     public ExternalLinkWarning Warning { get; }
 
     /// <summary>
-    /// Accepts only absolute <c>http</c>, <c>https</c> and <c>mailto</c> addresses, not longer than
-    /// <see cref="MaxLength"/> after trimming white space. Rejected: an address with a control, invisible or
-    /// direction-changing character (category Cc or Cf, line and paragraph separators, any white space), with a
-    /// character that is not valid unescaped in an address (<c>"</c>, <c>&lt;</c>, <c>&gt;</c>, <c>`</c>, <c>{</c>, <c>|</c>,
-    /// <c>}</c>, <c>^</c>) or a backslash (UNC forms), so nothing can break out of the quoting of a launcher; a web
-    /// address that does not start with <c>scheme://host</c>, one the .NET parser rejects, or a mail address with
-    /// nothing after <c>mailto:</c>. A mail address may only have the fields <c>to</c>, <c>cc</c>, <c>bcc</c>,
-    /// <c>subject</c> and <c>body</c> (so no <c>attach</c>), and no line break or NUL in a field other than <c>body</c>.
-    /// The scheme is compared case-insensitively.
+    /// Accepts an address only if all of these hold (white space around it is trimmed first):
+    /// <list type="bullet">
+    /// <item><description>Scheme: absolute <c>http://</c> or <c>https://</c> with a host, or <c>mailto:</c> with something after it; compared case-insensitively. Nothing else (no <c>javascript:</c>, <c>file:</c>, <c>ftp:</c>, relative or UNC forms), and the .NET parser must accept it.</description></item>
+    /// <item><description>Length: at most <see cref="MaxLength"/> UTF-16 code units.</description></item>
+    /// <item><description>Characters, in the whole string: no control, format, line or paragraph separator character (categories Cc, Cf, Zl, Zp), no white space (a space must be written <c>%20</c>), no invisible filler (U+115F, U+1160, U+180E, U+2800, U+3164, U+FFA0), no lone surrogate, none of <c>"</c> <c>&lt;</c> <c>&gt;</c> <c>`</c> <c>{</c> <c>|</c> <c>}</c> <c>^</c> and backslash (so nothing can break out of the quoting of a launcher), and no <c>%</c> that is not followed by two hex digits.</description></item>
+    /// <item><description>Mail grammar: no raw <c>#</c>, no raw <c>;</c>, at most one raw <c>?</c>; after the <c>?</c> only the fields <c>to</c>, <c>cc</c>, <c>bcc</c>, <c>subject</c> and <c>body</c> (case-insensitive, <c>&amp;</c> separated; so no <c>attach</c>). Decoded recipients (address part and <c>to</c>, <c>cc</c>, <c>bcc</c>, separated by <c>,</c>) have none of the characters above and none of <c>&amp;</c> <c>;</c> <c>?</c> <c>#</c> <c>=</c>; decoded <c>subject</c> has no control, format or separator character and no white space other than a space; decoded <c>body</c> has no control character other than CR, LF and tab.</description></item>
+    /// </list>
+    /// Not rejected but flagged by <see cref="Warning"/>: user information before the host, and Punycode labels.
     /// </summary>
     /// <param name="url">The address; may be <see langword="null"/>.</param>
     /// <param name="link">The parsed address, or <see langword="null"/>.</param>
@@ -167,11 +166,9 @@ public sealed class ExternalLink
     }
 
     /// <summary>
-    /// Checks the fields of a mail address and reads the domains of its recipients (the part before "?" and the
-    /// values of <c>to</c>, <c>cc</c> and <c>bcc</c>, percent-decoded, separated by "," or ";"). The first domain is the
-    /// host; a Punycode label in any of them counts. Fails for a field other than <c>to</c>, <c>cc</c>, <c>bcc</c>,
-    /// <c>subject</c> and <c>body</c> (<c>attach</c> would send a local file), for a line break or NUL in any field but
-    /// <c>body</c> (header injection, for example "%0D%0ABcc:"), and for a recipient with a forbidden character.
+    /// Checks the grammar of a mail address (see <see cref="TryParse"/>) and reads the domains of its recipients (the
+    /// address part and the values of <c>to</c>, <c>cc</c> and <c>bcc</c>, percent-decoded, separated by ","). The
+    /// first domain is the host; a Punycode label in any of them counts.
     /// </summary>
     private static bool TryReadMailDomains(string text, out string host, out string idnHost, out bool punycode)
     {
@@ -179,17 +176,24 @@ public sealed class ExternalLink
         idnHost = string.Empty;
         punycode = false;
         var address = text[Mailto.Length..];
-        var fragment = address.IndexOf('#', StringComparison.Ordinal);
-        if (fragment >= 0)
+
+        // RFC 6068 has no fragment, and clients split on these characters; each must be percent-encoded inside a field.
+        if (address.Contains('#', StringComparison.Ordinal) || address.Contains(';', StringComparison.Ordinal))
         {
-            address = address[..fragment];
+            return false;
         }
 
         var lists = new List<string>();
         var query = address.IndexOf('?', StringComparison.Ordinal);
         if (query >= 0)
         {
-            foreach (var field in address[(query + 1)..].Split('&'))
+            var fields = address[(query + 1)..];
+            if (fields.Contains('?', StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            foreach (var field in fields.Split('&'))
             {
                 if (field.Length == 0)
                 {
@@ -207,16 +211,21 @@ public sealed class ExternalLink
                         lists.Add(value);
                         break;
                     case "subject":
+                        if (HasHiddenCharacter(value))
+                        {
+                            return false;
+                        }
+
                         break;
                     case "body":
-                        continue;
+                        if (HasControlOtherThanLineBreakAndTab(value))
+                        {
+                            return false;
+                        }
+
+                        break;
                     default:
                         return false;
-                }
-
-                if (value.AsSpan().IndexOfAny('\r', '\n', '\0') >= 0)
-                {
-                    return false;
                 }
             }
 
@@ -226,12 +235,12 @@ public sealed class ExternalLink
         lists.Insert(0, Uri.UnescapeDataString(address));
         foreach (var list in lists)
         {
-            if (HasForbiddenCharacter(list))
+            if (HasHiddenCharacter(list) || HasBreakoutCharacter(list) || list.AsSpan().IndexOfAny("&;?#=") >= 0)
             {
                 return false;
             }
 
-            foreach (var recipient in list.Split(',', ';'))
+            foreach (var recipient in list.Split(','))
             {
                 var at = recipient.LastIndexOf('@');
                 if (at < 0)
@@ -270,15 +279,28 @@ public sealed class ExternalLink
         }
     }
 
-    private static bool HasForbiddenCharacter(string text)
+    private static bool HasForbiddenCharacter(string text) =>
+        HasHiddenCharacter(text) || HasBreakoutCharacter(text) || HasMalformedEscape(text);
+
+    // Characters that are invisible, change the direction or break lines: control, format, separators, white space
+    // other than a plain space, invisible fillers and lone surrogates.
+    private static bool HasHiddenCharacter(string text)
     {
-        foreach (var rune in text.EnumerateRunes())
+        for (var i = 0; i < text.Length; i++)
         {
-            if (rune.Value is '\\' or ' ' or '"' or '<' or '>' or '`' or '{' or '|' or '}' or '^')
+            var c = text[i];
+            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                i++;
+            }
+            else if (char.IsSurrogate(c))
             {
                 return true;
             }
+        }
 
+        foreach (var rune in text.EnumerateRunes())
+        {
             switch (Rune.GetUnicodeCategory(rune))
             {
                 case UnicodeCategory.Control:
@@ -288,7 +310,47 @@ public sealed class ExternalLink
                     return true;
             }
 
-            if (Rune.IsWhiteSpace(rune))
+            if ((Rune.IsWhiteSpace(rune) && rune.Value != ' ') || rune.Value is 0x115F or 0x1160 or 0x180E or 0x2800 or 0x3164 or 0xFFA0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Characters that are not valid unescaped in an address and could break out of the quoting of a launcher.
+    private static bool HasBreakoutCharacter(string text)
+    {
+        foreach (var c in text)
+        {
+            if (c is '\\' or ' ' or '"' or '<' or '>' or '`' or '{' or '|' or '}' or '^')
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasMalformedEscape(string text)
+    {
+        for (var i = text.IndexOf('%', StringComparison.Ordinal); i >= 0; i = text.IndexOf('%', i + 1))
+        {
+            if (i + 2 >= text.Length || !char.IsAsciiHexDigit(text[i + 1]) || !char.IsAsciiHexDigit(text[i + 2]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasControlOtherThanLineBreakAndTab(string text)
+    {
+        foreach (var c in text)
+        {
+            if (char.IsControl(c) && c is not ('\r' or '\n' or '\t'))
             {
                 return true;
             }
