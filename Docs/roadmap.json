@@ -5,6 +5,11 @@
   "scopeChanges": [
     {
       "date": "2026-10-18",
+      "context": "M6: dunkle Seite ohne invertierte Bilder, Position je Datei, Palette mit Tabs und Inhalt; was bewusst fehlt",
+      "text": "Mit dem Projektinhaber am 2026-10-18 abgestimmt (Plan `superpowers/plans/2026-10-18-milestone-06-komfort.md`, Abschnitt „Scope dieses Plans“). Über die Roadmap-Aufgaben hinaus enthält M6: eine dunkle Seitendarstellung, die Bilder nicht invertiert (Versuch und Entscheidung zwischen PDFium-Farbschema und Helligkeitsumkehr in Task 1), den Verlauf mit Seite, Zoom und Layout **je Datei**, die Befehlspalette mit zusätzlichen Gruppen für offene Tabs und das Inhaltsverzeichnis, den gespeicherten Panel-Zustand (Spec 7.3, „ab M6“) sowie aus dem Backlog die Tastenkürzel für die Panels und die Automation-Zustände für Tabs und Aktionsleiste. Hochkontrast bekommt unter Windows eine eigene feste Palette. Bewusst nicht enthalten und im Backlog geblieben: Sitzung wiederherstellen, die Einstellung „Hardwarebeschleunigung“, frei belegbare Tastenkürzel, F6-Bereichswechsel (Spec 7.9) und der Sprachwechsel zur Laufzeit (gilt ab dem nächsten Start). Der Milestone ist groß; Teil B (Tasks 9 bis 13) lässt sich bei Bedarf als M6.1 abspalten."
+    },
+    {
+      "date": "2026-10-18",
       "context": "M5: Kopieren als Fließtext mit HTML, Alt+Links/Rechts, Adressen im Text; bewusst nicht enthalten",
       "text": "Mit dem Projektinhaber am 2026-10-18 abgestimmt (Plan `superpowers/plans/2026-10-18-milestone-05-text-suche.md`, Abschnitt „Scope dieses Plans“). Über die Roadmap-Aufgaben hinaus enthält M5: Strg+C kopiert formatierten Fließtext (Absätze, ohne Trennstriche am Zeilenende, Fett, Kursiv, Überschriften als HTML und Klartext), Strg+Umschalt+C den Rohtext; Doppel- und Dreifachklick markieren Wort und Zeile; Alt+Links/Alt+Rechts gehen nach einem internen Link-Sprung zurück und vor; im Text stehende Adressen sind Links; Optionen „Groß-/Kleinschreibung beachten“ und „Ganze Wörter“, höchstens 10 000 Treffer; das Panel „Suche“ ist ein dritter Eintrag der Aktionsleiste (Design-Spec 7.3, 7.4, 7.5a und 7.5b nachgezogen). Bewusst **nicht** enthalten und im Backlog: Suche über mehrere Dateien und ein Suchindex, Strg+A, Spaltenerkennung, Erkennen von Kopf- und Fußzeilen beim Kopieren, Auto-Scroll beim Ziehen der Auswahl am Rand, reguläre Ausdrücke und Ersetzen. OCR bleibt in Milestone 15: gescannte Seiten bekommen nur einen Hinweis. Ligaturen sind nur mit synthetischen Zeichen getestet (kein Test-PDF mit Ligaturen). Entscheidungen: `Docs/DECISIONS.md`, Einträge „… (M5)“."
     },
@@ -225,7 +230,8 @@
         {
           "id": "6",
           "title": "Komfort",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-18-milestone-06-komfort.md",
           "prerequisites": ["5"],
           "goal": "Pagewing lässt sich weitgehend per Tastatur bedienen und merkt sich Einstellungen und zuletzt geöffnete Dateien.",
           "tasks": [
