@@ -273,6 +273,9 @@
   <data name="SearchHitName" xml:space="preserve">
     <value>Seite {0}: {1}</value>
   </data>
+  <data name="NoTextOnPage" xml:space="preserve">
+    <value>Auf dieser Seite gibt es keinen auswählbaren Text. Sie ist vielleicht ein Scan.</value>
+  </data>
   <data name="DocumentInfo" xml:space="preserve">
     <value>Dokumentinfos</value>
   </data>

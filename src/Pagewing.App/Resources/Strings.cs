@@ -118,6 +118,7 @@ public static class Strings
     public static string SearchNext => Get("SearchNext");
     public static string SearchPrevious => Get("SearchPrevious");
     public static string SearchHitName => Get("SearchHitName");
+    public static string NoTextOnPage => Get("NoTextOnPage");
     public static string DocumentInfo => Get("DocumentInfo");
     public static string InfoFile => Get("InfoFile");
     public static string InfoFolder => Get("InfoFolder");

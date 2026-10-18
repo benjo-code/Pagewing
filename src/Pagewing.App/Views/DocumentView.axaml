@@ -18,7 +18,8 @@
               BorderBrush="{DynamicResource Pw.Brush.Focus.Ring}" />
     </FocusAdornerTemplate>
   </UserControl.FocusAdorner>
-  <Panel>
+  <!-- The hint on a page without text (NoTextHint) is added to this panel in code when it is first shown. -->
+  <Panel Name="DocumentLayers">
     <ctl:DocumentCanvas Name="PageCanvas"
                         CornerRadius="10,0,0,0"
                         PlaceholderBrush="{DynamicResource Pw.Brush.Surface.Raised}"

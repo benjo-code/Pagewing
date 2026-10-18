@@ -121,6 +121,16 @@ public sealed partial class LocalizationTests : IDisposable
         Assert.Equal("Keine Treffer", Strings.SearchNone);
     }
 
+    [Fact]
+    public void TextSelectionKeysAreEmbeddedInTheAssembly()
+    {
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("There is no selectable text on this page. It may be a scan.", Strings.NoTextOnPage);
+
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Auf dieser Seite gibt es keinen auswählbaren Text. Sie ist vielleicht ein Scan.", Strings.NoTextOnPage);
+    }
+
     [GeneratedRegex(@"\{\d+\}")]
     private static partial Regex PlaceholderPattern();
 

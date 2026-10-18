@@ -127,6 +127,18 @@ public sealed class ViewerSession : IDisposable
         }
     }
 
+    /// <summary>Gets whether <see cref="EnsurePageTexts"/> created the text source of the open document (for tests).</summary>
+    internal bool HasPageTexts
+    {
+        get
+        {
+            lock (gate)
+            {
+                return pageTexts is not null;
+            }
+        }
+    }
+
     /// <summary>Gets the current state.</summary>
     public ViewerState State
     {

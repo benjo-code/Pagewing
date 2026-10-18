@@ -15,7 +15,8 @@ namespace Pagewing.App.Views;
 /// The open document: the pages in the layout of the tab (continuous, a single page, two pages with or without a cover;
 /// see DocumentView.LayoutModes.cs), zoom with Ctrl+wheel (around the pointer) and through the view model
 /// (Ctrl+Plus/Minus, status bar), the zoom modes of the tab (page width, whole page, actual size; see
-/// <see cref="Refit"/>), page jumps, and the current page (row) for the status bar. Its
+/// <see cref="Refit"/>), page jumps, the current page (row) for the status bar, the marks on the pages
+/// (DocumentView.Highlights.cs) and selecting text with the mouse (DocumentView.Text.cs). Its
 /// <c>DataContext</c> is the active <see cref="TabViewModel"/> of the window; it mirrors the document of the tab's
 /// session. A change of the <c>DataContext</c> (another tab) disconnects from the old tab and shows the new one.
 /// </summary>
@@ -69,6 +70,8 @@ public sealed partial class DocumentView : UserControl
         Scroller.PropertyChanged += OnScrollerPropertyChanged;
         Scroller.AddHandler(PointerWheelChangedEvent, OnPointerWheel, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerMovedEvent, OnPointerMoved, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerReleasedEvent, OnPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         PageCanvas.FirstSharpPageDrawn += OnFirstSharpPageDrawn;
     }
 
@@ -147,6 +150,7 @@ public sealed partial class DocumentView : UserControl
     {
         SaveView();
         DisconnectHighlights();
+        DropTexts();
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -282,6 +286,8 @@ public sealed partial class DocumentView : UserControl
 
         layout.Zoom = tab?.Zoom ?? ZoomSteps.Default;
 
+        // The text of the document shown before goes with it.
+        DropTexts();
         _document = document;
         _layout = layout;
         _loadedSizes = known;
@@ -327,20 +333,14 @@ public sealed partial class DocumentView : UserControl
     // The search ended with Esc in its field, which goes with the panel: the keys go back to the document.
     private void OnDocumentFocusRequested() => Focus(NavigationMethod.Unspecified);
 
-    // After the scroll viewer and the scroll bars had the press: a click on the pages (or their scroll bars) gives
-    // the keys to the document. With the pointer, so no focus ring appears.
-    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (_layout is not null && !IsFocused)
-        {
-            Focus(NavigationMethod.Pointer, e.KeyModifiers);
-        }
-    }
-
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (!e.Handled && _layout is not null && TryTurnPageWithSpace(e.Key, e.KeyModifiers))
+        if (!e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && TryEscape())
+        {
+            e.Handled = true;
+        }
+        else if (!e.Handled && _layout is not null && TryTurnPageWithSpace(e.Key, e.KeyModifiers))
         {
             e.Handled = true;
         }
@@ -349,6 +349,31 @@ public sealed partial class DocumentView : UserControl
             e.Handled = true;
             ScrollTo(offset);
         }
+    }
+
+    /// <summary>Esc in the document: clears the selection first; without one it ends an active search.</summary>
+    /// <returns>Whether Esc had something to end.</returns>
+    private bool TryEscape()
+    {
+        if (_viewModel is not { } tab)
+        {
+            return false;
+        }
+
+        if (tab.HasTextSelection)
+        {
+            tab.TextSelection = null;
+            return true;
+        }
+
+        // Never creates a search that the user did not start.
+        if (tab.IsSearchCreated && tab.Search.IsActive)
+        {
+            tab.Search.EndCommand.Execute(null);
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -394,6 +419,7 @@ public sealed partial class DocumentView : UserControl
             return;
         }
 
+        DropTexts();
         _document = null;
         _layout = null;
         _loadedSizes = 0;
@@ -614,6 +640,10 @@ public sealed partial class DocumentView : UserControl
         {
             ShowCurrentRow(layout.GetMostVisiblePage(offset.Y, offset.Y + size.Height));
         }
+
+        // The text of what is visible now (DocumentView.Text.cs): read ahead, and the visible part of the selection.
+        PreloadText();
+        FollowSelectionWithViewport();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -633,6 +663,15 @@ public sealed partial class DocumentView : UserControl
         else if (e.PropertyName == nameof(TabViewModel.IsPasswordPrompt) && _focusPending)
         {
             FocusLater();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.TextSelection))
+        {
+            RefreshHighlights();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.HasShownSharpPage))
+        {
+            // The text may be read now: first that of the visible pages.
+            PreloadText();
         }
     }
 

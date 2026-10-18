@@ -4,6 +4,7 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
@@ -39,6 +40,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     private SidePanelKind _sidePanel = SidePanelKind.None;
     private ViewState? _savedView;
     private bool _hasShownSharpPage;
+    private TextSelection? _textSelection;
 
     // The thumbnails this tab handed out for its current document (EnsureThumbnails), released when it becomes inactive.
     private ThumbnailSource? _thumbnails;
@@ -455,6 +457,34 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// Gets or sets the text selected in the document of this tab (made with the mouse in the document view), or
+    /// <see langword="null"/>. An empty selection is stored as <see langword="null"/>. It belongs to the tab: it stays
+    /// while another tab is shown and is cleared when another document replaces this one and when the tab closes.
+    /// </summary>
+    public TextSelection? TextSelection
+    {
+        get => _textSelection;
+        set
+        {
+            if (SetProperty(ref _textSelection, value is { IsEmpty: true } ? null : value))
+            {
+                OnPropertyChanged(nameof(HasTextSelection));
+            }
+        }
+    }
+
+    /// <summary>Gets whether some text is selected (<see cref="TextSelection"/>).</summary>
+    public bool HasTextSelection => _textSelection is not null;
+
+    /// <summary>
+    /// Gets the text of the pages of the open document (<see cref="ViewerSession.EnsurePageTexts"/>), or
+    /// <see langword="null"/>: before the first sharp page of the document (<see cref="HasShownSharpPage"/>; text is never
+    /// read in the startup path), without an open document and after <see cref="Dispose"/>. The source belongs to the
+    /// document; a caller asks again for every document instead of keeping it.
+    /// </summary>
+    internal PageTextSource? PageTexts => !_disposed && _hasShownSharpPage ? _session.EnsurePageTexts() : null;
+
+    /// <summary>
     /// Gets or sets whether this is the active tab of its window. Tells the session (<see cref="ViewerSession.SetActive"/>),
     /// so an inactive tab keeps only a small render cache.
     /// </summary>
@@ -626,6 +656,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         _session.Changed -= OnSessionChanged;
         ResetOutline();
         _search?.Dispose();
+        TextSelection = null;
         _checkingPassword = false;
         Password = string.Empty;
         _session.Dispose();
@@ -922,6 +953,8 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 _search?.OnDocumentReady();
             }
 
+            // So does the selection: its positions mean nothing in another document.
+            TextSelection = null;
             OnPropertyChanged(nameof(Document));
         }
 

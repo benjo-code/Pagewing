@@ -204,6 +204,27 @@ public sealed class HighlightTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AJumpToAnotherPageFitsAgain()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "text-dense.pdf");
+        tab.SetZoomModeCommand.Execute(ZoomMode.FitWidth);
+        Settle(window);
+        var fitted = view.Layout!.Zoom;
+
+        // The pages of text-dense.pdf all have the same size: a zoom off the fit (as after a page of another size)
+        // stands in for the row of another width. The jump to the match on page 10 fits that row again (design
+        // system 7.5: the modes fit again when the view jumps to a page).
+        view.Layout.Zoom = fitted / 2;
+        var search = await SearchAsync(window, tab, "Needle");
+        Assert.Equal(10, tab.CurrentPage);
+        Assert.Equal(ZoomMode.FitWidth, tab.ZoomMode);
+        Assert.Equal(fitted, view.Layout.Zoom, 3);
+        Assert.Equal(fitted, tab.Zoom, 3);
+        AssertInViewport(view, search.Current!.Hit);
+    }
+
+    [AvaloniaFact]
     public async Task AVisibleHitDoesNotScroll()
     {
         var (window, viewModel, view) = Show();

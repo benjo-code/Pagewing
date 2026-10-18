@@ -7,8 +7,8 @@ using Pagewing.Core.Viewing;
 namespace Pagewing.App.Views;
 
 /// <summary>
-/// The marks on the pages: the search matches of the shown tab (all of them, the current one framed) and the jump to a
-/// match. The marks belong to the active tab: the view listens to the search of the tab it shows and to nothing else,
+/// The marks on the pages: the search matches of the shown tab (all of them, the current one framed), its text selection
+/// (composed here, made in DocumentView.Text.cs) and the jump to a match. The marks belong to the active tab: the view listens to the search of the tab it shows and to nothing else,
 /// and it never creates a search (<see cref="TabViewModel.Search"/>) that the user did not start.
 /// </summary>
 public sealed partial class DocumentView
@@ -69,11 +69,12 @@ public sealed partial class DocumentView
 
     /// <summary>
     /// Hands the canvas everything that is marked on the pages, replacing what it had. The one place that composes the
-    /// marks: the search matches now, the text selection in addition later.
+    /// marks: the text selection of the tab on its visible pages (DocumentView.Text.cs) and the search matches.
     /// </summary>
     private void RefreshHighlights()
     {
         var marks = new List<PageHighlight>();
+        AddSelectionMarks(marks);
         if (_layout is not null && _searchSource is { } search)
         {
             var hits = search.Highlights;
@@ -91,13 +92,22 @@ public sealed partial class DocumentView
     /// Brings a rectangle of a page (0-based page, PDF points from the top left) into view, for a search match. Fully
     /// inside the viewport already: nothing scrolls. Otherwise the view scrolls so that the middle of the rectangle is in
     /// the middle of the viewport (as far as the content allows) and sideways only as far as needed. In the single-page
-    /// layout the page of the match is shown first. The page of the match becomes the current page.
+    /// layout the page of the match is shown first. The page of the match becomes the current page; a match in another
+    /// row fits that row first in a fit mode (design system 7.5: the modes fit again on a jump to a page).
     /// </summary>
     private void OnRevealRequested(int page, PageRect rect)
     {
         var layout = _layout;
         if (layout is null || page < 0 || page >= layout.PageCount)
         {
+            return;
+        }
+
+        var viewport = Scroller.Viewport;
+        if (!(viewport.Width > 0 && viewport.Height > 0))
+        {
+            // Not laid out yet: at least the page is shown and current, like a page jump.
+            OnPageRequested(page + 1);
             return;
         }
 
@@ -111,8 +121,14 @@ public sealed partial class DocumentView
             Refit(chosen: false);
             ChangeLayout(new Vector(Scroller.Offset.X, layout.GetPageRect(page).Y - DocumentLayout.Margin));
         }
+        else if (_viewModel is { } tab && (page < tab.CurrentPage - 1 || page > Math.Max(tab.CurrentPage, tab.CurrentPageLast) - 1))
+        {
+            // Another row: it becomes the current one and a fit mode fits it, before the rectangle is placed.
+            ShowCurrentRow(page);
+            Refit(chosen: false);
+        }
 
-        var viewport = Scroller.Viewport;
+        viewport = Scroller.Viewport;
         if (viewport.Width > 0 && viewport.Height > 0 && layout.IsShown(page))
         {
             var pageRect = layout.GetPageRect(page);

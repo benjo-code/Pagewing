@@ -360,7 +360,11 @@ internal sealed class DocumentCanvas : Control
         InvalidateVisual();
     }
 
-    /// <summary>Converts a point of the viewport (DIPs) to a page and a position on it in PDF points, or <see langword="null"/> off the pages.</summary>
+    /// <summary>
+    /// Converts a point of the viewport (DIPs) to a page and a position on it in PDF points, or <see langword="null"/>
+    /// in a gap or margin between rows. In a row of two pages it is the page under the point, or the nearer one beside
+    /// them; the position may then lie outside that page.
+    /// </summary>
     internal (int Page, Point Position)? PagePointAt(Point viewportPoint)
     {
         var layout = _source?.Layout;
@@ -377,9 +381,22 @@ internal sealed class DocumentCanvas : Control
             return null;
         }
 
+        var page = first;
         var rect = layout.GetPageRect(first);
+        for (var other = first + 1; other <= last; other++)
+        {
+            var candidate = layout.GetPageRect(other);
+            if (DistanceAcross(x, candidate) < DistanceAcross(x, rect))
+            {
+                page = other;
+                rect = candidate;
+            }
+        }
+
         var dipsPerPoint = DocumentLayout.DipsPerPoint * layout.Zoom;
-        return (first, new Point((x - rect.X) / dipsPerPoint, (y - rect.Y) / dipsPerPoint));
+        return (page, new Point((x - rect.X) / dipsPerPoint, (y - rect.Y) / dipsPerPoint));
+
+        static double DistanceAcross(double x, DipRect rect) => x < rect.X ? rect.X - x : x > rect.Right ? x - rect.Right : 0;
     }
 
     public override void Render(DrawingContext context)
@@ -535,45 +552,59 @@ internal sealed class DocumentCanvas : Control
     /// </summary>
     private void DrawHighlights(DrawingContext context, PageHighlight[] marks, Rect pageRect, double dipsPerPoint)
     {
-        foreach (var mark in marks)
+        // The blend mode for the search matches is pushed once per page, when the first match comes (the marks are in
+        // drawing order: the selection first, then the matches). It applies to images only, so the frame of the current
+        // match is drawn as usual inside it.
+        DrawingContext.PushedState? multiply = null;
+        try
         {
-            var rect = mark.Rect;
-            var destination = new Rect(
-                pageRect.X + (rect.Left * dipsPerPoint),
-                pageRect.Y + (rect.Top * dipsPerPoint),
-                rect.Width * dipsPerPoint,
-                rect.Height * dipsPerPoint);
-            if (!double.IsFinite(destination.X + destination.Y + destination.Width + destination.Height))
+            foreach (var mark in marks)
             {
-                continue;
+                var rect = mark.Rect;
+                var destination = new Rect(
+                    pageRect.X + (rect.Left * dipsPerPoint),
+                    pageRect.Y + (rect.Top * dipsPerPoint),
+                    rect.Width * dipsPerPoint,
+                    rect.Height * dipsPerPoint);
+                if (!double.IsFinite(destination.X + destination.Y + destination.Width + destination.Height))
+                {
+                    continue;
+                }
+
+                switch (mark.Kind)
+                {
+                    case HighlightKind.SearchHit:
+                        multiply ??= context.PushRenderOptions(MultiplyOptions);
+                        FillMultiplied(context, SearchHitBrush, ref _hitFill, destination);
+                        break;
+                    case HighlightKind.SearchCurrent:
+                        multiply ??= context.PushRenderOptions(MultiplyOptions);
+                        FillMultiplied(context, SearchCurrentBrush, ref _currentFill, destination);
+                        if (SearchOnBrush is { } on)
+                        {
+                            context.DrawRectangle(null, _currentFrame ??= new Pen(on, CurrentFrameThickness), destination);
+                        }
+
+                        break;
+                    default:
+                        context.DrawRectangle(SelectionBrush, null, destination);
+                        break;
+                }
+
+                _lastHighlightDestinations.Add((mark, destination));
             }
-
-            switch (mark.Kind)
-            {
-                case HighlightKind.SearchHit:
-                    FillMultiplied(context, SearchHitBrush, ref _hitFill, destination);
-                    break;
-                case HighlightKind.SearchCurrent:
-                    FillMultiplied(context, SearchCurrentBrush, ref _currentFill, destination);
-                    if (SearchOnBrush is { } on)
-                    {
-                        context.DrawRectangle(null, _currentFrame ??= new Pen(on, CurrentFrameThickness), destination);
-                    }
-
-                    break;
-                default:
-                    context.DrawRectangle(SelectionBrush, null, destination);
-                    break;
-            }
-
-            _lastHighlightDestinations.Add((mark, destination));
+        }
+        finally
+        {
+            multiply?.Dispose();
         }
     }
 
     /// <summary>
-    /// Fills <paramref name="destination"/> with a colour multiplied with what is below (the page). Avalonia applies a
-    /// blend mode to images only, not to the fill of a rectangle, so the colour is a one-pixel image stretched over the
-    /// rectangle (made once per brush). A brush that is not a plain colour fills normally.
+    /// Fills <paramref name="destination"/> with a colour multiplied with what is below (the page), inside the
+    /// <see cref="MultiplyOptions"/> the caller pushed. Avalonia applies a blend mode to images only, not to the fill of
+    /// a rectangle, so the colour is a one-pixel image stretched over the rectangle (made once per brush). A brush that
+    /// is not a plain colour fills normally.
     /// </summary>
     private static void FillMultiplied(DrawingContext context, IBrush? brush, ref WriteableBitmap? fill, Rect destination)
     {
@@ -584,10 +615,7 @@ internal sealed class DocumentCanvas : Control
             return;
         }
 
-        using (context.PushRenderOptions(MultiplyOptions))
-        {
-            context.DrawImage(fill, new Rect(fill.Size), destination);
-        }
+        context.DrawImage(fill, new Rect(fill.Size), destination);
     }
 
     private static WriteableBitmap CreateFill(Color color)
