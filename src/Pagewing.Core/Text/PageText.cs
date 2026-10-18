@@ -428,9 +428,10 @@ public sealed class PageText
 
     /// <summary>
     /// Gets the exclusive end of the line segment that contains <paramref name="from"/>: the index of the next line
-    /// break, or the index after the next line-end hyphen, or <see cref="Chars"/>.Count.
+    /// break, or the index after the next line-end hyphen, or <see cref="Chars"/>.Count. Lines are split the same way
+    /// for selection rectangles and for copied text (<see cref="TextFlow"/>).
     /// </summary>
-    private int SegmentEnd(int from)
+    internal int SegmentEnd(int from)
     {
         for (var i = from; i < Chars.Count; i++)
         {
