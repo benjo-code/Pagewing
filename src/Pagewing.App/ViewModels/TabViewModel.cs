@@ -84,6 +84,12 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         // Only a search that exists can step; F3 never creates one (TabViewModel.Search.cs).
         SearchNextCommand = new RelayCommand(() => _search?.NextCommand.Execute(null));
         SearchPreviousCommand = new RelayCommand(() => _search?.PreviousCommand.Execute(null));
+
+        // The views left by link jumps (TabViewModel.Links.cs).
+        _backCommand = new RelayCommand(GoBack, () => CanGoBack);
+        BackCommand = _backCommand;
+        _forwardCommand = new RelayCommand(GoForward, () => CanGoForward);
+        ForwardCommand = _forwardCommand;
         SetZoomCommand = new RelayCommand<double>(zoom =>
         {
             if (IsReady)
@@ -657,6 +663,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         ResetOutline();
         _search?.Dispose();
         TextSelection = null;
+        ClearHistory();
         _checkingPassword = false;
         Password = string.Empty;
         _session.Dispose();
@@ -953,8 +960,9 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 _search?.OnDocumentReady();
             }
 
-            // So does the selection: its positions mean nothing in another document.
+            // So do the selection and the views left by link jumps: their positions mean nothing in another document.
             TextSelection = null;
+            ClearHistory();
             OnPropertyChanged(nameof(Document));
         }
 

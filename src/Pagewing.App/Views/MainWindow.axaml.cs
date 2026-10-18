@@ -84,6 +84,7 @@ public sealed partial class MainWindow : Window
         }
 
         AttachPanel(old, _viewModel);
+        AttachLinkCard(old, _viewModel);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

@@ -415,9 +415,15 @@ public sealed class ViewerSession : IDisposable
                 return null;
             }
 
-            return pageTexts ??= new PageTextSource(document);
+            return pageTexts ??= PageTextsFactory?.Invoke(document) ?? new PageTextSource(document);
         }
     }
+
+    /// <summary>
+    /// Gets how <see cref="EnsurePageTexts"/> makes the text source of a document; <see langword="null"/> (the default)
+    /// reads the document itself. Tests give the pages links a PDF may have (a script, a file) without such a file.
+    /// </summary>
+    internal Func<PdfDocument, PageTextSource>? PageTextsFactory { get; init; }
 
     /// <summary>
     /// Tells the session whether its tab is shown. An inactive session keeps its render cache within

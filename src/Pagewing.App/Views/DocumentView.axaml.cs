@@ -142,6 +142,7 @@ public sealed partial class DocumentView : UserControl
         viewModel.PageRequested += OnPageRequested;
         viewModel.DocumentFocusRequested += OnDocumentFocusRequested;
         ConnectHighlights(viewModel);
+        ConnectLinks(viewModel);
         _session.Changed += OnSessionChanged;
         Sync();
     }
@@ -156,6 +157,7 @@ public sealed partial class DocumentView : UserControl
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.PageRequested -= OnPageRequested;
             _viewModel.DocumentFocusRequested -= OnDocumentFocusRequested;
+            DisconnectLinks(_viewModel);
             _viewModel = null;
         }
 
@@ -177,15 +179,13 @@ public sealed partial class DocumentView : UserControl
     /// </summary>
     private void SaveView()
     {
-        if (_viewModel is not { } tab || _layout is not { } layout || _document is null
+        if (_viewModel is not { } tab || _layout is null || _document is null
             || _session is not { State: ViewerState.Ready } session || !ReferenceEquals(_document, session.Document))
         {
             return;
         }
 
-        var offset = Scroller.Offset;
-        var viewportCentre = offset.X - CentringShift(layout) + (Scroller.Viewport.Width / 2);
-        tab.SavedView = new ViewState(layout.GetAnchor(offset.Y), viewportCentre - (layout.ContentWidth / 2));
+        tab.SavedView = CurrentView();
     }
 
     /// <summary>The scroll offset for a saved view in the current layout.</summary>

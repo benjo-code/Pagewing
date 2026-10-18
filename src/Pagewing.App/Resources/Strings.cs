@@ -129,6 +129,12 @@ public static class Strings
     public static string InfoTitle => Get("InfoTitle");
     public static string InfoAuthor => Get("InfoAuthor");
     public static string InfoCreated => Get("InfoCreated");
+    public static string LinkConfirmTitle => Get("LinkConfirmTitle");
+    public static string LinkConfirmText => Get("LinkConfirmText");
+    public static string LinkConfirmOpen => Get("LinkConfirmOpen");
+    public static string LinkConfirmCancel => Get("LinkConfirmCancel");
+    public static string LinkWarningUserInfo => Get("LinkWarningUserInfo");
+    public static string LinkWarningPunycode => Get("LinkWarningPunycode");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

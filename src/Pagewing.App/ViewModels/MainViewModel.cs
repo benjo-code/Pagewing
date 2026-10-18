@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
+using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
@@ -35,6 +36,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly Func<ViewerSession> _sessionFactory;
     private readonly IFilePicker _picker;
     private readonly RelayCommand _closeActiveTabCommand;
+    private readonly RelayCommand _confirmLinkCommand;
+    private readonly RelayCommand _cancelLinkCommand;
+
+    // What opens a confirmed address; only ConfirmLink reaches it. Made on first use (nothing at startup).
+    private ILinkLauncher? _linkLauncher;
+    private PendingLink? _pendingLink;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
     private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther)> _tabHandlers = [];
@@ -84,6 +91,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ToggleSidePanelCommand = new RelayCommand<SidePanelKind>(ToggleSidePanel);
         CloseSidePanelCommand = new RelayCommand(() => ToggleSidePanel(SidePanelKind.None));
         OpenSearchCommand = new RelayCommand(OpenSearch);
+        _confirmLinkCommand = new RelayCommand(ConfirmLink, () => PendingLink is not null);
+        ConfirmLinkCommand = _confirmLinkCommand;
+        _cancelLinkCommand = new RelayCommand(() => PendingLink = null, () => PendingLink is not null);
+        CancelLinkCommand = _cancelLinkCommand;
     }
 
     /// <summary>Raised on the UI thread when the window should come to the front (a later launch handed over).</summary>
@@ -214,6 +225,40 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// click in the action bar it counts as the user choosing a panel, so "Pages" no longer opens by itself.
     /// </summary>
     public ICommand OpenSearchCommand { get; }
+
+    /// <summary>
+    /// Gets the address a link of the active tab asks to open, waiting for the user (the window shows it on a card over
+    /// the document), or <see langword="null"/>. At most one at a time: while one waits, further links are ignored. It is
+    /// dropped (never opened) when the active tab or its document changes. Nothing is ever remembered: every address is
+    /// asked for anew.
+    /// </summary>
+    public PendingLink? PendingLink
+    {
+        get => _pendingLink;
+        private set
+        {
+            if (SetProperty(ref _pendingLink, value))
+            {
+                _confirmLinkCommand.RaiseCanExecuteChanged();
+                _cancelLinkCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>"Open" on the link card: drops <see cref="PendingLink"/> and opens its address. The only way an address is opened.</summary>
+    public ICommand ConfirmLinkCommand { get; }
+
+    /// <summary>"Cancel" on the link card, also Esc: drops <see cref="PendingLink"/> without opening it.</summary>
+    public ICommand CancelLinkCommand { get; }
+
+    /// <summary>
+    /// Sets what opens a confirmed address (<see cref="SystemLinkLauncher"/> unless set; tests set a fake that only
+    /// records). There is no getter: only <see cref="ConfirmLinkCommand"/> uses it.
+    /// </summary>
+    internal ILinkLauncher LinkLauncher
+    {
+        set => _linkLauncher = value ?? throw new ArgumentNullException(nameof(value));
+    }
 
     /// <summary>Shows the file dialog and opens the chosen file in a new tab (Ctrl+O, "Choose file", "Open file").</summary>
     public ICommand OpenCommand { get; }
@@ -508,6 +553,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             old.PropertyChanged -= OnActiveTabPropertyChanged;
             old.PanelPagePicked -= OnPanelPagePicked;
+            old.ExternalLinkRequested -= OnExternalLinkRequested;
             old.IsActive = false;
         }
 
@@ -516,8 +562,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             next.IsActive = true;
             next.PropertyChanged += OnActiveTabPropertyChanged;
             next.PanelPagePicked += OnPanelPagePicked;
+            next.ExternalLinkRequested += OnExternalLinkRequested;
         }
 
+        // The address belongs to the tab the user clicked it in.
+        PendingLink = null;
         ActiveTab = next;
     }
 
@@ -526,6 +575,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (e.PropertyName == nameof(TabViewModel.FileName))
         {
             OnPropertyChanged(nameof(WindowTitle));
+        }
+        else if (e.PropertyName == nameof(TabViewModel.Document))
+        {
+            // Another document (or none): the address came from the one that went.
+            PendingLink = null;
         }
         else if (e.PropertyName == nameof(TabViewModel.SidePanel))
         {
@@ -567,6 +621,41 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             _panelChosenByUser = true;
             tab.OpenSearch();
+        }
+    }
+
+    // A link of the active tab asks to open an address (already accepted by ExternalLink.TryParse): ask the user. While
+    // one address waits, another is ignored, so the card never changes under the user's pointer.
+    private void OnExternalLinkRequested(ExternalLink link)
+    {
+        if (PendingLink is null)
+        {
+            PendingLink = new PendingLink(link);
+        }
+    }
+
+    /// <summary>The user confirmed the address on the card: the only call of the launcher.</summary>
+    private void ConfirmLink()
+    {
+        if (PendingLink is not { } pending)
+        {
+            return;
+        }
+
+        // Dropped first, so a second confirmation (Enter pressed twice) opens nothing.
+        PendingLink = null;
+        _ = LaunchAsync(_linkLauncher ??= new SystemLinkLauncher(), pending.Link);
+    }
+
+    private static async Task LaunchAsync(ILinkLauncher launcher, ExternalLink link)
+    {
+        try
+        {
+            await launcher.LaunchAsync(link);
+        }
+        catch (Exception)
+        {
+            // A launcher must not throw; if one does, the address simply does not open and the window stays.
         }
     }
 

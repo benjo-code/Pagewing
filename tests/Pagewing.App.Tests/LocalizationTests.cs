@@ -105,6 +105,8 @@ public sealed partial class LocalizationTests : IDisposable
         Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchSummaryPages"]));
         Assert.Equal(["{0}"], Placeholders(english["SearchLimit"]));
         Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchHitName"]));
+        Assert.Equal(["{0}"], Placeholders(english["LinkWarningUserInfo"]));
+        Assert.Equal(["{0}"], Placeholders(english["LinkWarningPunycode"]));
     }
 
     [Fact]
@@ -129,6 +131,18 @@ public sealed partial class LocalizationTests : IDisposable
 
         Strings.Culture = new CultureInfo("de");
         Assert.Equal("Auf dieser Seite gibt es keinen auswählbaren Text. Sie ist vielleicht ein Scan.", Strings.NoTextOnPage);
+    }
+
+    [Fact]
+    public void LinkKeysAreEmbeddedInTheAssembly()
+    {
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Open this web address?", Strings.LinkConfirmTitle);
+        Assert.Equal("Cancel", Strings.LinkConfirmCancel);
+
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Diese Webadresse öffnen?", Strings.LinkConfirmTitle);
+        Assert.Equal("Öffnen", Strings.LinkConfirmOpen);
     }
 
     [GeneratedRegex(@"\{\d+\}")]

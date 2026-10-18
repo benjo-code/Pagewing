@@ -542,7 +542,7 @@ public sealed partial class DocumentView
         var position = e.GetPosition(PageCanvas);
         _pointer = position;
         _pressedLink = null;
-        var press = new TextPress(position, e.ClickCount);
+        var press = new TextPress(position, e.ClickCount) { Modifiers = e.KeyModifiers };
         _press = press;
         e.Pointer.Capture(this);
 
@@ -622,7 +622,10 @@ public sealed partial class DocumentView
 
         if (text.LinkAt(x, y) is { } link && IsClickableCached(link))
         {
+            // Followed on the release, never here (DocumentView.Links.cs).
             press.Kind = PressKind.Link;
+            press.Link = link;
+            press.Text = text;
             _pressedLink = link;
             return;
         }
@@ -696,10 +699,17 @@ public sealed partial class DocumentView
             tab.TextSelection = null;
         }
 
+        var link = LinkToFollow(press, position, e.KeyModifiers);
         EndPress(press);
         if (ReferenceEquals(e.Pointer.Captured, this))
         {
             e.Pointer.Capture(null);
+        }
+
+        // The press is over before the link acts: a jump moves the pages, an address brings the card over them.
+        if (link is not null)
+        {
+            _viewModel?.FollowLink(link);
         }
 
         UpdateCursor(position);
@@ -922,6 +932,14 @@ public sealed partial class DocumentView
 
         /// <summary>Whether the pointer moved by <see cref="ClickSlop"/> or more since the press.</summary>
         public bool Moved { get; set; }
+
+        /// <summary>The modifier keys held when the button went down.</summary>
+        public KeyModifiers Modifiers { get; init; }
+
+        /// <summary>The link the press went down on and the text of its page (only <see cref="PressKind.Link"/>).</summary>
+        public PageLink? Link { get; set; }
+
+        public PageText? Text { get; set; }
 
         public bool Released { get; set; }
     }

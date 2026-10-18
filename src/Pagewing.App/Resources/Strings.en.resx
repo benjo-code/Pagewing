@@ -306,4 +306,22 @@
   <data name="InfoCreated" xml:space="preserve">
     <value>Created</value>
   </data>
+  <data name="LinkConfirmTitle" xml:space="preserve">
+    <value>Open this web address?</value>
+  </data>
+  <data name="LinkConfirmText" xml:space="preserve">
+    <value>This PDF wants to open a link in your browser. Only continue if you trust the address.</value>
+  </data>
+  <data name="LinkConfirmOpen" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="LinkConfirmCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="LinkWarningUserInfo" xml:space="preserve">
+    <value>The address contains a user name before the “@”. The real host is {0}.</value>
+  </data>
+  <data name="LinkWarningPunycode" xml:space="preserve">
+    <value>The host uses special characters and is shown as {0}.</value>
+  </data>
 </root>
