@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         InitializePanel();
+        InitializeOverlays();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
     }

@@ -45,19 +45,20 @@ public sealed partial class HelpCard : UserControl
         IsVisible = true;
 
         // After the layout of this change, when the field can take the focus.
-        Dispatcher.UIThread.Post(
-            () =>
-            {
-                if (IsVisible && HelpFilter.IsEffectivelyVisible)
-                {
-                    HelpFilter.Focus();
-                }
-            },
-            DispatcherPriority.Loaded);
+        Dispatcher.UIThread.Post(FocusFilter, DispatcherPriority.Loaded);
     }
 
     /// <summary>Hides the card.</summary>
     internal void Hide() => IsVisible = false;
+
+    /// <summary>Puts the keys into the filter field while the card is shown.</summary>
+    internal void FocusFilter()
+    {
+        if (IsVisible && HelpFilter.IsEffectivelyVisible)
+        {
+            HelpFilter.Focus();
+        }
+    }
 
     private void Build(CommandCatalog catalog)
     {

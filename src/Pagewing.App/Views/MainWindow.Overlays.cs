@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Pagewing.App.ViewModels;
 
@@ -13,8 +14,12 @@ namespace Pagewing.App.Views;
 /// window buttons stay usable), each made when it is first shown, so nothing of it is built in the startup path. The
 /// help card and the command palette have a view so far; the settings show nothing yet. When an overlay with the focus
 /// goes and nothing that comes takes the focus, it goes back to where it was before the overlay came: the element that
-/// had it when the last overlay came or replaced another, unless that was an overlay itself. The palette also closes
-/// when the focus leaves it or a press lands beside it.
+/// had it when the last overlay came or replaced another, unless that was an overlay itself. A button that shows an
+/// overlay and took the focus from a press of the mouse (the palette button of the title bar) does not count as that
+/// element: the one before it does, so the keys go back to the document, not to the button. The palette also closes
+/// when the focus moves from it to another element of the window or a press lands beside it; it stays while the window
+/// is inactive (Alt+Tab), and an overlay that is shown gets the keys back when the window is activated with nothing
+/// focused.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -24,6 +29,58 @@ public sealed partial class MainWindow
     // The element that had the focus before the overlays came (taken again whenever one comes from outside them).
     private IInputElement? _focusBeforeOverlay;
     private OverlayKind _shownOverlay;
+
+    // A button that shows an overlay, focused by a press of the mouse, and the element that had the focus before it.
+    private (IInputElement Button, IInputElement? Before)? _pressedOverlayButton;
+
+    /// <summary>Follows the focus for the buttons that show an overlay; a handler, nothing is built.</summary>
+    private void InitializeOverlays()
+    {
+        AddHandler(GotFocusEvent, OnElementGotFocus, RoutingStrategies.Bubble, handledEventsToo: true);
+        Activated += OnWindowActivated;
+    }
+
+    private void OnElementGotFocus(object? sender, FocusChangedEventArgs e) =>
+        _pressedOverlayButton = e.NavigationMethod == NavigationMethod.Pointer && e.NewFocusedElement is { } element && IsOverlayButton(element)
+            ? (element, e.OldFocusedElement)
+            : null;
+
+    private bool IsOverlayButton(IInputElement element) =>
+        ReferenceEquals(element, TitleBar.PaletteButton);
+
+    /// <summary>Whether <paramref name="element"/> is a button that shows an overlay and got the focus from a press.</summary>
+    private bool IsPressedOverlayButton(IInputElement? element) =>
+        element is not null && _pressedOverlayButton is { } pressed && ReferenceEquals(pressed.Button, element);
+
+    /// <summary>
+    /// Where the keys were before <paramref name="focused"/> took them: for a button that shows an overlay and was
+    /// pressed with the mouse the element before it, otherwise <paramref name="focused"/>.
+    /// </summary>
+    private IInputElement? FocusOrigin(IInputElement? focused) =>
+        IsPressedOverlayButton(focused) ? _pressedOverlayButton!.Value.Before : focused;
+
+    // Back from another window (Alt+Tab) with nothing focused: the shown overlay gets the keys again. Asked after the
+    // platform had its chance to give the focus back.
+    private void OnWindowActivated(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (FocusManager?.GetFocusedElement() is not null)
+                {
+                    return;
+                }
+
+                switch (_viewModel?.Overlay)
+                {
+                    case OverlayKind.Palette:
+                        _palette?.FocusInput();
+                        break;
+                    case OverlayKind.Help:
+                        _helpCard?.FocusFilter();
+                        break;
+                }
+            },
+            DispatcherPriority.Input);
 
     private void AttachOverlays(MainViewModel? old, MainViewModel? next)
     {
@@ -52,10 +109,13 @@ public sealed partial class MainWindow
     {
         var kind = _viewModel?.Overlay ?? OverlayKind.None;
         var focused = FocusManager?.GetFocusedElement();
-        var overlayHadFocus = IsInShownOverlay(focused);
-        if (kind != OverlayKind.None && kind != _shownOverlay && !overlayHadFocus)
+        var origin = FocusOrigin(focused);
+
+        // A pressed overlay button holds the keys only by accident: when its overlay goes, they go back as well.
+        var overlayHadFocus = IsInShownOverlay(focused) || IsPressedOverlayButton(focused);
+        if (kind != OverlayKind.None && kind != _shownOverlay && !IsInShownOverlay(focused) && !IsInShownOverlay(origin))
         {
-            _focusBeforeOverlay = focused;
+            _focusBeforeOverlay = origin;
         }
 
         if (kind == OverlayKind.Help && _viewModel is { } helpWindow)
@@ -141,7 +201,8 @@ public sealed partial class MainWindow
 
     private void OnPaletteFocusLeft()
     {
-        if (_viewModel?.Overlay == OverlayKind.Palette)
+        // Nothing of the window has the keys: another window took them (Alt+Tab). The palette waits for the user's return.
+        if (_viewModel?.Overlay == OverlayKind.Palette && FocusManager?.GetFocusedElement() is not null)
         {
             _viewModel.HideOverlay();
         }

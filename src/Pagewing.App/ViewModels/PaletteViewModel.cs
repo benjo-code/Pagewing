@@ -92,6 +92,9 @@ public sealed class PaletteViewModel : ViewModelBase
     /// <summary>Gets whether the palette is shown (between <see cref="OnOpened"/> and <see cref="OnClosed"/>).</summary>
     internal bool IsOpen => _isOpen;
 
+    /// <summary>Gets how many flattened entries of a table of contents the palette holds, for tests.</summary>
+    internal int CachedOutlineEntries => _outlineEntries.Length;
+
     /// <summary>Down arrow: the next entry, after the last one the first.</summary>
     public void MoveNext()
     {
@@ -170,11 +173,29 @@ public sealed class PaletteViewModel : ViewModelBase
         _window.Tabs.CollectionChanged -= OnTabsChanged;
         _window.PropertyChanged -= OnWindowPropertyChanged;
         Watch(null);
+
+        // A closed palette keeps nothing of a table of contents (it may belong to a tab that closes next).
+        ForgetOutline();
     }
 
+    /// <summary>
+    /// Gets whether the groups and the selection that are being announced come from a refresh in the background with the
+    /// same query (<see cref="Refresh(bool)"/>): the view keeps where its list is scrolled to. Only true during it.
+    /// </summary>
+    internal bool KeepsPosition { get; private set; }
+
     /// <summary>Computes the groups for <see cref="Query"/> and what the window shows now, and selects the first entry.</summary>
-    internal void Refresh()
+    internal void Refresh() => Refresh(keepPosition: false);
+
+    /// <summary>
+    /// Computes the groups for <see cref="Query"/> and what the window shows now. A new query (or a palette that opens)
+    /// selects the first entry; a refresh in the background (<paramref name="keepPosition"/>: something of the window
+    /// changed, the query did not) keeps the chosen entry when it is still there (the same kind and key), and the view
+    /// keeps its scroll position.
+    /// </summary>
+    private void Refresh(bool keepPosition)
     {
+        var kept = keepPosition && SelectedItem is { Key: { } key } item ? (item.Kind, key) : ((PaletteKind Kind, string Key)?)null;
         var query = _query.Trim();
         var tab = _window.ActiveTab;
         var recent = Recent(query);
@@ -185,7 +206,7 @@ public sealed class PaletteViewModel : ViewModelBase
         // The table of contents only for a query (it can be huge) and with the rows the other groups leave.
         var budget = MaxRows - recent.Count - page.Count - tabs.Count;
         commands = commands.Count > budget ? commands.Take(Math.Max(budget, 0)).ToList() : commands;
-        var outline = query.Length == 0 ? [] : Outline(query, tab, budget - commands.Count);
+        var outline = Outline(query, tab, budget - commands.Count);
 
         var groups = new List<PaletteGroup>(5);
         Add(groups, PaletteKind.Recent, Strings.PaletteGroupRecent, recent);
@@ -194,10 +215,21 @@ public sealed class PaletteViewModel : ViewModelBase
         Add(groups, PaletteKind.Outline, Strings.PaletteGroupContents, outline);
         Add(groups, PaletteKind.Command, Strings.PaletteGroupCommands, commands);
         _items = groups.SelectMany(group => group.Items).ToArray();
-        Groups = groups;
-        OnPropertyChanged(nameof(Items));
-        _selectedIndex = -2;
-        SelectedIndex = 0;
+        // The chosen entry is gone: like a new query, the first one at the top of the list.
+        var found = kept is { } same ? Array.FindIndex(_items, entry => entry.Kind == same.Kind && entry.Key == same.Key) : -1;
+        var selected = Math.Max(found, 0);
+        KeepsPosition = found >= 0;
+        try
+        {
+            Groups = groups;
+            OnPropertyChanged(nameof(Items));
+            _selectedIndex = -2;
+            SelectedIndex = selected;
+        }
+        finally
+        {
+            KeepsPosition = false;
+        }
     }
 
     private static void Add(List<PaletteGroup> groups, PaletteKind kind, string title, List<PaletteItem> items)
@@ -327,7 +359,14 @@ public sealed class PaletteViewModel : ViewModelBase
     /// </summary>
     private List<PaletteItem> Outline(string query, TabViewModel? tab, int limit)
     {
-        if (limit <= 0 || tab is not { IsReady: true, OutlineState: OutlineState.Loaded, Outline: { } outline })
+        // Only the outline of the active tab is kept: one of a tab that closed or is no longer shown is let go.
+        var current = tab is { IsReady: true, OutlineState: OutlineState.Loaded } ? tab.Outline : null;
+        if (_outlineSource is not null && !ReferenceEquals(current, _outlineSource))
+        {
+            ForgetOutline();
+        }
+
+        if (query.Length == 0 || limit <= 0 || tab is null || current is not { } outline)
         {
             return [];
         }
@@ -357,6 +396,12 @@ public sealed class PaletteViewModel : ViewModelBase
                 })
             { Key = page.ToString(CultureInfo.InvariantCulture) };
         }).ToList();
+    }
+
+    private void ForgetOutline()
+    {
+        _outlineSource = null;
+        _outlineEntries = [];
     }
 
     /// <summary>Every entry with a target, depth first in the order of the document, without making view models of the children.</summary>
@@ -418,14 +463,14 @@ public sealed class PaletteViewModel : ViewModelBase
         }
     }
 
-    private void OnTabsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Refresh();
+    private void OnTabsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Refresh(keepPosition: true);
 
     private void OnWindowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MainViewModel.ActiveTab))
         {
             Watch(_window.ActiveTab);
-            Refresh();
+            Refresh(keepPosition: true);
         }
     }
 
@@ -441,13 +486,13 @@ public sealed class PaletteViewModel : ViewModelBase
             case nameof(TabViewModel.HasShownSharpPage):
             case nameof(TabViewModel.IsReady):
                 EnsureOutline(tab);
-                Refresh();
+                Refresh(keepPosition: true);
                 break;
             case nameof(TabViewModel.Outline):
             case nameof(TabViewModel.OutlineState):
             case nameof(TabViewModel.PageCount):
             case nameof(TabViewModel.FileName):
-                Refresh();
+                Refresh(keepPosition: true);
                 break;
         }
     }

@@ -726,6 +726,155 @@ public sealed class CommandPaletteTests : IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public async Task ThePaletteStaysOpenWhileTheWindowIsInactiveAndGetsTheKeysBack()
+    {
+        var (window, viewModel, view) = Show();
+        await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        Press(window, Key.K, PhysicalKey.K, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
+        window.KeyTextInput("zoom");
+        Settle(window);
+
+        // Alt+Tab: another window takes the keys. The palette stays open with what was typed.
+        var other = new Window { Width = 200, Height = 200 };
+        _cleanup.Add(new Closer(other));
+        other.Show();
+        other.Activate();
+        await WaitUntilAsync(window, () => Focused(window) is null);
+        Settle(window);
+        Assert.Equal(OverlayKind.Palette, viewModel.Overlay);
+        Assert.True(Find<CommandPalette>(window, "CommandPalette").IsVisible);
+
+        // Back in the window, the keys go to the palette's field again, not to nothing.
+        window.Activate();
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
+        Assert.Equal("zoom", viewModel.Palette!.Query);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        await WaitUntilAsync(window, () => view.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public async Task AClickOnThePaletteButtonGivesTheKeysBackToTheDocument()
+    {
+        var (window, viewModel, view) = Show();
+        await OpenAsync(window, viewModel, view, "text-dense.pdf");
+        await FocusAsync(window, view);
+
+        // Opened with the mouse: the button took the focus on the press, but it is not where the keys go back to.
+        Click(window, Find<Button>(window, "PaletteButton"));
+        Assert.Equal(OverlayKind.Palette, viewModel.Overlay);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        await WaitUntilAsync(window, () => view.IsFocused);
+
+        // Space does not press the button again, and the arrows scroll the document.
+        var offset = view.ScrollViewer.Offset.Y;
+        Press(window, Key.Space, PhysicalKey.Space, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        Assert.True(view.ScrollViewer.Offset.Y > offset, "Space did not scroll the document");
+        offset = view.ScrollViewer.Offset.Y;
+        Press(window, Key.Down, PhysicalKey.ArrowDown, None);
+        Assert.True(view.ScrollViewer.Offset.Y > offset, "the arrow did not scroll the document");
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+
+        // Reached with the keyboard, the button is where the keys go back to.
+        var button = Find<Button>(window, "PaletteButton");
+        button.Focus(NavigationMethod.Tab);
+        await WaitUntilAsync(window, () => button.IsFocused);
+        Press(window, Key.Enter, PhysicalKey.Enter, None);
+        Assert.Equal(OverlayKind.Palette, viewModel.Overlay);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        await WaitUntilAsync(window, () => button.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public async Task ARefreshInTheBackgroundKeepsTheSelectionAndThePosition()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        var outline = new TaskCompletionSource<IReadOnlyList<PdfOutlineItem>>();
+        tab.OutlineReader = (_, _) => outline.Task;
+        Press(window, Key.K, PhysicalKey.K, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
+        var palette = viewModel.Palette!;
+        var scroller = Find<ScrollViewer>(window, "PaletteScroller");
+        Assert.Equal(OutlineState.Loading, tab.OutlineState);
+
+        // Without a query: an entry further down is chosen and the list scrolled; the outline arrives meanwhile.
+        for (var i = 0; i < 6; i++)
+        {
+            Press(window, Key.Down, PhysicalKey.ArrowDown, None);
+        }
+
+        var chosen = palette.SelectedItem!;
+        scroller.Offset = new Vector(0, 40);
+        Settle(window);
+        var position = scroller.Offset;
+        outline.SetResult([new PdfOutlineItem("Zoom levels", 1, false, [])]);
+        await WaitUntilAsync(window, () => tab.OutlineState == OutlineState.Loaded);
+        Assert.Equal(chosen.Key, palette.SelectedItem!.Key);
+        Assert.Equal(chosen.Kind, palette.SelectedItem.Kind);
+        Assert.Equal(position, scroller.Offset);
+
+        // With a query: the chosen command stays chosen when the outline group comes in before it.
+        palette.Query = "zoom";
+        Settle(window);
+        Assert.Equal(PaletteKind.Outline, palette.Groups[0].Kind);
+        Press(window, Key.Down, PhysicalKey.ArrowDown, None);
+        Press(window, Key.Down, PhysicalKey.ArrowDown, None);
+        var command = palette.SelectedItem!;
+        Assert.Equal(PaletteKind.Command, command.Kind);
+        tab.HasShownSharpPage = false;
+        tab.HasShownSharpPage = true;
+        Settle(window);
+        Assert.Equal(command.Key, palette.SelectedItem!.Key);
+        Assert.Equal(PaletteKind.Command, palette.SelectedItem.Kind);
+
+        // A new query starts at the first entry and the top of the list.
+        palette.Query = "zoo";
+        Settle(window);
+        Assert.Equal(0, palette.SelectedIndex);
+        Assert.Equal(default, scroller.Offset);
+    }
+
+    [AvaloniaFact]
+    public async Task ThePaletteKeepsNoOutlineOfAClosedTabOrAfterItCloses()
+    {
+        var (window, viewModel, view) = Show();
+        var basic = await OpenAsync(window, viewModel, view, "text-basic.pdf");
+        var basicOutline = new TaskCompletionSource<IReadOnlyList<PdfOutlineItem>>();
+        basic.OutlineReader = (_, _) => basicOutline.Task;
+        var rich = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        rich.OutlineReader = (_, _) => Task.FromResult<IReadOnlyList<PdfOutlineItem>>([new PdfOutlineItem("Chapter", 1, false, [])]);
+        Press(window, Key.K, PhysicalKey.K, Ctrl);
+        await WaitUntilAsync(window, () => rich.OutlineState == OutlineState.Loaded);
+        var palette = viewModel.Palette!;
+        palette.Query = "chapter";
+        Assert.Equal(1, palette.CachedOutlineEntries);
+
+        // The tab with the outline closes while the palette is open (the next one is still reading its own): the
+        // entries of the closed one go with it.
+        viewModel.CloseActiveTabCommand.Execute(null);
+        Settle(window);
+        Assert.Same(basic, viewModel.ActiveTab);
+        Assert.Equal(OutlineState.Loading, basic.OutlineState);
+        Assert.Equal(OverlayKind.Palette, viewModel.Overlay);
+        Assert.Equal(0, palette.CachedOutlineEntries);
+
+        // And closing the palette lets go of what it flattened.
+        basicOutline.SetResult([new PdfOutlineItem("Chapter", 0, false, [])]);
+        await WaitUntilAsync(window, () => basic.OutlineState == OutlineState.Loaded);
+        palette.Query = "chap";
+        Assert.Equal(1, palette.CachedOutlineEntries);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        Assert.Equal(0, palette.CachedOutlineEntries);
+    }
+
     private const RawInputModifiers None = RawInputModifiers.None;
     private const RawInputModifiers Ctrl = RawInputModifiers.Control;
 

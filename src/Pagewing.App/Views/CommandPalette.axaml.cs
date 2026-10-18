@@ -122,6 +122,9 @@ public sealed partial class CommandPalette : UserControl
         }
     }
 
+    /// <summary>Puts the keys into the input while the palette is shown (the window was activated with nothing focused).</summary>
+    internal void FocusInput() => FocusInputIfShown();
+
     private void FocusInputIfShown()
     {
         if (IsVisible && PaletteInput.IsEffectivelyVisible)
@@ -138,7 +141,8 @@ public sealed partial class CommandPalette : UserControl
         }
         else if (e.PropertyName == nameof(PaletteViewModel.SelectedIndex))
         {
-            UpdateSelection(bringIntoView: true);
+            // A refresh in the background keeps the list where the user scrolled it.
+            UpdateSelection(bringIntoView: _viewModel?.KeepsPosition != true);
         }
     }
 
@@ -165,7 +169,11 @@ public sealed partial class CommandPalette : UserControl
 
         PaletteEmpty.IsVisible = itemIndex == 0;
         PaletteScroller.IsVisible = itemIndex > 0;
-        PaletteScroller.Offset = default;
+        if (_viewModel?.KeepsPosition != true)
+        {
+            PaletteScroller.Offset = default;
+        }
+
         UpdateSelection(bringIntoView: false);
     }
 
