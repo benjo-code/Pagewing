@@ -293,6 +293,9 @@ public sealed class SearchPanelTests : IDisposable
 
         Press(window, Key.Escape);
         Assert.Equal(SidePanelKind.Pages, tab.SidePanel);
+
+        // The field went with the panel: the keys go back to the document.
+        Assert.Same(Find<DocumentView>(window, "DocumentView"), window.FocusManager!.GetFocusedElement());
         Assert.Empty(search.Hits);
         Assert.Empty(search.Highlights);
         Assert.True(highlightChanges > 0);
@@ -309,6 +312,87 @@ public sealed class SearchPanelTests : IDisposable
         Press(window, Key.Escape);
         Assert.Equal(SidePanelKind.None, tab.SidePanel);
         Assert.False(search.IsActive);
+    }
+
+    [AvaloniaFact]
+    public async Task CtrlFCountsAsTheUserChoosingAPanel()
+    {
+        var (window, viewModel) = Show(1024);
+
+        // A file that waits for its password: no sharp page before the password is in.
+        await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.State == ViewerState.PasswordRequired);
+
+        // Ctrl+F before the first sharp page, then Esc: the user closed the panel, so "Pages" does not open by itself.
+        Press(window, Key.F, RawInputModifiers.Control);
+        Assert.Equal(SidePanelKind.Search, tab.SidePanel);
+        await WaitUntilAsync(window, () => window.FocusManager!.GetFocusedElement() is TextBox { Name: "SearchField" });
+        Press(window, Key.Escape);
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+
+        tab.Password = "hôtel";
+        tab.SubmitPasswordCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Ready && tab.HasShownSharpPage);
+        await PumpAsync(window, TimeSpan.FromMilliseconds(200));
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+    }
+
+    [AvaloniaFact]
+    public async Task SwitchingTabsDoesNotCreateTheSearchOfAnotherTab()
+    {
+        var (window, viewModel) = Show(1024);
+        var first = await OpenAsync(window, viewModel, "text-dense.pdf");
+        await OpenSearchAsync(window, viewModel, first);
+        var second = await OpenAsync(window, viewModel, "outline.pdf");
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        Settle(window);
+        var third = await OpenAsync(window, viewModel, "text-basic.pdf");
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Contents);
+        Settle(window);
+
+        // From the tab with "Search" to tabs with other panels and back: only the first tab has a search.
+        foreach (var tab in new[] { first, second, first, third, first })
+        {
+            viewModel.ActivateTabCommand.Execute(tab);
+            Settle(window);
+        }
+
+        Assert.Equal(SidePanelKind.Search, first.SidePanel);
+        Assert.True(first.IsSearchCreated);
+        Assert.False(second.IsSearchCreated);
+        Assert.False(third.IsSearchCreated);
+        Assert.Same(first.Search, Find<DockPanel>(window, "SearchRoot").DataContext);
+    }
+
+    [AvaloniaFact]
+    public async Task AQueryTypedBeforeTheDocumentIsOpenIsSearchedOnceItIs()
+    {
+        var (window, viewModel) = Show(1024);
+        await viewModel.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.State == ViewerState.PasswordRequired);
+
+        // Typed while the document waits for its password: nothing to search yet, the query stays.
+        var search = await OpenSearchAsync(window, viewModel, tab);
+        search.Query = "world";
+        await PumpAsync(window, TimeSpan.FromMilliseconds(300));
+        Assert.Equal("world", search.Query);
+        Assert.Empty(search.Hits);
+
+        // Once the document is open, it is searched.
+        tab.Password = "hôtel";
+        tab.SubmitPasswordCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Ready && search.State == SearchState.Done);
+        Assert.Equal(2, search.Hits.Count);
+        Assert.Equal("world", search.Query);
+
+        // Another file in the tab clears the search.
+        await tab.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        await WaitUntilAsync(window, () => tab.State == ViewerState.Ready && tab.HasShownSharpPage);
+        Assert.Equal(string.Empty, search.Query);
+        Assert.Empty(search.Hits);
+        Assert.Equal(SearchState.Idle, search.State);
     }
 
     [AvaloniaFact]
@@ -342,21 +426,23 @@ public sealed class SearchPanelTests : IDisposable
         var (window, viewModel) = Show(1024);
         var tab = await OpenAsync(window, viewModel, "text-dense.pdf");
         await WaitUntilAsync(window, () => tab.SidePanel == SidePanelKind.Pages);
-        var search = await OpenSearchAsync(window, tab);
+        var search = await OpenSearchAsync(window, viewModel, tab);
         var list = Find<ListBox>(window, "HitList");
 
+        // Near the end of the document, so most matches come after the search wrapped round and go in at the front of
+        // the list, before the current one (the dearest case for the list bound to the panel).
+        tab.GoToPage(196);
+        Settle(window);
+        var jobs = new List<TimeSpan>();
+        search.BatchApplied += jobs.Add;
         search.Query = "a";
-        await WaitUntilAsync(window, () => search.Hits.Count > 0 || search.State == SearchState.Done);
-
-        // The UI thread stays responsive while the hits come in.
-        var clock = Stopwatch.StartNew();
-        TimeSpan? ran = null;
-        Dispatcher.UIThread.Post(() => ran = clock.Elapsed, DispatcherPriority.Normal);
-        await WaitUntilAsync(window, () => ran is not null);
-        Assert.True(ran < TimeSpan.FromMilliseconds(500), $"a posted job ran after {ran}");
-
         await WaitUntilAsync(window, () => search.State == SearchState.Done);
         Assert.Equal(DocumentSearch.MaxHits, search.Hits.Count);
+        Assert.Equal(195, search.Current!.Hit.PageIndex);
+
+        // The UI thread stays responsive while the matches come in: no job that applies them takes long.
+        var longest = jobs.Max();
+        Assert.True(longest < TimeSpan.FromMilliseconds(100), $"the longest job applying matches took {longest.TotalMilliseconds:F1} ms ({jobs.Count} jobs)");
         Assert.Equal(Format(Strings.SearchLimit, DocumentSearch.MaxHits), search.Summary);
 
         // Sorted by page and character, and the list builds only what it shows.
@@ -373,7 +459,7 @@ public sealed class SearchPanelTests : IDisposable
         Strings.Culture = new CultureInfo(language);
         var (window, viewModel) = Show(1024);
         var tab = await OpenAsync(window, viewModel, "vector-shapes.pdf");
-        var search = await OpenSearchAsync(window, tab);
+        var search = await OpenSearchAsync(window, viewModel, tab);
 
         search.Query = "a";
         await WaitUntilAsync(window, () => search.State == SearchState.Done);
@@ -638,9 +724,9 @@ public sealed class SearchPanelTests : IDisposable
     }
 
     /// <summary>Opens the panel "Search" in the tab and waits until it is shown; returns the search of the tab.</summary>
-    private static async Task<SearchViewModel> OpenSearchAsync(Window window, TabViewModel tab)
+    private static async Task<SearchViewModel> OpenSearchAsync(Window window, MainViewModel viewModel, TabViewModel tab)
     {
-        tab.OpenSearchCommand.Execute(null);
+        viewModel.OpenSearchCommand.Execute(null);
         await WaitUntilAsync(window, () => IsShown(window, "HitList"));
         return tab.Search;
     }

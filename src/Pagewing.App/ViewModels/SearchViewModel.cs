@@ -14,20 +14,17 @@ namespace Pagewing.App.ViewModels;
 /// match and the summary. A new query or option cancels the running search, empties the list and starts again after
 /// <see cref="StartDelay"/>, from the current page of the tab. The search itself runs on pool threads
 /// (<see cref="DocumentSearch.SearchAsync"/>, which goes through the PDFium thread); its results reach the UI thread in
-/// batches, at most one posted job per <see cref="BatchInterval"/>, so typing and scrolling stay smooth while thousands of
-/// matches come in. Created by the tab when it is first needed (<see cref="TabViewModel.Search"/>), never in the startup
-/// path; the tab disposes it. UI thread only, except where noted.
+/// small jobs (<see cref="SearchRun"/>), so typing and scrolling stay smooth while thousands of matches come in. Created
+/// by the tab when it is first needed (<see cref="TabViewModel.Search"/>), never in the startup path; the tab disposes it.
+/// UI thread only.
 /// </summary>
 public sealed class SearchViewModel : ViewModelBase, IDisposable
 {
     /// <summary>How long a new query waits before it searches, so typing a word does not start a search per letter.</summary>
     public static readonly TimeSpan StartDelay = TimeSpan.FromMilliseconds(200);
 
-    /// <summary>The shortest time between two batches of results posted to the UI thread.</summary>
-    internal static readonly TimeSpan BatchInterval = TimeSpan.FromMilliseconds(50);
-
-    /// <summary>How many pages from the start are checked for any text when a search found nothing (a scanned document).</summary>
-    private const int TextCheckPages = 3;
+    // The parsed summary formats, by their text: a change of the language brings other texts, which are parsed then.
+    private static readonly Dictionary<string, CompositeFormat> Formats = new(StringComparer.Ordinal);
 
     private readonly TabViewModel _tab;
     private readonly ObservableCollection<SearchHitViewModel> _hits = [];
@@ -76,6 +73,9 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
 
     /// <summary>Raised on the UI thread for every page the running search has gone through, in the order it searched them (for tests).</summary>
     internal event Action<int>? PageSearched;
+
+    /// <summary>Raised on the UI thread after each job that applied results, with how long it took (for tests).</summary>
+    internal event Action<TimeSpan>? BatchApplied;
 
     /// <summary>
     /// Gets or sets the text to search for. A change cancels the running search, empties the list and searches again
@@ -223,31 +223,59 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Takes a batch of results of <paramref name="run"/> (UI thread): inserts the matches in order, makes the first one
-    /// the current match unless the user chose one, and ends the search after the last batch. A batch of a run that was
+    /// The tab has a document now that it did not have before (the first one, or the one after a password): a query typed
+    /// while it loaded is searched now.
+    /// </summary>
+    internal void OnDocumentReady()
+    {
+        if (!_disposed && _query.Length > 0 && _run is null)
+        {
+            Restart();
+        }
+    }
+
+    /// <summary>
+    /// Takes a job of results of <paramref name="run"/> (UI thread): inserts the matches in order, makes the first one
+    /// the current match unless the user chose one, and ends the search with the last job. A job of a run that was
     /// cancelled meanwhile is dropped.
     /// </summary>
-    private void Apply(SearchRun run, List<SearchPageResult> results, (bool LimitReached, bool NoText)? end)
+    private void Apply(SearchRun run, List<SearchBatchItem> items, (bool LimitReached, bool NoText)? end)
     {
         if (_disposed || !ReferenceEquals(run, _run))
         {
             return;
         }
 
+        var started = Stopwatch.GetTimestamp();
+        ApplyCore(run, items, end);
+        BatchApplied?.Invoke(Stopwatch.GetElapsedTime(started));
+    }
+
+    private void ApplyCore(SearchRun run, List<SearchBatchItem> items, (bool LimitReached, bool NoText)? end)
+    {
         var hadHits = _hits.Count > 0;
         SearchHitViewModel? first = null;
-        foreach (var result in results)
+        foreach (var item in items)
         {
-            PageSearched?.Invoke(result.PageIndex);
-            if (result.Hits.Count == 0)
+            if (item.IsPageStart)
+            {
+                PageSearched?.Invoke(item.PageIndex);
+            }
+
+            if (item.Hits.Count == 0)
             {
                 continue;
             }
 
-            // The pages come in search order (from the start page to the end, then from the first page), each once.
-            _pagesWithHits++;
-            var index = LowerBound(result.Hits[0].PageIndex, int.MinValue);
-            foreach (var hit in result.Hits)
+            // The pages come in search order (from the start page to the end, then from the first page), each once, a
+            // page with many matches in parts in text order.
+            if (item.IsPageStart)
+            {
+                _pagesWithHits++;
+            }
+
+            var index = LowerBound(item.PageIndex, item.Hits[0].FirstChar);
+            foreach (var hit in item.Hits)
             {
                 var entry = new SearchHitViewModel(hit);
                 first ??= entry;
@@ -293,7 +321,7 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
     {
         if (_limitReached)
         {
-            return string.Format(Strings.Culture, CompositeFormat.Parse(Strings.SearchLimit), DocumentSearch.MaxHits);
+            return string.Format(Strings.Culture, FormatOf(Strings.SearchLimit), DocumentSearch.MaxHits);
         }
 
         var count = _hits.Count;
@@ -305,12 +333,24 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
         var page = _hits[0].Hit.PageIndex + 1;
         if (count == 1)
         {
-            return string.Format(Strings.Culture, CompositeFormat.Parse(Strings.SearchSummaryOne), page);
+            return string.Format(Strings.Culture, FormatOf(Strings.SearchSummaryOne), page);
         }
 
         return _pagesWithHits == 1
-            ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.SearchSummaryOnePage), count, page)
-            : string.Format(Strings.Culture, CompositeFormat.Parse(Strings.SearchSummaryPages), count, _pagesWithHits);
+            ? string.Format(Strings.Culture, FormatOf(Strings.SearchSummaryOnePage), count, page)
+            : string.Format(Strings.Culture, FormatOf(Strings.SearchSummaryPages), count, _pagesWithHits);
+    }
+
+    /// <summary>The parsed format of a summary text, parsed once per text (UI thread only).</summary>
+    private static CompositeFormat FormatOf(string text)
+    {
+        if (!Formats.TryGetValue(text, out var format))
+        {
+            format = CompositeFormat.Parse(text);
+            Formats[text] = format;
+        }
+
+        return format;
     }
 
     /// <summary>Cancels what runs and starts again after <see cref="StartDelay"/>; an empty query only ends the search.</summary>
@@ -369,12 +409,14 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
 
         if (pageCount < 0 || _tab.Document is not { } document)
         {
+            // No document yet (it loads, or waits for its password): the query stays and is searched once the document is
+            // there (OnDocumentReady).
             State = SearchState.Idle;
             return;
         }
 
         var startPage = pageCount == 0 ? 0 : Math.Clamp(_tab.CurrentPage - 1, 0, pageCount - 1);
-        var run = new SearchRun(this, document, _query, new SearchOptions(_matchCase, _wholeWord), startPage, pageCount, _tab.Session.EnsurePageTexts(), Searcher);
+        var run = new SearchRun(Apply, document, _query, new SearchOptions(_matchCase, _wholeWord), startPage, pageCount, _tab.Session.EnsurePageTexts(), Searcher);
         _run = run;
         _ = Task.Run(run.ExecuteAsync);
     }
@@ -397,7 +439,8 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
         int index;
         if (_currentIndex < 0)
         {
-            // No current match yet: the first one at or after the current page, or the last one before it.
+            // No current match yet: forwards the first one on or after the current page, backwards the last one on or
+            // before it; wrapping round when there is none.
             var page = Math.Max(_tab.CurrentPage - 1, 0);
             index = direction > 0 ? LowerBound(page, int.MinValue) : LowerBound(page + 1, int.MinValue) - 1;
             index = index >= count ? 0 : index < 0 ? count - 1 : index;
@@ -537,204 +580,5 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
         }
 
         return low;
-    }
-
-    /// <summary>
-    /// One search: runs on pool threads and hands its results to the UI thread in batches, at most one posted job per
-    /// <see cref="BatchInterval"/>. Everything but <see cref="Flush"/> runs on pool threads.
-    /// </summary>
-    private sealed class SearchRun
-    {
-        private readonly object _gate = new();
-        private readonly SearchViewModel _owner;
-        private readonly PdfDocument _document;
-        private readonly string _query;
-        private readonly SearchOptions _options;
-        private readonly int _startPage;
-        private readonly int _pageCount;
-        private readonly PageTextSource? _texts;
-        private readonly Func<PdfDocument, string, SearchOptions, int, CancellationToken, IAsyncEnumerable<SearchPageResult>> _searcher;
-
-        // Taken on the UI thread: the source may be disposed there once the run is cancelled; its token stays readable.
-        private readonly CancellationToken _token;
-
-        // Guarded by _gate.
-        private List<SearchPageResult> _pending = [];
-        private (bool LimitReached, bool NoText)? _end;
-        private bool _flushScheduled;
-        private long _lastFlush;
-
-        public SearchRun(
-            SearchViewModel owner,
-            PdfDocument document,
-            string query,
-            SearchOptions options,
-            int startPage,
-            int pageCount,
-            PageTextSource? texts,
-            Func<PdfDocument, string, SearchOptions, int, CancellationToken, IAsyncEnumerable<SearchPageResult>> searcher)
-        {
-            _owner = owner;
-            _document = document;
-            _query = query;
-            _options = options;
-            _startPage = startPage;
-            _pageCount = pageCount;
-            _texts = texts;
-            _searcher = searcher;
-            _token = Cancellation.Token;
-        }
-
-        /// <summary>Gets the source that cancels the run; cancelled and disposed on the UI thread.</summary>
-        public CancellationTokenSource Cancellation { get; } = new();
-
-        /// <summary>Searches the document; never throws. A failure ends the search with what it found.</summary>
-        public async Task ExecuteAsync()
-        {
-            try
-            {
-                var total = 0;
-                var limitReached = false;
-                await foreach (var result in _searcher(_document, _query, _options, _startPage, _token).ConfigureAwait(false))
-                {
-                    if (_token.IsCancellationRequested)
-                    {
-                        return;
-                    }
-
-                    total += result.Hits.Count;
-                    limitReached |= result.LimitReached;
-                    Enqueue(result);
-                }
-
-                var noText = total == 0 && !await HasTextAsync().ConfigureAwait(false);
-                Finish(limitReached, noText);
-            }
-            catch (OperationCanceledException) when (_token.IsCancellationRequested)
-            {
-                // Cancelled: a newer search or none replaces it.
-            }
-            catch (Exception)
-            {
-                // The document was closed meanwhile or could not be searched: the search ends with what it found.
-                if (!_token.IsCancellationRequested)
-                {
-                    Finish(limitReached: false, noText: false);
-                }
-            }
-        }
-
-        /// <summary>Takes the results collected so far and hands them to the search (UI thread).</summary>
-        private void Flush()
-        {
-            List<SearchPageResult> results;
-            (bool LimitReached, bool NoText)? end;
-            lock (_gate)
-            {
-                results = _pending;
-                _pending = [];
-                end = _end;
-                _end = null;
-                _flushScheduled = false;
-                _lastFlush = Stopwatch.GetTimestamp();
-            }
-
-            _owner.Apply(this, results, end);
-        }
-
-        /// <summary>
-        /// Whether one of the first <see cref="TextCheckPages"/> pages has any text; a search without matches on a
-        /// document without text says so instead of "No matches".
-        /// </summary>
-        private async Task<bool> HasTextAsync()
-        {
-            if (_texts is null)
-            {
-                return true;
-            }
-
-            for (var page = 0; page < Math.Min(TextCheckPages, _pageCount); page++)
-            {
-                try
-                {
-                    var text = await _texts.GetAsync(page, PdfPriority.Background, _token).ConfigureAwait(false);
-                    if (text.HasText)
-                    {
-                        return true;
-                    }
-                }
-                catch (InvalidDataException)
-                {
-                    // A damaged page tells nothing; the next one may.
-                }
-            }
-
-            return false;
-        }
-
-        private void Enqueue(SearchPageResult result)
-        {
-            lock (_gate)
-            {
-                _pending.Add(result);
-            }
-
-            ScheduleFlush();
-        }
-
-        private void Finish(bool limitReached, bool noText)
-        {
-            lock (_gate)
-            {
-                _end = (limitReached, noText);
-            }
-
-            ScheduleFlush();
-        }
-
-        /// <summary>Posts one flush unless one is on its way; at most one per <see cref="BatchInterval"/>.</summary>
-        private void ScheduleFlush()
-        {
-            TimeSpan wait;
-            lock (_gate)
-            {
-                if (_flushScheduled)
-                {
-                    return;
-                }
-
-                _flushScheduled = true;
-                wait = _lastFlush == 0 ? TimeSpan.Zero : BatchInterval - Stopwatch.GetElapsedTime(_lastFlush);
-            }
-
-            if (wait <= TimeSpan.Zero)
-            {
-                Post();
-            }
-            else
-            {
-                _ = PostLaterAsync(wait);
-            }
-        }
-
-        private async Task PostLaterAsync(TimeSpan wait)
-        {
-            await Task.Delay(wait).ConfigureAwait(false);
-            Post();
-        }
-
-        // Pool thread: must never throw.
-        private void Post()
-        {
-            try
-            {
-                // Below input and rendering: typing and scrolling go first.
-                Dispatcher.UIThread.Post(Flush, DispatcherPriority.Background);
-            }
-            catch (Exception)
-            {
-                // The dispatcher is shutting down: nobody shows the results any more.
-            }
-        }
     }
 }

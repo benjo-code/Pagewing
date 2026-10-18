@@ -41,7 +41,7 @@
       Search (design system 7.4): Ctrl+F opens the panel with the focus in the search field (or puts the focus back there);
       F3 and Shift+F3 step through the matches, also with the panel closed. None of them creates the search beforehand.
     -->
-    <KeyBinding Gesture="Ctrl+F" Command="{Binding ActiveTab.OpenSearchCommand}" />
+    <KeyBinding Gesture="Ctrl+F" Command="{Binding OpenSearchCommand}" />
     <KeyBinding Gesture="F3" Command="{Binding ActiveTab.SearchNextCommand}" />
     <KeyBinding Gesture="Shift+F3" Command="{Binding ActiveTab.SearchPreviousCommand}" />
   </Window.KeyBindings>

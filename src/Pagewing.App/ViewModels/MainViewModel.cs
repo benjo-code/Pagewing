@@ -83,6 +83,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         });
         ToggleSidePanelCommand = new RelayCommand<SidePanelKind>(ToggleSidePanel);
         CloseSidePanelCommand = new RelayCommand(() => ToggleSidePanel(SidePanelKind.None));
+        OpenSearchCommand = new RelayCommand(OpenSearch);
     }
 
     /// <summary>Raised on the UI thread when the window should come to the front (a later launch handed over).</summary>
@@ -207,6 +208,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>The close button of the side panel: closes the panel of the active tab.</summary>
     public ICommand CloseSidePanelCommand { get; }
+
+    /// <summary>
+    /// Ctrl+F: opens "Search" in the active tab with the focus in the search field (or puts the focus back there). Like a
+    /// click in the action bar it counts as the user choosing a panel, so "Pages" no longer opens by itself.
+    /// </summary>
+    public ICommand OpenSearchCommand { get; }
 
     /// <summary>Shows the file dialog and opens the chosen file in a new tab (Ctrl+O, "Choose file", "Open file").</summary>
     public ICommand OpenCommand { get; }
@@ -552,6 +559,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         _panelChosenByUser = true;
         tab.SidePanel = tab.SidePanel == kind ? SidePanelKind.None : kind;
+    }
+
+    private void OpenSearch()
+    {
+        if (ActiveTab is { } tab)
+        {
+            _panelChosenByUser = true;
+            tab.OpenSearch();
+        }
     }
 
     // Over the document (narrow window) the panel gets out of the way once a page was chosen in it.

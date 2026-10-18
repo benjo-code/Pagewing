@@ -6,7 +6,8 @@
              x:Class="Pagewing.App.Views.SearchPanel"
              x:DataType="vm:TabViewModel">
   <!--
-    Content of the "Search" panel (design system 5.2, 5.5, 7.3, 7.4 and 7.10): the search of the tab in the DataContext.
+    Content of the "Search" panel (design system 5.2, 5.5, 7.3, 7.4 and 7.10): the search of the tab in the DataContext
+    (the content binds to the search itself, so a tab that does not show "Search" never gets one created by the panel).
     At the top the search field (with the Tabler "search" icon), below it "Match case" and "Whole words", then a row with
     the summary (type.caption, text.secondary) and the buttons for the previous and the next match (chevron-up and
     chevron-down, 16 px; their tooltips name Shift+Enter and Enter). Below that the matches in a virtualized list: the page
@@ -54,10 +55,11 @@
     </Style>
   </UserControl.Styles>
 
-  <DockPanel>
+  <!-- The DataContext of the content is the search of the tab, set by SearchPanel.axaml.cs only while the tab shows "Search". -->
+  <DockPanel Name="SearchRoot" x:DataType="vm:SearchViewModel">
     <StackPanel DockPanel.Dock="Top" Margin="14,0,14,6" Spacing="8">
       <TextBox Name="SearchField"
-               Text="{Binding Search.Query}"
+               Text="{Binding Query}"
                PlaceholderText="{x:Static res:Strings.SearchPlaceholder}"
                AutomationProperties.Name="{x:Static res:Strings.SearchPlaceholder}">
         <TextBox.InnerLeftContent>
@@ -67,24 +69,25 @@
         </TextBox.InnerLeftContent>
         <!-- The window binds other keys first; the field claims Enter, Shift+Enter and Esc with bindings of its own. -->
         <TextBox.KeyBindings>
-          <KeyBinding Gesture="Enter" Command="{Binding Search.NextCommand}" />
-          <KeyBinding Gesture="Shift+Enter" Command="{Binding Search.PreviousCommand}" />
-          <KeyBinding Gesture="Escape" Command="{Binding Search.EndCommand}" />
+          <KeyBinding Gesture="Enter" Command="{Binding NextCommand}" />
+          <KeyBinding Gesture="Shift+Enter" Command="{Binding PreviousCommand}" />
+          <KeyBinding Gesture="Escape" Command="{Binding EndCommand}" />
         </TextBox.KeyBindings>
       </TextBox>
       <StackPanel Spacing="0">
-        <CheckBox Name="MatchCaseBox" IsChecked="{Binding Search.MatchCase}" Content="{x:Static res:Strings.SearchMatchCase}" />
-        <CheckBox Name="WholeWordBox" IsChecked="{Binding Search.WholeWord}" Content="{x:Static res:Strings.SearchWholeWord}" />
+        <CheckBox Name="MatchCaseBox" IsChecked="{Binding MatchCase}" Content="{x:Static res:Strings.SearchMatchCase}" />
+        <CheckBox Name="WholeWordBox" IsChecked="{Binding WholeWord}" Content="{x:Static res:Strings.SearchWholeWord}" />
       </StackPanel>
       <Grid ColumnDefinitions="*,Auto,Auto" MinHeight="28">
         <TextBlock Name="SearchSummary" Classes="caption"
-                   Text="{Binding Search.Summary}"
+                   Text="{Binding Summary}"
+                   AutomationProperties.LiveSetting="Polite"
                    Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
                    TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0" />
         <Button Name="PreviousHitButton" Grid.Column="1" Classes="icon"
                 Width="28" Height="28" MinWidth="0" MinHeight="0" VerticalAlignment="Top"
                 Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
-                Command="{Binding Search.PreviousCommand}"
+                Command="{Binding PreviousCommand}"
                 ToolTip.Tip="{x:Static res:Strings.SearchPrevious}"
                 AutomationProperties.Name="{x:Static res:Strings.SearchPrevious}">
           <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronUp}" />
@@ -92,7 +95,7 @@
         <Button Name="NextHitButton" Grid.Column="2" Classes="icon"
                 Width="28" Height="28" MinWidth="0" MinHeight="0" VerticalAlignment="Top"
                 Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
-                Command="{Binding Search.NextCommand}"
+                Command="{Binding NextCommand}"
                 ToolTip.Tip="{x:Static res:Strings.SearchNext}"
                 AutomationProperties.Name="{x:Static res:Strings.SearchNext}">
           <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronDown}" />
@@ -101,7 +104,7 @@
     </StackPanel>
 
     <ListBox Name="HitList" Classes="hits"
-             ItemsSource="{Binding Search.Hits}"
+             ItemsSource="{Binding Hits}"
              SelectionMode="Single"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
              AutomationProperties.Name="{x:Static res:Strings.SearchPanelTitle}">

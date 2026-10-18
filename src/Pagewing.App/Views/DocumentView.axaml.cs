@@ -137,6 +137,7 @@ public sealed partial class DocumentView : UserControl
         _session = viewModel.Session;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
         viewModel.PageRequested += OnPageRequested;
+        viewModel.DocumentFocusRequested += OnDocumentFocusRequested;
         _session.Changed += OnSessionChanged;
         Sync();
     }
@@ -148,6 +149,7 @@ public sealed partial class DocumentView : UserControl
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.PageRequested -= OnPageRequested;
+            _viewModel.DocumentFocusRequested -= OnDocumentFocusRequested;
             _viewModel = null;
         }
 
@@ -318,6 +320,9 @@ public sealed partial class DocumentView : UserControl
         _focusPending = false;
         Focus(NavigationMethod.Unspecified);
     }
+
+    // The search ended with Esc in its field, which goes with the panel: the keys go back to the document.
+    private void OnDocumentFocusRequested() => Focus(NavigationMethod.Unspecified);
 
     // After the scroll viewer and the scroll bars had the press: a click on the pages (or their scroll bars) gives
     // the keys to the document. With the pointer, so no focus ring appears.

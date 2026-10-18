@@ -37,17 +37,20 @@ public sealed partial class SearchPanel : UserControl
         }
     }
 
+    // The window may hand the panel another tab just before it replaces the panel (a tab that shows another panel): the
+    // search of such a tab is not created here, it is only taken from a tab that shows "Search".
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
         Detach();
-        if (DataContext is not TabViewModel tab)
+        if (DataContext is not TabViewModel { SidePanel: SidePanelKind.Search } tab)
         {
             return;
         }
 
         _tab = tab;
         _search = tab.Search;
+        SearchRoot.DataContext = _search;
         tab.SearchFocusRequested += OnSearchFocusRequested;
         _search.PropertyChanged += OnSearchPropertyChanged;
 
@@ -61,6 +64,7 @@ public sealed partial class SearchPanel : UserControl
 
     private void Detach()
     {
+        SearchRoot.DataContext = null;
         if (_tab is not null)
         {
             _tab.SearchFocusRequested -= OnSearchFocusRequested;

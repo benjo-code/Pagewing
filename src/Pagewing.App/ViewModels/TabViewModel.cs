@@ -4,7 +4,6 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pdf;
-using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
@@ -15,7 +14,7 @@ namespace Pagewing.App.ViewModels;
 /// and the file dialog are the window's business (<see cref="CloseRequested"/>, <see cref="OpenOtherRequested"/>).
 /// UI thread only.
 /// </summary>
-public sealed class TabViewModel : ViewModelBase, IDisposable
+public sealed partial class TabViewModel : ViewModelBase, IDisposable
 {
     private readonly ViewerSession _session;
     private readonly RelayCommand _zoomInCommand;
@@ -51,15 +50,6 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _outlineCancellation;
     private Task _outlineLoad = Task.CompletedTask;
 
-    // The search of this tab: created when it is first needed (Search), never in the startup path.
-    private SearchViewModel? _search;
-
-    // The panel shown before "Search" opened, shown again when the search ends (Esc in the search field).
-    private SidePanelKind _panelBeforeSearch;
-
-    // Ctrl+F asked for the focus in the search field; the panel takes it once it is shown.
-    private bool _searchFocusPending;
-
     // A new session is active (ViewerSession.SetActive).
     private bool _isActive = true;
     private bool _disposed;
@@ -88,9 +78,8 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         CommitPageFieldCommand = new RelayCommand(CommitPageField);
         SetZoomModeCommand = new RelayCommand<ZoomMode>(SelectZoomMode);
         SetLayoutModeCommand = new RelayCommand<PageLayoutMode>(SelectLayoutMode);
-        OpenSearchCommand = new RelayCommand(OpenSearch);
 
-        // Only a search that exists can step; F3 never creates one.
+        // Only a search that exists can step; F3 never creates one (TabViewModel.Search.cs).
         SearchNextCommand = new RelayCommand(() => _search?.NextCommand.Execute(null));
         SearchPreviousCommand = new RelayCommand(() => _search?.PreviousCommand.Execute(null));
         SetZoomCommand = new RelayCommand<double>(zoom =>
@@ -128,15 +117,6 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     /// panel that lies over the document (design system 6, narrow window).
     /// </summary>
     public event Action? PanelPagePicked;
-
-    /// <summary>
-    /// Raised when the document view should bring a search match into view: the 0-based page and the rectangle of the
-    /// match in page points from the top left of the page (the document view scrolls to it from Task 13 on).
-    /// </summary>
-    public event Action<int, PageRect>? RevealRequested;
-
-    /// <summary>Raised when the search field should take the keyboard focus with its content selected (Ctrl+F).</summary>
-    internal event Action? SearchFocusRequested;
 
     /// <summary>Gets the session the tab owns and mirrors; the document view draws its document.</summary>
     internal ViewerSession Session => _session;
@@ -408,17 +388,6 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>
-    /// Gets the search of this tab, created on the first access (only the "Search" panel and Ctrl+F get here, never the
-    /// startup path). The tab disposes it; a new document clears it.
-    /// </summary>
-    public SearchViewModel Search => _search ??= new SearchViewModel(this);
-
-    /// <summary>Gets whether <see cref="Search"/> was created (for tests: nothing creates it before it is needed).</summary>
-    internal bool IsSearchCreated => _search is not null;
-
-    /// <summary>Gets whether Ctrl+F asked for the focus in the search field and the panel has not given it yet.</summary>
-    internal bool IsSearchFocusPending => _searchFocusPending;
 
     /// <summary>
     /// Gets the outline (table of contents) of the open document, top level first, or <see langword="null"/> while it
@@ -551,18 +520,6 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
     /// <summary>Chooses a <see cref="PageLayoutMode"/> (parameter: the layout; layout menu of the status bar).</summary>
     public ICommand SetLayoutModeCommand { get; }
 
-    /// <summary>
-    /// Ctrl+F: opens the "Search" panel with the focus in the search field; when it is open already, the focus goes back
-    /// to the field with its content selected.
-    /// </summary>
-    public ICommand OpenSearchCommand { get; }
-
-    /// <summary>F3: the next match of the search, also with the panel closed; without a search it does nothing.</summary>
-    public ICommand SearchNextCommand { get; }
-
-    /// <summary>Shift+F3: the previous match of the search, also with the panel closed; without a search it does nothing.</summary>
-    public ICommand SearchPreviousCommand { get; }
-
     /// <summary>Opens a file in this tab and replaces its document.</summary>
     /// <param name="path">Path of the file; an empty path does nothing.</param>
     /// <returns>Completes when the session has a result (see <see cref="ViewerSession.OpenAsync"/>).</returns>
@@ -653,49 +610,6 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         _thumbnails = thumbnails;
         return thumbnails;
     }
-
-    /// <summary>
-    /// Shows a search match: goes to its page (<see cref="GoToPage"/>) and asks the view to bring its rectangle into view
-    /// (<see cref="RevealRequested"/>); a match chosen in the panel (<paramref name="fromPanel"/>) then raises
-    /// <see cref="PanelPagePicked"/>, so a narrow window closes the panel.
-    /// </summary>
-    internal void RevealSearchHit(SearchHit hit, bool fromPanel)
-    {
-        ArgumentNullException.ThrowIfNull(hit);
-        if (!IsReady || hit.PageIndex < 0 || hit.PageIndex >= PageCount)
-        {
-            return;
-        }
-
-        GoToPage(hit.PageIndex + 1);
-        if (hit.Rects.Count > 0)
-        {
-            var rect = hit.Rects[0];
-            for (var i = 1; i < hit.Rects.Count; i++)
-            {
-                rect = rect.Union(hit.Rects[i]);
-            }
-
-            RevealRequested?.Invoke(hit.PageIndex, rect);
-        }
-
-        if (fromPanel)
-        {
-            PanelPagePicked?.Invoke();
-        }
-    }
-
-    /// <summary>The search ended (Esc in the search field): shows the panel that was open before "Search" again.</summary>
-    internal void EndSearchPanel()
-    {
-        if (SidePanel == SidePanelKind.Search)
-        {
-            SidePanel = _panelBeforeSearch;
-        }
-    }
-
-    /// <summary>The search panel gave the focus to its field: the request of Ctrl+F is done.</summary>
-    internal void ClearSearchFocusRequest() => _searchFocusPending = false;
 
     /// <summary>Puts the current page back into the page field (an edit that was not committed, for example on leaving the field).</summary>
     public void ResetPageField() => PageFieldText = CurrentPage.ToString(CultureInfo.InvariantCulture);
@@ -892,18 +806,6 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         _focusPageFieldCommand.RaiseCanExecuteChanged();
     }
 
-    private void OpenSearch()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        SidePanel = SidePanelKind.Search;
-        _searchFocusPending = true;
-        SearchFocusRequested?.Invoke();
-    }
-
     private void SubmitPassword()
     {
         // Ignored while a check is running (Enter pressed twice) and outside the password card.
@@ -956,6 +858,7 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
 
         var isNewDocument = document is not null && !ReferenceEquals(document, _document);
         var documentChanged = !ReferenceEquals(document, _document);
+        var hadDocument = _document is not null;
         _document = document;
         if (_outlineDocument is not null && !ReferenceEquals(_outlineDocument, document))
         {
@@ -1008,8 +911,17 @@ public sealed class TabViewModel : ViewModelBase, IDisposable
         State = state;
         if (documentChanged)
         {
-            // The search belongs to the document that was replaced or closed.
-            _search?.Reset();
+            // The search belongs to the document that was replaced or closed; a query typed while the first document (or
+            // the next one) loaded is searched once it is there.
+            if (hadDocument)
+            {
+                _search?.Reset();
+            }
+            else if (isNewDocument)
+            {
+                _search?.OnDocumentReady();
+            }
+
             OnPropertyChanged(nameof(Document));
         }
 
