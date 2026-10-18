@@ -81,13 +81,12 @@ public sealed class TextSelectionTests : IDisposable
         Assert.Equal(new TextPosition(0, 17), selection.End);
         Assert.Single(view.Canvas.LastHighlightDestinations, entry => entry.Highlight.Kind == HighlightKind.Selection);
 
-        // A double click where there is no character does nothing.
+        // A double click where there is no character selects no word: its first click clears the selection, the second
+        // finds no character. Far from the word, so the clicks do not continue the double click above.
         var empty = ScreenPoint(view, window, 0, new Point(200, 380));
-        Click(window, empty, clicks: 1);
+        Click(window, empty, clicks: 2);
         Assert.Null(tab.TextSelection);
-        await SelectAsync(window, view, 0, 9, 17);
-        Click(window, empty, clicks: 2, settleFirst: false);
-        Assert.Equal(new TextPosition(0, 9), tab.TextSelection?.Start);
+        Assert.DoesNotContain(view.Canvas.LastHighlightDestinations, entry => entry.Highlight.Kind == HighlightKind.Selection);
     }
 
     [AvaloniaFact]
@@ -292,6 +291,14 @@ public sealed class TextSelectionTests : IDisposable
 
         // It goes by itself.
         await WaitUntilAsync(window, () => !hint.IsVisible);
+
+        // Shown again, its text is set anew, so screen readers announce it again.
+        var changes = 0;
+        line.PropertyChanged += (_, e) => changes += e.Property == TextBlock.TextProperty ? 1 : 0;
+        Click(window, ScreenPoint(view, window, 0, new Point(150, 150)));
+        Assert.True(hint.IsVisible);
+        Assert.True(changes > 0);
+        Assert.Equal(Strings.NoTextOnPage, line.Text);
     }
 
     [AvaloniaFact]
@@ -387,14 +394,15 @@ public sealed class TextSelectionTests : IDisposable
         var tab = await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
 
         // Far away, where no text is loaded yet, and pressed at once: the press waits for the text of its page.
-        view.ScrollViewer.Offset = new Vector(0, view.Layout!.GetPageRect(700).Y);
-        Dispatcher.UIThread.RunJobs();
-        var point = view.Canvas.TranslatePoint(new Point(view.Canvas.Bounds.Width / 2, 200), window)!.Value;
+        var gate = ScrollToPageHoldingTheText(view, 700);
+        var point = ScreenPoint(view, window, 700, new Point(5, 50));
         window.MouseDown(point, MouseButton.Left);
+        Assert.True(view.IsPressWaitingForText);
         window.MouseMove(point + new Point(30, 5), RawInputModifiers.LeftMouseButton);
         viewModel.CloseTabCommand.Execute(tab);
 
         // The loads end after the session is gone; nothing may throw on the UI thread.
+        gate.SetResult();
         for (var i = 0; i < 30; i++)
         {
             Settle(window);
@@ -404,6 +412,152 @@ public sealed class TextSelectionTests : IDisposable
         window.MouseUp(point, MouseButton.Left);
         Settle(window);
         Assert.Null(viewModel.ActiveTab);
+    }
+
+    [AvaloniaFact]
+    public async Task APressOnAPageWithoutReadTextSelectsOnceItArrives()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
+        const int page = 700;
+
+        // Far away and pressed at once: the text of that page is not read yet, the press waits for it.
+        var gate = ScrollToPageHoldingTheText(view, page);
+        var start = new Point(5, 50);
+        var end = new Point(195, 50);
+        window.MouseDown(ScreenPoint(view, window, page, start), MouseButton.Left);
+        Assert.True(view.IsPressWaitingForText);
+        window.MouseMove(ScreenPoint(view, window, page, end), RawInputModifiers.LeftMouseButton);
+
+        // Once it is there the selection begins at the press and ends at the latest pointer position.
+        Assert.Null(tab.TextSelection);
+        gate.SetResult();
+        var text = await TextAsync(window, tab, page);
+        await WaitUntilAsync(window, () => tab.TextSelection is not null);
+        var selection = tab.TextSelection!.Value;
+        Assert.Equal(new TextPosition(page, text.CaretAt(start.X, start.Y)), selection.Anchor);
+        Assert.Equal(new TextPosition(page, text.CaretAt(end.X, end.Y)), selection.Focus);
+        Assert.Equal("Page 701", text.GetText(selection.Start.Caret, selection.End.Caret));
+        window.MouseUp(ScreenPoint(view, window, page, end), MouseButton.Left);
+        Settle(window);
+        Assert.Equal(selection, tab.TextSelection);
+    }
+
+    [AvaloniaFact]
+    public async Task AClickOnAPageWithoutReadTextSelectsNothing()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
+        const int page = 700;
+
+        var gate = ScrollToPageHoldingTheText(view, page);
+        var point = ScreenPoint(view, window, page, new Point(5, 50));
+        window.MouseDown(point, MouseButton.Left);
+        Assert.True(view.IsPressWaitingForText);
+        window.MouseUp(point, MouseButton.Left);
+
+        // The text arrives after the release: the click stays a click, nothing is selected.
+        gate.SetResult();
+        await TextAsync(window, tab, page);
+        await WaitUntilAsync(window, () => view.PendingTextRequests == 0);
+        Assert.Null(tab.TextSelection);
+        Assert.False(view.IsPressWaitingForText);
+    }
+
+    [AvaloniaFact]
+    public async Task AWaitingPressDoesNotBeginAfterATabSwitch()
+    {
+        var (window, viewModel, view) = Show();
+        var other = await OpenAsync(window, viewModel, view, "text-basic.pdf");
+        var tab = await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
+        await TextAsync(window, tab, 0);
+        var selection = await SelectAsync(window, view, 0, 0, 4);
+        Assert.NotNull(selection);
+
+        // Pressed where the text is not read yet; the tab goes and comes back (with the same text source) before the
+        // text arrives.
+        const int page = 700;
+        var gate = ScrollToPageHoldingTheText(view, page);
+        var point = ScreenPoint(view, window, page, new Point(5, 50));
+        window.MouseDown(point, MouseButton.Left);
+        Assert.True(view.IsPressWaitingForText);
+        viewModel.ActivateTabCommand.Execute(other);
+        viewModel.ActivateTabCommand.Execute(tab);
+        Assert.False(view.IsPressWaitingForText);
+
+        // The press that went with the switch never begins: the selection of the tab stays as it was.
+        gate.SetResult();
+        await TextAsync(window, tab, page);
+        await WaitUntilAsync(window, () => view.PendingTextRequests == 0);
+        window.MouseMove(point + new Point(40, 0), RawInputModifiers.LeftMouseButton);
+        window.MouseUp(point + new Point(40, 0), MouseButton.Left);
+        Settle(window);
+        Assert.Equal(selection, tab.TextSelection);
+    }
+
+    [AvaloniaFact]
+    public async Task APageWhoseTextCannotBeReadIsNotReadOnEveryScroll()
+    {
+        var (window, viewModel, view) = Show();
+        await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
+
+        // Every page far away is damaged.
+        var reads = 0;
+        view.ReadText = (_, _, _) =>
+        {
+            reads++;
+            return Task.FromException<PageText>(new InvalidDataException("damaged"));
+        };
+        view.ScrollViewer.Offset = new Vector(0, view.Layout!.GetPageRect(500).Y);
+        await WaitUntilAsync(window, () => view.PendingTextRequests == 0);
+        var first = reads;
+        Assert.True(first > 0);
+
+        // Scrolling over the same pages does not try them again.
+        for (var step = 1; step <= 5; step++)
+        {
+            view.ScrollViewer.Offset = new Vector(0, view.Layout.GetPageRect(500).Y + step);
+            Settle(window);
+        }
+
+        await WaitUntilAsync(window, () => view.PendingTextRequests == 0);
+        Assert.Equal(first, reads);
+    }
+
+    [AvaloniaFact]
+    public async Task ASelectionOverMorePagesThanTheTextCacheDoesNotReadThemAgainAndAgain()
+    {
+        var (window, viewModel, view) = Show(height: 1000);
+        var tab = await OpenAsync(window, viewModel, view, "thousand-pages.pdf");
+
+        // Far zoomed out in two columns: more pages visible than the text source keeps.
+        tab.SetLayoutModeCommand.Execute(PageLayoutMode.TwoPages);
+        tab.Zoom = ZoomSteps.Min;
+        Settle(window);
+        var layout = view.Layout!;
+        var offset = view.ScrollViewer.Offset.Y;
+        var (first, last) = layout.GetVisiblePages(offset, offset + view.ScrollViewer.Viewport.Height);
+        Assert.True(last - first + 1 > PageTextSource.MaxCachedPages, $"only pages {first} to {last} are visible");
+
+        var source = tab.Session.EnsurePageTexts()!;
+        var loads = 0;
+        source.Loaded += _ => Interlocked.Increment(ref loads);
+        await WaitUntilAsync(window, () => view.PendingTextRequests == 0);
+
+        // Selected from the first to the last page: the view reads the text of a bounded number of pages and then stops.
+        tab.TextSelection = new TextSelection(new TextPosition(0, 0), new TextPosition(layout.PageCount - 1, 0));
+        await WaitUntilAsync(window, () => view.PendingTextRequests == 0);
+        var settled = Volatile.Read(ref loads);
+        Assert.True(settled <= DocumentView.MaxTextPages, $"{settled} pages were read");
+        for (var i = 0; i < 30; i++)
+        {
+            Settle(window);
+            await Task.Delay(10);
+        }
+
+        Assert.Equal(settled, Volatile.Read(ref loads));
+        Assert.Equal(0, view.PendingTextRequests);
+        Assert.Contains(view.Canvas.LastHighlightDestinations, entry => entry.Highlight.Kind == HighlightKind.Selection);
     }
 
     /// <summary>Selects characters through the view as Task 15's copy tests do; waits until the selection is drawn.</summary>
@@ -422,6 +576,22 @@ public sealed class TextSelectionTests : IDisposable
         var task = source.GetAsync(page);
         await WaitUntilAsync(window, () => task.IsCompleted);
         return await task;
+    }
+
+    /// <summary>
+    /// Holds back every text read of the view until the returned gate is opened, then scrolls so that a page is at the top
+    /// of the viewport: its text is certainly not read when the test presses on it.
+    /// </summary>
+    private static TaskCompletionSource ScrollToPageHoldingTheText(DocumentView view, int page)
+    {
+        var gate = new TaskCompletionSource();
+        view.ReadText = async (texts, index, priority) =>
+        {
+            await gate.Task;
+            return await texts.GetAsync(index, priority);
+        };
+        view.ScrollViewer.Offset = new Vector(0, view.Layout!.GetPageRect(page).Y - DocumentLayout.Margin);
+        return gate;
     }
 
     private static Point LeftHalf(PageRect box) => new(box.Left + (box.Width / 4), (box.Top + box.Bottom) / 2);
@@ -485,12 +655,12 @@ public sealed class TextSelectionTests : IDisposable
         Settle(window);
     }
 
-    private (Window Window, MainViewModel ViewModel, DocumentView View) Show()
+    private (Window Window, MainViewModel ViewModel, DocumentView View) Show(double height = 720)
     {
         // Forced, so the layout is the same on Windows and Linux runners.
         var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker()) { IsWindowsTitleBar = true };
         _cleanup.Add(viewModel);
-        var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720, RequestedThemeVariant = ThemeVariant.Light };
+        var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = height, RequestedThemeVariant = ThemeVariant.Light };
         _cleanup.Add(new Closer(window));
         window.Show();
         Settle(window);

@@ -33,8 +33,17 @@ public sealed partial class DocumentView
     // The text of the pages of the shown document, from the tab once it has shown a sharp page; dropped with the document.
     private PageTextSource? _texts;
 
+    /// <summary>
+    /// The most pages whose text the view reads ahead and draws the selection on at a time: clearly fewer than the
+    /// source keeps, so pages the view uses never push each other out of its cache (which would read them again and again).
+    /// </summary>
+    internal const int MaxTextPages = PageTextSource.MaxCachedPages - 8;
+
     // Pages of _texts this view asked for that have not arrived yet: asked for once.
     private readonly HashSet<int> _textRequests = [];
+
+    // Pages of _texts whose text could not be read (damaged): the view does not ask for them again.
+    private readonly HashSet<int> _failedTextPages = [];
 
     // The press of the left button that is going on (until it is released), or null.
     private TextPress? _press;
@@ -89,6 +98,19 @@ public sealed partial class DocumentView
 
     /// <summary>Gets or sets how long the hint on a page without text stays (3 s; shorter in tests).</summary>
     internal TimeSpan NoTextHintDuration { get; set; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Gets or sets how the view reads the text of a page it asks for (read-ahead, selection, a press):
+    /// <see cref="PageTextSource.GetAsync"/>. Tests hold the read back to act while a page is certainly not read yet.
+    /// </summary>
+    internal Func<PageTextSource, int, PdfPriority, Task<PageText>> ReadText { get; set; } =
+        static (texts, page, priority) => texts.GetAsync(page, priority);
+
+    /// <summary>Gets the number of pages whose text the view asked for and that have not arrived yet (for tests).</summary>
+    internal int PendingTextRequests => _textRequests.Count;
+
+    /// <summary>Gets whether the current press waits for the text of its page (for tests).</summary>
+    internal bool IsPressWaitingForText => _press is { Kind: PressKind.Waiting };
 
     /// <summary>Gets the link the last press of the left button went down on, or <see langword="null"/>.</summary>
     internal PageLink? PressedLink => _pressedLink;
@@ -164,6 +186,14 @@ public sealed partial class DocumentView
     {
         _texts = null;
         _textRequests.Clear();
+        _failedTextPages.Clear();
+
+        // A press that waits for its text must not begin later: after a tab switch the same source may come back.
+        if (_press is { } press)
+        {
+            press.Released = true;
+        }
+
         _press = null;
         _pressedLink = null;
         _checkedLink = null;
@@ -187,6 +217,7 @@ public sealed partial class DocumentView
             {
                 _texts = null;
                 _textRequests.Clear();
+                _failedTextPages.Clear();
             }
 
             text = null;
@@ -194,10 +225,14 @@ public sealed partial class DocumentView
         }
     }
 
-    /// <summary>Asks for the text of a page once; <see cref="OnTextArrived"/> follows when it is there.</summary>
+    /// <summary>
+    /// Asks for the text of a page once; <see cref="OnTextArrived"/> follows when it is there. A page whose text could
+    /// not be read is not asked for again by the view (a press on it still tries, see <see cref="BeginWhenReadAsync"/>).
+    /// </summary>
     private void RequestText(PageTextSource texts, int page, PdfPriority priority)
     {
-        if (_layout is not { } layout || page < 0 || page >= layout.PageCount || !_textRequests.Add(page))
+        if (_layout is not { } layout || page < 0 || page >= layout.PageCount || _failedTextPages.Contains(page)
+            || !_textRequests.Add(page))
         {
             return;
         }
@@ -207,16 +242,19 @@ public sealed partial class DocumentView
 
     private async Task LoadTextAsync(PageTextSource texts, int page, PdfPriority priority)
     {
-        var loaded = false;
+        var failed = false;
         try
         {
-            await texts.GetAsync(page, priority);
-            loaded = true;
+            await ReadText(texts, page, priority);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Disposed with its document: the check below drops the result.
         }
         catch (Exception)
         {
-            // Disposed with its document, or a damaged page: there is no text to show. A damaged page is asked for
-            // again on the next request (it is not cached).
+            // A damaged page: there is no text to show, and reading it on every scroll would only repeat the failure.
+            failed = true;
         }
 
         // Back on the UI thread (the continuation of an await there). The document may have gone meanwhile.
@@ -226,7 +264,11 @@ public sealed partial class DocumentView
         }
 
         _textRequests.Remove(page);
-        if (loaded)
+        if (failed)
+        {
+            _failedTextPages.Add(page);
+        }
+        else
         {
             OnTextArrived(page);
         }
@@ -271,7 +313,10 @@ public sealed partial class DocumentView
         }
     }
 
-    /// <summary>The visible pages and one page either side, or <c>(0, -1)</c>.</summary>
+    /// <summary>
+    /// The visible pages and one page either side, at most <see cref="MaxTextPages"/> around the middle of them, or
+    /// <c>(0, -1)</c>. Only these pages are read ahead and carry the drawn selection.
+    /// </summary>
     private (int First, int Last) VisibleTextPages(Core.Viewing.DocumentLayout layout)
     {
         var size = Scroller.Viewport;
@@ -282,7 +327,21 @@ public sealed partial class DocumentView
         }
 
         var (first, last) = layout.GetVisiblePages(top, top + size.Height);
-        return first > last ? (0, -1) : (Math.Max(0, first - 1), Math.Min(layout.PageCount - 1, last + 1));
+        if (first > last)
+        {
+            return (0, -1);
+        }
+
+        first = Math.Max(0, first - 1);
+        last = Math.Min(layout.PageCount - 1, last + 1);
+        if (last - first + 1 > MaxTextPages)
+        {
+            // Far zoomed out: more pages than the source keeps. The middle ones; the rest is too small to read anyway.
+            first = Math.Max(first, ((first + last) / 2) - (MaxTextPages / 2));
+            last = first + MaxTextPages - 1;
+        }
+
+        return (first, last);
     }
 
     /// <summary>The pages of the selection that are drawn now: its visible part, or <c>(0, -1)</c>.</summary>
@@ -397,7 +456,7 @@ public sealed partial class DocumentView
         PageText text;
         try
         {
-            text = await texts.GetAsync(press.Page, PdfPriority.Interactive);
+            text = await ReadText(texts, press.Page, PdfPriority.Interactive);
         }
         catch (Exception)
         {
@@ -664,6 +723,11 @@ public sealed partial class DocumentView
         }
 
         var hint = _noTextHint ??= CreateNoTextHint();
+
+        // The text is set anew each time, so the live region announces it each time (the same value would not change).
+        var line = (TextBlock)hint.Child!;
+        line.Text = string.Empty;
+        line.Text = Strings.NoTextOnPage;
         hint.IsVisible = true;
         if (_noTextHintTimer is null)
         {
@@ -691,11 +755,8 @@ public sealed partial class DocumentView
     /// </summary>
     private Border CreateNoTextHint()
     {
-        var line = new TextBlock
-        {
-            Text = Strings.NoTextOnPage,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
+        // The text is set when the hint is shown (ShowNoTextHint).
+        var line = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
         line.Classes.Add("body");
         AutomationProperties.SetLiveSetting(line, AutomationLiveSetting.Polite);
 
