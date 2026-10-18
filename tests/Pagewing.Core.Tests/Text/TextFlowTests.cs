@@ -196,6 +196,16 @@ public sealed class TextFlowTests
     }
 
     [Fact]
+    public void SlicesOfRejectsAPageThatIsNotLoaded()
+    {
+        var page = Page(0, (20, 10, "abc"));
+
+        var error = Assert.Throws<InvalidOperationException>(
+            () => TextFlow.SlicesOf(new TextSelection(new TextPosition(0, 0), new TextPosition(1, 1)), p => p == 0 ? page : null!));
+        Assert.Contains("page 1", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EmptyAndInvisibleSelectionsGiveEmptyText()
     {
         var page = Page(0, (20, 10, "Hello"), (34, 10, "world"));

@@ -148,7 +148,7 @@ internal static unsafe class PdfiumPageText
             bool bold = false, italic = false;
             if (style)
             {
-                fontSize = (float)Fpdf.FPDFText_GetFontSize(textPage, index);
+                fontSize = EffectiveFontSize(textPage, index);
                 (bold, italic) = ReadFontStyle(textPage, index, nameBuffer);
             }
 
@@ -156,6 +156,25 @@ internal static unsafe class PdfiumPageText
         }
 
         return chars;
+    }
+
+    /// <summary>
+    /// The font size on the page in points. <c>FPDFText_GetFontSize</c> reports the size of the <c>Tf</c> operator only
+    /// (1 for "1 Tf" scaled to 12 pt by <c>Tm</c> or <c>cm</c>, as Cairo writes it), so it is scaled by the length of
+    /// the y axis of the character's effective matrix (<c>FPDFText_GetMatrix</c>: text matrix and CTM), which keeps the
+    /// size under rotation. If the matrix is not available or degenerate, the reported size is kept.
+    /// </summary>
+    private static float EffectiveFontSize(nint textPage, int index)
+    {
+        var size = Fpdf.FPDFText_GetFontSize(textPage, index);
+        FsMatrix matrix;
+        if (Fpdf.FPDFText_GetMatrix(textPage, index, &matrix) == 0)
+        {
+            return (float)size;
+        }
+
+        var scale = Math.Sqrt((matrix.C * (double)matrix.C) + (matrix.D * (double)matrix.D));
+        return double.IsFinite(scale) && scale > 0 ? (float)(size * scale) : (float)size;
     }
 
     private static int ToCodePoint(uint value, bool hyphen)

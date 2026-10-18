@@ -22,7 +22,10 @@ namespace Pagewing.Pdfium;
 /// PDFium recognized the character as a hyphen at the end of a line. The next character is the first one of the
 /// next line; no generated line break lies between them.
 /// </param>
-/// <param name="FontSize">The font size in points (PDFium reports 1 for generated characters); 0 when style was not read.</param>
+/// <param name="FontSize">
+/// The effective font size on the page in points: the <c>Tf</c> size scaled by the text matrix and CTM (PDFium reports 1
+/// as the <c>Tf</c> size of generated characters); 0 when style was not read.
+/// </param>
 /// <param name="Bold">The font is bold (weight, ForceBold flag or font name); false when style was not read.</param>
 /// <param name="Italic">The font is italic (Italic flag or font name); false when style was not read.</param>
 internal readonly record struct PdfiumChar(

@@ -29,4 +29,19 @@ public sealed class TextFlowDocumentTests
         Assert.Contains("<i>kursiv</i>", html, StringComparison.Ordinal);
         Assert.StartsWith("Pagewing Handbuch\nPagewing ist ein schneller PDF-Viewer für Win-\ndows und Linux.", raw, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task OnlyTheHeadingSelectedIsStillAHeading()
+    {
+        // The selection holds only 24 pt chars; the body size comes from the page (12 pt), not from the selection.
+        var ct = TestContext.Current.CancellationToken;
+        await using var document = await engine.OpenAsync(TestData.Pdf("text-rich.pdf"), cancellationToken: ct);
+        var text = await document.GetPageTextAsync(0, ct);
+        Assert.Equal("Pagewing Handbuch", text.GetText(0, 17));
+
+        var slices = TextFlow.SlicesOf(new TextSelection(new TextPosition(0, 0), new TextPosition(0, 17)), _ => text);
+
+        Assert.Equal("<h1>Pagewing Handbuch</h1>\n", TextFlow.Html(slices));
+        Assert.Equal("Pagewing Handbuch", TextFlow.Plain(slices));
+    }
 }

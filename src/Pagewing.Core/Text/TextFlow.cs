@@ -125,6 +125,7 @@ public static class TextFlow
     /// <param name="selection">The selection.</param>
     /// <param name="pageOf">Gets the loaded text of a page by its index, for every page the selection covers.</param>
     /// <returns>The slices in page order; carets beyond the characters of a page are clamped to it.</returns>
+    /// <exception cref="InvalidOperationException"><paramref name="pageOf"/> returns <see langword="null"/> for a covered page.</exception>
     public static IReadOnlyList<TextSlice> SlicesOf(TextSelection selection, Func<int, PageText> pageOf)
     {
         ArgumentNullException.ThrowIfNull(pageOf);
@@ -133,7 +134,8 @@ public static class TextFlow
         var slices = new List<TextSlice>();
         for (var index = start.Page; index <= end.Page; index++)
         {
-            var page = pageOf(index);
+            var page = pageOf(index)
+                ?? throw new InvalidOperationException($"The text of page {index} is not loaded; the selection covers it.");
             var count = page.Chars.Count;
             var from = Math.Clamp(index == start.Page ? start.Caret : 0, 0, count);
             var to = Math.Clamp(index == end.Page ? end.Caret : count, 0, count);

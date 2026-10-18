@@ -225,6 +225,33 @@ public sealed class PdfiumPageTextTests
         }
     }
 
+    [Theory]
+    [InlineData("BT /F1 1 Tf 12 0 0 12 40 300 Tm (Hello world) Tj ET")] // size 1, scaled by the text matrix
+    [InlineData("q 12 0 0 12 0 0 cm BT /F1 1 Tf 3 25 Td (Hello) Tj ET Q")] // size 1, scaled by the CTM
+    [InlineData("q 2 0 0 2 0 0 cm BT /F1 3 Tf 2 0 0 2 20 150 Tm (Hello) Tj ET Q")] // 3 x 2 x 2
+    [InlineData("BT /F1 12 Tf 40 300 Td (Hello world) Tj ET")] // plain 12 pt
+    public async Task FontSizeIsTheEffectiveSizeOnThePage(string content)
+    {
+        // Generators such as Cairo write "1 Tf" and scale the text with Tm or cm; the size must be the one on the page.
+        var path = Path.Combine(Path.GetTempPath(), $"pagewing-scaled-text-{Guid.NewGuid():N}.pdf");
+        await File.WriteAllBytesAsync(path, TextPdf(content), TestContext.Current.CancellationToken);
+        try
+        {
+            var chars = await ReadPageAt(path, 0, geometry: true, style: true);
+
+            var drawn = chars.Where(c => !c.Generated && c.CodePoint != ' ').ToArray();
+            Assert.NotEmpty(drawn);
+            Assert.All(drawn, c => Assert.InRange(c.FontSize, 11.5f, 12.5f));
+            var h = drawn[0];
+            Assert.Equal('H', h.CodePoint);
+            Assert.InRange(h.Bottom - h.Top, 8, 9.5); // cap height of Helvetica: 0.718 x 12 = 8.6
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void WebAddressAreasUnderALinkAnnotationAreDropped()
     {
@@ -271,13 +298,16 @@ public sealed class PdfiumPageTextTests
         }
     }
 
-    private static Task<PdfiumChar[]> ReadPage(string file, int pageIndex, bool geometry, bool style)
+    private static Task<PdfiumChar[]> ReadPage(string file, int pageIndex, bool geometry, bool style) =>
+        ReadPageAt(TestData.Pdf(file), pageIndex, geometry, style);
+
+    private static Task<PdfiumChar[]> ReadPageAt(string path, int pageIndex, bool geometry, bool style)
     {
         var thread = PdfiumThread.Shared;
         return thread.InvokeAsync(
             () =>
             {
-                using var document = PdfiumDocument.Open(thread, TestData.Pdf(file), null);
+                using var document = PdfiumDocument.Open(thread, path, null);
                 using var page = document.LoadPage(pageIndex);
                 using var text = page.LoadTextPage();
                 return PdfiumPageText.ReadChars(page, text, geometry, style);
@@ -319,6 +349,22 @@ public sealed class PdfiumPageTextTests
             "<< /Type /Annot /Subtype /Link /Rect [40 220 140 240] /Dest [4 0 R /XYZ 0 100 null] >>",
         ];
 
+        return Build(objects);
+    }
+
+    /// <summary>One page of 400 x 400 with Helvetica as /F1 and the given content stream.</summary>
+    private static byte[] TextPdf(string content) => Build(
+    [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        string.Create(CultureInfo.InvariantCulture, $"<< /Length {content.Length} >>\nstream\n{content}\nendstream"),
+    ]);
+
+    /// <summary>Builds an uncompressed PDF of ASCII objects numbered from 1, the first being the catalog.</summary>
+    private static byte[] Build(string[] objects)
+    {
         var pdf = new StringBuilder("%PDF-1.7\n");
         var offsets = new List<int>();
         for (var i = 0; i < objects.Length; i++)

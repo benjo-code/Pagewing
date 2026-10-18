@@ -29,7 +29,7 @@ public enum TextCharTraits
 /// <param name="CodePoint">The Unicode scalar value; U+FFFD if the engine has none.</param>
 /// <param name="Box">The glyph box in page points.</param>
 /// <param name="Flags">Generated, hyphen, bold, italic.</param>
-/// <param name="FontSize">The font size in points (the engine reports 1 for generated characters).</param>
+/// <param name="FontSize">The effective font size on the page in points, scaled by the text matrix and CTM; meaningless for generated characters.</param>
 public readonly record struct TextChar(int CodePoint, PageRect Box, TextCharTraits Flags, float FontSize)
 {
     /// <summary>Gets whether the engine inserted the character (a space or a line break).</summary>

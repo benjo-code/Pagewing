@@ -189,6 +189,11 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFText_GetCharBox(nint textPage, int index, double* left, double* right, double* bottom, double* top);
 
+    /// <summary>Experimental API: the effective transformation matrix of a character (text matrix and CTM, without the font size).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFText_GetMatrix(nint textPage, int index, FsMatrix* matrix);
+
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint FPDFLink_LoadWebLinks(nint textPage);
@@ -287,6 +292,29 @@ internal struct FsRectF
 
     /// <summary>The y-coordinate of the edge named <c>bottom</c>.</summary>
     public float Bottom;
+}
+
+/// <summary><c>FS_MATRIX</c> from <c>fpdfview.h</c>: the affine matrix [a b c d e f].</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FsMatrix
+{
+    /// <summary>The x scale (<c>a</c>).</summary>
+    public float A;
+
+    /// <summary>The y shear of the x axis (<c>b</c>).</summary>
+    public float B;
+
+    /// <summary>The x shear of the y axis (<c>c</c>).</summary>
+    public float C;
+
+    /// <summary>The y scale (<c>d</c>).</summary>
+    public float D;
+
+    /// <summary>The x translation (<c>e</c>).</summary>
+    public float E;
+
+    /// <summary>The y translation (<c>f</c>).</summary>
+    public float F;
 }
 
 /// <summary><c>IFSDK_PAUSE</c> from <c>fpdf_progressive.h</c>: lets progressive rendering yield.</summary>
