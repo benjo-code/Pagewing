@@ -139,13 +139,18 @@ Die Werte stammen aus dem gewählten Mockup (B, Artifact-Version 4). Token-Namen
 | `color.search.on` | `#16181D` | `#16181D` | Text auf `search.hit` und `search.current` (in der Trefferliste); nie `text.primary`, das im dunklen Theme auf Gelb nur 1,04:1 erreicht | – |
 | `color.selection.page` | `#3B48C44D` | `#3B48C44D` | Ausgewählter Text auf der Seite (30 % Indigo über dem Seitenbild, in beiden Themes gleich, weil Seiten weiß bleiben); schwarzer Text darauf 12,8:1 | – |
 | `color.danger.default` | `#B42318` | `#FF8A80` | Fehlertext, Fehlersymbol, Rand eines fehlerhaften Felds | `ErrorText` |
+| `color.page.darkBackground` | `#1E2127` | `#1E2127` | Grund einer dunklen Seite (M6) und ihres Platzhalters, auch des leeren Vorschaurahmens; so malt PDFium die dunkle Seite | – |
+| `color.page.darkForeground` | `#E3E5E8` | `#E3E5E8` | Text und Linien einer dunklen Seite (PDFium), Seitennummer auf ihrem Platzhalter, 1,5 px Rahmen des aktuellen Treffers auf ihr; 12,8:1 auf `page.darkBackground` | – |
+| `color.search.hitOnDark` | `#FBE38A4D` | `#FBE38A4D` | Suchtreffer auf einer dunklen Seite: über die Seite gelegt (30 %), nicht multipliziert; Seitentext darauf 5,3:1 | – |
+| `color.search.currentOnDark` | `#F5A52473` | `#F5A52473` | Aktueller Suchtreffer auf einer dunklen Seite (45 %), immer mit Rahmen in `page.darkForeground`; Seitentext darauf 4,8:1 | – |
+| `color.selection.pageOnDark` | `#9DA7FF59` | `#9DA7FF59` | Ausgewählter Text auf einer dunklen Seite (35 % Indigo); Seitentext darauf 6,2:1 | – |
 
 Regeln:
 
 - Der Akzent ist nie Gelb. Gelb (`search.*`) gehört nur Suchtreffern; Farben von Markierungen sind Inhalt des PDFs und keine Tokens.
 - Pagewing nutzt seine eigene Akzentfarbe, nicht die des Systems (Wiedererkennung, geprüfter Kontrast). Deshalb wird `Accent` in der Fluent-Palette immer gesetzt.
 - Die Spalte „Fluent-Rolle“ ist ein Vorschlag. Die übrigen Fluent-Farben (`Chrome*`, `Alt*`, `List*`) werden in M3 so gesetzt, dass Fluent-Controls (Textfeld, Knopf, Liste, Kontrollkästchen) zu den Tokens passen (Abschnitt 9).
-- Kontrast nach WCAG 2.2 AA, geprüft am 2026-10-17 in beiden Themes: `text.primary` auf allen Flächen ≥ 4,5:1, `text.secondary` auf allen Flächen außer `surface.canvas` ≥ 4,5:1, `accent.default` als Text auf `surface.window`, `surface.toolbar`, `surface.sidebar` und `surface.raised` ≥ 4,5:1, `accent.on` auf `accent.default` ≥ 4,5:1, `danger.default` auf `surface.raised` ≥ 4,5:1, `border.strong` auf `surface.window`, `surface.toolbar` und `surface.raised` ≥ 3:1, `focus.ring` auf allen Flächen ≥ 3:1, `accent.default` auf `accent.subtle` ≥ 3:1, `search.on` auf `search.hit` (13,9:1) und `search.current` (8,7:1) ≥ 4,5:1. Knappstes Paar: `border.strong` auf `surface.raised` (dunkel) 3,18:1. Neue Paare, etwa `text.secondary` auf `surface.canvas`, brauchen vorher eine Prüfung.
+- Kontrast nach WCAG 2.2 AA, geprüft am 2026-10-17 in beiden Themes: `text.primary` auf allen Flächen ≥ 4,5:1, `text.secondary` auf allen Flächen außer `surface.canvas` ≥ 4,5:1, `accent.default` als Text auf `surface.window`, `surface.toolbar`, `surface.sidebar` und `surface.raised` ≥ 4,5:1, `accent.on` auf `accent.default` ≥ 4,5:1, `danger.default` auf `surface.raised` ≥ 4,5:1, `border.strong` auf `surface.window`, `surface.toolbar` und `surface.raised` ≥ 3:1, `focus.ring` auf allen Flächen ≥ 3:1, `accent.default` auf `accent.subtle` ≥ 3:1, `search.on` auf `search.hit` (13,9:1) und `search.current` (8,7:1) ≥ 4,5:1, `page.darkForeground` auf `page.darkBackground` mit darübergelegtem `search.hitOnDark`, `search.currentOnDark` und `selection.pageOnDark` ≥ 4,5:1 (geprüft am 2026-10-18). Knappstes Paar: `border.strong` auf `surface.raised` (dunkel) 3,18:1. Neue Paare, etwa `text.secondary` auf `surface.canvas`, brauchen vorher eine Prüfung.
 
 ### 5.2 Typografie
 
@@ -196,7 +201,7 @@ Regeln:
 
 ### 5.6 Bewegung
 
-- Hover- und Druckfarben wechseln ohne Animation. Panel und Popups öffnen mit 150 ms (ease-out), schließen mit 100 ms.
+- Hover- und Druckfarben wechseln ohne Animation. Panel und Popups öffnen mit 150 ms (ease-out), schließen mit 100 ms. Ressourcen: `Pw.Duration.Open` (150 ms) und `Pw.Duration.Close` (100 ms) in `Styles/Metrics.axaml`; jede Animation liest sie beim Start.
 - Grobe Vorschau und scharfes Seitenbild werden ohne Überblenden getauscht; Geschwindigkeit geht vor Effekt.
 - Bis zum ersten Frame läuft keine Animation.
 - Avalonia 12.1 kennt keine Systemeinstellung „Animationen reduzieren“ (Abschnitt 2.7). Pagewing bekommt dafür eine eigene Einstellung (M6), die alle Dauern auf 0 setzt.

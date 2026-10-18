@@ -291,6 +291,11 @@ public sealed partial class DocumentView : UserControl
         _document = document;
         _layout = layout;
         _loadedSizes = known;
+
+        // The session of the tab renders in the tab's page theme already (TabViewModel.EffectivePageTheme). Set between
+        // Detach and Attach, so that a change plans neither the document that went nor the new one before it is laid out.
+        PageCanvas.Detach();
+        PageCanvas.PageTheme = tab?.EffectivePageTheme ?? PageTheme.Light;
         PageCanvas.Attach(layout, scheduler, cache);
         RefreshHighlights();
 
@@ -680,6 +685,12 @@ public sealed partial class DocumentView : UserControl
         {
             // The text may be read now: first that of the visible pages.
             PreloadText();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.EffectivePageTheme) && _viewModel is { } tab && _layout is not null)
+        {
+            // The session renders in the new theme already: the canvas drops the tiles of the old one and plans again.
+            // Page, zoom, scroll position and selection stay.
+            PageCanvas.PageTheme = tab.EffectivePageTheme;
         }
     }
 

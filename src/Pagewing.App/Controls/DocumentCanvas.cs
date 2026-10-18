@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Media.Immutable;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Pagewing.App.Measurement;
@@ -16,8 +17,9 @@ namespace Pagewing.App.Controls;
 
 /// <summary>
 /// Draws the visible pages of a document and keeps the render scheduler fed with what the viewport shows: per page
-/// a placeholder until an image exists (design system 7.5), then the white page with its edge and shadow (5.3), the
-/// coarse preview stretched over it and the sharp tiles on top, swapped without cross-fade (5.6).
+/// a placeholder until an image exists (design system 7.5), then the page ground (white, or the ground of a dark page,
+/// see <see cref="PageTheme"/>) with its edge and shadow (5.3), the coarse preview stretched over it and the sharp tiles
+/// on top, swapped without cross-fade (5.6).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -66,6 +68,24 @@ internal sealed class DocumentCanvas : Control
     public static readonly StyledProperty<IBrush?> SelectionBrushProperty =
         AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(SelectionBrush));
 
+    public static readonly StyledProperty<PageTheme> PageThemeProperty =
+        AvaloniaProperty.Register<DocumentCanvas, PageTheme>(nameof(PageTheme));
+
+    public static readonly StyledProperty<IBrush?> DarkPageBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(DarkPageBrush));
+
+    public static readonly StyledProperty<IBrush?> DarkPageForegroundBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(DarkPageForegroundBrush));
+
+    public static readonly StyledProperty<IBrush?> SearchHitOnDarkBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(SearchHitOnDarkBrush));
+
+    public static readonly StyledProperty<IBrush?> SearchCurrentOnDarkBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(SearchCurrentOnDarkBrush));
+
+    public static readonly StyledProperty<IBrush?> SelectionOnDarkBrushProperty =
+        AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(SelectionOnDarkBrush));
+
     /// <summary>Width of the frame around the current search match (design system 7.4).</summary>
     private const double CurrentFrameThickness = 1.5;
 
@@ -80,6 +100,10 @@ internal sealed class DocumentCanvas : Control
         BitmapBlendingMode = BitmapBlendingMode.Multiply,
         BitmapInterpolationMode = BitmapInterpolationMode.None,
     };
+
+    // Where the resources are missing (a canvas outside the app): the colours PDFium paints a dark page with.
+    private static readonly IBrush FallbackDarkPage = new ImmutableSolidColorBrush(PageThemeColors.DarkBackground);
+    private static readonly IBrush FallbackDarkForeground = new ImmutableSolidColorBrush(PageThemeColors.DarkForeground);
 
     private static readonly HighlightKind[] DrawingOrder = [HighlightKind.Selection, HighlightKind.SearchHit, HighlightKind.SearchCurrent];
 
@@ -101,12 +125,19 @@ internal sealed class DocumentCanvas : Control
     private Pen? _currentFrame;
     private WriteableBitmap? _hitFill;
     private WriteableBitmap? _currentFill;
+    private Pen? _currentFrameOnDark;
+
+    // Counts the changes of PageTheme. Read on the pool threads of the scheduler events, so that a result posted for one
+    // theme is dropped when it arrives after a switch to another (see OnPageThemeChanged).
+    private long _themeEpoch;
 
     static DocumentCanvas()
     {
         AffectsRender<DocumentCanvas>(
             PlaceholderBrushProperty, PlaceholderBorderBrushProperty, PlaceholderTextBrushProperty, PageShadowProperty, CornerRadiusProperty,
-            SearchHitBrushProperty, SearchCurrentBrushProperty, SearchOnBrushProperty, SelectionBrushProperty);
+            SearchHitBrushProperty, SearchCurrentBrushProperty, SearchOnBrushProperty, SelectionBrushProperty,
+            DarkPageBrushProperty, DarkPageForegroundBrushProperty, SearchHitOnDarkBrushProperty, SearchCurrentOnDarkBrushProperty,
+            SelectionOnDarkBrushProperty);
         IsHitTestVisibleProperty.OverrideDefaultValue<DocumentCanvas>(false);
     }
 
@@ -187,6 +218,59 @@ internal sealed class DocumentCanvas : Control
         get => GetValue(SelectionBrushProperty);
         set => SetValue(SelectionBrushProperty, value);
     }
+
+    /// <summary>
+    /// Gets or sets the theme the pages are rendered in: the ground of a page and of its placeholder, and how the marks
+    /// are drawn on it. Set it after the scheduler renders in the new theme (<see cref="RenderScheduler.SetPageTheme"/>):
+    /// a change drops every bitmap and failure of the old theme, also those still on their way to the UI thread, and
+    /// plans the viewport again. Default: <see cref="PageTheme.Light"/>.
+    /// </summary>
+    public PageTheme PageTheme
+    {
+        get => GetValue(PageThemeProperty);
+        set => SetValue(PageThemeProperty, value);
+    }
+
+    /// <summary>Ground of a dark page and of its placeholder (<c>Pw.Brush.Page.DarkBackground</c>).</summary>
+    public IBrush? DarkPageBrush
+    {
+        get => GetValue(DarkPageBrushProperty);
+        set => SetValue(DarkPageBrushProperty, value);
+    }
+
+    /// <summary>
+    /// Foreground of a dark page (<c>Pw.Brush.Page.DarkForeground</c>): the page number on its placeholder and the frame
+    /// of the current search match, which <c>search.on</c> would not show on the dark ground.
+    /// </summary>
+    public IBrush? DarkPageForegroundBrush
+    {
+        get => GetValue(DarkPageForegroundBrushProperty);
+        set => SetValue(DarkPageForegroundBrushProperty, value);
+    }
+
+    /// <summary>Fill of a search match on a dark page (<c>Pw.Brush.Search.HitOnDark</c>, translucent, drawn over the page).</summary>
+    public IBrush? SearchHitOnDarkBrush
+    {
+        get => GetValue(SearchHitOnDarkBrushProperty);
+        set => SetValue(SearchHitOnDarkBrushProperty, value);
+    }
+
+    /// <summary>Fill of the current search match on a dark page (<c>Pw.Brush.Search.CurrentOnDark</c>, translucent).</summary>
+    public IBrush? SearchCurrentOnDarkBrush
+    {
+        get => GetValue(SearchCurrentOnDarkBrushProperty);
+        set => SetValue(SearchCurrentOnDarkBrushProperty, value);
+    }
+
+    /// <summary>Overlay of selected text on a dark page (<c>Pw.Brush.Selection.PageOnDark</c>, translucent).</summary>
+    public IBrush? SelectionOnDarkBrush
+    {
+        get => GetValue(SelectionOnDarkBrushProperty);
+        set => SetValue(SelectionOnDarkBrushProperty, value);
+    }
+
+    /// <summary>Gets the pages whose rendering failed in the current theme; their placeholder says so (for tests).</summary>
+    internal IReadOnlySet<int> FailedPages => _failedPages;
 
     /// <summary>Gets where the last frame drew the highlights, in canvas coordinates (for tests).</summary>
     internal IReadOnlyList<(PageHighlight Highlight, Rect Destination)> LastHighlightDestinations => _lastHighlightDestinations;
@@ -418,6 +502,7 @@ internal sealed class DocumentCanvas : Control
         var scaleKey = TileKey.ToScaleKey(dipsPerPoint * _renderScaling);
         var drewFirstSharpTile = false;
         var drewSharpTile = false;
+        var dark = PageTheme == PageTheme.Dark;
         _lastSharpDestinations.Clear();
         _lastHighlightDestinations.Clear();
 
@@ -433,12 +518,12 @@ internal sealed class DocumentCanvas : Control
                 var hasSharp = HasSharpTile(page, scaleKey);
                 if (preview is null && !hasSharp)
                 {
-                    DrawPlaceholder(context, pageRect, page);
+                    DrawPlaceholder(context, pageRect, page, dark);
                     continue;
                 }
 
                 _shadows.Draw(context, pageRect, PageShadow, _renderScaling);
-                context.DrawRectangle(Brushes.White, null, pageRect);
+                context.DrawRectangle(dark ? DarkPageBrush ?? FallbackDarkPage : Brushes.White, null, pageRect);
                 using (context.PushClip(pageRect))
                 {
                     if (preview is not null)
@@ -480,7 +565,7 @@ internal sealed class DocumentCanvas : Control
                     // On the page image, so the marks stay glued to the text at every zoom (and on the snapped page rectangle).
                     if (_highlights.Count > 0 && _highlights.TryGetValue(page, out var marks))
                     {
-                        DrawHighlights(context, marks, pageRect, dipsPerPoint);
+                        DrawHighlights(context, marks, pageRect, dipsPerPoint, dark);
                     }
                 }
             }
@@ -535,9 +620,17 @@ internal sealed class DocumentCanvas : Control
             // Another theme variant: the images of the old shadow are not needed any more.
             _shadows.Clear();
         }
+        else if (change.Property == PageThemeProperty)
+        {
+            OnPageThemeChanged();
+        }
         else if (change.Property == SearchOnBrushProperty)
         {
             _currentFrame = null;
+        }
+        else if (change.Property == DarkPageForegroundBrushProperty)
+        {
+            _currentFrameOnDark = null;
         }
         else if (change.Property == SearchHitBrushProperty || change.Property == SearchCurrentBrushProperty)
         {
@@ -548,9 +641,12 @@ internal sealed class DocumentCanvas : Control
 
     /// <summary>
     /// Draws the marks of one page in canvas coordinates: a rectangle in page points becomes DIPs from the (snapped)
-    /// page origin. A search match is multiplied with the page, so its text stays; the selection is translucent.
+    /// page origin. On a light page a search match is multiplied with the page, so its text stays; the selection is
+    /// translucent. On a dark page (<paramref name="dark"/>) multiplying would let the matches vanish on the dark ground:
+    /// every mark is drawn over the page with its translucent brush for dark pages, and the current match is framed in
+    /// the page foreground.
     /// </summary>
-    private void DrawHighlights(DrawingContext context, PageHighlight[] marks, Rect pageRect, double dipsPerPoint)
+    private void DrawHighlights(DrawingContext context, PageHighlight[] marks, Rect pageRect, double dipsPerPoint, bool dark)
     {
         // The blend mode for the search matches is pushed once per page, when the first match comes (the marks are in
         // drawing order: the selection first, then the matches). It applies to images only, so the frame of the current
@@ -573,9 +669,17 @@ internal sealed class DocumentCanvas : Control
 
                 switch (mark.Kind)
                 {
+                    case HighlightKind.SearchHit when dark:
+                        context.DrawRectangle(SearchHitOnDarkBrush, null, destination);
+                        break;
                     case HighlightKind.SearchHit:
                         multiply ??= context.PushRenderOptions(MultiplyOptions);
                         FillMultiplied(context, SearchHitBrush, ref _hitFill, destination);
+                        break;
+                    case HighlightKind.SearchCurrent when dark:
+                        context.DrawRectangle(SearchCurrentOnDarkBrush, null, destination);
+                        context.DrawRectangle(
+                            null, _currentFrameOnDark ??= new Pen(DarkPageForegroundBrush ?? FallbackDarkForeground, CurrentFrameThickness), destination);
                         break;
                     case HighlightKind.SearchCurrent:
                         multiply ??= context.PushRenderOptions(MultiplyOptions);
@@ -587,7 +691,7 @@ internal sealed class DocumentCanvas : Control
 
                         break;
                     default:
-                        context.DrawRectangle(SelectionBrush, null, destination);
+                        context.DrawRectangle(dark ? SelectionOnDarkBrush : SelectionBrush, null, destination);
                         break;
                 }
 
@@ -597,6 +701,27 @@ internal sealed class DocumentCanvas : Control
         finally
         {
             multiply?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// The pages render in another theme: nothing of the old one may be drawn again. The new epoch makes every result of
+    /// the scheduler that was posted before the switch harmless (a late failure would otherwise mark a page failed in the
+    /// new theme); the bitmaps and failures go, and the viewport is planned again, which shows what the cache already
+    /// holds of the new theme (the scheduler emptied it of the old one).
+    /// </summary>
+    private void OnPageThemeChanged()
+    {
+        Interlocked.Increment(ref _themeEpoch);
+        _bitmaps.Clear();
+        _failedPages.Clear();
+        if (_source is not null)
+        {
+            SetViewport(_viewport, _renderScaling);
+        }
+        else
+        {
+            InvalidateVisual();
         }
     }
 
@@ -638,6 +763,9 @@ internal sealed class DocumentCanvas : Control
         _currentFill = null;
     }
 
+    /// <summary>Gets the theme epoch (any thread).</summary>
+    private long CurrentThemeEpoch => Interlocked.Read(ref _themeEpoch);
+
     private double Snap(double value) => Math.Round(value * _renderScaling) / _renderScaling;
 
     private bool HasSharpTile(int page, int scaleKey)
@@ -653,10 +781,15 @@ internal sealed class DocumentCanvas : Control
         return false;
     }
 
-    private void DrawPlaceholder(DrawingContext context, Rect pageRect, int page)
+    /// <summary>
+    /// A page without an image yet: on a light page <c>surface.raised</c> with the page number in <c>text.secondary</c>
+    /// (design system 7.5); on a dark page (<paramref name="dark"/>) the ground of the dark page with the number in its
+    /// foreground, so the page does not flash when its image comes.
+    /// </summary>
+    private void DrawPlaceholder(DrawingContext context, Rect pageRect, int page, bool dark)
     {
         _shadows.Draw(context, pageRect, PageShadow, _renderScaling);
-        context.DrawRectangle(PlaceholderBrush, null, pageRect);
+        context.DrawRectangle(dark ? DarkPageBrush ?? FallbackDarkPage : PlaceholderBrush, null, pageRect);
         if (PlaceholderBorderBrush is { } border)
         {
             context.DrawRectangle(new Pen(border, 1), pageRect.Deflate(0.5));
@@ -677,7 +810,7 @@ internal sealed class DocumentCanvas : Control
             FlowDirection.LeftToRight,
             new Typeface(TextElement.GetFontFamily(this)),
             PlaceholderFontSize,
-            PlaceholderTextBrush ?? Brushes.Gray)
+            dark ? DarkPageForegroundBrush ?? FallbackDarkForeground : PlaceholderTextBrush ?? Brushes.Gray)
         {
             TextAlignment = TextAlignment.Center,
             MaxTextWidth = Math.Max(1, pageRect.Width - 16),
@@ -709,10 +842,13 @@ internal sealed class DocumentCanvas : Control
         }
     }
 
-    /// <summary>A tile is ready in the cache (UI thread, posted by <see cref="Source.OnTileReady"/>).</summary>
-    private void ApplyTile(Source source, TileKey key)
+    /// <summary>
+    /// A tile is ready in the cache (UI thread, posted by <see cref="Source.OnTileReady"/> in the theme epoch
+    /// <paramref name="epoch"/>; a post of an earlier theme is dropped).
+    /// </summary>
+    private void ApplyTile(Source source, TileKey key, long epoch)
     {
-        if (!ReferenceEquals(source, _source))
+        if (!ReferenceEquals(source, _source) || epoch != CurrentThemeEpoch)
         {
             return;
         }
@@ -731,10 +867,13 @@ internal sealed class DocumentCanvas : Control
         TileReceived?.Invoke(key);
     }
 
-    /// <summary>Rendering a key failed (UI thread). The scheduler never tries it again; the page keeps what it has.</summary>
-    private void ApplyFailure(Source source, TileKey key)
+    /// <summary>
+    /// Rendering a key failed (UI thread, posted in the theme epoch <paramref name="epoch"/>). The scheduler does not try
+    /// it again in this theme; the page keeps what it has. A failure of an earlier theme says nothing about the new one.
+    /// </summary>
+    private void ApplyFailure(Source source, TileKey key, long epoch)
     {
-        if (ReferenceEquals(source, _source) && _failedPages.Add(key.Page))
+        if (ReferenceEquals(source, _source) && epoch == CurrentThemeEpoch && _failedPages.Add(key.Page))
         {
             InvalidateVisual();
         }
@@ -753,10 +892,20 @@ internal sealed class DocumentCanvas : Control
 
         public bool FirstSharpPageReported { get; set; }
 
-        // Pool thread: must not block and must never throw (it would end the process).
-        public void OnTileReady(TileKey key) => Post(() => owner.ApplyTile(this, key));
+        // Pool thread: must not block and must never throw (it would end the process). The epoch is read here, when the
+        // scheduler reports: it reports nothing of an old theme after its SetPageTheme returned, and the canvas counts the
+        // switch only after that (PageTheme is set once the scheduler renders in the new theme).
+        public void OnTileReady(TileKey key)
+        {
+            var epoch = owner.CurrentThemeEpoch;
+            Post(() => owner.ApplyTile(this, key, epoch));
+        }
 
-        public void OnTileFailed(TileKey key, Exception error) => Post(() => owner.ApplyFailure(this, key));
+        public void OnTileFailed(TileKey key, Exception error)
+        {
+            var epoch = owner.CurrentThemeEpoch;
+            Post(() => owner.ApplyFailure(this, key, epoch));
+        }
 
         private static void Post(Action action)
         {

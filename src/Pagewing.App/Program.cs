@@ -77,7 +77,7 @@ internal static partial class Program
         }
 
         // While PDFium opens the file on its thread. Without a settings file this reads nothing (and parses no JSON).
-        var settings = UserSettings.Load();
+        var settings = LoadSettings(options, UserSettings.Load);
         if (ChooseUiCulture(options.Language, settings.Current.Language) is { } culture)
         {
             Strings.Culture = culture;
@@ -118,6 +118,18 @@ internal static partial class Program
             LanguageSetting.English => new CultureInfo("en"),
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// The settings of this run: <paramref name="load"/> (<see cref="UserSettings.Load()"/>) for a normal launch; for a
+    /// measurement the defaults in memory (<see cref="UserSettings.Detached"/>), so the settings of the user never change
+    /// what is measured and a measurement never writes them.
+    /// </summary>
+    internal static UserSettings LoadSettings(StartupOptions options, Func<UserSettings> load)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(load);
+        return options.IsMeasurement ? UserSettings.Detached() : load();
     }
 
     public static AppBuilder BuildAvaloniaApp() =>

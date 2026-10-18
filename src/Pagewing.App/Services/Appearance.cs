@@ -11,7 +11,7 @@ namespace Pagewing.App.Services;
 /// setting is <see cref="ThemeSetting.System"/> (Avalonia resolves <see cref="ThemeVariant.Default"/> from the platform)
 /// and announces the theme that is in effect (<see cref="EffectiveThemeChanged"/>). UI thread only.
 /// </summary>
-public sealed class Appearance : IDisposable
+public sealed class Appearance : IDisposable, IEffectiveTheme
 {
     /// <summary>The resource with the duration of opening a panel or popup (design system 5.6), a <see cref="TimeSpan"/>.</summary>
     public const string OpenDurationKey = "Pw.Duration.Open";

@@ -93,7 +93,8 @@ public sealed class App : Application
             desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
 
             // Creates no window yet; every window gets its own file dialog.
-            var workspace = new Workspace(() => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window), Settings);
+            var workspace = new Workspace(
+                () => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window), Settings, Appearance);
 
             // The file of the command line, already opening since Program.Main: the first tab, in the first frame.
             var firstTab = session is not null && session.State != ViewerState.Empty ? new TabViewModel(session) : null;

@@ -8,9 +8,11 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Pagewing.App.Measurement;
 using Pagewing.App.Resources;
+using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
 using Pagewing.TestSupport;
 using Xunit;
@@ -460,6 +462,45 @@ public sealed partial class MeasurementTests : IDisposable
         Assert.Null(instance);
         Assert.False(isSecondary);
         Assert.Equal(Path.GetFullPath("a.pdf"), Path.GetFullPath(options.MeasurementPath!));
+    }
+
+    [Theory]
+    [InlineData("--measure-startup", "a.pdf")]
+    [InlineData("--measure-second", "a.pdf", "b.pdf")]
+    [InlineData("--measure-scroll", "a.pdf")]
+    public void MeasurementModesUseDetachedSettings(params string[] args)
+    {
+        var options = StartupOptions.Parse(args);
+        var loaded = false;
+
+        var settings = Program.LoadSettings(options, () =>
+        {
+            loaded = true;
+            return UserSettings.Detached();
+        });
+
+        // The user's settings (theme, page appearance, panel, language) never change what a measurement measures, and a
+        // measurement never writes them.
+        Assert.False(loaded);
+        Assert.Null(settings.FilePath);
+        Assert.Equal(AppSettings.Default, settings.Current);
+    }
+
+    [Fact]
+    public void NormalLaunchesLoadTheUsersSettings()
+    {
+        var options = StartupOptions.Parse(["a.pdf"]);
+        var loaded = UserSettings.Detached();
+        var calls = 0;
+
+        var settings = Program.LoadSettings(options, () =>
+        {
+            calls++;
+            return loaded;
+        });
+
+        Assert.Equal(1, calls);
+        Assert.Same(loaded, settings);
     }
 
     [Fact]

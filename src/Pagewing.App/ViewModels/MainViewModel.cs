@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Windows.Input;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
+using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
@@ -66,6 +68,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // The first sharp tile of this window was drawn: its one chance to open the start panel has passed.
     private bool _firstSharpTileSeen;
 
+    // The theme in effect, for the page theme of the tabs (AppPageTheme); none: the theme counts as light.
+    private IEffectiveTheme? _appTheme;
+    private bool _disposed;
+
     /// <param name="sessionFactory">Creates the session of each new tab; the tab owns it.</param>
     /// <param name="picker">The file dialog.</param>
     /// <param name="settings">The settings of the app; <see cref="UserSettings.Detached"/> (in memory only) when omitted.</param>
@@ -77,6 +83,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _picker = picker;
         Settings = settings ?? UserSettings.Detached();
         _panelWidth = Settings.Current.PanelWidth;
+        Settings.Changed += OnSettingsChanged;
 
         Tabs.ActiveChanged += OnActiveTabChanged;
         Tabs.CollectionChanged += (_, _) =>
@@ -142,6 +149,46 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// tab keeps to the strip.
     /// </summary>
     internal ITabDragHost? TabDragHost { get; set; }
+
+    /// <summary>
+    /// Gets or sets the theme in effect (the <see cref="Appearance"/> of the app, set by the workspace; tests set their
+    /// own), or <see langword="null"/>, which counts as light. With <see cref="PageAppearanceSetting.FollowTheme"/> a
+    /// dark theme makes the pages of every tab dark (<see cref="TabViewModel.AppPageTheme"/>); the window follows its
+    /// changes until it is disposed.
+    /// </summary>
+    internal IEffectiveTheme? AppTheme
+    {
+        get => _appTheme;
+        set
+        {
+            if (ReferenceEquals(value, _appTheme))
+            {
+                return;
+            }
+
+            if (_appTheme is not null)
+            {
+                _appTheme.EffectiveThemeChanged -= UpdatePageThemes;
+            }
+
+            _appTheme = value;
+            if (value is not null && !_disposed)
+            {
+                value.EffectiveThemeChanged += UpdatePageThemes;
+            }
+
+            UpdatePageThemes();
+        }
+    }
+
+    /// <summary>
+    /// Gets the page theme the settings give the tabs of this window now: dark when the pages follow the theme and the
+    /// theme in effect is dark (<see cref="AppTheme"/>), else light.
+    /// </summary>
+    internal PageTheme AppPageTheme =>
+        Settings.Current.PageAppearance == PageAppearanceSetting.FollowTheme && Equals(_appTheme?.EffectiveTheme, ThemeVariant.Dark)
+            ? PageTheme.Dark
+            : PageTheme.Light;
 
     /// <summary>Gets the tabs of the window, in the order of the tab strip.</summary>
     public TabList<TabViewModel> Tabs { get; } = new();
@@ -511,9 +558,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>Releases every tab and its session. May be called more than once.</summary>
+    /// <summary>Releases every tab and its session and stops following the settings and the theme. May be called more than once.</summary>
     public void Dispose()
     {
+        _disposed = true;
+        Settings.Changed -= OnSettingsChanged;
+        if (_appTheme is not null)
+        {
+            _appTheme.EffectiveThemeChanged -= UpdatePageThemes;
+        }
+
         StopArmingTimer();
         foreach (var tab in Tabs.ToArray())
         {
@@ -547,8 +601,27 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         return null;
     }
 
+    private void OnSettingsChanged(AppSettings settings) => UpdatePageThemes();
+
+    /// <summary>Gives every tab of the window the page theme of the settings (<see cref="AppPageTheme"/>); the override of a tab stays.</summary>
+    private void UpdatePageThemes()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var theme = AppPageTheme;
+        foreach (var tab in Tabs)
+        {
+            tab.AppPageTheme = theme;
+        }
+    }
+
     private TabViewModel AddTab(TabViewModel tab, bool background = false, int? index = null)
     {
+        // Before the tab is shown: a tab from another window keeps its override and takes the page theme of this one.
+        tab.AppPageTheme = AppPageTheme;
         var handlers = (Close: (Action)(() => CloseTab(tab)), OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;

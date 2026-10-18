@@ -73,6 +73,23 @@
       <Color x:Key="Pw.Color.Danger.Default">#B42318</Color>
       <SolidColorBrush x:Key="Pw.Brush.Danger.Default" Color="#B42318" />
 
+      <!--
+        The dark page (M6): what PDFium paints as the ground and the foreground of a dark page, and the marks drawn over
+        it. The same in both themes (the page is content, whatever the theme of the window). On a dark page the marks are
+        not multiplied (that would make them vanish) but drawn over the page: hit 30 %, current 45 %, selection 35 %
+        (Avalonia reads #AARRGGBB). TokenTests.DarkPageMarksKeepThePageTextReadable checks the page text on them.
+      -->
+      <Color x:Key="Pw.Color.Page.DarkBackground">#1E2127</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Page.DarkBackground" Color="#1E2127" />
+      <Color x:Key="Pw.Color.Page.DarkForeground">#E3E5E8</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Page.DarkForeground" Color="#E3E5E8" />
+      <Color x:Key="Pw.Color.Search.HitOnDark">#4DFBE38A</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.HitOnDark" Color="#4DFBE38A" />
+      <Color x:Key="Pw.Color.Search.CurrentOnDark">#73F5A524</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.CurrentOnDark" Color="#73F5A524" />
+      <Color x:Key="Pw.Color.Selection.PageOnDark">#599DA7FF</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Selection.PageOnDark" Color="#599DA7FF" />
+
       <!-- Shadows (section 5.3) -->
       <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #14000000, 0 2 10 0 #1A000000</BoxShadows>
       <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #DCDFE5, 0 12 32 -12 #1A000000</BoxShadows>
@@ -141,6 +158,23 @@
       <!-- Danger -->
       <Color x:Key="Pw.Color.Danger.Default">#FF8A80</Color>
       <SolidColorBrush x:Key="Pw.Brush.Danger.Default" Color="#FF8A80" />
+
+      <!--
+        The dark page (M6): what PDFium paints as the ground and the foreground of a dark page, and the marks drawn over
+        it. The same in both themes (the page is content, whatever the theme of the window). On a dark page the marks are
+        not multiplied (that would make them vanish) but drawn over the page: hit 30 %, current 45 %, selection 35 %
+        (Avalonia reads #AARRGGBB). TokenTests.DarkPageMarksKeepThePageTextReadable checks the page text on them.
+      -->
+      <Color x:Key="Pw.Color.Page.DarkBackground">#1E2127</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Page.DarkBackground" Color="#1E2127" />
+      <Color x:Key="Pw.Color.Page.DarkForeground">#E3E5E8</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Page.DarkForeground" Color="#E3E5E8" />
+      <Color x:Key="Pw.Color.Search.HitOnDark">#4DFBE38A</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.HitOnDark" Color="#4DFBE38A" />
+      <Color x:Key="Pw.Color.Search.CurrentOnDark">#73F5A524</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Search.CurrentOnDark" Color="#73F5A524" />
+      <Color x:Key="Pw.Color.Selection.PageOnDark">#599DA7FF</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Selection.PageOnDark" Color="#599DA7FF" />
 
       <!-- Shadows (section 5.3) -->
       <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #24FFFFFF, 0 2 10 0 #99000000</BoxShadows>

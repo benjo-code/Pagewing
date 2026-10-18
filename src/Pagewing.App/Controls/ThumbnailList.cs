@@ -350,6 +350,12 @@ internal sealed class ThumbnailList : ListBox
                 UpdateCurrent(scroll: true);
                 SchedulePlan();
                 break;
+            case nameof(TabViewModel.EffectivePageTheme):
+                // The session renders the thumbnails in the new theme and emptied their cache of the old one: the empty
+                // frames show until the new images come (a post of an old one finds nothing in the cache).
+                ReleaseBitmaps(keep: null);
+                SchedulePlan();
+                break;
             case nameof(TabViewModel.HasShownSharpPage) or nameof(TabViewModel.IsActive) or nameof(TabViewModel.SidePanel) or nameof(TabViewModel.State):
                 // Work that is no longer allowed stops at once (the panel closes, the tab is left); new work waits for the plan.
                 if (_tab is { } tab && !MayRender(tab))

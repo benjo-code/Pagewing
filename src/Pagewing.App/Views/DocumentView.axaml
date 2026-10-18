@@ -29,7 +29,12 @@
                         SearchHitBrush="{DynamicResource Pw.Brush.Search.Hit}"
                         SearchCurrentBrush="{DynamicResource Pw.Brush.Search.Current}"
                         SearchOnBrush="{DynamicResource Pw.Brush.Search.On}"
-                        SelectionBrush="{DynamicResource Pw.Brush.Selection.Page}" />
+                        SelectionBrush="{DynamicResource Pw.Brush.Selection.Page}"
+                        DarkPageBrush="{DynamicResource Pw.Brush.Page.DarkBackground}"
+                        DarkPageForegroundBrush="{DynamicResource Pw.Brush.Page.DarkForeground}"
+                        SearchHitOnDarkBrush="{DynamicResource Pw.Brush.Search.HitOnDark}"
+                        SearchCurrentOnDarkBrush="{DynamicResource Pw.Brush.Search.CurrentOnDark}"
+                        SelectionOnDarkBrush="{DynamicResource Pw.Brush.Selection.PageOnDark}" />
     <ScrollViewer Name="Scroller"
                   Background="Transparent"
                   HorizontalScrollBarVisibility="Auto"

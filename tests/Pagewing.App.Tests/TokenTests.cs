@@ -1,6 +1,8 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
@@ -35,6 +37,11 @@ public sealed class TokenTests
         ("Search.On", "#16181D", "#16181D"),
         ("Selection.Page", "#3B48C44D", "#3B48C44D"),
         ("Danger.Default", "#B42318", "#FF8A80"),
+        ("Page.DarkBackground", "#1E2127", "#1E2127"),
+        ("Page.DarkForeground", "#E3E5E8", "#E3E5E8"),
+        ("Search.HitOnDark", "#FBE38A4D", "#FBE38A4D"),
+        ("Search.CurrentOnDark", "#F5A52473", "#F5A52473"),
+        ("Selection.PageOnDark", "#9DA7FF59", "#9DA7FF59"),
     ];
 
     private static readonly string[] Surfaces =
@@ -203,6 +210,36 @@ public sealed class TokenTests
         Assert.Equal(new CornerRadius(6), Assert.IsType<CornerRadius>(Resource("Pw.Radius.Control", ThemeVariant.Light)));
         Assert.Equal(new CornerRadius(10), Assert.IsType<CornerRadius>(Resource("Pw.Radius.Overlay", ThemeVariant.Light)));
         Assert.Equal(new CornerRadius(8, 8, 0, 0), Assert.IsType<CornerRadius>(Resource("Pw.Radius.Tab", ThemeVariant.Light)));
+
+        // Motion (section 5.6), read from Metrics.axaml itself: "Reduce motion" hides the values in the app's resources.
+        var metrics = Assert.IsAssignableFrom<IResourceDictionary>(AvaloniaXamlLoader.Load(new Uri("avares://Pagewing/Styles/Metrics.axaml")));
+        Assert.Equal(TimeSpan.FromMilliseconds(150), Assert.IsType<TimeSpan>(metrics["Pw.Duration.Open"]));
+        Assert.Equal(TimeSpan.FromMilliseconds(100), Assert.IsType<TimeSpan>(metrics["Pw.Duration.Close"]));
+    }
+
+    [AvaloniaTheory]
+    [MemberData(nameof(Themes))]
+    public void DarkPageMarksKeepThePageTextReadable(string theme)
+    {
+        // The marks on a dark page are drawn over it (not multiplied); the page text (page.darkForeground) stays readable
+        // on the mixed ground, and the frame of the current match (page.darkForeground too) stands out from the page.
+        var variant = Variant(theme);
+        var ground = Token("Page.DarkBackground", variant);
+        var text = Token("Page.DarkForeground", variant);
+        Assert.Equal(Color.FromRgb(0x1E, 0x21, 0x27), ground);
+        Assert.Equal(Color.FromRgb(0xE3, 0xE5, 0xE8), text);
+        foreach (var name in new[] { "Search.HitOnDark", "Search.CurrentOnDark", "Selection.PageOnDark" })
+        {
+            var mixed = Over(Token(name, variant), ground);
+            var ratio = Wcag.Contrast(text, mixed);
+            Assert.True(ratio >= 4.5, $"{theme}: page text on {name} is {ratio:F2}:1, expected at least 4.5:1");
+        }
+
+        Assert.True(Wcag.Contrast(text, ground) >= 4.5);
+        Assert.True(Wcag.Contrast(text, Over(Token("Search.CurrentOnDark", variant), ground)) >= 3);
+
+        // search.on would not frame the current match on a dark page.
+        Assert.True(Wcag.Contrast(Token("Search.On", variant), ground) < 3);
     }
 
     [AvaloniaFact]
@@ -225,6 +262,16 @@ public sealed class TokenTests
         Assert.IsType<Color>(Resource($"Pw.Color.{name}", variant));
 
     private static ThemeVariant Variant(string theme) => theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+
+    /// <summary>Source-over of a translucent colour on an opaque one, rounded to 8 bits as the frame stores it.</summary>
+    private static Color Over(Color overlay, Color under)
+    {
+        var alpha = overlay.A / 255.0;
+        return Color.FromRgb(
+            (byte)Math.Round((overlay.R * alpha) + (under.R * (1 - alpha))),
+            (byte)Math.Round((overlay.G * alpha) + (under.G * (1 - alpha))),
+            (byte)Math.Round((overlay.B * alpha) + (under.B * (1 - alpha))));
+    }
 
     /// <summary>Parses the CSS notation of the spec (#RRGGBB or #RRGGBBAA, alpha last) into an Avalonia colour.</summary>
     private static Color FromCss(string css)
