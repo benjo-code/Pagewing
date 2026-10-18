@@ -179,17 +179,19 @@ Regeln:
 
 „Normal“ ist Standard, „Kompakt“ eine Einstellung für Vielnutzer (M6, Abschnitt 9).
 
-| Maß (px) | Normal | Kompakt |
-|---|---|---|
-| Titelleiste bzw. Linux-Tab-Zeile | 40 | 34 |
-| Aktionsleiste: Breite / Knopf | 52 / 40 | 44 / 34 |
-| Panel (Standardbreite) | 264 | 236 |
-| Statusleiste | 32 | 26 |
-| Werkzeugleiste eines Modus | 44 | 38 |
-| Rand um die Seiten | 32 | 20 |
-| Abstand zwischen Seiten | 20 | 20 |
-| Grundschrift | 13 | 12.5 |
-| Vorschaubilder je Zeile (Breite) | 1 (136) | 2 (Spaltenbreite) |
+| Maß (px) | Normal | Kompakt | Ressource (M6) |
+|---|---|---|---|
+| Titelleiste bzw. Linux-Tab-Zeile | 40 | 34 | `Pw.Size.TitleBarHeight` (auch `ExtendClientAreaTitleBarHeightHint`) |
+| Aktionsleiste: Breite / Knopf | 52 / 40 | 44 / 34 | `Pw.Size.ActionBarWidth` (auch App-Symbol der Titelleiste) / `Pw.Size.ActionButton` |
+| Panel (Standardbreite) | 264 | 236 | `MainViewModel.DefaultPanelWidth` / `CompactDefaultPanelWidth` |
+| Statusleiste | 32 | 26 | `Pw.Size.StatusBarHeight`; Einzug um die Aktionsleiste + 4: `Pw.Size.StatusBarIndent` (56 / 48) |
+| Werkzeugleiste eines Modus | 44 | 38 | `Pw.Size.ToolbarHeight` |
+| Rand um die Seiten | 32 | 20 | `Pw.Size.PageMargin` (`DocumentLayout.PageMargin`) |
+| Abstand zwischen Seiten | 20 | 20 | `DocumentLayout.PageGap` |
+| Grundschrift | 13 | 12.5 | `Pw.Font.Body`, Zeilenhöhe `Pw.Font.BodyLineHeight` (18 / 17) |
+| Vorschaubilder je Zeile (Breite) | 1 (136) | 2 (Spaltenbreite: 86) | `Pw.Size.ThumbnailColumns`, `Pw.Size.ThumbnailWidth` |
+
+Umsetzung (M6): Die Werte für „Normal“ stehen in `Styles/Metrics.axaml`, die für „Kompakt“ mit denselben Schlüsseln in `Styles/Density.axaml`; `Services/Appearance` kopiert sie nur bei „Kompakt“ über die normalen (zur Laufzeit, ohne Neustart). Die Spaltenbreite der Vorschaubilder ergibt sich aus der Standardbreite 236: (236 − 2 × 14 Listenrand) / 2 = 104 je Spalte, abzüglich 2 × (6 Innenabstand + 2 Ring + 1 Kante) des Eintrags = 86. Eine gespeicherte Panelbreite gilt in beiden Dichten; gespeichert als 264 steht sie für „Standardbreite der Dichte“.
 
 ### 5.5 Icons
 

@@ -10,7 +10,7 @@
         WindowStartupLocation="CenterScreen"
         WindowDecorations="Full"
         ExtendClientAreaToDecorationsHint="{Binding IsWindowsTitleBar}"
-        ExtendClientAreaTitleBarHeightHint="40"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Pw.Size.TitleBarHeight}"
         WindowDecorationsTheme="{DynamicResource Pw.WindowDecorations}"
         DragDrop.AllowDrop="True">
   <Window.KeyBindings>
@@ -122,7 +122,7 @@
 
       <!--
         The edge between the panel and the document: dragging it sets the panel width (200 to 400), a double click puts
-        264 back (design system 7.3). It straddles the edge, 3 px on each side, and is invisible: the surfaces part by
+        the default width of the density back (264, "Kompakt" 236; design system 5.4 and 7.3). It straddles the edge, 3 px on each side, and is invisible: the surfaces part by
         colour (section 5.3). Only while the panel lies beside the document.
       -->
       <GridSplitter Name="PanelSplitter" Grid.Column="1" ZIndex="2"
@@ -130,7 +130,7 @@
                     ResizeDirection="Columns" Background="Transparent" Focusable="False" IsVisible="False" />
     </Grid>
 
-    <Border Name="StatusBarRow" Grid.Row="2" Height="32"
+    <Border Name="StatusBarRow" Grid.Row="2" Height="{DynamicResource Pw.Size.StatusBarHeight}"
             IsVisible="{Binding ActiveTab.HasStatusBarRow, FallbackValue=False}"
             Background="{DynamicResource Pw.Brush.Surface.Window}">
       <views:StatusBar Name="StatusBar" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel"

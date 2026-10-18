@@ -31,7 +31,7 @@ public sealed class DocumentLayout
     /// <summary>The vertical gap between two rows in DIPs (not scaled by the zoom).</summary>
     public const double PageGap = 20;
 
-    /// <summary>The margin around the pages in DIPs (not scaled by the zoom).</summary>
+    /// <summary>The default margin around the pages in DIPs (density "Normal", design system 5.4); see <see cref="PageMargin"/>.</summary>
     public const double Margin = 32;
 
     /// <summary>The horizontal gap between the two pages of a spread in DIPs (not scaled by the zoom); each page keeps half of it from the centre axis.</summary>
@@ -50,6 +50,7 @@ public sealed class DocumentLayout
     private PageLayoutMode mode = PageLayoutMode.Continuous;
     private int shownPage;
     private double zoom = ZoomSteps.Default;
+    private double pageMargin = Margin;
     private double contentWidth;
     private double contentHeight;
     private int firstShownRow;
@@ -86,6 +87,29 @@ public sealed class DocumentLayout
             if (clamped != zoom)
             {
                 zoom = clamped;
+                dirty = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the margin around the pages in DIPs (not scaled by the zoom): <see cref="Margin"/> by default, 20 in
+    /// the density "Kompakt" (design system 5.4). The gap between the rows (<see cref="PageGap"/>) does not change.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative or not finite.</exception>
+    public double PageMargin
+    {
+        get => pageMargin;
+        set
+        {
+            if (!double.IsFinite(value) || value < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "The margin must be finite and not negative.");
+            }
+
+            if (value != pageMargin)
+            {
+                pageMargin = value;
                 dirty = true;
             }
         }
@@ -375,7 +399,7 @@ public sealed class DocumentLayout
 
         // Fixed DIPs besides the pages, and the DIPs per point at which the row is exactly as wide as the viewport.
         var spread = IsSpreadMode;
-        var availableWidth = viewportWidth - (2 * Margin) - (spread ? SpreadGap : 0);
+        var availableWidth = viewportWidth - (2 * pageMargin) - (spread ? SpreadGap : 0);
         if (!(availableWidth > 0))
         {
             return ZoomSteps.Min;
@@ -384,7 +408,7 @@ public sealed class DocumentLayout
         var scale = availableWidth / (spread ? 2 * maxWidth : maxWidth);
         if (mode == ZoomMode.FitPage)
         {
-            var availableHeight = viewportHeight - (2 * Margin);
+            var availableHeight = viewportHeight - (2 * pageMargin);
             if (!(availableHeight > 0))
             {
                 return ZoomSteps.Min;
@@ -461,7 +485,7 @@ public sealed class DocumentLayout
         }
 
         var halfWidth = 0.0;
-        var y = Margin;
+        var y = pageMargin;
         for (var row = firstShownRow; row <= lastShownRow; row++)
         {
             var (first, last) = PagesOfRowCore(row);
@@ -483,8 +507,8 @@ public sealed class DocumentLayout
         }
 
         // The loop added one gap too many after the last row; the margin takes its place.
-        contentHeight = PageCount == 0 ? 0 : y - PageGap + Margin;
-        contentWidth = PageCount == 0 ? 0 : (2 * halfWidth) + (2 * Margin);
+        contentHeight = PageCount == 0 ? 0 : y - PageGap + pageMargin;
+        contentWidth = PageCount == 0 ? 0 : (2 * halfWidth) + (2 * pageMargin);
         dirty = false;
     }
 

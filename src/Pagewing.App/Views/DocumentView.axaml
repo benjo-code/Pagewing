@@ -2,10 +2,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctl="using:Pagewing.App.Controls"
              x:Class="Pagewing.App.Views.DocumentView"
+             PageMargin="{DynamicResource Pw.Size.PageMargin}"
              Focusable="True">
   <!--
     Document area with continuous scrolling (design system 6 and 7.5): the pages centred one below the other, 20 apart,
-    with a 32 margin all round. The ScrollViewer only scrolls an empty extent of the content size; the canvas below it
+    with a 32 margin all round (density "Kompakt" 20: PageMargin). The ScrollViewer only scrolls an empty extent of the content size; the canvas below it
     draws the visible pages in viewport coordinates (see DocumentCanvas). The ScrollViewer is transparent but
     hit-testable, so wheel, scroll bars and the pointer work everywhere; the canvas takes no input. The view itself
     takes the keyboard focus (not the ScrollViewer, whose own Page Up/Page Down would bypass the page-by-page binding

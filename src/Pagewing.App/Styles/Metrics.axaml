@@ -30,6 +30,25 @@
   <x:TimeSpan x:Key="Pw.Duration.Open">0:0:0.15</x:TimeSpan>
   <x:TimeSpan x:Key="Pw.Duration.Close">0:0:0.1</x:TimeSpan>
 
+  <!--
+    Density (section 5.4): the sizes of the density "Normal". Styles/Density.axaml holds the same keys with the values of
+    "Kompakt"; Services/Appearance puts those into the app's resources while the setting is "Kompakt" (and these back
+    afterwards), so the views read them with DynamicResource. The gap between the pages (20) is the same in both.
+  -->
+  <x:Double x:Key="Pw.Size.TitleBarHeight">40</x:Double>
+  <x:Double x:Key="Pw.Size.ActionBarWidth">52</x:Double>
+  <x:Double x:Key="Pw.Size.ActionButton">40</x:Double>
+  <x:Double x:Key="Pw.Size.StatusBarHeight">32</x:Double>
+  <!-- The status bar is indented by the action bar plus 4 (section 6, item 5). -->
+  <Thickness x:Key="Pw.Size.StatusBarIndent">56,0,8,0</Thickness>
+  <x:Double x:Key="Pw.Size.ToolbarHeight">44</x:Double>
+  <x:Double x:Key="Pw.Size.PageMargin">32</x:Double>
+  <x:Double x:Key="Pw.Size.ThumbnailWidth">136</x:Double>
+  <x:Int32 x:Key="Pw.Size.ThumbnailColumns">1</x:Int32>
+  <!-- Base font (type.body, section 5.2): size and line height. -->
+  <x:Double x:Key="Pw.Font.Body">13</x:Double>
+  <x:Double x:Key="Pw.Font.BodyLineHeight">18</x:Double>
+
   <!-- The Fluent controls read their corner radii from these two resources (spec section 2.4). -->
   <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
   <CornerRadius x:Key="OverlayCornerRadius">10</CornerRadius>

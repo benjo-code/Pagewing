@@ -124,4 +124,28 @@ public sealed class ThumbnailPlannerTests
         Assert.Equal(136.0, ThumbnailPlanner.HeightFor(new PdfPageSize(100, 100)), 9);
         Assert.Equal(68.0, ThumbnailPlanner.HeightFor(new PdfPageSize(200, 100)), 9);
     }
+
+    [Theory]
+    [InlineData(86.0, 1.0, 86)]
+    [InlineData(86.0, 1.5, 129)]
+    [InlineData(136.0, 1.5, 204)]
+    public void AnotherWidthGivesThumbnailsOfThatWidth(double width, double scaling, int pixels)
+    {
+        // The two columns of the compact density (design system 5.4) have narrower thumbnails.
+        var request = Assert.Single(ThumbnailPlanner.Plan([A4], [0], scaling, width));
+
+        Assert.Equal(pixels, request.Rect.Width);
+        Assert.Equal(A4.ToPixels(request.Scale), (request.Rect.Width, request.Rect.Height));
+        Assert.Equal(width * 841.89 / 595.28, ThumbnailPlanner.HeightFor(A4, width), 9);
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void PlannerRejectsAnInvalidWidth(double width)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ThumbnailPlanner.Plan([A4], [0], 1.0, width));
+    }
 }

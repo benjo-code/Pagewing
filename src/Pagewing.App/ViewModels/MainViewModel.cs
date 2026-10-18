@@ -21,8 +21,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The most files one open (dialog, drop, later launch) opens as tabs; the rest is ignored.</summary>
     public const int MaxFilesPerOpen = 20;
 
-    /// <summary>Default width of the side panel (design system 5.4), also what a double click on its edge restores.</summary>
+    /// <summary>
+    /// Default width of the side panel in the density "Normal" (design system 5.4), also what a double click on its edge
+    /// restores there; see <see cref="DensityDefaultPanelWidth"/>.
+    /// </summary>
     public const double DefaultPanelWidth = AppSettings.DefaultPanelWidth;
+
+    /// <summary>Default width of the side panel in the density "Kompakt" (design system 5.4).</summary>
+    public const double CompactDefaultPanelWidth = 236;
 
     /// <summary>Narrowest the side panel can be dragged (design system 6).</summary>
     public const double MinPanelWidth = AppSettings.MinPanelWidth;
@@ -60,6 +66,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private bool _picking;
     private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
     private double _panelWidth;
+    private DensitySetting _density;
     private bool _isNarrowWindow;
 
     // The user opened or closed a panel in this window: the first sharp tile no longer opens the start panel.
@@ -82,7 +89,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _sessionFactory = sessionFactory;
         _picker = picker;
         Settings = settings ?? UserSettings.Detached();
-        _panelWidth = Settings.Current.PanelWidth;
+        _density = Settings.Current.Density;
+        _panelWidth = ShownPanelWidth(Settings.Current);
         Settings.Changed += OnSettingsChanged;
 
         Tabs.ActiveChanged += OnActiveTabChanged;
@@ -238,13 +246,26 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Gets or sets the width of the side panel of this window (all its tabs share it), limited to
     /// <see cref="MinPanelWidth"/> to <see cref="MaxPanelWidth"/>; the stored width (<see cref="AppSettings.PanelWidth"/>)
-    /// at first. Setting it does not store it (it changes on every pixel of a drag); <see cref="SavePanelWidth"/> does.
+    /// at first (see <see cref="DensityDefaultPanelWidth"/>). Setting it does not store it (it changes on every pixel of a
+    /// drag); <see cref="SavePanelWidth"/> does.
     /// </summary>
     public double PanelWidth
     {
         get => _panelWidth;
-        set => SetProperty(ref _panelWidth, double.IsNaN(value) ? DefaultPanelWidth : Math.Clamp(value, MinPanelWidth, MaxPanelWidth));
+        set => SetProperty(ref _panelWidth, double.IsNaN(value) ? DensityDefaultPanelWidth : Math.Clamp(value, MinPanelWidth, MaxPanelWidth));
     }
+
+    /// <summary>
+    /// Gets the default width of the side panel in the density of the settings: <see cref="DefaultPanelWidth"/> (264) or,
+    /// in "Kompakt", <see cref="CompactDefaultPanelWidth"/> (236). A width the user chose wins over it.
+    /// </summary>
+    /// <remarks>
+    /// The settings store one width for both densities, and the stored <see cref="DefaultPanelWidth"/> stands for "the
+    /// default of the density": "Kompakt" shows it as 236, and the default of "Kompakt" is stored as 264. So a user who
+    /// never dragged the edge (or reset it with a double click) gets the default of each density, and one who dragged it
+    /// keeps that width in both. Dragging it to exactly the default of the density counts as the default.
+    /// </remarks>
+    public double DensityDefaultPanelWidth => DefaultFor(_density);
 
     /// <summary>
     /// Gets or sets whether the window is narrower than <see cref="NarrowWindowWidth"/>: the side panel then lies over
@@ -519,19 +540,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Sets <see cref="PanelWidth"/> back to <see cref="DefaultPanelWidth"/> (double click on the edge of the panel) and
-    /// stores it.
+    /// Sets <see cref="PanelWidth"/> back to <see cref="DensityDefaultPanelWidth"/> (double click on the edge of the
+    /// panel) and stores it.
     /// </summary>
     public void ResetPanelWidth()
     {
-        PanelWidth = DefaultPanelWidth;
+        PanelWidth = DensityDefaultPanelWidth;
         SavePanelWidth();
     }
 
-    /// <summary>Stores <see cref="PanelWidth"/> in the settings (the edge of the panel was let go); the next window starts with it.</summary>
+    /// <summary>
+    /// Stores <see cref="PanelWidth"/> in the settings (the edge of the panel was let go); the next window starts with it.
+    /// The default of the density is stored as <see cref="DefaultPanelWidth"/> (see <see cref="DensityDefaultPanelWidth"/>).
+    /// </summary>
     public void SavePanelWidth()
     {
-        var width = PanelWidth;
+        var width = PanelWidth == DensityDefaultPanelWidth ? DefaultPanelWidth : PanelWidth;
         Settings.Update(current => current with { PanelWidth = width });
     }
 
@@ -601,7 +625,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         return null;
     }
 
-    private void OnSettingsChanged(AppSettings settings) => UpdatePageThemes();
+    private void OnSettingsChanged(AppSettings settings)
+    {
+        if (settings.Density != _density)
+        {
+            // Another density: a panel at the default width of the old one takes the default of the new one.
+            var atDefault = _panelWidth == DensityDefaultPanelWidth;
+            _density = settings.Density;
+            OnPropertyChanged(nameof(DensityDefaultPanelWidth));
+            if (atDefault)
+            {
+                PanelWidth = DensityDefaultPanelWidth;
+            }
+        }
+
+        UpdatePageThemes();
+    }
+
+    private static double DefaultFor(DensitySetting density) =>
+        density == DensitySetting.Compact ? CompactDefaultPanelWidth : DefaultPanelWidth;
+
+    /// <summary>The width a window shows for the stored one: the stored default stands for the default of the density.</summary>
+    private static double ShownPanelWidth(AppSettings settings) =>
+        settings.PanelWidth == DefaultPanelWidth ? DefaultFor(settings.Density) : settings.PanelWidth;
 
     /// <summary>Gives every tab of the window the page theme of the settings (<see cref="AppPageTheme"/>); the override of a tab stays.</summary>
     private void UpdatePageThemes()

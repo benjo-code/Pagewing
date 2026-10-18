@@ -7,9 +7,10 @@ namespace Pagewing.App.Services;
 
 /// <summary>
 /// Puts the appearance settings into effect on the app, at the start and whenever they change (no restart): the theme
-/// (<see cref="ApplyTheme"/>) and the motion (<see cref="ApplyMotion"/>). Follows the theme of the system while the
-/// setting is <see cref="ThemeSetting.System"/> (Avalonia resolves <see cref="ThemeVariant.Default"/> from the platform)
-/// and announces the theme that is in effect (<see cref="EffectiveThemeChanged"/>). UI thread only.
+/// (<see cref="ApplyTheme"/>), the motion (<see cref="ApplyMotion"/>) and the density (<see cref="ApplyDensity"/>).
+/// Follows the theme of the system while the setting is <see cref="ThemeSetting.System"/> (Avalonia resolves
+/// <see cref="ThemeVariant.Default"/> from the platform) and announces the theme that is in effect
+/// (<see cref="EffectiveThemeChanged"/>). UI thread only.
 /// </summary>
 public sealed class Appearance : IDisposable, IEffectiveTheme
 {
@@ -28,6 +29,10 @@ public sealed class Appearance : IDisposable, IEffectiveTheme
     private bool _motionReduced;
     private object? _fullOpenDuration;
     private object? _fullCloseDuration;
+
+    // While the density is "Kompakt": the normal values the compact ones replaced in the app's resources, per key (null:
+    // the key was not in the app's own dictionary).
+    private Dictionary<object, object?>? _normalSizes;
 
     /// <summary>Applies the current settings to <paramref name="app"/> and follows their changes.</summary>
     public Appearance(Application app, UserSettings settings)
@@ -75,6 +80,7 @@ public sealed class Appearance : IDisposable, IEffectiveTheme
     {
         ApplyTheme(settings);
         ApplyMotion(settings);
+        ApplyDensity(settings);
     }
 
     private void ApplyTheme(AppSettings settings)
@@ -116,18 +122,52 @@ public sealed class Appearance : IDisposable, IEffectiveTheme
             Restore(resources, OpenDurationKey, _fullOpenDuration);
             Restore(resources, CloseDurationKey, _fullCloseDuration);
         }
+    }
 
-        static void Restore(IResourceDictionary resources, string key, object? value)
+    // "Kompakt" copies the values of Styles/Density.axaml over the normal ones of Metrics.axaml in the app's resources
+    // (DynamicResource follows at once, no restart); "Normal" puts the normal values back. With the default setting nothing
+    // is created or touched, so the start costs nothing.
+    private void ApplyDensity(AppSettings settings)
+    {
+        var compact = settings.Density == DensitySetting.Compact;
+        if (compact == (_normalSizes is not null))
         {
-            if (value is null)
+            return;
+        }
+
+        var resources = _app.Resources;
+        if (compact)
+        {
+            var normal = new Dictionary<object, object?>();
+            foreach (var (key, value) in new Styles.Density())
             {
-                // The duration lived in a merged dictionary that the zero value only hid.
-                resources.Remove(key);
-            }
-            else
-            {
+                normal[key] = resources.TryGetValue(key, out var current) ? current : null;
                 resources[key] = value;
             }
+
+            _normalSizes = normal;
+        }
+        else
+        {
+            foreach (var (key, value) in _normalSizes!)
+            {
+                Restore(resources, key, value);
+            }
+
+            _normalSizes = null;
+        }
+    }
+
+    private static void Restore(IResourceDictionary resources, object key, object? value)
+    {
+        if (value is null)
+        {
+            // The value lived in a merged dictionary that the replacement only hid.
+            resources.Remove(key);
+        }
+        else
+        {
+            resources[key] = value;
         }
     }
 

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
@@ -16,19 +17,26 @@ using Pagewing.Core.Viewing;
 namespace Pagewing.App.Controls;
 
 /// <summary>
-/// One entry of the page thumbnails: the page number, the size of its frame (136 DIP wide, as high as the page format
-/// asks) and the thumbnail once it is rendered. UI thread only.
+/// One entry of the page thumbnails: the page number, the size of its frame (136 DIP wide, two columns of 86 in the
+/// density "Kompakt"; as high as the page format asks) and the thumbnail once it is rendered. UI thread only.
 /// </summary>
 public sealed class ThumbnailItem : ViewModelBase
 {
+    /// <summary>The tallest frame, in widths: a degenerate page format must not make one entry thousands of DIPs high.</summary>
+    private const double MaxAspect = 16;
+
+    private PdfPageSize _format;
+    private double _frameWidth;
     private double _frameHeight;
     private Bitmap? _bitmap;
     private bool _isCurrent;
 
-    internal ThumbnailItem(int pageNumber, double frameHeight)
+    internal ThumbnailItem(int pageNumber, PdfPageSize format, double frameWidth)
     {
         PageNumber = pageNumber;
-        _frameHeight = frameHeight;
+        _format = format;
+        _frameWidth = frameWidth;
+        _frameHeight = FrameHeightFor(format, frameWidth);
     }
 
     /// <summary>Gets the page number, 1-based.</summary>
@@ -37,14 +45,24 @@ public sealed class ThumbnailItem : ViewModelBase
     /// <summary>Gets the page number as shown below the frame.</summary>
     public string PageText => PageNumber.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Gets the width of the frame in DIPs (<see cref="ThumbnailPlanner.Width"/>).</summary>
-    public double FrameWidth { get; } = ThumbnailPlanner.Width;
+    /// <summary>Gets the width of the frame in DIPs (<see cref="ThumbnailPlanner.Width"/>, or the column width of "Kompakt").</summary>
+    public double FrameWidth
+    {
+        get => _frameWidth;
+        internal set
+        {
+            if (SetProperty(ref _frameWidth, value))
+            {
+                FrameHeight = FrameHeightFor(_format, value);
+            }
+        }
+    }
 
     /// <summary>Gets the height of the frame in DIPs: the page format, or the format of the first page while the size of this page is not known.</summary>
     public double FrameHeight
     {
         get => _frameHeight;
-        internal set => SetProperty(ref _frameHeight, value);
+        private set => SetProperty(ref _frameHeight, value);
     }
 
     /// <summary>Gets the rendered thumbnail, or <see langword="null"/> while the frame stays empty. Owned by the list, which disposes it.</summary>
@@ -80,6 +98,16 @@ public sealed class ThumbnailItem : ViewModelBase
     public string AutomationName =>
         string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ThumbnailName), PageText)
         + (IsCurrent ? Strings.ThumbnailCurrentSuffix : string.Empty);
+
+    /// <summary>Sets the page format the frame follows (the real size of the page arrived).</summary>
+    internal void SetFormat(PdfPageSize format)
+    {
+        _format = format;
+        FrameHeight = FrameHeightFor(format, _frameWidth);
+    }
+
+    private static double FrameHeightFor(PdfPageSize format, double width) =>
+        Math.Clamp(ThumbnailPlanner.HeightFor(format, width), 1, width * MaxAspect);
 }
 
 /// <summary>
@@ -87,7 +115,8 @@ public sealed class ThumbnailItem : ViewModelBase
 /// <c>DataContext</c>, virtualized, with the pages of the current row marked. Only the realized entries ask for their
 /// thumbnail, nearest to the current page first, and only once the tab has shown a sharp page; the thumbnails come from
 /// the tab's own <see cref="ThumbnailSource"/> (cache and scheduler apart from the document view's). A click, Enter or
-/// Space shows the page of an entry; the arrow keys only move the focus.
+/// Space shows the page of an entry; the arrow keys only move the focus. In the density "Kompakt" the entries lie in two
+/// columns (<see cref="Columns"/>, <see cref="VirtualizingGridPanel"/>) and are narrower (<see cref="ThumbnailWidth"/>).
 /// </summary>
 /// <remarks>
 /// UI thread only. The scheduler raises <see cref="RenderScheduler.TileReady"/> on a pool thread; the handler only
@@ -96,8 +125,13 @@ public sealed class ThumbnailItem : ViewModelBase
 /// </remarks>
 internal sealed class ThumbnailList : ListBox
 {
-    /// <summary>The tallest frame, in widths: a degenerate page format must not make one entry thousands of DIPs high.</summary>
-    private const double MaxAspect = 16;
+    /// <summary>Defines the <see cref="Columns"/> property.</summary>
+    public static readonly StyledProperty<int> ColumnsProperty =
+        AvaloniaProperty.Register<ThumbnailList, int>(nameof(Columns), 1);
+
+    /// <summary>Defines the <see cref="ThumbnailWidth"/> property.</summary>
+    public static readonly StyledProperty<double> ThumbnailWidthProperty =
+        AvaloniaProperty.Register<ThumbnailList, double>(nameof(ThumbnailWidth), ThumbnailPlanner.Width);
 
     /// <summary>The format of an entry while no page size is known at all (A4 portrait, as the core uses for an unreadable page).</summary>
     private static readonly PdfPageSize StandInSize = new(595.28, 841.89);
@@ -154,6 +188,50 @@ internal sealed class ThumbnailList : ListBox
     /// <summary>Gets the thumbnails the list draws from, or <see langword="null"/> before it asked for them (for tests).</summary>
     internal ThumbnailSource? Source => _source;
 
+    /// <summary>
+    /// Gets or sets the number of entries per row: 1 (density "Normal", the list box's own VirtualizingStackPanel) or
+    /// more (a <see cref="VirtualizingGridPanel"/>); the resource <c>Pw.Size.ThumbnailColumns</c> of the density.
+    /// </summary>
+    public int Columns
+    {
+        get => GetValue(ColumnsProperty);
+        set => SetValue(ColumnsProperty, value);
+    }
+
+    /// <summary>Gets or sets the width of a thumbnail in DIPs: the resource <c>Pw.Size.ThumbnailWidth</c> of the density.</summary>
+    public double ThumbnailWidth
+    {
+        get => GetValue(ThumbnailWidthProperty);
+        set => SetValue(ThumbnailWidthProperty, value);
+    }
+
+    /// <summary>The thumbnail width in use: <see cref="ThumbnailWidth"/>, or the normal width when it is not usable.</summary>
+    private double FrameWidth => double.IsFinite(ThumbnailWidth) && ThumbnailWidth >= 1 ? ThumbnailWidth : ThumbnailPlanner.Width;
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ColumnsProperty)
+        {
+            // One column: the default items panel of the list box (a VirtualizingStackPanel).
+            var columns = Columns;
+            if (columns > 1)
+            {
+                ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingGridPanel { Columns = columns });
+            }
+            else
+            {
+                ClearValue(ItemsPanelProperty);
+            }
+
+            SchedulePlan();
+        }
+        else if (change.Property == ThumbnailWidthProperty)
+        {
+            ApplyFrameWidth();
+        }
+    }
+
     // The Fluent theme of the list box applies.
     protected override Type StyleKeyOverride => typeof(ListBox);
 
@@ -196,9 +274,6 @@ internal sealed class ThumbnailList : ListBox
 
     private static bool IsUsable(PdfPageSize size) =>
         double.IsFinite(size.Width) && double.IsFinite(size.Height) && size.Width > 0 && size.Height > 0;
-
-    private static double FrameHeightFor(PdfPageSize size) =>
-        Math.Clamp(ThumbnailPlanner.HeightFor(size), 1, ThumbnailPlanner.Width * MaxAspect);
 
     private static TileKey KeyOf(int index) => new(index, TileKey.PreviewScaleKey, 0, 0);
 
@@ -306,7 +381,7 @@ internal sealed class ThumbnailList : ListBox
         for (var index = 0; index < pageCount; index++)
         {
             var size = index < known && IsUsable(sizes[index]) ? sizes[index] : estimate;
-            items[index] = new ThumbnailItem(index + 1, FrameHeightFor(size));
+            items[index] = new ThumbnailItem(index + 1, size, FrameWidth);
         }
 
         _items = items;
@@ -322,7 +397,7 @@ internal sealed class ThumbnailList : ListBox
         {
             if (IsUsable(sizes[index]))
             {
-                _items[index].FrameHeight = FrameHeightFor(sizes[index]);
+                _items[index].SetFormat(sizes[index]);
             }
         }
 
@@ -483,7 +558,7 @@ internal sealed class ThumbnailList : ListBox
             return byDistance != 0 ? byDistance : a.CompareTo(b);
         });
 
-        var plan = ThumbnailPlanner.Plan(tab.Session.LoadedSizes, realized, _renderScaling);
+        var plan = ThumbnailPlanner.Plan(tab.Session.LoadedSizes, realized, _renderScaling, FrameWidth);
         var planned = new Dictionary<int, (int Width, int Height)>(plan.Count);
         var stale = false;
         foreach (var request in plan)
@@ -663,6 +738,29 @@ internal sealed class ThumbnailList : ListBox
         SchedulePlan();
     }
 
+    /// <summary>
+    /// Another density: the entries take the new width (and the height that goes with it) and the thumbnails are rendered
+    /// again at that width. Their keys do not carry the width, so the cache is emptied first, as for another scaling.
+    /// </summary>
+    private void ApplyFrameWidth()
+    {
+        var width = FrameWidth;
+        foreach (var item in _items)
+        {
+            item.FrameWidth = width;
+        }
+
+        _clearedFor = null;
+        if (_source is { } source)
+        {
+            StopWork();
+            source.Cache.Clear();
+        }
+
+        ReleaseBitmaps(keep: null);
+        SchedulePlan();
+    }
+
     // Enter and Space show the page of the focused entry, before the list box or its scroll viewer use the keys.
     private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
@@ -681,8 +779,8 @@ internal sealed class ThumbnailList : ListBox
     }
 
     /// <summary>
-    /// Moves the cursor of the list by about a view (as many entries as are in view, less one, so the old entry stays in
-    /// sight); the document keeps its page.
+    /// Moves the cursor of the list by about a view (as many rows as are in view, less one, so the old entry stays in
+    /// sight; whole rows, so it keeps its column); the document keeps its page.
     /// </summary>
     private void MoveByPage(bool forward)
     {
@@ -711,7 +809,8 @@ internal sealed class ThumbnailList : ListBox
             }
         }
 
-        var step = Math.Max(1, inView - 1);
+        var columns = Math.Max(1, Columns);
+        var step = Math.Max(1, (inView / columns) - 1) * columns;
         var target = Math.Clamp(forward ? current + step : current - step, 0, _items.Length - 1);
         SelectedIndex = target;
         ScrollIntoView(target);

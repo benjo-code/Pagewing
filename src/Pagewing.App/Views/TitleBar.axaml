@@ -7,12 +7,13 @@
              xmlns:chrome="using:Avalonia.Controls.Chrome"
              x:Class="Pagewing.App.Views.TitleBar"
              x:DataType="vm:MainViewModel"
-             Height="40">
+             Height="{DynamicResource Pw.Size.TitleBarHeight}">
   <!--
     Title bar (Windows) or tab row below the system title bar (Linux), design system sections 2.2, 6 and 7.2.
     From the left: app symbol (as wide as the later action bar), the tab strip (or the app name without a tab) and, on
     Windows, the space of the system caption buttons. The tab strip (TabStrip.axaml) holds the tabs, "All tabs (n)",
-    "Open file" and the drag area; it gets the window width minus 52 and, on Windows, minus 140.
+    "Open file" and the drag area; it gets the window width minus the action bar width and, on Windows, minus 140.
+    Height and the width of the app symbol follow the density (Pw.Size.*, design system 5.4).
   -->
   <UserControl.Styles>
     <!-- Linux: the tab row meets the system title bar of the same colour, so it gets a border.subtle top edge (section 5.3). -->
@@ -23,8 +24,9 @@
   </UserControl.Styles>
 
   <Border Name="Root" Classes.linux="{Binding !IsWindowsTitleBar}">
-    <Grid ColumnDefinitions="52,*,Auto">
-      <Border Name="AppMark" Background="Transparent" chrome:WindowDecorationProperties.ElementRole="TitleBar">
+    <Grid ColumnDefinitions="Auto,*,Auto">
+      <Border Name="AppMark" Width="{DynamicResource Pw.Size.ActionBarWidth}" Background="Transparent"
+              chrome:WindowDecorationProperties.ElementRole="TitleBar">
         <ctl:StrokeIcon Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Data="{StaticResource Pw.Icon.FileText}"
                         Brush="{DynamicResource Pw.Brush.Accent.Default}" />

@@ -7,11 +7,14 @@
     No new colours: states reuse tokens (hover surface.hover, pressed accent.subtle, disabled text.disabled).
   -->
 
-  <!-- Window: base size and colours. FontFamily comes from Fonts.axaml via ContentControlThemeFontFamily. -->
+  <!--
+    Window: base size (type.body, Pw.Font.Body: 13, density "Kompakt" 12.5) and colours. FontFamily comes from
+    Fonts.axaml via ContentControlThemeFontFamily.
+  -->
   <Style Selector="Window">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Window}" />
     <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
-    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
   </Style>
 
   <!--
@@ -34,8 +37,8 @@
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <Style Selector="TextBlock.body">
-    <Setter Property="FontSize" Value="13" />
-    <Setter Property="LineHeight" Value="18" />
+    <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+    <Setter Property="LineHeight" Value="{DynamicResource Pw.Font.BodyLineHeight}" />
     <Setter Property="FontWeight" Value="Normal" />
   </Style>
   <Style Selector="TextBlock.caption">
