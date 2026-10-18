@@ -51,9 +51,11 @@ internal static class RenderCorpus
 
     /// <summary>
     /// Test PDFs that are not rendered on purpose: error cases, and files whose structure is the test subject
-    /// while the page content is a plain grey area (the outline files).
+    /// while the page content is a plain grey area (the outline files), and the text files of the search and the links
+    /// (their subject is the text layer, not the rendering; the pages are plain Helvetica text like <c>text-basic.pdf</c>).
     /// </summary>
-    public static IReadOnlyList<string> Skipped { get; } = ["empty.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf"];
+    public static IReadOnlyList<string> Skipped { get; } =
+        ["empty.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "text-dense.pdf", "text-rich.pdf"];
 
     /// <summary>Looks up a case by its file name.</summary>
     public static RenderCase Get(string pdfName) => Cases.Single(c => c.PdfName == pdfName);
