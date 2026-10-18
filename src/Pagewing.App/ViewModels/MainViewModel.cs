@@ -231,14 +231,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return Task.CompletedTask;
         }
 
-        var fullPath = FullPathOrAsGiven(path);
-        foreach (var tab in Tabs)
+        if (FindOpenTab(path) is { } open)
         {
-            if (string.Equals(tab.Session.Path, fullPath, PathComparison))
-            {
-                Tabs.Activate(tab);
-                return Task.CompletedTask;
-            }
+            Tabs.Activate(open);
+            return Task.CompletedTask;
         }
 
         return AddTab(new TabViewModel(_sessionFactory())).OpenAsync(path);
@@ -259,22 +255,26 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Opens files like <see cref="OpenManyAsync"/>, but the tab that is active now stays active (the other files open
-    /// behind it); the files of a first launch with several files open this way. Without a tab the first new tab is active.
+    /// Opens up to <see cref="MaxFilesPerOpen"/> files as tabs behind the active one, in their order, without ever
+    /// changing the active tab (so the document view of the window is not touched): the new tabs are appended at the end
+    /// of the tab strip (<see cref="TabList{T}.AddInBackground"/>), and a file that is already open is skipped, not
+    /// activated. Only a window without a tab has to activate one: the first file's tab. The files of a first launch with
+    /// several files open this way.
     /// </summary>
     /// <returns>Completes when every session has a result.</returns>
     public Task OpenInBackgroundAsync(IReadOnlyList<string> paths)
     {
-        var keep = ActiveTab;
-
-        // The tabs are added at once (the opens run on); only then does the active tab return.
-        var opens = OpenManyAsync(paths);
-        if (keep is not null && Tabs.IndexOf(keep) >= 0)
+        ArgumentNullException.ThrowIfNull(paths);
+        var opens = new List<Task>();
+        foreach (var path in paths.Take(MaxFilesPerOpen))
         {
-            Tabs.Activate(keep);
+            if (!string.IsNullOrEmpty(path) && FindOpenTab(path) is null)
+            {
+                opens.Add(AddTab(new TabViewModel(_sessionFactory()), background: true).OpenAsync(path));
+            }
         }
 
-        return opens;
+        return Task.WhenAll(opens);
     }
 
     /// <summary>
@@ -382,13 +382,42 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private TabViewModel AddTab(TabViewModel tab)
+    private TabViewModel? FindOpenTab(string path)
+    {
+        var fullPath = FullPathOrAsGiven(path);
+        foreach (var tab in Tabs)
+        {
+            if (string.Equals(tab.Session.Path, fullPath, PathComparison))
+            {
+                return tab;
+            }
+        }
+
+        return null;
+    }
+
+    private TabViewModel AddTab(TabViewModel tab, bool background = false)
     {
         var handlers = (Close: (Action)(() => CloseTab(tab)), OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;
         _tabHandlers[tab] = handlers;
-        Tabs.Add(tab);
+        if (background)
+        {
+            if (Tabs.Count > 0)
+            {
+                // A new tab starts active; one that is added behind the active tab never becomes it, so it keeps only the
+                // small render cache of an inactive tab (activating a tab sets it again).
+                tab.IsActive = false;
+            }
+
+            Tabs.AddInBackground(tab);
+        }
+        else
+        {
+            Tabs.Add(tab);
+        }
+
         return tab;
     }
 

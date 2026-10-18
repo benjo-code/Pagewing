@@ -236,4 +236,43 @@ public sealed class TabListTests
         list.Close(a);
         Assert.Equal(4, count);
     }
+
+    [Fact]
+    public void AddInBackgroundAppendsAtTheEndAndKeepsTheActiveTab()
+    {
+        var (list, a, b, c) = ListOfThree();
+        list.Activate(a);
+        var changes = 0;
+        var events = new List<NotifyCollectionChangedEventArgs>();
+        list.ActiveChanged += () => changes++;
+        list.CollectionChanged += (_, e) => events.Add(e);
+        var d = new Tab("d");
+        var e2 = new Tab("e");
+
+        list.AddInBackground(d);
+        list.AddInBackground(e2);
+
+        Assert.Equal("abcde", Order(list));
+        Assert.Same(a, list.Active);
+        Assert.Equal(0, changes);
+        Assert.Equal([3, 4], events.Select(e => e.NewStartingIndex));
+        Assert.All(events, e => Assert.Equal(NotifyCollectionChangedAction.Add, e.Action));
+    }
+
+    [Fact]
+    public void AddInBackgroundToAnEmptyListActivatesTheTab()
+    {
+        var list = new TabList<Tab>();
+        var changes = 0;
+        list.ActiveChanged += () => changes++;
+        var a = new Tab("a");
+        var b = new Tab("b");
+
+        list.AddInBackground(a);
+        list.AddInBackground(b);
+
+        Assert.Equal("ab", Order(list));
+        Assert.Same(a, list.Active);
+        Assert.Equal(1, changes);
+    }
 }

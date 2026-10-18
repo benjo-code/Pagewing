@@ -1,3 +1,5 @@
+using System.Collections.Specialized;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -116,9 +118,9 @@ public sealed class App : Application
                 DispatcherPriority.Background);
         }
 
-        if (_startup?.MorePaths is { Count: > 0 } more)
+        if (_startup?.MorePaths is { Count: > 0 } more && viewModel.ActiveTab is { } first)
         {
-            OpenMoreFilesAfterFirstFrame(window, viewModel, more);
+            OpenMoreFilesAfterFirstSharpTile(window, viewModel, first, more);
         }
 
         if (!OperatingSystem.IsWindows())
@@ -146,21 +148,69 @@ public sealed class App : Application
 
     /// <summary>
     /// The further files of the command line (a first launch with several files; the first file opened early, in
-    /// <see cref="Program.Main"/>) open as tabs behind the first one, in a job of <see cref="DispatcherPriority.Background"/>
-    /// after the first frame of the window, so the startup path stays as it is. The first tab stays active unless the
-    /// user chose another one meanwhile (<see cref="MainViewModel.OpenInBackgroundAsync"/>). A window closed before the
-    /// job runs opens nothing.
+    /// <see cref="Program.Main"/>) open as tabs behind the first one, so the startup path and the first document stay
+    /// as they are. They start once the first file has its first sharp tile (<see cref="DocumentView.FirstSharpTileDrawn"/>),
+    /// or at once when it will not get one: it failed or asks for a password, or its tab left the window. Then they open
+    /// in a job of <see cref="DispatcherPriority.Background"/> (<see cref="MainViewModel.OpenInBackgroundAsync"/>), which
+    /// never changes the active tab, so the document view is not touched. A window closed before the job runs opens
+    /// nothing.
     /// </summary>
-    internal static void OpenMoreFilesAfterFirstFrame(Window window, MainViewModel viewModel, IReadOnlyList<string> paths) =>
-        window.Opened += (_, _) => Dispatcher.UIThread.Post(
-            () =>
+    internal static void OpenMoreFilesAfterFirstSharpTile(MainWindow window, MainViewModel viewModel, TabViewModel first, IReadOnlyList<string> paths)
+    {
+        var started = false;
+
+        void Start()
+        {
+            if (started)
             {
-                if (ReferenceEquals(window.DataContext, viewModel))
+                return;
+            }
+
+            started = true;
+            window.DocumentView.FirstSharpTileDrawn -= Start;
+            first.PropertyChanged -= OnFirstChanged;
+            viewModel.Tabs.CollectionChanged -= OnTabsChanged;
+            Dispatcher.UIThread.Post(
+                () =>
                 {
-                    _ = viewModel.OpenInBackgroundAsync(paths);
-                }
-            },
-            DispatcherPriority.Background);
+                    if (ReferenceEquals(window.DataContext, viewModel))
+                    {
+                        _ = viewModel.OpenInBackgroundAsync(paths);
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+
+        // No sharp tile will come: the error card or the password prompt is what the first frame shows.
+        void StartUnlessLoadingOrReady()
+        {
+            if (first.State is not (ViewerState.Loading or ViewerState.Ready))
+            {
+                Start();
+            }
+        }
+
+        void OnFirstChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(TabViewModel.State))
+            {
+                StartUnlessLoadingOrReady();
+            }
+        }
+
+        void OnTabsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (viewModel.Tabs.IndexOf(first) < 0)
+            {
+                Start();
+            }
+        }
+
+        window.DocumentView.FirstSharpTileDrawn += Start;
+        first.PropertyChanged += OnFirstChanged;
+        viewModel.Tabs.CollectionChanged += OnTabsChanged;
+        StartUnlessLoadingOrReady();
+    }
 
     /// <summary>
     /// Creates a window of the workspace. The first one is part of the startup path (marked as a phase, icon after its

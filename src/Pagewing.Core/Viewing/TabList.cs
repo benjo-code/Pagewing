@@ -46,6 +46,31 @@ public sealed class TabList<T> : IReadOnlyList<T>, INotifyCollectionChanged
         ActiveChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Adds a tab at the end of the list without changing the active tab, so no <see cref="ActiveChanged"/> is raised
+    /// (files opened behind the tab the user is looking at). Several background tabs keep the order they were added in.
+    /// Only when the list is empty, the tab becomes the active one, since a list with tabs always has an active tab.
+    /// </summary>
+    /// <param name="item">The new tab.</param>
+    public void AddInBackground(T item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        var index = items.Count;
+        items.Add(item);
+        var activated = Active is null;
+        if (activated)
+        {
+            Active = item;
+        }
+
+        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
+        if (activated)
+        {
+            ActiveChanged?.Invoke();
+        }
+    }
+
     /// <summary>Removes a tab. Closing the active tab activates its right neighbour, else its left one.</summary>
     /// <param name="item">The tab to close. An item that is not in the list changes nothing.</param>
     /// <returns>The active tab afterwards, or <see langword="null"/> when no tab is left.</returns>
