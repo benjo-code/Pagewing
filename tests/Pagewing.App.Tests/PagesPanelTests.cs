@@ -668,6 +668,51 @@ public sealed class PagesPanelTests : IDisposable
         Assert.Equal(ThumbnailPlanner.HeightFor(later), frame.Bounds.Height, 1.0);
     }
 
+    [AvaloniaFact]
+    public async Task ThumbnailsOfPagesWithAStandInSizeRenderAtMostTwice()
+    {
+        // The sizes after the first batch cannot be read: those pages get the A4 stand-in, while their thumbnails
+        // render in the real (landscape) format, so every image differs from the size that was planned for it.
+        var (window, viewModel, _) = Show(800, factory: () => new ViewerSession(
+            new PdfEngine().OpenAsync,
+            (document, firstPage, count, priority, cancellationToken) => firstPage == 0
+                ? document.GetPageSizesAsync(firstPage, count, priority, cancellationToken)
+                : Task.FromException<IReadOnlyList<PdfPageSize>>(new InvalidOperationException("The page sizes cannot be read."))));
+        var tab = await OpenAsync(window, viewModel, "thousand-pages.pdf");
+        await WaitUntilAsync(window, () => tab.Session.LoadedSizes.Count == 1000);
+        Assert.NotNull(tab.Session.BackgroundLoadFailure);
+        Assert.Equal(PdfPageSize.A4, tab.Session.LoadedSizes[999]);
+        var list = await OpenPagesPanelAsync(window, viewModel);
+        var received = new Dictionary<int, int>();
+        list.ThumbnailReceived += key => received[key.Page] = received.GetValueOrDefault(key.Page) + 1;
+
+        // Until every entry in view has had its thumbnail and nothing is left to render.
+        list.ScrollIntoView(999);
+        HashSet<int> realized = [];
+        await WaitUntilAsync(window, () =>
+        {
+            realized = RealizedIndexes(list);
+            return realized.Contains(999) && realized.All(received.ContainsKey) && list.Source!.Scheduler.PendingCount == 0;
+        });
+
+        // Nothing is rendered again afterwards: each was rendered at most once more (the cache was emptied once, in
+        // case it held images of another scaling). Their frames stay empty, never showing a distorted image.
+        for (var i = 0; i < 20; i++)
+        {
+            Settle(window);
+            await Task.Delay(10);
+        }
+
+        Assert.All(received, pair => Assert.True(pair.Value <= 2, $"page {pair.Key + 1} rendered {pair.Value} times"));
+        Assert.Equal(0, list.Source!.Scheduler.PendingCount);
+        Assert.All(realized, index => Assert.Null(list.Thumbnails[index].Bitmap));
+
+        // A page whose size is known still shows its thumbnail.
+        list.ScrollIntoView(0);
+        await WaitUntilAsync(window, () => list.Thumbnails[0].Bitmap is not null);
+        Assert.Equal(ThumbnailPlanner.Width, list.Thumbnails[0].Bitmap!.PixelSize.Width);
+    }
+
     private (MainWindow Window, MainViewModel ViewModel, DocumentView View) Show(double width, ThemeVariant? theme = null, Func<ViewerSession>? factory = null)
     {
         // Forced, so the layout is the same on Windows and Linux runners.

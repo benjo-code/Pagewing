@@ -119,6 +119,12 @@ internal sealed class ThumbnailList : ListBox
     // The pixel size the last plan asked for, per entry: a cached image of another size (another render scaling) is not shown.
     private Dictionary<int, (int Width, int Height)> _plannedSizes = [];
 
+    // The thumbnails and the render scaling for which the list emptied the cache of stale images: everything rendered
+    // into it since then was planned by this list at this scaling, so an image of another size comes from a page whose
+    // size was only estimated (the A4 stand-in after a failed batch of page sizes), not from another scaling. At most
+    // one such clear per source and scaling, so such a page is not rendered again and again; it keeps its empty frame.
+    private (ThumbnailSource Source, double Scaling)? _clearedFor;
+
     public ThumbnailList()
     {
         ContainerPrepared += (_, _) => SchedulePlan();
@@ -452,6 +458,7 @@ internal sealed class ThumbnailList : ListBox
         }
 
         AttachSource(source);
+        var trusted = IsCacheTrusted(source);
         var realized = new List<int>();
         foreach (var container in GetRealizedContainers())
         {
@@ -477,18 +484,21 @@ internal sealed class ThumbnailList : ListBox
         {
             var size = (request.Rect.Width, request.Rect.Height);
             planned[request.Key.Page] = size;
-            stale |= (source.Cache.TryGet(request.Key, out var cached) && (cached.Width, cached.Height) != size)
-                || (_items[request.Key.Page].Bitmap is { } shown && (shown.PixelSize.Width, shown.PixelSize.Height) != size);
+            stale |= !trusted
+                && ((source.Cache.TryGet(request.Key, out var cached) && (cached.Width, cached.Height) != size)
+                    || (_items[request.Key.Page].Bitmap is { } shown && (shown.PixelSize.Width, shown.PixelSize.Height) != size));
         }
 
         if (stale)
         {
-            // The keys do not carry the render scaling: the cache holds images of another scaling (rendered before the
-            // window moved to another monitor, also while the panel was closed). All of them are rendered again; the
-            // wish list goes first, so the running job stores nothing.
+            // The keys do not carry the render scaling: the cache may hold images of another scaling (rendered before
+            // the window moved to another monitor, also while the panel was closed). All of them are rendered again;
+            // the wish list goes first, so the running job stores nothing.
             source.Scheduler.Update([]);
             source.Cache.Clear();
             ReleaseBitmaps(keep: null);
+            _clearedFor = (source, _renderScaling);
+            trusted = true;
         }
 
         source.Scheduler.Update(plan);
@@ -510,6 +520,10 @@ internal sealed class ThumbnailList : ListBox
             }
         }
     }
+
+    /// <summary>Whether every image in the cache of <paramref name="source"/> was rendered for the current scaling (see <see cref="_clearedFor"/>).</summary>
+    private bool IsCacheTrusted(ThumbnailSource source) =>
+        _clearedFor is { } cleared && ReferenceEquals(cleared.Source, source) && cleared.Scaling == _renderScaling;
 
     /// <summary>Whether <paramref name="image"/> has the pixel size the last plan asked for at entry <paramref name="index"/>.</summary>
     private bool IsPlannedSize(int index, RenderedImage image) =>
@@ -545,6 +559,9 @@ internal sealed class ThumbnailList : ListBox
 
         _source = null;
         _handler = null;
+
+        // While the list does not follow the thumbnails, others may render into their cache (another window).
+        _clearedFor = null;
     }
 
     /// <summary>A thumbnail is in the cache (UI thread, posted by <see cref="SourceHandler.OnTileReady"/>); a failed one keeps its empty frame.</summary>
@@ -563,9 +580,11 @@ internal sealed class ThumbnailList : ListBox
             {
                 SetBitmap(index, image);
             }
-            else
+            else if (!IsCacheTrusted(source) || !_plannedSizes.ContainsKey(index))
             {
-                // Rendered for another scaling or no longer planned: the next plan replaces it if it is still wanted.
+                // Perhaps rendered for another scaling, or no longer planned: the next plan replaces it if it is still
+                // wanted. A planned page of the current scaling whose image has another size (its size was only
+                // estimated) keeps its empty frame instead of being rendered again.
                 SchedulePlan();
             }
         }
@@ -627,6 +646,7 @@ internal sealed class ThumbnailList : ListBox
         }
 
         _renderScaling = scaling;
+        _clearedFor = null;
         if (_source is { } source)
         {
             StopWork();
