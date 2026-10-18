@@ -69,7 +69,7 @@ public sealed class ExternalLink
     /// <item><description>Scheme: absolute <c>http://</c> or <c>https://</c> with a host, or <c>mailto:</c> with something after it; compared case-insensitively. Nothing else (no <c>javascript:</c>, <c>file:</c>, <c>ftp:</c>, relative or UNC forms), and the .NET parser must accept it.</description></item>
     /// <item><description>Length: at most <see cref="MaxLength"/> UTF-16 code units.</description></item>
     /// <item><description>Characters, in the whole string: no control, format, line or paragraph separator character (categories Cc, Cf, Zl, Zp), no white space (a space must be written <c>%20</c>), no invisible filler (U+115F, U+1160, U+180E, U+2800, U+3164, U+FFA0), no lone surrogate, none of <c>"</c> <c>&lt;</c> <c>&gt;</c> <c>`</c> <c>{</c> <c>|</c> <c>}</c> <c>^</c> and backslash (so nothing can break out of the quoting of a launcher), and no <c>%</c> that is not followed by two hex digits.</description></item>
-    /// <item><description>Mail grammar: no raw <c>#</c>, no raw <c>;</c>, at most one raw <c>?</c>; after the <c>?</c> only the fields <c>to</c>, <c>cc</c>, <c>bcc</c>, <c>subject</c> and <c>body</c> (case-insensitive, <c>&amp;</c> separated; so no <c>attach</c>). Decoded recipients (address part and <c>to</c>, <c>cc</c>, <c>bcc</c>, separated by <c>,</c>) have none of the characters above and none of <c>&amp;</c> <c>;</c> <c>?</c> <c>#</c> <c>=</c> <c>%</c> and no non-ASCII text without an <c>@</c>; decoded <c>subject</c> has no control, format or separator character and no white space other than a space; decoded <c>body</c> has no control character other than CR, LF and tab.</description></item>
+    /// <item><description>Mail grammar: no raw <c>#</c>, no raw <c>;</c>, at most one raw <c>?</c>; after the <c>?</c> only the fields <c>to</c>, <c>cc</c>, <c>bcc</c>, <c>subject</c> and <c>body</c> (case-insensitive, <c>&amp;</c> separated; so no <c>attach</c>). Decoded recipients (address part and <c>to</c>, <c>cc</c>, <c>bcc</c>, separated by <c>,</c>) have none of the characters above and none of <c>&amp;</c> <c>;</c> <c>?</c> <c>#</c> <c>=</c> <c>%</c>, no non-ASCII text without an <c>@</c>, and a domain after the <c>@</c> that maps to a host name (IDN, only letters, digits, <c>-</c> and <c>.</c> in ASCII); decoded <c>subject</c> has no control, format or separator character and no white space other than a space; decoded <c>body</c> has no control character other than CR, LF and tab.</description></item>
     /// </list>
     /// Percent-escapes in a mail address are decoded strictly as UTF-8 (<c>+</c> stays a plus); an escape that is not
     /// valid UTF-8 makes the address invalid. Not rejected but flagged by <see cref="Warning"/>: user information before
@@ -283,12 +283,18 @@ public sealed class ExternalLink
                     continue;
                 }
 
-                var ascii = AsciiOf(domain);
-                punycode |= HasPunycodeLabel(ascii ?? domain);
+                // A domain that does not map to a host name (letters, digits, "-", ".") is no address: full-width
+                // delimiters in it ("good.com，b＠evil.com") would read as a second recipient.
+                if (AsciiOf(domain) is not { } ascii)
+                {
+                    return false;
+                }
+
+                punycode |= HasPunycodeLabel(ascii);
                 if (host.Length == 0)
                 {
                     host = domain;
-                    unicodeHost = ascii is null ? domain : UnicodeOf(domain, ascii);
+                    unicodeHost = UnicodeOf(domain, ascii);
                 }
             }
         }

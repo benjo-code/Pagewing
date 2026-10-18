@@ -316,16 +316,31 @@ public sealed class ExternalLinkTests
         Assert.False(ExternalLink.TryParse(url, out _));
     }
 
-    [Fact]
-    public void FullWidthDelimitersInAMailDomainAreNotMappedToAsciiOnes()
+    [Theory]
+    [InlineData("mailto:a@b.c？body")]
+    [InlineData("mailto:a@good.com，b＠evil.com")]
+    [InlineData("mailto:?to=a@good.com，b＠evil.com")]
+    [InlineData("mailto:a@b.c?cc=x@good.com／evil.com")]
+    [InlineData("mailto:a@b.c?bcc=x@y.z,u@good.com：evil.com")]
+    public void MailDomainsThatAreNoHostNamesAreRejected(string url)
     {
-        var accepted = ExternalLink.TryParse("mailto:a@b.c？body", out var link);
+        // Full-width delimiters in a domain would be folded into real ones by the IDN mapping; the address is not
+        // shown raw instead, it is not a link at all.
+        Assert.False(ExternalLink.TryParse(url, out _));
+    }
 
-        Assert.True(!accepted || !link!.UnicodeHost.Contains('?', StringComparison.Ordinal));
-        if (accepted)
-        {
-            Assert.Equal(link!.Host, link.UnicodeHost);
-        }
+    [Fact]
+    public void ValidMailDomainsStayAccepted()
+    {
+        Assert.True(ExternalLink.TryParse("mailto:a@b.c", out var plain));
+        Assert.Equal("b.c", plain.Host);
+        Assert.Equal("b.c", plain.UnicodeHost);
+        Assert.Equal(ExternalLinkWarning.None, plain.Warning);
+
+        Assert.True(ExternalLink.TryParse("mailto:user@exämple.org", out var idn));
+        Assert.Equal("exämple.org", idn.Host);
+        Assert.Equal("exämple.org", idn.UnicodeHost);
+        Assert.Equal(ExternalLinkWarning.Punycode, idn.Warning);
     }
 
     [Fact]
