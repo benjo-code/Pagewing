@@ -27,7 +27,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 1 | PDFium-Anbindung & Render-Kern | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md) | 2026-10-16 |
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) | 2026-10-17 |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | 2026-10-17 |
-| 4 | Navigation | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-17-milestone-04-navigation.md) | – |
+| 4 | Navigation | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-17-milestone-04-navigation.md) | 2026-10-18 |
 | 4.1 | Tabs zwischen Fenstern ziehen | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 5 | Text & Suche | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 6 | Komfort | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -167,7 +167,7 @@ Ziel: Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch 
 - [x] Schnelles Scrollen durch eine 1000-seitige Test-PDF ohne Ruckler des UI-Threads (manuelle Prüfung, Messwert notieren) – Messwert (`--measure-scroll testdata/pdfs/thousand-pages.pdf`, 600 Schritte, Abstände der Frame-Rückrufe, nicht angezeigte Bilder) auf dem Haupt-PC des Projektinhabers (Ryzen 7 7800X3D, RTX 4070 SUPER, 1920 × 1080 bei 60 Hz), Workflow „Hardware measurement“, Lauf 39045832687, Software-Rendering (Standard): Zoom 100 % p99 15,5 bis 16,9 ms, max höchstens 19,1 ms, kein Frame über 20 ms; Zoom 400 % p99 10,6 bis 10,8 ms. Manuelle Prüfung durch den Projektinhaber am 2026-10-17 mit dem gebauten AOT-Binary und `thousand-pages.pdf`: Scrollen ist flüssig (Aussage des Projektinhabers: „ist flüssig“). Grenzen: nur dieser PC, 1080p/60 Hz; die Mittel der Abstände (4 bis 8 ms) liegen unter der Bildschirmperiode und sind unerklärt; 4K, 144 Hz und schwache CPUs sind nicht gemessen.
 
 ## Milestone 4 – Navigation
-**Status:** 🔵 in Arbeit · **Plan:** [2026-10-17-milestone-04-navigation.md](superpowers/plans/2026-10-17-milestone-04-navigation.md) · **Voraussetzungen:** M3
+**Status:** ✅ fertig (2026-10-18) · **Plan:** [2026-10-17-milestone-04-navigation.md](superpowers/plans/2026-10-17-milestone-04-navigation.md) · **Voraussetzungen:** M3
 
 Ziel: Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzeichnis, Layouts und Zoom-Modi bequem navigieren.
 
@@ -181,8 +181,8 @@ Ziel: Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzei
 - [x] Dokumentinfos in der Statusleiste (Design-Spec 7.6: Datei, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Metadaten)
 
 **Abnahmekriterien**
-- [ ] Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün
-- [ ] Startzeit-Budgets weiter eingehalten (CI)
+- [x] Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün – `dotnet test Pagewing.slnx`: Core 450, App 420, Render 55 grün (CI-Lauf 39087948457 auf Linux und Windows). Tab-Wechsel: `DocumentViewTests.SwitchingTabsRestoresPageZoomAndScrollPosition`, `SwitchingBackShowsCachedTilesWithoutRendering`, `TabsTests.EachTabKeepsItsOwnPageAndZoom`; Layoutwechsel: `LayoutModeTests.SwitchingToTwoPagesKeepsTheCurrentPage`, `LayoutModeIsKeptPerTab`, `SwitchingToSinglePageInFitWidthStartsAtTheTop`; Lesezeichen-Sprung: `OutlinePanelTests.ClickingAnEntryJumpsToItsPage`, `KeyboardEnterJumps`, `KeyboardReachesEveryEntryOfALargeOutline`
+- [x] Startzeit-Budgets weiter eingehalten (CI) – Startzeit-Check, CI-Lauf 39087948457 (Kopf 1409ce4, Median aus 10 Läufen; Budget 400/200/300/100 ms): Linux kalt 168,6 · warm 164,4 · 1000 Seiten 158,2 · weitere Datei 35,4 ms; Windows kalt 159,9 · warm 160,1 · 1000 Seiten 159,9 · weitere Datei 47,2 ms; alle innerhalb der Budgets. Vergleich vor M4 (CI nach Task 9): Linux 161,6 / 164,2 / 155,4 / 35,3, Windows 162,7 / 158,3 / 155,6 / 47,0 ms. Messläufe öffnen kein Panel (`Docs/DECISIONS.md`, Eintrag zu Aktionsleiste und Panel). Offen: Messung auf echter Hardware vor dem Release (`hardware-measure.yml`)
 
 ## Milestone 4.1 – Tabs zwischen Fenstern ziehen
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M4

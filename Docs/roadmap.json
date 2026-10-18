@@ -150,7 +150,8 @@
         {
           "id": "4",
           "title": "Navigation",
-          "status": "in-progress",
+          "status": "done",
+          "completedOn": "2026-10-18",
           "plan": "superpowers/plans/2026-10-17-milestone-04-navigation.md",
           "prerequisites": ["3"],
           "goal": "Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzeichnis, Layouts und Zoom-Modi bequem navigieren.",
@@ -164,8 +165,8 @@
             { "text": "Dokumentinfos in der Statusleiste (Design-Spec 7.6: Datei, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Metadaten)", "done": true }
           ],
           "acceptance": [
-            { "text": "Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün", "done": false },
-            { "text": "Startzeit-Budgets weiter eingehalten (CI)", "done": false }
+            { "text": "Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün", "done": true, "evidence": "`dotnet test Pagewing.slnx`: Core 450, App 420, Render 55 grün (CI-Lauf 39087948457 auf Linux und Windows). Tab-Wechsel: `DocumentViewTests.SwitchingTabsRestoresPageZoomAndScrollPosition`, `SwitchingBackShowsCachedTilesWithoutRendering`, `TabsTests.EachTabKeepsItsOwnPageAndZoom`; Layoutwechsel: `LayoutModeTests.SwitchingToTwoPagesKeepsTheCurrentPage`, `LayoutModeIsKeptPerTab`, `SwitchingToSinglePageInFitWidthStartsAtTheTop`; Lesezeichen-Sprung: `OutlinePanelTests.ClickingAnEntryJumpsToItsPage`, `KeyboardEnterJumps`, `KeyboardReachesEveryEntryOfALargeOutline`" },
+            { "text": "Startzeit-Budgets weiter eingehalten (CI)", "done": true, "evidence": "Startzeit-Check, CI-Lauf 39087948457 (Kopf 1409ce4, Median aus 10 Läufen; Budget 400/200/300/100 ms): Linux kalt 168,6 · warm 164,4 · 1000 Seiten 158,2 · weitere Datei 35,4 ms; Windows kalt 159,9 · warm 160,1 · 1000 Seiten 159,9 · weitere Datei 47,2 ms; alle innerhalb der Budgets. Vergleich vor M4 (CI nach Task 9): Linux 161,6 / 164,2 / 155,4 / 35,3, Windows 162,7 / 158,3 / 155,6 / 47,0 ms. Messläufe öffnen kein Panel (`Docs/DECISIONS.md`, Eintrag zu Aktionsleiste und Panel). Offen: Messung auf echter Hardware vor dem Release (`hardware-measure.yml`)" }
           ]
         },
         {
