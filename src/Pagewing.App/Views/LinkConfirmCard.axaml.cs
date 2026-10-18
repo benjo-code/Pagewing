@@ -60,6 +60,7 @@ public sealed partial class LinkConfirmCard : UserControl
         }
 
         LinkAddress.Inlines = inlines;
+        LinkAddressScroller.Offset = default;
         var warning = link.WarningText;
         LinkWarningText.Text = warning;
         LinkWarning.IsVisible = warning is not null;

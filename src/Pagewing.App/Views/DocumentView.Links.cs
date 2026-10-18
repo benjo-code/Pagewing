@@ -104,13 +104,14 @@ public sealed partial class DocumentView
     }
 
     /// <summary>
-    /// The link a release follows: the press went down on a link that can be followed (<see cref="PressKind.Link"/>)
-    /// without modifiers, the pointer moved less than <see cref="ClickSlop"/> all the while, and it is released, without
+    /// The link a release follows: the press (a single click) went down on a link that can be followed
+    /// (<see cref="PressKind.Link"/>) without modifiers, the pointer moved less than <see cref="ClickSlop"/> all the while, and it is released, without
     /// modifiers, over the same link of the same page. Otherwise <see langword="null"/>.
     /// </summary>
     private PageLink? LinkToFollow(TextPress press, Point position, Avalonia.Input.KeyModifiers modifiers)
     {
-        if (press.Kind != PressKind.Link || press.Moved || Distance(position, press.Start) >= ClickSlop
+        // Only a single click: the second press of a double click may land on another link where the first one jumped to.
+        if (press.Kind != PressKind.Link || press.ClickCount != 1 || press.Moved || Distance(position, press.Start) >= ClickSlop
             || press.Modifiers != Avalonia.Input.KeyModifiers.None || modifiers != Avalonia.Input.KeyModifiers.None
             || press.Link is not { } link || press.Text is not { } text
             || PageCanvas.PagePointAt(position) is not { } hit || hit.Page != press.Page)

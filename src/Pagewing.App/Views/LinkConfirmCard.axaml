@@ -16,7 +16,7 @@
     the document, so no other link can be clicked while it is up. Tab stays on the card. Esc cancels (a key binding of
     the window). Made in code when the first address asks for it (MainWindow.LinkCard.cs), never in the startup path.
   -->
-  <Border MaxWidth="480" Margin="24" Padding="24"
+  <Border Name="LinkCardBox" MaxWidth="480" Margin="24" Padding="24"
           HorizontalAlignment="Center" VerticalAlignment="Center"
           CornerRadius="{StaticResource Pw.Radius.Overlay}"
           Background="{DynamicResource Pw.Brush.Surface.Raised}"
@@ -29,10 +29,16 @@
                    Text="{x:Static res:Strings.LinkConfirmText}" />
       </StackPanel>
 
-      <!-- The runs are set in code-behind (Show). -->
-      <SelectableTextBlock Name="LinkAddress" TextWrapping="Wrap"
-                           FontFamily="{DynamicResource Pw.Font.Mono}" FontSize="11.5" LineHeight="16"
-                           Foreground="{DynamicResource Pw.Brush.Text.Primary}" />
+      <!--
+        The runs are set in code-behind (Show). A long address (up to 2048 characters) scrolls within at most 180, so
+        the buttons always stay on the card.
+      -->
+      <ScrollViewer Name="LinkAddressScroller" MaxHeight="180"
+                    HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <SelectableTextBlock Name="LinkAddress" TextWrapping="Wrap"
+                             FontFamily="{DynamicResource Pw.Font.Mono}" FontSize="11.5" LineHeight="16"
+                             Foreground="{DynamicResource Pw.Brush.Text.Primary}" />
+      </ScrollViewer>
 
       <DockPanel Name="LinkWarning" IsVisible="False">
         <ctl:StrokeIcon DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Top"
