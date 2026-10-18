@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 
 namespace Pagewing.Core.Settings;
@@ -9,9 +8,6 @@ namespace Pagewing.Core.Settings;
 /// </summary>
 public sealed class SettingsStore(string path)
 {
-    /// <summary>Files larger than this are not read; they count as corrupt.</summary>
-    internal const long MaxFileLength = 1024 * 1024;
-
     /// <summary>The settings file.</summary>
     public string FilePath { get; } = path;
 
@@ -21,29 +17,8 @@ public sealed class SettingsStore(string path)
     /// </summary>
     public AppSettings Load()
     {
-        string text;
-        try
-        {
-            var info = new FileInfo(FilePath);
-            if (!info.Exists)
-            {
-                return AppSettings.Default;
-            }
-
-            if (info.Length > MaxFileLength)
-            {
-                KeepBackup();
-                return AppSettings.Default;
-            }
-
-            text = File.ReadAllText(FilePath);
-        }
-        catch (Exception ex) when (IsFileError(ex))
-        {
-            return AppSettings.Default;
-        }
-
-        if (string.IsNullOrWhiteSpace(text))
+        var text = JsonFile.ReadText(FilePath);
+        if (text is null)
         {
             return AppSettings.Default;
         }
@@ -61,7 +36,7 @@ public sealed class SettingsStore(string path)
             // Falls through to the backup below.
         }
 
-        KeepBackup();
+        JsonFile.KeepBackup(FilePath);
         return AppSettings.Default;
     }
 
@@ -73,57 +48,6 @@ public sealed class SettingsStore(string path)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        var temp = FilePath + ".tmp";
-        try
-        {
-            var directory = Path.GetDirectoryName(Path.GetFullPath(FilePath));
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(settings, SettingsJsonContext.Default.AppSettings);
-            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                stream.Write(new UTF8Encoding(false).GetBytes(json));
-                stream.Flush(flushToDisk: true);
-            }
-
-            File.Move(temp, FilePath, overwrite: true);
-            return true;
-        }
-        catch (Exception ex) when (IsFileError(ex))
-        {
-            DeleteQuietly(temp);
-            return false;
-        }
-    }
-
-    // Besides real I/O failures, a malformed path (illegal characters, unsupported format) must not throw either.
-    private static bool IsFileError(Exception ex) =>
-        ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
-
-    private void KeepBackup()
-    {
-        try
-        {
-            File.Copy(FilePath, FilePath + ".bad", overwrite: true);
-        }
-        catch (Exception ex) when (IsFileError(ex))
-        {
-            // The backup is a courtesy; losing it must not change the outcome.
-        }
-    }
-
-    private static void DeleteQuietly(string file)
-    {
-        try
-        {
-            File.Delete(file);
-        }
-        catch (Exception ex) when (IsFileError(ex))
-        {
-            // Nothing more to do.
-        }
+        return JsonFile.TryWrite(FilePath, JsonSerializer.Serialize(settings, SettingsJsonContext.Default.AppSettings));
     }
 }
