@@ -17,8 +17,8 @@ using Pagewing.Core.Viewing;
 namespace Pagewing.App.Controls;
 
 /// <summary>
-/// One entry of the page thumbnails: the page number, the size of its frame (136 DIP wide, two columns of 86 in the
-/// density "Kompakt"; as high as the page format asks) and the thumbnail once it is rendered. UI thread only.
+/// One entry of the page thumbnails: the page number, the size of its frame (136 DIP wide, in the density "Kompakt" as
+/// wide as its column; as high as the page format asks) and the thumbnail once it is rendered. UI thread only.
 /// </summary>
 public sealed class ThumbnailItem : ViewModelBase
 {
@@ -125,6 +125,24 @@ public sealed class ThumbnailItem : ViewModelBase
 /// </remarks>
 internal sealed class ThumbnailList : ListBox
 {
+    /// <summary>
+    /// What an entry adds to the width of its frame (PagesPanel.axaml): 6 padding, 2 ring of the current page and 1 edge
+    /// on each side.
+    /// </summary>
+    internal const double EntryChrome = 2 * (6 + 2 + 1);
+
+    /// <summary>The gap between two entries of a row: the same as between two rows (2 x the entry margin of 8).</summary>
+    internal const double EntryGap = 16;
+
+    /// <summary>
+    /// The step in which the frames of several columns follow the width of the list. Each step renders the thumbnails
+    /// again, so dragging the edge of the panel renders them every 2 x 8 DIP of panel width, not on every pixel.
+    /// </summary>
+    internal const double FrameStep = 8;
+
+    /// <summary>The narrowest frame of several columns.</summary>
+    private const double MinColumnFrameWidth = 32;
+
     /// <summary>Defines the <see cref="Columns"/> property.</summary>
     public static readonly StyledProperty<int> ColumnsProperty =
         AvaloniaProperty.Register<ThumbnailList, int>(nameof(Columns), 1);
@@ -149,6 +167,9 @@ internal sealed class ThumbnailList : ListBox
     private TopLevel? _topLevel;
     private double _renderScaling = 1;
     private IReadOnlyList<RenderRequest> _lastRequests = [];
+
+    // The width the entries and the thumbnails have now (FrameWidth when it was last applied).
+    private double _frameWidth = ThumbnailPlanner.Width;
 
     // The pixel size the last plan asked for, per entry: a cached image of another size (another render scaling) is not shown.
     private Dictionary<int, (int Width, int Height)> _plannedSizes = [];
@@ -198,15 +219,49 @@ internal sealed class ThumbnailList : ListBox
         set => SetValue(ColumnsProperty, value);
     }
 
-    /// <summary>Gets or sets the width of a thumbnail in DIPs: the resource <c>Pw.Size.ThumbnailWidth</c> of the density.</summary>
+    /// <summary>
+    /// Gets or sets the width of a thumbnail in DIPs: the resource <c>Pw.Size.ThumbnailWidth</c> of the density. With one
+    /// column it is the width of every frame; with several it only applies until the list knows its own width (see
+    /// <see cref="FrameWidth"/>).
+    /// </summary>
     public double ThumbnailWidth
     {
         get => GetValue(ThumbnailWidthProperty);
         set => SetValue(ThumbnailWidthProperty, value);
     }
 
-    /// <summary>The thumbnail width in use: <see cref="ThumbnailWidth"/>, or the normal width when it is not usable.</summary>
-    private double FrameWidth => double.IsFinite(ThumbnailWidth) && ThumbnailWidth >= 1 ? ThumbnailWidth : ThumbnailPlanner.Width;
+    /// <summary>
+    /// Gets the width of the frames in DIPs, which the thumbnails are rendered at. One column: <see cref="ThumbnailWidth"/>
+    /// (136). Several columns (design system 5.4, "Spaltenbreite"): the width of a column, so the entries fill the list
+    /// with <see cref="EntryGap"/> between them and never overflow at any panel width: (content width − gaps) / columns
+    /// − <see cref="EntryChrome"/>, rounded down to <see cref="FrameStep"/>. No upper cap: the widest panel (400) gives
+    /// 160, the narrowest (200) 56, the default of "Kompakt" (236) 72.
+    /// </summary>
+    internal double FrameWidth
+    {
+        get
+        {
+            var resource = double.IsFinite(ThumbnailWidth) && ThumbnailWidth >= 1 ? ThumbnailWidth : ThumbnailPlanner.Width;
+            var columns = Columns;
+            var content = Bounds.Width - Padding.Left - Padding.Right;
+            if (columns <= 1 || !(content > 0))
+            {
+                return resource;
+            }
+
+            var column = ((content - ((columns - 1) * EntryGap)) / columns) - EntryChrome;
+            return Math.Max(MinColumnFrameWidth, Math.Floor(column / FrameStep) * FrameStep);
+        }
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        if (Columns > 1 && e.WidthChanged)
+        {
+            ApplyFrameWidth();
+        }
+    }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -217,13 +272,14 @@ internal sealed class ThumbnailList : ListBox
             var columns = Columns;
             if (columns > 1)
             {
-                ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingGridPanel { Columns = columns });
+                ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingGridPanel { Columns = columns, ColumnSpacing = EntryGap });
             }
             else
             {
                 ClearValue(ItemsPanelProperty);
             }
 
+            ApplyFrameWidth();
             SchedulePlan();
         }
         else if (change.Property == ThumbnailWidthProperty)
@@ -381,7 +437,7 @@ internal sealed class ThumbnailList : ListBox
         for (var index = 0; index < pageCount; index++)
         {
             var size = index < known && IsUsable(sizes[index]) ? sizes[index] : estimate;
-            items[index] = new ThumbnailItem(index + 1, size, FrameWidth);
+            items[index] = new ThumbnailItem(index + 1, size, _frameWidth);
         }
 
         _items = items;
@@ -558,7 +614,7 @@ internal sealed class ThumbnailList : ListBox
             return byDistance != 0 ? byDistance : a.CompareTo(b);
         });
 
-        var plan = ThumbnailPlanner.Plan(tab.Session.LoadedSizes, realized, _renderScaling, FrameWidth);
+        var plan = ThumbnailPlanner.Plan(tab.Session.LoadedSizes, realized, _renderScaling, _frameWidth);
         var planned = new Dictionary<int, (int Width, int Height)>(plan.Count);
         var stale = false;
         foreach (var request in plan)
@@ -745,6 +801,12 @@ internal sealed class ThumbnailList : ListBox
     private void ApplyFrameWidth()
     {
         var width = FrameWidth;
+        if (width == _frameWidth)
+        {
+            return;
+        }
+
+        _frameWidth = width;
         foreach (var item in _items)
         {
             item.FrameWidth = width;

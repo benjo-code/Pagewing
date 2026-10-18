@@ -10,8 +10,10 @@ namespace Pagewing.App.Controls;
 /// A virtualizing items panel that lays the items out in rows of <see cref="Columns"/> equal columns, top to bottom
 /// (the two columns of thumbnails in the density "Kompakt", design system 5.4). Only the rows in the viewport exist as
 /// containers (plus the one being scrolled into view and the one with the keyboard focus); the containers of the other
-/// rows are recycled. A row is as high as its tallest item; the items keep their own width and lie in their column
-/// as their alignment says. The height of a row that was never realized is the mean of the measured rows. The arrow
+/// rows are recycled. A row is as high as its tallest item. The columns are as wide as the widest realized item and
+/// <see cref="ColumnSpacing"/> apart, and together they are centred in the panel, so the gap between two items of a row
+/// is exactly <see cref="ColumnSpacing"/> and the panel's spare width goes to both outer edges. An item is never
+/// measured wider than its share of the width (less the spacing). The height of a row that was never realized is the mean of the measured rows. The arrow
 /// keys go to the item beside (Left/Right) or the one in the same column of the row above or below (Up/Down);
 /// Home and End to the first and the last item. UI thread only.
 /// </summary>
@@ -24,6 +26,10 @@ internal sealed class VirtualizingGridPanel : VirtualizingPanel
     /// <summary>Defines the <see cref="Columns"/> property.</summary>
     public static readonly StyledProperty<int> ColumnsProperty =
         AvaloniaProperty.Register<VirtualizingGridPanel, int>(nameof(Columns), 2, validate: columns => columns >= 1);
+
+    /// <summary>Defines the <see cref="ColumnSpacing"/> property.</summary>
+    public static readonly StyledProperty<double> ColumnSpacingProperty =
+        AvaloniaProperty.Register<VirtualizingGridPanel, double>(nameof(ColumnSpacing), 0, validate: spacing => double.IsFinite(spacing) && spacing >= 0);
 
     // The recycle key a container was made for (VirtualizingStackPanel keeps its own, private one).
     private static readonly AttachedProperty<object?> RecycleKeyProperty =
@@ -43,7 +49,7 @@ internal sealed class VirtualizingGridPanel : VirtualizingPanel
 
     static VirtualizingGridPanel()
     {
-        AffectsMeasure<VirtualizingGridPanel>(ColumnsProperty);
+        AffectsMeasure<VirtualizingGridPanel>(ColumnsProperty, ColumnSpacingProperty);
     }
 
     public VirtualizingGridPanel()
@@ -56,6 +62,13 @@ internal sealed class VirtualizingGridPanel : VirtualizingPanel
     {
         get => GetValue(ColumnsProperty);
         set => SetValue(ColumnsProperty, value);
+    }
+
+    /// <summary>Gets or sets the horizontal gap between two items of a row in DIPs; 0 by default.</summary>
+    public double ColumnSpacing
+    {
+        get => GetValue(ColumnSpacingProperty);
+        set => SetValue(ColumnSpacingProperty, value);
     }
 
     private int ColumnCount => Math.Max(1, Columns);
@@ -180,7 +193,9 @@ internal sealed class VirtualizingGridPanel : VirtualizingPanel
         try
         {
             var finiteWidth = double.IsFinite(availableSize.Width);
-            var columnWidth = finiteWidth ? availableSize.Width / columns : double.PositiveInfinity;
+            var columnWidth = finiteWidth
+                ? Math.Max(0, availableSize.Width - ((columns - 1) * ColumnSpacing)) / columns
+                : double.PositiveInfinity;
             var estimate = EstimateRowHeight();
 
             // The first row that reaches into the viewport (the last row when the viewport lies below the content).
@@ -238,7 +253,7 @@ internal sealed class VirtualizingGridPanel : VirtualizingPanel
                 y += HeightOf(row, estimate);
             }
 
-            return new Size(finiteWidth ? availableSize.Width : maxWidth * columns, y);
+            return new Size(finiteWidth ? availableSize.Width : (maxWidth * columns) + ((columns - 1) * ColumnSpacing), y);
         }
         finally
         {
@@ -249,12 +264,22 @@ internal sealed class VirtualizingGridPanel : VirtualizingPanel
     protected override Size ArrangeOverride(Size finalSize)
     {
         var columns = ColumnCount;
-        var columnWidth = finalSize.Width / columns;
+        var spacing = ColumnSpacing;
+        var share = Math.Max(0, finalSize.Width - ((columns - 1) * spacing)) / columns;
+        var columnWidth = 0.0;
+        foreach (var container in _realized.Values)
+        {
+            columnWidth = Math.Max(columnWidth, container.DesiredSize.Width);
+        }
+
+        columnWidth = Math.Min(columnWidth, share);
+        var left = Math.Max(0, (finalSize.Width - (columns * columnWidth) - ((columns - 1) * spacing)) / 2);
         foreach (var (index, container) in _realized)
         {
             var row = index / columns;
             var top = row < _rowTops.Length ? _rowTops[row] : 0;
-            container.Arrange(new Rect((index % columns) * columnWidth, top, columnWidth, container.DesiredSize.Height));
+            var x = left + ((index % columns) * (columnWidth + spacing));
+            container.Arrange(new Rect(x, top, columnWidth, container.DesiredSize.Height));
         }
 
         return finalSize;

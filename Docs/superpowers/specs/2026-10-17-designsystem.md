@@ -189,9 +189,9 @@ Regeln:
 | Rand um die Seiten | 32 | 20 | `Pw.Size.PageMargin` (`DocumentLayout.PageMargin`) |
 | Abstand zwischen Seiten | 20 | 20 | `DocumentLayout.PageGap` |
 | Grundschrift | 13 | 12.5 | `Pw.Font.Body`, Zeilenhöhe `Pw.Font.BodyLineHeight` (18 / 17) |
-| Vorschaubilder je Zeile (Breite) | 1 (136) | 2 (Spaltenbreite: 86) | `Pw.Size.ThumbnailColumns`, `Pw.Size.ThumbnailWidth` |
+| Vorschaubilder je Zeile (Breite) | 1 (136) | 2 (Spaltenbreite: 56 bis 160, bei 236 Panelbreite 72) | `Pw.Size.ThumbnailColumns`, `Pw.Size.ThumbnailWidth` |
 
-Umsetzung (M6): Die Werte für „Normal“ stehen in `Styles/Metrics.axaml`, die für „Kompakt“ mit denselben Schlüsseln in `Styles/Density.axaml`; `Services/Appearance` kopiert sie nur bei „Kompakt“ über die normalen (zur Laufzeit, ohne Neustart). Die Spaltenbreite der Vorschaubilder ergibt sich aus der Standardbreite 236: (236 − 2 × 14 Listenrand) / 2 = 104 je Spalte, abzüglich 2 × (6 Innenabstand + 2 Ring + 1 Kante) des Eintrags = 86. Eine gespeicherte Panelbreite gilt in beiden Dichten; gespeichert als 264 steht sie für „Standardbreite der Dichte“.
+Umsetzung (M6): Die Werte für „Normal“ stehen in `Styles/Metrics.axaml`, die für „Kompakt“ mit denselben Schlüsseln in `Styles/Density.axaml`; `Services/Appearance` kopiert sie nur bei „Kompakt“ über die normalen (zur Laufzeit, ohne Neustart). Die Vorschaubilder in „Kompakt“ folgen der Panelbreite: (Panelbreite − 2 × 14 Listenrand − 16 Abstand) / 2, abzüglich 2 × (6 Innenabstand + 2 Ring + 1 Kante) des Eintrags, abgerundet auf 8 (bei 200 also 56, bei 236 72, bei 400 160; keine Obergrenze). Zwischen den Einträgen einer Zeile liegen wie zwischen den Zeilen 16, der Rest der Breite verteilt sich auf beide Außenränder; die Stufen von 8 sorgen dafür, dass das Ziehen der Panelkante die Vorschaubilder nicht bei jedem Pixel neu rendert. Eine gespeicherte Panelbreite gilt in beiden Dichten; gespeichert als 264 steht sie für „Standardbreite der Dichte“.
 
 ### 5.5 Icons
 

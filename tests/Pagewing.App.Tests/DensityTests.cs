@@ -75,8 +75,9 @@ public sealed class DensityTests : IDisposable
         Assert.Equal(13, Resource(window, "Pw.Font.Body"));
         Assert.Equal(18, Resource(window, "Pw.Font.BodyLineHeight"));
 
-        // One column of 136 wide thumbnails.
+        // One column of 136 wide thumbnails, in the list box's own panel.
         AssertThumbnails(window, list, columns: 1, width: 136);
+        Assert.IsType<VirtualizingStackPanel>(list.ItemsPanelRoot);
     }
 
     [AvaloniaFact]
@@ -109,7 +110,8 @@ public sealed class DensityTests : IDisposable
         Assert.Equal(12.5, window.FontSize);
         Assert.Equal(12.5, Resource(window, "Pw.Font.Body"));
         Assert.Equal(17, Resource(window, "Pw.Font.BodyLineHeight"));
-        AssertThumbnails(window, list, columns: 2, width: 86);
+        AssertThumbnails(window, list, columns: 2, width: 72);
+        Assert.IsType<VirtualizingGridPanel>(list.ItemsPanelRoot);
     }
 
     [AvaloniaFact]
@@ -195,9 +197,9 @@ public sealed class DensityTests : IDisposable
         settings.Update(current => current with { Density = DensitySetting.Compact });
         Settle(window);
         list = await WaitForListAsync(window, tab);
-        AssertThumbnails(window, list, columns: 2, width: 86);
-        await WaitUntilAsync(window, () => list.Thumbnails.All(item => item.Bitmap is { PixelSize.Width: 86 }));
-        Assert.All(list.LastRequests, request => Assert.Equal(86, request.Rect.Width));
+        AssertThumbnails(window, list, columns: 2, width: 72);
+        await WaitUntilAsync(window, () => list.Thumbnails.All(item => item.Bitmap is { PixelSize.Width: 72 }));
+        Assert.All(list.LastRequests, request => Assert.Equal(72, request.Rect.Width));
 
         // The current page keeps its frame and bold number (design system 7.3 and 7.10).
         tab.GoToPage(2);
@@ -236,6 +238,79 @@ public sealed class DensityTests : IDisposable
         list = await WaitForListAsync(window, tab);
         AssertThumbnails(window, list, columns: 1, width: 136);
         await WaitUntilAsync(window, () => list.Thumbnails[0].Bitmap is { PixelSize.Width: 136 });
+    }
+
+    [AvaloniaTheory]
+    [InlineData(200.0, 56.0)]
+    [InlineData(236.0, 72.0)]
+    [InlineData(400.0, 160.0)]
+    public async Task CompactThumbnailsFitTheirColumnsAtEveryPanelWidth(double panelWidth, double frameWidth)
+    {
+        var settings = Start();
+        settings.Update(current => current with { Density = DensitySetting.Compact });
+        var (window, viewModel, view) = Show(1200, settings);
+        var tab = await OpenAsync(window, viewModel, view, "outline.pdf");
+        var list = await WaitForListAsync(window, tab);
+        viewModel.PanelWidth = panelWidth;
+        Settle(window);
+        Assert.Equal(panelWidth, Find<Panel>(window, "PanelHost").Bounds.Width);
+
+        // The frames are as wide as the column allows (steps of 8), the thumbnails are rendered at that width.
+        Assert.Equal(frameWidth, list.FrameWidth);
+        Assert.All(list.Thumbnails, item => Assert.Equal(frameWidth, item.FrameWidth));
+        await WaitUntilAsync(window, () => list.Thumbnails.All(item => item.Bitmap is { } bitmap && bitmap.PixelSize.Width == frameWidth));
+        Assert.NotEmpty(list.LastRequests);
+        Assert.All(list.LastRequests, request => Assert.Equal(frameWidth, request.Rect.Width));
+
+        // Never overlapping or overflowing: inside the list's padding, 16 apart in a row and between the rows.
+        list.ScrollIntoView(0);
+        Settle(window);
+        var entries = Enumerable.Range(0, 3)
+            .Select(index => Assert.IsType<ListBoxItem>(list.ContainerFromIndex(index)))
+            .Select(container => new Rect(container.TranslatePoint(default, list)!.Value, container.Bounds.Size))
+            .ToArray();
+        foreach (var entry in entries)
+        {
+            Assert.Equal(frameWidth + ThumbnailList.EntryChrome, entry.Width, 0.5);
+            Assert.True(entry.X >= list.Padding.Left - 0.5, $"entry at {entry} leaves the list on the left");
+            Assert.True(entry.Right <= list.Bounds.Width - list.Padding.Right + 0.5, $"entry at {entry} leaves the list on the right");
+        }
+
+        Assert.Equal(entries[0].Y, entries[1].Y, 0.5);
+        Assert.Equal(ThumbnailList.EntryGap, entries[1].X - entries[0].Right, 0.5);
+        Assert.Equal(ThumbnailList.EntryGap, entries[2].Y - entries[0].Bottom, 0.5);
+        Assert.Equal(entries[0].X, entries[2].X, 0.5);
+
+        // The row is centred: the spare width goes to both edges alike.
+        Assert.Equal(entries[0].X, list.Bounds.Width - entries[1].Right, 0.5);
+    }
+
+    [AvaloniaFact]
+    public async Task DraggingThePanelEdgeRendersTheThumbnailsInSteps()
+    {
+        var settings = Start();
+        settings.Update(current => current with { Density = DensitySetting.Compact });
+        var (window, viewModel, view) = Show(1200, settings);
+        var tab = await OpenAsync(window, viewModel, view, "outline.pdf");
+        var list = await WaitForListAsync(window, tab);
+        await WaitUntilAsync(window, () => list.Thumbnails.All(item => item.Bitmap is { PixelSize.Width: 72 }));
+        var bitmap = list.Thumbnails[0].Bitmap;
+
+        // A drag over 16 DIP of panel width (224 to 239) stays within the step of 8: same frames, the same images, nothing rendered again.
+        for (var width = 224; width <= 239; width++)
+        {
+            viewModel.PanelWidth = width;
+            Settle(window);
+            Assert.Equal(72, list.FrameWidth);
+        }
+
+        Assert.Same(bitmap, list.Thumbnails[0].Bitmap);
+
+        // The next step: frames and images of 80.
+        viewModel.PanelWidth = 240;
+        Settle(window);
+        Assert.Equal(80, list.FrameWidth);
+        await WaitUntilAsync(window, () => list.Thumbnails.All(item => item.Bitmap is { PixelSize.Width: 80 }));
     }
 
     [AvaloniaFact]

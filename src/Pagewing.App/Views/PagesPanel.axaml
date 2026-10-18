@@ -69,7 +69,7 @@
   </UserControl.Styles>
 
   <!--
-    Density (design system 5.4): one column of 136 wide entries, in "Kompakt" two columns of 86 (Pw.Size.ThumbnailColumns
+    Density (design system 5.4): one column of 136 wide entries, in "Kompakt" two columns as wide as the list allows (Pw.Size.ThumbnailColumns
     and Pw.Size.ThumbnailWidth); the list chooses its items panel itself (ThumbnailList.Columns).
   -->
   <ctl:ThumbnailList Name="ThumbnailList" Classes="thumbnails" Classes.darkPage="{Binding IsPageDark}"
@@ -86,7 +86,7 @@
             <!-- The 2 px frame of the current page, outside the edge of the thumbnail; transparent on the other pages. -->
             <Border Name="CurrentRing" Classes="thumbRing" BorderThickness="2" HorizontalAlignment="Center">
               <Border Name="Placeholder" Classes="thumbFrame" Classes.loaded="{Binding HasBitmap}" BorderThickness="1">
-                <!-- 136 DIP wide (Kompakt 86): the thumbnail is rendered at that width times the render scaling, one image pixel per device pixel. -->
+                <!-- 136 DIP wide (Kompakt: the column width, ThumbnailList.FrameWidth): the thumbnail is rendered at that width times the render scaling, one image pixel per device pixel. -->
                 <Panel Name="ThumbnailFrame" Width="{Binding FrameWidth}" Height="{Binding FrameHeight}">
                   <Image Name="ThumbnailImage" Source="{Binding Bitmap}" Stretch="Fill"
                          RenderOptions.BitmapInterpolationMode="HighQuality" />
