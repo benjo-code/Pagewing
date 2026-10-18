@@ -203,6 +203,9 @@
   </Style>
   <Style Selector="Border.tab.active, Border.tab.active:pointerover">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Canvas}" />
+    <!-- High contrast: an outline open at the bottom (Pw.Thickness.ActiveTabOutline, 0 in light and dark). -->
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+    <Setter Property="BorderThickness" Value="{DynamicResource Pw.Thickness.ActiveTabOutline}" />
   </Style>
   <Style Selector="Border.tab ctl|MiddleEllipsisTextBlock">
     <Setter Property="FontWeight" Value="Normal" />

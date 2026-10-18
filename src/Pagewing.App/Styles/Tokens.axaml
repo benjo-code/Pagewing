@@ -95,6 +95,14 @@
       <!-- Shadows (section 5.3) -->
       <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #14000000, 0 2 10 0 #1A000000</BoxShadows>
       <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #DCDFE5, 0 12 32 -12 #1A000000</BoxShadows>
+
+      <!--
+        Region separators (section 5.3): where two regions of the window meet (action bar, title bar, panel, document
+        area, status bar). Here they part by colour, so the lines are 0 and draw nothing; high contrast, where every
+        surface is black, draws them (HighContrast.axaml). The active tab gets an outline open at the bottom.
+      -->
+      <x:Double x:Key="Pw.Size.RegionSeparator">0</x:Double>
+      <Thickness x:Key="Pw.Thickness.ActiveTabOutline">0</Thickness>
     </ResourceDictionary>
     <ResourceDictionary x:Key="Dark">
       <!-- Surface -->
@@ -181,6 +189,14 @@
       <!-- Shadows (section 5.3) -->
       <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #24FFFFFF, 0 2 10 0 #99000000</BoxShadows>
       <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #2A2E36, 0 12 32 -12 #99000000</BoxShadows>
+
+      <!--
+        Region separators (section 5.3): where two regions of the window meet (action bar, title bar, panel, document
+        area, status bar). Here they part by colour, so the lines are 0 and draw nothing; high contrast, where every
+        surface is black, draws them (HighContrast.axaml). The active tab gets an outline open at the bottom.
+      -->
+      <x:Double x:Key="Pw.Size.RegionSeparator">0</x:Double>
+      <Thickness x:Key="Pw.Thickness.ActiveTabOutline">0</Thickness>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

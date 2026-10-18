@@ -94,6 +94,16 @@
       <views:ActionBar Name="ActionBar" IsVisible="{Binding HasTabs}" />
 
       <!--
+        Region separators (design system 5.3), in high contrast only: there every surface is black, so 1 px border.subtle
+        lines part the action bar from the panel and the document area, the panel from the document area and the work area
+        from the status bar. Pw.Size.RegionSeparator is 0 in light and dark: the lines draw nothing and take no space.
+        They lie over the edge pixels of the regions (the title bar draws its own, TitleBar.axaml) and take no input.
+      -->
+      <Border Name="ActionBarEdge" HorizontalAlignment="Right"
+              Width="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
+              IsHitTestVisible="False" IsVisible="{Binding HasTabs}" />
+
+      <!--
         Holds the side panel, which MainWindow.Panel.cs creates only when a panel opens for the first time (nothing of
         it is built in the startup path). It spans the document column, so it can lie over the document in a narrow
         window; beside the document it is exactly as wide as the panel column.
@@ -128,6 +138,14 @@
       <GridSplitter Name="PanelSplitter" Grid.Column="1" ZIndex="2"
                     Width="6" Margin="0,0,-3,0" MinWidth="0" HorizontalAlignment="Right"
                     ResizeDirection="Columns" Background="Transparent" Focusable="False" IsVisible="False" />
+
+      <!-- Separators of high contrast (see ActionBarEdge): panel | document area while the panel lies beside it, and the bottom edge. -->
+      <Border Name="PanelEdge" Grid.Column="1" ZIndex="2" HorizontalAlignment="Right"
+              Width="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
+              IsHitTestVisible="False" IsVisible="{Binding #PanelSplitter.IsVisible}" />
+      <Border Name="StatusBarEdge" Grid.Column="1" Grid.ColumnSpan="2" ZIndex="2" Margin="-1,0,0,0" VerticalAlignment="Bottom"
+              Height="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
+              IsHitTestVisible="False" IsVisible="{Binding ActiveTab.HasStatusBarRow, FallbackValue=False}" />
     </Grid>
 
     <Border Name="StatusBarRow" Grid.Row="2" Height="{DynamicResource Pw.Size.StatusBarHeight}"

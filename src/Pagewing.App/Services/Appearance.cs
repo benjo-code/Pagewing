@@ -31,6 +31,7 @@ public sealed class Appearance : IDisposable, IEffectiveTheme
 
     // Whether the system asks for high contrast, as last read from _contrast.
     private bool _highContrastRequested;
+    private bool _disposed;
 
     // Whether the app's resources hold the zero durations of reduced motion, and the durations they replaced (the
     // compiled App.axaml merges Metrics.axaml into the app's own dictionary, so the zero values overwrite them).
@@ -105,6 +106,7 @@ public sealed class Appearance : IDisposable, IEffectiveTheme
     /// <summary>Stops following the settings and the theme; what was applied stays.</summary>
     public void Dispose()
     {
+        _disposed = true;
         _settings.Changed -= Apply;
         _app.ActualThemeVariantChanged -= OnActualThemeVariantChanged;
         _contrast.ColorValuesChanged -= OnColorValuesChanged;
@@ -218,6 +220,12 @@ public sealed class Appearance : IDisposable, IEffectiveTheme
 
     private void OnColorValuesChanged()
     {
+        // A change posted from another thread may arrive after Dispose: then nothing is applied any more.
+        if (_disposed)
+        {
+            return;
+        }
+
         if (!Dispatcher.UIThread.CheckAccess())
         {
             Dispatcher.UIThread.Post(OnColorValuesChanged);

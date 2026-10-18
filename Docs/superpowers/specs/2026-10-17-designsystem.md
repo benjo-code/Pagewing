@@ -173,7 +173,7 @@ Regeln:
 
 - **Abstände** (4-px-Raster): `space.0` 2, `space.1` 4, `space.2` 8, `space.3` 12, `space.4` 16, `space.5` 24, `space.6` 32.
 - **Radien:** `radius.control` 6 (Knöpfe, Felder, Listeneinträge), `radius.overlay` 10 (Karten, Popups, Befehlspalette, obere linke Ecke von Panel bzw. Dokumentbereich), `radius.tab` 8 (obere Ecken eines Tabs), `radius.page` 0.
-- **Ränder:** Flächen trennen sich über Farbe, nicht über Linien. `border.subtle` (1 px) nur dort, wo gleichfarbige Flächen aneinanderstoßen (Unterkante der Werkzeugleiste eines Modus, Linux-Tab-Zeile). Eingabefelder und sekundäre Knöpfe haben 1 px `border.strong`.
+- **Ränder:** Flächen trennen sich über Farbe, nicht über Linien. `border.subtle` (1 px) nur dort, wo gleichfarbige Flächen aneinanderstoßen (Unterkante der Werkzeugleiste eines Modus, Linux-Tab-Zeile). Eingabefelder und sekundäre Knöpfe haben 1 px `border.strong`. Im Hochkontrast sind alle Flächen schwarz, die Regel greift also an jeder Bereichsgrenze: 1-px-Linien in `border.subtle` (weiß) trennen Aktionsleiste und Panel bzw. Dokumentbereich, Panel und Dokumentbereich, Titelleiste und Panel bzw. Dokumentbereich sowie Arbeitsbereich und Statusleiste; der aktive Tab bekommt einen Umriss oben und seitlich und bleibt unten offen, geht also weiter in den Dokumentbereich über. Ressourcen `Pw.Size.RegionSeparator` (hell und dunkel 0, Hochkontrast 1) und `Pw.Thickness.ActiveTabOutline` (0 bzw. `1,1,1,0`); die Linien liegen über den Randpixeln der Bereiche und ändern kein Maß, hell und dunkel bleiben pixelgleich.
 - **Fokus:** 2 px `focus.ring`, 1 px Abstand zum Element, nur bei Tastaturbedienung.
 - **Schatten** (Avalonia `BoxShadow`): Seite `0 0 0 1 page.border, 0 2 10 0 page.shadow`; Karte und Popup `0 0 0 1 border.subtle, 0 12 32 -12 page.shadow`. Im Hochkontrast sind `page.border` und `border.subtle` weiß, Seiten und Karten bekommen also eine weiße 1-px-Kante. Der Seitenschatten wird aus diesem Token als vorberechnetes Bild gezeichnet, nicht als `BoxShadow` (Token unverändert; `Docs/DECISIONS.md`, Eintrag „Seitenschatten als vorberechnetes Bild (M3)“).
 
@@ -344,7 +344,7 @@ Maße für die Dichte „Normal“, Kompakt siehe 5.4. Von oben nach unten:
 
 | Zustand | Kennzeichnung neben der Farbe |
 |---|---|
-| Aktiver Tab | geht in den Dokumentbereich über, fette Schrift |
+| Aktiver Tab | geht in den Dokumentbereich über, fette Schrift; im Hochkontrast zusätzlich ein Umriss, unten offen (5.3) |
 | Aktuelle Seite in den Vorschaubildern | Rahmen, fette Nummer |
 | Aktueller Suchtreffer | Rahmen auf der Seite, Kante in der Liste |
 | Link mit Warnung (Bestätigungskarte) | Warndreieck und Text |
@@ -385,7 +385,7 @@ Offen (wie zu prüfen):
 - Start- und Bildratenkosten von Mica gegenüber deckender Fläche, falls Mica gewünscht ist (`bench/startup` mit beiden Varianten auf einem Rechner mit GPU).
 - X11 mit und ohne Compositor: tatsächliches `ActualTransparencyLevel`, Titelleiste (manuell auf einem Linux-Desktop, z. B. Xfce mit ein- und ausgeschaltetem Compositor).
 - Tatsächliche Standardschrift auf den Ziel-Distributionen (`fc-match sans-serif` und `fc-match monospace` je Distribution; die Distributionen legt M8 fest).
-- Hochkontrast (M6) am echten Windows-Kontrastdesign: Tabs, Aktionsleiste, Panel, Karten, Menüs und Befehlspalette ansehen, auch das Umschalten bei laufender App (`Pagewing.exe testdata/pdfs/text-rich.pdf`, dann Einstellungen → Barrierefreiheit → Kontrastdesigns → „Nachthimmel“ und zurück; ebenso „Wüste“, das hell ist und trotzdem die schwarze Palette bekommt). Die Headless-Aufnahme zeigt keine Trennlinie zwischen Panel und Dokumentfläche und zwischen Titelleiste und Dokumentfläche, weil im Hochkontrast alle Flächen schwarz sind; ob das am Bildschirm stört, entscheidet die Sichtprüfung.
+- Hochkontrast (M6) am echten Windows-Kontrastdesign: Tabs, Aktionsleiste, Panel, Karten, Menüs und Befehlspalette ansehen, auch das Umschalten bei laufender App (`Pagewing.exe testdata/pdfs/text-rich.pdf`, dann Einstellungen → Barrierefreiheit → Kontrastdesigns → „Nachthimmel“ und zurück; ebenso „Wüste“, das hell ist und trotzdem die schwarze Palette bekommt). Dabei auch die Trennlinien der Bereiche und den Umriss des aktiven Tabs (5.3) ansehen.
 - Linux-Titelleiste mit Tab-Zeile darunter (2.2): manuell auf einem Linux-Desktop prüfen; die Headless-Tests erzwingen die Windows-Titelleiste.
 - Hover-, Druck- und Fokuszustände der Elemente aus M4 (Tabs, Aktionsleiste, Panel, Statusleiste, Menüs) auf einem echten Bildschirm in beiden Themes ansehen; die Headless-Aufnahmen zeigen nur Ruhezustände.
 - „In neuem Fenster öffnen“ unter Windows und Linux (X11): Lage und Größe des neuen Fensters (32 px versetzt, ganz auf dem Bildschirm, auch am rechten oder unteren Rand und bei 125 %/150 % Skalierung; Quellfenster maximiert), welches Fenster nach vorn kommt, und Dateien eines späteren Aufrufs öffnen im zuletzt aktivierten Fenster (manuell, `pagewing <datei.pdf>` aus einem Terminal).

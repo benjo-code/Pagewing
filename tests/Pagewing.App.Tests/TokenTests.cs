@@ -278,13 +278,36 @@ public sealed class TokenTests
     }
 
     [AvaloniaFact]
-    public void ShadowTokensExistInEveryTheme()
+    public void ShadowTokensRepeatTheColourTokensInEveryTheme()
     {
+        // Section 5.3: page "0 0 0 1 page.border, 0 2 10 0 page.shadow", card and popup
+        // "0 0 0 1 border.subtle, 0 12 32 -12 page.shadow". A BoxShadows value cannot reference the colour tokens, so it
+        // repeats them; in high contrast the 1 px edge is white.
         foreach (var variant in AllVariants)
         {
-            Assert.IsType<BoxShadows>(Resource("Pw.Shadow.Page", variant));
-            Assert.IsType<BoxShadows>(Resource("Pw.Shadow.Card", variant));
+            var page = Assert.IsType<BoxShadows>(Resource("Pw.Shadow.Page", variant));
+            var card = Assert.IsType<BoxShadows>(Resource("Pw.Shadow.Card", variant));
+            AssertShadows(page, variant, (0, 0, 0, 1, "Page.Border"), (0, 2, 10, 0, "Page.Shadow"));
+            AssertShadows(card, variant, (0, 0, 0, 1, "Border.Subtle"), (0, 12, 32, -12, "Page.Shadow"));
         }
+
+        Assert.Equal(Colors.White, Assert.IsType<BoxShadows>(Resource("Pw.Shadow.Page", HighContrast.Variant))[0].Color);
+        Assert.Equal(Colors.White, Assert.IsType<BoxShadows>(Resource("Pw.Shadow.Card", HighContrast.Variant))[0].Color);
+    }
+
+    [AvaloniaFact]
+    public void RegionSeparatorsAreDrawnOnlyInHighContrast()
+    {
+        // Section 5.3: the regions of the window part by colour in light and dark (no lines), in high contrast by 1 px
+        // border.subtle lines; the active tab gets an outline open at the bottom.
+        foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+        {
+            Assert.Equal(0d, Assert.IsType<double>(Resource("Pw.Size.RegionSeparator", variant)));
+            Assert.Equal(default, Assert.IsType<Thickness>(Resource("Pw.Thickness.ActiveTabOutline", variant)));
+        }
+
+        Assert.Equal(1d, Assert.IsType<double>(Resource("Pw.Size.RegionSeparator", HighContrast.Variant)));
+        Assert.Equal(new Thickness(1, 1, 1, 0), Assert.IsType<Thickness>(Resource("Pw.Thickness.ActiveTabOutline", HighContrast.Variant)));
     }
 
     /// <summary>
@@ -304,6 +327,19 @@ public sealed class TokenTests
 
     internal static Color Token(string name, ThemeVariant variant) =>
         Assert.IsType<Color>(Resource($"Pw.Color.{name}", variant));
+
+    private static void AssertShadows(BoxShadows shadows, ThemeVariant variant, params (double X, double Y, double Blur, double Spread, string Color)[] expected)
+    {
+        Assert.Equal(expected.Length, shadows.Count);
+        for (var i = 0; i < expected.Length; i++)
+        {
+            var (x, y, blur, spread, color) = expected[i];
+            var shadow = shadows[i];
+            Assert.False(shadow.IsInset);
+            Assert.Equal((x, y, blur, spread), (shadow.OffsetX, shadow.OffsetY, shadow.Blur, shadow.Spread));
+            Assert.True(Token(color, variant) == shadow.Color, $"{variant}: shadow {i} is {shadow.Color}, expected {color}");
+        }
+    }
 
     private static ThemeVariant Variant(string theme) => theme switch
     {

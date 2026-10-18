@@ -11,9 +11,11 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
+using Pagewing.App.Views;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
+using Pagewing.TestSupport;
 using Xunit;
 
 namespace Pagewing.App.Tests;
@@ -32,6 +34,8 @@ public sealed class HighContrastTests : IDisposable
     private static readonly Color Black = Color.Parse("#000000");
     private static readonly Color Yellow = Color.Parse("#FFFF00");
     private static readonly Color Cyan = Color.Parse("#00FFFF");
+
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     private static readonly string[] Surfaces =
         ["Surface.Window", "Surface.Toolbar", "Surface.Sidebar", "Surface.Canvas", "Surface.Raised", "Surface.Hover", "Accent.Subtle"];
@@ -298,6 +302,93 @@ public sealed class HighContrastTests : IDisposable
         Assert.Single(announced);
     }
 
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    [InlineData("HighContrast")]
+    public async Task RegionEdgesAreSeparatedOnlyInHighContrast(string theme)
+    {
+        // Design system 5.3: in high contrast every surface is black, so 1 px border.subtle lines part the regions where
+        // they meet; in light and dark the same pixels keep the colours of the surfaces (the lines are 0 wide).
+        var highContrast = theme == "HighContrast";
+        var (_, settings, _) = Start(highContrast ? ColorContrastPreference.High : ColorContrastPreference.NoPreference);
+        settings.Update(current => current with { Theme = theme switch { "Light" => ThemeSetting.Light, "Dark" => ThemeSetting.Dark, _ => ThemeSetting.System } });
+        var variant = highContrast ? HighContrast.Variant : theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+        var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker(), settings) { IsWindowsTitleBar = true };
+        _cleanup.Add(viewModel);
+        var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720 };
+        _cleanup.Add(new Closer(window));
+        window.Show();
+        Settle(window);
+        var view = Find<DocumentView>(window, "DocumentView");
+        await viewModel.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.HasShownSharpPage);
+
+        // The "Pages" panel beside the document, fully faded in. The window opens it by itself in a background job after
+        // the first sharp tile (see AutoOpenedPanel); opened here only if it did not.
+        Settle(window);
+        Settle(window);
+        if (viewModel.ActivePanel != SidePanelKind.Pages)
+        {
+            viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        }
+
+        var host = Find<Panel>(window, "PanelHost");
+        await WaitUntilAsync(window, () => host.IsVisible && host.Opacity >= 1);
+
+        var edge = highContrast ? Token("Border.Subtle") : (Color?)null;
+        Color Surface(string name) => edge ?? TokenTests.Token(name, variant);
+        var titleBar = Find<TitleBar>(window, "TitleBar");
+        var actionBar = Find<ActionBar>(window, "ActionBar");
+        var activeTab = Find<Border>(window, "Tab");
+        var dragArea = Find<Border>(window, "DragArea");
+        var statusBar = Find<Border>(window, "StatusBarRow");
+        var document = Find<Border>(window, "DocumentArea");
+        var bottomOfTitleBar = (int)titleBar.Bounds.Height - 1;
+        var workMiddle = (int)(titleBar.Bounds.Height + 200);
+        var tabLeft = activeTab.TranslatePoint(default, window)!.Value;
+        var tabMiddle = (int)(tabLeft.Y + (activeTab.Bounds.Height / 2));
+        using var frame = new FramePixels(window.CaptureRenderedFrame()!);
+
+        // Title bar | panel and document area: the bottom row of the title bar, beside the tabs.
+        var dragX = (int)(dragArea.TranslatePoint(default, window)!.Value.X + (dragArea.Bounds.Width / 2));
+        Assert.Equal(Surface("Surface.Window"), frame.GetColor(dragX, bottomOfTitleBar));
+
+        // The active tab: outlined at the sides, open at the bottom (it flows into the document area).
+        Assert.Equal(Surface("Surface.Canvas"), frame.GetColor((int)tabLeft.X, tabMiddle));
+        Assert.Equal(Surface("Surface.Canvas"), frame.GetColor((int)(tabLeft.X + activeTab.Bounds.Width) - 1, tabMiddle));
+        Assert.Equal(TokenTests.Token("Surface.Canvas", variant), frame.GetColor((int)(tabLeft.X + (activeTab.Bounds.Width / 2)), bottomOfTitleBar));
+
+        // Action bar | panel: the right column of the action bar.
+        Assert.Equal(Surface("Surface.Window"), frame.GetColor((int)actionBar.Bounds.Width - 1, workMiddle));
+
+        // Panel | document area: the right column of the panel, in its header.
+        var panelRight = (int)(host.TranslatePoint(default, window)!.Value.X + host.Bounds.Width) - 1;
+        Assert.Equal(Surface("Surface.Sidebar"), frame.GetColor(panelRight, (int)titleBar.Bounds.Height + 20));
+
+        // Document area | status bar: the bottom row of the document area.
+        var documentLeft = (int)document.TranslatePoint(default, window)!.Value.X;
+        var statusTop = (int)statusBar.TranslatePoint(default, window)!.Value.Y;
+        Assert.Equal(Surface("Surface.Canvas"), frame.GetColor(documentLeft + 30, statusTop - 1));
+
+        // Inside the regions the surfaces stay as they are.
+        Assert.Equal(TokenTests.Token("Surface.Canvas", variant), frame.GetColor(documentLeft + 30, statusTop - 3));
+        Assert.Equal(TokenTests.Token("Surface.Window", variant), frame.GetColor((int)actionBar.Bounds.Width - 3, workMiddle));
+    }
+
+    [AvaloniaFact]
+    public async Task AChangeFromAnotherThreadAfterDisposeChangesNothing()
+    {
+        // The platform may announce a change on another thread; the appearance posts it to the UI thread. Disposed in
+        // between, it applies nothing.
+        var (app, _, appearance) = Start(ColorContrastPreference.NoPreference);
+        await Task.Run(() => _contrast.Set(ColorContrastPreference.High));
+        appearance.Dispose();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(ThemeVariant.Default, app.RequestedThemeVariant);
+    }
+
     private static Color Token(string name) => TokenTests.Token(name, HighContrast.Variant);
 
     private static SortedSet<string> Keys(IResourceDictionary dictionary) =>
@@ -343,6 +434,31 @@ public sealed class HighContrastTests : IDisposable
         using var frame = new FramePixels(window.CaptureRenderedFrame() ?? throw new InvalidOperationException("No frame."));
         return frame.GetColor((int)point.X, (int)point.Y);
     }
+
+    private static async Task WaitUntilAsync(Window window, Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + Timeout;
+        while (true)
+        {
+            Settle(window);
+            if (condition())
+            {
+                return;
+            }
+
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("The window did not reach the expected state.");
+            }
+
+            await Task.Delay(10);
+        }
+    }
+
+    private static T Find<T>(Visual root, string name)
+        where T : Control =>
+        root.GetVisualDescendants().OfType<T>().FirstOrDefault(control => control.Name == name)
+        ?? throw new InvalidOperationException($"No {typeof(T).Name} named {name} in the window.");
 
     private static void Settle(Window window)
     {

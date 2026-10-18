@@ -25,6 +25,15 @@
 
   <Border Name="Root" Classes.linux="{Binding !IsWindowsTitleBar}">
     <Grid ColumnDefinitions="Auto,*,Auto">
+      <!--
+        The edge of the title bar against the panel and the document area, in high contrast only (Pw.Size.RegionSeparator,
+        0 in light and dark): under the tabs and the buttons, from the action bar edge to the right. Below the tab strip,
+        so the active tab covers it and stays open towards the document area.
+      -->
+      <Border Name="TitleBarEdge" Grid.Column="1" Grid.ColumnSpan="2" Margin="-1,0,0,0" VerticalAlignment="Bottom"
+              Height="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
+              IsHitTestVisible="False" IsVisible="{Binding HasTabs}" />
+
       <Border Name="AppMark" Width="{DynamicResource Pw.Size.ActionBarWidth}" Background="Transparent"
               chrome:WindowDecorationProperties.ElementRole="TitleBar">
         <ctl:StrokeIcon Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"

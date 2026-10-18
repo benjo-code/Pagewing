@@ -92,4 +92,12 @@
   <!-- Shadows (section 5.3): page.border and border.subtle are white, so pages and cards get a 1 px white edge. -->
   <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #FFFFFF, 0 2 10 0 #99000000</BoxShadows>
   <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #FFFFFF, 0 12 32 -12 #99000000</BoxShadows>
+
+  <!--
+    Region separators (section 5.3): all surfaces are black, so 1 px border.subtle lines part the regions (action bar,
+    title bar, panel, document area, status bar), and the active tab, which no longer stands out by the colour of the
+    document area, gets an outline at the top and the sides; it stays open at the bottom and flows into the document area.
+  -->
+  <x:Double x:Key="Pw.Size.RegionSeparator">1</x:Double>
+  <Thickness x:Key="Pw.Thickness.ActiveTabOutline">1,1,1,0</Thickness>
 </ResourceDictionary>
