@@ -26,9 +26,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 - Zoom-Modi Seitenbreite (Strg+2), ganze Seite (Strg+0) und tatsächliche Größe (Strg+1), im Menü am Zoomwert der Statusleiste.
 - Gehe zu Seite mit Strg+G.
 - Dokumentinfos in der Statusleiste: Datei, Ordner, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Titel, Autor und Erstelldatum.
-- Suche im Dokument (Strg+F): Panel „Suche“ mit Trefferliste, Treffer auf der Seite hinterlegt, Weiter/Zurück mit Enter, Umschalt+Enter, F3 und Umschalt+F3; die Suche läuft im Hintergrund und findet auch Wörter mit Ligaturen und Silbentrennung am Zeilenende. Optionen „Groß-/Kleinschreibung beachten“ und „Ganze Wörter“, höchstens 10 000 Treffer.
+- Suche im Dokument (Strg+F): Panel „Suche“ mit Trefferliste, Treffer auf der Seite hinterlegt, Weiter/Zurück mit Enter, Umschalt+Enter, F3 und Umschalt+F3; die Suche läuft im Hintergrund, löst Ligaturen in der Suche auf und findet Wörter über die Silbentrennung am Zeilenende hinweg. Optionen „Groß-/Kleinschreibung beachten“ und „Ganze Wörter“, höchstens 10.000 Treffer.
 - Text markieren (Ziehen, Doppelklick = Wort, Dreifachklick = Zeile) und kopieren: Strg+C kopiert formatierten Fließtext (Absätze, ohne Trennstriche am Zeilenende, mit Fett, Kursiv und Überschriften), Strg+Umschalt+C den Rohtext mit den Zeilenumbrüchen des PDFs. Eine Seite ohne Text (Scan) zeigt einen Hinweis.
-- Links im PDF: interne Sprünge zu Seite und Stelle (Alt+Links und Alt+Rechts gehen zurück und vor), externe Adressen (`http`, `https`, `mailto`) öffnen erst nach einer Bestätigung mit der vollständigen Adresse und Warnung bei täuschenden Adressen; andere Ziele (Dateien, Programme, JavaScript) sind nicht klickbar.
+- Links im PDF: interne Sprünge zu Seite und Stelle (Alt+Links und Alt+Rechts gehen zurück und vor), externe Adressen (`http`, `https`, `mailto`) öffnen erst nach einer Bestätigung mit der vollständigen Adresse und Warnung bei täuschenden Adressen („Öffnen“ ist nach dem Erscheinen der Karte kurz gesperrt, damit ein Doppelklick nichts öffnet); andere Ziele (Dateien, Programme, JavaScript) sind nicht klickbar.
 - CLI `pagewing search <datei.pdf> <abfrage>` gibt je Treffer Seite, Zeichenindex und Textausschnitt aus (`--pages`, `--match-case`, `--whole-word`, `--password`); `--` beendet die Optionen bei allen Befehlen.
 
 ### Changed

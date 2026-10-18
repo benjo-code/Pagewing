@@ -50,9 +50,10 @@ internal static class RenderCorpus
     ];
 
     /// <summary>
-    /// Test PDFs that are not rendered on purpose: error cases, and files whose structure is the test subject
-    /// while the page content is a plain grey area (the outline files), and the text files of the search and the links
-    /// (their subject is the text layer, not the rendering; the pages are plain Helvetica text like <c>text-basic.pdf</c>).
+    /// Test PDFs that are not rendered on purpose: the error cases; the outline files, whose structure is the test
+    /// subject and whose pages are a plain grey area; and the text files of the search and the links, whose subject is
+    /// the text layer, not the rendering (their pages use only standard-14 fonts: Helvetica, Helvetica-Bold and
+    /// Helvetica-Oblique).
     /// </summary>
     public static IReadOnlyList<string> Skipped { get; } =
         ["empty.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "text-dense.pdf", "text-rich.pdf"];
