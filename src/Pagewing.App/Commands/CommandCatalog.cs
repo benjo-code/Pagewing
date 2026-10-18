@@ -123,13 +123,19 @@ public sealed class CommandCatalog
         Tab("nav.forward", () => Strings.CommandForward, NavigationGroup, new KeyGesture(Key.Right, KeyModifiers.Alt), tab => tab.ForwardCommand),
 
         // Search: Ctrl+F opens the panel (also without a tab the key is taken, as before); F3 steps, also with the panel closed.
-        Window("search.open", () => Strings.CommandSearch, SearchGroup, Ctrl(Key.F), _window.OpenSearchCommand),
-        Tab("search.next", () => Strings.CommandSearchNext, SearchGroup, new KeyGesture(Key.F3), tab => tab.SearchNextCommand),
-        Tab("search.previous", () => Strings.CommandSearchPrevious, SearchGroup, new KeyGesture(Key.F3, KeyModifiers.Shift), tab => tab.SearchPreviousCommand),
+        Window("search.open", () => Strings.CommandSearch, SearchGroup, Ctrl(Key.F), _window.OpenSearchCommand)
+            with { Offered = () => _window.ActiveTab is not null },
+        Tab("search.next", () => Strings.CommandSearchNext, SearchGroup, new KeyGesture(Key.F3), tab => tab.SearchNextCommand)
+            with { Offered = HasSearchHits },
+        Tab("search.previous", () => Strings.CommandSearchPrevious, SearchGroup, new KeyGesture(Key.F3, KeyModifiers.Shift), tab => tab.SearchPreviousCommand)
+            with { Offered = HasSearchHits },
 
-        // Window: tabs with wrap-around, the cards over the window.
-        Window("tab.next", () => Strings.CommandNextTab, WindowGroup, Ctrl(Key.Tab), _window.NextTabCommand),
-        Window("tab.previous", () => Strings.CommandPreviousTab, WindowGroup, CtrlShift(Key.Tab), _window.PreviousTabCommand),
+        // Window: tabs with wrap-around, the cards over the window. The keys of the cards show or hide them (a second F1
+        // closes the help card also when the focus has left it).
+        Window("tab.next", () => Strings.CommandNextTab, WindowGroup, Ctrl(Key.Tab), _window.NextTabCommand)
+            with { Offered = () => _window.Tabs.Count > 1 },
+        Window("tab.previous", () => Strings.CommandPreviousTab, WindowGroup, CtrlShift(Key.Tab), _window.PreviousTabCommand)
+            with { Offered = () => _window.Tabs.Count > 1 },
         Window("palette.show", () => Strings.CommandPalette, WindowGroup, Ctrl(Key.K), _window.ShowPaletteCommand),
         Window("settings.show", () => Strings.CommandSettings, WindowGroup, Ctrl(Key.OemComma), _window.ShowSettingsCommand),
         Window("help.show", () => Strings.HelpTitle, WindowGroup, new KeyGesture(Key.F1), _window.ShowHelpCommand),
@@ -137,7 +143,16 @@ public sealed class CommandCatalog
         // Esc drops an address that waits for confirmation, wherever the focus is; without one the key goes on. Not listed:
         // it is the key of the link card, not a command of its own.
         Window("link.cancel", () => Strings.LinkConfirmCancel, WindowGroup, new KeyGesture(Key.Escape), _window.CancelLinkCommand) with { Listed = false },
+
+        // Then Esc hides an overlay whose own Esc does not get the key (the focus has left it); without an overlay the key
+        // goes on to the focused element (the document, the search field). Not listed either. The window binds the keys in
+        // this order, so a waiting address goes first.
+        new("overlay.hide", () => Strings.CommandCloseOverlay, WindowGroup, new KeyGesture(Key.Escape),
+            () => _window.Overlay != OverlayKind.None, _window.HideOverlay, Listed: false),
     ];
+
+    /// <summary>Whether the active tab has a search with matches (without making its search): F3 does something.</summary>
+    private bool HasSearchHits() => _window.ActiveTab is { IsSearchCreated: true } tab && tab.Search.Hits.Count > 0;
 
     /// <summary>A command of the window's view model, whatever the active tab.</summary>
     private static AppCommand Window(string id, Func<string> title, string group, KeyGesture? gesture, ICommand command) =>

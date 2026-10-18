@@ -33,13 +33,14 @@ public sealed class OutlineNodeViewModel : ViewModelBase
         Parent = parent;
         Index = index;
 
-        // Line breaks in a title would make a row taller than the others.
-        var title = (item.Title ?? string.Empty).ReplaceLineEndings(" ").Trim();
-        Title = title.Length == 0 ? Strings.OutlineNoTitle : title;
+        Title = TitleOf(item);
     }
 
     /// <summary>Gets the title in one line; "(untitled)" for a bookmark without one.</summary>
     public string Title { get; }
+
+    /// <summary>Gets the bookmark of this entry (the command palette searches the tree without making view models of it).</summary>
+    internal PdfOutlineItem Item => _item;
 
     /// <summary>Gets the 0-based page the bookmark points at, or <see langword="null"/> without a valid target in this document.</summary>
     public int? PageIndex => _item.PageIndex;
@@ -79,6 +80,14 @@ public sealed class OutlineNodeViewModel : ViewModelBase
 
     /// <summary>Gets whether the view models of the children exist yet (for tests).</summary>
     internal bool AreChildrenCreated => _children is not null;
+
+    /// <summary>The title of <paramref name="item"/> in one line, as an entry shows it; "(untitled)" without one.</summary>
+    internal static string TitleOf(PdfOutlineItem item)
+    {
+        // Line breaks in a title would make a row taller than the others.
+        var title = (item.Title ?? string.Empty).ReplaceLineEndings(" ").Trim();
+        return title.Length == 0 ? Strings.OutlineNoTitle : title;
+    }
 
     /// <summary>The view models of the top level of an outline.</summary>
     internal static IReadOnlyList<OutlineNodeViewModel> Create(IReadOnlyList<PdfOutlineItem> items) => Create(items, parent: null);

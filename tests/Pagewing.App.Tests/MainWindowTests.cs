@@ -77,8 +77,8 @@ public sealed class MainWindowTests : IDisposable
         // Windows title bar keeps room for the caption buttons; under the Linux system title bar there is none.
         Assert.Equal(windowsTitleBar, Find<Control>(window, "CaptionButtonsSpace").IsEffectivelyVisible);
         string[] mustFit = windowsTitleBar
-            ? ["Tab", "OpenButton", "DragArea", "CaptionButtonsSpace", "ZoomInButton"]
-            : ["Tab", "OpenButton", "DragArea", "ZoomInButton"];
+            ? ["Tab", "OpenButton", "DragArea", "PaletteButton", "CaptionButtonsSpace", "ZoomInButton"]
+            : ["Tab", "OpenButton", "DragArea", "PaletteButton", "ZoomInButton"];
         foreach (var name in mustFit)
         {
             var control = Find<Control>(window, name);

@@ -25,6 +25,13 @@ public sealed record AppCommand(
     /// <summary>Further keys of the same command (number pad, US layouts), bound but not shown.</summary>
     public IReadOnlyList<KeyGesture> AlternativeGestures { get; init; } = [];
 
+    /// <summary>
+    /// Gets whether the command palette offers the command besides <see cref="CanExecute"/>, or <see langword="null"/>
+    /// when it offers it whenever it can run. For commands whose key is taken in every state of the window although
+    /// they do nothing there (Ctrl+F and Ctrl+Tab without a tab).
+    /// </summary>
+    public Func<bool>? Offered { get; init; }
+
     /// <summary>Gets <see cref="Gesture"/> and then <see cref="AlternativeGestures"/>: every key the window binds to the command.</summary>
     public IEnumerable<KeyGesture> Gestures => Gesture is null ? AlternativeGestures : [Gesture, .. AlternativeGestures];
 }

@@ -55,10 +55,10 @@ public sealed partial class MainWindow
         }
     }
 
-    // Most commands act on the active tab: another one may change whether they can run.
+    // Most commands act on the active tab: another one may change whether they can run (Esc: the link or the overlay).
     private void OnShortcutsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(MainViewModel.ActiveTab) or nameof(MainViewModel.PendingLink))
+        if (e.PropertyName is nameof(MainViewModel.ActiveTab) or nameof(MainViewModel.PendingLink) or nameof(MainViewModel.Overlay))
         {
             foreach (var command in _catalogCommands)
             {

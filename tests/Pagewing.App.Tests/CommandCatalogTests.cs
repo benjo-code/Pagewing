@@ -82,8 +82,8 @@ public sealed class CommandCatalogTests : IDisposable
             Assert.NotEqual(englishGroup, germanGroup);
         }
 
-        // Only the Esc of the link card stays out of the lists.
-        Assert.Equal(["link.cancel"], catalog.All.Where(command => !command.Listed).Select(command => command.Id));
+        // Only the two meanings of Esc at window level stay out of the lists: the link card's, then the overlays'.
+        Assert.Equal(["link.cancel", "overlay.hide"], catalog.All.Where(command => !command.Listed).Select(command => command.Id));
         Assert.Equal(["file", "view", "nav", "search", "window"], CommandCatalog.Groups);
         Strings.Culture = new CultureInfo("de");
         Assert.Equal(["Datei", "Ansicht", "Navigation", "Suche", "Fenster"], CommandCatalog.Groups.Select(CommandCatalog.GroupTitle));
@@ -101,14 +101,19 @@ public sealed class CommandCatalogTests : IDisposable
             {
                 // Avalonia matches the plus and minus of the number pad as those of the main block (KeyGesture.Matches),
                 // which only the alternatives of one command may share.
+                // Esc alone has two unlisted commands, which the window asks in turn: the link card first, then an overlay.
                 var key = (Normalized(gesture.Key), gesture.KeyModifiers);
                 if (owners.TryGetValue(key, out var owner))
                 {
-                    Assert.True(owner == command.Id, $"{gesture} belongs to {owner} and {command.Id}");
+                    var escape = gesture.Equals(new KeyGesture(Key.Escape)) && owner == "link.cancel" && command.Id == "overlay.hide";
+                    Assert.True(owner == command.Id || escape, $"{gesture} belongs to {owner} and {command.Id}");
+                }
+                else
+                {
+                    owners[key] = command.Id;
                 }
 
-                owners[key] = command.Id;
-                Assert.Same(command, catalog.ForGesture(gesture));
+                Assert.Same(catalog.ById(owners[key]), catalog.ForGesture(gesture));
             }
         }
 
@@ -133,6 +138,10 @@ public sealed class CommandCatalogTests : IDisposable
         var search = rich.Search;
         search.Query = "Pagewing";
         await WaitUntilAsync(window, () => search.State == SearchState.Done && search.Hits.Count == 4);
+
+        // Three tabs (basic, rich, hello), so the next and the previous tab of the first one are different tabs.
+        var hello = await OpenAsync(window, viewModel, view, "hello_world.pdf");
+        Assert.Equal(new[] { basic, rich, hello }, viewModel.Tabs);
 
         async Task ShowRichAsync()
         {
@@ -190,8 +199,8 @@ public sealed class CommandCatalogTests : IDisposable
         var table = new (string Name, Key Key, PhysicalKey Physical, RawInputModifiers Modifiers, Func<Task> Arrange, Func<bool> Effect)[]
         {
             ("Ctrl+O", Key.O, PhysicalKey.O, Ctrl, ShowRichAsync, () => picker.Calls == 1),
-            ("Ctrl+Tab", Key.Tab, PhysicalKey.Tab, Ctrl, ShowBasicAsync, () => ReferenceEquals(viewModel.ActiveTab, rich)),
-            ("Ctrl+Shift+Tab", Key.Tab, PhysicalKey.Tab, Ctrl | Shift, ShowBasicAsync, () => ReferenceEquals(viewModel.ActiveTab, rich)),
+            ("Ctrl+Tab", Key.Tab, PhysicalKey.Tab, Ctrl, ShowBasicAsync, () => ReferenceEquals(viewModel.ActiveTab, rich) && viewModel.Tabs.IndexOf(viewModel.ActiveTab) == 1),
+            ("Ctrl+Shift+Tab", Key.Tab, PhysicalKey.Tab, Ctrl | Shift, ShowBasicAsync, () => ReferenceEquals(viewModel.ActiveTab, hello) && viewModel.Tabs.IndexOf(viewModel.ActiveTab) == 2),
             ("Ctrl+OemPlus", Key.OemPlus, PhysicalKey.Equal, Ctrl, FreeZoomAsync, () => rich.Zoom > 1),
             ("Ctrl+Shift+OemPlus", Key.OemPlus, PhysicalKey.Equal, Ctrl | Shift, FreeZoomAsync, () => rich.Zoom > 1),
             ("Ctrl+Add", Key.Add, PhysicalKey.NumPadAdd, Ctrl, FreeZoomAsync, () => rich.Zoom > 1),
@@ -611,6 +620,132 @@ public sealed class CommandCatalogTests : IDisposable
         Assert.Equal(OverlayKind.None, viewModel.Overlay);
         Assert.False(card.IsVisible);
         Assert.Single(window.GetVisualDescendants().OfType<HelpCard>());
+    }
+
+    [AvaloniaFact]
+    public async Task TheKeyOfAnOverlayShowsAndHidesIt()
+    {
+        var (window, viewModel, view, _) = Show(new CountingPicker());
+        await OpenAsync(window, viewModel, view, "text-rich.pdf");
+
+        // F1, Ctrl+K and Ctrl+Comma each a second time close what the first one opened, wherever the focus is.
+        foreach (var (key, physical, modifiers, kind) in new[]
+        {
+            (Key.F1, PhysicalKey.F1, None, OverlayKind.Help),
+            (Key.K, PhysicalKey.K, Ctrl, OverlayKind.Palette),
+            (Key.OemComma, PhysicalKey.Comma, Ctrl, OverlayKind.Settings),
+        })
+        {
+            await FocusAsync(window, view);
+            Press(window, key, physical, modifiers);
+            Assert.Equal(kind, viewModel.Overlay);
+            Press(window, key, physical, modifiers);
+            Assert.Equal(OverlayKind.None, viewModel.Overlay);
+            await WaitUntilAsync(window, () => view.IsFocused);
+
+            // Also after the focus left the overlay.
+            Press(window, key, physical, modifiers);
+            await FocusAsync(window, view);
+            if (kind != OverlayKind.Palette)
+            {
+                Assert.Equal(kind, viewModel.Overlay);
+                Press(window, key, physical, modifiers);
+            }
+
+            Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        }
+
+        // Another key replaces the overlay instead of closing it.
+        Press(window, Key.F1, PhysicalKey.F1, None);
+        Press(window, Key.K, PhysicalKey.K, Ctrl);
+        Assert.Equal(OverlayKind.Palette, viewModel.Overlay);
+        Press(window, Key.F1, PhysicalKey.F1, None);
+        Assert.Equal(OverlayKind.Help, viewModel.Overlay);
+    }
+
+    [AvaloniaFact]
+    public async Task EscClosesAnOverlayAsAFallbackWithoutTakingEscOtherwise()
+    {
+        var (window, viewModel, view, _) = Show(new CountingPicker());
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        tab.TextSelection = new TextSelection(new TextPosition(0, 0), new TextPosition(0, 8));
+
+        // The help card is open, the focus went back to the document: Esc closes the card, nothing else.
+        Press(window, Key.F1, PhysicalKey.F1, None);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "HelpFilter" });
+        await FocusAsync(window, view);
+        Assert.Equal(OverlayKind.Help, viewModel.Overlay);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        Assert.True(tab.HasTextSelection);
+        Assert.True(view.IsFocused);
+
+        // A waiting address goes first: Esc drops it, the next Esc closes the card.
+        Press(window, Key.F1, PhysicalKey.F1, None);
+        await FocusAsync(window, view);
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget("https://example.org/docs")));
+        Settle(window);
+        Assert.NotNull(viewModel.PendingLink);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Null(viewModel.PendingLink);
+        Assert.Equal(OverlayKind.Help, viewModel.Overlay);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+
+        // Without an overlay Esc belongs to the document again: it clears the selection, then ends the search.
+        var search = tab.Search;
+        search.Query = "Pagewing";
+        await WaitUntilAsync(window, () => search.State == SearchState.Done && search.Hits.Count == 4);
+        await FocusAsync(window, view);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.False(tab.HasTextSelection);
+        Assert.True(search.IsActive);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.False(search.IsActive);
+
+        // And in the search field it ends the search.
+        Press(window, Key.F, PhysicalKey.F, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "SearchField" });
+        window.KeyTextInput("Pagewing");
+        await WaitUntilAsync(window, () => search.State == SearchState.Done && search.Hits.Count == 4);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.False(search.IsActive);
+        Assert.NotEqual(SidePanelKind.Search, tab.SidePanel);
+    }
+
+    [AvaloniaFact]
+    public async Task FocusGoesBackToWhereItWasBeforeTheLastOverlay()
+    {
+        var (window, viewModel, view, _) = Show(new CountingPicker());
+        await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        await FocusAsync(window, view);
+
+        // Ctrl+K, then Ctrl+F (the focus goes to the search field, the palette closes), then F1 and Esc: the search field.
+        Press(window, Key.K, PhysicalKey.K, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
+        Press(window, Key.F, PhysicalKey.F, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "SearchField" });
+        var field = Focused(window);
+        Press(window, Key.F1, PhysicalKey.F1, None);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "HelpFilter" });
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        await WaitUntilAsync(window, () => ReferenceEquals(Focused(window), field));
+
+        // From the search field: Ctrl+K, F1 replaces the palette, Esc: back to the field, not to the palette's input.
+        Press(window, Key.K, PhysicalKey.K, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
+        Press(window, Key.F1, PhysicalKey.F1, None);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "HelpFilter" });
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        await WaitUntilAsync(window, () => ReferenceEquals(Focused(window), field));
+
+        // An overlay without a view (the settings, for now) gives the focus back as well.
+        Press(window, Key.K, PhysicalKey.K, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
+        Press(window, Key.OemComma, PhysicalKey.Comma, Ctrl);
+        Assert.Equal(OverlayKind.Settings, viewModel.Overlay);
+        await WaitUntilAsync(window, () => ReferenceEquals(Focused(window), field));
     }
 
     private const RawInputModifiers None = RawInputModifiers.None;

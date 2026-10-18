@@ -44,8 +44,8 @@
     (section 2.2). Below it, with a tab: action bar | panel (optional) | document area. The panel, the document area
     and the status bar show the active tab (their DataContext). The row of the status bar is there as soon as a file
     loads, so the viewport keeps its height when the document is ready, but not under the password and the error card;
-    its content appears with the open document, indented by the action bar. An overlay of the window (the help card) is
-    added to this grid below the title bar when it is first shown (MainWindow.Overlays.cs).
+    its content appears with the open document, indented by the action bar. An overlay of the window (the help card, the
+    command palette) is added to this grid below the title bar when it is first shown (MainWindow.Overlays.cs).
   -->
   <Grid Name="RootGrid" RowDefinitions="Auto,*,Auto">
     <views:TitleBar Name="TitleBar" />

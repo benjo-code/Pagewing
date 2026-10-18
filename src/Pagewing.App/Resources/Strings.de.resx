@@ -426,4 +426,43 @@
   <data name="HelpEmpty" xml:space="preserve">
     <value>Kein Kürzel passt.</value>
   </data>
+  <data name="CommandCloseOverlay" xml:space="preserve">
+    <value>Karte oder Palette schließen</value>
+  </data>
+  <data name="PaletteButton" xml:space="preserve">
+    <value>Suchen oder Befehl</value>
+  </data>
+  <data name="PaletteButtonTooltip" xml:space="preserve">
+    <value>Suchen oder Befehl (Strg+K)</value>
+  </data>
+  <data name="PaletteShortcut" xml:space="preserve">
+    <value>Strg+K</value>
+  </data>
+  <data name="PalettePlaceholder" xml:space="preserve">
+    <value>Befehl, Seite, Tab oder Datei suchen</value>
+  </data>
+  <data name="PaletteEmpty" xml:space="preserve">
+    <value>Nichts gefunden.</value>
+  </data>
+  <data name="PaletteGroupRecent" xml:space="preserve">
+    <value>Zuletzt geöffnet</value>
+  </data>
+  <data name="PaletteGroupPages" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="PaletteGroupTabs" xml:space="preserve">
+    <value>Offene Tabs</value>
+  </data>
+  <data name="PaletteGroupContents" xml:space="preserve">
+    <value>Inhalt</value>
+  </data>
+  <data name="PaletteGroupCommands" xml:space="preserve">
+    <value>Befehle</value>
+  </data>
+  <data name="PaletteGoToPage" xml:space="preserve">
+    <value>Gehe zu Seite {0}</value>
+  </data>
+  <data name="PalettePageDetail" xml:space="preserve">
+    <value>Seite {0}</value>
+  </data>
 </root>

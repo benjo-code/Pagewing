@@ -426,4 +426,43 @@
   <data name="HelpEmpty" xml:space="preserve">
     <value>No shortcut matches.</value>
   </data>
+  <data name="CommandCloseOverlay" xml:space="preserve">
+    <value>Close the card or palette</value>
+  </data>
+  <data name="PaletteButton" xml:space="preserve">
+    <value>Search or command</value>
+  </data>
+  <data name="PaletteButtonTooltip" xml:space="preserve">
+    <value>Search or command (Ctrl+K)</value>
+  </data>
+  <data name="PaletteShortcut" xml:space="preserve">
+    <value>Ctrl+K</value>
+  </data>
+  <data name="PalettePlaceholder" xml:space="preserve">
+    <value>Search commands, pages, tabs and files</value>
+  </data>
+  <data name="PaletteEmpty" xml:space="preserve">
+    <value>Nothing found.</value>
+  </data>
+  <data name="PaletteGroupRecent" xml:space="preserve">
+    <value>Recently opened</value>
+  </data>
+  <data name="PaletteGroupPages" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="PaletteGroupTabs" xml:space="preserve">
+    <value>Open tabs</value>
+  </data>
+  <data name="PaletteGroupContents" xml:space="preserve">
+    <value>Contents</value>
+  </data>
+  <data name="PaletteGroupCommands" xml:space="preserve">
+    <value>Commands</value>
+  </data>
+  <data name="PaletteGoToPage" xml:space="preserve">
+    <value>Go to page {0}</value>
+  </data>
+  <data name="PalettePageDetail" xml:space="preserve">
+    <value>Page {0}</value>
+  </data>
 </root>

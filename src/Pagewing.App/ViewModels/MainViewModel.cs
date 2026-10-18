@@ -54,6 +54,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private PendingLink? _pendingLink;
     private CommandCatalog? _commands;
     private OverlayKind _overlay;
+    private PaletteViewModel? _palette;
 
     // Since when the pending address is locked (Clock timestamp), for the arming delay of "Open": from its arrival, and
     // again from when its card has been laid out (OnLinkCardShown), which is the later and the one that counts.
@@ -124,9 +125,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ConfirmLinkCommand = _confirmLinkCommand;
         _cancelLinkCommand = new RelayCommand(() => PendingLink = null, () => PendingLink is not null);
         CancelLinkCommand = _cancelLinkCommand;
-        ShowPaletteCommand = new RelayCommand(() => ShowOverlay(OverlayKind.Palette));
-        ShowSettingsCommand = new RelayCommand(() => ShowOverlay(OverlayKind.Settings));
-        ShowHelpCommand = new RelayCommand(() => ShowOverlay(OverlayKind.Help));
+        ShowPaletteCommand = new RelayCommand(() => ToggleOverlay(OverlayKind.Palette));
+        ShowSettingsCommand = new RelayCommand(() => ToggleOverlay(OverlayKind.Settings));
+        ShowHelpCommand = new RelayCommand(() => ToggleOverlay(OverlayKind.Help));
         HideOverlayCommand = new RelayCommand(HideOverlay);
     }
 
@@ -143,16 +144,43 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public OverlayKind Overlay
     {
         get => _overlay;
-        private set => SetProperty(ref _overlay, value);
+        private set
+        {
+            if (_overlay == value)
+            {
+                return;
+            }
+
+            // The palette's entries are ready before the window shows it.
+            var old = _overlay;
+            _overlay = value;
+            if (old == OverlayKind.Palette)
+            {
+                _palette?.OnClosed();
+            }
+
+            if (value == OverlayKind.Palette)
+            {
+                (_palette ??= new PaletteViewModel(this)).OnOpened();
+            }
+
+            OnPropertyChanged();
+        }
     }
 
-    /// <summary>Ctrl+K: shows the command palette.</summary>
+    /// <summary>
+    /// Gets the command palette of the window, or <see langword="null"/> before it was first shown (it is made then,
+    /// never in the startup path).
+    /// </summary>
+    public PaletteViewModel? Palette => _palette;
+
+    /// <summary>Ctrl+K and "Search or command" in the title bar: shows the command palette, or hides it while it is shown.</summary>
     public ICommand ShowPaletteCommand { get; }
 
-    /// <summary>Ctrl+Comma: shows the settings.</summary>
+    /// <summary>Ctrl+Comma: shows the settings, or hides them while they are shown.</summary>
     public ICommand ShowSettingsCommand { get; }
 
-    /// <summary>F1: shows the card with the keyboard shortcuts.</summary>
+    /// <summary>F1: shows the card with the keyboard shortcuts, or hides it while it is shown.</summary>
     public ICommand ShowHelpCommand { get; }
 
     /// <summary>Esc or the close button of an overlay: hides it.</summary>
@@ -163,6 +191,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// the command <c>recent.clear</c> of the catalog runs only with one.
     /// </summary>
     internal Action? ClearRecentFiles { get; set; }
+
+    /// <summary>
+    /// Gets or sets where the command palette reads the recently opened files from, newest first (until the app keeps
+    /// a history, an empty list). Read each time the palette filters; it must not touch the disk.
+    /// </summary>
+    internal Func<IReadOnlyList<RecentFile>> RecentFilesSource { get; set; } = static () => [];
 
     /// <summary>Shows <paramref name="kind"/> over the window in place of the overlay shown so far; <see cref="OverlayKind.None"/> hides it.</summary>
     public void ShowOverlay(OverlayKind kind)
@@ -175,6 +209,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Hides the overlay of the window.</summary>
     public void HideOverlay() => Overlay = OverlayKind.None;
+
+    /// <summary>The key of an overlay: shows it, or hides it when it is the one shown.</summary>
+    private void ToggleOverlay(OverlayKind kind) => Overlay = Overlay == kind ? OverlayKind.None : kind;
 
     /// <summary>
     /// Gets the settings of the app: the window starts with their panel width and start panel and writes the user's
@@ -639,6 +676,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _palette?.OnClosed();
         Settings.Changed -= OnSettingsChanged;
         if (_appTheme is not null)
         {

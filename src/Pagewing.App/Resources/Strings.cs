@@ -169,6 +169,19 @@ public static class Strings
     public static string HelpFilter => Get("HelpFilter");
     public static string HelpClose => Get("HelpClose");
     public static string HelpEmpty => Get("HelpEmpty");
+    public static string CommandCloseOverlay => Get("CommandCloseOverlay");
+    public static string PaletteButton => Get("PaletteButton");
+    public static string PaletteButtonTooltip => Get("PaletteButtonTooltip");
+    public static string PaletteShortcut => Get("PaletteShortcut");
+    public static string PalettePlaceholder => Get("PalettePlaceholder");
+    public static string PaletteEmpty => Get("PaletteEmpty");
+    public static string PaletteGroupRecent => Get("PaletteGroupRecent");
+    public static string PaletteGroupPages => Get("PaletteGroupPages");
+    public static string PaletteGroupTabs => Get("PaletteGroupTabs");
+    public static string PaletteGroupContents => Get("PaletteGroupContents");
+    public static string PaletteGroupCommands => Get("PaletteGroupCommands");
+    public static string PaletteGoToPage => Get("PaletteGoToPage");
+    public static string PalettePageDetail => Get("PalettePageDetail");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;
