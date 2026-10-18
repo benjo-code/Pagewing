@@ -51,6 +51,7 @@ public sealed partial class TabStrip : UserControl
     private int _pressIndex;
     private bool _dragging;
     private TopLevel? _keySource;
+    private TopLevel? _floatingKeySource;
 
     // The tab came loose: the drag that leads its window, and where the pointer was last on the screen. _detaching holds
     // while the workspace takes the tab out of this window, which must not end the press.
@@ -395,6 +396,9 @@ public sealed partial class TabStrip : UserControl
             return false;
         }
 
+        // Esc must cancel wherever the system keeps the keyboard: with this window or with the one that follows the pointer.
+        _floatingKeySource = _drag.FloatingWindow;
+        _floatingKeySource?.AddHandler(KeyDownEvent, OnDragKeyDown, RoutingStrategies.Tunnel);
         _dragging = false;
         SetDragItem(null);
         return true;
@@ -521,6 +525,8 @@ public sealed partial class TabStrip : UserControl
 
         _keySource?.RemoveHandler(KeyDownEvent, OnDragKeyDown);
         _keySource = null;
+        _floatingKeySource?.RemoveHandler(KeyDownEvent, OnDragKeyDown);
+        _floatingKeySource = null;
         SetDragItem(null);
 
         if (cancel && wasDragging && tab is not null && _viewModel is not null)

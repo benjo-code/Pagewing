@@ -54,6 +54,9 @@ internal sealed class TabDrag
     /// <summary>Gets whether the drag is over (dropped, cancelled, or its window closed).</summary>
     public bool IsEnded { get; private set; }
 
+    /// <summary>Gets the floating window, or <see langword="null"/> when it is closed or the drag is over.</summary>
+    public Window? FloatingWindow => IsLive(out var window) ? window : null;
+
     /// <summary>
     /// Gets whether the floating window is parked off the screen because the pointer is over the tab strip of a window
     /// that would take the tab (that strip shows its insertion mark).

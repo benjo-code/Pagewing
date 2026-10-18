@@ -170,10 +170,8 @@ public sealed class TabDragGestureTests : IDisposable
         MoveTo(workspace, window, start + new Point(100, 100));
         Assert.Equal(2, workspace.Windows.Count);
 
-        // The system keeps the keyboard with this window (the new one does not take the focus); headless windows share
-        // one keyboard device, so the test gives it back explicitly.
-        window.Activate();
-        Settle(workspace);
+        // The keyboard is with the new window (on Windows it ended up there, too, whatever ShowActivated says): Esc has to
+        // cancel from there as well as from the window of the strip that leads the drag.
         window.KeyPress(Key.Escape, RawInputModifiers.LeftMouseButton, PhysicalKey.Escape, null);
         window.KeyRelease(Key.Escape, RawInputModifiers.LeftMouseButton, PhysicalKey.Escape, null);
         Settle(workspace);
