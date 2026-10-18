@@ -47,7 +47,7 @@ Ein dritter Schalter misst das Scrollen und gehört nicht zum Check: `Pagewing -
 
 `--zoom` gilt nur zusammen mit `--measure-scroll`; bei einem normalen Start und den anderen Messschaltern wird es ignoriert.
 
-Für alle drei Schalter gilt: Die App nimmt nicht an der Single-Instance-Wahl teil (sie übergibt nichts an ein laufendes Pagewing und belegt weder Sperre noch Pipe), eine Datei, die sich nicht öffnen lässt, endet mit Exit-Code 1 und `error: …` auf stderr, und nach 30 s ohne Ergebnis endet die App mit Exit-Code 3. Das Skript bricht einen Lauf nach 45 s ab und beendet den Prozess.
+Für alle drei Schalter gilt: Die App nimmt nicht an der Single-Instance-Wahl teil (sie übergibt nichts an ein laufendes Pagewing und belegt weder Sperre noch Pipe), sie öffnet nie ein Panel (das Panel „Seiten“, das sich sonst nach dem ersten scharfen Bild öffnet, und seine Vorschaubilder gehören also nicht zur Messung; `Docs/DECISIONS.md`, Eintrag „Aktionsleiste und Panel …“), eine Datei, die sich nicht öffnen lässt, endet mit Exit-Code 1 und `error: …` auf stderr, und nach 30 s ohne Ergebnis endet die App mit Exit-Code 3. Das Skript bricht einen Lauf nach 45 s ab und beendet den Prozess.
 
 ## Frame-Takt der Messumgebung
 
