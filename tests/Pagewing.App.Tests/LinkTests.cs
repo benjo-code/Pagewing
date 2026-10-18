@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Avalonia;
@@ -33,6 +34,9 @@ public sealed class LinkTests : IDisposable
 
     private readonly CultureInfo _originalCulture = Strings.Culture;
     private readonly List<IDisposable> _cleanup = [];
+
+    // The clock of the arming delay of "Open"; it only moves when a test moves it.
+    private readonly ManualClock _clock = new();
 
     public LinkTests() => Strings.Culture = new CultureInfo("en");
 
@@ -219,6 +223,7 @@ public sealed class LinkTests : IDisposable
         Assert.Equal(Strings.LinkConfirmOpen, Find<Button>(card, "LinkOpenButton").Content);
 
         // "Open": the launcher gets exactly the address shown, once; the card goes.
+        _clock.Advance(MainViewModel.LinkArmingDelay);
         ClickButton(window, Find<Button>(card, "LinkOpenButton"));
         await WaitUntilAsync(window, () => launcher.Calls.Count > 0);
         Assert.Equal([DocsUrl], launcher.Calls);
@@ -418,6 +423,7 @@ public sealed class LinkTests : IDisposable
         Settle(window);
         Assert.Equal(url, AddressOf(Find<LinkConfirmCard>(window, "LinkConfirmCard")));
 
+        _clock.Advance(MainViewModel.LinkArmingDelay);
         viewModel.ConfirmLinkCommand.Execute(null);
         await WaitUntilAsync(window, () => launcher.Calls.Count > 0);
         var opened = Assert.Single(launcher.Calls);
@@ -425,18 +431,58 @@ public sealed class LinkTests : IDisposable
 
         // What the system launcher would start: the address unchanged, never a re-serialised form.
         Assert.True(ExternalLink.TryParse(url, out var link));
-        var windows = SystemLinkLauncher.CreateStartInfo(link, windows: true, xdgOpenPath: null)!;
+        var windows = SystemLinkLauncher.CreateStartInfo(link, windows: true, xdgOpenPath: null, currentPath: null)!;
         Assert.Equal(url, windows.FileName, StringComparer.Ordinal);
         Assert.True(windows.UseShellExecute);
         Assert.Empty(windows.Arguments);
         Assert.Empty(windows.ArgumentList);
-        var xdgOpen = SystemLinkLauncher.FindOnPath("/usr/local/bin:/usr/bin", ':', "xdg-open", path => path == Path.Join("/usr/bin", "xdg-open"));
-        var linux = SystemLinkLauncher.CreateStartInfo(link, windows: false, xdgOpen)!;
+        const string path = "/usr/local/bin:/usr/bin";
+        var xdgOpen = SystemLinkLauncher.FindOnPath(path, ':', "xdg-open", candidate => candidate == Path.Join("/usr/bin", "xdg-open"));
+        var linux = SystemLinkLauncher.CreateStartInfo(link, windows: false, xdgOpen, path)!;
         Assert.True(Path.IsPathRooted(linux.FileName), linux.FileName);
         Assert.Equal(Path.Join("/usr/bin", "xdg-open"), linux.FileName);
         Assert.False(linux.UseShellExecute);
         Assert.Empty(linux.Arguments);
         Assert.Equal([url], linux.ArgumentList);
+        Assert.Equal(url, linux.ArgumentList[0], StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public void XdgOpenRunsInAFixedDirectoryWithOnlyRootedPathEntries()
+    {
+        Assert.True(ExternalLink.TryParse(DocsUrl, out var link));
+        var xdgOpen = Path.Join("/usr/bin", "xdg-open");
+
+        // xdg-open calls its helpers (xdg-mime, x-www-browser, ...) by name: they must not come from the current directory.
+        foreach (var (path, expected) in new[]
+        {
+            (".:/usr/bin:", "/usr/bin"),
+            ("bin::/usr/bin", "/usr/bin"),
+            ("/usr/local/bin:/usr/bin:", "/usr/local/bin:/usr/bin"),
+            ("/opt/x::./y:/usr/bin", "/opt/x:/usr/bin"),
+            (".:bin:", SystemLinkLauncher.FallbackPath),
+            (string.Empty, SystemLinkLauncher.FallbackPath),
+        })
+        {
+            var info = SystemLinkLauncher.CreateStartInfo(link, windows: false, xdgOpen, path)!;
+            Assert.Equal("/", info.WorkingDirectory);
+            Assert.True(Path.IsPathRooted(info.WorkingDirectory));
+            Assert.Equal(expected, info.Environment["PATH"]);
+            Assert.All(info.Environment["PATH"]!.Split(':'), entry => Assert.True(entry.Length > 0 && Path.IsPathRooted(entry), entry));
+            Assert.Equal([DocsUrl], info.ArgumentList);
+            Assert.Equal(xdgOpen, info.FileName);
+        }
+
+        // Every other variable is inherited.
+        var inherited = SystemLinkLauncher.CreateStartInfo(link, windows: false, xdgOpen, "/usr/bin")!.Environment;
+        foreach (System.Collections.DictionaryEntry variable in Environment.GetEnvironmentVariables())
+        {
+            var name = (string)variable.Key;
+            if (!string.Equals(name, "PATH", StringComparison.OrdinalIgnoreCase))
+            {
+                Assert.Equal((string?)variable.Value, inherited[name]);
+            }
+        }
     }
 
     [Fact]
@@ -466,15 +512,17 @@ public sealed class LinkTests : IDisposable
         Assert.Null(SystemLinkLauncher.FindOnPath(string.Empty, ':', "xdg-open", _ => true));
         Assert.Null(SystemLinkLauncher.FindOnPath(null, ':', "xdg-open", _ => true));
         Assert.True(ExternalLink.TryParse(DocsUrl, out var link));
-        Assert.Null(SystemLinkLauncher.CreateStartInfo(link, windows: false, xdgOpenPath: null));
-        Assert.Null(SystemLinkLauncher.CreateStartInfo(link, windows: false, xdgOpenPath: "xdg-open"));
+        Assert.Null(SystemLinkLauncher.CreateStartInfo(link, windows: false, xdgOpenPath: null, currentPath: "/usr/bin"));
+        Assert.Null(SystemLinkLauncher.CreateStartInfo(link, windows: false, xdgOpenPath: "xdg-open", currentPath: "/usr/bin"));
     }
 
-    [Fact]
-    public async Task TheSystemLauncherSwallowsAFailedStart()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TheSystemLauncherSwallowsAFailedStart(bool windows)
     {
         Assert.True(ExternalLink.TryParse(DocsUrl, out var link));
-        var started = new List<string>();
+        var started = new List<ProcessStartInfo>();
         foreach (var failure in new Exception[]
         {
             new System.ComponentModel.Win32Exception(2),
@@ -483,21 +531,115 @@ public sealed class LinkTests : IDisposable
             new PlatformNotSupportedException(),
         })
         {
-            var launcher = new SystemLinkLauncher(info =>
-            {
-                started.Add(info.FileName);
-                throw failure;
-            });
+            var launcher = new SystemLinkLauncher(
+                info =>
+                {
+                    started.Add(info);
+                    throw failure;
+                },
+                windows,
+                () => ".:/usr/bin",
+                path => path == Path.Join("/usr/bin", "xdg-open"));
 
             // Completes without an exception.
             await launcher.LaunchAsync(link);
         }
 
-        // On this system something was tried each time (Windows: the address itself; elsewhere only with xdg-open on PATH).
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal(Enumerable.Repeat(DocsUrl, 4), started);
-        }
+        // Each start was really tried, with what the platform gets.
+        Assert.Equal(4, started.Count);
+        Assert.All(started, info => Assert.Equal(windows ? DocsUrl : Path.Join("/usr/bin", "xdg-open"), info.FileName));
+        Assert.All(started, info => Assert.Equal(windows ? [] : [DocsUrl], info.ArgumentList));
+
+        // Without an xdg-open on PATH nothing is started at all.
+        var none = new List<ProcessStartInfo>();
+        await new SystemLinkLauncher(info => { none.Add(info); return null; }, windows: false, () => ".:bin", _ => true).LaunchAsync(link);
+        Assert.Empty(none);
+    }
+
+    [AvaloniaFact]
+    public async Task OpenIsIgnoredUntilTheCardIsArmed()
+    {
+        var (window, viewModel, view, launcher) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget(DocsUrl)));
+        Settle(window);
+        var pending = Assert.IsType<PendingLink>(viewModel.PendingLink);
+        var card = Find<LinkConfirmCard>(window, "LinkConfirmCard");
+        var open = Find<Button>(card, "LinkOpenButton");
+
+        // At once: neither the pointer nor Enter or Space on "Open" nor the command opens anything; the card stays.
+        RaiseClick(window, CentreOf(open, window), clickCount: 1);
+        open.Focus();
+        Settle(window);
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        Press(window, Key.Space, PhysicalKey.Space);
+        viewModel.ConfirmLinkCommand.Execute(null);
+        _clock.Advance(MainViewModel.LinkArmingDelay - TimeSpan.FromMilliseconds(1));
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        Settle(window);
+        Assert.Empty(launcher.Calls);
+        Assert.Same(pending, viewModel.PendingLink);
+        Assert.True(card.IsVisible);
+
+        // Once the delay has passed, "Open" opens, exactly once.
+        _clock.Advance(TimeSpan.FromMilliseconds(1));
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        await WaitUntilAsync(window, () => launcher.Calls.Count > 0);
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        viewModel.ConfirmLinkCommand.Execute(null);
+        Settle(window);
+        Assert.Equal([DocsUrl], launcher.Calls);
+        Assert.Null(viewModel.PendingLink);
+
+        // "Cancel" is never delayed.
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget(DocsUrl)));
+        Settle(window);
+        ClickButton(window, Find<Button>(card, "LinkCancelButton"));
+        Assert.Null(viewModel.PendingLink);
+        Assert.Single(launcher.Calls);
+    }
+
+    [AvaloniaFact]
+    public async Task ADoubleClickOnTheDocumentNeverReachesOpen()
+    {
+        // A link that covers the whole page, so whatever is double-clicked brings the card up.
+        var everywhere = new PageLink([new PageRect(0, 0, 400, 400)], new UriTarget(DocsUrl));
+        var (window, viewModel, view, launcher) = Show(WithLinks(_ => [everywhere]));
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        await TextAsync(window, tab, 0);
+
+        // Where "Open" will be: the card shown once and cancelled.
+        tab.FollowLink(everywhere);
+        Settle(window);
+        var card = Find<LinkConfirmCard>(window, "LinkConfirmCard");
+        var open = Find<Button>(card, "LinkOpenButton");
+        var point = CentreOf(open, window);
+        viewModel.CancelLinkCommand.Execute(null);
+        Settle(window);
+        Assert.False(card.IsVisible);
+
+        // A real double click there: the first click brings the card up, the second lands on "Open" and opens nothing.
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Assert.NotNull(viewModel.PendingLink);
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Settle(window);
+        Assert.Empty(launcher.Calls);
+        Assert.NotNull(viewModel.PendingLink);
+        var hit = Assert.IsAssignableFrom<Visual>(window.InputHitTest(point));
+        Assert.True(ReferenceEquals(hit, open) || hit.GetVisualAncestors().Contains(open), $"{hit} is not the Open button");
+
+        // The second press of a double click never reaches the button, even after the arming delay.
+        _clock.Advance(MainViewModel.LinkArmingDelay);
+        RaiseClick(window, point, clickCount: 2);
+        Assert.Empty(launcher.Calls);
+        Assert.NotNull(viewModel.PendingLink);
+
+        // A single click does (so the presses above did reach the card).
+        RaiseClick(window, point, clickCount: 1);
+        await WaitUntilAsync(window, () => launcher.Calls.Count > 0);
+        Assert.Equal([DocsUrl], launcher.Calls);
     }
 
     [Fact]
@@ -703,12 +845,10 @@ public sealed class LinkTests : IDisposable
         await TextAsync(window, tab, 0);
         var point = ScreenPoint(view, window, 0, Centre(link.Rects[0]));
 
-        Settle(window);
-        window.MouseDown(point, MouseButton.Left);
-        window.MouseUp(point, MouseButton.Left);
-        window.MouseDown(point, MouseButton.Left);
-        window.MouseUp(point, MouseButton.Left);
-        Settle(window);
+        // The click count is given, not left to the timing of the test.
+        RaiseClick(window, point, clickCount: 1);
+        RaiseClick(window, point, clickCount: 2);
+        RaiseClick(window, point, clickCount: 3);
 
         // Only the first click went into the history.
         var backs = 0;
@@ -872,6 +1012,30 @@ public sealed class LinkTests : IDisposable
         Settle(window);
     }
 
+    /// <summary>The window point at the centre of a control.</summary>
+    private static Point CentreOf(Control control, Window window) =>
+        control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+
+    /// <summary>
+    /// A press and release of the left button at a window point with the given click count, raised on the element the
+    /// point hits (so the count does not depend on the timing of the test, as it does with the headless mouse).
+    /// </summary>
+    private static void RaiseClick(Window window, Point point, int clickCount)
+    {
+        var target = window.InputHitTest(point) as Avalonia.Interactivity.Interactive ?? throw new InvalidOperationException($"Nothing at {point}.");
+        var pointer = new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, isPrimary: true);
+        target.RaiseEvent(new PointerPressedEventArgs(
+            target, pointer, window, point, 0,
+            new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed),
+            KeyModifiers.None, clickCount));
+        target.RaiseEvent(new PointerReleasedEventArgs(
+            target, pointer, window, point, 0,
+            new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.LeftButtonReleased),
+            KeyModifiers.None, MouseButton.Left));
+        pointer.Capture(null);
+        Settle(window);
+    }
+
     private static void ClickButton(Window window, Button button)
     {
         var point = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
@@ -903,6 +1067,7 @@ public sealed class LinkTests : IDisposable
         var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()) { PageTextsFactory = texts }, new NoFilePicker()) { IsWindowsTitleBar = true };
         var launcher = new RecordingLinkLauncher();
         viewModel.LinkLauncher = launcher;
+        viewModel.Clock = _clock;
         _cleanup.Add(viewModel);
         var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720, RequestedThemeVariant = ThemeVariant.Light };
         _cleanup.Add(new Closer(window));
@@ -971,6 +1136,18 @@ public sealed class LinkTests : IDisposable
             Calls.Add(link.Url);
             return Task.CompletedTask;
         }
+    }
+
+    /// <summary>A clock that moves only when told to.</summary>
+    private sealed class ManualClock : TimeProvider
+    {
+        private long _ticks;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _ticks;
+
+        public void Advance(TimeSpan by) => _ticks += by.Ticks;
     }
 
     private sealed class Closer(Window window) : IDisposable

@@ -21,27 +21,47 @@ internal sealed class SystemLinkLauncher : ILinkLauncher
 {
     private const string XdgOpen = "xdg-open";
 
+    /// <summary>The separator of <c>PATH</c> outside Windows (the only place xdg-open is started).</summary>
+    private const char UnixPathSeparator = ':';
+
+    /// <summary>The <c>PATH</c> xdg-open gets when no rooted entry is left of the current one.</summary>
+    internal const string FallbackPath = "/usr/local/bin:/usr/bin:/bin";
+
+    /// <summary>The working directory of xdg-open: fixed, never the directory Pagewing was started in.</summary>
+    internal const string SafeWorkingDirectory = "/";
+
     private readonly Func<ProcessStartInfo, Process?> _start;
+    private readonly bool _windows;
+    private readonly Func<string?> _path;
+    private readonly Func<string, bool> _isExecutable;
 
     public SystemLinkLauncher()
-        : this(Process.Start)
+        : this(Process.Start, OperatingSystem.IsWindows(), static () => Environment.GetEnvironmentVariable("PATH"), IsExecutableFile)
     {
     }
 
-    /// <summary>Creates a launcher that starts processes with <paramref name="start"/> (for tests).</summary>
-    internal SystemLinkLauncher(Func<ProcessStartInfo, Process?> start)
+    /// <summary>
+    /// Creates a launcher that starts processes with <paramref name="start"/>, as on Windows or not, with the given
+    /// <c>PATH</c> and test for an executable file (for tests).
+    /// </summary>
+    internal SystemLinkLauncher(Func<ProcessStartInfo, Process?> start, bool windows, Func<string?> path, Func<string, bool> isExecutable)
     {
         ArgumentNullException.ThrowIfNull(start);
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(isExecutable);
         _start = start;
+        _windows = windows;
+        _path = path;
+        _isExecutable = isExecutable;
     }
 
     /// <inheritdoc />
     public Task LaunchAsync(ExternalLink link)
     {
         ArgumentNullException.ThrowIfNull(link);
-        var windows = OperatingSystem.IsWindows();
-        var xdgOpen = windows ? null : FindOnPath(Environment.GetEnvironmentVariable("PATH"), Path.PathSeparator, XdgOpen, IsExecutableFile);
-        if (CreateStartInfo(link, windows, xdgOpen) is not { } info)
+        var path = _windows ? null : _path();
+        var xdgOpen = _windows ? null : FindOnPath(path, UnixPathSeparator, XdgOpen, _isExecutable);
+        if (CreateStartInfo(link, _windows, xdgOpen, path) is not { } info)
         {
             // No xdg-open in a rooted PATH entry: nothing opens (fail closed).
             return Task.CompletedTask;
@@ -52,10 +72,13 @@ internal sealed class SystemLinkLauncher : ILinkLauncher
     }
 
     /// <summary>
-    /// What is started for <paramref name="link"/> on Windows or on another system (for tests); elsewhere it needs the
-    /// absolute path of <c>xdg-open</c> and is <see langword="null"/> without one.
+    /// What is started for <paramref name="link"/> on Windows or on another system (for tests). Elsewhere it needs the
+    /// absolute path of <c>xdg-open</c> and is <see langword="null"/> without one; xdg-open then runs in
+    /// <see cref="SafeWorkingDirectory"/> with only the rooted entries of <paramref name="currentPath"/> as its
+    /// <c>PATH</c> (or <see cref="FallbackPath"/>), because it calls its helpers (xdg-mime, gio, x-www-browser, ...) by
+    /// name. Every other environment variable is inherited.
     /// </summary>
-    internal static ProcessStartInfo? CreateStartInfo(ExternalLink link, bool windows, string? xdgOpenPath)
+    internal static ProcessStartInfo? CreateStartInfo(ExternalLink link, bool windows, string? xdgOpenPath, string? currentPath)
     {
         ArgumentNullException.ThrowIfNull(link);
         if (windows)
@@ -68,9 +91,36 @@ internal sealed class SystemLinkLauncher : ILinkLauncher
             return null;
         }
 
-        var info = new ProcessStartInfo { FileName = xdgOpenPath, UseShellExecute = false };
+        var info = new ProcessStartInfo
+        {
+            FileName = xdgOpenPath,
+            UseShellExecute = false,
+            WorkingDirectory = SafeWorkingDirectory,
+        };
         info.ArgumentList.Add(link.Url);
+        var rooted = RootedEntries(currentPath, UnixPathSeparator);
+        info.Environment["PATH"] = rooted.Count > 0 ? string.Join(UnixPathSeparator, rooted) : FallbackPath;
         return info;
+    }
+
+    /// <summary>The entries of a <c>PATH</c> value that are rooted, in their order (empty and relative ones mean the current directory).</summary>
+    internal static List<string> RootedEntries(string? path, char separator)
+    {
+        var entries = new List<string>();
+        if (string.IsNullOrEmpty(path))
+        {
+            return entries;
+        }
+
+        foreach (var entry in path.Split(separator))
+        {
+            if (entry.Length > 0 && Path.IsPathRooted(entry))
+            {
+                entries.Add(entry);
+            }
+        }
+
+        return entries;
     }
 
     /// <summary>
@@ -82,18 +132,8 @@ internal sealed class SystemLinkLauncher : ILinkLauncher
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(isExecutable);
-        if (string.IsNullOrEmpty(path))
+        foreach (var entry in RootedEntries(path, separator))
         {
-            return null;
-        }
-
-        foreach (var entry in path.Split(separator))
-        {
-            if (entry.Length == 0 || !Path.IsPathRooted(entry))
-            {
-                continue;
-            }
-
             var candidate = Path.Join(entry, name);
             if (isExecutable(candidate))
             {

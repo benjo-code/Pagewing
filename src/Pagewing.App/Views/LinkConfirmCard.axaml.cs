@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Pagewing.App.ViewModels;
@@ -36,6 +37,18 @@ public sealed partial class LinkConfirmCard : UserControl
         })
         {
             KeyBindings.Add(new KeyBinding { Gesture = gesture, Command = Ignore });
+        }
+
+        // The second (or third) press of a multiple click never reaches the buttons: it belongs to a double click that
+        // began on the document, where the card was not yet. The view model ignores "Open" for a moment besides.
+        AddHandler(PointerPressedEvent, OnPointerPressedTunnel, RoutingStrategies.Tunnel);
+    }
+
+    private static void OnPointerPressedTunnel(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.ClickCount > 1)
+        {
+            e.Handled = true;
         }
     }
 

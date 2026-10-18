@@ -43,6 +43,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private ILinkLauncher? _linkLauncher;
     private PendingLink? _pendingLink;
 
+    // When the pending address arrived (Clock timestamp), for the arming delay of "Open".
+    private long _pendingSince;
+
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
     private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther)> _tabHandlers = [];
     private TabViewModel? _activeTab;
@@ -237,6 +240,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         get => _pendingLink;
         private set
         {
+            if (value is not null)
+            {
+                _pendingSince = Clock.GetTimestamp();
+            }
+
             if (SetProperty(ref _pendingLink, value))
             {
                 _confirmLinkCommand.RaiseCanExecuteChanged();
@@ -245,8 +253,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>"Open" on the link card: drops <see cref="PendingLink"/> and opens its address. The only way an address is opened.</summary>
+    /// <summary>
+    /// "Open" on the link card: drops <see cref="PendingLink"/> and opens its address. The only way an address is opened.
+    /// Ignored until <see cref="LinkArmingDelay"/> has passed since the address arrived (<see cref="IsLinkArmed"/>), by
+    /// pointer and by keyboard alike: the second click of a double click on the document must not land on "Open" of the
+    /// card that its first click brought up.
+    /// </summary>
     public ICommand ConfirmLinkCommand { get; }
+
+    /// <summary>How long after an address arrived "Open" stays without effect; "Cancel" and Esc act at once.</summary>
+    internal static TimeSpan LinkArmingDelay { get; } = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>Gets or sets the clock of <see cref="LinkArmingDelay"/> (the system clock; tests set a manual one).</summary>
+    internal TimeProvider Clock { get; set; } = TimeProvider.System;
+
+    /// <summary>Gets whether an address waits and <see cref="LinkArmingDelay"/> has passed since it arrived.</summary>
+    internal bool IsLinkArmed => _pendingLink is not null && Clock.GetElapsedTime(_pendingSince) >= LinkArmingDelay;
 
     /// <summary>"Cancel" on the link card, also Esc: drops <see cref="PendingLink"/> without opening it.</summary>
     public ICommand CancelLinkCommand { get; }
@@ -637,7 +659,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The user confirmed the address on the card: the only call of the launcher.</summary>
     private void ConfirmLink()
     {
-        if (PendingLink is not { } pending)
+        if (PendingLink is not { } pending || !IsLinkArmed)
         {
             return;
         }
