@@ -1,0 +1,73 @@
+%PDF-1.7
+%âãÏÓ
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 2 /Kids [11 0 R 7 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing Handbuch) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> /Contents 12 0 R >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Link /Rect [40 156 140 172] /Border [0 0 0] /F 4 /A << /S /URI /URI (https://example.org/docs) >> >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Link /Rect [40 126 170 142] /Border [0 0 0] /F 4 /A << /S /GoTo /D [7 0 R /XYZ 0 150 null] >> >>
+endobj
+10 0 obj
+<<  /Length 653 >>
+stream
+BT /F2 24 Tf 40 350 Td (Pagewing Handbuch) Tj ET
+BT /F1 12 Tf 40 310 Td (Pagewing ist ein schneller PDF-Viewer für Win-) Tj ET
+BT /F1 12 Tf 40 294 Td (dows und Linux. Er startet sofort und bleibt) Tj ET
+BT /F1 12 Tf 40 278 Td (auch bei großen Dokumenten flüssig.) Tj ET
+BT 40 246 Td /F1 12 Tf (Das ist ) Tj /F2 12 Tf (fett) Tj /F1 12 Tf ( und ) Tj /F3 12 Tf (kursiv) Tj /F1 12 Tf ( im Satz.) Tj ET
+BT /F1 12 Tf 40 230 Td (Zweite Zeile des zweiten Absatzes.) Tj ET
+BT /F1 12 Tf 40 190 Td (Mehr unter https://example.org/pagewing oder www.example.org.) Tj ET
+BT /F1 12 Tf 40 160 Td (Dokumentation) Tj ET
+BT /F1 12 Tf 40 130 Td (Weiter zu Seite zwei) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Annots [8 0 R 9 0 R] /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> /Contents 10 0 R >>
+endobj
+12 0 obj
+<<  /Length 96 >>
+stream
+BT /F2 24 Tf 40 350 Td (Seite zwei) Tj ET
+BT /F1 12 Tf 40 150 Td (Ziel: Pagewing am Ende.) Tj ET
+endstream
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000128 00000 n 
+0000000212 00000 n 
+0000000309 00000 n 
+0000000411 00000 n 
+0000000516 00000 n 
+0000000663 00000 n 
+0000000805 00000 n 
+0000000943 00000 n 
+0000001649 00000 n 
+0000001819 00000 n 
+trailer
+<< /Size 13 /Root 1 0 R /Info 3 0 R >>
+startxref
+1967
+%%EOF

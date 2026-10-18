@@ -84,7 +84,7 @@ static class Cli
     }
 }
 
-// All self-made files. Page sizes stay at or below 300 x 400 pt.
+// All self-made files. Page sizes stay small (at most 300 x 400 pt), except text-rich (400 x 400) and text-dense (612 x 792, where the text volume is the point).
 static class TestPdfs
 {
     private const string Helvetica = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
@@ -99,6 +99,8 @@ static class TestPdfs
         new("rotated-page.pdf", RotatedPage()),
         new("cropbox.pdf", CropBox()),
         new("annotations.pdf", Annotations()),
+        new("text-rich.pdf", TextRich()),
+        new("text-dense.pdf", TextDense()),
         new("wide-page.pdf", WidePage()),
         new("thousand-pages.pdf", ThousandPages()),
         new("outline.pdf", Outline()),
@@ -290,6 +292,72 @@ static class TestPdfs
         return doc.Build();
     }
 
+    // Two pages of 400 x 400: headings, a hyphenated paragraph, font changes inside a line, a plain URL and a "www" address,
+    // a URI link and a GoTo link (/XYZ destination on page 2). Helvetica, Helvetica-Bold and Helvetica-Oblique.
+    private static byte[] TextRich()
+    {
+        const string bold = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+        const string oblique = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>";
+        var doc = new PdfDoc("Pagewing Handbuch");
+        var fonts = $"<< /Font << /F1 {doc.Add(Helvetica)} 0 R /F2 {doc.Add(bold)} 0 R /F3 {doc.Add(oblique)} 0 R >> >>";
+        var pageTwo = doc.Reserve();
+        var uriLink = doc.Add("<< /Type /Annot /Subtype /Link /Rect [40 156 140 172] /Border [0 0 0] /F 4 /A << /S /URI /URI (https://example.org/docs) >> >>");
+        var gotoLink = doc.Add($"<< /Type /Annot /Subtype /Link /Rect [40 126 170 142] /Border [0 0 0] /F 4 /A << /S /GoTo /D [{pageTwo} 0 R /XYZ 0 150 null] >> >>");
+        doc.AddPage($"/MediaBox [0 0 400 400] /Annots [{uriLink} 0 R {gotoLink} 0 R]", fonts, """
+            BT /F2 24 Tf 40 350 Td (Pagewing Handbuch) Tj ET
+            BT /F1 12 Tf 40 310 Td (Pagewing ist ein schneller PDF-Viewer für Win-) Tj ET
+            BT /F1 12 Tf 40 294 Td (dows und Linux. Er startet sofort und bleibt) Tj ET
+            BT /F1 12 Tf 40 278 Td (auch bei großen Dokumenten flüssig.) Tj ET
+            BT 40 246 Td /F1 12 Tf (Das ist ) Tj /F2 12 Tf (fett) Tj /F1 12 Tf ( und ) Tj /F3 12 Tf (kursiv) Tj /F1 12 Tf ( im Satz.) Tj ET
+            BT /F1 12 Tf 40 230 Td (Zweite Zeile des zweiten Absatzes.) Tj ET
+            BT /F1 12 Tf 40 190 Td (Mehr unter https://example.org/pagewing oder www.example.org.) Tj ET
+            BT /F1 12 Tf 40 160 Td (Dokumentation) Tj ET
+            BT /F1 12 Tf 40 130 Td (Weiter zu Seite zwei) Tj ET
+            """);
+        doc.AddPage("/MediaBox [0 0 400 400]", fonts, """
+            BT /F2 24 Tf 40 350 Td (Seite zwei) Tj ET
+            BT /F1 12 Tf 40 150 Td (Ziel: Pagewing am Ende.) Tj ET
+            """, pageTwo);
+        return doc.Build();
+    }
+
+    // 200 pages of 612 x 792, 45 lines of eight words each; every tenth page has "Needle in Seite <p>" as line 7 (0-based).
+    private static byte[] TextDense()
+    {
+        string[] words =
+        [
+            "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+            "lambda", "mu", "nu", "xi", "omicron", "rho", "sigma", "tau", "upsilon", "phi",
+        ];
+        var doc = new PdfDoc("Pagewing dichter Text");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        for (var p = 1; p <= 200; p++)
+        {
+            var content = new StringBuilder("BT /F1 10 Tf 40 760 Td 14 TL\n");
+            for (var r = 0; r < 45; r++)
+            {
+                if (r > 0)
+                {
+                    content.Append("T*\n");
+                }
+
+                if (r == 7 && p % 10 == 0)
+                {
+                    content.Append(CultureInfo.InvariantCulture, $"(Needle in Seite {p}) Tj\n");
+                    continue;
+                }
+
+                var line = string.Join(' ', Enumerable.Range(0, 8).Select(k => words[((p * 7) + (r * 3) + k) % 20]));
+                content.Append(CultureInfo.InvariantCulture, $"({line}) Tj\n");
+            }
+
+            content.Append("ET");
+            doc.AddPage("/MediaBox [0 0 612 792]", resources, content.ToString());
+        }
+
+        return doc.Build();
+    }
+
     // 600 x 120 pt: gradient bar, ruler lines every 20 pt and a text line; used by the tile test.
     private static byte[] WidePage()
     {
@@ -441,10 +509,13 @@ sealed class PdfDoc
     }
 
     // pageEntries: MediaBox, Rotate, CropBox, Annots ...; resources: a resource dictionary; content: the page content stream.
-    public int AddPage(string pageEntries, string resources, string content)
+    // reservedId: an id from Reserve, for pages that other objects (links) point to before the page is added.
+    public int AddPage(string pageEntries, string resources, string content, int? reservedId = null)
     {
         var contentId = AddStream(string.Empty, Latin1(content));
-        var id = Add($"<< /Type /Page /Parent {pagesRoot} 0 R {pageEntries} /Resources {resources} /Contents {contentId} 0 R >>");
+        var body = $"<< /Type /Page /Parent {pagesRoot} 0 R {pageEntries} /Resources {resources} /Contents {contentId} 0 R >>";
+        var id = reservedId ?? Reserve();
+        Set(id, body);
         pages.Add(id);
         return id;
     }
