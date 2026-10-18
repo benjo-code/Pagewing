@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
 
 namespace Pagewing.App.Views;
@@ -13,17 +14,19 @@ namespace Pagewing.App.Views;
 /// <summary>
 /// The side panel of the window (design system sections 6 and 7.3): shows the panel of the active tab beside the
 /// document, or over it below <see cref="MainViewModel.NarrowWindowWidth"/>; resizes it with the splitter on its edge
-/// (a double click restores the default width); fades it in and out once the window has shown its first frame. The
+/// (a double click restores the default width; the settings keep the width once the edge is let go); fades it in and
+/// out once the window has shown its first frame, over the durations of the resources (<see cref="Appearance"/>). The
 /// <see cref="SidePanel"/> is created only when a panel opens for the first time, so nothing of it is built in the
 /// startup path.
 /// </summary>
 public sealed partial class MainWindow
 {
-    private static readonly TimeSpan OpenDuration = TimeSpan.FromMilliseconds(150);
-    private static readonly TimeSpan CloseDuration = TimeSpan.FromMilliseconds(100);
+    // Section 5.6, used only when the resources are missing (Appearance.OpenDurationKey and CloseDurationKey).
+    private static readonly TimeSpan DefaultOpenDuration = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan DefaultCloseDuration = TimeSpan.FromMilliseconds(100);
     private static readonly CornerRadius DocumentCorner = new(10, 0, 0, 0);
 
-    // Created with the first fade, not in the startup path.
+    // Created with the first fade, not in the startup path; made again when the duration in the resources changed.
     private Transitions? _openTransitions;
     private Transitions? _closeTransitions;
     private DispatcherTimer? _closeTimer;
@@ -45,6 +48,9 @@ public sealed partial class MainWindow
         DocumentView.FirstSharpTileDrawn += () => _viewModel?.OnFirstSharpTileDrawn();
         PanelColumn.PropertyChanged += OnPanelColumnChanged;
         PanelSplitter.AddHandler(PointerPressedEvent, OnSplitterPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        // The width is stored once the edge is let go, not on every pixel of the drag.
+        PanelSplitter.DragCompleted += (_, _) => _viewModel?.SavePanelWidth();
     }
 
     protected override void OnOpened(EventArgs e)
@@ -146,8 +152,25 @@ public sealed partial class MainWindow
         PanelHost.IsVisible = true;
         if (!wasShown)
         {
-            Fade(1, sameTab ? _openTransitions ??= [new DoubleTransition { Property = OpacityProperty, Duration = OpenDuration, Easing = new CubicEaseOut() }] : null);
+            Fade(1, sameTab ? OpenTransitions() : null);
         }
+    }
+
+    /// <summary>The fade-in with the current open duration, or none when it is zero (reduced motion).</summary>
+    private Transitions? OpenTransitions()
+    {
+        var duration = Appearance.Duration(this, Appearance.OpenDurationKey, DefaultOpenDuration);
+        if (duration <= TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        if (_openTransitions is not [DoubleTransition { } open] || open.Duration != duration)
+        {
+            _openTransitions = [new DoubleTransition { Property = OpacityProperty, Duration = duration, Easing = new CubicEaseOut() }];
+        }
+
+        return _openTransitions;
     }
 
     private SidePanel CreateSidePanel()
@@ -157,7 +180,10 @@ public sealed partial class MainWindow
         return panel;
     }
 
-    /// <summary>Fades the panel out (100 ms) and collapses it afterwards, unless it opens again meanwhile.</summary>
+    /// <summary>
+    /// Fades the panel out over the close duration (100 ms) and collapses it afterwards, unless it opens again
+    /// meanwhile; with a zero duration (reduced motion) it collapses at once.
+    /// </summary>
     private void FadeOut()
     {
         if (_closing)
@@ -165,9 +191,27 @@ public sealed partial class MainWindow
             return;
         }
 
+        var duration = Appearance.Duration(this, Appearance.CloseDurationKey, DefaultCloseDuration);
+        if (duration <= TimeSpan.Zero)
+        {
+            Collapse();
+            return;
+        }
+
         _closing = true;
-        Fade(0, _closeTransitions ??= [new DoubleTransition { Property = OpacityProperty, Duration = CloseDuration }]);
-        _closeTimer ??= new DispatcherTimer(CloseDuration, DispatcherPriority.Normal, (_, _) => Collapse());
+        if (_closeTransitions is not [DoubleTransition { } close] || close.Duration != duration)
+        {
+            _closeTransitions = [new DoubleTransition { Property = OpacityProperty, Duration = duration }];
+        }
+
+        Fade(0, _closeTransitions);
+        if (_closeTimer is null)
+        {
+            _closeTimer = new DispatcherTimer(DispatcherPriority.Normal);
+            _closeTimer.Tick += (_, _) => Collapse();
+        }
+
+        _closeTimer.Interval = duration;
         _closeTimer.Start();
     }
 

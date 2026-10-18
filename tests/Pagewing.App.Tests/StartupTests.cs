@@ -289,8 +289,8 @@ public sealed class StartupTests : IDisposable
     {
         using var session = CreateSession();
 
-        Assert.Empty(new AppStartup(session, null).MorePaths);
-        Assert.Equal(["b.pdf"], new AppStartup(session, null, MorePaths: ["b.pdf"]).MorePaths);
+        Assert.Empty(new AppStartup(session, null, UserSettings.Detached()).MorePaths);
+        Assert.Equal(["b.pdf"], new AppStartup(session, null, UserSettings.Detached(), MorePaths: ["b.pdf"]).MorePaths);
     }
 
     /// <summary>

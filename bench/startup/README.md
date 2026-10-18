@@ -65,6 +65,7 @@ In den Start- und Zweitdatei-Messläufen (`--measure-startup`, `--measure-second
 |---|---|
 | `main` | Eintritt in `Program.Main` (nach der `AppContext`-Initialisierung) |
 | `session-open-started` | das frühe Öffnen der Datei ist gestartet |
+| `settings-loaded` | Einstellungen gelesen (ohne `settings.json` nur die Prüfung, ob sie existiert) und UI-Sprache gewählt (`UserSettings.Load`, `Program.ChooseUiCulture`) |
 | `rendering-software`, `rendering-default` | nur Windows: Rendering-Modus gewählt (`rendering-default` nur mit `PAGEWING_RENDERING=default`; `Docs/DECISIONS.md`, Eintrag „Software-Rendering als Windows-Standard (M3)“) |
 | `session-ready` | die Session meldet `Ready` (PDFium-Thread) |
 | `avalonia-configure` | vor `AppBuilder.Configure` (in `Program.Run`) |

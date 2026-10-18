@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
+using Pagewing.Core.Settings;
 using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 
@@ -19,13 +20,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public const int MaxFilesPerOpen = 20;
 
     /// <summary>Default width of the side panel (design system 5.4), also what a double click on its edge restores.</summary>
-    public const double DefaultPanelWidth = 264;
+    public const double DefaultPanelWidth = AppSettings.DefaultPanelWidth;
 
     /// <summary>Narrowest the side panel can be dragged (design system 6).</summary>
-    public const double MinPanelWidth = 200;
+    public const double MinPanelWidth = AppSettings.MinPanelWidth;
 
     /// <summary>Widest the side panel can be dragged (design system 6).</summary>
-    public const double MaxPanelWidth = 400;
+    public const double MaxPanelWidth = AppSettings.MaxPanelWidth;
 
     /// <summary>Below this window width the side panel lies over the document instead of beside it (design system 6).</summary>
     public const double NarrowWindowWidth = 900;
@@ -56,23 +57,26 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private int? _tabDropIndex;
     private bool _picking;
     private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
-    private double _panelWidth = DefaultPanelWidth;
+    private double _panelWidth;
     private bool _isNarrowWindow;
 
-    // The user opened or closed a panel in this window: the first sharp tile no longer opens "Pages".
+    // The user opened or closed a panel in this window: the first sharp tile no longer opens the start panel.
     private bool _panelChosenByUser;
 
-    // The first sharp tile of this window was drawn: its one chance to open "Pages" has passed.
+    // The first sharp tile of this window was drawn: its one chance to open the start panel has passed.
     private bool _firstSharpTileSeen;
 
     /// <param name="sessionFactory">Creates the session of each new tab; the tab owns it.</param>
     /// <param name="picker">The file dialog.</param>
-    public MainViewModel(Func<ViewerSession> sessionFactory, IFilePicker picker)
+    /// <param name="settings">The settings of the app; <see cref="UserSettings.Detached"/> (in memory only) when omitted.</param>
+    public MainViewModel(Func<ViewerSession> sessionFactory, IFilePicker picker, UserSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(picker);
         _sessionFactory = sessionFactory;
         _picker = picker;
+        Settings = settings ?? UserSettings.Detached();
+        _panelWidth = Settings.Current.PanelWidth;
 
         Tabs.ActiveChanged += OnActiveTabChanged;
         Tabs.CollectionChanged += (_, _) =>
@@ -103,6 +107,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _cancelLinkCommand = new RelayCommand(() => PendingLink = null, () => PendingLink is not null);
         CancelLinkCommand = _cancelLinkCommand;
     }
+
+    /// <summary>
+    /// Gets the settings of the app: the window starts with their panel width and start panel and writes the user's
+    /// choices of both back.
+    /// </summary>
+    public UserSettings Settings { get; }
 
     /// <summary>Raised on the UI thread when the window should come to the front (a later launch handed over).</summary>
     public event Action? ActivationRequested;
@@ -180,7 +190,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// Gets or sets the width of the side panel of this window (all its tabs share it), limited to
-    /// <see cref="MinPanelWidth"/> to <see cref="MaxPanelWidth"/>; <see cref="DefaultPanelWidth"/> at first.
+    /// <see cref="MinPanelWidth"/> to <see cref="MaxPanelWidth"/>; the stored width (<see cref="AppSettings.PanelWidth"/>)
+    /// at first. Setting it does not store it (it changes on every pixel of a drag); <see cref="SavePanelWidth"/> does.
     /// </summary>
     public double PanelWidth
     {
@@ -199,7 +210,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Gets or sets whether the first sharp tile of the window may open "Pages" (<see cref="OnFirstSharpTileDrawn"/>);
+    /// Gets or sets whether the first sharp tile of the window may open the start panel (<see cref="OnFirstSharpTileDrawn"/>);
     /// on by default. A measurement run switches it off, so its window keeps the layout and the work of a run without
     /// a panel (comparable with the measurements before the panel existed).
     /// </summary>
@@ -460,16 +471,31 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         return true;
     }
 
-    /// <summary>Sets <see cref="PanelWidth"/> back to <see cref="DefaultPanelWidth"/> (double click on the edge of the panel).</summary>
-    public void ResetPanelWidth() => PanelWidth = DefaultPanelWidth;
+    /// <summary>
+    /// Sets <see cref="PanelWidth"/> back to <see cref="DefaultPanelWidth"/> (double click on the edge of the panel) and
+    /// stores it.
+    /// </summary>
+    public void ResetPanelWidth()
+    {
+        PanelWidth = DefaultPanelWidth;
+        SavePanelWidth();
+    }
+
+    /// <summary>Stores <see cref="PanelWidth"/> in the settings (the edge of the panel was let go); the next window starts with it.</summary>
+    public void SavePanelWidth()
+    {
+        var width = PanelWidth;
+        Settings.Update(current => current with { PanelWidth = width });
+    }
 
     /// <summary>
     /// The first sharp tile of this window was drawn (the document view tells the window once per document): the first
-    /// time, "Pages" opens in the active tab when it shows no panel, the window is at least
-    /// <see cref="NarrowWindowWidth"/> wide, the user has not opened or closed a panel in this window yet (design
-    /// system 7.3; remembering the choice comes in M6) and <see cref="OpensPagesPanelAfterFirstSharpTile"/> holds.
-    /// The panel opens in a job of <see cref="DispatcherPriority.Background"/>, after every handler of the first sharp
-    /// tile (a measurement takes its time there) and after rendering. Later calls do nothing.
+    /// time, the start panel of the settings (<see cref="AppSettings.StartPanel"/>: "Pages", "Contents" or none) opens
+    /// in the active tab when it shows no panel, the window is at least <see cref="NarrowWindowWidth"/> wide, the user
+    /// has not opened or closed a panel in this window yet (design system 7.3) and
+    /// <see cref="OpensPagesPanelAfterFirstSharpTile"/> holds. The panel opens in a job of
+    /// <see cref="DispatcherPriority.Background"/>, after every handler of the first sharp tile (a measurement takes its
+    /// time there) and after rendering. Later calls do nothing.
     /// </summary>
     internal void OnFirstSharpTileDrawn()
     {
@@ -630,9 +656,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // The conditions are checked again: the user may have chosen a panel, or the window may have narrowed meanwhile.
     private void OpenPagesPanelAfterFirstSharpTile()
     {
-        if (OpensPagesPanelAfterFirstSharpTile && !_panelChosenByUser && !IsNarrowWindow && ActiveTab is { SidePanel: SidePanelKind.None } tab)
+        var kind = Settings.Current.StartPanel switch
         {
-            tab.SidePanel = SidePanelKind.Pages;
+            StartPanelSetting.Pages => SidePanelKind.Pages,
+            StartPanelSetting.Contents => SidePanelKind.Contents,
+            _ => SidePanelKind.None,
+        };
+
+        if (kind != SidePanelKind.None && OpensPagesPanelAfterFirstSharpTile && !_panelChosenByUser && !IsNarrowWindow
+            && ActiveTab is { SidePanel: SidePanelKind.None } tab)
+        {
+            tab.SidePanel = kind;
         }
     }
 
@@ -644,7 +678,30 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         _panelChosenByUser = true;
-        tab.SidePanel = tab.SidePanel == kind ? SidePanelKind.None : kind;
+        var old = tab.SidePanel;
+        var next = old == kind ? SidePanelKind.None : kind;
+        tab.SidePanel = next;
+        RememberStartPanel(old, next);
+    }
+
+    /// <summary>
+    /// The user opened or closed a panel: opening "Pages" or "Contents" makes it the start panel of the next window,
+    /// closing it makes that none. "Search" never changes it, neither by opening nor by closing.
+    /// </summary>
+    private void RememberStartPanel(SidePanelKind old, SidePanelKind next)
+    {
+        StartPanelSetting? start = next switch
+        {
+            SidePanelKind.Pages => StartPanelSetting.Pages,
+            SidePanelKind.Contents => StartPanelSetting.Contents,
+            SidePanelKind.None when old is SidePanelKind.Pages or SidePanelKind.Contents => StartPanelSetting.None,
+            _ => null,
+        };
+
+        if (start is { } value)
+        {
+            Settings.Update(current => current with { StartPanel = value });
+        }
     }
 
     private void OpenSearch()

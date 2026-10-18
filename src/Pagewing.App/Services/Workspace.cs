@@ -22,6 +22,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private readonly Func<ViewerSession> _sessionFactory;
     private readonly Func<Window> _createWindow;
     private readonly Func<Window, IFilePicker> _createPicker;
+    private readonly UserSettings _settings;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
     private readonly List<MainViewModel> _activationOrder = [];
@@ -30,7 +31,8 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     /// <param name="sessionFactory">Creates the session of each new tab, in every window.</param>
     /// <param name="createWindow">Creates a window (a <see cref="Views.MainWindow"/> in the app).</param>
     /// <param name="createPicker">Creates the file dialog of a window.</param>
-    public Workspace(Func<ViewerSession> sessionFactory, Func<Window> createWindow, Func<Window, IFilePicker> createPicker)
+    /// <param name="settings">The settings every window shares; <see cref="UserSettings.Detached"/> when omitted.</param>
+    public Workspace(Func<ViewerSession> sessionFactory, Func<Window> createWindow, Func<Window, IFilePicker> createPicker, UserSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(createWindow);
@@ -38,6 +40,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         _sessionFactory = sessionFactory;
         _createWindow = createWindow;
         _createPicker = createPicker;
+        _settings = settings ?? UserSettings.Detached();
     }
 
     /// <summary>Gets the view models of the open windows, the oldest first.</summary>
@@ -247,7 +250,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         TabViewModel? firstTab, Window? source, Action<Window, MainViewModel>? beforeShow, PixelPoint? position = null, bool showActivated = true)
     {
         var window = _createWindow();
-        var viewModel = new MainViewModel(_sessionFactory, _createPicker(window));
+        var viewModel = new MainViewModel(_sessionFactory, _createPicker(window), _settings);
         if (source is not null)
         {
             PlaceNextTo(window, source, position);

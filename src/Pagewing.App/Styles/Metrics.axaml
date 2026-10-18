@@ -23,6 +23,13 @@
   <x:Double x:Key="Pw.Opacity.PrimaryHover">0.9</x:Double>
   <x:Double x:Key="Pw.Opacity.PrimaryPressed">0.82</x:Double>
 
+  <!--
+    Motion (section 5.6): panels and popups open in 150 ms (ease-out) and close in 100 ms. Every animation reads these
+    when it starts; "Reduce motion" (Services/Appearance) hides them with zero durations in the app's own resources.
+  -->
+  <x:TimeSpan x:Key="Pw.Duration.Open">0:0:0.15</x:TimeSpan>
+  <x:TimeSpan x:Key="Pw.Duration.Close">0:0:0.1</x:TimeSpan>
+
   <!-- The Fluent controls read their corner radii from these two resources (spec section 2.4). -->
   <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
   <CornerRadius x:Key="OverlayCornerRadius">10</CornerRadius>

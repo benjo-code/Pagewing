@@ -7,8 +7,10 @@ using Avalonia;
 using Pagewing.App.Measurement;
 using Pagewing.App.Platform;
 using Pagewing.App.Resources;
+using Pagewing.App.Services;
 using Pagewing.Core.Hosting;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App;
@@ -24,7 +26,8 @@ internal static partial class Program
     /// <summary>
     /// Startup order (startup path, keep it lean): parse the options; elect the single instance before Avalonia is
     /// loaded, and as a later launch hand the files over and exit; otherwise start opening the file of the command
-    /// line at once, so PDFium loads on its own thread while Avalonia builds the window; on Windows choose the rendering
+    /// line at once, so PDFium loads on its own thread while Avalonia builds the window; read the settings (nothing
+    /// without a settings file) and choose the UI language (<see cref="ChooseUiCulture"/>); on Windows choose the rendering
     /// mode (<see cref="UseSoftwareRendering"/>); show the window, whose first frame shows the tab with the file name;
     /// accept later launches after the first frame (<see cref="App"/>).
     /// A measurement switch takes the same path, without the election (see <see cref="ElectInstance"/>).
@@ -43,18 +46,6 @@ internal static partial class Program
         {
             // Diagnostic phases of a measurement run only (bench/startup/README.md, "Phasen").
             StartupPhases.Enable().Mark("main", mainEntered);
-        }
-
-        if (options.Language is { } language)
-        {
-            try
-            {
-                Strings.Culture = new CultureInfo(language);
-            }
-            catch (CultureNotFoundException)
-            {
-                // Unknown language code: keep the system language.
-            }
         }
 
         var (instance, isSecondary) = ElectInstance(options, static () => SingleInstance.TryBecomePrimary(SingleInstance.DefaultName));
@@ -85,13 +76,48 @@ internal static partial class Program
             StartupPhases.Mark("session-open-started");
         }
 
+        // While PDFium opens the file on its thread. Without a settings file this reads nothing (and parses no JSON).
+        var settings = UserSettings.Load();
+        if (ChooseUiCulture(options.Language, settings.Current.Language) is { } culture)
+        {
+            Strings.Culture = culture;
+        }
+
+        StartupPhases.Mark("settings-loaded");
+
         var software = UseSoftwareRendering();
         if (options.IsMeasurement)
         {
             StartMeasurementWatchdog();
         }
 
-        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null, options.MorePaths), software);
+        return Run(args, new AppStartup(session, instance, settings, options.IsMeasurement ? options : null, options.MorePaths), software);
+    }
+
+    /// <summary>
+    /// The UI language: <c>--lang &lt;code&gt;</c> first, then the setting, then (<see langword="null"/>) the system
+    /// language. An unknown code counts as not given. A change of the setting applies at the next start.
+    /// </summary>
+    internal static CultureInfo? ChooseUiCulture(string? languageOption, LanguageSetting setting)
+    {
+        if (languageOption is not null)
+        {
+            try
+            {
+                return new CultureInfo(languageOption);
+            }
+            catch (CultureNotFoundException)
+            {
+                // Unknown language code: as if it was not given.
+            }
+        }
+
+        return setting switch
+        {
+            LanguageSetting.German => new CultureInfo("de"),
+            LanguageSetting.English => new CultureInfo("en"),
+            _ => null,
+        };
     }
 
     public static AppBuilder BuildAvaloniaApp() =>
