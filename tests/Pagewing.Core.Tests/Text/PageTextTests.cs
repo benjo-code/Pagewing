@@ -208,5 +208,310 @@ public sealed class PageTextTests
         Assert.Equal(new PageRect(12, 22, 28, 58), a.Inflate(-2));
     }
 
+    [Fact]
+    public void CharAtFindsTheCharUnderThePointAndNothingBetweenLines()
+    {
+        var text = TwoLines();
+
+        Assert.Equal(6, text.CharAt(42, 25)); // 'w' of "world"
+        Assert.Equal(13, text.CharAt(12, 39)); // 's' of "second"
+        Assert.Equal(6, text.CharAt(43, 30.5)); // within the 1 pt inflation
+        Assert.Equal(-1, text.CharAt(42, 32)); // in the gap between the lines
+        Assert.Equal(-1, text.CharAt(500, 25)); // right of the text
+        Assert.Equal(-1, TwoLines(0).CharAt(0, 0)); // a page without chars
+    }
+
+    [Fact]
+    public void CharAtPrefersTheCharThatContainsThePointOverANeighbourWithinTheInflation()
+    {
+        var text = TwoLines();
+
+        // x = 45.5 is in 'o' (45..50) and within 1 pt of 'w' (40..45).
+        Assert.Equal(7, text.CharAt(45.5, 25));
+        Assert.Equal(6, text.CharAt(44.5, 25));
+    }
+
+    [Fact]
+    public void CharAtNeverReturnsAGeneratedChar()
+    {
+        var chars = new List<TextChar>
+        {
+            new('a', new PageRect(0, 0, 5, 10), TextCharTraits.None, 10),
+            new(' ', new PageRect(5, 0, 10, 10), TextCharTraits.Generated, 10),
+            new('b', new PageRect(20, 0, 25, 10), TextCharTraits.None, 10),
+        };
+        var text = new PageText(0, 100, 100, chars, []);
+
+        Assert.Equal(-1, text.CharAt(8, 5));
+        Assert.Equal(0, text.CharAt(2, 5));
+        Assert.Equal(2, text.CharAt(22, 5));
+    }
+
+    [Fact]
+    public void CaretAtPicksTheNearestInsertionPosition()
+    {
+        var text = TwoLines();
+
+        Assert.Equal(6, text.CaretAt(41, 25)); // left half of 'w'
+        Assert.Equal(7, text.CaretAt(44, 25)); // right half of 'w'
+        Assert.Equal(24, text.CaretAt(10, 500)); // below all text: the end, whatever x is
+        Assert.Equal(0, text.CaretAt(190, -100)); // above all text: the start, whatever x is
+        Assert.Equal(11, text.CaretAt(500, 25)); // right of line 1: after its last char, before the line break
+        Assert.Equal(13, text.CaretAt(0, 41)); // left of line 2: before its first char
+        Assert.Equal(24, text.CaretAt(500, 41)); // right of line 2
+        Assert.Equal(13, text.CaretAt(12, 32.5)); // in the gap, nearer to line 2
+        Assert.Equal(0, TwoLines(0).CaretAt(10, 10)); // a page without chars
+    }
+
+    [Fact]
+    public void CaretAtUsesTheNearestColumnOnTheSameRow()
+    {
+        var chars = new List<TextChar>();
+        AddLine(chars, "ab", 10, 20, 10);
+        chars.Add(new TextChar('\r', new PageRect(20, 20, 20, 20), TextCharTraits.Generated, 1));
+        chars.Add(new TextChar('\n', new PageRect(20, 20, 20, 20), TextCharTraits.Generated, 1));
+        AddLine(chars, "cd", 100, 20, 10);
+        var text = new PageText(0, 200, 100, chars, []);
+
+        Assert.Equal(1, text.CaretAt(14, 25)); // between 'a' and 'b'
+        Assert.Equal(5, text.CaretAt(104, 25)); // between 'c' (index 4) and 'd'
+        Assert.Equal(6, text.CaretAt(190, 25));
+    }
+
+    [Fact]
+    public void WordAtSelectsTheWordAndPunctuationAloneIsOneChar()
+    {
+        var text = Page("Hello, world", "don't stop 42x");
+
+        Assert.Equal((0, 5), text.WordAt(1)); // 'e' in "Hello"
+        Assert.Equal((0, 5), text.WordAt(0));
+        Assert.Equal((0, 5), text.WordAt(4));
+        Assert.Equal((5, 6), text.WordAt(5)); // the comma
+        Assert.Equal((6, 7), text.WordAt(6)); // the space
+        Assert.Equal((7, 12), text.WordAt(8)); // "world"
+        Assert.Equal((14, 19), text.WordAt(16)); // "don't": apostrophes belong to a word
+        Assert.Equal((20, 24), text.WordAt(20)); // "stop"
+        Assert.Equal((25, 28), text.WordAt(26)); // "42x": digits belong to a word
+        Assert.Throws<ArgumentOutOfRangeException>(() => text.WordAt(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => text.WordAt(text.Chars.Count));
+    }
+
+    [Fact]
+    public void WordAtStopsAtGeneratedChars()
+    {
+        var chars = new List<TextChar>
+        {
+            new('a', new PageRect(0, 0, 5, 10), TextCharTraits.None, 10),
+            new('b', new PageRect(5, 0, 10, 10), TextCharTraits.None, 10),
+            new('c', new PageRect(10, 0, 15, 10), TextCharTraits.Generated, 10),
+            new('d', new PageRect(15, 0, 20, 10), TextCharTraits.None, 10),
+        };
+        var text = new PageText(0, 100, 100, chars, []);
+
+        Assert.Equal((0, 2), text.WordAt(0));
+        Assert.Equal((2, 3), text.WordAt(2));
+        Assert.Equal((3, 4), text.WordAt(3));
+    }
+
+    [Fact]
+    public void LineAtStopsAtGeneratedLineBreaks()
+    {
+        var text = TwoLines();
+
+        Assert.Equal((13, 24), text.LineAt(15)); // "second line", the CR LF before it excluded
+        Assert.Equal((13, 24), text.LineAt(13));
+        Assert.Equal((13, 24), text.LineAt(23));
+        Assert.Equal((0, 11), text.LineAt(3)); // "Hello world", the CR LF after it excluded
+        Assert.Equal((11, 11), text.LineAt(11)); // a line break belongs to no line
+        Assert.Throws<ArgumentOutOfRangeException>(() => text.LineAt(24));
+    }
+
+    [Fact]
+    public void LineAtEndsAtAHyphen()
+    {
+        // PDFium reports no line break after a line-end hyphen: the hyphen is the last char of its line.
+        var text = Page("Hello wor-", "ld again");
+
+        Assert.Equal((0, 10), text.LineAt(2));
+        Assert.Equal((0, 10), text.LineAt(9)); // the hyphen itself
+        Assert.Equal((10, 18), text.LineAt(10));
+        Assert.Equal((10, 18), text.LineAt(17));
+    }
+
+    [Fact]
+    public void RectsOfGivesOneRectanglePerLine()
+    {
+        var text = TwoLines();
+
+        var rects = text.RectsOf(6, 20); // "world" + CR LF + "second "
+
+        Assert.Equal(2, rects.Count);
+        Assert.Equal(new PageRect(40, 20, 65, 30), rects[0]); // ends at the last char of line 1
+        Assert.Equal(new PageRect(10, 34, 45, 44), rects[1]);
+        Assert.Equal([new PageRect(15, 20, 30, 30)], text.RectsOf(1, 4));
+        Assert.Equal(2, text.RectsOf(0, 24).Count);
+    }
+
+    [Fact]
+    public void RectsOfGivesTwoRectanglesAcrossAHyphenatedLineEnd()
+    {
+        var text = Page("Hello wor-", "ld again");
+
+        var rects = text.RectsOf(6, 14); // "wor-" + "ld a"
+
+        Assert.Equal(2, rects.Count);
+        Assert.Equal(new PageRect(40, 20, 60, 30), rects[0]); // up to and including the hyphen
+        Assert.Equal(new PageRect(10, 34, 30, 44), rects[1]);
+    }
+
+    [Fact]
+    public void RectsOfUsesTheTightBoxesOfEachLine()
+    {
+        var chars = new List<TextChar>
+        {
+            new('o', new PageRect(10, 24, 15, 30), TextCharTraits.None, 10),
+            new('l', new PageRect(15, 20, 18, 30), TextCharTraits.None, 10),
+            new('\r', new PageRect(18, 30, 18, 30), TextCharTraits.Generated, 1),
+            new('\n', new PageRect(18, 30, 18, 30), TextCharTraits.Generated, 1),
+            new('x', new PageRect(10, 36, 15, 44), TextCharTraits.None, 10),
+        };
+        var text = new PageText(0, 100, 100, chars, []);
+
+        Assert.Equal([new PageRect(10, 20, 18, 30), new PageRect(10, 36, 15, 44)], text.RectsOf(0, 5));
+    }
+
+    [Fact]
+    public void RectsOfCoversAGeneratedSpaceInsideALineButNotAtItsEnds()
+    {
+        var chars = new List<TextChar>
+        {
+            new(' ', new PageRect(0, 20, 5, 30), TextCharTraits.Generated, 10),
+            new('a', new PageRect(5, 20, 10, 30), TextCharTraits.None, 10),
+            new(' ', new PageRect(10, 20, 20, 30), TextCharTraits.Generated, 10),
+            new('b', new PageRect(20, 20, 25, 30), TextCharTraits.None, 10),
+            new(' ', new PageRect(25, 20, 30, 30), TextCharTraits.Generated, 10),
+        };
+        var text = new PageText(0, 100, 100, chars, []);
+
+        Assert.Equal([new PageRect(5, 20, 25, 30)], text.RectsOf(0, 5));
+    }
+
+    [Fact]
+    public void RectsOfAnEmptyRangeIsEmpty()
+    {
+        var text = TwoLines();
+
+        Assert.Empty(text.RectsOf(5, 5));
+        Assert.Empty(text.RectsOf(11, 13)); // only the line break
+        Assert.Empty(text.RectsOf(24, 24));
+        Assert.Throws<ArgumentOutOfRangeException>(() => text.RectsOf(-1, 2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => text.RectsOf(0, 25));
+        Assert.Throws<ArgumentOutOfRangeException>(() => text.RectsOf(3, 2));
+    }
+
+    [Fact]
+    public void LinkAtReturnsTheLinkUnderThePoint()
+    {
+        var first = new PageLink([new PageRect(10, 10, 50, 20), new PageRect(10, 20, 30, 30)], new UriTarget("https://example.org"));
+        var second = new PageLink([new PageRect(60, 10, 90, 20)], new PageTarget(2, null));
+        var text = new PageText(0, 100, 100, [], [first, second]);
+
+        Assert.Same(first, text.LinkAt(20, 15));
+        Assert.Same(first, text.LinkAt(20, 25)); // second rectangle of the first link
+        Assert.Same(second, text.LinkAt(70, 15));
+        Assert.Null(text.LinkAt(40, 25));
+        Assert.Null(text.LinkAt(0, 0));
+    }
+
+    [Fact]
+    public void LinkAtPrefersTheEarlierLinkWhereTheyOverlap()
+    {
+        var annotation = new PageLink([new PageRect(10, 10, 50, 20)], new PageTarget(1, null));
+        var detected = new PageLink([new PageRect(30, 10, 70, 20)], new UriTarget("http://www.example.org"));
+        var text = new PageText(0, 100, 100, [], [annotation, detected]);
+
+        Assert.Same(annotation, text.LinkAt(40, 15)); // links come annotations first, so an annotation wins
+        Assert.Same(detected, text.LinkAt(60, 15));
+    }
+
+    [Fact]
+    public void TextSelectionOrdersAnchorAndFocus()
+    {
+        var anchor = new TextPosition(2, 10);
+        var focus = new TextPosition(1, 50);
+
+        var backwards = new TextSelection(anchor, focus);
+        Assert.Equal(focus, backwards.Start);
+        Assert.Equal(anchor, backwards.End);
+        Assert.False(backwards.IsEmpty);
+
+        var forwards = new TextSelection(focus, anchor);
+        Assert.Equal(focus, forwards.Start);
+        Assert.Equal(anchor, forwards.End);
+
+        var sameCaret = new TextSelection(new TextPosition(3, 7), new TextPosition(3, 7));
+        Assert.True(sameCaret.IsEmpty);
+
+        var samePage = new TextSelection(new TextPosition(3, 9), new TextPosition(3, 2));
+        Assert.Equal(new TextPosition(3, 2), samePage.Start);
+        Assert.Equal(new TextPosition(3, 9), samePage.End);
+    }
+
+    [Fact]
+    public void TextPositionsCompareByPageThenCaret()
+    {
+        var a = new TextPosition(1, 99);
+        var b = new TextPosition(2, 0);
+        var c = new TextPosition(2, 5);
+
+        Assert.True(a < b);
+        Assert.True(b < c);
+        Assert.True(c > a);
+        Assert.True(a <= new TextPosition(1, 99));
+        Assert.True(c >= b);
+        Assert.True(a.CompareTo(b) < 0);
+        Assert.Equal(0, b.CompareTo(new TextPosition(2, 0)));
+        Assert.Equal([a, b, c], new[] { c, a, b }.Order());
+    }
+
     private static TextChar Char(int codePoint, float size) => new(codePoint, default, TextCharTraits.None, size);
+
+    /// <summary>The text "Hello world" / "second line" (size 10, line distance 14, left at 10) or, with 0, nothing.</summary>
+    private static PageText TwoLines(int lineCount = 2) =>
+        lineCount == 0 ? new PageText(0, 200, 200, [], []) : Page("Hello world", "second line");
+
+    /// <summary>
+    /// Builds a page from lines of size 10 at x = 10, the first top at 20 and 14 points between the tops. Chars are
+    /// 5 wide and 10 high. A line break is a generated CR LF pair without area, except after a line that ends with
+    /// '-': that char is a hyphen and the next line follows directly, like PDFium reports it.
+    /// </summary>
+    private static PageText Page(params string[] lines)
+    {
+        var chars = new List<TextChar>();
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var top = 20 + (14 * i);
+            var hyphenated = i < lines.Length - 1 && lines[i].EndsWith('-');
+            AddLine(chars, lines[i], 10, top, 10, hyphenated);
+            if (i < lines.Length - 1 && !hyphenated)
+            {
+                var end = 10 + (5 * lines[i].Length);
+                var empty = new PageRect(end, top, end, top);
+                chars.Add(new TextChar('\r', empty, TextCharTraits.Generated, 1));
+                chars.Add(new TextChar('\n', empty, TextCharTraits.Generated, 1));
+            }
+        }
+
+        return new PageText(0, 200, 200, chars, []);
+    }
+
+    private static void AddLine(List<TextChar> chars, string line, double x, double top, float size, bool hyphenated = false)
+    {
+        for (var i = 0; i < line.Length; i++)
+        {
+            var left = x + (i * size * 0.5);
+            var traits = hyphenated && i == line.Length - 1 ? TextCharTraits.Hyphen : TextCharTraits.None;
+            chars.Add(new TextChar(line[i], new PageRect(left, top, left + (size * 0.5), top + size), traits, size));
+        }
+    }
 }
