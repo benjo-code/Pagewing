@@ -324,4 +324,106 @@
   <data name="LinkWarningPunycode" xml:space="preserve">
     <value>The host uses special characters and is shown as {0}.</value>
   </data>
+  <data name="CommandNextTab" xml:space="preserve">
+    <value>Next tab</value>
+  </data>
+  <data name="CommandPreviousTab" xml:space="preserve">
+    <value>Previous tab</value>
+  </data>
+  <data name="CommandZoomIn" xml:space="preserve">
+    <value>Zoom in</value>
+  </data>
+  <data name="CommandZoomOut" xml:space="preserve">
+    <value>Zoom out</value>
+  </data>
+  <data name="CommandTogglePageTheme" xml:space="preserve">
+    <value>Light or dark page</value>
+  </data>
+  <data name="CommandGoToPage" xml:space="preserve">
+    <value>Go to page</value>
+  </data>
+  <data name="CommandPreviousPage" xml:space="preserve">
+    <value>Previous page</value>
+  </data>
+  <data name="CommandNextPage" xml:space="preserve">
+    <value>Next page</value>
+  </data>
+  <data name="CommandBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="CommandForward" xml:space="preserve">
+    <value>Forward</value>
+  </data>
+  <data name="CommandPagesPanel" xml:space="preserve">
+    <value>Show or hide pages</value>
+  </data>
+  <data name="CommandContentsPanel" xml:space="preserve">
+    <value>Show or hide contents</value>
+  </data>
+  <data name="CommandSearch" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="CommandSearchNext" xml:space="preserve">
+    <value>Next match</value>
+  </data>
+  <data name="CommandSearchPrevious" xml:space="preserve">
+    <value>Previous match</value>
+  </data>
+  <data name="CommandPalette" xml:space="preserve">
+    <value>Command palette</value>
+  </data>
+  <data name="CommandSettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="CommandClearRecent" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="CommandGroupFile" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="CommandGroupView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="CommandGroupNavigation" xml:space="preserve">
+    <value>Navigate</value>
+  </data>
+  <data name="CommandGroupSearch" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="CommandGroupWindow" xml:space="preserve">
+    <value>Window</value>
+  </data>
+  <data name="KeyCtrl" xml:space="preserve">
+    <value>Ctrl</value>
+  </data>
+  <data name="KeyShift" xml:space="preserve">
+    <value>Shift</value>
+  </data>
+  <data name="KeyPageUp" xml:space="preserve">
+    <value>Page Up</value>
+  </data>
+  <data name="KeyPageDown" xml:space="preserve">
+    <value>Page Down</value>
+  </data>
+  <data name="KeyLeft" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="KeyRight" xml:space="preserve">
+    <value>Right</value>
+  </data>
+  <data name="KeyComma" xml:space="preserve">
+    <value>Comma</value>
+  </data>
+  <data name="HelpTitle" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="HelpFilter" xml:space="preserve">
+    <value>Filter shortcuts</value>
+  </data>
+  <data name="HelpClose" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="HelpEmpty" xml:space="preserve">
+    <value>No shortcut matches.</value>
+  </data>
 </root>

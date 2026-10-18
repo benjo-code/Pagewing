@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows.Input;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Pagewing.App.Commands;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.Core.Pdf;
@@ -51,6 +52,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // What opens a confirmed address; only ConfirmLink reaches it. Made on first use (nothing at startup).
     private ILinkLauncher? _linkLauncher;
     private PendingLink? _pendingLink;
+    private CommandCatalog? _commands;
+    private OverlayKind _overlay;
 
     // Since when the pending address is locked (Clock timestamp), for the arming delay of "Open": from its arrival, and
     // again from when its card has been laid out (OnLinkCardShown), which is the later and the one that counts.
@@ -121,7 +124,57 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ConfirmLinkCommand = _confirmLinkCommand;
         _cancelLinkCommand = new RelayCommand(() => PendingLink = null, () => PendingLink is not null);
         CancelLinkCommand = _cancelLinkCommand;
+        ShowPaletteCommand = new RelayCommand(() => ShowOverlay(OverlayKind.Palette));
+        ShowSettingsCommand = new RelayCommand(() => ShowOverlay(OverlayKind.Settings));
+        ShowHelpCommand = new RelayCommand(() => ShowOverlay(OverlayKind.Help));
+        HideOverlayCommand = new RelayCommand(HideOverlay);
     }
+
+    /// <summary>
+    /// Gets the commands of this window with their shortcuts (made on first use: the window binds its keys from it when it
+    /// gets this view model).
+    /// </summary>
+    public CommandCatalog Commands => _commands ??= new CommandCatalog(this);
+
+    /// <summary>
+    /// Gets what lies over the window: the command palette, the settings or the help card, or nothing. Only one at a
+    /// time; the window makes each of them when it is first shown.
+    /// </summary>
+    public OverlayKind Overlay
+    {
+        get => _overlay;
+        private set => SetProperty(ref _overlay, value);
+    }
+
+    /// <summary>Ctrl+K: shows the command palette.</summary>
+    public ICommand ShowPaletteCommand { get; }
+
+    /// <summary>Ctrl+Comma: shows the settings.</summary>
+    public ICommand ShowSettingsCommand { get; }
+
+    /// <summary>F1: shows the card with the keyboard shortcuts.</summary>
+    public ICommand ShowHelpCommand { get; }
+
+    /// <summary>Esc or the close button of an overlay: hides it.</summary>
+    public ICommand HideOverlayCommand { get; }
+
+    /// <summary>
+    /// Gets or sets what clears the history of recently opened files, or <see langword="null"/> while the app keeps none;
+    /// the command <c>recent.clear</c> of the catalog runs only with one.
+    /// </summary>
+    internal Action? ClearRecentFiles { get; set; }
+
+    /// <summary>Shows <paramref name="kind"/> over the window in place of the overlay shown so far; <see cref="OverlayKind.None"/> hides it.</summary>
+    public void ShowOverlay(OverlayKind kind)
+    {
+        if (Enum.IsDefined(kind))
+        {
+            Overlay = kind;
+        }
+    }
+
+    /// <summary>Hides the overlay of the window.</summary>
+    public void HideOverlay() => Overlay = OverlayKind.None;
 
     /// <summary>
     /// Gets the settings of the app: the window starts with their panel width and start panel and writes the user's
