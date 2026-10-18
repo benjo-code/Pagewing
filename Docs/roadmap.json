@@ -200,7 +200,8 @@
         {
           "id": "5",
           "title": "Text & Suche",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-18-milestone-05-text-suche.md",
           "prerequisites": ["4"],
           "goal": "Text lässt sich durchsuchen, markieren und kopieren, Links funktionieren.",
           "tasks": [
