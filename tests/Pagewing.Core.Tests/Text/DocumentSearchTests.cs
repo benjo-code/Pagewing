@@ -106,18 +106,18 @@ public sealed class DocumentSearchTests
     }
 
     [Fact]
-    public async Task SearchRunsAtBackgroundPriorityAndLetsRendersThrough()
+    public async Task ARenderIsNotStarvedByARunningDocumentSearch()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var document = await engine.OpenAsync(TestData.Pdf("text-dense.pdf"), cancellationToken: ct);
 
-        // The search is consumed without delay; once its first result is in, a render is queued. Searches are
-        // background work, so the render must finish while the search is still far from done.
+        // A query without hits makes the search run over all pages (about 300 ms). Once its first result is in, a
+        // render is queued; it must finish long before the search does.
         var firstResult = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var searchedPages = 0;
         var search = Task.Run(async () =>
         {
-            await foreach (var result in DocumentSearch.SearchAsync(document, "a", new SearchOptions(MatchCase: true), 0, ct))
+            await foreach (var result in DocumentSearch.SearchAsync(document, "qqqq", new SearchOptions(MatchCase: true), 0, ct))
             {
                 Volatile.Write(ref searchedPages, result.PagesDone);
                 firstResult.TrySetResult();
@@ -131,9 +131,42 @@ public sealed class DocumentSearchTests
 
         Assert.True(image.Width > 0 && image.Height > 0);
         Assert.False(searchFinishedBeforeRender);
-        Assert.True(pagesDoneAtRender < document.PageCount, $"The search had already searched {pagesDoneAtRender} of {document.PageCount} pages.");
+        Assert.True(pagesDoneAtRender < document.PageCount / 2, $"The search had already searched {pagesDoneAtRender} of {document.PageCount} pages.");
 
         await search;
+        Assert.Equal(document.PageCount, Volatile.Read(ref searchedPages));
+    }
+
+    [Fact]
+    public async Task QueuedPageSearchesYieldToARender()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var document = await engine.OpenAsync(TestData.Pdf("text-dense.pdf"), cancellationToken: ct);
+
+        // Priority is a property of SearchPageAsync: all searches are queued before the render, yet the render
+        // runs ahead of the searches that have not started yet.
+        var searches = Enumerable.Range(0, document.PageCount)
+            .Select(p => document.SearchPageAsync(p, "qqqq", new SearchOptions(MatchCase: true), ct))
+            .ToList();
+        var image = await document.RenderPageAsync(0, 0.25, cancellationToken: ct);
+
+        var finished = searches.Count(t => t.IsCompleted);
+        Assert.True(image.Width > 0 && image.Height > 0);
+        Assert.True(finished < searches.Count / 2, $"{finished} of {searches.Count} page searches had finished before the render.");
+
+        await Task.WhenAll(searches);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(200)]
+    [InlineData(1000)]
+    public async Task AStartPageOutsideTheDocumentIsRejected(int startPage)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var document = await engine.OpenAsync(TestData.Pdf("text-dense.pdf"), cancellationToken: ct);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => CollectAsync(DocumentSearch.SearchAsync(document, "Needle", default, startPage, ct)));
     }
 
     [Fact]

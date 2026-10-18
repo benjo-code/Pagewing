@@ -38,6 +38,7 @@ public static class DocumentSearch
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(query);
         var pageCount = document.PageCount;
+        // A negative start is a caller bug even for a document without pages, so it is rejected before the page count matters.
         ArgumentOutOfRangeException.ThrowIfNegative(startPage);
         if (pageCount > 0)
         {
