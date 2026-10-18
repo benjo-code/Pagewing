@@ -225,7 +225,8 @@ public sealed class TabStripTests : IDisposable
         Assert.Equal([tabs[1], tabs[0], tabs[2]], viewModel.Tabs);
         Assert.Equal(width * 1.2, TabViewOf(window, tabs[0]).Bounds.X, tolerance: 1);
 
-        // Up and down (out of the strip) changes nothing in Milestone 4; the tab keeps to the strip.
+        // Up and down (out of the strip) changes nothing here: this window has no workspace that takes a loose tab
+        // (TabDragGestureTests), so the tab keeps to the strip.
         MoveTo(window, start + new Point(width * 2.1, 80));
         Assert.Equal([tabs[1], tabs[2], tabs[0]], viewModel.Tabs);
         MoveTo(window, start + new Point(width * 5, 0));

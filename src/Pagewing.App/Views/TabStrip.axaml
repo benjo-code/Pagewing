@@ -13,6 +13,11 @@
     (32 + 4 margin) and shares the rest with the drag area (TabStripLayout.Compute). The tabs and the buttons are marked
     User, the drag area TitleBar. TabStrip.axaml.cs keeps the children of the panel in the order of the tabs.
   -->
+  <Grid>
+  <!--
+    DropMarker (Milestone 4.1): the insertion mark of a tab that is dragged over this strip, a 2 px bar in the accent
+    colour at the boundary between tabs (TabStrip.axaml.cs places it, MainViewModel.TabDropIndex). Without hit testing.
+  -->
   <DockPanel>
     <ctl:TabStripPanel Name="TabPanel" DockPanel.Dock="Left" ReservedWidth="36" IsVisible="{Binding HasTabs}" />
 
@@ -51,4 +56,7 @@
     <Border Name="DragArea" MinWidth="48" Background="Transparent"
             chrome:WindowDecorationProperties.ElementRole="TitleBar" />
   </DockPanel>
+  <Border Name="DropMarker" Width="2" HorizontalAlignment="Left" VerticalAlignment="Stretch" Margin="0,4"
+          Background="{DynamicResource Pw.Brush.Accent.Default}" IsHitTestVisible="False" IsVisible="False" />
+  </Grid>
 </UserControl>
