@@ -38,12 +38,17 @@ public sealed class TabList<T> : IReadOnlyList<T>, INotifyCollectionChanged
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        var index = Active is null ? items.Count : items.IndexOf(Active) + 1;
-        items.Insert(index, item);
-        Active = item;
+        InsertAndActivate(item, Active is null ? items.Count : items.IndexOf(Active) + 1);
+    }
 
-        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
-        ActiveChanged?.Invoke();
+    /// <summary>Adds a tab at a position (a tab dropped on the strip) and activates it.</summary>
+    /// <param name="item">The new tab.</param>
+    /// <param name="index">The position, limited to 0 up to <see cref="Count"/>.</param>
+    public void Insert(T item, int index)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        InsertAndActivate(item, Math.Clamp(index, 0, items.Count));
     }
 
     /// <summary>
@@ -156,6 +161,15 @@ public sealed class TabList<T> : IReadOnlyList<T>, INotifyCollectionChanged
 
     /// <inheritdoc/>
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    private void InsertAndActivate(T item, int index)
+    {
+        items.Insert(index, item);
+        Active = item;
+
+        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
+        ActiveChanged?.Invoke();
+    }
 
     private void ActivateRelative(int step)
     {

@@ -4,6 +4,16 @@
   "title": "Pagewing",
   "scopeChanges": [
     {
+      "date": "2026-10-18",
+      "context": "M4.1: Linux/X11-Prüfung der Ziehgeste übersprungen und ins Backlog verschoben",
+      "text": "Auf Anweisung des Projektinhabers entfällt die manuelle Prüfung der Tab-Ziehgeste auf Linux/X11 als Abnahmekriterium von Milestone 4.1; M4.1 gilt mit der Prüfung auf Windows als fertig. Die Prüfung steht nicht belegt aus und ist als Eintrag im Backlog festgehalten (Zeiger-Fang über das neue Fenster, Fensterposition unter X11, geparktes Fenster bei −32000/−32000, Wayland/XWayland)."
+    },
+    {
+      "date": "2026-10-18",
+      "context": "M4.1: Fenster hängt beim Ziehen am Zeiger; einziger Tab; Abnahme in zwei Teilen",
+      "text": "Auf Wunsch des Projektinhabers hängt das neue Fenster schon beim Ziehen am Zeiger (Stil Chrome), statt erst beim Loslassen zu entstehen; ein Versuch auf Windows zeigte, dass die Tableiste den Zeiger-Fang dabei behält. Dazu kommen das Ziehen des einzigen Tabs eines Fensters (das Fenster wandert und führt sich über einer fremden Leiste zusammen) und Esc zum Abbrechen. Die manuelle Abnahme ist in Windows und Linux/X11 aufgeteilt, weil Linux/X11 auf dem Entwicklungsrechner nicht prüfbar ist. Plan: `superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md`."
+    },
+    {
       "date": "2026-10-17",
       "context": "M4: Tabs in eigenes Fenster verschieben; Ziehgeste als neuer Milestone 4.1",
       "text": "Auf Wunsch des Projektinhabers lassen sich Tabs in ein eigenes Fenster verschieben. M4 liefert das Menü „In neuem Fenster öffnen“ (der Tab wechselt samt Sitzung das Fenster, ohne die PDF neu zu öffnen) und die dafür nötige Architektur (`TabViewModel`, `Workspace`); das Herausziehen und Zurückziehen per Maus ist der neue Milestone 4.1 (Voraussetzung M4). Ebenfalls mit M4 statt M3: Aktionsleiste und Panel (Seiten, Inhalt; „Suche“ folgt in M5), ein Layout-Knopf und das Zoom-Menü in der Statusleiste, Tastenkürzel Strg+0/1/2/G. Plan: `superpowers/plans/2026-10-17-milestone-04-navigation.md`."
@@ -172,17 +182,19 @@
         {
           "id": "4.1",
           "title": "Tabs zwischen Fenstern ziehen",
-          "status": "open",
+          "status": "done",
+          "completedOn": "2026-10-18",
+          "plan": "superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md",
           "prerequisites": ["4"],
-          "goal": "Ein Tab lässt sich per Maus aus der Tableiste ziehen und wird zu einem eigenen Fenster; ein Tab lässt sich in die Tableiste eines anderen Fensters zurückziehen.",
+          "goal": "Ein Tab lässt sich per Maus aus der Tableiste ziehen, das neue Fenster hängt dabei am Zeiger; über der Tableiste eines Fensters zeigt eine Einfügemarke die Stelle, beim Loslassen landet der Tab dort.",
           "tasks": [
-            { "text": "Ziehgeste: Tab aus der Leiste herausziehen erzeugt ein neues Fenster am Zeiger (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)", "done": false },
-            { "text": "Ablegen in der Tableiste eines anderen Fensters führt den Tab samt Sitzung dort ein (Position nach dem Zeiger)", "done": false },
-            { "text": "Verhalten unter Windows und Linux/X11 klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis)", "done": false }
+            { "text": "Ziehgeste: Tab aus der Leiste herausziehen (ab 40 DIP senkrecht oder aus dem Fenster hinaus) erzeugt ein neues Fenster, das am Zeiger hängt; Esc stellt Platz und aktiven Tab wieder her (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)", "done": true },
+            { "text": "Ablegen in der Tableiste eines Fensters (auch des eigenen) führt den Tab samt Sitzung dort ein, Einfügemarke und Position nach dem Zeiger; ist es der einzige Tab eines Fensters, wandert das Fenster und führt sich über einer fremden Leiste mit ihr zusammen", "done": true },
+            { "text": "Verhalten unter Windows klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis). Windows geklärt (Zeiger-Fang hält, Esc auch im schwebenden Fenster, `Docs/DECISIONS.md`, Eintrag „Tabs ziehen: Fenster hängt am Zeiger …“); Linux/X11 ins Backlog verschoben (siehe Scope-Änderungen)", "done": true }
           ],
           "acceptance": [
-            { "text": "Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben)", "done": false },
-            { "text": "Manuelle Prüfung auf Windows und Linux/X11: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben", "done": false }
+            { "text": "Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben)", "done": true, "evidence": "`dotnet test Pagewing.slnx`: 985 bestanden, 0 fehlgeschlagen (Core, App, Render). Herauslösen und Zurückführen: `TabDragTests.BeginningADragWithTwoTabsOpensAFloatingWindowAtThePointer`, `CancelPutsTheTabBackAtItsPlace`, `DroppingOnAStripMovesTheTabWithItsSession`, `DroppingBackOnTheOwnStripPutsTheTabAtTheChosenPlace`, `DroppingTheOnlyTabOfAWindowMergesAndClosesTheWindow`; Geste: `TabDragGestureTests.PullingATabDownOutOfTheStripOpensAWindowThatFollowsThePointer`, `ReleasingOverAnotherWindowsStripInsertsTheTab`, `EscapeDuringAFloatingDragPutsTheTabBack`, `DraggingTheOnlyTabMovesTheWindowAndMergesOverAnotherStrip`, `PullingAnInactiveTabHoldsTheNewWindowAtThePointer`, `LosingThePointerWhileTheWindowOpensDoesNotLeaveADragBehind`; `TabDragTests.AStripHiddenBehindAnotherWindowIsNoTarget`, `ADraggedTabKeepsItsPanelChoice`, `AMaximizedWindowWithOneTabDoesNotMoveAsAWhole`; Sitzung, Seite und Zoom des verschobenen Tabs wie schon in M4 (`WorkspaceTests.MovedTabKeepsPageAndZoom`)" },
+            { "text": "Manuelle Prüfung auf Windows: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc (Linux/X11 siehe Backlog)", "done": true, "evidence": "2026-10-18, Release-Build, echte Maus (`SetCursorPos`/`mouse_event`) und echte Esc-Taste: Tab 50 px nach unten ziehen öffnet das Fenster nach rund 117 ms (unter 30 px kein Fenster), Titelzeile des neuen Fensters unter dem Zeiger, Fenster folgt; einziger Tab: Fenster folgt, über der Leiste des anderen Fensters geparkt, Marke sichtbar, Loslassen führt zusammen und schließt das leere Fenster; Esc stellt Tab und Fenster wieder her (erst nach dem Handler auch am schwebenden Fenster); Fokuswechsel mitten im Zug beendet die Geste ohne Verlust; nach den Korrekturen des Abschluss-Reviews wiederholt: inaktiver Tab hängt exakt am Zeiger, Esc, Zurückführen auf die eigene Leiste. Nicht geprüft: Alt+Tab, Monitore mit anderer Skalierung" }
           ]
         },
         {
@@ -448,6 +460,7 @@
     }
   ],
   "backlog": [
+    { "title": "Tab-Ziehgeste auf Linux/X11 prüfen (M4.1)", "text": "Windows ist geprüft, Linux/X11 nicht (Projektinhaber hat die Prüfung am 2026-10-18 übersprungen). Zu prüfen: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc; ob der Zeiger-Fang bei der Leiste bleibt, wenn das neue Fenster erscheint, ob die Fensterposition (Rahmen gegen Inhalt, Titelleiste des Systems) stimmt, ob der Fenstermanager das geparkte Fenster (−32000/−32000) auf den Bildschirm zurückholt; Wayland/XWayland nur als Hinweis. Siehe `Docs/DECISIONS.md`, Eintrag „Tabs ziehen: Fenster hängt am Zeiger …“." },
     { "title": "Worker-Prozesse für paralleles Rendern", "text": "PDFium ist nicht thread-sicher; echte Parallelität nur über mehrere Prozesse. Nur angehen, wenn Messungen es nötig machen." },
     { "title": "Natives Wayland", "text": "Avalonia 12.1 bietet Wayland experimentell als Opt-in (`UseWaylandWithFallback`); Standard bleibt X11/XWayland." },
     { "title": "Flatpak/Flathub", "text": "Einreichung muss laut Flathub-Regeln ein Mensch vornehmen; Native AOT im Flatpak-Build erst erproben, Dateizugriff über Portale." },

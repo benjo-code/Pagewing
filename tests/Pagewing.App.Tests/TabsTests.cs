@@ -67,6 +67,71 @@ public sealed class TabsTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AttachTabAtAnIndexInsertsAndActivatesIt()
+    {
+        var (target, other) = (NewViewModel(), NewViewModel());
+        await target.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        await target.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        await other.OpenAsync(TestData.Pdf("vector-shapes.pdf"));
+        var (a, b) = (target.Tabs[0], target.Tabs[1]);
+        var moved = other.Tabs[0];
+        var session = moved.Session;
+        other.DetachTab(moved);
+
+        target.AttachTab(moved, 1);
+
+        Assert.Equal([a, moved, b], target.Tabs);
+        Assert.Same(moved, target.ActiveTab);
+        Assert.True(moved.IsActive);
+        Assert.False(b.IsActive);
+        Assert.Same(session, moved.Session);
+
+        // A tab that is in the window already changes nothing.
+        target.AttachTab(moved, 0);
+        Assert.Equal([a, moved, b], target.Tabs);
+    }
+
+    [AvaloniaFact]
+    public async Task AttachTabClampsTheIndex()
+    {
+        var (target, other) = (NewViewModel(), NewViewModel());
+        await target.OpenAsync(TestData.Pdf("hello_world.pdf"));
+        await other.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        await other.OpenAsync(TestData.Pdf("vector-shapes.pdf"));
+        var (first, second) = (other.Tabs[0], other.Tabs[1]);
+        other.DetachTab(first);
+        other.DetachTab(second);
+        var kept = target.Tabs[0];
+
+        target.AttachTab(first, -3);
+        target.AttachTab(second, 99);
+
+        Assert.Equal([first, kept, second], target.Tabs);
+    }
+
+    [AvaloniaFact]
+    public void TabDropIndexRaisesPropertyChanged()
+    {
+        var viewModel = NewViewModel();
+        var raised = new List<string?>();
+        viewModel.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        viewModel.TabDropIndex = 2;
+        viewModel.TabDropIndex = 2;
+        viewModel.TabDropIndex = null;
+
+        Assert.Equal([nameof(MainViewModel.TabDropIndex), nameof(MainViewModel.TabDropIndex)], raised);
+        Assert.Null(viewModel.TabDropIndex);
+    }
+
+    private MainViewModel NewViewModel()
+    {
+        var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker());
+        _cleanup.Add(viewModel);
+        return viewModel;
+    }
+
+    [AvaloniaFact]
     public async Task OpeningAnOpenFileActivatesItsTab()
     {
         var (window, viewModel) = Show();

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using Pagewing.App.ViewModels;
 
 namespace Pagewing.App.Views;
@@ -13,6 +14,7 @@ namespace Pagewing.App.Views;
 public sealed partial class MainWindow : Window
 {
     private MainViewModel? _viewModel;
+    private TabStrip? _tabStrip;
     private WindowState _restoreState = WindowState.Normal;
 
     public MainWindow()
@@ -46,6 +48,22 @@ public sealed partial class MainWindow : Window
         }
 
         return paths;
+    }
+
+    /// <summary>
+    /// Gets the position a tab dropped at <paramref name="screen"/> takes in this window's tab strip, or
+    /// <see langword="null"/> when the point is not over the strip or the window is hidden or minimized (see
+    /// <see cref="TabStrip.DropIndexAt"/>).
+    /// </summary>
+    internal int? TabDropIndexAt(PixelPoint screen)
+    {
+        if (!IsVisible || WindowState == WindowState.Minimized)
+        {
+            return null;
+        }
+
+        _tabStrip ??= this.GetVisualDescendants().OfType<TabStrip>().SingleOrDefault();
+        return _tabStrip?.DropIndexAt(screen);
     }
 
     protected override void OnDataContextChanged(EventArgs e)

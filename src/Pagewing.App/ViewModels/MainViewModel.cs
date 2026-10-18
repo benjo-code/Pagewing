@@ -39,6 +39,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
     private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther)> _tabHandlers = [];
     private TabViewModel? _activeTab;
+    private int? _tabDropIndex;
     private bool _picking;
     private bool _isWindowsTitleBar = OperatingSystem.IsWindows();
     private double _panelWidth = DefaultPanelWidth;
@@ -96,6 +97,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// window does not offer it.
     /// </summary>
     public event Action<TabViewModel>? MoveToNewWindowRequested;
+
+    /// <summary>
+    /// Gets or sets the position at which a tab that is being dragged over this window's strip would go in; the strip
+    /// shows its insertion mark there. <see langword="null"/> when no tab is over the strip.
+    /// </summary>
+    internal int? TabDropIndex
+    {
+        get => _tabDropIndex;
+        set => SetProperty(ref _tabDropIndex, value);
+    }
+
+    /// <summary>
+    /// Gets or sets what lets a tab of this window be dragged out of the strip (set by the workspace); without one the
+    /// tab keeps to the strip.
+    /// </summary>
+    internal ITabDragHost? TabDragHost { get; set; }
 
     /// <summary>Gets the tabs of the window, in the order of the tab strip.</summary>
     public TabList<TabViewModel> Tabs { get; } = new();
@@ -322,6 +339,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// Adds a tab that comes from another window (a tab dropped on the strip) at <paramref name="index"/> (limited to
+    /// the tabs there are), with its session and its state, and activates it; the tab is not opened again. A tab that
+    /// is in this window already changes nothing.
+    /// </summary>
+    internal void AttachTab(TabViewModel tab, int index)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+        if (Tabs.IndexOf(tab) < 0)
+        {
+            AddTab(tab, index: index);
+        }
+    }
+
+    /// <summary>
     /// Takes a tab out of this window without releasing it (it moves to another window); the window stops listening to
     /// it. Unlike closing, it never closes the window.
     /// </summary>
@@ -403,7 +434,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         return null;
     }
 
-    private TabViewModel AddTab(TabViewModel tab, bool background = false)
+    private TabViewModel AddTab(TabViewModel tab, bool background = false, int? index = null)
     {
         var handlers = (Close: (Action)(() => CloseTab(tab)), OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)));
         tab.CloseRequested += handlers.Close;
@@ -419,6 +450,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
 
             Tabs.AddInBackground(tab);
+        }
+        else if (index is { } position)
+        {
+            Tabs.Insert(tab, position);
         }
         else
         {

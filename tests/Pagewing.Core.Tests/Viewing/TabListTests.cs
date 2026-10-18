@@ -275,4 +275,44 @@ public sealed class TabListTests
         Assert.Same(a, list.Active);
         Assert.Equal(1, changes);
     }
+
+    [Fact]
+    public void InsertPlacesTheTabAtTheIndexAndActivatesIt()
+    {
+        var (list, a, b, c) = ListOfThree();
+        list.Activate(a);
+        var events = new List<string>();
+        list.CollectionChanged += (_, e) => events.Add($"{e.Action}@{e.NewStartingIndex}");
+        list.ActiveChanged += () => events.Add("active");
+        var d = new Tab("d");
+
+        list.Insert(d, 1);
+
+        Assert.Equal("adbc", Order(list));
+        Assert.Same(d, list.Active);
+        Assert.Equal([$"{NotifyCollectionChangedAction.Add}@1", "active"], events);
+    }
+
+    [Fact]
+    public void InsertClampsTheIndex()
+    {
+        var (list, _, _, _) = ListOfThree();
+
+        list.Insert(new Tab("e"), -5);
+        list.Insert(new Tab("f"), 99);
+
+        Assert.Equal("eabcf", Order(list));
+    }
+
+    [Fact]
+    public void InsertIntoAnEmptyListActivatesTheTab()
+    {
+        var list = new TabList<Tab>();
+        var a = new Tab("a");
+
+        list.Insert(a, 3);
+
+        Assert.Equal("a", Order(list));
+        Assert.Same(a, list.Active);
+    }
 }

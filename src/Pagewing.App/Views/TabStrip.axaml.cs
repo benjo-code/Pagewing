@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using Avalonia;
@@ -11,7 +12,9 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using Pagewing.App.Controls;
 using Pagewing.App.Resources;
+using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
+using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.Views;
 
@@ -21,7 +24,10 @@ namespace Pagewing.App.Views;
 /// for the active tab, which stays the same control while the active tab changes (as cheap as the single M3 tab with
 /// one file open), and one inactive view per other tab, created when needed and dropped with its tab. A press on a tab
 /// activates it, a middle click closes it, and dragging along the strip reorders the tabs (pointer captured by the
-/// panel, no system drag and drop); Esc cancels the drag. Dragging out of the strip does nothing in Milestone 4.
+/// panel, no system drag and drop); Esc cancels the drag. Pulled away from the strip (<see cref="TabDragMath.ShouldDetach"/>),
+/// the tab comes loose: the window's <see cref="MainViewModel.TabDragHost"/> starts a <see cref="TabDrag"/> whose window
+/// follows the pointer, this strip keeps the pointer and reports it, and the release drops the tab (Milestone 4.1).
+/// While another window's strip is the target, that strip shows <c>DropMarker</c> at the position the tab would take.
 /// </summary>
 public sealed partial class TabStrip : UserControl
 {
@@ -39,9 +45,19 @@ public sealed partial class TabStrip : UserControl
     private TabViewModel? _pressedTab;
     private IPointer? _capturedPointer;
     private double _pressX;
+    private double _pressY;
+    private double _pressInTab;
+    private Point _pressInTopLevel;
     private int _pressIndex;
     private bool _dragging;
     private TopLevel? _keySource;
+    private TopLevel? _floatingKeySource;
+
+    // The tab came loose: the drag that leads its window, and where the pointer was last on the screen. _detaching holds
+    // while the workspace takes the tab out of this window, which must not end the press.
+    private TabDrag? _drag;
+    private PixelPoint _lastScreen;
+    private bool _detaching;
 
     // The tab a middle button press started on; the release on it closes the tab.
     private TabViewModel? _middlePressedTab;
@@ -100,6 +116,7 @@ public sealed partial class TabStrip : UserControl
         {
             _viewModel.Tabs.CollectionChanged -= OnTabsChanged;
             _viewModel.Tabs.ActiveChanged -= Sync;
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         }
 
         _viewModel = viewModel;
@@ -107,15 +124,41 @@ public sealed partial class TabStrip : UserControl
         {
             _viewModel.Tabs.CollectionChanged += OnTabsChanged;
             _viewModel.Tabs.ActiveChanged += Sync;
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         }
 
         Sync();
+        UpdateDropMarker();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.TabDropIndex))
+        {
+            UpdateDropMarker();
+        }
+    }
+
+    /// <summary>Shows the insertion mark where a tab that is dragged over this strip would go in; hides it otherwise.</summary>
+    private void UpdateDropMarker()
+    {
+        if (_viewModel?.TabDropIndex is not { } index)
+        {
+            DropMarker.IsVisible = false;
+            return;
+        }
+
+        // With only the active tab shown, every position is after it.
+        var x = (TabPanel.ShowOnlyActive ? 1 : index) * TabPanel.TabWidth;
+        DropMarker.Margin = new Thickness(Math.Max(0, x - 1), 4, 0, 4);
+        DropMarker.IsVisible = true;
     }
 
     private void OnTabsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        // A tab that is closed while it is pressed (for example by Ctrl+W) ends the press.
-        if (_pressedTab is not null && _viewModel?.Tabs.IndexOf(_pressedTab) < 0)
+        // A tab that is closed while it is pressed (for example by Ctrl+W) ends the press; one that comes loose into a
+        // window of its own does not.
+        if (!_detaching && _drag is null && _pressedTab is not null && _viewModel?.Tabs.IndexOf(_pressedTab) < 0)
         {
             EndPress(cancel: false);
         }
@@ -178,7 +221,7 @@ public sealed partial class TabStrip : UserControl
         _wanted.Clear();
 
         // The dragged tab may have changed its view (it was activated or deactivated meanwhile).
-        if (_dragging && _pressedTab is not null)
+        if (_dragging && !_detaching && _pressedTab is not null)
         {
             SetDragItem(ViewOf(_pressedTab));
         }
@@ -203,6 +246,28 @@ public sealed partial class TabStrip : UserControl
         }
 
         return view;
+    }
+
+    /// <summary>
+    /// Gets the position a tab dropped at <paramref name="screen"/> takes in this strip, or <see langword="null"/>
+    /// when the point is not over the strip (the whole row: tabs, buttons and drag area): 0 without tabs, the number of
+    /// tabs when only the active one is shown (the others have no place to point at), else the boundary between tabs
+    /// the point is nearest to.
+    /// </summary>
+    internal int? DropIndexAt(PixelPoint screen)
+    {
+        if (_viewModel is null || !new Rect(Bounds.Size).Contains(this.PointToClient(screen)))
+        {
+            return null;
+        }
+
+        var count = _viewModel.Tabs.Count;
+        if (count == 0)
+        {
+            return 0;
+        }
+
+        return TabPanel.ShowOnlyActive ? count : TabDragMath.InsertionIndex(TabPanel.PointToClient(screen).X, TabPanel.TabWidth, count);
     }
 
     /// <summary>Gets the tab whose view contains <paramref name="source"/>, or <see langword="null"/>.</summary>
@@ -232,9 +297,16 @@ public sealed partial class TabStrip : UserControl
         {
             case PointerUpdateKind.LeftButtonPressed:
                 EndPress(cancel: false);
+
+                // Before the activation: the active view is one control for every active tab, and its bounds still
+                // are the slot of the tab that was active.
+                var pressInTab = point.Position.X - ViewOf(tab).Bounds.X;
                 _viewModel.ActivateTabCommand.Execute(tab);
                 _pressedTab = tab;
                 _pressX = point.Position.X;
+                _pressY = point.Position.Y;
+                _pressInTab = pressInTab;
+                _pressInTopLevel = TopLevel.GetTopLevel(this) is { } top ? e.GetPosition(top) : default;
                 _pressIndex = _viewModel.Tabs.IndexOf(tab);
                 _capturedPointer = e.Pointer;
                 e.Pointer.Capture(TabPanel);
@@ -254,11 +326,20 @@ public sealed partial class TabStrip : UserControl
             return;
         }
 
-        // Only the movement along the strip counts; up and down changes nothing.
-        var offset = e.GetPosition(TabPanel).X - _pressX;
+        _lastScreen = ScreenOf(e);
+        if (_drag is not null)
+        {
+            // The tab is loose: its window follows the pointer, wherever it is.
+            _drag.MoveTo(_lastScreen);
+            e.Handled = true;
+            return;
+        }
+
+        var position = e.GetPosition(TabPanel);
+        var offset = position.X - _pressX;
         if (!_dragging)
         {
-            if (Math.Abs(offset) < DragThreshold || TabPanel.ShowOnlyActive)
+            if (Math.Max(Math.Abs(offset), Math.Abs(position.Y - _pressY)) < DragThreshold)
             {
                 return;
             }
@@ -266,15 +347,85 @@ public sealed partial class TabStrip : UserControl
             StartDrag();
         }
 
-        DragTo(offset);
+        if (!TryDetach(e, position))
+        {
+            // Along the strip the order changes; with only the active tab shown there is no order to change.
+            if (!TabPanel.ShowOnlyActive)
+            {
+                DragTo(offset);
+            }
+        }
+
         e.Handled = true;
     }
+
+    /// <summary>
+    /// Lets the pressed tab come loose when the pointer is far enough from the strip (or outside the window): the
+    /// workspace opens a window for it that follows the pointer. <see langword="false"/> when the tab keeps to the
+    /// strip (not far enough, or nothing that takes the tab).
+    /// </summary>
+    private bool TryDetach(PointerEventArgs e, Point position)
+    {
+        var host = _viewModel?.TabDragHost;
+        if (host is null || _pressedTab is null || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            return false;
+        }
+
+        var inTopLevel = e.GetPosition(top);
+        if (!TabDragMath.ShouldDetach(position.Y - _pressY, !new Rect(top.Bounds.Size).Contains(inTopLevel)))
+        {
+            return false;
+        }
+
+        // The pointer holds the tab where it held it here; in the new window the first tab starts at the strip's left edge.
+        var scaling = top.RenderScaling;
+        var stripLeft = TabPanel.TranslatePoint(default, top)?.X ?? 0;
+        var grip = new PixelPoint(
+            (int)Math.Round((stripLeft + Math.Clamp(_pressInTab, 0, TabStripLayout.MinTabWidth)) * scaling),
+            (int)Math.Round(_pressInTopLevel.Y * scaling));
+
+        TabDrag? drag;
+        _detaching = true;
+        try
+        {
+            drag = host.BeginTabDrag(_viewModel!, _pressedTab, _lastScreen, grip);
+        }
+        finally
+        {
+            _detaching = false;
+        }
+
+        if (drag is null)
+        {
+            return false;
+        }
+
+        if (_pressedTab is null)
+        {
+            // The press ended while the window was being shown (the system took the pointer): nothing leads the drag.
+            drag.Complete(_lastScreen);
+            return true;
+        }
+
+        _drag = drag;
+        // Esc must cancel wherever the system keeps the keyboard: with this window or with the one that follows the pointer.
+        _floatingKeySource = _drag.FloatingWindow;
+        _floatingKeySource?.AddHandler(KeyDownEvent, OnDragKeyDown, RoutingStrategies.Tunnel);
+        _dragging = false;
+        SetDragItem(null);
+        return true;
+    }
+
+    private PixelPoint ScreenOf(PointerEventArgs e) =>
+        TopLevel.GetTopLevel(this) is { } top ? top.PointToScreen(e.GetPosition(top)) : _lastScreen;
 
     private void OnPanelPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         switch (e.InitialPressMouseButton)
         {
             case MouseButton.Left when _pressedTab is not null:
+                _lastScreen = ScreenOf(e);
                 EndPress(cancel: false);
                 e.Handled = true;
                 break;
@@ -361,16 +512,34 @@ public sealed partial class TabStrip : UserControl
         }
     }
 
-    /// <summary>Ends the press of a tab; <paramref name="cancel"/> puts a dragged tab back to where it was.</summary>
+    /// <summary>
+    /// Ends the press of a tab; <paramref name="cancel"/> puts a dragged tab back to where it was. A tab that came loose
+    /// is dropped where the pointer last was, or, when cancelled, goes back into this window.
+    /// </summary>
     private void EndPress(bool cancel)
     {
         var tab = _pressedTab;
         var wasDragging = _dragging;
+        var drag = _drag;
         _pressedTab = null;
         _dragging = false;
+        _drag = null;
+        if (drag is not null)
+        {
+            if (cancel)
+            {
+                drag.Cancel();
+            }
+            else
+            {
+                drag.Complete(_lastScreen);
+            }
+        }
 
         _keySource?.RemoveHandler(KeyDownEvent, OnDragKeyDown);
         _keySource = null;
+        _floatingKeySource?.RemoveHandler(KeyDownEvent, OnDragKeyDown);
+        _floatingKeySource = null;
         SetDragItem(null);
 
         if (cancel && wasDragging && tab is not null && _viewModel is not null)
