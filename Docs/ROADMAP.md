@@ -28,7 +28,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 2 | Designrichtungen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-16-milestone-02-designrichtungen.md) | 2026-10-17 |
 | 3 | App-Shell & schnelles Öffnen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-17-milestone-03-app-shell.md) | 2026-10-17 |
 | 4 | Navigation | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-17-milestone-04-navigation.md) | 2026-10-18 |
-| 4.1 | Tabs zwischen Fenstern ziehen | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md) | – |
+| 4.1 | Tabs zwischen Fenstern ziehen | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md) | – |
 | 5 | Text & Suche | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 6 | Komfort | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 7 | Drucken | 1 – Fundament & Viewer | ⬜ offen | – | – |
@@ -186,18 +186,18 @@ Ziel: Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzei
 - [x] Startzeit-Budgets weiter eingehalten (CI) – Startzeit-Check, CI-Lauf 39087948457 (Kopf 1409ce4, Median aus 10 Läufen; Budget 400/200/300/100 ms): Linux kalt 168,6 · warm 164,4 · 1000 Seiten 158,2 · weitere Datei 35,4 ms; Windows kalt 159,9 · warm 160,1 · 1000 Seiten 159,9 · weitere Datei 47,2 ms; alle innerhalb der Budgets. Vergleich vor M4 (CI nach Task 9): Linux 161,6 / 164,2 / 155,4 / 35,3, Windows 162,7 / 158,3 / 155,6 / 47,0 ms. Messläufe öffnen kein Panel (`Docs/DECISIONS.md`, Eintrag zu Aktionsleiste und Panel). Offen: Messung auf echter Hardware vor dem Release (`hardware-measure.yml`)
 
 ## Milestone 4.1 – Tabs zwischen Fenstern ziehen
-**Status:** 🟡 geplant · **Plan:** [2026-10-18-milestone-04-1-tabs-ziehen.md](superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md) · **Voraussetzungen:** M4
+**Status:** 🔵 in Arbeit · **Plan:** [2026-10-18-milestone-04-1-tabs-ziehen.md](superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md) · **Voraussetzungen:** M4
 
 Ziel: Ein Tab lässt sich per Maus aus der Tableiste ziehen, das neue Fenster hängt dabei am Zeiger; über der Tableiste eines Fensters zeigt eine Einfügemarke die Stelle, beim Loslassen landet der Tab dort.
 
 **Aufgaben**
-- [ ] Ziehgeste: Tab aus der Leiste herausziehen (ab 40 DIP senkrecht oder aus dem Fenster hinaus) erzeugt ein neues Fenster, das am Zeiger hängt; Esc stellt Platz und aktiven Tab wieder her (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)
-- [ ] Ablegen in der Tableiste eines Fensters (auch des eigenen) führt den Tab samt Sitzung dort ein, Einfügemarke und Position nach dem Zeiger; ist es der einzige Tab eines Fensters, wandert das Fenster und führt sich über einer fremden Leiste mit ihr zusammen
-- [ ] Verhalten unter Windows und Linux/X11 klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis)
+- [x] Ziehgeste: Tab aus der Leiste herausziehen (ab 40 DIP senkrecht oder aus dem Fenster hinaus) erzeugt ein neues Fenster, das am Zeiger hängt; Esc stellt Platz und aktiven Tab wieder her (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)
+- [x] Ablegen in der Tableiste eines Fensters (auch des eigenen) führt den Tab samt Sitzung dort ein, Einfügemarke und Position nach dem Zeiger; ist es der einzige Tab eines Fensters, wandert das Fenster und führt sich über einer fremden Leiste mit ihr zusammen
+- [ ] Verhalten unter Windows und Linux/X11 klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis). Windows geklärt (Zeiger-Fang hält, Esc auch im schwebenden Fenster, `Docs/DECISIONS.md`, Eintrag „Tabs ziehen: Fenster hängt am Zeiger …“); Linux/X11 offen
 
 **Abnahmekriterien**
-- [ ] Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben)
-- [ ] Manuelle Prüfung auf Windows: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc
+- [x] Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben) – `dotnet test Pagewing.slnx`: 980 bestanden, 0 fehlgeschlagen (Core, App, Render). Herauslösen und Zurückführen: `TabDragTests.BeginningADragWithTwoTabsOpensAFloatingWindowAtThePointer`, `CancelPutsTheTabBackAtItsPlace`, `DroppingOnAStripMovesTheTabWithItsSession`, `DroppingBackOnTheOwnStripPutsTheTabAtTheChosenPlace`, `DroppingTheOnlyTabOfAWindowMergesAndClosesTheWindow`; Geste: `TabDragGestureTests.PullingATabDownOutOfTheStripOpensAWindowThatFollowsThePointer`, `ReleasingOverAnotherWindowsStripInsertsTheTab`, `EscapeDuringAFloatingDragPutsTheTabBack`, `DraggingTheOnlyTabMovesTheWindowAndMergesOverAnotherStrip`; Sitzung, Seite und Zoom des verschobenen Tabs wie schon in M4 (`WorkspaceTests.MovedTabKeepsPageAndZoom`)
+- [x] Manuelle Prüfung auf Windows: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc – 2026-10-18, Release-Build, echte Maus (`SetCursorPos`/`mouse_event`) und echte Esc-Taste: Tab 50 px nach unten ziehen öffnet das Fenster nach rund 117 ms (unter 30 px kein Fenster), Titelzeile des neuen Fensters unter dem Zeiger, Fenster folgt; einziger Tab: Fenster folgt, über der Leiste des anderen Fensters geparkt, Marke sichtbar, Loslassen führt zusammen und schließt das leere Fenster; Esc stellt Tab und Fenster wieder her (erst nach dem Handler auch am schwebenden Fenster); Fokuswechsel mitten im Zug beendet die Geste ohne Verlust. Nicht geprüft: Alt+Tab, Monitore mit anderer Skalierung
 - [ ] Manuelle Prüfung auf Linux/X11: dasselbe
 
 ## Milestone 5 – Text & Suche

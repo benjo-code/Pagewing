@@ -177,18 +177,18 @@
         {
           "id": "4.1",
           "title": "Tabs zwischen Fenstern ziehen",
-          "status": "planned",
+          "status": "in-progress",
           "plan": "superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md",
           "prerequisites": ["4"],
           "goal": "Ein Tab lässt sich per Maus aus der Tableiste ziehen, das neue Fenster hängt dabei am Zeiger; über der Tableiste eines Fensters zeigt eine Einfügemarke die Stelle, beim Loslassen landet der Tab dort.",
           "tasks": [
-            { "text": "Ziehgeste: Tab aus der Leiste herausziehen (ab 40 DIP senkrecht oder aus dem Fenster hinaus) erzeugt ein neues Fenster, das am Zeiger hängt; Esc stellt Platz und aktiven Tab wieder her (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)", "done": false },
-            { "text": "Ablegen in der Tableiste eines Fensters (auch des eigenen) führt den Tab samt Sitzung dort ein, Einfügemarke und Position nach dem Zeiger; ist es der einzige Tab eines Fensters, wandert das Fenster und führt sich über einer fremden Leiste mit ihr zusammen", "done": false },
-            { "text": "Verhalten unter Windows und Linux/X11 klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis)", "done": false }
+            { "text": "Ziehgeste: Tab aus der Leiste herausziehen (ab 40 DIP senkrecht oder aus dem Fenster hinaus) erzeugt ein neues Fenster, das am Zeiger hängt; Esc stellt Platz und aktiven Tab wieder her (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)", "done": true },
+            { "text": "Ablegen in der Tableiste eines Fensters (auch des eigenen) führt den Tab samt Sitzung dort ein, Einfügemarke und Position nach dem Zeiger; ist es der einzige Tab eines Fensters, wandert das Fenster und führt sich über einer fremden Leiste mit ihr zusammen", "done": true },
+            { "text": "Verhalten unter Windows und Linux/X11 klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis). Windows geklärt (Zeiger-Fang hält, Esc auch im schwebenden Fenster, `Docs/DECISIONS.md`, Eintrag „Tabs ziehen: Fenster hängt am Zeiger …“); Linux/X11 offen", "done": false }
           ],
           "acceptance": [
-            { "text": "Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben)", "done": false },
-            { "text": "Manuelle Prüfung auf Windows: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc", "done": false },
+            { "text": "Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben)", "done": true, "evidence": "`dotnet test Pagewing.slnx`: 980 bestanden, 0 fehlgeschlagen (Core, App, Render). Herauslösen und Zurückführen: `TabDragTests.BeginningADragWithTwoTabsOpensAFloatingWindowAtThePointer`, `CancelPutsTheTabBackAtItsPlace`, `DroppingOnAStripMovesTheTabWithItsSession`, `DroppingBackOnTheOwnStripPutsTheTabAtTheChosenPlace`, `DroppingTheOnlyTabOfAWindowMergesAndClosesTheWindow`; Geste: `TabDragGestureTests.PullingATabDownOutOfTheStripOpensAWindowThatFollowsThePointer`, `ReleasingOverAnotherWindowsStripInsertsTheTab`, `EscapeDuringAFloatingDragPutsTheTabBack`, `DraggingTheOnlyTabMovesTheWindowAndMergesOverAnotherStrip`; Sitzung, Seite und Zoom des verschobenen Tabs wie schon in M4 (`WorkspaceTests.MovedTabKeepsPageAndZoom`)" },
+            { "text": "Manuelle Prüfung auf Windows: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc", "done": true, "evidence": "2026-10-18, Release-Build, echte Maus (`SetCursorPos`/`mouse_event`) und echte Esc-Taste: Tab 50 px nach unten ziehen öffnet das Fenster nach rund 117 ms (unter 30 px kein Fenster), Titelzeile des neuen Fensters unter dem Zeiger, Fenster folgt; einziger Tab: Fenster folgt, über der Leiste des anderen Fensters geparkt, Marke sichtbar, Loslassen führt zusammen und schließt das leere Fenster; Esc stellt Tab und Fenster wieder her (erst nach dem Handler auch am schwebenden Fenster); Fokuswechsel mitten im Zug beendet die Geste ohne Verlust. Nicht geprüft: Alt+Tab, Monitore mit anderer Skalierung" },
             { "text": "Manuelle Prüfung auf Linux/X11: dasselbe", "done": false }
           ]
         },
