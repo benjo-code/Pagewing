@@ -52,8 +52,12 @@ public sealed class StartupTests : IDisposable
         var tileEvents = 0;
         PdfDocument? document = null;
         DocumentLayout? layout = null;
+        var log = new List<string>();
+        var inTileHandler = false;
         view.FirstSharpTileDrawn += () =>
         {
+            inTileHandler = true;
+            log.Add("tile");
             tileEvents++;
             tabsWhenDrawn = viewModel.Tabs.Count;
             document = view.Document;
@@ -63,7 +67,13 @@ public sealed class StartupTests : IDisposable
                 view.Canvas.Bitmaps.TryGet(key, out var bitmap);
                 tilesWhenDrawn[key] = bitmap;
             }
+
+            inTileHandler = false;
         };
+
+        // The order of the events, whatever the speed of the machine: a tab appears only after the tile was drawn, and
+        // never inside the handling of the tile itself (the opening is a job of its own).
+        viewModel.Tabs.CollectionChanged += (_, _) => log.Add(inTileHandler ? "tab-inside-tile" : "tab");
         var dataContextChanges = 0;
         view.PropertyChanged += (_, e) => dataContextChanges += e.Property == StyledElement.DataContextProperty ? 1 : 0;
         var activeChanges = 0;
@@ -71,13 +81,13 @@ public sealed class StartupTests : IDisposable
         viewModel.PropertyChanged += (_, e) => activeChanges += e.PropertyName == nameof(MainViewModel.ActiveTab) ? 1 : 0;
 
         // Shown with the early session as its only tab: nothing else is part of the startup path or of the first frame.
-        Assert.Same(first, Assert.Single(viewModel.Tabs));
-        Dispatcher.UIThread.RunJobs();
+        // (Nothing is asserted after running jobs: how far the document has come then depends on the speed of the machine.)
         Assert.Same(first, Assert.Single(viewModel.Tabs));
 
         await WaitUntilAsync(workspace, () => viewModel.Tabs.Count == 3);
 
         // The sharp tile was drawn before the others were added; they lie in the order of the command line, behind it.
+        Assert.Equal(["tile", "tab", "tab"], log);
         Assert.Equal(1, tabsWhenDrawn);
         Assert.Equal(
             [TestData.Pdf("hello_world.pdf"), TestData.Pdf("text-basic.pdf"), TestData.Pdf("vector-shapes.pdf")],
