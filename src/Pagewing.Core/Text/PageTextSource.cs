@@ -47,11 +47,11 @@ public sealed class PageTextSource : IDisposable
     }
 
     /// <summary>
-    /// Occurs on a pool thread after the text of a page was read and cached, with the 0-based page index, and before the calls that wait for that page return. Handlers should be quick. Not raised
-    /// for a page that is read after <see cref="Dispose"/>. A handler must not throw; if it does, the exception is
-    /// ignored.
+    /// Occurs on a pool thread after the text of a page was read and cached, with the 0-based page index, and before the
+    /// calls that wait for that page return (for tests). Handlers should be quick. Not raised for a page that is read
+    /// after <see cref="Dispose"/>. A handler must not throw; if it does, the exception is ignored.
     /// </summary>
-    public event Action<int>? Loaded;
+    internal event Action<int>? Loaded;
 
     /// <summary>Gets whether <see cref="Dispose"/> has been called (for tests).</summary>
     internal bool IsDisposed
@@ -148,8 +148,8 @@ public sealed class PageTextSource : IDisposable
         return task.WaitAsync(cancellationToken);
     }
 
-    /// <summary>Forgets the text of all pages; loads that are running still deliver their result.</summary>
-    public void Clear()
+    /// <summary>Forgets the text of all pages; loads that are running still deliver their result (for tests).</summary>
+    internal void Clear()
     {
         lock (gate)
         {

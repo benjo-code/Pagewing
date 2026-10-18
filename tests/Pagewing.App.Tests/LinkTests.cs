@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Headless;
@@ -566,23 +567,37 @@ public sealed class LinkTests : IDisposable
         var pending = Assert.IsType<PendingLink>(viewModel.PendingLink);
         var card = Find<LinkConfirmCard>(window, "LinkConfirmCard");
         var open = Find<Button>(card, "LinkOpenButton");
+        var clicks = 0;
+        open.Click += (_, _) => clicks++;
 
-        // At once: neither the pointer nor Enter or Space on "Open" nor the command opens anything; the card stays.
+        // At once: "Open" is disabled and does not take the focus; neither the pointer nor Enter or Space on it nor the
+        // command opens anything; the card stays.
+        Assert.False(open.IsEffectivelyEnabled);
+        Assert.False(open.Focus());
         RaiseClick(window, CentreOf(open, window), clickCount: 1);
-        open.Focus();
-        Settle(window);
-        Press(window, Key.Enter, PhysicalKey.Enter);
-        Press(window, Key.Space, PhysicalKey.Space);
+        var pointer = RaisePress(window, open, CentreOf(open, window), clickCount: 1);
+        RaiseRelease(window, open, pointer, CentreOf(open, window));
+        Assert.True(RaiseKeyDown(window, open, Key.Enter).Handled);
+        Assert.True(RaiseKeyDown(window, open, Key.Space).Handled);
+        Assert.False(open.IsPressed);
         viewModel.ConfirmLinkCommand.Execute(null);
         _clock.Advance(MainViewModel.LinkArmingDelay - TimeSpan.FromMilliseconds(1));
-        Press(window, Key.Enter, PhysicalKey.Enter);
         Settle(window);
+        Assert.False(open.IsEffectivelyEnabled);
+        Assert.True(RaiseKeyDown(window, open, Key.Enter).Handled);
+        viewModel.ConfirmLinkCommand.Execute(null);
+        Settle(window);
+        Assert.Equal(0, clicks);
         Assert.Empty(launcher.Calls);
         Assert.Same(pending, viewModel.PendingLink);
         Assert.True(card.IsVisible);
 
-        // Once the delay has passed, "Open" opens, exactly once.
+        // Once the delay has passed, "Open" is enabled and opens, exactly once.
         _clock.Advance(TimeSpan.FromMilliseconds(1));
+        Settle(window);
+        Assert.True(open.IsEffectivelyEnabled);
+        Assert.True(open.Focus());
+        Settle(window);
         Press(window, Key.Enter, PhysicalKey.Enter);
         await WaitUntilAsync(window, () => launcher.Calls.Count > 0);
         Press(window, Key.Enter, PhysicalKey.Enter);
@@ -597,6 +612,135 @@ public sealed class LinkTests : IDisposable
         ClickButton(window, Find<Button>(card, "LinkCancelButton"));
         Assert.Null(viewModel.PendingLink);
         Assert.Single(launcher.Calls);
+    }
+
+    [AvaloniaFact]
+    public async Task APressOnOpenDuringTheLockDoesNotOpenOnRelease()
+    {
+        var (window, viewModel, view, launcher) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget(DocsUrl)));
+        Settle(window);
+        var pending = Assert.IsType<PendingLink>(viewModel.PendingLink);
+        var open = Find<Button>(Find<LinkConfirmCard>(window, "LinkConfirmCard"), "LinkOpenButton");
+        var point = CentreOf(open, window);
+
+        // Pressed 200 ms after the card was drawn, released 250 ms later (when the lock is over): nothing opens.
+        _clock.Advance(TimeSpan.FromMilliseconds(200));
+        var pointer = RaisePress(window, open, point, clickCount: 1);
+        Assert.False(open.IsPressed);
+        _clock.Advance(TimeSpan.FromMilliseconds(250));
+        Settle(window);
+        Assert.True(viewModel.IsLinkArmed);
+        Assert.True(open.IsEffectivelyEnabled);
+        RaiseRelease(window, open, pointer, point);
+        Assert.Empty(launcher.Calls);
+        Assert.Same(pending, viewModel.PendingLink);
+
+        // A press after the lock opens on its release, once.
+        pointer = RaisePress(window, open, point, clickCount: 1);
+        RaiseRelease(window, open, pointer, point);
+        await WaitUntilAsync(window, () => launcher.Calls.Count > 0);
+        Assert.Equal([DocsUrl], launcher.Calls);
+        Assert.Null(viewModel.PendingLink);
+    }
+
+    [AvaloniaFact]
+    public async Task TheLockCountsFromWhenTheCardIsLaidOut()
+    {
+        var (window, viewModel, view, launcher) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+
+        // The address arrives, then the UI thread stalls for a second before the card is laid out and drawn.
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget(DocsUrl)));
+        var pending = Assert.IsType<PendingLink>(viewModel.PendingLink);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        Settle(window);
+        var card = Find<LinkConfirmCard>(window, "LinkConfirmCard");
+        Assert.True(card.IsEffectivelyVisible);
+
+        // The lock begins with the card on screen, not with the arrival of the address.
+        Assert.False(viewModel.IsLinkArmed);
+        viewModel.ConfirmLinkCommand.Execute(null);
+        _clock.Advance(MainViewModel.LinkArmingDelay - TimeSpan.FromMilliseconds(1));
+        Settle(window);
+        Assert.False(viewModel.IsLinkArmed);
+        viewModel.ConfirmLinkCommand.Execute(null);
+        Settle(window);
+        Assert.Empty(launcher.Calls);
+        Assert.Same(pending, viewModel.PendingLink);
+
+        _clock.Advance(TimeSpan.FromMilliseconds(1));
+        Settle(window);
+        Assert.True(viewModel.IsLinkArmed);
+        ClickButton(window, Find<Button>(card, "LinkOpenButton"));
+        await WaitUntilAsync(window, () => launcher.Calls.Count > 0);
+        Assert.Equal([DocsUrl], launcher.Calls);
+    }
+
+    [AvaloniaFact]
+    public async Task OpenLooksDisabledUntilTheCardIsArmed()
+    {
+        var (window, viewModel, view, _) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+
+        // Nothing waits for a lock before an address asks to be opened.
+        Assert.Equal(0, _clock.TimersCreated);
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget(DocsUrl)));
+        Settle(window);
+        var card = Find<LinkConfirmCard>(window, "LinkConfirmCard");
+        var open = Find<Button>(card, "LinkOpenButton");
+        var cancel = Find<Button>(card, "LinkCancelButton");
+
+        // Locked: "Open" is disabled (and looks it), "Cancel" is not; one timer ends the lock.
+        Assert.False(open.IsEffectivelyEnabled);
+        Assert.Contains(":disabled", open.Classes);
+        Assert.False(viewModel.ConfirmLinkCommand.CanExecute(null));
+        Assert.True(cancel.IsEffectivelyEnabled);
+        Assert.Equal(1, _clock.TimersCreated);
+        _clock.Advance(MainViewModel.LinkArmingDelay - TimeSpan.FromMilliseconds(1));
+        Settle(window);
+        Assert.False(open.IsEffectivelyEnabled);
+
+        // Armed: "Open" becomes enabled by itself, without any input.
+        _clock.Advance(TimeSpan.FromMilliseconds(1));
+        Settle(window);
+        Assert.True(open.IsEffectivelyEnabled);
+        Assert.DoesNotContain(":disabled", open.Classes);
+        Assert.True(viewModel.ConfirmLinkCommand.CanExecute(null));
+
+        // The next address is locked again.
+        viewModel.CancelLinkCommand.Execute(null);
+        Settle(window);
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget(TextUrl)));
+        Settle(window);
+        Assert.False(open.IsEffectivelyEnabled);
+        Assert.False(viewModel.ConfirmLinkCommand.CanExecute(null));
+    }
+
+    [AvaloniaFact]
+    public async Task TheCardIsAnnouncedToScreenReaders()
+    {
+        var (window, viewModel, view, _) = Show();
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget(DocsUrl)));
+        Settle(window);
+        var card = Find<LinkConfirmCard>(window, "LinkConfirmCard");
+
+        // The card is named by its title; title and address are a polite live region, so the address is read out when
+        // the card appears (not only "Cancel", which has the focus).
+        Assert.Equal(Strings.LinkConfirmTitle, AutomationProperties.GetName(card));
+        Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(Find<TextBlock>(card, "LinkTitle")));
+        var address = Find<SelectableTextBlock>(card, "LinkAddress");
+        Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(address));
+        Assert.Equal(DocsUrl, AutomationProperties.GetName(address));
+
+        // The next address is announced with its own name.
+        viewModel.CancelLinkCommand.Execute(null);
+        Settle(window);
+        tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget(TextUrl)));
+        Settle(window);
+        Assert.Equal(TextUrl, AutomationProperties.GetName(address));
     }
 
     [AvaloniaFact]
@@ -627,11 +771,16 @@ public sealed class LinkTests : IDisposable
         Settle(window);
         Assert.Empty(launcher.Calls);
         Assert.NotNull(viewModel.PendingLink);
+
+        // While locked, "Open" is disabled and the point hits the card around it; once armed, the point is on "Open".
         var hit = Assert.IsAssignableFrom<Visual>(window.InputHitTest(point));
+        Assert.True(ReferenceEquals(hit, card) || hit.GetVisualAncestors().Contains(card), $"{hit} is not on the card");
+        _clock.Advance(MainViewModel.LinkArmingDelay);
+        Settle(window);
+        hit = Assert.IsAssignableFrom<Visual>(window.InputHitTest(point));
         Assert.True(ReferenceEquals(hit, open) || hit.GetVisualAncestors().Contains(open), $"{hit} is not the Open button");
 
         // The second press of a double click never reaches the button, even after the arming delay.
-        _clock.Advance(MainViewModel.LinkArmingDelay);
         RaiseClick(window, point, clickCount: 2);
         Assert.Empty(launcher.Calls);
         Assert.NotNull(viewModel.PendingLink);
@@ -1023,17 +1172,40 @@ public sealed class LinkTests : IDisposable
     private static void RaiseClick(Window window, Point point, int clickCount)
     {
         var target = window.InputHitTest(point) as Avalonia.Interactivity.Interactive ?? throw new InvalidOperationException($"Nothing at {point}.");
+        var pointer = RaisePress(window, target, point, clickCount);
+        RaiseRelease(window, target, pointer, point);
+    }
+
+    /// <summary>A press of the left button at a window point, raised on <paramref name="target"/>; returns its pointer for the release.</summary>
+    private static Pointer RaisePress(Window window, Avalonia.Interactivity.Interactive target, Point point, int clickCount)
+    {
         var pointer = new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, isPrimary: true);
         target.RaiseEvent(new PointerPressedEventArgs(
             target, pointer, window, point, 0,
             new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed),
             KeyModifiers.None, clickCount));
+        Settle(window);
+        return pointer;
+    }
+
+    /// <summary>The release of a press made with <see cref="RaisePress"/>, raised on <paramref name="target"/>.</summary>
+    private static void RaiseRelease(Window window, Avalonia.Interactivity.Interactive target, Pointer pointer, Point point)
+    {
         target.RaiseEvent(new PointerReleasedEventArgs(
             target, pointer, window, point, 0,
             new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.LeftButtonReleased),
             KeyModifiers.None, MouseButton.Left));
         pointer.Capture(null);
         Settle(window);
+    }
+
+    /// <summary>A key going down, raised on <paramref name="target"/> (tunnelling from the window, then bubbling).</summary>
+    private static KeyEventArgs RaiseKeyDown(Window window, Avalonia.Interactivity.Interactive target, Key key)
+    {
+        var args = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key, Source = target };
+        target.RaiseEvent(args);
+        Settle(window);
+        return args;
     }
 
     private static void ClickButton(Window window, Button button)
@@ -1138,16 +1310,74 @@ public sealed class LinkTests : IDisposable
         }
     }
 
-    /// <summary>A clock that moves only when told to.</summary>
+    /// <summary>A clock that moves only when told to; its timers fire (on the calling thread) when it moves past them.</summary>
     private sealed class ManualClock : TimeProvider
     {
+        private readonly List<ManualTimer> _timers = [];
         private long _ticks;
+
+        /// <summary>Gets how many timers were created on this clock.</summary>
+        public int TimersCreated { get; private set; }
 
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
         public override long GetTimestamp() => _ticks;
 
-        public void Advance(TimeSpan by) => _ticks += by.Ticks;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            TimersCreated++;
+            var timer = new ManualTimer(this, callback, state);
+            timer.Change(dueTime, period);
+            return timer;
+        }
+
+        public void Advance(TimeSpan by)
+        {
+            _ticks += by.Ticks;
+            foreach (var timer in _timers.ToArray())
+            {
+                timer.FireIfDue(_ticks);
+            }
+        }
+
+        /// <summary>A one-shot timer of the manual clock (a period is not supported).</summary>
+        private sealed class ManualTimer(ManualClock clock, TimerCallback callback, object? state) : ITimer
+        {
+            private long? _due;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                clock._timers.Remove(this);
+                _due = dueTime == global::System.Threading.Timeout.InfiniteTimeSpan ? null : clock._ticks + dueTime.Ticks;
+                if (_due is not null)
+                {
+                    clock._timers.Add(this);
+                }
+
+                return true;
+            }
+
+            public void FireIfDue(long now)
+            {
+                if (_due is { } due && due <= now)
+                {
+                    Dispose();
+                    callback(state);
+                }
+            }
+
+            public void Dispose()
+            {
+                _due = null;
+                clock._timers.Remove(this);
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 
     private sealed class Closer(Window window) : IDisposable

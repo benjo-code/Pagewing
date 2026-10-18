@@ -20,7 +20,7 @@ public sealed partial class TabViewModel
     /// match in page points from the top left of the page. The document view scrolls to it unless it is fully visible, and
     /// makes its page the current one.
     /// </summary>
-    public event Action<int, PageRect>? RevealRequested;
+    internal event Action<int, PageRect>? RevealRequested;
 
     /// <summary>Raised when the search field should take the keyboard focus with its content selected (Ctrl+F).</summary>
     internal event Action? SearchFocusRequested;
@@ -81,19 +81,22 @@ public sealed partial class TabViewModel
     internal void ClearSearchFocusRequest() => _searchFocusPending = false;
 
     /// <summary>
-    /// Shows a search match: asks the view to bring its rectangle into view (<see cref="RevealRequested"/>; without a view
-    /// the page is made the current one with <see cref="GoToPage"/>); a match chosen in the panel (<paramref name="fromPanel"/>) then raises
-    /// <see cref="PanelPagePicked"/>, so a narrow window closes the panel.
+    /// Shows a search match: asks the view to bring its rectangle into view (<see cref="RevealRequested"/>; a match without
+    /// geometry makes its page the current one with <see cref="GoToPage"/>); a match chosen in the panel
+    /// (<paramref name="fromPanel"/>) then raises <see cref="PanelPagePicked"/>, so a narrow window closes the panel. A tab
+    /// that no view shows (the user switched tabs before the first match came in) does not move: the view restores the
+    /// saved view when the tab comes back, and a jump now would leave the current page and the shown position apart. The
+    /// match stays the current one; F3 goes on from it.
     /// </summary>
     internal void RevealSearchHit(SearchHit hit, bool fromPanel)
     {
         ArgumentNullException.ThrowIfNull(hit);
-        if (!IsReady || hit.PageIndex < 0 || hit.PageIndex >= PageCount)
+        if (!IsReady || hit.PageIndex < 0 || hit.PageIndex >= PageCount || RevealRequested is not { } reveal)
         {
             return;
         }
 
-        if (hit.Rects.Count > 0 && RevealRequested is { } reveal)
+        if (hit.Rects.Count > 0)
         {
             // The view scrolls to the rectangle (not to the top of the page) and only when it is not fully visible; the
             // page it ends on becomes the current page of the tab. A jump to the page first would scroll twice.
@@ -107,7 +110,7 @@ public sealed partial class TabViewModel
         }
         else
         {
-            // No view shows this tab (or the match has no geometry): at least the page is the current one.
+            // The match has no geometry: at least its page is the current one.
             GoToPage(hit.PageIndex + 1);
         }
 

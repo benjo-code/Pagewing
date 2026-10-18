@@ -67,15 +67,15 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// Raised on the UI thread when <see cref="Highlights"/> changed: matches came in, the current match changed or the
-    /// search ended. The document view redraws its marks (Task 13).
+    /// search ended. The document view redraws its marks.
     /// </summary>
     public event Action? HighlightsChanged;
 
     /// <summary>Raised on the UI thread for every page the running search has gone through, in the order it searched them (for tests).</summary>
     internal event Action<int>? PageSearched;
 
-    /// <summary>Raised on the UI thread after each job that applied results, with how long it took (for tests).</summary>
-    internal event Action<TimeSpan>? BatchApplied;
+    /// <summary>Raised on the UI thread after each job that applied results, with its number of matches and how long it took (for tests).</summary>
+    internal event Action<int, TimeSpan>? BatchApplied;
 
     /// <summary>
     /// Gets or sets the text to search for. A change cancels the running search, empties the list and searches again
@@ -248,7 +248,16 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
 
         var started = Stopwatch.GetTimestamp();
         ApplyCore(run, items, end);
-        BatchApplied?.Invoke(Stopwatch.GetElapsedTime(started));
+        if (BatchApplied is { } handler)
+        {
+            var hits = 0;
+            foreach (var item in items)
+            {
+                hits += item.Hits.Count;
+            }
+
+            handler(hits, Stopwatch.GetElapsedTime(started));
+        }
     }
 
     private void ApplyCore(SearchRun run, List<SearchBatchItem> items, (bool LimitReached, bool NoText)? end)
@@ -321,7 +330,8 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
     {
         if (_limitReached)
         {
-            return string.Format(Strings.Culture, FormatOf(Strings.SearchLimit), DocumentSearch.MaxHits);
+            // Grouped as the language writes numbers: "10,000" in English, "10.000" in German.
+            return string.Format(Strings.Culture, FormatOf(Strings.SearchLimit), DocumentSearch.MaxHits.ToString("N0", Strings.Culture));
         }
 
         var count = _hits.Count;

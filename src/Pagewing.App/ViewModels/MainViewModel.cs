@@ -43,8 +43,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private ILinkLauncher? _linkLauncher;
     private PendingLink? _pendingLink;
 
-    // When the pending address arrived (Clock timestamp), for the arming delay of "Open".
+    // Since when the pending address is locked (Clock timestamp), for the arming delay of "Open": from its arrival, and
+    // again from when its card has been laid out (OnLinkCardShown), which is the later and the one that counts.
     private long _pendingSince;
+
+    // Ends the lock of "Open" visibly (enables the button); made when a card is shown, never at startup.
+    private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
     private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther)> _tabHandlers = [];
@@ -94,7 +98,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ToggleSidePanelCommand = new RelayCommand<SidePanelKind>(ToggleSidePanel);
         CloseSidePanelCommand = new RelayCommand(() => ToggleSidePanel(SidePanelKind.None));
         OpenSearchCommand = new RelayCommand(OpenSearch);
-        _confirmLinkCommand = new RelayCommand(ConfirmLink, () => PendingLink is not null);
+        _confirmLinkCommand = new RelayCommand(ConfirmLink, () => IsLinkArmed);
         ConfirmLinkCommand = _confirmLinkCommand;
         _cancelLinkCommand = new RelayCommand(() => PendingLink = null, () => PendingLink is not null);
         CancelLinkCommand = _cancelLinkCommand;
@@ -247,6 +251,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
             if (SetProperty(ref _pendingLink, value))
             {
+                StopArmingTimer();
                 _confirmLinkCommand.RaiseCanExecuteChanged();
                 _cancelLinkCommand.RaiseCanExecuteChanged();
             }
@@ -255,19 +260,23 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// "Open" on the link card: drops <see cref="PendingLink"/> and opens its address. The only way an address is opened.
-    /// Ignored until <see cref="LinkArmingDelay"/> has passed since the address arrived (<see cref="IsLinkArmed"/>), by
-    /// pointer and by keyboard alike: the second click of a double click on the document must not land on "Open" of the
-    /// card that its first click brought up.
+    /// Disabled (and ignored) until <see cref="LinkArmingDelay"/> has passed since the card was laid out
+    /// (<see cref="IsLinkArmed"/>), by pointer and by keyboard alike: the second click of a double click on the document
+    /// must not land on "Open" of the card that its first click brought up.
     /// </summary>
     public ICommand ConfirmLinkCommand { get; }
 
-    /// <summary>How long after an address arrived "Open" stays without effect; "Cancel" and Esc act at once.</summary>
+    /// <summary>How long after its card is shown "Open" stays without effect; "Cancel" and Esc act at once.</summary>
     internal static TimeSpan LinkArmingDelay { get; } = TimeSpan.FromMilliseconds(400);
 
-    /// <summary>Gets or sets the clock of <see cref="LinkArmingDelay"/> (the system clock; tests set a manual one).</summary>
+    /// <summary>Gets or sets the clock (and timer) of <see cref="LinkArmingDelay"/> (the system clock; tests set a manual one).</summary>
     internal TimeProvider Clock { get; set; } = TimeProvider.System;
 
-    /// <summary>Gets whether an address waits and <see cref="LinkArmingDelay"/> has passed since it arrived.</summary>
+    /// <summary>
+    /// Gets whether an address waits and <see cref="LinkArmingDelay"/> has passed since its card was laid out
+    /// (<see cref="OnLinkCardShown"/>; before that, since it arrived, which is earlier and only matters when no card shows
+    /// it, so that "Open" cannot be reached anyway).
+    /// </summary>
     internal bool IsLinkArmed => _pendingLink is not null && Clock.GetElapsedTime(_pendingSince) >= LinkArmingDelay;
 
     /// <summary>"Cancel" on the link card, also Esc: drops <see cref="PendingLink"/> without opening it.</summary>
@@ -479,6 +488,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Releases every tab and its session. May be called more than once.</summary>
     public void Dispose()
     {
+        StopArmingTimer();
         foreach (var tab in Tabs.ToArray())
         {
             tab.Dispose();
@@ -667,6 +677,74 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // Dropped first, so a second confirmation (Enter pressed twice) opens nothing.
         PendingLink = null;
         _ = LaunchAsync(_linkLauncher ??= new SystemLinkLauncher(), pending.Link);
+    }
+
+    /// <summary>
+    /// The card of <paramref name="link"/> has been laid out (UI thread): the lock of "Open" starts now, so a stall
+    /// between the arrival of the address and the first frame of the card does not shorten it, and a one-shot timer
+    /// enables "Open" when it ends. A card of an address that is no longer pending does nothing.
+    /// </summary>
+    internal void OnLinkCardShown(PendingLink link)
+    {
+        if (!ReferenceEquals(link, _pendingLink))
+        {
+            return;
+        }
+
+        _pendingSince = Clock.GetTimestamp();
+        _confirmLinkCommand.RaiseCanExecuteChanged();
+        StartArmingTimer(link);
+    }
+
+    /// <summary>Starts the timer that enables "Open" when the lock of <paramref name="link"/> ends.</summary>
+    private void StartArmingTimer(PendingLink link)
+    {
+        StopArmingTimer();
+        var remaining = LinkArmingDelay - Clock.GetElapsedTime(_pendingSince);
+        if (remaining <= TimeSpan.Zero)
+        {
+            _confirmLinkCommand.RaiseCanExecuteChanged();
+            return;
+        }
+
+        _armingTimer = Clock.CreateTimer(_ => PostArmed(link), null, remaining, Timeout.InfiniteTimeSpan);
+    }
+
+    // The timer's thread (any): must never throw.
+    private void PostArmed(PendingLink link)
+    {
+        try
+        {
+            Dispatcher.UIThread.Post(() => OnArmed(link));
+        }
+        catch (Exception)
+        {
+            // The dispatcher is shutting down: nobody sees the button any more.
+        }
+    }
+
+    private void OnArmed(PendingLink link)
+    {
+        if (!ReferenceEquals(link, _pendingLink))
+        {
+            return;
+        }
+
+        if (!IsLinkArmed)
+        {
+            // The timer fired a little before the clock says the lock is over: wait for the rest.
+            StartArmingTimer(link);
+            return;
+        }
+
+        StopArmingTimer();
+        _confirmLinkCommand.RaiseCanExecuteChanged();
+    }
+
+    private void StopArmingTimer()
+    {
+        _armingTimer?.Dispose();
+        _armingTimer = null;
     }
 
     private static async Task LaunchAsync(ILinkLauncher launcher, ExternalLink link)

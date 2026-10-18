@@ -396,7 +396,6 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         }
     }
 
-
     /// <summary>
     /// Gets the outline (table of contents) of the open document, top level first, or <see langword="null"/> while it
     /// is not read (<see cref="OutlineState"/>). Each tab keeps its own; a new document or closing the tab drops it.

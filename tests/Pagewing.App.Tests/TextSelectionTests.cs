@@ -560,7 +560,7 @@ public sealed class TextSelectionTests : IDisposable
         Assert.Contains(view.Canvas.LastHighlightDestinations, entry => entry.Highlight.Kind == HighlightKind.Selection);
     }
 
-    /// <summary>Selects characters through the view as Task 15's copy tests do; waits until the selection is drawn.</summary>
+    /// <summary>Selects characters through the view as the copy tests do; waits until the selection is drawn.</summary>
     private static async Task<TextSelection?> SelectAsync(Window window, DocumentView view, int page, int first, int last)
     {
         var task = view.SelectAsync(page, first, last);

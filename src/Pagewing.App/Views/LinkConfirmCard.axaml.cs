@@ -1,9 +1,12 @@
+using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Pagewing.App.ViewModels;
 
 namespace Pagewing.App.Views;
@@ -17,6 +20,9 @@ public sealed partial class LinkConfirmCard : UserControl
 {
     // Does nothing: a key the card takes away from the window while it is up.
     private static readonly RelayCommand Ignore = new(static () => { });
+
+    // The address shown whose layout has not been seen yet (Show); its lock starts with the first layout.
+    private PendingLink? _awaitingLayout;
 
     public LinkConfirmCard()
     {
@@ -40,13 +46,29 @@ public sealed partial class LinkConfirmCard : UserControl
         }
 
         // The second (or third) press of a multiple click never reaches the buttons: it belongs to a double click that
-        // began on the document, where the card was not yet. The view model ignores "Open" for a moment besides.
+        // began on the document, where the card was not yet. A press on "Open" while it is locked never reaches it
+        // either, so its release after the lock cannot open the address; nor do Enter and Space on it.
         AddHandler(PointerPressedEvent, OnPointerPressedTunnel, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
     }
 
-    private static void OnPointerPressedTunnel(object? sender, PointerPressedEventArgs e)
+    /// <summary>Whether "Open" is locked: the view model has not armed the address shown yet.</summary>
+    private bool IsOpenLocked => DataContext is not MainViewModel { IsLinkArmed: true };
+
+    private bool IsOnOpenButton(object? source) =>
+        source is Visual visual && (ReferenceEquals(visual, LinkOpenButton) || LinkOpenButton.IsVisualAncestorOf(visual));
+
+    private void OnPointerPressedTunnel(object? sender, PointerPressedEventArgs e)
     {
-        if (e.ClickCount > 1)
+        if (e.ClickCount > 1 || (IsOnOpenButton(e.Source) && IsOpenLocked))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Space && IsOnOpenButton(e.Source) && IsOpenLocked)
         {
             e.Handled = true;
         }
@@ -54,11 +76,18 @@ public sealed partial class LinkConfirmCard : UserControl
 
     /// <summary>
     /// Shows <paramref name="link"/>: the full address with the host bold where it really stands
-    /// (<see cref="PendingLink.HostRange"/>), the warning line if there is one, and the focus on "Cancel".
+    /// (<see cref="PendingLink.HostRange"/>), the warning line if there is one, and the focus on "Cancel". The lock of
+    /// "Open" starts when the card has been laid out (<see cref="MainViewModel.OnLinkCardShown"/>).
     /// </summary>
     internal void Show(PendingLink link)
     {
         ArgumentNullException.ThrowIfNull(link);
+        if (_awaitingLayout is null)
+        {
+            LayoutUpdated += OnLayoutUpdated;
+        }
+
+        _awaitingLayout = link;
         var url = link.Link.Url;
         var inlines = new InlineCollection();
         if (link.HostRange is { } host)
@@ -73,6 +102,9 @@ public sealed partial class LinkConfirmCard : UserControl
         }
 
         LinkAddress.Inlines = inlines;
+
+        // A live region: a screen reader reads the address when the card appears, not only "Cancel" with the focus.
+        AutomationProperties.SetName(LinkAddress, url);
         LinkAddressScroller.Offset = default;
         var warning = link.WarningText;
         LinkWarningText.Text = warning;
@@ -91,10 +123,33 @@ public sealed partial class LinkConfirmCard : UserControl
             DispatcherPriority.Loaded);
     }
 
+    /// <summary>The first layout after <see cref="Show"/> with the card on screen: the lock of "Open" starts now.</summary>
+    private void OnLayoutUpdated(object? sender, EventArgs e)
+    {
+        if (_awaitingLayout is not { } link || !IsEffectivelyVisible || LinkOpenButton.Bounds.Width <= 0)
+        {
+            return;
+        }
+
+        StopAwaitingLayout();
+        (DataContext as MainViewModel)?.OnLinkCardShown(link);
+    }
+
+    private void StopAwaitingLayout()
+    {
+        if (_awaitingLayout is not null)
+        {
+            _awaitingLayout = null;
+            LayoutUpdated -= OnLayoutUpdated;
+        }
+    }
+
     /// <summary>Hides the card and forgets the address.</summary>
     internal void Hide()
     {
+        StopAwaitingLayout();
         IsVisible = false;
+        AutomationProperties.SetName(LinkAddress, null);
         LinkAddress.Inlines = null;
         LinkWarningText.Text = null;
     }

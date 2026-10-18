@@ -423,6 +423,7 @@ public sealed class SearchPanelTests : IDisposable
     [AvaloniaFact]
     public async Task AShortQueryEndsAtTheHitLimit()
     {
+        Strings.Culture = new CultureInfo("de");
         var (window, viewModel) = Show(1024);
         var tab = await OpenAsync(window, viewModel, "text-dense.pdf");
         await WaitUntilAsync(window, () => tab.SidePanel == SidePanelKind.Pages);
@@ -433,17 +434,26 @@ public sealed class SearchPanelTests : IDisposable
         // the list, before the current one (the dearest case for the list bound to the panel).
         tab.GoToPage(196);
         Settle(window);
-        var jobs = new List<TimeSpan>();
-        search.BatchApplied += jobs.Add;
+        var jobs = new List<(int Hits, TimeSpan Duration)>();
+        search.BatchApplied += (hits, duration) => jobs.Add((hits, duration));
         search.Query = "a";
         await WaitUntilAsync(window, () => search.State == SearchState.Done);
         Assert.Equal(DocumentSearch.MaxHits, search.Hits.Count);
         Assert.Equal(195, search.Current!.Hit.PageIndex);
 
-        // The UI thread stays responsive while the matches come in: no job that applies them takes long.
-        var longest = jobs.Max();
-        Assert.True(longest < TimeSpan.FromMilliseconds(100), $"the longest job applying matches took {longest.TotalMilliseconds:F1} ms ({jobs.Count} jobs)");
-        Assert.Equal(Format(Strings.SearchLimit, DocumentSearch.MaxHits), search.Summary);
+        // The UI thread stays responsive while the matches come in: they arrive in small jobs, none with more than
+        // SearchRun.HitsPerJob matches, so the 10 000 matches need at least 40 of them. The durations are informational
+        // only (wall time on a slow runner says little); the bound is generous.
+        Assert.Equal(DocumentSearch.MaxHits, jobs.Sum(job => job.Hits));
+        Assert.All(jobs, job => Assert.InRange(job.Hits, 0, SearchRun.HitsPerJob));
+        Assert.True(jobs.Count >= DocumentSearch.MaxHits / SearchRun.HitsPerJob, $"{jobs.Count} jobs");
+        var longest = jobs.Max(job => job.Duration);
+        Assert.True(longest < TimeSpan.FromSeconds(1), $"the longest job applying matches took {longest.TotalMilliseconds:F1} ms ({jobs.Count} jobs)");
+
+        // The limit with the number grouped as the language writes it.
+        Assert.Equal("Mehr als 10.000 Treffer", search.Summary);
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("More than 10,000 matches", search.Summary);
 
         // Sorted by page and character, and the list builds only what it shows.
         var hits = search.Hits.Select(hit => (hit.Hit.PageIndex, hit.Hit.FirstChar)).ToArray();
@@ -573,6 +583,44 @@ public sealed class SearchPanelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task TheFirstHitOfATabLeftBeforeItArrivedDoesNotMoveThatTab()
+    {
+        var (window, viewModel) = Show(1024);
+        var first = await OpenAsync(window, viewModel, "text-dense.pdf");
+        var search = first.Search;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        search.Searcher = (document, query, options, start, cancellationToken) => HeldAsync(document, query, options, start, started, gate, cancellationToken);
+        var pageRequests = new List<int>();
+        first.PageRequested += pageRequests.Add;
+
+        // The search runs, but its first hit (page 10) has not arrived when the user switches to another tab.
+        search.Query = "Needle";
+        await WaitUntilAsync(window, () => started.Task.IsCompleted);
+        var second = await OpenAsync(window, viewModel, "text-basic.pdf");
+        Assert.Same(second, viewModel.ActiveTab);
+        gate.SetResult();
+        await WaitUntilAsync(window, () => search.State == SearchState.Done);
+
+        // The hit is the current one, but the tab without a view did not jump: its page and saved view still agree.
+        Assert.Same(search.Hits[0], search.Current);
+        Assert.Equal(1, first.CurrentPage);
+        Assert.Empty(pageRequests);
+        Assert.Equal(0, first.SavedView!.Anchor.Page);
+
+        // Back in the tab: the view shows where the tab was left, and the status bar says the same page; F3 goes on.
+        viewModel.ActivateTabCommand.Execute(first);
+        Settle(window);
+        var view = Find<DocumentView>(window, "DocumentView");
+        Assert.Same(first, view.DataContext);
+        Assert.Equal(1, first.CurrentPage);
+        Assert.Equal(0, first.CurrentViewReader!()!.Anchor.Page);
+        Press(window, Key.F3);
+        Assert.Equal(1, search.CurrentIndex);
+        Assert.Equal(20, first.CurrentPage);
+    }
+
+    [AvaloniaFact]
     public async Task ClickingAHitInANarrowWindowClosesThePanel()
     {
         var (window, viewModel) = Show(1024);
@@ -673,7 +721,7 @@ public sealed class SearchPanelTests : IDisposable
         Assert.Equal("5 Treffer, alle auf Seite 3", Format(Strings.SearchSummaryOnePage, 5, 3));
         Assert.Equal("12 Treffer auf 4 Seiten", Format(Strings.SearchSummaryPages, 12, 4));
         Assert.Equal("1 Treffer auf Seite 7", Format(Strings.SearchSummaryOne, 7));
-        Assert.Equal("Mehr als 10000 Treffer", Format(Strings.SearchLimit, 10000));
+        Assert.Equal("Mehr als 10.000 Treffer", Format(Strings.SearchLimit, "10.000"));
     }
 
     /// <summary>
@@ -700,6 +748,24 @@ public sealed class SearchPanelTests : IDisposable
             await gate.Task;
             yield return result;
             yield break;
+        }
+    }
+
+    /// <summary>The real search, held back until <paramref name="gate"/> opens; <paramref name="started"/> says it was asked for.</summary>
+    private static async IAsyncEnumerable<SearchPageResult> HeldAsync(
+        PdfDocument document,
+        string query,
+        SearchOptions options,
+        int start,
+        TaskCompletionSource started,
+        TaskCompletionSource gate,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        started.TrySetResult();
+        await gate.Task.WaitAsync(cancellationToken);
+        await foreach (var result in DocumentSearch.SearchAsync(document, query, options, start, cancellationToken))
+        {
+            yield return result;
         }
     }
 
