@@ -259,6 +259,75 @@ public sealed class ExternalLinkTests
         Assert.True(ExternalLink.TryParse("https://example.org/%41%2f%7E", out _));
     }
 
+    [Theory]
+    [InlineData("https://good.example／evil.com/")]
+    [InlineData("https://good.example＃evil.com/")]
+    [InlineData("https://good.example？evil.com/")]
+    [InlineData("https://good.example＠evil.com/")]
+    [InlineData("https://good.example＼evil.com/")]
+    [InlineData("https://good.example︖evil.com/")]
+    [InlineData("https://good.example﹟evil.com/")]
+    [InlineData("https://good.example℀evil.com/")]
+    [InlineData("https://good.example℁evil.com/")]
+    [InlineData("https://good.example：evil.com/")]
+    [InlineData("https://good⒈.example/")]
+    [InlineData("http://／/")]
+    public void InvalidHostCharactersGiveFalseAndNeverThrow(string url)
+    {
+        Assert.False(ExternalLink.TryParse(url, out var link));
+        Assert.Null(link);
+    }
+
+    [Theory]
+    [InlineData("mailto:a@b.c?subject=a%85b")]
+    [InlineData("mailto:a@b.c?subject=a%C0%8D%C0%8ABcc:e@f.g")]
+    [InlineData("mailto:a@b.c?cc=x@y.z%C0%8A")]
+    [InlineData("mailto:a@b.c?body=a%85b")]
+    [InlineData("mailto:a@b.c?cc=x@y.z%FF")]
+    [InlineData("mailto:a@b.c?to=x@y.z%80")]
+    [InlineData("mailto:a%C3@b.c")]
+    [InlineData("mailto:a@b.c?%C0%A1=1")]
+    [InlineData("mailto:a@b.c?subject=%ED%A0%80")]
+    [InlineData("mailto:a@b.c?to=x@y.z%253Fattach%253D/etc/passwd")]
+    [InlineData("mailto:a@b.c?cc=x@y.z%250ABcc:e@f.g")]
+    [InlineData("mailto:a@b.c%250A")]
+    public void InvalidUtf8AndDoubleEncodedDelimitersInMailAreRejected(string url)
+    {
+        Assert.False(ExternalLink.TryParse(url, out _));
+    }
+
+    [Theory]
+    [InlineData("mailto:a@b.c?subject=Gr%C3%BC%C3%9Fe")]
+    [InlineData("mailto:a@b.c?subject=a+b%2Bc")]
+    [InlineData("mailto:a@b.c?body=%F0%9F%98%80")]
+    [InlineData("mailto:?to=a@b.c")]
+    [InlineData("mailto:me")]
+    public void ValidUtf8AndLocalMailAddressesStayAccepted(string url)
+    {
+        Assert.True(ExternalLink.TryParse(url, out _));
+    }
+
+    [Theory]
+    [InlineData("mailto:a＠evil.com")]
+    [InlineData("mailto:a﹫evil.com")]
+    [InlineData("mailto:?to=a＠evil.com")]
+    public void LookAlikeAtSignsInMailAreRejected(string url)
+    {
+        Assert.False(ExternalLink.TryParse(url, out _));
+    }
+
+    [Fact]
+    public void FullWidthDelimitersInAMailDomainAreNotMappedToAsciiOnes()
+    {
+        var accepted = ExternalLink.TryParse("mailto:a@b.c？body", out var link);
+
+        Assert.True(!accepted || !link!.UnicodeHost.Contains('?', StringComparison.Ordinal));
+        if (accepted)
+        {
+            Assert.Equal(link!.Host, link.UnicodeHost);
+        }
+    }
+
     [Fact]
     public void UserInfoAndPunycodeAreFlagged()
     {

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
@@ -33,6 +34,8 @@ public sealed class ExternalLink
     private const string Mailto = "mailto:";
     private const string PunycodePrefix = "xn--";
 
+    private static readonly SearchValues<char> MailDelimiters = SearchValues.Create("&;?#=%");
+
     private ExternalLink(string url, string scheme, string host, string unicodeHost, ExternalLinkWarning warning)
     {
         Url = url;
@@ -66,14 +69,31 @@ public sealed class ExternalLink
     /// <item><description>Scheme: absolute <c>http://</c> or <c>https://</c> with a host, or <c>mailto:</c> with something after it; compared case-insensitively. Nothing else (no <c>javascript:</c>, <c>file:</c>, <c>ftp:</c>, relative or UNC forms), and the .NET parser must accept it.</description></item>
     /// <item><description>Length: at most <see cref="MaxLength"/> UTF-16 code units.</description></item>
     /// <item><description>Characters, in the whole string: no control, format, line or paragraph separator character (categories Cc, Cf, Zl, Zp), no white space (a space must be written <c>%20</c>), no invisible filler (U+115F, U+1160, U+180E, U+2800, U+3164, U+FFA0), no lone surrogate, none of <c>"</c> <c>&lt;</c> <c>&gt;</c> <c>`</c> <c>{</c> <c>|</c> <c>}</c> <c>^</c> and backslash (so nothing can break out of the quoting of a launcher), and no <c>%</c> that is not followed by two hex digits.</description></item>
-    /// <item><description>Mail grammar: no raw <c>#</c>, no raw <c>;</c>, at most one raw <c>?</c>; after the <c>?</c> only the fields <c>to</c>, <c>cc</c>, <c>bcc</c>, <c>subject</c> and <c>body</c> (case-insensitive, <c>&amp;</c> separated; so no <c>attach</c>). Decoded recipients (address part and <c>to</c>, <c>cc</c>, <c>bcc</c>, separated by <c>,</c>) have none of the characters above and none of <c>&amp;</c> <c>;</c> <c>?</c> <c>#</c> <c>=</c>; decoded <c>subject</c> has no control, format or separator character and no white space other than a space; decoded <c>body</c> has no control character other than CR, LF and tab.</description></item>
+    /// <item><description>Mail grammar: no raw <c>#</c>, no raw <c>;</c>, at most one raw <c>?</c>; after the <c>?</c> only the fields <c>to</c>, <c>cc</c>, <c>bcc</c>, <c>subject</c> and <c>body</c> (case-insensitive, <c>&amp;</c> separated; so no <c>attach</c>). Decoded recipients (address part and <c>to</c>, <c>cc</c>, <c>bcc</c>, separated by <c>,</c>) have none of the characters above and none of <c>&amp;</c> <c>;</c> <c>?</c> <c>#</c> <c>=</c> <c>%</c> and no non-ASCII text without an <c>@</c>; decoded <c>subject</c> has no control, format or separator character and no white space other than a space; decoded <c>body</c> has no control character other than CR, LF and tab.</description></item>
     /// </list>
-    /// Not rejected but flagged by <see cref="Warning"/>: user information before the host, and Punycode labels.
+    /// Percent-escapes in a mail address are decoded strictly as UTF-8 (<c>+</c> stays a plus); an escape that is not
+    /// valid UTF-8 makes the address invalid. Not rejected but flagged by <see cref="Warning"/>: user information before
+    /// the host, and Punycode labels. This method never throws, whatever the input.
     /// </summary>
     /// <param name="url">The address; may be <see langword="null"/>.</param>
     /// <param name="link">The parsed address, or <see langword="null"/>.</param>
     /// <returns><see langword="true"/> if the address is acceptable.</returns>
     public static bool TryParse(string? url, [NotNullWhen(true)] out ExternalLink? link)
+    {
+        try
+        {
+            return TryParseCore(url, out link);
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or InvalidOperationException)
+        {
+            // UriFormatException is a FormatException: the parser and the IDN mapping throw it for characters they
+            // cannot map (such as a full-width slash in a host). Untrusted input must never throw.
+            link = null;
+            return false;
+        }
+    }
+
+    private static bool TryParseCore(string? url, [NotNullWhen(true)] out ExternalLink? link)
     {
         link = null;
         if (url is null)
@@ -130,23 +150,16 @@ public sealed class ExternalLink
         }
 
         string host;
-        string idnHost;
-        var punycode = false;
+        string unicodeHost;
+        bool punycode;
         if (web)
         {
             host = uri.Host;
-            try
-            {
-                idnHost = uri.IdnHost;
-            }
-            catch (InvalidOperationException)
-            {
-                return false;
-            }
-
+            var idnHost = uri.IdnHost;
             punycode = HasPunycodeLabel(idnHost);
+            unicodeHost = UnicodeOf(host, idnHost);
         }
-        else if (!TryReadMailDomains(text, out host, out idnHost, out punycode))
+        else if (!TryReadMailDomains(text, out host, out unicodeHost, out punycode))
         {
             return false;
         }
@@ -161,19 +174,19 @@ public sealed class ExternalLink
             warning = ExternalLinkWarning.Punycode;
         }
 
-        link = new ExternalLink(text, scheme, host, UnicodeOf(host, idnHost), warning);
+        link = new ExternalLink(text, scheme, host, unicodeHost, warning);
         return true;
     }
 
     /// <summary>
     /// Checks the grammar of a mail address (see <see cref="TryParse"/>) and reads the domains of its recipients (the
-    /// address part and the values of <c>to</c>, <c>cc</c> and <c>bcc</c>, percent-decoded, separated by ","). The
-    /// first domain is the host; a Punycode label in any of them counts.
+    /// address part and the values of <c>to</c>, <c>cc</c> and <c>bcc</c>, strictly percent-decoded, separated by ",").
+    /// The first domain is the host; a Punycode label in any of them counts.
     /// </summary>
-    private static bool TryReadMailDomains(string text, out string host, out string idnHost, out bool punycode)
+    private static bool TryReadMailDomains(string text, out string host, out string unicodeHost, out bool punycode)
     {
         host = string.Empty;
-        idnHost = string.Empty;
+        unicodeHost = string.Empty;
         punycode = false;
         var address = text[Mailto.Length..];
 
@@ -201,9 +214,13 @@ public sealed class ExternalLink
                 }
 
                 var equals = field.IndexOf('=', StringComparison.Ordinal);
-                var name = Uri.UnescapeDataString(equals < 0 ? field : field[..equals]).ToLowerInvariant();
-                var value = equals < 0 ? string.Empty : Uri.UnescapeDataString(field[(equals + 1)..]);
-                switch (name)
+                if (!TryDecode(equals < 0 ? field : field[..equals], out var name)
+                    || !TryDecode(equals < 0 ? string.Empty : field[(equals + 1)..], out var value))
+                {
+                    return false;
+                }
+
+                switch (name.ToLowerInvariant())
                 {
                     case "to":
                     case "cc":
@@ -232,10 +249,16 @@ public sealed class ExternalLink
             address = address[..query];
         }
 
-        lists.Insert(0, Uri.UnescapeDataString(address));
+        if (!TryDecode(address, out var path))
+        {
+            return false;
+        }
+
+        lists.Insert(0, path);
         foreach (var list in lists)
         {
-            if (HasHiddenCharacter(list) || HasBreakoutCharacter(list) || list.AsSpan().IndexOfAny("&;?#=") >= 0)
+            // A "%" left after decoding is a double-encoded delimiter ("%253F"): no client may see it as "?".
+            if (HasHiddenCharacter(list) || HasBreakoutCharacter(list) || list.AsSpan().ContainsAny(MailDelimiters))
             {
                 return false;
             }
@@ -245,6 +268,12 @@ public sealed class ExternalLink
                 var at = recipient.LastIndexOf('@');
                 if (at < 0)
                 {
+                    // A local name is fine; non-ASCII text without an "@" may hide a look-alike one (U+FF20).
+                    if (recipient.Any(static c => c > 0x7F))
+                    {
+                        return false;
+                    }
+
                     continue;
                 }
 
@@ -255,11 +284,11 @@ public sealed class ExternalLink
                 }
 
                 var ascii = AsciiOf(domain);
-                punycode |= HasPunycodeLabel(ascii);
+                punycode |= HasPunycodeLabel(ascii ?? domain);
                 if (host.Length == 0)
                 {
                     host = domain;
-                    idnHost = ascii;
+                    unicodeHost = ascii is null ? domain : UnicodeOf(domain, ascii);
                 }
             }
         }
@@ -267,15 +296,67 @@ public sealed class ExternalLink
         return true;
     }
 
-    private static string AsciiOf(string host)
+    // Decodes percent-escapes as UTF-8 and fails on any byte sequence that is not valid UTF-8 (a lenient client could
+    // turn "%C0%8A" into a line break, or read "%85" as Latin-1 NEL). A "+" stays a plus.
+    private static bool TryDecode(string text, out string decoded)
+    {
+        var bytes = new List<byte>(text.Length);
+        Span<byte> buffer = stackalloc byte[4];
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '%')
+            {
+                if (i + 2 >= text.Length || !byte.TryParse(text.AsSpan(i + 1, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var value))
+                {
+                    decoded = string.Empty;
+                    return false;
+                }
+
+                bytes.Add(value);
+                i += 2;
+            }
+            else
+            {
+                if (!Rune.TryGetRuneAt(text, i, out var rune))
+                {
+                    decoded = string.Empty;
+                    return false;
+                }
+
+                var length = rune.EncodeToUtf8(buffer);
+                for (var k = 0; k < length; k++)
+                {
+                    bytes.Add(buffer[k]);
+                }
+
+                i += rune.IsBmp ? 0 : 1;
+            }
+        }
+
+        try
+        {
+            decoded = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes.ToArray());
+            return true;
+        }
+        catch (DecoderFallbackException)
+        {
+            decoded = string.Empty;
+            return false;
+        }
+    }
+
+    // The ASCII (Punycode) form of a domain, or null if the mapping fails or yields anything but letters, digits,
+    // hyphens and dots: the mapping would otherwise fold look-alikes such as a full-width "?" into real delimiters.
+    private static string? AsciiOf(string domain)
     {
         try
         {
-            return new IdnMapping().GetAscii(host);
+            var ascii = new IdnMapping().GetAscii(domain);
+            return ascii.All(static c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.') ? ascii : null;
         }
         catch (ArgumentException)
         {
-            return host;
+            return null;
         }
     }
 
