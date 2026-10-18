@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using Pagewing.App.Controls;
 using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
+using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.Views;
 
@@ -203,6 +204,28 @@ public sealed partial class TabStrip : UserControl
         }
 
         return view;
+    }
+
+    /// <summary>
+    /// Gets the position a tab dropped at <paramref name="screen"/> takes in this strip, or <see langword="null"/>
+    /// when the point is not over the strip (the whole row: tabs, buttons and drag area): 0 without tabs, the number of
+    /// tabs when only the active one is shown (the others have no place to point at), else the boundary between tabs
+    /// the point is nearest to.
+    /// </summary>
+    internal int? DropIndexAt(PixelPoint screen)
+    {
+        if (_viewModel is null || !new Rect(Bounds.Size).Contains(this.PointToClient(screen)))
+        {
+            return null;
+        }
+
+        var count = _viewModel.Tabs.Count;
+        if (count == 0)
+        {
+            return 0;
+        }
+
+        return TabPanel.ShowOnlyActive ? count : TabDragMath.InsertionIndex(TabPanel.PointToClient(screen).X, TabPanel.TabWidth, count);
     }
 
     /// <summary>Gets the tab whose view contains <paramref name="source"/>, or <see langword="null"/>.</summary>

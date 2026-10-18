@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Pagewing.App.ViewModels;
+using Pagewing.App.Views;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.Services;
@@ -120,6 +121,38 @@ internal sealed class Workspace : IDisposable, ITabDragHost
 
         _activeDrag = drag;
         return drag;
+    }
+
+    /// <summary>
+    /// Gets the window whose tab strip lies under <paramref name="pointer"/> (a point on the screen) and the position a
+    /// dropped tab takes there, or <see langword="null"/>. <paramref name="floating"/>, the window of the drag, is no
+    /// target. Where strips overlap, the window activated last wins, then the newest.
+    /// </summary>
+    internal (MainViewModel Target, int Index)? FindDropTarget(PixelPoint pointer, MainViewModel floating)
+    {
+        var candidates = new List<MainViewModel>(_windows.Count);
+        if (ActiveWindow is not null)
+        {
+            candidates.Add(ActiveWindow);
+        }
+
+        for (var i = _windows.Count - 1; i >= 0; i--)
+        {
+            if (!candidates.Contains(_windows[i]))
+            {
+                candidates.Add(_windows[i]);
+            }
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (!ReferenceEquals(candidate, floating) && _views[candidate] is MainWindow window && window.TabDropIndexAt(pointer) is { } index)
+            {
+                return (candidate, index);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>A drag has ended: the workspace is free for the next one.</summary>

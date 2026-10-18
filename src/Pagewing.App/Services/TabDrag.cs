@@ -14,6 +14,9 @@ namespace Pagewing.App.Services;
 /// </summary>
 internal sealed class TabDrag
 {
+    /// <summary>Where the floating window waits while the pointer is over a tab strip: far off every screen.</summary>
+    public static readonly PixelPoint ParkedPosition = new(-32000, -32000);
+
     private readonly Workspace _workspace;
     private readonly MainViewModel _source;
     private readonly TabViewModel _tab;
@@ -51,16 +54,29 @@ internal sealed class TabDrag
     /// <summary>Gets whether the drag is over (dropped, cancelled, or its window closed).</summary>
     public bool IsEnded { get; private set; }
 
-    /// <summary>The pointer moved: the floating window follows it.</summary>
+    /// <summary>
+    /// Gets whether the floating window is parked off the screen because the pointer is over the tab strip of a window
+    /// that would take the tab (that strip shows its insertion mark).
+    /// </summary>
+    public bool IsParked { get; private set; }
+
+    /// <summary>
+    /// The pointer moved. Over the tab strip of another window (or of the source window) that strip shows where the tab
+    /// would go in and the floating window steps aside; elsewhere the floating window follows the pointer.
+    /// </summary>
     public void MoveTo(PixelPoint pointer)
     {
         if (IsLive(out var window))
         {
-            window.Position = new PixelPoint(pointer.X - _grab.X, pointer.Y - _grab.Y);
+            Track(pointer, window);
         }
     }
 
-    /// <summary>The button was released at <paramref name="pointer"/>: the floating window stays where it is and comes to the front.</summary>
+    /// <summary>
+    /// The button was released at <paramref name="pointer"/>: over a tab strip the tab goes in there (with its session)
+    /// and the emptied floating window closes, even if it is the oldest window; elsewhere the floating window stays
+    /// where it is and comes to the front.
+    /// </summary>
     public void Complete(PixelPoint pointer)
     {
         if (!IsLive(out var window))
@@ -68,9 +84,21 @@ internal sealed class TabDrag
             return;
         }
 
-        MoveTo(pointer);
+        var target = Track(pointer, window);
         End();
-        window.Activate();
+        if (target is { } drop)
+        {
+            Floating.DetachTab(_tab);
+            drop.Target.AttachTab(_tab, drop.Index);
+
+            // Not inside the event of the strip that leads the drag.
+            Dispatcher.UIThread.Post(window.Close);
+            _workspace.WindowOf(drop.Target).Activate();
+        }
+        else
+        {
+            window.Activate();
+        }
     }
 
     /// <summary>
@@ -105,6 +133,20 @@ internal sealed class TabDrag
         End();
     }
 
+    /// <summary>Moves the floating window (or parks it) and the insertion marks for the pointer; returns the target under it.</summary>
+    private (MainViewModel Target, int Index)? Track(PixelPoint pointer, Window window)
+    {
+        var target = _workspace.FindDropTarget(pointer, Floating);
+        foreach (var viewModel in _workspace.Windows)
+        {
+            viewModel.TabDropIndex = target is { } drop && ReferenceEquals(drop.Target, viewModel) ? drop.Index : null;
+        }
+
+        IsParked = target is not null;
+        window.Position = IsParked ? ParkedPosition : new PixelPoint(pointer.X - _grab.X, pointer.Y - _grab.Y);
+        return target;
+    }
+
     private bool IsLive(out Window window)
     {
         window = null!;
@@ -125,6 +167,11 @@ internal sealed class TabDrag
 
     private void End()
     {
+        foreach (var viewModel in _workspace.Windows)
+        {
+            viewModel.TabDropIndex = null;
+        }
+
         IsEnded = true;
         _workspace.EndDrag(this);
     }
