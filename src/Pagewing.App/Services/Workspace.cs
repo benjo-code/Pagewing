@@ -13,7 +13,7 @@ namespace Pagewing.App.Services;
 /// cref="MainViewModel.CloseWindowWhenEmpty"/>), and when the first one is closed, the next one takes its part. A closed
 /// window releases its tabs. Everything except <see cref="OnExternalOpen"/> is used on the UI thread.
 /// </summary>
-internal sealed class Workspace : IDisposable
+internal sealed class Workspace : IDisposable, ITabDragHost
 {
     /// <summary>How far a new window is offset to the right and down from its source window, in device-independent pixels.</summary>
     public const double NewWindowOffset = 32;
@@ -23,6 +23,7 @@ internal sealed class Workspace : IDisposable
     private readonly Func<Window, IFilePicker> _createPicker;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
+    private TabDrag? _activeDrag;
 
     /// <param name="sessionFactory">Creates the session of each new tab, in every window.</param>
     /// <param name="createWindow">Creates a window (a <see cref="Views.MainWindow"/> in the app).</param>
@@ -82,9 +83,62 @@ internal sealed class Workspace : IDisposable
             return;
         }
 
-        // The document view of the source window saves where it showed the tab when it leaves it.
+        OpenDetached(source, sourceWindow, tab, position: null, showActivated: true);
+    }
+
+    /// <summary>
+    /// Starts the drag of a tab out of its strip (<see cref="ITabDragHost.BeginTabDrag"/>). With two or more tabs the
+    /// tab goes into a new window of the size of the source window, which is placed so that the pointer holds it where
+    /// it held the tab, and is shown without taking the focus (the strip that leads the drag keeps hearing the
+    /// keyboard, Esc cancels). With only this tab the window itself follows the pointer.
+    /// </summary>
+    public TabDrag? BeginTabDrag(MainViewModel source, TabViewModel tab, PixelPoint pointer, PixelPoint grip)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(tab);
+        if (_activeDrag is not null || !_views.TryGetValue(source, out var sourceWindow) || source.Tabs.IndexOf(tab) < 0)
+        {
+            return null;
+        }
+
+        TabDrag drag;
+        if (source.Tabs.Count < 2)
+        {
+            var position = sourceWindow.Position;
+            var grab = new PixelPoint(pointer.X - position.X, pointer.Y - position.Y);
+            drag = new TabDrag(this, source, tab, 0, source, grab, movesWholeWindow: true, position);
+        }
+        else
+        {
+            // The position of a window is its frame; the grip is measured from its content.
+            var content = sourceWindow.PointToScreen(default);
+            var grab = new PixelPoint(content.X - sourceWindow.Position.X + grip.X, content.Y - sourceWindow.Position.Y + grip.Y);
+            var index = source.Tabs.IndexOf(tab);
+            var floating = OpenDetached(source, sourceWindow, tab, new PixelPoint(pointer.X - grab.X, pointer.Y - grab.Y), showActivated: false);
+            drag = new TabDrag(this, source, tab, index, floating, grab, movesWholeWindow: false, default);
+        }
+
+        _activeDrag = drag;
+        return drag;
+    }
+
+    /// <summary>A drag has ended: the workspace is free for the next one.</summary>
+    internal void EndDrag(TabDrag drag)
+    {
+        if (ReferenceEquals(_activeDrag, drag))
+        {
+            _activeDrag = null;
+        }
+    }
+
+    /// <summary>
+    /// Takes <paramref name="tab"/> out of <paramref name="source"/> without releasing it and opens a window with it
+    /// as its only tab. The document view of the source window saves where it showed the tab when it leaves it.
+    /// </summary>
+    private MainViewModel OpenDetached(MainViewModel source, Window sourceWindow, TabViewModel tab, PixelPoint? position, bool showActivated)
+    {
         source.DetachTab(tab);
-        Open(tab, sourceWindow, beforeShow: null);
+        return Open(tab, sourceWindow, beforeShow: null, position, showActivated);
     }
 
     /// <summary>
@@ -140,15 +194,22 @@ internal sealed class Workspace : IDisposable
         }
     }
 
-    private MainViewModel Open(TabViewModel? firstTab, Window? source, Action<Window, MainViewModel>? beforeShow)
+    private MainViewModel Open(
+        TabViewModel? firstTab, Window? source, Action<Window, MainViewModel>? beforeShow, PixelPoint? position = null, bool showActivated = true)
     {
         var window = _createWindow();
         var viewModel = new MainViewModel(_sessionFactory, _createPicker(window));
         if (source is not null)
         {
-            PlaceNextTo(window, source);
+            PlaceNextTo(window, source, position);
         }
 
+        if (!showActivated)
+        {
+            window.ShowActivated = false;
+        }
+
+        viewModel.TabDragHost = this;
         viewModel.MoveToNewWindowRequested += tab => MoveToNewWindow(viewModel, tab);
         window.Activated += (_, _) =>
         {
@@ -174,16 +235,25 @@ internal sealed class Workspace : IDisposable
         return viewModel;
     }
 
-    /// <summary>Gives <paramref name="window"/> the size of <paramref name="source"/> and puts it next to it, on its screen.</summary>
-    private static void PlaceNextTo(Window window, Window source)
+    /// <summary>
+    /// Gives <paramref name="window"/> the size of <paramref name="source"/> and puts it at <paramref name="position"/>,
+    /// or next to the source window, on its screen, without one.
+    /// </summary>
+    private static void PlaceNextTo(Window window, Window source, PixelPoint? position)
     {
         var size = source.ClientSize;
         var scaling = source.DesktopScaling;
-        var frame = new PixelRect(source.Position, PixelSize.FromSize(size, scaling));
-        var area = source.Screens.ScreenFromWindow(source)?.WorkingArea;
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Width = size.Width;
         window.Height = size.Height;
+        if (position is { } given)
+        {
+            window.Position = given;
+            return;
+        }
+
+        var frame = new PixelRect(source.Position, PixelSize.FromSize(size, scaling));
+        var area = source.Screens.ScreenFromWindow(source)?.WorkingArea;
         window.Position = PlaceNextTo(frame, area, scaling);
     }
 
@@ -199,6 +269,12 @@ internal sealed class Workspace : IDisposable
         if (ReferenceEquals(ActiveWindow, viewModel))
         {
             ActiveWindow = null;
+        }
+
+        // A drag whose window is gone has nothing left to lead.
+        if (_activeDrag is not null && ReferenceEquals(_activeDrag.Floating, viewModel))
+        {
+            _activeDrag = null;
         }
 
         UpdateCloseWindowWhenEmpty();
