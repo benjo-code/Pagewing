@@ -1,3 +1,4 @@
+using Pagewing.Core.Printing;
 using Pagewing.Core.Text;
 using Pagewing.Pdfium;
 
@@ -324,6 +325,99 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
         }
 
         return RenderAsync(pageIndex, scale, new PdfiumPixelRect(tile.X, tile.Y, tile.Width, tile.Height), options, cancellationToken);
+    }
+
+    /// <summary>Reads whether the document is encrypted and whether its permissions allow printing.</summary>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PdfPrintInfo> GetPrintInfoAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return document.Thread.InvokeAsync(
+            () => new PdfPrintInfo(document.IsEncrypted, document.MayPrint),
+            PdfiumPriority.Interactive,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Draws one page on a printer device context (Windows <c>HDC</c> with a page started), with its annotations, always in
+    /// the light colours of the page. Runs as one short request with <see cref="PdfPriority.Background"/>, so the rendering
+    /// of the tabs goes on between two pages of a job.
+    /// </summary>
+    /// <param name="pageIndex">The page, 0-based.</param>
+    /// <param name="deviceContext">The <c>HDC</c>.</param>
+    /// <param name="placement">Where the page lands, in device units.</param>
+    /// <param name="cancellationToken">Cancels the request before it runs.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Invalid page index or placement.</exception>
+    /// <exception cref="PlatformNotSupportedException">The OS is not Windows.</exception>
+    /// <exception cref="PdfRenderException">The page could not be drawn.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the page was drawn.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task PrintPageToDeviceAsync(int pageIndex, nint deviceContext, DevicePlacement placement, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(pageIndex, pageCount);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(placement.Width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(placement.Height);
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Printing to a device context needs Windows.");
+        }
+
+        return document.Thread.InvokeAsync(
+            () =>
+            {
+                try
+                {
+                    using var page = document.LoadPage(pageIndex);
+                    page.RenderToDevice(deviceContext, placement.X, placement.Y, placement.Width, placement.Height, placement.QuarterTurns);
+                }
+                catch (PdfiumRenderException ex)
+                {
+                    throw new PdfRenderException(ex.Message, ex);
+                }
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes the whole document, without encryption, to <paramref name="path"/>: into a temporary file next to it, which
+    /// then replaces <paramref name="path"/>, so a failure leaves nothing half written. For handing an encrypted document to a
+    /// printing system that cannot ask for its password; the caller checks <see cref="PdfPrintInfo.PrintAllowed"/> first.
+    /// </summary>
+    /// <exception cref="IOException">The file could not be written.</exception>
+    /// <exception cref="UnauthorizedAccessException">Access to the folder was denied.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the save started.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task SaveDecryptedCopyAsync(string path, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        var fullPath = Path.GetFullPath(path);
+        return document.Thread.InvokeAsync(
+            () =>
+            {
+                var temporary = fullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    {
+                        document.SaveWithoutSecurity(stream);
+                        stream.Flush(flushToDisk: true);
+                    }
+
+                    File.Move(temporary, fullPath, overwrite: true);
+                }
+                catch
+                {
+                    File.Delete(temporary);
+                    throw;
+                }
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
     }
 
     /// <summary>Closes the document. The close is queued to the PDFium thread; this call does not wait.</summary>

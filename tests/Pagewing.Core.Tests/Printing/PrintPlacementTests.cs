@@ -107,6 +107,34 @@ public sealed class PrintPlacementTests
         Assert.True(placement.Width > placement.Height);
     }
 
+    [Fact]
+    public void ToDeviceConvertsPointsToPixels()
+    {
+        var placement = new PrintPlacement(36, 72, 144, 72, 1, false);
+
+        var device = placement.ToDevice(600, 300);
+
+        Assert.Equal(new DevicePlacement(300, 300, 1200, 300, 1), device);
+    }
+
+    [Fact]
+    public void ToDeviceNeverGivesAnEmptyArea()
+    {
+        var device = new PrintPlacement(0, 0, 0.01, 0.01, 0, false).ToDevice(72, 72);
+
+        Assert.Equal(1, device.Width);
+        Assert.Equal(1, device.Height);
+    }
+
+    [Theory]
+    [InlineData(0, 300)]
+    [InlineData(300, -1)]
+    [InlineData(double.NaN, 300)]
+    public void ToDeviceRejectsABadResolution(double dpiX, double dpiY)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PrintPlacement(0, 0, 10, 10, 0, false).ToDevice(dpiX, dpiY));
+    }
+
     [Theory]
     [InlineData(0, 100, 100, 100)]
     [InlineData(100, 0, 100, 100)]

@@ -21,6 +21,33 @@ public readonly record struct PaperArea(double Width, double Height);
 public readonly record struct PrintPlacement(double X, double Y, double Width, double Height, int QuarterTurns, bool Clipped)
 {
     private const double ClipTolerance = 0.01;
+    private const double PointsPerInch = 72;
+
+    /// <summary>Converts the placement to device units of a printer.</summary>
+    /// <param name="dpiX">Horizontal resolution of the printer in dots per inch.</param>
+    /// <param name="dpiY">Vertical resolution of the printer in dots per inch.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A resolution is not positive and finite.</exception>
+    public DevicePlacement ToDevice(double dpiX, double dpiY)
+    {
+        if (!(double.IsFinite(dpiX) && dpiX > 0))
+        {
+            throw new ArgumentOutOfRangeException(nameof(dpiX), dpiX, "The resolution must be positive.");
+        }
+
+        if (!(double.IsFinite(dpiY) && dpiY > 0))
+        {
+            throw new ArgumentOutOfRangeException(nameof(dpiY), dpiY, "The resolution must be positive.");
+        }
+
+        var scaleX = dpiX / PointsPerInch;
+        var scaleY = dpiY / PointsPerInch;
+        return new DevicePlacement(
+            (int)Math.Round(X * scaleX),
+            (int)Math.Round(Y * scaleY),
+            Math.Max(1, (int)Math.Round(Width * scaleX)),
+            Math.Max(1, (int)Math.Round(Height * scaleY)),
+            QuarterTurns);
+    }
 
     /// <summary>Places <paramref name="page"/> on <paramref name="paper"/>.</summary>
     /// <param name="page">The page as shown (already rotated by its own <c>/Rotate</c>).</param>
@@ -59,3 +86,11 @@ public readonly record struct PrintPlacement(double X, double Y, double Width, d
         return new PrintPlacement((paper.Width - width) / 2, (paper.Height - height) / 2, width, height, turn ? 1 : 0, clipped);
     }
 }
+
+/// <summary>A <see cref="PrintPlacement"/> in device units (pixels of the printer), as <c>FPDF_RenderPage</c> takes it.</summary>
+/// <param name="X">Left edge of the display area.</param>
+/// <param name="Y">Top edge of the display area.</param>
+/// <param name="Width">Width of the display area, after the turn.</param>
+/// <param name="Height">Height of the display area, after the turn.</param>
+/// <param name="QuarterTurns">0, or 1 for a turn by 90° clockwise.</param>
+public readonly record struct DevicePlacement(int X, int Y, int Width, int Height, int QuarterTurns);

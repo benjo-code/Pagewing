@@ -15,6 +15,21 @@ internal static class FpdfConstants
     /// </summary>
     public const int RenderConvertFillToStroke = 0x20;
 
+    /// <summary><c>FPDF_PRINTING</c>: render for a printer (<c>FPDF_RenderPage</c> on a printer device context).</summary>
+    public const int RenderPrinting = 0x800;
+
+    /// <summary><c>FPDF_NO_INCREMENTAL</c>: write the whole file (<c>FPDF_SaveAsCopy</c>).</summary>
+    public const int SaveNoIncremental = 1 << 1;
+
+    /// <summary><c>FPDF_REMOVE_SECURITY</c>: write the file without encryption (<c>FPDF_SaveAsCopy</c>).</summary>
+    public const int SaveRemoveSecurity = 1 << 2;
+
+    /// <summary>
+    /// Permission bit 3 of the permission flags (<c>FPDF_GetDocPermissions</c>): printing is allowed (PDF specification,
+    /// ISO 32000-1, table 22; bit n has the value 1 &lt;&lt; (n - 1)).
+    /// </summary>
+    public const int PermissionPrint = 1 << 2;
+
     /// <summary><c>FPDF_ERR_SUCCESS</c>.</summary>
     public const int ErrSuccess = 0;
 
