@@ -8,6 +8,8 @@
 //   dotnet run tools/package.cs -- inno-install [--dir <dir>]                         (Windows)
 //   dotnet run tools/package.cs -- installer --layout <dir> --version <x.y.z> --out <file> [--iscc <ISCC.exe>] [--repo <root>]   (Windows)
 //   dotnet run tools/package.cs -- installer-smoke <setup.exe> [--repo <root>]          (Windows)
+//   dotnet run tools/package.cs -- deb --layout <dir> --version <x.y.z> --out <pagewing_x.y.z_amd64.deb> [--repo <root>]   (Linux)
+//   dotnet run tools/package.cs -- deb-smoke <file.deb> [--repo <root>]                  (Linux)
 //   dotnet run tools/package.cs -- selftest
 // Run from the repository root. Only inno-install uses the network (one download with a pinned SHA-256).
 
@@ -31,6 +33,8 @@ static class Cli
         "  inno-install [--dir <Ordner>]                                     laedt Inno Setup (feste Version, SHA-256 geprueft) ins Benutzerprofil (Windows)\n" +
         "  installer --layout <Ordner> --version <x.y.z> --out <Datei> [--iscc <ISCC.exe>]   baut Pagewing-<Version>-win-x64-setup.exe (Windows)\n" +
         "  installer-smoke <Setup.exe>                                       installiert still, prueft, installiert erneut, deinstalliert (Windows)\n" +
+        "  deb --layout <Ordner> --version <x.y.z> --out <Datei>             baut pagewing_<Version>_amd64.deb (Linux, dpkg-deb)\n" +
+        "  deb-smoke <Datei.deb>                                             entpackt, prueft Starter, Symlink, ruft die CLI auf, lintian/desktop-file-validate wenn vorhanden (Linux)\n" +
         "  selftest                                     prueft die Werkzeugteile";
 
     // Command name -> handler (receives the arguments after the command name). Add new subcommands here.
@@ -43,6 +47,8 @@ static class Cli
         ["inno-install"] = InnoInstall.Run,
         ["installer"] = Installer.Run,
         ["installer-smoke"] = InstallerSmoke.Run,
+        ["deb"] = Deb.Run,
+        ["deb-smoke"] = DebSmoke.Run,
         ["selftest"] = SelfTest.Run,
     };
 
@@ -1317,6 +1323,433 @@ static class InstallerSmoke
     }
 }
 
+enum DebEntryKind
+{
+    Directory,
+    File,
+    Symlink,
+}
+
+// One entry of the package tree; Path is relative to the package root ("usr/bin/pagewing"), Mode the Unix mode (0755 = 0x1ED, 0644 = 0x1A4).
+sealed record DebEntry(string Path, DebEntryKind Kind, int Mode, string? Source = null, string? LinkTarget = null);
+
+static partial class Deb
+{
+    // PLACEHOLDER until the owner decides (open question of Milestone 8, task 9). A noreply address is
+    // used on purpose; replace it here, nowhere else (control.template takes it from this constant).
+    public const string Maintainer = "Pagewing contributors <noreply@users.noreply.github.com>";
+
+    public static readonly DateTimeOffset FixedTime = new(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private const int Dir = 0x1ED;   // 0755
+    private const int Exec = 0x1ED;  // 0755
+    private const int Plain = 0x1A4; // 0644
+    private const string LibDir = "usr/lib/pagewing";
+
+    [GeneratedRegex(@"^(?<core>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?:-(?<pre>[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?$")]
+    private static partial Regex VersionPattern();
+
+    // x.y.z stays, x.y.z-rc1 becomes x.y.z~rc1 (a tilde sorts before the release); anything else is null.
+    public static string? DebVersion(string version)
+    {
+        var m = VersionPattern().Match(version);
+        if (!m.Success)
+        {
+            return null;
+        }
+
+        return m.Groups["pre"].Success ? $"{m.Groups["core"].Value}~{m.Groups["pre"].Value}" : m.Groups["core"].Value;
+    }
+
+    // Reads one control field with dpkg-deb -f (selftest helper).
+    public static string Field(string deb, string name) => Tool.Run("dpkg-deb", ["-f", deb, name], out var text) == 0 ? text.Trim() : "?";
+
+    public static string FileName(string debVersion) => $"pagewing_{debVersion}_amd64.deb";
+
+    // Installed-Size is in KiB; every file counts rounded up, like a block-based size would.
+    public static long InstalledSizeKiB(IEnumerable<long> fileSizes) => Math.Max(1, fileSizes.Sum(s => (s + 1023) / 1024));
+
+    public static string Control(string template, string debVersion, long installedSizeKiB, string maintainer) =>
+        template.Replace("@VERSION@", debVersion, StringComparison.Ordinal)
+            .Replace("@INSTALLED_SIZE@", installedSizeKiB.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("@MAINTAINER@", maintainer, StringComparison.Ordinal);
+
+    // The package tree: layout under /usr/lib/pagewing, launcher link, .desktop, icons, copyright. Throws IOException when an input is missing.
+    public static List<DebEntry> Plan(string layout, string repo)
+    {
+        var files = new List<DebEntry>();
+        foreach (var required in new[] { "Pagewing", "libpdfium.so", "THIRD-PARTY-NOTICES.txt", "cli/pagewing", "cli/libpdfium.so" })
+        {
+            if (!File.Exists(Path.Combine(layout, required)))
+            {
+                throw new IOException($"Layout enthaelt {required} nicht: {layout}");
+            }
+        }
+
+        foreach (var file in Directory.EnumerateFiles(layout, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(layout, file).Replace('\\', '/');
+            if (relative == "LICENSE")
+            {
+                continue; // the licence is in /usr/share/doc/pagewing/copyright and THIRD-PARTY-NOTICES.txt
+            }
+
+            files.Add(new DebEntry($"{LibDir}/{relative}", DebEntryKind.File, relative is "Pagewing" or "cli/pagewing" ? Exec : Plain, file));
+        }
+
+        var icons = Path.Combine(repo, "Docs", "design", "icons", "linux", "hicolor");
+        if (!Directory.Exists(icons))
+        {
+            throw new IOException($"Symbolordner fehlt: {icons}");
+        }
+
+        foreach (var icon in Directory.EnumerateDirectories(icons))
+        {
+            var png = Path.Combine(icon, "apps", "pagewing.png");
+            if (File.Exists(png))
+            {
+                files.Add(new DebEntry($"usr/share/icons/hicolor/{Path.GetFileName(icon)}/apps/pagewing.png", DebEntryKind.File, Plain, png));
+            }
+        }
+
+        if (files.All(f => !f.Path.StartsWith("usr/share/icons/", StringComparison.Ordinal)))
+        {
+            throw new IOException($"Keine Symbole in {icons}");
+        }
+
+        files.Add(Source(repo, "packaging/linux/pagewing.desktop", "usr/share/applications/pagewing.desktop"));
+        files.Add(Source(repo, "packaging/linux/copyright.template", "usr/share/doc/pagewing/copyright"));
+        var all = new List<DebEntry>(files) { new("usr/bin/pagewing", DebEntryKind.Symlink, 0x1FF, null, "../lib/pagewing/cli/pagewing") };
+        foreach (var directory in all.SelectMany(e => Parents(e.Path)).Distinct(StringComparer.Ordinal).ToList())
+        {
+            all.Add(new DebEntry(directory, DebEntryKind.Directory, Dir));
+        }
+
+        return all.OrderBy(e => e.Path, StringComparer.Ordinal).ToList();
+    }
+
+    private static DebEntry Source(string repo, string relative, string target)
+    {
+        var file = Path.Combine(repo, relative);
+        return File.Exists(file) ? new DebEntry(target, DebEntryKind.File, Plain, file) : throw new IOException($"Datei fehlt: {file}");
+    }
+
+    private static IEnumerable<string> Parents(string path)
+    {
+        for (var i = path.IndexOf('/', StringComparison.Ordinal); i > 0; i = path.IndexOf('/', i + 1))
+        {
+            yield return path[..i];
+        }
+    }
+
+    // Writes the tree with modes and the fixed time; dpkg-deb --root-owner-group makes everything root:root.
+    public static void Stage(IReadOnlyList<DebEntry> entries, string stage, string control)
+    {
+        Directory.CreateDirectory(stage);
+        var directories = new List<string> { stage };
+        foreach (var entry in entries)
+        {
+            var target = Path.Combine(stage, entry.Path);
+            switch (entry.Kind)
+            {
+                case DebEntryKind.Directory:
+                    Directory.CreateDirectory(target);
+                    File.SetUnixFileMode(target, (UnixFileMode)entry.Mode);
+                    directories.Add(target);
+                    break;
+                case DebEntryKind.File:
+                    File.Copy(entry.Source!, target);
+                    File.SetUnixFileMode(target, (UnixFileMode)entry.Mode);
+                    File.SetLastWriteTimeUtc(target, FixedTime.UtcDateTime);
+                    break;
+                default:
+                    File.CreateSymbolicLink(target, entry.LinkTarget!);
+                    break;
+            }
+        }
+
+        var debian = Path.Combine(stage, "DEBIAN");
+        Directory.CreateDirectory(debian);
+        File.SetUnixFileMode(debian, (UnixFileMode)Dir);
+        directories.Add(debian);
+        var controlFile = Path.Combine(debian, "control");
+        File.WriteAllText(controlFile, control, new UTF8Encoding(false));
+        File.SetUnixFileMode(controlFile, (UnixFileMode)Plain);
+        File.SetLastWriteTimeUtc(controlFile, FixedTime.UtcDateTime);
+        File.SetUnixFileMode(stage, (UnixFileMode)Dir);
+        foreach (var directory in directories.OrderByDescending(d => d.Length)) // children first: they change the parent's time
+        {
+            Directory.SetLastWriteTimeUtc(directory, FixedTime.UtcDateTime);
+        }
+    }
+
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--layout", "--version", "--out", "--repo");
+        if (parsed is not { } p || p.Positional.Count != 0 ||
+            !p.Named.TryGetValue("--layout", out var layout) || !p.Named.TryGetValue("--version", out var version) ||
+            !p.Named.TryGetValue("--out", out var output))
+        {
+            Console.Error.WriteLine("Aufruf: deb --layout <Ordner> --version <x.y.z> --out <Datei>");
+            return 2;
+        }
+
+        if (DebVersion(version) is not { } debVersion)
+        {
+            Console.Error.WriteLine($"deb: ungueltige Version (erwartet x.y.z oder x.y.z-vorabversion): {version}");
+            return 2;
+        }
+
+        if (Path.GetFileName(output) != FileName(debVersion))
+        {
+            Console.Error.WriteLine($"deb: die Ausgabedatei muss {FileName(debVersion)} heissen: {output}");
+            return 2;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine("deb: nur unter Linux (dpkg-deb)");
+            return 1;
+        }
+
+        var repo = Path.GetFullPath(p.Named.GetValueOrDefault("--repo", "."));
+        var work = Path.Combine(Path.GetTempPath(), "pagewing-deb-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            if (!Directory.Exists(layout))
+            {
+                throw new IOException($"Layout-Ordner fehlt: {layout}");
+            }
+
+            var entries = Plan(layout, repo);
+            var size = InstalledSizeKiB(entries.Where(e => e.Kind == DebEntryKind.File).Select(e => new FileInfo(e.Source!).Length));
+            var template = File.ReadAllText(Path.Combine(repo, "packaging", "linux", "control.template"));
+            Stage(entries, Path.Combine(work, "stage"), Control(template, debVersion, size, Maintainer));
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
+            File.Delete(output);
+            var env = new Dictionary<string, string> { ["SOURCE_DATE_EPOCH"] = FixedTime.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture) };
+            var code = Tool.Run("dpkg-deb", ["--root-owner-group", "-Zxz", "--build", Path.Combine(work, "stage"), output], out var text, env: env);
+            Console.Write(text);
+            if (code != 0)
+            {
+                Console.Error.WriteLine($"deb: dpkg-deb endete mit Code {code}");
+                return 1;
+            }
+
+            Console.WriteLine($"deb: {entries.Count(e => e.Kind == DebEntryKind.File)} Dateien in {output}");
+            return 0;
+        }
+        catch (IOException e)
+        {
+            Console.Error.WriteLine($"deb: {e.Message}");
+            return 1;
+        }
+        finally
+        {
+            if (Directory.Exists(work))
+            {
+                Directory.Delete(work, true);
+            }
+        }
+    }
+}
+
+static class Tool
+{
+    // Runs a program without a shell and returns its exit code with stdout and stderr in one text; -1 when it is not installed.
+    public static int Run(string file, IEnumerable<string> arguments, out string output, string? workingDirectory = null, IDictionary<string, string>? env = null)
+    {
+        var psi = new ProcessStartInfo(file) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var argument in arguments)
+        {
+            psi.ArgumentList.Add(argument);
+        }
+
+        if (workingDirectory is not null)
+        {
+            psi.WorkingDirectory = workingDirectory;
+        }
+
+        foreach (var (key, value) in env ?? new Dictionary<string, string>())
+        {
+            psi.Environment[key] = value;
+        }
+
+        try
+        {
+            using var process = Process.Start(psi)!;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(TimeSpan.FromMinutes(5)))
+            {
+                process.Kill(entireProcessTree: true);
+                output = "Zeitlimit";
+                return -2;
+            }
+
+            process.WaitForExit();
+            output = stdout.Result + stderr.Result;
+            return process.ExitCode;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            output = $"{file} nicht gefunden";
+            return -1;
+        }
+    }
+}
+
+static partial class DebSmoke
+{
+    [GeneratedRegex(@"^(?<type>[-dl])\S+\s+(?<owner>\S+)\s+\d+\s+\S+\s+\S+\s+(?<path>.+)$")]
+    private static partial Regex ListingLine();
+
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--repo");
+        if (parsed is not { } p || p.Positional.Count != 1)
+        {
+            Console.Error.WriteLine("Aufruf: deb-smoke <Datei.deb> [--repo <Ordner>]");
+            return 2;
+        }
+
+        var deb = Path.GetFullPath(p.Positional[0]);
+        var repo = Path.GetFullPath(p.Named.GetValueOrDefault("--repo", "."));
+        if (!File.Exists(deb))
+        {
+            Console.Error.WriteLine($"deb-smoke: Datei fehlt: {deb}");
+            return 1;
+        }
+
+        var failures = new List<string>();
+        void Check(bool ok, string what)
+        {
+            Console.WriteLine($"{(ok ? "ok    " : "FEHLER")} {what}");
+            if (!ok)
+            {
+                failures.Add(what);
+            }
+        }
+
+        var work = Path.Combine(Path.GetTempPath(), "pagewing-deb-smoke-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(work);
+            Check(Tool.Run("dpkg-deb", ["-I", deb], out var info) == 0, "dpkg-deb -I liest das Paket");
+            Console.Write(info);
+            foreach (var field in new[] { "Package", "Version", "Architecture", "Maintainer", "Depends", "Installed-Size" })
+            {
+                Check(Tool.Run("dpkg-deb", ["-f", deb, field], out var value) == 0 && value.Trim().Length > 0, $"Feld {field}: {value.Trim()}");
+            }
+
+            Check(Tool.Run("dpkg-deb", ["-c", deb], out var listing) == 0, "dpkg-deb -c listet den Inhalt");
+            Console.Write(listing);
+            var lines = listing.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => ListingLine().Match(l)).ToList();
+            Check(lines.Count > 0 && lines.All(m => m.Success && m.Groups["owner"].Value == "root/root"), "alle Eintraege gehoeren root:root");
+            Check(lines.Any(m => m.Success && m.Groups["path"].Value.StartsWith("./usr/bin/pagewing -> ", StringComparison.Ordinal)), "/usr/bin/pagewing ist ein Symlink");
+            Check(lines.Any(m => m.Success && m.Groups["path"].Value == "./usr/share/doc/pagewing/copyright"), "copyright vorhanden");
+
+            var root = Path.Combine(work, "root");
+            Check(Tool.Run("dpkg-deb", ["-x", deb, root], out var extract) == 0, "dpkg-deb -x entpackt");
+            if (failures.Count > 0)
+            {
+                Console.Write(extract);
+                return Finish(failures);
+            }
+
+            var desktop = Path.Combine(root, "usr", "share", "applications", "pagewing.desktop");
+            var exec = File.Exists(desktop) ? File.ReadLines(desktop).FirstOrDefault(l => l.StartsWith("Exec=", StringComparison.Ordinal)) : null;
+            var target = exec?["Exec=".Length..].Split(' ')[0] ?? string.Empty;
+            var targetFile = Path.Combine(root, target.TrimStart('/'));
+            Check(target.StartsWith('/') && File.Exists(targetFile) && (File.GetUnixFileMode(targetFile) & UnixFileMode.UserExecute) != 0, $"Exec der .desktop ({target}) ist im Paket vorhanden und ausfuehrbar");
+            Check(Directory.GetFiles(Path.Combine(root, "usr", "share", "icons", "hicolor"), "pagewing.png", SearchOption.AllDirectories).Length > 0, "Symbole vorhanden");
+
+            var link = Path.Combine(root, "usr", "bin", "pagewing");
+            var linkTarget = new FileInfo(link).LinkTarget;
+            var resolved = linkTarget is null ? null : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(link)!, linkTarget));
+            Check(resolved is not null && resolved.StartsWith(root + "/", StringComparison.Ordinal) && File.Exists(resolved), $"/usr/bin/pagewing loest innerhalb des Pakets auf ({linkTarget})");
+
+            var pdf = Path.Combine(repo, "testdata", "pdfs", "text-basic.pdf");
+            if (File.Exists(pdf))
+            {
+                var code = Tool.Run(link, ["info", pdf], out var cli);
+                Check(code == 0 && cli.Trim().Length > 0, $"pagewing info text-basic.pdf (Code {code})");
+                if (code != 0)
+                {
+                    Console.Write(cli);
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Hinweis: {pdf} fehlt, CLI-Aufruf uebersprungen");
+            }
+
+            Optional("desktop-file-validate", [desktop], Check);
+            RunLintian(deb, Check);
+            return Finish(failures);
+        }
+        finally
+        {
+            if (Directory.Exists(work))
+            {
+                Directory.Delete(work, true);
+            }
+        }
+    }
+
+    // Lintian errors that follow from shipping an upstream-built .deb with prebuilt native libraries (SkiaSharp, HarfBuzzSharp, PDFium
+    // with its bundled FreeType, lcms2, libjpeg, libpng, OpenJPEG) and no Debian changelog. Reason: Docs/DECISIONS.md, entry ".deb ...".
+    // Every other error, and every error without a tag we know, fails the smoke test.
+    public static readonly string[] AcceptedLintianErrors = ["embedded-library", "unstripped-binary-or-object", "no-changelog"];
+
+    // The error lines ("E: pagewing: <tag> ...") of a lintian report whose tag is not accepted.
+    public static List<string> RejectedLintianErrors(string report) =>
+        report.Split('\n')
+            .Where(l => l.StartsWith("E: ", StringComparison.Ordinal))
+            .Where(l => !AcceptedLintianErrors.Any(t => l.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries) is [_, _, var rest] && (rest == t || rest.StartsWith(t + " ", StringComparison.Ordinal))))
+            .ToList();
+
+    private static void RunLintian(string deb, Action<bool, string> check)
+    {
+        var code = Tool.Run("lintian", ["--tag-display-limit", "0", deb], out var text);
+        if (code == -1)
+        {
+            Console.WriteLine("Hinweis: lintian ist nicht installiert, Pruefung uebersprungen");
+            return;
+        }
+
+        Console.Write(text);
+        var rejected = RejectedLintianErrors(text);
+        foreach (var line in rejected)
+        {
+            Console.Error.WriteLine($"lintian: nicht erlaubter Fehler: {line}");
+        }
+
+        // Exit code 2 is "errors found"; with only accepted errors that is fine, any other code is not.
+        check(rejected.Count == 0 && code is 0 or 2, $"lintian (Code {code}, nur bekannte Fehler: {string.Join(", ", AcceptedLintianErrors)})");
+    }
+
+    // A tool that is not installed is a notice, not a failure; a tool that reports errors fails the smoke test.
+    private static void Optional(string tool, string[] arguments, Action<bool, string> check)
+    {
+        var code = Tool.Run(tool, arguments, out var text);
+        if (code == -1)
+        {
+            Console.WriteLine($"Hinweis: {tool} ist nicht installiert, Pruefung uebersprungen");
+            return;
+        }
+
+        Console.Write(text);
+        check(code == 0, $"{tool} (Code {code})");
+    }
+
+    private static int Finish(List<string> failures)
+    {
+        Console.WriteLine(failures.Count == 0 ? "deb-smoke: bestanden." : $"deb-smoke: {failures.Count} Pruefung(en) fehlgeschlagen.");
+        return failures.Count == 0 ? 0 : 1;
+    }
+}
+
 static class SelfTest
 {
     private static int s_checks;
@@ -1354,6 +1787,7 @@ static class SelfTest
 
         PackagingCommands();
         InstallerParts();
+        DebParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -1447,6 +1881,151 @@ static class SelfTest
             Expect("sums: eine Zeile je Datei, LF am Ende", lines.Length, 3);
             Expect("sums: fehlende Datei liefert 1", Cli.Run(["sums", Path.Combine(dir, "nope"), "--out", sums]), 1);
             Expect("sums: ohne Datei liefert 2", Cli.Run(["sums", "--out", sums]), 2);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // Everything of the .deb that needs no dpkg-deb: version mapping, control, file list with modes, copyright.
+    private static void DebParts()
+    {
+        Expect("deb: Version 0.1.0", Deb.DebVersion("0.1.0"), "0.1.0");
+        Expect("deb: Vorabversion x.y.z-rc1 wird x.y.z~rc1", Deb.DebVersion("1.2.3-rc1"), "1.2.3~rc1");
+        Expect("deb: Vorabversion mit Punkt", Deb.DebVersion("1.0.0-beta.2"), "1.0.0~beta.2");
+        Expect("deb: Version ohne Patch ist ungueltig", Deb.DebVersion("1.2"), null);
+        Expect("deb: Version mit fuehrender Null ist ungueltig", Deb.DebVersion("01.2.3"), null);
+        Expect("deb: Version mit Leerzeichen ist ungueltig", Deb.DebVersion("1.2.3 x"), null);
+        Expect("deb: leere Vorabkennung ist ungueltig", Deb.DebVersion("1.2.3-"), null);
+        Expect("deb: Dateiname", Deb.FileName("1.2.3~rc1"), "pagewing_1.2.3~rc1_amd64.deb");
+
+        var template = File.ReadAllText(Path.Combine("packaging", "linux", "control.template"));
+        var control = Deb.Control(template, "0.1.0", 1234, "Max Muster <max@example.org>");
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in control.Split('\n'))
+        {
+            var colon = line.IndexOf(':', StringComparison.Ordinal);
+            if (line.Length > 0 && line[0] != ' ' && colon > 0)
+            {
+                fields[line[..colon]] = line[(colon + 1)..].Trim();
+            }
+        }
+
+        Expect("deb: Package", fields.GetValueOrDefault("Package"), "pagewing");
+        Expect("deb: Version", fields.GetValueOrDefault("Version"), "0.1.0");
+        Expect("deb: Architecture", fields.GetValueOrDefault("Architecture"), "amd64");
+        Expect("deb: Maintainer", fields.GetValueOrDefault("Maintainer"), "Max Muster <max@example.org>");
+        Expect("deb: Installed-Size", fields.GetValueOrDefault("Installed-Size"), "1234");
+        Expect("deb: Section", fields.GetValueOrDefault("Section"), "graphics");
+        Expect("deb: Priority", fields.GetValueOrDefault("Priority"), "optional");
+        Expect("deb: Depends", fields.GetValueOrDefault("Depends"), "libc6 (>= 2.35), libfontconfig1, libx11-6, libice6, libsm6");
+        Expect("deb: Recommends", fields.GetValueOrDefault("Recommends"), "libcups2, xdg-utils");
+        Expect("deb: Homepage", fields.GetValueOrDefault("Homepage"), "https://github.com/benjo-code/Pagewing");
+        Expect("deb: Description (Kurztext)", fields.GetValueOrDefault("Description")?.Length > 0, true);
+        Expect("deb: kein Platzhalter bleibt", new[] { "@VERSION@", "@MAINTAINER@", "@INSTALLED_SIZE@" }.Any(m => control.Contains(m, StringComparison.Ordinal)), false);
+        Expect("deb: control endet mit LF", control.EndsWith('\n'), true);
+        Expect("deb: Installed-Size 0 KiB wird 1", Deb.InstalledSizeKiB([0L]), 1L);
+        Expect("deb: Installed-Size rundet je Datei auf", Deb.InstalledSizeKiB([1L, 1024L, 1025L]), 1L + 1L + 2L);
+        var lintianReport = "E: pagewing: embedded-library freetype [usr/lib/x.so]\nE: pagewing: no-changelog usr/share/doc/pagewing/changelog.gz (native package)\nW: pagewing: no-manual-page [usr/bin/pagewing]\n";
+        Expect("deb: Lintian, bekannte Fehler werden angenommen", DebSmoke.RejectedLintianErrors(lintianReport).Count, 0);
+        Expect("deb: Lintian, anderer Fehler faellt durch", DebSmoke.RejectedLintianErrors(lintianReport + "E: pagewing: file-in-etc-not-marked-as-conffile etc/x\n").Count, 1);
+        Expect("deb: Lintian, Tag mit gleichem Anfang faellt durch", DebSmoke.RejectedLintianErrors("E: pagewing: no-changelog-extra x\n").Count, 1);
+        Expect("deb: Maintainer-Platzhalter ist festgehalten", Deb.Maintainer.Contains("noreply", StringComparison.Ordinal), true);
+
+        var copyright = File.ReadAllText(Path.Combine("packaging", "linux", "copyright.template"));
+        Expect("deb: copyright Format 1.0", copyright.StartsWith("Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n", StringComparison.Ordinal), true);
+        Expect("deb: copyright nennt GPL-3+", copyright.Contains("License: GPL-3+", StringComparison.Ordinal), true);
+        Expect("deb: copyright verweist auf THIRD-PARTY-NOTICES.txt", copyright.Contains("/usr/lib/pagewing/THIRD-PARTY-NOTICES.txt", StringComparison.Ordinal), true);
+        Expect("deb: copyright ohne Tabulatoren", copyright.Contains('\t', StringComparison.Ordinal), false);
+
+        var dir = Path.Combine(Path.GetTempPath(), "pagewing-deb-selftest-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var layout = Path.Combine(dir, "layout");
+            var repo = Path.Combine(dir, "repo");
+            Directory.CreateDirectory(Path.Combine(layout, "cli"));
+            Directory.CreateDirectory(Path.Combine(layout, "sub"));
+            File.WriteAllText(Path.Combine(layout, "Pagewing"), "app");
+            File.WriteAllText(Path.Combine(layout, "libpdfium.so"), "pdfium");
+            File.WriteAllText(Path.Combine(layout, "LICENSE"), "license");
+            File.WriteAllText(Path.Combine(layout, "THIRD-PARTY-NOTICES.txt"), "notices");
+            File.WriteAllText(Path.Combine(layout, "sub", "x.dat"), "x");
+            File.WriteAllText(Path.Combine(layout, "cli", "pagewing"), "cli");
+            File.WriteAllText(Path.Combine(layout, "cli", "libpdfium.so"), "pdfium");
+            foreach (var size in new[] { "16x16", "512x512" })
+            {
+                var icons = Path.Combine(repo, "Docs", "design", "icons", "linux", "hicolor", size, "apps");
+                Directory.CreateDirectory(icons);
+                File.WriteAllText(Path.Combine(icons, "pagewing.png"), "png" + size);
+            }
+
+            Directory.CreateDirectory(Path.Combine(repo, "packaging", "linux"));
+            File.WriteAllText(Path.Combine(repo, "packaging", "linux", "pagewing.desktop"), "[Desktop Entry]\n");
+            File.WriteAllText(Path.Combine(repo, "packaging", "linux", "copyright.template"), "Format: x\n");
+
+            var entries = Deb.Plan(layout, repo);
+            DebEntry? Find(string path) => entries.FirstOrDefault(e => e.Path == path);
+            Expect("deb: Plan hat keine doppelten Pfade", entries.Select(e => e.Path).Distinct().Count(), entries.Count);
+            Expect("deb: Plan ist sortiert", entries.Select(e => e.Path).SequenceEqual(entries.Select(e => e.Path).Order(StringComparer.Ordinal)), true);
+            Expect("deb: Programm 0755", Find("usr/lib/pagewing/Pagewing")?.Mode, 0x1ED);
+            Expect("deb: CLI 0755", Find("usr/lib/pagewing/cli/pagewing")?.Mode, 0x1ED);
+            Expect("deb: Bibliothek 0644", Find("usr/lib/pagewing/libpdfium.so")?.Mode, 0x1A4);
+            Expect("deb: CLI-Bibliothek 0644", Find("usr/lib/pagewing/cli/libpdfium.so")?.Mode, 0x1A4);
+            Expect("deb: Unterordner bleiben", Find("usr/lib/pagewing/sub/x.dat")?.Mode, 0x1A4);
+            Expect("deb: THIRD-PARTY-NOTICES.txt im Programmordner", Find("usr/lib/pagewing/THIRD-PARTY-NOTICES.txt") is not null, true);
+            Expect("deb: Verzeichnis 0755", Find("usr/lib/pagewing/cli")?.Mode, 0x1ED);
+            Expect("deb: Verzeichnis usr/share/applications", Find("usr/share/applications")?.Kind, DebEntryKind.Directory);
+            Expect("deb: Starter 0644", Find("usr/share/applications/pagewing.desktop")?.Mode, 0x1A4);
+            Expect("deb: Symbol 16x16", Find("usr/share/icons/hicolor/16x16/apps/pagewing.png")?.Mode, 0x1A4);
+            Expect("deb: Symbol 512x512", Find("usr/share/icons/hicolor/512x512/apps/pagewing.png") is not null, true);
+            Expect("deb: copyright 0644", Find("usr/share/doc/pagewing/copyright")?.Mode, 0x1A4);
+            var link = Find("usr/bin/pagewing");
+            Expect("deb: /usr/bin/pagewing ist ein Symlink", link?.Kind, DebEntryKind.Symlink);
+            Expect("deb: Symlink zeigt relativ auf die CLI", link?.LinkTarget, "../lib/pagewing/cli/pagewing");
+            Expect("deb: Symlink loest auf die CLI auf", link is null ? null : Path.GetFullPath(Path.Combine("/usr/bin", link.LinkTarget!)), "/usr/lib/pagewing/cli/pagewing");
+            Expect("deb: kein Eintrag ausserhalb usr/", entries.All(e => e.Path.StartsWith("usr", StringComparison.Ordinal)), true);
+            Expect("deb: alle Dateien haben eine Quelle", entries.Where(e => e.Kind == DebEntryKind.File).All(e => e.Source is not null && File.Exists(e.Source)), true);
+            Expect("deb: Elternverzeichnisse sind vorhanden", entries.Where(e => e.Path.Contains('/', StringComparison.Ordinal))
+                .All(e => Find(e.Path[..e.Path.LastIndexOf('/')]) is { Kind: DebEntryKind.Directory }), true);
+
+            if (!OperatingSystem.IsWindows())
+            {
+                var stage = Path.Combine(dir, "stage");
+                Deb.Stage(entries, stage, control);
+                Expect("deb: Staging control", File.ReadAllText(Path.Combine(stage, "DEBIAN", "control")), control);
+                Expect("deb: Staging Programm 0755", File.GetUnixFileMode(Path.Combine(stage, "usr/lib/pagewing/Pagewing")), (UnixFileMode)0x1ED);
+                Expect("deb: Staging Datei 0644", File.GetUnixFileMode(Path.Combine(stage, "usr/lib/pagewing/libpdfium.so")), (UnixFileMode)0x1A4);
+                Expect("deb: Staging Verzeichnis 0755", File.GetUnixFileMode(Path.Combine(stage, "usr/lib/pagewing/cli")), (UnixFileMode)0x1ED);
+                Expect("deb: Staging DEBIAN 0755", File.GetUnixFileMode(Path.Combine(stage, "DEBIAN")), (UnixFileMode)0x1ED);
+                Expect("deb: Staging control 0644", File.GetUnixFileMode(Path.Combine(stage, "DEBIAN", "control")), (UnixFileMode)0x1A4);
+                Expect("deb: Staging Symlink", new FileInfo(Path.Combine(stage, "usr/bin/pagewing")).LinkTarget, "../lib/pagewing/cli/pagewing");
+                Expect("deb: Staging feste Zeit", File.GetLastWriteTimeUtc(Path.Combine(stage, "usr/lib/pagewing/Pagewing")), Deb.FixedTime.UtcDateTime);
+                Expect("deb: Staging feste Zeit der Verzeichnisse", Directory.GetLastWriteTimeUtc(Path.Combine(stage, "usr/lib/pagewing")), Deb.FixedTime.UtcDateTime);
+            }
+
+            Expect("deb: falscher Dateiname liefert 2", Cli.Run(["deb", "--layout", layout, "--version", "1.2.3", "--out", Path.Combine(dir, "x.deb"), "--repo", repo]), 2);
+            Expect("deb: ungueltige Version liefert 2", Cli.Run(["deb", "--layout", layout, "--version", "1.2", "--out", Path.Combine(dir, "pagewing_1.2_amd64.deb"), "--repo", repo]), 2);
+            Expect("deb: fehlendes Layout liefert 1", Cli.Run(["deb", "--layout", Path.Combine(dir, "nope"), "--version", "1.2.3", "--out", Path.Combine(dir, "pagewing_1.2.3_amd64.deb"), "--repo", repo]), 1);
+            Expect("deb: Layout ohne cli/pagewing liefert 1", Cli.Run(["deb", "--layout", Path.Combine(repo, "packaging"), "--version", "1.2.3", "--out", Path.Combine(dir, "pagewing_1.2.3_amd64.deb"), "--repo", repo]), 1);
+            Expect("deb: ohne Option liefert 2", Cli.Run(["deb"]), 2);
+            if (!OperatingSystem.IsWindows() && Exec("dpkg-deb", "--version") == 0)
+            {
+                File.WriteAllText(Path.Combine(repo, "packaging", "linux", "control.template"), template);
+                var deb1 = Path.Combine(dir, "a", "pagewing_1.2.3~rc1_amd64.deb");
+                var deb2 = Path.Combine(dir, "b", "pagewing_1.2.3~rc1_amd64.deb");
+                Expect("deb: dpkg-deb baut", Cli.Run(["deb", "--layout", layout, "--version", "1.2.3-rc1", "--out", deb1, "--repo", repo]), 0);
+                Thread.Sleep(1100);
+                File.SetLastWriteTimeUtc(Path.Combine(layout, "Pagewing"), DateTime.UtcNow);
+                Expect("deb: zweiter Lauf", Cli.Run(["deb", "--layout", layout, "--version", "1.2.3-rc1", "--out", deb2, "--repo", repo]), 0);
+                Expect("deb: reproduzierbar (gleiche SHA-256)", Sums.Line(deb1)[..64], Sums.Line(deb2)[..64]);
+                Expect("deb: dpkg-deb -f Version", Deb.Field(deb1, "Version"), "1.2.3~rc1");
+                Expect("deb: dpkg-deb -f Maintainer", Deb.Field(deb1, "Maintainer"), Deb.Maintainer);
+                Expect("deb: Smoke ohne echte CLI schlaegt fehl (Fake-Programme)", Cli.Run(["deb-smoke", deb1, "--repo", repo]), 1);
+            }
+
+            Expect("deb-smoke: ohne Datei liefert 2", Cli.Run(["deb-smoke"]), 2);
+            Expect("deb-smoke: fehlende Datei liefert 1", Cli.Run(["deb-smoke", Path.Combine(dir, "nope.deb")]), 1);
         }
         finally
         {
