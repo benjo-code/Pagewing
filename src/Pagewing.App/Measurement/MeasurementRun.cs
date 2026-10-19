@@ -75,6 +75,12 @@ internal abstract class MeasurementRun : IDisposable
     public static MeasurementRun? Create(StartupOptions options, MainViewModel viewModel, DocumentView view, MeasurementOutput output)
     {
         ArgumentNullException.ThrowIfNull(options);
+        if (options.IsMeasurement && options.MeasureSettings is { } settings && !File.Exists(settings))
+        {
+            // A typo must not measure the defaults unnoticed (Program.LoadSettings would fall back to them).
+            return new InvalidMeasurement(viewModel, view, options.MeasurementPath ?? string.Empty, output, $"--measure-settings needs an existing settings file, not '{settings}'");
+        }
+
         return options switch
         {
             { MeasureStartup: { } path } => new StartupMeasurement(viewModel, view, path, null, output, DefaultTimeout, StartupMeasurement.DefaultSettleDelay),

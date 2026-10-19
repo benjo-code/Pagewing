@@ -137,13 +137,19 @@ internal static partial class Program
     /// <summary>
     /// The settings of this run: <paramref name="load"/> (<see cref="UserSettings.Load()"/>) for a normal launch; for a
     /// measurement the defaults in memory (<see cref="UserSettings.Detached"/>), so the settings of the user never change
-    /// what is measured and a measurement never writes them.
+    /// what is measured and a measurement never writes them. A measurement with <c>--measure-settings &lt;file&gt;</c>
+    /// starts with what that file holds, in memory only (<see cref="UserSettings.DetachedFrom"/>: read, never written).
     /// </summary>
     internal static UserSettings LoadSettings(StartupOptions options, Func<UserSettings> load)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(load);
-        return options.IsMeasurement ? UserSettings.Detached() : load();
+        if (!options.IsMeasurement)
+        {
+            return load();
+        }
+
+        return options.MeasureSettings is { Length: > 0 } file ? UserSettings.DetachedFrom(file) : UserSettings.Detached();
     }
 
     public static AppBuilder BuildAvaloniaApp() =>

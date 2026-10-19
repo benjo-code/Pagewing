@@ -56,6 +56,13 @@ public sealed class UserSettings
     public static UserSettings Detached() => new(null, AppSettings.Default);
 
     /// <summary>
+    /// Settings in memory only that start with what <paramref name="file"/> holds (<see cref="SettingsStore.LoadReadOnly"/>):
+    /// the file is only read, never written, and nothing else is touched. A missing or corrupt file gives the defaults.
+    /// For measurement runs with <c>--measure-settings</c>.
+    /// </summary>
+    public static UserSettings DetachedFrom(string file) => new(null, new SettingsStore(file).LoadReadOnly());
+
+    /// <summary>
     /// Changes the settings: normalizes the result of <paramref name="change"/>, announces it (<see cref="Changed"/>)
     /// and then writes it. A result equal to <see cref="Current"/> changes nothing and writes nothing.
     /// </summary>

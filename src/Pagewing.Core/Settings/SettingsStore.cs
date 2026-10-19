@@ -15,7 +15,15 @@ public sealed class SettingsStore(string path)
     /// Loads the settings. A missing, empty or unreadable file gives <see cref="AppSettings.Default"/>; a corrupt
     /// file does too, after it has been copied once to <c>&lt;path&gt;.bad</c>. The result is always normalized.
     /// </summary>
-    public AppSettings Load()
+    public AppSettings Load() => Load(keepBackup: true);
+
+    /// <summary>
+    /// Loads the settings like <see cref="Load()"/> but never writes: a corrupt file gives the defaults without a
+    /// <c>&lt;path&gt;.bad</c> copy. For a file that is only input (the hidden switch <c>--measure-settings</c>).
+    /// </summary>
+    public AppSettings LoadReadOnly() => Load(keepBackup: false);
+
+    private AppSettings Load(bool keepBackup)
     {
         var text = JsonFile.ReadText(FilePath);
         if (text is null)
@@ -36,7 +44,11 @@ public sealed class SettingsStore(string path)
             // Falls through to the backup below.
         }
 
-        JsonFile.KeepBackup(FilePath);
+        if (keepBackup)
+        {
+            JsonFile.KeepBackup(FilePath);
+        }
+
         return AppSettings.Default;
     }
 

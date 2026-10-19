@@ -64,6 +64,19 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void LoadReadOnlyReadsTheValuesAndNeverWrites()
+    {
+        File.WriteAllText(FilePath, "{ \"Theme\": \"Dark\", \"PanelWidth\": 999 }");
+        Assert.Equal(AppSettings.Default with { Theme = ThemeSetting.Dark, PanelWidth = AppSettings.MaxPanelWidth }, new SettingsStore(FilePath).LoadReadOnly());
+
+        // A corrupt file gives the defaults like Load, but without the backup.
+        File.WriteAllText(FilePath, "{\"Theme\":");
+        Assert.Equal(AppSettings.Default, new SettingsStore(FilePath).LoadReadOnly());
+        Assert.Equal([FilePath], Directory.GetFiles(_directory));
+        Assert.Equal(AppSettings.Default, new SettingsStore(Path.Combine(_directory, "missing.json")).LoadReadOnly());
+    }
+
+    [Fact]
     public void ASecondCorruptFileOverwritesTheBackup()
     {
         File.WriteAllText(FilePath + ".bad", "old");

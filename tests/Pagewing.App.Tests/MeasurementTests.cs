@@ -487,6 +487,79 @@ public sealed partial class MeasurementTests : IDisposable
     }
 
     [Fact]
+    public void MeasureSettingsStartsWithTheFileAndNeverWritesIt()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pagewing-measure-settings-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var file = Path.Combine(folder, "dark.json");
+            const string Text = "{ \"Theme\": \"Dark\", \"Language\": \"German\", \"ReduceMotion\": true }";
+            File.WriteAllText(file, Text);
+            var written = File.GetLastWriteTimeUtc(file);
+            var options = StartupOptions.Parse(["--measure-startup", "a.pdf", "--measure-settings", file]);
+            var loaded = false;
+
+            var settings = Program.LoadSettings(options, () =>
+            {
+                loaded = true;
+                return UserSettings.Detached();
+            });
+
+            // The file's values, in memory only: the user's folder is not read, and nothing is ever written.
+            Assert.False(loaded);
+            Assert.Null(settings.FilePath);
+            Assert.Equal(AppSettings.Default with { Theme = ThemeSetting.Dark, Language = LanguageSetting.German, ReduceMotion = true }, settings.Current);
+            settings.Update(current => current with { Theme = ThemeSetting.Light });
+            Assert.Equal(Text, File.ReadAllText(file));
+            Assert.Equal(written, File.GetLastWriteTimeUtc(file));
+
+            // A corrupt file gives the defaults and is left alone: no .bad copy, no other file in the folder.
+            File.WriteAllText(file, "{ not json");
+            var corrupt = Program.LoadSettings(options, () => throw new InvalidOperationException("not read"));
+            Assert.Equal(AppSettings.Default, corrupt.Current);
+            Assert.Equal([file], Directory.GetFiles(folder));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MeasureSettingsWithoutAMeasurementIsIgnored()
+    {
+        var options = StartupOptions.Parse(["a.pdf", "--measure-settings", "settings.json"]);
+        var loaded = UserSettings.Detached();
+
+        Assert.False(options.IsMeasurement);
+        Assert.Same(loaded, Program.LoadSettings(options, () => loaded));
+        Assert.Equal([Path.GetFullPath("a.pdf")], options.Paths);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("missing")]
+    [InlineData("")]
+    public async Task AMeasurementWithoutItsSettingsFileExitsWithOne(string name)
+    {
+        var (window, viewModel, view) = Show();
+        var file = name.Length == 0 ? null : Path.Combine(Path.GetTempPath(), "pagewing-no-such-settings-" + Guid.NewGuid().ToString("N") + ".json");
+        string[] args = file is null
+            ? ["--measure-startup", TestData.Pdf("text-basic.pdf"), "--measure-settings"]
+            : ["--measure-startup", TestData.Pdf("text-basic.pdf"), "--measure-settings", file];
+        using var measurement = MeasurementRun.Create(StartupOptions.Parse(args), viewModel, view, Sink());
+
+        Assert.NotNull(measurement);
+        measurement.Start();
+        await WaitUntilAsync(window, () => _exits.Count > 0);
+
+        // A typo must not measure the defaults unnoticed.
+        Assert.Equal([1], _exits);
+        Assert.Empty(_output.ToString());
+        Assert.StartsWith("error: --measure-settings needs an existing settings file", Assert.Single(Lines(_error)), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NormalLaunchesLoadTheUsersSettings()
     {
         var options = StartupOptions.Parse(["a.pdf"]);
