@@ -86,6 +86,16 @@ public sealed partial class DocumentView : UserControl
         remove => PageCanvas.FirstSharpTileDrawn -= value;
     }
 
+    /// <summary>
+    /// Raised on the UI thread once per document, in the frame after the first sharp tile of any page was drawn (after
+    /// <see cref="FirstSharpTileDrawn"/> when both come in the same frame).
+    /// </summary>
+    internal event Action? FirstSharpPageDrawn
+    {
+        add => PageCanvas.FirstSharpPageDrawn += value;
+        remove => PageCanvas.FirstSharpPageDrawn -= value;
+    }
+
     /// <summary>Gets the canvas that draws the pages.</summary>
     internal DocumentCanvas Canvas => PageCanvas;
 

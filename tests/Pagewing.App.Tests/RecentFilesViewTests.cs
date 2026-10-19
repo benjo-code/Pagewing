@@ -86,6 +86,7 @@ public sealed class RecentFilesViewTests : IDisposable
         locked.SubmitPasswordCommand.Execute(null);
         await WaitUntilAsync(window, () => locked.IsReady);
         Assert.Equal(Full("encrypted_hello_world_r3.pdf"), recent.Files.Items[0].Path);
+        await WaitUntilAsync(window, () => locked.HasShownSharpPage && !recent.HasUnsavedChanges);
         Assert.Equal(3, StoredPaths().Count);
 
         // Opening it again (another tab activated, then this file) changes nothing but its place.
@@ -190,6 +191,105 @@ public sealed class RecentFilesViewTests : IDisposable
         var plain = await OpenAsync(window, viewModel, view, "hello_world.pdf");
         Assert.Equal(PageLayoutMode.SinglePage, plain.LayoutMode);
         Assert.Equal(ZoomMode.FitPage, plain.ZoomMode);
+    }
+
+    [AvaloniaFact]
+    public async Task ARememberedPositionOpensThePanelAfterItsFirstSharpPageOnly()
+    {
+        // Reopened on page 31: page 1 is not drawn, the window's one chance for the start panel is that first sharp page.
+        var recent = RecentFilesService.Load(_directory);
+        recent.Closed(Full("text-dense.pdf"), new RememberedView(new ViewState(new PageAnchor(30, 0), 0), 1, ZoomMode.Free, PageLayoutMode.Continuous));
+        var (window, viewModel, view) = Show(recent);
+        Assert.Equal(StartPanelSetting.Pages, viewModel.Settings.Current.StartPanel);
+        await viewModel.OpenAsync(TestData.Pdf("text-dense.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.HasShownSharpPage);
+        await WaitUntilAsync(window, () => tab.SidePanel == SidePanelKind.Pages);
+        Assert.DoesNotContain(view.Canvas.Bitmaps.Keys, key => key.Page == 0 && !key.IsPreview);
+        Assert.Equal(31, tab.CurrentPage);
+
+        // Closed again (not by the user's hand), then scrolled to page 1: its first sharp tile does not open it again.
+        tab.SidePanel = SidePanelKind.None;
+        Settle(window);
+        tab.GoToPage(1);
+        await WaitUntilAsync(window, () => view.Canvas.Bitmaps.Keys.Any(key => key.Page == 0 && !key.IsPreview));
+        Settle(window);
+        Settle(window);
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+    }
+
+    [AvaloniaFact]
+    public async Task ALaterOpenWritesTheHistoryOnlyAfterItsFirstSharpPage()
+    {
+        WriteHistory(Full("hello_world.pdf"));
+        var recent = RecentFilesService.Load(_directory);
+        var (window, viewModel, view) = Show(recent);
+        await WaitUntilAsync(window, () => recent.IsLoaded);
+        Assert.Equal(0, recent.Writes);
+        var changes = 0;
+        recent.Changed += () => changes++;
+
+        // At Ready the list knows the file (palette and start screen see it), the disk does not; not at the first sharp
+        // page either (the write is a background job after it), then once.
+        var writesAtReady = -1;
+        var writesAtSharpPage = -1;
+        viewModel.Tabs.CollectionChanged += (_, _) =>
+        {
+            foreach (var tab in viewModel.Tabs)
+            {
+                tab.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(TabViewModel.Document) && tab.Document is not null && writesAtReady < 0)
+                    {
+                        writesAtReady = recent.Writes;
+                        Assert.Equal(Full("text-dense.pdf"), recent.Files.Items[0].Path);
+                    }
+                    else if (e.PropertyName == nameof(TabViewModel.HasShownSharpPage) && tab.HasShownSharpPage && writesAtSharpPage < 0)
+                    {
+                        writesAtSharpPage = recent.Writes;
+                    }
+                };
+            }
+        };
+        await OpenAsync(window, viewModel, view, "text-dense.pdf");
+        Assert.Equal(0, writesAtReady);
+        Assert.Equal(0, writesAtSharpPage);
+        Assert.Equal(1, changes);
+        Assert.Equal(1, recent.Writes);
+        Assert.Equal([Full("text-dense.pdf"), Full("hello_world.pdf")], StoredPaths());
+
+        // Opening the file on top again changes nothing and writes nothing.
+        viewModel.CloseActiveTabCommand.Execute(null);
+        var writes = recent.Writes;
+        recent.Opened(Full("text-dense.pdf"));
+        Assert.False(recent.HasUnsavedChanges);
+        recent.SaveLater();
+        Settle(window);
+        Assert.Equal(writes, recent.Writes);
+
+        // A burst of opens (three files at once, two behind the active one) is one write, after the active one's sharp page.
+        changes = 0;
+        await viewModel.OpenManyAsync([TestData.Pdf("hello_world.pdf"), TestData.Pdf("text-rich.pdf"), TestData.Pdf("text-basic.pdf")]);
+        var active = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => viewModel.Tabs.All(tab => tab.IsReady) && active.HasShownSharpPage);
+        Settle(window);
+        Assert.Equal(3, changes);
+        Assert.Equal(writes + 1, recent.Writes);
+        // The three in the order they became ready (they open side by side), above the older entry.
+        var stored = StoredPaths();
+        Assert.Equal(4, stored.Count);
+        Assert.Equal(
+            [Full("hello_world.pdf"), Full("text-basic.pdf"), Full("text-rich.pdf")],
+            stored.Take(3).Order(StringComparer.Ordinal));
+        Assert.Equal(Full("text-dense.pdf"), stored[3]);
+
+        // A file opened since then (a tab that never showed a sharp page) is written when the window closes.
+        recent.Opened(Full("thousand-pages.pdf"));
+        Assert.True(recent.HasUnsavedChanges);
+        Assert.DoesNotContain(Full("thousand-pages.pdf"), StoredPaths());
+        window.Close();
+        Assert.False(recent.HasUnsavedChanges);
+        Assert.Contains(Full("thousand-pages.pdf"), StoredPaths());
     }
 
     [AvaloniaFact]
@@ -560,6 +660,8 @@ public sealed class RecentFilesViewTests : IDisposable
         Assert.Equal(0, readsAtReady);
         Assert.Equal(0, readsAtSharpPage);
         Assert.Equal(1, recent.Reads);
+        await WaitUntilAsync(window, () => !recent.HasUnsavedChanges);
+        Assert.Equal(1, recent.Writes);
         Assert.Equal([Full("text-dense.pdf"), Full("hello_world.pdf")], StoredPaths());
 
         // The start screen of a window without a file reads it after its first frame, not before.
@@ -662,7 +764,6 @@ public sealed class RecentFilesViewTests : IDisposable
         var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker(), settings ?? UserSettings.Detached(), recent)
         {
             IsWindowsTitleBar = true,
-            OpensPagesPanelAfterFirstSharpTile = false,
         };
         _cleanup.Add(viewModel);
         var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720 };
@@ -685,18 +786,26 @@ public sealed class RecentFilesViewTests : IDisposable
 
     /// <summary>
     /// Opens a file in a new tab and waits until the view shows it with a sharp page (a restored view need not show
-    /// page 1). The window never opens a panel by itself here (<see cref="NoAutoPanel"/>), so the viewport keeps its width.
+    /// page 1), then for the panel the window may open after its first sharp page, which it closes again (without it
+    /// counting as the user's choice), so the viewport has the width the tests expect. The writes posted after the sharp
+    /// page have run when it returns.
     /// </summary>
     private static async Task<TabViewModel> OpenAsync(Window window, MainViewModel viewModel, DocumentView view, string name)
     {
-        NoAutoPanel(viewModel);
         await viewModel.OpenAsync(TestData.Pdf(name));
         var tab = viewModel.ActiveTab ?? throw new InvalidOperationException("No active tab after opening.");
         await WaitUntilAsync(window, () => ReferenceEquals(view.Document, tab.Session.Document) && tab.HasShownSharpPage);
+        Settle(window);
+        Settle(window);
+        if (tab.SidePanel != SidePanelKind.None)
+        {
+            tab.SidePanel = SidePanelKind.None;
+            var host = Find<Control>(window, AutoOpenedPanel.HostName);
+            await WaitUntilAsync(window, () => !host.IsVisible);
+        }
+
         return tab;
     }
-
-    private static void NoAutoPanel(MainViewModel viewModel) => viewModel.OpensPagesPanelAfterFirstSharpTile = false;
 
     private static Task<TabViewModel> OpenAsync(Workspace workspace, MainViewModel viewModel, DocumentView view, string name) =>
         OpenAsync((Window)workspace.WindowOf(viewModel), viewModel, view, name);

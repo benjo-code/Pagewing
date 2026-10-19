@@ -85,8 +85,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // The user opened or closed a panel in this window: the first sharp tile no longer opens the start panel.
     private bool _panelChosenByUser;
 
-    // The first sharp tile of this window was drawn: its one chance to open the start panel has passed.
-    private bool _firstSharpTileSeen;
+    // The first sharp page of this window was drawn: its one chance to open the start panel has passed.
+    private bool _firstSharpPageSeen;
 
     // The theme in effect, for the page theme of the tabs (AppPageTheme); none: the theme counts as light.
     private IEffectiveTheme? _appTheme;
@@ -242,7 +242,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// Gets the newest <see cref="MaxStartRecentFiles"/> files of the history for the start screen ("Recently opened"):
-    /// empty until the history has been read (<see cref="OnStartScreenShown"/>), so the first frame never waits for it.
+    /// empty until the history has been read (<see cref="OnStartScreenShown"/>), so the first frame never waits for it, and
+    /// kept up to date only while the window shows the start screen (a window with tabs does no work for it).
     /// </summary>
     public IReadOnlyList<RecentEntry> StartRecentFiles
     {
@@ -311,6 +312,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             _recent.Closed(closed);
         }
+
+        // Files opened since the last write (a tab that never showed a sharp page, for example) are not lost.
+        _recent.Flush();
     }
 
     /// <summary>Shows <paramref name="kind"/> over the window in place of the overlay shown so far; <see cref="OverlayKind.None"/> hides it.</summary>
@@ -483,7 +487,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Gets or sets whether the first sharp tile of the window may open the start panel (<see cref="OnFirstSharpTileDrawn"/>);
+    /// Gets or sets whether the first sharp page of the window may open the start panel (<see cref="OnFirstSharpPageDrawn"/>);
     /// on by default. A measurement run switches it off, so its window keeps the layout and the work of a run without
     /// a panel (comparable with the measurements before the panel existed).
     /// </summary>
@@ -775,22 +779,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// The first sharp tile of this window was drawn (the document view tells the window once per document): the first
-    /// time, the start panel of the settings (<see cref="AppSettings.StartPanel"/>: "Pages", "Contents" or none) opens
-    /// in the active tab when it shows no panel, the window is at least <see cref="NarrowWindowWidth"/> wide, the user
+    /// The first sharp page of this window was drawn, whichever page it is (the document view tells the window once per
+    /// document, <see cref="Views.DocumentView.FirstSharpPageDrawn"/>; a document reopened at its remembered position may
+    /// never draw page 1, and the panel must not come later, in the middle of reading): the first time, the start panel
+    /// of the settings (<see cref="AppSettings.StartPanel"/>: "Pages", "Contents" or none) opens in the active tab when
+    /// it shows no panel, the window is at least <see cref="NarrowWindowWidth"/> wide, the user
     /// has not opened or closed a panel in this window yet (design system 7.3) and
     /// <see cref="OpensPagesPanelAfterFirstSharpTile"/> holds. The panel opens in a job of
-    /// <see cref="DispatcherPriority.Background"/>, after every handler of the first sharp tile (a measurement takes its
-    /// time there) and after rendering. Later calls do nothing.
+    /// <see cref="DispatcherPriority.Background"/>, after every handler of that frame (a measurement takes its time
+    /// there) and after rendering. Later calls do nothing.
     /// </summary>
-    internal void OnFirstSharpTileDrawn()
+    internal void OnFirstSharpPageDrawn()
     {
-        if (_firstSharpTileSeen)
+        if (_firstSharpPageSeen)
         {
             return;
         }
 
-        _firstSharpTileSeen = true;
+        _firstSharpPageSeen = true;
         if (OpensPagesPanelAfterFirstSharpTile)
         {
             Dispatcher.UIThread.Post(OpenPagesPanelAfterFirstSharpTile, DispatcherPriority.Background);
@@ -955,7 +961,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// A tab of this window changed: a document it opened goes into the history (its first Ready), and after its first
-    /// sharp page the history is read (in the background, never before: the startup path does not read it).
+    /// sharp page the history is read and what changed is written (in the background, never before: neither the startup
+    /// path nor the render of a later open waits for the disk).
     /// </summary>
     private void OnTabPropertyChanged(TabViewModel tab, PropertyChangedEventArgs e)
     {
@@ -966,6 +973,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         else if (e.PropertyName == nameof(TabViewModel.HasShownSharpPage) && tab.HasShownSharpPage)
         {
             PostHistoryLoad();
+            _recent?.SaveLater();
         }
     }
 
@@ -1005,7 +1013,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void UpdateStartRecentFiles()
     {
-        if (_recent is not { IsLoaded: true } recent)
+        if (_recent is not { IsLoaded: true } recent || !IsEmpty)
         {
             return;
         }
@@ -1043,6 +1051,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 {
                     recent.EnsureLoaded();
                     UpdateStartRecentFiles();
+                    recent.SaveLater();
                 }
             },
             DispatcherPriority.Background);

@@ -45,7 +45,9 @@ public sealed partial class MainWindow
 
     private void InitializePanel()
     {
-        DocumentView.FirstSharpTileDrawn += () => _viewModel?.OnFirstSharpTileDrawn();
+        // The first sharp page of any page (a remembered position may never show page 1), in the frame of page 1's tile
+        // when that is the one.
+        DocumentView.FirstSharpPageDrawn += () => _viewModel?.OnFirstSharpPageDrawn();
         PanelColumn.PropertyChanged += OnPanelColumnChanged;
         PanelSplitter.AddHandler(PointerPressedEvent, OnSplitterPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
 

@@ -58,7 +58,7 @@ public sealed partial class StartScreen : UserControl
     /// </summary>
     private void Update()
     {
-        if (_viewModel is not { } viewModel || VisualRoot is null)
+        if (_viewModel is not { IsEmpty: true } viewModel || VisualRoot is null)
         {
             return;
         }

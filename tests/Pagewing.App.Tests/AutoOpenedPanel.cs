@@ -9,7 +9,7 @@ namespace Pagewing.App.Tests;
 
 /// <summary>
 /// For window tests about the document view: a wide window opens the "Pages" panel after the first sharp tile of the
-/// window (<see cref="MainViewModel.OnFirstSharpTileDrawn"/>, see PanelTests), which narrows the viewport at a moment
+/// window (<see cref="MainViewModel.OnFirstSharpPageDrawn"/>, see PanelTests), which narrows the viewport at a moment
 /// that depends on timing. <see cref="CloseAsync"/> waits for it and closes the panel again, so such a test starts
 /// from the layout it was written for: the document with the whole width right of the action bar.
 /// </summary>
