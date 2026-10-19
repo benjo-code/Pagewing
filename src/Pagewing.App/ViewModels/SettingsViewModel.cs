@@ -224,8 +224,9 @@ public sealed class SettingsViewModel : ViewModelBase
     public bool LanguageNeedsRestart => (Language == LanguageSetting.System ? _systemLanguage : Language) != _runningLanguage;
 
     /// <summary>
-    /// Gets whether the settings could not be written the last time the card changed them (or before it was shown): the
-    /// card says so with a symbol and a text. The values stay in effect; the next successful write clears it.
+    /// Gets whether the settings could not be written the last time they were written (by the card or, while it is shown,
+    /// elsewhere, after the write: <see cref="UserSettings.SaveCompleted"/>): the card says so with a symbol and a text.
+    /// The values stay in effect; the next successful write clears it.
     /// </summary>
     public bool SaveFailed
     {
@@ -243,6 +244,7 @@ public sealed class SettingsViewModel : ViewModelBase
 
         _isOpen = true;
         _settings.Changed += OnSettingsChanged;
+        _settings.SaveCompleted += OnSaveCompleted;
         SaveFailed = _settings.LastSaveFailed;
         RaiseAll();
     }
@@ -257,6 +259,7 @@ public sealed class SettingsViewModel : ViewModelBase
 
         _isOpen = false;
         _settings.Changed -= OnSettingsChanged;
+        _settings.SaveCompleted -= OnSaveCompleted;
     }
 
     /// <summary>German for the two-letter language <c>de</c>, English for everything else (as <see cref="Strings"/> chooses).</summary>
@@ -289,6 +292,9 @@ public sealed class SettingsViewModel : ViewModelBase
     }
 
     private void OnSettingsChanged(AppSettings settings) => RaiseAll();
+
+    // Changed comes before the write: only now does LastSaveFailed tell how a change made elsewhere went.
+    private void OnSaveCompleted() => SaveFailed = _settings.LastSaveFailed;
 
     private void RaiseAll()
     {

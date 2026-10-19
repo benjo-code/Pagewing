@@ -24,6 +24,12 @@ public sealed class UserSettings
     /// <summary>Raised after every change (<see cref="Update"/>) with the new value, before it is written.</summary>
     public event Action<AppSettings>? Changed;
 
+    /// <summary>
+    /// Raised after every change once the write is over (<see cref="LastSaveFailed"/> tells how it went); for detached
+    /// settings right after <see cref="Changed"/>.
+    /// </summary>
+    public event Action? SaveCompleted;
+
     /// <summary>Gets the current settings, always normalized. Treat the instance as immutable.</summary>
     public AppSettings Current { get; private set; }
 
@@ -69,5 +75,7 @@ public sealed class UserSettings
             // Current, not next: a handler may have changed the settings again (and written them) meanwhile.
             LastSaveFailed = !_store.TrySave(Current);
         }
+
+        SaveCompleted?.Invoke();
     }
 }

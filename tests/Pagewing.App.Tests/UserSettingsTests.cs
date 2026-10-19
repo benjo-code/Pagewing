@@ -72,6 +72,27 @@ public sealed class UserSettingsTests : IDisposable
     }
 
     [Fact]
+    public void SaveCompletedComesAfterTheWrite()
+    {
+        var settings = UserSettings.Load(_directory);
+        var written = (bool?)null;
+        settings.SaveCompleted += () => written = File.Exists(SettingsFile);
+
+        settings.Update(current => current with { ReduceMotion = true });
+        Assert.True(written);
+
+        // No change, no write, no event; detached settings announce it as well.
+        written = null;
+        settings.Update(current => current with { ReduceMotion = true });
+        Assert.Null(written);
+        var detached = UserSettings.Detached();
+        var completed = 0;
+        detached.SaveCompleted += () => completed++;
+        detached.Update(current => current with { ReduceMotion = true });
+        Assert.Equal(1, completed);
+    }
+
+    [Fact]
     public void FailingSaveKeepsTheValueAndFlagsIt()
     {
         // The config "folder" is a file: the settings cannot be written there.

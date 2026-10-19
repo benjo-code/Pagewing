@@ -186,6 +186,36 @@ public sealed class ControlStyleTests
 
     [AvaloniaTheory]
     [MemberData(nameof(Themes))]
+    public void ToggleSwitchShowsTheFocusRing(string theme)
+    {
+        // A ToggleSwitch derives from ToggleButton, but a type selector does not match a derived type: it needs its own.
+        var variant = Variant(theme);
+        var toggle = new ToggleSwitch { Margin = new Thickness(40), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+        var other = new TextBox { VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom };
+        var window = Show(new Window { Width = 240, Height = 160, Content = new Panel { Children = { toggle, other } } }, variant);
+        var origin = toggle.TranslatePoint(default, window)!.Value;
+        var left = (int)Math.Round(origin.X);
+        var middle = (int)Math.Round(origin.Y + (toggle.Bounds.Height / 2));
+        var ring = TokenTests.Token("Focus.Ring", variant);
+        var background = TokenTests.Token("Surface.Window", variant);
+
+        other.Focus();
+        toggle.Focus(NavigationMethod.Tab);
+        Dispatcher.UIThread.RunJobs();
+        using (var frame = new FramePixels(window.CaptureRenderedFrame()!))
+        {
+            // The 2 px ring from 3 to 1 px outside the switch, with a 1 px gap in the window colour.
+            Assert.Equal(ring, frame.GetColor(left - 2, middle));
+            Assert.Equal(ring, frame.GetColor(left - 3, middle));
+            Assert.Equal(background, frame.GetColor(left - 1, middle));
+        }
+
+        Assert.True(Wcag.Contrast(ring, background) >= 3);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [MemberData(nameof(Themes))]
     public void MenusUseTheRaisedSurfaceASubtleBorderAndTheOverlayRadius(string theme)
     {
         var variant = Variant(theme);

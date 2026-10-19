@@ -60,9 +60,10 @@
     Focus ring (section 5.3): 2 px focus.ring with 1 px gap around the element, only for keyboard focus. Avalonia shows
     the FocusAdorner only when the focus arrives by Tab or arrow keys, never after a mouse click.
     IsClipEnabled=False keeps the adorner from being clipped to the bounds of the focused element.
-    Add controls to the selector list when they are restyled.
+    Add controls to the selector list when they are restyled. A type selector does not match derived types: ToggleSwitch
+    (a ToggleButton) needs its own entry.
   -->
-  <Style Selector="Button, ToggleButton, RepeatButton, TextBox, CheckBox, RadioButton, ComboBox, ListBoxItem, TabItem">
+  <Style Selector="Button, ToggleButton, ToggleSwitch, RepeatButton, TextBox, CheckBox, RadioButton, ComboBox, ListBoxItem, TabItem">
     <Setter Property="FocusAdorner">
       <FocusAdornerTemplate>
         <Border Margin="-3" BorderThickness="2" CornerRadius="9" AdornerLayer.IsClipEnabled="False"

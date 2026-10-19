@@ -72,6 +72,12 @@ public sealed class SettingsCardTests : IDisposable
         {
             File.Delete(Blocker);
         }
+
+        // A test that freed the blocker leaves a folder there once the defaults above are written.
+        if (Directory.Exists(Blocker))
+        {
+            Directory.Delete(Blocker, recursive: true);
+        }
     }
 
     [AvaloniaFact]
@@ -310,6 +316,73 @@ public sealed class SettingsCardTests : IDisposable
         Assert.False(row.IsEffectivelyVisible);
         Assert.Equal(settings.Current, UserSettings.Load(Blocker).Current);
         Directory.Delete(Blocker, recursive: true);
+    }
+
+    [AvaloniaFact]
+    public async Task SaveFailedFollowsWritesMadeElsewhereWhileTheCardIsOpen()
+    {
+        // Writable at first: the card opens without the warning.
+        var settings = Start(Blocker);
+        var (window, viewModel, _) = Show(settings);
+        var card = await OpenCardAsync(window);
+        var row = Find<Control>(card, "SettingsSaveFailed");
+        Assert.False(row.IsEffectivelyVisible);
+
+        // Another window changes a setting while the folder cannot be written: the card says so, although the change
+        // was announced before it was written.
+        File.WriteAllText(Blocker, "not a folder");
+        settings.Update(current => current with { StartPanel = StartPanelSetting.None });
+        Settle(window);
+        Assert.True(settings.LastSaveFailed);
+        Assert.True(viewModel.SettingsCard!.SaveFailed);
+        Assert.True(row.IsEffectivelyVisible);
+
+        // The next write elsewhere succeeds: the warning goes.
+        File.Delete(Blocker);
+        settings.Update(current => current with { StartPanel = StartPanelSetting.Pages });
+        Settle(window);
+        Assert.False(settings.LastSaveFailed);
+        Assert.False(viewModel.SettingsCard.SaveFailed);
+        Assert.False(row.IsEffectivelyVisible);
+        Directory.Delete(Blocker, recursive: true);
+    }
+
+    [AvaloniaFact]
+    public async Task TheWheelOverAClosedListScrollsTheCard()
+    {
+        var settings = Start();
+        var (window, _, _) = Show(settings);
+        window.Height = 480;
+        Settle(window);
+        var card = await OpenCardAsync(window);
+        var list = Find<ComboBox>(card, "ThemeChoice");
+        var scroller = Find<ScrollViewer>(card, "SettingsScroller");
+        Assert.True(list.IsFocused);
+        Assert.True(scroller.Extent.Height > scroller.Viewport.Height, $"extent {scroller.Extent}, viewport {scroller.Viewport}");
+        var before = settings.Current.Theme;
+
+        // The wheel over the focused, closed list: the setting stays, the card scrolls as it does elsewhere.
+        var point = list.TranslatePoint(new Point(list.Bounds.Width / 2, list.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(point);
+        window.MouseWheel(point, new Vector(0, -1));
+        Settle(window);
+        Assert.Equal(before, settings.Current.Theme);
+        Assert.Equal(before, Assert.IsType<SettingsChoice<ThemeSetting>>(list.SelectedItem).Value);
+        Assert.True(scroller.Offset.Y > 0, $"offset {scroller.Offset}");
+        var scrolled = scroller.Offset.Y;
+        window.MouseWheel(point, new Vector(0, 1));
+        Settle(window);
+        Assert.Equal(before, settings.Current.Theme);
+        Assert.True(scroller.Offset.Y < scrolled, $"offset {scroller.Offset}");
+
+        // An open list still takes the wheel itself (it scrolls its entries); the card stays where it is.
+        list.IsDropDownOpen = true;
+        Settle(window);
+        var offset = scroller.Offset;
+        window.MouseWheel(point, new Vector(0, -1));
+        Settle(window);
+        Assert.Equal(offset, scroller.Offset);
+        list.IsDropDownOpen = false;
     }
 
     [AvaloniaFact]

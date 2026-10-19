@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Pagewing.App.ViewModels;
@@ -15,6 +16,9 @@ namespace Pagewing.App.Views;
 /// </summary>
 public sealed partial class SettingsCard : UserControl
 {
+    /// <summary>DIPs a wheel notch scrolls the card (Avalonia's step for content without logical scrolling).</summary>
+    private const double WheelStep = 50;
+
     public SettingsCard()
     {
         InitializeComponent();
@@ -30,6 +34,7 @@ public sealed partial class SettingsCard : UserControl
         foreach (var list in new[] { ThemeChoice, DensityChoice, LayoutChoice, ZoomChoice, LanguageChoice })
         {
             list.TemplateApplied += OnListTemplateApplied;
+            list.AddHandler(PointerWheelChangedEvent, OnListWheel, RoutingStrategies.Tunnel);
         }
 
         foreach (var toggle in new[] { DarkPagesSwitch, ReduceMotionSwitch })
@@ -111,6 +116,24 @@ public sealed partial class SettingsCard : UserControl
         {
             knob.Bind(Shape.FillProperty, this.GetResourceObservable("Pw.Brush.Accent.On"));
         }
+    }
+
+    /// <summary>
+    /// A focused, closed combo box takes the wheel to change its value, which changes a setting while the user only
+    /// meant to scroll the card past it. The wheel over a closed box scrolls the card instead, by the step the scroll
+    /// viewer uses for content that does not scroll logically (50 DIPs a notch); an open list keeps the wheel.
+    /// </summary>
+    private void OnListWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (sender is not ComboBox { IsDropDownOpen: false })
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var room = Math.Max(0, SettingsScroller.Extent.Height - SettingsScroller.Viewport.Height);
+        var offset = SettingsScroller.Offset;
+        SettingsScroller.Offset = offset.WithY(Math.Clamp(offset.Y - (e.Delta.Y * WheelStep), 0, room));
     }
 
     private bool CloseOpenLists()
