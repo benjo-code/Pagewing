@@ -284,6 +284,55 @@
       "version": "3.49.0",
       "license": "MIT",
       "licenseFile": "third-party/tabler-icons/LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime type2-runtime (nur im AppImage)",
+      "kind": "runtime",
+      "version": "20251108",
+      "license": "MIT",
+      "licenseFile": "third-party/appimage-runtime/LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime libfuse (nur im AppImage)",
+      "kind": "runtime",
+      "version": "3.15.0",
+      "license": "LGPL-2.1-only",
+      "licenseFile": "third-party/appimage-runtime/libfuse-LGPL-2.1.txt"
+    },
+    {
+      "id": "AppImage-Runtime squashfuse (nur im AppImage)",
+      "kind": "runtime",
+      "version": "0.5.2",
+      "license": "BSD-2-Clause",
+      "licenseFile": "third-party/appimage-runtime/squashfuse-LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime zstd (nur im AppImage)",
+      "kind": "runtime",
+      "version": "1.5.6",
+      "license": "BSD-3-Clause",
+      "licenseFile": "third-party/appimage-runtime/zstd-LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime zlib (nur im AppImage)",
+      "kind": "runtime",
+      "version": "1.3.1",
+      "license": "Zlib",
+      "licenseFile": "third-party/appimage-runtime/zlib-LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime musl libc (nur im AppImage)",
+      "kind": "runtime",
+      "version": "Alpine 3.21 (musl 1.2.5)",
+      "license": "MIT",
+      "licenseFile": "third-party/appimage-runtime/musl-COPYRIGHT"
+    },
+    {
+      "id": "AppImage-Runtime mimalloc (nur im AppImage)",
+      "kind": "runtime",
+      "version": "Alpine 3.21 (mimalloc 2.1.7)",
+      "license": "MIT",
+      "licenseFile": "third-party/appimage-runtime/mimalloc-LICENSE"
     }
   ]
 }
