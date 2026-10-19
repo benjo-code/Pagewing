@@ -392,6 +392,14 @@ public sealed class CommandCatalogTests : IDisposable
 
         Assert.Equal(openFile, ToolTip.GetTip(Find<Control>(window, "OpenButton")));
 
+        // The button of the command palette on purpose says what it is for ("Search or command"), not the title of its
+        // command ("Command palette"); its shortcut is the catalog's all the same, in the tooltip and in its kbd.
+        var palette = catalog.ById("palette.show")!;
+        Assert.NotEqual(palette.Title(), Strings.PaletteButton);
+        var paletteKeys = GestureText.Of(palette.Gesture!);
+        Assert.Equal($"{Strings.PaletteButton} ({paletteKeys})", ToolTip.GetTip(Find<Control>(window, "PaletteButton")));
+        Assert.Equal(paletteKeys, Find<TextBlock>(window, "PaletteKbdText").Text);
+
         // The shortcuts shown next to a choice (start screen, zoom menu) are the catalog's as well.
         Assert.Equal(GestureText.Of(catalog.ById("file.open")!.Gesture!), Strings.ChooseFileShortcut);
         Assert.Equal(GestureText.Of(catalog.ById("view.fitWidth")!.Gesture!), Strings.ZoomFitWidthShortcut);

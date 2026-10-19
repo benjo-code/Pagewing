@@ -170,8 +170,6 @@ public static class Strings
     public static string HelpEmpty => Get("HelpEmpty");
     public static string CommandCloseOverlay => Get("CommandCloseOverlay");
     public static string PaletteButton => Get("PaletteButton");
-    public static string PaletteButtonTooltip => Get("PaletteButtonTooltip");
-    public static string PaletteShortcut => Get("PaletteShortcut");
     public static string PalettePlaceholder => Get("PalettePlaceholder");
     public static string PaletteEmpty => Get("PaletteEmpty");
     public static string PaletteGroupRecent => Get("PaletteGroupRecent");

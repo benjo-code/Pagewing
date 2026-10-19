@@ -93,7 +93,6 @@
       <Button Name="PaletteButton" Grid.Column="2" Classes="palette" Classes.narrow="{Binding IsNarrowWindow}"
               Margin="4,0,8,0"
               Command="{Binding ShowPaletteCommand}"
-              ToolTip.Tip="{x:Static res:Strings.PaletteButtonTooltip}"
               AutomationProperties.Name="{x:Static res:Strings.PaletteButton}"
               chrome:WindowDecorationProperties.ElementRole="User">
         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -101,7 +100,8 @@
           <TextBlock Name="PaletteButtonText" Classes="body" VerticalAlignment="Center"
                      Text="{x:Static res:Strings.PaletteButton}" IsVisible="{Binding !IsNarrowWindow}" />
           <Border Name="PaletteKbd" IsVisible="{Binding !IsNarrowWindow}">
-            <TextBlock Classes="mono" Text="{x:Static res:Strings.PaletteShortcut}" />
+            <!-- The shortcut and the tooltip come from the command catalog (TitleBar.axaml.cs). -->
+            <TextBlock Name="PaletteKbdText" Classes="mono" />
           </Border>
         </StackPanel>
       </Button>

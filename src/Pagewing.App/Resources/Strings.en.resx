@@ -429,12 +429,6 @@
   <data name="PaletteButton" xml:space="preserve">
     <value>Search or command</value>
   </data>
-  <data name="PaletteButtonTooltip" xml:space="preserve">
-    <value>Search or command (Ctrl+K)</value>
-  </data>
-  <data name="PaletteShortcut" xml:space="preserve">
-    <value>Ctrl+K</value>
-  </data>
   <data name="PalettePlaceholder" xml:space="preserve">
     <value>Search commands, pages, tabs and files</value>
   </data>

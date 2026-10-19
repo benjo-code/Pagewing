@@ -429,12 +429,6 @@
   <data name="PaletteButton" xml:space="preserve">
     <value>Suchen oder Befehl</value>
   </data>
-  <data name="PaletteButtonTooltip" xml:space="preserve">
-    <value>Suchen oder Befehl (Strg+K)</value>
-  </data>
-  <data name="PaletteShortcut" xml:space="preserve">
-    <value>Strg+K</value>
-  </data>
   <data name="PalettePlaceholder" xml:space="preserve">
     <value>Befehl, Seite, Tab oder Datei suchen</value>
   </data>

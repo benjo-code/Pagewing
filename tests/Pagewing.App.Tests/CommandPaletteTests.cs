@@ -627,8 +627,8 @@ public sealed class CommandPaletteTests : IDisposable
             Assert.Equal(gesture, Find<Control>(window, "PaletteKbd").GetVisualDescendants().OfType<TextBlock>().Single().Text);
         }
 
-        Assert.Equal(gesture, Strings.PaletteShortcut);
         Assert.Equal($"{Strings.PaletteButton} ({gesture})", ToolTip.GetTip(button));
+        Assert.Equal(gesture, AutomationProperties.GetAcceleratorKey(button));
         Assert.Equal(Strings.PaletteButton, AutomationProperties.GetName(button));
 
         // A click opens the palette with the focus in its field; a second click closes it and does not open it again.
