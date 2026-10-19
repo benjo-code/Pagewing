@@ -130,6 +130,13 @@ jobs:
       - name: Self-test of the packaging tool
         run: dotnet run tools/package.cs -- selftest
 
+      - name: Self-test of the licence tool
+        run: dotnet run tools/licenses.cs -- selftest
+
+      # Fails when a package, a native file or the notices file no longer matches third-party/licenses.json.
+      - name: Check the licence inventory
+        run: dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli
+
       # Not blocking yet: the runner's glibc may be newer than 2.35 (decision pending, Milestone 8 task 1).
       - name: Check the binaries against glibc 2.35 (Linux)
         if: runner.os == 'Linux'
