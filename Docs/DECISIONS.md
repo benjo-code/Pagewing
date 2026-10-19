@@ -15,6 +15,14 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-19 – Offen: Quellangebot für libfuse und type2-runtime (M8)
+**Kontext:** Das AppImage enthält die statisch gelinkte type2-Runtime (Release `20251108`) mit libfuse 3.15.0 unter LGPL-2.1 (Versionen: `third-party/appimage-runtime/README.md`). Die LGPL-2.1 verlangt bei Weitergabe des Objektcodes, den Empfängern den Quelltext der Bibliothek anzubieten (und ein Neubinden zu ermöglichen). Die Lizenztexte liegen im Paket (Eintrag „Lizenzinventar …“), ein Quellangebot noch nicht.
+**Offen (vor v0.1.0 klären):** Entweder die Quell-Tarballs (type2-runtime `20251108` samt Bauskripten und Patches, libfuse 3.15.0, ebenso die übrigen Bestandteile) an jedes Release hängen oder ein schriftliches Angebot (Adresse der Quellen, Gültigkeit) ins Paket legen und in der Über-Karte nennen. Bis dahin ist die Pflicht nicht erfüllt. Der Punkt steht unerledigt in der Abnahme des Releases `v0.1.0` (`Docs/roadmap.json`).
+
+## 2026-10-19 – Windows-Standardprogramm: veralteter Programmpfad wird erkannt und erneuert (M8)
+**Kontext:** Die portable ZIP entpackt in einen versionierten Ordner `Pagewing-<Version>/`. Verschiebt oder ersetzt man ihn und löscht den alten, bleibt `UserChoice` auf `Pagewing.PDF`, aber der Befehl `shell\open\command` zeigt auf die gelöschte Exe: Die Karte erschien nicht (Status `IsDefault`), der Palettenbefehl schrieb nichts neu (die Schlüssel existierten), ein Doppelklick scheiterte mit „App nicht gefunden“.
+**Entscheidung:** `WindowsFileTypeRegistry.IsCurrentFor(exePath)` vergleicht alle Einträge von `FileTypeRegistration.Entries` mit der Registry; `MakeDefaultAsync` registriert neu (und benachrichtigt die Shell), wenn etwas fehlt oder abweicht. `WindowsFileTypeRegistry.IsStaleFor(exePath)` ist wahr, wenn unter diesem Wurzelschlüssel ein Öffnen-Befehl steht, der auf ein anderes Programm zeigt; dann meldet `GetStatusAsync` `NotDefault`, auch wenn `UserChoice` Pagewing nennt, und die Karte erscheint wieder. Fehlt die Registrierung unter `HKCU` ganz (Computerinstallation unter `HKLM`), gilt sie **nicht** als veraltet, damit eine Computerinstallation die Karte nicht dauernd zeigt. Tests: `MakeDefaultRegistersAgainWhenTheProgramMoved` und `StatusIsNotDefaultWhenTheRegisteredCommandPointsElsewhere` (Sandbox-Schlüssel, nur unter Windows; hier übersprungen, Lauf offen).
+
 ## 2026-10-19 – Verteilung: Nicht-Ziele und offene Fragen an den Projektinhaber (M8)
 **Kontext:** Abschluss von Milestone 8 (Installer, ZIP, `.deb`, AppImage, Karte „Standardprogramm“, Lizenzinventar, Release-Workflow). Was bewusst nicht dazugehört und was noch offen ist, steht hier an einer Stelle.
 **Entscheidung (Nicht-Ziele):**
