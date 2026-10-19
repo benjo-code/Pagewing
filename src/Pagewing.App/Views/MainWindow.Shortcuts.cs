@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Windows.Input;
 using Avalonia.Input;
 using Pagewing.App.Commands;
@@ -15,28 +14,20 @@ namespace Pagewing.App.Views;
 public sealed partial class MainWindow
 {
     private readonly List<KeyBinding> _commandBindings = [];
-    private readonly List<CatalogCommand> _catalogCommands = [];
 
-    private void AttachShortcuts(MainViewModel? old, MainViewModel? next)
+    private void AttachShortcuts(MainViewModel? next)
     {
-        if (old is not null)
-        {
-            old.PropertyChanged -= OnShortcutsPropertyChanged;
-        }
-
         foreach (var binding in _commandBindings)
         {
             KeyBindings.Remove(binding);
         }
 
         _commandBindings.Clear();
-        _catalogCommands.Clear();
         if (next is null)
         {
             return;
         }
 
-        next.PropertyChanged += OnShortcutsPropertyChanged;
         foreach (var command in next.Commands.All)
         {
             CatalogCommand? bound = null;
@@ -47,35 +38,24 @@ public sealed partial class MainWindow
                 _commandBindings.Add(binding);
                 KeyBindings.Add(binding);
             }
-
-            if (bound is not null)
-            {
-                _catalogCommands.Add(bound);
-            }
         }
     }
 
-    // Most commands act on the active tab: another one may change whether they can run (Esc: the link or the overlay).
-    private void OnShortcutsPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(MainViewModel.ActiveTab) or nameof(MainViewModel.PendingLink) or nameof(MainViewModel.Overlay))
-        {
-            foreach (var command in _catalogCommands)
-            {
-                command.RaiseCanExecuteChanged();
-            }
-        }
-    }
-
-    /// <summary>A command of the catalog as a key binding sees it; whether it can run is asked at the moment of the key.</summary>
+    /// <summary>
+    /// A command of the catalog as a key binding sees it. Whether it can run is asked at the moment of the key
+    /// (<c>KeyBinding.TryHandle</c> calls <see cref="ICommand.CanExecute"/> and never listens to
+    /// <see cref="ICommand.CanExecuteChanged"/>, Avalonia 12.1.4), so the command raises no change.
+    /// </summary>
     private sealed class CatalogCommand(AppCommand command) : ICommand
     {
-        public event EventHandler? CanExecuteChanged;
+        public event EventHandler? CanExecuteChanged
+        {
+            add { }
+            remove { }
+        }
 
         public bool CanExecute(object? parameter) => command.CanExecute();
 
         public void Execute(object? parameter) => command.Execute();
-
-        public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 }

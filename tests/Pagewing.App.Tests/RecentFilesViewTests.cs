@@ -676,6 +676,25 @@ public sealed class RecentFilesViewTests : IDisposable
         Assert.Equal(1, other.Reads);
     }
 
+    [Fact]
+    public void AnEntryTakesAnyPathApartWithoutThrowing()
+    {
+        // A history file may hold any text as a path: characters no file system takes, no folder, nothing at all.
+        var folder = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar);
+        var odd = new RecentEntry(Path.Combine(folder, "a\0b<>|\"*?.pdf"));
+        Assert.Equal("a\0b<>|\"*?.pdf", odd.FileName);
+        Assert.Equal(folder, odd.Folder);
+
+        var bare = new RecentEntry("report.pdf");
+        Assert.Equal("report.pdf", bare.FileName);
+        Assert.Equal(string.Empty, bare.Folder);
+        Assert.Equal("report.pdf", bare.AutomationName);
+
+        var empty = new RecentEntry(string.Empty);
+        Assert.Equal(string.Empty, empty.FileName);
+        Assert.Equal(string.Empty, empty.Folder);
+    }
+
     [AvaloniaFact]
     public void AFlushWithNothingChangedAfterReadingWritesNothing()
     {

@@ -264,17 +264,8 @@ public sealed class PaletteViewModel : ViewModelBase
         return matches.Take(Math.Max(limit, 0)).Select(match => match.Item).ToList();
     }
 
-    private static string? FolderOf(string path)
-    {
-        try
-        {
-            return Path.GetDirectoryName(path) is { Length: > 0 } folder ? folder : null;
-        }
-        catch (ArgumentException)
-        {
-            return null;
-        }
-    }
+    // Path.GetDirectoryName only takes the path apart and rejects no characters (see RecentEntry).
+    private static string? FolderOf(string path) => Path.GetDirectoryName(path) is { Length: > 0 } folder ? folder : null;
 
     /// <summary>The recently opened files (newest first), by file name; only the list, the disk is not asked.</summary>
     private List<PaletteItem> Recent(string query)
