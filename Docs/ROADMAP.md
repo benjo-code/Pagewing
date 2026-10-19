@@ -242,9 +242,9 @@ Ziel: PDFs lassen sich unter Windows und Linux drucken.
 
 **Aufgaben**
 - [x] Abstraktion `IPrintService` in Core. Umgesetzt mit `Pagewing.Core.Printing` (`IPrintService`, `PrintSettings`, `PrintPlan` für Seitenfolge mit Kopien und Sortieren, `PrintPlacement` für Skalieren, Drehen und Zentrieren, `PrintTicket`); `PageRange` ist dafür von der CLI nach `Pagewing.Core.Pdf` gewandert. Tests `PrintPlanTests`, `PrintPlacementTests`, `PrintSettingsTests`, `PageRangeTests`
-- [ ] Windows: Druckdialog per Win32, Ausgabe mit `FPDF_RenderPage` auf den Drucker-HDC
-- [ ] Linux: Übergabe an CUPS, eigener Avalonia-Dialog (Drucker, Seitenbereich, Kopien)
-- [ ] Seitenbereich, Kopien, Anpassen an Papiergröße
+- [x] Windows: Druckdialog per Win32, Ausgabe mit `FPDF_RenderPage` auf den Drucker-HDC. Umgesetzt mit `WindowsPrintService` (`PrintDlgEx` mit `PD_RETURNDC`, GDI-Auftrag auf eigenem Thread, jede Seite ein kurzer Hintergrundauftrag auf dem `PdfiumThread`, Drehung durch `FPDF_RenderPage`, Kopien und Sortieren durch Pagewing); Tests `WindowsPrintNativeTests` (Strukturgrößen, `DEVMODE`, Bereichstext) und `WindowsPrintToPdfTests` (Druck in Microsoft Print to PDF, laufen nur unter Windows). Offen: Läufe unter Windows (`dotnet test --project tests/Pagewing.App.Tests --filter-class "*WindowsPrintToPdfTests"`), siehe Abnahme
+- [x] Linux: Übergabe an CUPS, eigener Avalonia-Dialog (Drucker, Seitenbereich, Kopien). Umgesetzt mit `CupsPrintService` (libcups über `[LibraryImport]`, Datei plus CUPS-Optionen, verschlüsselte Dokumente als entschlüsselte Kopie) und dem Dialog `PrintCard` (`PrintViewModel`; Drucker, Seiten, Kopien, Sortieren, Seitengröße, Duplex, Ausrichtung); Tests `CupsOptionsTests`, `CupsPrintServiceTests` (gegen eine echte CUPS-PDF-Warteschlange, mit `PAGEWING_TEST_CUPS_PRINTER`/`PAGEWING_TEST_CUPS_OUTPUT`: 22 bestanden in der Entwicklungsumgebung), `PrintCardTests` (31)
+- [x] Seitenbereich, Kopien, Anpassen an Papiergröße. Umgesetzt im Kern ohne Drucker (`PrintPlan`, `PrintPlacement`, `PrintSettings`) und in beiden Diensten; Strg+P als `file.print`, Auftragskarte mit Fortschritt und Abbruch, „Seitengröße beim Drucken“ in den Einstellungen; Tests `PrintPlanTests`, `PrintPlacementTests`, `PrintCommandTests`, `PrintProgressTests`
 
 **Abnahmekriterien**
 - [ ] Druck einer Test-PDF auf einen echten Drucker unter Windows und Linux (manuelle Prüfung durch den Projektinhaber)

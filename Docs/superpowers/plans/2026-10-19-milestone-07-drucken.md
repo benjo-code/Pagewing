@@ -222,3 +222,20 @@ Eingaben und Zustände, die weder Spec noch Roadmap nennen, die aber vorkommen. 
 - [ ] **Step 4: `CHANGELOG.md`** unter `[Unreleased]`: Drucken (Strg+P) unter Windows und Linux mit Seitenbereich, Kopien, Sortieren, Duplex, Ausrichtung, Anpassen/Tatsächliche Größe, automatischer Drehung.
 - [ ] **Step 5: Roadmap abschließen:** Aufgaben und Abnahmekriterien mit Nachweis, `done` mit Datum erst nach der manuellen Abnahme (bis dahin `in-progress` mit den offenen Prüfungen in den Nachweisen), `dotnet run tools/roadmap.cs -- generate`, danach `check`.
 - [ ] **Step 6: PR** nach `dev` nur auf Anweisung des Projektinhabers; Beschreibung mit Zusammenfassung, Testnachweis und offenen Prüfungen; Squash-Merge erst bei grünen CI-Checks.
+
+---
+
+## Umsetzungsstand (Abweichungen vom Plan, 2026-10-19)
+
+Die Tasks 1 bis 7 sind umgesetzt, Task 8 (Prüfung) nur soweit in der Entwicklungsumgebung (Linux, kein Windows, kein Drucker auf Papier) möglich, Task 9 (Doku) ist erledigt. Abweichungen:
+
+- **`PaperArea` ohne Versatz** (`PaperArea(Width, Height)`): Der Ursprung des Drucker-HDC ist die Ecke des druckbaren Bereichs, ein Versatz zum physischen Papier ist dafür nicht nötig. `PrintPlacement` hat zusätzlich `Clipped` und `ToDevice(dpiX, dpiY)`; `DevicePlacement` ist die Fassung in Druckerpixeln.
+- **`PrinterInfo` ohne `SupportsDuplex`, dafür `IPrintService.SupportsDuplexAsync`:** Ob ein Drucker beidseitig druckt, fragt libcups nur beim einzelnen Ziel (`cupsCheckDestSupported`); die Liste bliebe sonst eine Behauptung.
+- **`PdfDocument.GetPrintInfoAsync`** statt der Eigenschaften `IsEncrypted`/`PrintPermission` (PDFium-Zugriffe laufen immer über den `PdfiumThread`); `PrintPageToDeviceAsync` nimmt eine `DevicePlacement`.
+- **Windows-Thread-Versuch (Task 3, Schritt 1) nicht ausgeführt:** Ohne Windows konnte nicht belegt werden, ob GDI-Aufrufe über mehrere Threads gehen. Die Umsetzung vermeidet die Frage: `StartDoc` bis `EndDoc` laufen auf einem Thread, PDFium zeichnet währenddessen vom `PdfiumThread` aus auf denselben HDC, nie gleichzeitig. Ob „Text bleibt Text“ in Microsoft Print to PDF gilt, prüft `WindowsPrintToPdfTests.PrintsARangeAndCopiesInTheRequestedOrder` (liest den Text der gedruckten Seiten).
+- **Das Drucken verbietende Testdatei** ist `encrypted_hello_world_r3.pdf` (mit dem Benutzerkennwort geöffnet); `…_r6.pdf` erlaubt es. Eine eigens erzeugte Datei war nicht nötig.
+- **`print-mixed.pdf` steht in `RenderCorpus.Skipped`:** Referenzbilder entstehen nur unter Windows (`PAGEWING_UPDATE_REFERENCES=1`), und die Datei prüft die Platzierung auf dem Papier, nicht das Zeichnen.
+- **„Seitengröße beim Drucken“ in den Einstellungen** (`AppSettings.PrintScaling`, Gruppe „Drucken“ der Einstellungskarte): Der Druckdialog von Windows kennt kein Anpassen; unter Linux startet der Dialog mit dieser Einstellung und merkt sich die letzte Wahl.
+- **`Views/CardLists`** nimmt aus der Einstellungskarte heraus, was die Karten mit Auswahllisten teilen (Esc und Bild auf/ab in der offenen Liste, Mausrad); die Einstellungskarte ist dadurch höher (die Prüfungen `SettingsCardTests` und `RecentFilesViewTests` zählen mit).
+- **Kein Knopf in der Oberfläche** (Task 7, Schritt 1 bleibt eine Frage an den Projektinhaber).
+- **Offen für die manuelle Abnahme (Task 8, Schritt 4):** die beiden Abnahmekriterien der Roadmap (echter Drucker unter Windows und Linux; Microsoft Print to PDF bzw. CUPS-PDF), die Läufe von `WindowsPrintToPdfTests` unter Windows, die Drehung durch CUPS an einem Papierdrucker, Duplex an einem Duplexdrucker, Screenreader (Narrator, NVDA, Orca) auf Karte und Fortschritt, Startzeiten auf echter Hardware.
