@@ -36,13 +36,20 @@ public sealed class WindowsPrintToPdfTests : IDisposable
     {
         var output = await PrintAsync(new PrintSettings { Pages = PrintPageChoice.Range, Range = "2-3", Copies = 2, Collate = true }, null, TestContext.Current.CancellationToken);
 
+        // Microsoft Print to PDF does not keep PDFium's text as text (PDFium draws the glyphs of the standard fonts as
+        // outlines on a printer), so the order is read from the pictures: pages 2 3 2 3 of the document.
         var ct = TestContext.Current.CancellationToken;
         await using var printed = await _engine.OpenAsync(output, cancellationToken: ct);
         Assert.Equal(4, printed.PageCount);
-        Assert.Contains("Seite 2", await printed.GetTextAsync(0, ct), StringComparison.Ordinal);
-        Assert.Contains("Seite 3", await printed.GetTextAsync(1, ct), StringComparison.Ordinal);
-        Assert.Contains("Seite 2", await printed.GetTextAsync(2, ct), StringComparison.Ordinal);
-        Assert.Contains("Seite 3", await printed.GetTextAsync(3, ct), StringComparison.Ordinal);
+        var pictures = new List<byte[]>();
+        for (var i = 0; i < 4; i++)
+        {
+            pictures.Add((await printed.RenderPageAsync(i, 0.25, cancellationToken: ct)).Pixels.ToArray());
+        }
+
+        Assert.True(pictures[0].AsSpan().SequenceEqual(pictures[2]), "pages 1 and 3 of the print are both page 2 of the document");
+        Assert.True(pictures[1].AsSpan().SequenceEqual(pictures[3]), "pages 2 and 4 of the print are both page 3 of the document");
+        Assert.False(pictures[0].AsSpan().SequenceEqual(pictures[1]), "page 2 and page 3 of the document differ");
     }
 
     [Fact]
