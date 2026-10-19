@@ -1,9 +1,9 @@
 using System.Globalization;
 
-namespace Pagewing.Cli;
+namespace Pagewing.Core.Pdf;
 
 /// <summary>Parses page selections such as <c>3</c>, <c>2-5</c>, <c>1,3,5-7</c> or <c>all</c> (1-based).</summary>
-internal static class PageRange
+public static class PageRange
 {
     /// <summary>
     /// Returns the selected pages as 0-based indexes, ascending and without duplicates.

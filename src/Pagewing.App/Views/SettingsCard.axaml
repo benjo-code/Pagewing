@@ -156,6 +156,16 @@
           </StackPanel>
 
           <StackPanel Classes="settingsGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupPrint}" />
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsPrintScaling}" />
+              <ComboBox Name="PrintScalingChoice" Grid.Column="1"
+                        ItemsSource="{Binding PrintScalingChoices}" SelectedItem="{Binding SelectedPrintScaling, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.SettingsPrintScaling}" />
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Classes="settingsGroup">
             <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupLanguage}" />
             <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
               <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsLanguage}" />

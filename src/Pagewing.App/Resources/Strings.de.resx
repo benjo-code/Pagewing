@@ -546,4 +546,142 @@
   <data name="SettingsHistoryCleared" xml:space="preserve">
     <value>Verlauf gelöscht.</value>
   </data>
+  <data name="PrintErrorStart" xml:space="preserve">
+    <value>Der Drucker konnte den Druckauftrag nicht starten.</value>
+  </data>
+  <data name="PrintErrorPage" xml:space="preserve">
+    <value>Der Drucker hat beim Drucken einen Fehler gemeldet.</value>
+  </data>
+  <data name="PrintErrorDialog" xml:space="preserve">
+    <value>Der Druckdialog konnte nicht angezeigt werden.</value>
+  </data>
+  <data name="PrintForbidden" xml:space="preserve">
+    <value>Dieses Dokument verbietet das Drucken.</value>
+  </data>
+  <data name="PrintNoService" xml:space="preserve">
+    <value>Kein Druckdienst gefunden. Pagewing druckt über CUPS.</value>
+  </data>
+  <data name="PrintNoPrinter" xml:space="preserve">
+    <value>Es ist kein Drucker eingerichtet.</value>
+  </data>
+  <data name="CommandPrint" xml:space="preserve">
+    <value>Drucken …</value>
+  </data>
+  <data name="PrintTitle" xml:space="preserve">
+    <value>Drucken</value>
+  </data>
+  <data name="PrintPrinter" xml:space="preserve">
+    <value>Drucker</value>
+  </data>
+  <data name="PrintSearching" xml:space="preserve">
+    <value>Suche Drucker …</value>
+  </data>
+  <data name="PrintPages" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="PrintPagesAll" xml:space="preserve">
+    <value>Alle Seiten</value>
+  </data>
+  <data name="PrintPagesCurrent" xml:space="preserve">
+    <value>Aktuelle Seite</value>
+  </data>
+  <data name="PrintPagesRange" xml:space="preserve">
+    <value>Bereich</value>
+  </data>
+  <data name="PrintRangeField" xml:space="preserve">
+    <value>Zu druckende Seiten, zum Beispiel 1-3,5</value>
+  </data>
+  <data name="PrintRangeInvalid" xml:space="preserve">
+    <value>Kein gültiger Bereich. Zum Beispiel 1-3,5.</value>
+  </data>
+  <data name="PrintRangeBeyond" xml:space="preserve">
+    <value>Seite {0} gibt es nicht. Das Dokument hat {1} Seiten.</value>
+  </data>
+  <data name="PrintCopies" xml:space="preserve">
+    <value>Kopien</value>
+  </data>
+  <data name="PrintCopiesInvalid" xml:space="preserve">
+    <value>Eine Zahl von 1 bis 999.</value>
+  </data>
+  <data name="PrintCollate" xml:space="preserve">
+    <value>Sortieren (1 2 3, 1 2 3)</value>
+  </data>
+  <data name="PrintScalingLabel" xml:space="preserve">
+    <value>Seitengröße</value>
+  </data>
+  <data name="PrintScalingFit" xml:space="preserve">
+    <value>An Papier anpassen</value>
+  </data>
+  <data name="PrintScalingActual" xml:space="preserve">
+    <value>Tatsächliche Größe</value>
+  </data>
+  <data name="PrintScalingActualHint" xml:space="preserve">
+    <value>Was nicht aufs Papier passt, wird abgeschnitten.</value>
+  </data>
+  <data name="PrintDuplex" xml:space="preserve">
+    <value>Beidseitig</value>
+  </data>
+  <data name="PrintPrinterSetting" xml:space="preserve">
+    <value>Einstellung des Druckers</value>
+  </data>
+  <data name="PrintDuplexOff" xml:space="preserve">
+    <value>Einseitig</value>
+  </data>
+  <data name="PrintDuplexLong" xml:space="preserve">
+    <value>Beidseitig, lange Kante</value>
+  </data>
+  <data name="PrintDuplexShort" xml:space="preserve">
+    <value>Beidseitig, kurze Kante</value>
+  </data>
+  <data name="PrintOrientation" xml:space="preserve">
+    <value>Papierausrichtung</value>
+  </data>
+  <data name="PrintPortrait" xml:space="preserve">
+    <value>Hochformat</value>
+  </data>
+  <data name="PrintLandscape" xml:space="preserve">
+    <value>Querformat</value>
+  </data>
+  <data name="PrintAutoRotateHint" xml:space="preserve">
+    <value>Jede Seite wird gedreht, wenn sie so besser aufs Papier passt.</value>
+  </data>
+  <data name="PrintStart" xml:space="preserve">
+    <value>Drucken</value>
+  </data>
+  <data name="PrintCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="PrintSending" xml:space="preserve">
+    <value>Wird an den Drucker gesendet …</value>
+  </data>
+  <data name="PrintRunning" xml:space="preserve">
+    <value>Drucke Seite {0} von {1} …</value>
+  </data>
+  <data name="PrintDone" xml:space="preserve">
+    <value>An den Drucker gesendet.</value>
+  </data>
+  <data name="PrintFailedPage" xml:space="preserve">
+    <value>Seite {0} konnte nicht gedruckt werden.</value>
+  </data>
+  <data name="PrintFailedPages" xml:space="preserve">
+    <value>Seiten {0} konnten nicht gedruckt werden.</value>
+  </data>
+  <data name="PrintBusy" xml:space="preserve">
+    <value>In diesem Fenster läuft schon ein Druckauftrag.</value>
+  </data>
+  <data name="PrintCancelled" xml:space="preserve">
+    <value>Drucken abgebrochen.</value>
+  </data>
+  <data name="PrintJobCancel" xml:space="preserve">
+    <value>Drucken abbrechen</value>
+  </data>
+  <data name="PrintJobClose" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="SettingsGroupPrint" xml:space="preserve">
+    <value>Drucken</value>
+  </data>
+  <data name="SettingsPrintScaling" xml:space="preserve">
+    <value>Seitengröße beim Drucken</value>
+  </data>
 </root>

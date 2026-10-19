@@ -19,6 +19,9 @@ public sealed partial class NativeBindingsTests
     {
         [nameof(FpdfConstants.RenderAnnot)] = "FPDF_ANNOT",
         [nameof(FpdfConstants.RenderConvertFillToStroke)] = "FPDF_CONVERT_FILL_TO_STROKE",
+        [nameof(FpdfConstants.RenderPrinting)] = "FPDF_PRINTING",
+        [nameof(FpdfConstants.SaveNoIncremental)] = "FPDF_NO_INCREMENTAL",
+        [nameof(FpdfConstants.SaveRemoveSecurity)] = "FPDF_REMOVE_SECURITY",
         [nameof(FpdfConstants.ErrSuccess)] = "FPDF_ERR_SUCCESS",
         [nameof(FpdfConstants.ErrUnknown)] = "FPDF_ERR_UNKNOWN",
         [nameof(FpdfConstants.ErrFile)] = "FPDF_ERR_FILE",
@@ -43,6 +46,7 @@ public sealed partial class NativeBindingsTests
     {
         [nameof(FpdfConstants.FontFlagForceBold)] = 1L << (19 - 1),
         [nameof(FpdfConstants.FontFlagItalic)] = 1L << (7 - 1),
+        [nameof(FpdfConstants.PermissionPrint)] = 1L << (3 - 1),
     };
 
     [Fact]
@@ -75,14 +79,16 @@ public sealed partial class NativeBindingsTests
             "include",
             "pdfium");
         var defines = new Dictionary<string, long>();
-        foreach (var header in new[] { "fpdfview.h", "fpdf_progressive.h", "fpdf_doc.h" })
+        foreach (var header in new[] { "fpdfview.h", "fpdf_progressive.h", "fpdf_doc.h", "fpdf_save.h" })
         {
             foreach (Match match in DefinePattern().Matches(File.ReadAllText(Path.Combine(headerDirectory, header))))
             {
                 var text = match.Groups["value"].Value;
-                defines[match.Groups["name"].Value] = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                    ? long.Parse(text.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture)
-                    : long.Parse(text, CultureInfo.InvariantCulture);
+                defines[match.Groups["name"].Value] = match.Groups["shift"].Success
+                    ? 1L << int.Parse(match.Groups["shift"].Value, CultureInfo.InvariantCulture)
+                    : text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                        ? long.Parse(text.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture)
+                        : long.Parse(text, CultureInfo.InvariantCulture);
             }
         }
 
@@ -216,7 +222,7 @@ public sealed partial class NativeBindingsTests
         throw new DirectoryNotFoundException("Repository root (Pagewing.slnx) not found.");
     }
 
-    [GeneratedRegex(@"^#define\s+(?<name>\w+)\s+(?<value>0x[0-9A-Fa-f]+|\d+)\b", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^#define\s+(?<name>\w+)\s+(?:\(1 << (?<shift>\d+)\)|(?<value>0x[0-9A-Fa-f]+|\d+)\b)", RegexOptions.Multiline)]
     private static partial Regex DefinePattern();
 
     private sealed class RecordingHandle(PdfiumThread thread, PdfiumHandle? parent, ConcurrentQueue<string> log, string name)

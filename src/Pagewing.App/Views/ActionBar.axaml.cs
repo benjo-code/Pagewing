@@ -29,6 +29,7 @@ public sealed partial class ActionBar : UserControl
     {
         Describe(PagesButton, Strings.PagesTooltip, catalog.ById("panel.pages"));
         Describe(ContentsButton, Strings.ContentsTooltip, catalog.ById("panel.contents"));
+        Describe(PrintButton, Strings.PrintTitle, catalog.ById("file.print"));
         if (catalog.ById("search.open")?.Gesture is { } search)
         {
             AutomationProperties.SetAcceleratorKey(SearchButton, GestureText.Of(search));

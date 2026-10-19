@@ -1,4 +1,5 @@
 using System.Globalization;
+using Pagewing.Core.Pdf;
 
 namespace Pagewing.Cli;
 

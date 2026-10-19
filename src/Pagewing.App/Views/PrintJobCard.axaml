@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             x:Class="Pagewing.App.Views.PrintJobCard"
+             x:DataType="vm:PrintJobViewModel"
+             HorizontalAlignment="Center" VerticalAlignment="Bottom">
+  <!--
+    The card of a print job at the bottom of the document area (design system 7.8): surface.raised, radius.overlay, card
+    shadow. A running job shows its text, a bar and "Cancel printing"; a finished one its text and "Close" (it goes by
+    itself after a few seconds); a failure or a message in the danger colour with the warning symbol, never only a colour.
+    The text is a polite live region, so a screen reader announces the end of the job. It takes no input beside its own
+    area and does not cover the document. Made when the first job or message asks for it (MainWindow.Print.cs).
+  -->
+  <UserControl.Styles>
+    <Style Selector="TextBlock.failed">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Danger.Default}" />
+    </Style>
+  </UserControl.Styles>
+  <Border Name="PrintJobBox" MaxWidth="440" MinWidth="280" Margin="24" Padding="16,12"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <Grid ColumnDefinitions="Auto,*,Auto">
+      <ctl:StrokeIcon Name="PrintJobIcon" Width="16" Height="16" Margin="0,2,10,0" VerticalAlignment="Top"
+                      Data="{StaticResource Pw.Icon.Printer}" IsVisible="{Binding !IsFailed}" />
+      <ctl:StrokeIcon Name="PrintJobWarning" Width="16" Height="16" Margin="0,2,10,0" VerticalAlignment="Top"
+                      Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}"
+                      IsVisible="{Binding IsFailed}" />
+      <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
+        <TextBlock Name="PrintJobText" Classes="body" Classes.failed="{Binding IsFailed}" TextWrapping="Wrap" Text="{Binding Text}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <ProgressBar Name="PrintJobBar" Minimum="0" Maximum="{Binding Total}" Value="{Binding Done}"
+                     IsVisible="{Binding ShowsProgress}" />
+      </StackPanel>
+      <Button Name="PrintJobButton" Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center"
+              Command="{Binding ActionCommand}" Content="{Binding ActionText}"
+              AutomationProperties.Name="{Binding ActionText}" />
+    </Grid>
+  </Border>
+</UserControl>

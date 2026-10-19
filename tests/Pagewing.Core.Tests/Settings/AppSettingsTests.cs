@@ -1,3 +1,4 @@
+using Pagewing.Core.Printing;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
 using Xunit;
@@ -23,6 +24,17 @@ public sealed class AppSettingsTests
         Assert.Equal(264d, settings.PanelWidth);
     }
 
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData("Büro Drucker", "Büro Drucker")]
+    public void NormalizedKeepsOnlyAUsablePrinterName(string? name, string? expected)
+    {
+        Assert.Equal(expected, (AppSettings.Default with { LastPrinter = name }).Normalized().LastPrinter);
+        Assert.Null((AppSettings.Default with { LastPrinter = new string('x', AppSettings.MaxPrinterNameLength + 1) }).Normalized().LastPrinter);
+    }
+
     [Fact]
     public void NormalizedClampsPanelWidthAndFixesUndefinedValues()
     {
@@ -41,6 +53,7 @@ public sealed class AppSettingsTests
             DefaultLayout = (PageLayoutMode)99,
             DefaultZoomMode = ZoomMode.Free,
             StartPanel = (StartPanelSetting)99,
+            PrintScaling = (PrintScaling)99,
         };
         var fixedSettings = broken.Normalized();
 
@@ -50,6 +63,7 @@ public sealed class AppSettingsTests
         Assert.Equal(PageAppearanceSetting.Light, fixedSettings.PageAppearance);
         Assert.Equal(PageLayoutMode.Continuous, fixedSettings.DefaultLayout);
         Assert.Equal(ZoomMode.ActualSize, fixedSettings.DefaultZoomMode);
+        Assert.Equal(PrintScaling.FitToPaper, fixedSettings.PrintScaling);
         Assert.Equal(StartPanelSetting.Pages, fixedSettings.StartPanel);
     }
 

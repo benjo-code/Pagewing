@@ -84,7 +84,7 @@ static class Cli
     }
 }
 
-// All self-made files. Page sizes stay small (at most 300 x 400 pt), except text-rich (400 x 400), text-dense (612 x 792, where the text volume is the point) and dark-sample (A4).
+// All self-made files. Page sizes stay small (at most 300 x 400 pt), except text-rich (400 x 400), text-dense (612 x 792, where the text volume is the point), dark-sample (A4) and print-mixed (A4, A4 landscape, Letter, A5 with /Rotate 90).
 static class TestPdfs
 {
     private const string Helvetica = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
@@ -102,6 +102,7 @@ static class TestPdfs
         new("text-rich.pdf", TextRich()),
         new("text-dense.pdf", TextDense()),
         new("dark-sample.pdf", DarkSample()),
+        new("print-mixed.pdf", PrintMixed()),
         new("wide-page.pdf", WidePage()),
         new("thousand-pages.pdf", ThousandPages()),
         new("outline.pdf", Outline()),
@@ -242,6 +243,34 @@ static class TestPdfs
             ET
             """);
         return doc.Build();
+    }
+
+    // Four pages of different formats for printing: A4, A4 landscape, Letter and A5 turned by /Rotate 90 (shown as 595 x 420).
+    // Each page has a 1 pt frame on its edge (cutting shows), a diagonal and a text line naming it.
+    private static byte[] PrintMixed()
+    {
+        var doc = new PdfDoc("Pagewing Druckprobe");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        AddFramedPage(doc, resources, "/MediaBox [0 0 595 842]", 595, 842, "Seite 1 A4 hoch");
+        AddFramedPage(doc, resources, "/MediaBox [0 0 842 595]", 842, 595, "Seite 2 A4 quer");
+        AddFramedPage(doc, resources, "/MediaBox [0 0 612 792]", 612, 792, "Seite 3 Letter hoch");
+        AddFramedPage(doc, resources, "/MediaBox [0 0 420 595] /Rotate 90", 420, 595, "Seite 4 A5 gedreht");
+        return doc.Build();
+    }
+
+    private static void AddFramedPage(PdfDoc doc, string resources, string pageEntries, int width, int height, string label)
+    {
+        var content = string.Create(CultureInfo.InvariantCulture, $"""
+            0 0 0 RG 1 w
+            0.5 0.5 {width - 1} {height - 1} re S
+            0.6 0.6 0.6 RG 0 0 m {width} {height} l S
+            BT
+            /F1 24 Tf
+            40 {height - 60} Td
+            ({label}) Tj
+            ET
+            """);
+        doc.AddPage(pageEntries, resources, content);
     }
 
     // MediaBox 300 x 300 with a CropBox of 200 x 150; rendering must show only the crop area.

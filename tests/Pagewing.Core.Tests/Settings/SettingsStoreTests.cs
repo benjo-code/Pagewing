@@ -1,3 +1,4 @@
+using Pagewing.Core.Printing;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
 using Xunit;
@@ -44,6 +45,8 @@ public sealed class SettingsStoreTests : IDisposable
             DefaultZoomMode = ZoomMode.FitWidth,
             StartPanel = StartPanelSetting.Contents,
             PanelWidth = 321.5,
+            LastPrinter = "Büro Drucker",
+            PrintScaling = PrintScaling.ActualSize,
         };
         var store = new SettingsStore(FilePath);
 

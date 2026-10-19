@@ -1,4 +1,4 @@
-using Pagewing.Cli;
+using Pagewing.Core.Pdf;
 using Xunit;
 
 namespace Pagewing.Core.Tests.Cli;

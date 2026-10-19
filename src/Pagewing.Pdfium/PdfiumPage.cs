@@ -62,6 +62,38 @@ internal sealed class PdfiumPage : IDisposable
         }
     }
 
+    /// <summary>
+    /// Draws the page, with its annotations, on a printer device context (<c>HDC</c>), always in the light colours of the
+    /// page. Windows only. Must be called on the PDFium thread.
+    /// </summary>
+    /// <param name="deviceContext">The <c>HDC</c> of a printer with a page started.</param>
+    /// <param name="x">Left edge of the display area in device units.</param>
+    /// <param name="y">Top edge of the display area in device units.</param>
+    /// <param name="width">Width of the display area, after <paramref name="quarterTurns"/>.</param>
+    /// <param name="height">Height of the display area, after <paramref name="quarterTurns"/>.</param>
+    /// <param name="quarterTurns">0, or 1 to turn the page by 90° clockwise.</param>
+    /// <exception cref="PlatformNotSupportedException">The OS is not Windows.</exception>
+    /// <exception cref="PdfiumRenderException">PDFium could not draw the page.</exception>
+    public void RenderToDevice(nint deviceContext, int x, int y, int width, int height, int quarterTurns)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Printing to a device context needs Windows.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfZero(deviceContext);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        ArgumentOutOfRangeException.ThrowIfNegative(quarterTurns);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(quarterTurns, 3);
+
+        var native = Access();
+        if (Fpdf.FPDF_RenderPage(deviceContext, native, x, y, width, height, quarterTurns, FpdfConstants.RenderAnnot | FpdfConstants.RenderPrinting) == 0)
+        {
+            throw new PdfiumRenderException();
+        }
+    }
+
     public void Dispose() => handle.Dispose();
 
     /// <summary>Returns the native page after checking the thread and that the page is still open.</summary>

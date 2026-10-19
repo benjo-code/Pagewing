@@ -1,3 +1,4 @@
+using Pagewing.Core.Printing;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.Core.Settings;
@@ -111,7 +112,16 @@ public sealed record AppSettings
     /// <summary>The width of the side panel in DIP, between <see cref="MinPanelWidth"/> and <see cref="MaxPanelWidth"/>.</summary>
     public double PanelWidth { get; set; } = DefaultPanelWidth;
 
-    /// <summary>Returns a copy whose values are all valid: undefined enum values become the default, the width is clamped.</summary>
+    /// <summary>The longest name of a printer that is kept (longer names are dropped).</summary>
+    public const int MaxPrinterNameLength = 256;
+
+    /// <summary>The printer the user printed on last, or <see langword="null"/>.</summary>
+    public string? LastPrinter { get; set; }
+
+    /// <summary>How a page is fitted onto the paper when printing: to fit the paper, or at its actual size.</summary>
+    public PrintScaling PrintScaling { get; set; } = PrintScaling.FitToPaper;
+
+    /// <summary>Returns a copy whose values are all valid: undefined enum values become the default, the width is clamped, an empty or overlong printer name is dropped.</summary>
     public AppSettings Normalized()
     {
         var defaults = Default;
@@ -126,6 +136,8 @@ public sealed record AppSettings
                 ? DefaultZoomMode
                 : defaults.DefaultZoomMode,
             StartPanel = Enum.IsDefined(StartPanel) ? StartPanel : defaults.StartPanel,
+            PrintScaling = Enum.IsDefined(PrintScaling) ? PrintScaling : defaults.PrintScaling,
+            LastPrinter = string.IsNullOrWhiteSpace(LastPrinter) || LastPrinter.Length > MaxPrinterNameLength ? null : LastPrinter,
             PanelWidth = double.IsFinite(PanelWidth) ? Math.Clamp(PanelWidth, MinPanelWidth, MaxPanelWidth) : DefaultPanelWidth,
         };
     }

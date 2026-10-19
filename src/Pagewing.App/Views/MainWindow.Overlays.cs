@@ -48,7 +48,7 @@ public sealed partial class MainWindow
             : null;
 
     private bool IsOverlayButton(IInputElement element) =>
-        ReferenceEquals(element, TitleBar.PaletteButton) || ReferenceEquals(element, ActionBar.SettingsButton);
+        ReferenceEquals(element, TitleBar.PaletteButton) || ReferenceEquals(element, ActionBar.SettingsButton) || ReferenceEquals(element, ActionBar.PrintButton);
 
     /// <summary>Whether <paramref name="element"/> is a button that shows an overlay and got the focus from a press.</summary>
     private bool IsPressedOverlayButton(IInputElement? element) =>
@@ -82,6 +82,9 @@ public sealed partial class MainWindow
                         break;
                     case OverlayKind.Settings:
                         _settingsCard?.FocusFirst();
+                        break;
+                    case OverlayKind.Print:
+                        _printCard?.FocusFirst();
                         break;
                 }
             },
@@ -154,6 +157,8 @@ public sealed partial class MainWindow
             _settingsCard?.Hide();
         }
 
+        UpdatePrintCard(kind);
+
         // An overlay had the keys and nothing that is shown now takes them.
         if (overlayHadFocus && kind == OverlayKind.None)
         {
@@ -169,7 +174,7 @@ public sealed partial class MainWindow
 
     private bool IsInShownOverlay(IInputElement? element) =>
         element is Visual visual
-        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual));
+        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual) || IsWithin(_printCard, visual));
 
     private static bool IsWithin(Control? overlay, Visual visual) =>
         overlay is { IsVisible: true } && (ReferenceEquals(overlay, visual) || overlay.IsVisualAncestorOf(visual));

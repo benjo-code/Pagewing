@@ -132,8 +132,9 @@ testdata/pdfs/             Test-PDFs mit LICENSES.md je Herkunft
 
 ### 5.7 Drucken
 
-- **Windows:** Druckdialog über Win32 (`PrintDlgEx`). Seiten gehen mit `FPDF_RenderPage` und dem Flag `FPDF_PRINTING` direkt auf den Drucker-HDC.
-- **Linux:** Pagewing übergibt ein PDF der gewählten Seiten an CUPS, das PDF direkt annimmt. Der Dialog für Drucker, Seitenbereich und Kopien ist ein eigener Avalonia-Dialog.
+- **Windows:** Druckdialog über Win32 (`PrintDlgEx`). Seiten gehen mit `FPDF_RenderPage` und dem Flag `FPDF_PRINTING` direkt auf den Drucker-HDC. Kopien, Sortieren, Seitenbereich und die automatische Drehung je Seite macht Pagewing selbst; Duplex und Ausrichtung kommen aus dem `DEVMODE` des Dialogs.
+- **Linux:** Pagewing übergibt die **Datei** mit den Wahlen des Nutzers als CUPS-Optionen (`page-ranges`, `copies`, `sides`, `orientation-requested`, `print-scaling`, `multiple-document-handling`) an CUPS (libcups, `cupsPrintFile2`); der PDF-Filter von CUPS wählt die Seiten, kopiert, sortiert und skaliert. Ein verschlüsseltes Dokument geht als entschlüsselte Kopie in einem privaten Temp-Ordner. Der Dialog für Drucker, Seitenbereich, Kopien, Sortieren, Seitengröße, Duplex und Ausrichtung ist ein eigener Avalonia-Dialog (Karte).
+- Auf beiden Systemen: Anpassen an das Papier oder tatsächliche Größe, Duplex nur wenn der Drucker es kann, gedruckt wird immer hell (nie die dunkle Seite), Anmerkungen werden mitgedruckt. Verbietet das Dokument das Drucken, ist „Drucken“ gesperrt. Ein Auftrag läuft im Hintergrund mit Fortschritt und Abbruch.
 - Die Abstraktion `IPrintService` liegt in Core, die Implementierungen pro Plattform in der App.
 
 ### 5.8 Lokalisierung und Sprachen

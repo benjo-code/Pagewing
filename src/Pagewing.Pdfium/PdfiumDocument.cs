@@ -32,6 +32,15 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// <summary>Gets the number of pages.</summary>
     public int PageCount => Fpdf.FPDF_GetPageCount(Access());
 
+    /// <summary>Gets whether the document is encrypted (it has a security handler). Must be called on the PDFium thread.</summary>
+    public bool IsEncrypted => Fpdf.FPDF_GetSecurityHandlerRevision(Access()) != -1;
+
+    /// <summary>
+    /// Gets whether the permissions of whoever opened the document allow printing; an unencrypted document, or one opened
+    /// with its owner password, allows everything. Must be called on the PDFium thread.
+    /// </summary>
+    public bool MayPrint => (Fpdf.FPDF_GetDocPermissions(Access()).Value & FpdfConstants.PermissionPrint) != 0;
+
     /// <summary>Gets the PDF version from the file header (14 for 1.4), or <see langword="null"/> if unknown.</summary>
     public int? FileVersion
     {
@@ -336,6 +345,56 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         }
     }
 
+    /// <summary>
+    /// Writes the whole document as a new file to <paramref name="destination"/>, without encryption. Must be called on the
+    /// PDFium thread; the call returns when the last block is written.
+    /// </summary>
+    /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
+    public void SaveWithoutSecurity(Stream destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        var native = Access();
+
+        var context = new SaveContext(destination);
+        var self = GCHandle.Alloc(context);
+        try
+        {
+            // The writer starts the block, so the callback finds its context behind the structure.
+            var block = stackalloc SaveBlock[1];
+            block->Writer = new FpdfFileWrite { Version = 1, WriteBlock = &WriteSaveBlock };
+            block->Cookie = GCHandle.ToIntPtr(self);
+            var saved = Fpdf.FPDF_SaveAsCopy(native, &block->Writer, new CULong((nuint)(FpdfConstants.SaveNoIncremental | FpdfConstants.SaveRemoveSecurity))) != 0;
+            if (!saved || context.Failed)
+            {
+                throw new IOException("The document could not be saved.", context.Error);
+            }
+        }
+        finally
+        {
+            self.Free();
+        }
+    }
+
+    /// <summary><c>WriteBlock</c> of <c>FPDF_FILEWRITE</c>. Never throws across the native boundary.</summary>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int WriteSaveBlock(FpdfFileWrite* self, void* data, CULong size)
+    {
+        try
+        {
+            var cookie = ((SaveBlock*)self)->Cookie;
+            if (GCHandle.FromIntPtr(cookie).Target is not SaveContext context)
+            {
+                return 0;
+            }
+
+            return context.Write(data, size.Value) ? 1 : 0;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
+
     /// <summary>Returns the native document after checking the thread and that the document is still open.</summary>
     internal nint Access()
     {
@@ -348,6 +407,37 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// The open file and the <see cref="GCHandle"/> that PDFium's read callback receives. Disposed by the
     /// <see cref="DocumentHandle"/> after the document is closed, possibly on another thread.
     /// </summary>
+    /// <summary>The writer handed to PDFium followed by the cookie of its <see cref="SaveContext"/>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SaveBlock
+    {
+        public FpdfFileWrite Writer;
+        public nint Cookie;
+    }
+
+    private sealed class SaveContext(Stream destination)
+    {
+        public bool Failed { get; private set; }
+
+        public Exception? Error { get; private set; }
+
+        public bool Write(void* data, nuint size)
+        {
+            try
+            {
+                // Blocks are far below 2 GiB; a larger one would be a PDFium defect.
+                destination.Write(new ReadOnlySpan<byte>(data, checked((int)size)));
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ObjectDisposedException or OverflowException)
+            {
+                Failed = true;
+                Error = ex;
+                return false;
+            }
+        }
+    }
+
     private sealed class FileReadContext : IDisposable
     {
         private readonly SafeFileHandle file;

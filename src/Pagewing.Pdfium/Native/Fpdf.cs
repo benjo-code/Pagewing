@@ -105,6 +105,34 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial void FPDF_RenderPage_Close(nint page);
 
+    /// <summary>
+    /// <c>FPDF_RenderPage</c> (<c>fpdfview.h</c>, Windows only: the export does not exist in the Linux library): draws the
+    /// page on a device context (<c>HDC</c>), as vector output when the driver allows it.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_RenderPage(
+        nint deviceContext,
+        nint page,
+        int startX,
+        int startY,
+        int sizeX,
+        int sizeY,
+        int rotate,
+        int flags);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDF_GetDocPermissions(nint document);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_GetSecurityHandlerRevision(nint document);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_SaveAsCopy(nint document, FpdfFileWrite* fileWrite, CULong flags);
+
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint FPDFText_LoadPage(nint page);
@@ -278,6 +306,17 @@ internal unsafe struct FpdfFileAccess
 
     /// <summary>Passed as the first argument of <see cref="GetBlock"/> (<c>m_Param</c>).</summary>
     public void* Param;
+}
+
+/// <summary><c>FPDF_FILEWRITE</c> from <c>fpdf_save.h</c>: receives the blocks of a saved document.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FpdfFileWrite
+{
+    /// <summary>Version of the interface (<c>version</c>); must be 1.</summary>
+    public int Version;
+
+    /// <summary>Receives a block (<c>WriteBlock</c>); returns non-zero on success. The first argument is the structure itself.</summary>
+    public delegate* unmanaged[Cdecl]<FpdfFileWrite*, void*, CULong, int> WriteBlock;
 }
 
 /// <summary><c>FS_SIZEF</c> from <c>fpdfview.h</c>: a size in points.</summary>
