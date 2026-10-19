@@ -1613,6 +1613,31 @@ static partial class Deb
     }
 }
 
+/// <summary>Resolves POSIX paths as text, independent of the host OS (Path.GetFullPath would add a drive letter on Windows).</summary>
+static class PosixPath
+{
+    public static string Resolve(string directory, string relative)
+    {
+        var parts = new List<string>();
+        foreach (var segment in (relative.StartsWith('/') ? relative : directory + "/" + relative).Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == "..")
+            {
+                if (parts.Count > 0)
+                {
+                    parts.RemoveAt(parts.Count - 1);
+                }
+            }
+            else if (segment != ".")
+            {
+                parts.Add(segment);
+            }
+        }
+
+        return "/" + string.Join('/', parts);
+    }
+}
+
 static class Tool
 {
     // Runs a program without a shell and returns its exit code with stdout and stderr in one text; -1 when it is not installed.
@@ -2459,7 +2484,10 @@ static class SelfTest
             var link = Find("usr/bin/pagewing");
             Expect("deb: /usr/bin/pagewing ist ein Symlink", link?.Kind, DebEntryKind.Symlink);
             Expect("deb: Symlink zeigt relativ auf die CLI", link?.LinkTarget, "../lib/pagewing/cli/pagewing");
-            Expect("deb: Symlink loest auf die CLI auf", link is null ? null : Path.GetFullPath(Path.Combine("/usr/bin", link.LinkTarget!)), "/usr/lib/pagewing/cli/pagewing");
+            Expect("deb: Symlink loest auf die CLI auf", link is null ? null : PosixPath.Resolve("/usr/bin", link.LinkTarget!), "/usr/lib/pagewing/cli/pagewing");
+            Expect("PosixPath: relativ mit ..", PosixPath.Resolve("/usr/bin", "../lib/a/./b"), "/usr/lib/a/b");
+            Expect("PosixPath: absolutes Ziel", PosixPath.Resolve("/usr/bin", "/etc/x"), "/etc/x");
+            Expect("PosixPath: .. ueber die Wurzel hinaus", PosixPath.Resolve("/a", "../../b"), "/b");
             Expect("deb: kein Eintrag ausserhalb usr/", entries.All(e => e.Path.StartsWith("usr", StringComparison.Ordinal)), true);
             Expect("deb: alle Dateien haben eine Quelle", entries.Where(e => e.Kind == DebEntryKind.File).All(e => e.Source is not null && File.Exists(e.Source)), true);
             Expect("deb: Elternverzeichnisse sind vorhanden", entries.Where(e => e.Path.Contains('/', StringComparison.Ordinal))
