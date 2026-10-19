@@ -12,7 +12,10 @@
     (density "Kompakt": 44 and 34, Pw.Size.ActionBarWidth and Pw.Size.ActionButton)
     icons in text.secondary. A click opens the panel of the entry in the active tab, a click on the active entry closes
     it (MainViewModel.ToggleSidePanelCommand). The active entry has an accent.subtle surface behind an accent.default
-    icon, so it is not marked by colour alone (section 7.10); hovering it keeps that. Entries: Pages, Contents, Search
+    icon, so it is not marked by colour alone (section 7.10); hovering it keeps that. The panel entries are toggle buttons
+    for screen readers, on while their panel is open (Controls/ActionToggleButton: the look of an icon button, IsChecked
+    bound one way to the panel, a click only runs the command); their tooltips name the shortcut of the catalog
+    (ActionBar.axaml.cs). Entries: Pages (Ctrl+Shift+1), Contents (Ctrl+Shift+2), Search
     (Ctrl+F opens it as well, with the focus in its field); at the bottom Settings (section 7.3; Ctrl+Comma as well),
     which shows the settings card over the window (MainWindow.Overlays.cs) and so has no panel and no active state. Part
     of the first frame with a tab, so it stays this small: the panels and the settings card are built only when they
@@ -39,24 +42,25 @@
   <!-- Top to bottom is also the tab order: the panel entries first, the settings last. -->
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,4,0,8" HorizontalAlignment="Center">
-      <Button Name="PagesButton" Classes="icon action" Classes.active="{Binding IsPagesPanelOpen}"
-              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Pages}"
-              ToolTip.Tip="{x:Static res:Strings.PagesTooltip}"
-              AutomationProperties.Name="{x:Static res:Strings.PagesTooltip}">
+      <ctl:ActionToggleButton Name="PagesButton" Classes="icon action"
+                              Classes.active="{Binding IsPagesPanelOpen}" IsChecked="{Binding IsPagesPanelOpen, Mode=OneWay}"
+                              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Pages}"
+                              AutomationProperties.Name="{x:Static res:Strings.PagesTooltip}">
         <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.LayoutGrid}" />
-      </Button>
-      <Button Name="ContentsButton" Classes="icon action" Classes.active="{Binding IsContentsPanelOpen}"
-              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Contents}"
-              ToolTip.Tip="{x:Static res:Strings.ContentsTooltip}"
-              AutomationProperties.Name="{x:Static res:Strings.ContentsTooltip}">
+      </ctl:ActionToggleButton>
+      <ctl:ActionToggleButton Name="ContentsButton" Classes="icon action"
+                              Classes.active="{Binding IsContentsPanelOpen}" IsChecked="{Binding IsContentsPanelOpen, Mode=OneWay}"
+                              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Contents}"
+                              AutomationProperties.Name="{x:Static res:Strings.ContentsTooltip}">
         <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.ListTree}" />
-      </Button>
-      <Button Name="SearchButton" Classes="icon action" Classes.active="{Binding IsSearchPanelOpen}"
-              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Search}"
-              ToolTip.Tip="{x:Static res:Strings.SearchTooltip}"
-              AutomationProperties.Name="{x:Static res:Strings.SearchTooltip}">
+      </ctl:ActionToggleButton>
+      <ctl:ActionToggleButton Name="SearchButton" Classes="icon action"
+                              Classes.active="{Binding IsSearchPanelOpen}" IsChecked="{Binding IsSearchPanelOpen, Mode=OneWay}"
+                              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Search}"
+                              ToolTip.Tip="{x:Static res:Strings.SearchTooltip}"
+                              AutomationProperties.Name="{x:Static res:Strings.SearchTooltip}">
         <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Search}" />
-      </Button>
+      </ctl:ActionToggleButton>
     </StackPanel>
     <Button Name="SettingsButton" Classes="icon action" Margin="0,4,0,8"
             HorizontalAlignment="Center" VerticalAlignment="Bottom"

@@ -182,6 +182,13 @@ public sealed partial class CommandPalette : UserControl
         while (_slots.Count <= index)
         {
             var slot = new Slot();
+            slot.Root.Choose = () =>
+            {
+                if (_viewModel is not null && slot.ItemIndex >= 0 && slot.ItemIndex < _viewModel.Items.Count)
+                {
+                    _viewModel.SelectedIndex = slot.ItemIndex;
+                }
+            };
             _slots.Add(slot);
             _slotByRoot.Add(slot.Root, slot);
             PaletteRows.Children.Add(slot.Root);
@@ -195,8 +202,13 @@ public sealed partial class CommandPalette : UserControl
         var selected = _viewModel?.SelectedIndex ?? -1;
         foreach (var slot in _slots)
         {
-            slot.Root.Classes.Set("selected", slot.ItemIndex >= 0 && slot.ItemIndex == selected);
+            slot.Root.SetChosen(slot.ItemIndex >= 0 && slot.ItemIndex == selected);
         }
+
+        // The focus stays in the input: its help text names the chosen entry, so a screen reader there hears it.
+        AutomationProperties.SetHelpText(
+            PaletteInput,
+            selected >= 0 && selected < _slotOfItem.Count ? AutomationProperties.GetName(_slotOfItem[selected].Root) : null);
 
         if (bringIntoView && selected >= 0 && selected < _slotOfItem.Count)
         {
@@ -259,7 +271,7 @@ public sealed partial class CommandPalette : UserControl
         return null;
     }
 
-    /// <summary>A line of the list: a group heading, or an entry with title, detail and shortcut.</summary>
+    /// <summary>A line of the list: a group heading, or an entry with title, detail and shortcut (<see cref="PaletteRow"/>).</summary>
     private sealed class Slot
     {
         public Slot()
@@ -277,11 +289,11 @@ public sealed partial class CommandPalette : UserControl
             DockPanel.SetDock(Kbd, Dock.Right);
             DockPanel.SetDock(Title, Dock.Left);
             Row = new DockPanel { Children = { Kbd, Title, Detail } };
-            Root = new Border { Child = new Panel { Children = { Heading, Row } } };
+            Root = new PaletteRow { Child = new Panel { Children = { Heading, Row } } };
             Root.Classes.Add("paletteSlot");
         }
 
-        public Border Root { get; }
+        public PaletteRow Root { get; }
 
         public TextBlock Heading { get; }
 
@@ -305,8 +317,10 @@ public sealed partial class CommandPalette : UserControl
             Row.IsVisible = false;
             Root.Classes.Set("header", true);
             Root.Classes.Set("item", false);
+            Root.IsItem = false;
             Root.IsVisible = true;
             AutomationProperties.SetName(Root, title);
+            AutomationProperties.SetHeadingLevel(Root, 2);
         }
 
         public void ShowItem(PaletteItem item, int index)
@@ -321,8 +335,10 @@ public sealed partial class CommandPalette : UserControl
             Row.IsVisible = true;
             Root.Classes.Set("header", false);
             Root.Classes.Set("item", true);
+            Root.IsItem = true;
             Root.IsVisible = true;
             AutomationProperties.SetName(Root, item.AutomationName);
+            AutomationProperties.SetHeadingLevel(Root, 0);
         }
 
         public void Hide()

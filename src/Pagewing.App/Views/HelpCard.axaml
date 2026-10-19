@@ -12,6 +12,7 @@
     7.5b and 7.8): surface.raised, radius.overlay, card shadow with its 1 px border.subtle edge. Title and close button,
     a filter field (the focus is there; typing filters by title and by shortcut), then every listed command of the catalog
     with a shortcut, grouped as the catalog groups them, the shortcut in type.mono in a 1 px frame as on the start screen.
+    Screen readers find the title as heading 1, the group titles as heading 2 and each row as one text "<title>, <keys>".
     Not modal: no background, so clicks beside the card reach the window; Tab stays on the card, Esc and the close button
     close it and the focus goes back where it was (MainWindow.Overlays.cs). Made when it is first shown, never in the
     startup path; the rows are made in code from the catalog each time it is shown.
@@ -51,7 +52,8 @@
           BoxShadow="{DynamicResource Pw.Shadow.Card}">
     <DockPanel>
       <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="24,16,12,0">
-        <TextBlock Name="HelpTitle" Classes="subtitle" VerticalAlignment="Center" Text="{x:Static res:Strings.HelpTitle}" />
+        <TextBlock Name="HelpTitle" Classes="subtitle" VerticalAlignment="Center" Text="{x:Static res:Strings.HelpTitle}"
+                   AutomationProperties.HeadingLevel="1" />
         <Button Name="HelpCloseButton" Grid.Column="1" Classes="icon"
                 Command="{Binding HideOverlayCommand}"
                 ToolTip.Tip="{x:Static res:Strings.HelpClose}"

@@ -1,4 +1,5 @@
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -82,6 +83,7 @@ public sealed partial class HelpCard : UserControl
                     panel.Classes.Add("helpGroup");
                     var title = new TextBlock { Text = CommandCatalog.GroupTitle(group) };
                     title.Classes.AddRange(["strong", "helpGroupTitle"]);
+                    AutomationProperties.SetHeadingLevel(title, 2);
                     panel.Children.Add(title);
                     HelpGroups.Children.Add(panel);
                 }
@@ -110,8 +112,13 @@ public sealed partial class HelpCard : UserControl
         var row = new Grid { Tag = id, ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { name, kbd } };
         row.Classes.Add("helpRow");
 
-        // One name for screen readers: what the command does and its keys.
+        // One element for screen readers, read once: what the command does and its keys. A Grid has no element of its
+        // own (its peer is not in the control or content view) until it is put into the content view; its texts stay out.
         AutomationProperties.SetName(row, $"{title}, {gesture}");
+        AutomationProperties.SetAccessibilityView(row, AccessibilityView.Content);
+        AutomationProperties.SetControlTypeOverride(row, AutomationControlType.Text);
+        AutomationProperties.SetAccessibilityView(name, AccessibilityView.Raw);
+        AutomationProperties.SetAccessibilityView(key, AccessibilityView.Raw);
         return (row, title, gesture);
     }
 

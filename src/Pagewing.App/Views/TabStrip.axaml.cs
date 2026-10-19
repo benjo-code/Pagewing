@@ -270,6 +270,15 @@ public sealed partial class TabStrip : UserControl
         return TabPanel.ShowOnlyActive ? count : TabDragMath.InsertionIndex(TabPanel.PointToClient(screen).X, TabPanel.TabWidth, count);
     }
 
+    /// <summary>Activates the tab that <paramref name="view"/> shows (a screen reader selected it).</summary>
+    internal void Activate(TabView view)
+    {
+        if (_viewModel is not null && view.DataContext is TabViewModel tab && _viewModel.Tabs.IndexOf(tab) >= 0)
+        {
+            _viewModel.ActivateTabCommand.Execute(tab);
+        }
+    }
+
     /// <summary>Gets the tab whose view contains <paramref name="source"/>, or <see langword="null"/>.</summary>
     private TabViewModel? TabAt(object? source)
     {

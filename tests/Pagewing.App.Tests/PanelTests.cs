@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Pagewing.App.Commands;
 using Pagewing.App.Controls;
 using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
@@ -70,8 +71,9 @@ public sealed class PanelTests : IDisposable
         Assert.True(pages.TranslatePoint(default, window)!.Value.Y < contents.TranslatePoint(default, window)!.Value.Y);
         Assert.Same(Resource("Pw.Icon.LayoutGrid"), Assert.Single(pages.GetVisualDescendants().OfType<StrokeIcon>()).Data);
         Assert.Same(Resource("Pw.Icon.ListTree"), Assert.Single(contents.GetVisualDescendants().OfType<StrokeIcon>()).Data);
-        Assert.Equal(Strings.PagesTooltip, ToolTip.GetTip(pages));
-        Assert.Equal(Strings.ContentsTooltip, ToolTip.GetTip(contents));
+        // The tooltips name the shortcuts of the catalog (Milestone 6); AutomationStateTests checks the texts.
+        Assert.Equal($"{Strings.PagesTooltip} ({GestureText.Of(viewModel.Commands.ById("panel.pages")!.Gesture!)})", ToolTip.GetTip(pages));
+        Assert.Equal($"{Strings.ContentsTooltip} ({GestureText.Of(viewModel.Commands.ById("panel.contents")!.Gesture!)})", ToolTip.GetTip(contents));
 
         // The document area starts right of the action bar; the status bar is indented by it as well.
         var area = Find<Control>(window, "DocumentArea");
