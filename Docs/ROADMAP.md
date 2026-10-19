@@ -32,7 +32,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 5 | Text & Suche | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-18-milestone-05-text-suche.md) | 2026-10-18 |
 | 6 | Komfort | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-18-milestone-06-komfort.md) | 2026-10-19 |
 | 7 | Drucken | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-07-drucken.md) | 2026-10-19 |
-| 8 | Verteilung | 1 – Fundament & Viewer | ⬜ offen | – | – |
+| 8 | Verteilung | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-19-milestone-08-verteilung.md) | – |
 | – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | ⬜ offen | – | – |
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
@@ -252,7 +252,7 @@ Ziel: PDFs lassen sich unter Windows und Linux drucken.
 - [x] Anwendungstests von Befehl, Dialog, Auftragskarte, Abbruch und Druckknopf grün – `dotnet test --project tests/Pagewing.App.Tests` (2026-10-19): `PrintCommandTests` 13, `PrintCardTests` 32, `PrintProgressTests` 12 und `CupsOptionsTests` bestanden; im Kern `PrintPlanTests`, `PrintPlacementTests`, `PrintSettingsTests`, `PrintSupportTests`; gesamte Mappe zuletzt 1835 Tests, 0 fehlgeschlagen, 5 übersprungen (`WindowsPrintToPdfTests`, laufen nur unter Windows). `dotnet build` ohne Warnung, `dotnet format --verify-no-changes` und `roadmap check` grün.
 
 ## Milestone 8 – Verteilung
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M7
+**Status:** 🟡 geplant · **Plan:** [2026-10-19-milestone-08-verteilung.md](superpowers/plans/2026-10-19-milestone-08-verteilung.md) · **Voraussetzungen:** M7
 
 Ziel: Pagewing lässt sich unter Windows und Linux installieren und als Standardprogramm für PDFs festlegen.
 

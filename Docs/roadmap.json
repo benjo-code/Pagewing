@@ -275,7 +275,8 @@
         {
           "id": "8",
           "title": "Verteilung",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-19-milestone-08-verteilung.md",
           "prerequisites": ["7"],
           "goal": "Pagewing lässt sich unter Windows und Linux installieren und als Standardprogramm für PDFs festlegen.",
           "tasks": [
