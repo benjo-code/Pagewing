@@ -20,19 +20,25 @@ public sealed class FakeDefaultAppService : IDefaultAppService
     /// <summary>Gets what runs on the thread that asks for the status, before it answers.</summary>
     public Action? OnStatus { get; set; }
 
-    public int StatusCalls { get; private set; }
+    private int _statusCalls;
+    private int _makeCalls;
+    private int _statusThreadId = -1;
 
-    public int MakeCalls { get; private set; }
+    /// <summary>Gets how many status checks reached their end of setup; counted last, so a test that sees it also sees the effects of the hooks.</summary>
+    public int StatusCalls => Volatile.Read(ref _statusCalls);
 
-    public int StatusThreadId { get; private set; }
+    public int MakeCalls => Volatile.Read(ref _makeCalls);
+
+    /// <summary>Gets the thread that asked for the status, or -1 while no check has run.</summary>
+    public int StatusThreadId => Volatile.Read(ref _statusThreadId);
 
     public bool IsSupported => Supported;
 
     public async Task<DefaultAppStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
-        StatusCalls++;
-        StatusThreadId = Environment.CurrentManagedThreadId;
+        Volatile.Write(ref _statusThreadId, Environment.CurrentManagedThreadId);
         OnStatus?.Invoke();
+        Interlocked.Increment(ref _statusCalls);
         if (StatusGate is { } gate)
         {
             await gate.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -43,7 +49,7 @@ public sealed class FakeDefaultAppService : IDefaultAppService
 
     public Task<DefaultAppResult> MakeDefaultAsync(CancellationToken cancellationToken)
     {
-        MakeCalls++;
+        Interlocked.Increment(ref _makeCalls);
         return Task.FromResult(Result);
     }
 }

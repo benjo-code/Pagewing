@@ -176,6 +176,7 @@ public sealed class DefaultAppPromptTests : PrintTestHost
         await WaitUntilAsync(window, () => _service.StatusCalls == 1);
 
         // The check hangs; the window goes on (it settles and answers input) and shows nothing yet.
+        Assert.NotEqual(-1, _service.StatusThreadId);
         Assert.NotEqual(uiThread, _service.StatusThreadId);
         Settle(window);
         Assert.Null(viewModel.DefaultAppPrompt);
