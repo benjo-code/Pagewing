@@ -1,6 +1,6 @@
 # Paketierung
 
-Alles Gemeinsame für die Verteilung von Pagewing (Milestone 8). Das Werkzeug ist `tools/package.cs`; es läuft aus dem Repo-Root und braucht kein Netzwerk, außer `inno-install` (ein Download mit fester SHA-256).
+Alles Gemeinsame für die Verteilung von Pagewing (Milestone 8). Das Werkzeug ist `tools/package.cs`; es läuft aus dem Repo-Root und braucht kein Netzwerk, außer `inno-install` und `runtime-fetch` (je ein Download mit fester SHA-256).
 
 ## Paketlayout
 
@@ -26,10 +26,8 @@ Fehlt die PDFium-Bibliothek in App oder CLI, bricht der Befehl ab. Unter Linux s
 | `Pagewing-<Version>-linux-x64-portable.zip` | portable ZIP für Linux |
 | `Pagewing-<Version>-win-x64-setup.exe` | Installer für Windows |
 | `SHA256SUMS-<Version>.txt` | Zeilen `<sha256>  <Dateiname>` |
-
 | `pagewing_<Version>_amd64.deb` | Paket für Debian, Ubuntu, Linux Mint (Vorabversion `x.y.z-rc1` heißt im Paket `x.y.z~rc1`) |
-
-AppImage kommt mit der folgenden Aufgabe des Milestones hinzu.
+| `Pagewing-<Version>-x86_64.AppImage` | AppImage für alle Linux-Distributionen ab der glibc des Build-Rechners, ohne `libfuse2` |
 
 ## Befehle
 
@@ -48,6 +46,7 @@ Die ZIP-Datei ist reproduzierbar: sortierte Einträge, Zeitstempel 2000-01-01, f
 ## Verzeichnisse
 
 - `linux/pagewing.desktop`: Vorlage der `.desktop`-Datei. Sie darf sich von `DesktopEntry.Render` (`Pagewing.Core.Distribution`) nur in der Zeile `Exec` unterscheiden (`DesktopEntryTests.RenderIsTheSameForTheTemplateInPackaging`). `Exec` ist der Pfad des `.deb` (`/usr/lib/pagewing/Pagewing %F`). `StartupWMClass=Pagewing` ist die Fensterklasse, die Avalonia unter X11 setzt (belegt mit `xprop WM_CLASS` an der Native-AOT-App unter Xvfb: `"Pagewing", "Pagewing"`).
+- `linux/AppRun`: Einstieg des AppImage (POSIX-`sh`), startet `$APPDIR/usr/lib/pagewing/Pagewing` mit allen Argumenten.
 - `linux/control.template`, `linux/copyright.template`: Vorlage der `.deb`-Steuerdatei (Platzhalter `@VERSION@`, `@INSTALLED_SIZE@`, `@MAINTAINER@`) und die Copyright-Datei im Debian-Format 1.0.
 - `windows/pagewing.iss`: Skript des Windows-Installers (Inno Setup 6), siehe unten.
 
@@ -91,3 +90,27 @@ Manuelle Abnahme (nicht automatisierbar):
 1. `sudo apt install ./pagewing_<Version>_amd64.deb` auf Ubuntu 22.04, Debian 12 und Linux Mint: Abhängigkeiten werden aufgelöst, `pagewing info <datei.pdf>` läuft.
 2. Pagewing erscheint im Anwendungsmenü mit Symbol; ein Doppelklick auf eine PDF im Dateimanager öffnet sie in Pagewing (nach „Öffnen mit“ bzw. als Standardprogramm).
 3. `sudo apt remove pagewing` entfernt alles; `~/.config/pagewing` bleibt.
+
+## AppImage
+
+Gebaut wird aus demselben Layout wie ZIP und `.deb`, nur unter Linux mit `mksquashfs` (`sudo apt-get install -y squashfs-tools`; geprüft mit 4.6.1):
+
+```sh
+dotnet run tools/package.cs -- runtime-fetch     # lädt die type2-Runtime 20251108, prüft Größe und SHA-256, legt sie nach ~/.cache/PagewingBuildTools
+dotnet run tools/package.cs -- layout --rid linux-x64 --app out/app --cli out/cli --out out/layout
+dotnet run tools/package.cs -- appimage --layout out/layout --version 1.0.0 --out out/Pagewing-1.0.0-x86_64.AppImage
+dotnet run tools/package.cs -- appimage-smoke out/Pagewing-1.0.0-x86_64.AppImage
+```
+
+- Format: AppImage Typ 2, also die **statisch gelinkte** type2-Runtime des AppImage-Projekts (feste Version, Adresse, Größe und SHA-256 in `tools/package.cs`, `AppImageRuntime`; Herkunft der Prüfsumme: `Docs/DECISIONS.md`, Eintrag „AppImage: type2-Runtime 20251108 …“) und direkt dahinter ein SquashFS-Abbild (`mksquashfs … -root-owned -noappend -comp zstd -no-xattrs`, `SOURCE_DATE_EPOCH=946684800`). Die Runtime findet das Abbild am Ende ihrer eigenen ELF-Datei; sie liest zstd und gzip, nicht xz. Weil sie statisch gelinkt ist, braucht der Rechner kein `libfuse2`; fehlt FUSE ganz, entpackt sie sich selbst in einen Temp-Ordner und startet von dort.
+- `appimage` prüft die Runtime (Größe und SHA-256) vor dem Bauen, sonst entsteht nichts; `--runtime <Datei>` nimmt eine andere Ablage als `~/.cache/PagewingBuildTools/type2-runtime-20251108-x86_64`. Die Ausgabedatei muss `Pagewing-<Version>-x86_64.AppImage` heißen. Zweimal gebaut ergibt sie dieselbe SHA-256 (sortiert, alles `root`, Zeit 2000-01-01, keine erweiterten Attribute).
+- Inhalt (AppDir): `AppRun`, `pagewing.desktop` (die Vorlage `linux/pagewing.desktop` mit `Exec=Pagewing %F`, sonst gleich), `pagewing.png` (256 px) und `.DirIcon` (Symlink darauf) in der Wurzel; das Layout unter `usr/lib/pagewing/` (App, `cli/`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`); die Symbole unter `usr/share/icons/hicolor/<N>x<N>/apps/pagewing.png`. Von dort nimmt sie `LinuxDefaultAppService`, wenn Pagewing aus dem AppImage heraus Standardprogramm wird (er schreibt dann `.desktop` und Symbole nach `~/.local/share`).
+- `appimage-smoke` prüft, dass das Image mit genau der festgehaltenen Runtime beginnt (sonst führt es nichts aus) und sie keine `NEEDED`-Bibliothek hat, kopiert es in einen Ordner `Pagewing Test` (mit Leerzeichen), prüft `--appimage-offset`, entpackt mit `--appimage-extract`, prüft `AppRun`, `.desktop`, `.DirIcon` und Symbole, ruft `usr/lib/pagewing/cli/pagewing info testdata/pdfs/text-basic.pdf` auf und startet die App zweimal mit `--measure-startup testdata/pdfs/text-basic.pdf` (erwartet `first-sharp`): mit `APPIMAGE_EXTRACT_AND_RUN=1` (ohne FUSE) und ohne Umgebungsvariable (über FUSE, wo vorhanden, sonst entpackt die Runtime selbst). Ohne Anzeige nimmt es `xvfb-run`; fehlt beides, wird der Start mit Hinweis übersprungen.
+- Die AppImage-Runtime enthält Code unter eigenen Lizenzen (Runtime MIT, musl, libfuse LGPL-2.1, squashfuse, zstd, zlib); `Pagewing-<Version>-x86_64.AppImage --appimage-help` nennt sie.
+
+Manuelle Abnahme (nicht automatisierbar):
+
+1. CachyOS (Arch-basiert) und Ubuntu 24.04, jeweils **ohne** `libfuse2` (`pacman -Q fuse2` bzw. `dpkg -l libfuse2t64` meldet nichts): `chmod +x Pagewing-<Version>-x86_64.AppImage`, Doppelklick im Dateimanager und `./Pagewing-<Version>-x86_64.AppImage <datei.pdf>` im Terminal starten die App und öffnen die PDF.
+2. Linux Mint: dasselbe, außerdem aus einem Ordner mit Leerzeichen (`./Pagewing\ Test/Pagewing-<Version>-x86_64.AppImage testdata/pdfs/text-rich.pdf`).
+3. In der App „Als Standardprogramm festlegen“ wählen: Pagewing erscheint im Anwendungsmenü mit Symbol (`~/.local/share/applications/pagewing.desktop` zeigt auf die AppImage-Datei), ein Doppelklick auf eine PDF öffnet sie in Pagewing.
+4. Auf einem Rechner ohne FUSE-Modul (etwa in einem Container) startet das AppImage trotzdem (die Runtime meldet „No suitable fusermount binary found“ und entpackt sich selbst).

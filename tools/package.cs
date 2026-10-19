@@ -10,8 +10,11 @@
 //   dotnet run tools/package.cs -- installer-smoke <setup.exe> [--repo <root>]          (Windows)
 //   dotnet run tools/package.cs -- deb --layout <dir> --version <x.y.z> --out <pagewing_x.y.z_amd64.deb> [--repo <root>]   (Linux)
 //   dotnet run tools/package.cs -- deb-smoke <file.deb> [--repo <root>]                  (Linux)
+//   dotnet run tools/package.cs -- runtime-fetch [--out <file>]                         (Linux)
+//   dotnet run tools/package.cs -- appimage --layout <dir> --version <x.y.z> --out <Pagewing-x.y.z-x86_64.AppImage> [--runtime <file>] [--repo <root>]   (Linux)
+//   dotnet run tools/package.cs -- appimage-smoke <file.AppImage> [--repo <root>]        (Linux)
 //   dotnet run tools/package.cs -- selftest
-// Run from the repository root. Only inno-install uses the network (one download with a pinned SHA-256).
+// Run from the repository root. Only inno-install and runtime-fetch use the network (one download each, with a pinned SHA-256).
 
 using System.Diagnostics;
 using System.Globalization;
@@ -35,6 +38,9 @@ static class Cli
         "  installer-smoke <Setup.exe>                                       installiert still, prueft, installiert erneut, deinstalliert (Windows)\n" +
         "  deb --layout <Ordner> --version <x.y.z> --out <Datei>             baut pagewing_<Version>_amd64.deb (Linux, dpkg-deb)\n" +
         "  deb-smoke <Datei.deb>                                             entpackt, prueft Starter, Symlink, ruft die CLI auf, lintian/desktop-file-validate wenn vorhanden (Linux)\n" +
+        "  runtime-fetch [--out <Datei>]                                     laedt die type2-Runtime (feste Version, SHA-256 geprueft) nach ~/.cache/PagewingBuildTools\n" +
+        "  appimage --layout <Ordner> --version <x.y.z> --out <Datei> [--runtime <Datei>]   baut Pagewing-<Version>-x86_64.AppImage (Linux, mksquashfs)\n" +
+        "  appimage-smoke <Datei.AppImage>                                   prueft Runtime, entpackt, ruft die CLI auf, startet die App ohne FUSE (Linux)\n" +
         "  selftest                                     prueft die Werkzeugteile";
 
     // Command name -> handler (receives the arguments after the command name). Add new subcommands here.
@@ -49,6 +55,9 @@ static class Cli
         ["installer-smoke"] = InstallerSmoke.Run,
         ["deb"] = Deb.Run,
         ["deb-smoke"] = DebSmoke.Run,
+        ["runtime-fetch"] = RuntimeFetch.Run,
+        ["appimage"] = AppImage.Run,
+        ["appimage-smoke"] = AppImageSmoke.Run,
         ["selftest"] = SelfTest.Run,
     };
 
@@ -492,6 +501,56 @@ static class Sums
     }
 }
 
+// Downloads of build inputs with a size and SHA-256 fixed in this file (Inno Setup, the AppImage runtime).
+static class Pinned
+{
+    // null when the value is a SHA-256 in lower-case hex; otherwise why it is not pinned (name = the constant in this file).
+    public static string? PinProblem(string pinned, string name) =>
+        pinned.Length == 64 && pinned.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'))
+            ? null
+            : $"Pruefsumme nicht festgehalten (hash not pinned): {name} in tools/package.cs muss eine SHA-256 in Kleinbuchstaben sein";
+
+    // null when the stream has the expected size and the pinned SHA-256; otherwise the reason.
+    public static string? VerifyDownload(Stream stream, long expectedSize, string pinned, string name)
+    {
+        if (PinProblem(pinned, name) is { } problem)
+        {
+            return problem;
+        }
+
+        if (stream.Length != expectedSize)
+        {
+            return $"Groesse {stream.Length} statt {expectedSize} Bytes";
+        }
+
+        var hash = Convert.ToHexStringLower(SHA256.HashData(stream));
+        return hash == pinned ? null : $"SHA-256 {hash} statt {pinned}";
+    }
+
+    // The same check for a file; a missing file is a reason too.
+    public static string? VerifyFile(string file, long expectedSize, string pinned, string name)
+    {
+        if (!File.Exists(file))
+        {
+            return $"Datei fehlt: {file}";
+        }
+
+        using var stream = File.OpenRead(file);
+        return VerifyDownload(stream, expectedSize, pinned, name);
+    }
+
+    // Downloads url to target (over HTTPS, through the configured proxy); the caller verifies before using the file.
+    public static void Fetch(string url, string target)
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        using var response = client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+        response.EnsureSuccessStatusCode();
+        using var source = response.Content.ReadAsStream();
+        using var file = File.Create(target);
+        source.CopyTo(file);
+    }
+}
+
 // The pinned Inno Setup 6 (build tool only, see Docs/DECISIONS.md "Windows-Installer mit Inno Setup 6.7.3 (M8)").
 static class InnoSetup
 {
@@ -505,28 +564,10 @@ static class InnoSetup
 
     public static string DefaultDir(string localAppData) => Path.Combine(localAppData, "PagewingBuildTools", $"InnoSetup-{Version}");
 
-    // null when the value is a SHA-256 in lower-case hex; otherwise why it is not pinned.
-    public static string? PinProblem(string pinned) =>
-        pinned.Length == 64 && pinned.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'))
-            ? null
-            : "Pruefsumme nicht festgehalten (hash not pinned): InnoSetup.Sha256 in tools/package.cs muss eine SHA-256 in Kleinbuchstaben sein";
+    public static string? PinProblem(string pinned) => Pinned.PinProblem(pinned, "InnoSetup.Sha256");
 
-    // null when the stream has the expected size and the pinned SHA-256; otherwise the reason.
-    public static string? VerifyDownload(Stream stream, long expectedSize, string pinned)
-    {
-        if (PinProblem(pinned) is { } problem)
-        {
-            return problem;
-        }
-
-        if (stream.Length != expectedSize)
-        {
-            return $"Groesse {stream.Length} statt {expectedSize} Bytes";
-        }
-
-        var hash = Convert.ToHexStringLower(SHA256.HashData(stream));
-        return hash == pinned ? null : $"SHA-256 {hash} statt {pinned}";
-    }
+    public static string? VerifyDownload(Stream stream, long expectedSize, string pinned) =>
+        Pinned.VerifyDownload(stream, expectedSize, pinned, "InnoSetup.Sha256");
 
     // Silent, current user only, portable mode of Inno Setup's own installer (no uninstall entry, no .iss association).
     public static string InstallArguments(string dir) =>
@@ -625,22 +666,11 @@ static class InnoInstall
         try
         {
             Console.WriteLine($"inno-install: lade {InnoSetup.Url}");
-            using (var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
-            using (var response = client.GetAsync(InnoSetup.Url, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult())
+            Pinned.Fetch(InnoSetup.Url, download);
+            if (Pinned.VerifyFile(download, InnoSetup.Size, InnoSetup.Sha256, "InnoSetup.Sha256") is { } problem)
             {
-                response.EnsureSuccessStatusCode();
-                using var source = response.Content.ReadAsStream();
-                using var target = File.Create(download);
-                source.CopyTo(target);
-            }
-
-            using (var stream = File.OpenRead(download))
-            {
-                if (InnoSetup.VerifyDownload(stream, InnoSetup.Size, InnoSetup.Sha256) is { } problem)
-                {
-                    Console.Error.WriteLine($"inno-install: Download abgelehnt, nichts ausgefuehrt: {problem}");
-                    return 1;
-                }
+                Console.Error.WriteLine($"inno-install: Download abgelehnt, nichts ausgefuehrt: {problem}");
+                return 1;
             }
 
             Console.WriteLine($"inno-install: SHA-256 stimmt, installiere nach {dir}");
@@ -1330,8 +1360,74 @@ enum DebEntryKind
     Symlink,
 }
 
-// One entry of the package tree; Path is relative to the package root ("usr/bin/pagewing"), Mode the Unix mode (0755 = 0x1ED, 0644 = 0x1A4).
-sealed record DebEntry(string Path, DebEntryKind Kind, int Mode, string? Source = null, string? LinkTarget = null);
+// One entry of a package tree (.deb, AppImage); Path is relative to the package root ("usr/bin/pagewing"), Mode the Unix mode
+// (0755 = 0x1ED, 0644 = 0x1A4). A file comes from Source or, when generated, from Content (UTF-8 without BOM).
+sealed record DebEntry(string Path, DebEntryKind Kind, int Mode, string? Source = null, string? LinkTarget = null, string? Content = null);
+
+static class Tree
+{
+    // Writes the entries below root with their modes and the fixed time (directories last, children first: they change the
+    // parent's time). Symlinks keep the time of their creation; tools that need a fixed one clamp it (SOURCE_DATE_EPOCH).
+    public static void Write(IReadOnlyList<DebEntry> entries, string root, DateTimeOffset time, IEnumerable<string>? extraDirectories = null)
+    {
+        Directory.CreateDirectory(root);
+        var directories = new List<string> { root };
+        foreach (var entry in entries)
+        {
+            var target = Path.Combine(root, entry.Path);
+            switch (entry.Kind)
+            {
+                case DebEntryKind.Directory:
+                    Directory.CreateDirectory(target);
+                    File.SetUnixFileMode(target, (UnixFileMode)entry.Mode);
+                    directories.Add(target);
+                    break;
+                case DebEntryKind.File:
+                    if (entry.Content is { } content)
+                    {
+                        File.WriteAllText(target, content, new UTF8Encoding(false));
+                    }
+                    else
+                    {
+                        File.Copy(entry.Source!, target);
+                    }
+
+                    File.SetUnixFileMode(target, (UnixFileMode)entry.Mode);
+                    File.SetLastWriteTimeUtc(target, time.UtcDateTime);
+                    break;
+                default:
+                    File.CreateSymbolicLink(target, entry.LinkTarget!);
+                    break;
+            }
+        }
+
+        File.SetUnixFileMode(root, (UnixFileMode)0x1ED);
+        foreach (var directory in directories.Concat(extraDirectories ?? []).OrderByDescending(d => d.Length))
+        {
+            Directory.SetLastWriteTimeUtc(directory, time.UtcDateTime);
+        }
+    }
+
+    public static IEnumerable<string> Parents(string path)
+    {
+        for (var i = path.IndexOf('/', StringComparison.Ordinal); i > 0; i = path.IndexOf('/', i + 1))
+        {
+            yield return path[..i];
+        }
+    }
+
+    // Adds a 0755 directory entry for every parent of every entry and sorts by path (ordinal).
+    public static List<DebEntry> WithParents(IEnumerable<DebEntry> entries)
+    {
+        var all = entries.ToList();
+        foreach (var directory in all.SelectMany(e => Parents(e.Path)).Distinct(StringComparer.Ordinal).ToList())
+        {
+            all.Add(new DebEntry(directory, DebEntryKind.Directory, 0x1ED));
+        }
+
+        return all.OrderBy(e => e.Path, StringComparer.Ordinal).ToList();
+    }
+}
 
 static partial class Deb
 {
@@ -1419,13 +1515,8 @@ static partial class Deb
 
         files.Add(Source(repo, "packaging/linux/pagewing.desktop", "usr/share/applications/pagewing.desktop"));
         files.Add(Source(repo, "packaging/linux/copyright.template", "usr/share/doc/pagewing/copyright"));
-        var all = new List<DebEntry>(files) { new("usr/bin/pagewing", DebEntryKind.Symlink, 0x1FF, null, "../lib/pagewing/cli/pagewing") };
-        foreach (var directory in all.SelectMany(e => Parents(e.Path)).Distinct(StringComparer.Ordinal).ToList())
-        {
-            all.Add(new DebEntry(directory, DebEntryKind.Directory, Dir));
-        }
-
-        return all.OrderBy(e => e.Path, StringComparer.Ordinal).ToList();
+        files.Add(new DebEntry("usr/bin/pagewing", DebEntryKind.Symlink, 0x1FF, null, "../lib/pagewing/cli/pagewing"));
+        return Tree.WithParents(files);
     }
 
     private static DebEntry Source(string repo, string relative, string target)
@@ -1434,53 +1525,17 @@ static partial class Deb
         return File.Exists(file) ? new DebEntry(target, DebEntryKind.File, Plain, file) : throw new IOException($"Datei fehlt: {file}");
     }
 
-    private static IEnumerable<string> Parents(string path)
-    {
-        for (var i = path.IndexOf('/', StringComparison.Ordinal); i > 0; i = path.IndexOf('/', i + 1))
-        {
-            yield return path[..i];
-        }
-    }
-
     // Writes the tree with modes and the fixed time; dpkg-deb --root-owner-group makes everything root:root.
     public static void Stage(IReadOnlyList<DebEntry> entries, string stage, string control)
     {
-        Directory.CreateDirectory(stage);
-        var directories = new List<string> { stage };
-        foreach (var entry in entries)
-        {
-            var target = Path.Combine(stage, entry.Path);
-            switch (entry.Kind)
-            {
-                case DebEntryKind.Directory:
-                    Directory.CreateDirectory(target);
-                    File.SetUnixFileMode(target, (UnixFileMode)entry.Mode);
-                    directories.Add(target);
-                    break;
-                case DebEntryKind.File:
-                    File.Copy(entry.Source!, target);
-                    File.SetUnixFileMode(target, (UnixFileMode)entry.Mode);
-                    File.SetLastWriteTimeUtc(target, FixedTime.UtcDateTime);
-                    break;
-                default:
-                    File.CreateSymbolicLink(target, entry.LinkTarget!);
-                    break;
-            }
-        }
-
         var debian = Path.Combine(stage, "DEBIAN");
         Directory.CreateDirectory(debian);
         File.SetUnixFileMode(debian, (UnixFileMode)Dir);
-        directories.Add(debian);
         var controlFile = Path.Combine(debian, "control");
         File.WriteAllText(controlFile, control, new UTF8Encoding(false));
         File.SetUnixFileMode(controlFile, (UnixFileMode)Plain);
         File.SetLastWriteTimeUtc(controlFile, FixedTime.UtcDateTime);
-        File.SetUnixFileMode(stage, (UnixFileMode)Dir);
-        foreach (var directory in directories.OrderByDescending(d => d.Length)) // children first: they change the parent's time
-        {
-            Directory.SetLastWriteTimeUtc(directory, FixedTime.UtcDateTime);
-        }
+        Tree.Write(entries, stage, FixedTime, [debian]);
     }
 
     public static int Run(string[] args)
@@ -1750,6 +1805,420 @@ static partial class DebSmoke
     }
 }
 
+// The pinned static type2 runtime of the AppImage project (build input, see Docs/DECISIONS.md "AppImage: type2-Runtime 20251108 …").
+static class AppImageRuntime
+{
+    public const string Version = "20251108";
+    public const string Url = "https://github.com/AppImage/type2-runtime/releases/download/" + Version + "/runtime-x86_64";
+
+    // From the release's own detached GnuPG signature runtime-x86_64.sig, checked against signing-pubkey.asc of
+    // AppImage/type2-runtime (ed25519 key 570C77ACEA40C0F1B758902CBF96CCA56490F695, in the repository since 2024-05).
+    public const string Sha256 = "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d";
+    public const long Size = 944632;
+
+    public static (long Size, string Sha256) Pin => (Size, Sha256);
+
+    // $XDG_CACHE_HOME (or ~/.cache)/PagewingBuildTools/type2-runtime-<version>-x86_64
+    public static string DefaultPath(string cacheHome) => Path.Combine(cacheHome, "PagewingBuildTools", $"type2-runtime-{Version}-x86_64");
+
+    public static string DefaultPath()
+    {
+        var cache = Environment.GetEnvironmentVariable("XDG_CACHE_HOME");
+        return DefaultPath(string.IsNullOrEmpty(cache) ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache") : cache);
+    }
+}
+
+static class RuntimeFetch
+{
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--out");
+        if (parsed is not { } p || p.Positional.Count != 0)
+        {
+            Console.Error.WriteLine("Aufruf: runtime-fetch [--out <Datei>]");
+            return 2;
+        }
+
+        if (Pinned.PinProblem(AppImageRuntime.Sha256, "AppImageRuntime.Sha256") is { } pinProblem)
+        {
+            Console.Error.WriteLine($"runtime-fetch: {pinProblem}");
+            return 1;
+        }
+
+        var target = Path.GetFullPath(p.Named.GetValueOrDefault("--out") ?? AppImageRuntime.DefaultPath());
+        if (File.Exists(target))
+        {
+            if (Pinned.VerifyFile(target, AppImageRuntime.Size, AppImageRuntime.Sha256, "AppImageRuntime.Sha256") is { } existing)
+            {
+                Console.Error.WriteLine($"runtime-fetch: vorhandene Datei {target} passt nicht ({existing}); nichts geladen, Datei bitte pruefen und loeschen");
+                return 1;
+            }
+
+            Console.WriteLine($"runtime-fetch: schon vorhanden und geprueft: {target}");
+            return 0;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var download = target + ".download-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            Console.WriteLine($"runtime-fetch: lade {AppImageRuntime.Url}");
+            Pinned.Fetch(AppImageRuntime.Url, download);
+            if (Pinned.VerifyFile(download, AppImageRuntime.Size, AppImageRuntime.Sha256, "AppImageRuntime.Sha256") is { } problem)
+            {
+                Console.Error.WriteLine($"runtime-fetch: Download abgelehnt: {problem}");
+                return 1;
+            }
+
+            File.Move(download, target);
+            Console.WriteLine($"runtime-fetch: type2-Runtime {AppImageRuntime.Version} (SHA-256 geprueft) in {target}");
+            return 0;
+        }
+        catch (Exception e) when (e is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"runtime-fetch: {e.Message}");
+            return 1;
+        }
+        finally
+        {
+            File.Delete(download);
+        }
+    }
+}
+
+static partial class AppImage
+{
+    private const int Exec = 0x1ED;  // 0755
+    private const int Plain = 0x1A4; // 0644
+    private const string LibDir = "usr/lib/pagewing";
+    private const string RootIconSize = "256x256";
+
+    // Fixed time of everything in the image (SOURCE_DATE_EPOCH for mksquashfs), the same as ZIP and .deb.
+    public static readonly DateTimeOffset FixedTime = new(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    // exec "$APPDIR/<path>" ... -> <path>
+    [GeneratedRegex(@"^\s*exec\s+""\$\{?APPDIR\}?/(?<p>[^""$]+)""", RegexOptions.Multiline)]
+    private static partial Regex ExecLine();
+
+    public static string FileName(string version) => $"Pagewing-{version}-x86_64.AppImage";
+
+    // The program that AppRun starts, relative to the AppDir; null when AppRun has no exec "$APPDIR/..." line.
+    public static string? AppRunTarget(string appRun) => ExecLine().Match(appRun) is { Success: true } m ? m.Groups["p"].Value : null;
+
+    // The .desktop template with the one Exec line replaced: inside the image the program is found through AppRun.
+    public static string Desktop(string template)
+    {
+        var lines = template.Split('\n');
+        if (lines.Count(l => l.StartsWith("Exec=", StringComparison.Ordinal)) != 1)
+        {
+            throw new IOException("die .desktop-Vorlage braucht genau eine Exec-Zeile");
+        }
+
+        return string.Join('\n', lines.Select(l => l.StartsWith("Exec=", StringComparison.Ordinal) ? "Exec=Pagewing %F" : l));
+    }
+
+    // The AppDir: AppRun, pagewing.desktop, pagewing.png and .DirIcon in the root, the layout in usr/lib/pagewing,
+    // the hicolor icons in usr/share/icons (LinuxDefaultAppService copies them from $APPDIR). Throws IOException when an input is missing.
+    public static List<DebEntry> Plan(string layout, string repo)
+    {
+        foreach (var required in new[] { "Pagewing", "libpdfium.so", "LICENSE", "THIRD-PARTY-NOTICES.txt", "cli/pagewing", "cli/libpdfium.so" })
+        {
+            if (!File.Exists(Path.Combine(layout, required)))
+            {
+                throw new IOException($"Layout enthaelt {required} nicht: {layout}");
+            }
+        }
+
+        var entries = new List<DebEntry>();
+        foreach (var file in Directory.EnumerateFiles(layout, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(layout, file).Replace('\\', '/');
+            entries.Add(new DebEntry($"{LibDir}/{relative}", DebEntryKind.File, relative is "Pagewing" or "cli/pagewing" ? Exec : Plain, file));
+        }
+
+        var icons = Path.Combine(repo, "Docs", "design", "icons", "linux", "hicolor");
+        var rootIcon = Path.Combine(icons, RootIconSize, "apps", "pagewing.png");
+        if (!File.Exists(rootIcon))
+        {
+            throw new IOException($"Symbol fehlt: {rootIcon}");
+        }
+
+        foreach (var icon in Directory.EnumerateDirectories(icons))
+        {
+            var png = Path.Combine(icon, "apps", "pagewing.png");
+            if (File.Exists(png))
+            {
+                entries.Add(new DebEntry($"usr/share/icons/hicolor/{Path.GetFileName(icon)}/apps/pagewing.png", DebEntryKind.File, Plain, png));
+            }
+        }
+
+        var appRun = Path.Combine(repo, "packaging", "linux", "AppRun");
+        var desktop = Path.Combine(repo, "packaging", "linux", "pagewing.desktop");
+        foreach (var file in new[] { appRun, desktop })
+        {
+            if (!File.Exists(file))
+            {
+                throw new IOException($"Datei fehlt: {file}");
+            }
+        }
+
+        entries.Add(new DebEntry("AppRun", DebEntryKind.File, Exec, appRun));
+        entries.Add(new DebEntry("pagewing.desktop", DebEntryKind.File, Plain, null, null, Desktop(File.ReadAllText(desktop))));
+        entries.Add(new DebEntry("pagewing.png", DebEntryKind.File, Plain, rootIcon));
+        entries.Add(new DebEntry(".DirIcon", DebEntryKind.Symlink, 0x1FF, null, "pagewing.png"));
+        return Tree.WithParents(entries);
+    }
+
+    // Stages the AppDir, builds the SquashFS image and writes runtime + image to output (0755). Returns 0 or 1 (message written).
+    // The runtime must match pin before anything is built; on any failure no output file remains.
+    public static int Build(string layout, string repo, string runtime, (long Size, string Sha256) pin, string output)
+    {
+        if (Pinned.VerifyFile(runtime, pin.Size, pin.Sha256, "AppImageRuntime.Sha256") is { } problem)
+        {
+            Console.Error.WriteLine($"appimage: Runtime abgelehnt ({runtime}): {problem}");
+            return 1;
+        }
+
+        var work = Path.Combine(Path.GetTempPath(), "pagewing-appimage-" + Guid.NewGuid().ToString("N"));
+        var fullOutput = Path.GetFullPath(output);
+        var partial = fullOutput + ".partial";
+        try
+        {
+            if (!Directory.Exists(layout))
+            {
+                throw new IOException($"Layout-Ordner fehlt: {layout}");
+            }
+
+            var entries = Plan(layout, repo);
+            var appDir = Path.Combine(work, "AppDir");
+            Tree.Write(entries, appDir, FixedTime);
+            var image = Path.Combine(work, "image.squashfs");
+
+            // SOURCE_DATE_EPOCH (squashfs-tools 4.4 and later) fixes the creation time and clamps every file time to it;
+            // -all-time exists only from 4.6 on and must not be combined with it. The runtime reads zstd (it links libzstd).
+            var env = new Dictionary<string, string> { ["SOURCE_DATE_EPOCH"] = FixedTime.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture) };
+            var code = Tool.Run("mksquashfs", [appDir, image, "-root-owned", "-noappend", "-comp", "zstd", "-no-xattrs", "-no-progress", "-quiet"], out var text, env: env);
+            if (code != 0)
+            {
+                Console.Error.Write(text);
+                Console.Error.WriteLine(code == -1
+                    ? "appimage: mksquashfs fehlt (sudo apt-get install -y squashfs-tools)"
+                    : $"appimage: mksquashfs endete mit Code {code}");
+                return 1;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(fullOutput)!);
+            File.Delete(fullOutput);
+            using (var target = File.Create(partial))
+            {
+                using (var source = File.OpenRead(runtime))
+                {
+                    source.CopyTo(target);
+                }
+
+                using (var source = File.OpenRead(image))
+                {
+                    source.CopyTo(target);
+                }
+            }
+
+            File.SetUnixFileMode(partial, (UnixFileMode)Exec);
+            File.Move(partial, fullOutput);
+            Console.WriteLine($"appimage: {entries.Count(e => e.Kind == DebEntryKind.File)} Dateien in {fullOutput}");
+            return 0;
+        }
+        catch (IOException e)
+        {
+            Console.Error.WriteLine($"appimage: {e.Message}");
+            return 1;
+        }
+        finally
+        {
+            File.Delete(partial);
+            if (Directory.Exists(work))
+            {
+                Directory.Delete(work, true);
+            }
+        }
+    }
+
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--layout", "--version", "--runtime", "--out", "--repo");
+        if (parsed is not { } p || p.Positional.Count != 0 ||
+            !p.Named.TryGetValue("--layout", out var layout) || !p.Named.TryGetValue("--version", out var version) ||
+            !p.Named.TryGetValue("--out", out var output))
+        {
+            Console.Error.WriteLine("Aufruf: appimage --layout <Ordner> --version <x.y.z> --out <Pagewing-<Version>-x86_64.AppImage> [--runtime <Datei>] [--repo <Wurzel>]");
+            return 2;
+        }
+
+        if (Deb.DebVersion(version) is null)
+        {
+            Console.Error.WriteLine($"appimage: ungueltige Version (erwartet x.y.z oder x.y.z-vorabversion): {version}");
+            return 2;
+        }
+
+        if (Path.GetFileName(output) != FileName(version))
+        {
+            Console.Error.WriteLine($"appimage: die Ausgabedatei muss {FileName(version)} heissen: {output}");
+            return 2;
+        }
+
+        if (!OperatingSystem.IsLinux())
+        {
+            Console.Error.WriteLine("appimage: nur unter Linux (mksquashfs)");
+            return 1;
+        }
+
+        var runtime = p.Named.GetValueOrDefault("--runtime") ?? AppImageRuntime.DefaultPath();
+        return Build(layout, Path.GetFullPath(p.Named.GetValueOrDefault("--repo", ".")), runtime, AppImageRuntime.Pin, output);
+    }
+}
+
+static partial class AppImageSmoke
+{
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--repo");
+        if (parsed is not { } p || p.Positional.Count != 1)
+        {
+            Console.Error.WriteLine("Aufruf: appimage-smoke <Pagewing-<Version>-x86_64.AppImage> [--repo <Wurzel>]");
+            return 2;
+        }
+
+        var source = Path.GetFullPath(p.Positional[0]);
+        var repo = Path.GetFullPath(p.Named.GetValueOrDefault("--repo", "."));
+        if (!File.Exists(source))
+        {
+            Console.Error.WriteLine($"appimage-smoke: Datei fehlt: {source}");
+            return 1;
+        }
+
+        if (!OperatingSystem.IsLinux())
+        {
+            Console.Error.WriteLine("appimage-smoke: nur unter Linux");
+            return 1;
+        }
+
+        var failures = new List<string>();
+        void Check(bool ok, string what)
+        {
+            Console.WriteLine($"{(ok ? "ok    " : "FEHLER")} {what}");
+            if (!ok)
+            {
+                failures.Add(what);
+            }
+        }
+
+        // (1) The image starts with exactly the pinned static runtime (no libfuse2 needed on the host).
+        using (var stream = File.OpenRead(source))
+        {
+            var prefix = new byte[Math.Min(stream.Length, AppImageRuntime.Size)];
+            stream.ReadExactly(prefix);
+            var problem = Pinned.VerifyDownload(new MemoryStream(prefix), AppImageRuntime.Size, AppImageRuntime.Sha256, "AppImageRuntime.Sha256");
+            Check(problem is null, $"beginnt mit der festgehaltenen type2-Runtime {AppImageRuntime.Version}{(problem is null ? string.Empty : $" ({problem})")}");
+        }
+
+        if (failures.Count > 0)
+        {
+            return Finish(failures); // never execute an unknown runtime
+        }
+
+        Check((File.GetUnixFileMode(source) & UnixFileMode.UserExecute) != 0, "ausfuehrbar");
+        if (Tool.Run("objdump", ["-p", source], out var headers) != -1)
+        {
+            Check(ElfRules.Needed(headers).Count == 0, "Runtime ist statisch gelinkt (keine NEEDED-Bibliothek, kein libfuse2)");
+        }
+
+        // (2) In a folder with a space: --appimage-offset, --appimage-extract and the CLI from the extracted tree.
+        var work = Path.Combine(Path.GetTempPath(), "pagewing-appimage-smoke-" + Guid.NewGuid().ToString("N"), "Pagewing Test");
+        try
+        {
+            Directory.CreateDirectory(work);
+            var appImage = Path.Combine(work, Path.GetFileName(source));
+            File.Copy(source, appImage);
+            File.SetUnixFileMode(appImage, (UnixFileMode)0x1ED);
+
+            var offsetCode = Tool.Run(appImage, ["--appimage-offset"], out var offset);
+            Check(offsetCode == 0 && offset.Trim() == AppImageRuntime.Size.ToString(CultureInfo.InvariantCulture),
+                $"--appimage-offset ist die Groesse der Runtime ({offset.Trim()})");
+
+            var extractCode = Tool.Run(appImage, ["--appimage-extract"], out var extractLog, workingDirectory: work);
+            var root = Path.Combine(work, "squashfs-root");
+            Check(extractCode == 0 && Directory.Exists(root), $"--appimage-extract (Code {extractCode})");
+            if (!Directory.Exists(root))
+            {
+                Console.Write(extractLog);
+                return Finish(failures);
+            }
+
+            var appRun = Path.Combine(root, "AppRun");
+            var target = File.Exists(appRun) ? AppImage.AppRunTarget(File.ReadAllText(appRun)) : null;
+            Check(target is not null && File.Exists(Path.Combine(root, target)) && (File.GetUnixFileMode(Path.Combine(root, target)) & UnixFileMode.UserExecute) != 0,
+                $"AppRun startet ein vorhandenes Programm ({target})");
+            var desktop = Path.Combine(root, "pagewing.desktop");
+            Check(File.Exists(desktop) && File.ReadLines(desktop).Contains("Exec=Pagewing %F"), "pagewing.desktop mit Exec=Pagewing %F");
+            Check(new FileInfo(Path.Combine(root, ".DirIcon")).LinkTarget == "pagewing.png" && File.Exists(Path.Combine(root, "pagewing.png")), ".DirIcon -> pagewing.png");
+            Check(File.Exists(Path.Combine(root, "usr", "share", "icons", "hicolor", "256x256", "apps", "pagewing.png")), "Symbole unter usr/share/icons/hicolor");
+            Check(File.Exists(Path.Combine(root, "usr", "lib", "pagewing", "THIRD-PARTY-NOTICES.txt")), "THIRD-PARTY-NOTICES.txt");
+
+            var pdf = Path.Combine(repo, "testdata", "pdfs", "text-basic.pdf");
+            var cli = Path.Combine(root, "usr", "lib", "pagewing", "cli", "pagewing");
+            var cliCode = Tool.Run(cli, ["info", pdf], out var info);
+            Check(cliCode == 0 && info.Contains("Pages: 2", StringComparison.Ordinal), $"usr/lib/pagewing/cli/pagewing info text-basic.pdf (Code {cliCode})");
+            if (cliCode != 0)
+            {
+                Console.Write(info);
+            }
+
+            Directory.Delete(root, true);
+
+            // (3) The app through AppRun: once without FUSE (APPIMAGE_EXTRACT_AND_RUN=1), once as a user starts it. In the second
+            // run the runtime mounts with FUSE, or, without /dev/fuse or fusermount, says so and extracts by itself.
+            var display = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")) || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
+            if (!display && Tool.Run("xvfb-run", ["--help"], out _) == -1)
+            {
+                Console.WriteLine("Hinweis: weder Anzeige noch xvfb-run, Start der App uebersprungen (sudo apt-get install -y xvfb)");
+                return Finish(failures);
+            }
+
+            foreach (var extract in new[] { true, false })
+            {
+                var env = extract ? new Dictionary<string, string> { ["APPIMAGE_EXTRACT_AND_RUN"] = "1" } : new Dictionary<string, string>();
+                var command = display ? appImage : "xvfb-run";
+                string[] arguments = display ? ["--measure-startup", pdf] : ["-a", appImage, "--measure-startup", pdf];
+                var code = Tool.Run(command, arguments, out var output, workingDirectory: work, env: env);
+                var label = extract ? "ohne FUSE (APPIMAGE_EXTRACT_AND_RUN=1)"
+                    : output.Contains("fusermount", StringComparison.Ordinal) || !File.Exists("/dev/fuse")
+                        ? "ohne Umgebungsvariable (kein FUSE auf dem Rechner: die Runtime entpackt selbst)"
+                        : "ohne Umgebungsvariable (ueber FUSE)";
+                Check(code == 0 && output.Split('\n').Any(l => l.Trim() == "first-sharp"), $"App startet {label} und zeichnet text-basic.pdf (first-sharp, Code {code})");
+                if (code != 0)
+                {
+                    Console.Write(output);
+                }
+            }
+
+            return Finish(failures);
+        }
+        finally
+        {
+            var parent = Path.GetDirectoryName(work)!;
+            if (Directory.Exists(parent))
+            {
+                Directory.Delete(parent, true);
+            }
+        }
+    }
+
+    private static int Finish(List<string> failures)
+    {
+        Console.WriteLine(failures.Count == 0 ? "appimage-smoke: bestanden." : $"appimage-smoke: {failures.Count} Pruefung(en) fehlgeschlagen.");
+        return failures.Count == 0 ? 0 : 1;
+    }
+}
+
 static class SelfTest
 {
     private static int s_checks;
@@ -1788,6 +2257,7 @@ static class SelfTest
         PackagingCommands();
         InstallerParts();
         DebParts();
+        AppImageParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -2030,6 +2500,164 @@ static class SelfTest
         finally
         {
             Directory.Delete(dir, true);
+        }
+    }
+
+    // The AppImage: runtime pin, AppRun, .desktop, the AppDir plan and, with mksquashfs, a reproducible image from a fake runtime.
+    private static void AppImageParts()
+    {
+        Expect("appimage: Runtime-Pruefsumme ist festgehalten", Pinned.PinProblem(AppImageRuntime.Sha256, "AppImageRuntime.Sha256"), null);
+        Expect("appimage: Runtime-Adresse nennt die Version", AppImageRuntime.Url,
+            $"https://github.com/AppImage/type2-runtime/releases/download/{AppImageRuntime.Version}/runtime-x86_64");
+        Expect("appimage: Runtime-Groesse festgehalten", AppImageRuntime.Size > 0, true);
+        Expect("appimage: Runtime-Ablage im Cache", AppImageRuntime.DefaultPath("/home/x/.cache"),
+            Path.Combine("/home/x/.cache", "PagewingBuildTools", $"type2-runtime-{AppImageRuntime.Version}-x86_64"));
+        Expect("appimage: Dateiname", AppImage.FileName("1.2.3"), "Pagewing-1.2.3-x86_64.AppImage");
+        Expect("appimage: Dateiname Vorabversion", AppImage.FileName("1.2.3-rc1"), "Pagewing-1.2.3-rc1-x86_64.AppImage");
+
+        // AppRun: POSIX sh, starts the app inside the AppDir.
+        var appRun = Path.Combine("packaging", "linux", "AppRun");
+        Expect("appimage: packaging/linux/AppRun vorhanden", File.Exists(appRun), true);
+        var appRunText = File.Exists(appRun) ? File.ReadAllText(appRun) : string.Empty;
+        Expect("appimage: AppRun beginnt mit #!/bin/sh", appRunText.StartsWith("#!/bin/sh\n", StringComparison.Ordinal), true);
+        Expect("appimage: AppRun ohne CR", appRunText.Contains('\r', StringComparison.Ordinal), false);
+        Expect("appimage: AppRun startet usr/lib/pagewing/Pagewing", AppImage.AppRunTarget(appRunText), "usr/lib/pagewing/Pagewing");
+        Expect("appimage: Ziel ohne exec-Zeile ist null", AppImage.AppRunTarget("#!/bin/sh\necho x\n"), null);
+
+        // .desktop inside the image: only Exec differs from the template.
+        var template = File.ReadAllText(Path.Combine("packaging", "linux", "pagewing.desktop"));
+        var desktop = AppImage.Desktop(template);
+        Expect("appimage: .desktop Exec=Pagewing %F", desktop.Split('\n').Count(l => l == "Exec=Pagewing %F"), 1);
+        Expect("appimage: .desktop sonst gleich", string.Join('\n', desktop.Split('\n').Where(l => !l.StartsWith("Exec=", StringComparison.Ordinal))),
+            string.Join('\n', template.Split('\n').Where(l => !l.StartsWith("Exec=", StringComparison.Ordinal))));
+        Expect("appimage: .desktop ohne Exec wirft", ThrowsIo(() => AppImage.Desktop("[Desktop Entry]\nName=x\n")), true);
+        Expect("appimage: .desktop mit zwei Exec wirft", ThrowsIo(() => AppImage.Desktop("Exec=a\nExec=b\n")), true);
+
+        var dir = Path.Combine(Path.GetTempPath(), "pagewing-appimage-selftest-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var layout = Path.Combine(dir, "layout");
+            var repo = Path.Combine(dir, "repo");
+            Directory.CreateDirectory(Path.Combine(layout, "cli"));
+            File.WriteAllText(Path.Combine(layout, "Pagewing"), "app");
+            File.WriteAllText(Path.Combine(layout, "libpdfium.so"), "pdfium");
+            File.WriteAllText(Path.Combine(layout, "LICENSE"), "license");
+            File.WriteAllText(Path.Combine(layout, "THIRD-PARTY-NOTICES.txt"), "notices");
+            File.WriteAllText(Path.Combine(layout, "cli", "pagewing"), "cli");
+            File.WriteAllText(Path.Combine(layout, "cli", "libpdfium.so"), "pdfium");
+            foreach (var size in new[] { "16x16", "256x256" })
+            {
+                var icons = Path.Combine(repo, "Docs", "design", "icons", "linux", "hicolor", size, "apps");
+                Directory.CreateDirectory(icons);
+                File.WriteAllText(Path.Combine(icons, "pagewing.png"), "png" + size);
+            }
+
+            Directory.CreateDirectory(Path.Combine(repo, "packaging", "linux"));
+            File.WriteAllText(Path.Combine(repo, "packaging", "linux", "pagewing.desktop"), template);
+            File.WriteAllText(Path.Combine(repo, "packaging", "linux", "AppRun"), appRunText);
+
+            var entries = AppImage.Plan(layout, repo);
+            DebEntry? Find(string path) => entries.FirstOrDefault(e => e.Path == path);
+            Expect("appimage: Plan ohne doppelte Pfade", entries.Select(e => e.Path).Distinct().Count(), entries.Count);
+            Expect("appimage: Plan ist sortiert", entries.Select(e => e.Path).SequenceEqual(entries.Select(e => e.Path).Order(StringComparer.Ordinal)), true);
+            Expect("appimage: AppRun 0755", Find("AppRun")?.Mode, 0x1ED);
+            Expect("appimage: AppRun-Ziel ist ein ausfuehrbares Programm im Plan", Find(AppImage.AppRunTarget(appRunText) ?? "?") is { Kind: DebEntryKind.File, Mode: 0x1ED }, true);
+            Expect("appimage: pagewing.desktop in der Wurzel", Find("pagewing.desktop")?.Content, desktop);
+            Expect("appimage: pagewing.png ist das 256er-Symbol", Find("pagewing.png")?.Source, Path.Combine(repo, "Docs", "design", "icons", "linux", "hicolor", "256x256", "apps", "pagewing.png"));
+            Expect("appimage: .DirIcon zeigt auf pagewing.png", Find(".DirIcon")?.LinkTarget, "pagewing.png");
+            Expect("appimage: Programm 0755", Find("usr/lib/pagewing/Pagewing")?.Mode, 0x1ED);
+            Expect("appimage: CLI 0755", Find("usr/lib/pagewing/cli/pagewing")?.Mode, 0x1ED);
+            Expect("appimage: Bibliothek 0644", Find("usr/lib/pagewing/libpdfium.so")?.Mode, 0x1A4);
+            Expect("appimage: LICENSE im Programmordner", Find("usr/lib/pagewing/LICENSE")?.Mode, 0x1A4);
+            Expect("appimage: THIRD-PARTY-NOTICES.txt im Programmordner", Find("usr/lib/pagewing/THIRD-PARTY-NOTICES.txt") is not null, true);
+            Expect("appimage: Symbol 16x16 unter usr/share/icons", Find("usr/share/icons/hicolor/16x16/apps/pagewing.png")?.Mode, 0x1A4);
+            Expect("appimage: Elternverzeichnisse vorhanden", entries.Where(e => e.Path.Contains('/', StringComparison.Ordinal))
+                .All(e => Find(e.Path[..e.Path.LastIndexOf('/')]) is { Kind: DebEntryKind.Directory, Mode: 0x1ED }), true);
+            File.Delete(Path.Combine(repo, "Docs", "design", "icons", "linux", "hicolor", "256x256", "apps", "pagewing.png"));
+            Expect("appimage: ohne 256er-Symbol wirft", ThrowsIo(() => AppImage.Plan(layout, repo)), true);
+            File.WriteAllText(Path.Combine(repo, "Docs", "design", "icons", "linux", "hicolor", "256x256", "apps", "pagewing.png"), "png256x256");
+
+            if (!OperatingSystem.IsWindows() && Exec("sh", "-c true") == 0)
+            {
+                // AppRun keeps every argument as it is, also with spaces in APPDIR and in the arguments.
+                var appDir = Path.Combine(dir, "App Dir");
+                var program = Path.Combine(appDir, "usr", "lib", "pagewing", "Pagewing");
+                Directory.CreateDirectory(Path.GetDirectoryName(program)!);
+                File.WriteAllText(program, "#!/bin/sh\nfor a in \"$@\"; do printf '<%s>' \"$a\"; done\n");
+                File.SetUnixFileMode(program, (UnixFileMode)0x1ED);
+                Expect("appimage: sh -n AppRun", Tool.Run("sh", ["-n", appRun], out _), 0);
+                var code = Tool.Run("sh", [appRun, "a b", "", "c*"], out var echoed, env: new Dictionary<string, string> { ["APPDIR"] = appDir });
+                Expect("appimage: AppRun reicht Argumente unveraendert weiter", (code, echoed), (0, "<a b><><c*>"));
+            }
+
+            Expect("appimage: falscher Dateiname liefert 2", Cli.Run(["appimage", "--layout", layout, "--version", "1.2.3", "--runtime", appRun, "--out", Path.Combine(dir, "x.AppImage"), "--repo", repo]), 2);
+            Expect("appimage: ungueltige Version liefert 2", Cli.Run(["appimage", "--layout", layout, "--version", "1.2", "--runtime", appRun, "--out", Path.Combine(dir, "Pagewing-1.2-x86_64.AppImage"), "--repo", repo]), 2);
+            Expect("appimage: ohne Option liefert 2", Cli.Run(["appimage"]), 2);
+            var refused = Path.Combine(dir, "out", AppImage.FileName("1.2.3"));
+            Expect("appimage: Runtime mit falscher SHA-256 liefert 1", Cli.Run(["appimage", "--layout", layout, "--version", "1.2.3", "--runtime", appRun, "--out", refused, "--repo", repo]), 1);
+            Expect("appimage: bei falscher Runtime entsteht nichts", File.Exists(refused), false);
+            Expect("appimage: fehlende Runtime liefert 1", Cli.Run(["appimage", "--layout", layout, "--version", "1.2.3", "--runtime", Path.Combine(dir, "nope"), "--out", refused, "--repo", repo]), 1);
+            Expect("runtime-fetch: unbekannte Option liefert 2", Cli.Run(["runtime-fetch", "--gibt-es-nicht", "x"]), 2);
+            var wrong = Path.Combine(dir, "wrong-runtime");
+            File.WriteAllText(wrong, "not the runtime");
+            Expect("runtime-fetch: vorhandene falsche Datei wird abgelehnt, nichts geladen", Cli.Run(["runtime-fetch", "--out", wrong]), 1);
+            Expect("runtime-fetch: falsche Datei bleibt unangetastet", File.ReadAllText(wrong), "not the runtime");
+            Expect("appimage-smoke: ohne Datei liefert 2", Cli.Run(["appimage-smoke"]), 2);
+            Expect("appimage-smoke: fehlende Datei liefert 1", Cli.Run(["appimage-smoke", Path.Combine(dir, "nope.AppImage")]), 1);
+
+            if (OperatingSystem.IsLinux() && Exec("mksquashfs", "-version") == 0)
+            {
+                // A fake runtime with its own pin: the image is built and reproducible; the real runtime is checked by appimage-smoke.
+                var fake = Encoding.ASCII.GetBytes("FAKE-RUNTIME\n");
+                var fakeRuntime = Path.Combine(dir, "fake-runtime");
+                File.WriteAllBytes(fakeRuntime, fake);
+                var pin = (Size: (long)fake.Length, Sha256: Convert.ToHexStringLower(SHA256.HashData(fake)));
+                var image1 = Path.Combine(dir, "a", AppImage.FileName("1.2.3"));
+                var image2 = Path.Combine(dir, "b", AppImage.FileName("1.2.3"));
+                Expect("appimage: baut mit mksquashfs", AppImage.Build(layout, repo, fakeRuntime, pin, image1), 0);
+                Thread.Sleep(1100);
+                File.SetLastWriteTimeUtc(Path.Combine(layout, "Pagewing"), DateTime.UtcNow);
+                Expect("appimage: zweiter Lauf", AppImage.Build(layout, repo, fakeRuntime, pin, image2), 0);
+                Expect("appimage: reproduzierbar (gleiche SHA-256)", Sums.Line(image1)[..64], Sums.Line(image2)[..64]);
+                Expect("appimage: beginnt mit der Runtime", File.ReadAllBytes(image1).AsSpan(0, fake.Length).SequenceEqual(fake), true);
+                Expect("appimage: SquashFS direkt hinter der Runtime (hsqs)", Encoding.ASCII.GetString(File.ReadAllBytes(image1), fake.Length, 4), "hsqs");
+                Expect("appimage: ausfuehrbar 0755", File.GetUnixFileMode(image1), (UnixFileMode)0x1ED);
+                if (Tool.Run("unsquashfs", ["-o", fake.Length.ToString(CultureInfo.InvariantCulture), "-lln", image1], out var listing) == 0)
+                {
+                    var rows = listing.Split('\n').Where(l => l.Contains("squashfs-root", StringComparison.Ordinal)).ToList();
+                    Expect("appimage: alle Eintraege gehoeren root (0/0)", rows.Count > 0 && rows.All(r => r.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1] == "0/0"), true);
+                    Expect("appimage: feste Zeit 2000-01-01", rows.All(r => r.Contains(" 2000-01-01 ", StringComparison.Ordinal)), true);
+                    Expect("appimage: AppRun im Image ausfuehrbar", rows.Any(r => r.StartsWith("-rwxr-xr-x", StringComparison.Ordinal) && r.EndsWith("squashfs-root/AppRun", StringComparison.Ordinal)), true);
+                    Expect("appimage: .DirIcon ist ein Symlink", rows.Any(r => r.StartsWith('l') && r.EndsWith("squashfs-root/.DirIcon -> pagewing.png", StringComparison.Ordinal)), true);
+                }
+                else
+                {
+                    Console.WriteLine("selftest: unsquashfs fehlt oder kennt -o nicht, Inhaltspruefung des Images uebersprungen.");
+                }
+
+                Expect("appimage-smoke: Image mit falscher Runtime schlaegt fehl", Cli.Run(["appimage-smoke", image1]), 1);
+            }
+            else
+            {
+                Console.WriteLine("selftest: mksquashfs fehlt, Bau des AppImage uebersprungen (sudo apt-get install -y squashfs-tools).");
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    private static bool ThrowsIo(Action action)
+    {
+        try
+        {
+            action();
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
         }
     }
 

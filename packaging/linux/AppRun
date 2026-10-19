@@ -1,0 +1,6 @@
+#!/bin/sh
+# Entry point of the Pagewing AppImage (POSIX sh). The AppImage runtime sets APPDIR to the mounted or
+# extracted image; started directly from an extracted squashfs-root, APPDIR is the folder of this script.
+APPDIR="${APPDIR:-$(dirname "$0")}"
+export APPDIR
+exec "$APPDIR/usr/lib/pagewing/Pagewing" "$@"
