@@ -15,6 +15,12 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-19 – Lizenzinventar: SDK-eigene Build-Pakete dürfen im Patchstand abweichen (M8)
+**Kontext:** Der erste CI-Lauf von `licenses check` scheiterte auf dem Linux-Runner: `Microsoft.DotNet.ILCompiler` und `Microsoft.NET.ILLink.Tasks` (beide MIT, nur Build, `shipped: false`) kamen in Version 10.0.13, das Manifest nannte 10.0.12. Beide Pakete fügt das SDK von selbst hinzu; ihr Patchstand folgt dem installierten SDK (`global.json`: `rollForward` `latestFeature`, CI: `10.0.x`) und unterscheidet sich je Rechner und Tag.
+**Entscheidung:** Ein Manifest-Eintrag kann `"sdkVersion": true` tragen. `tools/licenses.cs` verlangt dann nur noch dieselbe Haupt- und Nebenversion (`10.0`), nicht denselben Patchstand; alle anderen Einträge bleiben exakt. Gesetzt ist das für die beiden genannten Pakete. Lizenz (nuspec) und Lizenzdatei werden weiter geprüft.
+**Begründung:** Ein exakt festgeschriebener Patchstand würde bei jedem SDK-Patch die CI brechen, ohne dass sich an der Lizenzlage etwas ändert. Wechselt die Lizenz eines solchen Pakets, schlägt die nuspec-Prüfung weiterhin an.
+**Verworfene Alternativen:** Das Manifest bei jedem SDK-Patch von Hand anheben (brüchig, folgenlos für die Lizenz); die Pakete aus dem Manifest nehmen (dann scheitert die Prüfung auf fehlende Einträge).
+
 ## 2026-10-19 – Offen: Quellangebot für libfuse und type2-runtime (M8)
 **Kontext:** Das AppImage enthält die statisch gelinkte type2-Runtime (Release `20251108`) mit libfuse 3.15.0 unter LGPL-2.1 (Versionen: `third-party/appimage-runtime/README.md`). Die LGPL-2.1 verlangt bei Weitergabe des Objektcodes, den Empfängern den Quelltext der Bibliothek anzubieten (und ein Neubinden zu ermöglichen). Die Lizenztexte liegen im Paket (Eintrag „Lizenzinventar …“), ein Quellangebot noch nicht.
 **Offen (vor v0.1.0 klären):** Entweder die Quell-Tarballs (type2-runtime `20251108` samt Bauskripten und Patches, libfuse 3.15.0, ebenso die übrigen Bestandteile) an jedes Release hängen oder ein schriftliches Angebot (Adresse der Quellen, Gültigkeit) ins Paket legen und in der Über-Karte nennen. Bis dahin ist die Pflicht nicht erfüllt. Der Punkt steht unerledigt in der Abnahme des Releases `v0.1.0` (`Docs/roadmap.json`).

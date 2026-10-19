@@ -187,6 +187,7 @@
       "id": "Microsoft.DotNet.ILCompiler",
       "kind": "nuget",
       "version": "10.0.12",
+      "sdkVersion": true,
       "license": "MIT",
       "licenseFile": "third-party/dotnet/LICENSE",
       "shipped": false
@@ -195,6 +196,7 @@
       "id": "Microsoft.NET.ILLink.Tasks",
       "kind": "nuget",
       "version": "10.0.12",
+      "sdkVersion": true,
       "license": "MIT",
       "licenseFile": "third-party/dotnet/LICENSE",
       "shipped": false

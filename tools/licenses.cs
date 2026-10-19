@@ -181,7 +181,8 @@ sealed record Entry(
     string LicenseFile,
     string[] LicenseFiles,
     string[] Files,
-    bool Shipped);
+    bool Shipped,
+    bool SdkVersion = false);
 
 sealed record Package(string Id, string Version);
 
@@ -340,7 +341,8 @@ static partial class Inventory
                 list.Add(new Entry(
                     id, kind, Str(e, "version"), Str(e, "license"), Str(e, "licenseFile"),
                     Strings(e, "licenseFiles"), Strings(e, "files"),
-                    !e.TryGetProperty("shipped", out var shipped) || shipped.ValueKind != JsonValueKind.False));
+                    !e.TryGetProperty("shipped", out var shipped) || shipped.ValueKind != JsonValueKind.False,
+                    e.TryGetProperty("sdkVersion", out var sdkVersion) && sdkVersion.ValueKind == JsonValueKind.True));
             }
 
             return list;
@@ -394,6 +396,24 @@ static partial class Inventory
         return result;
     }
 
+    // Packages the SDK adds on its own (ILCompiler, ILLink tasks) follow the patch version of the installed SDK, which differs
+    // between machines. Entries marked "sdkVersion" therefore only have to agree in major.minor; all others agree exactly.
+    private static bool VersionMatches(Entry entry, string actual)
+    {
+        if (entry.Version == actual)
+        {
+            return true;
+        }
+
+        if (!entry.SdkVersion)
+        {
+            return false;
+        }
+
+        static string[] MajorMinor(string v) => v.Split('.').Take(2).ToArray();
+        return MajorMinor(entry.Version).SequenceEqual(MajorMinor(actual), StringComparer.Ordinal);
+    }
+
     public static List<string> Validate(Inputs input)
     {
         var paths = input.Paths;
@@ -427,7 +447,7 @@ static partial class Inventory
                 continue;
             }
 
-            if (entry.Version != package.Version)
+            if (!VersionMatches(entry, package.Version))
             {
                 errors.Add($"{where}: Paket {package.Id}: Manifest hat Version {entry.Version}, das Projekt {package.Version}");
             }
@@ -741,6 +761,19 @@ static class SelfTest
             f.WriteManifest(Fixture.Manifest(fooVersion: "0.9.0"));
             f.Generate();
         }, "Paket Foo: Manifest hat Version 0.9.0, das Projekt 1.0.0");
+
+        using (var f = new Fixture())
+        {
+            f.WriteManifest(Fixture.Manifest(fooVersion: "1.0.5").Replace("\"id\": \"Foo\", ", "\"id\": \"Foo\", \"sdkVersion\": true, ", StringComparison.Ordinal));
+            f.Generate();
+            Expect("sdkVersion: anderer Patchstand ist erlaubt", string.Join(" | ", f.Check()), string.Empty);
+        }
+
+        Case("sdkVersion: andere Nebenversion faellt durch", f =>
+        {
+            f.WriteManifest(Fixture.Manifest(fooVersion: "1.1.0").Replace("\"id\": \"Foo\", ", "\"id\": \"Foo\", \"sdkVersion\": true, ", StringComparison.Ordinal));
+            f.Generate();
+        }, "Paket Foo: Manifest hat Version 1.1.0, das Projekt 1.0.0");
 
         Case("SPDX-Abweichung zur nuspec", f =>
         {
