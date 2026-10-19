@@ -42,7 +42,6 @@ public static class Strings
     public static string AllTabs => Get("AllTabs");
     public static string AllTabsTooltip => Get("AllTabsTooltip");
     public static string StartTitle => Get("StartTitle");
-    public static string StartHint => Get("StartHint");
     public static string StartOffline => Get("StartOffline");
     public static string StartDropHint => Get("StartDropHint");
     public static string ChooseFile => Get("ChooseFile");

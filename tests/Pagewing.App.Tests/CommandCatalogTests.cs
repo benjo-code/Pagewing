@@ -394,7 +394,6 @@ public sealed class CommandCatalogTests : IDisposable
 
         // The shortcuts shown next to a choice (start screen, zoom menu) are the catalog's as well.
         Assert.Equal(GestureText.Of(catalog.ById("file.open")!.Gesture!), Strings.ChooseFileShortcut);
-        Assert.Contains(GestureText.Of(catalog.ById("file.open")!.Gesture!), Strings.StartHint, StringComparison.Ordinal);
         Assert.Equal(GestureText.Of(catalog.ById("view.fitWidth")!.Gesture!), Strings.ZoomFitWidthShortcut);
         Assert.Equal(GestureText.Of(catalog.ById("view.fitPage")!.Gesture!), Strings.ZoomFitPageShortcut);
         Assert.Equal(GestureText.Of(catalog.ById("view.actualSize")!.Gesture!), Strings.ZoomActualSizeShortcut);

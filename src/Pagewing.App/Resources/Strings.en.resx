@@ -45,9 +45,6 @@
   <data name="StartTitle" xml:space="preserve">
     <value>Open a document</value>
   </data>
-  <data name="StartHint" xml:space="preserve">
-    <value>Press Ctrl+O to choose a PDF file.</value>
-  </data>
   <data name="StartOffline" xml:space="preserve">
     <value>Pagewing works offline. Nothing leaves this computer.</value>
   </data>
