@@ -91,7 +91,21 @@ internal static partial class Program
             StartMeasurementWatchdog();
         }
 
-        return Run(args, new AppStartup(session, instance, settings, options.IsMeasurement ? options : null, options.MorePaths), software);
+        // Reads nothing: the history is read after the first sharp page (or the first frame of the start screen).
+        var recentFiles = LoadRecentFiles(options, RecentFilesService.Load);
+        return Run(args, new AppStartup(session, instance, settings, options.IsMeasurement ? options : null, options.MorePaths, recentFiles), software);
+    }
+
+    /// <summary>
+    /// The history of recently opened files of this run: <paramref name="load"/> (<see cref="RecentFilesService.Load()"/>,
+    /// which reads nothing yet) for a normal launch; for a measurement one in memory only
+    /// (<see cref="RecentFilesService.Detached"/>), so a measurement never reads or writes the user's history.
+    /// </summary>
+    internal static RecentFilesService LoadRecentFiles(StartupOptions options, Func<RecentFilesService> load)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(load);
+        return options.IsMeasurement ? RecentFilesService.Detached() : load();
     }
 
     /// <summary>

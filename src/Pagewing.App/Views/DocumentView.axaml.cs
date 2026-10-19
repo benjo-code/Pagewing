@@ -198,9 +198,10 @@ public sealed partial class DocumentView : UserControl
     /// matter) and the distance of the viewport's centre from the centre line of the pages (so the same spot stays in
     /// the middle when the window has another width). Only while the session is Ready with the document shown: during
     /// the load of a replacement the session still holds the old document, but the tab has dropped its saved view
-    /// and the new document must not inherit the old position.
+    /// and the new document must not inherit the old position. Also called by the window when it closes, so the
+    /// history of recently opened files gets where the active tab is now, not where it was when it was last left.
     /// </summary>
-    private void SaveView()
+    internal void SaveView()
     {
         if (_viewModel is not { } tab || _layout is null || _document is null
             || _session is not { State: ViewerState.Ready } session || !ReferenceEquals(_document, session.Document))

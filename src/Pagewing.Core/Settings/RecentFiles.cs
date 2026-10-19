@@ -16,8 +16,12 @@ public sealed record RememberedView(ViewState View, double Zoom, ZoomMode ZoomMo
     /// <summary>The largest zoom a stored view may have.</summary>
     public const double MaxZoom = 8;
 
-    /// <summary>Whether every value is usable. A file edited by hand or written by another version may hold others.</summary>
-    internal bool IsValid() =>
+    /// <summary>
+    /// Whether every value is usable. A file edited by hand or written by another version may hold others. It does not
+    /// know the document: the page may lie beyond its end and the fraction beyond its page; whoever restores the view
+    /// limits both.
+    /// </summary>
+    public bool IsValid() =>
         View is not null
         && double.IsFinite(Zoom) && Zoom is >= MinZoom and <= MaxZoom
         && Enum.IsDefined(ZoomMode)

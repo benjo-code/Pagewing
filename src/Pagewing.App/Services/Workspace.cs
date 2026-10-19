@@ -23,6 +23,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private readonly Func<Window> _createWindow;
     private readonly Func<Window, IFilePicker> _createPicker;
     private readonly UserSettings _settings;
+    private readonly RecentFilesService? _recentFiles;
     private readonly IEffectiveTheme? _theme;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
@@ -34,12 +35,16 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     /// <param name="createPicker">Creates the file dialog of a window.</param>
     /// <param name="settings">The settings every window shares; <see cref="UserSettings.Detached"/> when omitted.</param>
     /// <param name="theme">The theme in effect (<see cref="Appearance"/>), which every window follows; none counts as light.</param>
+    /// <param name="recentFiles">
+    /// The history of recently opened files every window shares and writes when it closes; none keeps no history.
+    /// </param>
     public Workspace(
         Func<ViewerSession> sessionFactory,
         Func<Window> createWindow,
         Func<Window, IFilePicker> createPicker,
         UserSettings? settings = null,
-        IEffectiveTheme? theme = null)
+        IEffectiveTheme? theme = null,
+        RecentFilesService? recentFiles = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(createWindow);
@@ -49,6 +54,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         _createPicker = createPicker;
         _settings = settings ?? UserSettings.Detached();
         _theme = theme;
+        _recentFiles = recentFiles;
     }
 
     /// <summary>Gets the view models of the open windows, the oldest first.</summary>
@@ -258,7 +264,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         TabViewModel? firstTab, Window? source, Action<Window, MainViewModel>? beforeShow, PixelPoint? position = null, bool showActivated = true)
     {
         var window = _createWindow();
-        var viewModel = new MainViewModel(_sessionFactory, _createPicker(window), _settings) { AppTheme = _theme };
+        var viewModel = new MainViewModel(_sessionFactory, _createPicker(window), _settings, _recentFiles) { AppTheme = _theme };
         if (source is not null)
         {
             PlaceNextTo(window, source, position);

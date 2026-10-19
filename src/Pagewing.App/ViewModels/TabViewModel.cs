@@ -4,6 +4,7 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Settings;
 using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 
@@ -632,7 +633,44 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         _pickerFailure = null;
         Password = string.Empty;
         SavedView = null;
+        ApplyInitialView();
         return _session.OpenAsync(path);
+    }
+
+    /// <summary>
+    /// Gets or sets where the next file this tab opens (<see cref="OpenAsync"/>) was last read (the history of
+    /// recently opened files), or <see langword="null"/>; used by that one open and then dropped. The window sets it for
+    /// a file it opens, never for a tab that moves to it.
+    /// </summary>
+    internal RememberedView? InitialView { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document of this tab that the history of recently opened files has been told about, so a tab
+    /// that moves to another window is not reported as opened again.
+    /// </summary>
+    internal PdfDocument? ReportedDocument { get; set; }
+
+    /// <summary>
+    /// Takes <see cref="InitialView"/> for the file being opened: its position becomes the saved view (the document view
+    /// shows it like a tab shown again), then layout, zoom mode and zoom, in this order and without the zoom setter, which
+    /// would turn a fit mode into the free zoom. A view with unusable values is ignored. The fraction is limited to
+    /// -1 to 1 (a negative one is the margin above the first page, which the view keeps), the zoom to the zoom steps;
+    /// the page is limited to the document once it is open (<see cref="Refresh"/>).
+    /// </summary>
+    private void ApplyInitialView()
+    {
+        var remembered = InitialView;
+        InitialView = null;
+        if (remembered is null || !remembered.IsValid())
+        {
+            return;
+        }
+
+        var anchor = remembered.View.Anchor;
+        SavedView = new ViewState(new PageAnchor(anchor.Page, Math.Clamp(anchor.Fraction, -1, 1)), remembered.View.HorizontalFromCentre);
+        LayoutMode = remembered.Layout;
+        ZoomMode = remembered.ZoomMode;
+        SetZoom(remembered.Zoom);
     }
 
     /// <summary>Asks the document view to show <paramref name="page"/> (1-based); a page outside the document does nothing.</summary>
@@ -1005,6 +1043,11 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (SavedView is null)
             {
                 SetZoom(ZoomSteps.Default);
+            }
+            else if (SavedView.Anchor.Page >= pageCount && pageCount > 0)
+            {
+                // A remembered position beyond the end (the file has fewer pages now): the top of the last page.
+                SavedView = SavedView with { Anchor = new PageAnchor(pageCount - 1, 0) };
             }
         }
         else if (document is null)

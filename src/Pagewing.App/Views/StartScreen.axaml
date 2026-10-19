@@ -7,8 +7,9 @@
              x:DataType="vm:MainViewModel">
   <!--
     Start screen (design system section 7.1): heading, offline note, primary button "Choose file" with its
-    shortcut, drag-and-drop hint. "Recently opened" follows in M6. text.secondary on surface.canvas is checked
-    by MainWindowTests.SecondaryTextOnTheCanvasMeetsAA.
+    shortcut, drag-and-drop hint, then "Recently opened" (RecentFilesSection), which StartScreen.axaml.cs builds into
+    RecentHost only once the history has been read (after the first frame) and has entries; the first frame has an
+    empty host. text.secondary on surface.canvas is checked by MainWindowTests.SecondaryTextOnTheCanvasMeetsAA.
   -->
   <Border Margin="8,0" CornerRadius="10,10,0,0" Background="{DynamicResource Pw.Brush.Surface.Canvas}">
     <StackPanel MaxWidth="540" Margin="24" Spacing="22" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -37,6 +38,8 @@
                    Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
                    Text="{x:Static res:Strings.StartDropHint}" />
       </Grid>
+
+      <Panel Name="RecentHost" />
     </StackPanel>
   </Border>
 </UserControl>

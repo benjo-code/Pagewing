@@ -40,11 +40,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Below this window width the side panel lies over the document instead of beside it (design system 6).</summary>
     public const double NarrowWindowWidth = 900;
 
+    /// <summary>How many recently opened files the start screen lists.</summary>
+    public const int MaxStartRecentFiles = 5;
+
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private readonly Func<ViewerSession> _sessionFactory;
     private readonly IFilePicker _picker;
+
+    // The history of recently opened files, or none (a window made without one keeps no history).
+    private readonly RecentFilesService? _recent;
+    private IReadOnlyList<RecentEntry> _startRecentFiles = [];
+    private bool _historyLoadPosted;
     private readonly RelayCommand _closeActiveTabCommand;
     private readonly RelayCommand _confirmLinkCommand;
     private readonly RelayCommand _cancelLinkCommand;
@@ -65,7 +73,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
-    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther)> _tabHandlers = [];
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private int? _tabDropIndex;
     private bool _picking;
@@ -87,7 +95,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <param name="sessionFactory">Creates the session of each new tab; the tab owns it.</param>
     /// <param name="picker">The file dialog.</param>
     /// <param name="settings">The settings of the app; <see cref="UserSettings.Detached"/> (in memory only) when omitted.</param>
-    public MainViewModel(Func<ViewerSession> sessionFactory, IFilePicker picker, UserSettings? settings = null)
+    /// <param name="recentFiles">
+    /// The history of recently opened files the app shares (<see cref="RecentFiles"/>); without one the window keeps no
+    /// history: it records nothing, restores nothing and lists nothing.
+    /// </param>
+    public MainViewModel(Func<ViewerSession> sessionFactory, IFilePicker picker, UserSettings? settings = null, RecentFilesService? recentFiles = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(picker);
@@ -97,6 +109,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _density = Settings.Current.Density;
         _panelWidth = ShownPanelWidth(Settings.Current);
         Settings.Changed += OnSettingsChanged;
+        _recent = recentFiles;
+        if (recentFiles is not null)
+        {
+            ClearRecentFiles = recentFiles.Clear;
+            RecentFilesSource = () => recentFiles.Files.Items;
+            recentFiles.Changed += OnRecentFilesChanged;
+        }
+
+        OpenRecentCommand = new RelayCommand<RecentEntry>(entry => _ = OpenAsync(entry.Path));
+        RemoveRecentCommand = new RelayCommand<RecentEntry>(entry => _recent?.Remove(entry.Path));
 
         Tabs.ActiveChanged += OnActiveTabChanged;
         Tabs.CollectionChanged += (_, _) =>
@@ -170,7 +192,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
             else if (value == OverlayKind.Settings)
             {
-                (_settingsCard ??= new SettingsViewModel(Settings)).OnOpened();
+                (_settingsCard ??= new SettingsViewModel(Settings, ClearRecentFiles)).OnOpened();
             }
 
             OnPropertyChanged();
@@ -202,16 +224,94 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand HideOverlayCommand { get; }
 
     /// <summary>
-    /// Gets or sets what clears the history of recently opened files, or <see langword="null"/> while the app keeps none;
-    /// the command <c>recent.clear</c> of the catalog runs only with one.
+    /// Gets or sets what clears the history of recently opened files (list and positions,
+    /// <see cref="RecentFilesService.Clear"/>), or <see langword="null"/> for a window without a history; the command
+    /// <c>recent.clear</c> of the catalog and the button of the settings card run only with one.
     /// </summary>
     internal Action? ClearRecentFiles { get; set; }
 
     /// <summary>
-    /// Gets or sets where the command palette reads the recently opened files from, newest first (until the app keeps
-    /// a history, an empty list). Read each time the palette filters; it must not touch the disk.
+    /// Gets or sets where the command palette reads the recently opened files from, newest first: the history
+    /// (<see cref="RecentFilesService.Files"/>, which the first use reads), or an empty list without one. Read each time
+    /// the palette filters; it never asks the disk about the files themselves.
     /// </summary>
     internal Func<IReadOnlyList<RecentFile>> RecentFilesSource { get; set; } = static () => [];
+
+    /// <summary>Gets the history of recently opened files of the app, or <see langword="null"/> for a window without one.</summary>
+    internal RecentFilesService? RecentFiles => _recent;
+
+    /// <summary>
+    /// Gets the newest <see cref="MaxStartRecentFiles"/> files of the history for the start screen ("Recently opened"):
+    /// empty until the history has been read (<see cref="OnStartScreenShown"/>), so the first frame never waits for it.
+    /// </summary>
+    public IReadOnlyList<RecentEntry> StartRecentFiles
+    {
+        get => _startRecentFiles;
+        private set
+        {
+            if (SetProperty(ref _startRecentFiles, value))
+            {
+                OnPropertyChanged(nameof(HasStartRecentFiles));
+            }
+        }
+    }
+
+    /// <summary>Gets whether the start screen shows "Recently opened" (the section is absent without entries).</summary>
+    public bool HasStartRecentFiles => _startRecentFiles.Count > 0;
+
+    /// <summary>Click or Enter on an entry of "Recently opened" (parameter: the <see cref="RecentEntry"/>): opens it (<see cref="OpenAsync"/>).</summary>
+    public ICommand OpenRecentCommand { get; }
+
+    /// <summary>Delete on an entry of "Recently opened", or its remove button: takes it out of the history.</summary>
+    public ICommand RemoveRecentCommand { get; }
+
+    /// <summary>
+    /// The start screen is shown: the history is read in a job of <see cref="DispatcherPriority.Background"/>, after the
+    /// frame, and its entries appear then. Nothing happens when it is read already or the window keeps no history.
+    /// </summary>
+    internal void OnStartScreenShown()
+    {
+        if (!IsEmpty)
+        {
+            return;
+        }
+
+        if (_recent is { IsLoaded: false })
+        {
+            PostHistoryLoad();
+        }
+        else
+        {
+            UpdateStartRecentFiles();
+        }
+    }
+
+    /// <summary>
+    /// The window closes (<see cref="Views.MainWindow"/>, after the document view saved where it shows the active tab):
+    /// every tab with an open document and a known position goes into the history with it, in one write; the active one
+    /// last, so it is the newest.
+    /// </summary>
+    internal void RememberOpenTabs()
+    {
+        if (_recent is null)
+        {
+            return;
+        }
+
+        var closed = new List<(string Path, RememberedView View)>();
+        foreach (var tab in Tabs.Where(tab => !ReferenceEquals(tab, ActiveTab)).Append(ActiveTab))
+        {
+            if (RememberedViewOf(tab) is { } entry)
+            {
+                closed.Add(entry);
+            }
+        }
+
+        if (closed.Count > 0)
+        {
+            _recent.Closed(closed);
+        }
+    }
 
     /// <summary>Shows <paramref name="kind"/> over the window in place of the overlay shown so far; <see cref="OverlayKind.None"/> hides it.</summary>
     public void ShowOverlay(OverlayKind kind)
@@ -524,10 +624,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             Tabs.Activate(open);
 
             // A password prompt keeps its card (and what was typed); only a failed open is worth another try.
-            return open.IsFailed ? open.OpenAsync(path) : Task.CompletedTask;
+            return open.IsFailed ? OpenInTab(open, path) : Task.CompletedTask;
         }
 
-        return AddTab(NewTab(_sessionFactory())).OpenAsync(path);
+        return OpenInTab(AddTab(NewTab(_sessionFactory())), path);
+    }
+
+    /// <summary>
+    /// Opens <paramref name="path"/> in <paramref name="tab"/> where the history says it was last read (page, zoom and
+    /// layout win over the defaults of a new tab); a file the history does not know opens as before.
+    /// </summary>
+    private Task OpenInTab(TabViewModel tab, string path)
+    {
+        tab.InitialView = _recent?.Files.TryGet(FullPathOrAsGiven(path))?.View;
+        return tab.OpenAsync(path);
     }
 
     /// <summary>Opens up to <see cref="MaxFilesPerOpen"/> files in their order (see <see cref="OpenAsync"/>); the last one ends up active.</summary>
@@ -560,7 +670,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             if (!string.IsNullOrEmpty(path) && FindOpenTab(path) is null)
             {
-                opens.Add(AddTab(NewTab(_sessionFactory()), background: true).OpenAsync(path));
+                opens.Add(OpenInTab(AddTab(NewTab(_sessionFactory()), background: true), path));
             }
         }
 
@@ -694,6 +804,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _palette?.OnClosed();
         _settingsCard?.OnClosed();
         Settings.Changed -= OnSettingsChanged;
+        if (_recent is not null)
+        {
+            _recent.Changed -= OnRecentFilesChanged;
+        }
+
         if (_appTheme is not null)
         {
             _appTheme.EffectiveThemeChanged -= UpdatePageThemes;
@@ -794,10 +909,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         // Before the tab is shown: a tab from another window keeps its override and takes the page theme of this one.
         tab.AppPageTheme = AppPageTheme;
-        var handlers = (Close: (Action)(() => CloseTab(tab)), OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)));
+        var handlers = (
+            Close: (Action)(() => CloseTab(tab)),
+            OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
+            Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;
+        tab.PropertyChanged += handlers.Changed;
         _tabHandlers[tab] = handlers;
+
+        // The file of the command line may be open already when its tab comes; a tab from another window was reported there.
+        ReportOpened(tab);
         if (background)
         {
             if (Tabs.Count > 0)
@@ -827,7 +949,103 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             tab.CloseRequested -= handlers.Close;
             tab.OpenOtherRequested -= handlers.OpenOther;
+            tab.PropertyChanged -= handlers.Changed;
         }
+    }
+
+    /// <summary>
+    /// A tab of this window changed: a document it opened goes into the history (its first Ready), and after its first
+    /// sharp page the history is read (in the background, never before: the startup path does not read it).
+    /// </summary>
+    private void OnTabPropertyChanged(TabViewModel tab, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TabViewModel.Document))
+        {
+            ReportOpened(tab);
+        }
+        else if (e.PropertyName == nameof(TabViewModel.HasShownSharpPage) && tab.HasShownSharpPage)
+        {
+            PostHistoryLoad();
+        }
+    }
+
+    /// <summary>
+    /// Tells the history that <paramref name="tab"/> opened its document, once per document: not for a file that failed
+    /// or still asks for its password (it has no document yet), and not again for a tab that moved here.
+    /// </summary>
+    private void ReportOpened(TabViewModel tab)
+    {
+        if (_recent is null || tab.Document is not { } document || ReferenceEquals(document, tab.ReportedDocument) || tab.FullPath is not { } path)
+        {
+            return;
+        }
+
+        tab.ReportedDocument = document;
+        _recent.Opened(path);
+    }
+
+    /// <summary>
+    /// Where <paramref name="tab"/> shows its document, for the history: the position the document view saved
+    /// (<see cref="TabViewModel.SavedView"/>), zoom, zoom mode and layout; <see langword="null"/> without an open document
+    /// or a saved position.
+    /// </summary>
+    private static (string Path, RememberedView View)? RememberedViewOf(TabViewModel? tab) =>
+        tab is { IsReady: true, FullPath: { } path, SavedView: { } view }
+            ? (path, new RememberedView(view, tab.Zoom, tab.ZoomMode, tab.LayoutMode))
+            : null;
+
+    /// <summary>The history changed (or was read): the start screen shows its newest entries.</summary>
+    private void OnRecentFilesChanged()
+    {
+        if (!_disposed)
+        {
+            UpdateStartRecentFiles();
+        }
+    }
+
+    private void UpdateStartRecentFiles()
+    {
+        if (_recent is not { IsLoaded: true } recent)
+        {
+            return;
+        }
+
+        var items = recent.Files.Items;
+        var entries = new List<RecentEntry>(Math.Min(items.Count, MaxStartRecentFiles));
+        foreach (var item in items.Take(MaxStartRecentFiles))
+        {
+            entries.Add(new RecentEntry(item.Path));
+        }
+
+        if (!entries.SequenceEqual(_startRecentFiles))
+        {
+            StartRecentFiles = entries;
+        }
+    }
+
+    /// <summary>
+    /// Reads the history in a job of <see cref="DispatcherPriority.Background"/> (after rendering), once: when the job
+    /// runs, the window must show the start screen or a sharp page, so the startup path with a file never reads it.
+    /// </summary>
+    private void PostHistoryLoad()
+    {
+        if (_historyLoadPosted || _recent is not { IsLoaded: false } recent)
+        {
+            return;
+        }
+
+        _historyLoadPosted = true;
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                _historyLoadPosted = false;
+                if (!_disposed && (IsEmpty || Tabs.Any(tab => tab.HasShownSharpPage)))
+                {
+                    recent.EnsureLoaded();
+                    UpdateStartRecentFiles();
+                }
+            },
+            DispatcherPriority.Background);
     }
 
     private void CloseTab(TabViewModel? tab)
@@ -838,9 +1056,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         // The document view leaves the tab (with the change of the active tab) before its session is released; a
-        // tab that is still loading is released the same way, the session cancels its request.
+        // tab that is still loading is released the same way, the session cancels its request. Leaving it, the view
+        // saved where it showed it: that position goes into the history.
         Tabs.Close(tab);
         Unhook(tab);
+        if (_recent is not null && RememberedViewOf(tab) is { } closed)
+        {
+            _recent.Closed([closed]);
+        }
+
         tab.Dispose();
         if (Tabs.Count == 0 && CloseWindowWhenEmpty)
         {
@@ -1118,7 +1342,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         if (target is not null && Tabs.IndexOf(target) >= 0)
         {
-            await target.OpenAsync(path);
+            await OpenInTab(target, path);
         }
         else
         {

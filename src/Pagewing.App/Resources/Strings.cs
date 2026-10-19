@@ -204,6 +204,14 @@ public static class Strings
     public static string SettingsLanguageSystem => Get("SettingsLanguageSystem");
     public static string SettingsRestartHint => Get("SettingsRestartHint");
     public static string SettingsSaveFailed => Get("SettingsSaveFailed");
+    public static string SettingsGroupHistory => Get("SettingsGroupHistory");
+    public static string SettingsHistory => Get("SettingsHistory");
+    public static string SettingsClearHistory => Get("SettingsClearHistory");
+    public static string SettingsHistoryCleared => Get("SettingsHistoryCleared");
+    public static string StartRecent => Get("StartRecent");
+    public static string StartRecentHelp => Get("StartRecentHelp");
+    public static string StartRecentRemove => Get("StartRecentRemove");
+    public static string StartRecentRemoveName => Get("StartRecentRemoveName");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

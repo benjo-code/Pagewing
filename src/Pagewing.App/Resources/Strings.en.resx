@@ -531,4 +531,28 @@
   <data name="SettingsSaveFailed" xml:space="preserve">
     <value>The settings could not be saved.</value>
   </data>
+  <data name="StartRecent" xml:space="preserve">
+    <value>Recently opened</value>
+  </data>
+  <data name="StartRecentHelp" xml:space="preserve">
+    <value>Enter opens the file, Delete removes it from the history.</value>
+  </data>
+  <data name="StartRecentRemove" xml:space="preserve">
+    <value>Remove from the history (Delete)</value>
+  </data>
+  <data name="StartRecentRemoveName" xml:space="preserve">
+    <value>Remove “{0}” from the history</value>
+  </data>
+  <data name="SettingsGroupHistory" xml:space="preserve">
+    <value>History</value>
+  </data>
+  <data name="SettingsHistory" xml:space="preserve">
+    <value>Recently opened files and where you left them</value>
+  </data>
+  <data name="SettingsClearHistory" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="SettingsHistoryCleared" xml:space="preserve">
+    <value>History cleared.</value>
+  </data>
 </root>

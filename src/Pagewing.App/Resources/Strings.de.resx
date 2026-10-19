@@ -531,4 +531,28 @@
   <data name="SettingsSaveFailed" xml:space="preserve">
     <value>Einstellungen konnten nicht gespeichert werden.</value>
   </data>
+  <data name="StartRecent" xml:space="preserve">
+    <value>Zuletzt geöffnet</value>
+  </data>
+  <data name="StartRecentHelp" xml:space="preserve">
+    <value>Eingabe öffnet die Datei, Entf entfernt sie aus dem Verlauf.</value>
+  </data>
+  <data name="StartRecentRemove" xml:space="preserve">
+    <value>Aus dem Verlauf entfernen (Entf)</value>
+  </data>
+  <data name="StartRecentRemoveName" xml:space="preserve">
+    <value>„{0}“ aus dem Verlauf entfernen</value>
+  </data>
+  <data name="SettingsGroupHistory" xml:space="preserve">
+    <value>Verlauf</value>
+  </data>
+  <data name="SettingsHistory" xml:space="preserve">
+    <value>Zuletzt geöffnete Dateien und ihre Positionen</value>
+  </data>
+  <data name="SettingsClearHistory" xml:space="preserve">
+    <value>Verlauf löschen</value>
+  </data>
+  <data name="SettingsHistoryCleared" xml:space="preserve">
+    <value>Verlauf gelöscht.</value>
+  </data>
 </root>

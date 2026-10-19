@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Windows.Input;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.Core.Settings;
@@ -25,8 +26,8 @@ public sealed record SettingsChoice<T>(T Value, string Title) : ISettingsChoice
 
 /// <summary>
 /// The settings card (Ctrl+Comma, the settings button of the action bar): every option of the user's settings that the
-/// card offers, two-way. Every change goes into the settings at once (<see cref="UserSettings.Update"/>: announced, put
-/// into effect and written); there is no "Apply". Made by the window's view model when the card is first shown
+/// card offers, two-way, and "Clear history" for the recently opened files. Every change goes into the settings at once
+/// (<see cref="UserSettings.Update"/>: announced, put into effect and written); there is no "Apply". Made by the window's view model when the card is first shown
 /// (<see cref="MainViewModel.SettingsCard"/>), never in the startup path; while it is shown it follows changes of the
 /// settings made elsewhere (another window). UI thread only.
 /// </summary>
@@ -41,21 +42,28 @@ public sealed class SettingsViewModel : ViewModelBase
     private readonly UserSettings _settings;
     private readonly LanguageSetting _runningLanguage;
     private readonly LanguageSetting _systemLanguage;
+    private readonly Action? _clearHistory;
     private bool _saveFailed;
     private bool _isOpen;
+    private bool _historyCleared;
 
     /// <summary>
     /// Creates the card's view model for <paramref name="settings"/>. The language that runs is the one of the interface
     /// (<see cref="Strings.Culture"/>, chosen at the start and not changed later), the language of the system the one of
     /// <see cref="CultureInfo.CurrentUICulture"/>.
     /// </summary>
-    public SettingsViewModel(UserSettings settings)
-        : this(settings, Strings.Culture, CultureInfo.CurrentUICulture)
+    /// <param name="settings">The settings of the app.</param>
+    /// <param name="clearHistory">
+    /// What clears the history of recently opened files (<see cref="MainViewModel.ClearRecentFiles"/>), or
+    /// <see langword="null"/> without a history: the card then has no "Clear history".
+    /// </param>
+    public SettingsViewModel(UserSettings settings, Action? clearHistory = null)
+        : this(settings, Strings.Culture, CultureInfo.CurrentUICulture, clearHistory)
     {
     }
 
     /// <summary>Creates the view model with the language that runs and the one of the system given (tests).</summary>
-    internal SettingsViewModel(UserSettings settings, CultureInfo running, CultureInfo system)
+    internal SettingsViewModel(UserSettings settings, CultureInfo running, CultureInfo system, Action? clearHistory = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(running);
@@ -64,6 +72,8 @@ public sealed class SettingsViewModel : ViewModelBase
         _runningLanguage = LanguageOf(running);
         _systemLanguage = LanguageOf(system);
         _saveFailed = settings.LastSaveFailed;
+        _clearHistory = clearHistory;
+        ClearHistoryCommand = new RelayCommand(ClearHistory, () => clearHistory is not null);
 
         ThemeChoices =
         [
@@ -234,6 +244,31 @@ public sealed class SettingsViewModel : ViewModelBase
         private set => SetProperty(ref _saveFailed, value);
     }
 
+    /// <summary>Gets whether the card offers "Clear history" (the app keeps a history).</summary>
+    public bool CanClearHistory => _clearHistory is not null;
+
+    /// <summary>
+    /// "Clear history": empties the list of recently opened files and their positions at once, without asking; the
+    /// button then says "History cleared." (<see cref="HistoryCleared"/>) until the card is shown again.
+    /// </summary>
+    public ICommand ClearHistoryCommand { get; }
+
+    /// <summary>Gets whether "Clear history" ran since the card was shown: its button says so instead of offering it.</summary>
+    public bool HistoryCleared
+    {
+        get => _historyCleared;
+        private set
+        {
+            if (SetProperty(ref _historyCleared, value))
+            {
+                OnPropertyChanged(nameof(ClearHistoryText));
+            }
+        }
+    }
+
+    /// <summary>Gets the text of the button, also its accessible name: "Clear history", or "History cleared." after it ran.</summary>
+    public string ClearHistoryText => HistoryCleared ? Strings.SettingsHistoryCleared : Strings.SettingsClearHistory;
+
     /// <summary>The window shows the card: it reads the settings again and follows their changes until <see cref="OnClosed"/>.</summary>
     internal void OnOpened()
     {
@@ -243,6 +278,7 @@ public sealed class SettingsViewModel : ViewModelBase
         }
 
         _isOpen = true;
+        HistoryCleared = false;
         _settings.Changed += OnSettingsChanged;
         _settings.SaveCompleted += OnSaveCompleted;
         SaveFailed = _settings.LastSaveFailed;
@@ -292,6 +328,15 @@ public sealed class SettingsViewModel : ViewModelBase
     }
 
     private void OnSettingsChanged(AppSettings settings) => RaiseAll();
+
+    private void ClearHistory()
+    {
+        if (_clearHistory is { } clear)
+        {
+            clear();
+            HistoryCleared = true;
+        }
+    }
 
     // Changed comes before the write: only now does LastSaveFailed tell how a change made elsewhere went.
     private void OnSaveCompleted() => SaveFailed = _settings.LastSaveFailed;
