@@ -284,6 +284,35 @@ public sealed class StartupTests : IDisposable
         Assert.False(empty.Tabs[1].IsActive);
     }
 
+    [AvaloniaFact]
+    public async Task TheFileOfTheCommandLineStartsWithTheDefaultsOfTheSettings()
+    {
+        var settings = UserSettings.Detached();
+        settings.Update(current => current with { DefaultLayout = PageLayoutMode.SinglePage, DefaultZoomMode = ZoomMode.FitWidth });
+        var workspace = CreateWorkspace(settings);
+
+        // As App does: the session opened in Program.Main becomes the first tab of the first window.
+        var session = CreateSession();
+        _ = session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var viewModel = workspace.OpenWindowFor(session);
+        var first = Assert.Single(viewModel.Tabs);
+        Assert.Same(session, first.Session);
+        Assert.Equal(PageLayoutMode.SinglePage, first.LayoutMode);
+        Assert.Equal(ZoomMode.FitWidth, first.ZoomMode);
+        await WaitUntilAsync(workspace, () => ViewOf(workspace, viewModel).Layout is not null);
+        Assert.Equal(ZoomMode.FitWidth, first.ZoomMode);
+
+        // A tab that moves to another window keeps its own layout and zoom; the defaults are only for new tabs.
+        first.LayoutMode = PageLayoutMode.TwoPages;
+        first.ZoomMode = ZoomMode.FitPage;
+        var other = workspace.OpenWindow();
+        Assert.True(viewModel.DetachTab(first));
+        other.AttachTab(first);
+        Assert.Same(first, other.ActiveTab);
+        Assert.Equal(PageLayoutMode.TwoPages, first.LayoutMode);
+        Assert.Equal(ZoomMode.FitPage, first.ZoomMode);
+    }
+
     [Fact]
     public void ApplicationStartupCarriesTheMorePathsAndNoneByDefault()
     {
@@ -303,27 +332,27 @@ public sealed class StartupTests : IDisposable
         var workspace = CreateWorkspace();
         var session = CreateSession();
         _ = session.OpenAsync(firstPath);
-        var first = new TabViewModel(session);
         var delay = fallbackDelay ?? App.MoreFilesFallbackDelay;
-        var viewModel = workspace.OpenWindow(first, (window, model) =>
+        var viewModel = workspace.OpenWindowFor(session, (window, model) =>
         {
             // Hidden before the window is shown: the canvas draws no page, so no sharp tile or page is reported.
             ((MainWindow)window).DocumentView.Canvas.IsVisible = !hideCanvas;
-            App.OpenMoreFilesAfterFirstSharpTile((MainWindow)window, model, first, more, delay);
+            App.OpenMoreFilesAfterFirstSharpTile((MainWindow)window, model, model.ActiveTab!, more, delay);
         });
-        return (workspace, viewModel, first);
+        return (workspace, viewModel, viewModel.ActiveTab!);
     }
 
     private static DocumentView ViewOf(Workspace workspace, MainViewModel viewModel) =>
         ((MainWindow)workspace.WindowOf(viewModel)).DocumentView;
 
-    private Workspace CreateWorkspace()
+    private Workspace CreateWorkspace(UserSettings? settings = null)
     {
         // The windows do not activate when they are shown, so only the tests activate them.
         var workspace = new Workspace(
             CreateSession,
             () => new MainWindow { Width = 1024, Height = 720, ShowActivated = false },
-            _ => new NoFilePicker());
+            _ => new NoFilePicker(),
+            settings);
         _cleanup.Add(workspace);
         return workspace;
     }

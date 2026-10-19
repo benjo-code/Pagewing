@@ -683,7 +683,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// Adds a tab for a session that is already opening (the file of the command line, which <see cref="Program.Main"/>
-    /// starts opening before the window exists) and activates it.
+    /// starts opening before the window exists; <see cref="Workspace.OpenWindowFor"/>) and activates it. Like every
+    /// new tab it starts with the default layout and zoom of the settings.
     /// </summary>
     public TabViewModel AdoptSession(ViewerSession session) => AddTab(NewTab(session));
 

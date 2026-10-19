@@ -116,19 +116,29 @@ public sealed class App : Application
             var workspace = new Workspace(
                 () => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window), Settings, Appearance, RecentFiles);
 
-            // The file of the command line, already opening since Program.Main: the first tab, in the first frame.
-            var firstTab = session is not null && session.State != ViewerState.Empty ? new TabViewModel(session) : null;
-            workspace.OpenWindow(firstTab, (window, viewModel) =>
+            void BeforeShow(Window window, MainViewModel viewModel)
             {
                 desktop.MainWindow = window;
                 ConfigureFirstWindow(desktop, (MainWindow)window, viewModel, workspace, instance);
-            });
+            }
+
+            // The file of the command line, already opening since Program.Main: the first tab, in the first frame. The
+            // window makes the tab, so it gets the default layout and zoom of the settings like every new tab.
+            var adopted = session is not null && session.State != ViewerState.Empty;
+            if (adopted)
+            {
+                workspace.OpenWindowFor(session!, BeforeShow);
+            }
+            else
+            {
+                workspace.OpenWindow(null, BeforeShow);
+            }
 
             desktop.Exit += (_, _) =>
             {
                 instance?.Dispose();
                 workspace.Dispose();
-                if (firstTab is null)
+                if (!adopted)
                 {
                     // Unused (no file on the command line); a tab owns and releases an adopted one.
                     session?.Dispose();

@@ -82,6 +82,19 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         return Open(firstTab, source is null ? null : _views[source], beforeShow);
     }
 
+    /// <summary>
+    /// Opens a window (see <see cref="OpenWindow(TabViewModel?, Action{Window, MainViewModel}?)"/>) whose first tab is a
+    /// new one for <paramref name="firstSession"/>, a session that is already opening (the file of the command line). The
+    /// window's view model makes the tab (<see cref="MainViewModel.AdoptSession"/>), so it starts with the defaults of
+    /// the settings like every other new tab; the tab owns the session from then on.
+    /// </summary>
+    public MainViewModel OpenWindowFor(ViewerSession firstSession, Action<Window, MainViewModel>? beforeShow = null)
+    {
+        ArgumentNullException.ThrowIfNull(firstSession);
+        var source = ActiveWindow ?? (_windows.Count > 0 ? _windows[^1] : null);
+        return Open(null, source is null ? null : _views[source], beforeShow, firstSession: firstSession);
+    }
+
     /// <summary>Gets the window of an open window view model.</summary>
     public Window WindowOf(MainViewModel viewModel) =>
         _views.TryGetValue(viewModel, out var window) ? window : throw new ArgumentException("Not an open window of this workspace.", nameof(viewModel));
@@ -261,7 +274,12 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     }
 
     private MainViewModel Open(
-        TabViewModel? firstTab, Window? source, Action<Window, MainViewModel>? beforeShow, PixelPoint? position = null, bool showActivated = true)
+        TabViewModel? firstTab,
+        Window? source,
+        Action<Window, MainViewModel>? beforeShow,
+        PixelPoint? position = null,
+        bool showActivated = true,
+        ViewerSession? firstSession = null)
     {
         var window = _createWindow();
         var viewModel = new MainViewModel(_sessionFactory, _createPicker(window), _settings, _recentFiles) { AppTheme = _theme };
@@ -293,8 +311,14 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         UpdateCloseWindowWhenEmpty();
         if (firstTab is not null)
         {
-            // Before the DataContext, so the first frame of the window shows the tab.
+            // Before the DataContext, so the first frame of the window shows the tab. A tab from another window keeps
+            // its own layout and zoom.
             viewModel.AttachTab(firstTab);
+        }
+        else if (firstSession is not null)
+        {
+            // A new tab, so it gets the defaults of the settings (MainViewModel.NewTab); also before the DataContext.
+            viewModel.AdoptSession(firstSession);
         }
 
         window.DataContext = viewModel;
