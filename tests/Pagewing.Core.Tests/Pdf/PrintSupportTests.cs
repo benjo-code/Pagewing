@@ -41,6 +41,18 @@ public sealed class PrintSupportTests : IDisposable
     }
 
     [Theory]
+    [InlineData("encrypted_hello_world_r3.pdf", false)]
+    [InlineData("encrypted_hello_world_r6.pdf", true)]
+    public async Task PrintPermissionFollowsTheDocument(string name, bool allowed)
+    {
+        // The r3 file forbids printing to whoever opens it with the user password; the r6 file allows it.
+        var ct = TestContext.Current.CancellationToken;
+        await using var document = await engine.OpenAsync(TestData.Pdf(name), UserPassword, ct);
+
+        Assert.Equal(allowed, (await document.GetPrintInfoAsync(ct)).PrintAllowed);
+    }
+
+    [Theory]
     [InlineData("encrypted_hello_world_r3.pdf")]
     [InlineData("encrypted_hello_world_r6.pdf")]
     public async Task DecryptedCopyOpensWithoutAPassword(string name)

@@ -213,6 +213,8 @@ public static class Strings
     public static string PrintErrorPage => Get("PrintErrorPage");
     public static string PrintErrorDialog => Get("PrintErrorDialog");
     public static string PrintForbidden => Get("PrintForbidden");
+    public static string PrintNoService => Get("PrintNoService");
+    public static string PrintNoPrinter => Get("PrintNoPrinter");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

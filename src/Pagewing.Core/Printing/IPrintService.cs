@@ -6,8 +6,7 @@ namespace Pagewing.Core.Printing;
 /// <param name="Name">The name the system knows it by.</param>
 /// <param name="Description">A longer description such as the location, or <see langword="null"/>.</param>
 /// <param name="IsDefault">Whether it is the printer of the system.</param>
-/// <param name="SupportsDuplex">Whether it prints on both sides.</param>
-public sealed record PrinterInfo(string Name, string? Description, bool IsDefault, bool SupportsDuplex);
+public sealed record PrinterInfo(string Name, string? Description, bool IsDefault);
 
 /// <summary>What the print dialog needs to know.</summary>
 /// <param name="PageCount">Pages of the document.</param>
@@ -74,6 +73,12 @@ public interface IPrintService
     /// <summary>Lists the printers; may take seconds when a print server is slow.</summary>
     /// <exception cref="PrintException">The printers could not be listed.</exception>
     Task<IReadOnlyList<PrinterInfo>> GetPrintersAsync(CancellationToken cancellationToken);
+
+    /// <summary>Asks whether a printer prints on both sides; may take a moment because the printer is asked.</summary>
+    /// <param name="printerName">The name from <see cref="GetPrintersAsync"/>.</param>
+    /// <param name="cancellationToken">Cancels the wait.</param>
+    /// <returns><see langword="false"/> also when it cannot be found out.</returns>
+    Task<bool> SupportsDuplexAsync(string printerName, CancellationToken cancellationToken);
 
     /// <summary>Prints the job; reports after each page. Cancelling stops between two pages.</summary>
     /// <exception cref="PrintException">The job failed as a whole.</exception>

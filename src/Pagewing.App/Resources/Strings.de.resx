@@ -558,4 +558,10 @@
   <data name="PrintForbidden" xml:space="preserve">
     <value>Dieses Dokument verbietet das Drucken.</value>
   </data>
+  <data name="PrintNoService" xml:space="preserve">
+    <value>Kein Druckdienst gefunden. Pagewing druckt über CUPS.</value>
+  </data>
+  <data name="PrintNoPrinter" xml:space="preserve">
+    <value>Es ist kein Drucker eingerichtet.</value>
+  </data>
 </root>

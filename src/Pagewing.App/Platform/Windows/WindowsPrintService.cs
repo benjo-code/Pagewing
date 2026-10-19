@@ -86,6 +86,10 @@ internal sealed class WindowsPrintService : IPrintService
         Task.FromResult<IReadOnlyList<PrinterInfo>>([]);
 
     /// <inheritdoc/>
+    /// <remarks>Windows asks in its own dialog; the answer here is not used.</remarks>
+    public Task<bool> SupportsDuplexAsync(string printerName, CancellationToken cancellationToken) => Task.FromResult(true);
+
+    /// <inheritdoc/>
     public Task PrintAsync(PrintJobRequest job, IProgress<PrintProgress> progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(job);
