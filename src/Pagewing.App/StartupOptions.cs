@@ -1,3 +1,5 @@
+using Pagewing.Core.Distribution;
+
 namespace Pagewing.App;
 
 /// <summary>Command-line options of the app.</summary>
@@ -15,6 +17,11 @@ namespace Pagewing.App;
 /// read, never written), an empty string when the value is missing (the measurement fails), or <see langword="null"/>
 /// without the option. Ignored without a measurement switch, like <c>--zoom</c>.
 /// </param>
+/// <param name="RegisterFileTypes">
+/// Switch <c>--register-file-types[=user|machine]</c> (Windows: register Pagewing for PDF files and exit), or
+/// <see langword="null"/> without it or with an unknown scope.
+/// </param>
+/// <param name="UnregisterFileTypes">Switch <c>--unregister-file-types[=user|machine]</c>, like <paramref name="RegisterFileTypes"/>.</param>
 public sealed record StartupOptions(
     IReadOnlyList<string> Paths,
     string? MeasureStartup,
@@ -22,7 +29,9 @@ public sealed record StartupOptions(
     string? MeasureScroll,
     string? Language,
     string? MeasureZoom = null,
-    string? MeasureSettings = null)
+    string? MeasureSettings = null,
+    RegistrationScope? RegisterFileTypes = null,
+    RegistrationScope? UnregisterFileTypes = null)
 {
     /// <summary>Gets whether a hidden measurement switch was given (the run bypasses the single-instance election).</summary>
     public bool IsMeasurement => MeasureStartup is not null || MeasureSecond is not null || MeasureScroll is not null;
@@ -57,6 +66,8 @@ public sealed record StartupOptions(
         string? language = null;
         string? measureZoom = null;
         string? measureSettings = null;
+        RegistrationScope? register = null;
+        RegistrationScope? unregister = null;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -70,6 +81,18 @@ public sealed record StartupOptions(
             if (!arg.StartsWith("--", StringComparison.Ordinal))
             {
                 paths.Add(FullPathOrAsGiven(arg));
+                continue;
+            }
+
+            if (TryParseScopeSwitch(arg, "--register-file-types", out var registerScope))
+            {
+                register = registerScope;
+                continue;
+            }
+
+            if (TryParseScopeSwitch(arg, "--unregister-file-types", out var unregisterScope))
+            {
+                unregister = unregisterScope;
                 continue;
             }
 
@@ -103,7 +126,35 @@ public sealed record StartupOptions(
             }
         }
 
-        return new StartupOptions(paths, measureStartup, measureSecond, measureScroll, language, measureZoom, measureSettings);
+        return new StartupOptions(paths, measureStartup, measureSecond, measureScroll, language, measureZoom, measureSettings, register, unregister);
+    }
+
+    // "--name" means the user scope, "--name=user|machine" the given one; an unknown scope counts as not given.
+    private static bool TryParseScopeSwitch(string arg, string name, out RegistrationScope? scope)
+    {
+        scope = null;
+        if (arg.Equals(name, StringComparison.Ordinal))
+        {
+            scope = RegistrationScope.User;
+            return true;
+        }
+
+        if (!arg.StartsWith(name + "=", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var value = arg[(name.Length + 1)..];
+        if (value.Equals("user", StringComparison.OrdinalIgnoreCase))
+        {
+            scope = RegistrationScope.User;
+        }
+        else if (value.Equals("machine", StringComparison.OrdinalIgnoreCase))
+        {
+            scope = RegistrationScope.Machine;
+        }
+
+        return true;
     }
 
     // A path the system rejects (for example with a NUL character) must not stop the start: it is kept as given

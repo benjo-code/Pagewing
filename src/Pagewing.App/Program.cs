@@ -42,6 +42,12 @@ internal static partial class Program
         var mainEntered = Stopwatch.GetTimestamp();
 
         var options = StartupOptions.Parse(args);
+        if (OperatingSystem.IsWindows() && (options.RegisterFileTypes is not null || options.UnregisterFileTypes is not null))
+        {
+            // Installer and manual use; before Avalonia and the single-instance election, nothing else starts.
+            return RunFileTypeRegistration(options);
+        }
+
         if (options.IsMeasurement)
         {
             // Diagnostic phases of a measurement run only (bench/startup/README.md, "Phasen").
@@ -94,6 +100,35 @@ internal static partial class Program
         // Reads nothing: the history is read after the first sharp page (or the first frame of the start screen).
         var recentFiles = LoadRecentFiles(options, RecentFilesService.Load);
         return Run(args, new AppStartup(session, instance, settings, options.IsMeasurement ? options : null, options.MorePaths, recentFiles), software);
+    }
+
+    /// <summary>
+    /// Handles <c>--register-file-types</c> and <c>--unregister-file-types</c> (Windows): exit code 0, or 1 with
+    /// <c>error: …</c> on stderr, e.g. for the machine scope without elevation.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static int RunFileTypeRegistration(StartupOptions options)
+    {
+        try
+        {
+            if (options.RegisterFileTypes is { } register)
+            {
+                var exe = Environment.ProcessPath ?? throw new InvalidOperationException("The path of the program is unknown.");
+                Platform.Windows.WindowsFileTypeRegistry.For(register).Register(exe);
+            }
+
+            if (options.UnregisterFileTypes is { } unregister)
+            {
+                Platform.Windows.WindowsFileTypeRegistry.For(unregister).Unregister();
+            }
+
+            return 0;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException or InvalidOperationException)
+        {
+            Console.Error.WriteLine($"error: {ex.Message}");
+            return 1;
+        }
     }
 
     /// <summary>
