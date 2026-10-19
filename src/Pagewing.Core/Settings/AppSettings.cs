@@ -62,6 +62,16 @@ public enum StartPanelSetting
     Contents,
 }
 
+/// <summary>Whether the app offers to become the default app for PDF files.</summary>
+public enum DefaultAppPromptSetting
+{
+    /// <summary>Ask at the first start of each run, while another app is the default.</summary>
+    Ask,
+
+    /// <summary>The user chose "Don't ask again".</summary>
+    Never,
+}
+
 /// <summary>
 /// The user's settings. Every property has a default; <see cref="Normalized"/> repairs values that came from a
 /// hand-edited or older file. The properties have setters (not <c>init</c>) on purpose: for <c>init</c> properties the
@@ -121,6 +131,9 @@ public sealed record AppSettings
     /// <summary>How a page is fitted onto the paper when printing: to fit the paper, or at its actual size.</summary>
     public PrintScaling PrintScaling { get; set; } = PrintScaling.FitToPaper;
 
+    /// <summary>Whether the card "Set Pagewing as default for PDFs?" may appear at the start.</summary>
+    public DefaultAppPromptSetting DefaultAppPrompt { get; set; } = DefaultAppPromptSetting.Ask;
+
     /// <summary>Returns a copy whose values are all valid: undefined enum values become the default, the width is clamped, an empty or overlong printer name is dropped.</summary>
     public AppSettings Normalized()
     {
@@ -137,6 +150,7 @@ public sealed record AppSettings
                 : defaults.DefaultZoomMode,
             StartPanel = Enum.IsDefined(StartPanel) ? StartPanel : defaults.StartPanel,
             PrintScaling = Enum.IsDefined(PrintScaling) ? PrintScaling : defaults.PrintScaling,
+            DefaultAppPrompt = Enum.IsDefined(DefaultAppPrompt) ? DefaultAppPrompt : defaults.DefaultAppPrompt,
             LastPrinter = string.IsNullOrWhiteSpace(LastPrinter) || LastPrinter.Length > MaxPrinterNameLength ? null : LastPrinter,
             PanelWidth = double.IsFinite(PanelWidth) ? Math.Clamp(PanelWidth, MinPanelWidth, MaxPanelWidth) : DefaultPanelWidth,
         };

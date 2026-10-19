@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Pagewing.App.Commands;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
+using Pagewing.Core;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Text;
@@ -64,6 +65,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private OverlayKind _overlay;
     private PaletteViewModel? _palette;
     private SettingsViewModel? _settingsCard;
+    private AboutViewModel? _about;
 
     // Since when the pending address is locked (Clock timestamp), for the arming delay of "Open": from its arrival, and
     // again from when its card has been laid out (OnLinkCardShown), which is the later and the one that counts.
@@ -151,6 +153,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ShowPaletteCommand = new RelayCommand(() => ToggleOverlay(OverlayKind.Palette));
         ShowSettingsCommand = new RelayCommand(() => ToggleOverlay(OverlayKind.Settings));
         ShowHelpCommand = new RelayCommand(() => ToggleOverlay(OverlayKind.Help));
+        ShowAboutCommand = new RelayCommand(() => ToggleOverlay(OverlayKind.About));
         HideOverlayCommand = new RelayCommand(HideOverlay);
     }
 
@@ -198,6 +201,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             {
                 (_settingsCard ??= new SettingsViewModel(Settings, ClearRecentFiles)).OnOpened();
             }
+            else if (value == OverlayKind.About)
+            {
+                _about ??= new AboutViewModel(AppInfo.Version, NoticesLoader);
+            }
 
             OnPropertyChanged();
         }
@@ -208,6 +215,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// (it is made then, never in the startup path).
     /// </summary>
     public SettingsViewModel? SettingsCard => _settingsCard;
+
+    /// <summary>Gets the view model of the about card, or <see langword="null"/> before the card was first shown.</summary>
+    public AboutViewModel? About => _about;
+
+    /// <summary>Gets what reads the third-party notices when the user first opens their list; tests put a counter in.</summary>
+    internal Func<string> NoticesLoader { get; set; } = AboutViewModel.LoadEmbedded;
+
+    /// <summary>The command "About Pagewing": shows the about card, or hides it while it is shown.</summary>
+    public ICommand ShowAboutCommand { get; }
 
     /// <summary>
     /// Gets the command palette of the window, or <see langword="null"/> before it was first shown (it is made then,
@@ -281,6 +297,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        PostDefaultAppCheck();
         if (_recent is { IsLoaded: false })
         {
             PostHistoryLoad();
@@ -803,6 +820,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _firstSharpPageSeen = true;
+        PostDefaultAppCheck();
         if (OpensPagesPanelAfterFirstSharpTile)
         {
             Dispatcher.UIThread.Post(OpenPagesPanelAfterFirstSharpTile, DispatcherPriority.Background);
@@ -816,6 +834,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _palette?.OnClosed();
         _settingsCard?.OnClosed();
         DisposePrinting();
+        DisposeDefaultApp();
         Settings.Changed -= OnSettingsChanged;
         if (_recent is not null)
         {

@@ -151,6 +151,12 @@ public static class Strings
     public static string CommandSearchPrevious => Get("CommandSearchPrevious");
     public static string CommandPalette => Get("CommandPalette");
     public static string CommandSettings => Get("CommandSettings");
+    public static string CommandAbout => Get("CommandAbout");
+    public static string AboutTitle => Get("AboutTitle");
+    public static string AboutClose => Get("AboutClose");
+    public static string AboutVersion => Get("AboutVersion");
+    public static string AboutOffline => Get("AboutOffline");
+    public static string AboutNotices => Get("AboutNotices");
     public static string CommandClearRecent => Get("CommandClearRecent");
     public static string CommandGroupFile => Get("CommandGroupFile");
     public static string CommandGroupView => Get("CommandGroupView");
@@ -216,6 +222,14 @@ public static class Strings
     public static string PrintNoService => Get("PrintNoService");
     public static string PrintNoPrinter => Get("PrintNoPrinter");
     public static string CommandPrint => Get("CommandPrint");
+    public static string DefaultAppTitle => Get("DefaultAppTitle");
+    public static string DefaultAppText => Get("DefaultAppText");
+    public static string DefaultAppSet => Get("DefaultAppSet");
+    public static string DefaultAppLater => Get("DefaultAppLater");
+    public static string DefaultAppNever => Get("DefaultAppNever");
+    public static string DefaultAppChooseHint => Get("DefaultAppChooseHint");
+    public static string DefaultAppFailed => Get("DefaultAppFailed");
+    public static string CommandSetDefaultApp => Get("CommandSetDefaultApp");
     public static string PrintTitle => Get("PrintTitle");
     public static string PrintPrinter => Get("PrintPrinter");
     public static string PrintSearching => Get("PrintSearching");

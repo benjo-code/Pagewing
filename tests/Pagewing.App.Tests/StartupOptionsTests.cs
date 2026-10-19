@@ -1,3 +1,4 @@
+using Pagewing.Core.Distribution;
 using Xunit;
 
 namespace Pagewing.App.Tests;
@@ -181,5 +182,40 @@ public sealed class StartupOptionsTests
 
         Assert.Null(options.Language);
         Assert.Equal([Path.GetFullPath("doc.pdf")], options.Paths);
+    }
+
+    [Fact]
+    public void RegisterSwitchDefaultsToUser()
+    {
+        var options = StartupOptions.Parse(["--register-file-types"]);
+
+        Assert.Equal(RegistrationScope.User, options.RegisterFileTypes);
+        Assert.Null(options.UnregisterFileTypes);
+        Assert.Equal(RegistrationScope.User, StartupOptions.Parse(["--unregister-file-types"]).UnregisterFileTypes);
+        Assert.Null(StartupOptions.Parse([]).RegisterFileTypes);
+    }
+
+    [Fact]
+    public void MachineScopeIsParsed()
+    {
+        Assert.Equal(RegistrationScope.Machine, StartupOptions.Parse(["--register-file-types=machine"]).RegisterFileTypes);
+        Assert.Equal(RegistrationScope.Machine, StartupOptions.Parse(["--unregister-file-types=Machine"]).UnregisterFileTypes);
+        Assert.Equal(RegistrationScope.User, StartupOptions.Parse(["--register-file-types=user"]).RegisterFileTypes);
+    }
+
+    [Fact]
+    public void UnknownScopeIsIgnored()
+    {
+        Assert.Null(StartupOptions.Parse(["--register-file-types=everyone"]).RegisterFileTypes);
+        Assert.Null(StartupOptions.Parse(["--unregister-file-types="]).UnregisterFileTypes);
+    }
+
+    [Fact]
+    public void RegisterSwitchIsNotAMeasurement()
+    {
+        var options = StartupOptions.Parse(["--register-file-types"]);
+
+        Assert.False(options.IsMeasurement);
+        Assert.Empty(options.Paths);
     }
 }

@@ -89,6 +89,7 @@ public sealed partial class MainWindow : Window
         AttachShortcuts(_viewModel);
         AttachOverlays(old, _viewModel);
         AttachPrint(old, _viewModel);
+        AttachDefaultApp(old, _viewModel);
     }
 
     /// <summary>

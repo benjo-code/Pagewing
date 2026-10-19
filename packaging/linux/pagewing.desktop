@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Pagewing
+GenericName=PDF Viewer
+GenericName[de]=PDF-Betrachter
+Comment=Fast, offline PDF viewer
+Comment[de]=Schneller PDF-Betrachter ohne Netzwerk
+Exec=/usr/lib/pagewing/Pagewing %F
+Icon=pagewing
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/pdf;
+StartupWMClass=Pagewing

@@ -5,6 +5,11 @@
   "scopeChanges": [
     {
       "date": "2026-10-19",
+      "context": "M8: Verteilung – Umfang, bewusst nicht enthalten, offene Fragen",
+      "text": "Mit dem Projektinhaber am 2026-10-19 abgestimmt (Plan `superpowers/plans/2026-10-19-milestone-08-verteilung.md`, Abschnitt „Festgelegt“). Über die Roadmap-Aufgaben hinaus enthält M8: den Installer mit stillem Modus, wählbarem Zielordner und der Frage „Pagewing jetzt starten?“; die Karte „Als Standardprogramm festlegen“ beim ersten Start (nicht im Installer) samt Befehl in der Palette; die Karte „Über Pagewing“; die CLI im Paket (Unterordner `cli/`, Annahme); die Lizenztexte der AppImage-Runtime; den Release-Workflow ohne Actions-Artifacts. Bewusst **nicht** enthalten: Code-Signierung (der Installer löst SmartScreen-Warnungen aus; SignPath steht im Backlog), winget, Flatpak, MSIX, Auto-Update (Pagewing greift nie ins Netz), ein PATH-Eintrag der CLI, ein Linux-ZIP. Der Milestone bleibt `in-progress`, bis die Läufe unter Windows, der Trockenlauf des Release-Workflows und die manuelle Abnahme erfolgt sind. Offene Fragen an den Projektinhaber (Annahme jeweils in Klammern; Einzelheiten in `Docs/DECISIONS.md`, Eintrag „Verteilung: Nicht-Ziele und offene Fragen …“): glibc und Docker auf dem Runner `dotnet-linux` (vorläufig 2.35); `Maintainer` im `.deb` (Platzhalter `Pagewing contributors <noreply@users.noreply.github.com>`); CLI im Paket (ja); Einstellungen der portablen ZIP (`%APPDATA%\\Pagewing`); Avalonia-Telemetrie beim Bauen."
+    },
+    {
+      "date": "2026-10-19",
       "context": "M7: manuelle Abnahme des Druckens auf die Release-Abnahme von v0.1.0 verschoben; Druckknopf; Druckverbot",
       "text": "Auf Anweisung des Projektinhabers (2026-10-19) entfällt die manuelle Prüfung des Druckens auf echten Druckern und unter Windows als Abnahmekriterium von Milestone 7; M7 gilt mit den automatisierten Prüfungen (Linux gegen eine echte CUPS-PDF-Warteschlange, Anwendungstests mit einem Fake-Dienst) als fertig. Die Prüfungen stehen als drei Punkte in der Abnahme des Releases `v0.1.0`, die der Projektinhaber vor dem ersten Release durchführt. Nicht geprüft sind damit bis dahin: jeder Lauf unter Windows (Dialog, GDI-Auftrag, `WindowsPrintToPdfTests`), ein Papierdrucker, Duplex, die Drehung durch CUPS am Papierdrucker und Screenreader. Über die Roadmap-Aufgaben hinaus enthält M7: einen Druckknopf unten in der Aktionsleiste (Design-Spec 7.3 nachgezogen), die Einstellung „Seitengröße beim Drucken“, automatische Drehung je Seite und das Achten eines Druckverbots des Dokuments (`Docs/DECISIONS.md`, Einträge „Drucken: Umsetzung und Grenzen (M7)“ und „Dokumentrechte: Druckverbot wird geachtet …“). Bewusst nicht enthalten: Druckvorschau, mehrere Seiten pro Blatt, Drucken aus der CLI."
     },
@@ -275,18 +280,51 @@
         {
           "id": "8",
           "title": "Verteilung",
-          "status": "open",
+          "status": "in-progress",
+          "plan": "superpowers/plans/2026-10-19-milestone-08-verteilung.md",
           "prerequisites": ["7"],
           "goal": "Pagewing lässt sich unter Windows und Linux installieren und als Standardprogramm für PDFs festlegen.",
           "tasks": [
-            { "text": "Windows: Installer und portable ZIP, Registrierung als PDF-Standardprogramm", "done": false },
-            { "text": "Linux: AppImage und .deb mit `.desktop`-Datei und MIME-Zuordnung; älteste unterstützte Distribution (glibc) festlegen", "done": false },
-            { "text": "Lizenzhinweise aller Drittbibliotheken (PDFium-Drittlizenzen, Avalonia usw.) im Paket und im Über-Dialog", "done": false },
-            { "text": "Release-Artefakte per CI bauen und an das GitHub-Release hängen", "done": false }
+            {
+              "text": "Windows: Installer und portable ZIP, Registrierung als PDF-Standardprogramm: umgesetzt und unter Linux geprüft (nie unter Windows gelaufen). Umgesetzt mit `Pagewing.Core.Distribution.FileTypeRegistration` und `WindowsFileTypeRegistry` (`Pagewing.exe --register-file-types[=user|machine]`, `--unregister-file-types`), dem Inno-Setup-Skript `packaging/windows/pagewing.iss` (grafisch und still, Zielordner, Benutzer- oder Computerinstallation, „Pagewing jetzt starten“, feste `AppId`) und `tools/package.cs` (`layout`, `zip`, `inno-install`, `installer`, `installer-smoke`). Geprüft unter Linux: `FileTypeRegistrationTests` (4), `StartupOptionsTests` (23), `dotnet run tools/package.cs -- selftest` (251 Prüfungen, darunter die Regeln des `.iss` mit elf Mutationen und die portable ZIP: zweimal gebaut dieselbe SHA-256).",
+              "done": true
+            },
+            {
+              "text": "Windows: Installer bauen und prüfen, Windows-Tests laufen lassen — `dotnet run tools/package.cs -- inno-install`, `installer`, `installer-smoke` (Ablauf in `packaging/README.md`), `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsFileTypeRegistryTests\"` und `\"*WindowsDefaultAppServiceTests\"` (hier übersprungen), die grafische Installation und `/ALLUSERS`. Der Installer ist unsigniert",
+              "done": false
+            },
+            {
+              "text": "Linux: AppImage und .deb mit `.desktop`-Datei und MIME-Zuordnung: umgesetzt und in der Entwicklungsumgebung (Ubuntu 24.04, glibc 2.39) gebaut und per Smoke-Test geprüft; Umgesetzt mit `package.cs deb`/`deb-smoke` (Starter, MIME-Zuordnung, relativer Symlink `/usr/bin/pagewing`, Lintian ohne unerwartete Fehler, zweimal gebaut dieselbe SHA-256), `package.cs runtime-fetch`/`appimage`/`appimage-smoke` (type2-Runtime `20251108` mit Prüfsumme, zstd-SquashFS, Start mit und ohne FUSE unter Xvfb belegt, zweimal gebaut dieselbe SHA-256), `DesktopEntry` und `LinuxDefaultAppService`, dem Wächter `package.cs check-binary --max-glibc 2.35` (Selbsttest mit echten ELF-Dateien).",
+              "done": true
+            },
+            {
+              "text": "Linux: Mindest-glibc durch Bau auf dem Runner bestätigen und die älteste unterstützte Distribution festlegen — Die glibc ist nur vorläufig auf 2.35 gesetzt (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“): Die glibc des Runners `dotnet-linux` ist unbekannt (in der Entwicklungsumgebung 2.39, dort verlangt `Pagewing` `GLIBC_2.38`), `check-binary` ist in `ci.yml` nicht blockierend und in `release.yml` blockierend. **Offen:** der erste PR-Lauf auf `dotnet-linux` mit der glibc-Ausgabe, danach die Entscheidung des Projektinhabers (Container `ubuntu:22.04` oder Anheben der Mindest-glibc); manuelle Installation auf Ubuntu 22.04 und 24.04, Debian 12 und 13, Linux Mint und CachyOS (`packaging/README.md`)",
+              "done": false
+            },
+            {
+              "text": "Lizenzhinweise aller Drittbibliotheken (PDFium-Drittlizenzen, Avalonia usw.) im Paket und im Über-Dialog. Umgesetzt mit `third-party/licenses.json` (39 Einträge: alle Pakete von App und CLI, Laufzeit, Schrift und Icons sowie sieben Einträge für die Bestandteile der AppImage-Runtime, die nur im AppImage stehen), den Lizenztexten unter `third-party/<name>/` (mit Quelle und SHA-256), `tools/licenses.cs` (`generate`, `check`, `selftest`), der erzeugten `src/Pagewing.App/Resources/ThirdPartyNotices.txt` (im Paket als `THIRD-PARTY-NOTICES.txt`, eingebettet, in der Karte „Über Pagewing“ erst beim Öffnen der Liste gelesen) und dem Schritt `licenses check` in `ci.yml` und `release.yml`. Geprüft: `dotnet run tools/licenses.cs -- selftest` (40 Prüfungen), `AboutCardTests` (8) und `AppInfoTests` (6).",
+              "done": true
+            },
+            {
+              "text": "Lizenzinventar unter Windows prüfen — `dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli` auf `dotnet-windows` (die Windows-Dateilisten stammen aus den NuGet-Paketen, nicht aus einem Windows-Publish); Narrator und Orca an der Über-Karte; Klärung der Avalonia-Telemetrie beim Bauen (Backlog)",
+              "done": false
+            },
+            {
+              "text": "Release-Artefakte per CI bauen und an das GitHub-Release hängen: Workflow geschrieben und statisch geprüft, nie ausgeführt. Umgesetzt mit `.github/workflows/release.yml` (je Betriebssystem ein Job auf dem eigenen Runner, Upload mit `gh release upload` direkt ans Release ohne Actions-Artifacts, `GH_REPO`, `persist-credentials: false`, Tag-Prüfung, Trockenlauf per `-f upload=false`) und `package.cs sums`. Statisch geprüft mit `actionlint` 1.7.12 (ohne Befund bei gesetzten Runner-Labels) und einem Prüfskript über alle `uses:` (feste Commits) und alle `run:`-Schritte.",
+              "done": true
+            },
+            {
+              "text": "Release-Workflow: Trockenlauf und erster Upload (`gh workflow run release.yml -f tag=v0.1.0 -f upload=false`) — Der Workflow wurde nie ausgeführt: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` (setzt installiertes `gh`, `dpkg-deb`, `squashfs-tools`, `binutils`, `xvfb` und Windows-Inno-Setup auf den Runnern voraus), danach ein echter Upload",
+              "done": false
+            }
           ],
           "acceptance": [
             { "text": "Installation, Doppelklick auf PDF und Deinstallation auf frischem Windows und frischer Linux-Distribution (manuelle Prüfung)", "done": false },
-            { "text": "Lizenzhinweise vollständig (Abgleich mit den Lizenzdateien der Pakete)", "done": false }
+            {
+              "text": "Lizenzhinweise vollständig (Abgleich mit den Lizenzdateien der Pakete)",
+              "done": true,
+              "evidence": "`dotnet run tools/licenses.cs -- check --publish-dir <app> --publish-dir <cli>` auf einem frischen `linux-x64`-Native-AOT-Publish von App und CLI (2026-10-19, Entwicklungsumgebung Linux, nach Aufnahme der AppImage-Runtime): `licenses check: ok`, Exit 0; `dotnet run tools/licenses.cs -- selftest`: 40 Prüfungen bestanden; `ThirdPartyNotices.txt` ist aktuell. **Einschränkung:** Für Windows ist der Abgleich nicht gelaufen (die Dateiliste `pdfium.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`, `av_libglesv2.dll` ist aus den NuGet-Paketen abgeleitet; erster Lauf: `licenses check --publish-dir out/app --publish-dir out/cli` auf `dotnet-windows`). Der Abgleich ist ein Abgleich mit dem Manifest und den Lizenzdateien im Repo, nicht mit den Dateien eines installierten Pakets. Gesamtlauf am Ende von M8 (Linux, 2026-10-19): `dotnet build Pagewing.slnx` 0 Warnungen, 0 Fehler; `dotnet test --solution Pagewing.slnx` 1906 Tests, 1890 bestanden, 0 fehlgeschlagen, 16 übersprungen (Windows- und CUPS-Tests); `dotnet format Pagewing.slnx --verify-no-changes` ohne Befund; `dotnet run tools/package.cs -- selftest` 251 Prüfungen; `dotnet run tools/licenses.cs -- selftest` 40 Prüfungen."
+            }
           ]
         }
       ]
@@ -458,7 +496,47 @@
         { "text": "Startzeit-Budgets auf dem Rechner des Projektinhabers eingehalten (Messwerte notieren)", "done": false },
         { "text": "Drucken (aus M7): Test-PDF `print-mixed.pdf` auf einem echten Drucker unter Windows und unter Linux (Seite allein, Bereich, zwei Kopien sortiert, Duplex lang, „Tatsächliche Größe“ schneidet ab; Querseiten werden gedreht und zentriert; Abbrechen mitten in `thousand-pages.pdf`)", "done": false },
         { "text": "Drucken (aus M7): Druck in Microsoft Print to PDF unter Windows ergibt vier korrekte Seiten (Text darin ist nicht auswählbar, siehe `Docs/DECISIONS.md`, Eintrag „Windows-Druck: Ausgabe in Print to PDF …“); `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsPrintToPdfTests\"` läuft unter Windows ohne Fehler (nicht übersprungen)", "done": false },
-        { "text": "Drucken (aus M7): Drehung der Querseiten durch CUPS und Duplex am Papierdrucker, Druckkarte und Fortschritt mit Screenreader (Narrator, NVDA, Orca), Druckknopf und Karten am echten Bildschirm in hell und dunkel", "done": false }
+        { "text": "Drucken (aus M7): Drehung der Querseiten durch CUPS und Duplex am Papierdrucker, Druckkarte und Fortschritt mit Screenreader (Narrator, NVDA, Orca), Druckknopf und Karten am echten Bildschirm in hell und dunkel", "done": false },
+        {
+          "text": "Verteilung (aus M8), Windows: Installer grafisch (Lizenz, Zielordner, „Pagewing jetzt starten“) und still (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=…`, auch mit `/ALLUSERS`) auf einem frischen Windows, Doppelklick auf ein PDF, Deinstallation; portable ZIP startet; die SmartScreen-Warnung des unsignierten Installers ist zur Kenntnis genommen; `dotnet run tools/package.cs -- installer-smoke <setup.exe>` und die Windows-Tests `*WindowsFileTypeRegistryTests` und `*WindowsDefaultAppServiceTests` laufen ohne Fehler (nicht übersprungen)",
+          "done": false
+        },
+        {
+          "text": "Verteilung (aus M8), Linux: `.deb` auf Ubuntu 22.04 und 24.04, Debian 12 und 13 sowie Linux Mint (`sudo apt install ./pagewing_<Version>_amd64.deb`) und AppImage auf Ubuntu 24.04 ohne `libfuse2`, Linux Mint (auch aus einem Ordner mit Leerzeichen) und CachyOS: Eintrag im Anwendungsmenü mit Symbol, Doppelklick auf ein PDF im Dateimanager, Entfernen (`apt remove`)",
+          "done": false
+        },
+        {
+          "text": "Verteilung (aus M8): Karte „Als Standardprogramm festlegen“ beim ersten Start unter Windows (öffnet die Einstellungen von Windows, danach öffnet ein Doppelklick Pagewing) und unter Linux (setzt den Standard selbst, auch aus dem AppImage), „Später“ und „Nicht mehr fragen“; Karte und „Über Pagewing“ mit Narrator und Orca; Startzeit-Budgets mit den neuen Einträgen auf echter Hardware (die Messung in M8 ist nur relativ unter Linux/Xvfb)",
+          "done": false
+        },
+        {
+          "text": "Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien",
+          "done": false
+        },
+        {
+          "text": "Quellangebot für libfuse (LGPL-2.1) in der AppImage-Runtime klären: Quell-Tarballs (type2-runtime 20251108, libfuse 3.15.0) an jedes Release hängen oder ein schriftliches Angebot ins Paket legen (`Docs/DECISIONS.md`, Eintrag „Offen: Quellangebot für libfuse und type2-runtime“)",
+          "done": false
+        },
+        {
+          "text": "Vor dem ersten Release: `check-binary` um eine GLIBCXX-Prüfung ergänzen",
+          "done": false
+        },
+        {
+          "text": "Vor dem ersten Release: Tag-Regex im Release-Workflow prüfen",
+          "done": false
+        },
+        {
+          "text": "Vor dem ersten Release: Symbolgrößen 22 und 96 px im hicolor-Satz prüfen",
+          "done": false
+        },
+        {
+          "text": "Vor dem ersten Release: Verhalten von `xdg-mime default` ohne vorhandenen Desktop-Eintrag prüfen",
+          "done": false
+        },
+        {
+          "text": "Vor dem ersten Release: Windows-Standardprogramm nach Verschieben der portablen ZIP von Hand prüfen (die Karte erscheint wieder, „Als Standard festlegen“ schreibt den neuen Pfad)",
+          "done": false
+        }
       ]
     },
     {
@@ -529,6 +607,22 @@
     { "title": "Frei belegbare Tastenkürzel", "text": "Die Kürzel stehen fest im `CommandCatalog` (M6). Eine eigene Belegung bräuchte eine Einstellung, eine Oberfläche dafür und die Prüfung auf doppelte Gesten (`CommandCatalogTests.NoGestureBelongsToTwoCommands`). In M6 bewusst nicht enthalten." },
     { "title": "Sprachwechsel zur Laufzeit", "text": "Die Sprache der Oberfläche gilt erst ab dem nächsten Start (`Program.ChooseUiCulture`, die Texte werden beim Laden des XAML gelesen; `Docs/DECISIONS.md`, Eintrag „Einstellungen: Dateien, Format, Start und Schreiben (M6)“). Ein Wechsel ohne Neustart müsste alle Texte neu binden. In M6 bewusst nicht enthalten." },
     { "title": "Hochkontrast: Farben des Windows-Kontrastdesigns übernehmen", "text": "Pagewing zeigt im Hochkontrast eine feste schwarze Palette, auch beim hellen Kontrastdesign „Wüste“ (`Docs/DECISIONS.md`, Eintrag „Hochkontrast: feste Palette …“). Die Farben des gewählten Kontrastdesigns zu übernehmen, ginge nur über eigene Brushes statt der Fluent-Palette, weil Fluent zur Laufzeit nur den Akzent ändert. Nur angehen, wenn Nutzer es wünschen." },
-    { "title": "Bildschirmleser prüfen (Narrator, NVDA, Orca)", "text": "Die Automation-Zustände aus M6 (Tabs als ausgewählte Registerkarte, Panel-Einträge als Umschaltflächen, gewählter Eintrag der Befehlspalette, Zeilen der Hilfekarte) sind nur über die Avalonia-Peers getestet, nicht mit einem echten Screenreader. Prüfen: `Pagewing.exe testdata/pdfs/text-rich.pdf testdata/pdfs/outline.pdf`, Narrator (Strg+Win+Enter) bzw. NVDA unter Windows, Orca unter Linux; ob der Wechsel des gewählten Eintrags der Palette angesagt wird (Avalonias UIA-Brücke löst `SelectionItem_ElementSelected` nie aus; gemeldet wird die Beschreibung des Eingabefelds)." }
+    { "title": "Bildschirmleser prüfen (Narrator, NVDA, Orca)", "text": "Die Automation-Zustände aus M6 (Tabs als ausgewählte Registerkarte, Panel-Einträge als Umschaltflächen, gewählter Eintrag der Befehlspalette, Zeilen der Hilfekarte) sind nur über die Avalonia-Peers getestet, nicht mit einem echten Screenreader. Prüfen: `Pagewing.exe testdata/pdfs/text-rich.pdf testdata/pdfs/outline.pdf`, Narrator (Strg+Win+Enter) bzw. NVDA unter Windows, Orca unter Linux; ob der Wechsel des gewählten Eintrags der Palette angesagt wird (Avalonias UIA-Brücke löst `SelectionItem_ElementSelected` nie aus; gemeldet wird die Beschreibung des Eingabefelds)." },
+    {
+      "title": "winget-Paket (M8)",
+      "text": "Nach dem ersten veröffentlichten Release ein Manifest für `winget` einreichen (Installer-URL und Prüfsumme des Releases). Setzt ein öffentliches Repo und einen stabilen Installer-Namen voraus; ohne Signierung zeigt winget die Warnung des Installers ebenfalls."
+    },
+    {
+      "title": "Avalonia-Telemetrie beim Bauen (M8)",
+      "text": "Das Build-Paket `Avalonia.BuildServices` 11.3.2 sendet laut Paket-Beschreibung beim Kompilieren anonyme Nutzungsdaten, solange `AVALONIA_TELEMETRY_OPTOUT=1` fehlt (nicht in der ausgelieferten App; `Docs/DECISIONS.md`, Eintrag „Verteilung: Nicht-Ziele und offene Fragen …“). Zu klären: Opt-out in `ci.yml` und `release.yml` setzen und in `CLAUDE.md` für Entwickler vermerken, oder bewusst zulassen. Nicht geprüft: ob die Task-DLL tatsächlich sendet und ob die Runner den Opt-out schon gesetzt haben."
+    },
+    {
+      "title": "HKCU-Einträge nach Computerinstallation (M8)",
+      "text": "Die Karte „Standardprogramm“ registriert Pagewing immer unter `HKCU`, auch nach einer Installation für alle Benutzer; die Deinstallation im Bereich `machine` entfernt diese Einträge nicht. Möglicher Weg: beim Deinstallieren zusätzlich `--unregister-file-types=user` ausführen (wirkt nur für den deinstallierenden Benutzer) oder die Karte im Computer-Modus nach `HKLM` schreiben lassen."
+    },
+    {
+      "title": "Linux-Pakete signieren (M8)",
+      "text": "`.deb` und AppImage sind unsigniert (die type2-Runtime ist es mit GnuPG, das fertige AppImage nicht). Zu klären: GnuPG-Signatur der Prüfsummendateien oder eingebettete AppImage-Signatur, und wo der öffentliche Schlüssel liegt."
+    }
   ]
 }

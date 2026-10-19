@@ -71,6 +71,13 @@ public abstract class PrintTestHost : IDisposable
         return (window, viewModel, Find<DocumentView>(window, "DocumentView"));
     }
 
+    /// <summary>Closes <paramref name="window"/> and disposes <paramref name="viewModel"/> when the test ends (for tests that build their own window).</summary>
+    protected void Track(Window window, IDisposable viewModel)
+    {
+        _cleanup.Add(viewModel);
+        _cleanup.Add(new Closer(window));
+    }
+
     protected static async Task<TabViewModel> OpenAsync(Window window, MainViewModel viewModel, DocumentView view, string name)
     {
         await viewModel.OpenAsync(TestData.Pdf(name));
