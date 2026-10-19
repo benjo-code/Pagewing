@@ -677,6 +677,24 @@ public sealed class RecentFilesViewTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void AFlushWithNothingChangedAfterReadingWritesNothing()
+    {
+        var first = RecentFilesService.Load(_directory);
+        first.Opened(Full("hello_world.pdf"));
+        first.Flush();
+        Assert.Equal(1, first.Writes);
+
+        // The next start opens the file that is on top already, before the list is read: noted, but no change.
+        var next = RecentFilesService.Load(_directory);
+        next.Opened(Full("hello_world.pdf"));
+        Assert.True(next.HasUnsavedChanges);
+        next.Flush();
+        Assert.Equal(1, next.Reads);
+        Assert.Equal(0, next.Writes);
+        Assert.False(next.HasUnsavedChanges);
+    }
+
+    [AvaloniaFact]
     public void RecentFilesSurviveARestart()
     {
         // The first run opens two files and leaves one of them on page 12 at 125 %, two pages with a cover.

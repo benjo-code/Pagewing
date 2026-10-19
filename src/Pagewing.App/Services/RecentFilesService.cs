@@ -167,8 +167,12 @@ public sealed class RecentFilesService
             return;
         }
 
+        // The files opened before the list was read may all have been on top already: then nothing changed.
         EnsureLoaded();
-        Save();
+        if (_dirty)
+        {
+            Save();
+        }
     }
 
     /// <summary>A file was closed where <paramref name="view"/> says: it goes to the top with that position, and the list is written.</summary>
