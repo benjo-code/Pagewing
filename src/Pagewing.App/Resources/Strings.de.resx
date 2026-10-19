@@ -546,4 +546,16 @@
   <data name="SettingsHistoryCleared" xml:space="preserve">
     <value>Verlauf gelöscht.</value>
   </data>
+  <data name="PrintErrorStart" xml:space="preserve">
+    <value>Der Drucker konnte den Druckauftrag nicht starten.</value>
+  </data>
+  <data name="PrintErrorPage" xml:space="preserve">
+    <value>Der Drucker hat beim Drucken einen Fehler gemeldet.</value>
+  </data>
+  <data name="PrintErrorDialog" xml:space="preserve">
+    <value>Der Druckdialog konnte nicht angezeigt werden.</value>
+  </data>
+  <data name="PrintForbidden" xml:space="preserve">
+    <value>Dieses Dokument verbietet das Drucken.</value>
+  </data>
 </root>

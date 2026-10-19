@@ -546,4 +546,16 @@
   <data name="SettingsHistoryCleared" xml:space="preserve">
     <value>History cleared.</value>
   </data>
+  <data name="PrintErrorStart" xml:space="preserve">
+    <value>The printer could not start the print job.</value>
+  </data>
+  <data name="PrintErrorPage" xml:space="preserve">
+    <value>The printer reported an error while printing.</value>
+  </data>
+  <data name="PrintErrorDialog" xml:space="preserve">
+    <value>The print dialog could not be shown.</value>
+  </data>
+  <data name="PrintForbidden" xml:space="preserve">
+    <value>This document does not allow printing.</value>
+  </data>
 </root>

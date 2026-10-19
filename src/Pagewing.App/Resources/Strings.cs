@@ -209,6 +209,10 @@ public static class Strings
     public static string StartRecentHelp => Get("StartRecentHelp");
     public static string StartRecentRemove => Get("StartRecentRemove");
     public static string StartRecentRemoveName => Get("StartRecentRemoveName");
+    public static string PrintErrorStart => Get("PrintErrorStart");
+    public static string PrintErrorPage => Get("PrintErrorPage");
+    public static string PrintErrorDialog => Get("PrintErrorDialog");
+    public static string PrintForbidden => Get("PrintForbidden");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;
