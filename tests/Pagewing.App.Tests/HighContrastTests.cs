@@ -378,12 +378,15 @@ public sealed class HighContrastTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task AChangeFromAnotherThreadAfterDisposeChangesNothing()
+    public void AChangeFromAnotherThreadAfterDisposeChangesNothing()
     {
         // The platform may announce a change on another thread; the appearance posts it to the UI thread. Disposed in
-        // between, it applies nothing.
+        // between, it applies nothing. The UI thread blocks while the other thread raises the change (an await would let
+        // the dispatcher run the posted job before Dispose), so the job is still waiting when the appearance goes.
         var (app, _, appearance) = Start(ColorContrastPreference.NoPreference);
-        await Task.Run(() => _contrast.Set(ColorContrastPreference.High));
+        var other = new Thread(() => _contrast.Set(ColorContrastPreference.High));
+        other.Start();
+        other.Join();
         appearance.Dispose();
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(ThemeVariant.Default, app.RequestedThemeVariant);
