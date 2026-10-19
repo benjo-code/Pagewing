@@ -81,9 +81,9 @@ jobs:
         run: |
           cat /etc/os-release
           ldd --version | head -1
-          command -v dpkg-deb >/dev/null || { echo 'dpkg-deb not found: install the dpkg package' >&2; exit 1; }
-          command -v mksquashfs >/dev/null || { echo 'mksquashfs not found: install squashfs-tools' >&2; exit 1; }
-          command -v objdump >/dev/null || { echo 'objdump not found: install binutils' >&2; exit 1; }
+          command -v dpkg-deb >/dev/null || echo '::warning::dpkg-deb not found (needed by release.yml, not here): install the dpkg package'
+          command -v mksquashfs >/dev/null || echo '::warning::mksquashfs not found (needed by release.yml, not here): install squashfs-tools'
+          command -v objdump >/dev/null || echo '::warning::objdump not found (the glibc check below needs it; release.yml fails without it): install binutils'
           command -v docker >/dev/null && docker --version || echo 'docker not found (information only)'
 
       - name: Check the Native AOT prerequisites (Windows)
