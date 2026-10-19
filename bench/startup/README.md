@@ -51,7 +51,15 @@ Für alle drei Schalter gilt: Die App nimmt nicht an der Single-Instance-Wahl te
 
 ## Einstellungen und Verlauf in Messläufen
 
-Messläufe (`--measure-startup`, `--measure-second`, `--measure-scroll`) nehmen `UserSettings.Detached()` (`Program.LoadSettings`) und `RecentFilesService.Detached()` (`Program.LoadRecentFiles`): Standardwerte und ein leerer Verlauf nur im Speicher. Sie lesen weder `settings.json` noch `recent.json` und schreiben nichts in den Benutzerordner (keine `.bad`-Kopie, kein Verlaufseintrag). So hängen die Zahlen nicht von den Einstellungen dessen ab, der misst. Die Kehrseite: Der Check misst immer den Start **ohne** Einstellungsdatei, also hellen oder System-Theme, Dichte „Normal“, Animationen an, Systemsprache. Ein Start mit eigener `settings.json` (etwa Dunkel, Animationen reduzieren, Deutsch) und mit dem Hochkontrast-Wunsch des Systems ist mit diesen Schaltern nicht messbar und bleibt offen, bis es dafür einen eigenen Aufbau gibt (Stand M6: `Docs/DECISIONS.md`, Eintrag „Startzeitmessung M6: Ergebnis gegen dev und offene Fälle“). `--lang <code>` wirkt auch im Messlauf, weil es nicht aus der Datei kommt.
+Messläufe (`--measure-startup`, `--measure-second`, `--measure-scroll`) nehmen `UserSettings.Detached()` (`Program.LoadSettings`) und `RecentFilesService.Detached()` (`Program.LoadRecentFiles`): Standardwerte und ein leerer Verlauf nur im Speicher. Sie lesen weder `settings.json` noch `recent.json` und schreiben nichts in den Benutzerordner (keine `.bad`-Kopie, kein Verlaufseintrag). So hängen die Zahlen nicht von den Einstellungen dessen ab, der misst: Der Check misst den Start **ohne** Einstellungsdatei (Theme „Wie im System“, Dichte „Normal“, Animationen an, Systemsprache). `--lang <code>` wirkt auch im Messlauf, weil es nicht aus der Datei kommt.
+
+**Mit Einstellungsdatei:** Der versteckte Schalter `--measure-settings <datei>` gilt nur zusammen mit einem `--measure-*`-Schalter (sonst wird er ignoriert, wie `--zoom`). Der Messlauf liest dann genau diese Datei, nur lesend (`UserSettings.DetachedFrom`, `SettingsStore.LoadReadOnly`): Er schreibt sie nie, legt keine `.bad`-Kopie und keinen Ordner an und liest den Benutzerordner weiterhin nicht. Eine kaputte Datei ergibt die Standardwerte; fehlt die Datei oder der Wert, endet der Lauf mit Exit-Code 1 und `error: --measure-settings …`, damit ein Tippfehler nicht unbemerkt die Standardwerte misst. Das Skript reicht `--settings <datei>` als `--measure-settings` durch und nennt den Fall in Ausgabe und CSV `<fall>+settings:<dateiname>`, zum Beispiel:
+
+```powershell
+dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/text-basic.pdf --case warm --settings <ordner>/dark.json --phases
+```
+
+Budget und Grenze bleiben die des Falls. Messwerte (Stand M6): `Docs/DECISIONS.md`, Eintrag „Startzeit mit vorhandener settings.json (M6)“. Der Start mit dem Hochkontrast-Wunsch des Systems bleibt mit den Schaltern nicht messbar (Eintrag „Startzeitmessung M6: Ergebnis gegen dev und offene Fälle“).
 
 ## Frame-Takt der Messumgebung
 
