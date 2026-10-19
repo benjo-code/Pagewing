@@ -75,6 +75,17 @@ jobs:
           command -v xvfb-run >/dev/null || { echo 'xvfb-run not found (startup check): install the xvfb package' >&2; exit 1; }
           ldconfig -p | grep -q libfontconfig.so.1 || { echo 'libfontconfig.so.1 not found (Skia in the headless UI tests and the app): install the libfontconfig1 package' >&2; exit 1; }
 
+      # Packaging (Milestone 8): the Linux packages are built here and must run on glibc 2.35 (Ubuntu 22.04).
+      - name: Check the packaging prerequisites (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cat /etc/os-release
+          ldd --version | head -1
+          command -v dpkg-deb >/dev/null || { echo 'dpkg-deb not found: install the dpkg package' >&2; exit 1; }
+          command -v mksquashfs >/dev/null || { echo 'mksquashfs not found: install squashfs-tools' >&2; exit 1; }
+          command -v objdump >/dev/null || { echo 'objdump not found: install binutils' >&2; exit 1; }
+          command -v docker >/dev/null && docker --version || echo 'docker not found (information only)'
+
       - name: Check the Native AOT prerequisites (Windows)
         if: runner.os == 'Windows'
         run: |
@@ -115,6 +126,17 @@ jobs:
 
       - name: Publish the app (Native AOT)
         run: dotnet publish src/Pagewing.App -c Release -r ${{ matrix.rid }} -o out/app
+
+      - name: Self-test of the packaging tool
+        run: dotnet run tools/package.cs -- selftest
+
+      # Not blocking yet: the runner's glibc may be newer than 2.35 (decision pending, Milestone 8 task 1).
+      - name: Check the binaries against glibc 2.35 (Linux)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          libs=$(ls out/app/*.so out/app/*.so.* 2>/dev/null || true)
+          dotnet run tools/package.cs -- check-binary out/app/Pagewing $libs --max-glibc 2.35
 
       - name: Self-test of the startup check
         run: dotnet run bench/startup/startup.cs -- selftest
