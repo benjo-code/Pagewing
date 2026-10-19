@@ -75,6 +75,29 @@ public sealed class PaletteMatcherTests
     }
 
     [Fact]
+    public void TenThousandEntriesAreScoredQuickly()
+    {
+        // A huge outline: 100 chapters of 99 sections each. The palette scores every entry per keystroke.
+        var texts = Enumerable.Range(1, 100)
+            .SelectMany(chapter => Enumerable.Range(0, 100).Select(section => section == 0 ? $"Chapter {chapter}" : $"Section {chapter}.{section}"))
+            .ToArray();
+        Assert.Equal(10_000, texts.Length);
+        _ = texts.Count(text => PaletteMatcher.Score("s", text) > 0);
+
+        var expected = new Dictionary<string, int> { ["section"] = 9_900, ["c"] = 10_000, ["chapter 1"] = 20, ["xyz"] = 0 };
+        foreach (var (query, count) in expected)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var matches = texts.Count(text => PaletteMatcher.Score(query, text) > 0);
+            watch.Stop();
+
+            // Generous: only an algorithmic regression (not a slow CI machine) should exceed it.
+            Assert.True(watch.ElapsedMilliseconds < 1000, $"'{query}' took {watch.ElapsedMilliseconds} ms");
+            Assert.Equal(count, matches);
+        }
+    }
+
+    [Fact]
     public void NoMatchIsMinusOne()
     {
         Assert.Equal(-1, PaletteMatcher.Score("xyz", "Zoom in"));
