@@ -53,6 +53,44 @@ public sealed class WindowsDefaultAppServiceTests
     }
 
     [Fact]
+    public void MakeDefaultRegistersAgainWhenTheProgramMoved()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The registry needs Windows.");
+        WithSandbox(async root =>
+        {
+            const string OldExe = @"C:\Apps\Pagewing-0.1.0\Pagewing.exe";
+            new WindowsFileTypeRegistry(root).Register(OldExe);
+            var notified = 0;
+            var service = new WindowsDefaultAppService(root, Exe, _ => Task.CompletedTask, () => notified++);
+
+            await service.MakeDefaultAsync(TestContext.Current.CancellationToken);
+
+            Assert.True(new WindowsFileTypeRegistry(root).IsCurrentFor(Exe));
+            Assert.Equal(1, notified);
+        });
+    }
+
+    [Fact]
+    public void StatusIsNotDefaultWhenTheRegisteredCommandPointsElsewhere()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The registry needs Windows.");
+        WithSandbox(async root =>
+        {
+            new WindowsFileTypeRegistry(root).Register(@"C:\Apps\Pagewing-0.1.0\Pagewing.exe");
+            using (var key = root.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice"))
+            {
+                key.SetValue("ProgId", FileTypeRegistration.ProgId);
+            }
+
+            var service = new WindowsDefaultAppService(root, Exe, _ => Task.CompletedTask, () => { });
+            Assert.Equal(DefaultAppStatus.NotDefault, await service.GetStatusAsync(TestContext.Current.CancellationToken));
+
+            new WindowsFileTypeRegistry(root).Register(Exe);
+            Assert.Equal(DefaultAppStatus.IsDefault, await service.GetStatusAsync(TestContext.Current.CancellationToken));
+        });
+    }
+
+    [Fact]
     public void MakeDefaultReturnsBeforeTheBlockingShellCallEnds()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "The registry needs Windows.");

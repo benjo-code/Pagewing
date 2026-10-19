@@ -69,7 +69,13 @@ internal sealed class WindowsDefaultAppService : IDefaultAppService
         {
             using var key = _root.OpenSubKey(UserChoiceKey);
             var progId = key?.GetValue("ProgId") as string;
-            return progId == FileTypeRegistration.ProgId ? DefaultAppStatus.IsDefault : DefaultAppStatus.NotDefault;
+            if (progId != FileTypeRegistration.ProgId)
+            {
+                return DefaultAppStatus.NotDefault;
+            }
+
+            // UserChoice survives a moved or deleted program folder; then the registered command is stale and a double-click fails.
+            return new WindowsFileTypeRegistry(_root).IsStaleFor(_exePath) ? DefaultAppStatus.NotDefault : DefaultAppStatus.IsDefault;
         }
         catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or IOException)
         {
@@ -83,7 +89,7 @@ internal sealed class WindowsDefaultAppService : IDefaultAppService
         try
         {
             var registry = new WindowsFileTypeRegistry(_root);
-            if (!registry.IsRegistered)
+            if (!registry.IsRegistered || !registry.IsCurrentFor(_exePath))
             {
                 registry.Register(_exePath);
                 _notifyAssociationsChanged();

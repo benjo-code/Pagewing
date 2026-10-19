@@ -34,6 +34,33 @@ internal sealed class WindowsFileTypeRegistry
         }
     }
 
+    /// <summary>Gets whether every entry is present with exactly the value <see cref="Register"/> would write for <paramref name="exePath"/>.</summary>
+    public bool IsCurrentFor(string exePath)
+    {
+        foreach (var entry in FileTypeRegistration.Entries(exePath))
+        {
+            using var key = _root.OpenSubKey(entry.KeyPath);
+            if (key?.GetValue(entry.ValueName) is not string value || value != entry.Value)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Gets whether a registered open command exists below this root and points to a program other than
+    /// <paramref name="exePath"/> (the folder was moved or replaced). A missing registration is not stale.
+    /// </summary>
+    public bool IsStaleFor(string exePath)
+    {
+        var expected = FileTypeRegistration.Entries(exePath)
+            .First(e => e.KeyPath == @"Software\Classes\" + FileTypeRegistration.ProgId + @"\shell\open\command").Value;
+        using var command = _root.OpenSubKey(@"Software\Classes\" + FileTypeRegistration.ProgId + @"\shell\open\command");
+        return command?.GetValue(null) is string registered && registered != expected;
+    }
+
     /// <summary>Writes every entry for <paramref name="exePath"/>; running it again just overwrites the same values.</summary>
     public void Register(string exePath)
     {
