@@ -24,7 +24,7 @@ Fehlt die PDFium-Bibliothek in App oder CLI, bricht der Befehl ab. Unter Linux s
 | --- | --- |
 | `Pagewing-<Version>-win-x64-portable.zip` | portable ZIP für Windows |
 | `Pagewing-<Version>-win-x64-setup.exe` | Installer für Windows |
-| `SHA256SUMS-<Version>.txt` | Zeilen `<sha256>  <Dateiname>` |
+| `SHA256SUMS-windows.txt`, `SHA256SUMS-linux.txt` | Zeilen `<sha256>  <Dateiname>`, je eine Datei für die Dateien des Windows- und des Linux-Jobs (jeder Job hängt seine Dateien selbst an das Release) |
 | `pagewing_<Version>_amd64.deb` | Paket für Debian, Ubuntu, Linux Mint (Vorabversion `x.y.z-rc1` heißt im Paket `x.y.z~rc1`) |
 | `Pagewing-<Version>-x86_64.AppImage` | AppImage für alle Linux-Distributionen ab der glibc des Build-Rechners, ohne `libfuse2` |
 
