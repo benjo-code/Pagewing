@@ -33,12 +33,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 - Dunkler Modus: Das Design folgt dem System oder steht fest auf Hell oder Dunkel und wechselt ohne Neustart. Auf Wunsch erscheinen im dunklen Design auch die Seiten dunkel (heller Text auf dunklem Grund, Bilder behalten ihre Farben); Strg+Umschalt+D schaltet die Seite eines Tabs zwischen hell und dunkel um. Einschränkung: Gefüllte Flächen wie Diagrammbalken oder Tabellenstreifen erscheinen auf der dunklen Seite nur als helle Umrisse, ihre Farbe geht verloren; gescannte Seiten bleiben hell.
 - Einstellungen (Strg+Komma oder Knopf unten in der Aktionsleiste): Design, Dichte, dunkle Seiten, „Animationen reduzieren“, Standard-Layout und Standard-Zoom für neu geöffnete Dateien, Sprache der Oberfläche (gilt ab dem nächsten Start) und „Verlauf löschen“. Jede Änderung gilt sofort und wird nur lokal im Benutzerordner gespeichert.
 - Befehlspalette (Strg+K oder „Suchen oder Befehl“ in der Titelleiste): Befehle mit ihren Kürzeln, zuletzt geöffnete Dateien, offene Tabs, „Gehe zu Seite“ per Zahl und Kapitel des Inhaltsverzeichnisses, ganz mit der Tastatur bedienbar.
-- Tastenkürzel für alle Viewer-Aktionen und eine Übersicht mit Filter (F1). Neu: Strg+K (Befehlspalette), Strg+Komma (Einstellungen), F1 (Tastenkürzel), Strg+Umschalt+1 (Seiten), Strg+Umschalt+2 (Inhalt), Strg+Umschalt+D (Seite hell/dunkel).
+- Tastenkürzel für Zoom, Navigation, Suche, Panels und Tabs und eine Übersicht mit Filter (F1). Neu: Strg+K (Befehlspalette), Strg+Komma (Einstellungen), F1 (Tastenkürzel), Strg+Umschalt+1 (Seiten), Strg+Umschalt+2 (Inhalt), Strg+Umschalt+D (Seite hell/dunkel).
 - Zuletzt geöffnete Dateien auf der Startseite (die letzten fünf; Entf entfernt einen Eintrag) und in der Befehlspalette. Pagewing merkt sich je Datei Stelle, Zoom und Layout und öffnet sie dort wieder. Einschränkung: Die Datei, mit der Pagewing gestartet wird (etwa per Doppelklick, solange Pagewing noch nicht läuft), öffnet noch am Anfang.
 - Dichte „Kompakt“: schmalere Leisten, kleinerer Seitenrand und die Seitenvorschau in zwei Spalten.
 - „Animationen reduzieren“ schaltet die Einblendung des Panels ab.
 - Hochkontrast unter Windows: Mit einem Kontrastdesign von Windows und dem Design „Wie im System“ zeigt Pagewing eine feste schwarze Palette mit weißem Text, weißen Trennlinien und gelbem Akzent; die Seiten bleiben hell.
-- Screenreader: Die Einträge der Aktionsleiste melden, ob ihr Panel offen ist, der aktive Tab meldet sich als ausgewählt, die Befehlspalette meldet den gewählten Eintrag.
+- Screenreader: Die Einträge der Aktionsleiste melden, ob ihr Panel offen ist, der aktive Tab meldet sich als ausgewählt, die Befehlspalette meldet den gewählten Eintrag (mit Narrator, NVDA und Orca noch nicht geprüft).
 
 ### Changed
 
