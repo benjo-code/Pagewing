@@ -100,6 +100,24 @@ public sealed class UserSettingsTests : IDisposable
     }
 
     [Fact]
+    public void LastSaveFailedClearsAfterALaterSuccessfulWrite()
+    {
+        // The config "folder" is a file at first: the write fails.
+        File.WriteAllText(_directory, "not a folder");
+        var settings = UserSettings.Load(_directory);
+        settings.Update(current => current with { Density = DensitySetting.Compact });
+        Assert.True(settings.LastSaveFailed);
+
+        // The folder can be made now: the next change is written, with every value of memory, and the flag clears.
+        File.Delete(_directory);
+        settings.Update(current => current with { ReduceMotion = true });
+        Assert.False(settings.LastSaveFailed);
+        var stored = new SettingsStore(SettingsFile).Load();
+        Assert.Equal(DensitySetting.Compact, stored.Density);
+        Assert.True(stored.ReduceMotion);
+    }
+
+    [Fact]
     public void NoFileMeansNoJsonIsRead()
     {
         Directory.CreateDirectory(_directory);

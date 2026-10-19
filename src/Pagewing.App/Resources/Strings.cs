@@ -182,6 +182,28 @@ public static class Strings
     public static string PaletteGroupCommands => Get("PaletteGroupCommands");
     public static string PaletteGoToPage => Get("PaletteGoToPage");
     public static string PalettePageDetail => Get("PalettePageDetail");
+    public static string SettingsTooltip => Get("SettingsTooltip");
+    public static string SettingsClose => Get("SettingsClose");
+    public static string SettingsDone => Get("SettingsDone");
+    public static string SettingsGroupAppearance => Get("SettingsGroupAppearance");
+    public static string SettingsGroupView => Get("SettingsGroupView");
+    public static string SettingsGroupLanguage => Get("SettingsGroupLanguage");
+    public static string SettingsTheme => Get("SettingsTheme");
+    public static string SettingsThemeSystem => Get("SettingsThemeSystem");
+    public static string SettingsThemeLight => Get("SettingsThemeLight");
+    public static string SettingsThemeDark => Get("SettingsThemeDark");
+    public static string SettingsDensity => Get("SettingsDensity");
+    public static string SettingsDensityNormal => Get("SettingsDensityNormal");
+    public static string SettingsDensityCompact => Get("SettingsDensityCompact");
+    public static string SettingsDarkPages => Get("SettingsDarkPages");
+    public static string SettingsReduceMotion => Get("SettingsReduceMotion");
+    public static string SettingsDefaultLayout => Get("SettingsDefaultLayout");
+    public static string SettingsDefaultZoom => Get("SettingsDefaultZoom");
+    public static string SettingsDefaultsHint => Get("SettingsDefaultsHint");
+    public static string SettingsLanguage => Get("SettingsLanguage");
+    public static string SettingsLanguageSystem => Get("SettingsLanguageSystem");
+    public static string SettingsRestartHint => Get("SettingsRestartHint");
+    public static string SettingsSaveFailed => Get("SettingsSaveFailed");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

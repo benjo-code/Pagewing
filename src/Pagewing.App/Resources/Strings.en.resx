@@ -465,4 +465,70 @@
   <data name="PalettePageDetail" xml:space="preserve">
     <value>Page {0}</value>
   </data>
+  <data name="SettingsTooltip" xml:space="preserve">
+    <value>Settings (Ctrl+Comma)</value>
+  </data>
+  <data name="SettingsClose" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="SettingsDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="SettingsGroupAppearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="SettingsGroupView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="SettingsGroupLanguage" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="SettingsTheme" xml:space="preserve">
+    <value>Theme</value>
+  </data>
+  <data name="SettingsThemeSystem" xml:space="preserve">
+    <value>Same as system</value>
+  </data>
+  <data name="SettingsThemeLight" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="SettingsThemeDark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="SettingsDensity" xml:space="preserve">
+    <value>Density</value>
+  </data>
+  <data name="SettingsDensityNormal" xml:space="preserve">
+    <value>Standard</value>
+  </data>
+  <data name="SettingsDensityCompact" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="SettingsDarkPages" xml:space="preserve">
+    <value>Show pages dark when the theme is dark</value>
+  </data>
+  <data name="SettingsReduceMotion" xml:space="preserve">
+    <value>Reduce animations</value>
+  </data>
+  <data name="SettingsDefaultLayout" xml:space="preserve">
+    <value>Default layout</value>
+  </data>
+  <data name="SettingsDefaultZoom" xml:space="preserve">
+    <value>Default zoom</value>
+  </data>
+  <data name="SettingsDefaultsHint" xml:space="preserve">
+    <value>Applies to files you open from now on.</value>
+  </data>
+  <data name="SettingsLanguage" xml:space="preserve">
+    <value>Interface language</value>
+  </data>
+  <data name="SettingsLanguageSystem" xml:space="preserve">
+    <value>System language</value>
+  </data>
+  <data name="SettingsRestartHint" xml:space="preserve">
+    <value>Takes effect the next time Pagewing starts.</value>
+  </data>
+  <data name="SettingsSaveFailed" xml:space="preserve">
+    <value>The settings could not be saved.</value>
+  </data>
 </root>

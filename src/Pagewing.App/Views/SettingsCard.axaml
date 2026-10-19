@@ -1,0 +1,176 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.SettingsCard"
+             x:DataType="vm:SettingsViewModel"
+             KeyboardNavigation.TabNavigation="Cycle"
+             AutomationProperties.Name="{x:Static res:Strings.CommandSettings}">
+  <!--
+    The settings (Ctrl+Comma, the settings button at the bottom of the action bar): a card over the window below the
+    title bar in the style of the help card and the link card (design system 7.8): surface.raised, radius.overlay, the
+    card shadow with its 1 px border.subtle edge. Title and close button, then the groups "Appearance" (theme, density,
+    dark pages, reduced motion), "View" (default layout and zoom of new tabs) and "Language", and "Done" at the bottom.
+    Every change applies at once (SettingsViewModel); there is no "Apply". A choice of several values is a combo box
+    (the arrows change it while it is closed, Alt+Down or F4 opens it), a yes or no a switch (Space). Tab goes from top to
+    bottom and stays on the card; Esc, the close button and "Done" close it and the focus goes back where it was
+    (MainWindow.Overlays.cs). A failed write shows the warning symbol and a text, not only a colour (7.10). Not modal:
+    clicks beside the card reach the window. Made when it is first shown, never in the startup path.
+  -->
+  <UserControl.Resources>
+    <!-- An entry of a list: its text, and in the open list a check mark at the chosen one (not only a colour, 7.10). -->
+    <DataTemplate x:Key="SettingsChoiceTemplate" x:DataType="vm:ISettingsChoice">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <ctl:StrokeIcon Grid.Column="1" Width="16" Height="16" Margin="8,0,0,0" VerticalAlignment="Center"
+                        Data="{StaticResource Pw.Icon.Check}"
+                        IsVisible="{Binding $parent[ComboBoxItem].IsSelected, FallbackValue=False}" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="StackPanel.settingsGroup">
+      <Setter Property="Spacing" Value="8" />
+    </Style>
+    <Style Selector="Grid.settingsRow">
+      <Setter Property="MinHeight" Value="32" />
+    </Style>
+    <Style Selector="Grid.settingsRow > TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,0,16,0" />
+    </Style>
+    <Style Selector="TextBlock.settingsHint">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- Like the text fields (Controls.axaml): surface.raised in a 1 px border.strong frame (3:1 on surface.raised). -->
+    <Style Selector="ComboBox">
+      <Setter Property="Width" Value="208" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+      <Setter Property="ItemTemplate" Value="{StaticResource SettingsChoiceTemplate}" />
+    </Style>
+    <!-- The entries of an open list as in the menus (Controls.axaml): surface.hover under the pointer, accent.subtle chosen. -->
+    <Style Selector="ComboBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+    </Style>
+    <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <!--
+      The switch without its "On"/"Off" texts (the label stands left of it) and without Fluent's minimum width. Its knob
+      on the accent is accent.on (SettingsCard.axaml.cs), not Fluent's white.
+    -->
+    <Style Selector="ToggleSwitch">
+      <Setter Property="OnContent" Value="{x:Null}" />
+      <Setter Property="OffContent" Value="{x:Null}" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="SettingsBox" Width="480" MaxHeight="640" Margin="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <!-- Rows in the order of the keys (Tab): title and close button, the warning, the options, "Done". -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+      <Grid ColumnDefinitions="*,Auto" Margin="24,16,12,0">
+        <TextBlock Name="SettingsTitle" Classes="subtitle" VerticalAlignment="Center" Text="{x:Static res:Strings.CommandSettings}" />
+        <Button Name="SettingsCloseButton" Grid.Column="1" Classes="icon"
+                ToolTip.Tip="{x:Static res:Strings.SettingsClose}"
+                AutomationProperties.Name="{x:Static res:Strings.SettingsClose}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+        </Button>
+      </Grid>
+
+      <!-- A failed write: the warning symbol and the text in danger.default (4.5:1 on surface.raised), not only a colour. -->
+      <Grid Name="SettingsSaveFailed" Grid.Row="1" ColumnDefinitions="Auto,*" Margin="24,12,24,0"
+            IsVisible="{Binding SaveFailed}">
+        <ctl:StrokeIcon Name="SettingsSaveFailedIcon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,1,8,0"
+                        Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+        <TextBlock Name="SettingsSaveFailedText" Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Danger.Default}" Text="{x:Static res:Strings.SettingsSaveFailed}" />
+      </Grid>
+
+      <ScrollViewer Name="SettingsScroller" Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,16,24,4" Spacing="24">
+          <StackPanel Classes="settingsGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupAppearance}" />
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsTheme}" />
+              <ComboBox Name="ThemeChoice" Grid.Column="1"
+                        ItemsSource="{Binding ThemeChoices}" SelectedItem="{Binding SelectedTheme, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.SettingsTheme}" />
+            </Grid>
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsDensity}" />
+              <ComboBox Name="DensityChoice" Grid.Column="1"
+                        ItemsSource="{Binding DensityChoices}" SelectedItem="{Binding SelectedDensity, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.SettingsDensity}" />
+            </Grid>
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsDarkPages}" />
+              <ToggleSwitch Name="DarkPagesSwitch" Grid.Column="1" IsChecked="{Binding DarkPages, Mode=TwoWay}"
+                            AutomationProperties.Name="{x:Static res:Strings.SettingsDarkPages}" />
+            </Grid>
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsReduceMotion}" />
+              <ToggleSwitch Name="ReduceMotionSwitch" Grid.Column="1" IsChecked="{Binding ReduceMotion, Mode=TwoWay}"
+                            AutomationProperties.Name="{x:Static res:Strings.SettingsReduceMotion}" />
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Classes="settingsGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupView}" />
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsDefaultLayout}" />
+              <ComboBox Name="LayoutChoice" Grid.Column="1"
+                        ItemsSource="{Binding LayoutChoices}" SelectedItem="{Binding SelectedLayout, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.SettingsDefaultLayout}" />
+            </Grid>
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsDefaultZoom}" />
+              <ComboBox Name="ZoomChoice" Grid.Column="1"
+                        ItemsSource="{Binding ZoomModeChoices}" SelectedItem="{Binding SelectedZoomMode, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.SettingsDefaultZoom}" />
+            </Grid>
+            <TextBlock Classes="caption settingsHint" Text="{x:Static res:Strings.SettingsDefaultsHint}" />
+          </StackPanel>
+
+          <StackPanel Classes="settingsGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupLanguage}" />
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsLanguage}" />
+              <ComboBox Name="LanguageChoice" Grid.Column="1"
+                        ItemsSource="{Binding LanguageChoices}" SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.SettingsLanguage}" />
+            </Grid>
+            <TextBlock Name="RestartHint" Classes="caption settingsHint" IsVisible="{Binding LanguageNeedsRestart}"
+                       Text="{x:Static res:Strings.SettingsRestartHint}" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Button Name="SettingsDoneButton" Grid.Row="3" Classes="primary" HorizontalAlignment="Right"
+              Margin="24,12,24,20" Content="{x:Static res:Strings.SettingsDone}"
+              AutomationProperties.Name="{x:Static res:Strings.SettingsDone}" />
+    </Grid>
+  </Border>
+</UserControl>

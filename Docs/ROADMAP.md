@@ -224,11 +224,11 @@ Ziel: Text lässt sich durchsuchen, markieren und kopieren, Links funktionieren.
 Ziel: Pagewing lässt sich weitgehend per Tastatur bedienen und merkt sich Einstellungen und zuletzt geöffnete Dateien.
 
 **Aufgaben**
-- [ ] Dunkler Modus (folgt dem System, umschaltbar), optional dunkle Seitendarstellung
+- [x] Dunkler Modus (folgt dem System, umschaltbar), optional dunkle Seitendarstellung. Umgesetzt mit `Appearance` (Theme „Wie im System“/Hell/Dunkel ohne Neustart), der dunklen Seite (`AppSettings.PageAppearance`, je Tab umschaltbar mit Strg+Umschalt+D) und dem Schalter in der Einstellungskarte; Tests `ThemeSwitchTests`, `DarkPageViewTests`, `SettingsCardTests`
 - [x] Tastenkürzel für alle Viewer-Aktionen, Übersicht im Hilfe-Dialog. Umgesetzt mit dem Befehlskatalog `CommandCatalog` als einziger Quelle der Kürzel (neu: Strg+K, Strg+Komma, F1, Strg+Umschalt+1/2 für die Panels „Seiten“ und „Inhalt“, Strg+Umschalt+D für die dunkle Seite) und der Hilfekarte (F1); Tests `CommandCatalogTests`
 - [x] Befehlspalette (Strg+K) mit allen Aktionen und zuletzt geöffneten Dateien. Umgesetzt mit `PaletteMatcher` (Kern), `PaletteViewModel` und `CommandPalette` (Gruppen „Zuletzt geöffnet“, „Seiten“, „Offene Tabs“, „Inhalt“, „Befehle“; Knopf „Suchen oder Befehl“ in der Titelleiste); Tests `PaletteMatcherTests`, `CommandPaletteTests`. Die zuletzt geöffneten Dateien kommen über `MainViewModel.RecentFilesSource`; bis der Verlauf angebunden ist (Aufgabe „Zuletzt geöffnete Dateien“), ist sie leer
 - [ ] Zuletzt geöffnete Dateien (lokal gespeichert)
-- [ ] Einstellungen (Sprache, Theme, Dichte Normal/Kompakt, Animationen reduzieren, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON
+- [x] Einstellungen (Sprache, Theme, Dichte Normal/Kompakt, Animationen reduzieren, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON. Umgesetzt mit `UserSettings` und der Einstellungskarte (`SettingsViewModel`, `SettingsCard`; Strg+Komma, Knopf unten in der Aktionsleiste, Befehlspalette): jede Änderung gilt sofort und wird sofort geschrieben, nur die Sprache gilt erst ab dem nächsten Start (die Karte sagt das); Standard-Layout und -Zoom gelten für neue Tabs; Tests `SettingsCardTests`, `UserSettingsTests`
 - [x] Hochkontrast (Windows `ContrastPreference`): entscheiden, ob Pagewing eine eigene Hochkontrast-Palette bekommt, und sie gegebenenfalls umsetzen (Design-Spec, Abschnitt 9). Umgesetzt als feste Palette (Design-Spec 5.1, Spalte „Hochkontrast“; Tests `HighContrastTests`, `TokenTests`); offen ist die Sichtprüfung an einem echten Windows-Kontrastdesign: `Pagewing.exe testdata/pdfs/text-rich.pdf`, dann Einstellungen → Barrierefreiheit → Kontrastdesigns → „Nachthimmel“ und zurück
 
 **Abnahmekriterien**

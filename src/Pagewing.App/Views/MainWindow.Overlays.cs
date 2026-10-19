@@ -11,11 +11,12 @@ namespace Pagewing.App.Views;
 
 /// <summary>
 /// What lies over the window (<see cref="MainViewModel.Overlay"/>): one at a time, below the title bar (its tabs and the
-/// window buttons stay usable), each made when it is first shown, so nothing of it is built in the startup path. The
-/// help card and the command palette have a view so far; the settings show nothing yet. When an overlay with the focus
+/// window buttons stay usable), each made when it is first shown, so nothing of it is built in the startup path: the
+/// command palette, the settings card and the help card. When an overlay with the focus
 /// goes and nothing that comes takes the focus, it goes back to where it was before the overlay came: the element that
 /// had it when the last overlay came or replaced another, unless that was an overlay itself. A button that shows an
-/// overlay and took the focus from a press of the mouse (the palette button of the title bar) does not count as that
+/// overlay and took the focus from a press of the mouse (the palette button of the title bar, the settings button of
+/// the action bar) does not count as that
 /// element: the one before it does, so the keys go back to the document, not to the button. The palette also closes
 /// when the focus moves from it to another element of the window or a press lands beside it; it stays while the window
 /// is inactive (Alt+Tab), and an overlay that is shown gets the keys back when the window is activated with nothing
@@ -25,6 +26,7 @@ public sealed partial class MainWindow
 {
     private HelpCard? _helpCard;
     private CommandPalette? _palette;
+    private SettingsCard? _settingsCard;
 
     // The element that had the focus before the overlays came (taken again whenever one comes from outside them).
     private IInputElement? _focusBeforeOverlay;
@@ -46,7 +48,7 @@ public sealed partial class MainWindow
             : null;
 
     private bool IsOverlayButton(IInputElement element) =>
-        ReferenceEquals(element, TitleBar.PaletteButton);
+        ReferenceEquals(element, TitleBar.PaletteButton) || ReferenceEquals(element, ActionBar.SettingsButton);
 
     /// <summary>Whether <paramref name="element"/> is a button that shows an overlay and got the focus from a press.</summary>
     private bool IsPressedOverlayButton(IInputElement? element) =>
@@ -77,6 +79,9 @@ public sealed partial class MainWindow
                         break;
                     case OverlayKind.Help:
                         _helpCard?.FocusFilter();
+                        break;
+                    case OverlayKind.Settings:
+                        _settingsCard?.FocusFirst();
                         break;
                 }
             },
@@ -138,8 +143,19 @@ public sealed partial class MainWindow
             _palette?.Hide();
         }
 
+        if (kind == OverlayKind.Settings && _viewModel?.SettingsCard is { } settings)
+        {
+            var view = _settingsCard ??= CreateSettingsCard();
+            view.DataContext = settings;
+            view.Show();
+        }
+        else
+        {
+            _settingsCard?.Hide();
+        }
+
         // An overlay had the keys and nothing that is shown now takes them.
-        if (overlayHadFocus && kind is not (OverlayKind.Help or OverlayKind.Palette))
+        if (overlayHadFocus && kind == OverlayKind.None)
         {
             RestoreFocus(_focusBeforeOverlay);
         }
@@ -153,7 +169,7 @@ public sealed partial class MainWindow
 
     private bool IsInShownOverlay(IInputElement? element) =>
         element is Visual visual
-        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual));
+        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual));
 
     private static bool IsWithin(Control? overlay, Visual visual) =>
         overlay is { IsVisible: true } && (ReferenceEquals(overlay, visual) || overlay.IsVisualAncestorOf(visual));
@@ -179,6 +195,24 @@ public sealed partial class MainWindow
         Grid.SetRow(card, 1);
         Grid.SetRowSpan(card, 2);
         card.ZIndex = 10;
+        RootGrid.Children.Add(card);
+        return card;
+    }
+
+    private SettingsCard CreateSettingsCard()
+    {
+        // Like the help card: over the work area and the status bar, below the title bar.
+        var card = new SettingsCard { Name = "SettingsCard" };
+        Grid.SetRow(card, 1);
+        Grid.SetRowSpan(card, 2);
+        card.ZIndex = 10;
+        card.CloseRequested += () =>
+        {
+            if (_viewModel?.Overlay == OverlayKind.Settings)
+            {
+                _viewModel.HideOverlay();
+            }
+        };
         RootGrid.Children.Add(card);
         return card;
     }

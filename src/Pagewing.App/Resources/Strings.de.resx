@@ -465,4 +465,70 @@
   <data name="PalettePageDetail" xml:space="preserve">
     <value>Seite {0}</value>
   </data>
+  <data name="SettingsTooltip" xml:space="preserve">
+    <value>Einstellungen (Strg+Komma)</value>
+  </data>
+  <data name="SettingsClose" xml:space="preserve">
+    <value>Schließen (Esc)</value>
+  </data>
+  <data name="SettingsDone" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="SettingsGroupAppearance" xml:space="preserve">
+    <value>Darstellung</value>
+  </data>
+  <data name="SettingsGroupView" xml:space="preserve">
+    <value>Ansicht</value>
+  </data>
+  <data name="SettingsGroupLanguage" xml:space="preserve">
+    <value>Sprache</value>
+  </data>
+  <data name="SettingsTheme" xml:space="preserve">
+    <value>Design</value>
+  </data>
+  <data name="SettingsThemeSystem" xml:space="preserve">
+    <value>Wie im System</value>
+  </data>
+  <data name="SettingsThemeLight" xml:space="preserve">
+    <value>Hell</value>
+  </data>
+  <data name="SettingsThemeDark" xml:space="preserve">
+    <value>Dunkel</value>
+  </data>
+  <data name="SettingsDensity" xml:space="preserve">
+    <value>Dichte</value>
+  </data>
+  <data name="SettingsDensityNormal" xml:space="preserve">
+    <value>Normal</value>
+  </data>
+  <data name="SettingsDensityCompact" xml:space="preserve">
+    <value>Kompakt</value>
+  </data>
+  <data name="SettingsDarkPages" xml:space="preserve">
+    <value>Seiten dunkel darstellen, wenn das Design dunkel ist</value>
+  </data>
+  <data name="SettingsReduceMotion" xml:space="preserve">
+    <value>Animationen reduzieren</value>
+  </data>
+  <data name="SettingsDefaultLayout" xml:space="preserve">
+    <value>Standard-Layout</value>
+  </data>
+  <data name="SettingsDefaultZoom" xml:space="preserve">
+    <value>Standard-Zoom</value>
+  </data>
+  <data name="SettingsDefaultsHint" xml:space="preserve">
+    <value>Gilt für Dateien, die Sie danach öffnen.</value>
+  </data>
+  <data name="SettingsLanguage" xml:space="preserve">
+    <value>Sprache der Oberfläche</value>
+  </data>
+  <data name="SettingsLanguageSystem" xml:space="preserve">
+    <value>Systemsprache</value>
+  </data>
+  <data name="SettingsRestartHint" xml:space="preserve">
+    <value>Gilt ab dem nächsten Start.</value>
+  </data>
+  <data name="SettingsSaveFailed" xml:space="preserve">
+    <value>Einstellungen konnten nicht gespeichert werden.</value>
+  </data>
 </root>

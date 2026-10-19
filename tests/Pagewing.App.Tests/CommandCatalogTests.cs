@@ -740,11 +740,14 @@ public sealed class CommandCatalogTests : IDisposable
         Press(window, Key.Escape, PhysicalKey.Escape, None);
         await WaitUntilAsync(window, () => ReferenceEquals(Focused(window), field));
 
-        // An overlay without a view (the settings, for now) gives the focus back as well.
+        // The settings card replaces the palette and takes the focus; Esc gives it back to the field.
         Press(window, Key.K, PhysicalKey.K, Ctrl);
         await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PaletteInput" });
         Press(window, Key.OemComma, PhysicalKey.Comma, Ctrl);
         Assert.Equal(OverlayKind.Settings, viewModel.Overlay);
+        await WaitUntilAsync(window, () => Focused(window) is ComboBox { Name: "ThemeChoice" });
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
         await WaitUntilAsync(window, () => ReferenceEquals(Focused(window), field));
     }
 

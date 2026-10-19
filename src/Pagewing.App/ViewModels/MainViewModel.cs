@@ -55,6 +55,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private CommandCatalog? _commands;
     private OverlayKind _overlay;
     private PaletteViewModel? _palette;
+    private SettingsViewModel? _settingsCard;
 
     // Since when the pending address is locked (Clock timestamp), for the arming delay of "Open": from its arrival, and
     // again from when its card has been laid out (OnLinkCardShown), which is the later and the one that counts.
@@ -158,15 +159,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 _palette?.OnClosed();
             }
+            else if (old == OverlayKind.Settings)
+            {
+                _settingsCard?.OnClosed();
+            }
 
             if (value == OverlayKind.Palette)
             {
                 (_palette ??= new PaletteViewModel(this)).OnOpened();
             }
+            else if (value == OverlayKind.Settings)
+            {
+                (_settingsCard ??= new SettingsViewModel(Settings)).OnOpened();
+            }
 
             OnPropertyChanged();
         }
     }
+
+    /// <summary>
+    /// Gets the view model of the settings card of the window, or <see langword="null"/> before the card was first shown
+    /// (it is made then, never in the startup path).
+    /// </summary>
+    public SettingsViewModel? SettingsCard => _settingsCard;
 
     /// <summary>
     /// Gets the command palette of the window, or <see langword="null"/> before it was first shown (it is made then,
@@ -512,7 +527,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return open.IsFailed ? open.OpenAsync(path) : Task.CompletedTask;
         }
 
-        return AddTab(new TabViewModel(_sessionFactory())).OpenAsync(path);
+        return AddTab(NewTab(_sessionFactory())).OpenAsync(path);
     }
 
     /// <summary>Opens up to <see cref="MaxFilesPerOpen"/> files in their order (see <see cref="OpenAsync"/>); the last one ends up active.</summary>
@@ -545,7 +560,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             if (!string.IsNullOrEmpty(path) && FindOpenTab(path) is null)
             {
-                opens.Add(AddTab(new TabViewModel(_sessionFactory()), background: true).OpenAsync(path));
+                opens.Add(AddTab(NewTab(_sessionFactory()), background: true).OpenAsync(path));
             }
         }
 
@@ -556,7 +571,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// Adds a tab for a session that is already opening (the file of the command line, which <see cref="Program.Main"/>
     /// starts opening before the window exists) and activates it.
     /// </summary>
-    public TabViewModel AdoptSession(ViewerSession session) => AddTab(new TabViewModel(session));
+    public TabViewModel AdoptSession(ViewerSession session) => AddTab(NewTab(session));
 
     /// <summary>
     /// Handles the files a later launch handed over (single instance). May be called on any thread: opens them on the
@@ -677,6 +692,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         _disposed = true;
         _palette?.OnClosed();
+        _settingsCard?.OnClosed();
         Settings.Changed -= OnSettingsChanged;
         if (_appTheme is not null)
         {
@@ -753,6 +769,25 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             tab.AppPageTheme = theme;
         }
+    }
+
+    /// <summary>
+    /// A new tab for <paramref name="session"/> with the defaults of the settings: the layout
+    /// (<see cref="AppSettings.DefaultLayout"/>) and, for "page width" and "whole page", the zoom mode
+    /// (<see cref="AppSettings.DefaultZoomMode"/>), which the document view applies when it shows the document.
+    /// "Actual size" keeps the free zoom of 100 % a tab always started with (the same zoom, and a resize never changes
+    /// it). Read when the tab is made: a tab that is open keeps its own, and so does one that moves to another window.
+    /// </summary>
+    private TabViewModel NewTab(ViewerSession session)
+    {
+        var settings = Settings.Current;
+        var tab = new TabViewModel(session) { LayoutMode = settings.DefaultLayout };
+        if (settings.DefaultZoomMode is ZoomMode.FitWidth or ZoomMode.FitPage)
+        {
+            tab.ZoomMode = settings.DefaultZoomMode;
+        }
+
+        return tab;
     }
 
     private TabViewModel AddTab(TabViewModel tab, bool background = false, int? index = null)
@@ -1065,7 +1100,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // silently in an unobserved task. Like any failed open, it shows the error card in a tab.
             if (target is null || Tabs.IndexOf(target) < 0)
             {
-                target = AddTab(new TabViewModel(_sessionFactory()));
+                target = AddTab(NewTab(_sessionFactory()));
             }
 
             target.ShowPickerFailure(ex);
