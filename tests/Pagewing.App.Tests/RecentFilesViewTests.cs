@@ -554,6 +554,10 @@ public sealed class RecentFilesViewTests : IDisposable
         Assert.Equal(Strings.SettingsClearHistory, TextOf(button));
         Assert.Equal(Strings.SettingsClearHistory, AutomationProperties.GetName(button));
         Assert.Equal("Clear history", Strings.SettingsClearHistory);
+
+        // The card has grown with the printing group: the button lies below the visible part until it is scrolled to.
+        button.BringIntoView();
+        Settle(window);
         Click(window, button);
         Assert.Empty(recent.Files.Items);
         Assert.Empty(StoredPaths());

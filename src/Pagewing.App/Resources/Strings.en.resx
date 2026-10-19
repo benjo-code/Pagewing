@@ -564,4 +564,124 @@
   <data name="PrintNoPrinter" xml:space="preserve">
     <value>No printer is set up.</value>
   </data>
+  <data name="CommandPrint" xml:space="preserve">
+    <value>Print…</value>
+  </data>
+  <data name="PrintTitle" xml:space="preserve">
+    <value>Print</value>
+  </data>
+  <data name="PrintPrinter" xml:space="preserve">
+    <value>Printer</value>
+  </data>
+  <data name="PrintSearching" xml:space="preserve">
+    <value>Looking for printers …</value>
+  </data>
+  <data name="PrintPages" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="PrintPagesAll" xml:space="preserve">
+    <value>All pages</value>
+  </data>
+  <data name="PrintPagesCurrent" xml:space="preserve">
+    <value>Current page</value>
+  </data>
+  <data name="PrintPagesRange" xml:space="preserve">
+    <value>Range</value>
+  </data>
+  <data name="PrintRangeField" xml:space="preserve">
+    <value>Pages to print, for example 1-3,5</value>
+  </data>
+  <data name="PrintRangeInvalid" xml:space="preserve">
+    <value>Not a valid range. Use for example 1-3,5.</value>
+  </data>
+  <data name="PrintRangeBeyond" xml:space="preserve">
+    <value>Page {0} does not exist. The document has {1} pages.</value>
+  </data>
+  <data name="PrintCopies" xml:space="preserve">
+    <value>Copies</value>
+  </data>
+  <data name="PrintCopiesInvalid" xml:space="preserve">
+    <value>Use a number from 1 to 999.</value>
+  </data>
+  <data name="PrintCollate" xml:space="preserve">
+    <value>Collate (1 2 3, 1 2 3)</value>
+  </data>
+  <data name="PrintScalingLabel" xml:space="preserve">
+    <value>Page size</value>
+  </data>
+  <data name="PrintScalingFit" xml:space="preserve">
+    <value>Fit to paper</value>
+  </data>
+  <data name="PrintScalingActual" xml:space="preserve">
+    <value>Actual size</value>
+  </data>
+  <data name="PrintScalingActualHint" xml:space="preserve">
+    <value>What does not fit on the paper is cut off.</value>
+  </data>
+  <data name="PrintDuplex" xml:space="preserve">
+    <value>Both sides</value>
+  </data>
+  <data name="PrintPrinterSetting" xml:space="preserve">
+    <value>Printer setting</value>
+  </data>
+  <data name="PrintDuplexOff" xml:space="preserve">
+    <value>One side</value>
+  </data>
+  <data name="PrintDuplexLong" xml:space="preserve">
+    <value>Both sides, long edge</value>
+  </data>
+  <data name="PrintDuplexShort" xml:space="preserve">
+    <value>Both sides, short edge</value>
+  </data>
+  <data name="PrintOrientation" xml:space="preserve">
+    <value>Paper orientation</value>
+  </data>
+  <data name="PrintPortrait" xml:space="preserve">
+    <value>Portrait</value>
+  </data>
+  <data name="PrintLandscape" xml:space="preserve">
+    <value>Landscape</value>
+  </data>
+  <data name="PrintAutoRotateHint" xml:space="preserve">
+    <value>Each page is turned when it fits the paper better that way.</value>
+  </data>
+  <data name="PrintStart" xml:space="preserve">
+    <value>Print</value>
+  </data>
+  <data name="PrintCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="PrintSending" xml:space="preserve">
+    <value>Sending to the printer …</value>
+  </data>
+  <data name="PrintRunning" xml:space="preserve">
+    <value>Printing page {0} of {1} …</value>
+  </data>
+  <data name="PrintDone" xml:space="preserve">
+    <value>Sent to the printer.</value>
+  </data>
+  <data name="PrintFailedPage" xml:space="preserve">
+    <value>Page {0} could not be printed.</value>
+  </data>
+  <data name="PrintFailedPages" xml:space="preserve">
+    <value>Pages {0} could not be printed.</value>
+  </data>
+  <data name="PrintBusy" xml:space="preserve">
+    <value>A print job is already running in this window.</value>
+  </data>
+  <data name="PrintCancelled" xml:space="preserve">
+    <value>Printing cancelled.</value>
+  </data>
+  <data name="PrintJobCancel" xml:space="preserve">
+    <value>Cancel printing</value>
+  </data>
+  <data name="PrintJobClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="SettingsGroupPrint" xml:space="preserve">
+    <value>Printing</value>
+  </data>
+  <data name="SettingsPrintScaling" xml:space="preserve">
+    <value>Page size when printing</value>
+  </data>
 </root>

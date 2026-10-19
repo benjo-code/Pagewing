@@ -31,7 +31,7 @@ public sealed partial class SettingsCard : UserControl
         KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageDown), Command = new RelayCommand(SettingsScroller.PageDown) });
         SettingsCloseButton.Click += (_, _) => CloseRequested?.Invoke();
         SettingsDoneButton.Click += (_, _) => CloseRequested?.Invoke();
-        foreach (var list in new[] { ThemeChoice, DensityChoice, LayoutChoice, ZoomChoice, LanguageChoice })
+        foreach (var list in new[] { ThemeChoice, DensityChoice, LayoutChoice, ZoomChoice, PrintScalingChoice, LanguageChoice })
         {
             list.TemplateApplied += OnListTemplateApplied;
             list.AddHandler(PointerWheelChangedEvent, OnListWheel, RoutingStrategies.Tunnel);
@@ -72,36 +72,12 @@ public sealed partial class SettingsCard : UserControl
         }
     }
 
-    /// <summary>
-    /// The open list of a combo box lies in the overlay layer of the window, not on the card, so the keys in it reach the
-    /// window's key bindings, not the card's: Esc would close the card with the list, the page keys turn the pages of the
-    /// document. Its content claims them: Esc closes only the list (the focus goes back to the box), the page keys do
-    /// nothing (the lists are short). It is drawn like the card (surface.raised, 1 px border.subtle) instead of Fluent's
-    /// colours, which its template sets on the part and only a local value outranks. <c>PART_Popup</c> is the popup every
-    /// combo box template has.
-    /// </summary>
     private void OnListTemplateApplied(object? sender, TemplateAppliedEventArgs e)
     {
-        if (sender is not ComboBox list || e.NameScope.Find<Popup>("PART_Popup")?.Child is not InputElement content)
+        if (sender is ComboBox list)
         {
-            return;
+            CardLists.OnTemplateApplied(this, list, e);
         }
-
-        if (content is Border border)
-        {
-            border.Bind(Border.BackgroundProperty, this.GetResourceObservable("Pw.Brush.Surface.Raised"));
-            border.Bind(Border.BorderBrushProperty, this.GetResourceObservable("Pw.Brush.Border.Subtle"));
-        }
-
-        var close = new RelayCommand(() =>
-        {
-            list.IsDropDownOpen = false;
-            list.Focus();
-        });
-        var nothing = new RelayCommand(static () => { });
-        content.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.Escape), Command = close });
-        content.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageUp), Command = nothing });
-        content.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageDown), Command = nothing });
     }
 
     /// <summary>
@@ -118,23 +94,8 @@ public sealed partial class SettingsCard : UserControl
         }
     }
 
-    /// <summary>
-    /// A focused, closed combo box takes the wheel to change its value, which changes a setting while the user only
-    /// meant to scroll the card past it. The wheel over a closed box scrolls the card instead, by the step the scroll
-    /// viewer uses for content that does not scroll logically (50 DIPs a notch); an open list keeps the wheel.
-    /// </summary>
-    private void OnListWheel(object? sender, PointerWheelEventArgs e)
-    {
-        if (sender is not ComboBox { IsDropDownOpen: false })
-        {
-            return;
-        }
-
-        e.Handled = true;
-        var room = Math.Max(0, SettingsScroller.Extent.Height - SettingsScroller.Viewport.Height);
-        var offset = SettingsScroller.Offset;
-        SettingsScroller.Offset = offset.WithY(Math.Clamp(offset.Y - (e.Delta.Y * WheelStep), 0, room));
-    }
+    private void OnListWheel(object? sender, PointerWheelEventArgs e) =>
+        CardLists.OnListWheel(SettingsScroller, WheelStep, sender, e);
 
     private bool CloseOpenLists()
     {

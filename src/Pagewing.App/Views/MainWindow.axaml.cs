@@ -88,6 +88,7 @@ public sealed partial class MainWindow : Window
         AttachLinkCard(old, _viewModel);
         AttachShortcuts(_viewModel);
         AttachOverlays(old, _viewModel);
+        AttachPrint(old, _viewModel);
     }
 
     /// <summary>

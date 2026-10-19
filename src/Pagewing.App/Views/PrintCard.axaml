@@ -1,0 +1,177 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.PrintCard"
+             x:DataType="vm:PrintViewModel"
+             KeyboardNavigation.TabNavigation="Cycle"
+             AutomationProperties.Name="{x:Static res:Strings.PrintTitle}">
+  <!--
+    The print dialog of the app (Ctrl+P on Linux, where CUPS has no dialog of its own): a card over the window below the
+    title bar in the style of the settings card (design system 7.8): surface.raised, radius.overlay, the card shadow.
+    Printer, pages (all, current, range), copies and collating, page size, both sides (only for a printer that has it) and
+    paper orientation; "Cancel" and "Print" at the bottom. Tab goes from top to bottom and stays on the card; Esc and
+    "Cancel" close it, Enter prints while the choices are valid. A wrong range or number of copies shows its text under the
+    field and marks the field, never only a colour (7.10). Not modal: clicks beside the card reach the window. Made when it
+    is first shown, never in the startup path.
+  -->
+  <UserControl.Resources>
+    <DataTemplate x:Key="PrintChoiceTemplate" x:DataType="vm:ISettingsChoice">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <ctl:StrokeIcon Grid.Column="1" Width="16" Height="16" Margin="8,0,0,0" VerticalAlignment="Center"
+                        Data="{StaticResource Pw.Icon.Check}"
+                        IsVisible="{Binding $parent[ComboBoxItem].IsSelected, FallbackValue=False}" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="StackPanel.printGroup">
+      <Setter Property="Spacing" Value="8" />
+    </Style>
+    <Style Selector="Grid.printRow">
+      <Setter Property="MinHeight" Value="32" />
+    </Style>
+    <Style Selector="Grid.printRow > TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,0,16,0" />
+    </Style>
+    <Style Selector="TextBlock.printHint">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.printError">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Danger.Default}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Width" Value="256" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+      <Setter Property="ItemTemplate" Value="{StaticResource PrintChoiceTemplate}" />
+    </Style>
+    <Style Selector="ComboBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+    </Style>
+    <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="PrintBox" Width="480" MaxHeight="640" Margin="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <!-- Rows in the order of the keys (Tab): title and close button, the choices, the buttons. -->
+    <Grid RowDefinitions="Auto,*,Auto">
+      <Grid ColumnDefinitions="*,Auto" Margin="24,16,12,0">
+        <TextBlock Name="PrintTitleText" Classes="subtitle" VerticalAlignment="Center" Text="{x:Static res:Strings.PrintTitle}" />
+        <Button Name="PrintCloseButton" Grid.Column="1" Classes="icon"
+                Command="{Binding CancelCommand}"
+                ToolTip.Tip="{x:Static res:Strings.SettingsClose}"
+                AutomationProperties.Name="{x:Static res:Strings.SettingsClose}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+        </Button>
+      </Grid>
+
+      <ScrollViewer Name="PrintScroller" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,16,24,4" Spacing="24">
+          <StackPanel Classes="printGroup">
+            <Grid Classes="printRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.PrintPrinter}" />
+              <ComboBox Name="PrinterChoice" Grid.Column="1"
+                        ItemsSource="{Binding Printers}" SelectedItem="{Binding SelectedPrinter, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.PrintPrinter}" />
+            </Grid>
+            <TextBlock Name="PrintSearching" Classes="caption printHint" IsVisible="{Binding IsSearching}"
+                       Text="{x:Static res:Strings.PrintSearching}" AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Name="PrintNoPrinters" Classes="body printError" IsVisible="{Binding HasNoPrinters}"
+                       Text="{x:Static res:Strings.PrintNoPrinter}" AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Name="PrintSearchFailed" Classes="body printError" IsVisible="{Binding SearchFailed, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       Text="{Binding SearchFailed}" AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+
+          <StackPanel Classes="printGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.PrintPages}" />
+            <RadioButton Name="AllPagesChoice" GroupName="PrintPages" IsChecked="{Binding AllPages, Mode=TwoWay}"
+                         Content="{x:Static res:Strings.PrintPagesAll}" />
+            <RadioButton Name="CurrentPageChoice" GroupName="PrintPages" IsChecked="{Binding CurrentPageSelected, Mode=TwoWay}"
+                         Content="{x:Static res:Strings.PrintPagesCurrent}" />
+            <Grid ColumnDefinitions="Auto,*">
+              <RadioButton Name="RangeChoice" GroupName="PrintPages" IsChecked="{Binding RangeSelected, Mode=TwoWay}"
+                           Content="{x:Static res:Strings.PrintPagesRange}" />
+              <TextBox Name="RangeField" Grid.Column="1" Margin="8,0,0,0" MinHeight="32"
+                       Text="{Binding RangeText, Mode=TwoWay}"
+                       Classes.invalid="{Binding RangeError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       AutomationProperties.Name="{x:Static res:Strings.PrintRangeField}" />
+            </Grid>
+            <TextBlock Name="RangeErrorText" Classes="caption printError" Text="{Binding RangeError}"
+                       IsVisible="{Binding RangeError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+
+          <StackPanel Classes="printGroup">
+            <Grid Classes="printRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.PrintCopies}" />
+              <TextBox Name="CopiesField" Grid.Column="1" Width="96" MinHeight="32" HorizontalContentAlignment="Right"
+                       Text="{Binding CopiesText, Mode=TwoWay}"
+                       Classes.invalid="{Binding CopiesError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       AutomationProperties.Name="{x:Static res:Strings.PrintCopies}" />
+            </Grid>
+            <TextBlock Name="CopiesErrorText" Classes="caption printError" Text="{Binding CopiesError}"
+                       IsVisible="{Binding CopiesError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <CheckBox Name="CollateChoice" IsChecked="{Binding Collate, Mode=TwoWay}" Content="{x:Static res:Strings.PrintCollate}" />
+          </StackPanel>
+
+          <StackPanel Classes="printGroup">
+            <Grid Classes="printRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.PrintScalingLabel}" />
+              <ComboBox Name="ScalingChoice" Grid.Column="1"
+                        ItemsSource="{Binding ScalingChoices}" SelectedItem="{Binding SelectedScaling, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.PrintScalingLabel}" />
+            </Grid>
+            <TextBlock Name="ActualSizeHint" Classes="caption printHint" IsVisible="{Binding ActualSizeSelected}"
+                       Text="{x:Static res:Strings.PrintScalingActualHint}" />
+            <Grid Name="DuplexRow" Classes="printRow" ColumnDefinitions="*,Auto" IsVisible="{Binding SupportsDuplex}">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.PrintDuplex}" />
+              <ComboBox Name="DuplexChoice" Grid.Column="1"
+                        ItemsSource="{Binding DuplexChoices}" SelectedItem="{Binding SelectedDuplex, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.PrintDuplex}" />
+            </Grid>
+            <Grid Classes="printRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.PrintOrientation}" />
+              <ComboBox Name="OrientationChoice" Grid.Column="1"
+                        ItemsSource="{Binding OrientationChoices}" SelectedItem="{Binding SelectedOrientation, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.PrintOrientation}" />
+            </Grid>
+            <TextBlock Classes="caption printHint" Text="{x:Static res:Strings.PrintAutoRotateHint}" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+
+      <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="24,12,24,20">
+        <Button Name="PrintCancelButton" Command="{Binding CancelCommand}" Content="{x:Static res:Strings.PrintCancel}"
+                AutomationProperties.Name="{x:Static res:Strings.PrintCancel}" />
+        <Button Name="PrintStartButton" Classes="primary" Command="{Binding PrintCommand}" Content="{x:Static res:Strings.PrintStart}"
+                AutomationProperties.Name="{x:Static res:Strings.PrintStart}" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

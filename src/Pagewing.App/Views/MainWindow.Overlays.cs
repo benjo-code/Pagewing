@@ -83,6 +83,9 @@ public sealed partial class MainWindow
                     case OverlayKind.Settings:
                         _settingsCard?.FocusFirst();
                         break;
+                    case OverlayKind.Print:
+                        _printCard?.FocusFirst();
+                        break;
                 }
             },
             DispatcherPriority.Input);
@@ -154,6 +157,8 @@ public sealed partial class MainWindow
             _settingsCard?.Hide();
         }
 
+        UpdatePrintCard(kind);
+
         // An overlay had the keys and nothing that is shown now takes them.
         if (overlayHadFocus && kind == OverlayKind.None)
         {
@@ -169,7 +174,7 @@ public sealed partial class MainWindow
 
     private bool IsInShownOverlay(IInputElement? element) =>
         element is Visual visual
-        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual));
+        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual) || IsWithin(_printCard, visual));
 
     private static bool IsWithin(Control? overlay, Visual visual) =>
         overlay is { IsVisible: true } && (ReferenceEquals(overlay, visual) || overlay.IsVisualAncestorOf(visual));

@@ -91,6 +91,7 @@ public sealed class CommandCatalog
         // File. Ctrl+O opens the dialog in every state of the window, as before.
         Window("file.open", () => Strings.OpenFile, FileGroup, Ctrl(Key.O), _window.OpenCommand),
         Window("file.closeTab", () => Strings.CloseTabTooltip, FileGroup, Ctrl(Key.W), _window.CloseActiveTabCommand),
+        Window("file.print", () => Strings.CommandPrint, FileGroup, Ctrl(Key.P), _window.PrintCommand),
         new(
             "recent.clear", () => Strings.CommandClearRecent, FileGroup, null,
             () => _window.ClearRecentFiles is not null,

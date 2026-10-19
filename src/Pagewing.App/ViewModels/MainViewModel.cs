@@ -17,7 +17,7 @@ namespace Pagewing.App.ViewModels;
 /// document area, the status bar and the title bar show. Everything except <see cref="OnExternalOpen"/> is used on the
 /// UI thread.
 /// </summary>
-public sealed class MainViewModel : ViewModelBase, IDisposable
+public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
     /// <summary>The most files one open (dialog, drop, later launch) opens as tabs; the rest is ignored.</summary>
     public const int MaxFilesPerOpen = 20;
@@ -184,6 +184,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             else if (old == OverlayKind.Settings)
             {
                 _settingsCard?.OnClosed();
+            }
+            else if (old == OverlayKind.Print)
+            {
+                _print?.OnClosed();
             }
 
             if (value == OverlayKind.Palette)
@@ -752,6 +756,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // The document view leaves the tab (with the change of the active tab) and saves where it showed it.
         Tabs.Close(tab);
         Unhook(tab);
+        CancelPrintingOf(tab);
 
         // The window it goes to has not drawn it yet: its thumbnails wait for the first sharp page there, which sets the
         // flag again.
@@ -810,6 +815,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _disposed = true;
         _palette?.OnClosed();
         _settingsCard?.OnClosed();
+        DisposePrinting();
         Settings.Changed -= OnSettingsChanged;
         if (_recent is not null)
         {
@@ -1070,6 +1076,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // saved where it showed it: that position goes into the history.
         Tabs.Close(tab);
         Unhook(tab);
+        CancelPrintingOf(tab);
         if (_recent is not null && RememberedViewOf(tab) is { } closed)
         {
             _recent.Closed([closed]);

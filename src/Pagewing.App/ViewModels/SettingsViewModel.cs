@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows.Input;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
+using Pagewing.Core.Printing;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
 
@@ -101,6 +102,11 @@ public sealed class SettingsViewModel : ViewModelBase
             new(ZoomMode.FitPage, Strings.ZoomFitPage),
             new(ZoomMode.ActualSize, Strings.ZoomActualSize),
         ];
+        PrintScalingChoices =
+        [
+            new(PrintScaling.FitToPaper, Strings.PrintScalingFit),
+            new(PrintScaling.ActualSize, Strings.PrintScalingActual),
+        ];
         LanguageChoices =
         [
             new(LanguageSetting.System, Strings.SettingsLanguageSystem),
@@ -120,6 +126,9 @@ public sealed class SettingsViewModel : ViewModelBase
 
     /// <summary>Gets the zoom modes the card offers as the default of new tabs (without the free zoom).</summary>
     public IReadOnlyList<SettingsChoice<ZoomMode>> ZoomModeChoices { get; }
+
+    /// <summary>Gets the ways a page is fitted onto the paper that the card offers for printing.</summary>
+    public IReadOnlyList<SettingsChoice<PrintScaling>> PrintScalingChoices { get; }
 
     /// <summary>Gets the languages the card offers.</summary>
     public IReadOnlyList<SettingsChoice<LanguageSetting>> LanguageChoices { get; }
@@ -190,6 +199,20 @@ public sealed class SettingsViewModel : ViewModelBase
                 Change(current => current with { DefaultZoomMode = value });
             }
         }
+    }
+
+    /// <summary>Gets or sets how a page is fitted onto the paper when printing; the print dialog starts with it.</summary>
+    public PrintScaling PrintScaling
+    {
+        get => _settings.Current.PrintScaling;
+        set => Change(current => current with { PrintScaling = value });
+    }
+
+    /// <summary>Gets or sets the chosen entry of <see cref="PrintScalingChoices"/>.</summary>
+    public SettingsChoice<PrintScaling>? SelectedPrintScaling
+    {
+        get => Find(PrintScalingChoices, PrintScaling);
+        set => Choose(value, choice => PrintScaling = choice);
     }
 
     /// <summary>Gets or sets the chosen entry of <see cref="ThemeChoices"/> (the card's list).</summary>
@@ -355,6 +378,8 @@ public sealed class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedDensity));
         OnPropertyChanged(nameof(SelectedLayout));
         OnPropertyChanged(nameof(SelectedZoomMode));
+        OnPropertyChanged(nameof(PrintScaling));
+        OnPropertyChanged(nameof(SelectedPrintScaling));
         OnPropertyChanged(nameof(SelectedLanguage));
         OnPropertyChanged(nameof(LanguageNeedsRestart));
     }

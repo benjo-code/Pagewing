@@ -17,4 +17,7 @@ public enum OverlayKind
 
     /// <summary>The card with the keyboard shortcuts (F1).</summary>
     Help,
+
+    /// <summary>The print dialog (Ctrl+P), where the system has none of its own.</summary>
+    Print,
 }

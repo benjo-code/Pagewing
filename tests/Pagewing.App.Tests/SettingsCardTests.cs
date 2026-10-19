@@ -2,6 +2,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -488,14 +489,14 @@ public sealed class SettingsCardTests : IDisposable
 
         // Tab goes from top to bottom and stays on the card; Shift+Tab goes back.
         var order = new List<string?>();
-        for (var i = 0; i < 9; i++)
+        for (var i = 0; i < 10; i++)
         {
             Press(window, Key.Tab, PhysicalKey.Tab, None);
             order.Add((Focused(window) as Control)?.Name);
         }
 
         Assert.Equal(
-            ["DensityChoice", "DarkPagesSwitch", "ReduceMotionSwitch", "LayoutChoice", "ZoomChoice", "LanguageChoice", "SettingsDoneButton", "SettingsCloseButton", "ThemeChoice"],
+            ["DensityChoice", "DarkPagesSwitch", "ReduceMotionSwitch", "LayoutChoice", "ZoomChoice", "PrintScalingChoice", "LanguageChoice", "SettingsDoneButton", "SettingsCloseButton", "ThemeChoice"],
             order);
         Press(window, Key.Tab, PhysicalKey.Tab, Shift);
         Assert.Equal("SettingsCloseButton", (Focused(window) as Control)?.Name);
@@ -577,9 +578,9 @@ public sealed class SettingsCardTests : IDisposable
 
         string[] expected = language == "de"
             ? ["Einstellungen", "Darstellung", "Design", "Dichte", "Seiten dunkel darstellen, wenn das Design dunkel ist", "Animationen reduzieren",
-               "Ansicht", "Standard-Layout", "Standard-Zoom", "Gilt für Dateien, die Sie danach öffnen.", "Sprache", "Sprache der Oberfläche"]
+               "Ansicht", "Standard-Layout", "Standard-Zoom", "Gilt für Dateien, die Sie danach öffnen.", "Drucken", "Seitengröße beim Drucken", "Sprache", "Sprache der Oberfläche"]
             : ["Settings", "Appearance", "Theme", "Density", "Show pages dark when the theme is dark", "Reduce animations",
-               "View", "Default layout", "Default zoom", "Applies to files you open from now on.", "Language", "Interface language"];
+               "View", "Default layout", "Default zoom", "Applies to files you open from now on.", "Printing", "Page size when printing", "Language", "Interface language"];
         var texts = card.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible).Select(text => text.Text).ToArray();
         foreach (var text in expected)
         {
@@ -600,8 +601,9 @@ public sealed class SettingsCardTests : IDisposable
         var controls = card.GetVisualDescendants().OfType<Control>()
             .Where(control => control is Button or ComboBox or ToggleSwitch && control.IsEffectivelyVisible)
             .Where(control => control.GetVisualAncestors().OfType<ComboBox>().FirstOrDefault() is null && control.GetVisualAncestors().OfType<ToggleSwitch>().FirstOrDefault() is null)
+            .Where(control => control.GetVisualAncestors().OfType<ScrollBar>().FirstOrDefault() is null)
             .ToArray();
-        Assert.Equal(9, controls.Length);
+        Assert.Equal(10, controls.Length);
         foreach (var control in controls)
         {
             Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(control)), $"{control.Name} has no name");
