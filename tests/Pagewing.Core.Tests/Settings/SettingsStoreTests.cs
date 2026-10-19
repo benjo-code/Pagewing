@@ -77,6 +77,17 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void AnUnknownEnumValueMakesTheWholeFileCorrupt()
+    {
+        // Known and accepted (Docs/DECISIONS.md, settings entry): a value of a later version ("Sepia") loses the other
+        // values of the file too; they come back as defaults, and the file is kept as .bad.
+        File.WriteAllText(FilePath, "{ \"Theme\": \"Sepia\", \"Language\": \"German\" }");
+
+        Assert.Equal(AppSettings.Default, new SettingsStore(FilePath).Load());
+        Assert.True(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
     public void ASecondCorruptFileOverwritesTheBackup()
     {
         File.WriteAllText(FilePath + ".bad", "old");
