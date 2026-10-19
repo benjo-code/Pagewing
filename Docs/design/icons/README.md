@@ -27,4 +27,4 @@ gtk-update-icon-cache -f /usr/share/icons/hicolor
 
 Pro Benutzer: dieselben Pfade unter `~/.local/share/`.
 
-Vor dem Einsatz in der `.desktop`-Vorlage prüfen: `Exec` muss zum Dateinamen des Binaries passen (die App heißt `Pagewing`), `StartupWMClass` zur Fensterklasse der App (sonst zeigt das Dock ein generisches Icon), und `Comment[en]` fehlt. Für Flatpak müssen Icon- und Dateiname der App-ID entsprechen (z. B. `io.github.benjo_code.Pagewing.png`).
+Die geprüfte `.desktop`-Vorlage für Pakete liegt unter `packaging/linux/pagewing.desktop` (`Exec`, `StartupWMClass` und die Texte in beiden Sprachen sind dort korrigiert und per Test abgesichert, siehe `packaging/README.md`); die Datei hier ist nur der ursprüngliche Entwurf. Für Flatpak müssen Icon- und Dateiname der App-ID entsprechen (z. B. `io.github.benjo_code.Pagewing.png`).
