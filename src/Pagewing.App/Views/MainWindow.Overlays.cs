@@ -48,7 +48,7 @@ public sealed partial class MainWindow
             : null;
 
     private bool IsOverlayButton(IInputElement element) =>
-        ReferenceEquals(element, TitleBar.PaletteButton) || ReferenceEquals(element, ActionBar.SettingsButton);
+        ReferenceEquals(element, TitleBar.PaletteButton) || ReferenceEquals(element, ActionBar.SettingsButton) || ReferenceEquals(element, ActionBar.PrintButton);
 
     /// <summary>Whether <paramref name="element"/> is a button that shows an overlay and got the focus from a press.</summary>
     private bool IsPressedOverlayButton(IInputElement? element) =>

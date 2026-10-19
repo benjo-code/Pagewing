@@ -1112,6 +1112,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // The address belongs to the tab the user clicked it in.
         PendingLink = null;
         ActiveTab = next;
+        _printCommand?.RaiseCanExecuteChanged();
     }
 
     private void OnActiveTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1128,6 +1129,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         else if (e.PropertyName == nameof(TabViewModel.SidePanel))
         {
             RaiseActivePanelChanged();
+        }
+
+        if (e.PropertyName is nameof(TabViewModel.IsReady) or nameof(TabViewModel.Document))
+        {
+            // The print button of the action bar is enabled once the document of the active tab is open.
+            _printCommand?.RaiseCanExecuteChanged();
         }
     }
 

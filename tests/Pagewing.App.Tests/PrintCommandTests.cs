@@ -1,6 +1,10 @@
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Pagewing.App.Commands;
+using Pagewing.App.Controls;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
@@ -187,6 +191,53 @@ public sealed class PrintCommandTests : PrintTestHost
         Assert.Equal(zoom, tab.Zoom);
         Assert.Equal(page, tab.CurrentPage);
         Assert.Equal(layout, tab.LayoutMode);
+    }
+
+    [AvaloniaFact]
+    public async Task ThePrintButtonOfTheActionBarOpensTheDialog()
+    {
+        var (window, viewModel, view) = Show();
+        await OpenAsync(window, viewModel, view, "print-mixed.pdf");
+        view.Focus();
+        var button = Find<Button>(window, "PrintButton");
+        var settings = Find<Button>(window, "SettingsButton");
+
+        Assert.True(button.IsEffectivelyEnabled);
+        Assert.Equal(Strings.PrintTitle, Avalonia.Automation.AutomationProperties.GetName(button));
+        Assert.Equal($"{Strings.PrintTitle} (Ctrl+P)", ToolTip.GetTip(button));
+        Assert.Same(TokenTests.Resource("Pw.Icon.Printer", Avalonia.Styling.ThemeVariant.Light), button.GetVisualDescendants().OfType<StrokeIcon>().Single().Data);
+
+        // Above the settings button, same size, in the same column.
+        var above = button.TranslatePoint(default, window)!.Value;
+        var below = settings.TranslatePoint(default, window)!.Value;
+        Assert.True(above.Y + button.Bounds.Height < below.Y);
+        Assert.Equal(above.X, below.X);
+        Assert.Equal(settings.Bounds.Size, button.Bounds.Size);
+
+        Click(window, button);
+        await WaitUntilAsync(window, () => viewModel.Overlay == OverlayKind.Print);
+        Assert.True(Find<PrintCard>(window, "PrintCard").IsEffectivelyVisible);
+
+        // Esc closes it and the keys go back to the document, not to the button that was pressed with the mouse.
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        await WaitUntilAsync(window, () => view.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public async Task ThePrintButtonIsDisabledForATabWithoutAnOpenDocument()
+    {
+        var (window, viewModel, view) = Show();
+        await viewModel.OpenAsync(Pagewing.TestSupport.TestData.Pdf("not-a-pdf.pdf"));
+        await WaitUntilAsync(window, () => viewModel.ActiveTab!.IsFailed);
+        var button = Find<Button>(window, "PrintButton");
+
+        Assert.False(button.IsEffectivelyEnabled);
+
+        await OpenAsync(window, viewModel, view, "print-mixed.pdf");
+        await WaitUntilAsync(window, () => button.IsEffectivelyEnabled);
+        viewModel.Tabs.Activate(viewModel.Tabs[0]);
+        await WaitUntilAsync(window, () => !button.IsEffectivelyEnabled);
     }
 
     [Fact]

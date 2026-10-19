@@ -16,8 +16,10 @@
     for screen readers, on while their panel is open (Controls/ActionToggleButton: the look of an icon button, IsChecked
     bound one way to the panel, a click only runs the command); their tooltips name the shortcut of the catalog
     (ActionBar.axaml.cs). Entries: Pages (Ctrl+Shift+1), Contents (Ctrl+Shift+2), Search
-    (Ctrl+F opens it as well, with the focus in its field); at the bottom Settings (section 7.3; Ctrl+Comma as well),
-    which shows the settings card over the window (MainWindow.Overlays.cs) and so has no panel and no active state. Part
+    (Ctrl+F opens it as well, with the focus in its field); at the bottom Print (Ctrl+P; runs the print
+    command, which asks in the dialog of the system or shows the print card over the window, and is disabled until the document is
+    open) and Settings (section 7.3; Ctrl+Comma as well), which shows the settings card over the window
+    (MainWindow.Overlays.cs) and so has no panel and no active state. Part
     of the first frame with a tab, so it stays this small: the panels and the settings card are built only when they
     open.
   -->
@@ -62,12 +64,19 @@
         <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Search}" />
       </ctl:ActionToggleButton>
     </StackPanel>
-    <Button Name="SettingsButton" Classes="icon action" Margin="0,4,0,8"
-            HorizontalAlignment="Center" VerticalAlignment="Bottom"
-            Command="{Binding ShowSettingsCommand}"
-            ToolTip.Tip="{x:Static res:Strings.SettingsTooltip}"
-            AutomationProperties.Name="{x:Static res:Strings.CommandSettings}">
-      <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Settings}" />
-    </Button>
+    <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,4,0,8" HorizontalAlignment="Center" VerticalAlignment="Bottom">
+      <Button Name="PrintButton" Classes="icon action"
+              Command="{Binding PrintCommand}"
+              ToolTip.Tip="{x:Static res:Strings.PrintTitle}"
+              AutomationProperties.Name="{x:Static res:Strings.PrintTitle}">
+        <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Printer}" />
+      </Button>
+      <Button Name="SettingsButton" Classes="icon action"
+              Command="{Binding ShowSettingsCommand}"
+              ToolTip.Tip="{x:Static res:Strings.SettingsTooltip}"
+              AutomationProperties.Name="{x:Static res:Strings.CommandSettings}">
+        <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Settings}" />
+      </Button>
+    </StackPanel>
   </DockPanel>
 </UserControl>
