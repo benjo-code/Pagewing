@@ -251,12 +251,12 @@
         {
           "id": "7",
           "title": "Drucken",
-          "status": "planned",
+          "status": "in-progress",
           "plan": "superpowers/plans/2026-10-19-milestone-07-drucken.md",
           "prerequisites": ["6"],
           "goal": "PDFs lassen sich unter Windows und Linux drucken.",
           "tasks": [
-            { "text": "Abstraktion `IPrintService` in Core", "done": false },
+            { "text": "Abstraktion `IPrintService` in Core. Umgesetzt mit `Pagewing.Core.Printing` (`IPrintService`, `PrintSettings`, `PrintPlan` für Seitenfolge mit Kopien und Sortieren, `PrintPlacement` für Skalieren, Drehen und Zentrieren, `PrintTicket`); `PageRange` ist dafür von der CLI nach `Pagewing.Core.Pdf` gewandert. Tests `PrintPlanTests`, `PrintPlacementTests`, `PrintSettingsTests`, `PageRangeTests`", "done": true },
             { "text": "Windows: Druckdialog per Win32, Ausgabe mit `FPDF_RenderPage` auf den Drucker-HDC", "done": false },
             { "text": "Linux: Übergabe an CUPS, eigener Avalonia-Dialog (Drucker, Seitenbereich, Kopien)", "done": false },
             { "text": "Seitenbereich, Kopien, Anpassen an Papiergröße", "done": false }

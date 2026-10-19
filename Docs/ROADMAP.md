@@ -31,7 +31,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 4.1 | Tabs zwischen Fenstern ziehen | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md) | 2026-10-18 |
 | 5 | Text & Suche | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-18-milestone-05-text-suche.md) | 2026-10-18 |
 | 6 | Komfort | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-18-milestone-06-komfort.md) | 2026-10-19 |
-| 7 | Drucken | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-19-milestone-07-drucken.md) | – |
+| 7 | Drucken | 1 – Fundament & Viewer | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-19-milestone-07-drucken.md) | – |
 | 8 | Verteilung | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | ⬜ offen | – | – |
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
@@ -236,12 +236,12 @@ Ziel: Pagewing lässt sich weitgehend per Tastatur bedienen und merkt sich Einst
 - [x] Einstellungen und zuletzt geöffnete Dateien überleben einen Neustart (Test) – Tests (2026-10-19, Stand fef3d13, alle in einem eigenen Temp-Ordner, nie im echten Benutzerordner): `UserSettingsTests.SettingsSurviveARestart` (Dunkel, Deutsch, Animationen reduzieren, Startpanel „Inhalt“, Panelbreite 321 werden geschrieben und von einem neuen `UserSettings.Load` aus demselben Ordner gleich gelesen), `SettingsCardTests.SettingsSurviveARestartThroughTheCard` (sieben Werte über die Einstellungskarte gesetzt, neu geladen und in einer neuen Karte angezeigt), `RecentFilesViewTests.RecentFilesSurviveARestart` (zwei Dateien in Reihenfolge, Position Seite 12, 125 %, doppelseitig mit Deckblatt; Entfernen und „Verlauf löschen“ überdauern ebenfalls), im Kern `SettingsStoreTests.RoundTripKeepsEveryField` und `RecentFilesTests.StoreRoundTripKeepsViewAndOrder`; je einzeln mit `--filter-method` grün, die Klassen `UserSettingsTests` 14, `SettingsCardTests` 16, `RecentFilesViewTests` 18, `SettingsStoreTests` 13, `RecentFilesTests` 18 bestanden. Bekannte Grenze: Die Datei der Kommandozeile beim ersten Start öffnet ohne gemerkte Position (Eintrag „Verlauf: Position je Datei …“, Backlog). Startpfad: AOT `win-x64` gegen `dev` im Wechsel gemessen (Eintrag „Startzeitmessung M6: Ergebnis gegen dev und offene Fälle“); in der Entwicklungs-VM (ohne GPU) meldete jeder Lauf eine Desktop-Komposition um 4 Hz (`Warnung:`), die Zahlen gelten also nur relativ: warm im Median von zehn Paaren +2,9 ms (8 von 10 Paaren langsamer, verteilt über mehrere Phasen), cold +2,1, thousand −0,1, second +0,3 ms. Offen: gültige Werte auf echter Hardware (Startzeit-Check der CI auf beiden Runnern; `hardware-measure.yml` auf dem Haupt-PC, den Runner muss der Projektinhaber starten) sowie der Start mit Hochkontrast-Wunsch des Systems (mit den Messschaltern nicht messbar). Der Start mit vorhandener `settings.json` ist seit dem Abschlussreview mit `--measure-settings` gemessen (Eintrag „Startzeit mit vorhandener settings.json (M6)“, ebenfalls nur relativ): Ende zu Ende keine Zunahme über dem Rauschen, in der Phase `settings-loaded` 2,4 ms für das JSON und 2,3 ms für die deutsche Kultur, die danach wieder eingespart werden.
 
 ## Milestone 7 – Drucken
-**Status:** 🟡 geplant · **Plan:** [2026-10-19-milestone-07-drucken.md](superpowers/plans/2026-10-19-milestone-07-drucken.md) · **Voraussetzungen:** M6
+**Status:** 🔵 in Arbeit · **Plan:** [2026-10-19-milestone-07-drucken.md](superpowers/plans/2026-10-19-milestone-07-drucken.md) · **Voraussetzungen:** M6
 
 Ziel: PDFs lassen sich unter Windows und Linux drucken.
 
 **Aufgaben**
-- [ ] Abstraktion `IPrintService` in Core
+- [x] Abstraktion `IPrintService` in Core. Umgesetzt mit `Pagewing.Core.Printing` (`IPrintService`, `PrintSettings`, `PrintPlan` für Seitenfolge mit Kopien und Sortieren, `PrintPlacement` für Skalieren, Drehen und Zentrieren, `PrintTicket`); `PageRange` ist dafür von der CLI nach `Pagewing.Core.Pdf` gewandert. Tests `PrintPlanTests`, `PrintPlacementTests`, `PrintSettingsTests`, `PageRangeTests`
 - [ ] Windows: Druckdialog per Win32, Ausgabe mit `FPDF_RenderPage` auf den Drucker-HDC
 - [ ] Linux: Übergabe an CUPS, eigener Avalonia-Dialog (Drucker, Seitenbereich, Kopien)
 - [ ] Seitenbereich, Kopien, Anpassen an Papiergröße
