@@ -142,8 +142,9 @@ jobs:
         if: runner.os == 'Linux'
         continue-on-error: true
         run: |
-          libs=$(ls out/app/*.so out/app/*.so.* 2>/dev/null || true)
-          dotnet run tools/package.cs -- check-binary out/app/Pagewing $libs --max-glibc 2.35
+          files=$(find out/app out/cli -maxdepth 1 -type f \( -name Pagewing -o -name pagewing -o -name '*.so' -o -name '*.so.*' \) | sort)
+          # shellcheck disable=SC2086
+          dotnet run tools/package.cs -- check-binary $files --max-glibc 2.35
 
       - name: Self-test of the startup check
         run: dotnet run bench/startup/startup.cs -- selftest

@@ -114,3 +114,26 @@ Manuelle Abnahme (nicht automatisierbar):
 2. Linux Mint: dasselbe, außerdem aus einem Ordner mit Leerzeichen (`./Pagewing\ Test/Pagewing-<Version>-x86_64.AppImage testdata/pdfs/text-rich.pdf`).
 3. In der App „Als Standardprogramm festlegen“ wählen: Pagewing erscheint im Anwendungsmenü mit Symbol (`~/.local/share/applications/pagewing.desktop` zeigt auf die AppImage-Datei), ein Doppelklick auf eine PDF öffnet sie in Pagewing.
 4. Auf einem Rechner ohne FUSE-Modul (etwa in einem Container) startet das AppImage trotzdem (die Runtime meldet „No suitable fusermount binary found“ und entpackt sich selbst).
+
+## Release bauen (`.github/workflows/release.yml`)
+
+Das Release selbst legt der Projektinhaber an (`gh release create vX.Y.Z --target main …`); der Workflow hängt nur Dateien an. Auslöser sind `release: published` und `workflow_dispatch` (Eingaben `tag`, `upload`). Je Betriebssystem läuft ein Job auf dem eigenen Runner (`dotnet-windows`, `dotnet-linux`), jeder lädt seine Dateien selbst mit `gh release upload "$TAG" … --clobber` hoch (kein `upload-artifact`).
+
+1. Der Tag muss `vX.Y.Z` oder `vX.Y.Z-<Vorabversion>` heißen, sonst bricht der Job ab. Die Version (Tag ohne `v`) geht als `-p:Version=<Version>` an `dotnet publish` für App und CLI; ein `-rc1` heißt im `.deb` `~rc1`.
+2. Windows: Publish (Native AOT), `licenses check`, `layout`, `zip`, `inno-install`, `installer`, `installer-smoke`, `sums` nach `SHA256SUMS-windows.txt`, Hochladen. Dateien: `Pagewing-<Version>-win-x64-portable.zip`, `Pagewing-<Version>-win-x64-setup.exe`.
+3. Linux: Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `zip`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `sums` nach `SHA256SUMS-linux.txt`, Hochladen. Dateien: `Pagewing-<Version>-linux-x64-portable.zip`, `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`.
+4. Hochgeladen wird nur bei `release` oder `workflow_dispatch` mit `upload=true` (das Release muss dann existieren). Sonst baut der Lauf und führt alle Smoke-Tests aus.
+
+Trockenlauf (Bau und Smoke-Tests ohne Hochladen), vom Projektinhaber auf Wunsch zu starten; seine Runner müssen laufen:
+
+```sh
+gh workflow run release.yml -f tag=v0.1.0 -f upload=false
+```
+
+Voraussetzungen der Runner (zusätzlich zu denen für Native AOT in `CLAUDE.md`):
+
+- Linux: `dpkg-deb` (Paket `dpkg`), `mksquashfs` (`squashfs-tools`), `objdump` (`binutils`), `xvfb-run` (`xvfb`), `libfontconfig1` und `gh`; empfohlen `lintian` und `desktop-file-utils` (`sudo apt-get install -y lintian desktop-file-utils`). Fehlen die beiden, überspringt `deb-smoke` ihre Prüfungen; der Workflow meldet das als Warnung.
+- Windows: `gh` im PATH (`winget install --id GitHub.cli`); Inno Setup holt `inno-install` selbst ins Benutzerprofil (kein Administrator).
+- `check-binary` erlaubt neben den glibc-Kernbibliotheken nur `libfontconfig.so.1` (NEEDED von `libSkiaSharp.so`). Sie ist im `.deb` über `Depends: libfontconfig1` abgedeckt; das AppImage setzt sie, wie die X11-Bibliotheken, auf dem Rechner voraus (es bringt keine Systembibliotheken mit).
+- Der Lauf braucht die Rechte `contents: write` nur zum Hochladen; er läuft nie für Forks (Repo privat, siehe `CLAUDE.md`, Abschnitt „CI“).
+- Der erste echte Lauf gehört zum Release `v0.1.0`; bis dahin ist das Hochladen ungeprüft.

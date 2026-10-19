@@ -1,0 +1,263 @@
+name: Release
+
+# Builds the release files (Milestone 8) on the self-hosted runners and uploads them to the GitHub release.
+# The release itself is created by the owner (gh release create vX.Y.Z --target main ...); this workflow only
+# attaches files to it. Each job uploads its own files directly (no artifact up- or download between the jobs).
+#
+# Dry run (build and all smoke tests, no upload):
+#   gh workflow run release.yml -f tag=v0.1.0 -f upload=false
+# The repository is private; fork PRs must stay approval-gated (CLAUDE.md, section CI), this workflow never runs for forks.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build, e.g. v0.1.0 (SemVer, with the leading v)'
+        required: true
+        type: string
+      upload:
+        description: 'Upload the files to the release of this tag (the release must exist)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: release-windows
+    runs-on: [self-hosted, dotnet-windows]
+    timeout-minutes: 60
+    # Needed to attach files to the release (gh release upload).
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+    steps:
+      - name: Check the tag and derive the version
+        run: |
+          if ($env:TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') { throw "Tag '$env:TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" }
+          $version = $env:TAG.Substring(1)
+          Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
+          Write-Host "Tag $env:TAG, Version $version, Hochladen: $env:UPLOAD"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      # See ci.yml: without git on PATH actions/checkout extracts a zip whose file times can be older than the
+      # cached build of a file-based script (dotnet run <file>.cs) in %TEMP%.
+      - name: Refresh the file times of the checkout (Windows)
+        run: |
+          $before = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
+          $now = [DateTime]::UtcNow
+          $skipped = 0
+          Get-ChildItem -Recurse -File -Force |
+            Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } |
+            ForEach-Object {
+              try { $_.LastWriteTimeUtc = $now } catch { $skipped++ }
+            }
+          $after = (Get-Item bench/startup/startup.cs).LastWriteTimeUtc
+          if ($after -le $before) { throw "bench/startup/startup.cs konnte nicht aktualisiert werden (vorher $before, nachher $after)" }
+          if ($skipped -gt 0) { Write-Host "$skipped Datei(en) nicht anfassbar (schreibgeschuetzt oder gesperrt), uebersprungen" }
+
+      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
+        run: Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_INSTALL_DIR=$env:USERPROFILE\.dotnet"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # The Native AOT linker needs vswhere.exe on PATH; it takes effect from the next step on.
+      - name: Put vswhere on PATH
+        run: Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+
+      - name: Check the Native AOT prerequisites (Windows)
+        run: |
+          if (-not (Get-Command vswhere -ErrorAction SilentlyContinue)) { throw 'vswhere not found: install Visual Studio Build Tools' }
+          $p = vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $p) { throw 'Visual Studio C++ build tools not found' }
+
+      - name: Check the release prerequisites (gh)
+        run: |
+          if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            throw 'gh (GitHub CLI) not found on PATH: install it (winget install --id GitHub.cli) and restart the runner so that it sees the new PATH'
+          }
+          gh --version
+
+      - name: Self-test of the packaging tool
+        run: dotnet run tools/package.cs -- selftest
+
+      - name: Self-test of the licence tool
+        run: dotnet run tools/licenses.cs -- selftest
+
+      - name: Publish the CLI (Native AOT)
+        run: dotnet publish src/Pagewing.Cli -c Release -r win-x64 "-p:Version=$env:VERSION" -o out/cli
+
+      - name: Publish the app (Native AOT)
+        run: dotnet publish src/Pagewing.App -c Release -r win-x64 "-p:Version=$env:VERSION" -o out/app
+
+      - name: Smoke test of the CLI binary
+        run: dotnet run tools/smoke-cli.cs -- out/cli/pagewing.exe
+
+      - name: Check the licence inventory
+        run: dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli
+
+      - name: Package layout
+        run: dotnet run tools/package.cs -- layout --rid win-x64 --app out/app --cli out/cli --out out/layout
+
+      - name: Portable ZIP
+        run: dotnet run tools/package.cs -- zip --layout out/layout --version $env:VERSION --out "out/release/Pagewing-$env:VERSION-win-x64-portable.zip"
+
+      - name: Install Inno Setup
+        run: dotnet run tools/package.cs -- inno-install
+
+      - name: Installer
+        run: dotnet run tools/package.cs -- installer --layout out/layout --version $env:VERSION --out "out/release/Pagewing-$env:VERSION-win-x64-setup.exe"
+
+      - name: Smoke test of the installer
+        run: dotnet run tools/package.cs -- installer-smoke "out/release/Pagewing-$env:VERSION-win-x64-setup.exe"
+
+      - name: Checksums
+        run: dotnet run tools/package.cs -- sums "out/release/Pagewing-$env:VERSION-win-x64-portable.zip" "out/release/Pagewing-$env:VERSION-win-x64-setup.exe" --out out/release/SHA256SUMS-windows.txt
+
+      # Only for a published release or workflow_dispatch with upload=true; otherwise build and smoke tests only.
+      - name: Upload to the release
+        if: env.UPLOAD == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$env:TAG" "out/release/Pagewing-$env:VERSION-win-x64-portable.zip" "out/release/Pagewing-$env:VERSION-win-x64-setup.exe" out/release/SHA256SUMS-windows.txt --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload ist fehlgeschlagen (Exit-Code $LASTEXITCODE); gibt es das Release $env:TAG?" }
+
+  linux:
+    name: release-linux
+    runs-on: [self-hosted, dotnet-linux]
+    timeout-minutes: 60
+    # Needed to attach files to the release (gh release upload).
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+    steps:
+      - name: Check the tag and derive the version
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
+          version="${TAG#v}"
+          # Debian: a pre-release x.y.z-rc1 is called x.y.z~rc1 in the package (tools/package.cs, Deb.DebVersion).
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "DEBVERSION=${version/-/\~}" >> "$GITHUB_ENV"
+          echo "Tag $TAG, Version $version, Hochladen: $UPLOAD"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
+        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check the Native AOT prerequisites (Linux)
+        run: |
+          command -v clang >/dev/null || { echo 'clang not found: install the clang package' >&2; exit 1; }
+          clang --version
+          test -f /usr/include/zlib.h || { echo 'zlib.h not found: install zlib1g-dev' >&2; exit 1; }
+          command -v xvfb-run >/dev/null || { echo 'xvfb-run not found (AppImage smoke test): install the xvfb package' >&2; exit 1; }
+          ldconfig -p | grep -q libfontconfig.so.1 || { echo 'libfontconfig.so.1 not found (Skia in the app): install the libfontconfig1 package' >&2; exit 1; }
+
+      - name: Check the packaging prerequisites (Linux)
+        run: |
+          cat /etc/os-release
+          ldd --version | head -1
+          command -v dpkg-deb >/dev/null || { echo 'dpkg-deb not found: install the dpkg package' >&2; exit 1; }
+          command -v mksquashfs >/dev/null || { echo 'mksquashfs not found: install squashfs-tools' >&2; exit 1; }
+          command -v objdump >/dev/null || { echo 'objdump not found: install binutils' >&2; exit 1; }
+          # The .deb smoke test skips these checks silently when the tools are missing, so say it loudly here.
+          command -v lintian >/dev/null || echo '::warning::lintian not found: the .deb smoke test will NOT run lintian (sudo apt-get install -y lintian)'
+          command -v desktop-file-validate >/dev/null || echo '::warning::desktop-file-validate not found: the .deb smoke test will NOT validate the .desktop file (sudo apt-get install -y desktop-file-utils)'
+
+      - name: Check the release prerequisites (gh)
+        run: |
+          command -v gh >/dev/null || { echo 'gh (GitHub CLI) not found on PATH: install it (https://github.com/cli/cli/blob/trunk/docs/install_linux.md, e.g. sudo apt-get install -y gh) and restart the runner so that it sees the new PATH' >&2; exit 1; }
+          gh --version
+
+      - name: Self-test of the packaging tool
+        run: dotnet run tools/package.cs -- selftest
+
+      - name: Self-test of the licence tool
+        run: dotnet run tools/licenses.cs -- selftest
+
+      - name: Publish the CLI (Native AOT)
+        run: dotnet publish src/Pagewing.Cli -c Release -r linux-x64 -p:Version="$VERSION" -o out/cli
+
+      - name: Publish the app (Native AOT)
+        run: dotnet publish src/Pagewing.App -c Release -r linux-x64 -p:Version="$VERSION" -o out/app
+
+      - name: Smoke test of the CLI binary
+        run: dotnet run tools/smoke-cli.cs -- out/cli/pagewing
+
+      - name: Check the licence inventory
+        run: dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli
+
+      # Blocking in a release: a binary that needs a newer glibc than 2.35 (Ubuntu 22.04) must not be shipped.
+      - name: Check the binaries against glibc 2.35
+        run: |
+          set -euo pipefail
+          files=$(find out/app out/cli -maxdepth 1 -type f \( -name Pagewing -o -name pagewing -o -name '*.so' -o -name '*.so.*' \) | sort)
+          echo "$files"
+          # shellcheck disable=SC2086
+          dotnet run tools/package.cs -- check-binary $files --max-glibc 2.35
+
+      - name: Package layout
+        run: dotnet run tools/package.cs -- layout --rid linux-x64 --app out/app --cli out/cli --out out/layout
+
+      - name: Portable ZIP
+        run: dotnet run tools/package.cs -- zip --layout out/layout --version "$VERSION" --out "out/release/Pagewing-$VERSION-linux-x64-portable.zip"
+
+      - name: Debian package
+        run: dotnet run tools/package.cs -- deb --layout out/layout --version "$VERSION" --out "out/release/pagewing_${DEBVERSION}_amd64.deb"
+
+      - name: Smoke test of the Debian package
+        run: dotnet run tools/package.cs -- deb-smoke "out/release/pagewing_${DEBVERSION}_amd64.deb"
+
+      - name: Fetch the AppImage runtime
+        run: dotnet run tools/package.cs -- runtime-fetch
+
+      - name: AppImage
+        run: dotnet run tools/package.cs -- appimage --layout out/layout --version "$VERSION" --out "out/release/Pagewing-$VERSION-x86_64.AppImage"
+
+      - name: Smoke test of the AppImage
+        run: xvfb-run -a dotnet run tools/package.cs -- appimage-smoke "out/release/Pagewing-$VERSION-x86_64.AppImage"
+
+      - name: Checksums
+        run: |
+          dotnet run tools/package.cs -- sums \
+            "out/release/Pagewing-$VERSION-linux-x64-portable.zip" \
+            "out/release/pagewing_${DEBVERSION}_amd64.deb" \
+            "out/release/Pagewing-$VERSION-x86_64.AppImage" \
+            --out out/release/SHA256SUMS-linux.txt
+
+      # Only for a published release or workflow_dispatch with upload=true; otherwise build and smoke tests only.
+      - name: Upload to the release
+        if: env.UPLOAD == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$TAG" \
+            "out/release/Pagewing-$VERSION-linux-x64-portable.zip" \
+            "out/release/pagewing_${DEBVERSION}_amd64.deb" \
+            "out/release/Pagewing-$VERSION-x86_64.AppImage" \
+            out/release/SHA256SUMS-linux.txt --clobber

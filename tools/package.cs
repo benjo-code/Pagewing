@@ -88,6 +88,10 @@ static partial class ElfRules
     [
         "libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "libz.so.1",
         "ld-linux-x86-64.so.2", "libstdc++.so.6", "libgcc_s.so.1",
+        // libSkiaSharp.so (real linux-x64 publish, Milestone 8 task 11): the only NEEDED library beyond the glibc core.
+        // Covered by the .deb Depends (packaging/linux/control.template: libfontconfig1) and, for the AppImage, by the
+        // documented host-library assumption (packaging/README.md: libfontconfig1 and the X11 libraries come from the host).
+        "libfontconfig.so.1",
     ];
 
     // objdump -T: "0000000000000000      DF *UND*	0000000000000000 (GLIBC_2.2.5) printf"
@@ -2248,6 +2252,8 @@ static class SelfTest
         Expect("2.9 ist kleiner als 2.35 (Zahlentupel, nicht Text)", ElfRules.Violations(Symbols("2.9"), libc, max, maxText).Count, 0);
         Expect("2.100 ist groesser als 2.35", ElfRules.Violations(Symbols("2.100"), libc, max, maxText).Count, 1);
         Expect("unbekanntes NEEDED faellt durch", ElfRules.Violations(Symbols("2.2.5"), Needs("libc.so.6", "libfoo.so.1"), max, maxText).Count, 1);
+        Expect("libfontconfig.so.1 (Skia) ist erlaubt", ElfRules.Violations(Symbols("2.2.5"), Needs("libc.so.6", "libfontconfig.so.1"), max, maxText).Count, 0);
+        Expect("andere Systembibliothek (libX11) faellt weiter durch", ElfRules.Violations(Symbols("2.2.5"), Needs("libc.so.6", "libX11.so.6"), max, maxText).Count, 1);
         Expect("alle erlaubten NEEDED bestehen", ElfRules.Violations(Symbols("2.2.5"), Needs(ElfRules.AllowedNeeded), max, maxText).Count, 0);
         Expect("SONAME ist kein NEEDED", ElfRules.Needed(Needs("libc.so.6")).Count, 1);
         Expect("definiertes Symbol zaehlt nicht", ElfRules.HighestGlibc("0000 g DF .text 000b (GLIBC_2.99) x\n", out _) ?? "none", "none");
