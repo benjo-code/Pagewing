@@ -84,7 +84,7 @@ static class Cli
     }
 }
 
-// All self-made files. Page sizes stay small (at most 300 x 400 pt), except text-rich (400 x 400) and text-dense (612 x 792, where the text volume is the point).
+// All self-made files. Page sizes stay small (at most 300 x 400 pt), except text-rich (400 x 400), text-dense (612 x 792, where the text volume is the point) and dark-sample (A4).
 static class TestPdfs
 {
     private const string Helvetica = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
@@ -101,6 +101,7 @@ static class TestPdfs
         new("annotations.pdf", Annotations()),
         new("text-rich.pdf", TextRich()),
         new("text-dense.pdf", TextDense()),
+        new("dark-sample.pdf", DarkSample()),
         new("wide-page.pdf", WidePage()),
         new("thousand-pages.pdf", ThousandPages()),
         new("outline.pdf", Outline()),
@@ -318,6 +319,65 @@ static class TestPdfs
             BT /F2 24 Tf 40 350 Td (Seite zwei) Tj ET
             BT /F1 12 Tf 40 150 Td (Ziel: Pagewing am Ende.) Tj ET
             """, pageTwo);
+        return doc.Build();
+    }
+
+    // One A4 page for the dark page mode: black body text, a table with grey fills and thin rules, a bar chart of four
+    // coloured rectangles (red, green, blue, orange) with thin axes, a 64 x 64 RGB gradient image and a 64 x 64 grey image.
+    private static byte[] DarkSample()
+    {
+        var doc = new PdfDoc("Pagewing Testseite für die dunkle Seite");
+        const int size = 64;
+        var rgb = new byte[size * size * 3];
+        var grey = new byte[size * size];
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var i = ((y * size) + x) * 3;
+                rgb[i] = (byte)(x * 4);
+                rgb[i + 1] = (byte)(y * 4);
+                rgb[i + 2] = (byte)(255 - ((x + y) * 2));
+                grey[(y * size) + x] = (byte)(((x + y) * 255) / ((size - 1) * 2));
+            }
+        }
+
+        const string head = "/Type /XObject /Subtype /Image /Width 64 /Height 64 /BitsPerComponent 8";
+        var rgbId = doc.AddStream($"{head} /ColorSpace /DeviceRGB", rgb);
+        var greyId = doc.AddStream($"{head} /ColorSpace /DeviceGray", grey);
+        var bold = doc.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+        var resources = $"<< /Font << /F1 {doc.Add(Helvetica)} 0 R /F2 {bold} 0 R >> /XObject << /ImRgb {rgbId} 0 R /ImGrey {greyId} 0 R >> >>";
+        doc.AddPage("/MediaBox [0 0 595 842]", resources, """
+            0 g
+            BT /F2 22 Tf 50 780 Td (Dunkle Seite: Testseite) Tj ET
+            BT /F1 11 Tf 14 TL 50 750 Td
+            (Dieser Absatz ist schwarzer Fliesstext auf weissem Grund. In der dunklen Seite wird er hell auf dunkel) Tj T*
+            (gezeichnet, waehrend Bilder und farbige Diagramme ihre Farben behalten sollen.) Tj ET
+            0.85 g 50 640 160 24 re f
+            0.93 g 50 616 160 24 re f
+            0.85 g 50 592 160 24 re f
+            0.93 g 50 568 160 24 re f
+            0.4 G 0.5 w
+            50 568 160 96 re S
+            50 640 m 210 640 l S 50 616 m 210 616 l S 50 592 m 210 592 l S
+            130 568 m 130 664 l S
+            0 g
+            BT /F2 11 Tf 58 647 Td (Name) Tj 80 0 Td (Wert) Tj ET
+            BT /F1 11 Tf 58 623 Td (Alpha) Tj 80 0 Td (12) Tj ET
+            BT /F1 11 Tf 58 599 Td (Beta) Tj 80 0 Td (34) Tj ET
+            BT /F1 11 Tf 58 575 Td (Gamma) Tj 80 0 Td (56) Tj ET
+            1 0 0 rg 300 520 40 90 re f
+            0 0.7 0 rg 350 520 40 140 re f
+            0 0 1 rg 400 520 40 60 re f
+            1 0.55 0 rg 450 520 40 110 re f
+            0 g 0 G 0.5 w
+            290 510 m 500 510 l S
+            290 510 m 290 680 l S
+            BT /F1 9 Tf 295 495 Td (Rot) Tj 50 0 Td (Gruen) Tj 50 0 Td (Blau) Tj 50 0 Td (Orange) Tj ET
+            q 128 0 0 128 50 330 cm /ImRgb Do Q
+            q 128 0 0 128 220 330 cm /ImGrey Do Q
+            BT /F1 9 Tf 50 315 Td (RGB-Verlauf) Tj 170 0 Td (Graustufen) Tj ET
+            """);
         return doc.Build();
     }
 

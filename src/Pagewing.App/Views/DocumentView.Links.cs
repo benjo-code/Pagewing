@@ -72,7 +72,7 @@ public sealed partial class DocumentView
         Refit(chosen: false);
 
         var rect = layout.GetPageRect(index);
-        var y = rect.Y - DocumentLayout.Margin;
+        var y = rect.Y - layout.PageMargin;
         if (target.Top is { } top && double.IsFinite(top))
         {
             var height = layout.GetPageSize(index).Height;

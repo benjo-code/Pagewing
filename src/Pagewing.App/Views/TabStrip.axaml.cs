@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text;
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -39,6 +40,7 @@ public sealed partial class TabStrip : UserControl
     private readonly List<Control> _wanted = [];
     private readonly ObservableCollection<MenuItem> _menuEntries = [];
     private MainViewModel? _viewModel;
+    private TabViewModel? _shownActive;
     private bool _attached;
 
     // The press of the left button on a tab and the drag that may follow it.
@@ -173,6 +175,16 @@ public sealed partial class TabStrip : UserControl
         var active = tabs?.Active;
         _activeView.DataContext = active;
 
+        // Screen readers (TabViewAutomationPeer, TabStripPanelAutomationPeer): the selected tab is always the same
+        // element, the active view; a tab switch renames it (its peer raises the name change) and moves it to the slot of
+        // the new active tab, while the tab that was active becomes a new, not selected element. So the tab list tells
+        // that its selection changed: on AT-SPI that is the only selection signal. Nothing is raised without a peer.
+        if (!ReferenceEquals(active, _shownActive))
+        {
+            _shownActive = active;
+            ControlAutomationPeer.FromElement(TabPanel)?.RaisePropertyChangedEvent(SelectionPatternIdentifiers.SelectionProperty, null, null);
+        }
+
         // The views of closed tabs go and let go of their view models.
         foreach (var (tab, view) in _inactiveViews.ToArray())
         {
@@ -268,6 +280,15 @@ public sealed partial class TabStrip : UserControl
         }
 
         return TabPanel.ShowOnlyActive ? count : TabDragMath.InsertionIndex(TabPanel.PointToClient(screen).X, TabPanel.TabWidth, count);
+    }
+
+    /// <summary>Activates the tab that <paramref name="view"/> shows (a screen reader selected it).</summary>
+    internal void Activate(TabView view)
+    {
+        if (_viewModel is not null && view.DataContext is TabViewModel tab && _viewModel.Tabs.IndexOf(tab) >= 0)
+        {
+            _viewModel.ActivateTabCommand.Execute(tab);
+        }
     }
 
     /// <summary>Gets the tab whose view contains <paramref name="source"/>, or <see langword="null"/>.</summary>

@@ -5,7 +5,7 @@
              xmlns:res="using:Pagewing.App.Resources"
              x:Class="Pagewing.App.Views.StatusBar"
              x:DataType="vm:TabViewModel"
-             Height="32" FontSize="12"
+             Height="{DynamicResource Pw.Size.StatusBarHeight}" FontSize="12"
              Background="{DynamicResource Pw.Brush.Surface.Window}"
              Foreground="{DynamicResource Pw.Brush.Text.Secondary}">
   <!--
@@ -36,11 +36,12 @@
   </UserControl.Styles>
 
   <!--
-    Indented by the action bar (52) plus 4 (design system 6, item 5); the bar itself spans the window, so its width is
+    Indented by the action bar (52, "Kompakt" 44) plus 4 (design system 6, item 5; Pw.Size.StatusBarIndent); the bar
+    itself spans the window, so its width is
     the window width. Navigation, zoom and layout on the left, the document info on the right; the order of the
     children is the order of Tab.
   -->
-  <Grid Name="BarLayout" ColumnDefinitions="*,Auto" Margin="56,0,8,0" VerticalAlignment="Center">
+  <Grid Name="BarLayout" ColumnDefinitions="*,Auto" Margin="{DynamicResource Pw.Size.StatusBarIndent}" VerticalAlignment="Center">
     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
       <Button Name="PreviousPageButton" Classes="icon status"
               Command="{Binding PreviousPageCommand}"

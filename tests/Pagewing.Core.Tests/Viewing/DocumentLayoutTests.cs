@@ -510,6 +510,68 @@ public sealed class DocumentLayoutTests
     }
 
     [Fact]
+    public void PageMarginStartsAtTheDefaultMargin()
+    {
+        var layout = ThreeLetterPages();
+
+        Assert.Equal(DocumentLayout.Margin, layout.PageMargin);
+        Assert.Equal(32, layout.PageMargin);
+    }
+
+    [Fact]
+    public void ContentSizeAndPagePositionsUseThePageMargin()
+    {
+        var layout = ThreeLetterPages();
+        layout.PageMargin = 20;
+
+        // Design system 5.4 (Kompakt): 20 around the pages; the gap between them stays 20.
+        Assert.Equal((3 * LetterHeight) + (2 * 20) + (2 * 20), layout.ContentHeight, 6);
+        Assert.Equal((612 * DocumentLayout.DipsPerPoint) + (2 * 20), layout.ContentWidth, 6);
+        Assert.Equal(20, layout.GetPageRect(0).Y, 6);
+        Assert.Equal(20, layout.GetPageRect(0).X, 6);
+        Assert.Equal(layout.GetPageRect(0).Bottom + DocumentLayout.PageGap, layout.GetPageRect(1).Y, 6);
+
+        // Back to the default margin, the layout is what it was.
+        layout.PageMargin = DocumentLayout.Margin;
+        Assert.Equal((3 * LetterHeight) + (2 * 20) + (2 * 32), layout.ContentHeight, 6);
+        Assert.Equal(32, layout.GetPageRect(0).Y, 6);
+    }
+
+    [Fact]
+    public void ThePageMarginKeepsAnchors()
+    {
+        var layout = ThreeLetterPages();
+        var anchor = layout.GetAnchor(layout.GetPageRect(1).Y + 100);
+
+        layout.PageMargin = 20;
+
+        Assert.Equal(layout.GetPageRect(1).Y + 100, layout.GetOffset(anchor), 6);
+    }
+
+    [Fact]
+    public void FitZoomUsesThePageMargin()
+    {
+        var layout = ThreeLetterPages();
+        layout.PageMargin = 20;
+
+        Assert.Equal((800 - 40) / (612 * DocumentLayout.DipsPerPoint), layout.FitZoom(ZoomMode.FitWidth, 0, 800, 600), 9);
+        Assert.Equal((600 - 40) / (792 * DocumentLayout.DipsPerPoint), layout.FitZoom(ZoomMode.FitPage, 0, 800, 600), 9);
+        Assert.Equal(ZoomSteps.Min, layout.FitZoom(ZoomMode.FitWidth, 0, 40, 600));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void AnInvalidPageMarginIsRejected(double margin)
+    {
+        var layout = ThreeLetterPages();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => layout.PageMargin = margin);
+        Assert.Equal(DocumentLayout.Margin, layout.PageMargin);
+    }
+
+    [Fact]
     public void ThousandPagesStayCheapToQuery()
     {
         var layout = new DocumentLayout(1000, new PdfPageSize(200, 100));

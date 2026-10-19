@@ -1,0 +1,90 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.CommandPalette"
+             x:DataType="vm:PaletteViewModel"
+             HorizontalAlignment="Center" VerticalAlignment="Top"
+             KeyboardNavigation.TabNavigation="Cycle"
+             AutomationProperties.Name="{x:Static res:Strings.CommandPalette}">
+  <!--
+    The command palette (Ctrl+K or "Search or command" in the title bar; design system 7.6): a popup just below the title
+    bar, 560 wide, surface.raised, radius.overlay and the card shadow with its 1 px border.subtle edge. The input on top
+    has the focus and claims the keys of the list with key bindings of its own (the window's bindings come first
+    otherwise); below it the groups with their headings (not selectable) and the entries: title, detail in
+    text.secondary, the shortcut in type.mono in a 1 px frame. The chosen entry has accent.subtle and a 2 px accent.default
+    edge on the left (not only a colour, 7.10). Not modal: no background, a click beside it closes it and reaches what is
+    there (MainWindow.Overlays.cs). Made when it is first shown, never in the startup path; the rows are reused from
+    one query to the next (CommandPalette.axaml.cs).
+  -->
+  <UserControl.Styles>
+    <Style Selector="Border.paletteSlot.item">
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="10,0,8,0" />
+      <Setter Property="BorderThickness" Value="2,0,0,0" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.paletteSlot.item:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    </Style>
+    <Style Selector="Border.paletteSlot.item.selected">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Border.paletteSlot.header">
+      <Setter Property="Padding" Value="12,10,12,4" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+    <Style Selector="TextBlock.paletteHeading">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="TextBlock.paletteTitle, TextBlock.paletteDetail">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="TextBlock.paletteDetail">
+      <Setter Property="Margin" Value="8,0,0,0" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <!-- kbd as on the start screen and the help card: surface.raised inside a 1 px border.strong frame (both checked pairs). -->
+    <Style Selector="Border.kbd">
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="Margin" Value="12,0,0,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.kbd > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="PaletteBox" Width="560" Margin="16,8,16,16"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <DockPanel>
+      <TextBox Name="PaletteInput" DockPanel.Dock="Top" Margin="12,12,12,8"
+               Text="{Binding Query}"
+               PlaceholderText="{x:Static res:Strings.PalettePlaceholder}"
+               AutomationProperties.Name="{x:Static res:Strings.PalettePlaceholder}">
+        <TextBox.InnerLeftContent>
+          <ctl:StrokeIcon Width="16" Height="16" Margin="8,0,0,0" VerticalAlignment="Center"
+                          Brush="{DynamicResource Pw.Brush.Text.Secondary}"
+                          Data="{StaticResource Pw.Icon.Search}" />
+        </TextBox.InnerLeftContent>
+      </TextBox>
+      <TextBlock Name="PaletteEmpty" DockPanel.Dock="Top" Classes="body" Margin="24,4,24,16" IsVisible="False"
+                 Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{x:Static res:Strings.PaletteEmpty}" />
+      <ScrollViewer Name="PaletteScroller" MaxHeight="440"
+                    HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Name="PaletteRows" Margin="8,0,8,8" />
+      </ScrollViewer>
+    </DockPanel>
+  </Border>
+</UserControl>

@@ -59,7 +59,7 @@ public sealed partial class DocumentView
         Refit(chosen: false);
 
         var y = layout.Mode == PageLayoutMode.SinglePage ? 0
-            : tab.ZoomMode == ZoomMode.FitPage ? layout.GetPageRect(page).Y - DocumentLayout.Margin
+            : tab.ZoomMode == ZoomMode.FitPage ? layout.GetPageRect(page).Y - layout.PageMargin
             : layout.GetOffset(anchor);
         var x = (fromCentre * layout.Zoom / oldZoom) + (layout.ContentWidth / 2) - (Scroller.Viewport.Width / 2) + CentringShift(layout);
         ChangeLayout(new Vector(x, y));

@@ -122,6 +122,24 @@ public sealed class StartupOptionsTests
     }
 
     [Fact]
+    public void MeasureSettingsTakesTheNextArgumentAsGiven()
+    {
+        var options = StartupOptions.Parse(["--measure-startup", "a.pdf", "--measure-settings", "dark.json"]);
+
+        Assert.Equal("dark.json", options.MeasureSettings);
+        Assert.Empty(options.Paths);
+        Assert.Null(StartupOptions.Parse(["--measure-startup", "a.pdf"]).MeasureSettings);
+    }
+
+    [Fact]
+    public void MeasureSettingsWithoutValueIsKeptAsEmptySoTheMeasurementFails()
+    {
+        var options = StartupOptions.Parse(["--measure-startup", "a.pdf", "--measure-settings"]);
+
+        Assert.Equal(string.Empty, options.MeasureSettings);
+    }
+
+    [Fact]
     public void MeasureSecondWithoutSecondArgumentIsIgnored()
     {
         var options = StartupOptions.Parse(["--measure-second", "b.pdf"]);

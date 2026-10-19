@@ -85,6 +85,20 @@ internal static unsafe partial class Fpdf
 
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_RenderPageBitmapWithColorScheme_Start(
+        nint bitmap,
+        nint page,
+        int startX,
+        int startY,
+        int sizeX,
+        int sizeY,
+        int rotate,
+        int flags,
+        FpdfColorScheme* colorScheme,
+        IfsdkPause* pause);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDF_RenderPage_Continue(nint page, IfsdkPause* pause);
 
     [LibraryImport(Library)]
@@ -315,6 +329,27 @@ internal struct FsMatrix
 
     /// <summary>The y translation (<c>f</c>).</summary>
     public float F;
+}
+
+/// <summary>
+/// <c>FPDF_COLORSCHEME</c> from <c>fpdfview.h</c>: the colours that replace those of paths and text, each in 8888 ARGB
+/// format. The fields are <c>FPDF_DWORD</c>, which the header defines as <c>unsigned long</c>: 32-bit on Windows,
+/// 64-bit on Linux, so they are <see cref="CULong"/> like every other <c>unsigned long</c>.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FpdfColorScheme
+{
+    /// <summary>Fill colour of paths (<c>path_fill_color</c>).</summary>
+    public CULong PathFillColor;
+
+    /// <summary>Stroke colour of paths (<c>path_stroke_color</c>).</summary>
+    public CULong PathStrokeColor;
+
+    /// <summary>Fill colour of text (<c>text_fill_color</c>).</summary>
+    public CULong TextFillColor;
+
+    /// <summary>Stroke colour of text (<c>text_stroke_color</c>).</summary>
+    public CULong TextStrokeColor;
 }
 
 /// <summary><c>IFSDK_PAUSE</c> from <c>fpdf_progressive.h</c>: lets progressive rendering yield.</summary>

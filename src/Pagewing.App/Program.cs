@@ -7,8 +7,10 @@ using Avalonia;
 using Pagewing.App.Measurement;
 using Pagewing.App.Platform;
 using Pagewing.App.Resources;
+using Pagewing.App.Services;
 using Pagewing.Core.Hosting;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App;
@@ -24,7 +26,8 @@ internal static partial class Program
     /// <summary>
     /// Startup order (startup path, keep it lean): parse the options; elect the single instance before Avalonia is
     /// loaded, and as a later launch hand the files over and exit; otherwise start opening the file of the command
-    /// line at once, so PDFium loads on its own thread while Avalonia builds the window; on Windows choose the rendering
+    /// line at once, so PDFium loads on its own thread while Avalonia builds the window; read the settings (nothing
+    /// without a settings file) and choose the UI language (<see cref="ChooseUiCulture"/>); on Windows choose the rendering
     /// mode (<see cref="UseSoftwareRendering"/>); show the window, whose first frame shows the tab with the file name;
     /// accept later launches after the first frame (<see cref="App"/>).
     /// A measurement switch takes the same path, without the election (see <see cref="ElectInstance"/>).
@@ -43,18 +46,6 @@ internal static partial class Program
         {
             // Diagnostic phases of a measurement run only (bench/startup/README.md, "Phasen").
             StartupPhases.Enable().Mark("main", mainEntered);
-        }
-
-        if (options.Language is { } language)
-        {
-            try
-            {
-                Strings.Culture = new CultureInfo(language);
-            }
-            catch (CultureNotFoundException)
-            {
-                // Unknown language code: keep the system language.
-            }
         }
 
         var (instance, isSecondary) = ElectInstance(options, static () => SingleInstance.TryBecomePrimary(SingleInstance.DefaultName));
@@ -85,13 +76,80 @@ internal static partial class Program
             StartupPhases.Mark("session-open-started");
         }
 
+        // While PDFium opens the file on its thread. Without a settings file this reads nothing (and parses no JSON).
+        var settings = LoadSettings(options, UserSettings.Load);
+        if (ChooseUiCulture(options.Language, settings.Current.Language) is { } culture)
+        {
+            Strings.Culture = culture;
+        }
+
+        StartupPhases.Mark("settings-loaded");
+
         var software = UseSoftwareRendering();
         if (options.IsMeasurement)
         {
             StartMeasurementWatchdog();
         }
 
-        return Run(args, new AppStartup(session, instance, options.IsMeasurement ? options : null, options.MorePaths), software);
+        // Reads nothing: the history is read after the first sharp page (or the first frame of the start screen).
+        var recentFiles = LoadRecentFiles(options, RecentFilesService.Load);
+        return Run(args, new AppStartup(session, instance, settings, options.IsMeasurement ? options : null, options.MorePaths, recentFiles), software);
+    }
+
+    /// <summary>
+    /// The history of recently opened files of this run: <paramref name="load"/> (<see cref="RecentFilesService.Load()"/>,
+    /// which reads nothing yet) for a normal launch; for a measurement one in memory only
+    /// (<see cref="RecentFilesService.Detached"/>), so a measurement never reads or writes the user's history.
+    /// </summary>
+    internal static RecentFilesService LoadRecentFiles(StartupOptions options, Func<RecentFilesService> load)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(load);
+        return options.IsMeasurement ? RecentFilesService.Detached() : load();
+    }
+
+    /// <summary>
+    /// The UI language: <c>--lang &lt;code&gt;</c> first, then the setting, then (<see langword="null"/>) the system
+    /// language. An unknown code counts as not given. A change of the setting applies at the next start.
+    /// </summary>
+    internal static CultureInfo? ChooseUiCulture(string? languageOption, LanguageSetting setting)
+    {
+        if (languageOption is not null)
+        {
+            try
+            {
+                return new CultureInfo(languageOption);
+            }
+            catch (CultureNotFoundException)
+            {
+                // Unknown language code: as if it was not given.
+            }
+        }
+
+        return setting switch
+        {
+            LanguageSetting.German => new CultureInfo("de"),
+            LanguageSetting.English => new CultureInfo("en"),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// The settings of this run: <paramref name="load"/> (<see cref="UserSettings.Load()"/>) for a normal launch; for a
+    /// measurement the defaults in memory (<see cref="UserSettings.Detached"/>), so the settings of the user never change
+    /// what is measured and a measurement never writes them. A measurement with <c>--measure-settings &lt;file&gt;</c>
+    /// starts with what that file holds, in memory only (<see cref="UserSettings.DetachedFrom"/>: read, never written).
+    /// </summary>
+    internal static UserSettings LoadSettings(StartupOptions options, Func<UserSettings> load)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(load);
+        if (!options.IsMeasurement)
+        {
+            return load();
+        }
+
+        return options.MeasureSettings is { Length: > 0 } file ? UserSettings.DetachedFrom(file) : UserSettings.Detached();
     }
 
     public static AppBuilder BuildAvaloniaApp() =>

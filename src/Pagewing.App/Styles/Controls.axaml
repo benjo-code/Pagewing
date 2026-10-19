@@ -7,11 +7,14 @@
     No new colours: states reuse tokens (hover surface.hover, pressed accent.subtle, disabled text.disabled).
   -->
 
-  <!-- Window: base size and colours. FontFamily comes from Fonts.axaml via ContentControlThemeFontFamily. -->
+  <!--
+    Window: base size (type.body, Pw.Font.Body: 13, density "Kompakt" 12.5) and colours. FontFamily comes from
+    Fonts.axaml via ContentControlThemeFontFamily.
+  -->
   <Style Selector="Window">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Window}" />
     <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
-    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
   </Style>
 
   <!--
@@ -34,8 +37,8 @@
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <Style Selector="TextBlock.body">
-    <Setter Property="FontSize" Value="13" />
-    <Setter Property="LineHeight" Value="18" />
+    <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+    <Setter Property="LineHeight" Value="{DynamicResource Pw.Font.BodyLineHeight}" />
     <Setter Property="FontWeight" Value="Normal" />
   </Style>
   <Style Selector="TextBlock.caption">
@@ -57,9 +60,10 @@
     Focus ring (section 5.3): 2 px focus.ring with 1 px gap around the element, only for keyboard focus. Avalonia shows
     the FocusAdorner only when the focus arrives by Tab or arrow keys, never after a mouse click.
     IsClipEnabled=False keeps the adorner from being clipped to the bounds of the focused element.
-    Add controls to the selector list when they are restyled.
+    Add controls to the selector list when they are restyled. A type selector does not match derived types: ToggleSwitch
+    (a ToggleButton) needs its own entry.
   -->
-  <Style Selector="Button, ToggleButton, RepeatButton, TextBox, CheckBox, RadioButton, ComboBox, ListBoxItem, TabItem">
+  <Style Selector="Button, ToggleButton, ToggleSwitch, RepeatButton, TextBox, CheckBox, RadioButton, ComboBox, ListBoxItem, TabItem">
     <Setter Property="FocusAdorner">
       <FocusAdornerTemplate>
         <Border Margin="-3" BorderThickness="2" CornerRadius="9" AdornerLayer.IsClipEnabled="False"
@@ -200,6 +204,9 @@
   </Style>
   <Style Selector="Border.tab.active, Border.tab.active:pointerover">
     <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Canvas}" />
+    <!-- High contrast: an outline open at the bottom (Pw.Thickness.ActiveTabOutline, 0 in light and dark). -->
+    <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+    <Setter Property="BorderThickness" Value="{DynamicResource Pw.Thickness.ActiveTabOutline}" />
   </Style>
   <Style Selector="Border.tab ctl|MiddleEllipsisTextBlock">
     <Setter Property="FontWeight" Value="Normal" />

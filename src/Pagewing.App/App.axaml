@@ -22,6 +22,8 @@
           Accent, RegionColor, BaseHigh, BaseMedium and ErrorText are fixed by the spec; the Alt*, Base*Low/MediumHigh,
           Chrome* and List* roles map to the nearest token so unstyled Fluent controls (list, check box, menu) fit.
           The visual comparison with the mockup happened in M3.
+          High contrast has no palette here: FluentTheme.Palettes takes only Light and Dark (Avalonia 12.1.4 throws for
+          any other variant). Services/HighContrast gives the variant HighContrast its own Fluent theme instead.
         -->
         <ColorPaletteResources x:Key="Light"
                                Accent="#3B48C4" RegionColor="#EEEFF2" ErrorText="#B42318"

@@ -107,6 +107,7 @@ public sealed partial class LocalizationTests : IDisposable
         Assert.Equal(["{0}", "{1}"], Placeholders(english["SearchHitName"]));
         Assert.Equal(["{0}"], Placeholders(english["LinkWarningUserInfo"]));
         Assert.Equal(["{0}"], Placeholders(english["LinkWarningPunycode"]));
+        Assert.Equal(["{0}"], Placeholders(english["StartRecentRemoveName"]));
     }
 
     [Fact]

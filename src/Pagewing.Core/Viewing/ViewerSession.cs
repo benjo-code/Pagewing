@@ -51,7 +51,8 @@ public enum ViewerState
 /// <see cref="Dispose"/>. <see cref="Dispose"/> waits for a handler that is running on another thread, so a
 /// handler must not wait for the thread that disposes the session; a handler may call
 /// <see cref="Close"/> and <see cref="Dispose"/> itself. The session does not subscribe to the events of the
-/// scheduler, but it disposes the scheduler, so it must not be closed or disposed from a scheduler handler.
+/// scheduler, but it disposes the scheduler and changes its page theme, so it must not be closed or disposed, and
+/// <see cref="SetPageTheme"/> must not be called, from a scheduler handler.
 /// </para>
 /// </remarks>
 public sealed class ViewerSession : IDisposable
@@ -73,6 +74,10 @@ public sealed class ViewerSession : IDisposable
     // gate, never the other way round; the cache has its own lock and calls nothing back.
     private readonly object budgetGate = new();
 
+    // Serializes SetPageTheme in the same way: taken before gate, never the other way round, and never together with
+    // budgetGate.
+    private readonly object themeGate = new();
+
     // Guards everything below up to "raising". Never held while an event is raised or anything is disposed.
     private readonly object gate = new();
     private ViewerState state;
@@ -89,6 +94,7 @@ public sealed class ViewerSession : IDisposable
     private long generation;
     private volatile bool disposed;
     private bool active = true;
+    private PageTheme pageTheme;
 
     // The number of Changed invocations that are running or about to; Dispose waits for it to drop to zero.
     private int raising;
@@ -344,7 +350,7 @@ public sealed class ViewerSession : IDisposable
                 {
                     document = opened;
                     cache = new RenderCache(TabBudget.For(active));
-                    scheduler = new RenderScheduler(opened, cache);
+                    scheduler = new RenderScheduler(opened, cache, pageTheme);
                     loadedSizes = new ArraySegment<PdfPageSize>(sizes!, 0, firstCount);
                     backgroundLoadFailure = null;
                     state = ViewerState.Ready;
@@ -384,8 +390,9 @@ public sealed class ViewerSession : IDisposable
     /// Gets the page thumbnails of the open document, creating them on the first call for each document; the same
     /// object is returned until the document is replaced, closed or the session is disposed, which also disposes it
     /// (before the document). Returns <see langword="null"/> unless the state is <see cref="ViewerState.Ready"/>.
-    /// The cache of the thumbnails keeps its budget when the tab becomes inactive; the UI stops the work with an empty
-    /// wish list and empties the cache instead (<c>TabViewModel</c> in the app).
+    /// The thumbnails follow <see cref="SetPageTheme"/>. The cache of the thumbnails keeps its budget when the tab
+    /// becomes inactive; the UI stops the work with an empty wish list and empties the cache instead
+    /// (<c>TabViewModel</c> in the app).
     /// </summary>
     public ThumbnailSource? EnsureThumbnails()
     {
@@ -396,7 +403,7 @@ public sealed class ViewerSession : IDisposable
                 return null;
             }
 
-            return thumbnails ??= new ThumbnailSource(document);
+            return thumbnails ??= new ThumbnailSource(document, pageTheme);
         }
     }
 
@@ -447,6 +454,55 @@ public sealed class ViewerSession : IDisposable
             }
 
             current?.SetBudget(TabBudget.For(active));
+        }
+    }
+
+    /// <summary>Gets the theme the pages of the open document and of every document opened later are rendered in.</summary>
+    public PageTheme PageTheme
+    {
+        get
+        {
+            lock (gate)
+            {
+                return pageTheme;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Renders the pages in <paramref name="theme"/>: the open document at once (its scheduler and its thumbnails drop
+    /// everything of the old theme, see <see cref="RenderScheduler.SetPageTheme"/>; plan again afterwards), and every
+    /// document opened later from the start. A new session renders <see cref="PageTheme.Light"/>. Waits only for an
+    /// event handler of the schedulers that is running. Does nothing after <see cref="Dispose"/>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="theme"/> is not a defined value.</exception>
+    public void SetPageTheme(PageTheme theme)
+    {
+        if (!Enum.IsDefined(theme))
+        {
+            throw new ArgumentOutOfRangeException(nameof(theme), theme, "Unknown page theme.");
+        }
+
+        lock (themeGate)
+        {
+            RenderScheduler? currentScheduler;
+            ThumbnailSource? currentThumbnails;
+            lock (gate)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                pageTheme = theme;
+                currentScheduler = scheduler;
+                currentThumbnails = thumbnails;
+            }
+
+            // Outside the lock: both wait for a running handler of their events, which may read the session. A scheduler
+            // that is replaced meanwhile was created with the new theme; one that is disposed meanwhile ignores the call.
+            currentScheduler?.SetPageTheme(theme);
+            currentThumbnails?.SetPageTheme(theme);
         }
     }
 

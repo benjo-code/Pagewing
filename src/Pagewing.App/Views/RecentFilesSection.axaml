@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.RecentFilesSection"
+             x:DataType="vm:MainViewModel">
+  <!--
+    "Recently opened" on the start screen (design system 7.1): the newest five files of the history, each a button with
+    the document symbol, the file name (type.strong) and the folder (type.caption in text.secondary, 4.5:1 on
+    surface.canvas), both shortened in the middle; the full path is the tooltip. Click, Enter or Space opens the file,
+    Delete removes the entry from the history (so does the remove button beside it, for the mouse; it is no tab stop),
+    Up and Down move between the entries. Only the list is shown: the disk is not asked whether the files are still
+    there. Built by the start screen when the history first has entries, never in the first frame; its styles live here.
+  -->
+  <UserControl.Styles>
+    <Style Selector="Button.recentEntry">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style Selector="Button.recentEntry:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.recentEntry:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.recentRemove">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <StackPanel Name="RecentSection" Spacing="6" IsVisible="{Binding HasStartRecentFiles}">
+    <TextBlock Name="RecentHeading" Classes="strong" Margin="8,0,0,0" Text="{x:Static res:Strings.StartRecent}" />
+    <ItemsControl Name="RecentList" ItemsSource="{Binding StartRecentFiles}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:RecentEntry">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+            <Button Classes="recentEntry"
+                    ToolTip.Tip="{Binding Path}"
+                    AutomationProperties.Name="{Binding AutomationName}"
+                    AutomationProperties.HelpText="{x:Static res:Strings.StartRecentHelp}">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Margin="0,1,0,0"
+                                Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.FileText}" />
+                <StackPanel Grid.Column="1" Spacing="1">
+                  <ctl:MiddleEllipsisTextBlock Name="RecentName" Text="{Binding FileName}" FontSize="13" FontWeight="SemiBold" />
+                  <ctl:MiddleEllipsisTextBlock Name="RecentFolder" Text="{Binding Folder}" FontSize="12"
+                                               Foreground="{DynamicResource Pw.Brush.Text.Secondary}" />
+                </StackPanel>
+              </Grid>
+            </Button>
+            <Button Grid.Column="1" Classes="icon recentRemove" IsTabStop="False" VerticalAlignment="Center"
+                    ToolTip.Tip="{x:Static res:Strings.StartRecentRemove}"
+                    AutomationProperties.Name="{Binding RemoveName}">
+              <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+            </Button>
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </StackPanel>
+</UserControl>

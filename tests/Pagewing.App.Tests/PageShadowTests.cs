@@ -263,7 +263,7 @@ public sealed class PageShadowTests
         Strings.Culture = new CultureInfo("en");
         var cache = new RenderCache();
         var scheduler = new RenderScheduler(
-            (request, _) => !rendered
+            (request, _, _) => !rendered
                 ? new TaskCompletionSource<RenderedImage>().Task
                 : request.Key.IsPreview
                     ? Task.FromException<RenderedImage>(new PdfRenderException("no preview in this test"))

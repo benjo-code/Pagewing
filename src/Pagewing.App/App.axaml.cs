@@ -21,16 +21,29 @@ namespace Pagewing.App;
 /// The session, possibly already opening the file of the command line; the first tab of the window when it does.
 /// </param>
 /// <param name="Instance">The primary single instance, or <see langword="null"/> for an extra instance or a measurement.</param>
+/// <param name="Settings">The settings read before Avalonia started (<see cref="UserSettings.Load()"/>).</param>
 /// <param name="Measurement">The options of a measurement switch, or <see langword="null"/> for a normal launch.</param>
 /// <param name="MorePaths">
 /// The further files of the command line (<see cref="StartupOptions.MorePaths"/>): they open as tabs after the first
 /// frame, behind the first one. Empty for a measurement.
 /// </param>
+/// <param name="RecentFiles">
+/// The history of recently opened files (<see cref="RecentFilesService.Load()"/>, not read yet; in memory only for a
+/// measurement), or <see langword="null"/> for one in memory only.
+/// </param>
 internal sealed record AppStartup(
-    ViewerSession Session, SingleInstance? Instance, StartupOptions? Measurement = null, IReadOnlyList<string>? MorePaths = null)
+    ViewerSession Session,
+    SingleInstance? Instance,
+    UserSettings Settings,
+    StartupOptions? Measurement = null,
+    IReadOnlyList<string>? MorePaths = null,
+    RecentFilesService? RecentFiles = null)
 {
     /// <summary>Gets the further files of the command line, none by default.</summary>
     public IReadOnlyList<string> MorePaths { get; } = MorePaths ?? [];
+
+    /// <summary>Gets the history of recently opened files; one in memory only by default.</summary>
+    public RecentFilesService RecentFiles { get; } = RecentFiles ?? RecentFilesService.Detached();
 }
 
 public sealed class App : Application
@@ -39,17 +52,37 @@ public sealed class App : Application
     private bool _firstWindowCreated;
     private WindowIcon? _windowIcon;
 
-    /// <summary>Creates the app without startup state (tests, designer): its window starts without a tab.</summary>
+    /// <summary>
+    /// Creates the app without startup state (tests, designer): its window starts without a tab, and its settings live
+    /// in memory only (<see cref="UserSettings.Detached"/>), so nothing is read from or written to the user's folder.
+    /// </summary>
     public App()
     {
+        Settings = UserSettings.Detached();
+        RecentFiles = RecentFilesService.Detached();
     }
 
     internal App(AppStartup startup)
     {
         // Avalonia creates the app after the platform (windowing, graphics) is set up.
         StartupPhases.Mark("app-created");
+        ArgumentNullException.ThrowIfNull(startup);
         _startup = startup;
+        Settings = startup.Settings;
+        RecentFiles = startup.RecentFiles;
     }
+
+    /// <summary>Gets the settings of the app, which every window shares.</summary>
+    internal UserSettings Settings { get; }
+
+    /// <summary>
+    /// Gets the history of recently opened files, which every window shares (read after the first sharp page or the
+    /// first frame of the start screen, never in the startup path).
+    /// </summary>
+    internal RecentFilesService RecentFiles { get; }
+
+    /// <summary>Gets what puts the appearance settings into effect; made before the first window.</summary>
+    internal Appearance? Appearance { get; private set; }
 
     public override void RegisterServices()
     {
@@ -67,6 +100,9 @@ public sealed class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         StartupPhases.Mark("app-initialized");
+
+        // Theme and motion before the first window, so it never shows another theme first.
+        Appearance = new Appearance(this, Settings);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Creating an engine does not start PDFium; that happens with the first document.
@@ -77,21 +113,32 @@ public sealed class App : Application
             desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
 
             // Creates no window yet; every window gets its own file dialog.
-            var workspace = new Workspace(() => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window));
+            var workspace = new Workspace(
+                () => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window), Settings, Appearance, RecentFiles);
 
-            // The file of the command line, already opening since Program.Main: the first tab, in the first frame.
-            var firstTab = session is not null && session.State != ViewerState.Empty ? new TabViewModel(session) : null;
-            workspace.OpenWindow(firstTab, (window, viewModel) =>
+            void BeforeShow(Window window, MainViewModel viewModel)
             {
                 desktop.MainWindow = window;
                 ConfigureFirstWindow(desktop, (MainWindow)window, viewModel, workspace, instance);
-            });
+            }
+
+            // The file of the command line, already opening since Program.Main: the first tab, in the first frame. The
+            // window makes the tab, so it gets the default layout and zoom of the settings like every new tab.
+            var adopted = session is not null && session.State != ViewerState.Empty;
+            if (adopted)
+            {
+                workspace.OpenWindowFor(session!, BeforeShow);
+            }
+            else
+            {
+                workspace.OpenWindow(null, BeforeShow);
+            }
 
             desktop.Exit += (_, _) =>
             {
                 instance?.Dispose();
                 workspace.Dispose();
-                if (firstTab is null)
+                if (!adopted)
                 {
                     // Unused (no file on the command line); a tab owns and releases an adopted one.
                     session?.Dispose();

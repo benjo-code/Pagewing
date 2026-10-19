@@ -1,6 +1,6 @@
 // Startup-time check of the published app (CI and local), protocol in bench/startup/README.md.
 //   dotnet run bench/startup/startup.cs -- --exe <app binary> --pdf <pdf> --case cold|warm|thousand|second
-//        [--second-pdf <pdf>] [--out <csv>] [--phases]
+//        [--second-pdf <pdf>] [--out <csv>] [--phases] [--settings <settings.json>]
 //   dotnet run bench/startup/startup.cs -- selftest
 // Per run the script starts the app with a hidden measurement switch and redirected stdout (the app is a GUI
 // program; its stdout only reaches a parent that redirects it):
@@ -12,6 +12,8 @@
 // second with 1 warm-up run and 500 ms pause. Prints every run, median, min and max, and writes case,run,ms to --out.
 // --phases also prints the median of every startup phase the app writes after "first-sharp" ("phase <name> <ms>",
 // milliseconds since its process start) over the measured runs; informational, it never changes the verdict.
+// --settings passes the file on as --measure-settings: the app starts with those settings (read only, never written;
+// without it a measurement run always starts with the defaults). Output and CSV name the case "<case>+settings:<name>".
 // Budgets (Docs/ROADMAP.md, "Geschwindigkeitsziele"): cold 400, warm 200, second 100, thousand 300 ms. The check
 // fails when the MEDIAN is above budget × 1.25. "cold" cannot empty the file cache of the operating system.
 // On Linux the binary needs an X server; the CI runs the whole script under xvfb-run -a. On Windows the script first
@@ -25,7 +27,7 @@ using System.Text;
 
 const string Usage =
     "Aufruf: dotnet run bench/startup/startup.cs -- --exe <App-Binary> --pdf <PDF> --case cold|warm|thousand|second\n" +
-    "          [--second-pdf <PDF>] [--out <CSV>] [--phases]\n" +
+    "          [--second-pdf <PDF>] [--out <CSV>] [--phases] [--settings <settings.json>]\n" +
     "       dotnet run bench/startup/startup.cs -- selftest";
 
 if (args is ["selftest"])
@@ -66,7 +68,20 @@ sealed class Options
     public string? SecondPdf { get; private set; }
     public string? Out { get; private set; }
     public bool Phases { get; private set; }
+    public string? Settings { get; private set; }
     public Case Case { get; private set; } = Case.All[0];
+
+    /// <summary>The name of the run in the output and the CSV: the case, with the settings file if one is given.</summary>
+    public string Label => Settings is null ? Case.Name : $"{Case.Name}+settings:{Path.GetFileNameWithoutExtension(Settings)}";
+
+    /// <summary>The arguments of the app for one run.</summary>
+    public string[] AppArguments()
+    {
+        string[] measure = Case.IsSecond
+            ? ["--measure-second", Path.GetFullPath(Pdf), Path.GetFullPath(SecondPdf!)]
+            : ["--measure-startup", Path.GetFullPath(Pdf)];
+        return Settings is null ? measure : [.. measure, "--measure-settings", Path.GetFullPath(Settings)];
+    }
 
     public static Options? Parse(string[] args, out string error)
     {
@@ -95,6 +110,7 @@ sealed class Options
                 case "--second-pdf": o.SecondPdf = value; break;
                 case "--out": o.Out = value; break;
                 case "--case": caseName = value; break;
+                case "--settings": o.Settings = value; break;
                 default:
                     error = $"Unbekannte Option: {name}";
                     return null;
@@ -120,7 +136,7 @@ sealed class Options
             return null;
         }
 
-        foreach (var file in new[] { o.Exe, o.Pdf, o.SecondPdf })
+        foreach (var file in new[] { o.Exe, o.Pdf, o.SecondPdf, o.Settings })
         {
             if (file is not null && !File.Exists(file))
             {
@@ -143,11 +159,10 @@ static class Check
     {
         var c = options.Case;
         var exe = Path.GetFullPath(options.Exe);
-        string[] arguments = c.IsSecond
-            ? ["--measure-second", Path.GetFullPath(options.Pdf), Path.GetFullPath(options.SecondPdf!)]
-            : ["--measure-startup", Path.GetFullPath(options.Pdf)];
+        var arguments = options.AppArguments();
+        var name = options.Label;
 
-        Console.WriteLine($"{c.Name}: {exe} {string.Join(' ', arguments)}");
+        Console.WriteLine($"{name}: {exe} {string.Join(' ', arguments)}");
         if (c.Name == "cold")
         {
             Console.WriteLine("Hinweis: \"cold\" leert den Datei-Cache des Betriebssystems nicht; ein echter Kaltstart ist eine manuelle Messung direkt nach einem Neustart.");
@@ -169,7 +184,7 @@ static class Check
             var result = RunOnce(exe, arguments, c.IsSecond);
             if (result.Error is not null)
             {
-                failure = $"{c.Name}: Lauf {(run <= 0 ? "Aufwärmen" : run.ToString(CultureInfo.InvariantCulture))} fehlgeschlagen: {result.Error}";
+                failure = $"{name}: Lauf {(run <= 0 ? "Aufwärmen" : run.ToString(CultureInfo.InvariantCulture))} fehlgeschlagen: {result.Error}";
                 break;
             }
 
@@ -201,7 +216,7 @@ static class Check
 
         if (options.Out is { } outPath)
         {
-            WriteCsv(outPath, c.Name, times);
+            WriteCsv(outPath, name, times);
         }
 
         RepeatWarning(warning);
@@ -215,16 +230,16 @@ static class Check
         var limit = Stats.Limit(c.BudgetMs);
         Console.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
-            $"{c.Name}: Median {median:0.0} ms, Min {times.Min():0.0} ms, Max {times.Max():0.0} ms ({times.Count} Läufe; Budget {c.BudgetMs:0} ms, Grenze {limit:0} ms)"));
+            $"{name}: Median {median:0.0} ms, Min {times.Min():0.0} ms, Max {times.Max():0.0} ms ({times.Count} Läufe; Budget {c.BudgetMs:0} ms, Grenze {limit:0} ms)"));
         if (Stats.Exceeds(median, c.BudgetMs))
         {
             Console.Error.WriteLine(string.Create(
                 CultureInfo.InvariantCulture,
-                $"FEHLGESCHLAGEN: {c.Name}: Median {median:0.0} ms liegt über der Grenze {limit:0} ms (Budget {c.BudgetMs:0} ms + 25 %)."));
+                $"FEHLGESCHLAGEN: {name}: Median {median:0.0} ms liegt über der Grenze {limit:0} ms (Budget {c.BudgetMs:0} ms + 25 %)."));
             return 1;
         }
 
-        Console.WriteLine($"{c.Name}: innerhalb der Grenze.");
+        Console.WriteLine($"{name}: innerhalb der Grenze.");
         return 0;
     }
 
@@ -606,6 +621,22 @@ static class SelfTest
         Expect("Phasen-Bericht Skript", phaseReport[5].StartsWith("  Skript - frame-after-tile     11.0 ms (3 Läufe;", StringComparison.Ordinal), true);
         Expect("Phasen-Bericht ohne Zeilen", Phases.Report([], [])[0].StartsWith("Phasen (Median): keine Zeilen", StringComparison.Ordinal), true);
         Expect("--phases braucht keinen Wert", Options.Parse(["--phases", "--case", "warm"], out var phasesError) is null && phasesError.StartsWith("--exe", StringComparison.Ordinal), true);
+
+        var someFile = Path.GetTempFileName();
+        try
+        {
+            var plain = Options.Parse(["--exe", someFile, "--pdf", someFile, "--case", "warm"], out _);
+            Expect("ohne --settings", plain is null ? "-" : $"{plain.Label}|{string.Join(' ', plain.AppArguments())}", $"warm|--measure-startup {Path.GetFullPath(someFile)}");
+            var withSettings = Options.Parse(["--exe", someFile, "--pdf", someFile, "--case", "warm", "--settings", someFile], out _);
+            Expect("mit --settings", withSettings is null ? "-" : $"{withSettings.Label}|{string.Join(' ', withSettings.AppArguments())}",
+                $"warm+settings:{Path.GetFileNameWithoutExtension(someFile)}|--measure-startup {Path.GetFullPath(someFile)} --measure-settings {Path.GetFullPath(someFile)}");
+            Expect("--settings muss existieren", Options.Parse(["--exe", someFile, "--pdf", someFile, "--case", "warm", "--settings", someFile + ".missing"], out var settingsError) is null
+                && settingsError.StartsWith("Datei nicht gefunden", StringComparison.Ordinal), true);
+        }
+        finally
+        {
+            File.Delete(someFile);
+        }
 
         Expect("Fälle vollständig", string.Join(',', Case.All.Select(c => $"{c.Name}:{c.BudgetMs}:{c.Runs}:{c.Warmup}:{c.PauseMs}")),
             "cold:400:10:0:5000,warm:200:10:3:500,thousand:300:10:3:500,second:100:10:1:500");

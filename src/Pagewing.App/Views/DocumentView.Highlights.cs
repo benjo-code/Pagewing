@@ -119,7 +119,7 @@ public sealed partial class DocumentView
             layout.ShowPage(page);
             ShowCurrentRow(page);
             Refit(chosen: false);
-            ChangeLayout(new Vector(Scroller.Offset.X, layout.GetPageRect(page).Y - DocumentLayout.Margin));
+            ChangeLayout(new Vector(Scroller.Offset.X, layout.GetPageRect(page).Y - layout.PageMargin));
         }
         else if (_viewModel is { } tab && (page < tab.CurrentPage - 1 || page > Math.Max(tab.CurrentPage, tab.CurrentPageLast) - 1))
         {

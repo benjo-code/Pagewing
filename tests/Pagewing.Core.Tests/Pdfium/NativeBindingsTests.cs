@@ -18,6 +18,7 @@ public sealed partial class NativeBindingsTests
     private static readonly Dictionary<string, string> HeaderNames = new()
     {
         [nameof(FpdfConstants.RenderAnnot)] = "FPDF_ANNOT",
+        [nameof(FpdfConstants.RenderConvertFillToStroke)] = "FPDF_CONVERT_FILL_TO_STROKE",
         [nameof(FpdfConstants.ErrSuccess)] = "FPDF_ERR_SUCCESS",
         [nameof(FpdfConstants.ErrUnknown)] = "FPDF_ERR_UNKNOWN",
         [nameof(FpdfConstants.ErrFile)] = "FPDF_ERR_FILE",

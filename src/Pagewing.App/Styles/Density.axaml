@@ -1,0 +1,27 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    x:Class="Pagewing.App.Styles.Density">
+  <!--
+    The density "Kompakt" (Docs/superpowers/specs/2026-10-17-designsystem.md, section 5.4): the same keys as the density
+    block of Metrics.axaml, with the compact values. Not part of the app's resources and not in the startup path:
+    Services/Appearance creates this dictionary only when the setting is "Kompakt" and copies its values over the normal
+    ones. The gap between the pages stays 20; the smallest text stays 12 (caption).
+  -->
+  <x:Double x:Key="Pw.Size.TitleBarHeight">34</x:Double>
+  <x:Double x:Key="Pw.Size.ActionBarWidth">44</x:Double>
+  <x:Double x:Key="Pw.Size.ActionButton">34</x:Double>
+  <x:Double x:Key="Pw.Size.StatusBarHeight">26</x:Double>
+  <Thickness x:Key="Pw.Size.StatusBarIndent">48,0,8,0</Thickness>
+  <x:Double x:Key="Pw.Size.ToolbarHeight">38</x:Double>
+  <x:Double x:Key="Pw.Size.PageMargin">20</x:Double>
+  <!--
+    Two thumbnails per row, each as wide as its column (ThumbnailList.FrameWidth follows the width of the list, in steps
+    of 8): (panel - 2 x 14 list padding - 16 gap) / 2, less 2 x (6 padding + 2 ring + 1 edge) of the entry, rounded down
+    to 8. This value is the width at the default panel width of "Kompakt" (236: 78, rounded 72), used until the list
+    knows its own width.
+  -->
+  <x:Double x:Key="Pw.Size.ThumbnailWidth">72</x:Double>
+  <x:Int32 x:Key="Pw.Size.ThumbnailColumns">2</x:Int32>
+  <x:Double x:Key="Pw.Font.Body">12.5</x:Double>
+  <x:Double x:Key="Pw.Font.BodyLineHeight">17</x:Double>
+</ResourceDictionary>

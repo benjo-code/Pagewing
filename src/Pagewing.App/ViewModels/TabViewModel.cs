@@ -4,6 +4,7 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Settings;
 using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 
@@ -52,6 +53,12 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _outlineCancellation;
     private Task _outlineLoad = Task.CompletedTask;
 
+    // The page theme of the settings (kept up to date by the window), the tab's own choice, and what the session was
+    // last told (ViewerSession.SetPageTheme), so that an unchanged theme costs nothing.
+    private PageTheme _appPageTheme = PageTheme.Light;
+    private PageTheme? _pageThemeOverride;
+    private PageTheme _sessionPageTheme;
+
     // A new session is active (ViewerSession.SetActive).
     private bool _isActive = true;
     private bool _disposed;
@@ -61,6 +68,8 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(session);
         _session = session;
+        _sessionPageTheme = session.PageTheme;
+        _appPageTheme = _sessionPageTheme;
 
         CloseCommand = new RelayCommand(() => CloseRequested?.Invoke());
         CancelPasswordCommand = new RelayCommand(() => CloseRequested?.Invoke());
@@ -90,6 +99,8 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         BackCommand = _backCommand;
         _forwardCommand = new RelayCommand(GoForward, () => CanGoForward);
         ForwardCommand = _forwardCommand;
+        TogglePageThemeCommand = new RelayCommand(
+            () => PageThemeOverride = EffectivePageTheme == PageTheme.Dark ? PageTheme.Light : PageTheme.Dark);
         SetZoomCommand = new RelayCommand<double>(zoom =>
         {
             if (IsReady)
@@ -507,6 +518,59 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets the page theme the settings give this tab: <see cref="PageTheme.Dark"/> when the pages follow the theme
+    /// (<see cref="Pagewing.Core.Settings.PageAppearanceSetting.FollowTheme"/>) and the theme in effect is dark, else
+    /// <see cref="PageTheme.Light"/>. The window keeps it up to date (<see cref="MainViewModel"/>), for every tab it has.
+    /// </summary>
+    public PageTheme AppPageTheme
+    {
+        get => _appPageTheme;
+        internal set
+        {
+            if (SetProperty(ref _appPageTheme, value))
+            {
+                ApplyPageTheme();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the page theme this tab chose for itself (<see cref="TogglePageThemeCommand"/>), or
+    /// <see langword="null"/> to follow <see cref="AppPageTheme"/>. It belongs to the tab: it stays with another document
+    /// and when the tab moves to another window.
+    /// </summary>
+    public PageTheme? PageThemeOverride
+    {
+        get => _pageThemeOverride;
+        set
+        {
+            if (value is { } theme && !Enum.IsDefined(theme))
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown page theme.");
+            }
+
+            if (SetProperty(ref _pageThemeOverride, value))
+            {
+                ApplyPageTheme();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the theme the pages of this tab render in: <see cref="PageThemeOverride"/>, else <see cref="AppPageTheme"/>.
+    /// The session renders in it (<see cref="ViewerSession.SetPageTheme"/>, also for documents opened later); a change
+    /// raises <see cref="ViewModelBase.PropertyChanged"/> after the session was told, and the document view and the
+    /// thumbnails render again. Page, zoom and selection stay.
+    /// </summary>
+    public PageTheme EffectivePageTheme => _pageThemeOverride ?? _appPageTheme;
+
+    /// <summary>Gets whether the pages of this tab are dark (<see cref="EffectivePageTheme"/>), for the empty thumbnail frames.</summary>
+    public bool IsPageDark => EffectivePageTheme == PageTheme.Dark;
+
+    /// <summary>Switches the pages of this tab to the other theme (<see cref="PageThemeOverride"/>), whatever the setting says.</summary>
+    public ICommand TogglePageThemeCommand { get; }
+
     /// <summary>Asks the window to close this tab (× on the tab, "Close tab" on the error card).</summary>
     public ICommand CloseCommand { get; }
 
@@ -569,7 +633,44 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         _pickerFailure = null;
         Password = string.Empty;
         SavedView = null;
+        ApplyInitialView();
         return _session.OpenAsync(path);
+    }
+
+    /// <summary>
+    /// Gets or sets where the next file this tab opens (<see cref="OpenAsync"/>) was last read (the history of
+    /// recently opened files), or <see langword="null"/>; used by that one open and then dropped. The window sets it for
+    /// a file it opens, never for a tab that moves to it.
+    /// </summary>
+    internal RememberedView? InitialView { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document of this tab that the history of recently opened files has been told about, so a tab
+    /// that moves to another window is not reported as opened again.
+    /// </summary>
+    internal PdfDocument? ReportedDocument { get; set; }
+
+    /// <summary>
+    /// Takes <see cref="InitialView"/> for the file being opened: its position becomes the saved view (the document view
+    /// shows it like a tab shown again), then layout, zoom mode and zoom, in this order and without the zoom setter, which
+    /// would turn a fit mode into the free zoom. A view with unusable values is ignored. The fraction is limited to
+    /// -1 to 1 (a negative one is the margin above the first page, which the view keeps), the zoom to the zoom steps;
+    /// the page is limited to the document once it is open (<see cref="Refresh"/>).
+    /// </summary>
+    private void ApplyInitialView()
+    {
+        var remembered = InitialView;
+        InitialView = null;
+        if (remembered is null || !remembered.IsValid())
+        {
+            return;
+        }
+
+        var anchor = remembered.View.Anchor;
+        SavedView = new ViewState(new PageAnchor(anchor.Page, Math.Clamp(anchor.Fraction, -1, 1)), remembered.View.HorizontalFromCentre);
+        LayoutMode = remembered.Layout;
+        ZoomMode = remembered.ZoomMode;
+        SetZoom(remembered.Zoom);
     }
 
     /// <summary>Asks the document view to show <paramref name="page"/> (1-based); a page outside the document does nothing.</summary>
@@ -644,6 +745,25 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         var thumbnails = _session.EnsureThumbnails();
         _thumbnails = thumbnails;
         return thumbnails;
+    }
+
+    /// <summary>Tells the session a changed <see cref="EffectivePageTheme"/>, then everyone who listens.</summary>
+    private void ApplyPageTheme()
+    {
+        var theme = EffectivePageTheme;
+        if (theme == _sessionPageTheme)
+        {
+            return;
+        }
+
+        _sessionPageTheme = theme;
+        if (!_disposed)
+        {
+            _session.SetPageTheme(theme);
+        }
+
+        OnPropertyChanged(nameof(EffectivePageTheme));
+        OnPropertyChanged(nameof(IsPageDark));
     }
 
     /// <summary>Puts the current page back into the page field (an edit that was not committed, for example on leaving the field).</summary>
@@ -923,6 +1043,11 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (SavedView is null)
             {
                 SetZoom(ZoomSteps.Default);
+            }
+            else if (SavedView.Anchor.Page >= pageCount && pageCount > 0)
+            {
+                // A remembered position beyond the end (the file has fewer pages now): the top of the last page.
+                SavedView = SavedView with { Anchor = new PageAnchor(pageCount - 1, 0) };
             }
         }
         else if (document is null)

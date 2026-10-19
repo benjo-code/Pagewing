@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         InitializePanel();
+        InitializeOverlays();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
     }
@@ -85,6 +86,22 @@ public sealed partial class MainWindow : Window
 
         AttachPanel(old, _viewModel);
         AttachLinkCard(old, _viewModel);
+        AttachShortcuts(_viewModel);
+        AttachOverlays(old, _viewModel);
+    }
+
+    /// <summary>
+    /// The window closes (the user, the end of the app, its last tab gone): the document view saves where it shows the
+    /// active tab now, then every tab of the window with an open document goes into the history with its position.
+    /// </summary>
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        base.OnClosing(e);
+        if (!e.Cancel && _viewModel is { } viewModel)
+        {
+            DocumentView.SaveView();
+            viewModel.RememberOpenTabs();
+        }
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

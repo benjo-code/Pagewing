@@ -284,9 +284,10 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
     /// <summary>
     /// Renders a whole page at <paramref name="scale"/> pixels per point (1 = 72 dpi) on white, without rotation
     /// beyond the page's own. The image size is <see cref="PdfPageSize.ToPixels"/>. The render runs in time
-    /// slices on the PDFium thread, so other requests can run in between.
+    /// slices on the PDFium thread, so other requests can run in between. With <see cref="PageTheme.Dark"/> in
+    /// <paramref name="options"/> the page is drawn light on <see cref="PageThemeColors.DarkBackground"/> instead.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">Invalid page index, scale or time slice.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Invalid page index, scale, time slice or page theme.</exception>
     /// <exception cref="PdfRenderException">The image would exceed 256 Mpx, or rendering failed.</exception>
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the render finished.</exception>
@@ -309,7 +310,7 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
     /// allgemein bitgleich".
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// Invalid page index, scale or time slice, or the tile is empty or not within <see cref="PdfPageSize.ToPixels"/>.
+    /// Invalid page index, scale, time slice or page theme, or the tile is empty or not within <see cref="PdfPageSize.ToPixels"/>.
     /// </exception>
     /// <exception cref="PdfRenderException">The tile would exceed 256 Mpx, the page size in pixels exceeds the int range, or rendering failed.</exception>
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
@@ -396,14 +397,23 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfLessThan(options.TimeSlice, TimeSpan.Zero, nameof(options));
         var annotations = options.Annotations;
         var slice = options.TimeSlice;
+        var colors = ColorsOf(options.PageTheme);
         var priority = options.Priority == PdfPriority.Background ? PdfiumPriority.Background : PdfiumPriority.Interactive;
 
         // The work is created on the PDFium thread: it loads the page and checks the tile against the page size.
         return AwaitRender(document.Thread.InvokeSteppedAsync(
-            () => new PdfiumRenderWork(document, pageIndex, scale, tile, annotations, slice),
+            () => new PdfiumRenderWork(document, pageIndex, scale, tile, annotations, slice, colors),
             priority,
             cancellationToken));
     }
+
+    /// <summary>The colours PDFium paints a page with; <see langword="null"/> renders the page as it is, on white.</summary>
+    private static PdfiumPageColors? ColorsOf(PageTheme theme) => theme switch
+    {
+        PageTheme.Light => null,
+        PageTheme.Dark => new PdfiumPageColors(PageThemeColors.DarkBackground, PageThemeColors.DarkForeground),
+        _ => throw new ArgumentOutOfRangeException(nameof(theme), theme, "Unknown page theme."),
+    };
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
 }

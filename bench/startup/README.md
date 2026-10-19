@@ -49,6 +49,18 @@ Ein dritter Schalter misst das Scrollen und gehört nicht zum Check: `Pagewing -
 
 Für alle drei Schalter gilt: Die App nimmt nicht an der Single-Instance-Wahl teil (sie übergibt nichts an ein laufendes Pagewing und belegt weder Sperre noch Pipe), sie öffnet nie ein Panel (das Panel „Seiten“, das sich sonst nach dem ersten scharfen Bild öffnet, und seine Vorschaubilder gehören also nicht zur Messung; `Docs/DECISIONS.md`, Eintrag „Aktionsleiste und Panel …“), eine Datei, die sich nicht öffnen lässt, endet mit Exit-Code 1 und `error: …` auf stderr, und nach 30 s ohne Ergebnis endet die App mit Exit-Code 3. Das Skript bricht einen Lauf nach 45 s ab und beendet den Prozess.
 
+## Einstellungen und Verlauf in Messläufen
+
+Messläufe (`--measure-startup`, `--measure-second`, `--measure-scroll`) nehmen `UserSettings.Detached()` (`Program.LoadSettings`) und `RecentFilesService.Detached()` (`Program.LoadRecentFiles`): Standardwerte und ein leerer Verlauf nur im Speicher. Sie lesen weder `settings.json` noch `recent.json` und schreiben nichts in den Benutzerordner (keine `.bad`-Kopie, kein Verlaufseintrag). So hängen die Zahlen nicht von den Einstellungen dessen ab, der misst: Der Check misst den Start **ohne** Einstellungsdatei (Theme „Wie im System“, Dichte „Normal“, Animationen an, Systemsprache). `--lang <code>` wirkt auch im Messlauf, weil es nicht aus der Datei kommt.
+
+**Mit Einstellungsdatei:** Der versteckte Schalter `--measure-settings <datei>` gilt nur zusammen mit einem `--measure-*`-Schalter (sonst wird er ignoriert, wie `--zoom`). Der Messlauf liest dann genau diese Datei, nur lesend (`UserSettings.DetachedFrom`, `SettingsStore.LoadReadOnly`): Er schreibt sie nie, legt keine `.bad`-Kopie und keinen Ordner an und liest den Benutzerordner weiterhin nicht. Eine kaputte Datei ergibt die Standardwerte; fehlt die Datei oder der Wert, endet der Lauf mit Exit-Code 1 und `error: --measure-settings …`, damit ein Tippfehler nicht unbemerkt die Standardwerte misst. Das Skript reicht `--settings <datei>` als `--measure-settings` durch und nennt den Fall in Ausgabe und CSV `<fall>+settings:<dateiname>`, zum Beispiel:
+
+```powershell
+dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/text-basic.pdf --case warm --settings <ordner>/dark.json --phases
+```
+
+Budget und Grenze bleiben die des Falls. Messwerte (Stand M6): `Docs/DECISIONS.md`, Eintrag „Startzeit mit vorhandener settings.json (M6)“. Der Start mit dem Hochkontrast-Wunsch des Systems bleibt mit den Schaltern nicht messbar (Eintrag „Startzeitmessung M6: Ergebnis gegen dev und offene Fälle“).
+
 ## Frame-Takt der Messumgebung
 
 Der Messpunkt ist der Frame nach dem Zeichnen, und Avalonia richtet seine Frames unter Windows nach der Desktop-Komposition (DWM). Zeigt DWM nur wenige Bilder pro Sekunde, enthält jeder Lauf bis zu zwei solcher Wartezeiten, und die Zeiten sagen nichts über die App. Das Skript misst deshalb unter Windows vor den Läufen fünf Abstände von `DwmFlush` und schreibt eine `Warnung: …`, wenn der Median über 40 ms liegt (unter 25 Hz) oder es keine Komposition gibt (Dienstsitzung ohne Desktop). Scheitert die Messung selbst (Ausnahme oder kein Ergebnis nach 2 s), gilt das als „keine Komposition“; der Check läuft trotzdem weiter. Die Warnung steht vor den Läufen und noch einmal neben dem Ergebnis („Ergebnis unter Vorbehalt: …“), dazu als GitHub-Annotation (`::warning::`) in der Zusammenfassung des CI-Laufs. Sie ändert das Ergebnis des Checks nicht.
@@ -65,6 +77,7 @@ In den Start- und Zweitdatei-Messläufen (`--measure-startup`, `--measure-second
 |---|---|
 | `main` | Eintritt in `Program.Main` (nach der `AppContext`-Initialisierung) |
 | `session-open-started` | das frühe Öffnen der Datei ist gestartet |
+| `settings-loaded` | Einstellungen gelesen (ohne `settings.json` nur die Prüfung, ob sie existiert) und UI-Sprache gewählt (`UserSettings.Load`, `Program.ChooseUiCulture`) |
 | `rendering-software`, `rendering-default` | nur Windows: Rendering-Modus gewählt (`rendering-default` nur mit `PAGEWING_RENDERING=default`; `Docs/DECISIONS.md`, Eintrag „Software-Rendering als Windows-Standard (M3)“) |
 | `session-ready` | die Session meldet `Ready` (PDFium-Thread) |
 | `avalonia-configure` | vor `AppBuilder.Configure` (in `Program.Run`) |

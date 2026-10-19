@@ -7,12 +7,14 @@
              xmlns:chrome="using:Avalonia.Controls.Chrome"
              x:Class="Pagewing.App.Views.TitleBar"
              x:DataType="vm:MainViewModel"
-             Height="40">
+             Height="{DynamicResource Pw.Size.TitleBarHeight}">
   <!--
     Title bar (Windows) or tab row below the system title bar (Linux), design system sections 2.2, 6 and 7.2.
-    From the left: app symbol (as wide as the later action bar), the tab strip (or the app name without a tab) and, on
-    Windows, the space of the system caption buttons. The tab strip (TabStrip.axaml) holds the tabs, "All tabs (n)",
-    "Open file" and the drag area; it gets the window width minus 52 and, on Windows, minus 140.
+    From the left: app symbol (as wide as the later action bar), the tab strip (or the app name without a tab), the
+    button "Search or command" of the command palette and, on Windows, the space of the system caption buttons. The tab
+    strip (TabStrip.axaml) holds the tabs, "All tabs (n)", "Open file" and the drag area; it gets the window width minus
+    the action bar width, the palette button with its margin and, on Windows, 140. Height and the width of the app symbol
+    follow the density (Pw.Size.*, design system 5.4).
   -->
   <UserControl.Styles>
     <!-- Linux: the tab row meets the system title bar of the same colour, so it gets a border.subtle top edge (section 5.3). -->
@@ -20,11 +22,56 @@
       <Setter Property="BorderThickness" Value="0,1,0,0" />
       <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
     </Style>
+    <!--
+      "Search or command" (design system 6 and 7.6, as in the mockup): surface.hover, text.secondary (checked on
+      surface.hover, CommandPaletteTests), the shortcut as kbd on surface.raised. Below 900 px only the icon (32 wide).
+    -->
+    <Style Selector="Button.palette">
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="32" />
+      <Setter Property="Padding" Value="10,0,6,0" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="Button.palette.narrow">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Width" Value="32" />
+    </Style>
+    <Style Selector="Button.palette:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="Button.palette:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="Border#PaletteKbd">
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
   </UserControl.Styles>
 
   <Border Name="Root" Classes.linux="{Binding !IsWindowsTitleBar}">
-    <Grid ColumnDefinitions="52,*,Auto">
-      <Border Name="AppMark" Background="Transparent" chrome:WindowDecorationProperties.ElementRole="TitleBar">
+    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+      <!--
+        The edge of the title bar against the panel and the document area, in high contrast only (Pw.Size.RegionSeparator,
+        0 in light and dark): under the tabs and the buttons, from the action bar edge to the right. Below the tab strip,
+        so the active tab covers it and stays open towards the document area.
+      -->
+      <Border Name="TitleBarEdge" Grid.Column="1" Grid.ColumnSpan="3" Margin="-1,0,0,0" VerticalAlignment="Bottom"
+              Height="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
+              IsHitTestVisible="False" IsVisible="{Binding HasTabs}" />
+
+      <Border Name="AppMark" Width="{DynamicResource Pw.Size.ActionBarWidth}" Background="Transparent"
+              chrome:WindowDecorationProperties.ElementRole="TitleBar">
         <ctl:StrokeIcon Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Data="{StaticResource Pw.Icon.FileText}"
                         Brush="{DynamicResource Pw.Brush.Accent.Default}" />
@@ -39,8 +86,28 @@
                  IsVisible="{Binding IsEmpty}"
                  chrome:WindowDecorationProperties.ElementRole="TitleBar" />
 
+      <!--
+        Opens the command palette, which is made only then (MainWindow.Overlays.cs); a press while it is open closes it.
+        At the end of the Linux tab row, before the caption buttons on Windows; marked User so that it takes the click.
+      -->
+      <Button Name="PaletteButton" Grid.Column="2" Classes="palette" Classes.narrow="{Binding IsNarrowWindow}"
+              Margin="4,0,8,0"
+              Command="{Binding ShowPaletteCommand}"
+              AutomationProperties.Name="{x:Static res:Strings.PaletteButton}"
+              chrome:WindowDecorationProperties.ElementRole="User">
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Search}" />
+          <TextBlock Name="PaletteButtonText" Classes="body" VerticalAlignment="Center"
+                     Text="{x:Static res:Strings.PaletteButton}" IsVisible="{Binding !IsNarrowWindow}" />
+          <Border Name="PaletteKbd" IsVisible="{Binding !IsNarrowWindow}">
+            <!-- The shortcut and the tooltip come from the command catalog (TitleBar.axaml.cs). -->
+            <TextBlock Name="PaletteKbdText" Classes="mono" />
+          </Border>
+        </StackPanel>
+      </Button>
+
       <!-- Avalonia draws minimize, maximize and close over this space (Pw.WindowDecorations in MainWindow.axaml). -->
-      <Border Name="CaptionButtonsSpace" Grid.Column="2" Width="140" IsVisible="{Binding IsWindowsTitleBar}" />
+      <Border Name="CaptionButtonsSpace" Grid.Column="3" Width="140" IsVisible="{Binding IsWindowsTitleBar}" />
     </Grid>
   </Border>
 </UserControl>

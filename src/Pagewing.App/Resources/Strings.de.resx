@@ -45,9 +45,6 @@
   <data name="StartTitle" xml:space="preserve">
     <value>Dokument öffnen</value>
   </data>
-  <data name="StartHint" xml:space="preserve">
-    <value>Drücken Sie Strg+O, um eine PDF-Datei auszuwählen.</value>
-  </data>
   <data name="StartOffline" xml:space="preserve">
     <value>Pagewing arbeitet offline. Nichts verlässt diesen Rechner.</value>
   </data>
@@ -323,5 +320,230 @@
   </data>
   <data name="LinkWarningPunycode" xml:space="preserve">
     <value>Der Host nutzt Sonderzeichen und wird als {0} dargestellt.</value>
+  </data>
+  <data name="CommandNextTab" xml:space="preserve">
+    <value>Nächster Tab</value>
+  </data>
+  <data name="CommandPreviousTab" xml:space="preserve">
+    <value>Vorheriger Tab</value>
+  </data>
+  <data name="CommandZoomIn" xml:space="preserve">
+    <value>Vergrößern</value>
+  </data>
+  <data name="CommandZoomOut" xml:space="preserve">
+    <value>Verkleinern</value>
+  </data>
+  <data name="CommandTogglePageTheme" xml:space="preserve">
+    <value>Seite hell/dunkel</value>
+  </data>
+  <data name="CommandGoToPage" xml:space="preserve">
+    <value>Gehe zu Seite</value>
+  </data>
+  <data name="CommandPreviousPage" xml:space="preserve">
+    <value>Vorherige Seite</value>
+  </data>
+  <data name="CommandNextPage" xml:space="preserve">
+    <value>Nächste Seite</value>
+  </data>
+  <data name="CommandBack" xml:space="preserve">
+    <value>Zurück</value>
+  </data>
+  <data name="CommandForward" xml:space="preserve">
+    <value>Vorwärts</value>
+  </data>
+  <data name="CommandPagesPanel" xml:space="preserve">
+    <value>Seiten ein- oder ausblenden</value>
+  </data>
+  <data name="CommandContentsPanel" xml:space="preserve">
+    <value>Inhalt ein- oder ausblenden</value>
+  </data>
+  <data name="CommandSearch" xml:space="preserve">
+    <value>Suchen</value>
+  </data>
+  <data name="CommandSearchNext" xml:space="preserve">
+    <value>Nächster Treffer</value>
+  </data>
+  <data name="CommandSearchPrevious" xml:space="preserve">
+    <value>Vorheriger Treffer</value>
+  </data>
+  <data name="CommandPalette" xml:space="preserve">
+    <value>Befehlspalette</value>
+  </data>
+  <data name="CommandSettings" xml:space="preserve">
+    <value>Einstellungen</value>
+  </data>
+  <data name="CommandClearRecent" xml:space="preserve">
+    <value>Verlauf löschen</value>
+  </data>
+  <data name="CommandGroupFile" xml:space="preserve">
+    <value>Datei</value>
+  </data>
+  <data name="CommandGroupView" xml:space="preserve">
+    <value>Ansicht</value>
+  </data>
+  <data name="CommandGroupNavigation" xml:space="preserve">
+    <value>Navigation</value>
+  </data>
+  <data name="CommandGroupSearch" xml:space="preserve">
+    <value>Suche</value>
+  </data>
+  <data name="CommandGroupWindow" xml:space="preserve">
+    <value>Fenster</value>
+  </data>
+  <data name="KeyCtrl" xml:space="preserve">
+    <value>Strg</value>
+  </data>
+  <data name="KeyShift" xml:space="preserve">
+    <value>Umschalt</value>
+  </data>
+  <data name="KeyPageUp" xml:space="preserve">
+    <value>Bild auf</value>
+  </data>
+  <data name="KeyPageDown" xml:space="preserve">
+    <value>Bild ab</value>
+  </data>
+  <data name="KeyLeft" xml:space="preserve">
+    <value>Links</value>
+  </data>
+  <data name="KeyRight" xml:space="preserve">
+    <value>Rechts</value>
+  </data>
+  <data name="KeyComma" xml:space="preserve">
+    <value>Komma</value>
+  </data>
+  <data name="HelpTitle" xml:space="preserve">
+    <value>Tastenkürzel</value>
+  </data>
+  <data name="HelpFilter" xml:space="preserve">
+    <value>Kürzel filtern</value>
+  </data>
+  <data name="HelpClose" xml:space="preserve">
+    <value>Schließen (Esc)</value>
+  </data>
+  <data name="HelpEmpty" xml:space="preserve">
+    <value>Kein Kürzel passt.</value>
+  </data>
+  <data name="CommandCloseOverlay" xml:space="preserve">
+    <value>Karte oder Palette schließen</value>
+  </data>
+  <data name="PaletteButton" xml:space="preserve">
+    <value>Suchen oder Befehl</value>
+  </data>
+  <data name="PalettePlaceholder" xml:space="preserve">
+    <value>Befehl, Seite, Tab oder Datei suchen</value>
+  </data>
+  <data name="PaletteEmpty" xml:space="preserve">
+    <value>Nichts gefunden.</value>
+  </data>
+  <data name="PaletteGroupRecent" xml:space="preserve">
+    <value>Zuletzt geöffnet</value>
+  </data>
+  <data name="PaletteGroupPages" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="PaletteGroupTabs" xml:space="preserve">
+    <value>Offene Tabs</value>
+  </data>
+  <data name="PaletteGroupContents" xml:space="preserve">
+    <value>Inhalt</value>
+  </data>
+  <data name="PaletteGroupCommands" xml:space="preserve">
+    <value>Befehle</value>
+  </data>
+  <data name="PaletteGoToPage" xml:space="preserve">
+    <value>Gehe zu Seite {0}</value>
+  </data>
+  <data name="PalettePageDetail" xml:space="preserve">
+    <value>Seite {0}</value>
+  </data>
+  <data name="SettingsTooltip" xml:space="preserve">
+    <value>Einstellungen (Strg+Komma)</value>
+  </data>
+  <data name="SettingsClose" xml:space="preserve">
+    <value>Schließen (Esc)</value>
+  </data>
+  <data name="SettingsDone" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="SettingsGroupAppearance" xml:space="preserve">
+    <value>Darstellung</value>
+  </data>
+  <data name="SettingsGroupView" xml:space="preserve">
+    <value>Ansicht</value>
+  </data>
+  <data name="SettingsGroupLanguage" xml:space="preserve">
+    <value>Sprache</value>
+  </data>
+  <data name="SettingsTheme" xml:space="preserve">
+    <value>Design</value>
+  </data>
+  <data name="SettingsThemeSystem" xml:space="preserve">
+    <value>Wie im System</value>
+  </data>
+  <data name="SettingsThemeLight" xml:space="preserve">
+    <value>Hell</value>
+  </data>
+  <data name="SettingsThemeDark" xml:space="preserve">
+    <value>Dunkel</value>
+  </data>
+  <data name="SettingsDensity" xml:space="preserve">
+    <value>Dichte</value>
+  </data>
+  <data name="SettingsDensityNormal" xml:space="preserve">
+    <value>Normal</value>
+  </data>
+  <data name="SettingsDensityCompact" xml:space="preserve">
+    <value>Kompakt</value>
+  </data>
+  <data name="SettingsDarkPages" xml:space="preserve">
+    <value>Seiten dunkel darstellen, wenn das Design dunkel ist</value>
+  </data>
+  <data name="SettingsReduceMotion" xml:space="preserve">
+    <value>Animationen reduzieren</value>
+  </data>
+  <data name="SettingsDefaultLayout" xml:space="preserve">
+    <value>Standard-Layout</value>
+  </data>
+  <data name="SettingsDefaultZoom" xml:space="preserve">
+    <value>Standard-Zoom</value>
+  </data>
+  <data name="SettingsDefaultsHint" xml:space="preserve">
+    <value>Gilt für Dateien, die Sie danach öffnen.</value>
+  </data>
+  <data name="SettingsLanguage" xml:space="preserve">
+    <value>Sprache der Oberfläche</value>
+  </data>
+  <data name="SettingsLanguageSystem" xml:space="preserve">
+    <value>Systemsprache</value>
+  </data>
+  <data name="SettingsRestartHint" xml:space="preserve">
+    <value>Gilt ab dem nächsten Start.</value>
+  </data>
+  <data name="SettingsSaveFailed" xml:space="preserve">
+    <value>Einstellungen konnten nicht gespeichert werden.</value>
+  </data>
+  <data name="StartRecent" xml:space="preserve">
+    <value>Zuletzt geöffnet</value>
+  </data>
+  <data name="StartRecentHelp" xml:space="preserve">
+    <value>Eingabe öffnet die Datei, Entf entfernt sie aus dem Verlauf.</value>
+  </data>
+  <data name="StartRecentRemove" xml:space="preserve">
+    <value>Aus dem Verlauf entfernen (Entf)</value>
+  </data>
+  <data name="StartRecentRemoveName" xml:space="preserve">
+    <value>„{0}“ aus dem Verlauf entfernen</value>
+  </data>
+  <data name="SettingsGroupHistory" xml:space="preserve">
+    <value>Verlauf</value>
+  </data>
+  <data name="SettingsHistory" xml:space="preserve">
+    <value>Zuletzt geöffnete Dateien und ihre Positionen</value>
+  </data>
+  <data name="SettingsClearHistory" xml:space="preserve">
+    <value>Verlauf löschen</value>
+  </data>
+  <data name="SettingsHistoryCleared" xml:space="preserve">
+    <value>Verlauf gelöscht.</value>
   </data>
 </root>

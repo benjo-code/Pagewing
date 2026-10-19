@@ -64,7 +64,7 @@ public sealed class TabStripTests : IDisposable
 
         // Left to right, side by side, each as wide as the strip layout says.
         var width = Find<TabStripPanel>(window, "TabPanel").TabWidth;
-        Assert.Equal(Math.Floor(TabStripLayout.Compute(3, 1024 - 52 - 36 - 140).TabWidth), width);
+        Assert.Equal(Math.Floor(TabStripLayout.Compute(3, 1024 - 52 - 36 - PaletteButtonSpace(window) - 140).TabWidth), width);
         for (var i = 0; i < shown.Count; i++)
         {
             Assert.Equal(i * width, shown[i].Bounds.X, 3);
@@ -169,6 +169,9 @@ public sealed class TabStripTests : IDisposable
         var variant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
         var (window, viewModel) = Show();
         window.RequestedThemeVariant = variant;
+
+        // The "Pages" panel the window may open by itself would lie under the bottom edge of the tab.
+        viewModel.OpensPagesPanelAfterFirstSharpTile = false;
         var tabs = await OpenTabsAsync(window, viewModel, 3);
         viewModel.ActivateTabCommand.Execute(tabs[1]);
         Settle(window);
@@ -286,7 +289,7 @@ public sealed class TabStripTests : IDisposable
         Settle(window);
 
         // 5 tabs of 120 px do not fit next to the drag area: only the active tab, then "All tabs (5)".
-        var available = 640 - 52 - 36 - (windowsTitleBar ? 140 : 0);
+        var available = 640 - 52 - 36 - PaletteButtonSpace(window) - (windowsTitleBar ? 140 : 0);
         Assert.True(TabStripLayout.Compute(5, available).ShowOnlyActive);
         var shown = ShownTabs(window);
         var active = Assert.Single(shown);
@@ -309,14 +312,16 @@ public sealed class TabStripTests : IDisposable
             var control = Find<Control>(window, name);
             Assert.True(control.IsEffectivelyVisible, $"{name} is hidden");
             var right = control.TranslatePoint(new Point(control.Bounds.Width, 0), window)!.Value.X;
-            Assert.True(right <= 640.5 - (windowsTitleBar ? 140 : 0), $"{name} ends at {right}");
+            Assert.True(right <= 640.5 - PaletteButtonSpace(window) - (windowsTitleBar ? 140 : 0), $"{name} ends at {right}");
         }
 
         Assert.True(Find<Control>(window, "DragArea").Bounds.Width >= TabStripLayout.MinDragArea);
 
-        // Wide enough again: all tabs come back, the button goes.
-        window.Width = 1024;
+        // Wide enough again (5 tabs of 120 px next to the drag area, beside the palette button with its label): all tabs
+        // come back, the button goes.
+        window.Width = 1280;
         Settle(window);
+        Assert.False(TabStripLayout.Compute(5, 1280 - 52 - 36 - PaletteButtonSpace(window) - (windowsTitleBar ? 140 : 0)).ShowOnlyActive);
         Assert.Equal(5, ShownTabs(window).Count);
         Assert.False(allTabs.IsEffectivelyVisible);
     }
@@ -398,7 +403,7 @@ public sealed class TabStripTests : IDisposable
             await OpenReadyAsync(window, viewModel, CopyWithName($"Ein recht langer Dateiname Nummer {count}.pdf"));
             Assert.True(dragArea.Bounds.Width >= 48, $"{count} tabs: drag area {dragArea.Bounds.Width} px");
             var right = dragArea.TranslatePoint(new Point(dragArea.Bounds.Width, 0), window)!.Value.X;
-            Assert.True(right <= width - (windowsTitleBar ? 140 : 0) + 0.5, $"{count} tabs: drag area ends at {right}");
+            Assert.True(right <= width - PaletteButtonSpace(window) - (windowsTitleBar ? 140 : 0) + 0.5, $"{count} tabs: drag area ends at {right}");
             Assert.All(ShownTabs(window), view => Assert.Equal(WindowDecorationsElementRole.User, WindowDecorationProperties.GetElementRole(TabBorder(view))));
         }
     }
@@ -499,7 +504,7 @@ public sealed class TabStripTests : IDisposable
         // The same strip, with the width of the caption buttons for the tabs.
         var shown = ShownTabs(window);
         Assert.Equal(tabs.Select(tab => tab.FileName), shown.Select(NameOf));
-        Assert.Equal(Math.Floor(TabStripLayout.Compute(3, 1024 - 52 - 36).TabWidth), shown[0].Bounds.Width, 3);
+        Assert.Equal(Math.Floor(TabStripLayout.Compute(3, 1024 - 52 - 36 - PaletteButtonSpace(window)).TabWidth), shown[0].Bounds.Width, 3);
         Assert.False(Find<Button>(window, "AllTabsButton").IsEffectivelyVisible);
         Click(window, BodyPoint(window, shown[0]), MouseButton.Left);
         Assert.Same(tabs[0], viewModel.ActiveTab);
@@ -545,6 +550,17 @@ public sealed class TabStripTests : IDisposable
         window.Show();
         Settle(window);
         return (window, viewModel);
+    }
+
+    /// <summary>
+    /// The width the title bar gives the button of the command palette ("Search or command", only its icon below 900 px)
+    /// with its margins, between the strip and the caption buttons.
+    /// </summary>
+    private static double PaletteButtonSpace(Window window)
+    {
+        var button = Find<Button>(window, "PaletteButton");
+        Assert.True(button.IsEffectivelyVisible);
+        return button.Bounds.Width + button.Margin.Left + button.Margin.Right;
     }
 
     /// <summary>Opens <paramref name="count"/> copies of a small test file with distinct names, each in its own tab.</summary>

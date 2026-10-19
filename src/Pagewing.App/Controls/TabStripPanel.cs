@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Pagewing.Core.Viewing;
 
@@ -46,6 +47,8 @@ public sealed class TabStripPanel : Panel
         get => GetValue(ReservedWidthProperty);
         set => SetValue(ReservedWidthProperty, value);
     }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new TabStripPanelAutomationPeer(this);
 
     /// <summary>Gets or sets the child of the active tab; the only one shown when not all tabs fit.</summary>
     public Control? ActiveItem

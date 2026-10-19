@@ -22,6 +22,9 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private readonly Func<ViewerSession> _sessionFactory;
     private readonly Func<Window> _createWindow;
     private readonly Func<Window, IFilePicker> _createPicker;
+    private readonly UserSettings _settings;
+    private readonly RecentFilesService? _recentFiles;
+    private readonly IEffectiveTheme? _theme;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
     private readonly List<MainViewModel> _activationOrder = [];
@@ -30,7 +33,18 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     /// <param name="sessionFactory">Creates the session of each new tab, in every window.</param>
     /// <param name="createWindow">Creates a window (a <see cref="Views.MainWindow"/> in the app).</param>
     /// <param name="createPicker">Creates the file dialog of a window.</param>
-    public Workspace(Func<ViewerSession> sessionFactory, Func<Window> createWindow, Func<Window, IFilePicker> createPicker)
+    /// <param name="settings">The settings every window shares; <see cref="UserSettings.Detached"/> when omitted.</param>
+    /// <param name="theme">The theme in effect (<see cref="Appearance"/>), which every window follows; none counts as light.</param>
+    /// <param name="recentFiles">
+    /// The history of recently opened files every window shares and writes when it closes; none keeps no history.
+    /// </param>
+    public Workspace(
+        Func<ViewerSession> sessionFactory,
+        Func<Window> createWindow,
+        Func<Window, IFilePicker> createPicker,
+        UserSettings? settings = null,
+        IEffectiveTheme? theme = null,
+        RecentFilesService? recentFiles = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(createWindow);
@@ -38,6 +52,9 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         _sessionFactory = sessionFactory;
         _createWindow = createWindow;
         _createPicker = createPicker;
+        _settings = settings ?? UserSettings.Detached();
+        _theme = theme;
+        _recentFiles = recentFiles;
     }
 
     /// <summary>Gets the view models of the open windows, the oldest first.</summary>
@@ -63,6 +80,19 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     {
         var source = ActiveWindow ?? (_windows.Count > 0 ? _windows[^1] : null);
         return Open(firstTab, source is null ? null : _views[source], beforeShow);
+    }
+
+    /// <summary>
+    /// Opens a window (see <see cref="OpenWindow(TabViewModel?, Action{Window, MainViewModel}?)"/>) whose first tab is a
+    /// new one for <paramref name="firstSession"/>, a session that is already opening (the file of the command line). The
+    /// window's view model makes the tab (<see cref="MainViewModel.AdoptSession"/>), so it starts with the defaults of
+    /// the settings like every other new tab; the tab owns the session from then on.
+    /// </summary>
+    public MainViewModel OpenWindowFor(ViewerSession firstSession, Action<Window, MainViewModel>? beforeShow = null)
+    {
+        ArgumentNullException.ThrowIfNull(firstSession);
+        var source = ActiveWindow ?? (_windows.Count > 0 ? _windows[^1] : null);
+        return Open(null, source is null ? null : _views[source], beforeShow, firstSession: firstSession);
     }
 
     /// <summary>Gets the window of an open window view model.</summary>
@@ -244,10 +274,15 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     }
 
     private MainViewModel Open(
-        TabViewModel? firstTab, Window? source, Action<Window, MainViewModel>? beforeShow, PixelPoint? position = null, bool showActivated = true)
+        TabViewModel? firstTab,
+        Window? source,
+        Action<Window, MainViewModel>? beforeShow,
+        PixelPoint? position = null,
+        bool showActivated = true,
+        ViewerSession? firstSession = null)
     {
         var window = _createWindow();
-        var viewModel = new MainViewModel(_sessionFactory, _createPicker(window));
+        var viewModel = new MainViewModel(_sessionFactory, _createPicker(window), _settings, _recentFiles) { AppTheme = _theme };
         if (source is not null)
         {
             PlaceNextTo(window, source, position);
@@ -276,8 +311,14 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         UpdateCloseWindowWhenEmpty();
         if (firstTab is not null)
         {
-            // Before the DataContext, so the first frame of the window shows the tab.
+            // Before the DataContext, so the first frame of the window shows the tab. A tab from another window keeps
+            // its own layout and zoom.
             viewModel.AttachTab(firstTab);
+        }
+        else if (firstSession is not null)
+        {
+            // A new tab, so it gets the defaults of the settings (MainViewModel.NewTab); also before the DataContext.
+            viewModel.AdoptSession(firstSession);
         }
 
         window.DataContext = viewModel;

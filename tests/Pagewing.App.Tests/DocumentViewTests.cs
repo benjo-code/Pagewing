@@ -601,7 +601,7 @@ public sealed class DocumentViewTests : IDisposable
         var calls = new List<TileKey>();
         var cache = new RenderCache();
         using var scheduler = new RenderScheduler(
-            (request, _) =>
+            (request, _, _) =>
             {
                 lock (calls)
                 {

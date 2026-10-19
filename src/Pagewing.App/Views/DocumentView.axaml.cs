@@ -29,6 +29,10 @@ namespace Pagewing.App.Views;
 /// </remarks>
 public sealed partial class DocumentView : UserControl
 {
+    /// <summary>Defines the <see cref="PageMargin"/> property.</summary>
+    public static readonly StyledProperty<double> PageMarginProperty =
+        AvaloniaProperty.Register<DocumentView, double>(nameof(PageMargin), DocumentLayout.Margin);
+
     /// <summary>
     /// A fit mode changes the zoom only when the zoom it computes differs from the current one by more than this, so
     /// rounding and a viewport that changes by a fraction of a DIP leave the pages alone.
@@ -82,6 +86,16 @@ public sealed partial class DocumentView : UserControl
         remove => PageCanvas.FirstSharpTileDrawn -= value;
     }
 
+    /// <summary>
+    /// Raised on the UI thread once per document, in the frame after the first sharp tile of any page was drawn (after
+    /// <see cref="FirstSharpTileDrawn"/> when both come in the same frame).
+    /// </summary>
+    internal event Action? FirstSharpPageDrawn
+    {
+        add => PageCanvas.FirstSharpPageDrawn += value;
+        remove => PageCanvas.FirstSharpPageDrawn -= value;
+    }
+
     /// <summary>Gets the canvas that draws the pages.</summary>
     internal DocumentCanvas Canvas => PageCanvas;
 
@@ -93,6 +107,25 @@ public sealed partial class DocumentView : UserControl
 
     /// <summary>Gets the shown document, or <see langword="null"/>.</summary>
     internal PdfDocument? Document => _document;
+
+    /// <summary>
+    /// Gets or sets the margin around the pages in DIPs (<see cref="DocumentLayout.PageMargin"/>): the resource
+    /// <c>Pw.Size.PageMargin</c> of the density (design system 5.4). A change keeps page, zoom and position.
+    /// </summary>
+    public double PageMargin
+    {
+        get => GetValue(PageMarginProperty);
+        set => SetValue(PageMarginProperty, value);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == PageMarginProperty)
+        {
+            ApplyPageMargin();
+        }
+    }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -175,9 +208,10 @@ public sealed partial class DocumentView : UserControl
     /// matter) and the distance of the viewport's centre from the centre line of the pages (so the same spot stays in
     /// the middle when the window has another width). Only while the session is Ready with the document shown: during
     /// the load of a replacement the session still holds the old document, but the tab has dropped its saved view
-    /// and the new document must not inherit the old position.
+    /// and the new document must not inherit the old position. Also called by the window when it closes, so the
+    /// history of recently opened files gets where the active tab is now, not where it was when it was last left.
     /// </summary>
-    private void SaveView()
+    internal void SaveView()
     {
         if (_viewModel is not { } tab || _layout is null || _document is null
             || _session is not { State: ViewerState.Ready } session || !ReferenceEquals(_document, session.Document))
@@ -285,12 +319,18 @@ public sealed partial class DocumentView : UserControl
         }
 
         layout.Zoom = tab?.Zoom ?? ZoomSteps.Default;
+        layout.PageMargin = ValidMargin(PageMargin);
 
         // The text of the document shown before goes with it.
         DropTexts();
         _document = document;
         _layout = layout;
         _loadedSizes = known;
+
+        // The session of the tab renders in the tab's page theme already (TabViewModel.EffectivePageTheme). Set between
+        // Detach and Attach, so that a change plans neither the document that went nor the new one before it is laid out.
+        PageCanvas.Detach();
+        PageCanvas.PageTheme = tab?.EffectivePageTheme ?? PageTheme.Light;
         PageCanvas.Attach(layout, scheduler, cache);
         RefreshHighlights();
 
@@ -606,13 +646,36 @@ public sealed partial class DocumentView : UserControl
         if (mode == ZoomMode.FitPage && (chosen || changed) && layout.IsShown(page))
         {
             var top = layout.GetPageRect(layout.PagesOfRow(layout.RowOf(page)).First).Y;
-            ScrollTo(new Vector(Scroller.Offset.X, top - DocumentLayout.Margin));
+            ScrollTo(new Vector(Scroller.Offset.X, top - layout.PageMargin));
         }
 
         tab.ApplyFitZoom(layout.Zoom);
     }
 
     private void OnScalingChanged(object? sender, EventArgs e) => UpdateViewport();
+
+    private static double ValidMargin(double margin) => double.IsFinite(margin) && margin >= 0 ? margin : DocumentLayout.Margin;
+
+    /// <summary>
+    /// Another density: the layout takes the new margin; the spot at the top of the viewport (page and fraction) and the
+    /// distance of the viewport's centre from the centre line of the pages stay, a fit mode fits the new room.
+    /// </summary>
+    private void ApplyPageMargin()
+    {
+        var margin = ValidMargin(PageMargin);
+        if (_layout is not { } layout || margin == layout.PageMargin)
+        {
+            return;
+        }
+
+        var offset = Scroller.Offset;
+        var anchor = layout.GetAnchor(offset.Y);
+        var fromCentre = offset.X - CentringShift(layout) + (Scroller.Viewport.Width / 2) - (layout.ContentWidth / 2);
+        layout.PageMargin = margin;
+        var x = fromCentre + (layout.ContentWidth / 2) - (Scroller.Viewport.Width / 2) + CentringShift(layout);
+        ChangeLayout(new Vector(x, layout.GetOffset(anchor)));
+        Refit(chosen: false);
+    }
 
     /// <summary>
     /// The canvas drew the first sharp page of the shown document: the tab may render its page thumbnails now
@@ -680,6 +743,12 @@ public sealed partial class DocumentView : UserControl
         {
             // The text may be read now: first that of the visible pages.
             PreloadText();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.EffectivePageTheme) && _viewModel is { } tab && _layout is not null)
+        {
+            // The session renders in the new theme already: the canvas drops the tiles of the old one and plans again.
+            // Page, zoom, scroll position and selection stay.
+            PageCanvas.PageTheme = tab.EffectivePageTheme;
         }
     }
 
@@ -782,7 +851,7 @@ public sealed partial class DocumentView : UserControl
         Refit(chosen: false);
 
         // The pages of a row are top-aligned. Through ChangeLayout: the single page may have changed the content size.
-        ChangeLayout(new Vector(Scroller.Offset.X, layout.GetPageRect(index).Y - DocumentLayout.Margin));
+        ChangeLayout(new Vector(Scroller.Offset.X, layout.GetPageRect(index).Y - layout.PageMargin));
 
         // Near the end the row cannot reach the top; the requested row still is the current one.
         ShowCurrentRow(index);

@@ -45,9 +45,6 @@
   <data name="StartTitle" xml:space="preserve">
     <value>Open a document</value>
   </data>
-  <data name="StartHint" xml:space="preserve">
-    <value>Press Ctrl+O to choose a PDF file.</value>
-  </data>
   <data name="StartOffline" xml:space="preserve">
     <value>Pagewing works offline. Nothing leaves this computer.</value>
   </data>
@@ -323,5 +320,230 @@
   </data>
   <data name="LinkWarningPunycode" xml:space="preserve">
     <value>The host uses special characters and is shown as {0}.</value>
+  </data>
+  <data name="CommandNextTab" xml:space="preserve">
+    <value>Next tab</value>
+  </data>
+  <data name="CommandPreviousTab" xml:space="preserve">
+    <value>Previous tab</value>
+  </data>
+  <data name="CommandZoomIn" xml:space="preserve">
+    <value>Zoom in</value>
+  </data>
+  <data name="CommandZoomOut" xml:space="preserve">
+    <value>Zoom out</value>
+  </data>
+  <data name="CommandTogglePageTheme" xml:space="preserve">
+    <value>Light or dark page</value>
+  </data>
+  <data name="CommandGoToPage" xml:space="preserve">
+    <value>Go to page</value>
+  </data>
+  <data name="CommandPreviousPage" xml:space="preserve">
+    <value>Previous page</value>
+  </data>
+  <data name="CommandNextPage" xml:space="preserve">
+    <value>Next page</value>
+  </data>
+  <data name="CommandBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="CommandForward" xml:space="preserve">
+    <value>Forward</value>
+  </data>
+  <data name="CommandPagesPanel" xml:space="preserve">
+    <value>Show or hide pages</value>
+  </data>
+  <data name="CommandContentsPanel" xml:space="preserve">
+    <value>Show or hide contents</value>
+  </data>
+  <data name="CommandSearch" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="CommandSearchNext" xml:space="preserve">
+    <value>Next match</value>
+  </data>
+  <data name="CommandSearchPrevious" xml:space="preserve">
+    <value>Previous match</value>
+  </data>
+  <data name="CommandPalette" xml:space="preserve">
+    <value>Command palette</value>
+  </data>
+  <data name="CommandSettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="CommandClearRecent" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="CommandGroupFile" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="CommandGroupView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="CommandGroupNavigation" xml:space="preserve">
+    <value>Navigate</value>
+  </data>
+  <data name="CommandGroupSearch" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="CommandGroupWindow" xml:space="preserve">
+    <value>Window</value>
+  </data>
+  <data name="KeyCtrl" xml:space="preserve">
+    <value>Ctrl</value>
+  </data>
+  <data name="KeyShift" xml:space="preserve">
+    <value>Shift</value>
+  </data>
+  <data name="KeyPageUp" xml:space="preserve">
+    <value>Page Up</value>
+  </data>
+  <data name="KeyPageDown" xml:space="preserve">
+    <value>Page Down</value>
+  </data>
+  <data name="KeyLeft" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="KeyRight" xml:space="preserve">
+    <value>Right</value>
+  </data>
+  <data name="KeyComma" xml:space="preserve">
+    <value>Comma</value>
+  </data>
+  <data name="HelpTitle" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="HelpFilter" xml:space="preserve">
+    <value>Filter shortcuts</value>
+  </data>
+  <data name="HelpClose" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="HelpEmpty" xml:space="preserve">
+    <value>No shortcut matches.</value>
+  </data>
+  <data name="CommandCloseOverlay" xml:space="preserve">
+    <value>Close the card or palette</value>
+  </data>
+  <data name="PaletteButton" xml:space="preserve">
+    <value>Search or command</value>
+  </data>
+  <data name="PalettePlaceholder" xml:space="preserve">
+    <value>Search commands, pages, tabs and files</value>
+  </data>
+  <data name="PaletteEmpty" xml:space="preserve">
+    <value>Nothing found.</value>
+  </data>
+  <data name="PaletteGroupRecent" xml:space="preserve">
+    <value>Recently opened</value>
+  </data>
+  <data name="PaletteGroupPages" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="PaletteGroupTabs" xml:space="preserve">
+    <value>Open tabs</value>
+  </data>
+  <data name="PaletteGroupContents" xml:space="preserve">
+    <value>Contents</value>
+  </data>
+  <data name="PaletteGroupCommands" xml:space="preserve">
+    <value>Commands</value>
+  </data>
+  <data name="PaletteGoToPage" xml:space="preserve">
+    <value>Go to page {0}</value>
+  </data>
+  <data name="PalettePageDetail" xml:space="preserve">
+    <value>Page {0}</value>
+  </data>
+  <data name="SettingsTooltip" xml:space="preserve">
+    <value>Settings (Ctrl+Comma)</value>
+  </data>
+  <data name="SettingsClose" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="SettingsDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="SettingsGroupAppearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="SettingsGroupView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="SettingsGroupLanguage" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="SettingsTheme" xml:space="preserve">
+    <value>Theme</value>
+  </data>
+  <data name="SettingsThemeSystem" xml:space="preserve">
+    <value>Same as system</value>
+  </data>
+  <data name="SettingsThemeLight" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="SettingsThemeDark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="SettingsDensity" xml:space="preserve">
+    <value>Density</value>
+  </data>
+  <data name="SettingsDensityNormal" xml:space="preserve">
+    <value>Standard</value>
+  </data>
+  <data name="SettingsDensityCompact" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="SettingsDarkPages" xml:space="preserve">
+    <value>Show pages dark when the theme is dark</value>
+  </data>
+  <data name="SettingsReduceMotion" xml:space="preserve">
+    <value>Reduce animations</value>
+  </data>
+  <data name="SettingsDefaultLayout" xml:space="preserve">
+    <value>Default layout</value>
+  </data>
+  <data name="SettingsDefaultZoom" xml:space="preserve">
+    <value>Default zoom</value>
+  </data>
+  <data name="SettingsDefaultsHint" xml:space="preserve">
+    <value>Applies to files you open from now on.</value>
+  </data>
+  <data name="SettingsLanguage" xml:space="preserve">
+    <value>Interface language</value>
+  </data>
+  <data name="SettingsLanguageSystem" xml:space="preserve">
+    <value>System language</value>
+  </data>
+  <data name="SettingsRestartHint" xml:space="preserve">
+    <value>Takes effect the next time Pagewing starts.</value>
+  </data>
+  <data name="SettingsSaveFailed" xml:space="preserve">
+    <value>The settings could not be saved.</value>
+  </data>
+  <data name="StartRecent" xml:space="preserve">
+    <value>Recently opened</value>
+  </data>
+  <data name="StartRecentHelp" xml:space="preserve">
+    <value>Enter opens the file, Delete removes it from the history.</value>
+  </data>
+  <data name="StartRecentRemove" xml:space="preserve">
+    <value>Remove from the history (Delete)</value>
+  </data>
+  <data name="StartRecentRemoveName" xml:space="preserve">
+    <value>Remove “{0}” from the history</value>
+  </data>
+  <data name="SettingsGroupHistory" xml:space="preserve">
+    <value>History</value>
+  </data>
+  <data name="SettingsHistory" xml:space="preserve">
+    <value>Recently opened files and where you left them</value>
+  </data>
+  <data name="SettingsClearHistory" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="SettingsHistoryCleared" xml:space="preserve">
+    <value>History cleared.</value>
   </data>
 </root>

@@ -19,6 +19,9 @@ namespace Pagewing.Pdfium;
 /// <see cref="TileOverlap"/> pixels to the left that are dropped afterwards (see there why).
 /// The work holds a reference on the page and bitmap handles until <see cref="Dispose"/> has ended the render
 /// and destroyed the bitmap, and keeps the pinned pixel array alive until then.
+/// With <see cref="PdfiumPageColors"/> the page is recoloured through PDFium's colour scheme
+/// (<c>FPDF_RenderPageBitmapWithColorScheme_Start</c> with <c>FPDF_CONVERT_FILL_TO_STROKE</c>) on a bitmap filled with
+/// the background; without them the page is rendered on white exactly as before (<c>FPDF_RenderPageBitmap_Start</c>).
 /// </remarks>
 internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
 {
@@ -49,6 +52,7 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
     private readonly int startX;
     private readonly int startY;
     private readonly int flags;
+    private readonly bool recoloured;
     private readonly long sliceTicks;
     private BitmapHandle? bitmap;
     private byte[]? pixels;
@@ -68,10 +72,11 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
     /// <param name="tile">The part of the page to render in page pixels, or <see langword="null"/> for the whole page.</param>
     /// <param name="annotations">Whether annotations are drawn (<c>FPDF_ANNOT</c>).</param>
     /// <param name="slice">How long one step may take before PDFium yields; <see cref="TimeSpan.Zero"/> yields at every chance, <see cref="TimeSpan.MaxValue"/> never.</param>
+    /// <param name="colors">The colours of a recoloured (dark) page, or <see langword="null"/> for the page as it is, on white.</param>
     /// <exception cref="ArgumentOutOfRangeException">Invalid page index, scale, slice, or a tile that is empty or not within the page.</exception>
     /// <exception cref="PdfiumRenderException">The bitmap would exceed <see cref="MaxPixels"/>, or PDFium could not create it.</exception>
     /// <exception cref="InvalidDataException">The page could not be loaded.</exception>
-    public PdfiumRenderWork(PdfiumDocument document, int pageIndex, double scale, PdfiumPixelRect? tile, bool annotations, TimeSpan slice)
+    public PdfiumRenderWork(PdfiumDocument document, int pageIndex, double scale, PdfiumPixelRect? tile, bool annotations, TimeSpan slice, PdfiumPageColors? colors = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         document.Thread.VerifyAccess();
@@ -81,6 +86,12 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
         this.pageIndex = pageIndex;
         sliceTicks = ToStopwatchTicks(slice);
         flags = annotations ? FpdfConstants.RenderAnnot : 0;
+        recoloured = colors is not null;
+        if (recoloured)
+        {
+            // With a single fill colour for all paths, adjacent fills would merge; their outlines keep them apart.
+            flags |= FpdfConstants.RenderConvertFillToStroke;
+        }
 
         page = document.LoadPage(pageIndex);
         try
@@ -111,9 +122,20 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
             startX = -(area.X - overlap);
             startY = -area.Y;
 
-            // White, including the unused fourth byte, so the result reads as opaque BGRA.
+            // White (or the background of a recoloured page), including the unused fourth byte, so the result reads
+            // as opaque BGRA.
             pixels = GC.AllocateUninitializedArray<byte>(bitmapStride * height, pinned: true);
-            pixels.AsSpan().Fill(0xFF);
+            if (colors is { } ground)
+            {
+                // Blue, green, red, opaque: the byte order of the bitmap.
+                var argb = ground.Background;
+                ReadOnlySpan<byte> pixel = [(byte)argb, (byte)(argb >> 8), (byte)(argb >> 16), 0xFF];
+                MemoryMarshal.Cast<byte, uint>(pixels.AsSpan()).Fill(MemoryMarshal.Read<uint>(pixel));
+            }
+            else
+            {
+                pixels.AsSpan().Fill(0xFF);
+            }
 
             bitmap = new BitmapHandle(thread);
             var buffer = Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(pixels));
@@ -132,6 +154,15 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
             pause->Pause.NeedToPauseNow = &NeedToPauseNow;
             pause->Pause.User = null;
             pause->Deadline = long.MaxValue;
+            pause->Scheme = default;
+            if (colors is { } scheme)
+            {
+                // FPDF_COLORSCHEME: fills take the background, strokes and text the foreground.
+                pause->Scheme.PathFillColor = new CULong(scheme.Background);
+                pause->Scheme.PathStrokeColor = new CULong(scheme.Foreground);
+                pause->Scheme.TextFillColor = new CULong(scheme.Foreground);
+                pause->Scheme.TextStrokeColor = new CULong(scheme.Foreground);
+            }
         }
         catch
         {
@@ -174,16 +205,28 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
         if (!started)
         {
             started = true;
-            status = Fpdf.FPDF_RenderPageBitmap_Start(
-                bitmap!.DangerousGetHandle(),
-                pageValue,
-                startX,
-                startY,
-                pageWidth,
-                pageHeight,
-                rotate: 0,
-                flags,
-                &pause->Pause);
+            status = recoloured
+                ? Fpdf.FPDF_RenderPageBitmapWithColorScheme_Start(
+                    bitmap!.DangerousGetHandle(),
+                    pageValue,
+                    startX,
+                    startY,
+                    pageWidth,
+                    pageHeight,
+                    rotate: 0,
+                    flags,
+                    &pause->Scheme,
+                    &pause->Pause)
+                : Fpdf.FPDF_RenderPageBitmap_Start(
+                    bitmap!.DangerousGetHandle(),
+                    pageValue,
+                    startX,
+                    startY,
+                    pageWidth,
+                    pageHeight,
+                    rotate: 0,
+                    flags,
+                    &pause->Pause);
         }
         else
         {
@@ -338,11 +381,15 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
     private static int NeedToPauseNow(IfsdkPause* pause) =>
         Stopwatch.GetTimestamp() >= ((PauseState*)pause)->Deadline ? 1 : 0;
 
-    /// <summary>The pause interface followed by the deadline the callback reads (cast from its pointer).</summary>
+    /// <summary>
+    /// The pause interface followed by the deadline the callback reads (cast from its pointer), and the colour scheme
+    /// of a recoloured page, so it lives in native memory as long as the render.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct PauseState
     {
         public IfsdkPause Pause;
         public long Deadline;
+        public FpdfColorScheme Scheme;
     }
 }
