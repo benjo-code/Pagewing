@@ -204,25 +204,37 @@ public sealed class AutomationStateTests : IDisposable
                 names.Add(e.NewValue);
             }
         };
+        var selectionChanges = 0;
+        ControlAutomationPeer.CreatePeerForElement(Find<TabStripPanel>(window, "TabPanel")).PropertyChanged += (_, e) =>
+        {
+            if (e.Property == SelectionPatternIdentifiers.SelectionProperty)
+            {
+                selectionChanges++;
+            }
+        };
 
         // Ctrl+Tab activates the first tab: it is the selected one now, named after its file; the second is not.
         Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.Control);
         Assert.Same(first, viewModel.ActiveTab);
         AssertSelection(window, selected: first, other: second);
 
-        // The view of the active tab stays one control: it tells a screen reader that its name changed.
+        // The view of the active tab stays one control: it tells a screen reader that its name changed, and the tab list
+        // that its selection changed (on AT-SPI the only selection signal).
         Assert.Equal(["outline.pdf"], names);
+        Assert.Equal(1, selectionChanges);
 
         // A screen reader's "select" on the other tab activates it.
         TabPeer(window, second).GetProvider<ISelectionItemProvider>()!.Select();
         Settle(window);
         Assert.Same(second, viewModel.ActiveTab);
         AssertSelection(window, selected: second, other: first);
+        Assert.Equal(2, selectionChanges);
 
         // Selecting the selected tab changes nothing.
         TabPeer(window, second).GetProvider<ISelectionItemProvider>()!.Select();
         Settle(window);
         Assert.Same(second, viewModel.ActiveTab);
+        Assert.Equal(2, selectionChanges);
     }
 
     [AvaloniaTheory]
@@ -252,6 +264,8 @@ public sealed class AutomationStateTests : IDisposable
             Assert.Equal(gesture, Peer(window, name).GetAcceleratorKey());
         }
 
+        // "Search" is named after its panel like the others; its shortcut is read once, as the accelerator key.
+        Assert.Equal(Strings.SearchPanelTitle, Peer(window, "SearchButton").GetName());
         Assert.Equal(GestureText.Of(catalog.ById("search.open")!.Gesture!), Peer(window, "SearchButton").GetAcceleratorKey());
     }
 
@@ -369,6 +383,16 @@ public sealed class AutomationStateTests : IDisposable
         }
 
         // Down moves the choice: the second row is selected now, the first is not, and both tell it.
+        var input = ControlAutomationPeer.CreatePeerForElement(Find<TextBox>(window, "PaletteInput"));
+        Assert.Equal(peers[0].GetName(), input.GetHelpText());
+        var helpTexts = new List<(object? Old, object? New)>();
+        input.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == AutomationElementIdentifiers.HelpTextProperty)
+            {
+                helpTexts.Add((e.OldValue, e.NewValue));
+            }
+        };
         var changes = new List<(int Row, object? New)>();
         for (var i = 0; i < 2; i++)
         {
@@ -388,14 +412,19 @@ public sealed class AutomationStateTests : IDisposable
         Assert.True(peers[1].GetProvider<ISelectionItemProvider>()!.IsSelected);
         Assert.Equal([(0, (object?)false), (1, true)], changes.OrderBy(change => change.Row));
 
-        // The input names the chosen entry as its help text, so a screen reader in the field hears where the choice is.
-        Assert.Equal(peers[1].GetName(), ControlAutomationPeer.CreatePeerForElement(Find<TextBox>(window, "PaletteInput")).GetHelpText());
+        // The input, which keeps the focus, names the chosen entry as its help text and tells that it changed (UI
+        // Automation: HelpText, AT-SPI: accessible-description).
+        Assert.Equal(peers[1].GetName(), input.GetHelpText());
+        Assert.Equal([((object?)peers[0].GetName(), (object?)peers[1].GetName())], helpTexts);
 
         // A screen reader's "select" chooses a row as a click does, without running it.
         peers[2].GetProvider<ISelectionItemProvider>()!.Select();
         Settle(window);
         Assert.Equal(2, palette.SelectedIndex);
         Assert.Equal(OverlayKind.Palette, viewModel.Overlay);
+        Assert.Equal(peers[2].GetName(), input.GetHelpText());
+        Assert.Equal(2, helpTexts.Count);
+        Assert.Equal(peers[2].GetName(), helpTexts[1].New);
     }
 
     private static void AssertSelection(Window window, TabViewModel selected, TabViewModel other)

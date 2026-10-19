@@ -70,7 +70,7 @@ public sealed class SearchPanelTests : IDisposable
         Assert.Same(Resource("Pw.Icon.Search"), icon.Data);
         Assert.True(contents.TranslatePoint(default, window)!.Value.Y < button.TranslatePoint(default, window)!.Value.Y);
         Assert.Equal("Search (Ctrl+F)", ToolTip.GetTip(button));
-        Assert.Equal(Strings.SearchTooltip, AutomationProperties.GetName(button));
+        Assert.Equal(Strings.SearchPanelTitle, AutomationProperties.GetName(button));
         Assert.DoesNotContain("active", button.Classes);
         Assert.False(tab.IsSearchCreated);
 

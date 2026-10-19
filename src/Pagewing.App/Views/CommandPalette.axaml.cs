@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -205,10 +206,17 @@ public sealed partial class CommandPalette : UserControl
             slot.Root.SetChosen(slot.ItemIndex >= 0 && slot.ItemIndex == selected);
         }
 
-        // The focus stays in the input: its help text names the chosen entry, so a screen reader there hears it.
-        AutomationProperties.SetHelpText(
-            PaletteInput,
-            selected >= 0 && selected < _slotOfItem.Count ? AutomationProperties.GetName(_slotOfItem[selected].Root) : null);
+        // The focus stays in the input: its help text names the chosen entry. Setting the attached property tells no
+        // assistive technology (the control's peer forwards only a few properties), so the change is raised on the peer
+        // of the input, when one exists: UI Automation gets a HelpText change, AT-SPI an accessible-description change.
+        // The selection events of the rows (PaletteRow.SetChosen) reach UI Automation only; the AT-SPI bridge ignores them.
+        var help = selected >= 0 && selected < _slotOfItem.Count ? AutomationProperties.GetName(_slotOfItem[selected].Root) : null;
+        var previous = AutomationProperties.GetHelpText(PaletteInput);
+        if (!string.Equals(previous, help, StringComparison.Ordinal))
+        {
+            AutomationProperties.SetHelpText(PaletteInput, help);
+            ControlAutomationPeer.FromElement(PaletteInput)?.RaisePropertyChangedEvent(AutomationElementIdentifiers.HelpTextProperty, previous, help);
+        }
 
         if (bringIntoView && selected >= 0 && selected < _slotOfItem.Count)
         {

@@ -58,7 +58,7 @@
                               Classes.active="{Binding IsSearchPanelOpen}" IsChecked="{Binding IsSearchPanelOpen, Mode=OneWay}"
                               Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Search}"
                               ToolTip.Tip="{x:Static res:Strings.SearchTooltip}"
-                              AutomationProperties.Name="{x:Static res:Strings.SearchTooltip}">
+                              AutomationProperties.Name="{x:Static res:Strings.SearchPanelTitle}">
         <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Search}" />
       </ctl:ActionToggleButton>
     </StackPanel>
