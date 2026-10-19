@@ -372,6 +372,24 @@
   <data name="CommandSettings" xml:space="preserve">
     <value>Settings</value>
   </data>
+  <data name="CommandAbout" xml:space="preserve">
+    <value>About Pagewing</value>
+  </data>
+  <data name="AboutTitle" xml:space="preserve">
+    <value>About Pagewing</value>
+  </data>
+  <data name="AboutClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="AboutVersion" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+  <data name="AboutOffline" xml:space="preserve">
+    <value>Works completely offline: no telemetry, no network access.</value>
+  </data>
+  <data name="AboutNotices" xml:space="preserve">
+    <value>Third-party notices</value>
+  </data>
   <data name="CommandClearRecent" xml:space="preserve">
     <value>Clear history</value>
   </data>

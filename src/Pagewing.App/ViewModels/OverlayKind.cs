@@ -18,6 +18,9 @@ public enum OverlayKind
     /// <summary>The card with the keyboard shortcuts (F1).</summary>
     Help,
 
+    /// <summary>The about card (command "About Pagewing"): version, licence, third-party notices.</summary>
+    About,
+
     /// <summary>The print dialog (Ctrl+P), where the system has none of its own.</summary>
     Print,
 }

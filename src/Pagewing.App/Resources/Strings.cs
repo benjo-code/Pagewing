@@ -151,6 +151,12 @@ public static class Strings
     public static string CommandSearchPrevious => Get("CommandSearchPrevious");
     public static string CommandPalette => Get("CommandPalette");
     public static string CommandSettings => Get("CommandSettings");
+    public static string CommandAbout => Get("CommandAbout");
+    public static string AboutTitle => Get("AboutTitle");
+    public static string AboutClose => Get("AboutClose");
+    public static string AboutVersion => Get("AboutVersion");
+    public static string AboutOffline => Get("AboutOffline");
+    public static string AboutNotices => Get("AboutNotices");
     public static string CommandClearRecent => Get("CommandClearRecent");
     public static string CommandGroupFile => Get("CommandGroupFile");
     public static string CommandGroupView => Get("CommandGroupView");

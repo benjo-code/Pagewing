@@ -141,6 +141,9 @@ public sealed class CommandCatalog
         Window("settings.show", () => Strings.CommandSettings, WindowGroup, Ctrl(Key.OemComma), _window.ShowSettingsCommand),
         Window("help.show", () => Strings.HelpTitle, WindowGroup, new KeyGesture(Key.F1), _window.ShowHelpCommand),
 
+        // No key: the about card is for looking up the version and the licences, not for every day.
+        Window("app.about", () => Strings.CommandAbout, WindowGroup, null, _window.ShowAboutCommand),
+
         // Esc drops an address that waits for confirmation, wherever the focus is; without one the key goes on. Not listed:
         // it is the key of the link card, not a command of its own.
         Window("link.cancel", () => Strings.LinkConfirmCancel, WindowGroup, new KeyGesture(Key.Escape), _window.CancelLinkCommand) with { Listed = false },

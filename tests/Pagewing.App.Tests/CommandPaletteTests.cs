@@ -290,7 +290,7 @@ public sealed class CommandPaletteTests : IDisposable
 
         // Nothing that needs a document or a second tab: opening a file, the settings and the shortcuts.
         Assert.Equal(PaletteKind.Command, Assert.Single(palette.Groups).Kind);
-        Assert.Equal(["file.open", "settings.show", "help.show"], Ids(palette, PaletteKind.Command));
+        Assert.Equal(["file.open", "settings.show", "help.show", "app.about"], Ids(palette, PaletteKind.Command));
         Assert.Contains(palette.Items, item => item.Title == openFile);
         Assert.Contains(palette.Items, item => item.Title == settings);
 
@@ -445,7 +445,7 @@ public sealed class CommandPaletteTests : IDisposable
         viewModel.CloseActiveTabCommand.Execute(null);
         Settle(window);
         palette.Query = string.Empty;
-        Assert.Equal(["file.open", "settings.show", "help.show"], Ids(palette, PaletteKind.Command));
+        Assert.Equal(["file.open", "settings.show", "help.show", "app.about"], Ids(palette, PaletteKind.Command));
     }
 
     [AvaloniaFact]

@@ -12,7 +12,7 @@ namespace Pagewing.App.Views;
 /// <summary>
 /// What lies over the window (<see cref="MainViewModel.Overlay"/>): one at a time, below the title bar (its tabs and the
 /// window buttons stay usable), each made when it is first shown, so nothing of it is built in the startup path: the
-/// command palette, the settings card and the help card. When an overlay with the focus
+/// command palette, the settings card, the help card and the about card. When an overlay with the focus
 /// goes and nothing that comes takes the focus, it goes back to where it was before the overlay came: the element that
 /// had it when the last overlay came or replaced another, unless that was an overlay itself. A button that shows an
 /// overlay and took the focus from a press of the mouse (the palette button of the title bar, the settings button of
@@ -24,6 +24,7 @@ namespace Pagewing.App.Views;
 /// </summary>
 public sealed partial class MainWindow
 {
+    private AboutCard? _aboutCard;
     private HelpCard? _helpCard;
     private CommandPalette? _palette;
     private SettingsCard? _settingsCard;
@@ -79,6 +80,9 @@ public sealed partial class MainWindow
                         break;
                     case OverlayKind.Help:
                         _helpCard?.FocusFilter();
+                        break;
+                    case OverlayKind.About:
+                        _aboutCard?.FocusFirst();
                         break;
                     case OverlayKind.Settings:
                         _settingsCard?.FocusFirst();
@@ -157,6 +161,17 @@ public sealed partial class MainWindow
             _settingsCard?.Hide();
         }
 
+        if (kind == OverlayKind.About && _viewModel?.About is { } about)
+        {
+            var view = _aboutCard ??= CreateAboutCard();
+            view.DataContext = about;
+            view.Show();
+        }
+        else
+        {
+            _aboutCard?.Hide();
+        }
+
         UpdatePrintCard(kind);
 
         // An overlay had the keys and nothing that is shown now takes them.
@@ -174,7 +189,7 @@ public sealed partial class MainWindow
 
     private bool IsInShownOverlay(IInputElement? element) =>
         element is Visual visual
-        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual) || IsWithin(_printCard, visual));
+        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual) || IsWithin(_aboutCard, visual) || IsWithin(_printCard, visual));
 
     private static bool IsWithin(Control? overlay, Visual visual) =>
         overlay is { IsVisible: true } && (ReferenceEquals(overlay, visual) || overlay.IsVisualAncestorOf(visual));
@@ -197,6 +212,17 @@ public sealed partial class MainWindow
     {
         // Over the work area and the status bar, below the title bar; above the panel and the document area.
         var card = new HelpCard { Name = "HelpCard" };
+        Grid.SetRow(card, 1);
+        Grid.SetRowSpan(card, 2);
+        card.ZIndex = 10;
+        RootGrid.Children.Add(card);
+        return card;
+    }
+
+    private AboutCard CreateAboutCard()
+    {
+        // Like the help card: over the work area and the status bar, below the title bar.
+        var card = new AboutCard { Name = "AboutCard" };
         Grid.SetRow(card, 1);
         Grid.SetRowSpan(card, 2);
         card.ZIndex = 10;

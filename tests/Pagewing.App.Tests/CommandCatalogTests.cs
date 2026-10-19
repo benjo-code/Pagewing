@@ -36,7 +36,7 @@ public sealed class CommandCatalogTests : IDisposable
         "view.actualSize", "view.fitWidth", "view.layout.single", "view.layout.continuous", "view.layout.spread",
         "view.layout.spreadCover", "view.pageTheme.toggle", "nav.goToPage", "nav.previousPage", "nav.nextPage", "nav.back",
         "nav.forward", "panel.pages", "panel.contents", "search.open", "search.next", "search.previous", "palette.show",
-        "settings.show", "help.show", "recent.clear",
+        "settings.show", "help.show", "app.about", "recent.clear",
     ];
 
     private readonly CultureInfo _originalCulture = Strings.Culture;

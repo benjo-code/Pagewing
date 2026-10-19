@@ -1308,3 +1308,11 @@ Das Verhältnis bezieht sich auf `t_visually_complete`. In Fall (d) beziehen sic
 **Verworfene Alternativen:**
 - Apache-2.0 und MIT: würden die Einbettung des Kerns in proprietäre Software erlauben, aber auch Closed-Source-Klone.
 - MPL-2.0: schwächeres Copyleft, ohne erkennbaren Vorteil für eine App.
+
+## 2026-10-19 – Über-Karte: Drittlizenzen als virtualisierte Zeilen (M8)
+**Kontext:** Die Über-Karte (Befehl „Über Pagewing“ in der Palette, ohne Kürzel) zeigt Version, Lizenz, die Offline-Zeile und die Hinweise zu Drittsoftware. Der Text (`Resources/ThirdPartyNotices.txt`, rund 390 KB, ein Eintrag allein rund 140 KB) ist als Ressource eingebettet.
+**Entscheidung:**
+- Die Karte entsteht erst beim ersten Zeigen (`OverlayKind.About`); die Hinweise liest `AboutViewModel` erst, wenn die Liste zum ersten Mal geöffnet wird (`NoticesText`, `Notices`), nie beim Bau der Karte.
+- Die Liste ist ein `ItemsControl` mit `VirtualizingStackPanel`. Der Text wird an den `====`-Zeilen in Einträge geteilt (Name als eigene Zeile), der Rest in Zeilen mit höchstens 24 Textzeilen (`AboutViewModel.Split`). Ein einziger `TextBlock` oder `TextBox` mit 390 KB (bzw. 140 KB je Eintrag) müsste auf einmal gemessen werden und fror die Oberfläche ein.
+- Keine Links in der Karte: Jeder externe Link müsste durch `ExternalLink` und die Bestätigungskarte. Es gibt keine neuen Farben (nur `text.primary`, `text.secondary`, `border.strong` auf `surface.raised`).
+**Messung (Headless, Linux):** Liste öffnen mit dem echten Text 63 ms, 3 realisierte Zeilen (`AboutCardTests.NoticesContainPdfium`).
