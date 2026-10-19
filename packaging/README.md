@@ -23,7 +23,6 @@ Fehlt die PDFium-Bibliothek in App oder CLI, bricht der Befehl ab. Unter Linux s
 | Datei | Inhalt |
 | --- | --- |
 | `Pagewing-<Version>-win-x64-portable.zip` | portable ZIP für Windows |
-| `Pagewing-<Version>-linux-x64-portable.zip` | portable ZIP für Linux |
 | `Pagewing-<Version>-win-x64-setup.exe` | Installer für Windows |
 | `SHA256SUMS-<Version>.txt` | Zeilen `<sha256>  <Dateiname>` |
 | `pagewing_<Version>_amd64.deb` | Paket für Debian, Ubuntu, Linux Mint (Vorabversion `x.y.z-rc1` heißt im Paket `x.y.z~rc1`) |
@@ -121,7 +120,7 @@ Das Release selbst legt der Projektinhaber an (`gh release create vX.Y.Z --targe
 
 1. Der Tag muss `vX.Y.Z` oder `vX.Y.Z-<Vorabversion>` heißen, sonst bricht der Job ab. Die Version (Tag ohne `v`) geht als `-p:Version=<Version>` an `dotnet publish` für App und CLI; ein `-rc1` heißt im `.deb` `~rc1`.
 2. Windows: Publish (Native AOT), `licenses check`, `layout`, `zip`, `inno-install`, `installer`, `installer-smoke`, `sums` nach `SHA256SUMS-windows.txt`, Hochladen. Dateien: `Pagewing-<Version>-win-x64-portable.zip`, `Pagewing-<Version>-win-x64-setup.exe`.
-3. Linux: Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `zip`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `sums` nach `SHA256SUMS-linux.txt`, Hochladen. Dateien: `Pagewing-<Version>-linux-x64-portable.zip`, `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`.
+3. Linux: Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `sums` nach `SHA256SUMS-linux.txt`, Hochladen. Dateien: `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`.
 4. Hochgeladen wird nur bei `release` oder `workflow_dispatch` mit `upload=true` (das Release muss dann existieren). Sonst baut der Lauf und führt alle Smoke-Tests aus.
 
 Trockenlauf (Bau und Smoke-Tests ohne Hochladen), vom Projektinhaber auf Wunsch zu starten; seine Runner müssen laufen:

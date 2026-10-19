@@ -52,6 +52,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
 
       # See ci.yml: without git on PATH actions/checkout extracts a zip whose file times can be older than the
       # cached build of a file-based script (dotnet run <file>.cs) in %TEMP%.
@@ -134,6 +135,8 @@ jobs:
         if: env.UPLOAD == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          # No .git on the runner (checkout zip): name the repository explicitly.
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release upload "$env:TAG" "out/release/Pagewing-$env:VERSION-win-x64-portable.zip" "out/release/Pagewing-$env:VERSION-win-x64-setup.exe" out/release/SHA256SUMS-windows.txt --clobber
           if ($LASTEXITCODE -ne 0) { throw "gh release upload ist fehlgeschlagen (Exit-Code $LASTEXITCODE); gibt es das Release $env:TAG?" }
@@ -162,6 +165,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
         run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
@@ -224,9 +228,6 @@ jobs:
       - name: Package layout
         run: dotnet run tools/package.cs -- layout --rid linux-x64 --app out/app --cli out/cli --out out/layout
 
-      - name: Portable ZIP
-        run: dotnet run tools/package.cs -- zip --layout out/layout --version "$VERSION" --out "out/release/Pagewing-$VERSION-linux-x64-portable.zip"
-
       - name: Debian package
         run: dotnet run tools/package.cs -- deb --layout out/layout --version "$VERSION" --out "out/release/pagewing_${DEBVERSION}_amd64.deb"
 
@@ -245,7 +246,6 @@ jobs:
       - name: Checksums
         run: |
           dotnet run tools/package.cs -- sums \
-            "out/release/Pagewing-$VERSION-linux-x64-portable.zip" \
             "out/release/pagewing_${DEBVERSION}_amd64.deb" \
             "out/release/Pagewing-$VERSION-x86_64.AppImage" \
             --out out/release/SHA256SUMS-linux.txt
@@ -255,9 +255,10 @@ jobs:
         if: env.UPLOAD == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          # No .git on the runner (checkout zip): name the repository explicitly.
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release upload "$TAG" \
-            "out/release/Pagewing-$VERSION-linux-x64-portable.zip" \
             "out/release/pagewing_${DEBVERSION}_amd64.deb" \
             "out/release/Pagewing-$VERSION-x86_64.AppImage" \
             out/release/SHA256SUMS-linux.txt --clobber
