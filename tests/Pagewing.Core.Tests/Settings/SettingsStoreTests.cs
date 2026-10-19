@@ -47,6 +47,7 @@ public sealed class SettingsStoreTests : IDisposable
             PanelWidth = 321.5,
             LastPrinter = "Büro Drucker",
             PrintScaling = PrintScaling.ActualSize,
+            DefaultAppPrompt = DefaultAppPromptSetting.Never,
         };
         var store = new SettingsStore(FilePath);
 

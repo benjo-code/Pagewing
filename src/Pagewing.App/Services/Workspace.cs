@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
+using Pagewing.Core.Distribution;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.Services;
@@ -25,6 +26,8 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private readonly UserSettings _settings;
     private readonly RecentFilesService? _recentFiles;
     private readonly IEffectiveTheme? _theme;
+    private readonly Func<IDefaultAppService?>? _defaultAppServiceFactory;
+    private readonly DefaultAppPromptGate _defaultAppPromptGate = new();
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
     private readonly List<MainViewModel> _activationOrder = [];
@@ -38,13 +41,18 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     /// <param name="recentFiles">
     /// The history of recently opened files every window shares and writes when it closes; none keeps no history.
     /// </param>
+    /// <param name="defaultAppServiceFactory">
+    /// Makes the service behind the card "Set as the default for PDFs?" (<see cref="PlatformDefaultAppServices.FactoryFor"/>);
+    /// none (a measurement run, tests) means no card. The question is asked once for all windows.
+    /// </param>
     public Workspace(
         Func<ViewerSession> sessionFactory,
         Func<Window> createWindow,
         Func<Window, IFilePicker> createPicker,
         UserSettings? settings = null,
         IEffectiveTheme? theme = null,
-        RecentFilesService? recentFiles = null)
+        RecentFilesService? recentFiles = null,
+        Func<IDefaultAppService?>? defaultAppServiceFactory = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(createWindow);
@@ -55,6 +63,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         _settings = settings ?? UserSettings.Detached();
         _theme = theme;
         _recentFiles = recentFiles;
+        _defaultAppServiceFactory = defaultAppServiceFactory;
     }
 
     /// <summary>Gets the view models of the open windows, the oldest first.</summary>
@@ -283,6 +292,12 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     {
         var window = _createWindow();
         var viewModel = new MainViewModel(_sessionFactory, _createPicker(window), _settings, _recentFiles) { AppTheme = _theme };
+        if (_defaultAppServiceFactory is { } defaultAppFactory)
+        {
+            viewModel.DefaultAppServiceFactory = defaultAppFactory;
+            viewModel.DefaultAppPromptGate = _defaultAppPromptGate;
+        }
+
         if (source is not null)
         {
             PlaceNextTo(window, source, position);

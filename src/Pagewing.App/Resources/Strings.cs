@@ -222,6 +222,14 @@ public static class Strings
     public static string PrintNoService => Get("PrintNoService");
     public static string PrintNoPrinter => Get("PrintNoPrinter");
     public static string CommandPrint => Get("CommandPrint");
+    public static string DefaultAppTitle => Get("DefaultAppTitle");
+    public static string DefaultAppText => Get("DefaultAppText");
+    public static string DefaultAppSet => Get("DefaultAppSet");
+    public static string DefaultAppLater => Get("DefaultAppLater");
+    public static string DefaultAppNever => Get("DefaultAppNever");
+    public static string DefaultAppChooseHint => Get("DefaultAppChooseHint");
+    public static string DefaultAppFailed => Get("DefaultAppFailed");
+    public static string CommandSetDefaultApp => Get("CommandSetDefaultApp");
     public static string PrintTitle => Get("PrintTitle");
     public static string PrintPrinter => Get("PrintPrinter");
     public static string PrintSearching => Get("PrintSearching");

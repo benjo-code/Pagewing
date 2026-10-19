@@ -702,4 +702,28 @@
   <data name="SettingsPrintScaling" xml:space="preserve">
     <value>Page size when printing</value>
   </data>
+  <data name="DefaultAppTitle" xml:space="preserve">
+    <value>Set Pagewing as the default for PDFs?</value>
+  </data>
+  <data name="DefaultAppText" xml:space="preserve">
+    <value>PDF files will then open in Pagewing when you double-click them.</value>
+  </data>
+  <data name="DefaultAppSet" xml:space="preserve">
+    <value>Set as default</value>
+  </data>
+  <data name="DefaultAppLater" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="DefaultAppNever" xml:space="preserve">
+    <value>Don't ask again</value>
+  </data>
+  <data name="DefaultAppChooseHint" xml:space="preserve">
+    <value>Choose Pagewing in the list that Windows shows.</value>
+  </data>
+  <data name="DefaultAppFailed" xml:space="preserve">
+    <value>Pagewing could not be set as the default.</value>
+  </data>
+  <data name="CommandSetDefaultApp" xml:space="preserve">
+    <value>Set Pagewing as default for PDFs</value>
+  </data>
 </root>

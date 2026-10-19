@@ -54,6 +54,7 @@ public sealed class AppSettingsTests
             DefaultZoomMode = ZoomMode.Free,
             StartPanel = (StartPanelSetting)99,
             PrintScaling = (PrintScaling)99,
+            DefaultAppPrompt = (DefaultAppPromptSetting)99,
         };
         var fixedSettings = broken.Normalized();
 
@@ -65,6 +66,8 @@ public sealed class AppSettingsTests
         Assert.Equal(ZoomMode.ActualSize, fixedSettings.DefaultZoomMode);
         Assert.Equal(PrintScaling.FitToPaper, fixedSettings.PrintScaling);
         Assert.Equal(StartPanelSetting.Pages, fixedSettings.StartPanel);
+        Assert.Equal(DefaultAppPromptSetting.Ask, fixedSettings.DefaultAppPrompt);
+        Assert.Equal(DefaultAppPromptSetting.Ask, AppSettings.Default.DefaultAppPrompt);
     }
 
     [Fact]

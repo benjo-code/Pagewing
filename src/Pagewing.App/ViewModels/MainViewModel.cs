@@ -297,6 +297,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        PostDefaultAppCheck();
         if (_recent is { IsLoaded: false })
         {
             PostHistoryLoad();
@@ -819,6 +820,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _firstSharpPageSeen = true;
+        PostDefaultAppCheck();
         if (OpensPagesPanelAfterFirstSharpTile)
         {
             Dispatcher.UIThread.Post(OpenPagesPanelAfterFirstSharpTile, DispatcherPriority.Background);
@@ -832,6 +834,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _palette?.OnClosed();
         _settingsCard?.OnClosed();
         DisposePrinting();
+        DisposeDefaultApp();
         Settings.Changed -= OnSettingsChanged;
         if (_recent is not null)
         {

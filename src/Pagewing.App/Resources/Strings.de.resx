@@ -702,4 +702,28 @@
   <data name="SettingsPrintScaling" xml:space="preserve">
     <value>Seitengröße beim Drucken</value>
   </data>
+  <data name="DefaultAppTitle" xml:space="preserve">
+    <value>Pagewing als Standard für PDFs festlegen?</value>
+  </data>
+  <data name="DefaultAppText" xml:space="preserve">
+    <value>PDF-Dateien öffnen dann mit einem Doppelklick in Pagewing.</value>
+  </data>
+  <data name="DefaultAppSet" xml:space="preserve">
+    <value>Als Standard festlegen</value>
+  </data>
+  <data name="DefaultAppLater" xml:space="preserve">
+    <value>Später</value>
+  </data>
+  <data name="DefaultAppNever" xml:space="preserve">
+    <value>Nicht mehr fragen</value>
+  </data>
+  <data name="DefaultAppChooseHint" xml:space="preserve">
+    <value>Wählen Sie Pagewing in der Liste, die Windows zeigt.</value>
+  </data>
+  <data name="DefaultAppFailed" xml:space="preserve">
+    <value>Pagewing konnte nicht als Standard festgelegt werden.</value>
+  </data>
+  <data name="CommandSetDefaultApp" xml:space="preserve">
+    <value>Pagewing als Standard für PDFs festlegen</value>
+  </data>
 </root>

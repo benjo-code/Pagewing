@@ -22,4 +22,11 @@ internal static class PlatformDefaultAppServices
 
         return null;
     }
+
+    /// <summary>
+    /// Gets what makes the service for the windows of a run: <see cref="Create"/>, or <see langword="null"/> in a
+    /// measurement run, which neither asks the system nor shows the card.
+    /// </summary>
+    /// <param name="isMeasurement">Whether this is a measurement run.</param>
+    public static Func<IDefaultAppService?>? FactoryFor(bool isMeasurement) => isMeasurement ? null : Create;
 }

@@ -18,6 +18,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 - Oberfläche auf Deutsch und Englisch, nach Systemsprache.
 - Schnelleres Öffnen unter Windows: Die App zeichnet auf allen Rechnern ohne Direct3D (Software-Rendering), auch mit Grafikkarte; `PAGEWING_RENDERING=default` schaltet die Grafikbeschleunigung über Direct3D wieder ein.
 - Neues App-Icon (Seite mit Welle) für die Exe unter Windows und das Fenster unter Linux.
+- Beim ersten Start fragt eine Karte unten rechts, ob Pagewing der Standard für PDFs werden soll („Als Standard festlegen“, „Später“, „Nicht mehr fragen“); der Befehl „Pagewing als Standard für PDFs festlegen“ in der Befehlspalette tut dasselbe jederzeit. Unter Windows öffnet er die Standard-Apps-Einstellungen, in denen Sie Pagewing wählen.
 - Karte „Über Pagewing“ (Befehlspalette) mit Version, Lizenz und den Hinweisen zu Drittsoftware.
 - Tabs: mehrere PDFs in einem Fenster öffnen, schließen (×, Mittelklick, Strg+W), wechseln (Klick, Strg+Tab, Strg+Umschalt+Tab), per Ziehen umsortieren, bei Platzmangel über „Alle Tabs“; dieselbe Datei ein zweites Mal öffnen aktiviert ihren Tab.
 - Tabs lassen sich aus der Leiste ziehen: Das neue Fenster hängt am Zeiger, über der Tableiste eines Fensters zeigt ein Strich die Stelle, beim Loslassen landet der Tab dort (mit Seite und Zoom); Esc bricht ab. Unter Windows geprüft, Linux/X11 offen.

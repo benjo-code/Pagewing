@@ -114,7 +114,8 @@ public sealed class App : Application
 
             // Creates no window yet; every window gets its own file dialog.
             var workspace = new Workspace(
-                () => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window), Settings, Appearance, RecentFiles);
+                () => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window), Settings, Appearance, RecentFiles,
+                PlatformDefaultAppServices.FactoryFor(_startup?.Measurement is not null));
 
             void BeforeShow(Window window, MainViewModel viewModel)
             {
