@@ -35,7 +35,14 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
 
     public bool IsSupported => OperatingSystem.IsLinux();
 
-    public async Task<DefaultAppStatus> GetStatusAsync(CancellationToken cancellationToken)
+    public Task<DefaultAppStatus> GetStatusAsync(CancellationToken cancellationToken) =>
+        Task.Run(() => QueryStatusAsync(cancellationToken), CancellationToken.None);
+
+    public Task<DefaultAppResult> MakeDefaultAsync(CancellationToken cancellationToken) =>
+        Task.Run(() => SetDefaultAsync(cancellationToken), CancellationToken.None);
+
+    // Both run on the thread pool: the file work and the PATH search must never block the caller (the UI thread).
+    private async Task<DefaultAppStatus> QueryStatusAsync(CancellationToken cancellationToken)
     {
         var xdgMime = FindOnPath("xdg-mime");
         if (xdgMime is null)
@@ -52,7 +59,7 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
         return run.Output.Trim() == DesktopFileName ? DefaultAppStatus.IsDefault : DefaultAppStatus.NotDefault;
     }
 
-    public async Task<DefaultAppResult> MakeDefaultAsync(CancellationToken cancellationToken)
+    private async Task<DefaultAppResult> SetDefaultAsync(CancellationToken cancellationToken)
     {
         var xdgMime = FindOnPath("xdg-mime");
         if (xdgMime is null)
@@ -196,8 +203,8 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
         }
         catch (OperationCanceledException)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             Kill(process);
+            cancellationToken.ThrowIfCancellationRequested();
             return null;
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)

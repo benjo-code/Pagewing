@@ -9,10 +9,11 @@ internal static partial class ShellNative
 {
     private const int AssociationChanged = 0x08000000;
     private const uint IdList = 0;
+    private const uint FlushNoWait = 0x3000;
 
     [LibraryImport("shell32.dll")]
     private static partial void SHChangeNotify(int eventId, uint flags, nint item1, nint item2);
 
     /// <summary>Tells the shell that file type associations changed so Explorer and the settings page re-read them.</summary>
-    public static void NotifyAssociationsChanged() => SHChangeNotify(AssociationChanged, IdList, 0, 0);
+    public static void NotifyAssociationsChanged() => SHChangeNotify(AssociationChanged, IdList | FlushNoWait, 0, 0);
 }

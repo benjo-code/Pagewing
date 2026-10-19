@@ -49,22 +49,37 @@ internal sealed class WindowsDefaultAppService : IDefaultAppService
 
     public bool IsSupported => OperatingSystem.IsWindows();
 
-    public Task<DefaultAppStatus> GetStatusAsync(CancellationToken cancellationToken)
+    public Task<DefaultAppStatus> GetStatusAsync(CancellationToken cancellationToken) =>
+        Task.Run(ReadStatus, CancellationToken.None);
+
+    public Task<DefaultAppResult> MakeDefaultAsync(CancellationToken cancellationToken) =>
+        Task.Run(() => SetDefaultAsync(cancellationToken), CancellationToken.None);
+
+    private static Task OpenWithShell(string uri)
+    {
+        // The shell resolves the ms-settings: protocol, so this one start needs ShellExecute.
+        using var process = Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
+        return Task.CompletedTask;
+    }
+
+    // Registry, shell notification and process start run on the thread pool, never on the caller's (UI) thread.
+    private DefaultAppStatus ReadStatus()
     {
         try
         {
             using var key = _root.OpenSubKey(UserChoiceKey);
             var progId = key?.GetValue("ProgId") as string;
-            return Task.FromResult(progId == FileTypeRegistration.ProgId ? DefaultAppStatus.IsDefault : DefaultAppStatus.NotDefault);
+            return progId == FileTypeRegistration.ProgId ? DefaultAppStatus.IsDefault : DefaultAppStatus.NotDefault;
         }
         catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or IOException)
         {
-            return Task.FromResult(DefaultAppStatus.Unknown);
+            return DefaultAppStatus.Unknown;
         }
     }
 
-    public async Task<DefaultAppResult> MakeDefaultAsync(CancellationToken cancellationToken)
+    private async Task<DefaultAppResult> SetDefaultAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             var registry = new WindowsFileTypeRegistry(_root);
@@ -81,12 +96,5 @@ internal sealed class WindowsDefaultAppService : IDefaultAppService
         {
             return DefaultAppResult.Failed;
         }
-    }
-
-    private static Task OpenWithShell(string uri)
-    {
-        // The shell resolves the ms-settings: protocol, so this one start needs ShellExecute.
-        using var process = Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
-        return Task.CompletedTask;
     }
 }

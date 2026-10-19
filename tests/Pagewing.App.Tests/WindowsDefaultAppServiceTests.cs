@@ -52,6 +52,23 @@ public sealed class WindowsDefaultAppServiceTests
         });
     }
 
+    [Fact]
+    public void MakeDefaultReturnsBeforeTheBlockingShellCallEnds()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The registry needs Windows.");
+        WithSandbox(async root =>
+        {
+            using var gate = new ManualResetEventSlim();
+            var service = new WindowsDefaultAppService(root, Exe, _ => Task.CompletedTask, () => gate.Wait(TimeSpan.FromSeconds(10)));
+
+            var task = service.MakeDefaultAsync(TestContext.Current.CancellationToken);
+
+            Assert.False(task.IsCompleted);
+            gate.Set();
+            Assert.Equal(DefaultAppResult.OpenedSystemSettings, await task);
+        });
+    }
+
     private static void WithSandbox(Func<RegistryKey, Task> body)
     {
         var name = @"Software\PagewingTests\" + Guid.NewGuid().ToString("N");

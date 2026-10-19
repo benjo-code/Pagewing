@@ -157,4 +157,56 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
 
         Assert.Equal(DefaultAppResult.Failed, await Service().MakeDefaultAsync(TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task CancellingTheCallerKillsTheChild()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        var pidFile = Path.Combine(_root, "pid.txt");
+        Stub("xdg-mime", $"echo $$ > '{pidFile}'; exec sleep 30");
+        using var cts = new CancellationTokenSource();
+        var task = Service().MakeDefaultAsync(cts.Token);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while ((!File.Exists(pidFile) || new FileInfo(pidFile).Length == 0) && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        var pid = int.Parse(File.ReadAllText(pidFile).Trim(), System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(Directory.Exists($"/proc/{pid}"));
+
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
+        deadline = DateTime.UtcNow.AddSeconds(5);
+        while (Directory.Exists($"/proc/{pid}") && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        Assert.False(Directory.Exists($"/proc/{pid}"), "the child must be gone");
+    }
+
+    [Fact]
+    public async Task BlockingWorkDoesNotRunOnTheCallersThread()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        using var gate = new ManualResetEventSlim();
+        var service = new LinuxDefaultAppService(
+            name =>
+            {
+                gate.Wait(TimeSpan.FromSeconds(10));
+                return _env.GetValueOrDefault(name);
+            },
+            TimeSpan.FromSeconds(5));
+
+        var make = service.MakeDefaultAsync(TestContext.Current.CancellationToken);
+        var status = service.GetStatusAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(make.IsCompleted);
+        Assert.False(status.IsCompleted);
+        gate.Set();
+        Assert.Equal(DefaultAppResult.NotAvailable, await make);
+        Assert.Equal(DefaultAppStatus.Unknown, await status);
+    }
 }
