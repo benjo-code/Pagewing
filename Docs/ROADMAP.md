@@ -34,11 +34,12 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 7 | Drucken | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-07-drucken.md) | 2026-10-19 |
 | 8 | Verteilung | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-08-verteilung.md) | 2026-10-22 |
 | – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | ⬜ offen | – | – |
+| 8.1 | Automatische Updates | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 11 | Formulare | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 12 | Sichtbare Unterschrift | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
-| – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M9 bis M12) | – | ⬜ offen | – | – |
+| – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M8.1 bis M12) | – | ⬜ offen | – | – |
 | 13 | Seiten organisieren | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
 | 14 | Schwärzen | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
 | – | **Release `v0.3.0`** – Seiten organisieren und schwärzen (M13 bis M14) | – | ⬜ offen | – | – |
@@ -48,6 +49,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 ## Scope-Änderungen
 
+- **2026-10-22 (Automatische Updates sind nicht mehr Out of Scope: neuer Milestone 8.1 zwischen dem Release v0.1.0 und M9):** Auf Wunsch des Projektinhabers (2026-10-22) bekommt Pagewing automatische Updates, die sich selbst installieren (nicht nur eine Benachrichtigung). Das löst den Ausschluss „Automatische Online-Updates bzw. Update-Prüfung“ (Out of Scope; ebenso in den Grundsätzen und der Abgrenzung der Gesamt-Spec) und den Eintrag „Keine Auto-Update-Funktion“ in `Docs/DECISIONS.md` ab. Lage: neuer **Milestone 8.1** nach dem Release `v0.1.0` und vor M9; `v0.2.0` ist damit die erste Version, die sich selbst aktualisieren kann. Begründung: Ein Updater braucht ein veröffentlichtes Release und eine zweite Version zum Testen, ein öffentliches Repo (Prüfung gegen GitHub Releases ohne Token in der App) und signierte Release-Dateien; er kann nur Versionen aktualisieren, die ihn schon enthalten, also je früher desto weniger Nutzer müssen einmal von Hand umsteigen; und vor dem Speichern (M9) ist er einfacher zu entwerfen, weil es dann noch keine ungespeicherten Änderungen gibt, die ein Neustart gefährden könnte. **Festgelegt:** Die Update-Prüfung läuft erst nach dem Start im Hintergrund (nach dem ersten scharfen Seitenbild bzw. dem ersten Frame der Startseite, nie im Startpfad) und darf die Startzeit-Budgets nicht berühren. Telemetrie, Konten und Online-Dienste bleiben ausgeschlossen; die Zusage „komplett offline“ gilt künftig mit der Ausnahme dieser Prüfung. **Noch nicht angepasst** (gehört zu Milestone 8.1 und wird beim Planen nachgezogen): `Docs/DECISIONS.md`, `CLAUDE.md` („Offline und Sicherheit“ und die Kopfzeile), `README.md`, die Gesamt-Spec und die Design-Spec sowie die UI-Texte „Pagewing arbeitet offline. Nichts verlässt diesen Rechner.“ (Startseite) und „Arbeitet vollständig offline: keine Telemetrie, keine Netzwerkzugriffe.“ (Über-Karte). **Offen** (im Plan mit dem Projektinhaber klären): ob die Prüfung beim ersten Start gefragt wird oder von Anfang an aktiv ist, der Schalter zum Abschalten, und der Umfang je Paketform (portable ZIP, `.deb`, AppImage).
 - **2026-10-22 (M8: Linux-Handprüfung, glibc-Entscheidung, Release-Trockenlauf und `/ALLUSERS` still auf die Abnahme von v0.1.0 verschoben):** Auf Anweisung des Projektinhabers (2026-10-22) gilt M8 mit der Prüfung unter Windows als fertig. Der Release-Workflow wird nicht in M8, sondern beim Release `v0.1.0` ausgeführt, die Linux-Pakete will der Projektinhaber vorerst nicht von Hand prüfen. Auf die Abnahme von `v0.1.0` verschoben (die meisten Punkte standen dort schon, neu ist die glibc-Entscheidung): die Installation und das Entfernen von `.deb` und AppImage auf den Linux-Distributionen; die Klärung der Mindest-glibc auf dem Runner `dotnet-linux` samt Entscheidung (Container `ubuntu:22.04` oder Anheben der Mindest-glibc); der Trockenlauf und der erste Upload von `release.yml`; Narrator und Orca an der Über-Karte und der Standardprogramm-Karte; `/ALLUSERS` still und ein frisches Windows. Die Klärung der Avalonia-Telemetrie beim Bauen bleibt im Backlog. In M8 geprüft ist unter Windows: Bau des Installers, `installer-smoke`, die Windows-Tests, `licenses check` auf einem Windows-Publish sowie die grafische Installation für alle Benutzer und nur für den Benutzer, Doppelklick auf PDF und Deinstallation von Hand. Dabei gefunden und behoben: Die Karte „Als Standardprogramm festlegen“ fragte unter Windows 11 (Build 26200) trotz gesetztem Standard erneut, weil nur `UserChoice` gelesen wurde (`Docs/DECISIONS.md`, Eintrag „Standardprogramm unter Windows 11: `UserChoiceLatest` vor `UserChoice` lesen (M8)“). Nicht belegt bis dahin: jeder Lauf von `release.yml`, jede Linux-Installation und die Linux-Standardprogramm-Karte auf einem echten System.
 - **2026-10-19 (M8: Verteilung – Umfang, bewusst nicht enthalten, offene Fragen):** Mit dem Projektinhaber am 2026-10-19 abgestimmt (Plan `superpowers/plans/2026-10-19-milestone-08-verteilung.md`, Abschnitt „Festgelegt“). Über die Roadmap-Aufgaben hinaus enthält M8: den Installer mit stillem Modus, wählbarem Zielordner und der Frage „Pagewing jetzt starten?“; die Karte „Als Standardprogramm festlegen“ beim ersten Start (nicht im Installer) samt Befehl in der Palette; die Karte „Über Pagewing“; die CLI im Paket (Unterordner `cli/`, Annahme); die Lizenztexte der AppImage-Runtime; den Release-Workflow ohne Actions-Artifacts. Bewusst **nicht** enthalten: Code-Signierung (der Installer löst SmartScreen-Warnungen aus; SignPath steht im Backlog), winget, Flatpak, MSIX, Auto-Update (Pagewing greift nie ins Netz), ein PATH-Eintrag der CLI, ein Linux-ZIP. Der Milestone bleibt `in-progress`, bis die Läufe unter Windows, der Trockenlauf des Release-Workflows und die manuelle Abnahme erfolgt sind. Offene Fragen an den Projektinhaber (Annahme jeweils in Klammern; Einzelheiten in `Docs/DECISIONS.md`, Eintrag „Verteilung: Nicht-Ziele und offene Fragen …“): glibc und Docker auf dem Runner `dotnet-linux` (vorläufig 2.35); `Maintainer` im `.deb` (Platzhalter `Pagewing contributors <noreply@users.noreply.github.com>`); CLI im Paket (ja); Einstellungen der portablen ZIP (`%APPDATA%\Pagewing`); Avalonia-Telemetrie beim Bauen.
 - **2026-10-19 (M7: manuelle Abnahme des Druckens auf die Release-Abnahme von v0.1.0 verschoben; Druckknopf; Druckverbot):** Auf Anweisung des Projektinhabers (2026-10-19) entfällt die manuelle Prüfung des Druckens auf echten Druckern und unter Windows als Abnahmekriterium von Milestone 7; M7 gilt mit den automatisierten Prüfungen (Linux gegen eine echte CUPS-PDF-Warteschlange, Anwendungstests mit einem Fake-Dienst) als fertig. Die Prüfungen stehen als drei Punkte in der Abnahme des Releases `v0.1.0`, die der Projektinhaber vor dem ersten Release durchführt. Nicht geprüft sind damit bis dahin: jeder Lauf unter Windows (Dialog, GDI-Auftrag, `WindowsPrintToPdfTests`), ein Papierdrucker, Duplex, die Drehung durch CUPS am Papierdrucker und Screenreader. Über die Roadmap-Aufgaben hinaus enthält M7: einen Druckknopf unten in der Aktionsleiste (Design-Spec 7.3 nachgezogen), die Einstellung „Seitengröße beim Drucken“, automatische Drehung je Seite und das Achten eines Druckverbots des Dokuments (`Docs/DECISIONS.md`, Einträge „Drucken: Umsetzung und Grenzen (M7)“ und „Dokumentrechte: Druckverbot wird geachtet …“). Bewusst nicht enthalten: Druckvorschau, mehrere Seiten pro Blatt, Drucken aus der CLI.
@@ -84,7 +86,7 @@ Bewusst nicht umgesetzt:
 - Cloud, Konten, KI-Assistent
 - Druckvorstufe (Preflight), 3D- und Multimedia-Inhalte
 - macOS und Mobilgeräte (Avalonia könnte es, wird aber weder gebaut noch getestet)
-- Automatische Online-Updates bzw. Update-Prüfung (komplett offline, keine Telemetrie)
+- Telemetrie, Konten und Online-Dienste; Netzwerkzugriff gibt es allein für die Update-Prüfung (Milestone 8.1), sonst arbeitet Pagewing komplett offline
 
 ---
 
@@ -294,6 +296,39 @@ Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projekt
 - [ ] Vor dem ersten Release: Verhalten von `xdg-mime default` ohne vorhandenen Desktop-Eintrag prüfen
 - [ ] Vor dem ersten Release: Windows-Standardprogramm nach Verschieben der portablen ZIP von Hand prüfen (die Karte erscheint wieder, „Als Standard festlegen“ schreibt den neuen Pfad)
 
+## Milestone 8.1 – Automatische Updates
+**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M8 (Setzt das veröffentlichte Release `v0.1.0` voraus (siehe „Voraussetzungen“ unten).)
+
+Ziel: Pagewing prüft nach dem Start im Hintergrund auf neue Versionen und installiert sie selbst, ohne den Start zu verlangsamen, sodass niemand mehr von Hand einen Installer laden muss.
+
+**Aufgaben**
+- [ ] Plan erstellen (Brainstorming) und die offenen Fragen aus der Scope-Änderung vom 2026-10-22 mit dem Projektinhaber klären: Standard der Prüfung (Frage beim ersten Start oder aktiv), Schalter zum Abschalten, Umfang je Paketform
+- [ ] Offline-Zusage nachziehen: Eintrag in `Docs/DECISIONS.md` (löst „Keine Auto-Update-Funktion“ ab), `CLAUDE.md` („Offline und Sicherheit“ und Kopfzeile), `README.md`, Gesamt-Spec und Design-Spec, UI-Texte der Startseite und der Über-Karte (Englisch und Deutsch); Hinweis im Über-Dialog, was die Prüfung abfragt und was nicht
+- [ ] Signierte Release-Dateien: Der Release-Workflow erzeugt ein Manifest (Version, Dateinamen, Größe, SHA-256) und signiert es; der private Schlüssel liegt nur als Secret des Repos, der öffentliche steckt im Programm. Verfahren im Plan wählen, möglichst aus der .NET-Standardbibliothek (AOT-fähig, keine neue Abhängigkeit; sonst Eintrag im Lizenzmanifest). Die Signatur ersetzt nicht die Code-Signierung (Backlog „Code-Signierung über SignPath Foundation“)
+- [ ] Update-Kern UI- und plattformfrei in `Pagewing.Core`: Manifest lesen (JSON nur mit Source-Generator), Signatur und Prüfsumme prüfen, Versionen vergleichen, höchstens eine Prüfung je Zeitraum, Zustände (nichts neu, verfügbar, wird geladen, bereit, Fehler). Jede Abweichung (falsche Signatur, falsche Prüfsumme, ältere Version) lehnt ab, und es wird nichts gestartet
+- [ ] Prüfung und Download erst nach dem Start: nach dem ersten scharfen Seitenbild bzw. dem ersten Frame der Startseite, auf einem Hintergrundthread, mit Zeitlimit und Abbruch; kein Netzwerkcode im Startpfad geladen; ohne Netz oder bei Fehlern still (kein Hinweis-Spam, kein Wiederholen in Schleife). Messläufe und Tests greifen nie ins Netz (abgekoppelt wie `UserSettings.Detached()`)
+- [ ] Windows: Installer laden, prüfen und still installieren (`/SILENT`, schließt die laufende Instanz, feste `AppId`), bei Installation für alle Benutzer mit UAC-Abfrage; kein Update mitten in einer Sitzung, sondern beim Beenden oder auf Wunsch. Die portable ZIP aktualisiert sich nicht selbst (nur Hinweis), im Plan bestätigen
+- [ ] Linux: AppImage mit eingebetteter Update-Information bzw. Ersetzen der Datei; `.deb`: kein Austausch durch die App, stattdessen Hinweis oder ein apt-Repository (im Plan entscheiden)
+- [ ] Neustart nach dem Update ohne Datenverlust: offene Tabs und Positionen bleiben erhalten (dafür den Backlog-Eintrag „Sitzung wiederherstellen“ in diesen Milestone ziehen) oder das Update wird nur beim Beenden installiert; im Plan entscheiden
+- [ ] Oberfläche: Einstellung für die Prüfung, Hinweiskarte „Update bereit“ (nicht blockierend, ohne Farbe als einziges Zeichen), Befehl „Nach Updates suchen“ im `CommandCatalog`, Texte Englisch und Deutsch, Tastatur und Screenreader (Design-Spec)
+- [ ] Release-Workflow und `packaging/README.md` anpassen (Manifest und Signatur als zusätzliche Release-Dateien), Tag-Regex und Dateinamen bleiben stabil
+
+**Abnahmekriterien**
+- [ ] Startzeit-Budgets bleiben mit aktivierter Prüfung eingehalten: `bench/startup` (Fälle `cold`, `warm`, `thousand`, `second`) ohne Verschlechterung gegenüber `v0.1.0`; ein Test belegt, dass der erste Netzwerkzugriff erst nach dem ersten scharfen Seitenbild bzw. dem ersten Frame der Startseite beginnt
+- [ ] Ein manipuliertes Manifest, eine falsche Signatur, eine falsche Prüfsumme und eine ältere Version werden abgelehnt, ohne dass etwas installiert oder gestartet wird (Tests)
+- [ ] Ohne Netzverbindung, bei Zeitüberschreitung und bei einem Fehler des Servers startet und arbeitet Pagewing unverändert, ohne Fehlerkarte beim Start (Tests mit Fake-Netzwerk)
+- [ ] Bei abgeschalteter Prüfung geschieht kein einziger Netzwerkzugriff (Test mit einem Handler, der jeden Aufruf als Fehler meldet)
+- [ ] Windows, Ende zu Ende: Eine ältere Testversion aktualisiert sich gegen ein echtes Test-Release auf die neue, für „nur für mich“ und für „alle Benutzer“; Einstellungen und Verlauf bleiben erhalten, die Standardprogramm-Zuordnung bleibt gesetzt (manuelle Prüfung, `installer-smoke` für den stillen Pfad)
+- [ ] Linux, Ende zu Ende: AppImage aktualisiert sich auf die neue Version; `.deb` verhält sich wie im Plan festgelegt (manuelle Prüfung)
+- [ ] Ein Update unterbricht nie eine laufende Arbeit: Es installiert nicht mitten in einer Sitzung und verliert keine offenen Tabs (Test und manuelle Prüfung)
+- [ ] `dotnet run tools/licenses.cs -- check` ist grün, falls ein Paket hinzukam; Build, Test und Format laufen grün (Befehle in `CLAUDE.md`)
+
+**Voraussetzungen vor dem Start**
+- Das Release `v0.1.0` ist veröffentlicht (der Release-Workflow ist bis dahin nie gelaufen); der Updater lässt sich erst gegen eine zweite Version von Ende zu Ende testen.
+- Das Repo ist öffentlich: Die Prüfung liest die GitHub Releases ohne Token in der App. Solange es privat ist, ist der Milestone nicht umsetzbar.
+- Die Entscheidung über den Standard der Prüfung (siehe Scope-Änderung vom 2026-10-22) liegt vor.
+- Billige Ergänzung ohne App-Code: das winget-Paket (Backlog). Es ersetzt die Aufgaben dieses Milestones nicht.
+
 ---
 
 # Teilprojekt 2 – Annotieren, Ausfüllen, Unterschreiben
@@ -301,7 +336,7 @@ Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projekt
 **Spec:** noch nicht erstellt (wird in M9 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
 
 ## Milestone 9 – Speichern & Textmarkierungen
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M8
+**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M8, M8.1
 
 Ziel: Text lässt sich hervorheben, unter- und durchstreichen und kommentieren, und Änderungen werden sicher gespeichert.
 
@@ -356,6 +391,10 @@ Ziel: Eine gezeichnete oder als Bild eingefügte Unterschrift lässt sich platzi
 
 **Abnahmekriterien**
 - [ ] Test prüft, dass der Hinweis im Dialog steht und „rechtsgültig“ in keinem UI-Text vorkommt
+
+## Release `v0.2.0` – Abnahme
+
+Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automatisch (Milestone 8.1).
 
 ---
 
@@ -443,7 +482,7 @@ Bewusst nicht eingeplant. Ideen, die `/ideen` hier ablegt, stehen als Liste; bei
 - **Flatpak/Flathub:** Einreichung muss laut Flathub-Regeln ein Mensch vornehmen; Native AOT im Flatpak-Build erst erproben, Dateizugriff über Portale.
 - **Code-Signierung über SignPath Foundation:** Kostenlos für OSS; setzt öffentliches Repo und ein veröffentlichtes Release voraus, Herausgeber ist dann die SignPath Foundation.
 - **Microsoft Store (MSIX):** Registrierung für Einzelentwickler kostenlos, der Store signiert MSIX selbst.
-- **Sitzung wiederherstellen:** Beim Start die zuletzt offenen Tabs mit Position wieder öffnen.
+- **Sitzung wiederherstellen:** Beim Start die zuletzt offenen Tabs mit Position wieder öffnen. Wird in Milestone 8.1 gebraucht, falls das Update nach einem Neustart sofort weiterarbeiten soll (Aufgabe „Neustart nach dem Update ohne Datenverlust“).
 - **Präsentationsmodus:** Vollbild, eine Seite pro Bildschirm, Weiter mit Leertaste/Pfeiltasten.
 - **Erweiterte Barrierefreiheit:** Über die Grundlagen hinaus: Screenreader-Unterstützung für Seiteninhalt (UIA unter Windows, AT-SPI2 unter Linux).
 - **arm64-Builds:** Die PDFium-Pakete enthalten bereits win-arm64 und linux-arm64; braucht passende Runner.
