@@ -53,6 +53,26 @@ public sealed class WindowsDefaultAppServiceTests
     }
 
     [Fact]
+    public void StatusPrefersUserChoiceLatestOverTheOlderUserChoice()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The registry needs Windows.");
+        WithSandbox(async root =>
+        {
+            var service = new WindowsDefaultAppService(root, Exe, _ => Task.CompletedTask, () => { });
+
+            // Windows 11 builds that write UserChoiceLatest leave the old UserChoice on the previous app.
+            SetProgId(root, "UserChoice", "MSEdgePDF");
+            SetLatestProgId(root, FileTypeRegistration.ProgId);
+            Assert.Equal(DefaultAppStatus.IsDefault, await service.GetStatusAsync(TestContext.Current.CancellationToken));
+
+            // The newer key also wins when it names another app.
+            SetProgId(root, "UserChoice", FileTypeRegistration.ProgId);
+            SetLatestProgId(root, "MSEdgePDF");
+            Assert.Equal(DefaultAppStatus.NotDefault, await service.GetStatusAsync(TestContext.Current.CancellationToken));
+        });
+    }
+
+    [Fact]
     public void MakeDefaultRegistersAgainWhenTheProgramMoved()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "The registry needs Windows.");
@@ -105,6 +125,21 @@ public sealed class WindowsDefaultAppServiceTests
             gate.Set();
             Assert.Equal(DefaultAppResult.OpenedSystemSettings, await task);
         });
+    }
+
+    private const string FileExtsPdf = @"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\";
+
+    private static void SetProgId(RegistryKey root, string choiceKey, string progId)
+    {
+        using var key = root.CreateSubKey(FileExtsPdf + choiceKey);
+        key.SetValue("ProgId", progId);
+    }
+
+    // UserChoiceLatest keeps the ProgId one level deeper: ...\UserChoiceLatest\ProgId, value "ProgId".
+    private static void SetLatestProgId(RegistryKey root, string progId)
+    {
+        using var key = root.CreateSubKey(FileExtsPdf + @"UserChoiceLatest\ProgId");
+        key.SetValue("ProgId", progId);
     }
 
     private static void WithSandbox(Func<RegistryKey, Task> body)

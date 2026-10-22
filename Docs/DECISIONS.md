@@ -15,6 +15,12 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-22 – Standardprogramm unter Windows 11: `UserChoiceLatest` vor `UserChoice` lesen (M8)
+**Kontext:** Auf dem Haupt-PC (Windows 11, Build 26200) fragte die Karte „Standardprogramm festlegen“ bei jedem Start erneut, obwohl Pagewing in den Windows-Einstellungen als Standard für `.pdf` stand. Die Registry zeigte: `FileExts\.pdf\UserChoice\ProgId` = `MSEdgePDF` (alt, unverändert), `FileExts\.pdf\UserChoiceLatest\ProgId` (Unterschlüssel `ProgId`, Wert `ProgId`) = `Pagewing.PDF`. `WindowsDefaultAppService.ReadStatus` las nur `UserChoice` und hielt Pagewing deshalb für „nicht Standard“.
+**Entscheidung:** `ReadStatus` liest zuerst `UserChoiceLatest\ProgId\ProgId`; gibt es den Schlüssel nicht (ältere Windows-Versionen), gilt `UserChoice\ProgId`. Der neuere Schlüssel gewinnt auch, wenn er eine andere App nennt. Geschrieben wird weiterhin nichts davon. Wächter: `WindowsDefaultAppServiceTests.StatusPrefersUserChoiceLatestOverTheOlderUserChoice`.
+**Begründung:** Beobachtet an einem Rechner: Windows schreibt eine Änderung dort in `UserChoiceLatest`, während `UserChoice` auf der vorherigen App stehen bleibt. Der Vorrang des neueren Schlüssels folgt aus dieser Beobachtung, nicht aus einer Dokumentation von Microsoft; auf anderen Windows-11-Ständen ist er nicht geprüft.
+**Verworfene Alternativen:** Beide Schlüssel als „Standard“ gelten lassen, sobald einer `Pagewing.PDF` nennt (die Karte würde schweigen, obwohl Windows laut dem neueren Schlüssel eine andere App nimmt); nur `UserChoiceLatest` lesen (bricht ältere Windows-Versionen).
+
 ## 2026-10-19 – Lizenzinventar: SDK-eigene Build-Pakete dürfen im Patchstand abweichen (M8)
 **Kontext:** Der erste CI-Lauf von `licenses check` scheiterte auf dem Linux-Runner: `Microsoft.DotNet.ILCompiler` und `Microsoft.NET.ILLink.Tasks` (beide MIT, nur Build, `shipped: false`) kamen in Version 10.0.13, das Manifest nannte 10.0.12. Beide Pakete fügt das SDK von selbst hinzu; ihr Patchstand folgt dem installierten SDK (`global.json`: `rollForward` `latestFeature`, CI: `10.0.x`) und unterscheidet sich je Rechner und Tag.
 **Entscheidung:** Ein Manifest-Eintrag kann `"sdkVersion": true` tragen. `tools/licenses.cs` verlangt dann nur noch dieselbe Haupt- und Nebenversion (`10.0`), nicht denselben Patchstand; alle anderen Einträge bleiben exakt. Gesetzt ist das für die beiden genannten Pakete. Lizenz (nuspec) und Lizenzdatei werden weiter geprüft.

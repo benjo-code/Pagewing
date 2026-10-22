@@ -4,6 +4,11 @@
   "title": "Pagewing",
   "scopeChanges": [
     {
+      "date": "2026-10-22",
+      "context": "M8: Linux-Handprüfung, glibc-Entscheidung, Release-Trockenlauf und `/ALLUSERS` still auf die Abnahme von v0.1.0 verschoben",
+      "text": "Auf Anweisung des Projektinhabers (2026-10-22) gilt M8 mit der Prüfung unter Windows als fertig. Der Release-Workflow wird nicht in M8, sondern beim Release `v0.1.0` ausgeführt, die Linux-Pakete will der Projektinhaber vorerst nicht von Hand prüfen. Auf die Abnahme von `v0.1.0` verschoben (die meisten Punkte standen dort schon, neu ist die glibc-Entscheidung): die Installation und das Entfernen von `.deb` und AppImage auf den Linux-Distributionen; die Klärung der Mindest-glibc auf dem Runner `dotnet-linux` samt Entscheidung (Container `ubuntu:22.04` oder Anheben der Mindest-glibc); der Trockenlauf und der erste Upload von `release.yml`; Narrator und Orca an der Über-Karte und der Standardprogramm-Karte; `/ALLUSERS` still und ein frisches Windows. Die Klärung der Avalonia-Telemetrie beim Bauen bleibt im Backlog. In M8 geprüft ist unter Windows: Bau des Installers, `installer-smoke`, die Windows-Tests, `licenses check` auf einem Windows-Publish sowie die grafische Installation für alle Benutzer und nur für den Benutzer, Doppelklick auf PDF und Deinstallation von Hand. Dabei gefunden und behoben: Die Karte „Als Standardprogramm festlegen“ fragte unter Windows 11 (Build 26200) trotz gesetztem Standard erneut, weil nur `UserChoice` gelesen wurde (`Docs/DECISIONS.md`, Eintrag „Standardprogramm unter Windows 11: `UserChoiceLatest` vor `UserChoice` lesen (M8)“). Nicht belegt bis dahin: jeder Lauf von `release.yml`, jede Linux-Installation und die Linux-Standardprogramm-Karte auf einem echten System."
+    },
+    {
       "date": "2026-10-19",
       "context": "M8: Verteilung – Umfang, bewusst nicht enthalten, offene Fragen",
       "text": "Mit dem Projektinhaber am 2026-10-19 abgestimmt (Plan `superpowers/plans/2026-10-19-milestone-08-verteilung.md`, Abschnitt „Festgelegt“). Über die Roadmap-Aufgaben hinaus enthält M8: den Installer mit stillem Modus, wählbarem Zielordner und der Frage „Pagewing jetzt starten?“; die Karte „Als Standardprogramm festlegen“ beim ersten Start (nicht im Installer) samt Befehl in der Palette; die Karte „Über Pagewing“; die CLI im Paket (Unterordner `cli/`, Annahme); die Lizenztexte der AppImage-Runtime; den Release-Workflow ohne Actions-Artifacts. Bewusst **nicht** enthalten: Code-Signierung (der Installer löst SmartScreen-Warnungen aus; SignPath steht im Backlog), winget, Flatpak, MSIX, Auto-Update (Pagewing greift nie ins Netz), ein PATH-Eintrag der CLI, ein Linux-ZIP. Der Milestone bleibt `in-progress`, bis die Läufe unter Windows, der Trockenlauf des Release-Workflows und die manuelle Abnahme erfolgt sind. Offene Fragen an den Projektinhaber (Annahme jeweils in Klammern; Einzelheiten in `Docs/DECISIONS.md`, Eintrag „Verteilung: Nicht-Ziele und offene Fragen …“): glibc und Docker auf dem Runner `dotnet-linux` (vorläufig 2.35); `Maintainer` im `.deb` (Platzhalter `Pagewing contributors <noreply@users.noreply.github.com>`); CLI im Paket (ja); Einstellungen der portablen ZIP (`%APPDATA%\\Pagewing`); Avalonia-Telemetrie beim Bauen."
@@ -280,7 +285,8 @@
         {
           "id": "8",
           "title": "Verteilung",
-          "status": "in-progress",
+          "status": "done",
+          "completedOn": "2026-10-22",
           "plan": "superpowers/plans/2026-10-19-milestone-08-verteilung.md",
           "prerequisites": ["7"],
           "goal": "Pagewing lässt sich unter Windows und Linux installieren und als Standardprogramm für PDFs festlegen.",
@@ -290,40 +296,48 @@
               "done": true
             },
             {
-              "text": "Windows: Installer bauen und prüfen, Windows-Tests laufen lassen — `dotnet run tools/package.cs -- inno-install`, `installer`, `installer-smoke` (Ablauf in `packaging/README.md`), `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsFileTypeRegistryTests\"` und `\"*WindowsDefaultAppServiceTests\"` (hier übersprungen), die grafische Installation und `/ALLUSERS`. Der Installer ist unsigniert",
-              "done": false
+              "text": "Windows: Installer unter Windows bauen und automatisiert prüfen, Windows-Tests laufen lassen. Gebaut mit `package.cs inno-install`, `layout`, `installer` (Version 1.0.0, Inno Setup 6.7.3), geprüft mit `installer-smoke` (still, nur für den Benutzer, ohne Administratorrechte) und `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsFileTypeRegistryTests\"` und `\"*WindowsDefaultAppServiceTests\"`. Der Installer ist unsigniert",
+              "done": true
+            },
+            {
+              "text": "Windows: Installation für alle Benutzer und grafischer Ablauf von Hand geprüft: Auswahlseite „alle Benutzer / nur für mich“, UAC-Abfrage bei „alle Benutzer“, Installation für alle Benutzer und nur für den Benutzer, Doppelklick auf eine PDF, Deinstallation. Vom Projektinhaber am 2026-10-22 auf dem Haupt-PC (Windows 11, Build 26200) geprüft. Dabei fand sich, dass die Karte „Als Standardprogramm festlegen“ trotz gesetztem Standard bei jedem Start erneut fragte (Windows 11 schreibt die Wahl nach `UserChoiceLatest`); behoben in `WindowsDefaultAppService.ReadStatus`, Test `StatusPrefersUserChoiceLatestOverTheOlderUserChoice`, Entscheidung in `Docs/DECISIONS.md`; mit einem neu gebauten Installer erneut vom Projektinhaber bestätigt. **Nicht geprüft:** `/ALLUSERS` still (siehe Scope-Änderungen, Abnahme von `v0.1.0`)",
+              "done": true
             },
             {
               "text": "Linux: AppImage und .deb mit `.desktop`-Datei und MIME-Zuordnung: umgesetzt und in der Entwicklungsumgebung (Ubuntu 24.04, glibc 2.39) gebaut und per Smoke-Test geprüft; Umgesetzt mit `package.cs deb`/`deb-smoke` (Starter, MIME-Zuordnung, relativer Symlink `/usr/bin/pagewing`, Lintian ohne unerwartete Fehler, zweimal gebaut dieselbe SHA-256), `package.cs runtime-fetch`/`appimage`/`appimage-smoke` (type2-Runtime `20251108` mit Prüfsumme, zstd-SquashFS, Start mit und ohne FUSE unter Xvfb belegt, zweimal gebaut dieselbe SHA-256), `DesktopEntry` und `LinuxDefaultAppService`, dem Wächter `package.cs check-binary --max-glibc 2.35` (Selbsttest mit echten ELF-Dateien).",
               "done": true
             },
             {
-              "text": "Linux: Mindest-glibc durch Bau auf dem Runner bestätigen und die älteste unterstützte Distribution festlegen — Die glibc ist nur vorläufig auf 2.35 gesetzt (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“): Die glibc des Runners `dotnet-linux` ist unbekannt (in der Entwicklungsumgebung 2.39, dort verlangt `Pagewing` `GLIBC_2.38`), `check-binary` ist in `ci.yml` nicht blockierend und in `release.yml` blockierend. **Offen:** der erste PR-Lauf auf `dotnet-linux` mit der glibc-Ausgabe, danach die Entscheidung des Projektinhabers (Container `ubuntu:22.04` oder Anheben der Mindest-glibc); manuelle Installation auf Ubuntu 22.04 und 24.04, Debian 12 und 13, Linux Mint und CachyOS (`packaging/README.md`)",
-              "done": false
+              "text": "Linux: Mindest-glibc durch Bau auf dem Runner bestätigen und die älteste unterstützte Distribution festlegen — auf die Abnahme von `v0.1.0` verschoben (siehe Scope-Änderungen). Stand: Die glibc ist nur vorläufig auf 2.35 gesetzt (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“); die glibc des Runners `dotnet-linux` ist unbekannt (in der Entwicklungsumgebung 2.39, dort verlangt `Pagewing` `GLIBC_2.38`), `check-binary` ist in `ci.yml` nicht blockierend und in `release.yml` blockierend",
+              "done": true
             },
             {
               "text": "Lizenzhinweise aller Drittbibliotheken (PDFium-Drittlizenzen, Avalonia usw.) im Paket und im Über-Dialog. Umgesetzt mit `third-party/licenses.json` (39 Einträge: alle Pakete von App und CLI, Laufzeit, Schrift und Icons sowie sieben Einträge für die Bestandteile der AppImage-Runtime, die nur im AppImage stehen), den Lizenztexten unter `third-party/<name>/` (mit Quelle und SHA-256), `tools/licenses.cs` (`generate`, `check`, `selftest`), der erzeugten `src/Pagewing.App/Resources/ThirdPartyNotices.txt` (im Paket als `THIRD-PARTY-NOTICES.txt`, eingebettet, in der Karte „Über Pagewing“ erst beim Öffnen der Liste gelesen) und dem Schritt `licenses check` in `ci.yml` und `release.yml`. Geprüft: `dotnet run tools/licenses.cs -- selftest` (40 Prüfungen), `AboutCardTests` (8) und `AppInfoTests` (6).",
               "done": true
             },
             {
-              "text": "Lizenzinventar unter Windows prüfen — `dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli` auf `dotnet-windows` (die Windows-Dateilisten stammen aus den NuGet-Paketen, nicht aus einem Windows-Publish); Narrator und Orca an der Über-Karte; Klärung der Avalonia-Telemetrie beim Bauen (Backlog)",
-              "done": false
+              "text": "Lizenzinventar unter Windows geprüft: `dotnet run tools/licenses.cs -- check --publish-dir out/m8win/app --publish-dir out/m8win/cli` auf einem frischen `win-x64`-Native-AOT-Publish von App und CLI ergab `licenses check: ok`, Exit 0 (2026-10-22, Haupt-PC, nicht auf `dotnet-windows`). Narrator und Orca an der Über-Karte stehen in der Abnahme von `v0.1.0`, die Klärung der Avalonia-Telemetrie beim Bauen im Backlog (siehe Scope-Änderungen)",
+              "done": true
             },
             {
               "text": "Release-Artefakte per CI bauen und an das GitHub-Release hängen: Workflow geschrieben und statisch geprüft, nie ausgeführt. Umgesetzt mit `.github/workflows/release.yml` (je Betriebssystem ein Job auf dem eigenen Runner, Upload mit `gh release upload` direkt ans Release ohne Actions-Artifacts, `GH_REPO`, `persist-credentials: false`, Tag-Prüfung, Trockenlauf per `-f upload=false`) und `package.cs sums`. Statisch geprüft mit `actionlint` 1.7.12 (ohne Befund bei gesetzten Runner-Labels) und einem Prüfskript über alle `uses:` (feste Commits) und alle `run:`-Schritte.",
               "done": true
             },
             {
-              "text": "Release-Workflow: Trockenlauf und erster Upload (`gh workflow run release.yml -f tag=v0.1.0 -f upload=false`) — Der Workflow wurde nie ausgeführt: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` (setzt installiertes `gh`, `dpkg-deb`, `squashfs-tools`, `binutils`, `xvfb` und Windows-Inno-Setup auf den Runnern voraus), danach ein echter Upload",
-              "done": false
+              "text": "Release-Workflow: Trockenlauf und erster Upload (`gh workflow run release.yml -f tag=v0.1.0 -f upload=false`) — auf Anweisung des Projektinhabers beim Release `v0.1.0` statt in M8 (siehe Scope-Änderungen). Der Workflow wurde nie ausgeführt; der Trockenlauf setzt installiertes `gh`, `dpkg-deb`, `squashfs-tools`, `binutils`, `xvfb` und Windows-Inno-Setup auf den Runnern voraus",
+              "done": true
             }
           ],
           "acceptance": [
-            { "text": "Installation, Doppelklick auf PDF und Deinstallation auf frischem Windows und frischer Linux-Distribution (manuelle Prüfung)", "done": false },
+            {
+              "text": "Installation, Doppelklick auf PDF und Deinstallation unter Windows (manuelle Prüfung); unter Linux auf Anweisung des Projektinhabers auf die Abnahme von `v0.1.0` verschoben",
+              "done": true,
+              "evidence": "Windows: Projektinhaber am 2026-10-22 auf dem Haupt-PC (Windows 11, Build 26200, kein frisches System): grafische Installation für alle Benutzer (mit UAC) und nur für den Benutzer, Doppelklick auf eine PDF, Deinstallation; die Karte „Als Standardprogramm festlegen“ schweigt mit dem Fix (`UserChoiceLatest`) bei gesetztem Standard, auch nach einem Neustart der App. Automatisiert: `package.cs installer-smoke` (still, nur Benutzer) „alle Schritte bestanden“; `WindowsFileTypeRegistryTests` und `WindowsDefaultAppServiceTests` 6 von 6 bestanden. **Nicht geprüft:** `/ALLUSERS` still, ein frisches Windows, jede Linux-Distribution (Abnahme von `v0.1.0`)."
+            },
             {
               "text": "Lizenzhinweise vollständig (Abgleich mit den Lizenzdateien der Pakete)",
               "done": true,
-              "evidence": "`dotnet run tools/licenses.cs -- check --publish-dir <app> --publish-dir <cli>` auf einem frischen `linux-x64`-Native-AOT-Publish von App und CLI (2026-10-19, Entwicklungsumgebung Linux, nach Aufnahme der AppImage-Runtime): `licenses check: ok`, Exit 0; `dotnet run tools/licenses.cs -- selftest`: 40 Prüfungen bestanden; `ThirdPartyNotices.txt` ist aktuell. **Einschränkung:** Für Windows ist der Abgleich nicht gelaufen (die Dateiliste `pdfium.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`, `av_libglesv2.dll` ist aus den NuGet-Paketen abgeleitet; erster Lauf: `licenses check --publish-dir out/app --publish-dir out/cli` auf `dotnet-windows`). Der Abgleich ist ein Abgleich mit dem Manifest und den Lizenzdateien im Repo, nicht mit den Dateien eines installierten Pakets. Gesamtlauf am Ende von M8 (Linux, 2026-10-19): `dotnet build Pagewing.slnx` 0 Warnungen, 0 Fehler; `dotnet test --solution Pagewing.slnx` 1906 Tests, 1890 bestanden, 0 fehlgeschlagen, 16 übersprungen (Windows- und CUPS-Tests); `dotnet format Pagewing.slnx --verify-no-changes` ohne Befund; `dotnet run tools/package.cs -- selftest` 251 Prüfungen; `dotnet run tools/licenses.cs -- selftest` 40 Prüfungen."
+              "evidence": "`dotnet run tools/licenses.cs -- check --publish-dir <app> --publish-dir <cli>` auf einem frischen `linux-x64`-Native-AOT-Publish von App und CLI (2026-10-19, Entwicklungsumgebung Linux, nach Aufnahme der AppImage-Runtime): `licenses check: ok`, Exit 0; `dotnet run tools/licenses.cs -- selftest`: 40 Prüfungen bestanden; `ThirdPartyNotices.txt` ist aktuell. Windows (2026-10-22, Haupt-PC): `licenses check --publish-dir out/m8win/app --publish-dir out/m8win/cli` auf einem frischen `win-x64`-Native-AOT-Publish ergab ebenfalls `licenses check: ok`, Exit 0. **Einschränkung:** Der Windows-Lauf war nicht auf dem Runner `dotnet-windows`. Der Abgleich ist ein Abgleich mit dem Manifest und den Lizenzdateien im Repo, nicht mit den Dateien eines installierten Pakets. Gesamtlauf am Ende von M8 (Linux, 2026-10-19): `dotnet build Pagewing.slnx` 0 Warnungen, 0 Fehler; `dotnet test --solution Pagewing.slnx` 1906 Tests, 1890 bestanden, 0 fehlgeschlagen, 16 übersprungen (Windows- und CUPS-Tests); `dotnet format Pagewing.slnx --verify-no-changes` ohne Befund; `dotnet run tools/package.cs -- selftest` 251 Prüfungen; `dotnet run tools/licenses.cs -- selftest` 40 Prüfungen."
             }
           ]
         }
@@ -498,7 +512,7 @@
         { "text": "Drucken (aus M7): Druck in Microsoft Print to PDF unter Windows ergibt vier korrekte Seiten (Text darin ist nicht auswählbar, siehe `Docs/DECISIONS.md`, Eintrag „Windows-Druck: Ausgabe in Print to PDF …“); `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsPrintToPdfTests\"` läuft unter Windows ohne Fehler (nicht übersprungen)", "done": false },
         { "text": "Drucken (aus M7): Drehung der Querseiten durch CUPS und Duplex am Papierdrucker, Druckkarte und Fortschritt mit Screenreader (Narrator, NVDA, Orca), Druckknopf und Karten am echten Bildschirm in hell und dunkel", "done": false },
         {
-          "text": "Verteilung (aus M8), Windows: Installer grafisch (Lizenz, Zielordner, „Pagewing jetzt starten“) und still (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=…`, auch mit `/ALLUSERS`) auf einem frischen Windows, Doppelklick auf ein PDF, Deinstallation; portable ZIP startet; die SmartScreen-Warnung des unsignierten Installers ist zur Kenntnis genommen; `dotnet run tools/package.cs -- installer-smoke <setup.exe>` und die Windows-Tests `*WindowsFileTypeRegistryTests` und `*WindowsDefaultAppServiceTests` laufen ohne Fehler (nicht übersprungen)",
+          "text": "Verteilung (aus M8), Windows: Installer grafisch (Lizenz, Zielordner, „Pagewing jetzt starten“) und still (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=…`, auch mit `/ALLUSERS`) auf einem frischen Windows, Doppelklick auf ein PDF, Deinstallation; portable ZIP startet; die SmartScreen-Warnung des unsignierten Installers ist zur Kenntnis genommen; `dotnet run tools/package.cs -- installer-smoke <setup.exe>` und die Windows-Tests `*WindowsFileTypeRegistryTests` und `*WindowsDefaultAppServiceTests` laufen ohne Fehler (nicht übersprungen). Schon geprüft (2026-10-22, Haupt-PC, kein frisches System): grafische Installation für alle Benutzer und nur für den Benutzer, Doppelklick auf PDF, Deinstallation, `installer-smoke` und beide Testklassen; offen: `/ALLUSERS` still, ein frisches Windows, die portable ZIP und die SmartScreen-Warnung",
           "done": false
         },
         {
@@ -515,6 +529,10 @@
         },
         {
           "text": "Quellangebot für libfuse (LGPL-2.1) in der AppImage-Runtime klären: Quell-Tarballs (type2-runtime 20251108, libfuse 3.15.0) an jedes Release hängen oder ein schriftliches Angebot ins Paket legen (`Docs/DECISIONS.md`, Eintrag „Offen: Quellangebot für libfuse und type2-runtime“)",
+          "done": false
+        },
+        {
+          "text": "Vor dem ersten Release (aus M8): Mindest-glibc klären — den ersten PR-Lauf auf `dotnet-linux` mit der glibc-Ausgabe von `check-binary` ansehen, dann entscheiden (Linux-Build im Container `ubuntu:22.04` oder Mindest-glibc anheben) und die älteste unterstützte Distribution festlegen (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“)",
           "done": false
         },
         {

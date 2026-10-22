@@ -6,7 +6,8 @@ using Pagewing.Core.Distribution;
 namespace Pagewing.App.Platform.Windows;
 
 /// <summary>
-/// Default app for PDF files on Windows. Windows keeps that choice to the user, so this only reads <c>UserChoice</c>,
+/// Default app for PDF files on Windows. Windows keeps that choice to the user, so this only reads <c>UserChoiceLatest</c>
+/// (or <c>UserChoice</c> where the former does not exist),
 /// makes sure Pagewing is registered as an app for PDF files and opens the system page where the user picks it.
 /// Pagewing never writes <c>UserChoice</c>.
 /// </summary>
@@ -14,6 +15,7 @@ namespace Pagewing.App.Platform.Windows;
 internal sealed class WindowsDefaultAppService : IDefaultAppService
 {
     private const string UserChoiceKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice";
+    private const string UserChoiceLatestKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoiceLatest\ProgId";
     private const string SettingsUri = "ms-settings:defaultapps?registeredAppUser=Pagewing";
 
     private readonly RegistryKey _root;
@@ -67,9 +69,7 @@ internal sealed class WindowsDefaultAppService : IDefaultAppService
     {
         try
         {
-            using var key = _root.OpenSubKey(UserChoiceKey);
-            var progId = key?.GetValue("ProgId") as string;
-            if (progId != FileTypeRegistration.ProgId)
+            if (ReadChosenProgId() != FileTypeRegistration.ProgId)
             {
                 return DefaultAppStatus.NotDefault;
             }
@@ -81,6 +81,20 @@ internal sealed class WindowsDefaultAppService : IDefaultAppService
         {
             return DefaultAppStatus.Unknown;
         }
+    }
+
+    // Newer Windows 11 builds write the choice to UserChoiceLatest\ProgId and leave UserChoice on the previous app, so the
+    // newer key wins when it exists.
+    private string? ReadChosenProgId()
+    {
+        using var latest = _root.OpenSubKey(UserChoiceLatestKey);
+        if (latest?.GetValue("ProgId") is string latestProgId)
+        {
+            return latestProgId;
+        }
+
+        using var key = _root.OpenSubKey(UserChoiceKey);
+        return key?.GetValue("ProgId") as string;
     }
 
     private async Task<DefaultAppResult> SetDefaultAsync(CancellationToken cancellationToken)
