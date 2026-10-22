@@ -33,7 +33,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 6 | Komfort | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-18-milestone-06-komfort.md) | 2026-10-19 |
 | 7 | Drucken | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-07-drucken.md) | 2026-10-19 |
 | 8 | Verteilung | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-08-verteilung.md) | 2026-10-22 |
-| – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | ⬜ offen | – | – |
+| – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | 🟡 geplant | – | – |
 | 8.1 | Automatische Updates | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
@@ -295,6 +295,9 @@ Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projekt
 - [ ] Vor dem ersten Release: Symbolgrößen 22 und 96 px im hicolor-Satz prüfen
 - [ ] Vor dem ersten Release: Verhalten von `xdg-mime default` ohne vorhandenen Desktop-Eintrag prüfen
 - [ ] Vor dem ersten Release: Windows-Standardprogramm nach Verschieben der portablen ZIP von Hand prüfen (die Karte erscheint wieder, „Als Standard festlegen“ schreibt den neuen Pfad)
+
+**Plan**
+[Release v0.1.0 – Implementierungsplan](superpowers/plans/2026-10-23-release-v0.1.0.md): Phase 1 Vorbereitung (glibc des Linux-Runners, Trockenlauf ohne Tag, GLIBCXX-Prüfung, Symbolgrößen, `xdg-mime`, Quellangebot), Phase 2 Läufe und Abnahme, Phase 3 Veröffentlichen (nur auf Anweisung). Befund beim Planen: Der blockierende glibc-Schritt von `release.yml` scheitert auf dem Runner (Ubuntu 26.04, glibc 2.43; `Pagewing` verlangt `GLIBC_2.38`), siehe Plan.
 
 ## Milestone 8.1 – Automatische Updates
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M8 (Setzt das veröffentlichte Release `v0.1.0` voraus (siehe „Voraussetzungen“ unten).)

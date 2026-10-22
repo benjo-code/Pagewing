@@ -542,7 +542,7 @@
     {
       "version": "0.1.0",
       "title": "schneller Viewer",
-      "status": "open",
+      "status": "planned",
       "afterMilestone": "8",
       "covers": ["0", "1", "2", "3", "4", "5", "6", "7", "8"],
       "intro": "Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projektinhaber.",
@@ -595,6 +595,12 @@
         {
           "text": "Vor dem ersten Release: Windows-Standardprogramm nach Verschieben der portablen ZIP von Hand prüfen (die Karte erscheint wieder, „Als Standard festlegen“ schreibt den neuen Pfad)",
           "done": false
+        }
+      ],
+      "blocks": [
+        {
+          "title": "Plan",
+          "text": "[Release v0.1.0 – Implementierungsplan](superpowers/plans/2026-10-23-release-v0.1.0.md): Phase 1 Vorbereitung (glibc des Linux-Runners, Trockenlauf ohne Tag, GLIBCXX-Prüfung, Symbolgrößen, `xdg-mime`, Quellangebot), Phase 2 Läufe und Abnahme, Phase 3 Veröffentlichen (nur auf Anweisung). Befund beim Planen: Der blockierende glibc-Schritt von `release.yml` scheitert auf dem Runner (Ubuntu 26.04, glibc 2.43; `Pagewing` verlangt `GLIBC_2.38`), siehe Plan."
         }
       ]
     },
