@@ -290,7 +290,11 @@
               "done": true
             },
             {
-              "text": "Windows: Installer bauen und prüfen, Windows-Tests laufen lassen — `dotnet run tools/package.cs -- inno-install`, `installer`, `installer-smoke` (Ablauf in `packaging/README.md`), `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsFileTypeRegistryTests\"` und `\"*WindowsDefaultAppServiceTests\"` (hier übersprungen), die grafische Installation und `/ALLUSERS`. Der Installer ist unsigniert",
+              "text": "Windows: Installer unter Windows bauen und automatisiert prüfen, Windows-Tests laufen lassen. Gebaut mit `package.cs inno-install`, `layout`, `installer` (Version 1.0.0, Inno Setup 6.7.3), geprüft mit `installer-smoke` (still, nur für den Benutzer, ohne Administratorrechte) und `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsFileTypeRegistryTests\"` und `\"*WindowsDefaultAppServiceTests\"`. Der Installer ist unsigniert",
+              "done": true
+            },
+            {
+              "text": "Windows: Installation für alle Benutzer und grafischer Ablauf von Hand prüfen — Auswahlseite „alle Benutzer / nur für mich“ (Vorgabe: nur für mich), UAC-Abfrage erst bei „alle Benutzer“, `/ALLUSERS` still, Registrierung in `HKLM` und Deinstallation; braucht eine angemeldete Sitzung mit Administratorbestätigung",
               "done": false
             },
             {
@@ -306,7 +310,7 @@
               "done": true
             },
             {
-              "text": "Lizenzinventar unter Windows prüfen — `dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli` auf `dotnet-windows` (die Windows-Dateilisten stammen aus den NuGet-Paketen, nicht aus einem Windows-Publish); Narrator und Orca an der Über-Karte; Klärung der Avalonia-Telemetrie beim Bauen (Backlog)",
+              "text": "Lizenzinventar unter Windows geprüft: `dotnet run tools/licenses.cs -- check --publish-dir out/m8win/app --publish-dir out/m8win/cli` auf einem frischen `win-x64`-Native-AOT-Publish von App und CLI ergab `licenses check: ok`, Exit 0 (2026-10-22, Haupt-PC, nicht auf `dotnet-windows`). **Offen:** Narrator und Orca an der Über-Karte; Klärung der Avalonia-Telemetrie beim Bauen (Backlog)",
               "done": false
             },
             {
@@ -323,7 +327,7 @@
             {
               "text": "Lizenzhinweise vollständig (Abgleich mit den Lizenzdateien der Pakete)",
               "done": true,
-              "evidence": "`dotnet run tools/licenses.cs -- check --publish-dir <app> --publish-dir <cli>` auf einem frischen `linux-x64`-Native-AOT-Publish von App und CLI (2026-10-19, Entwicklungsumgebung Linux, nach Aufnahme der AppImage-Runtime): `licenses check: ok`, Exit 0; `dotnet run tools/licenses.cs -- selftest`: 40 Prüfungen bestanden; `ThirdPartyNotices.txt` ist aktuell. **Einschränkung:** Für Windows ist der Abgleich nicht gelaufen (die Dateiliste `pdfium.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`, `av_libglesv2.dll` ist aus den NuGet-Paketen abgeleitet; erster Lauf: `licenses check --publish-dir out/app --publish-dir out/cli` auf `dotnet-windows`). Der Abgleich ist ein Abgleich mit dem Manifest und den Lizenzdateien im Repo, nicht mit den Dateien eines installierten Pakets. Gesamtlauf am Ende von M8 (Linux, 2026-10-19): `dotnet build Pagewing.slnx` 0 Warnungen, 0 Fehler; `dotnet test --solution Pagewing.slnx` 1906 Tests, 1890 bestanden, 0 fehlgeschlagen, 16 übersprungen (Windows- und CUPS-Tests); `dotnet format Pagewing.slnx --verify-no-changes` ohne Befund; `dotnet run tools/package.cs -- selftest` 251 Prüfungen; `dotnet run tools/licenses.cs -- selftest` 40 Prüfungen."
+              "evidence": "`dotnet run tools/licenses.cs -- check --publish-dir <app> --publish-dir <cli>` auf einem frischen `linux-x64`-Native-AOT-Publish von App und CLI (2026-10-19, Entwicklungsumgebung Linux, nach Aufnahme der AppImage-Runtime): `licenses check: ok`, Exit 0; `dotnet run tools/licenses.cs -- selftest`: 40 Prüfungen bestanden; `ThirdPartyNotices.txt` ist aktuell. Windows (2026-10-22, Haupt-PC): `licenses check --publish-dir out/m8win/app --publish-dir out/m8win/cli` auf einem frischen `win-x64`-Native-AOT-Publish ergab ebenfalls `licenses check: ok`, Exit 0. **Einschränkung:** Der Windows-Lauf war nicht auf dem Runner `dotnet-windows`. Der Abgleich ist ein Abgleich mit dem Manifest und den Lizenzdateien im Repo, nicht mit den Dateien eines installierten Pakets. Gesamtlauf am Ende von M8 (Linux, 2026-10-19): `dotnet build Pagewing.slnx` 0 Warnungen, 0 Fehler; `dotnet test --solution Pagewing.slnx` 1906 Tests, 1890 bestanden, 0 fehlgeschlagen, 16 übersprungen (Windows- und CUPS-Tests); `dotnet format Pagewing.slnx --verify-no-changes` ohne Befund; `dotnet run tools/package.cs -- selftest` 251 Prüfungen; `dotnet run tools/licenses.cs -- selftest` 40 Prüfungen."
             }
           ]
         }
