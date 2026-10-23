@@ -34,7 +34,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 7 | Drucken | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-07-drucken.md) | 2026-10-19 |
 | 8 | Verteilung | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-08-verteilung.md) | 2026-10-22 |
 | – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | ✅ fertig | – | 2026-10-23 |
-| 8.1 | Automatische Updates | 1 – Fundament & Viewer | ⬜ offen | – | – |
+| 8.1 | Automatische Updates | 1 – Fundament & Viewer | 🟡 geplant | [Plan](superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md) | – |
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 11 | Formulare | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
@@ -301,12 +301,12 @@ Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projekt
 [Release v0.1.0 – Implementierungsplan](superpowers/plans/2026-10-23-release-v0.1.0.md): Phase 1 Vorbereitung (glibc des Linux-Runners, Trockenlauf ohne Tag, GLIBCXX-Prüfung, Symbolgrößen, `xdg-mime`, Quellangebot), Phase 2 Läufe und Abnahme, Phase 3 Veröffentlichen (nur auf Anweisung). Befund beim Planen: Der blockierende glibc-Schritt von `release.yml` scheitert auf dem Runner (Ubuntu 26.04, glibc 2.43; `Pagewing` verlangt `GLIBC_2.38`), siehe Plan.
 
 ## Milestone 8.1 – Automatische Updates
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M8 (Setzt das veröffentlichte Release `v0.1.0` voraus (siehe „Voraussetzungen“ unten).)
+**Status:** 🟡 geplant · **Plan:** [2026-10-23-milestone-08-1-automatische-updates.md](superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md) · **Voraussetzungen:** M8 (Setzt das veröffentlichte Release `v0.1.0` voraus (siehe „Voraussetzungen“ unten).)
 
 Ziel: Pagewing prüft nach dem Start im Hintergrund auf neue Versionen und installiert sie selbst, ohne den Start zu verlangsamen, sodass niemand mehr von Hand einen Installer laden muss.
 
 **Aufgaben**
-- [ ] Plan erstellen (Brainstorming) und die offenen Fragen aus der Scope-Änderung vom 2026-10-22 mit dem Projektinhaber klären: Standard der Prüfung (Frage beim ersten Start oder aktiv), Schalter zum Abschalten, Umfang je Paketform
+- [x] Plan erstellen (Brainstorming) und die offenen Fragen aus der Scope-Änderung vom 2026-10-22 mit dem Projektinhaber klären: Standard der Prüfung (Frage beim ersten Start oder aktiv), Schalter zum Abschalten, Umfang je Paketform
 - [ ] Offline-Zusage nachziehen: Eintrag in `Docs/DECISIONS.md` (löst „Keine Auto-Update-Funktion“ ab), `CLAUDE.md` („Offline und Sicherheit“ und Kopfzeile), `README.md`, Gesamt-Spec und Design-Spec, UI-Texte der Startseite und der Über-Karte (Englisch und Deutsch); Hinweis im Über-Dialog, was die Prüfung abfragt und was nicht
 - [ ] Signierte Release-Dateien: Der Release-Workflow erzeugt ein Manifest (Version, Dateinamen, Größe, SHA-256) und signiert es; der private Schlüssel liegt nur als Secret des Repos, der öffentliche steckt im Programm. Verfahren im Plan wählen, möglichst aus der .NET-Standardbibliothek (AOT-fähig, keine neue Abhängigkeit; sonst Eintrag im Lizenzmanifest). Die Signatur ersetzt nicht die Code-Signierung (Backlog „Code-Signierung über SignPath Foundation“)
 - [ ] Update-Kern UI- und plattformfrei in `Pagewing.Core`: Manifest lesen (JSON nur mit Source-Generator), Signatur und Prüfsumme prüfen, Versionen vergleichen, höchstens eine Prüfung je Zeitraum, Zustände (nichts neu, verfügbar, wird geladen, bereit, Fehler). Jede Abweichung (falsche Signatur, falsche Prüfsumme, ältere Version) lehnt ab, und es wird nichts gestartet

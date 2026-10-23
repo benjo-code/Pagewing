@@ -354,12 +354,13 @@
         {
           "id": "8.1",
           "title": "Automatische Updates",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md",
           "prerequisites": ["8"],
           "prerequisitesNote": "Setzt das veröffentlichte Release `v0.1.0` voraus (siehe „Voraussetzungen“ unten).",
           "goal": "Pagewing prüft nach dem Start im Hintergrund auf neue Versionen und installiert sie selbst, ohne den Start zu verlangsamen, sodass niemand mehr von Hand einen Installer laden muss.",
           "tasks": [
-            { "text": "Plan erstellen (Brainstorming) und die offenen Fragen aus der Scope-Änderung vom 2026-10-22 mit dem Projektinhaber klären: Standard der Prüfung (Frage beim ersten Start oder aktiv), Schalter zum Abschalten, Umfang je Paketform", "done": false },
+            { "text": "Plan erstellen (Brainstorming) und die offenen Fragen aus der Scope-Änderung vom 2026-10-22 mit dem Projektinhaber klären: Standard der Prüfung (Frage beim ersten Start oder aktiv), Schalter zum Abschalten, Umfang je Paketform", "done": true },
             { "text": "Offline-Zusage nachziehen: Eintrag in `Docs/DECISIONS.md` (löst „Keine Auto-Update-Funktion“ ab), `CLAUDE.md` („Offline und Sicherheit“ und Kopfzeile), `README.md`, Gesamt-Spec und Design-Spec, UI-Texte der Startseite und der Über-Karte (Englisch und Deutsch); Hinweis im Über-Dialog, was die Prüfung abfragt und was nicht", "done": false },
             { "text": "Signierte Release-Dateien: Der Release-Workflow erzeugt ein Manifest (Version, Dateinamen, Größe, SHA-256) und signiert es; der private Schlüssel liegt nur als Secret des Repos, der öffentliche steckt im Programm. Verfahren im Plan wählen, möglichst aus der .NET-Standardbibliothek (AOT-fähig, keine neue Abhängigkeit; sonst Eintrag im Lizenzmanifest). Die Signatur ersetzt nicht die Code-Signierung (Backlog „Code-Signierung über SignPath Foundation“)", "done": false },
             { "text": "Update-Kern UI- und plattformfrei in `Pagewing.Core`: Manifest lesen (JSON nur mit Source-Generator), Signatur und Prüfsumme prüfen, Versionen vergleichen, höchstens eine Prüfung je Zeitraum, Zustände (nichts neu, verfügbar, wird geladen, bereit, Fehler). Jede Abweichung (falsche Signatur, falsche Prüfsumme, ältere Version) lehnt ab, und es wird nichts gestartet", "done": false },

@@ -20,3 +20,6 @@ TestResults/
 
 # Benchmarks
 BenchmarkDotNet.Artifacts/
+
+# Superpowers Brainstorming (lokale Mockups)
+.superpowers/
