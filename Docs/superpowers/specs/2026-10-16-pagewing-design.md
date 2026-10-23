@@ -15,7 +15,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 
 **Zielgruppe:** zuerst der Projektinhaber als täglicher Nutzer, danach allgemein Nutzer, die einen schlanken, schnellen PDF-Editor wollen. Keine Enterprise-Anforderungen wie Rollout per Gruppenrichtlinien, Zertifikatssignaturen oder Server-Komponenten.
 
-**Grundsätze:** komplett offline, keine Telemetrie, keine Konten, keine automatische Update-Prüfung.
+**Grundsätze:** offline bis auf die Update-Prüfung (seit Milestone 8.1: abschaltbar, ohne Kennung, nur gegen die GitHub-Releases des Projekts), keine Telemetrie, keine Konten, keine Online-Dienste.
 
 ## 2. Erfolgskriterien
 
@@ -128,7 +128,7 @@ testdata/pdfs/             Test-PDFs mit LICENSES.md je Herkunft
 - PDFium wird ohne V8 und ohne XFA genutzt, JavaScript in PDFs läuft also nie.
 - Launch-Aktionen und eingebettete Dateien werden nie automatisch ausgeführt oder geöffnet.
 - Externe Links öffnen erst nach Klick und einer Bestätigung, die die URL anzeigt.
-- Keine Netzwerkzugriffe durch Pagewing selbst.
+- Keine Netzwerkzugriffe durch Pagewing selbst, mit einer Ausnahme seit Milestone 8.1: die Update-Prüfung und der Download eines Updates gegen die GitHub-Releases des Projekts (nach dem Start im Hintergrund, in den Einstellungen abschaltbar; abgeschaltet kein einziger Zugriff, außer der Nutzer wählt den Befehl „Nach Updates suchen“; Anfrage ohne Kennung und ohne Angaben zum Rechner). Ein Update wird vor der Installation gegen eine eingebaute Signatur (ECDSA P-256) und die SHA-256 des signierten Manifests geprüft. Entwurf: `2026-10-23-m81-automatische-updates-design.md`.
 
 ### 5.7 Drucken
 
@@ -159,6 +159,7 @@ Die Milestones mit Aufgaben und Abnahmekriterien stehen in der [Roadmap](../../R
 | 6 | Komfort: dunkler Modus, Tastenkürzel, Befehlspalette (Strg+K), zuletzt geöffnete Dateien, Einstellungen |
 | 7 | Drucken (Windows und Linux) |
 | 8 | Verteilung: Windows-Installer und portable ZIP, Linux AppImage und .deb, Registrierung als PDF-Standardprogramm, Lizenzhinweise der Drittbibliotheken |
+| 8.1 | Automatische Updates (nach dem Release v0.1.0, Scope-Änderung vom 2026-10-22): Prüfung im Hintergrund, signiertes Manifest, Installation auf Klick unter Windows (Installer) und mit dem AppImage, Hinweis für `.deb` und portable ZIP, Tabs nach dem Neustart wieder offen; Entwurf `2026-10-23-m81-automatische-updates-design.md` |
 
 **Release v0.1.0 – schneller Viewer** nach M8.
 
@@ -201,7 +202,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 ### Querschnitt
 
 - **CLI `pagewing`:** wächst mit jedem Teilprojekt und nutzt denselben Kern, zum Beispiel `info`, `render`, `text`, später `merge`, `split`, `rotate`, `redact`, `ocr`. Sie wird ebenfalls mit Native AOT gebaut.
-- Komplett offline, keine Telemetrie.
+- Offline bis auf die Update-Prüfung (Milestone 8.1, abschaltbar), keine Telemetrie.
 
 ## 7. Tests und Qualität
 
@@ -235,7 +236,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 - Cloud, Konten, KI-Assistent
 - Druckvorstufe (Preflight), 3D- und Multimedia-Inhalte
 - macOS und Mobilgeräte (Avalonia könnte es, es wird aber weder gebaut noch getestet)
-- Automatische Online-Updates bzw. Update-Prüfung
+- Telemetrie und Online-Dienste. Netzwerk gibt es allein für die Update-Prüfung; die frühere Abgrenzung „Automatische Online-Updates bzw. Update-Prüfung“ ist seit der Scope-Änderung vom 2026-10-22 aufgehoben (Milestone 8.1)
 
 ## 10. Backlog (nicht eingeplant)
 

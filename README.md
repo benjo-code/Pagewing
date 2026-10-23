@@ -1,10 +1,10 @@
 # Pagewing
 
-Schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux. PDFs öffnen so schnell wie im Browser. Man kann sie lesen, durchsuchen, kommentieren, ausfüllen, unterschreiben, Seiten organisieren, schwärzen und per OCR durchsuchbar machen. Pagewing läuft als Desktop-App mit modernem Design oder als Kommandozeilen-Werkzeug `pagewing`. Komplett offline, ohne Konto, ohne Telemetrie.
+Schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux. PDFs öffnen so schnell wie im Browser. Man kann sie lesen, durchsuchen, kommentieren, ausfüllen, unterschreiben, Seiten organisieren, schwärzen und per OCR durchsuchbar machen. Pagewing läuft als Desktop-App mit modernem Design oder als Kommandozeilen-Werkzeug `pagewing`. Offline, ohne Konto, ohne Telemetrie; ins Netz geht nur die abschaltbare Update-Prüfung.
 
 **Status:** [v0.1.0](https://github.com/benjo-code/Pagewing/releases/tag/v0.1.0) (schneller Viewer) ist veröffentlicht, die nächsten Versionen sind in Entwicklung. Siehe [Docs/ROADMAP.md](Docs/ROADMAP.md) und [CHANGELOG.md](CHANGELOG.md).
 
-> **English:** Pagewing is a fast, open-source alternative to Adobe Acrobat for Windows and Linux: view, search, annotate, fill, sign, organize, redact and OCR PDFs. Desktop app and CLI share one core. Fully offline, no telemetry. Built with .NET 10 (Native AOT), Avalonia and PDFium. Licensed under GPL-3.0-or-later. Project docs are in German; the app UI is English and German.
+> **English:** Pagewing is a fast, open-source alternative to Adobe Acrobat for Windows and Linux: view, search, annotate, fill, sign, organize, redact and OCR PDFs. Desktop app and CLI share one core. Offline apart from the update check (can be switched off), no telemetry. Built with .NET 10 (Native AOT), Avalonia and PDFium. Licensed under GPL-3.0-or-later. Project docs are in German; the app UI is English and German.
 
 ## Geplanter Funktionsumfang
 
@@ -19,7 +19,9 @@ Bewusst nicht geplant sind unter anderem Zertifikatssignaturen, XFA-Formulare, J
 
 ## Installation
 
-Die Pakete hängen am [GitHub-Release](https://github.com/benjo-code/Pagewing/releases) (Dateinamen und Bauanleitung: [packaging/README.md](packaging/README.md)); neben jedem Betriebssystem liegt eine `SHA256SUMS-<os>.txt` zum Prüfen der Downloads. Pagewing greift nie ins Netz: keine Telemetrie, keine Update-Prüfung.
+Die Pakete hängen am [GitHub-Release](https://github.com/benjo-code/Pagewing/releases) (Dateinamen und Bauanleitung: [packaging/README.md](packaging/README.md)); neben jedem Betriebssystem liegt eine `SHA256SUMS-<os>.txt` zum Prüfen der Downloads.
+
+**Updates und Netz:** Ab der nächsten Version (nach `v0.1.0`) sucht die Desktop-App nach dem Start im Hintergrund nach einer neuen Version, höchstens einmal in 24 Stunden. Sie fragt dafür nur die öffentliche Release-Seite von Pagewing auf GitHub und sendet keine Kennung, keine Version und keine Angaben über den Rechner; GitHub sieht wie jede Website die IP-Adresse. Abschalten lässt sich das in den Einstellungen („Automatisch nach Updates suchen“); danach geht Pagewing nur noch ins Netz, wenn man in der Befehlspalette „Nach Updates suchen“ wählt. Installiert wird nur nach einem Klick auf „Installieren“ und nur, wenn Signatur und Prüfsumme passen; danach öffnen sich die Tabs wieder. Selbst aktualisieren können sich die Windows-Installation (für „alle Benutzer“ mit UAC-Abfrage) und das AppImage; das `.deb` und die portable ZIP zeigen einen Link zur Download-Seite. `v0.1.0` enthält den Updater noch nicht, von dort steigt man einmal von Hand um.
 
 **Windows (10 und neuer, 64 Bit)**
 

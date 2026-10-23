@@ -6,6 +6,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 
 ## [Unreleased]
 
+### Added
+
+- Automatische Updates: Pagewing prüft nach dem Start im Hintergrund auf neue Versionen, höchstens einmal in 24 Stunden (abschaltbar in den Einstellungen unter „Aktualisierungen“; „Nach Updates suchen“ in der Befehlspalette prüft jederzeit). Gibt es eine, erscheint in der Titelleiste die Schaltfläche „Aktualisieren“ (englisch „Update“); ein Klick zeigt die Karte mit „Installieren“ und „Später“. Installiert wird nur auf Klick, mit einem Fortschrittsfenster, und nur, wenn Signatur und Prüfsumme passen; danach startet Pagewing neu und die Tabs kommen an ihrer Stelle zurück. Selbst aktualisieren können sich die Windows-Installation (bei „alle Benutzer“ mit UAC-Abfrage) und das AppImage; das `.deb` und die portable ZIP zeigen einen Link zur Download-Seite. Die Prüfung fragt nur die öffentliche Release-Seite von Pagewing auf GitHub und sendet keine Kennung und keine Angaben zum Rechner; Startseite und „Über Pagewing“ sagen das. `v0.1.0` enthält den Updater noch nicht: Von dort steigt man einmal von Hand um.
+
+### Changed
+
+- Das `.deb` verlangt zusätzlich `libssl3` (bzw. `libssl3t64`) für die Update-Prüfung.
+
 ## [0.1.0] – 2026-10-23
 
 Enthaltene Milestones: 0 (Repo-Grundgerüst und CI), 1 (PDFium-Anbindung und Render-Kern), 2 (Designrichtungen), 3 (App-Shell und schnelles Öffnen), 4 (Navigation), 4.1 (Tabs zwischen Fenstern ziehen), 5 (Text und Suche), 6 (Komfort), 7 (Drucken) und 8 (Verteilung). Pagewing ist in diesem Release ein schneller Viewer; Bearbeiten kommt in späteren Versionen.
