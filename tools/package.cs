@@ -2463,6 +2463,8 @@ static class SelfTest
         AppImageParts();
         TagRuleParts();
         RuntimeSourceParts();
+        BuildTelemetryParts();
+        WorkflowYamlParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -2574,6 +2576,40 @@ static class SelfTest
         finally
         {
             Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // Avalonia.BuildServices collects usage data while compiling unless AVALONIA_TELEMETRY_OPTOUT=1 is set
+    // (Docs/DECISIONS.md, entry "Avalonia-Build-Telemetrie abschalten"). Every place that compiles the app must set it.
+    private static void BuildTelemetryParts()
+    {
+        foreach (var file in new[]
+        {
+            ".github/workflows/ci.yml", ".github/workflows/release.yml", ".github/workflows/hardware-measure.yml",
+            "packaging/linux/container-build.sh",
+        })
+        {
+            Expect($"telemetrie: {file} vorhanden", File.Exists(file), true);
+            if (File.Exists(file))
+            {
+                Expect($"telemetrie: {file} setzt AVALONIA_TELEMETRY_OPTOUT=1",
+                    Regex.IsMatch(File.ReadAllText(file), @"AVALONIA_TELEMETRY_OPTOUT(: '1'|=1)"), true);
+            }
+        }
+    }
+
+    // There is no YAML parser in the base library. The one mistake that broke release.yml once: an unquoted one-line
+    // "run: ..." value that contains ": " (YAML reads the second colon as a mapping and the whole file is invalid).
+    private static void WorkflowYamlParts()
+    {
+        foreach (var file in Directory.GetFiles(".github/workflows", "*.yml"))
+        {
+            var bad = File.ReadLines(file)
+                .Select((line, i) => (line, number: i + 1))
+                .Where(x => Regex.IsMatch(x.line, @"^\s*(- )?(run|name|if): [^|>'""\s#{\[&*!%@`-][^#]*: "))
+                .Select(x => $"{x.number}")
+                .ToList();
+            Expect($"yaml: {file} hat keinen einzeiligen Wert mit ': ' ohne Anfuehrungszeichen (Zeilen {string.Join(',', bad)})", bad.Count, 0);
         }
     }
 

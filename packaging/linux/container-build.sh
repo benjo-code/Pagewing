@@ -23,6 +23,7 @@ apt-get install -y --no-install-recommends \
   libfontconfig1 libx11-6 libice6 libsm6 libicu70 libssl3 lintian desktop-file-utils
 
 export PATH="/dotnet:$PATH" DOTNET_ROOT=/dotnet DOTNET_CLI_HOME=/tmp/dotnet-home DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
+export AVALONIA_TELEMETRY_OPTOUT=1
 export HOME=/tmp/home XDG_CACHE_HOME=/tmp/home/.cache
 mkdir -p "$HOME"
 

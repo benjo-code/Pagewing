@@ -36,6 +36,11 @@ concurrency:
   group: release-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
+# Avalonia.BuildServices would send anonymous usage data while compiling (Docs/DECISIONS.md, entry
+# "Avalonia-Build-Telemetrie abschalten"); the app itself never connects anywhere.
+env:
+  AVALONIA_TELEMETRY_OPTOUT: '1'
+
 jobs:
   windows:
     name: release-windows
@@ -58,7 +63,8 @@ jobs:
       # A branch build is a dry run: what is uploaded must be built from the tag.
       - name: Refuse to upload a branch build
         if: env.UPLOAD == 'true' && inputs.ref != ''
-        run: throw 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.'
+        run: |
+          throw 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.'
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

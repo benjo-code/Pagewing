@@ -167,6 +167,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 
 ### Build-Stolperfallen
 
+- Das Build-Paket `Avalonia.BuildServices` sendet beim Kompilieren anonyme Nutzungsdaten, solange `AVALONIA_TELEMETRY_OPTOUT=1` fehlt. Die Workflows (`ci.yml`, `release.yml`, `hardware-measure.yml`) und `packaging/linux/container-build.sh` setzen es (Wächter: `package.cs selftest`, `BuildTelemetryParts`); auf einem Entwicklerrechner selbst setzen (`setx AVALONIA_TELEMETRY_OPTOUT 1` bzw. `export` in der Shell). Die App greift zur Laufzeit nie ins Netz.
 - Die Root-Dateien `Directory.Packages.props` (zentrale Paketverwaltung) und `Directory.Build.props` gelten auch für Einzeldatei-Werkzeuge. `tools/Directory.Build.props` und `tools/Directory.Packages.props` isolieren sie; ohne sie bricht `tools/roadmap.cs` mit NU1008.
 - xunit.v3 läuft auf Microsoft.Testing.Platform: `global.json` enthält den Runner. `Microsoft.NET.Test.Sdk` und `xunit.runner.visualstudio` nicht referenzieren.
 - Testnamen ohne Unterstriche (CA1707 unter `latest-recommended`).
