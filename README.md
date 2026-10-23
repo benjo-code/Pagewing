@@ -2,7 +2,7 @@
 
 Schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux. PDFs öffnen so schnell wie im Browser. Man kann sie lesen, durchsuchen, kommentieren, ausfüllen, unterschreiben, Seiten organisieren, schwärzen und per OCR durchsuchbar machen. Pagewing läuft als Desktop-App mit modernem Design oder als Kommandozeilen-Werkzeug `pagewing`. Komplett offline, ohne Konto, ohne Telemetrie.
 
-**Status:** in Entwicklung, noch kein Release. Siehe [Docs/ROADMAP.md](Docs/ROADMAP.md).
+**Status:** [v0.1.0](https://github.com/benjo-code/Pagewing/releases/tag/v0.1.0) (schneller Viewer) ist veröffentlicht, die nächsten Versionen sind in Entwicklung. Siehe [Docs/ROADMAP.md](Docs/ROADMAP.md) und [CHANGELOG.md](CHANGELOG.md).
 
 > **English:** Pagewing is a fast, open-source alternative to Adobe Acrobat for Windows and Linux: view, search, annotate, fill, sign, organize, redact and OCR PDFs. Desktop app and CLI share one core. Fully offline, no telemetry. Built with .NET 10 (Native AOT), Avalonia and PDFium. Licensed under GPL-3.0-or-later. Project docs are in German; the app UI is English and German.
 
@@ -19,7 +19,7 @@ Bewusst nicht geplant sind unter anderem Zertifikatssignaturen, XFA-Formulare, J
 
 ## Installation
 
-Noch gibt es kein Release; die Pakete entstehen beim Veröffentlichen und hängen am GitHub-Release (Dateinamen und Bauanleitung: [packaging/README.md](packaging/README.md)). Pagewing greift nie ins Netz: keine Telemetrie, keine Update-Prüfung.
+Die Pakete hängen am [GitHub-Release](https://github.com/benjo-code/Pagewing/releases) (Dateinamen und Bauanleitung: [packaging/README.md](packaging/README.md)); neben jedem Betriebssystem liegt eine `SHA256SUMS-<os>.txt` zum Prüfen der Downloads. Pagewing greift nie ins Netz: keine Telemetrie, keine Update-Prüfung.
 
 **Windows (10 und neuer, 64 Bit)**
 
