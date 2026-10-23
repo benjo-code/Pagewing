@@ -56,8 +56,42 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
             return DefaultAppStatus.Unknown;
         }
 
-        return run.Output.Trim() == DesktopFileName ? DefaultAppStatus.IsDefault : DefaultAppStatus.NotDefault;
+        if (run.Output.Trim() != DesktopFileName)
+        {
+            return DefaultAppStatus.NotDefault;
+        }
+
+        // From an AppImage the choice is only good while the user's desktop file starts this very file: after the
+        // AppImage was moved or renamed, the old Exec= points nowhere. NotDefault brings the card back; setting the
+        // default again writes the file anew (TryInstallDesktopFile).
+        var appImage = _environment("APPIMAGE");
+        return string.IsNullOrEmpty(appImage) || DesktopFileStartsAppImage(appImage)
+            ? DefaultAppStatus.IsDefault
+            : DefaultAppStatus.NotDefault;
     }
+
+    private bool DesktopFileStartsAppImage(string appImage)
+    {
+        var dataHome = DataHome();
+        if (dataHome is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            var file = Path.Combine(dataHome, "applications", DesktopFileName);
+            return File.Exists(file) && ExecLine(File.ReadAllText(file)) == ExecLine(DesktopEntry.Render(appImage, IconName));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    // The Exec= line only: other lines may change with a newer Pagewing without making the choice stale.
+    private static string? ExecLine(string desktopFile) =>
+        desktopFile.Split('\n').FirstOrDefault(line => line.StartsWith("Exec=", StringComparison.Ordinal));
 
     private async Task<DefaultAppResult> SetDefaultAsync(CancellationToken cancellationToken)
     {
