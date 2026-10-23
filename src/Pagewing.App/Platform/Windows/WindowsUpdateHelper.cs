@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Text;
+using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.Core.Updates;
 
@@ -33,6 +35,24 @@ internal sealed record WindowsUpdateHelperSetup(
 
     /// <summary>Gets how long the helper waits for the app to end.</summary>
     public TimeSpan ExitTimeout { get; init; } = DefaultExitTimeout;
+
+    /// <summary>
+    /// Gets what reads the product version of a program file (<see cref="FileVersionInfo.ProductVersion"/>), or
+    /// <see langword="null"/> when it cannot be read; tests pass a fake.
+    /// </summary>
+    public Func<string, string?> ProductVersionOf { get; init; } = ReadProductVersion;
+
+    private static string? ReadProductVersion(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? FileVersionInfo.GetVersionInfo(path).ProductVersion : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>
@@ -42,17 +62,15 @@ internal sealed record WindowsUpdateHelperSetup(
 /// the signature of the saved manifest with the keys of the program and the SHA-256 of the setup program again (the files
 /// lay on the disk in between) and keeps the setup program open against writing until it ended, then runs it silently
 /// (<see cref="InnoArguments"/>; Inno Setup keeps the install mode and folder of the installation through its fixed
-/// <c>AppId</c>). Exit code 0: Pagewing starts again from the installed folder, with <c>--restore-session</c> when the app
-/// wrote the session, and the helper ends. Anything else (the UAC prompt declined, a failing setup program): the installed
-/// version starts again and the window shows the error with "Try again" (the setup program once more) and "Close". The
+/// <c>AppId</c>). Exit code 0 and the program in the folder reports the requested version: Pagewing starts again from the
+/// installed folder, with <c>--restore-session</c> when the app wrote the session, and the helper ends. Anything else (the
+/// UAC prompt declined, a failing setup program, another version in the folder after exit code 0): the installed version
+/// starts again and the window shows the error with "Try again" (the setup program once more) and "Close". The
 /// staging folder is deleted only after success or "Close". The progress window shows it (<see cref="IUpdateFlow"/>);
 /// used on the UI thread.
 /// </summary>
 internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
 {
-    /// <summary>The log of the setup program in the staging folder.</summary>
-    public const string LogFileName = "setup.log";
-
     private readonly WindowsUpdateHelperSetup _setup;
     private readonly string? _staging;
     private readonly UpdateVersion? _version;
@@ -62,6 +80,7 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
     private Task? _running;
     private bool _retryable;
     private bool _installedStarted;
+    private string? _failureMessage;
 
     public WindowsUpdateHelper(WindowsUpdateHelperSetup setup)
     {
@@ -94,7 +113,11 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
 
     public UpdateStage FailedAt { get; private set; }
 
-    public string? FailureMessage => null;
+    /// <summary>
+    /// Gets the text of a failure after the setup program ran (it may have replaced files, so "your version stays" would
+    /// not be true), or <see langword="null"/> for the general text of the error (a check refused before it ran).
+    /// </summary>
+    public string? FailureMessage => State.Stage == UpdateStage.Failed ? _failureMessage : null;
 
     public bool FailureOffersDownloadPage => false;
 
@@ -104,9 +127,13 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
 
     private string SessionPath => Path.Combine(_setup.ConfigDirectory, SessionStore.FileName);
 
-    /// <summary>Gets the command line of the setup program: very silent, no message boxes, no restart, the log in <paramref name="staging"/>.</summary>
-    public static string InnoArguments(string staging) =>
-        InnoCommandLine.Join(["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=" + Path.Combine(staging, LogFileName)]);
+    /// <summary>
+    /// Gets the command line of the setup program: very silent, no message boxes, no restart, and a log without a file
+    /// name. An installation for all users runs Inno Setup elevated, as another account, so nothing it writes may go into
+    /// a folder this user can write to (the staging folder is one): <c>/LOG</c> alone writes the log into the
+    /// <c>%TEMP%</c> of the account that runs the setup program.
+    /// </summary>
+    public static string InnoArguments { get; } = InnoCommandLine.Join(["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG"]);
 
     /// <summary>
     /// Waits for the app, then verifies and installs (see the class). Once: a second call gets the running one. Never throws.
@@ -231,7 +258,7 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
 
         // The setup program closes a Pagewing that holds its files (CloseApplications): what was started before may be gone.
         _installedStarted = false;
-        if (exitCode == 0)
+        if (exitCode == 0 && InstalledIsTheRequestedVersion())
         {
             SetState(new UpdateState(UpdateStage.Restarting, _version, _file, _file!.Size, null));
             DeleteStaging();
@@ -240,16 +267,48 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
             return;
         }
 
-        // The UAC prompt declined (Inno Setup reports a code other than 0) or the setup program failed.
+        // The UAC prompt declined (Inno Setup reports a code other than 0), the setup program failed, or it ended well but
+        // the program in the folder is not the requested version (Windows replaces files in use only at its next start,
+        // or the setup program updated another installation): what is there starts again, the update stays for "Try
+        // again" until "Close".
         StartInstalled();
-        Fail(UpdateFailure.InstallFailed, UpdateStage.Installing, retryable: true);
+        Fail(
+            UpdateFailure.InstallFailed,
+            UpdateStage.Installing,
+            retryable: true,
+            message: exitCode == 0 ? Strings.UpdateErrorVersionMismatch : Strings.UpdateErrorHelperInstallFailed);
+    }
+
+    /// <summary>
+    /// Whether the program in the folder of the request reports the requested version as its product version (build
+    /// metadata after <c>+</c> left out); <see langword="false"/> when it cannot be read.
+    /// </summary>
+    private bool InstalledIsTheRequestedVersion()
+    {
+        string? product;
+        try
+        {
+            product = _setup.ProductVersionOf(InstalledExe);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
+
+        if (product is null)
+        {
+            return false;
+        }
+
+        var plus = product.IndexOf('+', StringComparison.Ordinal);
+        return UpdateVersion.TryParse(plus >= 0 ? product[..plus] : product, out var installed) && installed == _version;
     }
 
     private async Task<int> RunSetupAsync(string path)
     {
         try
         {
-            return await _setup.Launcher.RunAsync(path, InnoArguments(_staging!)).ConfigureAwait(true);
+            return await _setup.Launcher.RunAsync(path, InnoArguments).ConfigureAwait(true);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -365,10 +424,11 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
         }
     }
 
-    private void Fail(string error, UpdateStage at, bool retryable)
+    private void Fail(string error, UpdateStage at, bool retryable, string? message = null)
     {
         FailedAt = at;
         _retryable = retryable;
+        _failureMessage = message;
         SetState(State with { Stage = UpdateStage.Failed, Error = error });
     }
 

@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Pagewing.App.Platform.Windows;
+using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
@@ -26,6 +27,10 @@ public sealed class WindowsUpdateInstallerTests : UpdateTestHost
 
     private readonly FakeProcessLauncher _launcher = new();
     private readonly FakeShutdown _shutdown = new();
+    private readonly List<string> _versionsRead = [];
+
+    // The product version the fake reader reports for the installed program after the setup program ran.
+    private string? _installedVersion = "0.2.0+0123abcd";
 
     private string ProgramDirectory => Path.Combine(ConfigDirectory, "Program Files", "Pagewing");
 
@@ -229,7 +234,7 @@ public sealed class WindowsUpdateInstallerTests : UpdateTestHost
     }
 
     [Fact]
-    public async Task HelperRunsInnoSilentWithTheLogOption()
+    public async Task HelperRunsInnoSilentWithoutAPathOfTheStagingFolder()
     {
         // A config folder with a space, an umlaut and an ampersand, as user names can have.
         var config = Path.Combine(ConfigDirectory, "Benutzer Ä&", "Pagewing");
@@ -240,7 +245,88 @@ public sealed class WindowsUpdateInstallerTests : UpdateTestHost
 
         var (file, commandLine) = Assert.Single(_launcher.Runs);
         Assert.Equal(Path.Combine(staging, SetupName), file);
-        Assert.Equal("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART \"/LOG=" + Path.Combine(staging, "setup.log") + "\"", commandLine);
+
+        // An installation for all users runs Inno Setup elevated, as another account: nothing it writes may go into a
+        // folder this user can write to. "/LOG" without a name writes into the %TEMP% of the account that runs it.
+        Assert.Equal("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG", commandLine);
+        Assert.DoesNotContain(staging, commandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(config, commandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/LOG=", commandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(commandLine, WindowsUpdateHelper.InnoArguments);
+    }
+
+    [Fact]
+    public async Task SuccessIsCheckedAgainstTheVersionOfTheInstalledProgram()
+    {
+        var staging = Stage();
+        var helper = Helper(staging);
+
+        await helper.RunAsync();
+
+        // The version of the program in the folder of the request, read after the setup program ended (build metadata
+        // after "+" does not count).
+        Assert.Equal([InstalledExe], _versionsRead);
+        Assert.Equal(UpdateStage.Restarting, helper.State.Stage);
+        Assert.False(Directory.Exists(staging));
+    }
+
+    [Theory]
+    [InlineData("0.1.0")]
+    [InlineData("0.1.0+abc")]
+    [InlineData("0.3.0")]
+    [InlineData(null)]
+    [InlineData("not a version")]
+    public async Task AnotherVersionAfterTheSetupProgramIsAFailure(string? installed)
+    {
+        // Exit code 0, but the program in the folder is not the version of the request: Windows still has to restart to
+        // replace files in use, or the setup program updated another installation. Offering the same update again
+        // would go round in a circle.
+        var staging = Stage();
+        WriteSession();
+        _installedVersion = installed;
+        var helper = Helper(staging);
+
+        await helper.RunAsync();
+
+        Assert.Equal(UpdateStage.Failed, helper.State.Stage);
+        Assert.Equal(UpdateFailure.InstallFailed, helper.State.Error);
+        Assert.Equal(UpdateStage.Installing, helper.FailedAt);
+        Assert.Equal(Strings.UpdateErrorVersionMismatch, helper.FailureMessage);
+        Assert.True(Directory.Exists(staging));
+        Assert.Equal(0, _shutdown.Calls);
+
+        // What is installed starts again, as after any failure.
+        Assert.Equal([InstalledExe + " --restore-session"], Started());
+    }
+
+    [Fact]
+    public async Task AFailingSetupProgramDoesNotClaimThatTheVersionStays()
+    {
+        // The setup program may have replaced files before it failed: the text says what is true.
+        var staging = Stage();
+        _launcher.ExitCodes.Enqueue(5);
+        var helper = Helper(staging);
+
+        await helper.RunAsync();
+
+        Assert.Equal(Strings.UpdateErrorHelperInstallFailed, helper.FailureMessage);
+        using var viewModel = new UpdateViewModel(helper, _ => { });
+        Assert.Equal(Strings.UpdateErrorHelperInstallFailed, viewModel.FailureText);
+        Assert.DoesNotContain(Strings.UpdateErrorInstallFailed, viewModel.FailureText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ARefusedCheckBeforeTheSetupProgramKeepsTheGeneralText()
+    {
+        // Nothing was run: the general text of the error ("your version stays as it is") is true here.
+        var staging = Stage();
+        File.WriteAllBytes(Path.Combine(staging, SetupName), [1, 2, 3]);
+        var helper = Helper(staging);
+
+        await helper.RunAsync();
+
+        Assert.Null(helper.FailureMessage);
+        Assert.Empty(_launcher.Runs);
     }
 
     [Fact]
@@ -508,6 +594,11 @@ public sealed class WindowsUpdateInstallerTests : UpdateTestHost
             AfterProcess = OldProcess,
             RestoreSession = File.Exists(Path.Combine(config ?? ConfigDirectory, SessionStore.FileName)),
             Language = language,
+            ProductVersionOf = path =>
+            {
+                _versionsRead.Add(path);
+                return _installedVersion;
+            },
         });
         Own(helper);
         return helper;

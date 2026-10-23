@@ -846,6 +846,12 @@
   <data name="UpdateErrorInstallFailed" xml:space="preserve">
     <value>Installing failed. Your version stays as it is.</value>
   </data>
+  <data name="UpdateErrorHelperInstallFailed" xml:space="preserve">
+    <value>The update could not be completed. Pagewing starts again; try again, or download the new version by hand.</value>
+  </data>
+  <data name="UpdateErrorVersionMismatch" xml:space="preserve">
+    <value>The update could not be completed: Windows still has to restart to finish it, or Pagewing is installed elsewhere. Pagewing starts again.</value>
+  </data>
   <data name="UpdateErrorFolderWriteProtected" xml:space="preserve">
     <value>The folder is write-protected: {0}. Please download the new AppImage by hand.</value>
   </data>

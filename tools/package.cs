@@ -1644,7 +1644,9 @@ static partial class UpdateSmoke
             var after = ProductVersion(exe);
             if (after is null || !after.StartsWith(newVersion, StringComparison.Ordinal))
             {
-                failures.Add($"{exe} meldet nach dem Update {after ?? "keine Version"} statt {newVersion} (Protokoll: {Path.Combine(staging, "setup.log")})");
+                // The helper starts Inno Setup with "/LOG" without a name (never a path in the user-writable staging
+                // folder): the log is "Setup Log <date> #<n>.txt" in the %TEMP% of the account that ran the setup program.
+                failures.Add($"{exe} meldet nach dem Update {after ?? "keine Version"} statt {newVersion} (Protokoll: \"Setup Log *.txt\" in {temp})");
             }
 
             if (Directory.Exists(staging))
