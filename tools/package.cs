@@ -2465,6 +2465,7 @@ static class SelfTest
         RuntimeSourceParts();
         BuildTelemetryParts();
         WorkflowYamlParts();
+        LinuxContainerParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -2611,6 +2612,28 @@ static class SelfTest
                 .ToList();
             Expect($"yaml: {file} hat keinen einzeiligen Wert mit ': ' ohne Anfuehrungszeichen (Zeilen {string.Join(',', bad)})", bad.Count, 0);
         }
+    }
+
+    // The Linux job builds as root in ubuntu:22.04 (packaging/linux/container-build.sh). Two things must hold even when
+    // the run is cancelled or times out: the workspace goes back to the runner user (else the next checkout of any
+    // workflow fails with "Permission denied"), and the tool's own self-test runs on the host, not in the container
+    // (jammy has squashfs-tools 4.5; the reproducibility checks of the self-test are verified with 4.6 only).
+    private static void LinuxContainerParts()
+    {
+        const string workflow = ".github/workflows/release.yml";
+        const string container = "packaging/linux/container-build.sh";
+        if (!File.Exists(workflow) || !File.Exists(container))
+        {
+            Expect("container: release.yml und container-build.sh vorhanden", false, true);
+            return;
+        }
+
+        var yml = File.ReadAllText(workflow);
+        Expect("container: Arbeitsordner geht auch nach Abbruch zurueck (if: always() mit chown)",
+            Regex.IsMatch(yml, @"name: Give the workspace back to the runner user \(Linux\)\s+if: always\(\)\s+run: \|[\s\S]*?chown -R"), true);
+        Expect("container: Selbsttest des Pakettools laeuft in beiden Jobs auf dem Host", Regex.Count(yml, "name: Self-test of the packaging tool"), 2);
+        Expect("container: container-build.sh startet den Selbsttest des Pakettools nicht",
+            File.ReadAllText(container).Contains("package.cs -- selftest", StringComparison.Ordinal), false);
     }
 
     private static void PackagingCommands()

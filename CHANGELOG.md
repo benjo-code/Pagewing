@@ -19,6 +19,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 - Schnelleres Öffnen unter Windows: Die App zeichnet auf allen Rechnern ohne Direct3D (Software-Rendering), auch mit Grafikkarte; `PAGEWING_RENDERING=default` schaltet die Grafikbeschleunigung über Direct3D wieder ein.
 - Neues App-Icon (Seite mit Welle) für die Exe unter Windows und das Fenster unter Linux.
 - Beim ersten Start fragt eine Karte unten rechts, ob Pagewing der Standard für PDFs werden soll („Als Standard festlegen“, „Später“, „Nicht mehr fragen“); der Befehl „Pagewing als Standard für PDFs festlegen“ in der Befehlspalette tut dasselbe jederzeit. Unter Windows öffnet er die Standard-Apps-Einstellungen, in denen Sie Pagewing wählen.
+- Die Quelltexte von libfuse und der AppImage-Runtime (LGPL-2.1) hängen an jedem Release (`fuse-3.15.0.tar.xz`, `type2-runtime-20251108.tar.gz`, Prüfsummen in `SHA256SUMS-linux.txt`).
 - Karte „Über Pagewing“ (Befehlspalette) mit Version, Lizenz und den Hinweisen zu Drittsoftware.
 - Installation: Windows-Installer (grafisch oder still mit eigenem Zielordner, für den Benutzer oder alle Benutzer, „Pagewing jetzt starten“, Eintrag als Programm für PDF) und portable ZIP; Linux `.deb` (Ubuntu, Debian, Linux Mint) und AppImage ohne `libfuse2`, auch für CachyOS. Alle Pakete enthalten die CLI und die Lizenzhinweise aller Drittbibliotheken (auch die der AppImage-Runtime). Der Windows-Installer ist nicht signiert, SmartScreen warnt.
 - Tabs: mehrere PDFs in einem Fenster öffnen, schließen (×, Mittelklick, Strg+W), wechseln (Klick, Strg+Tab, Strg+Umschalt+Tab), per Ziehen umsortieren, bei Platzmangel über „Alle Tabs“; dieselbe Datei ein zweites Mal öffnen aktiviert ihren Tab.
@@ -55,5 +56,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 
 - Ein Start mit mehreren Dateien (`pagewing a.pdf b.pdf`) öffnet jede als Tab, nicht nur die erste; der Tab der ersten Datei bleibt aktiv.
 - Dieselbe Datei erneut öffnen, deren Tab eine Fehlerkarte zeigt, versucht es in diesem Tab noch einmal, statt nur die alte Fehlermeldung zu zeigen.
+- Linux, „Als Standardprogramm festlegen“: Das AppImage trägt jetzt auch die Symbole in 22 und 96 Pixeln ein. Läuft Pagewing aus einem Ordner, ohne installiertes Paket und ohne AppImage, meldet die Karte, dass es von dort nicht geht, statt einen Standard zu setzen, der ins Leere zeigt.
 
 ### Removed

@@ -30,7 +30,8 @@ mkdir -p "$HOME"
 ldd --version | head -1
 dotnet --version
 
-dotnet run tools/package.cs -- selftest
+# The self-test of tools/package.cs runs on the host (release.yml): jammy's squashfs-tools 4.5 are older than the 4.6
+# that its reproducibility checks assume.
 dotnet run tools/licenses.cs -- selftest
 
 dotnet publish src/Pagewing.Cli -c Release -r linux-x64 -p:Version="$VERSION" -o out/cli

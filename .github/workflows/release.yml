@@ -212,13 +212,26 @@ jobs:
           command -v gh >/dev/null || { echo 'gh (GitHub CLI) not found on PATH: install it (https://github.com/cli/cli/blob/trunk/docs/install_linux.md, e.g. sudo apt-get install -y gh) and restart the runner so that it sees the new PATH' >&2; exit 1; }
           gh --version
 
+      # On the host, not in the container: the container's squashfs-tools (jammy: 4.5) are older than the 4.6 that the
+      # reproducibility checks of the self-test were written against.
+      - name: Self-test of the packaging tool
+        run: dotnet run tools/package.cs -- selftest
+
       - name: Build, package and smoke-test in ubuntu:22.04
         run: |
           set -euo pipefail
-          docker run --rm \
+          docker run --rm --name pagewing-release-build \
             -v "$PWD:/work" -v "$DOTNET_INSTALL_DIR:/dotnet:ro" -w /work \
             -e VERSION -e DEBVERSION -e "HOST_UID=$(id -u)" -e "HOST_GID=$(id -g)" \
             ubuntu:22.04 bash packaging/linux/container-build.sh
+
+      # The container builds as root. If the run is cancelled or times out, the trap in container-build.sh does not
+      # run and the checkout would stay root-owned, which breaks the next checkout of any workflow on this runner.
+      - name: Give the workspace back to the runner user (Linux)
+        if: always()
+        run: |
+          docker rm -f pagewing-release-build >/dev/null 2>&1 || true
+          docker run --rm -v "$PWD:/work" ubuntu:22.04 chown -R "$(id -u):$(id -g)" /work
 
       # Only for a published release or workflow_dispatch with upload=true; otherwise build and smoke tests only.
       - name: Upload to the release
