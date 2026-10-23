@@ -26,6 +26,18 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
 
     protected FakeUpdateSourceApp Source { get; } = new();
 
+    /// <summary>Gets the installer the coordinators of the test hand a verified update to (unless a test passes another).</summary>
+    protected FakeUpdateApplier Applier { get; } = new();
+
+    /// <summary>Gets the folder that stands for the config folder of the user in these tests (status, updates, session).</summary>
+    protected string ConfigDirectory => _directory;
+
+    /// <summary>Gets the folder the coordinators of the test download version <paramref name="version"/> into.</summary>
+    protected string StagingOf(string version) => Path.Combine(_directory, UpdateStaging.DirectoryName, version);
+
+    /// <summary>Gets the path the coordinators of the test count as the running program.</summary>
+    protected string ProcessPath => Path.Combine(_directory, "app", "Pagewing.exe");
+
     /// <summary>Gets the status file (<c>update.json</c>) the coordinators of the test use.</summary>
     protected string StatusPath => Path.Combine(_directory, UpdateStatusStore.FileName);
 
@@ -55,14 +67,33 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
     /// <summary>Disposes <paramref name="item"/> when the test ends, before the windows of <c>Track</c> are closed.</summary>
     protected void Own(IDisposable item) => _owned.Add(item);
 
-    protected UpdateCoordinator NewCoordinator(UserSettings? settings = null, TimeProvider? clock = null, PackageForm form = PackageForm.WindowsInstaller)
+    /// <summary>
+    /// Makes a coordinator over <see cref="Source"/> whose updates go to <see cref="StagingOf"/> and to
+    /// <paramref name="applier"/> (<see cref="Applier"/> without one; <paramref name="noApplier"/> for a system that has none).
+    /// </summary>
+    protected UpdateCoordinator NewCoordinator(
+        UserSettings? settings = null,
+        TimeProvider? clock = null,
+        PackageForm form = PackageForm.WindowsInstaller,
+        IUpdateApplier? applier = null,
+        bool noApplier = false)
     {
         Directory.CreateDirectory(_directory);
-        var checker = new UpdateChecker(Source, new UpdateStatusStore(StatusPath), clock ?? TimeProvider.System, Running, Source.Keys);
-        var coordinator = new UpdateCoordinator(checker, settings ?? UserSettings.Detached(), form);
+        var time = clock ?? TimeProvider.System;
+        var checker = new UpdateChecker(Source, new UpdateStatusStore(StatusPath), time, Running, Source.Keys);
+        var chosen = noApplier ? null : applier ?? Applier;
+        var install = new UpdateInstallSetup(Source, _directory, () => chosen, time)
+        {
+            ProcessPath = ProcessPath,
+            TargetDirectory = Path.GetDirectoryName(ProcessPath),
+        };
+        var coordinator = new UpdateCoordinator(checker, settings ?? UserSettings.Detached(), form, install);
         Own(coordinator);
         return coordinator;
     }
+
+    /// <summary>Closes <paramref name="window"/> when the test ends, before the windows of <c>Track</c> are closed.</summary>
+    protected void OwnWindow(Avalonia.Controls.Window window) => Own(new WindowCloser(window));
 
     /// <summary>Gets a factory that makes one coordinator over <see cref="Source"/> and counts the times it is asked.</summary>
     protected Func<UpdateCoordinator?> CountingFactory(UserSettings? settings = null, PackageForm form = PackageForm.WindowsInstaller)
@@ -110,6 +141,27 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
         await WaitUntilAsync(window, () => tab.HasShownSharpPage);
     }
 
+    /// <summary>Runs the dispatcher until <paramref name="condition"/> holds (for tests without a window), at most 15 seconds.</summary>
+    protected static async Task PumpUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (true)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            if (condition())
+            {
+                return;
+            }
+
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("The condition did not come true.");
+            }
+
+            await Task.Delay(10);
+        }
+    }
+
     /// <summary>Runs the dispatcher for about <paramref name="milliseconds"/> (jobs of every priority run).</summary>
     protected static async Task RunForAsync(MainWindow window, int milliseconds)
     {
@@ -119,5 +171,10 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
             Settle(window);
             await Task.Delay(20);
         }
+    }
+
+    private sealed class WindowCloser(Avalonia.Controls.Window window) : IDisposable
+    {
+        public void Dispose() => window.Close();
     }
 }

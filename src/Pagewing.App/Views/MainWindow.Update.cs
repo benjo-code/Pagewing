@@ -52,15 +52,26 @@ public sealed partial class MainWindow
         if (_update is not null)
         {
             _update.PropertyChanged -= OnUpdatePropertyChanged;
+            _update.ProgressWindowRequested -= OnProgressWindowRequested;
         }
 
         _update = update;
         if (update is not null)
         {
             update.PropertyChanged += OnUpdatePropertyChanged;
+            update.ProgressWindowRequested += OnProgressWindowRequested;
         }
 
         UpdateUpdateCard();
+    }
+
+    // "Install", or the button while an installation runs: the progress window of the process, over this window.
+    private void OnProgressWindowRequested()
+    {
+        if (_update is { } update)
+        {
+            UpdateWindow.ShowFor(update, this);
+        }
     }
 
     private void OnUpdatePropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -301,6 +301,31 @@ public sealed class UpdateCheckerTests : IDisposable
     }
 
     [Fact]
+    public async Task FetchVerifiedDocumentsKeepsTheBytesAsReceived()
+    {
+        _source.Offer("0.2.0");
+        var sent = _source.Documents!;
+
+        var (result, documents) = await Checker().FetchVerifiedDocumentsAsync(CancellationToken.None);
+
+        // The signature covers these exact bytes, so they are what the installer verifies again.
+        Assert.Equal("0.2.0", result.Manifest?.Version);
+        Assert.Same(sent, documents);
+        Assert.Empty(Directory.GetFiles(_directory));
+    }
+
+    [Fact]
+    public async Task FetchVerifiedDocumentsGivesNoDocumentsForARejection()
+    {
+        _source.Offer("0.1.0");
+
+        var (result, documents) = await Checker().FetchVerifiedDocumentsAsync(CancellationToken.None);
+
+        Assert.Equal(ManifestRejection.NotNewer, result.Rejection);
+        Assert.Null(documents);
+    }
+
+    [Fact]
     public async Task FetchVerifiedTimesOutSilently()
     {
         _source.Hang = true;

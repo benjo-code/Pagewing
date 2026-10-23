@@ -73,7 +73,13 @@ public sealed class UpdateChecker(
     /// version. Writes nothing. The result has a manifest or a rejection; both are <c>null</c> when nothing was
     /// received (no network, timeout, server answer that is not a manifest).
     /// </summary>
-    public async Task<ManifestResult> FetchVerifiedAsync(CancellationToken ct)
+    public async Task<ManifestResult> FetchVerifiedAsync(CancellationToken ct) => (await FetchVerifiedDocumentsAsync(ct)).Result;
+
+    /// <summary>
+    /// Like <see cref="FetchVerifiedAsync"/>, and with a verified manifest also the documents exactly as received (the
+    /// bytes the signature covers), so they can be kept next to the download and verified again by the installer.
+    /// </summary>
+    public async Task<(ManifestResult Result, UpdateDocuments? Documents)> FetchVerifiedDocumentsAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         using var timeout = new CancellationTokenSource(CheckTimeout, clock);
@@ -90,7 +96,13 @@ public sealed class UpdateChecker(
         }
 
         ct.ThrowIfCancellationRequested();
-        return documents is null ? default : ManifestVerifier.Verify(documents.Manifest, documents.Signature, keys, current);
+        if (documents is null)
+        {
+            return default;
+        }
+
+        var result = ManifestVerifier.Verify(documents.Manifest, documents.Signature, keys, current);
+        return (result, result.Manifest is null ? null : documents);
     }
 
     /// <summary>The file of the manifest that this installation form installs by itself, or <c>null</c> if it has none.</summary>

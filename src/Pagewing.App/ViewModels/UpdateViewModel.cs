@@ -9,17 +9,31 @@ namespace Pagewing.App.ViewModels;
 
 /// <summary>
 /// The button "Update" in the title bar and its card "Pagewing X is available" in one window
-/// (<see cref="MainViewModel.Update"/>). Follows the coordinator of the process, which all windows share: the button
-/// shows as long as the coordinator knows of an update, the card opens and closes per window. "Later" closes the card
-/// and keeps the button. A form that cannot update itself (<see cref="PackageForm.Deb"/>,
-/// <see cref="PackageForm.WindowsPortable"/>, <see cref="PackageForm.Unknown"/>) gets a hint and the download page
-/// instead of "Install"; the page is asked for like any external address (confirmation card). UI thread only.
+/// (<see cref="MainViewModel.Update"/>), or the progress window of the installation (<see cref="Views.UpdateWindow"/>,
+/// which has an instance of its own). Follows the coordinator of the process, which all windows share: the button shows
+/// as long as the coordinator knows of an update, the card opens and closes per window. "Later" closes the card and keeps
+/// the button; "Install" starts the installation, once for the process, and asks for the progress window
+/// (<see cref="ProgressWindowRequested"/>), which the button brings back while it runs. A form that cannot update itself
+/// (<see cref="PackageForm.Deb"/>, <see cref="PackageForm.WindowsPortable"/>, <see cref="PackageForm.Unknown"/>) gets a
+/// hint and the download page instead of "Install"; the page is asked for like any external address (confirmation card).
+/// UI thread only.
 /// </summary>
 public sealed class UpdateViewModel : ViewModelBase, IDisposable
 {
+    private const double BytesPerMegabyte = 1024 * 1024;
+
+    // What the progress window shows, told again whenever the coordinator changes.
+    private static readonly string[] ProgressProperties =
+    [
+        nameof(IsInFlow), nameof(IsFailed), nameof(IsLocked), nameof(Heading), nameof(Subtitle), nameof(Steps),
+        nameof(Percent), nameof(IsProgressIndeterminate), nameof(ShowsProgress), nameof(PercentText), nameof(SizeText),
+        nameof(ShowsSize), nameof(FailureText), nameof(CanCancel), nameof(CanRetry), nameof(OffersDownloadPage),
+    ];
+
     private readonly UpdateCoordinator _coordinator;
     private readonly Action<string> _requestLink;
     private UpdateState _state;
+    private IReadOnlyList<UpdateStep> _steps = [];
     private bool _isCardOpen;
     private bool _disposed;
 
@@ -35,12 +49,23 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         _coordinator = coordinator;
         _requestLink = requestLink;
         _state = coordinator.State;
-        ToggleCardCommand = new RelayCommand(() => IsCardOpen = !IsCardOpen);
+        _steps = MakeSteps();
+        ToggleCardCommand = new RelayCommand(ToggleCard);
         LaterCommand = new RelayCommand(() => IsCardOpen = false);
         InstallCommand = new RelayCommand(Install);
         OpenDownloadPageCommand = new RelayCommand(OpenDownloadPage);
+        CancelCommand = new RelayCommand(coordinator.CancelInstall);
+        RetryCommand = new RelayCommand(() => _ = coordinator.RetryAsync());
+        CloseCommand = new RelayCommand(coordinator.Dismiss);
+        EscapeCommand = new RelayCommand(Escape);
         coordinator.Changed += OnChanged;
     }
+
+    /// <summary>
+    /// Raised when the progress window should show (or come to the front): "Install" was chosen, or the button was pressed
+    /// while an installation runs or waits with its error.
+    /// </summary>
+    public event Action? ProgressWindowRequested;
 
     /// <summary>Gets where the update is (<see cref="UpdateStage.None"/> while nothing newer is known).</summary>
     public UpdateStage Stage => _state.Stage;
@@ -67,20 +92,118 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     public bool IsCardOpen
     {
         get => _isCardOpen;
-        set => SetProperty(ref _isCardOpen, value && ShowButton && !_disposed);
+        set => SetProperty(ref _isCardOpen, value && ShowButton && !IsInFlow && !_disposed);
     }
 
-    /// <summary>The button: opens the card, or closes it when it is open.</summary>
+    /// <summary>The button: opens the card, or closes it when it is open; while an installation runs, shows its window.</summary>
     public ICommand ToggleCardCommand { get; }
 
     /// <summary>"Later" and Esc: closes the card; the button stays.</summary>
     public ICommand LaterCommand { get; }
 
-    /// <summary>"Install": closes the card and starts the installation (download, check, install; Milestone 8.1, task 9).</summary>
+    /// <summary>"Install": closes the card, starts the installation and shows its progress window.</summary>
     public ICommand InstallCommand { get; }
 
-    /// <summary>"Open download page": closes the card and asks the user before the release page is opened.</summary>
+    /// <summary>"Open download page": closes the card (or the message of the window) and asks the user before the release page is opened.</summary>
     public ICommand OpenDownloadPageCommand { get; }
+
+    /// <summary>"Cancel" in the progress window: stops the download or the check; the offer stays.</summary>
+    public ICommand CancelCommand { get; }
+
+    /// <summary>"Try again" after a failure.</summary>
+    public ICommand RetryCommand { get; }
+
+    /// <summary>"Close" after a failure: the window closes, the offer stays.</summary>
+    public ICommand CloseCommand { get; }
+
+    /// <summary>Esc in the progress window: cancels a download, closes a failure, does nothing while installing.</summary>
+    public ICommand EscapeCommand { get; }
+
+    /// <summary>Gets whether an installation runs or waits with its failure: the time of the progress window.</summary>
+    public bool IsInFlow => IsFlowStage(_state.Stage);
+
+    /// <summary>Gets whether the installation failed.</summary>
+    public bool IsFailed => _state.Stage == UpdateStage.Failed;
+
+    /// <summary>Gets whether the installation is past cancelling (the installer runs): the window cannot be closed.</summary>
+    public bool IsLocked => _state.Stage is UpdateStage.Ready or UpdateStage.Installing or UpdateStage.Restarting;
+
+    /// <summary>Gets the title of the progress window, "Updating Pagewing", or the one of a failure.</summary>
+    public string Heading => IsFailed ? Strings.UpdateWindowFailedTitle : Strings.UpdateWindowTitle;
+
+    /// <summary>Gets the line under it: running and new version, and that the window should stay open.</summary>
+    public string Subtitle => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.UpdateWindowSubtitle), AppInfo.Version, VersionText);
+
+    /// <summary>Gets the four steps with their state.</summary>
+    public IReadOnlyList<UpdateStep> Steps => _steps;
+
+    /// <summary>Gets how much of the file has arrived, in whole percent (100 once it is being checked).</summary>
+    public int Percent => _state switch
+    {
+        { Stage: UpdateStage.Downloading, File: { Size: > 0 } file } => (int)Math.Min(100, _state.BytesReceived * 100 / file.Size),
+        { Stage: UpdateStage.Verifying } => 100,
+        _ => 0,
+    };
+
+    /// <summary>Gets whether the bar runs without a value: while the manifest is fetched and while the installer works.</summary>
+    public bool IsProgressIndeterminate => _state.Stage is UpdateStage.Ready or UpdateStage.Installing or UpdateStage.Restarting
+        || (_state.Stage == UpdateStage.Downloading && _state.File is null);
+
+    /// <summary>Gets whether the bar shows (not after a failure, where the message takes its place).</summary>
+    public bool ShowsProgress => IsInFlow && !IsFailed;
+
+    /// <summary>Gets the percent as text ("46%", German "46 %").</summary>
+    public string PercentText => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.UpdateProgressPercent), Percent);
+
+    /// <summary>Gets whether the sizes show: while the file is downloaded and checked.</summary>
+    public bool ShowsSize => _state.Stage is UpdateStage.Downloading or UpdateStage.Verifying && _state.File is not null;
+
+    /// <summary>Gets the sizes ("31 of 68 MB"): received rounded down, the whole rounded up.</summary>
+    public string SizeText
+    {
+        get
+        {
+            if (_state.File is not { Size: > 0 } file)
+            {
+                return string.Empty;
+            }
+
+            var received = Math.Floor(Math.Min(_state.BytesReceived, file.Size) / BytesPerMegabyte);
+            var total = Math.Max(1, Math.Ceiling(file.Size / BytesPerMegabyte));
+            return string.Format(
+                Strings.Culture,
+                CompositeFormat.Parse(Strings.UpdateProgressSize),
+                received.ToString("0", Strings.Culture),
+                total.ToString("0", Strings.Culture));
+        }
+    }
+
+    /// <summary>Gets what went wrong, in the words of the installer when it gave some.</summary>
+    public string FailureText => !IsFailed ? string.Empty : _coordinator.FailureMessage ?? _state.Error switch
+    {
+        UpdateFailure.Withdrawn => Strings.UpdateErrorWithdrawn,
+        UpdateFailure.Rejected => Strings.UpdateErrorRejected,
+        UpdateFailure.Checksum => Strings.UpdateErrorChecksum,
+        UpdateFailure.Storage => Strings.UpdateErrorStorage,
+        UpdateFailure.NoInstaller => Strings.UpdateErrorNoInstaller,
+        UpdateFailure.InstallFailed => Strings.UpdateErrorInstallFailed,
+        _ => Strings.UpdateErrorUnreachable,
+    };
+
+    /// <summary>Gets whether "Cancel" shows: until the step "Install".</summary>
+    public bool CanCancel => _state.Stage is UpdateStage.Downloading or UpdateStage.Verifying;
+
+    /// <summary>Gets whether "Try again" shows: after a failure that may go away.</summary>
+    public bool CanRetry => _coordinator.CanRetry;
+
+    /// <summary>Gets whether the failure points to the download page.</summary>
+    public bool OffersDownloadPage => IsFailed && _coordinator.FailureOffersDownloadPage;
+
+    /// <summary>Gets the coordinator this view model follows (the progress window makes its own view model over it).</summary>
+    internal UpdateCoordinator Coordinator => _coordinator;
+
+    /// <summary>Gets what asks the user before an address is opened (for the view model of the progress window).</summary>
+    internal Action<string> RequestLink => _requestLink;
 
     private string Hint => _coordinator.Form switch
     {
@@ -100,6 +223,8 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private static bool IsFlowStage(UpdateStage stage) => stage is not (UpdateStage.None or UpdateStage.Available);
+
     // Raised on the UI thread by the coordinator, which swallows what a handler throws: this one must not throw.
     private void OnChanged()
     {
@@ -112,6 +237,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         _state = _coordinator.State;
         if (old.Stage != _state.Stage)
         {
+            _steps = MakeSteps();
             OnPropertyChanged(nameof(Stage));
             OnPropertyChanged(nameof(ShowButton));
         }
@@ -122,10 +248,56 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(Title));
         }
 
-        if (!ShowButton)
+        foreach (var name in ProgressProperties)
+        {
+            OnPropertyChanged(name);
+        }
+
+        if (!ShowButton || IsInFlow)
         {
             IsCardOpen = false;
         }
+    }
+
+    private IReadOnlyList<UpdateStep> MakeSteps()
+    {
+        // The step that runs (or failed); the ones before it are done, the ones after it open.
+        var current = _state.Stage switch
+        {
+            UpdateStage.Downloading => 0,
+            UpdateStage.Verifying => 1,
+            UpdateStage.Ready or UpdateStage.Installing => 2,
+            UpdateStage.Restarting => 3,
+            UpdateStage.Failed => _coordinator.FailedAt switch
+            {
+                UpdateStage.Downloading => 0,
+                UpdateStage.Verifying => 1,
+                _ => 2,
+            },
+            _ => -1,
+        };
+        string[] labels = [Strings.UpdateStepDownload, Strings.UpdateStepVerify, Strings.UpdateStepInstall, Strings.UpdateStepRestart];
+        return
+        [
+            .. labels.Select((label, index) => new UpdateStep(
+                label,
+                index < current ? UpdateStepState.Done
+                : index > current ? UpdateStepState.Open
+                : IsFailed ? UpdateStepState.Failed
+                : UpdateStepState.Running)),
+        ];
+    }
+
+    private void ToggleCard()
+    {
+        if (IsInFlow)
+        {
+            IsCardOpen = false;
+            ProgressWindowRequested?.Invoke();
+            return;
+        }
+
+        IsCardOpen = !IsCardOpen;
     }
 
     private void Install()
@@ -137,11 +309,28 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
 
         IsCardOpen = false;
         _ = _coordinator.BeginInstallAsync();
+        if (IsInFlow)
+        {
+            ProgressWindowRequested?.Invoke();
+        }
     }
 
     private void OpenDownloadPage()
     {
         IsCardOpen = false;
+        _coordinator.Dismiss();
         _requestLink(UpdateTrust.ReleasesPageUrl);
+    }
+
+    private void Escape()
+    {
+        if (CanCancel)
+        {
+            _coordinator.CancelInstall();
+        }
+        else if (IsFailed)
+        {
+            _coordinator.Dismiss();
+        }
     }
 }

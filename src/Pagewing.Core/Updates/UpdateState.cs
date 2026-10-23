@@ -21,8 +21,36 @@ public enum UpdateStage
     /// <summary>The installer is being started.</summary>
     Installing,
 
-    /// <summary>Downloading, verifying or starting failed; <see cref="UpdateState.Error"/> says why.</summary>
+    /// <summary>The installer took over and starts the new version; this process ends.</summary>
+    Restarting,
+
+    /// <summary>Downloading, verifying or starting failed; <see cref="UpdateState.Error"/> says why (<see cref="UpdateFailure"/>).</summary>
     Failed,
+}
+
+/// <summary>Why an installation failed: the values of <see cref="UpdateState.Error"/> in <see cref="UpdateStage.Failed"/>.</summary>
+public static class UpdateFailure
+{
+    /// <summary>The manifest or the file was not received completely (no network, a timeout, a stalled download).</summary>
+    public const string Unreachable = "unreachable";
+
+    /// <summary>The release on offer is not the latest any more (taken back, or another version took its place).</summary>
+    public const string Withdrawn = "withdrawn";
+
+    /// <summary>The manifest received again was refused (signature, format, file names).</summary>
+    public const string Rejected = "rejected";
+
+    /// <summary>The downloaded file does not have the size and SHA-256 of the signed manifest.</summary>
+    public const string Checksum = "checksum";
+
+    /// <summary>The update could not be written (a full disk, no access).</summary>
+    public const string Storage = "storage";
+
+    /// <summary>This system has no installer for the form of the running program.</summary>
+    public const string NoInstaller = "no-installer";
+
+    /// <summary>The installer failed.</summary>
+    public const string InstallFailed = "install-failed";
 }
 
 /// <summary>A snapshot of the update flow.</summary>

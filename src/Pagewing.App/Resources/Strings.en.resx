@@ -771,4 +771,79 @@
   <data name="UpdateHintUnknown" xml:space="preserve">
     <value>Pagewing cannot update this installation itself. The new version is on the download page.</value>
   </data>
+  <data name="UpdateWindowHeader" xml:space="preserve">
+    <value>Update Pagewing</value>
+  </data>
+  <data name="UpdateWindowTitle" xml:space="preserve">
+    <value>Updating Pagewing</value>
+  </data>
+  <data name="UpdateWindowFailedTitle" xml:space="preserve">
+    <value>The update did not go through</value>
+  </data>
+  <data name="UpdateWindowSubtitle" xml:space="preserve">
+    <value>{0} → {1} · Please keep this window open. Your tabs come back afterwards.</value>
+  </data>
+  <data name="UpdateStepDownload" xml:space="preserve">
+    <value>Download</value>
+  </data>
+  <data name="UpdateStepVerify" xml:space="preserve">
+    <value>Verify</value>
+  </data>
+  <data name="UpdateStepInstall" xml:space="preserve">
+    <value>Install</value>
+  </data>
+  <data name="UpdateStepRestart" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="UpdateStepDone" xml:space="preserve">
+    <value>done</value>
+  </data>
+  <data name="UpdateStepRunning" xml:space="preserve">
+    <value>in progress</value>
+  </data>
+  <data name="UpdateStepOpen" xml:space="preserve">
+    <value>not started</value>
+  </data>
+  <data name="UpdateStepFailed" xml:space="preserve">
+    <value>failed</value>
+  </data>
+  <data name="UpdateProgressName" xml:space="preserve">
+    <value>Progress</value>
+  </data>
+  <data name="UpdateProgressPercent" xml:space="preserve">
+    <value>{0}%</value>
+  </data>
+  <data name="UpdateProgressSize" xml:space="preserve">
+    <value>{0} of {1} MB</value>
+  </data>
+  <data name="UpdateWindowCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="UpdateWindowRetry" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="UpdateWindowClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="UpdateErrorUnreachable" xml:space="preserve">
+    <value>Pagewing could not download the update. Check the internet connection and try again.</value>
+  </data>
+  <data name="UpdateErrorWithdrawn" xml:space="preserve">
+    <value>The update was withdrawn. Your version stays as it is.</value>
+  </data>
+  <data name="UpdateErrorRejected" xml:space="preserve">
+    <value>The update failed the signature check and was refused. Your version stays as it is.</value>
+  </data>
+  <data name="UpdateErrorChecksum" xml:space="preserve">
+    <value>The downloaded file does not match the signed manifest and was deleted. Your version stays as it is.</value>
+  </data>
+  <data name="UpdateErrorStorage" xml:space="preserve">
+    <value>Pagewing could not save the update. Is there enough free space on the drive?</value>
+  </data>
+  <data name="UpdateErrorNoInstaller" xml:space="preserve">
+    <value>Pagewing cannot install itself here. The new version is on the download page.</value>
+  </data>
+  <data name="UpdateErrorInstallFailed" xml:space="preserve">
+    <value>Installing failed. Your version stays as it is.</value>
+  </data>
 </root>

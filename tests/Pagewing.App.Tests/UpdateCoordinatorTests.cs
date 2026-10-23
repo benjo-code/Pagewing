@@ -136,13 +136,15 @@ public sealed class UpdateCoordinatorTests : UpdateTestHost
     }
 
     [Fact]
-    public async Task TheInstallIsOnlyAPlaceholderForNow()
+    public async Task InstallingWithoutAnOfferDoesNothing()
     {
         var coordinator = NewCoordinator();
 
         await coordinator.BeginInstallAsync();
 
         Assert.Equal(0, Source.FetchCalls);
+        Assert.Equal(0, Source.DownloadCalls);
+        Assert.Equal(UpdateState.None, coordinator.State);
     }
 
     private static async Task WaitForAsync(Func<bool> condition)

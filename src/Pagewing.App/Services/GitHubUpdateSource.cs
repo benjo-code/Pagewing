@@ -23,8 +23,8 @@ internal sealed class GitHubUpdateSource : IUpdateSource, IDisposable
 
     private const int MaxRedirects = 5;
     private const int BufferSize = 81920;
-    private const string ManifestFileName = "update-manifest.json";
-    private const string SignatureFileName = "update-manifest.json.sig";
+    private const string ManifestFileName = UpdateStaging.ManifestFileName;
+    private const string SignatureFileName = UpdateStaging.SignatureFileName;
 
     private readonly HttpClient _client;
 
