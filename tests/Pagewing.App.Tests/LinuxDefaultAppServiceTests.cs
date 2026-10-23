@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using Pagewing.App.Platform.Linux;
 using Pagewing.Core.Distribution;
+using Pagewing.TestSupport;
 using Xunit;
 
 namespace Pagewing.App.Tests;
@@ -123,6 +124,34 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
         Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(Path.Combine(_root, "data", "icons", "hicolor", "48x48", "apps", "pagewing.png")));
         Assert.False(Directory.Exists(Path.Combine(_root, "data", "icons", "hicolor", "64x64")), "missing sizes are skipped");
         Assert.False(Directory.Exists(Path.Combine(_root, "home")), "the real HOME is not used when XDG_DATA_HOME is set");
+    }
+
+    [Fact]
+    public async Task AppImageDefaultInstallsEveryIconSizeOfTheRepository()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime"));
+        var repoIcons = Path.Combine(TestData.Root, "Docs", "design", "icons", "linux", "hicolor");
+        var sizes = Directory.GetDirectories(repoIcons).Select(Path.GetFileName).OfType<string>().Order().ToList();
+        Assert.Contains("22x22", sizes);
+        Assert.Contains("96x96", sizes);
+        var appDir = Path.Combine(_root, "appdir");
+        foreach (var size in sizes)
+        {
+            var target = Path.Combine(appDir, "usr", "share", "icons", "hicolor", size, "apps");
+            Directory.CreateDirectory(target);
+            File.Copy(Path.Combine(repoIcons, size, "apps", "pagewing.png"), Path.Combine(target, "pagewing.png"));
+        }
+
+        _env["APPIMAGE"] = Path.Combine(_root, "Pagewing.AppImage");
+        _env["APPDIR"] = appDir;
+
+        var result = await Service().MakeDefaultAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(DefaultAppResult.Done, result);
+        var installed = Directory.GetDirectories(Path.Combine(_root, "data", "icons", "hicolor"))
+            .Select(Path.GetFileName).OfType<string>().Order().ToList();
+        Assert.Equal(sizes, installed);
     }
 
     [Fact]

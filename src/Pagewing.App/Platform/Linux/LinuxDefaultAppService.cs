@@ -15,7 +15,7 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
     private const string IconName = "pagewing";
     private const string MimeType = "application/pdf";
 
-    private static readonly int[] IconSizes = [16, 24, 32, 48, 64, 128, 256, 512];
+    private static readonly int[] IconSizes = [16, 22, 24, 32, 48, 64, 96, 128, 256, 512];
 
     private readonly Func<string, string?> _environment;
     private readonly TimeSpan _timeout;
