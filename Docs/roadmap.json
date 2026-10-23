@@ -565,7 +565,7 @@
           "done": false
         },
         {
-          "text": "Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien. Stand 2026-10-23: Trockenlauf (mit `-f ref=release/v0.1.0`, siehe `packaging/README.md`) grün auf beiden Runnern, Lauf 39922614855: Windows ZIP, Installer, `installer-smoke` und Prüfsummen; Linux `.deb` (`deb-smoke` mit lintian), AppImage (`appimage-smoke`), Quellarchive und Prüfsummen. Offen: das Release selbst samt Upload und, auf Anraten des Reviews, ein Trockenlauf mit einem Vorabtag (`v0.1.0-rc.1`, Debian-Version `0.1.0~rc.1`)",
+          "text": "Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien. Stand 2026-10-23: Trockenlauf (mit `-f ref=release/v0.1.0`, siehe `packaging/README.md`) grün auf beiden Runnern, Lauf 39922614855: Windows ZIP, Installer, `installer-smoke` und Prüfsummen; Linux `.deb` (`deb-smoke` mit lintian), AppImage (`appimage-smoke`), Quellarchive und Prüfsummen. Auch mit dem Vorabtag `v0.1.0-rc.1` grün (Lauf 39933210774): `.deb` heißt `pagewing_0.1.0~rc.1_amd64.deb`, Installer `Pagewing-0.1.0-rc.1-win-x64-setup.exe` mit Dateiversion `0.1.0.0`, AppImage und ZIP tragen `0.1.0-rc.1`. Offen: das Release selbst samt Upload",
           "done": false
         },
         {
