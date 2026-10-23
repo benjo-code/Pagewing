@@ -78,6 +78,13 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
             }
         }
 
+        // xdg-mime default writes the choice into mimeapps.list without looking for the desktop file; without one
+        // (a build run from a folder, a ZIP) the choice would point at nothing and the card would claim success.
+        if (string.IsNullOrEmpty(appImage) && !DesktopFileExists(dataHome))
+        {
+            return DefaultAppResult.NotAvailable;
+        }
+
         var run = await RunAsync(xdgMime, ["default", DesktopFileName, MimeType], cancellationToken).ConfigureAwait(false);
         if (run is not { ExitCode: 0 })
         {
@@ -104,6 +111,23 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
 
         var home = _environment("HOME");
         return string.IsNullOrEmpty(home) ? null : Path.Combine(home, ".local", "share");
+    }
+
+    // The user's data folder, then XDG_DATA_DIRS (default /usr/local/share:/usr/share, where the .deb installs).
+    private bool DesktopFileExists(string? dataHome)
+    {
+        var folders = new List<string>();
+        if (dataHome is not null)
+        {
+            folders.Add(dataHome);
+        }
+
+        var dirs = _environment("XDG_DATA_DIRS");
+        folders.AddRange((string.IsNullOrEmpty(dirs) ? "/usr/local/share:/usr/share" : dirs)
+            .Split(':', StringSplitOptions.RemoveEmptyEntries)
+            .Where(Path.IsPathRooted));
+
+        return folders.Any(folder => File.Exists(Path.Combine(folder, "applications", DesktopFileName)));
     }
 
     private bool TryInstallDesktopFile(string appImage, string dataHome, string applications)
