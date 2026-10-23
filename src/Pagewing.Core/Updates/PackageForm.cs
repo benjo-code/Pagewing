@@ -46,7 +46,10 @@ public static class PackageFormDetector
                 : PackageForm.WindowsPortable;
         }
 
-        if (!string.IsNullOrEmpty(env("APPIMAGE")))
+        // Every child of an AppImage inherits APPIMAGE and APPDIR (a mail client or file manager that opens a PDF with a
+        // deb-installed or unpacked Pagewing), so the variables alone prove nothing: this program must run from inside
+        // the mounted image, whose AppRun starts $APPDIR/usr/lib/pagewing/Pagewing.
+        if (!string.IsNullOrEmpty(env("APPIMAGE")) && IsInsideAppDir(processPath, env("APPDIR")))
         {
             return PackageForm.AppImage;
         }
@@ -54,5 +57,33 @@ public static class PackageFormDetector
         return processPath is not null && processPath.StartsWith(DebDirectory, StringComparison.Ordinal)
             ? PackageForm.Deb
             : PackageForm.Unknown;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="processPath"/> lies inside the folder <paramref name="appDir"/> (the <c>APPDIR</c> of an
+    /// AppImage): both as full, normalised paths, compared at the folder boundary (<c>/tmp/.mount_ab</c> does not contain
+    /// <c>/tmp/.mount_abc/x</c>), with or without a trailing separator. Empty values and the root folder never match.
+    /// </summary>
+    public static bool IsInsideAppDir(string? processPath, string? appDir)
+    {
+        if (string.IsNullOrEmpty(processPath) || string.IsNullOrEmpty(appDir))
+        {
+            return false;
+        }
+
+        try
+        {
+            var directory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(appDir));
+            if (Path.GetPathRoot(directory) == directory)
+            {
+                return false;
+            }
+
+            return Path.GetFullPath(processPath).StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
     }
 }

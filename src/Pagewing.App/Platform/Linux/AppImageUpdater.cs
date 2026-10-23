@@ -8,6 +8,8 @@ namespace Pagewing.App.Platform.Linux;
 
 /// <summary>What the installer of an AppImage needs.</summary>
 /// <param name="TargetPath">The running AppImage: the path in the <c>APPIMAGE</c> variable (a temporary file in tests).</param>
+/// <param name="ProcessPath">The path of the running program; it must lie inside <paramref name="AppDirectory"/>.</param>
+/// <param name="AppDirectory">The <c>APPDIR</c> of the running AppImage. Both variables are inherited by every child of an AppImage, so only a program that runs from inside this folder is that AppImage.</param>
 /// <param name="ConfigDirectory">The config folder of the user, whose <c>updates</c> folder holds the staged update and where <c>session.json</c> goes.</param>
 /// <param name="Keys">The keys the manifest must be signed with (<see cref="UpdateTrust.Keys"/>; test keys only in tests).</param>
 /// <param name="Running">The running version: the manifest must be newer.</param>
@@ -17,6 +19,8 @@ namespace Pagewing.App.Platform.Linux;
 /// <param name="Launcher">Starts the new AppImage.</param>
 internal sealed record AppImageUpdaterSetup(
     string TargetPath,
+    string? ProcessPath,
+    string? AppDirectory,
     string ConfigDirectory,
     IReadOnlyList<UpdateKey> Keys,
     UpdateVersion Running,
@@ -53,8 +57,9 @@ internal sealed class AppImageUpdater(AppImageUpdaterSetup setup) : IUpdateAppli
     public async Task<ApplyResult> ApplyAsync(StagedUpdate staged, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(staged);
-        if (staged.Form != PackageForm.AppImage)
+        if (staged.Form != PackageForm.AppImage || !PackageFormDetector.IsInsideAppDir(setup.ProcessPath, setup.AppDirectory))
         {
+            // Not provably this AppImage (APPIMAGE may be inherited from another one): no file is touched.
             return ApplyResult.Failed(offersDownloadPage: true);
         }
 

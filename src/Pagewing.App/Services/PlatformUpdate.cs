@@ -52,11 +52,12 @@ internal static class PlatformUpdate
     /// </summary>
     private static IUpdateApplier? CreateApplier(PackageForm form, string? processPath, string config, UpdateAppHost? host) =>
         CreateApplier(
-            form, OperatingSystem.IsWindows(), OperatingSystem.IsLinux(), processPath, Environment.GetEnvironmentVariable("APPIMAGE"), config, host);
+            form, OperatingSystem.IsWindows(), OperatingSystem.IsLinux(), processPath, Environment.GetEnvironmentVariable("APPIMAGE"),
+            Environment.GetEnvironmentVariable("APPDIR"), config, host);
 
     /// <summary>
     /// <see cref="CreateApplier(PackageForm, string?, string, UpdateAppHost?)"/> with the system and the <c>APPIMAGE</c>
-    /// variable as arguments (tests).
+    /// and <c>APPDIR</c> variables as arguments (tests).
     /// </summary>
     internal static IUpdateApplier? CreateApplier(
         PackageForm form,
@@ -64,6 +65,7 @@ internal static class PlatformUpdate
         bool isLinux,
         string? processPath,
         string? appImage,
+        string? appDir,
         string config,
         UpdateAppHost? host)
     {
@@ -77,9 +79,10 @@ internal static class PlatformUpdate
             return CreateWindowsApplier(processPath, config, host);
         }
 
-        return isLinux && form == PackageForm.AppImage && !string.IsNullOrEmpty(appImage)
+        // The variables are inherited by every child of an AppImage: only a program inside APPDIR may replace APPIMAGE.
+        return isLinux && form == PackageForm.AppImage && !string.IsNullOrEmpty(appImage) && PackageFormDetector.IsInsideAppDir(processPath, appDir)
             ? new AppImageUpdater(new AppImageUpdaterSetup(
-                appImage, config, UpdateTrust.Keys, RunningVersion(), Environment.ProcessId, host.CaptureSession, host.Shutdown, new SystemProcessLauncher())
+                appImage, processPath, appDir, config, UpdateTrust.Keys, RunningVersion(), Environment.ProcessId, host.CaptureSession, host.Shutdown, new SystemProcessLauncher())
             {
                 Language = StartupLanguage(),
             })

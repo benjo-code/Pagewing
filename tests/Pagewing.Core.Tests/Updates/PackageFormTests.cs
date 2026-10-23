@@ -16,12 +16,12 @@ public sealed class PackageFormTests
             path => uninstallerExists && path == Path.Combine(InstallDirectory, "unins000.exe"),
             _ => null);
 
-    private static PackageForm Linux(string? processPath, string? appImage) =>
+    private static PackageForm Linux(string? processPath, string? appImage, string? appDir = null) =>
         PackageFormDetector.Detect(
             isWindows: false,
             processPath,
             _ => false,
-            name => name == "APPIMAGE" ? appImage : null);
+            name => name switch { "APPIMAGE" => appImage, "APPDIR" => appDir, _ => null });
 
     [Fact]
     public void AnUninstallerNextToTheProgramMeansTheInstaller() =>
@@ -38,16 +38,36 @@ public sealed class PackageFormTests
             PackageFormDetector.Detect(isWindows: true, processPath: null, _ => true, _ => null));
 
     [Theory]
-    [InlineData("/tmp/.mount_x/usr/bin/Pagewing", "/home/u/Pagewing.AppImage", PackageForm.AppImage)]
-    [InlineData("/usr/lib/pagewing/Pagewing", "/home/u/Pagewing.AppImage", PackageForm.AppImage)]
-    [InlineData("/usr/lib/pagewing/Pagewing", "", PackageForm.Deb)]
+    [InlineData("/tmp/.mount_x/usr/lib/pagewing/Pagewing", "/home/u/Pagewing.AppImage", "/tmp/.mount_x", PackageForm.AppImage)]
+    [InlineData("/tmp/.mount_x/usr/lib/pagewing/Pagewing", "/home/u/Pagewing.AppImage", "/tmp/.mount_x/", PackageForm.AppImage)]
+    [InlineData("/usr/lib/pagewing/Pagewing", "", null, PackageForm.Deb)]
+    [InlineData("/usr/lib/pagewing/Pagewing", null, null, PackageForm.Deb)]
+    [InlineData("/usr/lib/pagewing-other/Pagewing", null, null, PackageForm.Unknown)]
+    [InlineData("/opt/pagewing/Pagewing", null, null, PackageForm.Unknown)]
+    [InlineData("/opt/pagewing/Pagewing", "", null, PackageForm.Unknown)]
+    [InlineData(null, null, null, PackageForm.Unknown)]
+    public void LinuxFormFollowsTheEnvironmentAndThePath(string? processPath, string? appImage, string? appDir, PackageForm expected) =>
+        Assert.Equal(expected, Linux(processPath, appImage, appDir));
+
+    // Every child of an AppImage inherits APPIMAGE (and APPDIR): a Pagewing that was started by one is not that AppImage.
+    [Theory]
     [InlineData("/usr/lib/pagewing/Pagewing", null, PackageForm.Deb)]
-    [InlineData("/usr/lib/pagewing-other/Pagewing", null, PackageForm.Unknown)]
+    [InlineData("/usr/lib/pagewing/Pagewing", "/tmp/.mount_other", PackageForm.Deb)]
     [InlineData("/opt/pagewing/Pagewing", null, PackageForm.Unknown)]
     [InlineData("/opt/pagewing/Pagewing", "", PackageForm.Unknown)]
-    [InlineData(null, null, PackageForm.Unknown)]
-    public void LinuxFormFollowsTheEnvironmentAndThePath(string? processPath, string? appImage, PackageForm expected) =>
-        Assert.Equal(expected, Linux(processPath, appImage));
+    [InlineData("/opt/pagewing/Pagewing", "/tmp/.mount_other", PackageForm.Unknown)]
+    [InlineData("/tmp/.mount_abc/usr/lib/pagewing/Pagewing", "/tmp/.mount_ab", PackageForm.Unknown)]
+    [InlineData("/tmp/.mount_ab/usr/lib/pagewing/Pagewing", "/tmp/.mount_abc", PackageForm.Unknown)]
+    [InlineData("/tmp/.mount_x/../evil/Pagewing", "/tmp/.mount_x", PackageForm.Unknown)]
+    [InlineData("/opt/pagewing/Pagewing", "/", PackageForm.Unknown)]
+    [InlineData("/tmp/.mount_x", "/tmp/.mount_x", PackageForm.Unknown)]
+    [InlineData(null, "/tmp/.mount_x", PackageForm.Unknown)]
+    public void AnInheritedAppImageVariableAloneIsNotTheAppImage(string? processPath, string? appDir, PackageForm expected) =>
+        Assert.Equal(expected, Linux(processPath, "/home/u/Other.AppImage", appDir));
+
+    [Fact]
+    public void AnAppDirWithoutTheAppImageVariableIsNotTheAppImage() =>
+        Assert.Equal(PackageForm.Unknown, Linux("/tmp/.mount_x/usr/lib/pagewing/Pagewing", null, "/tmp/.mount_x"));
 
     private static UpdateManifest ManifestWithAllKinds() =>
         new(

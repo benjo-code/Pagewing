@@ -29,6 +29,10 @@ public sealed class AppImageUpdaterTests : UpdateTestHost
 
     private string Folder => Path.Combine(ConfigDirectory, "apps");
 
+    private string AppDir => Path.Combine(ConfigDirectory, "mount");
+
+    private string InsideProcess => Path.Combine(AppDir, "usr", "lib", "pagewing", "Pagewing");
+
     private string Target => Path.Combine(Folder, "Pagewing.AppImage");
 
     private string SessionPath => Path.Combine(ConfigDirectory, SessionStore.FileName);
@@ -422,8 +426,8 @@ public sealed class AppImageUpdaterTests : UpdateTestHost
     {
         var host = new UpdateAppHost(() => SessionSnapshot.Empty, _shutdown);
 
-        Assert.Null(PlatformUpdate.CreateApplier(form, isWindows: false, isLinux: true, null, Target, ConfigDirectory, host));
-        Assert.Null(PlatformUpdate.CreateApplier(form, isWindows: true, isLinux: false, ProcessPath, Target, ConfigDirectory, host));
+        Assert.Null(PlatformUpdate.CreateApplier(form, isWindows: false, isLinux: true, InsideProcess, Target, AppDir, ConfigDirectory, host));
+        Assert.Null(PlatformUpdate.CreateApplier(form, isWindows: true, isLinux: false, ProcessPath, Target, AppDir, ConfigDirectory, host));
     }
 
     [Fact]
@@ -431,11 +435,61 @@ public sealed class AppImageUpdaterTests : UpdateTestHost
     {
         var host = new UpdateAppHost(() => SessionSnapshot.Empty, _shutdown);
 
-        Assert.IsType<AppImageUpdater>(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, null, Target, ConfigDirectory, host));
-        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: true, isLinux: false, null, Target, ConfigDirectory, host));
-        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, null, null, ConfigDirectory, host));
-        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, null, string.Empty, ConfigDirectory, host));
-        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, null, Target, ConfigDirectory, host: null));
+        Assert.IsType<AppImageUpdater>(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, InsideProcess, Target, AppDir, ConfigDirectory, host));
+        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: true, isLinux: false, InsideProcess, Target, AppDir, ConfigDirectory, host));
+        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, InsideProcess, null, AppDir, ConfigDirectory, host));
+        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, InsideProcess, string.Empty, AppDir, ConfigDirectory, host));
+        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, InsideProcess, Target, AppDir, ConfigDirectory, host: null));
+    }
+
+    // APPIMAGE and APPDIR are inherited by every child of an AppImage: a Pagewing that is not inside APPDIR never gets an applier.
+    [Theory]
+    [InlineData("/usr/lib/pagewing/Pagewing", null)]
+    [InlineData("/usr/lib/pagewing/Pagewing", "/tmp/.mount_other")]
+    [InlineData("/opt/pagewing/Pagewing", null)]
+    [InlineData("/opt/pagewing/Pagewing", "")]
+    [InlineData("/tmp/.mount_abc/usr/lib/pagewing/Pagewing", "/tmp/.mount_ab")]
+    [InlineData(null, "/tmp/.mount_ab")]
+    public void NoApplierForAnInheritedAppImageVariable(string? processPath, string? appDir)
+    {
+        var host = new UpdateAppHost(() => SessionSnapshot.Empty, _shutdown);
+        MakeTarget();
+
+        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.AppImage, isWindows: false, isLinux: true, processPath, Target, appDir, ConfigDirectory, host));
+        Assert.Null(PlatformUpdate.CreateApplier(PackageForm.Deb, isWindows: false, isLinux: true, processPath, Target, appDir, ConfigDirectory, host));
+        Assert.Equal(OldBytes, File.ReadAllBytes(Target));
+        Assert.False(File.Exists(Target + ".new"));
+    }
+
+    // The applier itself proves that it runs from the AppImage it replaces; nothing of the foreign file is touched.
+    [Theory]
+    [InlineData("/usr/lib/pagewing/Pagewing", null)]
+    [InlineData("/usr/lib/pagewing/Pagewing", "/tmp/.mount_other")]
+    [InlineData("/opt/pagewing/Pagewing", null)]
+    [InlineData("/opt/pagewing/Pagewing", "")]
+    [InlineData("/tmp/.mount_abc/usr/lib/pagewing/Pagewing", "/tmp/.mount_ab")]
+    [InlineData(null, "/tmp/.mount_ab")]
+    public async Task TheApplierRefusesWhenItDoesNotRunFromTheAppImage(string? processPath, string? appDir)
+    {
+        MakeTarget();
+
+        var result = await Updater(processPath: processPath, appDir: appDir, explicitPaths: true).ApplyAsync(Staged(Stage()), CancellationToken.None);
+
+        Assert.False(result.IsRestarting);
+        Assert.True(result.OffersDownloadPage);
+        AssertNothingChanged(result);
+    }
+
+    [Fact]
+    public async Task AnAppDirWithATrailingSeparatorStillWorks()
+    {
+        MakeTarget();
+
+        var result = await Updater(appDir: AppDir + Path.DirectorySeparatorChar, explicitPaths: true, processPath: InsideProcess)
+            .ApplyAsync(Staged(Stage()), CancellationToken.None);
+
+        Assert.True(result.IsRestarting);
+        Assert.Equal(Source.Content, File.ReadAllBytes(Target));
     }
 
     [Fact]
@@ -525,9 +579,12 @@ public sealed class AppImageUpdaterTests : UpdateTestHost
         Func<SessionSnapshot>? capture = null,
         string? language = null,
         IReadOnlyList<UpdateKey>? keys = null,
-        UpdateVersion? running = null) =>
+        UpdateVersion? running = null,
+        string? processPath = null,
+        string? appDir = null,
+        bool explicitPaths = false) =>
         new(new AppImageUpdaterSetup(
-            Target, ConfigDirectory, keys ?? Source.Keys, running ?? Running, OldProcess, capture ?? (() => OneTab(Path.Combine(ConfigDirectory, "a.pdf"))),
+            Target, explicitPaths ? processPath : InsideProcess, explicitPaths ? appDir : AppDir, ConfigDirectory, keys ?? Source.Keys, running ?? Running, OldProcess, capture ?? (() => OneTab(Path.Combine(ConfigDirectory, "a.pdf"))),
             _shutdown, _launcher)
         {
             Language = language,
