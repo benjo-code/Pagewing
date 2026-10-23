@@ -149,9 +149,25 @@ internal sealed class GitHubUpdateSource : IUpdateSource, IDisposable
         }
     }
 
+    /// <summary>
+    /// A redirect may lead to a GitHub host over HTTPS, or to exactly the origin (scheme, host, port) of
+    /// <see cref="UpdateTrust.DownloadBaseUrl"/>. In the release build that origin is https://github.com, which the
+    /// first rule allows anyway; in the test build (packaging/README.md, "Update prüfen") it is the test server on
+    /// 127.0.0.1, which redirects its downloads like GitHub does. Nothing else, and never with user information.
+    /// </summary>
     private static bool IsAllowedRedirectTarget(Uri uri)
     {
-        if (uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort || uri.UserInfo.Length > 0)
+        if (uri.UserInfo.Length > 0)
+        {
+            return false;
+        }
+
+        if (IsSameOrigin(uri, new Uri(UpdateTrust.DownloadBaseUrl)))
+        {
+            return true;
+        }
+
+        if (uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort)
         {
             return false;
         }
@@ -159,6 +175,9 @@ internal sealed class GitHubUpdateSource : IUpdateSource, IDisposable
         var host = uri.Host;
         return IsHostOrSubdomain(host, "github.com") || IsHostOrSubdomain(host, "githubusercontent.com");
     }
+
+    private static bool IsSameOrigin(Uri uri, Uri origin) =>
+        uri.Scheme == origin.Scheme && uri.Port == origin.Port && uri.Host.Equals(origin.Host, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsHostOrSubdomain(string host, string domain) =>
         host.Equals(domain, StringComparison.OrdinalIgnoreCase)

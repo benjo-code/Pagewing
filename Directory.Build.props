@@ -10,4 +10,15 @@
     <Deterministic>true</Deterministic>
     <Version>0.0.0</Version>
   </PropertyGroup>
+  <!--
+    Test build of the updater (-p:PagewingUpdateTestBuild=true, see Pagewing.Core.csproj and packaging/README.md, section
+    "Update prüfen"; never set by a release). It builds into bin\update-test-build and obj\update-test-build, so its
+    output never mixes with that of a normal build, and it defines PAGEWING_UPDATE_TESTBUILD for the tests of either build.
+  -->
+  <PropertyGroup Condition="'$(PagewingUpdateTestBuild)' == 'true'">
+    <BaseOutputPath>bin\update-test-build\</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj\update-test-build\</BaseIntermediateOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**</DefaultItemExcludes>
+    <DefineConstants>$(DefineConstants);PAGEWING_UPDATE_TESTBUILD</DefineConstants>
+  </PropertyGroup>
 </Project>

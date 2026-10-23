@@ -10,4 +10,27 @@
     <!-- The UI tests drive a ViewerSession with its test constructor (failing or delayed opens). -->
     <InternalsVisibleTo Include="Pagewing.App.Tests" />
   </ItemGroup>
+  <!--
+    Test build of the updater (Milestone 8.1, packaging/README.md, section "Update prüfen"). A normal build, and so every
+    release, compiles Updates\UpdateTrust.cs: the real keys and GitHub, with no way to override them. Only
+    -p:PagewingUpdateTestBuild=true swaps it for Updates\UpdateTrust.TestBuild.cs, which trusts the one test key
+    PagewingUpdateTestKey and the test server on 127.0.0.1:PagewingUpdateTestPort (tools/update-testserver.cs); the two
+    values reach the program only in that build, as assembly metadata. The release workflow never sets the property
+    (package.cs selftest), and Directory.Build.props puts a test build into bin\update-test-build and obj\update-test-build.
+  -->
+  <ItemGroup>
+    <Compile Remove="Updates\UpdateTrust.TestBuild.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(PagewingUpdateTestBuild)' == 'true'">
+    <Compile Remove="Updates\UpdateTrust.cs" />
+    <Compile Include="Updates\UpdateTrust.TestBuild.cs" />
+    <AssemblyMetadata Include="PagewingUpdateTestPort" Value="$(PagewingUpdateTestPort)" />
+    <AssemblyMetadata Include="PagewingUpdateTestKey" Value="$(PagewingUpdateTestKey)" />
+  </ItemGroup>
+  <Target Name="CheckPagewingUpdateTestBuild" BeforeTargets="BeforeBuild" Condition="'$(PagewingUpdateTestBuild)' == 'true'">
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(PagewingUpdateTestPort)', '^[1-9][0-9]{0,4}$')) Or '$(PagewingUpdateTestPort)' &gt; '65535'"
+           Text="Der Testaufbau braucht -p:PagewingUpdateTestPort=&lt;1..65535&gt; (packaging/README.md, Abschnitt &quot;Update prüfen&quot;)." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(PagewingUpdateTestKey)', '^[A-Za-z0-9+/]{80,}={0,2}$'))"
+           Text="Der Testaufbau braucht -p:PagewingUpdateTestKey=&lt;öffentlicher Testschlüssel, Base64 aus update-keygen&gt; (packaging/README.md, Abschnitt &quot;Update prüfen&quot;)." />
+  </Target>
 </Project>

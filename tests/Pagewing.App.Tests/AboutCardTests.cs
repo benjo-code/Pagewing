@@ -71,6 +71,29 @@ public sealed class AboutCardTests : IDisposable
         Assert.Empty(card.GetVisualDescendants().OfType<HyperlinkButton>());
     }
 
+    /// <summary>
+    /// A test build of the updater (packaging/README.md, "Update prüfen") says so after the version, so nobody mistakes
+    /// it for a release; the release build shows the version alone.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("en", "Version", "(test build)")]
+    [InlineData("de", "Programmversion", "(Testaufbau)")]
+    public void TheVersionLineNamesOnlyATestBuild(string language, string label, string note)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var (window, viewModel, _) = Show();
+        viewModel.ShowOverlay(OverlayKind.About);
+        Settle(window);
+        var text = Find<TextBlock>(Find<AboutCard>(window, "AboutCard"), "AboutVersion").Text;
+
+#if PAGEWING_UPDATE_TESTBUILD
+        Assert.Equal($"{label} {AppInfo.Version} {note}", text);
+#else
+        Assert.Equal($"{label} {AppInfo.Version}", text);
+        Assert.DoesNotContain(note, text, StringComparison.Ordinal);
+#endif
+    }
+
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("de")]

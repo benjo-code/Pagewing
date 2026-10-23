@@ -260,6 +260,66 @@ public sealed class GitHubUpdateSourceTests : IDisposable
         Assert.All(handler.Requests, request => Assert.Equal(["User-Agent"], request.HeaderNames));
     }
 
+#if PAGEWING_UPDATE_TESTBUILD
+    /// <summary>
+    /// The test build (packaging/README.md, "Update prüfen") follows a redirect of the test server to its own address on
+    /// 127.0.0.1 (as GitHub redirects downloads to its storage), and nowhere else on the loopback interface.
+    /// </summary>
+    [Fact]
+    public async Task TheTestBuildFollowsARedirectOnlyToItsOwnLoopbackOrigin()
+    {
+        var own = new Uri(UpdateTrust.DownloadBaseUrl);
+        var target = $"http://127.0.0.1:{own.Port}/assets/update-manifest.json";
+        var handler = new FakeHandler(_ => Json(LatestJson), _ => Redirect(target), _ => Bytes([7]), _ => Bytes([2]));
+        using var source = new GitHubUpdateSource(handler);
+
+        var documents = await source.FetchManifestAsync(CancellationToken.None);
+
+        Assert.NotNull(documents);
+        Assert.Equal(target, handler.Requests[2].Url);
+
+        foreach (var other in new[] { $"http://127.0.0.1:{(own.Port % 65535) + 1}/x", $"http://localhost:{own.Port}/x", $"https://127.0.0.1:{own.Port}/x", $"http://user@127.0.0.1:{own.Port}/x" })
+        {
+            var refused = new FakeHandler(_ => Json(LatestJson), _ => Redirect(other));
+            using var refusing = new GitHubUpdateSource(refused);
+            Assert.Null(await refusing.FetchManifestAsync(CancellationToken.None));
+            Assert.Equal(2, refused.Requests.Count);
+        }
+    }
+#else
+    /// <summary>
+    /// The shipped program never follows a redirect to the loopback interface or a local name (the test server of the
+    /// test build): only GitHub hosts over HTTPS.
+    /// </summary>
+    [Theory]
+    [InlineData("http://127.0.0.1:8765/assets/update-manifest.json")]
+    [InlineData("https://127.0.0.1/assets/update-manifest.json")]
+    [InlineData("http://localhost:8765/assets/update-manifest.json")]
+    [InlineData("https://localhost/assets/update-manifest.json")]
+    [InlineData("http://[::1]:8765/assets/update-manifest.json")]
+    [InlineData("https://github.com:8765/benjo-code/Pagewing/x")]
+    public async Task TheShippedSourceRefusesALoopbackRedirect(string target)
+    {
+        var handler = new FakeHandler(_ => Json(LatestJson), _ => Redirect(target), _ => Bytes([7]), _ => Bytes([2]));
+        using var source = new GitHubUpdateSource(handler);
+
+        Assert.Null(await source.FetchManifestAsync(CancellationToken.None));
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    /// <summary>The shipped program asks GitHub only, over HTTPS (the addresses come from the release trust).</summary>
+    [Fact]
+    public async Task TheShippedSourceAsksGitHubOnly()
+    {
+        var handler = new FakeHandler(_ => Json(LatestJson), _ => Bytes([1]), _ => Bytes([2]));
+        using var source = new GitHubUpdateSource(handler);
+
+        await source.FetchManifestAsync(CancellationToken.None);
+
+        Assert.All(handler.Requests, request => Assert.Matches(@"^https://(api\.)?github\.com/benjo-code/Pagewing/|^https://api\.github\.com/repos/benjo-code/Pagewing/", request.Url));
+    }
+#endif
+
     [Fact]
     public async Task StopsAfterTooManyRedirects()
     {

@@ -1,9 +1,12 @@
+using System.Globalization;
+
 namespace Pagewing.Core.Updates;
 
 /// <summary>
 /// What the program trusts for updates: the public keys and the addresses, compiled in with no way to override them
-/// in a shipped build (no environment variable, no switch). A test build gets its own values later (Milestone 8.1,
-/// build-time property), never the release build.
+/// (no environment variable, no switch). This file is the release build. A test build swaps it for
+/// <c>UpdateTrust.TestBuild.cs</c> only with the build property <c>PagewingUpdateTestBuild=true</c>, which no release
+/// sets (Pagewing.Core.csproj; packaging/README.md, section "Update prüfen"); both files declare the same members.
 /// </summary>
 public static class UpdateTrust
 {
@@ -34,4 +37,15 @@ public static class UpdateTrust
 
     /// <summary>The address the release files are below; a file is <c>&lt;base&gt;/&lt;tag&gt;/&lt;name&gt;</c>.</summary>
     public static string DownloadBaseUrl => "https://github.com/benjo-code/Pagewing/releases/download";
+
+    /// <summary>
+    /// What the about card shows after the version to mark a test build; <see langword="null"/> here, in the release
+    /// build. The text lives only in the test build's file, so a release carries none of it.
+    /// </summary>
+    /// <param name="culture">The language of the user interface.</param>
+    public static string? TestBuildNote(CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(culture);
+        return null;
+    }
 }

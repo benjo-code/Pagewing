@@ -1,3 +1,5 @@
+using Pagewing.Core.Updates;
+
 namespace Pagewing.App.ViewModels;
 
 /// <summary>
@@ -34,8 +36,13 @@ public sealed class AboutViewModel : ViewModelBase
     /// <summary>Gets the version of the program.</summary>
     public string Version { get; }
 
-    /// <summary>Gets the version line of the card ("Version 1.2.3").</summary>
-    public string VersionLine => Resources.Strings.AboutVersion.Replace("{0}", Version, StringComparison.Ordinal);
+    /// <summary>
+    /// Gets the version line of the card ("Version 1.2.3"); a test build of the updater adds its note
+    /// (<see cref="UpdateTrust.TestBuildNote"/>, never in a release).
+    /// </summary>
+    public string VersionLine =>
+        Resources.Strings.AboutVersion.Replace("{0}", Version, StringComparison.Ordinal)
+        + (UpdateTrust.TestBuildNote(Resources.Strings.Culture) is { } note ? " " + note : string.Empty);
 
     /// <summary>Gets the licence of the program (an SPDX identifier, not translated).</summary>
     public string LicenseLine { get; } = "GPL-3.0-or-later";
