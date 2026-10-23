@@ -46,6 +46,45 @@ public sealed class WindowsPrintNativeTests
         Assert.Equal(expected, PrintRangeText.Format(ranges));
     }
 
+    // Flags and ranges as PrintDlgExW returned them in the measurement of 2026-10-23 on Windows 11 (RETURNDC | NOSELECTION |
+    // COLLATE are always set): a single page number comes back as CURRENTPAGE with the page in the range, several ranges as PAGENUMS.
+    [Theory]
+    [InlineData(0x00400114u, new uint[] { 3, 3 }, 1000, PrintPageChoice.Range, "3")]
+    [InlineData(0x00400114u, new uint[] { 5, 5 }, 1000, PrintPageChoice.Range, "5")]
+    [InlineData(0x00000116u, new uint[] { 2, 4, 7, 7 }, 1000, PrintPageChoice.Range, "2-4,7")]
+    [InlineData(0x00800116u, new uint[] { 3, 3 }, 1000, PrintPageChoice.Range, "3")]
+    [InlineData(0x00000114u, new uint[0], 1000, PrintPageChoice.All, "")]
+    [InlineData(0x00000114u, new uint[] { 1, 1000 }, 1000, PrintPageChoice.All, "")]
+    [InlineData(0x00000116u, new uint[0], 1000, PrintPageChoice.All, "")]
+    public void TheChoiceOfTheDialogIsReadFromItsFlagsAndRanges(uint flags, uint[] pairs, int pageCount, PrintPageChoice pages, string range)
+    {
+        var ranges = new PrintPageRange[pairs.Length / 2];
+        for (var i = 0; i < ranges.Length; i++)
+        {
+            ranges[i] = new PrintPageRange { FromPage = pairs[2 * i], ToPage = pairs[(2 * i) + 1] };
+        }
+
+        Assert.Equal((pages, range), PrintDialogChoice.Read(flags, ranges, pageCount));
+    }
+
+    // The option "Current page" itself: a page range that is not one valid page (nothing, the untouched 1-1000, outside the document).
+    [Theory]
+    [InlineData(new uint[0], 1000)]
+    [InlineData(new uint[] { 1, 1000 }, 1000)]
+    [InlineData(new uint[] { 0, 0 }, 1000)]
+    [InlineData(new uint[] { 2000, 2000 }, 1000)]
+    [InlineData(new uint[] { 2, 4, 7, 7 }, 1000)]
+    public void CurrentPageStaysCurrentPageWithoutASinglePageRange(uint[] pairs, int pageCount)
+    {
+        var ranges = new PrintPageRange[pairs.Length / 2];
+        for (var i = 0; i < ranges.Length; i++)
+        {
+            ranges[i] = new PrintPageRange { FromPage = pairs[2 * i], ToPage = pairs[(2 * i) + 1] };
+        }
+
+        Assert.Equal((PrintPageChoice.CurrentPage, string.Empty), PrintDialogChoice.Read(0x00400114u, ranges, pageCount));
+    }
+
     [Fact]
     public void DevModeReadsDuplexAndOrientation()
     {
