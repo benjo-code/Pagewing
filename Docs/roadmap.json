@@ -547,7 +547,8 @@
     {
       "version": "0.1.0",
       "title": "schneller Viewer",
-      "status": "planned",
+      "status": "done",
+      "date": "2026-10-23",
       "afterMilestone": "8",
       "covers": ["0", "1", "2", "3", "4", "5", "6", "7", "8"],
       "intro": "Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projektinhaber.",
@@ -578,7 +579,8 @@
         },
         {
           "text": "Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien. Stand 2026-10-23: Trockenlauf (mit `-f ref=release/v0.1.0`, siehe `packaging/README.md`) grün auf beiden Runnern, Lauf 39922614855: Windows ZIP, Installer, `installer-smoke` und Prüfsummen; Linux `.deb` (`deb-smoke` mit lintian), AppImage (`appimage-smoke`), Quellarchive und Prüfsummen. Auch mit dem Vorabtag `v0.1.0-rc.1` grün (Lauf 39933210774): `.deb` heißt `pagewing_0.1.0~rc.1_amd64.deb`, Installer `Pagewing-0.1.0-rc.1-win-x64-setup.exe` mit Dateiversion `0.1.0.0`, AppImage und ZIP tragen `0.1.0-rc.1`. Offen: das Release selbst samt Upload",
-          "done": false
+          "done": true,
+          "evidence": "Release `v0.1.0` am 2026-10-23 (Ziel `main`, Merge-Commit 3331684, PR 24): Release-Workflow Lauf 39969743227 auf beiden Runnern grün, 8 Dateien am Release (ZIP, Installer, `.deb`, AppImage, zwei Quellarchive, beide Prüfsummendateien); frischer Download, `sha256sum -c` für alle sechs Dateien OK; die CLI aus der ZIP meldet `0.1.0`. Vorher Trockenläufe 39922614855 und 39933210774 (Vorabtag) sowie Pre-Releases `v0.1.0-rc.1` und `rc.2`"
         },
         {
           "text": "Quellangebot für libfuse (LGPL-2.1) in der AppImage-Runtime klären: Quell-Tarballs (type2-runtime 20251108, libfuse 3.15.0) an jedes Release hängen oder ein schriftliches Angebot ins Paket legen (`Docs/DECISIONS.md`, Eintrag „Offen: Quellangebot für libfuse und type2-runtime“)",
@@ -647,6 +649,7 @@
     }
   ],
   "backlog": [
+    { "title": "Flaky: `PanelTests.UserClosingThePanelPreventsTheAutoOpen` (M4)", "text": "Einmaliger Fehlschlag auf `build-windows` im PR-Lauf 39973057069 (nur Roadmap geändert): `Assert.True(SidePanels(window).All(panel => !panel.IsEffectivelyVisible))` bei `PanelTests.cs` (Zeile 406) mit „Expected: True, Actual: False“, nach `Settle(window)`. Beobachtet: Nach dem Schließen und dem ersten scharfen Bild war ein Panel noch wirksam sichtbar. Vermutung, nicht geprüft: Der Test wartet nicht auf das Ende der Schließ-Animation des Panels (`Pw.Duration.Close`), `Settle` reicht auf einem ausgelasteten Runner nicht. Zweiter zeitabhängiger UI-Test mit einem einmaligen Fehlschlag in zwei Tagen (siehe „Flaky: `RecentFilesViewTests.TheHistoryIsNotReadInTheStartPath`“); zu klären ist, ob eine gemeinsame Ursache (Last auf dem Runner, zu knappes `Settle`) dahintersteckt. Zu tun: auf das Zustandsende statt auf eine Wartezeit warten (Ereignisprotokoll oder `WaitUntilAsync` auf den Zustand) und den Test unter Last wiederholen." },
     { "title": "Abnahme von v0.1.0 nachholen: Drucken (Rest)", "text": "Aus der Abnahme genommen (Scope-Änderung 2026-10-23): Windows: `print-mixed.pdf` mit zwei Kopien sortiert, Duplex lang, „Tatsächliche Größe“ (schneidet ab), Querseiten gedreht und zentriert, Abbrechen mitten in `thousand-pages.pdf`. Linux: alles am Papierdrucker über CUPS (Seite allein, Bereich, Kopien sortiert, Duplex, „Tatsächliche Größe“, Drehung der Querseiten) und die CUPS-Tests mit einer CUPS-PDF-Warteschlange (`PAGEWING_TEST_CUPS_PRINTER`, `PAGEWING_TEST_CUPS_OUTPUT`, siehe `CLAUDE.md`, „Drucken“)." },
     { "title": "Abnahme von v0.1.0 nachholen: Screenreader", "text": "Aus der Abnahme genommen (Scope-Änderung 2026-10-23): Narrator (Windows), NVDA und Orca für Druckkarte und Fortschritt, die Karte „Als Standardprogramm festlegen“ und „Über Pagewing“. Verwandt mit dem Eintrag „Erweiterte Barrierefreiheit“." },
     { "title": "Abnahme von v0.1.0 nachholen: weitere Linux-Distributionen", "text": "Aus der Abnahme genommen (Scope-Änderung 2026-10-23): `.deb` auf Ubuntu 24.04, Debian 13 und Linux Mint, AppImage auf Ubuntu 24.04 ohne `libfuse2` und auf Linux Mint; in der Standardprogramm-Karte „Später“ und „Nicht mehr fragen“ auf Linux. Geprüft sind Ubuntu 22.04 und Debian 12 (`.deb`) sowie Debian 12 und CachyOS (AppImage)." },
