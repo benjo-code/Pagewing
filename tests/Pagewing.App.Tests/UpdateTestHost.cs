@@ -1,0 +1,117 @@
+using Pagewing.App.Services;
+using Pagewing.App.ViewModels;
+using Pagewing.App.Views;
+using Pagewing.Core.Pdf;
+using Pagewing.Core.Settings;
+using Pagewing.Core.Updates;
+using Pagewing.Core.Viewing;
+using Pagewing.TestSupport;
+
+namespace Pagewing.App.Tests;
+
+/// <summary>
+/// What the tests of the update check share: a window whose view model gets a coordinator made over a fake source (or a
+/// factory of the test), a status file in a temporary folder that is never the one of the user, and the helpers to wait.
+/// </summary>
+public abstract class UpdateTestHost : PrintTestHost
+{
+    /// <summary>The version the coordinators of these tests count as running.</summary>
+    protected static readonly UpdateVersion Running = new(0, 1, 0);
+
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "pagewing-update-" + Guid.NewGuid().ToString("N"));
+
+    private readonly List<IDisposable> _owned = [];
+
+    protected FakeUpdateSourceApp Source { get; } = new();
+
+    /// <summary>Gets the status file (<c>update.json</c>) the coordinators of the test use.</summary>
+    protected string StatusPath => Path.Combine(_directory, UpdateStatusStore.FileName);
+
+    /// <summary>Gets the window <see cref="ShowAppAsync"/> made last, set before it is shown.</summary>
+    protected MainWindow? LastWindow { get; private set; }
+
+    /// <summary>Gets how often the factory of the window made a coordinator.</summary>
+    protected int CoordinatorsMade { get; private set; }
+
+    public new void Dispose()
+    {
+        for (var i = _owned.Count - 1; i >= 0; i--)
+        {
+            _owned[i].Dispose();
+        }
+
+        base.Dispose();
+        Source.Dispose();
+        if (Directory.Exists(_directory))
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+    }
+
+    /// <summary>Disposes <paramref name="item"/> when the test ends, before the windows of <c>Track</c> are closed.</summary>
+    protected void Own(IDisposable item) => _owned.Add(item);
+
+    protected UpdateCoordinator NewCoordinator(UserSettings? settings = null, TimeProvider? clock = null)
+    {
+        Directory.CreateDirectory(_directory);
+        var checker = new UpdateChecker(Source, new UpdateStatusStore(StatusPath), clock ?? TimeProvider.System, Running, Source.Keys);
+        var coordinator = new UpdateCoordinator(checker, settings ?? UserSettings.Detached(), PackageForm.WindowsInstaller);
+        Own(coordinator);
+        return coordinator;
+    }
+
+    /// <summary>Gets a factory that makes one coordinator over <see cref="Source"/> and counts the times it is asked.</summary>
+    protected Func<UpdateCoordinator?> CountingFactory(UserSettings? settings = null)
+    {
+        UpdateCoordinator? made = null;
+        return () =>
+        {
+            CoordinatorsMade++;
+            return made ??= NewCoordinator(settings);
+        };
+    }
+
+    /// <summary>Shows a window with the view model that has <paramref name="factory"/>; a file is opened before it is shown, as on the command line.</summary>
+    protected async Task<(MainWindow Window, MainViewModel ViewModel, DocumentView View)> ShowAppAsync(
+        string? file = "text-basic.pdf",
+        UserSettings? settings = null,
+        Func<UpdateCoordinator?>? factory = null,
+        Action<MainViewModel>? beforeShow = null)
+    {
+        var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker(), settings ?? UserSettings.Detached())
+        {
+            IsWindowsTitleBar = true,
+            UpdateCoordinatorFactory = factory ?? CountingFactory(settings),
+        };
+
+        if (file is not null)
+        {
+            await viewModel.OpenAsync(TestData.Pdf(file));
+        }
+
+        beforeShow?.Invoke(viewModel);
+        var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720 };
+        Track(window, viewModel);
+        LastWindow = window;
+        window.Show();
+        Settle(window);
+        return (window, viewModel, Find<DocumentView>(window, "DocumentView"));
+    }
+
+    protected static async Task WaitSharpAsync(MainWindow window, MainViewModel viewModel)
+    {
+        var tab = viewModel.ActiveTab ?? throw new InvalidOperationException("No active tab after opening.");
+        await WaitUntilAsync(window, () => tab.HasShownSharpPage);
+    }
+
+    /// <summary>Runs the dispatcher for about <paramref name="milliseconds"/> (jobs of every priority run).</summary>
+    protected static async Task RunForAsync(MainWindow window, int milliseconds)
+    {
+        var until = DateTime.UtcNow.AddMilliseconds(milliseconds);
+        while (DateTime.UtcNow < until)
+        {
+            Settle(window);
+            await Task.Delay(20);
+        }
+    }
+}

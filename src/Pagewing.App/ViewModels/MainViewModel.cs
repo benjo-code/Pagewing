@@ -298,6 +298,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         PostDefaultAppCheck();
+        PostUpdateCheck();
         if (_recent is { IsLoaded: false })
         {
             PostHistoryLoad();
@@ -821,6 +822,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         _firstSharpPageSeen = true;
         PostDefaultAppCheck();
+        PostUpdateCheck();
         if (OpensPagesPanelAfterFirstSharpTile)
         {
             Dispatcher.UIThread.Post(OpenPagesPanelAfterFirstSharpTile, DispatcherPriority.Background);

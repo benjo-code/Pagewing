@@ -28,6 +28,10 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private readonly IEffectiveTheme? _theme;
     private readonly Func<IDefaultAppService?>? _defaultAppServiceFactory;
     private readonly DefaultAppPromptGate _defaultAppPromptGate = new();
+    private readonly Func<UpdateCoordinator?>? _updateFactory;
+    private readonly UpdateStartGate _updateStartGate = new();
+    private UpdateCoordinator? _updateCoordinator;
+    private bool _updateCoordinatorMade;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
     private readonly List<MainViewModel> _activationOrder = [];
@@ -45,6 +49,11 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     /// Makes the service behind the card "Set as the default for PDFs?" (<see cref="PlatformDefaultAppServices.FactoryFor"/>);
     /// none (a measurement run, tests) means no card. The question is asked once for all windows.
     /// </param>
+    /// <param name="updateFactory">
+    /// Makes the coordinator of the update check (<see cref="PlatformUpdate.FactoryFor"/>); none (a measurement run,
+    /// tests) means no check and no command. It is called at the first need, after the first sharp page of any window
+    /// or on the command, and once: all windows share the coordinator and its check.
+    /// </param>
     public Workspace(
         Func<ViewerSession> sessionFactory,
         Func<Window> createWindow,
@@ -52,7 +61,8 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         UserSettings? settings = null,
         IEffectiveTheme? theme = null,
         RecentFilesService? recentFiles = null,
-        Func<IDefaultAppService?>? defaultAppServiceFactory = null)
+        Func<IDefaultAppService?>? defaultAppServiceFactory = null,
+        Func<UpdateCoordinator?>? updateFactory = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(createWindow);
@@ -64,6 +74,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         _theme = theme;
         _recentFiles = recentFiles;
         _defaultAppServiceFactory = defaultAppServiceFactory;
+        _updateFactory = updateFactory;
     }
 
     /// <summary>Gets the view models of the open windows, the oldest first.</summary>
@@ -280,6 +291,20 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         {
             Forget(viewModel);
         }
+
+        _updateCoordinator?.Dispose();
+    }
+
+    /// <summary>The coordinator all windows share, made by the factory the first time a window needs it.</summary>
+    private UpdateCoordinator? GetUpdateCoordinator()
+    {
+        if (!_updateCoordinatorMade)
+        {
+            _updateCoordinator = _updateFactory?.Invoke();
+            _updateCoordinatorMade = true;
+        }
+
+        return _updateCoordinator;
     }
 
     private MainViewModel Open(
@@ -296,6 +321,12 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         {
             viewModel.DefaultAppServiceFactory = defaultAppFactory;
             viewModel.DefaultAppPromptGate = _defaultAppPromptGate;
+        }
+
+        if (_updateFactory is not null)
+        {
+            viewModel.UpdateCoordinatorFactory = GetUpdateCoordinator;
+            viewModel.UpdateStartGate = _updateStartGate;
         }
 
         if (source is not null)

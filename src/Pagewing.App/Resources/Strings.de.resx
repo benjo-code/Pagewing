@@ -729,4 +729,7 @@
   <data name="CommandSetDefaultApp" xml:space="preserve">
     <value>Pagewing als Standard für PDFs festlegen</value>
   </data>
+  <data name="CommandCheckForUpdates" xml:space="preserve">
+    <value>Nach Updates suchen</value>
+  </data>
 </root>

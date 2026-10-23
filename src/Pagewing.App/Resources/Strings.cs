@@ -231,6 +231,7 @@ public static class Strings
     public static string DefaultAppFailed => Get("DefaultAppFailed");
     public static string DefaultAppNotAvailable => Get("DefaultAppNotAvailable");
     public static string CommandSetDefaultApp => Get("CommandSetDefaultApp");
+    public static string CommandCheckForUpdates => Get("CommandCheckForUpdates");
     public static string PrintTitle => Get("PrintTitle");
     public static string PrintPrinter => Get("PrintPrinter");
     public static string PrintSearching => Get("PrintSearching");
