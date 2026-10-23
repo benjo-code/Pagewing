@@ -547,7 +547,8 @@
     {
       "version": "0.1.0",
       "title": "schneller Viewer",
-      "status": "planned",
+      "status": "done",
+      "date": "2026-10-23",
       "afterMilestone": "8",
       "covers": ["0", "1", "2", "3", "4", "5", "6", "7", "8"],
       "intro": "Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projektinhaber.",
@@ -578,7 +579,8 @@
         },
         {
           "text": "Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien. Stand 2026-10-23: Trockenlauf (mit `-f ref=release/v0.1.0`, siehe `packaging/README.md`) grün auf beiden Runnern, Lauf 39922614855: Windows ZIP, Installer, `installer-smoke` und Prüfsummen; Linux `.deb` (`deb-smoke` mit lintian), AppImage (`appimage-smoke`), Quellarchive und Prüfsummen. Auch mit dem Vorabtag `v0.1.0-rc.1` grün (Lauf 39933210774): `.deb` heißt `pagewing_0.1.0~rc.1_amd64.deb`, Installer `Pagewing-0.1.0-rc.1-win-x64-setup.exe` mit Dateiversion `0.1.0.0`, AppImage und ZIP tragen `0.1.0-rc.1`. Offen: das Release selbst samt Upload",
-          "done": false
+          "done": true,
+          "evidence": "Release `v0.1.0` am 2026-10-23 (Ziel `main`, Merge-Commit 3331684, PR 24): Release-Workflow Lauf 39969743227 auf beiden Runnern grün, 8 Dateien am Release (ZIP, Installer, `.deb`, AppImage, zwei Quellarchive, beide Prüfsummendateien); frischer Download, `sha256sum -c` für alle sechs Dateien OK; die CLI aus der ZIP meldet `0.1.0`. Vorher Trockenläufe 39922614855 und 39933210774 (Vorabtag) sowie Pre-Releases `v0.1.0-rc.1` und `rc.2`"
         },
         {
           "text": "Quellangebot für libfuse (LGPL-2.1) in der AppImage-Runtime klären: Quell-Tarballs (type2-runtime 20251108, libfuse 3.15.0) an jedes Release hängen oder ein schriftliches Angebot ins Paket legen (`Docs/DECISIONS.md`, Eintrag „Offen: Quellangebot für libfuse und type2-runtime“)",
