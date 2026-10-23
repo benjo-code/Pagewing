@@ -65,10 +65,42 @@ public sealed class AboutCardTests : IDisposable
         Assert.Equal(AppInfo.Version, viewModel.About!.Version);
         Assert.Contains(AppInfo.Version, Find<TextBlock>(card, "AboutVersion").Text);
         Assert.Equal("GPL-3.0-or-later", Find<TextBlock>(card, "AboutLicense").Text);
-        Assert.Equal(Strings.AboutOffline, Find<TextBlock>(card, "AboutOffline").Text);
+        Assert.Equal(Strings.UpdateCheckNote, Find<TextBlock>(card, "AboutUpdateNote").Text);
 
         // No link anywhere: an external address would have to go through the confirmation card.
         Assert.Empty(card.GetVisualDescendants().OfType<HyperlinkButton>());
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public void NamesWhatTheCheckAsksAndWhatItDoesNot(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var (window, viewModel, _) = Show();
+        viewModel.ShowOverlay(OverlayKind.About);
+        Settle(window);
+        var card = Find<AboutCard>(window, "AboutCard");
+        var text = Find<TextBlock>(card, "AboutUpdateNote").Text!;
+
+        // What is asked: the public release page of Pagewing on GitHub. What is not: an identifier, the version, data about
+        // the user or the computer. And where to switch it off. No claim of the old pledge is left.
+        string[] expected = language == "de"
+            ? ["öffentliche Release-Seite", "Pagewing", "GitHub", "keine Kennung", "keine Version", "keine Daten über Sie oder Ihren Rechner", "Einstellungen", "abschalten"]
+            : ["public release page", "Pagewing", "GitHub", "no identifier", "no version", "no data about you or your computer", "settings", "switch"];
+        foreach (var part in expected)
+        {
+            Assert.Contains(part, text);
+        }
+
+        Assert.DoesNotContain("offline", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Nothing leaves", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("keine Netzwerkzugriffe", text, StringComparison.Ordinal);
+        Assert.Contains("GitHub", Strings.SettingsUpdateHint);
+
+        // The start screen says the same.
+        var start = Find<StartScreen>(window, "StartScreen");
+        Assert.Contains(start.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == Strings.UpdateCheckNote);
     }
 
     [AvaloniaFact]
@@ -161,7 +193,7 @@ public sealed class AboutCardTests : IDisposable
         Assert.True(Ratio(TokenTests.Token("Text.Primary", variant), "Surface.Raised") >= 4.5);
         Assert.True(Ratio(TokenTests.Token("Text.Secondary", variant), "Surface.Raised") >= 4.5);
 
-        Assert.Equal(TokenTests.Token("Text.Secondary", variant), Assert.IsAssignableFrom<ISolidColorBrush>(Find<TextBlock>(card, "AboutOffline").Foreground).Color);
+        Assert.Equal(TokenTests.Token("Text.Secondary", variant), Assert.IsAssignableFrom<ISolidColorBrush>(Find<TextBlock>(card, "AboutUpdateNote").Foreground).Color);
         var box = Find<Border>(card, "AboutBox");
         Assert.Equal(TokenTests.Token("Surface.Raised", variant), Assert.IsAssignableFrom<ISolidColorBrush>(box.Background).Color);
         Assert.Equal(new CornerRadius(10), box.CornerRadius);

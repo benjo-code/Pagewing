@@ -1,7 +1,7 @@
 namespace Pagewing.App.ViewModels;
 
 /// <summary>
-/// The about card (<see cref="OverlayKind.About"/>): name, version, licence, the offline promise and the third-party
+/// The about card (<see cref="OverlayKind.About"/>): name, version, licence, what the update check asks and what it does not, and the third-party
 /// notices. The notices are about 390 KB; they are read when they are first asked for (the user opens the list), never
 /// when the card is made.
 /// </summary>
@@ -40,8 +40,11 @@ public sealed class AboutViewModel : ViewModelBase
     /// <summary>Gets the licence of the program (an SPDX identifier, not translated).</summary>
     public string LicenseLine { get; } = "GPL-3.0-or-later";
 
-    /// <summary>Gets the line that says there is no telemetry and no network access.</summary>
-    public string OfflineLine { get; } = Resources.Strings.AboutOffline;
+    /// <summary>
+    /// Gets the note that says what the update check asks (the public release page of Pagewing on GitHub), what it does
+    /// not send, and that it can be switched off in the settings.
+    /// </summary>
+    public string UpdateNote { get; } = Resources.Strings.UpdateCheckNote;
 
     /// <summary>Gets or sets whether the list of notices is open; opening it reads the notices.</summary>
     public bool NoticesOpen

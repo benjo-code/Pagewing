@@ -42,7 +42,7 @@ public static class Strings
     public static string AllTabs => Get("AllTabs");
     public static string AllTabsTooltip => Get("AllTabsTooltip");
     public static string StartTitle => Get("StartTitle");
-    public static string StartOffline => Get("StartOffline");
+    public static string UpdateCheckNote => Get("UpdateCheckNote");
     public static string StartDropHint => Get("StartDropHint");
     public static string ChooseFile => Get("ChooseFile");
     public static string ChooseFileShortcut => Get("ChooseFileShortcut");
@@ -155,7 +155,6 @@ public static class Strings
     public static string AboutTitle => Get("AboutTitle");
     public static string AboutClose => Get("AboutClose");
     public static string AboutVersion => Get("AboutVersion");
-    public static string AboutOffline => Get("AboutOffline");
     public static string AboutNotices => Get("AboutNotices");
     public static string CommandClearRecent => Get("CommandClearRecent");
     public static string CommandGroupFile => Get("CommandGroupFile");
@@ -207,6 +206,9 @@ public static class Strings
     public static string SettingsLanguageSystem => Get("SettingsLanguageSystem");
     public static string SettingsRestartHint => Get("SettingsRestartHint");
     public static string SettingsSaveFailed => Get("SettingsSaveFailed");
+    public static string SettingsGroupUpdates => Get("SettingsGroupUpdates");
+    public static string SettingsUpdateCheck => Get("SettingsUpdateCheck");
+    public static string SettingsUpdateHint => Get("SettingsUpdateHint");
     public static string SettingsGroupHistory => Get("SettingsGroupHistory");
     public static string SettingsHistory => Get("SettingsHistory");
     public static string SettingsClearHistory => Get("SettingsClearHistory");

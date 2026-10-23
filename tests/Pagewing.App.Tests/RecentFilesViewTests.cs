@@ -575,13 +575,13 @@ public sealed class RecentFilesViewTests : IDisposable
         Assert.Equal(1.0, tab.Zoom);
         Assert.Equal(PageLayoutMode.Continuous, tab.LayoutMode);
 
-        // Shown again, the card offers to clear again, also by keyboard (Tab from the last list, then Space); the
+        // Shown again, the card offers to clear again, also by keyboard (Tab from the update switch, then Space); the
         // command of the palette clears as well.
         Press(window, Key.OemComma, PhysicalKey.Comma, RawInputModifiers.Control);
         await WaitUntilAsync(window, () => card.IsEffectivelyVisible);
         Assert.Equal(Strings.SettingsClearHistory, TextOf(button));
         Assert.Single(recent.Files.Items);
-        Find<ComboBox>(card, "LanguageChoice").Focus(NavigationMethod.Tab);
+        Find<ToggleSwitch>(card, "UpdateCheckSwitch").Focus(NavigationMethod.Tab);
         Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
         Assert.Same(button, Focused(window));
         Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.None);

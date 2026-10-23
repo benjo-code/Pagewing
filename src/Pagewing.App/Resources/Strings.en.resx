@@ -45,8 +45,8 @@
   <data name="StartTitle" xml:space="preserve">
     <value>Open a document</value>
   </data>
-  <data name="StartOffline" xml:space="preserve">
-    <value>Pagewing works offline. Nothing leaves this computer.</value>
+  <data name="UpdateCheckNote" xml:space="preserve">
+    <value>Pagewing checks for updates by itself. It asks only the public release page of Pagewing on GitHub for the newest version and sends no identifier, no version and no data about you or your computer. Like any website, GitHub sees your IP address. You can switch the check off in the settings.</value>
   </data>
   <data name="StartDropHint" xml:space="preserve">
     <value>Or drop a PDF file into this window.</value>
@@ -384,9 +384,6 @@
   <data name="AboutVersion" xml:space="preserve">
     <value>Version {0}</value>
   </data>
-  <data name="AboutOffline" xml:space="preserve">
-    <value>Works completely offline: no telemetry, no network access.</value>
-  </data>
   <data name="AboutNotices" xml:space="preserve">
     <value>Third-party notices</value>
   </data>
@@ -551,6 +548,15 @@
   </data>
   <data name="StartRecentRemoveName" xml:space="preserve">
     <value>Remove “{0}” from the history</value>
+  </data>
+  <data name="SettingsGroupUpdates" xml:space="preserve">
+    <value>Updates</value>
+  </data>
+  <data name="SettingsUpdateCheck" xml:space="preserve">
+    <value>Automatically check for updates</value>
+  </data>
+  <data name="SettingsUpdateHint" xml:space="preserve">
+    <value>Asks only the public release page of Pagewing on GitHub for the newest version. Sends no identifier, no version and no data about you or your computer; like any website, GitHub sees your IP address.</value>
   </data>
   <data name="SettingsGroupHistory" xml:space="preserve">
     <value>History</value>
