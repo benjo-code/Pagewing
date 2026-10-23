@@ -53,9 +53,6 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
     /// <summary>The log of the setup program in the staging folder.</summary>
     public const string LogFileName = "setup.log";
 
-    // Manifest, signature and session are small; anything larger is not one of ours.
-    private const long MaxSmallFile = 1024 * 1024;
-
     private readonly WindowsUpdateHelperSetup _setup;
     private readonly string? _staging;
     private readonly UpdateVersion? _version;
@@ -70,7 +67,7 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
     {
         ArgumentNullException.ThrowIfNull(setup);
         _setup = setup;
-        _staging = AcceptedStaging(setup.StagingDirectory, setup.ConfigDirectory);
+        _staging = UpdateApplierSupport.AcceptedStaging(setup.StagingDirectory, setup.ConfigDirectory);
         var request = _staging is null ? null : UpdateRequest.Load(Path.Combine(_staging, UpdateStaging.RequestFileName));
         if (request is not null && Usable(request, _staging!) is { } version)
         {
@@ -110,34 +107,6 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
     /// <summary>Gets the command line of the setup program: very silent, no message boxes, no restart, the log in <paramref name="staging"/>.</summary>
     public static string InnoArguments(string staging) =>
         InnoCommandLine.Join(["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=" + Path.Combine(staging, LogFileName)]);
-
-    /// <summary>
-    /// Gets <paramref name="staging"/> as a full path when it is a folder directly below <c>&lt;config&gt;\updates</c> named
-    /// by a version (no link), else <see langword="null"/>.
-    /// </summary>
-    public static string? AcceptedStaging(string staging, string configDirectory)
-    {
-        try
-        {
-            var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(staging));
-            var updates = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(configDirectory, UpdateStaging.DirectoryName)));
-            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-            if (!string.Equals(Path.GetDirectoryName(full), updates, comparison) || !UpdateVersion.TryParse(Path.GetFileName(full), out _))
-            {
-                return null;
-            }
-
-            var folder = new DirectoryInfo(full);
-            return folder.Exists && !folder.Attributes.HasFlag(FileAttributes.ReparsePoint)
-                && !new DirectoryInfo(updates).Attributes.HasFlag(FileAttributes.ReparsePoint)
-                ? full
-                : null;
-        }
-        catch (Exception exception) when (exception is ArgumentException or IOException or NotSupportedException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
 
     /// <summary>
     /// Waits for the app, then verifies and installs (see the class). Once: a second call gets the running one. Never throws.
@@ -201,7 +170,7 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
         }
 
         // The session the app wrote, kept for every restart (the installed version uses the file up after a failure).
-        _session = _setup.RestoreSession ? ReadSmall(SessionPath) : null;
+        _session = _setup.RestoreSession ? UpdateApplierSupport.ReadSmall(SessionPath) : null;
         try
         {
             if (_setup.AfterProcess is { } process)
@@ -292,8 +261,8 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
     private async Task<Verified> VerifyAsync(CancellationToken ct)
     {
         var staging = _staging!;
-        var manifestBytes = ReadSmall(Path.Combine(staging, UpdateStaging.ManifestFileName));
-        var signature = ReadSmall(Path.Combine(staging, UpdateStaging.SignatureFileName));
+        var manifestBytes = UpdateApplierSupport.ReadSmall(Path.Combine(staging, UpdateStaging.ManifestFileName));
+        var signature = UpdateApplierSupport.ReadSmall(Path.Combine(staging, UpdateStaging.SignatureFileName));
         if (manifestBytes is null || signature is null)
         {
             return Verified.Refused(UpdateFailure.Rejected);
@@ -438,19 +407,6 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
             {
                 // A handler of the window must not throw; one that does must not stop the installation.
             }
-        }
-    }
-
-    private static byte[]? ReadSmall(string path)
-    {
-        try
-        {
-            var info = new FileInfo(path);
-            return info.Exists && info.Length <= MaxSmallFile ? File.ReadAllBytes(path) : null;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return null;
         }
     }
 

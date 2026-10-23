@@ -1,4 +1,4 @@
-using Pagewing.App.Platform.Windows;
+using Pagewing.App.Services;
 
 namespace Pagewing.App.Tests;
 

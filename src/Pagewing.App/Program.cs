@@ -164,7 +164,7 @@ internal static partial class Program
         var config = UserDataPaths.ConfigDirectory();
         var startup = new UpdateHelperStartup(settings, shutdown => new Platform.Windows.WindowsUpdateHelper(
             new Platform.Windows.WindowsUpdateHelperSetup(
-                staging, config, UpdateTrust.Keys, PlatformUpdate.RunningVersion(), new Platform.Windows.SystemProcessLauncher(), shutdown)
+                staging, config, UpdateTrust.Keys, PlatformUpdate.RunningVersion(), new SystemProcessLauncher(), shutdown)
             {
                 AfterProcess = options.AfterProcess,
                 RestoreSession = options.RestoreSession,
