@@ -3500,6 +3500,7 @@ static class SelfTest
         LinuxContainerParts();
         UpdateReleaseParts();
         ManifestJobParts();
+        UpdateTestBuildGuardParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -4728,6 +4729,87 @@ static class SelfTest
             Expect($"release.yml: {file} setzt PagewingUpdateTestBuild nie",
                 Regex.IsMatch(text, "PagewingUpdateTest|PAGEWING_UPDATE_TESTBUILD", RegexOptions.IgnoreCase), false);
         }
+    }
+
+    // The test build of the updater (packaging/README.md, "Update pruefen") may only come from an explicit -p: on the
+    // command line. MSBuild turns environment variables into properties (names ignore case), so a variable inherited by
+    // a release job would otherwise switch it on: Directory.Build.props neutralizes such values and its guard
+    // (CheckPagewingUpdateTestBuildSource) fails the build. Runs dotnet msbuild on the Core project in child processes
+    // with an environment cleaned of the three names; nothing is built (only the guard target or an evaluation).
+    private static void UpdateTestBuildGuardParts()
+    {
+        const string project = "src/Pagewing.Core/Pagewing.Core.csproj";
+        const string guard = "-t:CheckPagewingUpdateTestBuildSource";
+        if (!File.Exists(project))
+        {
+            Expect("Testaufbau-Waechter: Core-Projekt vorhanden", false, true);
+            return;
+        }
+
+        // A valid public P-256 key (the placeholder of UpdateTrust.cs; its private half was discarded).
+        const string key = "-p:PagewingUpdateTestKey=" + TrustSource.PlaceholderKey;
+        string[] names = ["PagewingUpdateTestBuild", "PagewingUpdateTestPort", "PagewingUpdateTestKey"];
+        (int Code, string Output) Msbuild(Dictionary<string, string> environment, params string[] arguments)
+        {
+            var psi = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+            foreach (var argument in (string[])["msbuild", project, "-nologo", "-nodeReuse:false", "-v:m", .. arguments])
+            {
+                psi.ArgumentList.Add(argument);
+            }
+
+            foreach (var name in psi.Environment.Keys.Where(k => names.Any(n => string.Equals(n, k, StringComparison.OrdinalIgnoreCase))).ToList())
+            {
+                psi.Environment.Remove(name);
+            }
+
+            foreach (var (name, value) in environment)
+            {
+                psi.Environment[name] = value;
+            }
+
+            using var process = Process.Start(psi)!;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            process.WaitForExit();
+            return (process.ExitCode, stdout.Result + stderr.Result);
+        }
+
+        var none = new Dictionary<string, string>();
+        Expect("Testaufbau-Waechter: ohne Eigenschaft und Variable laeuft er durch", Msbuild(none, guard).Code, 0);
+        Expect("Testaufbau-Waechter: -p: auf der Kommandozeile ist erlaubt (auch mit -c Release)",
+            Msbuild(none, guard, "-p:Configuration=Release", "-p:PagewingUpdateTestBuild=true", "-p:PagewingUpdateTestPort=8765", key).Code, 0);
+
+        foreach (var (name, value) in new[]
+        {
+            ("PagewingUpdateTestBuild", "True"), ("PagewingUpdateTestPort", "8765"), ("PagewingUpdateTestKey", TrustSource.PlaceholderKey),
+            ("PAGEWINGUPDATETESTBUILD", "true"),
+        })
+        {
+            var (code, output) = Msbuild(new() { [name] = value }, guard, "-p:Configuration=Release");
+            Expect($"Testaufbau-Waechter: Umgebungsvariable {name} bricht den Bau ab", code != 0 && output.Contains("Umgebungsvariable", StringComparison.Ordinal), true);
+        }
+
+        // Even with -p: on the command line, an environment variable of the same name is refused.
+        Expect("Testaufbau-Waechter: Umgebungsvariable neben -p: bricht ebenfalls ab",
+            Msbuild(new() { ["PagewingUpdateTestBuild"] = "true" }, guard, "-p:PagewingUpdateTestBuild=true", "-p:PagewingUpdateTestPort=8765", key).Code != 0, true);
+
+        // The evaluation itself never switches: an environment variable leaves the release trust in place.
+        var all = new Dictionary<string, string>
+        {
+            ["PagewingUpdateTestBuild"] = "True",
+            ["PagewingUpdateTestPort"] = "8765",
+            ["PagewingUpdateTestKey"] = TrustSource.PlaceholderKey,
+        };
+        var evaluated = Msbuild(all, "-p:Configuration=Release", "-getProperty:DefineConstants", "-getProperty:PagewingUpdateTestBuild", "-getItem:Compile", "-getItem:AssemblyMetadata");
+        Expect("Testaufbau-Waechter: mit Umgebungsvariablen keine Konstante PAGEWING_UPDATE_TESTBUILD",
+            evaluated.Code == 0 && !evaluated.Output.Contains("PAGEWING_UPDATE_TESTBUILD", StringComparison.Ordinal), true);
+        Expect("Testaufbau-Waechter: mit Umgebungsvariablen bleibt UpdateTrust.cs, kein UpdateTrust.TestBuild.cs",
+            evaluated.Output.Contains("UpdateTrust.cs", StringComparison.Ordinal) && !evaluated.Output.Contains("UpdateTrust.TestBuild.cs", StringComparison.Ordinal), true);
+        Expect("Testaufbau-Waechter: mit Umgebungsvariablen keine Metadaten des Testaufbaus",
+            evaluated.Output.Contains("PagewingUpdateTestKey", StringComparison.Ordinal), false);
+        var explicitBuild = Msbuild(none, "-p:PagewingUpdateTestBuild=true", "-p:PagewingUpdateTestPort=8765", key, "-getProperty:DefineConstants", "-getItem:Compile");
+        Expect("Testaufbau-Waechter: mit -p: gilt der Testaufbau (Gegenprobe)",
+            explicitBuild.Output.Contains("PAGEWING_UPDATE_TESTBUILD", StringComparison.Ordinal) && explicitBuild.Output.Contains("UpdateTrust.TestBuild.cs", StringComparison.Ordinal), true);
     }
 
     private static void RealElf()
