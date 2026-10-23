@@ -228,7 +228,7 @@ public sealed class UpdateCardTests : UpdateTestHost
 
         Strings.Culture = new CultureInfo("de");
         Assert.Equal("Pagewing 0.2.0 ist verfügbar", string.Format(Strings.Culture, CompositeFormat.Parse(Strings.UpdateCardTitle), "0.2.0"));
-        Assert.Equal("Update verfügbar", Strings.UpdateButtonName);
+        Assert.Equal("Aktualisieren – Update verfügbar", Strings.UpdateButtonName);
         Assert.Equal("Installieren", Strings.UpdateInstall);
         Assert.Equal("Später", Strings.UpdateLater);
         Assert.Equal("Download-Seite öffnen", Strings.UpdateDownloadPage);
@@ -258,6 +258,32 @@ public sealed class UpdateCardTests : UpdateTestHost
         Assert.Equal("Install", ControlAutomationPeer.CreatePeerForElement(Find<Button>(card, "UpdateInstallButton")).GetName());
         Assert.Equal("Open download page", ControlAutomationPeer.CreatePeerForElement(Find<Button>(card, "UpdateDownloadButton")).GetName());
         Assert.Equal("Update available", ControlAutomationPeer.CreatePeerForElement(Find<Button>(window, "UpdateButton")).GetName());
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en", 1024)]
+    [InlineData("en", 800)]
+    [InlineData("de", 1024)]
+    [InlineData("de", 800)]
+    public async Task EveryAccessibleNameContainsTheVisibleText(string language, double width)
+    {
+        // WCAG 2.2, 2.5.3 "Label in Name": speech input reaches a button by the words it shows.
+        Strings.Culture = new CultureInfo(language);
+        var (window, _) = await ShowOfferAsync(width: width);
+        var button = Find<Button>(window, "UpdateButton");
+        var name = ControlAutomationPeer.CreatePeerForElement(button).GetName();
+        Assert.StartsWith(Strings.UpdateButton, name, StringComparison.CurrentCultureIgnoreCase);
+        Assert.Equal(Strings.UpdateButtonName, name);
+
+        // The buttons of the card ("Install" and "Open download page" share the place) are named by their text.
+        Click(window, button);
+        var card = Find<UpdateCard>(window, "UpdateCard");
+        foreach (var buttonName in new[] { "UpdateLaterButton", "UpdateInstallButton", "UpdateDownloadButton" })
+        {
+            var cardButton = Find<Button>(card, buttonName);
+            var visible = Assert.IsType<string>(cardButton.Content);
+            Assert.Contains(visible, ControlAutomationPeer.CreatePeerForElement(cardButton).GetName(), StringComparison.CurrentCultureIgnoreCase);
+        }
     }
 
     [AvaloniaFact]
@@ -304,10 +330,11 @@ public sealed class UpdateCardTests : UpdateTestHost
 
     private async Task<(MainWindow Window, MainViewModel ViewModel)> ShowOfferAsync(
         PackageForm form = PackageForm.WindowsInstaller,
-        string? file = "text-basic.pdf")
+        string? file = "text-basic.pdf",
+        double width = 1024)
     {
         Source.Offer("0.2.0");
-        var (window, viewModel, _) = await ShowAppAsync(file: file, factory: CountingFactory(form: form));
+        var (window, viewModel, _) = await ShowAppAsync(file: file, factory: CountingFactory(form: form), width: width);
         if (file is not null)
         {
             await WaitSharpAsync(window, viewModel);

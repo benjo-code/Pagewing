@@ -736,7 +736,7 @@
     <value>Aktualisieren</value>
   </data>
   <data name="UpdateButtonName" xml:space="preserve">
-    <value>Update verfügbar</value>
+    <value>Aktualisieren – Update verfügbar</value>
   </data>
   <data name="UpdateCardTitle" xml:space="preserve">
     <value>Pagewing {0} ist verfügbar</value>
