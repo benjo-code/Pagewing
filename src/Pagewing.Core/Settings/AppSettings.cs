@@ -134,6 +134,9 @@ public sealed record AppSettings
     /// <summary>Whether the card "Set Pagewing as default for PDFs?" may appear at the start.</summary>
     public DefaultAppPromptSetting DefaultAppPrompt { get; set; } = DefaultAppPromptSetting.Ask;
 
+    /// <summary>Whether Pagewing checks for a newer version by itself (at most once in 24 hours). Off means no network access at all.</summary>
+    public bool UpdateCheck { get; set; } = true;
+
     /// <summary>Returns a copy whose values are all valid: undefined enum values become the default, the width is clamped, an empty or overlong printer name is dropped.</summary>
     public AppSettings Normalized()
     {
