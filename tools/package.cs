@@ -1,7 +1,7 @@
 #:property PublishAot=false
 
 // Packaging tool of Pagewing (grows with Milestone 8; further subcommands are added to Commands).
-//   dotnet run tools/package.cs -- check-binary <file>... [--max-glibc 2.35]
+//   dotnet run tools/package.cs -- check-binary <file>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]
 //   dotnet run tools/package.cs -- layout --rid <win-x64|linux-x64> --app <dir> --cli <dir> --out <dir> [--repo <root>]
 //   dotnet run tools/package.cs -- zip --layout <dir> --version <x.y.z> --out <file>
 //   dotnet run tools/package.cs -- sums <file>... --out <SHA256SUMS.txt>
@@ -29,7 +29,7 @@ static class Cli
 {
     private const string Usage =
         "Aufruf: dotnet run tools/package.cs -- <Befehl>\n" +
-        "  check-binary <Datei>... [--max-glibc 2.35]   prueft GLIBC-Versionen und NEEDED-Bibliotheken (ELF)\n" +
+        "  check-binary <Datei>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]   prueft GLIBC- und GLIBCXX-Versionen und NEEDED-Bibliotheken (ELF)\n" +
         "  layout --rid <rid> --app <Ordner> --cli <Ordner> --out <Ordner>   legt das Paketlayout an (App, cli/, LICENSE, THIRD-PARTY-NOTICES.txt)\n" +
         "  zip --layout <Ordner> --version <x.y.z> --out <Datei>             reproduzierbare ZIP-Datei, oberster Ordner Pagewing-<Version>/\n" +
         "  sums <Datei>... --out <Datei>                                     SHA-256-Summen (<sha256>  <Dateiname>)\n" +
@@ -84,6 +84,9 @@ static partial class ElfRules
 {
     public const string DefaultMaxGlibc = "2.35";
 
+    // libstdc++ of Ubuntu 22.04 and Debian 12 (GCC 12) exports GLIBCXX up to 3.4.30.
+    public const string DefaultMaxGlibcxx = "3.4.30";
+
     public static readonly string[] AllowedNeeded =
     [
         "libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "libz.so.1",
@@ -97,6 +100,10 @@ static partial class ElfRules
     // objdump -T: "0000000000000000      DF *UND*	0000000000000000 (GLIBC_2.2.5) printf"
     [GeneratedRegex(@"\*UND\*.*\(GLIBC_(?<v>\d+(?:\.\d+)*)\)")]
     private static partial Regex UndefinedSymbolVersion();
+
+    // objdump -T: "0000000000000000      DF *UND*	0000000000000000 (GLIBCXX_3.4.30) _ZSt..."
+    [GeneratedRegex(@"\*UND\*.*\(GLIBCXX_(?<v>\d+(?:\.\d+)*)\)")]
+    private static partial Regex UndefinedCxxSymbolVersion();
 
     // objdump -p: "  NEEDED               libc.so.6"
     [GeneratedRegex(@"^\s*NEEDED\s+(?<n>\S+)\s*$")]
@@ -132,13 +139,19 @@ static partial class ElfRules
         return 0;
     }
 
-    public static string? HighestGlibc(string dynamicSymbols, out int[]? version)
+    public static string? HighestGlibc(string dynamicSymbols, out int[]? version) =>
+        Highest(UndefinedSymbolVersion(), dynamicSymbols, out version);
+
+    public static string? HighestGlibcxx(string dynamicSymbols, out int[]? version) =>
+        Highest(UndefinedCxxSymbolVersion(), dynamicSymbols, out version);
+
+    private static string? Highest(Regex symbolVersion, string dynamicSymbols, out int[]? version)
     {
         string? text = null;
         version = null;
         foreach (var line in dynamicSymbols.Split('\n'))
         {
-            var m = UndefinedSymbolVersion().Match(line);
+            var m = symbolVersion.Match(line);
             if (m.Success && TryParseVersion(m.Groups["v"].Value, out var v) && (version is null || Compare(v, version) > 0))
             {
                 version = v;
@@ -165,13 +178,20 @@ static partial class ElfRules
     }
 
     // Returns the violations for one file, given the objdump -T and objdump -p outputs.
-    public static List<string> Violations(string dynamicSymbols, string programHeaders, int[] max, string maxText)
+    public static List<string> Violations(string dynamicSymbols, string programHeaders, int[] max, string maxText,
+        string maxGlibcxxText = DefaultMaxGlibcxx)
     {
         var problems = new List<string>();
         var highest = HighestGlibc(dynamicSymbols, out var version);
         if (highest is not null && Compare(version!, max) > 0)
         {
             problems.Add($"verlangt GLIBC_{highest} (erlaubt hoechstens GLIBC_{maxText})");
+        }
+
+        var highestCxx = HighestGlibcxx(dynamicSymbols, out var cxxVersion);
+        if (highestCxx is not null && TryParseVersion(maxGlibcxxText, out var maxCxx) && Compare(cxxVersion!, maxCxx) > 0)
+        {
+            problems.Add($"verlangt GLIBCXX_{highestCxx} (erlaubt hoechstens GLIBCXX_{maxGlibcxxText})");
         }
 
         foreach (var name in Needed(programHeaders))
@@ -192,11 +212,16 @@ static class CheckBinary
     {
         var files = new List<string>();
         var maxText = ElfRules.DefaultMaxGlibc;
+        var maxCxxText = ElfRules.DefaultMaxGlibcxx;
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] == "--max-glibc" && i + 1 < args.Length)
             {
                 maxText = args[++i];
+            }
+            else if (args[i] == "--max-glibcxx" && i + 1 < args.Length)
+            {
+                maxCxxText = args[++i];
             }
             else if (args[i].StartsWith("--", StringComparison.Ordinal))
             {
@@ -209,9 +234,9 @@ static class CheckBinary
             }
         }
 
-        if (files.Count == 0 || !ElfRules.TryParseVersion(maxText, out var max))
+        if (files.Count == 0 || !ElfRules.TryParseVersion(maxText, out var max) || !ElfRules.TryParseVersion(maxCxxText, out _))
         {
-            Console.Error.WriteLine("Aufruf: check-binary <Datei>... [--max-glibc 2.35]");
+            Console.Error.WriteLine("Aufruf: check-binary <Datei>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]");
             return 2;
         }
 
@@ -233,7 +258,7 @@ static class CheckBinary
                 continue;
             }
 
-            var problems = ElfRules.Violations(symbols, headers, max, maxText);
+            var problems = ElfRules.Violations(symbols, headers, max, maxText, maxCxxText);
             if (problems.Count == 0)
             {
                 Console.WriteLine($"{file}: ok");
@@ -2282,6 +2307,10 @@ static class SelfTest
             $"0000000000000000      DF *UND*\t0000000000000000 (GLIBC_{v}) sym{i}\n")) +
         "0000000000001139 g    DF .text\t000000000000000b  Base        main\n";
 
+    private static string CxxSymbols(params string[] versions) =>
+        Header + string.Concat(versions.Select((v, i) =>
+            $"0000000000000000      DF *UND*\t0000000000000000 (GLIBCXX_{v}) _ZSt{i}\n"));
+
     private static string Needs(params string[] libs) =>
         "\nDynamic Section:\n" + string.Concat(libs.Select(l => $"  NEEDED               {l}\n")) +
         "  SONAME               libx.so\n";
@@ -2306,6 +2335,19 @@ static class SelfTest
         Expect("definiertes Symbol zaehlt nicht", ElfRules.HighestGlibc("0000 g DF .text 000b (GLIBC_2.99) x\n", out _) ?? "none", "none");
         Expect("Version des hoechsten Symbols", ElfRules.HighestGlibc(Symbols("2.2.5", "2.34", "2.17"), out _) ?? "none", "2.34");
         Expect("Vergleich 2.35 = 2.35.0", ElfRules.Compare([2, 35], [2, 35, 0]), 0);
+
+        Expect("GLIBCXX 3.4.30 besteht (Grenze)", ElfRules.Violations(CxxSymbols("3.4.29", "3.4.30"), libc, max, maxText).Count, 0);
+        Expect("GLIBCXX 3.4.31 faellt durch", ElfRules.Violations(CxxSymbols("3.4.19", "3.4.31"), libc, max, maxText).Count, 1);
+        Expect("GLIBCXX 3.4.9 ist kleiner als 3.4.30 (Zahlentupel, nicht Text)", ElfRules.Violations(CxxSymbols("3.4.9"), libc, max, maxText).Count, 0);
+        Expect("GLIBCXX 3.4.100 ist groesser als 3.4.30", ElfRules.Violations(CxxSymbols("3.4.100"), libc, max, maxText).Count, 1);
+        Expect("GLIBCXX: --max-glibcxx hebt die Grenze", ElfRules.Violations(CxxSymbols("3.4.31"), libc, max, maxText, "3.4.31").Count, 0);
+        Expect("GLIBCXX: Meldung nennt Symbol und Grenze", ElfRules.Violations(CxxSymbols("3.4.31"), libc, max, maxText).SingleOrDefault() ?? "none",
+            "verlangt GLIBCXX_3.4.31 (erlaubt hoechstens GLIBCXX_3.4.30)");
+        Expect("GLIBCXX und GLIBC melden getrennt", ElfRules.Violations(CxxSymbols("3.4.31") + Symbols("2.38"), libc, max, maxText).Count, 2);
+        Expect("ohne GLIBCXX-Symbole besteht", ElfRules.Violations(Symbols("2.2.5"), libc, max, maxText).Count, 0);
+        Expect("GLIBCXX zaehlt nicht als GLIBC", ElfRules.HighestGlibc(CxxSymbols("3.4.31"), out _) ?? "none", "none");
+        Expect("hoechstes GLIBCXX-Symbol", ElfRules.HighestGlibcxx(CxxSymbols("3.4.9", "3.4.30", "3.4.19"), out _) ?? "none", "3.4.30");
+        Expect("check-binary mit ungueltigem --max-glibcxx liefert 2", Cli.Run(["check-binary", "x", "--max-glibcxx", "abc"]), 2);
 
         PackagingCommands();
         InstallerParts();
