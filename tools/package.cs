@@ -2337,7 +2337,8 @@ static partial class AppImageSmoke
             Directory.Delete(root, true);
 
             // (3) The app through AppRun: once without FUSE (APPIMAGE_EXTRACT_AND_RUN=1), once as a user starts it. In the second
-            // run the runtime mounts with FUSE, or, without /dev/fuse or fusermount, says so and extracts by itself.
+            // run the runtime mounts with FUSE. Without /dev/fuse and fusermount (a container) it does NOT extract by itself: it
+            // says so and exits (measured in the release dry run 39914298456), which is the expected outcome there.
             var display = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")) || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
             if (!display && Tool.Run("xvfb-run", ["--help"], out _) == -1)
             {
@@ -2351,11 +2352,12 @@ static partial class AppImageSmoke
                 var command = display ? appImage : "xvfb-run";
                 string[] arguments = display ? ["--measure-startup", pdf] : ["-a", appImage, "--measure-startup", pdf];
                 var code = Tool.Run(command, arguments, out var output, workingDirectory: work, env: env);
+                var fuse = File.Exists("/dev/fuse") && (Tool.Run("fusermount3", ["--version"], out _) != -1 || Tool.Run("fusermount", ["--version"], out _) != -1);
                 var label = extract ? "ohne FUSE (APPIMAGE_EXTRACT_AND_RUN=1)"
-                    : output.Contains("fusermount", StringComparison.Ordinal) || !File.Exists("/dev/fuse")
-                        ? "ohne Umgebungsvariable (kein FUSE auf dem Rechner: die Runtime entpackt selbst)"
-                        : "ohne Umgebungsvariable (ueber FUSE)";
-                Check(code == 0 && output.Split('\n').Any(l => l.Trim() == "first-sharp"), $"App startet {label} und zeichnet text-basic.pdf (first-sharp, Code {code})");
+                    : fuse ? "ohne Umgebungsvariable (ueber FUSE)"
+                        : "ohne Umgebungsvariable (kein FUSE auf dem Rechner: die Runtime meldet es und startet nicht)";
+                var ok = extract ? code == 0 && HasFirstSharp(output) : SecondRunIsAcceptable(fuse, code, output);
+                Check(ok, $"App startet {label} und zeichnet text-basic.pdf (first-sharp, Code {code})");
                 if (code != 0)
                 {
                     Console.Write(output);
@@ -2373,6 +2375,13 @@ static partial class AppImageSmoke
             }
         }
     }
+
+    private static bool HasFirstSharp(string output) => output.Split('\n').Any(l => l.Trim() == "first-sharp");
+
+    // The start as a user does it. With FUSE it must work. Without FUSE the static runtime refuses with a message about
+    // fusermount (that is the expected result in a container); it counts as fine, any other failure does not.
+    public static bool SecondRunIsAcceptable(bool fuseAvailable, int code, string output) =>
+        code == 0 ? HasFirstSharp(output) : !fuseAvailable && output.Contains("fusermount", StringComparison.Ordinal);
 
     private static int Finish(List<string> failures)
     {
@@ -2881,6 +2890,14 @@ static class SelfTest
     // The AppImage: runtime pin, AppRun, .desktop, the AppDir plan and, with mksquashfs, a reproducible image from a fake runtime.
     private static void AppImageParts()
     {
+        const string noFuse = "Error: No suitable fusermount binary found on the $PATH\nfuse: device not found";
+        Expect("smoke: mit FUSE und Start ist ok", AppImageSmoke.SecondRunIsAcceptable(true, 0, "first-sharp\n"), true);
+        Expect("smoke: mit FUSE und Fehlstart faellt durch", AppImageSmoke.SecondRunIsAcceptable(true, 127, noFuse), false);
+        Expect("smoke: ohne FUSE meldet die Runtime es klar und startet nicht (ok)", AppImageSmoke.SecondRunIsAcceptable(false, 127, noFuse), true);
+        Expect("smoke: ohne FUSE, aber anderer Absturz faellt durch", AppImageSmoke.SecondRunIsAcceptable(false, 139, "Segmentation fault"), false);
+        Expect("smoke: ohne FUSE und trotzdem gestartet ist ok", AppImageSmoke.SecondRunIsAcceptable(false, 0, "first-sharp\n"), true);
+        Expect("smoke: Start ohne first-sharp faellt durch", AppImageSmoke.SecondRunIsAcceptable(true, 0, "nichts\n"), false);
+
         Expect("appimage: Runtime-Pruefsumme ist festgehalten", Pinned.PinProblem(AppImageRuntime.Sha256, "AppImageRuntime.Sha256"), null);
         Expect("appimage: Runtime-Adresse nennt die Version", AppImageRuntime.Url,
             $"https://github.com/AppImage/type2-runtime/releases/download/{AppImageRuntime.Version}/runtime-x86_64");
