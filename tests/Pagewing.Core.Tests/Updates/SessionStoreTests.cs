@@ -114,22 +114,90 @@ public sealed class SessionStoreTests : IDisposable
     [Fact]
     public void LimitsTabsAndWindows()
     {
-        var windows = Enumerable.Range(0, 12)
-            .Select(w => new SessionWindow([.. Enumerable.Range(0, 25).Select(t => new SessionTab($"/w{w}/t{t}.pdf", null))], ActiveIndex: 24))
+        // The limits only defend against a hostile session.json; a real session stays far below them.
+        Assert.Equal(50, SessionSnapshot.MaxWindows);
+        Assert.Equal(500, SessionSnapshot.MaxTabsPerWindow);
+
+        var windows = Enumerable.Range(0, 60)
+            .Select(w => new SessionWindow([new SessionTab($"/w{w}/a.pdf", null), new SessionTab($"/w{w}/b.pdf", null)], ActiveIndex: 1))
             .ToList();
         var store = new SessionStore(FilePath);
 
         Assert.True(store.TrySave(new SessionSnapshot(windows)));
         var loaded = store.Load();
 
+        // Windows beyond the limit are dropped; the first ones (the oldest) are kept.
         Assert.Equal(SessionSnapshot.MaxWindows, loaded.Windows.Count);
-        Assert.Equal(10, SessionSnapshot.MaxWindows);
-        Assert.Equal(20, SessionSnapshot.MaxTabsPerWindow);
-        Assert.All(loaded.Windows, window => Assert.Equal(SessionSnapshot.MaxTabsPerWindow, window.Tabs.Count));
-        Assert.Equal("/w9/t19.pdf", loaded.Windows[^1].Tabs[^1].Path);
+        Assert.Equal("/w0/a.pdf", loaded.Windows[0].Tabs[0].Path);
+        Assert.Equal("/w49/b.pdf", loaded.Windows[^1].Active.Path);
+    }
 
-        // The active tab was beyond the limit: the last tab that is kept takes its place.
-        Assert.All(loaded.Windows, window => Assert.Equal(SessionSnapshot.MaxTabsPerWindow - 1, window.ActiveIndex));
+    [Fact]
+    public void AWindowOverTheLimitKeepsItsActiveTab()
+    {
+        var tabs = Enumerable.Range(0, 600).Select(t => new SessionTab($"/t{t:D3}.pdf", null)).ToList();
+        var store = new SessionStore(FilePath);
+
+        Assert.True(store.TrySave(new SessionSnapshot([new SessionWindow(tabs, ActiveIndex: 550)])));
+        var window = Assert.Single(store.Load().Windows);
+
+        // A run of tabs around the active one, in their order; the active one is never dropped.
+        Assert.Equal(SessionSnapshot.MaxTabsPerWindow, window.Tabs.Count);
+        Assert.Equal("/t550.pdf", window.Active.Path);
+        var first = int.Parse(window.Tabs[0].Path[2..5], System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(Enumerable.Range(first, SessionSnapshot.MaxTabsPerWindow).Select(t => $"/t{t:D3}.pdf"), window.Tabs.Select(tab => tab.Path));
+        Assert.Equal(550 - first, window.ActiveIndex);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(10, 10)]
+    [InlineData(599, 499)]
+    public void TheRunOfKeptTabsStaysInsideTheWindow(int active, int keptActive)
+    {
+        var tabs = Enumerable.Range(0, 600).Select(t => new SessionTab($"/t{t:D3}.pdf", null)).ToList();
+
+        var window = Assert.Single(new SessionSnapshot([new SessionWindow(tabs, active)]).KeepFiles(_ => true).Windows);
+
+        Assert.Equal(SessionSnapshot.MaxTabsPerWindow, window.Tabs.Count);
+        Assert.Equal($"/t{active:D3}.pdf", window.Active.Path);
+        Assert.Equal(keptActive, window.ActiveIndex);
+    }
+
+    [Fact]
+    public void ANormalSessionIsUnchanged()
+    {
+        var snapshot = new SessionSnapshot(
+        [
+            new SessionWindow([.. Enumerable.Range(0, 30).Select(t => new SessionTab($"/a{t}.pdf", t == 7 ? View(t) : null))], ActiveIndex: 27),
+            new SessionWindow([new SessionTab("/b.pdf", null)], ActiveIndex: 0),
+        ]);
+        var store = new SessionStore(FilePath);
+
+        Assert.True(store.TrySave(snapshot));
+
+        Assert.Equal(Describe(snapshot), Describe(store.Load()));
+    }
+
+    [Fact]
+    public void ASessionAtTheLimitsFitsIntoTheFile()
+    {
+        // Every tab with a long path and a view: the file is larger than the 1 MiB of the other JSON files, and must
+        // still be read back, or a session at the limits would be thrown away as corrupt.
+        var folder = "/home/somebody/Documents/" + new string('x', 80) + "/";
+        var windows = Enumerable.Range(0, SessionSnapshot.MaxWindows)
+            .Select(w => new SessionWindow([.. Enumerable.Range(0, SessionSnapshot.MaxTabsPerWindow).Select(t => new SessionTab($"{folder}w{w}/t{t}.pdf", View(t)))], ActiveIndex: 3))
+            .ToList();
+        var store = new SessionStore(FilePath);
+
+        Assert.True(store.TrySave(new SessionSnapshot(windows)));
+        Assert.True(new FileInfo(FilePath).Length > 1024 * 1024);
+        var loaded = store.Load();
+
+        Assert.Equal(SessionSnapshot.MaxWindows, loaded.Windows.Count);
+        Assert.All(loaded.Windows, window => Assert.Equal(SessionSnapshot.MaxTabsPerWindow, window.Tabs.Count));
+        Assert.Equal(View(499), loaded.Windows[^1].Tabs[^1].View);
+        Assert.False(File.Exists(FilePath + ".bad"));
     }
 
     [Fact]

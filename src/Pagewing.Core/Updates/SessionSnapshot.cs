@@ -23,11 +23,14 @@ public sealed record SessionWindow(IReadOnlyList<SessionTab> Tabs, int ActiveInd
 /// <param name="Windows">The windows, the oldest first.</param>
 public sealed record SessionSnapshot(IReadOnlyList<SessionWindow> Windows)
 {
-    /// <summary>The most windows a session brings back.</summary>
-    public const int MaxWindows = 10;
+    /// <summary>The most windows a session brings back (a bound against a hostile file; a real session stays far below it).</summary>
+    public const int MaxWindows = 50;
 
-    /// <summary>The most tabs a window of a session brings back (as many as one open of several files).</summary>
-    public const int MaxTabsPerWindow = 20;
+    /// <summary>
+    /// The most tabs a window of a session brings back (a bound against a hostile file). A window with more keeps a run of
+    /// tabs around its active one, never without it.
+    /// </summary>
+    public const int MaxTabsPerWindow = 500;
 
     private static readonly StringComparer PathComparer =
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
@@ -49,10 +52,12 @@ public sealed record SessionSnapshot(IReadOnlyList<SessionWindow> Windows)
     /// <summary>
     /// Makes a session that can be restored as it is from windows of any quality (a file edited by hand or written by
     /// another version): tabs without a path and later duplicates of a path in the same window are dropped, a view that is
-    /// not usable (<see cref="RememberedView.IsValid"/>) is dropped from its tab, at most <see cref="MaxTabsPerWindow"/>
-    /// tabs per window and <see cref="MaxWindows"/> windows are kept, windows without a tab are dropped, and the active
-    /// index points at a kept tab (a dropped duplicate's first tab, a dropped tab's right neighbour, the nearest end of an
-    /// index out of range). A window without a list of tabs counts as one without a tab.
+    /// not usable (<see cref="RememberedView.IsValid"/>) is dropped from its tab, windows without a tab are dropped, and
+    /// the active index points at a kept tab (a dropped duplicate's first tab, a dropped tab's right neighbour, the
+    /// nearest end of an index out of range). A window with more than <see cref="MaxTabsPerWindow"/> tabs left keeps a run
+    /// of that many around its active tab (centred on it where the window allows), so the active tab is never dropped; of
+    /// more than <see cref="MaxWindows"/> windows the first (oldest) ones are kept. A window without a list of tabs counts
+    /// as one without a tab.
     /// </summary>
     /// <param name="windows">The windows, the oldest first.</param>
     /// <param name="keep">Whether a file is kept (it still exists); all are when omitted.</param>
@@ -80,9 +85,12 @@ public sealed record SessionSnapshot(IReadOnlyList<SessionWindow> Windows)
     {
         var active = tabs.Count == 0 ? 0 : Math.Clamp(activeIndex, 0, tabs.Count - 1);
         var kept = new List<SessionTab>();
+
+        // The position of each kept path, for the duplicates (a hostile file may hold many tabs: no search per tab).
+        var positions = new Dictionary<string, int>(PathComparer);
         int? keptActive = null;
         int? keptBeforeActive = null;
-        for (var i = 0; i < tabs.Count && kept.Count < MaxTabsPerWindow; i++)
+        for (var i = 0; i < tabs.Count; i++)
         {
             if (i == active)
             {
@@ -94,8 +102,7 @@ public sealed record SessionSnapshot(IReadOnlyList<SessionWindow> Windows)
                 continue;
             }
 
-            var duplicate = kept.FindIndex(other => PathComparer.Equals(other.Path, tab.Path));
-            if (duplicate >= 0)
+            if (positions.TryGetValue(tab.Path, out var duplicate))
             {
                 if (i == active)
                 {
@@ -110,6 +117,7 @@ public sealed record SessionSnapshot(IReadOnlyList<SessionWindow> Windows)
                 keptActive = kept.Count;
             }
 
+            positions.Add(tab.Path, kept.Count);
             kept.Add(tab.View is { } view && !view.IsValid() ? tab with { View = null } : tab);
         }
 
@@ -118,6 +126,14 @@ public sealed record SessionSnapshot(IReadOnlyList<SessionWindow> Windows)
             return null;
         }
 
-        return new SessionWindow(kept, keptActive ?? Math.Min(keptBeforeActive ?? kept.Count, kept.Count - 1));
+        var keptIndex = keptActive ?? Math.Min(keptBeforeActive ?? kept.Count, kept.Count - 1);
+        if (kept.Count <= MaxTabsPerWindow)
+        {
+            return new SessionWindow(kept, keptIndex);
+        }
+
+        // Too many: a run around the active tab, centred on it unless an end of the window is nearer.
+        var start = Math.Clamp(keptIndex - (MaxTabsPerWindow / 2), 0, kept.Count - MaxTabsPerWindow);
+        return new SessionWindow(kept.GetRange(start, MaxTabsPerWindow), keptIndex - start);
     }
 }

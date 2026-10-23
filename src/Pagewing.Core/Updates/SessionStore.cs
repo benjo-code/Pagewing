@@ -56,6 +56,13 @@ public sealed class SessionStore(string path)
     /// <summary>The name of the session file in the config folder.</summary>
     public const string FileName = "session.json";
 
+    /// <summary>
+    /// The largest session file that is read: a session at the limits (<see cref="SessionSnapshot.MaxWindows"/> windows of
+    /// <see cref="SessionSnapshot.MaxTabsPerWindow"/> tabs with long paths and views) takes several MiB, beyond the 1 MiB of
+    /// the other JSON files; a larger one counts as corrupt.
+    /// </summary>
+    internal const long MaxFileLength = 32 * 1024 * 1024;
+
     /// <summary>The file with the session.</summary>
     public string FilePath { get; } = path;
 
@@ -63,12 +70,13 @@ public sealed class SessionStore(string path)
     /// Loads the session. A missing, empty or unreadable file gives an empty session, a corrupt one too (after it has been
     /// copied once to <c>&lt;path&gt;.bad</c>). The windows are cleaned (<see cref="SessionSnapshot.Clean"/>): empty
     /// paths, duplicates per window and unusable views are dropped, at most <see cref="SessionSnapshot.MaxTabsPerWindow"/>
-    /// tabs per window and <see cref="SessionSnapshot.MaxWindows"/> windows are kept. Whether the files still exist is
-    /// not checked here (<see cref="SessionSnapshot.KeepFiles"/>).
+    /// tabs per window (around the active one) and <see cref="SessionSnapshot.MaxWindows"/> windows are kept. A file over
+    /// <see cref="MaxFileLength"/> counts as corrupt. Whether the files still exist is not checked here
+    /// (<see cref="SessionSnapshot.KeepFiles"/>).
     /// </summary>
     public SessionSnapshot Load()
     {
-        var text = JsonFile.ReadText(FilePath);
+        var text = JsonFile.ReadText(FilePath, MaxFileLength);
         if (text is null)
         {
             return SessionSnapshot.Empty;

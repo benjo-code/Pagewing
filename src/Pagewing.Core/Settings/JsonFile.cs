@@ -13,9 +13,10 @@ internal static class JsonFile
 
     /// <summary>
     /// Reads the file. Returns <c>null</c> when it is missing, empty or unreadable; a file over
-    /// <see cref="MaxFileLength"/> is copied to <c>&lt;path&gt;.bad</c> first (it counts as corrupt).
+    /// <paramref name="maxLength"/> (<see cref="MaxFileLength"/> unless given) is copied to <c>&lt;path&gt;.bad</c> first
+    /// (it counts as corrupt).
     /// </summary>
-    internal static string? ReadText(string path)
+    internal static string? ReadText(string path, long maxLength = MaxFileLength)
     {
         string text;
         try
@@ -26,7 +27,7 @@ internal static class JsonFile
                 return null;
             }
 
-            if (info.Length > MaxFileLength)
+            if (info.Length > maxLength)
             {
                 KeepBackup(path);
                 return null;

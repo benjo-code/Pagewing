@@ -120,6 +120,29 @@ public sealed class SessionRestoreTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task MoreTabsThanOneOpenOfSeveralFilesAllComeBackInOrder()
+    {
+        // The limit of one open of several files (MainViewModel.MaxFilesPerOpen) is not a limit of the restore.
+        var count = MainViewModel.MaxFilesPerOpen + 5;
+        var tabs = new List<SessionTab>();
+        for (var i = 0; i < count; i++)
+        {
+            var copy = Path.Combine(_directory, $"tab{i:D2}.pdf");
+            File.Copy(TestData.Pdf("hello_world.pdf"), copy);
+            tabs.Add(new SessionTab(copy, null));
+        }
+
+        Save(new SessionWindow(tabs, ActiveIndex: 12));
+        var workspace = CreateWorkspace();
+
+        var viewModel = StartLikeProgram(workspace)!;
+        await WaitUntilAsync(workspace, () => viewModel.Tabs.Count == count && viewModel.Tabs.All(tab => tab.State == ViewerState.Ready));
+
+        Assert.Equal(tabs.Select(tab => tab.Path), viewModel.Tabs.Select(tab => tab.Session.Path));
+        Assert.Same(viewModel.Tabs[12], viewModel.ActiveTab);
+    }
+
+    [AvaloniaFact]
     public async Task SkipsMissingFilesSilently()
     {
         var missing = Path.Combine(_directory, "moved.pdf");
