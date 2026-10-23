@@ -13,7 +13,9 @@ namespace Pagewing.App.Tests;
 /// What the tests of the update check share: a window whose view model gets a coordinator made over a fake source (or a
 /// factory of the test), a status file in a temporary folder that is never the one of the user, and the helpers to wait.
 /// </summary>
-public abstract class UpdateTestHost : PrintTestHost
+// IDisposable is named again: the Dispose of PrintTestHost is not virtual, and xUnit disposes through the interface,
+// which would otherwise still reach the one of the base class and never this cleanup.
+public abstract class UpdateTestHost : PrintTestHost, IDisposable
 {
     /// <summary>The version the coordinators of these tests count as running.</summary>
     protected static readonly UpdateVersion Running = new(0, 1, 0);
@@ -46,6 +48,8 @@ public abstract class UpdateTestHost : PrintTestHost
         {
             Directory.Delete(_directory, recursive: true);
         }
+
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>Disposes <paramref name="item"/> when the test ends, before the windows of <c>Track</c> are closed.</summary>
