@@ -41,7 +41,7 @@ public sealed class UpdateWindowTests : UpdateTestHost
         "UpdateStepFailed", "UpdateProgressName", "UpdateProgressPercent", "UpdateProgressSize", "UpdateWindowCancel",
         "UpdateWindowRetry", "UpdateWindowClose", "UpdateErrorUnreachable", "UpdateErrorWithdrawn", "UpdateErrorRejected",
         "UpdateErrorChecksum", "UpdateErrorStorage", "UpdateErrorNoInstaller", "UpdateErrorInstallFailed",
-        "UpdateErrorHelperInstallFailed", "UpdateErrorVersionMismatch",
+        "UpdateErrorHelperInstallFailed", "UpdateErrorVersionMismatch", "UpdateErrorSuperseded",
     ];
 
     [AvaloniaFact]

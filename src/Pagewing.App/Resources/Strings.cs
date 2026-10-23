@@ -265,6 +265,7 @@ public static class Strings
     public static string UpdateWindowClose => Get("UpdateWindowClose");
     public static string UpdateErrorUnreachable => Get("UpdateErrorUnreachable");
     public static string UpdateErrorWithdrawn => Get("UpdateErrorWithdrawn");
+    public static string UpdateErrorSuperseded => Get("UpdateErrorSuperseded");
     public static string UpdateErrorRejected => Get("UpdateErrorRejected");
     public static string UpdateErrorChecksum => Get("UpdateErrorChecksum");
     public static string UpdateErrorStorage => Get("UpdateErrorStorage");

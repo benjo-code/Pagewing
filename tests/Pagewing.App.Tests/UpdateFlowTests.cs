@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text;
 using Avalonia.Headless.XUnit;
+using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
@@ -118,6 +120,13 @@ public sealed class UpdateFlowTests : UpdateTestHost
         Assert.Equal(0, Applier.Calls);
         Assert.False(coordinator.CanRetry);
 
+        // The window says that the update is not offered any more.
+        using (var update = new UpdateViewModel(coordinator, _ => { }))
+        {
+            Assert.Equal(Strings.UpdateErrorWithdrawn, update.FailureText);
+            Assert.Equal("This update is no longer offered. Your version stays as it is.", update.FailureText);
+        }
+
         // Closing the message drops the offer: there is nothing to install.
         coordinator.Dismiss();
         Assert.Equal(UpdateState.None, coordinator.State);
@@ -133,15 +142,36 @@ public sealed class UpdateFlowTests : UpdateTestHost
         await coordinator.BeginInstallAsync();
 
         Assert.Equal(UpdateStage.Failed, coordinator.State.Stage);
-        Assert.Equal(UpdateFailure.Withdrawn, coordinator.State.Error);
+        Assert.Equal(UpdateFailure.Superseded, coordinator.State.Error);
         Assert.Equal(Offered, coordinator.State.Version);
         Assert.Equal(0, Source.DownloadCalls);
         Assert.Equal(0, Applier.Calls);
         Assert.False(coordinator.CanRetry);
 
+        // Not "withdrawn": the window names the newer version and where it is offered.
+        using (var update = new UpdateViewModel(coordinator, _ => { }))
+        {
+            Assert.Equal(string.Format(Strings.Culture, CompositeFormat.Parse(Strings.UpdateErrorSuperseded), "0.3.0"), update.FailureText);
+            Assert.Equal("Pagewing 0.3.0 has replaced this update. Close this window; the Update button then offers Pagewing 0.3.0.", update.FailureText);
+            Assert.NotEqual(Strings.UpdateErrorWithdrawn, update.FailureText);
+        }
+
         // Closing the message offers the version that is there now, for the user to choose again.
         coordinator.Dismiss();
         Assert.Equal(UpdateState.Offer(new UpdateVersion(0, 3, 0)), coordinator.State);
+    }
+
+    [AvaloniaFact]
+    public async Task TheTextsOfAWithdrawnAndAReplacedUpdateSpeakGerman()
+    {
+        Strings.Culture = new CultureInfo("de");
+        var coordinator = await OfferedAsync();
+        Source.Offer("0.3.0");
+        await coordinator.BeginInstallAsync();
+
+        using var update = new UpdateViewModel(coordinator, _ => { });
+        Assert.Equal("Pagewing 0.3.0 hat dieses Update ersetzt. Schließen Sie dieses Fenster; die Schaltfläche „Aktualisieren“ bietet dann Pagewing 0.3.0 an.", update.FailureText);
+        Assert.Equal("Dieses Update wird nicht mehr angeboten. Ihre Version bleibt, wie sie ist.", Strings.UpdateErrorWithdrawn);
     }
 
     [AvaloniaFact]

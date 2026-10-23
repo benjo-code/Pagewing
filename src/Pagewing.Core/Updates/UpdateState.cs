@@ -34,8 +34,11 @@ public static class UpdateFailure
     /// <summary>The manifest or the file was not received completely (no network, a timeout, a stalled download).</summary>
     public const string Unreachable = "unreachable";
 
-    /// <summary>The release on offer is not the latest any more (taken back, or another version took its place).</summary>
+    /// <summary>The release on offer is not offered any more (taken back, or it has no file for this installation form).</summary>
     public const string Withdrawn = "withdrawn";
+
+    /// <summary>A newer release took the place of the one on offer; closing the message offers the newer one.</summary>
+    public const string Superseded = "superseded";
 
     /// <summary>The manifest received again was refused (signature, format, file names).</summary>
     public const string Rejected = "rejected";

@@ -182,7 +182,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     /// <summary>Gets what went wrong, in the words of the installer when it gave some.</summary>
     public string FailureText => !IsFailed ? string.Empty : _coordinator.FailureMessage ?? _state.Error switch
     {
-        UpdateFailure.Withdrawn => Strings.UpdateErrorWithdrawn,
+        UpdateFailure.Withdrawn or UpdateFailure.Superseded => Strings.UpdateErrorWithdrawn,
         UpdateFailure.Rejected => Strings.UpdateErrorRejected,
         UpdateFailure.Checksum => Strings.UpdateErrorChecksum,
         UpdateFailure.Storage => Strings.UpdateErrorStorage,

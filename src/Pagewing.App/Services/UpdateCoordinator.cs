@@ -1,4 +1,5 @@
 using System.Text;
+using Pagewing.App.Resources;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Updates;
 
@@ -294,11 +295,24 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
                 return;
             }
 
-            // The user agreed to this version: another one (the verifier made sure it is newer) is offered afresh, not installed.
+            // The user agreed to this version: another one (the verifier made sure it is newer) is offered afresh, not installed;
+            // the message names it, so it does not read as if the update were withdrawn.
             var parsed = UpdateVersion.TryParse(manifest.Version, out var found);
-            if (!parsed || found != offered)
+            if (!parsed)
             {
-                Fail(UpdateFailure.Withdrawn, stage, directory, afterwards: parsed ? UpdateState.Offer(found) : UpdateState.None, retryable: false);
+                Fail(UpdateFailure.Withdrawn, stage, directory, afterwards: UpdateState.None, retryable: false);
+                return;
+            }
+
+            if (found != offered)
+            {
+                Fail(
+                    UpdateFailure.Superseded,
+                    stage,
+                    directory,
+                    afterwards: UpdateState.Offer(found),
+                    retryable: false,
+                    message: string.Format(Strings.Culture, CompositeFormat.Parse(Strings.UpdateErrorSuperseded), found));
                 return;
             }
 

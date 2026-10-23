@@ -829,7 +829,10 @@
     <value>Pagewing konnte das Update nicht laden. Prüfen Sie die Internetverbindung und versuchen Sie es erneut.</value>
   </data>
   <data name="UpdateErrorWithdrawn" xml:space="preserve">
-    <value>Das Update wurde zurückgezogen. Ihre Version bleibt, wie sie ist.</value>
+    <value>Dieses Update wird nicht mehr angeboten. Ihre Version bleibt, wie sie ist.</value>
+  </data>
+  <data name="UpdateErrorSuperseded" xml:space="preserve">
+    <value>Pagewing {0} hat dieses Update ersetzt. Schließen Sie dieses Fenster; die Schaltfläche „Aktualisieren“ bietet dann Pagewing {0} an.</value>
   </data>
   <data name="UpdateErrorRejected" xml:space="preserve">
     <value>Das Update hat die Prüfung der Signatur nicht bestanden und wurde abgelehnt. Ihre Version bleibt, wie sie ist.</value>

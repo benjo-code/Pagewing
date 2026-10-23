@@ -829,7 +829,10 @@
     <value>Pagewing could not download the update. Check the internet connection and try again.</value>
   </data>
   <data name="UpdateErrorWithdrawn" xml:space="preserve">
-    <value>The update was withdrawn. Your version stays as it is.</value>
+    <value>This update is no longer offered. Your version stays as it is.</value>
+  </data>
+  <data name="UpdateErrorSuperseded" xml:space="preserve">
+    <value>Pagewing {0} has replaced this update. Close this window; the Update button then offers Pagewing {0}.</value>
   </data>
   <data name="UpdateErrorRejected" xml:space="preserve">
     <value>The update failed the signature check and was refused. Your version stays as it is.</value>
