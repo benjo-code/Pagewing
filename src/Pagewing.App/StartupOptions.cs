@@ -1,3 +1,4 @@
+using System.Globalization;
 using Pagewing.Core.Distribution;
 
 namespace Pagewing.App;
@@ -24,7 +25,17 @@ namespace Pagewing.App;
 /// <param name="UnregisterFileTypes">Switch <c>--unregister-file-types[=user|machine]</c>, like <paramref name="RegisterFileTypes"/>.</param>
 /// <param name="RestoreSession">
 /// Hidden switch <c>--restore-session</c>, which the updater passes when it starts the new version: the windows and tabs
-/// of the session file (<c>SessionStore</c>) open again. Only then is the file read. Never set for a measurement.
+/// of the session file (<c>SessionStore</c>) open again. Only then is the file read. Never set for a measurement. With
+/// <paramref name="FinishUpdate"/> it tells the helper to restart Pagewing with it.
+/// </param>
+/// <param name="FinishUpdate">
+/// Hidden switch <c>--finish-update &lt;folder&gt;</c> (Windows), made absolute: the staging folder of a verified update,
+/// which a copy of Pagewing installs as the helper of the updater instead of starting normally. <see langword="null"/>
+/// without it, with a missing or empty value, and for a measurement.
+/// </param>
+/// <param name="AfterProcess">
+/// Hidden switch <c>--after-process &lt;id&gt;</c> of the helper: the process of the app that started it, which it waits
+/// for before it installs. <see langword="null"/> without it or for a value that is not a process number.
 /// </param>
 public sealed record StartupOptions(
     IReadOnlyList<string> Paths,
@@ -36,7 +47,9 @@ public sealed record StartupOptions(
     string? MeasureSettings = null,
     RegistrationScope? RegisterFileTypes = null,
     RegistrationScope? UnregisterFileTypes = null,
-    bool RestoreSession = false)
+    bool RestoreSession = false,
+    string? FinishUpdate = null,
+    int? AfterProcess = null)
 {
     /// <summary>Gets whether a hidden measurement switch was given (the run bypasses the single-instance election).</summary>
     public bool IsMeasurement => MeasureStartup is not null || MeasureSecond is not null || MeasureScroll is not null;
@@ -74,6 +87,8 @@ public sealed record StartupOptions(
         RegistrationScope? register = null;
         RegistrationScope? unregister = null;
         var restoreSession = false;
+        string? finishUpdate = null;
+        int? afterProcess = null;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -129,6 +144,13 @@ public sealed record StartupOptions(
                 case "--restore-session":
                     restoreSession = true;
                     break;
+                case "--finish-update" when i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal):
+                    var folder = args[++i];
+                    finishUpdate = string.IsNullOrWhiteSpace(folder) ? null : FullPathOrAsGiven(folder);
+                    break;
+                case "--after-process" when i + 1 < args.Length:
+                    afterProcess = int.TryParse(args[++i], NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 ? id : null;
+                    break;
                 case "--lang" when i + 1 < args.Length:
                     language = args[++i];
                     break;
@@ -137,8 +159,10 @@ public sealed record StartupOptions(
 
         var options = new StartupOptions(paths, measureStartup, measureSecond, measureScroll, language, measureZoom, measureSettings, register, unregister);
 
-        // A measurement never restores a session: it measures the start with its own file only.
-        return restoreSession && !options.IsMeasurement ? options with { RestoreSession = true } : options;
+        // A measurement never restores a session and is never the helper of the updater: it measures the start with its
+        // own file only.
+        return options.IsMeasurement ? options
+            : options with { RestoreSession = restoreSession, FinishUpdate = finishUpdate, AfterProcess = afterProcess };
     }
 
     // "--name" means the user scope, "--name=user|machine" the given one; an unknown scope counts as not given.

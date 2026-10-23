@@ -10,7 +10,8 @@ namespace Pagewing.App.ViewModels;
 /// <summary>
 /// The button "Update" in the title bar and its card "Pagewing X is available" in one window
 /// (<see cref="MainViewModel.Update"/>), or the progress window of the installation (<see cref="Views.UpdateWindow"/>,
-/// which has an instance of its own). Follows the coordinator of the process, which all windows share: the button shows
+/// which has an instance of its own; in the helper of the Windows updater it follows the installation of the helper, see
+/// <see cref="IUpdateFlow"/>). Follows the coordinator of the process, which all windows share: the button shows
 /// as long as the coordinator knows of an update, the card opens and closes per window. "Later" closes the card and keeps
 /// the button; "Install" starts the installation, once for the process, and asks for the progress window
 /// (<see cref="ProgressWindowRequested"/>), which the button brings back while it runs. A form that cannot update itself
@@ -30,7 +31,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         nameof(ShowsSize), nameof(FailureText), nameof(CanCancel), nameof(CanRetry), nameof(OffersDownloadPage),
     ];
 
-    private readonly UpdateCoordinator _coordinator;
+    private readonly IUpdateFlow _coordinator;
     private readonly Action<string> _requestLink;
     private UpdateState _state;
     private IReadOnlyList<UpdateStep> _steps = [];
@@ -38,11 +39,11 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     private bool _disposed;
 
     /// <summary>Creates the view model and starts following <paramref name="coordinator"/> until <see cref="Dispose"/>.</summary>
-    /// <param name="coordinator">The update check of the process.</param>
+    /// <param name="coordinator">The update check of the process (<see cref="UpdateCoordinator"/>), or the installation of the helper.</param>
     /// <param name="requestLink">
     /// Asks the user before an address is opened (<see cref="MainViewModel.RequestExternalLink"/>); never opens it itself.
     /// </param>
-    public UpdateViewModel(UpdateCoordinator coordinator, Action<string> requestLink)
+    public UpdateViewModel(IUpdateFlow coordinator, Action<string> requestLink)
     {
         ArgumentNullException.ThrowIfNull(coordinator);
         ArgumentNullException.ThrowIfNull(requestLink);
@@ -199,8 +200,8 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     /// <summary>Gets whether the failure points to the download page.</summary>
     public bool OffersDownloadPage => IsFailed && _coordinator.FailureOffersDownloadPage;
 
-    /// <summary>Gets the coordinator this view model follows (the progress window makes its own view model over it).</summary>
-    internal UpdateCoordinator Coordinator => _coordinator;
+    /// <summary>Gets the installation this view model follows (the progress window makes its own view model over it).</summary>
+    internal IUpdateFlow Coordinator => _coordinator;
 
     /// <summary>Gets what asks the user before an address is opened (for the view model of the progress window).</summary>
     internal Action<string> RequestLink => _requestLink;

@@ -40,6 +40,12 @@ public sealed record ApplyResult(bool IsRestarting, string? Message, bool Offers
 /// </summary>
 public interface IUpdateApplier
 {
-    /// <summary>Installs <paramref name="staged"/>. Throws only for cancellation; any other exception counts as a failure.</summary>
+    /// <summary>
+    /// Installs <paramref name="staged"/>. Throws only for cancellation, and only before it took over; any other exception
+    /// counts as a failure. Once it took over (it started a helper or replaced the program, and may already have ended the
+    /// app, which cancels <paramref name="ct"/>), it returns <see cref="ApplyResult.Restarting"/> and never throws. A
+    /// cancellation from this call leaves the staging folder in place (a helper may read it next; the next run removes
+    /// what is left); a failed result removes it.
+    /// </summary>
     Task<ApplyResult> ApplyAsync(StagedUpdate staged, CancellationToken ct);
 }

@@ -25,7 +25,9 @@ internal static partial class Program
     private static readonly TimeSpan MeasurementWatchdogGrace = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Startup order (startup path, keep it lean): parse the options; elect the single instance before Avalonia is
+    /// Startup order (startup path, keep it lean): parse the options; the switches that do something else than viewing
+    /// (<c>--register-file-types</c>, and the helper of the updater <c>--finish-update</c>, <see cref="RunUpdateHelper"/>)
+    /// branch off here, before the election; elect the single instance before Avalonia is
     /// loaded, and as a later launch hand the files over and exit; otherwise start opening the file of the command
     /// line at once (after an update, with <c>--restore-session</c>, the active file of the first window of the session,
     /// <see cref="LoadSession"/>), so PDFium loads on its own thread while Avalonia builds the window; read the settings (nothing
@@ -48,6 +50,13 @@ internal static partial class Program
         {
             // Installer and manual use; before Avalonia and the single-instance election, nothing else starts.
             return RunFileTypeRegistration(options);
+        }
+
+        if (OperatingSystem.IsWindows() && options.FinishUpdate is { } staging)
+        {
+            // The helper of the updater (a copy of the program, started by the app it replaces): before the single-instance
+            // election and without a document, Avalonia shows only its progress window.
+            return RunUpdateHelper(args, options, staging);
         }
 
         if (options.IsMeasurement)
@@ -135,6 +144,39 @@ internal static partial class Program
         sessionStore.Delete();
         var existing = snapshot.KeepFiles(fileExists);
         return existing.Windows.Count > 0 ? existing : null;
+    }
+
+    /// <summary>
+    /// The helper mode <c>--finish-update &lt;staging folder&gt;</c> (Windows, <see cref="Platform.Windows.WindowsUpdateHelper"/>):
+    /// reads the settings of the user (theme and language, never written), takes the keys compiled into the program
+    /// (<see cref="UpdateTrust.Keys"/>) and the running version as the installed one, and shows the progress window.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int RunUpdateHelper(string[] args, StartupOptions options, string staging)
+    {
+        var settings = UserSettings.Load();
+        if (ChooseUiCulture(options.Language, settings.Current.Language) is { } culture)
+        {
+            Strings.Culture = culture;
+        }
+
+        var config = UserDataPaths.ConfigDirectory();
+        var startup = new UpdateHelperStartup(settings, shutdown => new Platform.Windows.WindowsUpdateHelper(
+            new Platform.Windows.WindowsUpdateHelperSetup(
+                staging, config, UpdateTrust.Keys, PlatformUpdate.RunningVersion(), new Platform.Windows.SystemProcessLauncher(), shutdown)
+            {
+                AfterProcess = options.AfterProcess,
+                RestoreSession = options.RestoreSession,
+                Language = options.Language,
+            }));
+        var builder = AppBuilder.Configure(() => new App(startup)).UsePlatformDetect();
+        if (UseSoftwareRendering())
+        {
+            builder = builder.With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
+        }
+
+        return builder.StartWithClassicDesktopLifetime(args);
     }
 
     /// <summary>

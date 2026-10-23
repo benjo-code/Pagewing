@@ -395,7 +395,7 @@ public sealed class UpdateWindowTests : UpdateTestHost
         Click(main, Find<Button>(main, "UpdateButton"));
         Click(main, Find<Button>(Find<UpdateCard>(main, "UpdateCard"), "UpdateInstallButton"));
 
-        var coordinator = viewModel.Update!.Coordinator;
+        var coordinator = (UpdateCoordinator)viewModel.Update!.Coordinator;
         await WaitUntilAsync(main, () => UpdateWindow.For(coordinator) is not null);
         var window = UpdateWindow.For(coordinator)!;
         OwnWindow(window);

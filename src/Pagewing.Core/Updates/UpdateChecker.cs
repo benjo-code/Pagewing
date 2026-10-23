@@ -25,6 +25,9 @@ public sealed class UpdateChecker(
     /// <summary>How long fetching the manifest may take.</summary>
     public static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>Gets the running version, against which a manifest must be newer.</summary>
+    public UpdateVersion Current => current;
+
     /// <summary>
     /// What is already known without the network: the version remembered by the last check, if it is newer than the
     /// running one. Reads only <c>update.json</c>.

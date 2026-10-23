@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -13,14 +14,19 @@ namespace Pagewing.App.Views;
 /// to the front while it is open (<see cref="ShowFor"/>). It has a view model of its own over the coordinator and closes
 /// by itself when the installation ends without restarting (cancelled, or a failure closed); the user cannot close it
 /// while the installer works. While it is open the coordinator knows where it lies, for the window of the helper that
-/// takes its place (<see cref="UpdateCoordinator.ProgressWindowBounds"/>).
+/// takes its place (<see cref="UpdateCoordinator.ProgressWindowBounds"/>). The helper of the Windows updater shows the same
+/// window over its own installation, at that place (<see cref="ShowHelper"/>).
 /// </summary>
 public sealed partial class UpdateWindow : Window
 {
+    // The width the helper takes over from the progress window of the app, within sensible bounds.
+    private const double MinHelperWidth = 320;
+    private const double MaxHelperWidth = 1200;
+
     private static readonly ConditionalWeakTable<UpdateCoordinator, UpdateWindow> Shown = new();
 
     private UpdateViewModel? _viewModel;
-    private UpdateCoordinator? _coordinator;
+    private IUpdateFlow? _coordinator;
     private bool _closingByFlow;
 
     public UpdateWindow()
@@ -41,7 +47,11 @@ public sealed partial class UpdateWindow : Window
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(owner);
-        var coordinator = source.Coordinator;
+        if (source.Coordinator is not UpdateCoordinator coordinator)
+        {
+            return null;
+        }
+
         if (For(coordinator) is { } open)
         {
             open.Activate();
@@ -67,6 +77,48 @@ public sealed partial class UpdateWindow : Window
         return window;
     }
 
+    /// <summary>
+    /// Shows the window of the helper of the Windows updater over its installation (<paramref name="helper"/>), where the
+    /// progress window of the app was (<see cref="Core.Updates.UpdateRequest"/>: position in physical pixels, width in
+    /// device-independent pixels), or in the middle of the screen when that place is not known or not on a screen any
+    /// more. The helper ends with the window.
+    /// </summary>
+    internal static UpdateWindow ShowHelper(Platform.Windows.WindowsUpdateHelper helper)
+    {
+        ArgumentNullException.ThrowIfNull(helper);
+        var viewModel = new UpdateViewModel(helper, static _ => { });
+        var window = new UpdateWindow { DataContext = viewModel };
+        window.Attach(viewModel, helper);
+        if (helper.Request is { Left: { } left, Top: { } top } request
+            && window.Screens.ScreenFromPoint(new PixelPoint(left, top)) is not null)
+        {
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Position = new PixelPoint(left, top);
+            if (request.Width is >= MinHelperWidth and <= MaxHelperWidth)
+            {
+                window.Width = request.Width.Value;
+            }
+        }
+        else
+        {
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            window.Icon = App.LoadWindowIcon();
+        }
+
+        window.Show();
+        if (viewModel.IsFailed)
+        {
+            // Refused before it began (the folder or the request): the keys go to "Close".
+            Dispatcher.UIThread.Post(window.FocusFirstButton);
+        }
+
+        return window;
+    }
+
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -85,10 +137,10 @@ public sealed partial class UpdateWindow : Window
         base.OnClosed(e);
         if (_coordinator is { } coordinator)
         {
-            if (For(coordinator) == this)
+            if (coordinator is UpdateCoordinator shared && For(shared) == this)
             {
-                Shown.Remove(coordinator);
-                coordinator.ProgressWindowBounds = null;
+                Shown.Remove(shared);
+                shared.ProgressWindowBounds = null;
             }
 
             // Closed by the user: closing is "Cancel" during the download and "Close" after a failure.
@@ -106,12 +158,16 @@ public sealed partial class UpdateWindow : Window
         _coordinator = null;
     }
 
-    private void Attach(UpdateViewModel viewModel, UpdateCoordinator coordinator)
+    private void Attach(UpdateViewModel viewModel, IUpdateFlow coordinator)
     {
         _viewModel = viewModel;
         _coordinator = coordinator;
-        Shown.AddOrUpdate(coordinator, this);
-        coordinator.ProgressWindowBounds = () => (Position.X, Position.Y, ClientSize.Width, ClientSize.Height);
+        if (coordinator is UpdateCoordinator shared)
+        {
+            Shown.AddOrUpdate(shared, this);
+            shared.ProgressWindowBounds = () => (Position.X, Position.Y, ClientSize.Width, ClientSize.Height);
+        }
+
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
 

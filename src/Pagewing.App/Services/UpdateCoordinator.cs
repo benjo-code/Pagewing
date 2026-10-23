@@ -16,7 +16,7 @@ namespace Pagewing.App.Services;
 /// <param name="settings">The settings; only <see cref="AppSettings.UpdateCheck"/> decides whether <see cref="StartAsync"/> checks.</param>
 /// <param name="form">How the running program was installed; it decides how it can update itself.</param>
 /// <param name="install">What installing needs; without it the coordinator only checks and "Install" does nothing.</param>
-public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settings, PackageForm form, UpdateInstallSetup? install = null) : IDisposable
+public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settings, PackageForm form, UpdateInstallSetup? install = null) : IDisposable, IUpdateFlow
 {
     /// <summary>How long a download may go without receiving a byte before it counts as failed.</summary>
     public static readonly TimeSpan DownloadStallTimeout = TimeSpan.FromSeconds(60);
@@ -184,7 +184,14 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
             var ct = limit.Token;
 
             // Both on the pool: update.json is read there and the source does its work there; the UI thread only sets the result.
-            var known = await Task.Run(checker.Known, ct).WaitAsync(ct).ConfigureAwait(true);
+            // What earlier updates left behind goes first (UpdateStaging.DeleteOld).
+            var known = await Task.Run(
+                () =>
+                {
+                    DeleteOldStaging();
+                    return checker.Known();
+                },
+                ct).WaitAsync(ct).ConfigureAwait(true);
             Apply(known);
 
             var state = await Task.Run(() => CheckOffTheUiThreadAsync(force, ct), ct).WaitAsync(ct).ConfigureAwait(true);
@@ -290,7 +297,13 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
             // (3) Into a fresh staging folder, with a limit on how long no byte may arrive.
             SetState(new UpdateState(UpdateStage.Downloading, offered, file, 0, null));
             var target = Path.Combine(directory, file.Name);
-            await Task.Run(() => PrepareStaging(directory), ct).ConfigureAwait(true);
+            await Task.Run(
+                () =>
+                {
+                    DeleteOldStaging();
+                    PrepareStaging(directory);
+                },
+                ct).ConfigureAwait(true);
             if (!await DownloadAsync(setup, offered, file, target, attempt, ct).ConfigureAwait(true))
             {
                 Fail(UpdateFailure.Unreachable, stage, directory, afterwards: UpdateState.Offer(offered), retryable: true);
@@ -343,8 +356,14 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // "Cancel", or the app ends: nothing of the download stays, the running version was never touched.
-            DeleteStaging(directory);
+            // "Cancel", or the app ends: nothing of the download stays, the running version was never touched. Once the
+            // installer has it, the staging folder belongs to the installer: it may have ended the app (which cancels this)
+            // and its helper reads the folder next; the next run removes what is left (UpdateStaging.DeleteOld).
+            if (stage != UpdateStage.Installing)
+            {
+                DeleteStaging(directory);
+            }
+
             if (!_disposed)
             {
                 SetState(UpdateState.Offer(offered));
@@ -392,6 +411,15 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             return false;
+        }
+    }
+
+    // Never throws; without an installer setup there is no staging folder to clean.
+    private void DeleteOldStaging()
+    {
+        if (install is { } setup)
+        {
+            UpdateStaging.DeleteOld(setup.ConfigDirectory, checker.Current, setup.Clock.GetUtcNow());
         }
     }
 

@@ -1,3 +1,4 @@
+using Pagewing.App.Platform.Windows;
 using Pagewing.Core;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Updates;
@@ -12,7 +13,8 @@ internal static class PlatformUpdate
     /// status file of the user and its folder for downloaded updates. Making it creates the HTTP client but sends nothing.
     /// </summary>
     /// <param name="settings">The settings of the app.</param>
-    public static UpdateCoordinator Create(UserSettings settings)
+    /// <param name="host">What an installer needs of the app (its session, ending it); without it nothing installs.</param>
+    public static UpdateCoordinator Create(UserSettings settings, UpdateAppHost? host = null)
     {
         var processPath = Environment.ProcessPath;
         var form = PackageFormDetector.Detect(OperatingSystem.IsWindows(), processPath, File.Exists, Environment.GetEnvironmentVariable);
@@ -20,7 +22,7 @@ internal static class PlatformUpdate
         var store = new UpdateStatusStore(Path.Combine(config, UpdateStatusStore.FileName));
         var source = GitHubUpdateSource.Create();
         var checker = new UpdateChecker(source, store, TimeProvider.System, RunningVersion(), UpdateTrust.Keys);
-        var install = new UpdateInstallSetup(source, config, CreateApplier, TimeProvider.System)
+        var install = new UpdateInstallSetup(source, config, () => CreateApplier(form, processPath, config, host), TimeProvider.System)
         {
             ProcessPath = processPath,
             TargetDirectory = TargetDirectory(form, processPath, Environment.GetEnvironmentVariable("APPIMAGE")),
@@ -34,18 +36,46 @@ internal static class PlatformUpdate
     /// </summary>
     /// <param name="isMeasurement">Whether this is a measurement run.</param>
     /// <param name="settings">The settings of the app.</param>
-    public static Func<UpdateCoordinator?>? FactoryFor(bool isMeasurement, UserSettings settings)
+    /// <param name="host">What an installer needs of the app; without it the coordinator checks and downloads, but installs nothing.</param>
+    public static Func<UpdateCoordinator?>? FactoryFor(bool isMeasurement, UserSettings settings, UpdateAppHost? host = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        return isMeasurement ? null : () => Create(settings);
+        return isMeasurement ? null : () => Create(settings, host);
     }
 
     /// <summary>
-    /// The installer of this system, made when a verified update is ready. None yet: the Windows installer and the AppImage
-    /// follow with tasks 10 and 11 of Milestone 8.1; until then the progress window says that this installation cannot
-    /// install itself and points to the download page.
+    /// The installer of this system, made when a verified update is ready: on Windows for an installation of the setup
+    /// program the helper copy (<see cref="WindowsUpdateInstaller"/>). The AppImage follows with task 11 of Milestone 8.1;
+    /// every other form gets none, and the progress window points to the download page.
     /// </summary>
-    private static IUpdateApplier? CreateApplier() => null;
+    private static WindowsUpdateInstaller? CreateApplier(PackageForm form, string? processPath, string config, UpdateAppHost? host)
+    {
+        if (!OperatingSystem.IsWindows() || form != PackageForm.WindowsInstaller || host is null
+            || Path.GetDirectoryName(processPath) is not { Length: > 0 } programDirectory)
+        {
+            return null;
+        }
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(localAppData))
+        {
+            localAppData = Path.GetTempPath();
+        }
+
+        return new WindowsUpdateInstaller(new WindowsUpdateInstallerSetup(
+            programDirectory,
+            WindowsUpdateInstaller.UpdaterDirectoryIn(localAppData),
+            config,
+            Environment.ProcessId,
+            host.CaptureSession,
+            host.Shutdown,
+            new SystemProcessLauncher(),
+            TimeProvider.System)
+        {
+            // Only a --lang of the command line goes on; the setting is read again by the helper and the new version.
+            Language = StartupOptions.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray()).Language,
+        });
+    }
 
     /// <summary>Where the program is installed: the folder of the AppImage for an AppImage, else the folder of the executable.</summary>
     private static string? TargetDirectory(PackageForm form, string? processPath, string? appImage)
@@ -65,3 +95,8 @@ internal static class PlatformUpdate
         return UpdateVersion.TryParse(dash < 0 ? text : text[..dash], out var version) ? version : default;
     }
 }
+
+/// <summary>What an installer of an update needs of the app: the windows and tabs to bring back, and the way to end the app.</summary>
+/// <param name="CaptureSession">The session of all windows (<see cref="Workspace.CaptureSession"/>), on the UI thread.</param>
+/// <param name="Shutdown">Ends the app once the installer took over.</param>
+public sealed record UpdateAppHost(Func<SessionSnapshot> CaptureSession, IAppShutdown Shutdown);

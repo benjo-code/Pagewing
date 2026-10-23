@@ -420,6 +420,51 @@ public sealed class UpdateFlowTests : UpdateTestHost
     }
 
     [AvaloniaFact]
+    public async Task StagingSurvivesAnApplierThatShutsTheAppDown()
+    {
+        var coordinator = await OfferedAsync();
+
+        // The installer ends the app (the workspace disposes the coordinator) and then reports the cancellation: the helper
+        // it started reads the staging folder, which must stay.
+        Applier.OnApply = _ => coordinator.Dispose();
+        Applier.Throws = new OperationCanceledException();
+
+        await coordinator.BeginInstallAsync();
+
+        Assert.True(File.Exists(Path.Combine(StagingOf("0.2.0"), UpdateStaging.RequestFileName)));
+        Assert.True(File.Exists(Path.Combine(StagingOf("0.2.0"), "Pagewing-0.2.0-win-x64-setup.exe")));
+    }
+
+    [AvaloniaFact]
+    public async Task OldStagingFoldersAreCleanedUp()
+    {
+        var now = new DateTimeOffset(2026, 10, 23, 12, 0, 0, TimeSpan.Zero);
+        var updates = Path.Combine(ConfigDirectory, UpdateStaging.DirectoryName);
+        var ages = new Dictionary<string, TimeSpan>
+        {
+            ["0.0.9"] = TimeSpan.FromHours(1),  // older than the running 0.1.0
+            ["0.1.0"] = TimeSpan.FromHours(1),  // the running one
+            ["0.3.0"] = TimeSpan.FromHours(1),  // newer and fresh: a helper may still use it
+            ["0.4.0"] = TimeSpan.FromDays(2),   // newer, but left behind for more than a day
+            ["leftover"] = TimeSpan.FromHours(1),
+        };
+        foreach (var (name, age) in ages)
+        {
+            var folder = Path.Combine(updates, name);
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "request.json"), "{}");
+            File.SetLastWriteTimeUtc(Path.Combine(folder, "request.json"), (now - age).UtcDateTime);
+            Directory.SetLastWriteTimeUtc(folder, (now - age).UtcDateTime);
+        }
+
+        Source.Offer("0.2.0");
+        var coordinator = NewCoordinator(clock: new FixedClock(now));
+        await coordinator.CheckNowAsync();
+
+        Assert.Equal("0.3.0", Path.GetFileName(Assert.Single(Directory.EnumerateDirectories(updates))));
+    }
+
+    [AvaloniaFact]
     public async Task AThrowingWindowDoesNotStopTheOthersFromHearing()
     {
         Source.Offer("0.2.0");
@@ -449,6 +494,11 @@ public sealed class UpdateFlowTests : UpdateTestHost
                 : fake.Content;
             return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(body) });
         }
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     /// <summary>A file on a disk that is full after the first write while <paramref name="full"/> says so.</summary>

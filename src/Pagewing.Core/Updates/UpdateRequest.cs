@@ -19,9 +19,57 @@ public static class UpdateStaging
     /// <summary>The request for the installer (<see cref="UpdateRequest"/>).</summary>
     public const string RequestFileName = "request.json";
 
+    /// <summary>How long a staging folder of a newer version may stay before it counts as left behind.</summary>
+    public static readonly TimeSpan MaxAge = TimeSpan.FromDays(1);
+
     /// <summary>Gets the staging folder of <paramref name="version"/> in <paramref name="configDirectory"/>.</summary>
     public static string DirectoryFor(string configDirectory, UpdateVersion version) =>
         Path.Combine(configDirectory, DirectoryName, version.ToString());
+
+    /// <summary>
+    /// Deletes what earlier updates left in the <c>updates</c> folder: every folder that is not named by a version newer
+    /// than <paramref name="running"/> (installed already, or not ours), and every folder last written more than
+    /// <see cref="MaxAge"/> before <paramref name="now"/>. A fresh folder of a newer version stays: the helper of the
+    /// updater may still use it (a failed installation waits with "Try again"). Never throws; what cannot be deleted now
+    /// is tried again the next time.
+    /// </summary>
+    public static void DeleteOld(string configDirectory, UpdateVersion running, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(configDirectory);
+        try
+        {
+            var updates = Path.Combine(configDirectory, DirectoryName);
+            if (!Directory.Exists(updates))
+            {
+                return;
+            }
+
+            foreach (var folder in Directory.EnumerateDirectories(updates))
+            {
+                var newer = UpdateVersion.TryParse(Path.GetFileName(folder), out var version) && version > running;
+                if (!newer || now - Directory.GetLastWriteTimeUtc(folder) > MaxAge)
+                {
+                    TryDelete(folder);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // Cleaning up is a courtesy; the next run tries again.
+        }
+    }
+
+    private static void TryDelete(string folder)
+    {
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // In use or not ours to delete: left for the next run.
+        }
+    }
 }
 
 /// <summary>
