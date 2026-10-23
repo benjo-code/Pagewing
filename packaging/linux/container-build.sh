@@ -27,7 +27,7 @@ export AVALONIA_TELEMETRY_OPTOUT=1
 export HOME=/tmp/home XDG_CACHE_HOME=/tmp/home/.cache
 mkdir -p "$HOME"
 
-ldd --version | head -1
+ldd --version | sed -n 1p
 dotnet --version
 
 # The self-test of tools/package.cs runs on the host (release.yml): jammy's squashfs-tools 4.5 are older than the 4.6

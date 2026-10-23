@@ -2632,6 +2632,8 @@ static class SelfTest
         Expect("container: Arbeitsordner geht auch nach Abbruch zurueck (if: always() mit chown)",
             Regex.IsMatch(yml, @"name: Give the workspace back to the runner user \(Linux\)\s+if: always\(\)\s+run: \|[\s\S]*?chown -R"), true);
         Expect("container: Selbsttest des Pakettools laeuft in beiden Jobs auf dem Host", Regex.Count(yml, "name: Self-test of the packaging tool"), 2);
+        Expect("container: container-build.sh hat keine Pipe nach head (pipefail macht daraus Exit 141)",
+            Regex.IsMatch(File.ReadAllText(container), @"\|\s*head\b"), false);
         Expect("container: container-build.sh startet den Selbsttest des Pakettools nicht",
             File.ReadAllText(container).Contains("package.cs -- selftest", StringComparison.Ordinal), false);
     }
