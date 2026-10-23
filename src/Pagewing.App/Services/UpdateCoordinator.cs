@@ -30,6 +30,9 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
     /// </summary>
     public UpdateState State { get; private set; } = UpdateState.None;
 
+    /// <summary>Gets how many handlers follow <see cref="Changed"/> (one per open window that follows the coordinator).</summary>
+    internal int ListenerCount => Changed?.GetInvocationList().Length ?? 0;
+
     /// <summary>Gets how the running program was installed.</summary>
     public PackageForm Form => form;
 

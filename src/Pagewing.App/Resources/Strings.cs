@@ -232,6 +232,17 @@ public static class Strings
     public static string DefaultAppNotAvailable => Get("DefaultAppNotAvailable");
     public static string CommandSetDefaultApp => Get("CommandSetDefaultApp");
     public static string CommandCheckForUpdates => Get("CommandCheckForUpdates");
+    public static string UpdateButton => Get("UpdateButton");
+    public static string UpdateButtonName => Get("UpdateButtonName");
+    public static string UpdateCardTitle => Get("UpdateCardTitle");
+    public static string UpdateCardHave => Get("UpdateCardHave");
+    public static string UpdateCardInstallText => Get("UpdateCardInstallText");
+    public static string UpdateInstall => Get("UpdateInstall");
+    public static string UpdateLater => Get("UpdateLater");
+    public static string UpdateDownloadPage => Get("UpdateDownloadPage");
+    public static string UpdateHintDeb => Get("UpdateHintDeb");
+    public static string UpdateHintPortable => Get("UpdateHintPortable");
+    public static string UpdateHintUnknown => Get("UpdateHintUnknown");
     public static string PrintTitle => Get("PrintTitle");
     public static string PrintPrinter => Get("PrintPrinter");
     public static string PrintSearching => Get("PrintSearching");

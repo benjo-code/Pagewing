@@ -732,4 +732,37 @@
   <data name="CommandCheckForUpdates" xml:space="preserve">
     <value>Check for updates</value>
   </data>
+  <data name="UpdateButton" xml:space="preserve">
+    <value>Update</value>
+  </data>
+  <data name="UpdateButtonName" xml:space="preserve">
+    <value>Update available</value>
+  </data>
+  <data name="UpdateCardTitle" xml:space="preserve">
+    <value>Pagewing {0} is available</value>
+  </data>
+  <data name="UpdateCardHave" xml:space="preserve">
+    <value>You have {0}.</value>
+  </data>
+  <data name="UpdateCardInstallText" xml:space="preserve">
+    <value>Pagewing downloads the update, installs it and then reopens your tabs.</value>
+  </data>
+  <data name="UpdateInstall" xml:space="preserve">
+    <value>Install</value>
+  </data>
+  <data name="UpdateLater" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="UpdateDownloadPage" xml:space="preserve">
+    <value>Open download page</value>
+  </data>
+  <data name="UpdateHintDeb" xml:space="preserve">
+    <value>Pagewing was installed from the .deb package and cannot replace it itself. The new package is on the download page.</value>
+  </data>
+  <data name="UpdateHintPortable" xml:space="preserve">
+    <value>The portable version does not update itself. The new archive is on the download page.</value>
+  </data>
+  <data name="UpdateHintUnknown" xml:space="preserve">
+    <value>Pagewing cannot update this installation itself. The new version is on the download page.</value>
+  </data>
 </root>

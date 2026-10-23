@@ -25,6 +25,12 @@ public static class UpdateTrust
     /// <summary>The address of the newest stable release (GitHub lists no pre-releases or drafts there).</summary>
     public static string ReleasesLatestUrl => "https://api.github.com/repos/benjo-code/Pagewing/releases/latest";
 
+    /// <summary>
+    /// The page of the newest release, where a form that cannot update itself (the Debian package, the portable archive)
+    /// gets the new version by hand; it is opened only through the confirmation card of external addresses.
+    /// </summary>
+    public static string ReleasesPageUrl => "https://github.com/benjo-code/Pagewing/releases/latest";
+
     /// <summary>The address the release files are below; a file is <c>&lt;base&gt;/&lt;tag&gt;/&lt;name&gt;</c>.</summary>
     public static string DownloadBaseUrl => "https://github.com/benjo-code/Pagewing/releases/download";
 }

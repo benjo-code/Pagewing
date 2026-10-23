@@ -1,13 +1,15 @@
 using System.ComponentModel;
+using Avalonia.Controls;
 using Avalonia.Input;
 using Pagewing.App.ViewModels;
 
 namespace Pagewing.App.Views;
 
 /// <summary>
-/// The card that asks before an address of the document is opened: shown over the document area while
-/// <see cref="MainViewModel.PendingLink"/> holds one. It is made when the first address asks for it, so nothing of it is
-/// built in the startup path.
+/// The card that asks before an address is opened: shown over the document area while
+/// <see cref="MainViewModel.PendingLink"/> holds one, or over the start screen when the window has no tab (the download
+/// page of the card "Update", which can be opened there too). It is made when the first address asks for it, so nothing
+/// of it is built in the startup path.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -40,7 +42,9 @@ public sealed partial class MainWindow
     {
         if (_viewModel?.PendingLink is { } pending)
         {
-            (_linkCard ??= CreateLinkCard()).Show(pending);
+            var linkCard = _linkCard ??= new LinkConfirmCard { Name = "LinkConfirmCard" };
+            PlaceLinkCard(linkCard, _viewModel.HasTabs);
+            linkCard.Show(pending);
             return;
         }
 
@@ -58,10 +62,18 @@ public sealed partial class MainWindow
         }
     }
 
-    private LinkConfirmCard CreateLinkCard()
+    // Over the document area of the active tab, or without a tab over the whole work area (the start screen).
+    private void PlaceLinkCard(LinkConfirmCard card, bool hasTabs)
     {
-        var card = new LinkConfirmCard { Name = "LinkConfirmCard" };
-        DocumentAreaLayers.Children.Add(card);
-        return card;
+        Panel host = hasTabs ? DocumentAreaLayers : WorkArea;
+        if (ReferenceEquals(card.Parent, host))
+        {
+            return;
+        }
+
+        (card.Parent as Panel)?.Children.Remove(card);
+        Grid.SetColumnSpan(card, hasTabs ? 1 : 3);
+        card.ZIndex = hasTabs ? 0 : 3;
+        host.Children.Add(card);
     }
 }

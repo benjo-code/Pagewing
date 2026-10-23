@@ -90,6 +90,7 @@ public sealed partial class MainWindow : Window
         AttachOverlays(old, _viewModel);
         AttachPrint(old, _viewModel);
         AttachDefaultApp(old, _viewModel);
+        AttachUpdate(old, _viewModel);
     }
 
     /// <summary>

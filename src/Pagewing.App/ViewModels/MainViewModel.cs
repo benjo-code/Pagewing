@@ -837,6 +837,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _settingsCard?.OnClosed();
         DisposePrinting();
         DisposeDefaultApp();
+        DisposeUpdate();
         Settings.Changed -= OnSettingsChanged;
         if (_recent is not null)
         {

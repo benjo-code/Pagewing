@@ -55,23 +55,23 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
     /// <summary>Disposes <paramref name="item"/> when the test ends, before the windows of <c>Track</c> are closed.</summary>
     protected void Own(IDisposable item) => _owned.Add(item);
 
-    protected UpdateCoordinator NewCoordinator(UserSettings? settings = null, TimeProvider? clock = null)
+    protected UpdateCoordinator NewCoordinator(UserSettings? settings = null, TimeProvider? clock = null, PackageForm form = PackageForm.WindowsInstaller)
     {
         Directory.CreateDirectory(_directory);
         var checker = new UpdateChecker(Source, new UpdateStatusStore(StatusPath), clock ?? TimeProvider.System, Running, Source.Keys);
-        var coordinator = new UpdateCoordinator(checker, settings ?? UserSettings.Detached(), PackageForm.WindowsInstaller);
+        var coordinator = new UpdateCoordinator(checker, settings ?? UserSettings.Detached(), form);
         Own(coordinator);
         return coordinator;
     }
 
     /// <summary>Gets a factory that makes one coordinator over <see cref="Source"/> and counts the times it is asked.</summary>
-    protected Func<UpdateCoordinator?> CountingFactory(UserSettings? settings = null)
+    protected Func<UpdateCoordinator?> CountingFactory(UserSettings? settings = null, PackageForm form = PackageForm.WindowsInstaller)
     {
         UpdateCoordinator? made = null;
         return () =>
         {
             CoordinatorsMade++;
-            return made ??= NewCoordinator(settings);
+            return made ??= NewCoordinator(settings, form: form);
         };
     }
 
@@ -80,11 +80,13 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
         string? file = "text-basic.pdf",
         UserSettings? settings = null,
         Func<UpdateCoordinator?>? factory = null,
-        Action<MainViewModel>? beforeShow = null)
+        Action<MainViewModel>? beforeShow = null,
+        double width = 1024,
+        bool windowsTitleBar = true)
     {
         var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker(), settings ?? UserSettings.Detached())
         {
-            IsWindowsTitleBar = true,
+            IsWindowsTitleBar = windowsTitleBar,
             UpdateCoordinatorFactory = factory ?? CountingFactory(settings),
         };
 
@@ -94,7 +96,7 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
         }
 
         beforeShow?.Invoke(viewModel);
-        var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720 };
+        var window = new MainWindow { DataContext = viewModel, Width = width, Height = 720 };
         Track(window, viewModel);
         LastWindow = window;
         window.Show();
