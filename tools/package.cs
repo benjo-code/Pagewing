@@ -9,6 +9,10 @@
 //   dotnet run tools/package.cs -- installer --layout <dir> --version <x.y.z> --out <file> [--iscc <ISCC.exe>] [--repo <root>]   (Windows)
 //   dotnet run tools/package.cs -- installer-smoke <setup.exe> [--repo <root>]          (Windows)
 //   dotnet run tools/package.cs -- update-smoke <setup-old.exe> <setup-new.exe> --key <test-key.pem> [--key-id <id>]   (Windows, test build)
+//   dotnet run tools/package.cs -- update-keygen --id <id> --private-out <file>   (the owner, once; never in a repository)
+//   dotnet run tools/package.cs -- update-manifest --version <x.y.z> --sums <SHA256SUMS-windows.txt> <SHA256SUMS-linux.txt> --sizes <assets.json> --out <update-manifest.json>
+//   dotnet run tools/package.cs -- update-sign --manifest <file> --key-env PAGEWING_UPDATE_SIGNING_KEY --id <id> --out <file.sig> [--source <UpdateTrust.cs>]
+//   dotnet run tools/package.cs -- update-verify --manifest <file> --sig <file> (--keys-from-source | --source <file>)
 //   dotnet run tools/package.cs -- deb --layout <dir> --version <x.y.z> --out <pagewing_x.y.z_amd64.deb> [--repo <root>]   (Linux)
 //   dotnet run tools/package.cs -- deb-smoke <file.deb> [--repo <root>]                  (Linux)
 //   dotnet run tools/package.cs -- runtime-fetch [--out <file>]                         (Linux)
@@ -38,6 +42,10 @@ static class Cli
         "  installer --layout <Ordner> --version <x.y.z> --out <Datei> [--iscc <ISCC.exe>]   baut Pagewing-<Version>-win-x64-setup.exe (Windows)\n" +
         "  installer-smoke <Setup.exe>                                       installiert still, prueft, installiert erneut, deinstalliert (Windows)\n" +
         "  update-smoke <Setup-alt.exe> <Setup-neu.exe> --key <Testschluessel.pem> [--key-id <Kennung>]   Update ueber den Helfermodus (Windows, Testaufbau)\n" +
+        "  update-keygen --id <Kennung> --private-out <Datei>                erzeugt den Signaturschluessel: privat nur in die Datei, oeffentlich als Eintrag fuer UpdateTrust.Keys\n" +
+        "  update-manifest --version <x.y.z> --sums <SHA256SUMS-windows.txt> <SHA256SUMS-linux.txt> --sizes <assets.json> --out <Datei>   Update-Manifest des Releases\n" +
+        "  update-sign --manifest <Datei> --key-env <Variable> --id <Kennung> --out <Datei.sig> [--source <UpdateTrust.cs>]   signiert (Schluessel nur aus der Umgebung) und prueft\n" +
+        "  update-verify --manifest <Datei> --sig <Datei> (--keys-from-source | --source <Datei>)   prueft Signatur und Inhalt wie die App\n" +
         "  deb --layout <Ordner> --version <x.y.z> --out <Datei>             baut pagewing_<Version>_amd64.deb (Linux, dpkg-deb)\n" +
         "  deb-smoke <Datei.deb>                                             entpackt, prueft Starter, Symlink, ruft die CLI auf, lintian/desktop-file-validate wenn vorhanden (Linux)\n" +
         "  runtime-fetch [--out <Datei>]                                     laedt die type2-Runtime (feste Version, SHA-256 geprueft) nach ~/.cache/PagewingBuildTools\n" +
@@ -57,6 +65,10 @@ static class Cli
         ["installer"] = Installer.Run,
         ["installer-smoke"] = InstallerSmoke.Run,
         ["update-smoke"] = UpdateSmoke.Run,
+        ["update-keygen"] = UpdateKeygen.Run,
+        ["update-manifest"] = UpdateManifestCommand.Run,
+        ["update-sign"] = UpdateSign.Run,
+        ["update-verify"] = UpdateVerify.Run,
         ["deb"] = Deb.Run,
         ["deb-smoke"] = DebSmoke.Run,
         ["runtime-fetch"] = RuntimeFetch.Run,
@@ -1665,6 +1677,693 @@ static partial class UpdateSmoke
         File.Exists(exe) ? FileVersionInfo.GetVersionInfo(exe).ProductVersion : null;
 }
 
+// The update manifest of a release (Milestone 8.1) as Pagewing.Core.Updates reads it: UpdateManifest/UpdateFile
+// (camelCase JSON), ManifestVerifier (checks). The tool is a script and cannot reference the app; the rules below are
+// a copy, and testdata/updates plus ReleaseToolTests (Core) prove that the app accepts what the tool writes.
+static partial class UpdateManifestRules
+{
+    public const int Format = 1;
+
+    // ManifestVerifier.MaxFileSize (1 GiB) and MaxFiles.
+    public const long MaxFileSize = 1L << 30;
+    private const int MaxFiles = 64;
+
+    // UpdateFileKinds.All in their order, with the release file name of a version (packaging/README.md, "Dateinamen").
+    public static readonly (string Kind, Func<string, string> Name)[] Kinds =
+    [
+        ("win-x64-setup", v => $"Pagewing-{v}-win-x64-setup.exe"),
+        ("win-x64-portable", v => $"Pagewing-{v}-win-x64-portable.zip"),
+        ("linux-appimage", v => $"Pagewing-{v}-x86_64.AppImage"),
+        ("linux-deb", v => $"pagewing_{v}_amd64.deb"),
+    ];
+
+    // The endings that make a release file one of the known kinds; a file with such an ending but another version is an
+    // error, every other file (source archives, checksums) is not part of the manifest.
+    public static readonly string[] KnownEndings = ["-win-x64-setup.exe", "-win-x64-portable.zip", "-x86_64.AppImage", "_amd64.deb"];
+
+    // UpdateVersion.TryParse without the "v": the app reads only stable X.Y.Z versions.
+    [GeneratedRegex(@"^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\z")]
+    public static partial Regex StableVersion();
+
+    // ManifestVerifier.SafeFileName and Sha256Hex.
+    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._+~-]{0,127}\z")]
+    public static partial Regex SafeFileName();
+
+    [GeneratedRegex(@"^[0-9A-Fa-f]{64}\z")]
+    private static partial Regex Sha256Hex();
+
+    // Compact JSON, no line breaks (nothing for git or an editor to convert; the signature is over the raw bytes).
+    public static byte[] Write(string version, IEnumerable<(string Kind, string Name, long Size, string Sha256)> files)
+    {
+        using var buffer = new MemoryStream();
+        using (var json = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            json.WriteStartObject();
+            json.WriteNumber("format", Format);
+            json.WriteString("version", version);
+            json.WriteStartArray("files");
+            foreach (var (kind, name, size, sha256) in files)
+            {
+                json.WriteStartObject();
+                json.WriteString("kind", kind);
+                json.WriteString("name", name);
+                json.WriteNumber("size", size);
+                json.WriteString("sha256", sha256);
+                json.WriteEndObject();
+            }
+
+            json.WriteEndArray();
+            json.WriteEndObject();
+        }
+
+        return buffer.ToArray();
+    }
+
+    // null when the bytes are a manifest the app reads (apart from "newer than the running version"); else why not.
+    public static string? Problem(byte[] manifest)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(manifest, new System.Text.Json.JsonDocumentOptions
+            {
+                CommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+                AllowTrailingCommas = true,
+            });
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object ||
+                !root.TryGetProperty("format", out var format) || !format.TryGetInt32(out var f) || f != Format)
+            {
+                return $"format ist nicht {Format}";
+            }
+
+            var version = root.TryGetProperty("version", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString()! : string.Empty;
+            if (!StableVersion().IsMatch(version.StartsWith('v') ? version[1..] : version))
+            {
+                return $"version ist keine Version X.Y.Z: '{version}'";
+            }
+
+            if (!root.TryGetProperty("files", out var files) || files.ValueKind != System.Text.Json.JsonValueKind.Array ||
+                files.GetArrayLength() is 0 or > MaxFiles)
+            {
+                return $"files fehlt, ist leer oder hat mehr als {MaxFiles} Eintraege";
+            }
+
+            var kinds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var file in files.EnumerateArray())
+            {
+                var kind = file.ValueKind == System.Text.Json.JsonValueKind.Object && file.TryGetProperty("kind", out var k) &&
+                    k.ValueKind == System.Text.Json.JsonValueKind.String ? k.GetString()! : null;
+                if (kind is null)
+                {
+                    return "ein Eintrag in files hat kein kind";
+                }
+
+                if (!Kinds.Any(x => x.Kind == kind))
+                {
+                    continue; // a later kind: the app skips it
+                }
+
+                var name = file.TryGetProperty("name", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.String ? n.GetString()! : string.Empty;
+                var sha = file.TryGetProperty("sha256", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String ? s.GetString()! : string.Empty;
+                if (!kinds.Add(kind) || !Sha256Hex().IsMatch(sha))
+                {
+                    return $"{kind}: doppelt oder ohne gueltige sha256";
+                }
+
+                if (!SafeFileName().IsMatch(name))
+                {
+                    return $"{kind}: kein einfacher Dateiname: '{name}'";
+                }
+
+                if (!file.TryGetProperty("size", out var size) || !size.TryGetInt64(out var bytes) || bytes is <= 0 or > MaxFileSize)
+                {
+                    return $"{kind}: Groesse fehlt, ist 0 oder groesser als 1 GiB";
+                }
+            }
+
+            return null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return "kein gueltiges JSON";
+        }
+    }
+}
+
+// The public keys of a C# file such as src/Pagewing.Core/Updates/UpdateTrust.cs: every "new UpdateKey(<id>,
+// Convert.FromBase64String("<SPKI>"))", the id as a string or as a "const string" of the same file. The placeholder of
+// UpdateTrust.cs is never a usable key: its private half was discarded, and a release must not be signed for it.
+static partial class TrustSource
+{
+    public const string DefaultPath = "src/Pagewing.Core/Updates/UpdateTrust.cs";
+    public const string PlaceholderId = "placeholder";
+    public const string PlaceholderKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfEyCOMU4IJ14osOpBY3eFP4/fxK726BrpSdQoUOGeMJ+2DsQaDm4maWvFaZ22iI1oti6dIVOk7thJ8J5Lkp59Q==";
+
+    [GeneratedRegex(@"new\s+UpdateKey\(\s*(?:""(?<id>[^""\\]*)""|(?<const>[A-Za-z_][A-Za-z0-9_]*))\s*,\s*Convert\.FromBase64String\(\s*""(?<key>[A-Za-z0-9+/=]+)""\s*\)\s*\)")]
+    private static partial Regex KeyEntry();
+
+    [GeneratedRegex(@"\bnew\s+UpdateKey\(")]
+    private static partial Regex AnyKeyEntry();
+
+    // The usable keys (id -> SPKI), how many placeholder entries were skipped, or why the file cannot be read.
+    public static (Dictionary<string, byte[]> Keys, int Placeholders, string? Problem) Read(string path)
+    {
+        var keys = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        if (!File.Exists(path))
+        {
+            return (keys, 0, $"Datei fehlt: {path}");
+        }
+
+        var text = File.ReadAllText(path);
+
+        // Conditional compilation (a test build with other keys) would make the text say something else than the
+        // release build; refuse it instead of guessing which branch counts.
+        if (Regex.IsMatch(text, @"(?m)^\s*#\s*if\b"))
+        {
+            return (keys, 0, $"{path}: bedingte Uebersetzung (#if) wird nicht unterstuetzt, die Schluessel waeren nicht eindeutig");
+        }
+
+        var entries = KeyEntry().Matches(text);
+        if (entries.Count == 0 || entries.Count != AnyKeyEntry().Count(text))
+        {
+            return (keys, 0, $"{path}: kein oder ein nicht lesbarer Eintrag new UpdateKey(\"<Kennung>\", Convert.FromBase64String(\"<Schluessel>\"))");
+        }
+
+        var placeholders = 0;
+        foreach (Match entry in entries)
+        {
+            var id = entry.Groups["id"].Success ? entry.Groups["id"].Value : Constant(text, entry.Groups["const"].Value);
+            if (string.IsNullOrEmpty(id) || id.Contains(':'))
+            {
+                return (keys, 0, $"{path}: Kennung fehlt, ist leer, enthaelt ':' oder ist keine Konstante der Datei: {entry.Groups["const"].Value}");
+            }
+
+            var base64 = entry.Groups["key"].Value;
+            if (id == PlaceholderId || base64 == PlaceholderKey)
+            {
+                placeholders++;
+                continue;
+            }
+
+            byte[] spki;
+            try
+            {
+                spki = Convert.FromBase64String(base64);
+                using var key = ECDsa.Create();
+                key.ImportSubjectPublicKeyInfo(spki, out var read);
+                if (read != spki.Length || key.KeySize != 256)
+                {
+                    return (keys, 0, $"{path}: Schluessel {id} ist kein oeffentlicher P-256-Schluessel");
+                }
+            }
+            catch (Exception e) when (e is FormatException or CryptographicException)
+            {
+                return (keys, 0, $"{path}: Schluessel {id} ist kein oeffentlicher P-256-Schluessel");
+            }
+
+            if (!keys.TryAdd(id, spki))
+            {
+                return (keys, 0, $"{path}: Kennung {id} steht doppelt");
+            }
+        }
+
+        return (keys, placeholders, null);
+    }
+
+    private static string? Constant(string text, string name)
+    {
+        var m = Regex.Match(text, @"\bconst\s+string\s+" + Regex.Escape(name) + @"\s*=\s*""(?<v>[^""\\]*)""\s*;");
+        return m.Success ? m.Groups["v"].Value : null;
+    }
+
+    // The keys for signing or verifying; null (message written) when there is none to trust.
+    public static Dictionary<string, byte[]>? Usable(string path, string command)
+    {
+        var (keys, placeholders, problem) = Read(path);
+        if (problem is not null)
+        {
+            Console.Error.WriteLine($"{command}: {problem}");
+            return null;
+        }
+
+        if (keys.Count == 0)
+        {
+            Console.Error.WriteLine(placeholders > 0
+                ? $"{command}: {path} enthaelt nur den Platzhalter; zuerst den echten oeffentlichen Schluessel eintragen (packaging/README.md, Abschnitt \"Signaturschluessel fuer Updates\")"
+                : $"{command}: {path} enthaelt keinen Schluessel");
+            return null;
+        }
+
+        return keys;
+    }
+}
+
+static class UpdateSignature
+{
+    // "<keyId>:<base64 of the 64-byte IEEE P1363 ECDSA P-256 signature over the raw bytes, SHA-256>" (ManifestVerifier).
+    public static string Sign(byte[] manifest, ECDsa key, string keyId) =>
+        keyId + ":" + Convert.ToBase64String(key.SignData(manifest, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+
+    // null when the signature text verifies with one of the keys (by its id); else why not.
+    public static string? Problem(byte[] manifest, string signatureText, IReadOnlyDictionary<string, byte[]> keys)
+    {
+        var text = signatureText.Trim();
+        var colon = text.IndexOf(':');
+        if (colon <= 0)
+        {
+            return "Signatur hat nicht die Form <Kennung>:<Base64>";
+        }
+
+        var id = text[..colon];
+        if (!keys.TryGetValue(id, out var spki))
+        {
+            return $"Schluesselkennung {id} ist nicht vertraut";
+        }
+
+        var signature = new byte[67];
+        if (!Convert.TryFromBase64String(text[(colon + 1)..], signature, out var written) || written != 64)
+        {
+            return "Signatur ist kein Base64 von 64 Bytes";
+        }
+
+        using var key = ECDsa.Create();
+        key.ImportSubjectPublicKeyInfo(spki, out _);
+        return key.VerifyData(manifest, signature.AsSpan(0, 64), HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation)
+            ? null
+            : $"Signatur passt nicht zum Manifest (Schluessel {id})";
+    }
+
+    // The key id rule of UpdateKey: not empty, no colon; kept to a plain token so it fits release.yml and file names.
+    public static bool IsValidId(string id) => Regex.IsMatch(id, @"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z");
+}
+
+// update-keygen --id <id> --private-out <file>: the private key (PKCS#8, Base64) only into the file, readable by the
+// user alone; the public key as an entry for UpdateTrust.Keys on stdout. The private key is never printed.
+static class UpdateKeygen
+{
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--id", "--private-out");
+        if (parsed is not { } p || p.Positional.Count != 0 || !p.Named.TryGetValue("--id", out var id) ||
+            !p.Named.TryGetValue("--private-out", out var output) || !UpdateSignature.IsValidId(id))
+        {
+            Console.Error.WriteLine("Aufruf: update-keygen --id <Kennung aus A-Z a-z 0-9 . _ -> --private-out <Datei ausserhalb jedes Git-Arbeitsverzeichnisses>");
+            return 2;
+        }
+
+        var full = Path.GetFullPath(output);
+        if (File.Exists(full) || Directory.Exists(full))
+        {
+            Console.Error.WriteLine($"update-keygen: {full} gibt es schon; ein Schluessel wird nie ueberschrieben");
+            return 1;
+        }
+
+        if (GitWorkTree(full) is { } tree)
+        {
+            Console.Error.WriteLine($"update-keygen: {full} liegt im Git-Arbeitsverzeichnis {tree}; der private Schluessel darf nie in ein Repository");
+            return 1;
+        }
+
+        if (!Directory.Exists(Path.GetDirectoryName(full)))
+        {
+            Console.Error.WriteLine($"update-keygen: Ordner fehlt: {Path.GetDirectoryName(full)}");
+            return 1;
+        }
+
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var pkcs8 = key.ExportPkcs8PrivateKey();
+        var chars = new char[(pkcs8.Length + 2) / 3 * 4];
+        try
+        {
+            Convert.TryToBase64Chars(pkcs8, chars, out var length);
+            using (var stream = CreateUserOnly(full))
+            using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+            {
+                writer.Write(chars, 0, length);
+                writer.Write('\n');
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pkcs8);
+            Array.Clear(chars);
+        }
+
+        Console.WriteLine("        new UpdateKey(");
+        Console.WriteLine($"            \"{id}\",");
+        Console.WriteLine($"            Convert.FromBase64String(\"{Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())}\")),");
+        Console.Error.WriteLine($"update-keygen: privater Schluessel in {full} (nur fuer diesen Benutzer lesbar). Weiter: packaging/README.md, Abschnitt \"Signaturschluessel fuer Updates\".");
+        return 0;
+    }
+
+    // The folder (or an ancestor) that holds .git, or null.
+    private static string? GitWorkTree(string file)
+    {
+        for (var dir = Path.GetDirectoryName(file); !string.IsNullOrEmpty(dir); dir = Path.GetDirectoryName(dir))
+        {
+            if (Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, ".git")))
+            {
+                return dir;
+            }
+        }
+
+        return null;
+    }
+
+    // A new file (never an existing one) that only the current user can read: 0600 on Unix, on Windows an ACL with
+    // inheritance cut and a single rule for the user.
+    private static FileStream CreateUserOnly(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var user = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
+            var security = new System.Security.AccessControl.FileSecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                user, System.Security.AccessControl.FileSystemRights.FullControl, System.Security.AccessControl.AccessControlType.Allow));
+            return new FileInfo(path).Create(FileMode.CreateNew, System.Security.AccessControl.FileSystemRights.Write, FileShare.None, 4096, FileOptions.None, security);
+        }
+
+        return new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        });
+    }
+}
+
+// update-manifest --version <x.y.z> --sums <SHA256SUMS-windows.txt> <SHA256SUMS-linux.txt> --sizes <gh release view --json assets> --out <file>
+static partial class UpdateManifestCommand
+{
+    // sums: "<sha256>  <file name>" (Sums.Line)
+    [GeneratedRegex(@"^(?<h>[0-9a-f]{64})  (?<n>[^\s/\\]+)$")]
+    private static partial Regex SumsLine();
+
+    private const string Usage = "Aufruf: update-manifest --version <x.y.z> --sums <SHA256SUMS-windows.txt> <SHA256SUMS-linux.txt> --sizes <assets.json> --out <update-manifest.json>";
+
+    public static int Run(string[] args)
+    {
+        // --sums takes several files: everything up to the next option.
+        var sums = new List<string>();
+        var rest = new List<string>();
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--sums")
+            {
+                while (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                {
+                    sums.Add(args[++i]);
+                }
+            }
+            else
+            {
+                rest.Add(args[i]);
+            }
+        }
+
+        var parsed = Options.Parse([.. rest], "--version", "--sizes", "--out");
+        if (parsed is not { } p || p.Positional.Count != 0 || sums.Count == 0 || !p.Named.TryGetValue("--version", out var version) ||
+            !p.Named.TryGetValue("--sizes", out var sizesFile) || !p.Named.TryGetValue("--out", out var output))
+        {
+            Console.Error.WriteLine(Usage);
+            return 2;
+        }
+
+        if (!UpdateManifestRules.StableVersion().IsMatch(version))
+        {
+            Console.Error.WriteLine($"update-manifest: '{version}' ist keine Version X.Y.Z; die App liest nur stabile Versionen (Vorabversionen bekommen kein Manifest)");
+            return 2;
+        }
+
+        var problems = new List<string>();
+        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var file in sums)
+        {
+            if (!File.Exists(file))
+            {
+                problems.Add($"Datei fehlt: {file}");
+                continue;
+            }
+
+            foreach (var raw in File.ReadAllText(file).Split('\n'))
+            {
+                var line = raw.TrimEnd('\r');
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+
+                var m = SumsLine().Match(line);
+                if (!m.Success)
+                {
+                    problems.Add($"{file}: Zeile ist nicht '<sha256>  <Dateiname>': {line}");
+                }
+                else if (!hashes.TryAdd(m.Groups["n"].Value, m.Groups["h"].Value))
+                {
+                    problems.Add($"{m.Groups["n"].Value} steht mehrfach in den Pruefsummen");
+                }
+            }
+        }
+
+        var sizes = ReadSizes(sizesFile, problems);
+
+        // Every file with a known ending must be exactly the name of this version; every known kind must be there.
+        foreach (var name in hashes.Keys.Where(n => UpdateManifestRules.KnownEndings.Any(e => n.EndsWith(e, StringComparison.Ordinal))))
+        {
+            if (!UpdateManifestRules.Kinds.Any(k => k.Name(version) == name))
+            {
+                problems.Add($"{name} gehoert nicht zur Version {version}");
+            }
+        }
+
+        var files = new List<(string Kind, string Name, long Size, string Sha256)>();
+        foreach (var (kind, nameOf) in UpdateManifestRules.Kinds)
+        {
+            var name = nameOf(version);
+            if (!hashes.TryGetValue(name, out var hash))
+            {
+                problems.Add($"{kind}: {name} fehlt in den Pruefsummen");
+            }
+            else if (sizes is not null && !sizes.TryGetValue(name, out var size))
+            {
+                problems.Add($"{kind}: {name} fehlt in den Dateien des Releases (--sizes)");
+            }
+            else if (sizes is not null)
+            {
+                files.Add((kind, name, sizes[name], hash));
+            }
+        }
+
+        foreach (var (kind, name, size, _) in files)
+        {
+            if (size is <= 0 or > UpdateManifestRules.MaxFileSize)
+            {
+                problems.Add($"{kind}: {name} hat die Groesse {size} (erlaubt 1 Byte bis 1 GiB)");
+            }
+
+            if (!UpdateManifestRules.SafeFileName().IsMatch(name))
+            {
+                problems.Add($"{kind}: {name} ist kein einfacher Dateiname");
+            }
+        }
+
+        if (problems.Count > 0)
+        {
+            problems.ForEach(x => Console.Error.WriteLine($"update-manifest: {x}"));
+            return 1;
+        }
+
+        var bytes = UpdateManifestRules.Write(version, files);
+        if (UpdateManifestRules.Problem(bytes) is { } problem)
+        {
+            Console.Error.WriteLine($"update-manifest: das geschriebene Manifest waere ungueltig: {problem}");
+            return 1;
+        }
+
+        File.WriteAllBytes(output, bytes);
+        Console.WriteLine($"update-manifest: {version}, {files.Count} Dateien in {output}");
+        return 0;
+    }
+
+    // name -> size from "gh release view <tag> --json assets"; only assets that are completely uploaded count.
+    private static Dictionary<string, long>? ReadSizes(string file, List<string> problems)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(file));
+            var result = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var asset in doc.RootElement.GetProperty("assets").EnumerateArray())
+            {
+                var name = asset.GetProperty("name").GetString() ?? string.Empty;
+                var uploaded = !asset.TryGetProperty("state", out var state) || state.GetString() == "uploaded";
+                if (uploaded && !result.TryAdd(name, asset.GetProperty("size").GetInt64()))
+                {
+                    problems.Add($"{file}: {name} steht mehrfach");
+                }
+            }
+
+            return result;
+        }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            problems.Add($"{file}: keine Ausgabe von 'gh release view <Tag> --json assets' ({e.GetType().Name})");
+            return null;
+        }
+    }
+}
+
+// update-sign --manifest <file> --key-env <VARIABLE> --id <id> --out <file.sig> [--source <UpdateTrust.cs>]
+// The private key comes only from the environment variable (never an argument, never printed, never written to disk).
+// The id must be a key of UpdateTrust.cs (never the placeholder), the private key must belong to it, and the signature
+// is verified with that public key before it is written.
+static class UpdateSign
+{
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--manifest", "--key-env", "--id", "--out", "--source");
+        if (parsed is not { } p || p.Positional.Count != 0 || !p.Named.TryGetValue("--manifest", out var manifestFile) ||
+            !p.Named.TryGetValue("--key-env", out var keyEnv) || !p.Named.TryGetValue("--id", out var id) ||
+            !p.Named.TryGetValue("--out", out var output))
+        {
+            Console.Error.WriteLine("Aufruf: update-sign --manifest <Datei> --key-env <Umgebungsvariable> --id <Kennung> --out <Datei.sig> [--source <UpdateTrust.cs>]   (der Schluessel kommt nur aus der Umgebungsvariablen)");
+            return 2;
+        }
+
+        var source = p.Named.GetValueOrDefault("--source", TrustSource.DefaultPath);
+        if (TrustSource.Usable(source, "update-sign") is not { } keys)
+        {
+            return 1;
+        }
+
+        if (!keys.TryGetValue(id, out var trusted))
+        {
+            Console.Error.WriteLine($"update-sign: Kennung {id} steht nicht in {source} (vorhanden: {string.Join(", ", keys.Keys)})");
+            return 1;
+        }
+
+        if (!File.Exists(manifestFile))
+        {
+            Console.Error.WriteLine($"update-sign: Datei fehlt: {manifestFile}");
+            return 1;
+        }
+
+        var manifest = File.ReadAllBytes(manifestFile);
+        if (UpdateManifestRules.Problem(manifest) is { } problem)
+        {
+            Console.Error.WriteLine($"update-sign: {manifestFile} ist kein gueltiges Manifest: {problem}");
+            return 1;
+        }
+
+        using var key = ReadKey(keyEnv);
+        if (key is null)
+        {
+            return 1;
+        }
+
+        if (!key.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(trusted))
+        {
+            Console.Error.WriteLine($"update-sign: der Schluessel in {keyEnv} gehoert nicht zur Kennung {id} in {source}");
+            return 1;
+        }
+
+        var signature = UpdateSignature.Sign(manifest, key, id);
+        if (UpdateSignature.Problem(manifest, signature, new Dictionary<string, byte[]> { [id] = trusted }) is { } check)
+        {
+            Console.Error.WriteLine($"update-sign: die neue Signatur prueft nicht: {check}");
+            return 1;
+        }
+
+        File.WriteAllText(output, signature, new UTF8Encoding(false));
+        Console.WriteLine($"update-sign: {manifestFile} mit {id} signiert und geprueft: {output}");
+        return 0;
+    }
+
+    // The P-256 private key from the environment (PKCS#8 as Base64, as update-keygen writes it); null with a message
+    // that never contains the value.
+    private static ECDsa? ReadKey(string variable)
+    {
+        var text = Environment.GetEnvironmentVariable(variable);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Console.Error.WriteLine($"update-sign: Umgebungsvariable {variable} fehlt oder ist leer");
+            return null;
+        }
+
+        var compact = string.Concat(text.Where(c => !char.IsWhiteSpace(c)));
+        var bytes = new byte[compact.Length];
+        var key = ECDsa.Create();
+        try
+        {
+            if (!Convert.TryFromBase64String(compact, bytes, out var length))
+            {
+                throw new FormatException();
+            }
+
+            // The curve is checked by the caller: the public key must equal the trusted P-256 key (the SPKI names the curve).
+            key.ImportPkcs8PrivateKey(bytes.AsSpan(0, length), out var read);
+            if (read != length || key.KeySize != 256)
+            {
+                throw new FormatException();
+            }
+
+            return key;
+        }
+        catch (Exception e) when (e is FormatException or CryptographicException)
+        {
+            key.Dispose();
+            Console.Error.WriteLine($"update-sign: {variable} enthaelt keinen privaten P-256-Schluessel (PKCS#8, Base64, wie update-keygen ihn schreibt)");
+            return null;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+        }
+    }
+}
+
+// update-verify --manifest <file> --sig <file> (--keys-from-source | --source <file>): signature and content as the app
+// checks them; --keys-from-source takes the keys of src/Pagewing.Core/Updates/UpdateTrust.cs and fails while it holds
+// only the placeholder.
+static class UpdateVerify
+{
+    public static int Run(string[] args)
+    {
+        var fromSource = args.Contains("--keys-from-source", StringComparer.Ordinal);
+        var parsed = Options.Parse([.. args.Where(a => a != "--keys-from-source")], "--manifest", "--sig", "--source");
+        if (parsed is not { } p || p.Positional.Count != 0 || !p.Named.TryGetValue("--manifest", out var manifestFile) ||
+            !p.Named.TryGetValue("--sig", out var sigFile) || fromSource == p.Named.ContainsKey("--source"))
+        {
+            Console.Error.WriteLine("Aufruf: update-verify --manifest <Datei> --sig <Datei> (--keys-from-source | --source <C#-Datei mit new UpdateKey(...)>)");
+            return 2;
+        }
+
+        var source = p.Named.GetValueOrDefault("--source", TrustSource.DefaultPath);
+        if (TrustSource.Usable(source, "update-verify") is not { } keys)
+        {
+            return 1;
+        }
+
+        if (!File.Exists(manifestFile) || !File.Exists(sigFile))
+        {
+            Console.Error.WriteLine($"update-verify: Datei fehlt: {(File.Exists(manifestFile) ? sigFile : manifestFile)}");
+            return 1;
+        }
+
+        var manifest = File.ReadAllBytes(manifestFile);
+        var problem = UpdateSignature.Problem(manifest, File.ReadAllText(sigFile), keys) ?? UpdateManifestRules.Problem(manifest);
+        if (problem is not null)
+        {
+            Console.Error.WriteLine($"update-verify: {manifestFile} abgelehnt: {problem}");
+            return 1;
+        }
+
+        Console.WriteLine($"update-verify: {manifestFile} ist gueltig signiert ({source})");
+        return 0;
+    }
+}
+
 enum DebEntryKind
 {
     Directory,
@@ -2756,6 +3455,8 @@ static class SelfTest
         BuildTelemetryParts();
         WorkflowYamlParts();
         LinuxContainerParts();
+        UpdateReleaseParts();
+        ManifestJobParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -2798,8 +3499,10 @@ static class SelfTest
             Expect($"tag: '{tag}' wird abgelehnt", TagRules.Accepts(bash, tag), false);
         }
 
-        Expect("tag: beide Checkouts bauen auch einen Branch (inputs.ref)", Regex.Count(yml, @"ref: \$\{\{ inputs\.ref \|\| "), 2);
-        Expect("tag: beide Jobs verweigern das Hochladen eines Branchs", Regex.Count(yml, "name: Refuse to upload a branch build"), 2);
+        Expect("tag: alle bash-Regeln sind gleich (Linux- und Manifest-Job)",
+            Regex.Matches(yml, @"\[\[ ""\$TAG"" =~ (?<p>\S+) \]\]").Select(m => m.Groups["p"].Value).Distinct(StringComparer.Ordinal).Count(), 1);
+        Expect("tag: beide Checkouts der Bau-Jobs bauen auch einen Branch (inputs.ref)", Regex.Count(yml, @"ref: \$\{\{ inputs\.ref \|\| "), 2);
+        Expect("tag: alle drei Jobs verweigern das Hochladen eines Branchs", Regex.Count(yml, "name: Refuse to upload a branch build"), 3);
     }
 
     // The AppImage contains libfuse (LGPL-2.1): its source and the runtime's build scripts are attached to every release.
@@ -2921,7 +3624,7 @@ static class SelfTest
         var yml = File.ReadAllText(workflow);
         Expect("container: Arbeitsordner geht auch nach Abbruch zurueck (if: always() mit chown)",
             Regex.IsMatch(yml, @"name: Give the workspace back to the runner user \(Linux\)\s+if: always\(\)\s+run: \|[\s\S]*?chown -R"), true);
-        Expect("container: Selbsttest des Pakettools laeuft in beiden Jobs auf dem Host", Regex.Count(yml, "name: Self-test of the packaging tool"), 2);
+        Expect("container: Selbsttest des Pakettools laeuft in allen drei Jobs auf dem Host", Regex.Count(yml, "name: Self-test of the packaging tool"), 3);
         Expect("container: container-build.sh setzt NUGET_PACKAGES (dotnet und licenses.cs suchen dieselbe Ablage)",
             Regex.IsMatch(File.ReadAllText(container), @"(?m)^export .*\bNUGET_PACKAGES="), true);
         Expect("container: container-build.sh hat keine Pipe nach head (pipefail macht daraus Exit 141)",
@@ -3522,6 +4225,411 @@ static class SelfTest
     }
 
     // Builds tiny ELF files with clang in a temp directory and runs the real command on them.
+    // The fixed inputs of the test vector in testdata/updates (version 0.2.0): the four known kinds with made-up sizes;
+    // the SHA-256 of a file is the SHA-256 of its name, so the inputs need no real files.
+    private static readonly (string Kind, string Name, long Size)[] VectorFiles =
+    [
+        ("win-x64-setup", "Pagewing-0.2.0-win-x64-setup.exe", 41_234_567),
+        ("win-x64-portable", "Pagewing-0.2.0-win-x64-portable.zip", 43_210_987),
+        ("linux-appimage", "Pagewing-0.2.0-x86_64.AppImage", 52_345_678),
+        ("linux-deb", "pagewing_0.2.0_amd64.deb", 38_765_432),
+    ];
+
+    private const string VectorDirectory = "testdata/updates";
+
+    // The C# file that holds the public key of the test vector (as update-keygen prints it); update-verify reads it
+    // like UpdateTrust.cs, and the Core test compiles it, so the printed literal is proven to be valid C#.
+    private const string VectorKeySource = "tests/Pagewing.Core.Tests/Updates/ReleaseToolTests.cs";
+
+    private static string NameHash(string name) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(name)));
+
+    private static string SumsOf(params string[] names) => string.Concat(names.Select(n => $"{NameHash(n)}  {n}\n"));
+
+    // As "gh release view <tag> --json assets" prints it (more fields than the tool reads).
+    private static string AssetsJson(IEnumerable<(string Name, long Size)> assets) =>
+        new System.Text.Json.Nodes.JsonObject
+        {
+            ["assets"] = new System.Text.Json.Nodes.JsonArray(assets.Select(a => (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject
+            {
+                ["apiUrl"] = "https://api.github.invalid/assets/1",
+                ["contentType"] = "application/octet-stream",
+                ["downloadCount"] = 0,
+                ["name"] = a.Name,
+                ["size"] = a.Size,
+                ["state"] = "uploaded",
+            }).ToArray()),
+        }.ToJsonString();
+
+    // Runs a command with stdout and stderr captured (both are checked for key material).
+    private static (int Code, string Out, string Err) Capture(params string[] args)
+    {
+        var (oldOut, oldErr) = (Console.Out, Console.Error);
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        Console.SetOut(stdout);
+        Console.SetError(stderr);
+        try
+        {
+            return (Cli.Run(args), stdout.ToString(), stderr.ToString());
+        }
+        finally
+        {
+            Console.SetOut(oldOut);
+            Console.SetError(oldErr);
+        }
+    }
+
+    // Whether text contains the secret or any 16-character piece of it (a partial print counts as a leak).
+    private static bool Leaks(string text, string secret)
+    {
+        if (secret.Length == 0)
+        {
+            return false;
+        }
+
+        for (var i = 0; i + 16 <= secret.Length; i += 8)
+        {
+            if (text.Contains(secret.Substring(i, 16), StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return text.Contains(secret, StringComparison.Ordinal);
+    }
+
+    // The literal update-keygen prints: new UpdateKey("<id>", Convert.FromBase64String("<SPKI>")),
+    private static (string Id, byte[] Key)? KeyLiteral(string text)
+    {
+        var m = Regex.Match(text, @"new UpdateKey\(\s*""(?<id>[^""]+)"",\s*Convert\.FromBase64String\(""(?<key>[A-Za-z0-9+/=]+)""\)\),");
+        return m.Success ? (m.Groups["id"].Value, Convert.FromBase64String(m.Groups["key"].Value)) : null;
+    }
+
+    // An independent check of "<keyId>:<base64 of the 64-byte IEEE P1363 ECDSA P-256 signature>" (as ManifestVerifier does).
+    private static bool SignatureVerifies(byte[] data, string signatureText, string keyId, byte[] publicKey)
+    {
+        var parts = signatureText.Trim().Split(':');
+        if (parts.Length != 2 || parts[0] != keyId)
+        {
+            return false;
+        }
+
+        byte[] signature;
+        try
+        {
+            signature = Convert.FromBase64String(parts[1]);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        using var key = ECDsa.Create();
+        key.ImportSubjectPublicKeyInfo(publicKey, out _);
+        return signature.Length == 64 && key.VerifyData(data, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+    }
+
+    private static List<(string Kind, string Name, long Size, string Sha256)> ManifestFiles(string file)
+    {
+        var result = new List<(string, string, long, string)>();
+        if (!File.Exists(file))
+        {
+            return result;
+        }
+
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(file));
+        foreach (var f in doc.RootElement.GetProperty("files").EnumerateArray())
+        {
+            result.Add((f.GetProperty("kind").GetString()!, f.GetProperty("name").GetString()!, f.GetProperty("size").GetInt64(), f.GetProperty("sha256").GetString()!));
+        }
+
+        return result;
+    }
+
+    // The release tool for the update manifest (Milestone 8.1). Only throwaway keys, in a temp folder that is deleted at
+    // the end and in an environment variable of this process that is removed again; the real signing key never appears.
+    private static void UpdateReleaseParts()
+    {
+        const string keyEnv = "PAGEWING_SELFTEST_SIGNING_KEY";
+        var dir = Path.Combine(Path.GetTempPath(), "pagewing-update-selftest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // update-manifest
+            var win = Path.Combine(dir, "SHA256SUMS-windows.txt");
+            var linux = Path.Combine(dir, "SHA256SUMS-linux.txt");
+            var sizes = Path.Combine(dir, "assets.json");
+            var others = new[] { "fuse-3.15.0.tar.xz", "type2-runtime-20251108.tar.gz" };
+            File.WriteAllText(win, SumsOf(VectorFiles[1].Name, VectorFiles[0].Name));
+            File.WriteAllText(linux, SumsOf(VectorFiles[3].Name, VectorFiles[2].Name, others[0], others[1]));
+            var assets = VectorFiles.Select(f => (f.Name, f.Size)).Concat(others.Select(o => (o, 1000L)))
+                .Concat([("SHA256SUMS-windows.txt", 200L), ("SHA256SUMS-linux.txt", 400L)]).ToList();
+            File.WriteAllText(sizes, AssetsJson(assets));
+            string[] ManifestArgs(string version, string output, string sizesFile, params string[] sums) =>
+                ["update-manifest", "--version", version, "--sums", .. sums, "--sizes", sizesFile, "--out", output];
+
+            var manifest = Path.Combine(dir, "update-manifest.json");
+            Expect("update-manifest: Erfolg", Cli.Run(ManifestArgs("0.2.0", manifest, sizes, win, linux)), 0);
+            var files = ManifestFiles(manifest);
+            Expect("update-manifest: nur bekannte Dateien (in fester Reihenfolge)", string.Join(",", files.Select(f => f.Kind)),
+                "win-x64-setup,win-x64-portable,linux-appimage,linux-deb");
+            foreach (var (kind, name, size) in VectorFiles)
+            {
+                Expect($"update-manifest: Groesse und SHA-256 stimmen ({kind})", files.Contains((kind, name, size, NameHash(name))), true);
+            }
+
+            var vectorManifest = Path.Combine(VectorDirectory, "update-manifest.json");
+            Expect($"update-manifest: schreibt genau die Bytes von {vectorManifest} (Testvektor der App)",
+                File.Exists(manifest) && File.Exists(vectorManifest) && File.ReadAllBytes(manifest).AsSpan().SequenceEqual(File.ReadAllBytes(vectorManifest)), true);
+
+            var refused = Path.Combine(dir, "refused.json");
+            Expect("update-manifest: Vorabversion liefert 2 (die App liest nur X.Y.Z)", Cli.Run(ManifestArgs("0.2.0-rc.1", refused, sizes, win, linux)), 2);
+            Expect("update-manifest: Dateinamen einer anderen Version liefern 1", Cli.Run(ManifestArgs("0.3.0", refused, sizes, win, linux)), 1);
+            Expect("update-manifest: ohne Linux-Summen fehlen Arten, liefert 1", Cli.Run(ManifestArgs("0.2.0", refused, sizes, win)), 1);
+            var withoutSize = Path.Combine(dir, "without-size.json");
+            File.WriteAllText(withoutSize, AssetsJson(assets.Where(a => a.Item1 != VectorFiles[2].Name)));
+            Expect("update-manifest: fehlende Groesse liefert 1", Cli.Run(ManifestArgs("0.2.0", refused, withoutSize, win, linux)), 1);
+            var zeroSize = Path.Combine(dir, "zero-size.json");
+            File.WriteAllText(zeroSize, AssetsJson(assets.Select(a => a.Item1 == VectorFiles[0].Name ? (a.Item1, 0L) : a)));
+            Expect("update-manifest: Groesse 0 liefert 1", Cli.Run(ManifestArgs("0.2.0", refused, zeroSize, win, linux)), 1);
+            var broken = Path.Combine(dir, "SHA256SUMS-broken.txt");
+            File.WriteAllText(broken, SumsOf(VectorFiles[1].Name) + "abc  Pagewing-0.2.0-win-x64-setup.exe\n");
+            Expect("update-manifest: kaputte Zeile in SHA256SUMS liefert 1", Cli.Run(ManifestArgs("0.2.0", refused, sizes, broken, linux)), 1);
+            var twice = Path.Combine(dir, "SHA256SUMS-twice.txt");
+            File.WriteAllText(twice, SumsOf(VectorFiles[1].Name, VectorFiles[0].Name, VectorFiles[0].Name));
+            Expect("update-manifest: doppelte Datei liefert 1", Cli.Run(ManifestArgs("0.2.0", refused, sizes, twice, linux)), 1);
+            var notJson = Path.Combine(dir, "not-json.json");
+            File.WriteAllText(notJson, "<html>");
+            Expect("update-manifest: --sizes ohne JSON liefert 1", Cli.Run(ManifestArgs("0.2.0", refused, notJson, win, linux)), 1);
+            Expect("update-manifest: bei Fehlern entsteht keine Datei", File.Exists(refused), false);
+            Expect("update-manifest: ohne --sizes liefert 2", Cli.Run(["update-manifest", "--version", "0.2.0", "--sums", win, linux, "--out", refused]), 2);
+
+            // update-keygen
+            var keys = Path.Combine(dir, "keys");
+            Directory.CreateDirectory(keys);
+            var keyFile = Path.Combine(keys, "signing-key.txt");
+            var (keygenCode, keygenOut, keygenErr) = Capture("update-keygen", "--id", "selftest", "--private-out", keyFile);
+            Expect("update-keygen: Erfolg", keygenCode, 0);
+            var privateText = File.Exists(keyFile) ? File.ReadAllText(keyFile).Trim() : string.Empty;
+            Expect("update-keygen: privater Schluessel steht in der Datei", privateText.Length > 0, true);
+            Expect("update-keygen: privater Schluessel nie in der Ausgabe", privateText.Length > 0 && !Leaks(keygenOut + keygenErr, privateText), true);
+            var literal = KeyLiteral(keygenOut);
+            Expect("update-keygen: stdout ist ein Eintrag fuer UpdateTrust.Keys mit der Kennung", literal?.Id, "selftest");
+            var matches = false;
+            if (literal is { } lit && privateText.Length > 0)
+            {
+                using var fromFile = ECDsa.Create();
+                fromFile.ImportPkcs8PrivateKey(Convert.FromBase64String(privateText), out _);
+                using var fromLiteral = ECDsa.Create();
+                fromLiteral.ImportSubjectPublicKeyInfo(lit.Key, out _);
+                matches = fromFile.KeySize == 256 && fromLiteral.KeySize == 256 &&
+                    fromFile.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(lit.Key);
+            }
+
+            Expect("update-keygen: P-256, PKCS#8 in der Datei passt zum ausgegebenen oeffentlichen Schluessel", matches, true);
+            Expect("update-keygen: vorhandene Datei wird nie ueberschrieben", Cli.Run(["update-keygen", "--id", "selftest", "--private-out", keyFile]), 1);
+            Expect("update-keygen: Datei bleibt unveraendert", File.Exists(keyFile) && File.ReadAllText(keyFile).Trim() == privateText, true);
+            Expect("update-keygen: Kennung mit ':' liefert 2", Cli.Run(["update-keygen", "--id", "a:b", "--private-out", Path.Combine(keys, "x.txt")]), 2);
+            Expect("update-keygen: ohne --private-out liefert 2", Cli.Run(["update-keygen", "--id", "selftest"]), 2);
+            var repo = Path.Combine(dir, "repo");
+            Directory.CreateDirectory(Path.Combine(repo, ".git"));
+            Directory.CreateDirectory(Path.Combine(repo, "sub"));
+            var inRepo = Path.Combine(repo, "sub", "key.txt");
+            Expect("update-keygen: nie in ein Git-Arbeitsverzeichnis", Cli.Run(["update-keygen", "--id", "selftest", "--private-out", inRepo]), 1);
+            Expect("update-keygen: im Git-Arbeitsverzeichnis entsteht nichts", File.Exists(inRepo), false);
+            if (File.Exists(keyFile))
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    Expect("update-keygen: private Datei nur fuer den Benutzer lesbar (Windows-ACL)", UserOnlyAcl(keyFile), true);
+                }
+                else
+                {
+                    Expect("update-keygen: private Datei nur fuer den Benutzer lesbar (0600)", File.GetUnixFileMode(keyFile), UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                }
+            }
+
+            // update-sign and update-verify with the throwaway key (trusted through a C# file like UpdateTrust.cs).
+            var trust = Path.Combine(dir, "Trust.cs");
+            File.WriteAllText(trust, "IReadOnlyList<UpdateKey> Keys = [\n" + keygenOut + "];\n");
+            var sig = Path.Combine(dir, "update-manifest.json.sig");
+            string[] SignArgs(string output, string id = "selftest", string source = "") =>
+                ["update-sign", "--manifest", manifest, "--key-env", keyEnv, "--id", id, "--out", output, "--source", source.Length > 0 ? source : trust];
+
+            Environment.SetEnvironmentVariable(keyEnv, privateText);
+            var (signCode, signOut, signErr) = Capture(SignArgs(sig));
+            Expect("update-sign: Erfolg", signCode, 0);
+            var sigText = File.Exists(sig) ? File.ReadAllText(sig) : string.Empty;
+            Expect("update-sign: Signatur prueft mit dem Schluessel", literal is { } l && File.Exists(manifest) &&
+                SignatureVerifies(File.ReadAllBytes(manifest), sigText, "selftest", l.Key), true);
+            Expect("update-sign: Schluessel nie in der Ausgabe", privateText.Length > 0 && !Leaks(signOut + signErr + sigText, privateText), true);
+            Expect("update-verify: Erfolg", Cli.Run(["update-verify", "--manifest", manifest, "--sig", sig, "--source", trust]), 0);
+
+            var tampered = Path.Combine(dir, "tampered.json");
+            if (File.Exists(manifest))
+            {
+                File.WriteAllText(tampered, File.ReadAllText(manifest).Replace("41234567", "41234568", StringComparison.Ordinal));
+            }
+
+            Expect("update-verify: manipuliert -> Fehler", Cli.Run(["update-verify", "--manifest", tampered, "--sig", sig, "--source", trust]), 1);
+            var badSig = Path.Combine(dir, "bad.sig");
+            File.WriteAllText(badSig, sigText.Length > 20 ? sigText[..12] + (sigText[12] == 'A' ? 'B' : 'A') + sigText[13..] : "selftest:AAAA");
+            Expect("update-verify: veraenderte Signatur -> Fehler", Cli.Run(["update-verify", "--manifest", manifest, "--sig", badSig, "--source", trust]), 1);
+            var otherId = Path.Combine(dir, "other-id.sig");
+            File.WriteAllText(otherId, sigText.Replace("selftest:", "other:", StringComparison.Ordinal));
+            Expect("update-verify: unbekannte Kennung -> Fehler", Cli.Run(["update-verify", "--manifest", manifest, "--sig", otherId, "--source", trust]), 1);
+            Expect("update-verify: ohne Schluesselquelle liefert 2", Cli.Run(["update-verify", "--manifest", manifest, "--sig", sig]), 2);
+
+            var noSig = Path.Combine(dir, "none.sig");
+            Expect("update-sign: --key als Argument liefert 2", Cli.Run(["update-sign", "--manifest", manifest, "--key", privateText, "--id", "selftest", "--out", noSig, "--source", trust]), 2);
+            Expect("update-sign: unbekannte Kennung liefert 1", Cli.Run(SignArgs(noSig, id: "other")), 1);
+
+            using (var otherKey = ECDsa.Create(ECCurve.NamedCurves.nistP256))
+            {
+                var otherText = Convert.ToBase64String(otherKey.ExportPkcs8PrivateKey());
+                Environment.SetEnvironmentVariable(keyEnv, otherText);
+                var (code, output, error) = Capture(SignArgs(noSig));
+                Expect("update-sign: fremder Schluessel (passt nicht zur Kennung) liefert 1", code, 1);
+                Expect("update-sign: fremder Schluessel nie in der Ausgabe", Leaks(output + error, otherText), false);
+            }
+
+            Environment.SetEnvironmentVariable(keyEnv, "kein-schluessel-ZQXJ");
+            var (garbageCode, garbageOut, garbageErr) = Capture(SignArgs(noSig));
+            Expect("update-sign: unlesbarer Schluessel liefert 1", garbageCode, 1);
+            Expect("update-sign: unlesbarer Schluessel nie in der Ausgabe", (garbageOut + garbageErr).Contains("ZQXJ", StringComparison.Ordinal), false);
+
+            Environment.SetEnvironmentVariable(keyEnv, null);
+            Expect("update-sign: ohne Umgebungsvariable Fehler", Cli.Run(SignArgs(noSig)), 1);
+            Expect("update-sign: bei Fehlern entsteht keine Signatur", File.Exists(noSig), false);
+
+            // The placeholder of UpdateTrust.cs: no release is ever signed or verified with it.
+            var placeholder = Path.Combine(dir, "PlaceholderTrust.cs");
+            File.WriteAllText(placeholder,
+                "public const string PlaceholderKeyId = \"placeholder\";\n" +
+                "IReadOnlyList<UpdateKey> Keys { get; } =\n[\n    new UpdateKey(\n        PlaceholderKeyId,\n" +
+                "        Convert.FromBase64String(\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfEyCOMU4IJ14osOpBY3eFP4/fxK726BrpSdQoUOGeMJ+2DsQaDm4maWvFaZ22iI1oti6dIVOk7thJ8J5Lkp59Q==\")),\n];\n");
+            Environment.SetEnvironmentVariable(keyEnv, privateText);
+            Expect("update-sign: mit dem Platzhalter wird nie signiert", Cli.Run(SignArgs(noSig, id: "placeholder", source: placeholder)), 1);
+            Expect("update-verify: Platzhalter als einziger Schluessel liefert 1", Cli.Run(["update-verify", "--manifest", manifest, "--sig", sig, "--source", placeholder]), 1);
+            Expect("update-sign: ohne --source nimmt UpdateTrust.cs (Kennung selftest steht nicht darin) und liefert 1",
+                Cli.Run(["update-sign", "--manifest", manifest, "--key-env", keyEnv, "--id", "selftest", "--out", noSig]), 1);
+            Environment.SetEnvironmentVariable(keyEnv, null);
+
+            // The committed test vector (signed once by this tool with a throwaway key; ReleaseToolTests checks it with
+            // the app's ManifestVerifier). update-verify must accept it with the key from the test source.
+            var vectorSig = Path.Combine(VectorDirectory, "update-manifest.json.sig");
+            Expect("update-verify: Testvektor prueft mit dem Schluessel aus ReleaseToolTests.cs",
+                Cli.Run(["update-verify", "--manifest", vectorManifest, "--sig", vectorSig, "--source", VectorKeySource]), 0);
+            var (realCode, _, realErr) = Capture("update-verify", "--manifest", vectorManifest, "--sig", vectorSig, "--keys-from-source");
+            Expect("update-verify --keys-from-source: der Testschluessel ist im Programm nicht vertraut", realCode, 1);
+            var trustText = File.Exists(TrustFile) ? File.ReadAllText(TrustFile) : string.Empty;
+            if (Regex.Count(trustText, @"new UpdateKey\(") == 1 && Regex.IsMatch(trustText, @"new UpdateKey\(\s*PlaceholderKeyId\s*,"))
+            {
+                Expect("update-verify --keys-from-source: scheitert mit Hinweis, solange UpdateTrust.cs nur den Platzhalter hat",
+                    realErr.Contains("Platzhalter", StringComparison.Ordinal), true);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(keyEnv, null);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private const string TrustFile = "src/Pagewing.Core/Updates/UpdateTrust.cs";
+
+    // Windows: inheritance cut and exactly one rule, for the current user.
+    private static bool UserOnlyAcl(string file)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var security = new FileInfo(file).GetAccessControl();
+        var rules = security.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.FileSystemAccessRule>().ToList();
+        var user = System.Security.Principal.WindowsIdentity.GetCurrent().User;
+        return security.AreAccessRulesProtected && rules.Count == 1 && rules[0].IdentityReference.Equals(user) &&
+            rules[0].AccessControlType == System.Security.AccessControl.AccessControlType.Allow;
+    }
+
+    // The third job of release.yml signs the update manifest. The signing key is a repository secret: it may appear in
+    // exactly one place, the env of the step that runs the signing command, and nowhere else (no job or workflow env,
+    // no other step, no action). The workflow has no trigger for pull requests, so code from a fork never sees it.
+    private static void ManifestJobParts()
+    {
+        const string workflow = ".github/workflows/release.yml";
+        const string container = "packaging/linux/container-build.sh";
+        if (!File.Exists(workflow) || !File.Exists(container))
+        {
+            Expect("release.yml: release.yml und container-build.sh vorhanden", false, true);
+            return;
+        }
+
+        var yml = File.ReadAllText(workflow).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var on = Regex.Match(yml, @"(?m)^on:\n(?<b>(?:[ #].*\n|\n)*)").Groups["b"].Value;
+        Expect("release.yml: Ausloeser nur release und workflow_dispatch",
+            string.Join(",", Regex.Matches(on, @"(?m)^  (?<k>[a-z_]+):").Select(m => m.Groups["k"].Value)), "release,workflow_dispatch");
+        Expect("release.yml: kein Ausloeser fuer Pull Requests", yml.Contains("pull_request", StringComparison.Ordinal), false);
+
+        var job = Regex.Match(yml, @"(?m)^  manifest:\n(?<b>(?:    .*\n|\n)*)").Groups["b"].Value;
+        Expect("release.yml: Job manifest vorhanden", job.Length > 0, true);
+        Expect("release.yml: Job manifest wartet auf beide Jobs", job.Contains("    needs: [windows, linux]\n", StringComparison.Ordinal), true);
+        Expect("release.yml: Job manifest laeuft nur nach Erfolg beider Jobs und nur beim Hochladen", job.Contains(
+            "    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && (github.event_name == 'release' || inputs.upload) }}\n",
+            StringComparison.Ordinal), true);
+        Expect("release.yml: Job manifest auf dem Linux-Runner", job.Contains("    runs-on: [self-hosted, dotnet-linux]\n", StringComparison.Ordinal), true);
+        Expect("release.yml: Job manifest darf hochladen (contents: write)", Regex.IsMatch(job, @"    permissions:\n      contents: write\n"), true);
+
+        var steps = Regex.Split(job, @"(?m)^(?=      - )").Skip(1).ToList();
+        string Name(string step) => Regex.Match(step, @"^      - name: (?<n>.+)$|^        name: (?<n>.+)$", RegexOptions.Multiline).Groups["n"].Value;
+        int Index(string name) => steps.FindIndex(s => Name(s) == name);
+
+        Expect("release.yml: genau eine Stelle nennt ein Secret", Regex.Count(yml, @"secrets\."), 1);
+        var sign = Index("Sign the update manifest");
+        Expect("release.yml: Schritt 'Sign the update manifest' vorhanden", sign >= 0, true);
+        var signStep = sign >= 0 ? steps[sign] : string.Empty;
+        Expect("release.yml: Secret nur im Signier-Schritt (env des Schritts)", Regex.IsMatch(signStep,
+            @"\n        env:\n(?:          \S.*\n)*          PAGEWING_UPDATE_SIGNING_KEY: \$\{\{ secrets\.PAGEWING_UPDATE_SIGNING_KEY \}\}\n"), true);
+        Expect("release.yml: Signier-Schritt startet keine Action", signStep.Contains("uses:", StringComparison.Ordinal), false);
+        Expect("release.yml: Signier-Schritt fuehrt nur update-sign aus (eine Zeile, Schluessel aus der Umgebung)", Regex.IsMatch(signStep,
+            @"\n        run: dotnet run tools/package\.cs -- update-sign --manifest \S+ --key-env PAGEWING_UPDATE_SIGNING_KEY --id ""\$UPDATE_KEY_ID"" --out \S+\n*$"), true);
+        Expect("release.yml: GH_TOKEN nur im env von Schritten", Regex.Count(yml, @"(?m)^          GH_TOKEN: \$\{\{ github\.token \}\}$"), Regex.Count(yml, "GH_TOKEN:"));
+        Expect("release.yml: jeder Schritt mit GH_TOKEN setzt GH_REPO", Regex.Count(yml, @"GH_REPO: \$\{\{ github\.repository \}\}"), Regex.Count(yml, "GH_TOKEN:"));
+        Expect("release.yml: jeder Checkout ohne gespeicherte Zugangsdaten", Regex.Count(yml, "persist-credentials: false"), Regex.Count(yml, "uses: actions/checkout@"));
+
+        var test = Index("Check that the release key is not the placeholder");
+        var download = Index("Download the checksums and the file sizes");
+        var build = Index("Build the update manifest");
+        var verify = Index("Verify the signature with the keys in UpdateTrust.cs");
+        var upload = Index("Upload the manifest to the release");
+        Expect("release.yml: Reihenfolge Platzhalter-Test, Download, Bau, Signatur, Pruefung, Hochladen",
+            test >= 0 && test < download && download < build && build < sign && sign < verify && verify < upload, true);
+        Expect("release.yml: Platzhalter-Test laeuft scharf (PAGEWING_REQUIRE_RELEASE_KEY)", test >= 0 &&
+            steps[test].Contains("PAGEWING_REQUIRE_RELEASE_KEY: '1'", StringComparison.Ordinal) &&
+            steps[test].Contains("ReleaseKeysAreNotThePlaceholderWhenReleasing", StringComparison.Ordinal), true);
+        Expect("release.yml: Pruefung mit den Schluesseln des Programms", verify >= 0 &&
+            steps[verify].Contains("update-verify --manifest out/manifest/update-manifest.json --sig out/manifest/update-manifest.json.sig --keys-from-source", StringComparison.Ordinal), true);
+        Expect("release.yml: Manifest und Signatur werden mit --clobber hochgeladen", upload >= 0 &&
+            steps[upload].Contains(@"gh release upload ""$TAG"" out/manifest/update-manifest.json out/manifest/update-manifest.json.sig --clobber", StringComparison.Ordinal), true);
+
+        var keyId = Regex.Match(job, @"(?m)^      UPDATE_KEY_ID: (?<id>[A-Za-z0-9._-]+)$").Groups["id"].Value;
+        Expect("release.yml: Job manifest nennt die Schluesselkennung (UPDATE_KEY_ID)", keyId.Length > 0, true);
+        var trustText = File.Exists(TrustFile) ? File.ReadAllText(TrustFile) : string.Empty;
+        var shippedIds = Regex.Matches(trustText, @"new UpdateKey\(\s*""(?<id>[^""]+)""").Select(m => m.Groups["id"].Value).ToList();
+        if (shippedIds.Count > 0)
+        {
+            Expect($"release.yml: UPDATE_KEY_ID {keyId} steht in UpdateTrust.cs", shippedIds.Contains(keyId), true);
+        }
+
+        foreach (var (file, text) in new[] { (workflow, yml), (container, File.ReadAllText(container)) })
+        {
+            Expect($"release.yml: {file} setzt PagewingUpdateTestBuild nie",
+                Regex.IsMatch(text, "PagewingUpdateTest|PAGEWING_UPDATE_TESTBUILD", RegexOptions.IgnoreCase), false);
+        }
+    }
+
     private static void RealElf()
     {
         if (!OperatingSystem.IsLinux() || Exec("clang", "--version") != 0 || Exec("objdump", "--version") != 0)

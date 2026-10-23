@@ -28,6 +28,7 @@ Fehlt die PDFium-Bibliothek in App oder CLI, bricht der Befehl ab. Unter Linux s
 | `fuse-3.15.0.tar.xz`, `type2-runtime-20251108.tar.gz` | Quelltext von libfuse (LGPL-2.1) und der AppImage-Runtime samt Bauskripten, unverändert von den Upstream-Adressen geladen und gegen feste SHA-256 geprüft (`package.cs runtime-sources`); stehen in `SHA256SUMS-linux.txt` |
 | `pagewing_<Version>_amd64.deb` | Paket für Debian, Ubuntu, Linux Mint (Vorabversion `x.y.z-rc1` heißt im Paket `x.y.z~rc1`) |
 | `Pagewing-<Version>-x86_64.AppImage` | AppImage für alle Linux-Distributionen ab der glibc des Build-Rechners, ohne `libfuse2` |
+| `update-manifest.json`, `update-manifest.json.sig` | Update-Manifest (Version, je Paketform Dateiname, Größe und SHA-256) und seine Signatur (`<Kennung>:<Base64>`, ECDSA P-256); nur stabile Versionen `X.Y.Z`, siehe „Update-Manifest und Signatur“ |
 
 ## Befehle
 
@@ -39,6 +40,9 @@ dotnet run tools/package.cs -- check-binary <Datei>... [--max-glibc 2.35] [--max
 dotnet run tools/package.cs -- deb --layout <layout> --version 1.0.0 --out pagewing_1.0.0_amd64.deb   # Linux, dpkg-deb
 dotnet run tools/package.cs -- deb-smoke pagewing_1.0.0_amd64.deb
 dotnet run tools/package.cs -- runtime-sources --out <Ordner>   # Quellen von libfuse und der AppImage-Runtime (LGPL-2.1), SHA-256 geprüft
+dotnet run tools/package.cs -- update-manifest --version 1.0.0 --sums SHA256SUMS-windows.txt SHA256SUMS-linux.txt --sizes assets.json --out update-manifest.json
+dotnet run tools/package.cs -- update-sign --manifest update-manifest.json --key-env PAGEWING_UPDATE_SIGNING_KEY --id <Kennung> --out update-manifest.json.sig
+dotnet run tools/package.cs -- update-verify --manifest update-manifest.json --sig update-manifest.json.sig --keys-from-source
 dotnet run tools/package.cs -- selftest
 ```
 
@@ -124,6 +128,7 @@ Das Release selbst legt der Projektinhaber an (`gh release create vX.Y.Z --targe
 2. Windows: Publish (Native AOT), `licenses check`, `layout`, `zip`, `inno-install`, `installer`, `installer-smoke`, `sums` nach `SHA256SUMS-windows.txt`, Hochladen. Dateien: `Pagewing-<Version>-win-x64-portable.zip`, `Pagewing-<Version>-win-x64-setup.exe`.
 3. Linux: Der Job baut in **einem** `docker run` von `ubuntu:22.04` (`packaging/linux/container-build.sh`, weil die glibc des Runners neuer als 2.35 ist; Eintrag „Mindest-glibc 2.35 und Bauweise der Linux-Pakete: Container …“): Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `runtime-sources`, `sums` nach `SHA256SUMS-linux.txt`. Hochgeladen wird danach auf dem Host (der Container sieht `GH_TOKEN` nie). Dateien: `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`, die zwei Quellarchive. Das Skript lässt sich auf einem Linux-Rechner mit Docker auch von Hand starten (Befehl im Kopf der Datei, dazu `VERSION` und `DEBVERSION`).
 4. Hochgeladen wird nur bei `release` oder `workflow_dispatch` mit `upload=true` (das Release muss dann existieren). Sonst baut der Lauf und führt alle Smoke-Tests aus.
+5. Manifest (Job `manifest`, Milestone 8.1): läuft erst, wenn beide Jobs erfolgreich hochgeladen haben, und nur beim Hochladen (`needs: [windows, linux]`, auf `dotnet-linux`). Er prüft mit `PAGEWING_REQUIRE_RELEASE_KEY=1` (`UpdateTrustTests.ReleaseKeysAreNotThePlaceholderWhenReleasing`), dass `UpdateTrust.cs` nicht mehr den Platzhalter enthält, lädt `SHA256SUMS-windows.txt`, `SHA256SUMS-linux.txt` und die Dateigrößen (`gh release view <Tag> --json assets`), baut `update-manifest.json` (`update-manifest`), signiert es (`update-sign`, Kennung aus `UPDATE_KEY_ID` im Job), prüft die Signatur mit den Schlüsseln des Programms (`update-verify --keys-from-source`) und lädt Manifest und Signatur mit `--clobber` hoch. Eine Vorabversion (`vX.Y.Z-…`) bekommt kein Manifest: Der Job überspringt dann alle Schritte, denn die App liest nur `X.Y.Z` und `releases/latest` nennt nie eine Vorabversion.
 
 Trockenlauf (Bau und Smoke-Tests ohne Hochladen), vom Projektinhaber auf Wunsch zu starten; seine Runner müssen laufen. Vor `gh release create` gibt es den Tag noch nicht; `ref` baut deshalb einen Branch (die Version kommt aus `tag`), und mit `ref` wird nie hochgeladen (der Lauf bricht ab, wenn zusätzlich `upload=true` gesetzt ist):
 
@@ -141,3 +146,55 @@ Voraussetzungen der Runner (zusätzlich zu denen für Native AOT in `CLAUDE.md`)
 - `check-binary` erlaubt neben den glibc-Kernbibliotheken nur `libfontconfig.so.1` (NEEDED von `libSkiaSharp.so`). Sie ist im `.deb` über `Depends: libfontconfig1` abgedeckt; das AppImage setzt sie, wie die X11-Bibliotheken, auf dem Rechner voraus (es bringt keine Systembibliotheken mit).
 - Der Lauf braucht die Rechte `contents: write` nur zum Hochladen; er läuft nie für Forks (Repo privat, siehe `CLAUDE.md`, Abschnitt „CI“).
 - Der erste echte Lauf gehört zum Release `v0.1.0`; bis dahin ist das Hochladen ungeprüft.
+- Für den Job `manifest`: das Secret `PAGEWING_UPDATE_SIGNING_KEY` im Repo (siehe „Signaturschlüssel für Updates“) und auf dem Linux-Runner wie beim Linux-Job `gh` und .NET. Ohne echten öffentlichen Schlüssel in `UpdateTrust.cs` scheitert der Job absichtlich am Platzhalter-Test; die Dateien der beiden anderen Jobs sind dann schon hochgeladen, nur das Manifest fehlt (die App bleibt dann still).
+
+## Update-Manifest und Signatur
+
+`update-manifest.json` ist kompaktes JSON ohne Zeilenumbruch (`{"format":1,"version":"X.Y.Z","files":[{"kind":…,"name":…,"size":…,"sha256":…}]}`), so wie `Pagewing.Core.Updates.UpdateManifest` es liest. `update-manifest` nimmt aus den Prüfsummen nur die vier bekannten Arten (`win-x64-setup`, `win-x64-portable`, `linux-appimage`, `linux-deb`) mit genau den Dateinamen dieser Version; die Quellarchive und Prüfsummendateien gehören nicht hinein. Fehlt eine Art, hat eine Datei mit bekannter Endung eine andere Version, fehlt eine Größe, ist eine Größe 0 oder über 1 GiB oder ist eine Zeile der Prüfsummen kaputt, entsteht nichts. Neue Arten kommen hinzu, ohne `format` zu erhöhen (ältere Programme überspringen sie).
+
+`update-manifest.json.sig` ist `<Kennung>:<Base64 der 64 Byte langen ECDSA-P256-Signatur (IEEE P1363, SHA-256) über die rohen Bytes des Manifests>`. `update-sign` liest den privaten Schlüssel **nur** aus der Umgebungsvariablen, die `--key-env` nennt (nie als Argument, nie in einer Datei, nie in der Ausgabe), nimmt nur eine Kennung, die in `src/Pagewing.Core/Updates/UpdateTrust.cs` steht (nie den Platzhalter), prüft, dass der Schlüssel zu ihr gehört, und schreibt die Signatur erst, nachdem sie mit dem öffentlichen Schlüssel aus `UpdateTrust.cs` geprüft ist. `update-verify --keys-from-source` prüft Signatur und Inhalt wie die App und scheitert, solange `UpdateTrust.cs` nur den Platzhalter enthält.
+
+Testvektor: `testdata/updates/update-manifest.json` und `.sig` sind die Ausgabe von `update-manifest` und `update-sign` für feste Eingaben (`SelfTest.VectorFiles` in `tools/package.cs`), einmal mit einem Wegwerfschlüssel signiert, dessen privater Teil gelöscht ist; sein öffentlicher Teil steht in `tests/Pagewing.Core.Tests/Updates/ReleaseToolTests.cs`. `ReleaseToolTests` prüft den Vektor mit dem `ManifestVerifier` der App, `package.cs selftest` prüft, dass `update-manifest` noch genau diese Bytes schreibt und `update-verify` sie annimmt. Ändert sich das Format bewusst: Manifest mit `update-manifest` aus denselben Eingaben neu schreiben, mit `update-keygen` (Ausgabe in einen Temp-Ordner) einen neuen Wegwerfschlüssel erzeugen, mit `update-sign --source <Datei mit der ausgegebenen Zeile>` signieren, den ausgegebenen Eintrag in `ReleaseToolTests.cs` einsetzen und die private Datei löschen.
+
+## Signaturschlüssel für Updates
+
+Den Schlüssel erzeugt nur der Projektinhaber, einmal, auf dem eigenen Rechner. Der private Schlüssel erscheint nie im Chat, in einem Issue, PR, Log oder Repository, und kein Agent liest ihn.
+
+1. Erzeugen, **außerhalb** jedes Git-Arbeitsverzeichnisses (`update-keygen` verweigert Pfade in einem Repository und überschreibt nie eine vorhandene Datei; die Datei ist nur für den eigenen Benutzer lesbar, unter Windows per ACL, unter Linux 0600):
+
+   ```powershell
+   dotnet run tools/package.cs -- update-keygen --id release-1 --private-out "$env:USERPROFILE\pagewing-update-signing-key.txt"
+   ```
+
+   Auf stdout steht danach der öffentliche Schlüssel als Eintrag für `UpdateTrust.Keys`:
+
+   ```csharp
+           new UpdateKey(
+               "release-1",
+               Convert.FromBase64String("MFkw…")),
+   ```
+
+2. Secret anlegen, ohne den Wert auf die Kommandozeile zu schreiben (nie `--body`):
+
+   ```powershell
+   Get-Content -Raw "$env:USERPROFILE\pagewing-update-signing-key.txt" | gh secret set PAGEWING_UPDATE_SIGNING_KEY --repo benjo-code/Pagewing
+   ```
+
+   (bash: `gh secret set PAGEWING_UPDATE_SIGNING_KEY --repo benjo-code/Pagewing < ~/pagewing-update-signing-key.txt`)
+
+3. Öffentlichen Schlüssel eintragen (auf einem Branch, per PR nach `dev`): in `src/Pagewing.Core/Updates/UpdateTrust.cs` den Eintrag `new UpdateKey(PlaceholderKeyId, …)` in `Keys` durch die ausgegebene Zeile ersetzen (die Konstante `PlaceholderKeyId` bleibt, die Tests nennen sie). Heißt die Kennung nicht `release-1`, auch `UPDATE_KEY_ID` im Job `manifest` von `.github/workflows/release.yml` ändern; `package.cs selftest` prüft, dass sie in `UpdateTrust.cs` steht.
+
+4. Prüfen, ohne etwas zu veröffentlichen:
+
+   ```powershell
+   $env:PAGEWING_UPDATE_SIGNING_KEY = Get-Content -Raw "$env:USERPROFILE\pagewing-update-signing-key.txt"
+   dotnet run tools/package.cs -- update-sign --manifest testdata/updates/update-manifest.json --key-env PAGEWING_UPDATE_SIGNING_KEY --id release-1 --out "$env:TEMP\check.sig"
+   Remove-Item Env:PAGEWING_UPDATE_SIGNING_KEY
+   dotnet run tools/package.cs -- update-verify --manifest testdata/updates/update-manifest.json --sig "$env:TEMP\check.sig" --keys-from-source
+   Remove-Item "$env:TEMP\check.sig"
+   $env:PAGEWING_REQUIRE_RELEASE_KEY = '1'; dotnet test --project tests/Pagewing.Core.Tests -- --filter-method "*ReleaseKeysAreNotThePlaceholderWhenReleasing"; Remove-Item Env:PAGEWING_REQUIRE_RELEASE_KEY
+   ```
+
+5. Die Datei mit dem privaten Schlüssel offline sichern (Passwortmanager oder verschlüsselter Datenträger) und dann vom Rechner löschen.
+
+Schlüsselwechsel (Verdacht auf Diebstahl, etwa ein gekaperter Runner): mit `update-keygen` einen neuen Schlüssel unter neuer Kennung (`release-2`) erzeugen und **zusätzlich** in `UpdateTrust.Keys` eintragen; dieses Release wird noch mit dem alten Schlüssel signiert, denn nur ihm vertrauen die installierten Programme. Danach Secret und `UPDATE_KEY_ID` auf den neuen Schlüssel umstellen und im folgenden Release den alten Eintrag entfernen. Geht der private Schlüssel verloren, gibt es diesen Weg nicht: Die Nutzer müssen einmal von Hand auf eine Version mit neuem Schlüssel umsteigen.

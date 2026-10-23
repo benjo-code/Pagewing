@@ -13,7 +13,8 @@ public static class UpdateTrust
     /// <summary>
     /// The accepted public keys, any of which may have signed a manifest. The one entry is a PLACEHOLDER generated at
     /// design time (its private half was discarded): it is a valid P-256 key but no release can be signed with it.
-    /// The real public key replaces it with the release pipeline (Milestone 8.1, signing job).
+    /// The owner replaces it with the real public key (<c>package.cs update-keygen</c>, packaging/README.md, section
+    /// "Signaturschlüssel für Updates"); until then the signing job of the release workflow refuses to sign.
     /// </summary>
     public static IReadOnlyList<UpdateKey> Keys { get; } =
     [
