@@ -12,7 +12,7 @@
 //   dotnet run tools/package.cs -- update-keygen --id <id> --private-out <file>   (the owner, once; never in a repository)
 //   dotnet run tools/package.cs -- update-manifest --version <x.y.z> --sums <SHA256SUMS-windows.txt> <SHA256SUMS-linux.txt> --sizes <assets.json> --out <update-manifest.json>
 //   dotnet run tools/package.cs -- update-sign --manifest <file> --key-env PAGEWING_UPDATE_SIGNING_KEY --id <id> --out <file.sig> [--source <UpdateTrust.cs>]
-//   dotnet run tools/package.cs -- update-verify --manifest <file> --sig <file> (--keys-from-source | --source <file>)
+//   dotnet run tools/package.cs -- update-verify [--manifest <file> --sig <file>] (--keys-from-source | --source <file>)
 //   dotnet run tools/package.cs -- deb --layout <dir> --version <x.y.z> --out <pagewing_x.y.z_amd64.deb> [--repo <root>]   (Linux)
 //   dotnet run tools/package.cs -- deb-smoke <file.deb> [--repo <root>]                  (Linux)
 //   dotnet run tools/package.cs -- runtime-fetch [--out <file>]                         (Linux)
@@ -45,7 +45,7 @@ static class Cli
         "  update-keygen --id <Kennung> --private-out <Datei>                erzeugt den Signaturschluessel: privat nur in die Datei, oeffentlich als Eintrag fuer UpdateTrust.Keys\n" +
         "  update-manifest --version <x.y.z> --sums <SHA256SUMS-windows.txt> <SHA256SUMS-linux.txt> --sizes <assets.json> --out <Datei>   Update-Manifest des Releases\n" +
         "  update-sign --manifest <Datei> --key-env <Variable> --id <Kennung> --out <Datei.sig> [--source <UpdateTrust.cs>]   signiert (Schluessel nur aus der Umgebung) und prueft\n" +
-        "  update-verify --manifest <Datei> --sig <Datei> (--keys-from-source | --source <Datei>)   prueft Signatur und Inhalt wie die App\n" +
+        "  update-verify [--manifest <Datei> --sig <Datei>] (--keys-from-source | --source <Datei>)   prueft Signatur und Inhalt wie die App (ohne Manifest nur die Schluessel)\n" +
         "  deb --layout <Ordner> --version <x.y.z> --out <Datei>             baut pagewing_<Version>_amd64.deb (Linux, dpkg-deb)\n" +
         "  deb-smoke <Datei.deb>                                             entpackt, prueft Starter, Symlink, ruft die CLI auf, lintian/desktop-file-validate wenn vorhanden (Linux)\n" +
         "  runtime-fetch [--out <Datei>]                                     laedt die type2-Runtime (feste Version, SHA-256 geprueft) nach ~/.cache/PagewingBuildTools\n" +
@@ -2323,19 +2323,19 @@ static class UpdateSign
     }
 }
 
-// update-verify --manifest <file> --sig <file> (--keys-from-source | --source <file>): signature and content as the app
-// checks them; --keys-from-source takes the keys of src/Pagewing.Core/Updates/UpdateTrust.cs and fails while it holds
-// only the placeholder.
+// update-verify [--manifest <file> --sig <file>] (--keys-from-source | --source <file>): signature and content as the
+// app checks them; --keys-from-source takes the keys of src/Pagewing.Core/Updates/UpdateTrust.cs and fails while it
+// holds only the placeholder. Without manifest and signature it checks only that (preflight job of release.yml).
 static class UpdateVerify
 {
     public static int Run(string[] args)
     {
         var fromSource = args.Contains("--keys-from-source", StringComparer.Ordinal);
         var parsed = Options.Parse([.. args.Where(a => a != "--keys-from-source")], "--manifest", "--sig", "--source");
-        if (parsed is not { } p || p.Positional.Count != 0 || !p.Named.TryGetValue("--manifest", out var manifestFile) ||
-            !p.Named.TryGetValue("--sig", out var sigFile) || fromSource == p.Named.ContainsKey("--source"))
+        if (parsed is not { } p || p.Positional.Count != 0 || fromSource == p.Named.ContainsKey("--source") ||
+            p.Named.ContainsKey("--manifest") != p.Named.ContainsKey("--sig"))
         {
-            Console.Error.WriteLine("Aufruf: update-verify --manifest <Datei> --sig <Datei> (--keys-from-source | --source <C#-Datei mit new UpdateKey(...)>)");
+            Console.Error.WriteLine("Aufruf: update-verify [--manifest <Datei> --sig <Datei>] (--keys-from-source | --source <C#-Datei mit new UpdateKey(...)>)   (ohne Manifest: prueft nur, dass ein echter Schluessel vertraut wird)");
             return 2;
         }
 
@@ -2343,6 +2343,13 @@ static class UpdateVerify
         if (TrustSource.Usable(source, "update-verify") is not { } keys)
         {
             return 1;
+        }
+
+        // Without a manifest: only the keys (the preflight job of release.yml, before anything is uploaded).
+        if (!p.Named.TryGetValue("--manifest", out var manifestFile) || !p.Named.TryGetValue("--sig", out var sigFile))
+        {
+            Console.WriteLine($"update-verify: {source} vertraut {string.Join(", ", keys.Keys)} (kein Platzhalter allein)");
+            return 0;
         }
 
         if (!File.Exists(manifestFile) || !File.Exists(sigFile))
@@ -3502,7 +3509,7 @@ static class SelfTest
         Expect("tag: alle bash-Regeln sind gleich (Linux- und Manifest-Job)",
             Regex.Matches(yml, @"\[\[ ""\$TAG"" =~ (?<p>\S+) \]\]").Select(m => m.Groups["p"].Value).Distinct(StringComparer.Ordinal).Count(), 1);
         Expect("tag: beide Checkouts der Bau-Jobs bauen auch einen Branch (inputs.ref)", Regex.Count(yml, @"ref: \$\{\{ inputs\.ref \|\| "), 2);
-        Expect("tag: alle drei Jobs verweigern das Hochladen eines Branchs", Regex.Count(yml, "name: Refuse to upload a branch build"), 3);
+        Expect("tag: alle vier Jobs verweigern das Hochladen eines Branchs", Regex.Count(yml, "name: Refuse to upload a branch build"), 4);
     }
 
     // The AppImage contains libfuse (LGPL-2.1): its source and the runtime's build scripts are attached to every release.
@@ -4479,6 +4486,8 @@ static class SelfTest
             File.WriteAllText(otherId, sigText.Replace("selftest:", "other:", StringComparison.Ordinal));
             Expect("update-verify: unbekannte Kennung -> Fehler", Cli.Run(["update-verify", "--manifest", manifest, "--sig", otherId, "--source", trust]), 1);
             Expect("update-verify: ohne Schluesselquelle liefert 2", Cli.Run(["update-verify", "--manifest", manifest, "--sig", sig]), 2);
+            Expect("update-verify: Manifest ohne Signatur liefert 2", Cli.Run(["update-verify", "--manifest", manifest, "--source", trust]), 2);
+            Expect("update-verify: ohne Manifest prueft nur die Schluessel (echter Schluessel: 0)", Cli.Run(["update-verify", "--source", trust]), 0);
 
             var noSig = Path.Combine(dir, "none.sig");
             Expect("update-sign: --key als Argument liefert 2", Cli.Run(["update-sign", "--manifest", manifest, "--key", privateText, "--id", "selftest", "--out", noSig, "--source", trust]), 2);
@@ -4511,6 +4520,7 @@ static class SelfTest
             Environment.SetEnvironmentVariable(keyEnv, privateText);
             Expect("update-sign: mit dem Platzhalter wird nie signiert", Cli.Run(SignArgs(noSig, id: "placeholder", source: placeholder)), 1);
             Expect("update-verify: Platzhalter als einziger Schluessel liefert 1", Cli.Run(["update-verify", "--manifest", manifest, "--sig", sig, "--source", placeholder]), 1);
+            Expect("update-verify: ohne Manifest scheitert die Schluesselpruefung am Platzhalter", Cli.Run(["update-verify", "--source", placeholder]), 1);
             Expect("update-sign: ohne --source nimmt UpdateTrust.cs (Kennung selftest steht nicht darin) und liefert 1",
                 Cli.Run(["update-sign", "--manifest", manifest, "--key-env", keyEnv, "--id", "selftest", "--out", noSig]), 1);
             Environment.SetEnvironmentVariable(keyEnv, null);
@@ -4527,6 +4537,8 @@ static class SelfTest
             {
                 Expect("update-verify --keys-from-source: scheitert mit Hinweis, solange UpdateTrust.cs nur den Platzhalter hat",
                     realErr.Contains("Platzhalter", StringComparison.Ordinal), true);
+                Expect("update-verify --keys-from-source ohne Manifest (preflight): scheitert, solange UpdateTrust.cs nur den Platzhalter hat",
+                    Cli.Run(["update-verify", "--keys-from-source"]), 1);
             }
         }
         finally
@@ -4573,7 +4585,27 @@ static class SelfTest
             string.Join(",", Regex.Matches(on, @"(?m)^  (?<k>[a-z_]+):").Select(m => m.Groups["k"].Value)), "release,workflow_dispatch");
         Expect("release.yml: kein Ausloeser fuer Pull Requests", yml.Contains("pull_request", StringComparison.Ordinal), false);
 
-        var job = Regex.Match(yml, @"(?m)^  manifest:\n(?<b>(?:    .*\n|\n)*)").Groups["b"].Value;
+        string Job(string name) => Regex.Match(yml, @"(?m)^  " + name + @":\n(?<b>(?:    .*\n|\n)*)").Groups["b"].Value;
+        List<string> StepsOf(string jobText) => [.. Regex.Split(jobText, @"(?m)^(?=      - )").Skip(1)];
+        string Name(string step) => Regex.Match(step, @"^      - name: (?<n>.+)$|^        name: (?<n>.+)$", RegexOptions.Multiline).Groups["n"].Value;
+
+        // preflight: before anything is uploaded, the tag must trust a real key (a release with only the placeholder
+        // could never update itself, and a rerun cannot fix a tag). Without upload (dry run) the check is skipped.
+        var preflight = Job("preflight");
+        Expect("release.yml: Job preflight vorhanden", preflight.Length > 0, true);
+        Expect("release.yml: Job preflight auf dem Linux-Runner", preflight.Contains("    runs-on: [self-hosted, dotnet-linux]\n", StringComparison.Ordinal), true);
+        Expect("release.yml: Job preflight liest nur (contents: read)", Regex.IsMatch(preflight, @"    permissions:\n      contents: read\n"), true);
+        Expect("release.yml: Job preflight braucht keinen anderen Job", preflight.Contains("    needs:", StringComparison.Ordinal), false);
+        var trustCheck = StepsOf(preflight).FirstOrDefault(s => Name(s) == "Check that the tag trusts a real update key") ?? string.Empty;
+        Expect("release.yml: preflight prueft beim Hochladen die Schluessel des Tags (update-verify --keys-from-source)",
+            trustCheck.Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal) &&
+            Regex.IsMatch(trustCheck, @"\n        run: dotnet run tools/package\.cs -- update-verify --keys-from-source\n"), true);
+        foreach (var buildJob in new[] { "windows", "linux" })
+        {
+            Expect($"release.yml: Job {buildJob} wartet auf preflight", Job(buildJob).Contains("    needs: preflight\n", StringComparison.Ordinal), true);
+        }
+
+        var job = Job("manifest");
         Expect("release.yml: Job manifest vorhanden", job.Length > 0, true);
         Expect("release.yml: Job manifest wartet auf beide Jobs", job.Contains("    needs: [windows, linux]\n", StringComparison.Ordinal), true);
         Expect("release.yml: Job manifest laeuft nur nach Erfolg beider Jobs und nur beim Hochladen", job.Contains(
@@ -4582,8 +4614,7 @@ static class SelfTest
         Expect("release.yml: Job manifest auf dem Linux-Runner", job.Contains("    runs-on: [self-hosted, dotnet-linux]\n", StringComparison.Ordinal), true);
         Expect("release.yml: Job manifest darf hochladen (contents: write)", Regex.IsMatch(job, @"    permissions:\n      contents: write\n"), true);
 
-        var steps = Regex.Split(job, @"(?m)^(?=      - )").Skip(1).ToList();
-        string Name(string step) => Regex.Match(step, @"^      - name: (?<n>.+)$|^        name: (?<n>.+)$", RegexOptions.Multiline).Groups["n"].Value;
+        var steps = StepsOf(job);
         int Index(string name) => steps.FindIndex(s => Name(s) == name);
 
         Expect("release.yml: genau eine Stelle nennt ein Secret", Regex.Count(yml, @"secrets\."), 1);
@@ -4593,8 +4624,23 @@ static class SelfTest
         Expect("release.yml: Secret nur im Signier-Schritt (env des Schritts)", Regex.IsMatch(signStep,
             @"\n        env:\n(?:          \S.*\n)*          PAGEWING_UPDATE_SIGNING_KEY: \$\{\{ secrets\.PAGEWING_UPDATE_SIGNING_KEY \}\}\n"), true);
         Expect("release.yml: Signier-Schritt startet keine Action", signStep.Contains("uses:", StringComparison.Ordinal), false);
-        Expect("release.yml: Signier-Schritt fuehrt nur update-sign aus (eine Zeile, Schluessel aus der Umgebung)", Regex.IsMatch(signStep,
-            @"\n        run: dotnet run tools/package\.cs -- update-sign --manifest \S+ --key-env PAGEWING_UPDATE_SIGNING_KEY --id ""\$UPDATE_KEY_ID"" --out \S+\n*$"), true);
+        Expect("release.yml: Signier-Schritt fuehrt nur das vorher gebaute update-sign aus (eine Zeile, Schluessel aus der Umgebung)", Regex.IsMatch(signStep,
+            @"\n        run: dotnet ""\$PACKAGE_TOOL"" update-sign --manifest \S+ --key-env PAGEWING_UPDATE_SIGNING_KEY --id ""\$UPDATE_KEY_ID"" --out \S+\n*$"), true);
+        Expect("release.yml: Signier-Schritt baut nichts (kein dotnet run/build/publish, kein package.cs)",
+            Regex.IsMatch(signStep, @"dotnet (run|build|publish)|package\.cs"), false);
+
+        // The tool that sees the secret is built from the tag's checkout into a folder of this job, wiped first, as a
+        // converted project (own obj and bin, no shared script cache), without build servers or directory imports.
+        var buildTool = Index("Build the packaging tool for signing");
+        var buildToolStep = buildTool >= 0 ? steps[buildTool] : string.Empty;
+        Expect("release.yml: eigener Schritt baut das Werkzeug vor dem Signieren", buildTool >= 0 && buildTool < sign, true);
+        Expect("release.yml: Werkzeug-Bau ohne Secret", buildToolStep.Contains("secrets.", StringComparison.Ordinal), false);
+        Expect("release.yml: Werkzeug-Bau in einen frisch geleerten Ordner des Jobs", buildToolStep.Contains(@"rm -rf ""$RUNNER_TEMP/package-tool""", StringComparison.Ordinal) &&
+            buildToolStep.Contains(@"dotnet project convert tools/package.cs -o ""$RUNNER_TEMP/package-tool/src""", StringComparison.Ordinal), true);
+        Expect("release.yml: Werkzeug-Bau ohne Buildserver und ohne Directory-Importe", Regex.IsMatch(buildToolStep,
+            @"dotnet build ""\$RUNNER_TEMP/package-tool/src"" -c Release -o ""\$RUNNER_TEMP/package-tool/bin"" --disable-build-servers -noAutoResponse -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false -p:ImportDirectoryPackagesProps=false"), true);
+        Expect("release.yml: PACKAGE_TOOL zeigt auf den frisch gebauten Ordner",
+            buildToolStep.Contains(@"echo ""PACKAGE_TOOL=$RUNNER_TEMP/package-tool/bin/package.dll"" >> ""$GITHUB_ENV""", StringComparison.Ordinal), true);
         Expect("release.yml: GH_TOKEN nur im env von Schritten", Regex.Count(yml, @"(?m)^          GH_TOKEN: \$\{\{ github\.token \}\}$"), Regex.Count(yml, "GH_TOKEN:"));
         Expect("release.yml: jeder Schritt mit GH_TOKEN setzt GH_REPO", Regex.Count(yml, @"GH_REPO: \$\{\{ github\.repository \}\}"), Regex.Count(yml, "GH_TOKEN:"));
         Expect("release.yml: jeder Checkout ohne gespeicherte Zugangsdaten", Regex.Count(yml, "persist-credentials: false"), Regex.Count(yml, "uses: actions/checkout@"));
