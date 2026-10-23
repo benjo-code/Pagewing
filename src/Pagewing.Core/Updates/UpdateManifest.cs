@@ -6,6 +6,9 @@ namespace Pagewing.Core.Updates;
 /// <summary>
 /// The signed description of a release: its version and the installable files with size and SHA-256. Nothing in it
 /// is trusted before <see cref="ManifestVerifier"/> has checked the signature over the raw bytes.
+/// Additive changes (new file kinds, new fields) never bump <c>format</c>: a reader skips what it does not know, and
+/// <see cref="ManifestVerifier"/> returns only the files of known kinds. Consumers parse <see cref="Version"/> with
+/// <see cref="UpdateVersion.TryParse"/>, because the text may carry a <c>v</c> prefix.
 /// </summary>
 /// <param name="Format">Version of the manifest format; the only one this program understands is <see cref="CurrentFormat"/>.</param>
 /// <param name="Version">The release version as text (<c>X.Y.Z</c>, an optional <c>v</c> in front).</param>

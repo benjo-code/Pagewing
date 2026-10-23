@@ -43,7 +43,7 @@ public static partial class ManifestVerifier
     public const long MaxFileSize = 1L << 30;
 
     private const int SignatureLength = 64;
-    private const int MaxFiles = 16;
+    private const int MaxFiles = 64;
 
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._+~-]{0,127}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex SafeFileName();
@@ -93,7 +93,8 @@ public static partial class ManifestVerifier
             return Reject(ManifestRejection.NotNewer);
         }
 
-        return CheckFiles(manifest.Files) is { } fileProblem ? Reject(fileProblem) : new ManifestResult(manifest, null);
+        var (known, problem) = CheckFiles(manifest.Files);
+        return problem is { } rejection ? Reject(rejection) : new ManifestResult(manifest with { Files = known! }, null);
     }
 
     private static ManifestResult Reject(ManifestRejection rejection) => new(null, rejection);
@@ -145,33 +146,44 @@ public static partial class ManifestVerifier
         }
     }
 
-    private static ManifestRejection? CheckFiles(IReadOnlyList<UpdateFile> files)
+    /// <summary>
+    /// Checks the files of known kinds and returns only those. An entry of an unknown kind is skipped whatever else it
+    /// contains: a later release may add kinds, and a client in the field must not refuse its manifest for that.
+    /// </summary>
+    private static (List<UpdateFile>? Known, ManifestRejection? Rejection) CheckFiles(IReadOnlyList<UpdateFile> files)
     {
+        var known = new List<UpdateFile>();
         var kinds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in files)
         {
-            if (file is null
-                || file.Kind is null
-                || file.Name is null
-                || file.Sha256 is null
-                || !UpdateFileKinds.All.Contains(file.Kind)
-                || !kinds.Add(file.Kind)
-                || !Sha256Hex().IsMatch(file.Sha256))
+            if (file?.Kind is null)
             {
-                return ManifestRejection.Malformed;
+                return (null, ManifestRejection.Malformed);
+            }
+
+            if (!UpdateFileKinds.All.Contains(file.Kind))
+            {
+                continue;
+            }
+
+            if (file.Name is null || file.Sha256 is null || !kinds.Add(file.Kind) || !Sha256Hex().IsMatch(file.Sha256))
+            {
+                return (null, ManifestRejection.Malformed);
             }
 
             if (!SafeFileName().IsMatch(file.Name))
             {
-                return ManifestRejection.UnsafeFileName;
+                return (null, ManifestRejection.UnsafeFileName);
             }
 
             if (file.Size is <= 0 or > MaxFileSize)
             {
-                return ManifestRejection.UnsafeSize;
+                return (null, ManifestRejection.UnsafeSize);
             }
+
+            known.Add(file);
         }
 
-        return null;
+        return (known, null);
     }
 }

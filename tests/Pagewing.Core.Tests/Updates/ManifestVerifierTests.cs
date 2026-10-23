@@ -214,7 +214,7 @@ public sealed class ManifestVerifierTests
     [InlineData("{\"format\":1,\"version\":\"0.2.0\",\"files\":[]}")]
     [InlineData("{\"format\":1,\"version\":\"0.2.0\",\"files\":[null]}")]
     [InlineData("{\"format\":1,\"version\":\"0.2.0\",\"files\":[{\"kind\":\"win-x64-setup\"}]}")]
-    [InlineData("{\"format\":1,\"version\":\"0.2.0\",\"files\":[{\"kind\":\"mac\",\"name\":\"a.exe\",\"size\":5,\"sha256\":\"aa\"}]}")]
+    [InlineData("{\"format\":1,\"version\":\"0.2.0\",\"files\":[{\"name\":\"a.exe\",\"size\":5}]}")]
     public void RejectsAMalformedManifest(string json)
     {
         using var key = new TestKey("k1");
@@ -354,6 +354,99 @@ public sealed class ManifestVerifierTests
         var result = ManifestVerifier.Verify(json, key.Sign(json), [key.Key], Current);
 
         Assert.Null(result.Rejection);
+    }
+
+    private static string FileJson(string kind, string name = "a.exe", string size = "10", string? hash = null) =>
+        "{\"kind\":\"" + kind + "\",\"name\":\"" + name + "\",\"size\":" + size + ",\"sha256\":\"" + (hash ?? Hash) + "\"}";
+
+    private static string ManifestWithFiles(params string[] files) =>
+        "{\"format\":1,\"version\":\"0.2.0\",\"files\":[" + string.Join(',', files) + "]}";
+
+    private static ManifestResult VerifySigned(string json)
+    {
+        using var key = new TestKey("k1");
+        var bytes = Bytes(json);
+        return ManifestVerifier.Verify(bytes, key.Sign(bytes), [key.Key], Current);
+    }
+
+    [Fact]
+    public void IgnoresAnUnknownKind()
+    {
+        var result = VerifySigned(ManifestWithFiles(FileJson("linux-arm64-appimage")));
+
+        Assert.Null(result.Rejection);
+        Assert.NotNull(result.Manifest);
+        Assert.Empty(result.Manifest.Files);
+    }
+
+    [Fact]
+    public void IgnoresAnUnknownKindWhateverItsContentIs()
+    {
+        // A later release may describe a new kind in ways this program cannot judge; it must not refuse the manifest.
+        var result = VerifySigned(ManifestWithFiles(
+            FileJson("linux-arm64-appimage", name: "../x", size: "-5", hash: "zz"),
+            FileJson("linux-arm64-appimage", name: "../y"),
+            FileJson("win-x64-setup", name: "Pagewing-0.2.0-win-x64-setup.exe")));
+
+        Assert.Null(result.Rejection);
+        Assert.NotNull(result.Manifest);
+        Assert.Equal("Pagewing-0.2.0-win-x64-setup.exe", Assert.Single(result.Manifest.Files).Name);
+    }
+
+    [Fact]
+    public void AcceptsAnUnknownKindAlongsideAKnownFileAndSelectsTheKnownOne()
+    {
+        var result = VerifySigned(ManifestWithFiles(
+            FileJson("linux-arm64-appimage", name: "arm.AppImage"),
+            FileJson("linux-appimage", name: "x64.AppImage")));
+
+        Assert.Null(result.Rejection);
+        Assert.NotNull(result.Manifest);
+        Assert.Equal("x64.AppImage", result.Manifest.FileOfKind("linux-appimage")?.Name);
+        Assert.Null(result.Manifest.FileOfKind("linux-arm64-appimage"));
+    }
+
+    [Fact]
+    public void StillChecksTheNameAndSizeOfAKnownKindNextToAnUnknownOne()
+    {
+        Assert.Equal(
+            ManifestRejection.UnsafeFileName,
+            VerifySigned(ManifestWithFiles(FileJson("future-kind"), FileJson("linux-deb", name: "..\\\\x.deb"))).Rejection);
+        Assert.Equal(
+            ManifestRejection.UnsafeSize,
+            VerifySigned(ManifestWithFiles(FileJson("future-kind"), FileJson("linux-deb", size: "0"))).Rejection);
+    }
+
+    [Fact]
+    public void RejectsTheSameKnownKindTwice()
+    {
+        var result = VerifySigned(ManifestWithFiles(
+            FileJson("linux-deb", name: "a.deb"),
+            FileJson("linux-deb", name: "b.deb")));
+
+        Assert.Null(result.Manifest);
+        Assert.Equal(ManifestRejection.Malformed, result.Rejection);
+    }
+
+    [Fact]
+    public void AllowsTheSameUnknownKindTwice()
+    {
+        var result = VerifySigned(ManifestWithFiles(
+            FileJson("future-kind", name: "a.bin"),
+            FileJson("future-kind", name: "b.bin"),
+            FileJson("linux-deb", name: "a.deb")));
+
+        Assert.Null(result.Rejection);
+    }
+
+    [Fact]
+    public void AcceptsManyEntriesButNotAbsurdlyMany()
+    {
+        var many = Enumerable.Range(0, 64).Select(i => FileJson("future-kind-" + i)).ToArray();
+        var tooMany = Enumerable.Range(0, 65).Select(i => FileJson("future-kind-" + i)).ToArray();
+
+        Assert.Null(VerifySigned(ManifestWithFiles(many)).Rejection);
+        Assert.Equal(ManifestRejection.Malformed, VerifySigned(ManifestWithFiles(tooMany)).Rejection);
     }
 
     [Fact]
