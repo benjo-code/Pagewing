@@ -25,6 +25,8 @@ apt-get install -y --no-install-recommends \
 export PATH="/dotnet:$PATH" DOTNET_ROOT=/dotnet DOTNET_CLI_HOME=/tmp/dotnet-home DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
 export AVALONIA_TELEMETRY_OPTOUT=1
 export HOME=/tmp/home XDG_CACHE_HOME=/tmp/home/.cache
+# NuGet follows DOTNET_CLI_HOME, tools/licenses.cs follows HOME: one explicit folder for both.
+export NUGET_PACKAGES=/tmp/nuget-packages
 mkdir -p "$HOME"
 
 ldd --version | sed -n 1p
