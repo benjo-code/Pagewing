@@ -1,36 +1,718 @@
 {
   "$schema": "./roadmap.schema.json",
   "schemaVersion": 1,
-  "title": "<Projektname>",
+  "title": "Pagewing",
+  "scopeChanges": [
+    {
+      "date": "2026-10-23",
+      "context": "Abnahme von v0.1.0: Drucken unter Linux, Screenreader und weitere Linux-Distributionen aus der Abnahme genommen",
+      "text": "Auf Wunsch des Projektinhabers (2026-10-23) umfasst die manuelle Abnahme von `v0.1.0` nicht mehr: (1) Drucken unter Linux am Papierdrucker (CUPS, Drehung der Querseiten, Duplex; der Drucker ist umständlich einzurichten), (2) die übrigen Druckfälle unter Windows außer den Seitenbereichen (Kopien sortiert, Duplex, „Tatsächliche Größe“, Querseiten, Abbrechen), (3) Screenreader-Prüfungen (Narrator, NVDA, Orca) und (4) Ubuntu 24.04, Debian 13 und Linux Mint. Alles steht im Backlog. Die Woche Alltagsnutzung läuft parallel zur weiteren Arbeit; veröffentlicht wird `v0.1.0` erst auf ausdrückliche Anweisung. Geprüft sind unter Windows: Installer, ZIP, SmartScreen, Druck-Seitenbereiche, Startzeiten auf dem Haupt-PC, hell und dunkel; unter Linux: `.deb` auf Ubuntu 22.04 und Debian 12, AppImage auf Debian 12 und CachyOS (auch das verschobene AppImage)."
+    },
+    {
+      "date": "2026-10-22",
+      "context": "Automatische Updates sind nicht mehr Out of Scope: neuer Milestone 8.1 zwischen dem Release v0.1.0 und M9",
+      "text": "Auf Wunsch des Projektinhabers (2026-10-22) bekommt Pagewing automatische Updates, die sich selbst installieren (nicht nur eine Benachrichtigung). Das löst den Ausschluss „Automatische Online-Updates bzw. Update-Prüfung“ (Out of Scope; ebenso in den Grundsätzen und der Abgrenzung der Gesamt-Spec) und den Eintrag „Keine Auto-Update-Funktion“ in `Docs/DECISIONS.md` ab. Lage: neuer **Milestone 8.1** nach dem Release `v0.1.0` und vor M9; `v0.2.0` ist damit die erste Version, die sich selbst aktualisieren kann. Begründung: Ein Updater braucht ein veröffentlichtes Release und eine zweite Version zum Testen, ein öffentliches Repo (Prüfung gegen GitHub Releases ohne Token in der App) und signierte Release-Dateien; er kann nur Versionen aktualisieren, die ihn schon enthalten, also je früher desto weniger Nutzer müssen einmal von Hand umsteigen; und vor dem Speichern (M9) ist er einfacher zu entwerfen, weil es dann noch keine ungespeicherten Änderungen gibt, die ein Neustart gefährden könnte. **Festgelegt:** Die Update-Prüfung läuft erst nach dem Start im Hintergrund (nach dem ersten scharfen Seitenbild bzw. dem ersten Frame der Startseite, nie im Startpfad) und darf die Startzeit-Budgets nicht berühren. Telemetrie, Konten und Online-Dienste bleiben ausgeschlossen; die Zusage „komplett offline“ gilt künftig mit der Ausnahme dieser Prüfung. **Noch nicht angepasst** (gehört zu Milestone 8.1 und wird beim Planen nachgezogen): `Docs/DECISIONS.md`, `CLAUDE.md` („Offline und Sicherheit“ und die Kopfzeile), `README.md`, die Gesamt-Spec und die Design-Spec sowie die UI-Texte „Pagewing arbeitet offline. Nichts verlässt diesen Rechner.“ (Startseite) und „Arbeitet vollständig offline: keine Telemetrie, keine Netzwerkzugriffe.“ (Über-Karte). **Offen** (im Plan mit dem Projektinhaber klären): ob die Prüfung beim ersten Start gefragt wird oder von Anfang an aktiv ist, der Schalter zum Abschalten, und der Umfang je Paketform (portable ZIP, `.deb`, AppImage)."
+    },
+    {
+      "date": "2026-10-22",
+      "context": "M8: Linux-Handprüfung, glibc-Entscheidung, Release-Trockenlauf und `/ALLUSERS` still auf die Abnahme von v0.1.0 verschoben",
+      "text": "Auf Anweisung des Projektinhabers (2026-10-22) gilt M8 mit der Prüfung unter Windows als fertig. Der Release-Workflow wird nicht in M8, sondern beim Release `v0.1.0` ausgeführt, die Linux-Pakete will der Projektinhaber vorerst nicht von Hand prüfen. Auf die Abnahme von `v0.1.0` verschoben (die meisten Punkte standen dort schon, neu ist die glibc-Entscheidung): die Installation und das Entfernen von `.deb` und AppImage auf den Linux-Distributionen; die Klärung der Mindest-glibc auf dem Runner `dotnet-linux` samt Entscheidung (Container `ubuntu:22.04` oder Anheben der Mindest-glibc); der Trockenlauf und der erste Upload von `release.yml`; Narrator und Orca an der Über-Karte und der Standardprogramm-Karte; `/ALLUSERS` still und ein frisches Windows. Die Klärung der Avalonia-Telemetrie beim Bauen bleibt im Backlog. In M8 geprüft ist unter Windows: Bau des Installers, `installer-smoke`, die Windows-Tests, `licenses check` auf einem Windows-Publish sowie die grafische Installation für alle Benutzer und nur für den Benutzer, Doppelklick auf PDF und Deinstallation von Hand. Dabei gefunden und behoben: Die Karte „Als Standardprogramm festlegen“ fragte unter Windows 11 (Build 26200) trotz gesetztem Standard erneut, weil nur `UserChoice` gelesen wurde (`Docs/DECISIONS.md`, Eintrag „Standardprogramm unter Windows 11: `UserChoiceLatest` vor `UserChoice` lesen (M8)“). Nicht belegt bis dahin: jeder Lauf von `release.yml`, jede Linux-Installation und die Linux-Standardprogramm-Karte auf einem echten System."
+    },
+    {
+      "date": "2026-10-19",
+      "context": "M8: Verteilung – Umfang, bewusst nicht enthalten, offene Fragen",
+      "text": "Mit dem Projektinhaber am 2026-10-19 abgestimmt (Plan `superpowers/plans/2026-10-19-milestone-08-verteilung.md`, Abschnitt „Festgelegt“). Über die Roadmap-Aufgaben hinaus enthält M8: den Installer mit stillem Modus, wählbarem Zielordner und der Frage „Pagewing jetzt starten?“; die Karte „Als Standardprogramm festlegen“ beim ersten Start (nicht im Installer) samt Befehl in der Palette; die Karte „Über Pagewing“; die CLI im Paket (Unterordner `cli/`, Annahme); die Lizenztexte der AppImage-Runtime; den Release-Workflow ohne Actions-Artifacts. Bewusst **nicht** enthalten: Code-Signierung (der Installer löst SmartScreen-Warnungen aus; SignPath steht im Backlog), winget, Flatpak, MSIX, Auto-Update (Pagewing greift nie ins Netz), ein PATH-Eintrag der CLI, ein Linux-ZIP. Der Milestone bleibt `in-progress`, bis die Läufe unter Windows, der Trockenlauf des Release-Workflows und die manuelle Abnahme erfolgt sind. Offene Fragen an den Projektinhaber (Annahme jeweils in Klammern; Einzelheiten in `Docs/DECISIONS.md`, Eintrag „Verteilung: Nicht-Ziele und offene Fragen …“): glibc und Docker auf dem Runner `dotnet-linux` (vorläufig 2.35); `Maintainer` im `.deb` (Platzhalter `Pagewing contributors <noreply@users.noreply.github.com>`); CLI im Paket (ja); Einstellungen der portablen ZIP (`%APPDATA%\\Pagewing`); Avalonia-Telemetrie beim Bauen."
+    },
+    {
+      "date": "2026-10-19",
+      "context": "M7: manuelle Abnahme des Druckens auf die Release-Abnahme von v0.1.0 verschoben; Druckknopf; Druckverbot",
+      "text": "Auf Anweisung des Projektinhabers (2026-10-19) entfällt die manuelle Prüfung des Druckens auf echten Druckern und unter Windows als Abnahmekriterium von Milestone 7; M7 gilt mit den automatisierten Prüfungen (Linux gegen eine echte CUPS-PDF-Warteschlange, Anwendungstests mit einem Fake-Dienst) als fertig. Die Prüfungen stehen als drei Punkte in der Abnahme des Releases `v0.1.0`, die der Projektinhaber vor dem ersten Release durchführt. Nicht geprüft sind damit bis dahin: jeder Lauf unter Windows (Dialog, GDI-Auftrag, `WindowsPrintToPdfTests`), ein Papierdrucker, Duplex, die Drehung durch CUPS am Papierdrucker und Screenreader. Über die Roadmap-Aufgaben hinaus enthält M7: einen Druckknopf unten in der Aktionsleiste (Design-Spec 7.3 nachgezogen), die Einstellung „Seitengröße beim Drucken“, automatische Drehung je Seite und das Achten eines Druckverbots des Dokuments (`Docs/DECISIONS.md`, Einträge „Drucken: Umsetzung und Grenzen (M7)“ und „Dokumentrechte: Druckverbot wird geachtet …“). Bewusst nicht enthalten: Druckvorschau, mehrere Seiten pro Blatt, Drucken aus der CLI."
+    },
+    {
+      "date": "2026-10-18",
+      "context": "M6: dunkle Seite ohne invertierte Bilder, Position je Datei, Palette mit Tabs und Inhalt; was bewusst fehlt",
+      "text": "Mit dem Projektinhaber am 2026-10-18 abgestimmt (Plan `superpowers/plans/2026-10-18-milestone-06-komfort.md`, Abschnitt „Scope dieses Plans“). Über die Roadmap-Aufgaben hinaus enthält M6: eine dunkle Seitendarstellung, die Bilder nicht invertiert (Versuch und Entscheidung zwischen PDFium-Farbschema und Helligkeitsumkehr in Task 1), den Verlauf mit Seite, Zoom und Layout **je Datei**, die Befehlspalette mit zusätzlichen Gruppen für offene Tabs und das Inhaltsverzeichnis, den gespeicherten Panel-Zustand (Spec 7.3, „ab M6“) sowie aus dem Backlog die Tastenkürzel für die Panels und die Automation-Zustände für Tabs und Aktionsleiste. Hochkontrast bekommt unter Windows eine eigene feste Palette. Bewusst nicht enthalten und im Backlog geblieben: Sitzung wiederherstellen, die Einstellung „Hardwarebeschleunigung“, frei belegbare Tastenkürzel, F6-Bereichswechsel (Spec 7.9) und der Sprachwechsel zur Laufzeit (gilt ab dem nächsten Start). Der Milestone ist groß; Teil B (Tasks 9 bis 13) lässt sich bei Bedarf als M6.1 abspalten."
+    },
+    {
+      "date": "2026-10-18",
+      "context": "M5: Kopieren als Fließtext mit HTML, Alt+Links/Rechts, Adressen im Text; bewusst nicht enthalten",
+      "text": "Mit dem Projektinhaber am 2026-10-18 abgestimmt (Plan `superpowers/plans/2026-10-18-milestone-05-text-suche.md`, Abschnitt „Scope dieses Plans“). Über die Roadmap-Aufgaben hinaus enthält M5: Strg+C kopiert formatierten Fließtext (Absätze, ohne Trennstriche am Zeilenende, Fett, Kursiv, Überschriften als HTML und Klartext), Strg+Umschalt+C den Rohtext; Doppel- und Dreifachklick markieren Wort und Zeile; Alt+Links/Alt+Rechts gehen nach einem internen Link-Sprung zurück und vor; im Text stehende Adressen sind Links; Optionen „Groß-/Kleinschreibung beachten“ und „Ganze Wörter“, höchstens 10 000 Treffer; das Panel „Suche“ ist ein dritter Eintrag der Aktionsleiste (Design-Spec 7.3, 7.4, 7.5a und 7.5b nachgezogen). Bewusst **nicht** enthalten und im Backlog: Suche über mehrere Dateien und ein Suchindex, Strg+A, Spaltenerkennung, Erkennen von Kopf- und Fußzeilen beim Kopieren, Auto-Scroll beim Ziehen der Auswahl am Rand, reguläre Ausdrücke und Ersetzen. OCR bleibt in Milestone 15: gescannte Seiten bekommen nur einen Hinweis. Ligaturen sind nur mit synthetischen Zeichen getestet (kein Test-PDF mit Ligaturen). Entscheidungen: `Docs/DECISIONS.md`, Einträge „… (M5)“."
+    },
+    {
+      "date": "2026-10-18",
+      "context": "M4.1: Linux/X11-Prüfung der Ziehgeste übersprungen und ins Backlog verschoben",
+      "text": "Auf Anweisung des Projektinhabers entfällt die manuelle Prüfung der Tab-Ziehgeste auf Linux/X11 als Abnahmekriterium von Milestone 4.1; M4.1 gilt mit der Prüfung auf Windows als fertig. Die Prüfung steht nicht belegt aus und ist als Eintrag im Backlog festgehalten (Zeiger-Fang über das neue Fenster, Fensterposition unter X11, geparktes Fenster bei −32000/−32000, Wayland/XWayland)."
+    },
+    {
+      "date": "2026-10-18",
+      "context": "M4.1: Fenster hängt beim Ziehen am Zeiger; einziger Tab; Abnahme in zwei Teilen",
+      "text": "Auf Wunsch des Projektinhabers hängt das neue Fenster schon beim Ziehen am Zeiger (Stil Chrome), statt erst beim Loslassen zu entstehen; ein Versuch auf Windows zeigte, dass die Tableiste den Zeiger-Fang dabei behält. Dazu kommen das Ziehen des einzigen Tabs eines Fensters (das Fenster wandert und führt sich über einer fremden Leiste zusammen) und Esc zum Abbrechen. Die manuelle Abnahme ist in Windows und Linux/X11 aufgeteilt, weil Linux/X11 auf dem Entwicklungsrechner nicht prüfbar ist. Plan: `superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md`."
+    },
+    {
+      "date": "2026-10-17",
+      "context": "M4: Tabs in eigenes Fenster verschieben; Ziehgeste als neuer Milestone 4.1",
+      "text": "Auf Wunsch des Projektinhabers lassen sich Tabs in ein eigenes Fenster verschieben. M4 liefert das Menü „In neuem Fenster öffnen“ (der Tab wechselt samt Sitzung das Fenster, ohne die PDF neu zu öffnen) und die dafür nötige Architektur (`TabViewModel`, `Workspace`); das Herausziehen und Zurückziehen per Maus ist der neue Milestone 4.1 (Voraussetzung M4). Ebenfalls mit M4 statt M3: Aktionsleiste und Panel (Seiten, Inhalt; „Suche“ folgt in M5), ein Layout-Knopf und das Zoom-Menü in der Statusleiste, Tastenkürzel Strg+0/1/2/G. Plan: `superpowers/plans/2026-10-17-milestone-04-navigation.md`."
+    },
+    {
+      "date": "2026-10-17",
+      "context": "M3: Scrollen mit der Tastatur kommt dazu",
+      "text": "Das Abschluss-Review von M3 fand, dass in der Dokumentansicht nur Bild auf/ab wirkte: Pfeiltasten, Leertaste, Pos1 und Ende taten nichts, und kein Milestone sah sie vor. Sie gehören jetzt zum fortlaufenden Scrollen von M3 (`DocumentView`, Begründung in `Docs/DECISIONS.md`, Eintrag „Dokumentansicht: Zeichenfläche unter dem ScrollViewer …“). Die Aufgaben von M4 und M6 bleiben unverändert."
+    },
+    {
+      "date": "2026-10-16",
+      "context": "M1: Kacheln über `FPDF_RenderPageBitmap_Start` mit Offset statt Matrix-API",
+      "text": "Kacheln werden nicht mit `FPDF_RenderPageBitmapWithMatrix` (Matrix + Clipping) gerendert, sondern mit `FPDF_RenderPageBitmap_Start`: Bitmap in Kachelgröße, Start bei minus Kachel-Offset, Größe der ganzen Seite in Pixeln. Grund: Die Matrix-API ist nicht progressiv, Pause und Abbruch wären damit nicht möglich. Folge: Spec 5.3 und die Roadmap-Aufgabe „Rendern ganzer Seiten und einzelner Kacheln“ sind angepasst. Kacheln sind in PDFium nicht allgemein bitgleich zum Ganzseiten-Rendering und werden deshalb mit 64 px Überlapp nach links gerendert; Scheduler und Kachelgröße (M3) müssen das berücksichtigen (Begründung in `Docs/DECISIONS.md`, Eintrag „Kacheln mit 64 px Überlapp nach links; Kacheln sind in PDFium nicht allgemein bitgleich“)."
+    },
+    {
+      "date": "2026-10-16",
+      "context": "M1: Vergleichsmessung nur mit Chrome",
+      "text": "Die Vergleichsmessung wurde nur mit Chrome durchgeführt; Acrobat und SumatraPDF sind auf dem Rechner des Projektinhabers nicht installiert und wurden nicht gemessen. Die Aufgabe „Vergleichsmessung“ in M1 ist entsprechend umformuliert. Das genügt der Entscheidungsregel in `bench/compare/README.md` („Regel für den Vorschlag“), die sich nur auf den schnellsten Browser (Chrome) stützt; Acrobat und SumatraPDF dienten dort nur der Einordnung. Die vier Budgets bleiben unverändert und sind endgültig (Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“). Offen bleibt der Vergleich mit Acrobat und SumatraPDF."
+    },
+    {
+      "date": "2026-10-17",
+      "context": "M2: Design-Spec führt Dokumentinfos und zwei Einstellungen ein",
+      "text": "Die Design-Spec (`Docs/superpowers/specs/2026-10-17-designsystem.md`) sieht in der Statusleiste den Knopf „Dokumentinfos“ (Abschnitt 7.6) sowie die Einstellungen „Dichte“ (Normal/Kompakt, Abschnitt 5.4) und „Animationen reduzieren“ (Abschnitt 5.6; Avalonia 12.1 kennt keine Systemeinstellung dafür) vor. Folge: M4 bekommt die Aufgabe „Dokumentinfos in der Statusleiste“, die Einstellungen in M6 umfassen zusätzlich Dichte und Animationen reduzieren, und M6 bekommt die Aufgabe „Hochkontrast“ (Fluent wertet die Hochkontrast-Einstellung von Windows nicht aus, Design-Spec Abschnitte 2.7 und 9)."
+    },
+    {
+      "date": "2026-10-17",
+      "context": "M3: Ein Dokument pro Fenster, keine Aktionsleiste und kein Panel",
+      "text": "M3 ist eine schlanke Leseansicht mit einem Dokument pro Fenster (mit dem Projektinhaber am 2026-10-17 abgestimmt). Eine zweite Datei (Argument, Pipe, Drop) ersetzt das offene Dokument; die Gesamt-Spec 5.4 spricht von einem neuen Tab, den es erst mit M4 gibt. Die Aktionsleiste und das Panel (Vorschaubilder, Inhalt, Suche) entfallen bis M4 bis M5, weil die Design-Spec keine ausgegrauten Platzhalter erlaubt. Das Seitenfeld der Statusleiste (Anzeige, Eingabe mit Enter, Pfeile) gehört schon zu M3; „Gehe zu Seite“ in M4 ergänzt weitere Wege dorthin. Details: Plan `superpowers/plans/2026-10-17-milestone-03-app-shell.md`, Abschnitt „Scope dieses Plans“."
+    }
+  ],
+  "blocks": [
+    {
+      "title": "Geschwindigkeitsziele",
+      "text": "Geschwindigkeit ist das wichtigste Merkmal von Pagewing. Die Budgets sind seit M1 endgültig (Vergleichsmessung mit Chrome, Begründung in `Docs/DECISIONS.md`, Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“) und werden ab M3 in der CI geprüft; Details in der [Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 5.4:\n\n| Messgröße | Ziel |\n|---|---|\n| Kaltstart bis erste Seite scharf (1-seitige Test-PDF, AOT) | ≤ 400 ms |\n| Warmstart bis erste Seite scharf | ≤ 200 ms |\n| Weitere Datei in laufender Instanz bis erste Seite | ≤ 100 ms |\n| 1000-seitige PDF öffnen bis erste Seite | ≤ 300 ms |"
+    },
+    {
+      "title": "Out of Scope",
+      "text": "Bewusst nicht umgesetzt:\n\n- Digitale Signatur mit Zertifikat (vorerst; kann später ergänzt werden)\n- XFA-Formulare\n- JavaScript in PDFs\n- PDF nach Word umwandeln\n- Cloud, Konten, KI-Assistent\n- Druckvorstufe (Preflight), 3D- und Multimedia-Inhalte\n- macOS und Mobilgeräte (Avalonia könnte es, wird aber weder gebaut noch getestet)\n- Telemetrie, Konten und Online-Dienste; Netzwerkzugriff gibt es allein für die Update-Prüfung (Milestone 8.1), sonst arbeitet Pagewing komplett offline"
+    }
+  ],
   "subprojects": [
     {
       "number": 1,
-      "name": "<Name>",
-      "spec": { "text": "noch nicht erstellt (wird in M0 erstellt)" },
+      "name": "Fundament & Viewer",
+      "spec": { "link": "superpowers/specs/2026-10-16-pagewing-design.md" },
       "milestones": [
         {
           "id": "0",
           "title": "Repo-Grundgerüst & CI",
-          "status": "open",
-          "goal": "Leeres, aber vollständig aufgesetztes Repo, auf dem alle weiteren Milestones aufbauen.",
+          "status": "done",
+          "plan": "superpowers/plans/2026-10-16-milestone-00-grundgeruest.md",
+          "completedOn": "2026-10-16",
+          "goal": "Leeres, aber vollständig aufgesetztes Repo mit Solution-Struktur und CI auf Linux und Windows, auf dem alle weiteren Milestones aufbauen.",
           "tasks": [
-            { "text": "Spec erstellen (Brainstorming): Ziel, Umfang, Stack, Teilprojekte; hier verlinken und die ersten Milestones eintragen", "done": false },
-            { "text": "Repo-Einrichtung laut README erledigt: `dev` als Default-Branch, Merge-Optionen, Branch Protection für `main` und `dev`", "done": false },
-            { "text": "Projekt-Kopf in `CLAUDE.md` und `README.md` ausfüllen, Template-Abschnitt aus der README entfernen", "done": false },
-            { "text": "Stackspezifische `.gitignore` (inkl. `.env`) und `.gitattributes`-Ergänzungen (z. B. Unity: Git LFS für große Assets)", "done": false },
-            { "text": "Projektgerüst inkl. Testprojekt", "done": false },
-            { "text": "`.env.example` mit Platzhaltern, falls Secrets benötigt werden", "done": false },
-            { "text": "CI (GitHub Actions): Build, Test und Format/Lint auf PRs nach `dev` und `main`; der Job `roadmap` aus `.github/workflows/roadmap.yml` bleibt", "done": false },
-            { "text": "CI-Jobs (`roadmap` und der Job für Build, Test, Lint) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen", "done": false },
-            { "text": "Dependabot für das Paket-Ökosystem und GitHub Actions", "done": false }
+            { "text": "Spec erstellen (Brainstorming): Ziel, Umfang, Stack, Teilprojekte; hier verlinken und die ersten Milestones eintragen", "done": true },
+            { "text": "Repo-Einrichtung laut README erledigt: `dev` als Default-Branch, Merge-Optionen, Branch Protection für `main` und `dev`", "done": true },
+            { "text": "Projekt-Kopf in `CLAUDE.md` und `README.md` ausfüllen, Template-Abschnitt aus der README entfernen", "done": true },
+            { "text": "`LICENSE` mit GPL-3.0 (Lizenz: GPL-3.0-or-later)", "done": true },
+            { "text": "Self-hosted Windows-Runner mit Label `dotnet-windows` in der Orga `benjo-code` einrichten (Projektinhaber)", "done": true },
+            { "text": "`.gitignore` für .NET (inkl. `.env`, `bin/`, `obj/`, Render-Diff-Ausgaben), `NuGet.config` (nur nuget.org, Source-Mapping) und C#-Stilregeln in `.editorconfig`", "done": true },
+            { "text": "Solution-Gerüst laut Spec, Abschnitt 5.1: `Pagewing.slnx`, `global.json` (inkl. Test-Runner Microsoft.Testing.Platform), `Directory.Build.props` (Nullable, Warnungen als Fehler, Analyse-Stufe, deterministischer Build, Version; `IsAotCompatible` je `src/`-Projekt), `Directory.Packages.props`, Isolation der Einzeldatei-Werkzeuge in `tools/`, Projekte `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-12-Fenster), `Pagewing.Cli` (`--version`) mit Smoke-Skript `tools/smoke-cli.cs`, `Pagewing.Core.Tests` (xunit.v3)", "done": true },
+            { "text": "CI (GitHub Actions) auf PRs nach `dev` und `main`: Build, Test und `dotnet format --verify-no-changes` auf `dotnet-linux` und `dotnet-windows`, AOT-Publish von App und CLI pro OS als Smoke-Test; der Job `roadmap` bleibt", "done": true },
+            { "text": "CI-Jobs (`roadmap` und die Build/Test/Lint-Jobs beider OS) als Pflicht-Status-Checks in der Branch Protection von `main` und `dev` eintragen", "done": true },
+            { "text": "Dependabot für NuGet (Gruppe `bblanchon.PDFium*`, ohne Filter auf minor/patch) und GitHub Actions", "done": true },
+            { "text": "Stolperfallen in `CLAUDE.md`, Entscheidungen in `Docs/DECISIONS.md` und Setup in `README.md` nachtragen", "done": true }
           ],
           "acceptance": [
-            { "text": "Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)", "done": false },
-            { "text": "CI ist auf einem PR nach `dev` grün", "done": false },
-            { "text": "Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Check Pflicht, kein Force-Push, kein Löschen", "done": false, "evidence": "`gh api repos/benjo-code/<name>/branches/<branch>/protection`" }
+            { "text": "Build, Test und Format/Lint laufen lokal grün (Befehle in `CLAUDE.md`)", "done": true, "evidence": "`dotnet build Pagewing.slnx` (0 Warnungen, 0 Fehler), `dotnet test Pagewing.slnx` (1/1), `dotnet format Pagewing.slnx --verify-no-changes` (Exit 0) — Ausgabe der Abschlussprüfung" },
+            { "text": "AOT-Publish von `Pagewing.App` und `Pagewing.Cli` läuft ohne AOT-/Trim-Warnungen auf Linux und Windows; `pagewing --version` des AOT-Binaries gibt die Version aus", "done": true, "evidence": "CI-Lauf 38933844896 (PR #1): `build-linux` und `build-windows` veröffentlichen CLI und App per Native AOT ohne Warnungen; `dotnet run tools/smoke-cli.cs` meldet auf beiden „Smoke-Test bestanden (0.0.0)“" },
+            { "text": "CI ist auf einem PR nach `dev` auf beiden Runnern grün", "done": true, "evidence": "PR #1: `roadmap`, `build-linux`, `build-windows` grün (Lauf 38933844896, Commit f038a45)" },
+            { "text": "Branch Protection für `main` und `dev` ist aktiv: PR Pflicht, CI-Checks Pflicht, kein Force-Push, kein Löschen", "done": true, "evidence": "`gh api repos/benjo-code/Pagewing/branches/{main,dev}/protection` (2026-10-16): Pflicht-Checks `roadmap`, `build-linux`, `build-windows`, strict, PR Pflicht, Force-Push und Löschen verboten" }
+          ]
+        },
+        {
+          "id": "1",
+          "title": "PDFium-Anbindung & Render-Kern",
+          "status": "done",
+          "plan": "superpowers/plans/2026-10-16-milestone-01-pdfium-render-kern.md",
+          "completedOn": "2026-10-16",
+          "prerequisites": ["0"],
+          "goal": "Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nachweisbar über die CLI, Render-Regressionstests und Benchmarks.",
+          "tasks": [
+            { "text": "`bblanchon.PDFium.Win32` und `bblanchon.PDFium.Linux` (ohne V8) einbinden, Drittlizenzen der Pakete erfassen", "done": true },
+            { "text": "`Pagewing.Pdfium`: `[LibraryImport]`-Bindings nur für benötigte Funktionen, SafeHandles, `PdfiumThread` (alle Aufrufe auf einem Thread, Fremd-Thread-Aufruf löst Exception aus)", "done": true },
+            { "text": "Öffnen aus Datei, auch passwortgeschützte PDFs; verständliche Fehler bei kaputten oder verschlüsselten Dateien", "done": true },
+            { "text": "Rendern ganzer Seiten und einzelner Kacheln (über `FPDF_RenderPageBitmap_Start` mit Offset), progressiv mit Pause und Abbruch", "done": true },
+            { "text": "Textextraktion pro Seite (Grundlage für Suche und Schwärzungstests)", "done": true },
+            { "text": "CLI `pagewing info|render|text`", "done": true },
+            { "text": "`testdata/pdfs` mit lizenzklaren Test-PDFs und `LICENSES.md`; `Pagewing.Render.Tests` vergleicht Renderings mit Referenzbildern (Toleranz), läuft in der CI auf beiden OS", "done": true },
+            { "text": "`Pagewing.Benchmarks` (BenchmarkDotNet): Öffnen und Rendern", "done": true },
+            { "text": "Vergleichsmessung mit Chrome auf dem Rechner des Projektinhabers (Acrobat und SumatraPDF nicht installiert, nicht gemessen); Budgets in Roadmap, `CLAUDE.md` und Spec endgültig festlegen", "done": true }
+          ],
+          "acceptance": [
+            { "text": "`pagewing render` erzeugt für alle Test-PDFs PNGs, die mit den Referenzbildern übereinstimmen (Render-Tests grün auf Linux und Windows)", "done": true, "evidence": "`RenderRegressionTests.PagesMatchTheReferenceImages` (Theory über alle Test-PDFs, rendert mit `CliApp.RunAsync` im Prozess, also über dieselbe Logik wie `pagewing render`; Modus `Strict` bzw. `Tolerant` je Fall; ergänzt durch `EveryTestPdfIsInTheCorpusOrExplicitlySkipped`, `RenderingTwiceIsBitIdentical` und die Mutationstests `StrictComparisonDetectsAOnePixelShift`, `TolerantComparisonDetectsMissingText`, `TolerantComparisonDetectsAnEightPixelShift`, `TolerantComparisonDetectsAColourChange`): `dotnet test Pagewing.slnx` lokal (Windows) 236 bestanden, 0 fehlgeschlagen; CI-Lauf 38963543241 (PR #2, Commit c7aaa49) und CI-Lauf 38964588665 (PR #2, Commit 4e1cc4e, nach dem Commit mit diesem Nachweis): `build-linux` und `build-windows` grün" },
+            { "text": "Test belegt, dass ein PDFium-Aufruf von einem fremden Thread eine Exception auslöst", "done": true, "evidence": "`PdfiumDocumentTests.CallFromForeignThreadThrows` (und `PdfiumTextPageTests.CallFromForeignThreadThrows`), grün in `dotnet test Pagewing.slnx` lokal und im CI-Lauf 38963543241 (`build-linux`, `build-windows`)" },
+            { "text": "Passwortgeschützte Test-PDF öffnet mit richtigem Passwort und scheitert mit falschem mit klarer Meldung (Test)", "done": true, "evidence": "`OpenTests.EncryptedFileOpensWithCorrectPassword`, `OpenTests.EncryptedFileWithWrongPasswordThrowsPasswordIncorrect`, `OpenTests.EncryptedFileWithoutPasswordThrowsPasswordRequired` (je für `encrypted_hello_world_r3.pdf` und `_r6.pdf`) sowie CLI-seitig `CliTests.WrongPasswordExitsWithOne` und `CliTests.EncryptedWithoutPasswordExitsWithOneAndHint`; grün lokal und im CI-Lauf 38963543241" },
+            { "text": "Vergleichsmessung dokumentiert (Werte und Methode in `Docs/DECISIONS.md`), Budgets festgelegt", "done": true, "evidence": "Rohwerte `bench/compare/results/2026-10-16-WIN11-UNITY.csv` (40 Läufe) mit Begleitnotiz `2026-10-16-WIN11-UNITY.md`; Werte, Methode, Regel und Grenzen im Eintrag „Vergleichsmessung und endgültige Geschwindigkeitsbudgets“ in `Docs/DECISIONS.md`. Gemessen wurde nur Chrome 155.0.8059.80 (Acrobat und SumatraPDF nicht installiert); das genügt der Entscheidungsregel, die sich nur auf Chrome stützt. Ergebnis: Die vier vorläufigen Budgets (400 / 200 / 100 / 300 ms) bleiben unverändert und sind laut Projektinhaber (2026-10-16) endgültig. Chrome-Mediane (`t_visually_complete`): 1487,1 / 1537,3 / 613,3 / 1738,7 ms" }
+          ]
+        },
+        {
+          "id": "2",
+          "title": "Designrichtungen",
+          "status": "done",
+          "completedOn": "2026-10-17",
+          "plan": "superpowers/plans/2026-10-16-milestone-02-designrichtungen.md",
+          "spec": "superpowers/specs/2026-10-17-designsystem.md",
+          "prerequisites": ["0"],
+          "goal": "Der Projektinhaber hat aus mindestens drei Designrichtungen eine gewählt, und sie ist als Design-Spec mit Tokens festgehalten.",
+          "tasks": [
+            { "text": "Mindestens 3 unterschiedliche, zum Projekt passende Designrichtungen als HTML-Mockups (Artifacts): Hauptfenster mit geöffnetem PDF, Seitenleiste und Werkzeugleiste, jeweils hell und dunkel", "done": true },
+            { "text": "Entscheidung des Projektinhabers einholen und in `Docs/DECISIONS.md` festhalten (inkl. verworfener Richtungen)", "done": true },
+            { "text": "Design-Spec unter `Docs/superpowers/specs/` mit Tokens (Farben hell/dunkel, Typografie, Abstände, Radien, Icons), Fenster-Layout und Verhalten der wichtigsten Bereiche", "done": true },
+            { "text": "App-Name-Schriftzug und Icon-Richtung festlegen (Grundlage für M8)", "done": true }
+          ],
+          "acceptance": [
+            { "text": "Mindestens 3 Richtungen wurden als Artifacts bereitgestellt (Links in der Design-Spec)", "done": true, "evidence": "Design-Spec Abschnitt 3: https://claude.ai/artifact/He1E7CwqM3d8eQTxC2pnPs (A), https://claude.ai/artifact/Qz1iJbLUijWbUH21WXvq6y (B), https://claude.ai/artifact/GqTxJnQPUbhrRoX9bjQ1ae (C); WCAG-2.2-AA-Kontrast bestanden (28 Paare je Theme, 56 Prüfungen je Richtung), Sichtprüfung hell/dunkel bei 1440 px und 375 px" },
+            { "text": "Projektinhaber hat eine Richtung ausdrücklich gewählt", "done": true, "evidence": "2026-10-17: Wahl von Richtung B „Werkbank“ in der überarbeiteten Fassung (Artifact-Version 2), Wortlaut „ja passt ich nehme richtung B“; Eintrag „Designrichtung: B „Werkbank“ (überarbeitete Fassung)“ in `Docs/DECISIONS.md`, Design-Spec Abschnitt 4" },
+            { "text": "Design-Spec ist committet und in der Roadmap verlinkt", "done": true, "evidence": "`Docs/superpowers/specs/2026-10-17-designsystem.md` (Status „abgestimmt“), committet auf `feature/m02-designrichtungen` ab Commit 43dd11d; im M2-Eintrag als `spec` verlinkt; `dotnet run tools/roadmap.cs -- check` grün" }
+          ]
+        },
+        {
+          "id": "3",
+          "title": "App-Shell & schnelles Öffnen",
+          "status": "done",
+          "plan": "superpowers/plans/2026-10-17-milestone-03-app-shell.md",
+          "completedOn": "2026-10-17",
+          "prerequisites": ["1", "2"],
+          "goal": "Pagewing öffnet eine PDF im gewählten Design und scrollt flüssig durch alle Seiten, innerhalb der Startzeit-Budgets.",
+          "tasks": [
+            { "text": "Hauptfenster nach Design-Spec, UI-Texte lokalisierbar (resx, Englisch und Deutsch)", "done": true },
+            { "text": "Öffnen per Kommandozeilenargument, Dateidialog und Drag & Drop", "done": true },
+            { "text": "Single-Instance: zweiter Aufruf übergibt den Pfad an die laufende Instanz (Named Pipe / Unix-Socket)", "done": true },
+            { "text": "Fortlaufendes Scrollen mit Virtualisierung, Render-Scheduler (sichtbar zuerst, erst grob, dann scharf, Abbruch veralteter Aufträge) und LRU-Cache mit Speicherbudget", "done": true },
+            { "text": "Zoom (Strg+Mausrad, Strg+Plus/Minus)", "done": true },
+            { "text": "Schalter `--measure-startup`, Skript `bench/startup`, Startzeit-Check in der CI (Median aus 10 Läufen, Linux unter Xvfb)", "done": true },
+            { "text": "`Pagewing.App.Tests` mit Avalonia.Headless", "done": true }
+          ],
+          "acceptance": [
+            { "text": "Startzeit-Check in der CI grün auf beiden Runnern, Werte als Artefakt", "done": true, "evidence": "CI-Lauf 39033433468 (PR #4, Commit 82e3049): `build-linux` und `build-windows` grün, Schritt „Startup check“ besteht; Artefakte `startup-windows` und `startup-linux` mit den CSV-Werten. Mediane in ms (Budget) im Lauf 39033433468: Windows cold 148,1 (400), warm 146,9 (200), thousand 143,9 (300), second 46,3 (100); Linux unter Xvfb cold 148,0, warm 146,8, thousand 145,0, second 43,4. Mit dem Standard „Software-Rendering unter Windows“ (Eintrag „Software-Rendering als Windows-Standard (M3)“ in `Docs/DECISIONS.md`) erneut grün, CI-Lauf 39044339823 (Commit ed52c2e): Windows cold 160,7, warm 147,3, thousand 147,5, second 47,7; Linux cold 163,9, warm 166,4, thousand 149,3, second 47,0. Einschränkung: Der Windows-Runner ist eine VM ohne GPU; `cold` leert den Datei-Cache nicht. Zusätzlich auf dem Haupt-PC des Projektinhabers (Ryzen 7 7800X3D, RTX 4070 SUPER, 1080p/60 Hz) gemessen, Workflow „Hardware measurement“, Lauf 39045832687: cold 200,0, warm 199,7, thousand 197,8, second 15,5 (alle im Budget, der Warmstart knapp); der GPU-Pfad (`PAGEWING_RENDERING=default`) liegt dort bei 472,7 ms warm." },
+            { "text": "Weitere Datei bei laufender Instanz öffnet als neuer Inhalt im selben Prozess (Test + manuelle Prüfung)", "done": true, "evidence": "Tests `OpenFlowTests.ExternalOpenReplacesTheDocument` und `SingleInstanceTests.PathsArriveAtThePrimary` grün (`dotnet test Pagewing.slnx`, M3 Task 13). Manuell am AOT-Binary (win-x64) am 2026-10-17: laufende Instanz mit `text-basic.pdf`, dann `Pagewing.exe hello_world.pdf` (relativer Pfad) und ein Pfad mit Leerzeichen; beide späteren Aufrufe enden mit Exit 0, die laufende Instanz zeigt danach die neue Datei im Fenstertitel, es bleibt ein Pagewing-Prozess. Nur unter Windows geprüft." },
+            { "text": "Schnelles Scrollen durch eine 1000-seitige Test-PDF ohne Ruckler des UI-Threads (manuelle Prüfung, Messwert notieren)", "done": true, "evidence": "Messwert (`--measure-scroll testdata/pdfs/thousand-pages.pdf`, 600 Schritte, Abstände der Frame-Rückrufe, nicht angezeigte Bilder) auf dem Haupt-PC des Projektinhabers (Ryzen 7 7800X3D, RTX 4070 SUPER, 1920 × 1080 bei 60 Hz), Workflow „Hardware measurement“, Lauf 39045832687, Software-Rendering (Standard): Zoom 100 % p99 15,5 bis 16,9 ms, max höchstens 19,1 ms, kein Frame über 20 ms; Zoom 400 % p99 10,6 bis 10,8 ms. Manuelle Prüfung durch den Projektinhaber am 2026-10-17 mit dem gebauten AOT-Binary und `thousand-pages.pdf`: Scrollen ist flüssig (Aussage des Projektinhabers: „ist flüssig“). Grenzen: nur dieser PC, 1080p/60 Hz; die Mittel der Abstände (4 bis 8 ms) liegen unter der Bildschirmperiode und sind unerklärt; 4K, 144 Hz und schwache CPUs sind nicht gemessen." }
+          ]
+        },
+        {
+          "id": "4",
+          "title": "Navigation",
+          "status": "done",
+          "completedOn": "2026-10-18",
+          "plan": "superpowers/plans/2026-10-17-milestone-04-navigation.md",
+          "prerequisites": ["3"],
+          "goal": "Mehrere PDFs lassen sich in Tabs öffnen und über Vorschau, Inhaltsverzeichnis, Layouts und Zoom-Modi bequem navigieren.",
+          "tasks": [
+            { "text": "Tabs (öffnen, schließen, wechseln, Reihenfolge ändern)", "done": true },
+            { "text": "Seitenleiste mit Seitenvorschau (Thumbnails im Hintergrund, nach dem ersten Seitenbild)", "done": true },
+            { "text": "Inhaltsverzeichnis/Lesezeichen aus dem PDF anzeigen und anspringen", "done": true },
+            { "text": "Layouts: einzeln, fortlaufend, doppelseitig (mit/ohne Deckblatt)", "done": true },
+            { "text": "Zoom-Modi: Seitenbreite, ganze Seite, tatsächliche Größe, freier Zoom", "done": true },
+            { "text": "Gehe zu Seite", "done": true },
+            { "text": "Dokumentinfos in der Statusleiste (Design-Spec 7.6: Datei, Seitenzahl, Seitenformat, PDF-Version, Dateigröße, Metadaten)", "done": true }
+          ],
+          "acceptance": [
+            { "text": "Headless-Tests für Tab-Wechsel, Layoutwechsel und Lesezeichen-Sprung grün", "done": true, "evidence": "`dotnet test Pagewing.slnx`: Core 450, App 420, Render 55 grün (CI-Lauf 39087948457 auf Linux und Windows). Tab-Wechsel: `DocumentViewTests.SwitchingTabsRestoresPageZoomAndScrollPosition`, `SwitchingBackShowsCachedTilesWithoutRendering`, `TabsTests.EachTabKeepsItsOwnPageAndZoom`; Layoutwechsel: `LayoutModeTests.SwitchingToTwoPagesKeepsTheCurrentPage`, `LayoutModeIsKeptPerTab`, `SwitchingToSinglePageInFitWidthStartsAtTheTop`; Lesezeichen-Sprung: `OutlinePanelTests.ClickingAnEntryJumpsToItsPage`, `KeyboardEnterJumps`, `KeyboardReachesEveryEntryOfALargeOutline`" },
+            { "text": "Startzeit-Budgets weiter eingehalten (CI)", "done": true, "evidence": "Startzeit-Check, CI-Lauf 39087948457 (Kopf 1409ce4, Median aus 10 Läufen; Budget 400/200/300/100 ms): Linux kalt 168,6 · warm 164,4 · 1000 Seiten 158,2 · weitere Datei 35,4 ms; Windows kalt 159,9 · warm 160,1 · 1000 Seiten 159,9 · weitere Datei 47,2 ms; alle innerhalb der Budgets. Vergleich vor M4 (CI nach Task 9): Linux 161,6 / 164,2 / 155,4 / 35,3, Windows 162,7 / 158,3 / 155,6 / 47,0 ms. Messläufe öffnen kein Panel (`Docs/DECISIONS.md`, Eintrag zu Aktionsleiste und Panel). Offen: Messung auf echter Hardware vor dem Release (`hardware-measure.yml`)" }
+          ]
+        },
+        {
+          "id": "4.1",
+          "title": "Tabs zwischen Fenstern ziehen",
+          "status": "done",
+          "completedOn": "2026-10-18",
+          "plan": "superpowers/plans/2026-10-18-milestone-04-1-tabs-ziehen.md",
+          "prerequisites": ["4"],
+          "goal": "Ein Tab lässt sich per Maus aus der Tableiste ziehen, das neue Fenster hängt dabei am Zeiger; über der Tableiste eines Fensters zeigt eine Einfügemarke die Stelle, beim Loslassen landet der Tab dort.",
+          "tasks": [
+            { "text": "Ziehgeste: Tab aus der Leiste herausziehen (ab 40 DIP senkrecht oder aus dem Fenster hinaus) erzeugt ein neues Fenster, das am Zeiger hängt; Esc stellt Platz und aktiven Tab wieder her (baut auf `Workspace.MoveToNewWindow` und dem Umsortieren aus M4 auf)", "done": true },
+            { "text": "Ablegen in der Tableiste eines Fensters (auch des eigenen) führt den Tab samt Sitzung dort ein, Einfügemarke und Position nach dem Zeiger; ist es der einzige Tab eines Fensters, wandert das Fenster und führt sich über einer fremden Leiste mit ihr zusammen", "done": true },
+            { "text": "Verhalten unter Windows klären (Zeiger-Fang über Fenstergrenzen, Fensterposition; Wayland nur als Hinweis). Windows geklärt (Zeiger-Fang hält, Esc auch im schwebenden Fenster, `Docs/DECISIONS.md`, Eintrag „Tabs ziehen: Fenster hängt am Zeiger …“); Linux/X11 ins Backlog verschoben (siehe Scope-Änderungen)", "done": true }
+          ],
+          "acceptance": [
+            { "text": "Headless-Tests für Herauslösen und Zurückführen eines Tabs grün (Sitzung bleibt dieselbe, Seite und Zoom bleiben)", "done": true, "evidence": "`dotnet test Pagewing.slnx`: 985 bestanden, 0 fehlgeschlagen (Core, App, Render). Herauslösen und Zurückführen: `TabDragTests.BeginningADragWithTwoTabsOpensAFloatingWindowAtThePointer`, `CancelPutsTheTabBackAtItsPlace`, `DroppingOnAStripMovesTheTabWithItsSession`, `DroppingBackOnTheOwnStripPutsTheTabAtTheChosenPlace`, `DroppingTheOnlyTabOfAWindowMergesAndClosesTheWindow`; Geste: `TabDragGestureTests.PullingATabDownOutOfTheStripOpensAWindowThatFollowsThePointer`, `ReleasingOverAnotherWindowsStripInsertsTheTab`, `EscapeDuringAFloatingDragPutsTheTabBack`, `DraggingTheOnlyTabMovesTheWindowAndMergesOverAnotherStrip`, `PullingAnInactiveTabHoldsTheNewWindowAtThePointer`, `LosingThePointerWhileTheWindowOpensDoesNotLeaveADragBehind`; `TabDragTests.AStripHiddenBehindAnotherWindowIsNoTarget`, `ADraggedTabKeepsItsPanelChoice`, `AMaximizedWindowWithOneTabDoesNotMoveAsAWhole`; Sitzung, Seite und Zoom des verschobenen Tabs wie schon in M4 (`WorkspaceTests.MovedTabKeepsPageAndZoom`)" },
+            { "text": "Manuelle Prüfung auf Windows: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc (Linux/X11 siehe Backlog)", "done": true, "evidence": "2026-10-18, Release-Build, echte Maus (`SetCursorPos`/`mouse_event`) und echte Esc-Taste: Tab 50 px nach unten ziehen öffnet das Fenster nach rund 117 ms (unter 30 px kein Fenster), Titelzeile des neuen Fensters unter dem Zeiger, Fenster folgt; einziger Tab: Fenster folgt, über der Leiste des anderen Fensters geparkt, Marke sichtbar, Loslassen führt zusammen und schließt das leere Fenster; Esc stellt Tab und Fenster wieder her (erst nach dem Handler auch am schwebenden Fenster); Fokuswechsel mitten im Zug beendet die Geste ohne Verlust; nach den Korrekturen des Abschluss-Reviews wiederholt: inaktiver Tab hängt exakt am Zeiger, Esc, Zurückführen auf die eigene Leiste. Nicht geprüft: Alt+Tab, Monitore mit anderer Skalierung" }
+          ]
+        },
+        {
+          "id": "5",
+          "title": "Text & Suche",
+          "status": "done",
+          "completedOn": "2026-10-18",
+          "plan": "superpowers/plans/2026-10-18-milestone-05-text-suche.md",
+          "prerequisites": ["4"],
+          "goal": "Text lässt sich durchsuchen, markieren und kopieren, Links funktionieren.",
+          "tasks": [
+            { "text": "Volltextsuche im Dokument mit Treffermarkierung und Weiter/Zurück, Suche im Hintergrund ohne UI-Blockade", "done": true },
+            { "text": "Text markieren und in die Zwischenablage kopieren", "done": true },
+            { "text": "Interne Links (Sprung zu Seite/Ziel) und externe Links (Öffnen nach Bestätigung mit angezeigter URL)", "done": true },
+            { "text": "CLI `pagewing search`", "done": true }
+          ],
+          "acceptance": [
+            { "text": "Suchtests auf Test-PDFs (Treffer und Positionen) grün", "done": true, "evidence": "`dotnet test Pagewing.slnx` (2026-10-18, nach den Korrekturen des Abschluss-Reviews): 1420 bestanden, 0 fehlgeschlagen (Core 810, App 555, Render 55). Die Suchtests einzeln (`--filter-class`): `SearchPageTests` 10 (jedes Vorkommen mit Position, Ausschnitt und Rechteck auf `text-rich.pdf`, Groß-/Kleinschreibung, „Windows“ über den Trennstrich in zwei Rechtecken, Schriftwechsel, gedrehte Seite, Umlaute), `DocumentSearchTests` 12 (Start auf der aktuellen Seite mit Umlauf, 20 Treffer für „Needle“ in `text-dense.pdf`, Obergrenze 10 000, Abbruch, Rendern nicht ausgehungert), `TextMatcherTests` 20 (Ligaturen, zerlegte Umlaute, Zeilenumbruch, Trennstrich, ganze Wörter, Ausschnitt), `SearchPanelTests` 22 (Panel, Trefferliste, Zusammenfassung de/en, Enter/F3, Esc, Obergrenze mit „Mehr als 10.000 Treffer“ und Einfügen in Aufträgen zu höchstens 250 Treffern, Hinweis ohne Text, Abbruch bei Dokumentwechsel, kein Sprung in einem Tab, der vor dem ersten Treffer verlassen wurde: `TheFirstHitOfATabLeftBeforeItArrivedDoesNotMoveThatTab`), dazu `SearchCliTests` 18 und `HighlightTests` 13 (Markierungen und Sprung zum Treffer). Auswahl und Kopieren: `TextSelectionTests` 19, `CopyTests` 9; echte Prüfung des Kopierens unter Windows (Zwischenablage mit getrenntem STA-Prozess zurückgelesen: `UnicodeText`, `HTML Format` mit stimmenden Byte-Offsets, Fließtext und Rohtext). Offen: Einfügen in Word und LibreOffice (Absätze, fett, kursiv, Überschrift; Befehl: `Pagewing.exe testdata/pdfs/text-rich.pdf`, Absatz markieren, Strg+C, in Word Strg+V); Linux: `text/html` in der Zwischenablage (`xclip -selection clipboard -t TARGETS -o` bzw. `wl-paste --list-types`), I-Balken- und Hand-Cursor und die Multiplikation der Treffer auf dem Linux-GPU-Pfad (manuell auf einem Linux-Desktop); Sichtprüfung (Rundung der Trefferkante, Link-Karte, beide Themes) am echten Bildschirm (`Pagewing.exe testdata/pdfs/text-rich.pdf`, nach „Pagewing“ suchen, „Dokumentation“ anklicken; Windows hell und dunkel)." },
+            { "text": "Externer Link öffnet erst nach Bestätigung (Test)", "done": true, "evidence": "`LinkTests` (31 bestanden): `AnExternalLinkOpensOnlyAfterConfirmation` (die Karte zeigt die Adresse, der Launcher wird erst nach „Öffnen“ genau einmal mit ihr gerufen), `CancelingOrEscapeNeverOpensTheAddress`, `OpenIsIgnoredUntilTheCardIsArmed` (400 ms Sperre), `ADoubleClickOnTheDocumentNeverReachesOpen`, `FollowingALinkNeverCallsTheLauncher`, `DangerousTargetsAreNotClickable`, `DeceptiveAddressesShowAWarning`, `ExternalLinkIsOpenedExactlyAsDisplayed`; die Sperre ist seit dem Abschluss-Review weiter gehärtet: ein Druck auf „Öffnen“ während der Sperre wird verworfen (`APressOnOpenDuringTheLockDoesNotOpenOnRelease`: Druck bei 200 ms, Loslassen bei 450 ms öffnet nichts), die Uhr beginnt mit dem ersten Layout der Karte (`TheLockCountsFromWhenTheCardIsLaidOut`), „Öffnen“ ist während der Sperre sichtbar deaktiviert (`OpenLooksDisabledUntilTheCardIsArmed`), die Karte wird Screenreadern angesagt (`TheCardIsAnnouncedToScreenReaders`); Adressprüfung in `ExternalLinkTests` (188, darunter `MailDomainsThatAreNoHostNamesAreRejected`). Prüfung unter Windows (Release-Build, synthetische Eingaben über user32), durchgeführt vor den Härtungsrunden (Sperre, `ClickCount`-Filter, Härtung des Starters), deren Verhalten die Tests oben abdecken: Klick auf „Dokumentation“ in `text-rich.pdf` zeigt die Karte, Klick daneben, Esc und „Abbrechen“ öffnen nichts, kein Browserprozess. Offen: der Browserstart nach „Öffnen“ unter Windows (`Pagewing.exe testdata/pdfs/text-rich.pdf`, „Dokumentation“, „Öffnen“; erwartet der Standardbrowser mit genau dieser Adresse, bewusst nicht automatisiert); unter Linux die Prüfung gegen eingeschleuste Hilfsprogramme (auf `dotnet-linux` `-r linux-x64` veröffentlichen, `xdg-open`, `xdg-mime` und `x-www-browser` als Skripte neben die PDF legen, mit `PATH=.:$PATH` starten, „Öffnen“: es darf keine Datei `PLANTED-*` entstehen, der System-Browser muss die Adresse öffnen)." },
+            { "text": "Benchmark: Suche in 1000-seitiger Test-PDF, Wert notiert", "done": true, "evidence": "`bench/search-results.md` (BenchmarkDotNet 0.15.8, DefaultJob, Release; AMD Ryzen 7 3800X, Windows 11 25H2, .NET 10.0.10): `Page 99` in `thousand-pages.pdf` (1000 Seiten, 11 Treffer) 190 ms, 1,9 MB; `Needle` in `text-dense.pdf` (200 Seiten, 20 Treffer) 280 ms, 41 MB; „a“ in `text-dense.pdf` bis zur Grenze von 10 000 Treffern 56 ms. Budgets des Plans (1000 Seiten unter 2 s, dichtes Dokument unter 1 s) eingehalten; die Läufe schwanken auf diesem Rechner um 20 bis 30 %. Treffer sichert `SearchBenchmarkDataTests`. Startpfad (nicht Teil des Kriteriums): Lokal gemessen mit AOT-Binaries `win-x64` (`bench/startup/startup.cs`, Median aus 10 Läufen, AMD Ryzen 7 3800X, keine `Warnung:`-Zeile): Stand M5 cold 254,3 ms, warm 249,5 bis 260,3 ms (drei abwechselnde Paare), thousand 261,7 ms, second 48,2 ms; derselbe Rechner mit dem Stand von `dev` vor M5 warm 246,0 bis 256,9 ms (Unterschied je Paar +3 bis +5 ms). Der Median von warm liegt auf diesem Rechner auch ohne M5 an der Grenze von 250 ms (Budget 200 ms + 25 %), mit M5 wenige Millisekunden darüber; nicht gelockert, maßgeblich ist der Startzeit-Check der CI auf beiden Runnern. Offen: dessen grüner Lauf, die Scroll-Messung in der CI und die Messung auf dem Haupt-PC (`hardware-measure.yml`, Runner muss der Projektinhaber starten) vor dem Release." }
+          ]
+        },
+        {
+          "id": "6",
+          "title": "Komfort",
+          "status": "done",
+          "completedOn": "2026-10-19",
+          "plan": "superpowers/plans/2026-10-18-milestone-06-komfort.md",
+          "prerequisites": ["5"],
+          "goal": "Pagewing lässt sich weitgehend per Tastatur bedienen und merkt sich Einstellungen und zuletzt geöffnete Dateien.",
+          "tasks": [
+            { "text": "Dunkler Modus (folgt dem System, umschaltbar), optional dunkle Seitendarstellung. Umgesetzt mit `Appearance` (Theme „Wie im System“/Hell/Dunkel ohne Neustart), der dunklen Seite (`AppSettings.PageAppearance`, je Tab umschaltbar mit Strg+Umschalt+D) und dem Schalter in der Einstellungskarte; Tests `ThemeSwitchTests`, `DarkPageViewTests`, `SettingsCardTests`", "done": true },
+            { "text": "Tastenkürzel für alle Viewer-Aktionen, Übersicht im Hilfe-Dialog. Umgesetzt mit dem Befehlskatalog `CommandCatalog` als einziger Quelle der Kürzel (neu: Strg+K, Strg+Komma, F1, Strg+Umschalt+1/2 für die Panels „Seiten“ und „Inhalt“, Strg+Umschalt+D für die dunkle Seite) und der Hilfekarte (F1); Tests `CommandCatalogTests`", "done": true },
+            { "text": "Befehlspalette (Strg+K) mit allen Aktionen und zuletzt geöffneten Dateien. Umgesetzt mit `PaletteMatcher` (Kern), `PaletteViewModel` und `CommandPalette` (Gruppen „Zuletzt geöffnet“, „Seiten“, „Offene Tabs“, „Inhalt“, „Befehle“; Knopf „Suchen oder Befehl“ in der Titelleiste); Tests `PaletteMatcherTests`, `CommandPaletteTests`. Die zuletzt geöffneten Dateien kommen über `MainViewModel.RecentFilesSource`; bis der Verlauf angebunden ist (Aufgabe „Zuletzt geöffnete Dateien“), ist sie leer", "done": true },
+            { "text": "Zuletzt geöffnete Dateien (lokal gespeichert). Umgesetzt mit `RecentFilesService` (`recent.json` im Benutzerordner, höchstens 30 Einträge; gelesen erst nach dem ersten scharfen Seitenbild bzw. nach dem ersten Frame der Startseite, nie im Startpfad; Messläufe nur im Speicher), Position je Datei (Seite, Zoom, Zoom-Modus, Layout; gesichert beim Schließen von Tab und Fenster, wiederhergestellt beim Öffnen über `TabViewModel.InitialView`), „Zuletzt geöffnet“ auf der Startseite (5 Einträge, Entf entfernt), in der Befehlspalette (10) und „Verlauf löschen“ in der Einstellungskarte bzw. als Befehl `recent.clear`; Tests `RecentFilesViewTests`, `RecentFilesTests`. Die Datei der Kommandozeile beim ersten Start öffnet ohne gemerkte Position, weil der Verlauf dort noch nicht gelesen ist", "done": true },
+            { "text": "Einstellungen (Sprache, Theme, Dichte Normal/Kompakt, Animationen reduzieren, Standard-Layout und -Zoom), gespeichert per Source-generiertem JSON. Umgesetzt mit `UserSettings` und der Einstellungskarte (`SettingsViewModel`, `SettingsCard`; Strg+Komma, Knopf unten in der Aktionsleiste, Befehlspalette): jede Änderung gilt sofort und wird sofort geschrieben, nur die Sprache gilt erst ab dem nächsten Start (die Karte sagt das); Standard-Layout und -Zoom gelten für neue Tabs; Tests `SettingsCardTests`, `UserSettingsTests`", "done": true },
+            { "text": "Hochkontrast (Windows `ContrastPreference`): entscheiden, ob Pagewing eine eigene Hochkontrast-Palette bekommt, und sie gegebenenfalls umsetzen (Design-Spec, Abschnitt 9). Umgesetzt als feste Palette (Design-Spec 5.1, Spalte „Hochkontrast“; Tests `HighContrastTests`, `TokenTests`); offen ist die Sichtprüfung an einem echten Windows-Kontrastdesign: `Pagewing.exe testdata/pdfs/text-rich.pdf`, dann Einstellungen → Barrierefreiheit → Kontrastdesigns → „Nachthimmel“ und zurück", "done": true }
+          ],
+          "acceptance": [
+            { "text": "Headless-Tests für Befehlspalette und Theme-Wechsel grün", "done": true, "evidence": "`dotnet test Pagewing.slnx` (2026-10-19, Stand fef3d13): 1669 bestanden, 0 fehlgeschlagen (Core 891, App 719, Render 59); nach den Korrekturen des Abschlussreviews (Stand 021213e) 1681 bestanden, 0 fehlgeschlagen (Core 894, App 728, Render 59), `CommandPaletteTests` dreimal hintereinander grün; `dotnet build` ohne Warnung, `dotnet format --verify-no-changes` grün. Einzeln (`dotnet test tests/Pagewing.App.Tests --filter-class …`): `CommandPaletteTests` 27 bestanden (Strg+K mit Fokus im Feld, auch aus dem Suchfeld; Filtern mit Kürzeln, Pfeile/Enter/Esc, Seitenzahl, offene Tabs, Inhaltsverzeichnis mit Obergrenze 50, Klick und Klick daneben, Knopf der Titelleiste mit erhaltener Zieh-Fläche, nichts davon im Startpfad: `PaletteDoesNotBuildAnythingAtStartup`, AA-Kontrast, Automation-Namen), `ThemeSwitchTests` 9 (`ChoosingDarkSwitchesTheVariantAndTheTokens`, `ChoosingLightSwitchesBack`, `TheSwitchNeedsNoRestart`, `SystemFollowsTheVariantOfThePlatform`, „Animationen reduzieren“), `HighContrastTests` 12 (Varianten-Wahl über den Kontrastwunsch, Umschalten zur Laufzeit, 7:1 für jedes Textpaar, Trennlinien nur im Hochkontrast), `DarkPageViewTests` 16. Offen, jeweils manuell: Hochkontrast an einem echten Windows-Kontrastdesign (`Pagewing.exe testdata/pdfs/text-rich.pdf`, dann Einstellungen → Barrierefreiheit → Kontrastdesigns → „Nachthimmel“ und zurück); Screenreader (Narrator, NVDA, unter Linux Orca: Palette, Tabs, Einstellungskarte); Linux (Strg+Umschalt+1/2 unter X11, `XDG_CONFIG_HOME`, Palette; auf einem Linux-Desktop mit `-r linux-x64` veröffentlichen und prüfen); Aussehen von dunkler Seite, Dichte „Kompakt“ und Hochkontrast am echten Bildschirm (`Pagewing.exe testdata/pdfs/text-rich.pdf`, Strg+Umschalt+D, Strg+Komma); Alt+Tab bei offener Palette; Menüs der Statusleiste (Zoom, Layout) gegen die Tastenbindungen des Fensters (Bild ab im offenen Menü darf nicht blättern)." },
+            { "text": "Einstellungen und zuletzt geöffnete Dateien überleben einen Neustart (Test)", "done": true, "evidence": "Tests (2026-10-19, Stand fef3d13, alle in einem eigenen Temp-Ordner, nie im echten Benutzerordner): `UserSettingsTests.SettingsSurviveARestart` (Dunkel, Deutsch, Animationen reduzieren, Startpanel „Inhalt“, Panelbreite 321 werden geschrieben und von einem neuen `UserSettings.Load` aus demselben Ordner gleich gelesen), `SettingsCardTests.SettingsSurviveARestartThroughTheCard` (sieben Werte über die Einstellungskarte gesetzt, neu geladen und in einer neuen Karte angezeigt), `RecentFilesViewTests.RecentFilesSurviveARestart` (zwei Dateien in Reihenfolge, Position Seite 12, 125 %, doppelseitig mit Deckblatt; Entfernen und „Verlauf löschen“ überdauern ebenfalls), im Kern `SettingsStoreTests.RoundTripKeepsEveryField` und `RecentFilesTests.StoreRoundTripKeepsViewAndOrder`; je einzeln mit `--filter-method` grün, die Klassen `UserSettingsTests` 14, `SettingsCardTests` 16, `RecentFilesViewTests` 18, `SettingsStoreTests` 13, `RecentFilesTests` 18 bestanden. Bekannte Grenze: Die Datei der Kommandozeile beim ersten Start öffnet ohne gemerkte Position (Eintrag „Verlauf: Position je Datei …“, Backlog). Startpfad: AOT `win-x64` gegen `dev` im Wechsel gemessen (Eintrag „Startzeitmessung M6: Ergebnis gegen dev und offene Fälle“); in der Entwicklungs-VM (ohne GPU) meldete jeder Lauf eine Desktop-Komposition um 4 Hz (`Warnung:`), die Zahlen gelten also nur relativ: warm im Median von zehn Paaren +2,9 ms (8 von 10 Paaren langsamer, verteilt über mehrere Phasen), cold +2,1, thousand −0,1, second +0,3 ms. Offen: gültige Werte auf echter Hardware (Startzeit-Check der CI auf beiden Runnern; `hardware-measure.yml` auf dem Haupt-PC, den Runner muss der Projektinhaber starten) sowie der Start mit Hochkontrast-Wunsch des Systems (mit den Messschaltern nicht messbar). Der Start mit vorhandener `settings.json` ist seit dem Abschlussreview mit `--measure-settings` gemessen (Eintrag „Startzeit mit vorhandener settings.json (M6)“, ebenfalls nur relativ): Ende zu Ende keine Zunahme über dem Rauschen, in der Phase `settings-loaded` 2,4 ms für das JSON und 2,3 ms für die deutsche Kultur, die danach wieder eingespart werden." }
+          ]
+        },
+        {
+          "id": "7",
+          "title": "Drucken",
+          "status": "done",
+          "completedOn": "2026-10-19",
+          "plan": "superpowers/plans/2026-10-19-milestone-07-drucken.md",
+          "prerequisites": ["6"],
+          "goal": "PDFs lassen sich unter Windows und Linux drucken.",
+          "tasks": [
+            { "text": "Abstraktion `IPrintService` in Core. Umgesetzt mit `Pagewing.Core.Printing` (`IPrintService`, `PrintSettings`, `PrintPlan` für Seitenfolge mit Kopien und Sortieren, `PrintPlacement` für Skalieren, Drehen und Zentrieren, `PrintTicket`); `PageRange` ist dafür von der CLI nach `Pagewing.Core.Pdf` gewandert. Tests `PrintPlanTests`, `PrintPlacementTests`, `PrintSettingsTests`, `PageRangeTests`", "done": true },
+            { "text": "Windows: Druckdialog per Win32, Ausgabe mit `FPDF_RenderPage` auf den Drucker-HDC. Umgesetzt mit `WindowsPrintService` (`PrintDlgEx` mit `PD_RETURNDC`, GDI-Auftrag auf eigenem Thread, jede Seite ein kurzer Hintergrundauftrag auf dem `PdfiumThread`, Drehung durch `FPDF_RenderPage`, Kopien und Sortieren durch Pagewing); Tests `WindowsPrintNativeTests` (Strukturgrößen, `DEVMODE`, Bereichstext) und `WindowsPrintToPdfTests` (Druck in Microsoft Print to PDF, laufen nur unter Windows). Offen: Läufe unter Windows (`dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsPrintToPdfTests\"`), siehe Abnahme", "done": true },
+            { "text": "Linux: Übergabe an CUPS, eigener Avalonia-Dialog (Drucker, Seitenbereich, Kopien). Umgesetzt mit `CupsPrintService` (libcups über `[LibraryImport]`, Datei plus CUPS-Optionen, verschlüsselte Dokumente als entschlüsselte Kopie) und dem Dialog `PrintCard` (`PrintViewModel`; Drucker, Seiten, Kopien, Sortieren, Seitengröße, Duplex, Ausrichtung); Tests `CupsOptionsTests`, `CupsPrintServiceTests` (gegen eine echte CUPS-PDF-Warteschlange, mit `PAGEWING_TEST_CUPS_PRINTER`/`PAGEWING_TEST_CUPS_OUTPUT`: 22 bestanden in der Entwicklungsumgebung), `PrintCardTests` (31)", "done": true },
+            { "text": "Seitenbereich, Kopien, Anpassen an Papiergröße. Umgesetzt im Kern ohne Drucker (`PrintPlan`, `PrintPlacement`, `PrintSettings`) und in beiden Diensten; Strg+P als `file.print`, Auftragskarte mit Fortschritt und Abbruch, „Seitengröße beim Drucken“ in den Einstellungen; Tests `PrintPlanTests`, `PrintPlacementTests`, `PrintCommandTests`, `PrintProgressTests`", "done": true }
+          ],
+          "acceptance": [
+            { "text": "Druck in CUPS-PDF unter Linux ergibt korrekte Seiten (automatisiert)", "done": true, "evidence": "`CupsPrintServiceTests` gegen eine echte CUPS-PDF-Warteschlange (`PAGEWING_TEST_CUPS_PRINTER`, `PAGEWING_TEST_CUPS_OUTPUT`, 2026-10-19, Entwicklungsumgebung Linux): `PrintsARangeWithCopiesThroughCups` (Bereich 1-2 mit 2 Kopien sortiert ergibt 4 Seiten), `PrintsAnEncryptedFileWithoutLeavingACopy` (Text kommt an, kein Temp-Ordner bleibt), `ADocumentThatForbidsPrintingIsRefusedAndNothingIsSent`, `AnUnknownPrinterFails`, `ListsThePrinters`; 22 Tests der Klassen `Cups*` bestanden. Vorab von Hand: `lp -o print-scaling=fit` auf `print-mixed.pdf` ergab Seiten in den Formaten 595 × 842, 842 × 595, 595 × 842 und 595 × 842 pt." },
+            { "text": "Anwendungstests von Befehl, Dialog, Auftragskarte, Abbruch und Druckknopf grün", "done": true, "evidence": "`dotnet test --project tests/Pagewing.App.Tests` (2026-10-19): `PrintCommandTests` 13, `PrintCardTests` 32, `PrintProgressTests` 12 und `CupsOptionsTests` bestanden; im Kern `PrintPlanTests`, `PrintPlacementTests`, `PrintSettingsTests`, `PrintSupportTests`; gesamte Mappe zuletzt 1835 Tests, 0 fehlgeschlagen, 5 übersprungen (`WindowsPrintToPdfTests`, laufen nur unter Windows). `dotnet build` ohne Warnung, `dotnet format --verify-no-changes` und `roadmap check` grün." }
+          ]
+        },
+        {
+          "id": "8",
+          "title": "Verteilung",
+          "status": "done",
+          "completedOn": "2026-10-22",
+          "plan": "superpowers/plans/2026-10-19-milestone-08-verteilung.md",
+          "prerequisites": ["7"],
+          "goal": "Pagewing lässt sich unter Windows und Linux installieren und als Standardprogramm für PDFs festlegen.",
+          "tasks": [
+            {
+              "text": "Windows: Installer und portable ZIP, Registrierung als PDF-Standardprogramm: umgesetzt und unter Linux geprüft (nie unter Windows gelaufen). Umgesetzt mit `Pagewing.Core.Distribution.FileTypeRegistration` und `WindowsFileTypeRegistry` (`Pagewing.exe --register-file-types[=user|machine]`, `--unregister-file-types`), dem Inno-Setup-Skript `packaging/windows/pagewing.iss` (grafisch und still, Zielordner, Benutzer- oder Computerinstallation, „Pagewing jetzt starten“, feste `AppId`) und `tools/package.cs` (`layout`, `zip`, `inno-install`, `installer`, `installer-smoke`). Geprüft unter Linux: `FileTypeRegistrationTests` (4), `StartupOptionsTests` (23), `dotnet run tools/package.cs -- selftest` (251 Prüfungen, darunter die Regeln des `.iss` mit elf Mutationen und die portable ZIP: zweimal gebaut dieselbe SHA-256).",
+              "done": true
+            },
+            {
+              "text": "Windows: Installer unter Windows bauen und automatisiert prüfen, Windows-Tests laufen lassen. Gebaut mit `package.cs inno-install`, `layout`, `installer` (Version 1.0.0, Inno Setup 6.7.3), geprüft mit `installer-smoke` (still, nur für den Benutzer, ohne Administratorrechte) und `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsFileTypeRegistryTests\"` und `\"*WindowsDefaultAppServiceTests\"`. Der Installer ist unsigniert",
+              "done": true
+            },
+            {
+              "text": "Windows: Installation für alle Benutzer und grafischer Ablauf von Hand geprüft: Auswahlseite „alle Benutzer / nur für mich“, UAC-Abfrage bei „alle Benutzer“, Installation für alle Benutzer und nur für den Benutzer, Doppelklick auf eine PDF, Deinstallation. Vom Projektinhaber am 2026-10-22 auf dem Haupt-PC (Windows 11, Build 26200) geprüft. Dabei fand sich, dass die Karte „Als Standardprogramm festlegen“ trotz gesetztem Standard bei jedem Start erneut fragte (Windows 11 schreibt die Wahl nach `UserChoiceLatest`); behoben in `WindowsDefaultAppService.ReadStatus`, Test `StatusPrefersUserChoiceLatestOverTheOlderUserChoice`, Entscheidung in `Docs/DECISIONS.md`; mit einem neu gebauten Installer erneut vom Projektinhaber bestätigt. **Nicht geprüft:** `/ALLUSERS` still (siehe Scope-Änderungen, Abnahme von `v0.1.0`)",
+              "done": true
+            },
+            {
+              "text": "Linux: AppImage und .deb mit `.desktop`-Datei und MIME-Zuordnung: umgesetzt und in der Entwicklungsumgebung (Ubuntu 24.04, glibc 2.39) gebaut und per Smoke-Test geprüft; Umgesetzt mit `package.cs deb`/`deb-smoke` (Starter, MIME-Zuordnung, relativer Symlink `/usr/bin/pagewing`, Lintian ohne unerwartete Fehler, zweimal gebaut dieselbe SHA-256), `package.cs runtime-fetch`/`appimage`/`appimage-smoke` (type2-Runtime `20251108` mit Prüfsumme, zstd-SquashFS, Start mit und ohne FUSE unter Xvfb belegt, zweimal gebaut dieselbe SHA-256), `DesktopEntry` und `LinuxDefaultAppService`, dem Wächter `package.cs check-binary --max-glibc 2.35` (Selbsttest mit echten ELF-Dateien).",
+              "done": true
+            },
+            {
+              "text": "Linux: Mindest-glibc durch Bau auf dem Runner bestätigen und die älteste unterstützte Distribution festlegen — auf die Abnahme von `v0.1.0` verschoben (siehe Scope-Änderungen). Stand: Die glibc ist nur vorläufig auf 2.35 gesetzt (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“); die glibc des Runners `dotnet-linux` ist unbekannt (in der Entwicklungsumgebung 2.39, dort verlangt `Pagewing` `GLIBC_2.38`), `check-binary` ist in `ci.yml` nicht blockierend und in `release.yml` blockierend",
+              "done": true
+            },
+            {
+              "text": "Lizenzhinweise aller Drittbibliotheken (PDFium-Drittlizenzen, Avalonia usw.) im Paket und im Über-Dialog. Umgesetzt mit `third-party/licenses.json` (39 Einträge: alle Pakete von App und CLI, Laufzeit, Schrift und Icons sowie sieben Einträge für die Bestandteile der AppImage-Runtime, die nur im AppImage stehen), den Lizenztexten unter `third-party/<name>/` (mit Quelle und SHA-256), `tools/licenses.cs` (`generate`, `check`, `selftest`), der erzeugten `src/Pagewing.App/Resources/ThirdPartyNotices.txt` (im Paket als `THIRD-PARTY-NOTICES.txt`, eingebettet, in der Karte „Über Pagewing“ erst beim Öffnen der Liste gelesen) und dem Schritt `licenses check` in `ci.yml` und `release.yml`. Geprüft: `dotnet run tools/licenses.cs -- selftest` (40 Prüfungen), `AboutCardTests` (8) und `AppInfoTests` (6).",
+              "done": true
+            },
+            {
+              "text": "Lizenzinventar unter Windows geprüft: `dotnet run tools/licenses.cs -- check --publish-dir out/m8win/app --publish-dir out/m8win/cli` auf einem frischen `win-x64`-Native-AOT-Publish von App und CLI ergab `licenses check: ok`, Exit 0 (2026-10-22, Haupt-PC, nicht auf `dotnet-windows`). Narrator und Orca an der Über-Karte stehen in der Abnahme von `v0.1.0`, die Klärung der Avalonia-Telemetrie beim Bauen im Backlog (siehe Scope-Änderungen)",
+              "done": true
+            },
+            {
+              "text": "Release-Artefakte per CI bauen und an das GitHub-Release hängen: Workflow geschrieben und statisch geprüft, nie ausgeführt. Umgesetzt mit `.github/workflows/release.yml` (je Betriebssystem ein Job auf dem eigenen Runner, Upload mit `gh release upload` direkt ans Release ohne Actions-Artifacts, `GH_REPO`, `persist-credentials: false`, Tag-Prüfung, Trockenlauf per `-f upload=false`) und `package.cs sums`. Statisch geprüft mit `actionlint` 1.7.12 (ohne Befund bei gesetzten Runner-Labels) und einem Prüfskript über alle `uses:` (feste Commits) und alle `run:`-Schritte.",
+              "done": true
+            },
+            {
+              "text": "Release-Workflow: Trockenlauf und erster Upload (`gh workflow run release.yml -f tag=v0.1.0 -f upload=false`) — auf Anweisung des Projektinhabers beim Release `v0.1.0` statt in M8 (siehe Scope-Änderungen). Der Workflow wurde nie ausgeführt; der Trockenlauf setzt installiertes `gh`, `dpkg-deb`, `squashfs-tools`, `binutils`, `xvfb` und Windows-Inno-Setup auf den Runnern voraus",
+              "done": true
+            }
+          ],
+          "acceptance": [
+            {
+              "text": "Installation, Doppelklick auf PDF und Deinstallation unter Windows (manuelle Prüfung); unter Linux auf Anweisung des Projektinhabers auf die Abnahme von `v0.1.0` verschoben",
+              "done": true,
+              "evidence": "Windows: Projektinhaber am 2026-10-22 auf dem Haupt-PC (Windows 11, Build 26200, kein frisches System): grafische Installation für alle Benutzer (mit UAC) und nur für den Benutzer, Doppelklick auf eine PDF, Deinstallation; die Karte „Als Standardprogramm festlegen“ schweigt mit dem Fix (`UserChoiceLatest`) bei gesetztem Standard, auch nach einem Neustart der App. Automatisiert: `package.cs installer-smoke` (still, nur Benutzer) „alle Schritte bestanden“; `WindowsFileTypeRegistryTests` und `WindowsDefaultAppServiceTests` 6 von 6 bestanden. **Nicht geprüft:** `/ALLUSERS` still, ein frisches Windows, jede Linux-Distribution (Abnahme von `v0.1.0`)."
+            },
+            {
+              "text": "Lizenzhinweise vollständig (Abgleich mit den Lizenzdateien der Pakete)",
+              "done": true,
+              "evidence": "`dotnet run tools/licenses.cs -- check --publish-dir <app> --publish-dir <cli>` auf einem frischen `linux-x64`-Native-AOT-Publish von App und CLI (2026-10-19, Entwicklungsumgebung Linux, nach Aufnahme der AppImage-Runtime): `licenses check: ok`, Exit 0; `dotnet run tools/licenses.cs -- selftest`: 40 Prüfungen bestanden; `ThirdPartyNotices.txt` ist aktuell. Windows (2026-10-22, Haupt-PC): `licenses check --publish-dir out/m8win/app --publish-dir out/m8win/cli` auf einem frischen `win-x64`-Native-AOT-Publish ergab ebenfalls `licenses check: ok`, Exit 0. **Einschränkung:** Der Windows-Lauf war nicht auf dem Runner `dotnet-windows`. Der Abgleich ist ein Abgleich mit dem Manifest und den Lizenzdateien im Repo, nicht mit den Dateien eines installierten Pakets. Gesamtlauf am Ende von M8 (Linux, 2026-10-19): `dotnet build Pagewing.slnx` 0 Warnungen, 0 Fehler; `dotnet test --solution Pagewing.slnx` 1906 Tests, 1890 bestanden, 0 fehlgeschlagen, 16 übersprungen (Windows- und CUPS-Tests); `dotnet format Pagewing.slnx --verify-no-changes` ohne Befund; `dotnet run tools/package.cs -- selftest` 251 Prüfungen; `dotnet run tools/licenses.cs -- selftest` 40 Prüfungen."
+            }
+          ]
+        },
+        {
+          "id": "8.1",
+          "title": "Automatische Updates",
+          "status": "open",
+          "prerequisites": ["8"],
+          "prerequisitesNote": "Setzt das veröffentlichte Release `v0.1.0` voraus (siehe „Voraussetzungen“ unten).",
+          "goal": "Pagewing prüft nach dem Start im Hintergrund auf neue Versionen und installiert sie selbst, ohne den Start zu verlangsamen, sodass niemand mehr von Hand einen Installer laden muss.",
+          "tasks": [
+            { "text": "Plan erstellen (Brainstorming) und die offenen Fragen aus der Scope-Änderung vom 2026-10-22 mit dem Projektinhaber klären: Standard der Prüfung (Frage beim ersten Start oder aktiv), Schalter zum Abschalten, Umfang je Paketform", "done": false },
+            { "text": "Offline-Zusage nachziehen: Eintrag in `Docs/DECISIONS.md` (löst „Keine Auto-Update-Funktion“ ab), `CLAUDE.md` („Offline und Sicherheit“ und Kopfzeile), `README.md`, Gesamt-Spec und Design-Spec, UI-Texte der Startseite und der Über-Karte (Englisch und Deutsch); Hinweis im Über-Dialog, was die Prüfung abfragt und was nicht", "done": false },
+            { "text": "Signierte Release-Dateien: Der Release-Workflow erzeugt ein Manifest (Version, Dateinamen, Größe, SHA-256) und signiert es; der private Schlüssel liegt nur als Secret des Repos, der öffentliche steckt im Programm. Verfahren im Plan wählen, möglichst aus der .NET-Standardbibliothek (AOT-fähig, keine neue Abhängigkeit; sonst Eintrag im Lizenzmanifest). Die Signatur ersetzt nicht die Code-Signierung (Backlog „Code-Signierung über SignPath Foundation“)", "done": false },
+            { "text": "Update-Kern UI- und plattformfrei in `Pagewing.Core`: Manifest lesen (JSON nur mit Source-Generator), Signatur und Prüfsumme prüfen, Versionen vergleichen, höchstens eine Prüfung je Zeitraum, Zustände (nichts neu, verfügbar, wird geladen, bereit, Fehler). Jede Abweichung (falsche Signatur, falsche Prüfsumme, ältere Version) lehnt ab, und es wird nichts gestartet", "done": false },
+            { "text": "Prüfung und Download erst nach dem Start: nach dem ersten scharfen Seitenbild bzw. dem ersten Frame der Startseite, auf einem Hintergrundthread, mit Zeitlimit und Abbruch; kein Netzwerkcode im Startpfad geladen; ohne Netz oder bei Fehlern still (kein Hinweis-Spam, kein Wiederholen in Schleife). Messläufe und Tests greifen nie ins Netz (abgekoppelt wie `UserSettings.Detached()`)", "done": false },
+            { "text": "Windows: Installer laden, prüfen und still installieren (`/SILENT`, schließt die laufende Instanz, feste `AppId`), bei Installation für alle Benutzer mit UAC-Abfrage; kein Update mitten in einer Sitzung, sondern beim Beenden oder auf Wunsch. Die portable ZIP aktualisiert sich nicht selbst (nur Hinweis), im Plan bestätigen", "done": false },
+            { "text": "Linux: AppImage mit eingebetteter Update-Information bzw. Ersetzen der Datei; `.deb`: kein Austausch durch die App, stattdessen Hinweis oder ein apt-Repository (im Plan entscheiden)", "done": false },
+            { "text": "Neustart nach dem Update ohne Datenverlust: offene Tabs und Positionen bleiben erhalten (dafür den Backlog-Eintrag „Sitzung wiederherstellen“ in diesen Milestone ziehen) oder das Update wird nur beim Beenden installiert; im Plan entscheiden", "done": false },
+            { "text": "Oberfläche: Einstellung für die Prüfung, Hinweiskarte „Update bereit“ (nicht blockierend, ohne Farbe als einziges Zeichen), Befehl „Nach Updates suchen“ im `CommandCatalog`, Texte Englisch und Deutsch, Tastatur und Screenreader (Design-Spec)", "done": false },
+            { "text": "Release-Workflow und `packaging/README.md` anpassen (Manifest und Signatur als zusätzliche Release-Dateien), Tag-Regex und Dateinamen bleiben stabil", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Startzeit-Budgets bleiben mit aktivierter Prüfung eingehalten: `bench/startup` (Fälle `cold`, `warm`, `thousand`, `second`) ohne Verschlechterung gegenüber `v0.1.0`; ein Test belegt, dass der erste Netzwerkzugriff erst nach dem ersten scharfen Seitenbild bzw. dem ersten Frame der Startseite beginnt", "done": false },
+            { "text": "Ein manipuliertes Manifest, eine falsche Signatur, eine falsche Prüfsumme und eine ältere Version werden abgelehnt, ohne dass etwas installiert oder gestartet wird (Tests)", "done": false },
+            { "text": "Ohne Netzverbindung, bei Zeitüberschreitung und bei einem Fehler des Servers startet und arbeitet Pagewing unverändert, ohne Fehlerkarte beim Start (Tests mit Fake-Netzwerk)", "done": false },
+            { "text": "Bei abgeschalteter Prüfung geschieht kein einziger Netzwerkzugriff (Test mit einem Handler, der jeden Aufruf als Fehler meldet)", "done": false },
+            { "text": "Windows, Ende zu Ende: Eine ältere Testversion aktualisiert sich gegen ein echtes Test-Release auf die neue, für „nur für mich“ und für „alle Benutzer“; Einstellungen und Verlauf bleiben erhalten, die Standardprogramm-Zuordnung bleibt gesetzt (manuelle Prüfung, `installer-smoke` für den stillen Pfad)", "done": false },
+            { "text": "Linux, Ende zu Ende: AppImage aktualisiert sich auf die neue Version; `.deb` verhält sich wie im Plan festgelegt (manuelle Prüfung)", "done": false },
+            { "text": "Ein Update unterbricht nie eine laufende Arbeit: Es installiert nicht mitten in einer Sitzung und verliert keine offenen Tabs (Test und manuelle Prüfung)", "done": false },
+            { "text": "`dotnet run tools/licenses.cs -- check` ist grün, falls ein Paket hinzukam; Build, Test und Format laufen grün (Befehle in `CLAUDE.md`)", "done": false }
+          ],
+          "blocks": [
+            {
+              "title": "Voraussetzungen vor dem Start",
+              "text": "- Das Release `v0.1.0` ist veröffentlicht (der Release-Workflow ist bis dahin nie gelaufen); der Updater lässt sich erst gegen eine zweite Version von Ende zu Ende testen.\n- Das Repo ist öffentlich: Die Prüfung liest die GitHub Releases ohne Token in der App. Solange es privat ist, ist der Milestone nicht umsetzbar.\n- Die Entscheidung über den Standard der Prüfung (siehe Scope-Änderung vom 2026-10-22) liegt vor.\n- Billige Ergänzung ohne App-Code: das winget-Paket (Backlog). Es ersetzt die Aufgaben dieses Milestones nicht."
+            }
           ]
         }
       ]
+    },
+    {
+      "number": 2,
+      "name": "Annotieren, Ausfüllen, Unterschreiben",
+      "spec": { "text": "noch nicht erstellt (wird in M9 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6" },
+      "milestones": [
+        {
+          "id": "9",
+          "title": "Speichern & Textmarkierungen",
+          "status": "open",
+          "prerequisites": ["8", "8.1"],
+          "goal": "Text lässt sich hervorheben, unter- und durchstreichen und kommentieren, und Änderungen werden sicher gespeichert.",
+          "tasks": [
+            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 2", "done": false },
+            { "text": "Speicher-Pipeline: inkrementell, atomar (temporäre Datei, Prüfung, Ersetzen), Speichern unter, Ungespeichert-Hinweis", "done": false },
+            { "text": "Hervorheben, Unterstreichen, Durchstreichen", "done": false },
+            { "text": "Kommentare mit Seitenleiste", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Gespeicherte Annotationen erscheinen in einem anderen Viewer (z. B. Chrome) korrekt (manuelle Prüfung)", "done": false },
+            { "text": "Abbruch während des Speicherns lässt das Original unverändert (Test)", "done": false },
+            { "text": "Digital signierte Test-PDF: Signatur bleibt nach Annotieren gültig (Test oder Prüfung in Acrobat Reader)", "done": false }
+          ]
+        },
+        {
+          "id": "10",
+          "title": "Zeichnen & Formen",
+          "status": "open",
+          "prerequisites": ["9"],
+          "goal": "Freihandzeichnungen, Formen und Textfelder lassen sich hinzufügen, bearbeiten und speichern.",
+          "tasks": [
+            { "text": "Freihand zeichnen", "done": false },
+            { "text": "Formen: Rechteck, Kreis, Linie, Pfeil (Umsetzung für Linie/Pfeil laut Spec von Teilprojekt 2)", "done": false },
+            { "text": "Textfelder hinzufügen", "done": false },
+            { "text": "Annotationen auswählen, verschieben, löschen, Rückgängig/Wiederholen", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Round-Trip-Tests: angelegte Annotationen sind nach Speichern und Neuladen unverändert", "done": false }
+          ]
+        },
+        {
+          "id": "11",
+          "title": "Formulare",
+          "status": "open",
+          "prerequisites": ["9"],
+          "goal": "AcroForm-Formulare lassen sich ausfüllen und speichern.",
+          "tasks": [
+            { "text": "AcroForm-Felder ausfüllen (Text, Checkbox, Radio, Liste, Combo), Tab-Reihenfolge", "done": false },
+            { "text": "Speichern der Werte", "done": false },
+            { "text": "Hinweis bei berechneten Feldern (ohne V8 keine JavaScript-Berechnung)", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Ausgefüllte Test-Formulare zeigen die Werte in einem anderen Viewer (Test + manuelle Prüfung)", "done": false }
+          ]
+        },
+        {
+          "id": "12",
+          "title": "Sichtbare Unterschrift",
+          "status": "open",
+          "prerequisites": ["10"],
+          "goal": "Eine gezeichnete oder als Bild eingefügte Unterschrift lässt sich platzieren, speichern und wiederverwenden.",
+          "tasks": [
+            { "text": "Unterschrift zeichnen oder als Bild importieren", "done": false },
+            { "text": "Unterschriften lokal speichern und wiederverwenden", "done": false },
+            { "text": "Platzieren, skalieren, speichern", "done": false },
+            { "text": "Hinweis im Dialog: „Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.“ (keine Bezeichnung als „rechtsgültig“)", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Test prüft, dass der Hinweis im Dialog steht und „rechtsgültig“ in keinem UI-Text vorkommt", "done": false }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "name": "Seiten & Schwärzen",
+      "spec": { "text": "noch nicht erstellt (wird in M13 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6" },
+      "milestones": [
+        {
+          "id": "13",
+          "title": "Seiten organisieren",
+          "status": "open",
+          "prerequisites": ["11", "12"],
+          "goal": "Seiten lassen sich in App und CLI umsortieren, drehen, löschen, einfügen, zusammenführen, teilen und als Bild exportieren.",
+          "tasks": [
+            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 3, inkl. Entscheidung über QPDF (Lesezeichen beim Zusammenführen, Metadaten)", "done": false },
+            { "text": "Umsortieren, drehen, löschen, einfügen in der Seitenleiste", "done": false },
+            { "text": "PDFs zusammenführen und teilen", "done": false },
+            { "text": "Seiten als Bild exportieren", "done": false },
+            { "text": "CLI `pagewing merge|split|rotate|export`", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Tests für alle Seitenoperationen (Seitenzahl, Reihenfolge, Drehung, Inhalt) grün", "done": false }
+          ]
+        },
+        {
+          "id": "14",
+          "title": "Schwärzen",
+          "status": "open",
+          "prerequisites": ["13"],
+          "goal": "Bereiche und Textstellen lassen sich so schwärzen, dass der Inhalt nachweislich aus der Datei verschwindet.",
+          "tasks": [
+            { "text": "Bereich oder Textstelle schwärzen (Markieren, Vorschau, Anwenden)", "done": false },
+            { "text": "Textobjekte aufteilen bzw. entfernen, Bildpixel überschreiben, Vektorpfade und Form-XObjects rekursiv behandeln, Annotationen im Bereich löschen", "done": false },
+            { "text": "Metadaten entfernen (Info-Dictionary, XMP)", "done": false },
+            { "text": "Immer vollständiger Neuschrieb, Warnung bei digital signierten Dokumenten", "done": false },
+            { "text": "CLI `pagewing redact`", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Tests: nach dem Schwärzen enthält weder die Textextraktion noch der dekomprimierte Rohinhalt der Datei den geschwärzten Text (Fälle: Form-XObject, Annotation, Metadaten, ältere inkrementelle Revision)", "done": false },
+            { "text": "Tests: Bildpixel im geschwärzten Bereich sind im gespeicherten Bild überschrieben", "done": false }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "name": "OCR & Text bearbeiten",
+      "spec": { "text": "noch nicht erstellt (wird in M15 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6" },
+      "milestones": [
+        {
+          "id": "15",
+          "title": "OCR",
+          "status": "open",
+          "prerequisites": ["14"],
+          "goal": "Gescannte PDFs lassen sich offline durchsuchbar machen.",
+          "tasks": [
+            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 4, inkl. Auslieferung von Tesseract und Sprachdaten", "done": false },
+            { "text": "`Pagewing.Ocr`: eigene `[LibraryImport]`-Bindings auf die Tesseract-C-API, erst bei Nutzung geladen", "done": false },
+            { "text": "Unsichtbare Textebene erzeugen, im Hintergrund mit Fortschritt und Abbruch", "done": false },
+            { "text": "CLI `pagewing ocr`", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Gescannte Test-PDF ist nach OCR durchsuchbar, Treffer liegen an der richtigen Stelle (Test)", "done": false },
+            { "text": "Startzeit-Budgets unverändert eingehalten (Tesseract wird beim Start nicht geladen)", "done": false }
+          ]
+        },
+        {
+          "id": "16",
+          "title": "Text bearbeiten",
+          "status": "open",
+          "prerequisites": ["15"],
+          "goal": "Vorhandene Textzeilen und Tippfehler lassen sich korrigieren, mit Ersatzschrift für fehlende Zeichen.",
+          "tasks": [
+            { "text": "Vorhandene Zeile auswählen und bearbeiten (bewusst keine Absatz-Bearbeitung)", "done": false },
+            { "text": "Ersatzschrift für Zeichen, die in der eingebetteten Teilschrift fehlen", "done": false },
+            { "text": "Hinweis in der UI auf die Grenzen der Textbearbeitung", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Tests: korrigierte Zeile wird extrahiert wie erwartet, übrige Seite unverändert (Render-Vergleich)", "done": false }
+          ]
+        }
+      ]
+    }
+  ],
+  "releases": [
+    {
+      "version": "0.1.0",
+      "title": "schneller Viewer",
+      "status": "planned",
+      "afterMilestone": "8",
+      "covers": ["0", "1", "2", "3", "4", "5", "6", "7", "8"],
+      "intro": "Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projektinhaber.",
+      "acceptance": [
+        { "text": "Eine Woche Alltagsnutzung als Standard-PDF-Programm unter Windows und Linux ohne Rückgriff auf Acrobat zum Lesen Stand 2026-10-23: läuft parallel zur weiteren Arbeit; die Veröffentlichung von `v0.1.0` entscheidet der Projektinhaber ausdrücklich.", "done": false },
+        { "text": "Startzeit-Budgets auf dem Rechner des Projektinhabers eingehalten (Messwerte notieren)", "done": true,
+          "evidence": "Hardware-Messung auf dem Haupt-PC (RTX 4070 SUPER, 1920 x 1080 bei 60 Hz, Software-Rendering), Lauf 39940075026 vom 2026-10-23: cold 157,9 ms (Budget 400), warm 153,0 ms (200), thousand 150,1 ms (300), second 54,4 ms (100), jeweils Median aus 10 Läufen, ohne `Warnung:`-Zeile; ein cold-Lauf dauerte 18,1 s (Ursache ungeklärt, Median unberührt); Scroll `thousand-pages.pdf` p99 32,0 ms, Mittel 22,5 ms; manuelle Scroll-Prüfung am Bildschirm vom Projektinhaber für in Ordnung befunden. Der GPU-Pfad (`PAGEWING_RENDERING=default`) lag informativ bei warm 397,7 ms" },
+        { "text": "Drucken (aus M7), Windows: Seitenbereiche im Druckdialog (`3` und `2-4,7`) drucken die gewählten Seiten; die übrigen Fälle von `print-mixed.pdf` unter Windows und der Linux-Druck sind aus der Abnahme genommen (Scope-Änderung 2026-10-23, Backlog)", "done": true,
+          "evidence": "Handprüfung des Projektinhabers mit `v0.1.0-rc.1` (2026-10-23): `Seiten: 3` druckte die angezeigte Seite 112 statt Seite 3. Ursache gemessen (Windows meldet eine einzelne Seitenzahl als `PD_CURRENTPAGE`), behoben in PR 22 (`PrintDialogChoice`, `WindowsPrintNativeTests` 22/22, Eintrag „Windows-Druckdialog: eine einzelne Seitenzahl kommt als ‚aktuelle Seite‘ zurück“). Retest mit einem Build des Fix-Branchs: `3` druckt Seite 3, `2-4,7` die Seiten 2, 3, 4 und 7. Nicht geprüft: Kopien, Duplex, „Tatsächliche Größe“, Querseiten, Abbrechen; Linux gar nicht" },
+        { "text": "Drucken (aus M7): Druck in Microsoft Print to PDF unter Windows ergibt vier korrekte Seiten (Text darin ist nicht auswählbar, siehe `Docs/DECISIONS.md`, Eintrag „Windows-Druck: Ausgabe in Print to PDF …“); `dotnet test --project tests/Pagewing.App.Tests --filter-class \"*WindowsPrintToPdfTests\"` läuft unter Windows ohne Fehler (nicht übersprungen)", "done": true,
+          "evidence": "`dotnet test --project tests/Pagewing.App.Tests --filter-class *WindowsPrintToPdfTests` auf dem Haupt-PC: 5 von 5 bestanden, 0 übersprungen (2026-10-23)" },
+        { "text": "Drucken (aus M7): Druckknopf und Karten am echten Bildschirm in hell und dunkel; CUPS (Drehung, Duplex) und Screenreader sind aus der Abnahme genommen (Scope-Änderung 2026-10-23, Backlog)", "done": true,
+          "evidence": "Handprüfung des Projektinhabers (2026-10-23): Oberfläche in hell und dunkel in Ordnung" },
+        {
+          "text": "Verteilung (aus M8), Windows: Installer grafisch (Lizenz, Zielordner, „Pagewing jetzt starten“) und still (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=…`, auch mit `/ALLUSERS`) auf einem frischen Windows, Doppelklick auf ein PDF, Deinstallation; portable ZIP startet; die SmartScreen-Warnung des unsignierten Installers ist zur Kenntnis genommen; `dotnet run tools/package.cs -- installer-smoke <setup.exe>` und die Windows-Tests `*WindowsFileTypeRegistryTests` und `*WindowsDefaultAppServiceTests` laufen ohne Fehler (nicht übersprungen). Schon geprüft (2026-10-22, Haupt-PC, kein frisches System): grafische Installation für alle Benutzer und nur für den Benutzer, Doppelklick auf PDF, Deinstallation, `installer-smoke` und beide Testklassen; offen: `/ALLUSERS` still, ein frisches Windows, die portable ZIP und die SmartScreen-Warnung",
+          "done": true,
+          "evidence": "Windows Sandbox (frisches Windows), 2026-10-23, `v0.1.0-rc.1`: Installer grafisch, Doppelklick auf PDF, Deinstallation, still mit `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /ALLUSERS` (UAC-Abfrage „Unbekannter Herausgeber“), portable ZIP startet; SmartScreen zeigt für den im Browser geladenen Installer den roten Dialog „Der Computer wurde durch Windows geschützt“ („Unbekannter Herausgeber“, Knöpfe „Trotzdem ausführen“ und „Nicht ausführen“), mit `gh release download` geladene Dateien lösen ihn nicht aus (keine Download-Markierung); `installer-smoke` im Trockenlauf 39922614855 bestanden; `*WindowsFileTypeRegistryTests` 3/3, `*WindowsDefaultAppServiceTests` 6/6, nicht übersprungen"
+        },
+        {
+          "text": "Verteilung (aus M8), Linux: `.deb` auf Ubuntu 22.04 und Debian 12 (`sudo apt install ./pagewing_<Version>_amd64.deb`) und AppImage auf Debian 12 und CachyOS ohne `libfuse2`, auch aus einem Ordner mit Leerzeichen: Eintrag im Anwendungsmenü mit Symbol, Doppelklick auf eine PDF im Dateimanager, Entfernen (`apt remove`); Ubuntu 24.04, Debian 13 und Linux Mint sind aus der Abnahme genommen (Scope-Änderung 2026-10-23, Backlog)",
+          "done": true,
+          "evidence": "Handprüfung des Projektinhabers mit `v0.1.0-rc.1` (2026-10-23): `.deb` auf Ubuntu 22.04 (VM) und Debian 12 (VM) mit allen Schritten in Ordnung; AppImage auf Debian 12 und CachyOS (Laptop, `fuse2` nicht installiert, `fuse3` 3.18.3) in Ordnung. Befund: ein verschobenes AppImage ließ den Menüeintrag ins Leere zeigen; behoben in PR 20 (`LinuxDefaultAppService`, Eintrag „Standardprogramm aus dem AppImage: verschobene Datei erkennen“), Retest mit `v0.1.0-rc.2` auf CachyOS in Ordnung"
+        },
+        {
+          "text": "Verteilung (aus M8): Karte „Als Standardprogramm festlegen“ unter Windows (nach dem Verschieben der portablen ZIP erscheint sie wieder) und unter Linux (setzt den Standard selbst, auch aus dem AppImage), Startzeit-Budgets mit den neuen Einträgen auf echter Hardware; „Später“ und „Nicht mehr fragen“ sowie Narrator und Orca sind aus der Abnahme genommen (Scope-Änderung 2026-10-23, Backlog)",
+          "done": true,
+          "evidence": "Handprüfung des Projektinhabers (2026-10-23): Linux-Karte auf Ubuntu 22.04, Debian 12 und CachyOS (Festlegen, Doppelklick auf PDF, Menüeintrag); Windows-Karte in Windows Sandbox nach dem Verschieben der portablen ZIP; Startzeiten auf dem Haupt-PC im Lauf 39940075026 innerhalb aller Budgets"
+        },
+        {
+          "text": "Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien. Stand 2026-10-23: Trockenlauf (mit `-f ref=release/v0.1.0`, siehe `packaging/README.md`) grün auf beiden Runnern, Lauf 39922614855: Windows ZIP, Installer, `installer-smoke` und Prüfsummen; Linux `.deb` (`deb-smoke` mit lintian), AppImage (`appimage-smoke`), Quellarchive und Prüfsummen. Auch mit dem Vorabtag `v0.1.0-rc.1` grün (Lauf 39933210774): `.deb` heißt `pagewing_0.1.0~rc.1_amd64.deb`, Installer `Pagewing-0.1.0-rc.1-win-x64-setup.exe` mit Dateiversion `0.1.0.0`, AppImage und ZIP tragen `0.1.0-rc.1`. Offen: das Release selbst samt Upload",
+          "done": false
+        },
+        {
+          "text": "Quellangebot für libfuse (LGPL-2.1) in der AppImage-Runtime klären: Quell-Tarballs (type2-runtime 20251108, libfuse 3.15.0) an jedes Release hängen oder ein schriftliches Angebot ins Paket legen (`Docs/DECISIONS.md`, Eintrag „Offen: Quellangebot für libfuse und type2-runtime“)",
+          "done": true,
+          "evidence": "Quell-Tarballs am Release: `package.cs runtime-sources` mit festen SHA-256 gegen den Live-Download geprüft, `package.cs selftest` 286 Prüfungen (`RuntimeSourceParts`), Eintrag „Quellangebot für libfuse und type2-runtime: Quellarchive am Release“ (2026-10-23); der Upload selbst zeigt erst der Trockenlauf bzw. das Release"
+        },
+        {
+          "text": "Vor dem ersten Release (aus M8): Mindest-glibc klären — den ersten PR-Lauf auf `dotnet-linux` mit der glibc-Ausgabe von `check-binary` ansehen, dann entscheiden (Linux-Build im Container `ubuntu:22.04` oder Mindest-glibc anheben) und die älteste unterstützte Distribution festlegen (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“). Stand 2026-10-23: Runner hat glibc 2.43, `Pagewing` verlangt dort `GLIBC_2.38` (`fmod`); Weg „Container `ubuntu:22.04`“ ist umgesetzt (`packaging/linux/container-build.sh`)",
+          "done": true,
+          "evidence": "Trockenlauf 39922614855 (`release/v0.1.0`, 2026-10-23): `check-binary --max-glibc 2.35 --max-glibcxx 3.4.30` im Container ok für `Pagewing`, `libSkiaSharp.so`, `libHarfBuzzSharp.so`, `libpdfium.so` und die CLI; Entscheidung im Eintrag „Mindest-glibc 2.35 und Bauweise der Linux-Pakete: Container `ubuntu:22.04`“. Die älteste unterstützte Distribution bleibt Ubuntu 22.04 (glibc 2.35)"
+        },
+        {
+          "text": "Vor dem ersten Release: `check-binary` um eine GLIBCXX-Prüfung ergänzen",
+          "done": true,
+          "evidence": "`dotnet run tools/package.cs -- selftest` → 286 Prüfungen bestanden (11 neue GLIBCXX-Fälle: Grenze 3.4.30, Zahlen- statt Textvergleich, `--max-glibcxx`); echte Binaries prüft erst der Trockenlauf im Container (2026-10-23)"
+        },
+        {
+          "text": "Vor dem ersten Release: Tag-Regex im Release-Workflow prüfen",
+          "done": true,
+          "evidence": "`package.cs selftest`, `TagRuleParts`: beide Regeln (PowerShell, bash) gleich, `v0.1.0`, `v0.1.0-rc.1` angenommen, `V0.1.0`, `v0.1`, `0.1.0` abgelehnt (2026-10-23). Dabei fiel ein ungültiges YAML in `release.yml` auf (behoben, Wächter `WorkflowYamlParts`)"
+        },
+        {
+          "text": "Vor dem ersten Release: Symbolgrößen 22 und 96 px im hicolor-Satz prüfen",
+          "done": true,
+          "evidence": "`LinuxDefaultAppServiceTests.AppImageDefaultInstallsEveryIconSizeOfTheRepository` (rot: 22x22 fehlte, grün nach Fix von `IconSizes`), Klasse 16/16 unter Ubuntu 26.04 in WSL (2026-10-23); `.deb` und AppImage lieferten beide Größen schon aus"
+        },
+        {
+          "text": "Vor dem ersten Release: Verhalten von `xdg-mime default` ohne vorhandenen Desktop-Eintrag prüfen (Stand 2026-10-23: Schutz im Dienst umgesetzt, `LinuxDefaultAppServiceTests` 16/16; die Handprüfung auf einer Distribution mit `xdg-utils` steht noch aus, Befehle im Plan, Task 5)",
+          "done": true,
+          "evidence": "Handprüfung Ubuntu 22.04 (GNOME) ohne Pagewing, 2026-10-23: `xdg-mime default pagewing.desktop application/pdf` endet mit Exit 0 ohne Meldung und schreibt `application/pdf=pagewing.desktop` in `~/.config/mimeapps.list`, `xdg-mime query default` zeigt weiter Evince; der Schutz in `LinuxDefaultAppService` (kein Festlegen ohne Desktop-Datei) war also nötig"
+        },
+        {
+          "text": "Vor dem ersten Release: Windows-Standardprogramm nach Verschieben der portablen ZIP von Hand prüfen (die Karte erscheint wieder, „Als Standard festlegen“ schreibt den neuen Pfad)",
+          "done": true,
+          "evidence": "Windows Sandbox, 2026-10-23, `v0.1.0-rc.1`: portable ZIP entpackt, Ordner verschoben, die Karte erschien wieder und „Als Standard festlegen“ funktionierte (Rückmeldung des Projektinhabers); Tests `MakeDefaultRegistersAgainWhenTheProgramMoved` und `StatusIsNotDefaultWhenTheRegisteredCommandPointsElsewhere` 6/6 auf dem Haupt-PC"
+        }
+      ],
+      "blocks": [
+        {
+          "title": "Plan",
+          "text": "[Release v0.1.0 – Implementierungsplan](superpowers/plans/2026-10-23-release-v0.1.0.md): Phase 1 Vorbereitung (glibc des Linux-Runners, Trockenlauf ohne Tag, GLIBCXX-Prüfung, Symbolgrößen, `xdg-mime`, Quellangebot), Phase 2 Läufe und Abnahme, Phase 3 Veröffentlichen (nur auf Anweisung). Befund beim Planen: Der blockierende glibc-Schritt von `release.yml` scheitert auf dem Runner (Ubuntu 26.04, glibc 2.43; `Pagewing` verlangt `GLIBC_2.38`), siehe Plan."
+        }
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "title": "annotieren, ausfüllen, unterschreiben",
+      "status": "open",
+      "afterMilestone": "12",
+      "covers": ["8.1", "9", "10", "11", "12"],
+      "intro": "Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automatisch (Milestone 8.1)."
+    },
+    {
+      "version": "0.3.0",
+      "title": "Seiten organisieren und schwärzen",
+      "status": "open",
+      "afterMilestone": "14",
+      "covers": ["13", "14"]
+    },
+    {
+      "version": "1.0.0",
+      "title": "OCR und Textbearbeitung",
+      "status": "open",
+      "afterMilestone": "16",
+      "covers": ["15", "16"]
+    }
+  ],
+  "backlog": [
+    { "title": "Abnahme von v0.1.0 nachholen: Drucken (Rest)", "text": "Aus der Abnahme genommen (Scope-Änderung 2026-10-23): Windows: `print-mixed.pdf` mit zwei Kopien sortiert, Duplex lang, „Tatsächliche Größe“ (schneidet ab), Querseiten gedreht und zentriert, Abbrechen mitten in `thousand-pages.pdf`. Linux: alles am Papierdrucker über CUPS (Seite allein, Bereich, Kopien sortiert, Duplex, „Tatsächliche Größe“, Drehung der Querseiten) und die CUPS-Tests mit einer CUPS-PDF-Warteschlange (`PAGEWING_TEST_CUPS_PRINTER`, `PAGEWING_TEST_CUPS_OUTPUT`, siehe `CLAUDE.md`, „Drucken“)." },
+    { "title": "Abnahme von v0.1.0 nachholen: Screenreader", "text": "Aus der Abnahme genommen (Scope-Änderung 2026-10-23): Narrator (Windows), NVDA und Orca für Druckkarte und Fortschritt, die Karte „Als Standardprogramm festlegen“ und „Über Pagewing“. Verwandt mit dem Eintrag „Erweiterte Barrierefreiheit“." },
+    { "title": "Abnahme von v0.1.0 nachholen: weitere Linux-Distributionen", "text": "Aus der Abnahme genommen (Scope-Änderung 2026-10-23): `.deb` auf Ubuntu 24.04, Debian 13 und Linux Mint, AppImage auf Ubuntu 24.04 ohne `libfuse2` und auf Linux Mint; in der Standardprogramm-Karte „Später“ und „Nicht mehr fragen“ auf Linux. Geprüft sind Ubuntu 22.04 und Debian 12 (`.deb`) sowie Debian 12 und CachyOS (AppImage)." },
+    { "title": "Vorab-Release: GitHub ersetzt `~` im Namen des `.deb`", "text": "Beim Hochladen von `pagewing_0.1.0~rc.1_amd64.deb` an das Pre-Release `v0.1.0-rc.1` machte GitHub aus dem `~` einen Punkt (`pagewing_0.1.0.rc.1_amd64.deb`); `SHA256SUMS-linux.txt` nennt weiter den Namen mit `~`, `sha256sum -c` findet die heruntergeladene Datei dann nicht (der Hash selbst stimmte). Betrifft nur Vorab-Tags, bei `v0.1.0` gibt es kein `~`. Zu tun, falls Vorab-Releases dauerhaft öffentlich werden: Prüfsummenzeile mit dem Namen schreiben, den GitHub vergibt, oder das `.deb` für Vorabversionen anders benennen." },
+    { "title": "Flaky: `RecentFilesViewTests.TheHistoryIsNotReadInTheStartPath` (M6)", "text": "Einmaliger Fehlschlag auf `build-windows` im PR-Lauf 39933883639 (nur Roadmap geändert): `Assert.Equal(0, readsAtReady)` bei `RecentFilesViewTests.cs` (Zeile 664) mit „Expected: 0, Actual: null“. Beobachtet: `readsAtReady` blieb `null`, der Handler für `TabViewModel.State` sah also nie ein `IsReady`. Vermutung, nicht geprüft: Der Test startet `session.OpenAsync` vor dem Anhängen des Handlers; ist das Öffnen von `text-dense.pdf` vorher fertig, wird das Ereignis verpasst. Zu tun: Handler vor `OpenAsync` anhängen (oder den Zustand nach dem Anhängen auslesen) und den Test unter Last wiederholen. Der Neustart desselben Laufs ist nicht der Beleg; im Lauf davor und bei der Gesamtsuite auf dem Entwicklungsrechner war der Test grün." },
+    { "title": "Windows-Druck: Textebene in Print to PDF (M7)", "text": "Der Druck von `print-mixed.pdf` (Helvetica nicht eingebettet) in Microsoft Print to PDF liefert Seiten ohne auswählbaren Text (`GetTextAsync` leer, Lauf 39260533523 auf `dotnet-windows`; `Docs/DECISIONS.md`, Eintrag „Windows-Druck: Ausgabe in Print to PDF behält den Text nicht (M7)“). Zu klären: ob es an den nicht eingebetteten Standardschriften liegt (Test mit einem PDF mit eingebetteter Schrift), ob `FPDF_SetPrintMode` oder ein anderer Druckmodus hilft, und ob es überhaupt ein Ziel ist (auf Papier ohne Folgen)." },
+    { "title": "Kopierrechte des Dokuments beachten (M7)", "text": "Seit M7 achtet Pagewing das Druckverbot eines Dokuments (`PdfDocument.GetPrintInfoAsync`), das Kopieren von Text (M5, Strg+C) prüft die Rechte dagegen nicht (`FPDF_GetDocPermissions`, Bit 5). Beides sollte gleich behandelt werden: das Recht „Kopieren“ lesen, bei Verbot Strg+C und Strg+Umschalt+C sperren und den Grund nennen (Karte wie beim Druckverbot). Dabei die Suche und die Textauswahl nicht sperren (sie kopieren nichts). Ein Schalter zum Ignorieren der Rechte bleibt bewusst aus." },
+    { "title": "Linux-CI: einmaliger Absturz im PDFium-Render der App-Tests (M6)", "text": "Im PR zu Milestone 6 (Lauf 39201393533, Job `build-linux`) brach `Pagewing.App.Tests` nach 1656 Tests mit Exit-Code 134 ab: „Invalid Program: attempted to call a UnmanagedCallersOnly method from managed code“ im Aufruf `Fpdf.FPDF_RenderPageBitmap_Start` (Stapel: `PdfiumRenderWork.Step`, `PdfiumThread.Run`). Der Neustart desselben Laufs war grün, auf Windows trat nichts auf. Ursache ungeklärt; ob der Fehler schon vor M6 bestand, ist nicht belegt. Zu tun, falls er wiederkehrt: den Lauf mit `DOTNET_TieredCompilation`-Varianten wiederholen, prüfen, ob der Rückruf `PdfiumRenderWork.NeedToPauseNow` (`[UnmanagedCallersOnly]`) nach `FPDF_RenderPage_Close` oder bei einem abgebrochenen Auftrag noch aufgerufen wird, und den Fehler an dotnet/runtime melden (Verwandtschaft mit dem Eintrag zu `0xC0000602` nicht ausgeschlossen)." },
+    { "title": "Einstellungs-Messschalter: `.bad`-Kopie bei Dateien über 1 MiB (M6)", "text": "`JsonFile.ReadText` kopiert eine Datei über 1 MiB nach `<pfad>.bad`, bevor es `null` zurückgibt. Der Messschalter `--measure-settings <datei>` soll die Datei nur lesen (`SettingsStore.LoadReadOnly`); mit einer übergroßen Datei entsteht trotzdem eine Kopie neben der Eingabe. Fix: `keepBackup` bis in `ReadText` durchreichen und mit einer übergroßen Datei testen. Dazu zwei Zahlen im DECISIONS-Eintrag „Startzeit mit vorhandener settings.json (M6)“ berichtigen (Runde 1 warm: c lag mit +3,0 ms über a, also „höchstens +3 ms“ statt „nie darüber“; Phase (c) ist im Mittel 4,8 ms, der Median 4,9 ms; die Verkürzung nach `app-initialized` beträgt 3,6 ms)." },
+    { "title": "`MainViewModel` aufteilen (M6)", "text": "`MainViewModel.cs` ist mit M6 auf rund 1360 Zeilen gewachsen und mischt Tabs, Panels, Links, Overlays, Einstellungen und Verlauf. `TabViewModel` nutzt schon Teilklassen; ein mechanischer Schnitt in `MainViewModel.Recent.cs`, `.Overlays.cs` und `.Links.cs` ist naheliegend. Dazu gehört eine gemeinsame Test-Hilfsklasse für die kopierten Hilfen `Show`, `Closer`, `WaitUntilAsync`, `Press` und `Settle` (siehe Eintrag „App.Tests: gemeinsame Test-Helfer“)." },
+    { "title": "Tab-Ziehgeste auf Linux/X11 prüfen (M4.1)", "text": "Windows ist geprüft, Linux/X11 nicht (Projektinhaber hat die Prüfung am 2026-10-18 übersprungen). Zu prüfen: Tab herausziehen, zurückziehen, zwischen zwei Fenstern verschieben, einziger Tab, Esc; ob der Zeiger-Fang bei der Leiste bleibt, wenn das neue Fenster erscheint, ob die Fensterposition (Rahmen gegen Inhalt, Titelleiste des Systems) stimmt, ob der Fenstermanager das geparkte Fenster (−32000/−32000) auf den Bildschirm zurückholt; Wayland/XWayland nur als Hinweis. Siehe `Docs/DECISIONS.md`, Eintrag „Tabs ziehen: Fenster hängt am Zeiger …“." },
+    { "title": "Worker-Prozesse für paralleles Rendern", "text": "PDFium ist nicht thread-sicher; echte Parallelität nur über mehrere Prozesse. Nur angehen, wenn Messungen es nötig machen." },
+    { "title": "Natives Wayland", "text": "Avalonia 12.1 bietet Wayland experimentell als Opt-in (`UseWaylandWithFallback`); Standard bleibt X11/XWayland." },
+    { "title": "Flatpak/Flathub", "text": "Einreichung muss laut Flathub-Regeln ein Mensch vornehmen; Native AOT im Flatpak-Build erst erproben, Dateizugriff über Portale." },
+    { "title": "Code-Signierung über SignPath Foundation", "text": "Kostenlos für OSS; setzt öffentliches Repo und ein veröffentlichtes Release voraus, Herausgeber ist dann die SignPath Foundation." },
+    { "title": "Microsoft Store (MSIX)", "text": "Registrierung für Einzelentwickler kostenlos, der Store signiert MSIX selbst." },
+    { "title": "Sitzung wiederherstellen", "text": "Beim Start die zuletzt offenen Tabs mit Position wieder öffnen. Wird in Milestone 8.1 gebraucht, falls das Update nach einem Neustart sofort weiterarbeiten soll (Aufgabe „Neustart nach dem Update ohne Datenverlust“)." },
+    { "title": "Präsentationsmodus", "text": "Vollbild, eine Seite pro Bildschirm, Weiter mit Leertaste/Pfeiltasten." },
+    { "title": "Erweiterte Barrierefreiheit", "text": "Über die Grundlagen hinaus: Screenreader-Unterstützung für Seiteninhalt (UIA unter Windows, AT-SPI2 unter Linux)." },
+    { "title": "arm64-Builds", "text": "Die PDFium-Pakete enthalten bereits win-arm64 und linux-arm64; braucht passende Runner." },
+    { "title": "Vergleichsmessung mit Acrobat und SumatraPDF nachholen", "text": "Das Werkzeug `tools/measure-open.cs` und das Protokoll in `bench/compare/README.md` gibt es; die Befehle für Acrobat und SumatraPDF sind ungetestet (beide waren nicht installiert). Nur für die Einordnung im Vergleich nötig, nicht für die Budgetregel (die stützt sich nur auf Chrome)." },
+    { "title": "Native-AOT-Laufzeitfehler (AppContext/UTF8Encoding-Zyklus) an dotnet/runtime melden", "text": "Der sporadische Startabsturz `0xC0000602` ist ein Fehler der Native-AOT-Laufzeit von .NET 10: Wartet ein Thread im Klassenkonstruktor von `UTF8Encoding` zum ersten Mal im Prozess auf eine `System.Threading.Lock`, liest die Sperre `AppContext`, dessen Klassenkonstruktor `Encoding.UTF8` braucht, das dann noch `null` ist. Pagewing umgeht das (`Program.Main` von App und CLI sowie `PdfiumThread` initialisieren `AppContext` früh). Offen: Fehlerbericht an dotnet/runtime mit Stack und kleiner Reproduktion (Belege: `Docs/DECISIONS.md`, Eintrag „Startabsturz 0xC0000602 …“) und nach jedem .NET-Update prüfen, ob der Fehler behoben ist; erst dann kann der Workaround entfallen. Ein Issue gibt es noch nicht." },
+    { "title": "Erster Frame über ANGLE: Verhalten auf Rechnern mit GPU messen", "text": "Die früher unerklärten ≈170 ms (Entwicklungs-VM) bzw. ≈200 ms (Windows-Runner) zwischen gezeichneter scharfer Kachel und dem Frame danach liegen laut Phasenmessung im ersten Frame über ANGLE/WARP (`Docs/DECISIONS.md`, Eintrag „Windows-Warmstart: Phasenmessung auf dem Runner (M3)“). Gemindert durch die Einträge „Seitenschatten als vorberechnetes Bild (M3)“ (rund 60 ms) und „Software-Rendering ohne Hardware-Grafikadapter (M3)“ (Abstand auf dem Runner 31 ms). Gemessen auf dem Haupt-PC (Lauf 39041482043, NVIDIA RTX 4070 SUPER): erster Frame über ANGLE 70 bis 90 ms, in Software rund 16 ms. Seit „Software-Rendering als Windows-Standard (M3)“ betrifft das nur noch den GPU-Pfad (`PAGEWING_RENDERING=default`); der Hardware-Workflow zeigt ihn zur Information. Offen nur, falls der GPU-Pfad wieder Standard oder eine Einstellung wird." },
+    { "title": "Arbeitsspeicher beim Scrollen: Spitze liegt über dem Cache-Budget (Bildpuffer)", "text": "Stand nach M4: `System.GC.ConserveMemory=7` ist gesetzt (`Pagewing.App.csproj`; Messung und Entscheidung in `Docs/DECISIONS.md`, Eintrag zu ConserveMemory (M4)). Die Spitze (Working Set) beim schnellen Scrollen durch 1000 Seiten sank in der Entwicklungs-VM ohne GPU bei 100 % von 403–404 auf 384–391 MiB (Ziel ≤ 1,5 × Budget = 384 MiB, ungefähr erreicht), bei 200 % von 526–536 auf 455 MiB und bei 400/800 % von 585–619 auf 454–509 MiB (1,8- bis 2,0-faches Budget, Ziel nicht erreicht). Nächster Schritt: wiederverwendete oder nicht verwaltete Bildpuffer. Offen: Messung unter Linux und auf echter Hardware." },
+    { "title": "Startzeit-Messung auf echter Hardware: Haupt-PC des Projektinhabers als Runner auf Abruf", "text": "Der Haupt-PC des Projektinhabers wird als manuell gestarteter Runner (Label `dotnet-windows-gpu`, Name `hauptpc`, Runner-Gruppe `main-pc`, kein Dienst) eingerichtet, nur auf Abruf. Der Workflow dafür liegt vor: `.github/workflows/hardware-measure.yml` („Hardware measurement“; `workflow_dispatch` oder Label `hardware-measure` am PR; Einrichtung und Ablauf: `bench/startup/README.md`, Abschnitt „Messung auf echter Hardware (Haupt-PC)“; Entscheidung: `Docs/DECISIONS.md`, Eintrag „Messung auf echter Hardware: manueller Runner des Haupt-PCs (M3)“). Der Runner ist eingerichtet; Läufe 39035639908 und 39041482043 (Messmatrix, Ergebnis: `Docs/DECISIONS.md`, Eintrag „Software-Rendering als Windows-Standard (M3)“). Offen: ein Bestätigungslauf mit dem neuen Standard (Software). Gemessen wird vor Releases. Die Abnahme von v0.1.0 verlangt die Messwerte auf dem Rechner des Projektinhabers: die vier Fälle aus `bench/startup/README.md` ohne `Warnung:`-Zeile, mit `--phases`, `--measure-scroll` und die manuelle Scroll-Prüfung aus M3. Hintergrund: Der Windows-Runner `dotnet-windows` (`vm-git-windows-dotnet`) ist eine Proxmox-VM ohne GPU (Standard-VGA, „Microsoft Basic Display Adapter“) in einer angemeldeten Sitzung (Autologon und geplante Aufgabe); er misst wie der Haupt-PC den Software-Pfad, den Standard unter Windows (`Docs/DECISIONS.md`, Eintrag „Software-Rendering als Windows-Standard (M3)“); den GPU-Pfad misst nur ein informativer Schritt des Hardware-Workflows. In der Entwicklungs-VM (einzige Anzeige „Red Hat VirtIO GPU DOD controller“) sind Startzeiten wegen des DWM-Takts ohnehin nicht gültig (Eintrag „Frame-Takt der Desktop-Komposition …“)." },
+    { "title": "Einstellung „Hardwarebeschleunigung“ (Idee, nicht in M6)", "text": "Nur eine Idee, nicht geplant: Unter Windows rendert Pagewing in Software, der GPU-Pfad ist nur über `PAGEWING_RENDERING=default` erreichbar (`Docs/DECISIONS.md`, Eintrag „Software-Rendering als Windows-Standard (M3)“). Eine Einstellung könnte ihn für Nutzer schaltbar machen, wenn Messungen auf 4K, hohen Bildfrequenzen, schwachen CPUs oder im Akkubetrieb zeigen, dass Software-Rendering dort nicht reicht. Gemessen ist bisher nur 1920 × 1080 bei 60 Hz auf einer schnellen CPU." },
+    { "title": "Einzelseite: Blättern per Mausrad dämpfen", "text": "In der Einzelseitenansicht blättert ein weiterer Mausradschritt am Seitenrand zur nächsten Seite. Passt die Seite ganz in den Viewport (Zoom „Ganze Seite“), liegen oberer und unterer Rand zugleich an, und ein schneller Radschub oder die Trägheit eines Touchpads kann mehrere Seiten überspringen. Idee: kurze Sperrzeit nach jedem Blättern (etwa 250 ms) und eine zeitliche Rücksetzung der angesammelten Schritte. Erst nach einer Prüfung auf echter Hardware entscheiden (offen in der Design-Spec, Abschnitt 9)." },
+    { "title": "App.Tests: gemeinsame Test-Helfer", "text": "Rund 14 Testdateien in `tests/Pagewing.App.Tests` tragen eigene Kopien von `WaitUntilAsync`/`Settle`/`Show`; dazu zwei negative Wartezeiten (`Task.Delay(100)`). Zusammenführen in eine gemeinsame Hilfsklasse (und die negativen Prüfungen über Ereignisprotokolle statt Wartezeit absichern)." },
+    { "title": "M5 auf Linux prüfen: Zwischenablage, Cursor, Treffermarkierung, Links öffnen", "text": "M5 ist nur unter Windows geprüft. Auf einem Linux-Desktop (X11 und, als Hinweis, Wayland/XWayland) prüfen: (1) Strg+C legt `text/html` in die Zwischenablage (`xclip -selection clipboard -t TARGETS -o` bzw. `wl-paste --list-types`; Einfügen in LibreOffice Writer zeigt Absätze, fett, kursiv, Überschrift); fällt es aus, ist der Rückfall Klartext mit den Fließtextregeln (Projektinhaber fragen). (2) I-Balken über Text und Hand über Links. (3) Die Treffer werden multipliziert (gelb hinterlegt, Text bleibt schwarz) auch auf dem GPU-Pfad. (4) „Öffnen“ in der Link-Karte startet den Browser, und ein eingeschleustes `xdg-open`, `xdg-mime` oder `x-www-browser` im Arbeitsordner oder über `PATH=.:$PATH` wird nie gestartet (Befehle im Eintrag „Links öffnen: eigener `SystemLinkLauncher` …“ in `Docs/DECISIONS.md`)." },
+    { "title": "Kopierten Text in Word und LibreOffice einfügen prüfen (M5)", "text": "Die Zwischenablage ist unter Windows mit einem getrennten Prozess zurückgelesen (Formate, Byte-Offsets des CF_HTML-Kopfs), aber nicht in Word eingefügt. Prüfen: `Pagewing.exe testdata/pdfs/text-rich.pdf`, Absatz markieren, Strg+C, in Word Strg+V (Absätze, fett, kursiv, Überschrift, Umlaute); Strg+Umschalt+C und Einfügen in Notepad (Rohtext mit Zeilenumbrüchen). Ob Word eine fehlende `SourceURL`-Zeile ohne Folgen annimmt, ist ungeprüft." },
+    { "title": "Suche über mehrere Dateien und Suchindex", "text": "M5 durchsucht nur das offene Dokument, ohne Index (1000 Seiten in 190 ms, `bench/search-results.md`). Eine Suche über mehrere Dateien oder einen Ordner und ein Index kommen nur, wenn Messungen oder Nutzung es verlangen." },
+    { "title": "Strg+A (alles markieren)", "text": "In M5 lässt sich Text nur mit der Maus markieren (Ziehen, Doppel- und Dreifachklick). Strg+A müsste über alle Seiten gehen, und das Kopieren liest die Seiten ohnehin eine nach der anderen (`Docs/DECISIONS.md`, Eintrag „Auswahl: Lesereihenfolge …“)." },
+    { "title": "Spaltenerkennung beim Markieren und Kopieren", "text": "Die Auswahl folgt der Lesereihenfolge des PDFs; es gibt keine eigene Spaltenerkennung. Schreibt ein PDF seinen Text nicht spaltenweise, mischt die Auswahl die Spalten, und eine Auswahl über zwei Spalten verbindet die letzte Zeile der einen mit der ersten der nächsten. Dasselbe gilt für Tabellen." },
+    { "title": "Kopf- und Fußzeilen beim Kopieren erkennen", "text": "Beim Kopieren über mehrere Seiten bleiben Kopf- und Fußzeilen (Seitenzahlen, wiederkehrende Titel) im Text. Erkennung über wiederkehrenden Text an gleicher Stelle; Heuristik in `TextFlow`." },
+    { "title": "Auto-Scroll beim Ziehen der Auswahl am Rand", "text": "Beim Markieren scrollt die Ansicht am Rand des Fensters nicht von selbst weiter; für Auswahlen über mehrere Seiten muss der Nutzer zwischendurch scrollen (Mausrad). Zu entscheiden: Geschwindigkeit nach Abstand zum Rand, Verhalten im Einzelseiten-Layout." },
+    { "title": "Position interner Links auf gedrehten oder zugeschnittenen Zielseiten", "text": "`PdfiumLink.Top` eines Seitensprungs ist `Seitenhöhe − y` der Zielseite, berechnet ohne die Zielseite zu laden (das Laden würde den ganzen Inhalt parsen). Exakt nur für ungedrehte Zielseiten, deren CropBox am Fuß der MediaBox beginnt; sonst ist die Position ungefähr. Eine genaue Umrechnung bräuchte `FPDF_PageToDevice` auf der Zielseite (`Docs/DECISIONS.md`, Eintrag „Textschicht: Zeichenmodell …“)." },
+    { "title": "Look-alike-Unicode-Hosts in der Bestätigungskarte beidseitig zeigen", "text": "Die Warnung der Link-Karte bei `xn--` oder Unicode-Host nennt nur eine Form des Hosts (die Unicode-Form, wenn sie nur aus Buchstaben, Ziffern, „-“ und „.“ besteht, sonst wie geschrieben). Steht ein Unicode-Look-alike direkt in der Adresse, erscheint er nur in dieser Form. Besser: Unicode- und Punycode-Form nebeneinander zeigen; dazu optional Warnung bei Loopback- und numerischen Hosts." },
+    { "title": "Kopieren: beschädigte Seiten überspringen und Rückmeldung bei großen Auswahlen", "text": "Eine Seite, deren Text sich nicht lesen lässt, bricht das ganze Kopieren still ab; bei Auswahlen über sehr viele Seiten sieht der Nutzer keine Rückmeldung, bis der Text fertig ist (Sekunden bei über 200 Seiten). Besser: die Seite überspringen und das ankündigen, bei langen Auswahlen einen Fortschritt oder Hinweis zeigen." },
+    { "title": "Suche: Diakritika ignorieren und Optionen", "text": "Die Suche unterscheidet Diakritika („uber“ findet „über“ nicht). Eine Option „Akzente ignorieren“ wäre möglich, ebenso reguläre Ausdrücke; Ersetzen gehört zum Bearbeiten (spätere Milestones)." },
+    { "title": "Öffnen von außen: ein Pfad statt zwei", "text": "`MainViewModel.OnExternalOpen` (nur noch für `--measure-second`) und `Workspace.OnExternalOpen` (alle weiteren Aufrufe) tun dasselbe in zwei Fassungen. Zusammenführen, sobald die Messläufe über den Workspace laufen können, ohne ihre Ausgabe zu ändern." },
+    { "title": "Gemerkte Position auch beim ersten Start per Kommandozeile (M6)", "text": "Die Datei, mit der Pagewing startet, während noch keine Instanz läuft (Doppelklick im Dateimanager, `pagewing datei.pdf`), öffnet am Anfang statt an ihrer gemerkten Stelle, weil `recent.json` vor dem ersten scharfen Seitenbild nicht gelesen wird (`Docs/DECISIONS.md`, Eintrag „Verlauf: Position je Datei, Lese- und Schreibzeitpunkt (M6)“). Alle anderen Wege stellen die Stelle wieder her. Idee: `recent.json` beim Start parallel zum Öffnen der Datei lesen (eigener Thread, nach der `AppContext`-Initialisierung), die Kosten mit `bench/startup` messen (`cold` und `warm` mit einem Verlauf von 30 Einträgen) und die Ansicht anwenden, wenn sie vor dem ersten Layout bereitliegt; sonst am Anfang bleiben, ohne sichtbaren Sprung." },
+    { "title": "Dunkle Seite: Kante gegen dunklen Dokumentbereich", "text": "Im dunklen Theme hebt sich eine dunkle Seite (`page.darkBackground` `#1E2127`) nur schwach vom Dokumentbereich (`surface.canvas` `#0F1114`) ab: Seite gegen Fläche 1,17:1, `page.border` gegen die Seite 1,27:1 (Design-Spec, Abschnitt 9). Zu entscheiden: ein eigenes, stärkeres Kanten-Token für dunkle Seiten oder ein hellerer Dokumentbereich, wenn Seiten dunkel sind. Beides ist eine Token-Entscheidung (Design-Spec 5.1, `Docs/DECISIONS.md`, `TokenTests`)." },
+    { "title": "Vorschau-Liste Kompakt: Scroll-Verankerung im eigenen Raster-Panel", "text": "`Controls/VirtualizingGridPanel` (Vorschaubilder in „Kompakt“) schätzt nie gemessene Zeilen aus dem Mittel der gemessenen und verankert den Inhalt nicht, wenn sich Schätzungen ändern: Bei gemischten Seitenformaten kann die Liste beim Scrollen leicht springen. Außerdem leert jede 8-DIP-Stufe beim Ziehen der Panelkante den Vorschau-Cache (kurz leere Rahmen), und die gespeicherten Zeilenhöhen würden veralten, wenn sich die Spaltenzahl bei gleicher Zeilenzahl änderte (heute nicht erreichbar). Angehen, wenn es am echten Bildschirm stört." },
+    { "title": "Einstellungs-Schreibzugriffe bündeln", "text": "`UserSettings.Update` schreibt `settings.json` bei jeder Änderung synchron mit fsync auf dem UI-Thread, auch bei jedem Öffnen oder Schließen von „Seiten“ und „Inhalt“ (Startpanel) und beim Loslassen der Panelkante. Die Aktionen sind selten und die Datei ist klein; bekommt die Einstellungskarte Schalter, die oft betätigt werden, braucht es einen bündelnden Schreiber (wie `RecentFilesService.SaveLater`), beim Beenden synchron." },
+    { "title": "Tab-Höhe in der Kompakt-Titelleiste", "text": "Der Tab ist in beiden Dichten 34 hoch (`Views/TabView.axaml`) und füllt in „Kompakt“ die ganze 34-px-Titelleiste ohne Abstand nach oben. Zu entscheiden: ein Maß `Pw.Size.TabHeight` (etwa 34 / 28) in Design-Spec 5.4, `Styles/Metrics.axaml` und `Styles/Density.axaml`, oder so lassen." },
+    { "title": "Befehlsknopf der Titelleiste: Breite", "text": "Der Knopf „Suchen oder Befehl“ ist ab 900 px Fensterbreite mit Text und Kürzel rund 231 px breit (mit Rand). Mit fünf Tabs zeigt die Tableiste „Alle Tabs“ deshalb schon unter rund 1100 px statt unter rund 880 px (Design-Spec 6, „Schmales Fenster“). Idee: den Knopf auf sein Symbol verkleinern, bevor die Leiste nur noch den aktiven Tab zeigt (`TabStripLayout`); Entscheidung des Projektinhabers." },
+    { "title": "F6-Bereichswechsel (Spec 7.9)", "text": "Design-Spec 7.9 sieht vor, dass F6 zwischen Titelleiste, Aktionsleiste, Panel, Dokument und Statusleiste springt; das ist nicht umgesetzt (in M6 bewusst nicht enthalten). Idee: ein Befehl im `CommandCatalog` (dazu etwa Umschalt+F6 rückwärts) und ein Fokusziel je Bereich." },
+    { "title": "Frei belegbare Tastenkürzel", "text": "Die Kürzel stehen fest im `CommandCatalog` (M6). Eine eigene Belegung bräuchte eine Einstellung, eine Oberfläche dafür und die Prüfung auf doppelte Gesten (`CommandCatalogTests.NoGestureBelongsToTwoCommands`). In M6 bewusst nicht enthalten." },
+    { "title": "Sprachwechsel zur Laufzeit", "text": "Die Sprache der Oberfläche gilt erst ab dem nächsten Start (`Program.ChooseUiCulture`, die Texte werden beim Laden des XAML gelesen; `Docs/DECISIONS.md`, Eintrag „Einstellungen: Dateien, Format, Start und Schreiben (M6)“). Ein Wechsel ohne Neustart müsste alle Texte neu binden. In M6 bewusst nicht enthalten." },
+    { "title": "Hochkontrast: Farben des Windows-Kontrastdesigns übernehmen", "text": "Pagewing zeigt im Hochkontrast eine feste schwarze Palette, auch beim hellen Kontrastdesign „Wüste“ (`Docs/DECISIONS.md`, Eintrag „Hochkontrast: feste Palette …“). Die Farben des gewählten Kontrastdesigns zu übernehmen, ginge nur über eigene Brushes statt der Fluent-Palette, weil Fluent zur Laufzeit nur den Akzent ändert. Nur angehen, wenn Nutzer es wünschen." },
+    { "title": "Bildschirmleser prüfen (Narrator, NVDA, Orca)", "text": "Die Automation-Zustände aus M6 (Tabs als ausgewählte Registerkarte, Panel-Einträge als Umschaltflächen, gewählter Eintrag der Befehlspalette, Zeilen der Hilfekarte) sind nur über die Avalonia-Peers getestet, nicht mit einem echten Screenreader. Prüfen: `Pagewing.exe testdata/pdfs/text-rich.pdf testdata/pdfs/outline.pdf`, Narrator (Strg+Win+Enter) bzw. NVDA unter Windows, Orca unter Linux; ob der Wechsel des gewählten Eintrags der Palette angesagt wird (Avalonias UIA-Brücke löst `SelectionItem_ElementSelected` nie aus; gemeldet wird die Beschreibung des Eingabefelds)." },
+    {
+      "title": "winget-Paket (M8)",
+      "text": "Nach dem ersten veröffentlichten Release ein Manifest für `winget` einreichen (Installer-URL und Prüfsumme des Releases). Setzt ein öffentliches Repo und einen stabilen Installer-Namen voraus; ohne Signierung zeigt winget die Warnung des Installers ebenfalls."
+    },
+    {
+      "title": "Avalonia-Telemetrie beim Bauen (M8)",
+      "text": "Das Build-Paket `Avalonia.BuildServices` 11.3.2 sendet laut Paket-Beschreibung beim Kompilieren anonyme Nutzungsdaten, solange `AVALONIA_TELEMETRY_OPTOUT=1` fehlt (nicht in der ausgelieferten App; `Docs/DECISIONS.md`, Eintrag „Verteilung: Nicht-Ziele und offene Fragen …“). Zu klären: Opt-out in `ci.yml` und `release.yml` setzen und in `CLAUDE.md` für Entwickler vermerken, oder bewusst zulassen. Nicht geprüft: ob die Task-DLL tatsächlich sendet und ob die Runner den Opt-out schon gesetzt haben."
+    },
+    {
+      "title": "HKCU-Einträge nach Computerinstallation (M8)",
+      "text": "Die Karte „Standardprogramm“ registriert Pagewing immer unter `HKCU`, auch nach einer Installation für alle Benutzer; die Deinstallation im Bereich `machine` entfernt diese Einträge nicht. Möglicher Weg: beim Deinstallieren zusätzlich `--unregister-file-types=user` ausführen (wirkt nur für den deinstallierenden Benutzer) oder die Karte im Computer-Modus nach `HKLM` schreiben lassen."
+    },
+    {
+      "title": "Linux-Pakete signieren (M8)",
+      "text": "`.deb` und AppImage sind unsigniert (die type2-Runtime ist es mit GnuPG, das fertige AppImage nicht). Zu klären: GnuPG-Signatur der Prüfsummendateien oder eingebettete AppImage-Signatur, und wo der öffentliche Schlüssel liegt."
     }
   ]
 }

@@ -1,0 +1,37 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Pagewing
+Source: https://github.com/benjo-code/Pagewing
+Comment: The program binaries bundle third-party components (the .NET runtime,
+ Avalonia, SkiaSharp, HarfBuzz, PDFium with FreeType, ICU, libjpeg-turbo and
+ others). Their licence texts are in /usr/lib/pagewing/THIRD-PARTY-NOTICES.txt.
+
+Files: *
+Copyright: 2026 Pagewing contributors
+License: GPL-3+
+
+Files: usr/lib/pagewing/*
+Copyright: 2026 Pagewing contributors
+ Copyright holders of the bundled third-party components
+License: GPL-3+ and Bundled-third-party
+Comment: Pagewing itself is GPL-3.0-or-later. The bundled components keep their
+ own licences, mainly MIT, BSD-3-Clause, Apache-2.0 and OFL-1.1 (for the
+ Geist font).
+
+License: GPL-3+
+ This program is free software: you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the Free
+ Software Foundation, either version 3 of the License, or (at your option)
+ any later version.
+ .
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in /usr/share/common-licenses/GPL-3.
+
+License: Bundled-third-party
+ The third-party components bundled in /usr/lib/pagewing are distributed
+ under their own licences. The complete licence texts and copyright notices
+ are in /usr/lib/pagewing/THIRD-PARTY-NOTICES.txt.

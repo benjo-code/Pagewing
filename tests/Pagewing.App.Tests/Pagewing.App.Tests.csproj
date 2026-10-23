@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      Avalonia.Headless.XUnit 12.1.4 is built against xunit.v3 3.2.x and fails discovery with 4.0.x. Version bumps of
+      xunit.v3 in Directory.Packages.props do not reach this override. Remove it as soon as an Avalonia.Headless.XUnit
+      release supports xunit.v3 4.x (HeadlessSmokeTests then proves discovery). See Docs/DECISIONS.md, entry
+      "Avalonia.Headless.XUnit als Testabhängigkeit (mit xunit.v3 3.2.2 nur in App.Tests)".
+    -->
+    <PackageReference Include="xunit.v3" VersionOverride="3.2.2" />
+    <PackageReference Include="Avalonia.Headless.XUnit" />
+    <ProjectReference Include="..\..\src\Pagewing.App\Pagewing.App.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\TestData.cs" Link="Shared\TestData.cs" />
+  </ItemGroup>
+</Project>

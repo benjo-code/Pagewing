@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             x:Class="Pagewing.App.Views.DocumentView"
+             PageMargin="{DynamicResource Pw.Size.PageMargin}"
+             Focusable="True">
+  <!--
+    Document area with continuous scrolling (design system 6 and 7.5): the pages centred one below the other, 20 apart,
+    with a 32 margin all round (density "Kompakt" 20: PageMargin). The ScrollViewer only scrolls an empty extent of the content size; the canvas below it
+    draws the visible pages in viewport coordinates (see DocumentCanvas). The ScrollViewer is transparent but
+    hit-testable, so wheel, scroll bars and the pointer work everywhere; the canvas takes no input. The view itself
+    takes the keyboard focus (not the ScrollViewer, whose own Page Up/Page Down would bypass the page-by-page binding
+    of the window) and scrolls with the arrow keys, Space, Home and End.
+  -->
+  <!-- Focus ring (design system 5.3) only for keyboard focus; inside the area, which fills the window up to its edges. -->
+  <UserControl.FocusAdorner>
+    <FocusAdornerTemplate>
+      <Border Margin="1" BorderThickness="2" CornerRadius="10,0,0,0"
+              BorderBrush="{DynamicResource Pw.Brush.Focus.Ring}" />
+    </FocusAdornerTemplate>
+  </UserControl.FocusAdorner>
+  <!-- The hint on a page without text (NoTextHint) is added to this panel in code when it is first shown. -->
+  <Panel Name="DocumentLayers">
+    <ctl:DocumentCanvas Name="PageCanvas"
+                        CornerRadius="10,0,0,0"
+                        PlaceholderBrush="{DynamicResource Pw.Brush.Surface.Raised}"
+                        PlaceholderBorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
+                        PlaceholderTextBrush="{DynamicResource Pw.Brush.Text.Secondary}"
+                        PageShadow="{DynamicResource Pw.Shadow.Page}"
+                        SearchHitBrush="{DynamicResource Pw.Brush.Search.Hit}"
+                        SearchCurrentBrush="{DynamicResource Pw.Brush.Search.Current}"
+                        SearchOnBrush="{DynamicResource Pw.Brush.Search.On}"
+                        SelectionBrush="{DynamicResource Pw.Brush.Selection.Page}"
+                        DarkPageBrush="{DynamicResource Pw.Brush.Page.DarkBackground}"
+                        DarkPageForegroundBrush="{DynamicResource Pw.Brush.Page.DarkForeground}"
+                        SearchHitOnDarkBrush="{DynamicResource Pw.Brush.Search.HitOnDark}"
+                        SearchCurrentOnDarkBrush="{DynamicResource Pw.Brush.Search.CurrentOnDark}"
+                        SelectionOnDarkBrush="{DynamicResource Pw.Brush.Selection.PageOnDark}" />
+    <ScrollViewer Name="Scroller"
+                  Background="Transparent"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto">
+      <Panel Name="Extent" HorizontalAlignment="Left" VerticalAlignment="Top" />
+    </ScrollViewer>
+  </Panel>
+</UserControl>

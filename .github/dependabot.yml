@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(deps)"
+    # No update-types filter: every PDFium release is formally a major update (version = Chromium build number).
+    groups:
+      pdfium:
+        patterns:
+          - "bblanchon.PDFium*"
+      avalonia:
+        patterns:
+          - "Avalonia*"
+      testing:
+        patterns:
+          - "xunit*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "ci(deps)"

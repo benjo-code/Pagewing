@@ -1,0 +1,102 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.PagesPanel"
+             x:DataType="vm:TabViewModel">
+  <!--
+    Content of the "Pages" panel (design system 5.3, 5.4 and 7.3): the page thumbnails of the tab in the DataContext,
+    one entry per page in a virtualized list (ThumbnailList). An entry is 136 wide in the page format: an empty frame
+    (surface.raised with a border.subtle edge) until the thumbnail is rendered, then the thumbnail with the page.border
+    edge; the page number below in type.mono. With dark pages (TabViewModel.IsPageDark) the empty frame has the ground of
+    a dark page, as the page placeholder of the document. The pages of the current row have an accent.subtle surface, a 2 px
+    accent.default frame and a bold number (7.10). Built only when the panel opens (SidePanel), so nothing of it is in the
+    startup path; its styles live here for the same reason.
+  -->
+  <UserControl.Styles>
+    <Style Selector="ListBox.thumbnails">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <!-- 8 above the first entry (the margin of the entry), 16 between entries, 18 below the last one. -->
+      <Setter Property="Padding" Value="14,0,14,10" />
+    </Style>
+
+    <!-- An entry: no Fluent padding or selection colours. The selection is only the keyboard cursor (focus ring); hover shows surface.hover. -->
+    <Style Selector="ListBox.thumbnails ListBoxItem" x:DataType="ctl:ThumbnailItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,8" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+    </Style>
+    <Style Selector="ListBox.thumbnails ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.thumbnails ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.thumbnails ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    </Style>
+
+    <Style Selector="Border.thumb.current">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+    </Style>
+    <Style Selector="Border.thumbRing">
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.thumb.current Border.thumbRing">
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Border.thumbFrame">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+    </Style>
+    <Style Selector="ListBox.darkPage Border.thumbFrame">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Page.DarkBackground}" />
+    </Style>
+    <Style Selector="Border.thumbFrame.loaded">
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Page.Border}" />
+    </Style>
+    <Style Selector="TextBlock.thumbNumber">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style Selector="Border.thumb.current TextBlock.thumbNumber">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </UserControl.Styles>
+
+  <!--
+    Density (design system 5.4): one column of 136 wide entries, in "Kompakt" two columns as wide as the list allows (Pw.Size.ThumbnailColumns
+    and Pw.Size.ThumbnailWidth); the list chooses its items panel itself (ThumbnailList.Columns).
+  -->
+  <ctl:ThumbnailList Name="ThumbnailList" Classes="thumbnails" Classes.darkPage="{Binding IsPageDark}"
+                     Columns="{DynamicResource Pw.Size.ThumbnailColumns}"
+                     ThumbnailWidth="{DynamicResource Pw.Size.ThumbnailWidth}"
+                     SelectionMode="Single"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     AutomationProperties.Name="{x:Static res:Strings.ThumbnailList}">
+    <ctl:ThumbnailList.ItemTemplate>
+      <DataTemplate x:DataType="ctl:ThumbnailItem">
+        <Border Name="ThumbnailCell" Classes="thumb" Classes.current="{Binding IsCurrent}"
+                Padding="6" CornerRadius="{DynamicResource Pw.Radius.Control}">
+          <StackPanel Spacing="6">
+            <!-- The 2 px frame of the current page, outside the edge of the thumbnail; transparent on the other pages. -->
+            <Border Name="CurrentRing" Classes="thumbRing" BorderThickness="2" HorizontalAlignment="Center">
+              <Border Name="Placeholder" Classes="thumbFrame" Classes.loaded="{Binding HasBitmap}" BorderThickness="1">
+                <!-- 136 DIP wide (Kompakt: the column width, ThumbnailList.FrameWidth): the thumbnail is rendered at that width times the render scaling, one image pixel per device pixel. -->
+                <Panel Name="ThumbnailFrame" Width="{Binding FrameWidth}" Height="{Binding FrameHeight}">
+                  <Image Name="ThumbnailImage" Source="{Binding Bitmap}" Stretch="Fill"
+                         RenderOptions.BitmapInterpolationMode="HighQuality" />
+                </Panel>
+              </Border>
+            </Border>
+            <TextBlock Name="PageNumber" Classes="mono num thumbNumber" Text="{Binding PageText}" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Border>
+      </DataTemplate>
+    </ctl:ThumbnailList.ItemTemplate>
+  </ctl:ThumbnailList>
+</UserControl>

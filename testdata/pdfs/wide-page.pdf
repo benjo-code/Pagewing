@@ -1,0 +1,71 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [6 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing breite Seite) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<<  /Length 742 >>
+stream
+q 0 0 600 50 re W n /Sh1 sh Q
+0 0 0 RG 1 w
+0 60 m 0 120 l S
+20 60 m 20 105 l S
+40 60 m 40 105 l S
+60 60 m 60 105 l S
+80 60 m 80 105 l S
+100 60 m 100 120 l S
+120 60 m 120 105 l S
+140 60 m 140 105 l S
+160 60 m 160 105 l S
+180 60 m 180 105 l S
+200 60 m 200 120 l S
+220 60 m 220 105 l S
+240 60 m 240 105 l S
+260 60 m 260 105 l S
+280 60 m 280 105 l S
+300 60 m 300 120 l S
+320 60 m 320 105 l S
+340 60 m 340 105 l S
+360 60 m 360 105 l S
+380 60 m 380 105 l S
+400 60 m 400 120 l S
+420 60 m 420 105 l S
+440 60 m 440 105 l S
+460 60 m 460 105 l S
+480 60 m 480 105 l S
+500 60 m 500 120 l S
+520 60 m 520 105 l S
+540 60 m 540 105 l S
+560 60 m 560 105 l S
+580 60 m 580 105 l S
+600 60 m 600 120 l S
+BT /F1 20 Tf 200 70 Td (Pagewing wide page 600 x 120) Tj ET
+
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 120] /Resources << /Font << /F1 4 0 R >> /Shading << /Sh1 << /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 600 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0.8 0] /C1 [0 0.4 1] /N 1 >> /Extend [true true] >> >> >> /Contents 5 0 R >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000209 00000 n 
+0000000306 00000 n 
+0000001100 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R /Info 3 0 R >>
+startxref
+1409
+%%EOF

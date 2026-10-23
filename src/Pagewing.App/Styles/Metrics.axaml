@@ -1,0 +1,55 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Spacing (4 px grid), radii: Docs/superpowers/specs/2026-10-17-designsystem.md, section 5.3. -->
+  <x:Double x:Key="Pw.Space.0">2</x:Double>
+  <x:Double x:Key="Pw.Space.1">4</x:Double>
+  <x:Double x:Key="Pw.Space.2">8</x:Double>
+  <x:Double x:Key="Pw.Space.3">12</x:Double>
+  <x:Double x:Key="Pw.Space.4">16</x:Double>
+  <x:Double x:Key="Pw.Space.5">24</x:Double>
+  <x:Double x:Key="Pw.Space.6">32</x:Double>
+
+  <!-- Buttons, fields, list entries / cards, popups, command palette / upper corners of a tab. The PDF page has radius 0. -->
+  <CornerRadius x:Key="Pw.Radius.Control">6</CornerRadius>
+  <CornerRadius x:Key="Pw.Radius.Overlay">10</CornerRadius>
+  <CornerRadius x:Key="Pw.Radius.Tab">8,8,0,0</CornerRadius>
+
+  <!--
+    Opacity of the primary button while hovered and pressed. Text and background fade into the surface behind the
+    button, so accent.on on accent.default must keep 4.5:1 after blending on every surface (window, toolbar, sidebar,
+    canvas, raised) in both themes; ControlStyleTests.PrimaryButtonStatesKeepAAContrastOnEverySurface checks it.
+    Lowest value that passes: 0.80 (4.56:1). Pressed stays clearly dimmer than hover.
+  -->
+  <x:Double x:Key="Pw.Opacity.PrimaryHover">0.9</x:Double>
+  <x:Double x:Key="Pw.Opacity.PrimaryPressed">0.82</x:Double>
+
+  <!--
+    Motion (section 5.6): panels and popups open in 150 ms (ease-out) and close in 100 ms. Every animation reads these
+    when it starts; "Reduce motion" (Services/Appearance) hides them with zero durations in the app's own resources.
+  -->
+  <x:TimeSpan x:Key="Pw.Duration.Open">0:0:0.15</x:TimeSpan>
+  <x:TimeSpan x:Key="Pw.Duration.Close">0:0:0.1</x:TimeSpan>
+
+  <!--
+    Density (section 5.4): the sizes of the density "Normal". Styles/Density.axaml holds the same keys with the values of
+    "Kompakt"; Services/Appearance puts those into the app's resources while the setting is "Kompakt" (and these back
+    afterwards), so the views read them with DynamicResource. The gap between the pages (20) is the same in both.
+  -->
+  <x:Double x:Key="Pw.Size.TitleBarHeight">40</x:Double>
+  <x:Double x:Key="Pw.Size.ActionBarWidth">52</x:Double>
+  <x:Double x:Key="Pw.Size.ActionButton">40</x:Double>
+  <x:Double x:Key="Pw.Size.StatusBarHeight">32</x:Double>
+  <!-- The status bar is indented by the action bar plus 4 (section 6, item 5). -->
+  <Thickness x:Key="Pw.Size.StatusBarIndent">56,0,8,0</Thickness>
+  <x:Double x:Key="Pw.Size.ToolbarHeight">44</x:Double>
+  <x:Double x:Key="Pw.Size.PageMargin">32</x:Double>
+  <x:Double x:Key="Pw.Size.ThumbnailWidth">136</x:Double>
+  <x:Int32 x:Key="Pw.Size.ThumbnailColumns">1</x:Int32>
+  <!-- Base font (type.body, section 5.2): size and line height. -->
+  <x:Double x:Key="Pw.Font.Body">13</x:Double>
+  <x:Double x:Key="Pw.Font.BodyLineHeight">18</x:Double>
+
+  <!-- The Fluent controls read their corner radii from these two resources (spec section 2.4). -->
+  <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+  <CornerRadius x:Key="OverlayCornerRadius">10</CornerRadius>
+</ResourceDictionary>

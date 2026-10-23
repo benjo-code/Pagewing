@@ -1,0 +1,72 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [11 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing Anmerkungen) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<< /Type /XObject /Subtype /Form /BBox [30 30 130 90] /Length 46 >>
+stream
+1 0 0 RG 0.9 0.9 1 rg 3 w 31.5 31.5 97 57 re B
+endstream
+endobj
+5 0 obj
+<< /Type /XObject /Subtype /Form /BBox [28 114 190 140] /Resources << /ExtGState << /GS << /BM /Multiply >> >> >> /Length 34 >>
+stream
+/GS gs 1 1 0 rg 28 114 162 26 re f
+endstream
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Square /Rect [30 30 130 90] /C [1 0 0] /IC [0.9 0.9 1] /BS << /W 3 >> /F 4 /Contents (Square annotation) /AP << /N 4 0 R >> >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Highlight /Rect [28 114 190 140] /QuadPoints [28 140 190 140 28 114 190 114] /C [1 1 0] /F 4 /Contents (Highlight annotation) /AP << /N 5 0 R >> >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Link /Rect [160 30 270 60] /Border [0 0 1] /C [0 0 1] /F 4 /A << /S /URI /URI (https://example.com/pagewing) >> >>
+endobj
+9 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+10 0 obj
+<<  /Length 88 >>
+stream
+BT
+/F1 20 Tf
+30 120 Td
+(Highlighted text) Tj
+ET
+BT
+/F1 14 Tf
+170 40 Td
+(Link area) Tj
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Annots [6 0 R 7 0 R 8 0 R] /Resources << /Font << /F1 9 0 R >> >> /Contents 10 0 R >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000122 00000 n 
+0000000209 00000 n 
+0000000356 00000 n 
+0000000551 00000 n 
+0000000719 00000 n 
+0000000908 00000 n 
+0000001064 00000 n 
+0000001161 00000 n 
+0000001301 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R /Info 3 0 R >>
+startxref
+1457
+%%EOF

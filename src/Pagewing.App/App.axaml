@@ -1,0 +1,50 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Pagewing.App.App"
+             RequestedThemeVariant="Default">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <MergeResourceInclude Source="/Styles/Tokens.axaml" />
+        <MergeResourceInclude Source="/Styles/Metrics.axaml" />
+        <MergeResourceInclude Source="/Styles/Fonts.axaml" />
+        <MergeResourceInclude Source="/Styles/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <!--
+          Fluent palette per theme variant (design system sections 2.4 and 5.1). The colours repeat the Pw.Color tokens
+          (a palette cannot reference resources); TokenTests.FluentPaletteMapsTheSpecRoles checks the main roles.
+          Accent, RegionColor, BaseHigh, BaseMedium and ErrorText are fixed by the spec; the Alt*, Base*Low/MediumHigh,
+          Chrome* and List* roles map to the nearest token so unstyled Fluent controls (list, check box, menu) fit.
+          The visual comparison with the mockup happened in M3.
+          High contrast has no palette here: FluentTheme.Palettes takes only Light and Dark (Avalonia 12.1.4 throws for
+          any other variant). Services/HighContrast gives the variant HighContrast its own Fluent theme instead.
+        -->
+        <ColorPaletteResources x:Key="Light"
+                               Accent="#3B48C4" RegionColor="#EEEFF2" ErrorText="#B42318"
+                               BaseHigh="#16181D" BaseMediumHigh="#33363E" BaseMedium="#4F545E" BaseMediumLow="#7F848E" BaseLow="#DCDFE5"
+                               AltHigh="#FFFFFF" AltMediumHigh="#CCFFFFFF" AltMedium="#99FFFFFF" AltMediumLow="#66FFFFFF" AltLow="#33FFFFFF"
+                               ChromeHigh="#7F848E" ChromeMedium="#E3E5EA" ChromeMediumLow="#EEEFF2" ChromeLow="#F7F8FA"
+                               ChromeAltLow="#16181D" ChromeGray="#4F545E" ChromeWhite="#FFFFFF"
+                               ChromeBlackHigh="#000000" ChromeBlackMedium="#CC000000" ChromeBlackMediumLow="#66000000" ChromeBlackLow="#33000000"
+                               ChromeDisabledHigh="#DCDFE5" ChromeDisabledLow="#9399A3"
+                               ListMedium="#E2E5F8" ListLow="#E3E5EA" />
+        <ColorPaletteResources x:Key="Dark"
+                               Accent="#9DA7FF" RegionColor="#15171B" ErrorText="#FF8A80"
+                               BaseHigh="#E6E8EB" BaseMediumHigh="#C0C4CB" BaseMedium="#9BA1AC" BaseMediumLow="#6E7480" BaseLow="#2A2E36"
+                               AltHigh="#24272E" AltMediumHigh="#CC24272E" AltMedium="#9924272E" AltMediumLow="#6624272E" AltLow="#3324272E"
+                               ChromeHigh="#6E7480" ChromeMedium="#2A2E36" ChromeMediumLow="#15171B" ChromeLow="#1B1E23"
+                               ChromeAltLow="#E6E8EB" ChromeGray="#9BA1AC" ChromeWhite="#FFFFFF"
+                               ChromeBlackHigh="#000000" ChromeBlackMedium="#CC000000" ChromeBlackMediumLow="#66000000" ChromeBlackLow="#33000000"
+                               ChromeDisabledHigh="#2A2E36" ChromeDisabledLow="#5E636D"
+                               ListMedium="#262B52" ListLow="#2A2E36" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
+    <StyleInclude Source="/Styles/Controls.axaml" />
+  </Application.Styles>
+</Application>

@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.ActionBar"
+             x:DataType="vm:MainViewModel"
+             Width="{DynamicResource Pw.Size.ActionBarWidth}"
+             Background="{DynamicResource Pw.Brush.Surface.Window}">
+  <!--
+    Action bar (design system sections 5.4, 5.5, 6 and 7.3): 52 px wide on surface.window, buttons 40 px with 20 px
+    (density "Kompakt": 44 and 34, Pw.Size.ActionBarWidth and Pw.Size.ActionButton)
+    icons in text.secondary. A click opens the panel of the entry in the active tab, a click on the active entry closes
+    it (MainViewModel.ToggleSidePanelCommand). The active entry has an accent.subtle surface behind an accent.default
+    icon, so it is not marked by colour alone (section 7.10); hovering it keeps that. The panel entries are toggle buttons
+    for screen readers, on while their panel is open (Controls/ActionToggleButton: the look of an icon button, IsChecked
+    bound one way to the panel, a click only runs the command); their tooltips name the shortcut of the catalog
+    (ActionBar.axaml.cs). Entries: Pages (Ctrl+Shift+1), Contents (Ctrl+Shift+2), Search
+    (Ctrl+F opens it as well, with the focus in its field); at the bottom Print (Ctrl+P; runs the print
+    command, which asks in the dialog of the system or shows the print card over the window, and is disabled until the document is
+    open) and Settings (section 7.3; Ctrl+Comma as well), which shows the settings card over the window
+    (MainWindow.Overlays.cs) and so has no panel and no active state. Part
+    of the first frame with a tab, so it stays this small: the panels and the settings card are built only when they
+    open.
+  -->
+  <UserControl.Styles>
+    <Style Selector="Button.action">
+      <Setter Property="Width" Value="{DynamicResource Pw.Size.ActionButton}" />
+      <Setter Property="Height" Value="{DynamicResource Pw.Size.ActionButton}" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="Button.action.active">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button.action.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.action.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- Top to bottom is also the tab order: the panel entries first, the settings last. -->
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,4,0,8" HorizontalAlignment="Center">
+      <ctl:ActionToggleButton Name="PagesButton" Classes="icon action"
+                              Classes.active="{Binding IsPagesPanelOpen}" IsChecked="{Binding IsPagesPanelOpen, Mode=OneWay}"
+                              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Pages}"
+                              AutomationProperties.Name="{x:Static res:Strings.PagesTooltip}">
+        <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.LayoutGrid}" />
+      </ctl:ActionToggleButton>
+      <ctl:ActionToggleButton Name="ContentsButton" Classes="icon action"
+                              Classes.active="{Binding IsContentsPanelOpen}" IsChecked="{Binding IsContentsPanelOpen, Mode=OneWay}"
+                              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Contents}"
+                              AutomationProperties.Name="{x:Static res:Strings.ContentsTooltip}">
+        <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.ListTree}" />
+      </ctl:ActionToggleButton>
+      <ctl:ActionToggleButton Name="SearchButton" Classes="icon action"
+                              Classes.active="{Binding IsSearchPanelOpen}" IsChecked="{Binding IsSearchPanelOpen, Mode=OneWay}"
+                              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Search}"
+                              ToolTip.Tip="{x:Static res:Strings.SearchTooltip}"
+                              AutomationProperties.Name="{x:Static res:Strings.SearchPanelTitle}">
+        <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Search}" />
+      </ctl:ActionToggleButton>
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,4,0,8" HorizontalAlignment="Center" VerticalAlignment="Bottom">
+      <Button Name="PrintButton" Classes="icon action"
+              Command="{Binding PrintCommand}"
+              ToolTip.Tip="{x:Static res:Strings.PrintTitle}"
+              AutomationProperties.Name="{x:Static res:Strings.PrintTitle}">
+        <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Printer}" />
+      </Button>
+      <Button Name="SettingsButton" Classes="icon action"
+              Command="{Binding ShowSettingsCommand}"
+              ToolTip.Tip="{x:Static res:Strings.SettingsTooltip}"
+              AutomationProperties.Name="{x:Static res:Strings.CommandSettings}">
+        <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Settings}" />
+      </Button>
+    </StackPanel>
+  </DockPanel>
+</UserControl>

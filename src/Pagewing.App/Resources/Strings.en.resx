@@ -1,0 +1,732 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppName" xml:space="preserve">
+    <value>Pagewing</value>
+  </data>
+  <data name="OpenFile" xml:space="preserve">
+    <value>Open file</value>
+  </data>
+  <data name="OpenFileTooltip" xml:space="preserve">
+    <value>Open file (Ctrl+O)</value>
+  </data>
+  <data name="PdfFileType" xml:space="preserve">
+    <value>PDF documents</value>
+  </data>
+  <data name="CloseTab" xml:space="preserve">
+    <value>Close tab (Ctrl+W)</value>
+  </data>
+  <data name="CloseTabTooltip" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="CloseTabMenu" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="MoveToNewWindow" xml:space="preserve">
+    <value>Open in new window</value>
+  </data>
+  <data name="AllTabs" xml:space="preserve">
+    <value>All tabs ({0})</value>
+  </data>
+  <data name="AllTabsTooltip" xml:space="preserve">
+    <value>All tabs ({0}): switch to another tab</value>
+  </data>
+  <data name="StartTitle" xml:space="preserve">
+    <value>Open a document</value>
+  </data>
+  <data name="StartOffline" xml:space="preserve">
+    <value>Pagewing works offline. Nothing leaves this computer.</value>
+  </data>
+  <data name="StartDropHint" xml:space="preserve">
+    <value>Or drop a PDF file into this window.</value>
+  </data>
+  <data name="ChooseFile" xml:space="preserve">
+    <value>Choose file</value>
+  </data>
+  <data name="ChooseFileShortcut" xml:space="preserve">
+    <value>Ctrl+O</value>
+  </data>
+  <data name="PasswordTitle" xml:space="preserve">
+    <value>This PDF is protected</value>
+  </data>
+  <data name="PasswordPrompt" xml:space="preserve">
+    <value>Enter the password to open “{0}”.</value>
+  </data>
+  <data name="PasswordIncorrect" xml:space="preserve">
+    <value>The password is incorrect. Check upper and lower case.</value>
+  </data>
+  <data name="PasswordField" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="PasswordCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="PasswordOpen" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="ErrorTitle" xml:space="preserve">
+    <value>This file cannot be opened</value>
+  </data>
+  <data name="ErrorCause" xml:space="preserve">
+    <value>“{0}” {1}.</value>
+  </data>
+  <data name="ErrorCauseNoFile" xml:space="preserve">
+    <value>The file {0}.</value>
+  </data>
+  <data name="ErrorNotAPdf" xml:space="preserve">
+    <value>is damaged or not a PDF file</value>
+  </data>
+  <data name="ErrorFileNotFound" xml:space="preserve">
+    <value>was not found</value>
+  </data>
+  <data name="ErrorCannotRead" xml:space="preserve">
+    <value>cannot be read (no access or too large)</value>
+  </data>
+  <data name="ErrorUnsupportedEncryption" xml:space="preserve">
+    <value>is encrypted with a method Pagewing does not support</value>
+  </data>
+  <data name="ErrorUnknown" xml:space="preserve">
+    <value>could not be opened for an unknown reason</value>
+  </data>
+  <data name="ErrorDetails" xml:space="preserve">
+    <value>Technical details</value>
+  </data>
+  <data name="ErrorDetailsPath" xml:space="preserve">
+    <value>Path</value>
+  </data>
+  <data name="ErrorDetailsKind" xml:space="preserve">
+    <value>Error kind</value>
+  </data>
+  <data name="ErrorDetailsNoPath" xml:space="preserve">
+    <value>(none)</value>
+  </data>
+  <data name="ErrorDetailsMessage" xml:space="preserve">
+    <value>Message</value>
+  </data>
+  <data name="ErrorCloseTab" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="ErrorOpenOther" xml:space="preserve">
+    <value>Open another file</value>
+  </data>
+  <data name="PageLabel" xml:space="preserve">
+    <value>Page</value>
+  </data>
+  <data name="PageOf" xml:space="preserve">
+    <value>of {0}</value>
+  </data>
+  <data name="PreviousPage" xml:space="preserve">
+    <value>Previous page (Page Up)</value>
+  </data>
+  <data name="NextPage" xml:space="preserve">
+    <value>Next page (Page Down)</value>
+  </data>
+  <data name="ZoomOut" xml:space="preserve">
+    <value>Zoom out (Ctrl+Minus)</value>
+  </data>
+  <data name="ZoomIn" xml:space="preserve">
+    <value>Zoom in (Ctrl+Plus)</value>
+  </data>
+  <data name="ZoomValue" xml:space="preserve">
+    <value>Zoom level</value>
+  </data>
+  <data name="ZoomMenuTooltip" xml:space="preserve">
+    <value>Choose zoom level or zoom mode</value>
+  </data>
+  <data name="ZoomFitWidth" xml:space="preserve">
+    <value>Page width</value>
+  </data>
+  <data name="ZoomFitWidthShortcut" xml:space="preserve">
+    <value>Ctrl+2</value>
+  </data>
+  <data name="ZoomFitPage" xml:space="preserve">
+    <value>Whole page</value>
+  </data>
+  <data name="ZoomFitPageShortcut" xml:space="preserve">
+    <value>Ctrl+0</value>
+  </data>
+  <data name="ZoomActualSize" xml:space="preserve">
+    <value>Actual size</value>
+  </data>
+  <data name="ZoomActualSizeShortcut" xml:space="preserve">
+    <value>Ctrl+1</value>
+  </data>
+  <data name="GoToPageTooltip" xml:space="preserve">
+    <value>Go to page (Ctrl+G)</value>
+  </data>
+  <data name="LayoutSingle" xml:space="preserve">
+    <value>Single page</value>
+  </data>
+  <data name="LayoutContinuous" xml:space="preserve">
+    <value>Continuous</value>
+  </data>
+  <data name="LayoutTwoPages" xml:space="preserve">
+    <value>Two pages</value>
+  </data>
+  <data name="LayoutTwoPagesCover" xml:space="preserve">
+    <value>Two pages with cover</value>
+  </data>
+  <data name="LayoutTooltip" xml:space="preserve">
+    <value>Page layout: {0}</value>
+  </data>
+  <data name="PagePlaceholderFailed" xml:space="preserve">
+    <value>This page could not be displayed</value>
+  </data>
+  <data name="PagesPanelTitle" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="ContentsPanelTitle" xml:space="preserve">
+    <value>Contents</value>
+  </data>
+  <data name="ClosePanel" xml:space="preserve">
+    <value>Close panel</value>
+  </data>
+  <data name="PagesTooltip" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="ContentsTooltip" xml:space="preserve">
+    <value>Contents</value>
+  </data>
+  <data name="ThumbnailList" xml:space="preserve">
+    <value>Page thumbnails</value>
+  </data>
+  <data name="ThumbnailName" xml:space="preserve">
+    <value>Page {0}</value>
+  </data>
+  <data name="ThumbnailCurrentSuffix" xml:space="preserve">
+    <value>, current page</value>
+  </data>
+  <data name="OutlineList" xml:space="preserve">
+    <value>Table of contents</value>
+  </data>
+  <data name="OutlineNoTitle" xml:space="preserve">
+    <value>(untitled)</value>
+  </data>
+  <data name="OutlineNoTarget" xml:space="preserve">
+    <value>No destination in this document</value>
+  </data>
+  <data name="OutlineEmpty" xml:space="preserve">
+    <value>This document has no table of contents.</value>
+  </data>
+  <data name="OutlineFailed" xml:space="preserve">
+    <value>The table of contents could not be read.</value>
+  </data>
+  <data name="OutlineEntryName" xml:space="preserve">
+    <value>{0}, page {1}</value>
+  </data>
+  <data name="SearchPanelTitle" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="SearchTooltip" xml:space="preserve">
+    <value>Search (Ctrl+F)</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>Search in document</value>
+  </data>
+  <data name="SearchMatchCase" xml:space="preserve">
+    <value>Match case</value>
+  </data>
+  <data name="SearchWholeWord" xml:space="preserve">
+    <value>Whole words</value>
+  </data>
+  <data name="SearchRunning" xml:space="preserve">
+    <value>Searching …</value>
+  </data>
+  <data name="SearchNone" xml:space="preserve">
+    <value>No matches</value>
+  </data>
+  <data name="SearchSummaryOne" xml:space="preserve">
+    <value>1 match on page {0}</value>
+  </data>
+  <data name="SearchSummaryOnePage" xml:space="preserve">
+    <value>{0} matches, all on page {1}</value>
+  </data>
+  <data name="SearchSummaryPages" xml:space="preserve">
+    <value>{0} matches on {1} pages</value>
+  </data>
+  <data name="SearchLimit" xml:space="preserve">
+    <value>More than {0} matches</value>
+  </data>
+  <data name="SearchNoText" xml:space="preserve">
+    <value>This document contains no searchable text. Scanned pages need text recognition (OCR), which Pagewing does not have yet.</value>
+  </data>
+  <data name="SearchNext" xml:space="preserve">
+    <value>Next match (Enter)</value>
+  </data>
+  <data name="SearchPrevious" xml:space="preserve">
+    <value>Previous match (Shift+Enter)</value>
+  </data>
+  <data name="SearchHitName" xml:space="preserve">
+    <value>Page {0}: {1}</value>
+  </data>
+  <data name="NoTextOnPage" xml:space="preserve">
+    <value>There is no selectable text on this page. It may be a scan.</value>
+  </data>
+  <data name="DocumentInfo" xml:space="preserve">
+    <value>Document info</value>
+  </data>
+  <data name="InfoFile" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="InfoFolder" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="InfoPages" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="InfoPageSize" xml:space="preserve">
+    <value>Page size</value>
+  </data>
+  <data name="InfoPdfVersion" xml:space="preserve">
+    <value>PDF version</value>
+  </data>
+  <data name="InfoFileSize" xml:space="preserve">
+    <value>File size</value>
+  </data>
+  <data name="InfoTitle" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="InfoAuthor" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="InfoCreated" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="LinkConfirmTitle" xml:space="preserve">
+    <value>Open this web address?</value>
+  </data>
+  <data name="LinkConfirmText" xml:space="preserve">
+    <value>This PDF wants to open a link in your browser. Only continue if you trust the address.</value>
+  </data>
+  <data name="LinkConfirmOpen" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="LinkConfirmCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="LinkWarningUserInfo" xml:space="preserve">
+    <value>The address contains a user name before the “@”. The real host is {0}.</value>
+  </data>
+  <data name="LinkWarningPunycode" xml:space="preserve">
+    <value>The host uses special characters and is shown as {0}.</value>
+  </data>
+  <data name="CommandNextTab" xml:space="preserve">
+    <value>Next tab</value>
+  </data>
+  <data name="CommandPreviousTab" xml:space="preserve">
+    <value>Previous tab</value>
+  </data>
+  <data name="CommandZoomIn" xml:space="preserve">
+    <value>Zoom in</value>
+  </data>
+  <data name="CommandZoomOut" xml:space="preserve">
+    <value>Zoom out</value>
+  </data>
+  <data name="CommandTogglePageTheme" xml:space="preserve">
+    <value>Light or dark page</value>
+  </data>
+  <data name="CommandGoToPage" xml:space="preserve">
+    <value>Go to page</value>
+  </data>
+  <data name="CommandPreviousPage" xml:space="preserve">
+    <value>Previous page</value>
+  </data>
+  <data name="CommandNextPage" xml:space="preserve">
+    <value>Next page</value>
+  </data>
+  <data name="CommandBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="CommandForward" xml:space="preserve">
+    <value>Forward</value>
+  </data>
+  <data name="CommandPagesPanel" xml:space="preserve">
+    <value>Show or hide pages</value>
+  </data>
+  <data name="CommandContentsPanel" xml:space="preserve">
+    <value>Show or hide contents</value>
+  </data>
+  <data name="CommandSearch" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="CommandSearchNext" xml:space="preserve">
+    <value>Next match</value>
+  </data>
+  <data name="CommandSearchPrevious" xml:space="preserve">
+    <value>Previous match</value>
+  </data>
+  <data name="CommandPalette" xml:space="preserve">
+    <value>Command palette</value>
+  </data>
+  <data name="CommandSettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="CommandAbout" xml:space="preserve">
+    <value>About Pagewing</value>
+  </data>
+  <data name="AboutTitle" xml:space="preserve">
+    <value>About Pagewing</value>
+  </data>
+  <data name="AboutClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="AboutVersion" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+  <data name="AboutOffline" xml:space="preserve">
+    <value>Works completely offline: no telemetry, no network access.</value>
+  </data>
+  <data name="AboutNotices" xml:space="preserve">
+    <value>Third-party notices</value>
+  </data>
+  <data name="CommandClearRecent" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="CommandGroupFile" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="CommandGroupView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="CommandGroupNavigation" xml:space="preserve">
+    <value>Navigate</value>
+  </data>
+  <data name="CommandGroupSearch" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="CommandGroupWindow" xml:space="preserve">
+    <value>Window</value>
+  </data>
+  <data name="KeyCtrl" xml:space="preserve">
+    <value>Ctrl</value>
+  </data>
+  <data name="KeyShift" xml:space="preserve">
+    <value>Shift</value>
+  </data>
+  <data name="KeyPageUp" xml:space="preserve">
+    <value>Page Up</value>
+  </data>
+  <data name="KeyPageDown" xml:space="preserve">
+    <value>Page Down</value>
+  </data>
+  <data name="KeyLeft" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="KeyRight" xml:space="preserve">
+    <value>Right</value>
+  </data>
+  <data name="KeyComma" xml:space="preserve">
+    <value>Comma</value>
+  </data>
+  <data name="HelpTitle" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="HelpFilter" xml:space="preserve">
+    <value>Filter shortcuts</value>
+  </data>
+  <data name="HelpClose" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="HelpEmpty" xml:space="preserve">
+    <value>No shortcut matches.</value>
+  </data>
+  <data name="CommandCloseOverlay" xml:space="preserve">
+    <value>Close the card or palette</value>
+  </data>
+  <data name="PaletteButton" xml:space="preserve">
+    <value>Search or command</value>
+  </data>
+  <data name="PalettePlaceholder" xml:space="preserve">
+    <value>Search commands, pages, tabs and files</value>
+  </data>
+  <data name="PaletteEmpty" xml:space="preserve">
+    <value>Nothing found.</value>
+  </data>
+  <data name="PaletteGroupRecent" xml:space="preserve">
+    <value>Recently opened</value>
+  </data>
+  <data name="PaletteGroupPages" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="PaletteGroupTabs" xml:space="preserve">
+    <value>Open tabs</value>
+  </data>
+  <data name="PaletteGroupContents" xml:space="preserve">
+    <value>Contents</value>
+  </data>
+  <data name="PaletteGroupCommands" xml:space="preserve">
+    <value>Commands</value>
+  </data>
+  <data name="PaletteGoToPage" xml:space="preserve">
+    <value>Go to page {0}</value>
+  </data>
+  <data name="PalettePageDetail" xml:space="preserve">
+    <value>Page {0}</value>
+  </data>
+  <data name="SettingsTooltip" xml:space="preserve">
+    <value>Settings (Ctrl+Comma)</value>
+  </data>
+  <data name="SettingsClose" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="SettingsDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="SettingsGroupAppearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="SettingsGroupView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="SettingsGroupLanguage" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="SettingsTheme" xml:space="preserve">
+    <value>Theme</value>
+  </data>
+  <data name="SettingsThemeSystem" xml:space="preserve">
+    <value>Same as system</value>
+  </data>
+  <data name="SettingsThemeLight" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="SettingsThemeDark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="SettingsDensity" xml:space="preserve">
+    <value>Density</value>
+  </data>
+  <data name="SettingsDensityNormal" xml:space="preserve">
+    <value>Standard</value>
+  </data>
+  <data name="SettingsDensityCompact" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="SettingsDarkPages" xml:space="preserve">
+    <value>Show pages dark when the theme is dark</value>
+  </data>
+  <data name="SettingsReduceMotion" xml:space="preserve">
+    <value>Reduce animations</value>
+  </data>
+  <data name="SettingsDefaultLayout" xml:space="preserve">
+    <value>Default layout</value>
+  </data>
+  <data name="SettingsDefaultZoom" xml:space="preserve">
+    <value>Default zoom</value>
+  </data>
+  <data name="SettingsDefaultsHint" xml:space="preserve">
+    <value>Applies to files you open from now on.</value>
+  </data>
+  <data name="SettingsLanguage" xml:space="preserve">
+    <value>Interface language</value>
+  </data>
+  <data name="SettingsLanguageSystem" xml:space="preserve">
+    <value>System language</value>
+  </data>
+  <data name="SettingsRestartHint" xml:space="preserve">
+    <value>Takes effect the next time Pagewing starts.</value>
+  </data>
+  <data name="SettingsSaveFailed" xml:space="preserve">
+    <value>The settings could not be saved.</value>
+  </data>
+  <data name="StartRecent" xml:space="preserve">
+    <value>Recently opened</value>
+  </data>
+  <data name="StartRecentHelp" xml:space="preserve">
+    <value>Enter opens the file, Delete removes it from the history.</value>
+  </data>
+  <data name="StartRecentRemove" xml:space="preserve">
+    <value>Remove from the history (Delete)</value>
+  </data>
+  <data name="StartRecentRemoveName" xml:space="preserve">
+    <value>Remove “{0}” from the history</value>
+  </data>
+  <data name="SettingsGroupHistory" xml:space="preserve">
+    <value>History</value>
+  </data>
+  <data name="SettingsHistory" xml:space="preserve">
+    <value>Recently opened files and where you left them</value>
+  </data>
+  <data name="SettingsClearHistory" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="SettingsHistoryCleared" xml:space="preserve">
+    <value>History cleared.</value>
+  </data>
+  <data name="PrintErrorStart" xml:space="preserve">
+    <value>The printer could not start the print job.</value>
+  </data>
+  <data name="PrintErrorPage" xml:space="preserve">
+    <value>The printer reported an error while printing.</value>
+  </data>
+  <data name="PrintErrorDialog" xml:space="preserve">
+    <value>The print dialog could not be shown.</value>
+  </data>
+  <data name="PrintForbidden" xml:space="preserve">
+    <value>This document does not allow printing.</value>
+  </data>
+  <data name="PrintNoService" xml:space="preserve">
+    <value>No print service found. Pagewing prints through CUPS.</value>
+  </data>
+  <data name="PrintNoPrinter" xml:space="preserve">
+    <value>No printer is set up.</value>
+  </data>
+  <data name="CommandPrint" xml:space="preserve">
+    <value>Print…</value>
+  </data>
+  <data name="PrintTitle" xml:space="preserve">
+    <value>Print</value>
+  </data>
+  <data name="PrintPrinter" xml:space="preserve">
+    <value>Printer</value>
+  </data>
+  <data name="PrintSearching" xml:space="preserve">
+    <value>Looking for printers …</value>
+  </data>
+  <data name="PrintPages" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="PrintPagesAll" xml:space="preserve">
+    <value>All pages</value>
+  </data>
+  <data name="PrintPagesCurrent" xml:space="preserve">
+    <value>Current page</value>
+  </data>
+  <data name="PrintPagesRange" xml:space="preserve">
+    <value>Range</value>
+  </data>
+  <data name="PrintRangeField" xml:space="preserve">
+    <value>Pages to print, for example 1-3,5</value>
+  </data>
+  <data name="PrintRangeInvalid" xml:space="preserve">
+    <value>Not a valid range. Use for example 1-3,5.</value>
+  </data>
+  <data name="PrintRangeBeyond" xml:space="preserve">
+    <value>Page {0} does not exist. The document has {1} pages.</value>
+  </data>
+  <data name="PrintCopies" xml:space="preserve">
+    <value>Copies</value>
+  </data>
+  <data name="PrintCopiesInvalid" xml:space="preserve">
+    <value>Use a number from 1 to 999.</value>
+  </data>
+  <data name="PrintCollate" xml:space="preserve">
+    <value>Collate (1 2 3, 1 2 3)</value>
+  </data>
+  <data name="PrintScalingLabel" xml:space="preserve">
+    <value>Page size</value>
+  </data>
+  <data name="PrintScalingFit" xml:space="preserve">
+    <value>Fit to paper</value>
+  </data>
+  <data name="PrintScalingActual" xml:space="preserve">
+    <value>Actual size</value>
+  </data>
+  <data name="PrintScalingActualHint" xml:space="preserve">
+    <value>What does not fit on the paper is cut off.</value>
+  </data>
+  <data name="PrintDuplex" xml:space="preserve">
+    <value>Both sides</value>
+  </data>
+  <data name="PrintPrinterSetting" xml:space="preserve">
+    <value>Printer setting</value>
+  </data>
+  <data name="PrintDuplexOff" xml:space="preserve">
+    <value>One side</value>
+  </data>
+  <data name="PrintDuplexLong" xml:space="preserve">
+    <value>Both sides, long edge</value>
+  </data>
+  <data name="PrintDuplexShort" xml:space="preserve">
+    <value>Both sides, short edge</value>
+  </data>
+  <data name="PrintOrientation" xml:space="preserve">
+    <value>Paper orientation</value>
+  </data>
+  <data name="PrintPortrait" xml:space="preserve">
+    <value>Portrait</value>
+  </data>
+  <data name="PrintLandscape" xml:space="preserve">
+    <value>Landscape</value>
+  </data>
+  <data name="PrintAutoRotateHint" xml:space="preserve">
+    <value>Each page is turned when it fits the paper better that way.</value>
+  </data>
+  <data name="PrintStart" xml:space="preserve">
+    <value>Print</value>
+  </data>
+  <data name="PrintCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="PrintSending" xml:space="preserve">
+    <value>Sending to the printer …</value>
+  </data>
+  <data name="PrintRunning" xml:space="preserve">
+    <value>Printing page {0} of {1} …</value>
+  </data>
+  <data name="PrintDone" xml:space="preserve">
+    <value>Sent to the printer.</value>
+  </data>
+  <data name="PrintFailedPage" xml:space="preserve">
+    <value>Page {0} could not be printed.</value>
+  </data>
+  <data name="PrintFailedPages" xml:space="preserve">
+    <value>Pages {0} could not be printed.</value>
+  </data>
+  <data name="PrintBusy" xml:space="preserve">
+    <value>A print job is already running in this window.</value>
+  </data>
+  <data name="PrintCancelled" xml:space="preserve">
+    <value>Printing cancelled.</value>
+  </data>
+  <data name="PrintJobCancel" xml:space="preserve">
+    <value>Cancel printing</value>
+  </data>
+  <data name="PrintJobClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="SettingsGroupPrint" xml:space="preserve">
+    <value>Printing</value>
+  </data>
+  <data name="SettingsPrintScaling" xml:space="preserve">
+    <value>Page size when printing</value>
+  </data>
+  <data name="DefaultAppTitle" xml:space="preserve">
+    <value>Set Pagewing as the default for PDFs?</value>
+  </data>
+  <data name="DefaultAppText" xml:space="preserve">
+    <value>PDF files will then open in Pagewing when you double-click them.</value>
+  </data>
+  <data name="DefaultAppSet" xml:space="preserve">
+    <value>Set as default</value>
+  </data>
+  <data name="DefaultAppLater" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="DefaultAppNever" xml:space="preserve">
+    <value>Don't ask again</value>
+  </data>
+  <data name="DefaultAppChooseHint" xml:space="preserve">
+    <value>Choose Pagewing in the list that Windows shows.</value>
+  </data>
+  <data name="DefaultAppFailed" xml:space="preserve">
+    <value>Pagewing could not be set as the default.</value>
+  </data>
+  <data name="DefaultAppNotAvailable" xml:space="preserve">
+    <value>Pagewing cannot be set as the default from here. It needs the installed package or the AppImage, and xdg-utils.</value>
+  </data>
+  <data name="CommandSetDefaultApp" xml:space="preserve">
+    <value>Set Pagewing as default for PDFs</value>
+  </data>
+</root>

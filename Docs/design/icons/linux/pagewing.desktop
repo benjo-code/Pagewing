@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Pagewing
+Comment=PDF-Dateien ansehen und bearbeiten
+Exec=pagewing %F
+Icon=pagewing
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/pdf;
+StartupWMClass=Pagewing

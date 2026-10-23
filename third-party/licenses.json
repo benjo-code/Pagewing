@@ -1,0 +1,340 @@
+{
+  "entries": [
+    {
+      "id": "Avalonia",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.Angle.Windows.Natives",
+      "kind": "nuget",
+      "version": "2.1.27548.20260419",
+      "license": "BSD-3-Clause",
+      "licenseFile": "third-party/angle/LICENSE",
+      "files": [
+        "av_libglesv2.dll"
+      ]
+    },
+    {
+      "id": "Avalonia.BuildServices",
+      "kind": "nuget",
+      "version": "11.3.2",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia-buildservices/LICENSE",
+      "shipped": false
+    },
+    {
+      "id": "Avalonia.Desktop",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.FreeDesktop",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.FreeDesktop.AtSpi",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.HarfBuzz",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.Native",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.Remote.Protocol",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.Skia",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.Themes.Fluent",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.Win32",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "Avalonia.X11",
+      "kind": "nuget",
+      "version": "12.1.4",
+      "license": "MIT",
+      "licenseFile": "third-party/avalonia/LICENSE"
+    },
+    {
+      "id": "bblanchon.PDFium.Linux",
+      "kind": "nuget",
+      "version": "157.0.8100",
+      "license": "Apache-2.0",
+      "licenseFile": "third-party/pdfium/LICENSE",
+      "licenseFiles": [
+        "third-party/pdfium/licenses/"
+      ],
+      "files": [
+        "libpdfium.so"
+      ]
+    },
+    {
+      "id": "bblanchon.PDFium.Win32",
+      "kind": "nuget",
+      "version": "157.0.8100",
+      "license": "Apache-2.0",
+      "licenseFile": "third-party/pdfium/LICENSE",
+      "licenseFiles": [
+        "third-party/pdfium/licenses/"
+      ],
+      "files": [
+        "pdfium.dll"
+      ]
+    },
+    {
+      "id": "HarfBuzzSharp",
+      "kind": "nuget",
+      "version": "8.3.1.3",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE"
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.Linux",
+      "kind": "nuget",
+      "version": "8.3.1.3",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE",
+      "licenseFiles": [
+        "third-party/skiasharp/THIRD-PARTY-NOTICES.txt"
+      ],
+      "files": [
+        "libHarfBuzzSharp.so"
+      ]
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.macOS",
+      "kind": "nuget",
+      "version": "8.3.1.3",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE",
+      "licenseFiles": [
+        "third-party/skiasharp/THIRD-PARTY-NOTICES.txt"
+      ],
+      "shipped": false
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.WebAssembly",
+      "kind": "nuget",
+      "version": "8.3.1.3",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE",
+      "licenseFiles": [
+        "third-party/skiasharp/THIRD-PARTY-NOTICES.txt"
+      ],
+      "shipped": false
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.Win32",
+      "kind": "nuget",
+      "version": "8.3.1.3",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE",
+      "licenseFiles": [
+        "third-party/skiasharp/THIRD-PARTY-NOTICES.txt"
+      ],
+      "files": [
+        "libHarfBuzzSharp.dll"
+      ]
+    },
+    {
+      "id": "MicroCom.Runtime",
+      "kind": "nuget",
+      "version": "0.11.6",
+      "license": "MIT",
+      "licenseFile": "third-party/microcom/LICENSE"
+    },
+    {
+      "id": "Microsoft.DotNet.ILCompiler",
+      "kind": "nuget",
+      "version": "10.0.12",
+      "sdkVersion": true,
+      "license": "MIT",
+      "licenseFile": "third-party/dotnet/LICENSE",
+      "shipped": false
+    },
+    {
+      "id": "Microsoft.NET.ILLink.Tasks",
+      "kind": "nuget",
+      "version": "10.0.12",
+      "sdkVersion": true,
+      "license": "MIT",
+      "licenseFile": "third-party/dotnet/LICENSE",
+      "shipped": false
+    },
+    {
+      "id": "SkiaSharp",
+      "kind": "nuget",
+      "version": "3.119.4",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE"
+    },
+    {
+      "id": "SkiaSharp.NativeAssets.Linux",
+      "kind": "nuget",
+      "version": "3.119.4",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE",
+      "licenseFiles": [
+        "third-party/skiasharp/THIRD-PARTY-NOTICES.txt"
+      ],
+      "files": [
+        "libSkiaSharp.so"
+      ]
+    },
+    {
+      "id": "SkiaSharp.NativeAssets.macOS",
+      "kind": "nuget",
+      "version": "3.119.4",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE",
+      "licenseFiles": [
+        "third-party/skiasharp/THIRD-PARTY-NOTICES.txt"
+      ],
+      "shipped": false
+    },
+    {
+      "id": "SkiaSharp.NativeAssets.WebAssembly",
+      "kind": "nuget",
+      "version": "3.119.4",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE",
+      "licenseFiles": [
+        "third-party/skiasharp/THIRD-PARTY-NOTICES.txt"
+      ],
+      "shipped": false
+    },
+    {
+      "id": "SkiaSharp.NativeAssets.Win32",
+      "kind": "nuget",
+      "version": "3.119.4",
+      "license": "MIT",
+      "licenseFile": "third-party/skiasharp/LICENSE",
+      "licenseFiles": [
+        "third-party/skiasharp/THIRD-PARTY-NOTICES.txt"
+      ],
+      "files": [
+        "libSkiaSharp.dll"
+      ]
+    },
+    {
+      "id": "Tmds.DBus.Protocol",
+      "kind": "nuget",
+      "version": "0.94.1",
+      "license": "MIT",
+      "licenseFile": "third-party/tmds-dbus/LICENSE"
+    },
+    {
+      "id": ".NET Runtime (Native AOT)",
+      "kind": "runtime",
+      "version": "10.0.12",
+      "license": "MIT",
+      "licenseFile": "third-party/dotnet/LICENSE",
+      "licenseFiles": [
+        "third-party/dotnet/THIRD-PARTY-NOTICES.txt"
+      ]
+    },
+    {
+      "id": "Geist und Geist Mono",
+      "kind": "asset",
+      "version": "1.8.1",
+      "license": "OFL-1.1",
+      "licenseFile": "third-party/geist/OFL.txt"
+    },
+    {
+      "id": "Tabler Icons",
+      "kind": "asset",
+      "version": "3.49.0",
+      "license": "MIT",
+      "licenseFile": "third-party/tabler-icons/LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime type2-runtime (nur im AppImage)",
+      "kind": "runtime",
+      "version": "20251108",
+      "license": "MIT",
+      "licenseFile": "third-party/appimage-runtime/LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime libfuse (nur im AppImage)",
+      "kind": "runtime",
+      "version": "3.15.0",
+      "license": "LGPL-2.1-only",
+      "licenseFile": "third-party/appimage-runtime/libfuse-LGPL-2.1.txt"
+    },
+    {
+      "id": "AppImage-Runtime squashfuse (nur im AppImage)",
+      "kind": "runtime",
+      "version": "0.5.2",
+      "license": "BSD-2-Clause",
+      "licenseFile": "third-party/appimage-runtime/squashfuse-LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime zstd (nur im AppImage)",
+      "kind": "runtime",
+      "version": "1.5.6",
+      "license": "BSD-3-Clause",
+      "licenseFile": "third-party/appimage-runtime/zstd-LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime zlib (nur im AppImage)",
+      "kind": "runtime",
+      "version": "1.3.1",
+      "license": "Zlib",
+      "licenseFile": "third-party/appimage-runtime/zlib-LICENSE"
+    },
+    {
+      "id": "AppImage-Runtime musl libc (nur im AppImage)",
+      "kind": "runtime",
+      "version": "Alpine 3.21 (musl 1.2.5)",
+      "license": "MIT",
+      "licenseFile": "third-party/appimage-runtime/musl-COPYRIGHT"
+    },
+    {
+      "id": "AppImage-Runtime mimalloc (nur im AppImage)",
+      "kind": "runtime",
+      "version": "Alpine 3.21 (mimalloc 2.1.7)",
+      "license": "MIT",
+      "licenseFile": "third-party/appimage-runtime/mimalloc-LICENSE"
+    }
+  ]
+}

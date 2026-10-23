@@ -1,0 +1,18 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The one place that decides the UI fonts (Docs/superpowers/specs/2026-10-17-designsystem.md, section 5.2).
+    Variant A (active): the embedded Geist / Geist Mono subset in Assets/Fonts (third-party/geist/README.md).
+    Variant B: the system fonts, as a fallback chain that works on both systems (Segoe UI and Cascadia Mono on
+    Windows, fontconfig's sans-serif and monospace on Linux). To switch, swap the two FontFamily lines for these:
+      <FontFamily x:Key="Pw.Font.Sans">Segoe UI, sans-serif</FontFamily>
+      <FontFamily x:Key="Pw.Font.Mono">Cascadia Mono, Consolas, monospace</FontFamily>
+    Milestone 3 measured the start cost and kept Geist (Docs/DECISIONS.md, "Schrift-Entscheidung nach Messung (M3)").
+    No runtime logic here: the font is never changed after the first frame.
+  -->
+  <FontFamily x:Key="Pw.Font.Sans">avares://Pagewing/Assets/Fonts#Geist</FontFamily>
+  <FontFamily x:Key="Pw.Font.Mono">avares://Pagewing/Assets/Fonts#Geist Mono</FontFamily>
+
+  <!-- Fluent controls take their font from this resource, so the choice above reaches all of them. -->
+  <StaticResource x:Key="ContentControlThemeFontFamily" ResourceKey="Pw.Font.Sans" />
+</ResourceDictionary>

@@ -1,0 +1,48 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [6 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing Zuschnitt) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<<  /Length 260 >>
+stream
+0.9 0.9 0.6 rg 0 0 300 300 re f
+1 0 0 rg 0 0 40 40 re f
+0 0.6 0 rg 260 0 40 40 re f
+0 0 1 rg 0 260 40 40 re f
+0 0 0 rg 260 260 40 40 re f
+0 0 0 RG 2 w 50 75 200 150 re S
+0.4 0.4 0.4 RG 0 0 m 300 300 l S 0 300 m 300 0 l S
+BT
+/F1 20 Tf
+100 145 Td
+(CropBox) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /CropBox [50 75 250 225] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000206 00000 n 
+0000000303 00000 n 
+0000000615 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R /Info 3 0 R >>
+startxref
+766
+%%EOF

@@ -1,0 +1,132 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.SearchPanel"
+             x:DataType="vm:TabViewModel">
+  <!--
+    Content of the "Search" panel (design system 5.2, 5.5, 7.3, 7.4 and 7.10): the search of the tab in the DataContext
+    (the content binds to the search itself, so a tab that does not show "Search" never gets one created by the panel).
+    At the top the search field (with the Tabler "search" icon), below it "Match case" and "Whole words", then a row with
+    the summary (type.caption, text.secondary) and the buttons for the previous and the next match (chevron-up and
+    chevron-down, 16 px; their tooltips name Shift+Enter and Enter). Below that the matches in a virtualized list: the page
+    mark in type.mono (text.secondary) and the text around the match, the match itself on search.hit in search.on (yellow
+    only for search matches). The current match has an accent.subtle surface and a 2 px accent.default edge on the left,
+    so it is not marked by colour alone. Built only when the panel opens (SidePanel), so nothing of it is in the startup
+    path; its styles live here for the same reason.
+  -->
+  <UserControl.Styles>
+    <Style Selector="ListBox.hits">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="6,0,6,10" />
+    </Style>
+
+    <!-- An entry: no Fluent padding or selection colours. The selection is only the keyboard cursor (focus ring); hover shows surface.hover. -->
+    <Style Selector="ListBox.hits ListBoxItem" x:DataType="vm:SearchHitViewModel">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,1" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+    </Style>
+    <Style Selector="ListBox.hits ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.hits ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.hits ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    </Style>
+
+    <Style Selector="Border.hit">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.hit.current">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="TextBlock.hitPage">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="TextBlock.hitSnippet">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- The DataContext of the content is the search of the tab, set by SearchPanel.axaml.cs only while the tab shows "Search". -->
+  <DockPanel Name="SearchRoot" x:DataType="vm:SearchViewModel">
+    <StackPanel DockPanel.Dock="Top" Margin="14,0,14,6" Spacing="8">
+      <TextBox Name="SearchField"
+               Text="{Binding Query}"
+               PlaceholderText="{x:Static res:Strings.SearchPlaceholder}"
+               AutomationProperties.Name="{x:Static res:Strings.SearchPlaceholder}">
+        <TextBox.InnerLeftContent>
+          <ctl:StrokeIcon Width="16" Height="16" Margin="8,0,0,0" VerticalAlignment="Center"
+                          Brush="{DynamicResource Pw.Brush.Text.Secondary}"
+                          Data="{StaticResource Pw.Icon.Search}" />
+        </TextBox.InnerLeftContent>
+        <!-- The window binds other keys first; the field claims Enter, Shift+Enter and Esc with bindings of its own. -->
+        <TextBox.KeyBindings>
+          <KeyBinding Gesture="Enter" Command="{Binding NextCommand}" />
+          <KeyBinding Gesture="Shift+Enter" Command="{Binding PreviousCommand}" />
+          <KeyBinding Gesture="Escape" Command="{Binding EndCommand}" />
+        </TextBox.KeyBindings>
+      </TextBox>
+      <StackPanel Spacing="0">
+        <CheckBox Name="MatchCaseBox" IsChecked="{Binding MatchCase}" Content="{x:Static res:Strings.SearchMatchCase}" />
+        <CheckBox Name="WholeWordBox" IsChecked="{Binding WholeWord}" Content="{x:Static res:Strings.SearchWholeWord}" />
+      </StackPanel>
+      <Grid ColumnDefinitions="*,Auto,Auto" MinHeight="28">
+        <TextBlock Name="SearchSummary" Classes="caption"
+                   Text="{Binding Summary}"
+                   AutomationProperties.LiveSetting="Polite"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <Button Name="PreviousHitButton" Grid.Column="1" Classes="icon"
+                Width="28" Height="28" MinWidth="0" MinHeight="0" VerticalAlignment="Top"
+                Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                Command="{Binding PreviousCommand}"
+                ToolTip.Tip="{x:Static res:Strings.SearchPrevious}"
+                AutomationProperties.Name="{x:Static res:Strings.SearchPrevious}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronUp}" />
+        </Button>
+        <Button Name="NextHitButton" Grid.Column="2" Classes="icon"
+                Width="28" Height="28" MinWidth="0" MinHeight="0" VerticalAlignment="Top"
+                Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                Command="{Binding NextCommand}"
+                ToolTip.Tip="{x:Static res:Strings.SearchNext}"
+                AutomationProperties.Name="{x:Static res:Strings.SearchNext}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronDown}" />
+        </Button>
+      </Grid>
+    </StackPanel>
+
+    <ListBox Name="HitList" Classes="hits"
+             ItemsSource="{Binding Hits}"
+             SelectionMode="Single"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             AutomationProperties.Name="{x:Static res:Strings.SearchPanelTitle}">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:SearchHitViewModel">
+          <Border Name="HitRow" Classes="hit" Classes.current="{Binding IsCurrent}"
+                  BorderThickness="2,0,0,0" CornerRadius="{DynamicResource Pw.Radius.Control}" Padding="6,5,8,5">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Name="HitPage" Classes="mono num hitPage" Text="{Binding PageText}"
+                         MinWidth="24" Margin="0,1,8,0" VerticalAlignment="Top" TextAlignment="Right" />
+              <!-- The runs stand on one line: whitespace between them would be shown as a space. -->
+              <TextBlock Name="HitSnippet" Grid.Column="1" Classes="body hitSnippet"
+                         TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"><Run Text="{Binding Before}" /><Run Text="{Binding Match}" Background="{DynamicResource Pw.Brush.Search.Hit}" Foreground="{DynamicResource Pw.Brush.Search.On}" /><Run Text="{Binding After}" /></TextBlock>
+            </Grid>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

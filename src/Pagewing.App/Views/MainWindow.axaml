@@ -1,0 +1,125 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Pagewing.App.ViewModels"
+        xmlns:views="using:Pagewing.App.Views"
+        x:Class="Pagewing.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding WindowTitle}"
+        Width="1024" Height="720" MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="Full"
+        ExtendClientAreaToDecorationsHint="{Binding IsWindowsTitleBar}"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Pw.Size.TitleBarHeight}"
+        WindowDecorationsTheme="{DynamicResource Pw.WindowDecorations}"
+        DragDrop.AllowDrop="True">
+  <!--
+    No key bindings here: the window binds its keys in code from the command catalog (Commands/CommandCatalog.cs), the
+    only place where the shortcuts are defined (MainWindow.Shortcuts.cs).
+  -->
+  <Window.Resources>
+    <!--
+      With the client area extended, Avalonia 12.1 draws the Windows caption buttons itself (Fluent theme
+      WindowDrawnDecorations: buttons 45 px wide and 2 px apart). Pagewing keeps them, but drops the
+      title text the theme draws over the client area (it would sit on the app symbol; the window title still names
+      the window in the taskbar) and the fullscreen button, which a Windows title bar does not have. The remaining
+      three buttons take 3 x 45 + 2 x 2 = 139 px (1 px more with a drawn frame), so TitleBar.axaml reserves 140 px.
+      The theme is a DynamicResource because a StaticResource on the window's own attribute is resolved before
+      Window.Resources exists (it came out null).
+    -->
+    <ControlTheme x:Key="Pw.WindowDecorations" TargetType="WindowDrawnDecorations"
+                  BasedOn="{StaticResource {x:Type WindowDrawnDecorations}}">
+      <!-- The panel's IsVisible is a TemplateBinding, which outranks a style setter; hide the text instead. -->
+      <Style Selector="^ /template/ Panel#PART_TitleTextPanel > TextBlock">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+      <Style Selector="^ /template/ Button#PART_FullScreenButton">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+    </ControlTheme>
+  </Window.Resources>
+
+  <!--
+    Window layout of the design system, section 6. Windows draws its own title bar with the tab in it (client area
+    extended into the decorations); Linux keeps the system title bar and shows the same row as a tab row below it
+    (section 2.2). Below it, with a tab: action bar | panel (optional) | document area. The panel, the document area
+    and the status bar show the active tab (their DataContext). The row of the status bar is there as soon as a file
+    loads, so the viewport keeps its height when the document is ready, but not under the password and the error card;
+    its content appears with the open document, indented by the action bar. An overlay of the window (the help card, the
+    command palette) is added to this grid below the title bar when it is first shown (MainWindow.Overlays.cs).
+  -->
+  <Grid Name="RootGrid" RowDefinitions="Auto,*,Auto">
+    <views:TitleBar Name="TitleBar" />
+
+    <!--
+      Columns: action bar (only with a tab), the panel when it lies beside the document (MainWindow.Panel.cs sets the
+      width; 0 while it is closed or lies over the document), the document area. The order is the tab order of section
+      7.9: action bar, panel, document.
+    -->
+    <Grid Name="WorkArea" Grid.Row="1" ColumnDefinitions="Auto,0,*">
+      <views:StartScreen Name="StartScreen" Grid.ColumnSpan="3" IsVisible="{Binding IsEmpty}" />
+
+      <views:ActionBar Name="ActionBar" IsVisible="{Binding HasTabs}" />
+
+      <!--
+        Region separators (design system 5.3), in high contrast only: there every surface is black, so 1 px border.subtle
+        lines part the action bar from the panel and the document area, the panel from the document area and the work area
+        from the status bar. Pw.Size.RegionSeparator is 0 in light and dark: the lines draw nothing and take no space.
+        They lie over the edge pixels of the regions (the title bar draws its own, TitleBar.axaml) and take no input.
+      -->
+      <Border Name="ActionBarEdge" HorizontalAlignment="Right"
+              Width="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
+              IsHitTestVisible="False" IsVisible="{Binding HasTabs}" />
+
+      <!--
+        Holds the side panel, which MainWindow.Panel.cs creates only when a panel opens for the first time (nothing of
+        it is built in the startup path). It spans the document column, so it can lie over the document in a narrow
+        window; beside the document it is exactly as wide as the panel column.
+      -->
+      <Panel Name="PanelHost" Grid.Column="1" Grid.ColumnSpan="2" HorizontalAlignment="Left" ZIndex="1" IsVisible="False" Opacity="0" />
+
+      <!--
+        Document area: surface.canvas with radius.overlay at the top left, unless the panel beside it takes that corner.
+        The document view shows the open document of the active tab; while a file loads it stays empty, and the password
+        and the error card lie over it (design system 7.8). Switching the tab switches the DataContext, and with it the
+        document the view shows. The card that asks before an address of the document is opened is added to this panel
+        when it is first needed (MainWindow.LinkCard.cs).
+      -->
+      <Border Name="DocumentArea" Grid.Column="2"
+              IsVisible="{Binding HasTabs}"
+              Background="{DynamicResource Pw.Brush.Surface.Canvas}"
+              CornerRadius="10,0,0,0">
+        <Panel Name="DocumentAreaLayers">
+          <views:DocumentView Name="DocumentView" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel" />
+          <views:PasswordCard Name="PasswordCard" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel"
+                              IsVisible="{Binding IsPasswordPrompt, FallbackValue=False}" />
+          <views:ErrorCard Name="ErrorCard" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel"
+                           IsVisible="{Binding IsFailed, FallbackValue=False}" />
+        </Panel>
+      </Border>
+
+      <!--
+        The edge between the panel and the document: dragging it sets the panel width (200 to 400), a double click puts
+        the default width of the density back (264, "Kompakt" 236; design system 5.4 and 7.3). It straddles the edge, 3 px on each side, and is invisible: the surfaces part by
+        colour (section 5.3). Only while the panel lies beside the document.
+      -->
+      <GridSplitter Name="PanelSplitter" Grid.Column="1" ZIndex="2"
+                    Width="6" Margin="0,0,-3,0" MinWidth="0" HorizontalAlignment="Right"
+                    ResizeDirection="Columns" Background="Transparent" Focusable="False" IsVisible="False" />
+
+      <!-- Separators of high contrast (see ActionBarEdge): panel | document area while the panel lies beside it, and the bottom edge. -->
+      <Border Name="PanelEdge" Grid.Column="1" ZIndex="2" HorizontalAlignment="Right"
+              Width="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
+              IsHitTestVisible="False" IsVisible="{Binding #PanelSplitter.IsVisible}" />
+      <Border Name="StatusBarEdge" Grid.Column="1" Grid.ColumnSpan="2" ZIndex="2" Margin="-1,0,0,0" VerticalAlignment="Bottom"
+              Height="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
+              IsHitTestVisible="False" IsVisible="{Binding ActiveTab.HasStatusBarRow, FallbackValue=False}" />
+    </Grid>
+
+    <Border Name="StatusBarRow" Grid.Row="2" Height="{DynamicResource Pw.Size.StatusBarHeight}"
+            IsVisible="{Binding ActiveTab.HasStatusBarRow, FallbackValue=False}"
+            Background="{DynamicResource Pw.Brush.Surface.Window}">
+      <views:StatusBar Name="StatusBar" DataContext="{Binding ActiveTab}" x:DataType="vm:TabViewModel"
+                       IsVisible="{Binding IsReady, FallbackValue=False}" />
+    </Border>
+  </Grid>
+</Window>

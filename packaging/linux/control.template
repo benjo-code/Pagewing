@@ -1,0 +1,15 @@
+Package: pagewing
+Version: @VERSION@
+Architecture: amd64
+Maintainer: @MAINTAINER@
+Installed-Size: @INSTALLED_SIZE@
+Depends: libc6 (>= 2.35), libfontconfig1, libx11-6, libice6, libsm6
+Recommends: libcups2, xdg-utils
+Section: graphics
+Priority: optional
+Homepage: https://github.com/benjo-code/Pagewing
+Description: Fast, offline PDF viewer
+ Pagewing is a fast, open-source PDF viewer. It runs completely offline
+ and collects no telemetry.
+ .
+ The package also installs the pagewing command-line tool.

@@ -14,4 +14,8 @@ labels: bug
 
 ## Version / Umgebung
 
-<!-- Version oder Commit, Betriebssystem, ggf. Gerät -->
+<!-- Pagewing-Version oder Commit, Windows-Version bzw. Linux-Distribution (X11 oder Wayland) -->
+
+## PDF-Datei
+
+<!-- Wenn möglich eine Beispiel-PDF anhängen, mit der sich der Fehler nachstellen lässt. Keine vertraulichen oder privaten PDFs hochladen. -->

@@ -1,0 +1,56 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [5 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing Vektorformen) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<<  /Length 451 >>
+stream
+q
+1 0 0 rg 0 0 1 RG 4 w
+20 200 100 70 re B
+Q
+q
+0 0.6 0 rg 0.1 0.1 0.1 RG 2 w
+160 200 m 200 290 280 290 280 220 c 280 180 220 160 160 200 c h B
+Q
+q
+0 0 0 RG 3 w [10 5] 0 d
+20 170 m 280 170 l S
+[1 6] 0 d 1 J 4 w
+20 155 m 280 155 l S
+Q
+q
+125 75 m 125 102.6 102.6 125 75 125 c 47.4 125 25 102.6 25 75 c 25 47.4 47.4 25 75 25 c 102.6 25 125 47.4 125 75 c h W n
+0.9 0.5 0 rg 0 0 300 300 re f
+0 0 0 RG 6 w 0 0 m 300 300 l S
+Q
+q
+160 30 120 80 re W n
+/Sh1 sh
+Q
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Shading << /Sh1 << /ShadingType 2 /ColorSpace /DeviceRGB /Coords [160 0 280 0]
+/Function << /FunctionType 2 /Domain [0 1] /C0 [1 0.8 0] /C1 [0 0.3 1] /N 1 >> /Extend [true true] >> >> >> /Contents 4 0 R >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000209 00000 n 
+0000000712 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R /Info 3 0 R >>
+startxref
+1001
+%%EOF

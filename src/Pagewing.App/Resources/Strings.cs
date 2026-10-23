@@ -1,0 +1,279 @@
+using System.Globalization;
+using System.Resources;
+
+namespace Pagewing.App.Resources;
+
+/// <summary>
+/// UI texts in English and German. Both languages live in the main assembly (no satellite assemblies, which would
+/// need runtime assembly loading under Native AOT); <see cref="Culture"/> picks the language.
+/// </summary>
+public static class Strings
+{
+    // Logical names set in Pagewing.App.csproj. Each ResourceManager only ever sees the invariant culture.
+    private static readonly ResourceManager English = new("Pagewing.App.Resources.Strings.en", typeof(Strings).Assembly);
+    private static readonly ResourceManager German = new("Pagewing.App.Resources.Strings.de", typeof(Strings).Assembly);
+
+    private static volatile ResourceManager _current = Select(CultureInfo.CurrentUICulture);
+    private static CultureInfo _culture = CultureInfo.CurrentUICulture;
+
+    /// <summary>
+    /// The UI language. Starts as <see cref="CultureInfo.CurrentUICulture"/>; German for the two-letter language
+    /// <c>de</c>, English for everything else.
+    /// </summary>
+    public static CultureInfo Culture
+    {
+        get => _culture;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            _culture = value;
+            _current = Select(value);
+        }
+    }
+
+    public static string AppName => Get("AppName");
+    public static string OpenFile => Get("OpenFile");
+    public static string OpenFileTooltip => Get("OpenFileTooltip");
+    public static string PdfFileType => Get("PdfFileType");
+    public static string CloseTab => Get("CloseTab");
+    public static string CloseTabTooltip => Get("CloseTabTooltip");
+    public static string CloseTabMenu => Get("CloseTabMenu");
+    public static string MoveToNewWindow => Get("MoveToNewWindow");
+    public static string AllTabs => Get("AllTabs");
+    public static string AllTabsTooltip => Get("AllTabsTooltip");
+    public static string StartTitle => Get("StartTitle");
+    public static string StartOffline => Get("StartOffline");
+    public static string StartDropHint => Get("StartDropHint");
+    public static string ChooseFile => Get("ChooseFile");
+    public static string ChooseFileShortcut => Get("ChooseFileShortcut");
+    public static string PasswordTitle => Get("PasswordTitle");
+    public static string PasswordPrompt => Get("PasswordPrompt");
+    public static string PasswordIncorrect => Get("PasswordIncorrect");
+    public static string PasswordField => Get("PasswordField");
+    public static string PasswordCancel => Get("PasswordCancel");
+    public static string PasswordOpen => Get("PasswordOpen");
+    public static string ErrorTitle => Get("ErrorTitle");
+    public static string ErrorCause => Get("ErrorCause");
+    public static string ErrorCauseNoFile => Get("ErrorCauseNoFile");
+    public static string ErrorNotAPdf => Get("ErrorNotAPdf");
+    public static string ErrorFileNotFound => Get("ErrorFileNotFound");
+    public static string ErrorCannotRead => Get("ErrorCannotRead");
+    public static string ErrorUnsupportedEncryption => Get("ErrorUnsupportedEncryption");
+    public static string ErrorUnknown => Get("ErrorUnknown");
+    public static string ErrorDetails => Get("ErrorDetails");
+    public static string ErrorDetailsPath => Get("ErrorDetailsPath");
+    public static string ErrorDetailsKind => Get("ErrorDetailsKind");
+    public static string ErrorDetailsNoPath => Get("ErrorDetailsNoPath");
+    public static string ErrorDetailsMessage => Get("ErrorDetailsMessage");
+    public static string ErrorCloseTab => Get("ErrorCloseTab");
+    public static string ErrorOpenOther => Get("ErrorOpenOther");
+    public static string PageLabel => Get("PageLabel");
+    public static string PageOf => Get("PageOf");
+    public static string PreviousPage => Get("PreviousPage");
+    public static string NextPage => Get("NextPage");
+    public static string ZoomOut => Get("ZoomOut");
+    public static string ZoomIn => Get("ZoomIn");
+    public static string ZoomValue => Get("ZoomValue");
+    public static string ZoomMenuTooltip => Get("ZoomMenuTooltip");
+    public static string ZoomFitWidth => Get("ZoomFitWidth");
+    public static string ZoomFitWidthShortcut => Get("ZoomFitWidthShortcut");
+    public static string ZoomFitPage => Get("ZoomFitPage");
+    public static string ZoomFitPageShortcut => Get("ZoomFitPageShortcut");
+    public static string ZoomActualSize => Get("ZoomActualSize");
+    public static string ZoomActualSizeShortcut => Get("ZoomActualSizeShortcut");
+    public static string GoToPageTooltip => Get("GoToPageTooltip");
+    public static string LayoutSingle => Get("LayoutSingle");
+    public static string LayoutContinuous => Get("LayoutContinuous");
+    public static string LayoutTwoPages => Get("LayoutTwoPages");
+    public static string LayoutTwoPagesCover => Get("LayoutTwoPagesCover");
+    public static string LayoutTooltip => Get("LayoutTooltip");
+    public static string PagePlaceholderFailed => Get("PagePlaceholderFailed");
+    public static string PagesPanelTitle => Get("PagesPanelTitle");
+    public static string ContentsPanelTitle => Get("ContentsPanelTitle");
+    public static string ClosePanel => Get("ClosePanel");
+    public static string PagesTooltip => Get("PagesTooltip");
+    public static string ContentsTooltip => Get("ContentsTooltip");
+    public static string ThumbnailList => Get("ThumbnailList");
+    public static string ThumbnailName => Get("ThumbnailName");
+    public static string ThumbnailCurrentSuffix => Get("ThumbnailCurrentSuffix");
+    public static string OutlineList => Get("OutlineList");
+    public static string OutlineNoTitle => Get("OutlineNoTitle");
+    public static string OutlineNoTarget => Get("OutlineNoTarget");
+    public static string OutlineEntryName => Get("OutlineEntryName");
+    public static string OutlineEmpty => Get("OutlineEmpty");
+    public static string OutlineFailed => Get("OutlineFailed");
+    public static string SearchPanelTitle => Get("SearchPanelTitle");
+    public static string SearchTooltip => Get("SearchTooltip");
+    public static string SearchPlaceholder => Get("SearchPlaceholder");
+    public static string SearchMatchCase => Get("SearchMatchCase");
+    public static string SearchWholeWord => Get("SearchWholeWord");
+    public static string SearchRunning => Get("SearchRunning");
+    public static string SearchNone => Get("SearchNone");
+    public static string SearchSummaryOne => Get("SearchSummaryOne");
+    public static string SearchSummaryOnePage => Get("SearchSummaryOnePage");
+    public static string SearchSummaryPages => Get("SearchSummaryPages");
+    public static string SearchLimit => Get("SearchLimit");
+    public static string SearchNoText => Get("SearchNoText");
+    public static string SearchNext => Get("SearchNext");
+    public static string SearchPrevious => Get("SearchPrevious");
+    public static string SearchHitName => Get("SearchHitName");
+    public static string NoTextOnPage => Get("NoTextOnPage");
+    public static string DocumentInfo => Get("DocumentInfo");
+    public static string InfoFile => Get("InfoFile");
+    public static string InfoFolder => Get("InfoFolder");
+    public static string InfoPages => Get("InfoPages");
+    public static string InfoPageSize => Get("InfoPageSize");
+    public static string InfoPdfVersion => Get("InfoPdfVersion");
+    public static string InfoFileSize => Get("InfoFileSize");
+    public static string InfoTitle => Get("InfoTitle");
+    public static string InfoAuthor => Get("InfoAuthor");
+    public static string InfoCreated => Get("InfoCreated");
+    public static string LinkConfirmTitle => Get("LinkConfirmTitle");
+    public static string LinkConfirmText => Get("LinkConfirmText");
+    public static string LinkConfirmOpen => Get("LinkConfirmOpen");
+    public static string LinkConfirmCancel => Get("LinkConfirmCancel");
+    public static string LinkWarningUserInfo => Get("LinkWarningUserInfo");
+    public static string LinkWarningPunycode => Get("LinkWarningPunycode");
+    public static string CommandNextTab => Get("CommandNextTab");
+    public static string CommandPreviousTab => Get("CommandPreviousTab");
+    public static string CommandZoomIn => Get("CommandZoomIn");
+    public static string CommandZoomOut => Get("CommandZoomOut");
+    public static string CommandTogglePageTheme => Get("CommandTogglePageTheme");
+    public static string CommandGoToPage => Get("CommandGoToPage");
+    public static string CommandPreviousPage => Get("CommandPreviousPage");
+    public static string CommandNextPage => Get("CommandNextPage");
+    public static string CommandBack => Get("CommandBack");
+    public static string CommandForward => Get("CommandForward");
+    public static string CommandPagesPanel => Get("CommandPagesPanel");
+    public static string CommandContentsPanel => Get("CommandContentsPanel");
+    public static string CommandSearch => Get("CommandSearch");
+    public static string CommandSearchNext => Get("CommandSearchNext");
+    public static string CommandSearchPrevious => Get("CommandSearchPrevious");
+    public static string CommandPalette => Get("CommandPalette");
+    public static string CommandSettings => Get("CommandSettings");
+    public static string CommandAbout => Get("CommandAbout");
+    public static string AboutTitle => Get("AboutTitle");
+    public static string AboutClose => Get("AboutClose");
+    public static string AboutVersion => Get("AboutVersion");
+    public static string AboutOffline => Get("AboutOffline");
+    public static string AboutNotices => Get("AboutNotices");
+    public static string CommandClearRecent => Get("CommandClearRecent");
+    public static string CommandGroupFile => Get("CommandGroupFile");
+    public static string CommandGroupView => Get("CommandGroupView");
+    public static string CommandGroupNavigation => Get("CommandGroupNavigation");
+    public static string CommandGroupSearch => Get("CommandGroupSearch");
+    public static string CommandGroupWindow => Get("CommandGroupWindow");
+    public static string KeyCtrl => Get("KeyCtrl");
+    public static string KeyShift => Get("KeyShift");
+    public static string KeyPageUp => Get("KeyPageUp");
+    public static string KeyPageDown => Get("KeyPageDown");
+    public static string KeyLeft => Get("KeyLeft");
+    public static string KeyRight => Get("KeyRight");
+    public static string KeyComma => Get("KeyComma");
+    public static string HelpTitle => Get("HelpTitle");
+    public static string HelpFilter => Get("HelpFilter");
+    public static string HelpClose => Get("HelpClose");
+    public static string HelpEmpty => Get("HelpEmpty");
+    public static string CommandCloseOverlay => Get("CommandCloseOverlay");
+    public static string PaletteButton => Get("PaletteButton");
+    public static string PalettePlaceholder => Get("PalettePlaceholder");
+    public static string PaletteEmpty => Get("PaletteEmpty");
+    public static string PaletteGroupRecent => Get("PaletteGroupRecent");
+    public static string PaletteGroupPages => Get("PaletteGroupPages");
+    public static string PaletteGroupTabs => Get("PaletteGroupTabs");
+    public static string PaletteGroupContents => Get("PaletteGroupContents");
+    public static string PaletteGroupCommands => Get("PaletteGroupCommands");
+    public static string PaletteGoToPage => Get("PaletteGoToPage");
+    public static string PalettePageDetail => Get("PalettePageDetail");
+    public static string SettingsTooltip => Get("SettingsTooltip");
+    public static string SettingsClose => Get("SettingsClose");
+    public static string SettingsDone => Get("SettingsDone");
+    public static string SettingsGroupAppearance => Get("SettingsGroupAppearance");
+    public static string SettingsGroupView => Get("SettingsGroupView");
+    public static string SettingsGroupLanguage => Get("SettingsGroupLanguage");
+    public static string SettingsTheme => Get("SettingsTheme");
+    public static string SettingsThemeSystem => Get("SettingsThemeSystem");
+    public static string SettingsThemeLight => Get("SettingsThemeLight");
+    public static string SettingsThemeDark => Get("SettingsThemeDark");
+    public static string SettingsDensity => Get("SettingsDensity");
+    public static string SettingsDensityNormal => Get("SettingsDensityNormal");
+    public static string SettingsDensityCompact => Get("SettingsDensityCompact");
+    public static string SettingsDarkPages => Get("SettingsDarkPages");
+    public static string SettingsReduceMotion => Get("SettingsReduceMotion");
+    public static string SettingsDefaultLayout => Get("SettingsDefaultLayout");
+    public static string SettingsDefaultZoom => Get("SettingsDefaultZoom");
+    public static string SettingsDefaultsHint => Get("SettingsDefaultsHint");
+    public static string SettingsLanguage => Get("SettingsLanguage");
+    public static string SettingsLanguageSystem => Get("SettingsLanguageSystem");
+    public static string SettingsRestartHint => Get("SettingsRestartHint");
+    public static string SettingsSaveFailed => Get("SettingsSaveFailed");
+    public static string SettingsGroupHistory => Get("SettingsGroupHistory");
+    public static string SettingsHistory => Get("SettingsHistory");
+    public static string SettingsClearHistory => Get("SettingsClearHistory");
+    public static string SettingsHistoryCleared => Get("SettingsHistoryCleared");
+    public static string StartRecent => Get("StartRecent");
+    public static string StartRecentHelp => Get("StartRecentHelp");
+    public static string StartRecentRemove => Get("StartRecentRemove");
+    public static string StartRecentRemoveName => Get("StartRecentRemoveName");
+    public static string PrintErrorStart => Get("PrintErrorStart");
+    public static string PrintErrorPage => Get("PrintErrorPage");
+    public static string PrintErrorDialog => Get("PrintErrorDialog");
+    public static string PrintForbidden => Get("PrintForbidden");
+    public static string PrintNoService => Get("PrintNoService");
+    public static string PrintNoPrinter => Get("PrintNoPrinter");
+    public static string CommandPrint => Get("CommandPrint");
+    public static string DefaultAppTitle => Get("DefaultAppTitle");
+    public static string DefaultAppText => Get("DefaultAppText");
+    public static string DefaultAppSet => Get("DefaultAppSet");
+    public static string DefaultAppLater => Get("DefaultAppLater");
+    public static string DefaultAppNever => Get("DefaultAppNever");
+    public static string DefaultAppChooseHint => Get("DefaultAppChooseHint");
+    public static string DefaultAppFailed => Get("DefaultAppFailed");
+    public static string DefaultAppNotAvailable => Get("DefaultAppNotAvailable");
+    public static string CommandSetDefaultApp => Get("CommandSetDefaultApp");
+    public static string PrintTitle => Get("PrintTitle");
+    public static string PrintPrinter => Get("PrintPrinter");
+    public static string PrintSearching => Get("PrintSearching");
+    public static string PrintPages => Get("PrintPages");
+    public static string PrintPagesAll => Get("PrintPagesAll");
+    public static string PrintPagesCurrent => Get("PrintPagesCurrent");
+    public static string PrintPagesRange => Get("PrintPagesRange");
+    public static string PrintRangeField => Get("PrintRangeField");
+    public static string PrintRangeInvalid => Get("PrintRangeInvalid");
+    public static string PrintRangeBeyond => Get("PrintRangeBeyond");
+    public static string PrintCopies => Get("PrintCopies");
+    public static string PrintCopiesInvalid => Get("PrintCopiesInvalid");
+    public static string PrintCollate => Get("PrintCollate");
+    public static string PrintScalingLabel => Get("PrintScalingLabel");
+    public static string PrintScalingFit => Get("PrintScalingFit");
+    public static string PrintScalingActual => Get("PrintScalingActual");
+    public static string PrintScalingActualHint => Get("PrintScalingActualHint");
+    public static string PrintDuplex => Get("PrintDuplex");
+    public static string PrintPrinterSetting => Get("PrintPrinterSetting");
+    public static string PrintDuplexOff => Get("PrintDuplexOff");
+    public static string PrintDuplexLong => Get("PrintDuplexLong");
+    public static string PrintDuplexShort => Get("PrintDuplexShort");
+    public static string PrintOrientation => Get("PrintOrientation");
+    public static string PrintPortrait => Get("PrintPortrait");
+    public static string PrintLandscape => Get("PrintLandscape");
+    public static string PrintAutoRotateHint => Get("PrintAutoRotateHint");
+    public static string PrintStart => Get("PrintStart");
+    public static string PrintCancel => Get("PrintCancel");
+    public static string PrintSending => Get("PrintSending");
+    public static string PrintRunning => Get("PrintRunning");
+    public static string PrintDone => Get("PrintDone");
+    public static string PrintFailedPage => Get("PrintFailedPage");
+    public static string PrintFailedPages => Get("PrintFailedPages");
+    public static string PrintBusy => Get("PrintBusy");
+    public static string PrintCancelled => Get("PrintCancelled");
+    public static string PrintJobCancel => Get("PrintJobCancel");
+    public static string PrintJobClose => Get("PrintJobClose");
+    public static string SettingsGroupPrint => Get("SettingsGroupPrint");
+    public static string SettingsPrintScaling => Get("SettingsPrintScaling");
+
+    private static ResourceManager Select(CultureInfo culture) =>
+        culture.TwoLetterISOLanguageName == "de" ? German : English;
+
+    private static string Get(string name) =>
+        _current.GetString(name, CultureInfo.InvariantCulture) ?? name;
+}
