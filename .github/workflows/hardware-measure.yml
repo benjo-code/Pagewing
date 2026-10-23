@@ -23,6 +23,11 @@ on:
 permissions:
   contents: read
 
+# Avalonia.BuildServices would send anonymous usage data while compiling (Docs/DECISIONS.md, entry
+# "Avalonia-Build-Telemetrie abschalten"); the app itself never connects anywhere.
+env:
+  AVALONIA_TELEMETRY_OPTOUT: '1'
+
 jobs:
   measure:
     name: measure-windows-gpu

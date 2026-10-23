@@ -5,7 +5,8 @@ name: Release
 # attaches files to it. Each job uploads its own files directly (no artifact up- or download between the jobs).
 #
 # Dry run (build and all smoke tests, no upload):
-#   gh workflow run release.yml -f tag=v0.1.0 -f upload=false
+#   gh workflow run release.yml --ref release/v0.1.0 -f tag=v0.1.0 -f ref=release/v0.1.0 -f upload=false
+# (ref builds that branch, because the tag does not exist before the release; with ref set nothing is uploaded).
 # The repository is private; fork PRs must stay approval-gated (CLAUDE.md, section CI), this workflow never runs for forks.
 
 on:
@@ -16,6 +17,11 @@ on:
       tag:
         description: 'Tag to build, e.g. v0.1.0 (SemVer, with the leading v)'
         required: true
+        type: string
+      ref:
+        description: 'Branch or commit to build instead of the tag (dry run before the tag exists; no upload then)'
+        required: false
+        default: ''
         type: string
       upload:
         description: 'Upload the files to the release of this tag (the release must exist)'
@@ -29,6 +35,11 @@ permissions:
 concurrency:
   group: release-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
+
+# Avalonia.BuildServices would send anonymous usage data while compiling (Docs/DECISIONS.md, entry
+# "Avalonia-Build-Telemetrie abschalten"); the app itself never connects anywhere.
+env:
+  AVALONIA_TELEMETRY_OPTOUT: '1'
 
 jobs:
   windows:
@@ -49,9 +60,15 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
           Write-Host "Tag $env:TAG, Version $version, Hochladen: $env:UPLOAD"
 
+      # A branch build is a dry run: what is uploaded must be built from the tag.
+      - name: Refuse to upload a branch build
+        if: env.UPLOAD == 'true' && inputs.ref != ''
+        run: |
+          throw 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.'
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
           persist-credentials: false
 
       # See ci.yml: without git on PATH actions/checkout extracts a zip whose file times can be older than the
@@ -162,9 +179,16 @@ jobs:
           echo "DEBVERSION=${version/-/\~}" >> "$GITHUB_ENV"
           echo "Tag $TAG, Version $version, Hochladen: $UPLOAD"
 
+      # A branch build is a dry run: what is uploaded must be built from the tag.
+      - name: Refuse to upload a branch build
+        if: env.UPLOAD == 'true' && inputs.ref != ''
+        run: |
+          echo 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.' >&2
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
@@ -174,81 +198,40 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Check the Native AOT prerequisites (Linux)
+      # The Linux files are built in ubuntu:22.04 so that the binaries need at most glibc 2.35 (the runner has a newer
+      # glibc; Docs/DECISIONS.md, entry "Mindest-glibc 2.35 und Bauweise der Linux-Pakete"). Only the host uploads:
+      # the container never sees GH_TOKEN.
+      - name: Check the container prerequisites (Linux)
         run: |
-          command -v clang >/dev/null || { echo 'clang not found: install the clang package' >&2; exit 1; }
-          clang --version
-          test -f /usr/include/zlib.h || { echo 'zlib.h not found: install zlib1g-dev' >&2; exit 1; }
-          command -v xvfb-run >/dev/null || { echo 'xvfb-run not found (AppImage smoke test): install the xvfb package' >&2; exit 1; }
-          ldconfig -p | grep -q libfontconfig.so.1 || { echo 'libfontconfig.so.1 not found (Skia in the app): install the libfontconfig1 package' >&2; exit 1; }
-
-      - name: Check the packaging prerequisites (Linux)
-        run: |
-          cat /etc/os-release
-          ldd --version | head -1
-          command -v dpkg-deb >/dev/null || { echo 'dpkg-deb not found: install the dpkg package' >&2; exit 1; }
-          command -v mksquashfs >/dev/null || { echo 'mksquashfs not found: install squashfs-tools' >&2; exit 1; }
-          command -v objdump >/dev/null || { echo 'objdump not found: install binutils' >&2; exit 1; }
-          # The .deb smoke test skips these checks silently when the tools are missing, so say it loudly here.
-          command -v lintian >/dev/null || echo '::warning::lintian not found: the .deb smoke test will NOT run lintian (sudo apt-get install -y lintian)'
-          command -v desktop-file-validate >/dev/null || echo '::warning::desktop-file-validate not found: the .deb smoke test will NOT validate the .desktop file (sudo apt-get install -y desktop-file-utils)'
+          command -v docker >/dev/null || { echo 'docker not found on PATH: install it for the runner user (packaging/README.md)' >&2; exit 1; }
+          docker --version
+          docker info --format '{{.ServerVersion}}' >/dev/null || { echo 'docker is not usable by the runner user (add it to the docker group and restart the runner)' >&2; exit 1; }
 
       - name: Check the release prerequisites (gh)
         run: |
           command -v gh >/dev/null || { echo 'gh (GitHub CLI) not found on PATH: install it (https://github.com/cli/cli/blob/trunk/docs/install_linux.md, e.g. sudo apt-get install -y gh) and restart the runner so that it sees the new PATH' >&2; exit 1; }
           gh --version
 
+      # On the host, not in the container: the container's squashfs-tools (jammy: 4.5) are older than the 4.6 that the
+      # reproducibility checks of the self-test were written against.
       - name: Self-test of the packaging tool
         run: dotnet run tools/package.cs -- selftest
 
-      - name: Self-test of the licence tool
-        run: dotnet run tools/licenses.cs -- selftest
-
-      - name: Publish the CLI (Native AOT)
-        run: dotnet publish src/Pagewing.Cli -c Release -r linux-x64 -p:Version="$VERSION" -o out/cli
-
-      - name: Publish the app (Native AOT)
-        run: dotnet publish src/Pagewing.App -c Release -r linux-x64 -p:Version="$VERSION" -o out/app
-
-      - name: Smoke test of the CLI binary
-        run: dotnet run tools/smoke-cli.cs -- out/cli/pagewing
-
-      - name: Check the licence inventory
-        run: dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli
-
-      # Blocking in a release: a binary that needs a newer glibc than 2.35 (Ubuntu 22.04) must not be shipped.
-      - name: Check the binaries against glibc 2.35
+      - name: Build, package and smoke-test in ubuntu:22.04
         run: |
           set -euo pipefail
-          files=$(find out/app out/cli -maxdepth 1 -type f \( -name Pagewing -o -name pagewing -o -name '*.so' -o -name '*.so.*' \) | sort)
-          echo "$files"
-          # shellcheck disable=SC2086
-          dotnet run tools/package.cs -- check-binary $files --max-glibc 2.35
+          docker run --rm --name pagewing-release-build \
+            -v "$PWD:/work" -v "$DOTNET_INSTALL_DIR:/dotnet:ro" -w /work \
+            -e VERSION -e DEBVERSION -e "HOST_UID=$(id -u)" -e "HOST_GID=$(id -g)" \
+            ubuntu:22.04 bash packaging/linux/container-build.sh
 
-      - name: Package layout
-        run: dotnet run tools/package.cs -- layout --rid linux-x64 --app out/app --cli out/cli --out out/layout
-
-      - name: Debian package
-        run: dotnet run tools/package.cs -- deb --layout out/layout --version "$VERSION" --out "out/release/pagewing_${DEBVERSION}_amd64.deb"
-
-      - name: Smoke test of the Debian package
-        run: dotnet run tools/package.cs -- deb-smoke "out/release/pagewing_${DEBVERSION}_amd64.deb"
-
-      - name: Fetch the AppImage runtime
-        run: dotnet run tools/package.cs -- runtime-fetch
-
-      - name: AppImage
-        run: dotnet run tools/package.cs -- appimage --layout out/layout --version "$VERSION" --out "out/release/Pagewing-$VERSION-x86_64.AppImage"
-
-      - name: Smoke test of the AppImage
-        run: xvfb-run -a dotnet run tools/package.cs -- appimage-smoke "out/release/Pagewing-$VERSION-x86_64.AppImage"
-
-      - name: Checksums
+      # The container builds as root. If the run is cancelled or times out, the trap in container-build.sh does not
+      # run and the checkout would stay root-owned, which breaks the next checkout of any workflow on this runner.
+      - name: Give the workspace back to the runner user (Linux)
+        if: always()
         run: |
-          dotnet run tools/package.cs -- sums \
-            "out/release/pagewing_${DEBVERSION}_amd64.deb" \
-            "out/release/Pagewing-$VERSION-x86_64.AppImage" \
-            --out out/release/SHA256SUMS-linux.txt
+          docker rm -f pagewing-release-build >/dev/null 2>&1 || true
+          docker run --rm -v "$PWD:/work" ubuntu:22.04 chown -R "$(id -u):$(id -g)" /work
 
       # Only for a published release or workflow_dispatch with upload=true; otherwise build and smoke tests only.
       - name: Upload to the release
@@ -261,4 +244,6 @@ jobs:
           gh release upload "$TAG" \
             "out/release/pagewing_${DEBVERSION}_amd64.deb" \
             "out/release/Pagewing-$VERSION-x86_64.AppImage" \
+            out/release/fuse-3.15.0.tar.xz \
+            out/release/type2-runtime-20251108.tar.gz \
             out/release/SHA256SUMS-linux.txt --clobber

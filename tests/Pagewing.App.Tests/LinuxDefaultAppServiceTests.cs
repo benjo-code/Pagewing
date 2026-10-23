@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using Pagewing.App.Platform.Linux;
 using Pagewing.Core.Distribution;
+using Pagewing.TestSupport;
 using Xunit;
 
 namespace Pagewing.App.Tests;
@@ -22,6 +23,15 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
         _env["PATH"] = _bin;
         _env["HOME"] = Path.Combine(_root, "home");
         _env["XDG_DATA_HOME"] = Path.Combine(_root, "data");
+        _env["XDG_DATA_DIRS"] = Path.Combine(_root, "dirs");
+    }
+
+    /// <summary>Puts a desktop file where an installation (.deb, user copy) would: in a data folder's applications folder.</summary>
+    private void InstallDesktopFile(string dataFolder)
+    {
+        var applications = Path.Combine(_root, dataFolder, "applications");
+        Directory.CreateDirectory(applications);
+        File.WriteAllText(Path.Combine(applications, "pagewing.desktop"), "[Desktop Entry]\n");
     }
 
     public void Dispose()
@@ -90,7 +100,7 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
         Stub("xdg-mime", LoggingStub("xdg-mime"));
         Stub("update-desktop-database", LoggingStub("update-desktop-database"));
-        Directory.CreateDirectory(Path.Combine(_root, "data", "applications"));
+        InstallDesktopFile("data");
 
         var result = await Service().MakeDefaultAsync(TestContext.Current.CancellationToken);
 
@@ -99,7 +109,39 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
         Assert.Equal("default|pagewing.desktop|application/pdf|", calls[0]);
         Assert.Equal(2, calls.Length);
         Assert.EndsWith("applications|", calls[1], StringComparison.Ordinal);
-        Assert.False(File.Exists(Path.Combine(_root, "data", "applications", "pagewing.desktop")), "no AppImage, no desktop file");
+        Assert.Equal("[Desktop Entry]\n", File.ReadAllText(Path.Combine(_root, "data", "applications", "pagewing.desktop")));
+    }
+
+    [Fact]
+    public async Task MakeDefaultIsNotAvailableWhenNoDesktopFileExists()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime"));
+
+        var result = await Service().MakeDefaultAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(DefaultAppResult.NotAvailable, result);
+        Assert.False(File.Exists(_log), "xdg-mime must not be called when there is no desktop file to point at");
+    }
+
+    [Theory]
+    [InlineData("data")]
+    [InlineData("dirs")]
+    [InlineData("dirs/second")]
+    public async Task MakeDefaultCallsXdgMimeWhenTheDesktopFileIsInADataFolder(string dataFolder)
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime"));
+        InstallDesktopFile(dataFolder);
+        if (dataFolder == "dirs/second")
+        {
+            _env["XDG_DATA_DIRS"] = Path.Combine(_root, "dirs", "first") + ":" + Path.Combine(_root, "dirs", "second");
+        }
+
+        var result = await Service().MakeDefaultAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(DefaultAppResult.Done, result);
+        Assert.Equal("default|pagewing.desktop|application/pdf|", File.ReadAllLines(_log)[0]);
     }
 
     [Fact]
@@ -126,6 +168,34 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AppImageDefaultInstallsEveryIconSizeOfTheRepository()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime"));
+        var repoIcons = Path.Combine(TestData.Root, "Docs", "design", "icons", "linux", "hicolor");
+        var sizes = Directory.GetDirectories(repoIcons).Select(Path.GetFileName).OfType<string>().Order().ToList();
+        Assert.Contains("22x22", sizes);
+        Assert.Contains("96x96", sizes);
+        var appDir = Path.Combine(_root, "appdir");
+        foreach (var size in sizes)
+        {
+            var target = Path.Combine(appDir, "usr", "share", "icons", "hicolor", size, "apps");
+            Directory.CreateDirectory(target);
+            File.Copy(Path.Combine(repoIcons, size, "apps", "pagewing.png"), Path.Combine(target, "pagewing.png"));
+        }
+
+        _env["APPIMAGE"] = Path.Combine(_root, "Pagewing.AppImage");
+        _env["APPDIR"] = appDir;
+
+        var result = await Service().MakeDefaultAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(DefaultAppResult.Done, result);
+        var installed = Directory.GetDirectories(Path.Combine(_root, "data", "icons", "hicolor"))
+            .Select(Path.GetFileName).OfType<string>().Order().ToList();
+        Assert.Equal(sizes, installed);
+    }
+
+    [Fact]
     public async Task DataFolderFallsBackToHomeLocalShare()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
@@ -143,6 +213,7 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
         Stub("xdg-mime", "sleep 30");
+        InstallDesktopFile("data");
         var service = new LinuxDefaultAppService(name => _env.GetValueOrDefault(name), TimeSpan.FromMilliseconds(300));
 
         Assert.Equal(DefaultAppResult.Failed, await service.MakeDefaultAsync(TestContext.Current.CancellationToken));
@@ -154,6 +225,7 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
         Stub("xdg-mime", "exit 3");
+        InstallDesktopFile("data");
 
         Assert.Equal(DefaultAppResult.Failed, await Service().MakeDefaultAsync(TestContext.Current.CancellationToken));
     }
@@ -164,6 +236,7 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
         var pidFile = Path.Combine(_root, "pid.txt");
         Stub("xdg-mime", $"echo $$ > '{pidFile}'; exec sleep 30");
+        InstallDesktopFile("data");
         using var cts = new CancellationTokenSource();
         var task = Service().MakeDefaultAsync(cts.Token);
         var deadline = DateTime.UtcNow.AddSeconds(5);

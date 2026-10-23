@@ -723,6 +723,9 @@
   <data name="DefaultAppFailed" xml:space="preserve">
     <value>Pagewing konnte nicht als Standard festgelegt werden.</value>
   </data>
+  <data name="DefaultAppNotAvailable" xml:space="preserve">
+    <value>Pagewing lässt sich von hier nicht als Standard festlegen. Nötig sind das installierte Paket oder das AppImage und xdg-utils.</value>
+  </data>
   <data name="CommandSetDefaultApp" xml:space="preserve">
     <value>Pagewing als Standard für PDFs festlegen</value>
   </data>

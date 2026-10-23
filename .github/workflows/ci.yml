@@ -14,6 +14,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Avalonia.BuildServices would send anonymous usage data while compiling (Docs/DECISIONS.md, entry
+# "Avalonia-Build-Telemetrie abschalten"); the app itself never connects anywhere.
+env:
+  AVALONIA_TELEMETRY_OPTOUT: '1'
+
 jobs:
   build:
     name: build-${{ matrix.name }}
@@ -137,12 +142,16 @@ jobs:
       - name: Check the licence inventory
         run: dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli
 
-      # Not blocking yet: the runner's glibc may be newer than 2.35 (decision pending, Milestone 8 task 1).
+      # Information only: this runner builds with a newer glibc than 2.35 (Ubuntu 26.04, glibc 2.43, so the app needs
+      # GLIBC_2.38). The release files are built in ubuntu:22.04 (packaging/linux/container-build.sh), where the same
+      # check is blocking; Docs/DECISIONS.md, entry "Mindest-glibc 2.35 und Bauweise der Linux-Pakete".
       - name: Check the binaries against glibc 2.35 (Linux)
         if: runner.os == 'Linux'
         continue-on-error: true
         run: |
           files=$(find out/app out/cli -maxdepth 1 -type f \( -name Pagewing -o -name pagewing -o -name '*.so' -o -name '*.so.*' \) | sort)
+          # Which symbols need more than glibc 2.35 (for the decision entry); never fails the step.
+          for f in $files; do objdump -T "$f" | grep -E '\(GLIBC_2\.(3[6-9]|[4-9][0-9])\)' | sed "s|^|$f: |" || true; done
           # shellcheck disable=SC2086
           dotnet run tools/package.cs -- check-binary $files --max-glibc 2.35
 

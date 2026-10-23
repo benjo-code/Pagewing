@@ -130,6 +130,10 @@ public sealed class DefaultAppViewModel : ViewModelBase, IDisposable
                 IsFailed = false;
                 Message = Strings.DefaultAppChooseHint;
                 break;
+            case DefaultAppResult.NotAvailable:
+                IsFailed = true;
+                Message = Strings.DefaultAppNotAvailable;
+                break;
             default:
                 IsFailed = true;
                 Message = Strings.DefaultAppFailed;

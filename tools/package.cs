@@ -1,7 +1,7 @@
 #:property PublishAot=false
 
 // Packaging tool of Pagewing (grows with Milestone 8; further subcommands are added to Commands).
-//   dotnet run tools/package.cs -- check-binary <file>... [--max-glibc 2.35]
+//   dotnet run tools/package.cs -- check-binary <file>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]
 //   dotnet run tools/package.cs -- layout --rid <win-x64|linux-x64> --app <dir> --cli <dir> --out <dir> [--repo <root>]
 //   dotnet run tools/package.cs -- zip --layout <dir> --version <x.y.z> --out <file>
 //   dotnet run tools/package.cs -- sums <file>... --out <SHA256SUMS.txt>
@@ -29,7 +29,7 @@ static class Cli
 {
     private const string Usage =
         "Aufruf: dotnet run tools/package.cs -- <Befehl>\n" +
-        "  check-binary <Datei>... [--max-glibc 2.35]   prueft GLIBC-Versionen und NEEDED-Bibliotheken (ELF)\n" +
+        "  check-binary <Datei>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]   prueft GLIBC- und GLIBCXX-Versionen und NEEDED-Bibliotheken (ELF)\n" +
         "  layout --rid <rid> --app <Ordner> --cli <Ordner> --out <Ordner>   legt das Paketlayout an (App, cli/, LICENSE, THIRD-PARTY-NOTICES.txt)\n" +
         "  zip --layout <Ordner> --version <x.y.z> --out <Datei>             reproduzierbare ZIP-Datei, oberster Ordner Pagewing-<Version>/\n" +
         "  sums <Datei>... --out <Datei>                                     SHA-256-Summen (<sha256>  <Dateiname>)\n" +
@@ -39,6 +39,7 @@ static class Cli
         "  deb --layout <Ordner> --version <x.y.z> --out <Datei>             baut pagewing_<Version>_amd64.deb (Linux, dpkg-deb)\n" +
         "  deb-smoke <Datei.deb>                                             entpackt, prueft Starter, Symlink, ruft die CLI auf, lintian/desktop-file-validate wenn vorhanden (Linux)\n" +
         "  runtime-fetch [--out <Datei>]                                     laedt die type2-Runtime (feste Version, SHA-256 geprueft) nach ~/.cache/PagewingBuildTools\n" +
+        "  runtime-sources --out <Ordner> [--from <Ordner>]                  laedt die Quellen der AppImage-Runtime (libfuse, type2-runtime; SHA-256 geprueft) fuer das Release\n" +
         "  appimage --layout <Ordner> --version <x.y.z> --out <Datei> [--runtime <Datei>]   baut Pagewing-<Version>-x86_64.AppImage (Linux, mksquashfs)\n" +
         "  appimage-smoke <Datei.AppImage>                                   prueft Runtime, entpackt, ruft die CLI auf, startet die App ohne FUSE (Linux)\n" +
         "  selftest                                     prueft die Werkzeugteile";
@@ -56,6 +57,7 @@ static class Cli
         ["deb"] = Deb.Run,
         ["deb-smoke"] = DebSmoke.Run,
         ["runtime-fetch"] = RuntimeFetch.Run,
+        ["runtime-sources"] = RuntimeSourcesCommand.Run,
         ["appimage"] = AppImage.Run,
         ["appimage-smoke"] = AppImageSmoke.Run,
         ["selftest"] = SelfTest.Run,
@@ -84,6 +86,9 @@ static partial class ElfRules
 {
     public const string DefaultMaxGlibc = "2.35";
 
+    // libstdc++ of Ubuntu 22.04 and Debian 12 (GCC 12) exports GLIBCXX up to 3.4.30.
+    public const string DefaultMaxGlibcxx = "3.4.30";
+
     public static readonly string[] AllowedNeeded =
     [
         "libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "libz.so.1",
@@ -97,6 +102,10 @@ static partial class ElfRules
     // objdump -T: "0000000000000000      DF *UND*	0000000000000000 (GLIBC_2.2.5) printf"
     [GeneratedRegex(@"\*UND\*.*\(GLIBC_(?<v>\d+(?:\.\d+)*)\)")]
     private static partial Regex UndefinedSymbolVersion();
+
+    // objdump -T: "0000000000000000      DF *UND*	0000000000000000 (GLIBCXX_3.4.30) _ZSt..."
+    [GeneratedRegex(@"\*UND\*.*\(GLIBCXX_(?<v>\d+(?:\.\d+)*)\)")]
+    private static partial Regex UndefinedCxxSymbolVersion();
 
     // objdump -p: "  NEEDED               libc.so.6"
     [GeneratedRegex(@"^\s*NEEDED\s+(?<n>\S+)\s*$")]
@@ -132,13 +141,19 @@ static partial class ElfRules
         return 0;
     }
 
-    public static string? HighestGlibc(string dynamicSymbols, out int[]? version)
+    public static string? HighestGlibc(string dynamicSymbols, out int[]? version) =>
+        Highest(UndefinedSymbolVersion(), dynamicSymbols, out version);
+
+    public static string? HighestGlibcxx(string dynamicSymbols, out int[]? version) =>
+        Highest(UndefinedCxxSymbolVersion(), dynamicSymbols, out version);
+
+    private static string? Highest(Regex symbolVersion, string dynamicSymbols, out int[]? version)
     {
         string? text = null;
         version = null;
         foreach (var line in dynamicSymbols.Split('\n'))
         {
-            var m = UndefinedSymbolVersion().Match(line);
+            var m = symbolVersion.Match(line);
             if (m.Success && TryParseVersion(m.Groups["v"].Value, out var v) && (version is null || Compare(v, version) > 0))
             {
                 version = v;
@@ -165,13 +180,20 @@ static partial class ElfRules
     }
 
     // Returns the violations for one file, given the objdump -T and objdump -p outputs.
-    public static List<string> Violations(string dynamicSymbols, string programHeaders, int[] max, string maxText)
+    public static List<string> Violations(string dynamicSymbols, string programHeaders, int[] max, string maxText,
+        string maxGlibcxxText = DefaultMaxGlibcxx)
     {
         var problems = new List<string>();
         var highest = HighestGlibc(dynamicSymbols, out var version);
         if (highest is not null && Compare(version!, max) > 0)
         {
             problems.Add($"verlangt GLIBC_{highest} (erlaubt hoechstens GLIBC_{maxText})");
+        }
+
+        var highestCxx = HighestGlibcxx(dynamicSymbols, out var cxxVersion);
+        if (highestCxx is not null && TryParseVersion(maxGlibcxxText, out var maxCxx) && Compare(cxxVersion!, maxCxx) > 0)
+        {
+            problems.Add($"verlangt GLIBCXX_{highestCxx} (erlaubt hoechstens GLIBCXX_{maxGlibcxxText})");
         }
 
         foreach (var name in Needed(programHeaders))
@@ -192,11 +214,16 @@ static class CheckBinary
     {
         var files = new List<string>();
         var maxText = ElfRules.DefaultMaxGlibc;
+        var maxCxxText = ElfRules.DefaultMaxGlibcxx;
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] == "--max-glibc" && i + 1 < args.Length)
             {
                 maxText = args[++i];
+            }
+            else if (args[i] == "--max-glibcxx" && i + 1 < args.Length)
+            {
+                maxCxxText = args[++i];
             }
             else if (args[i].StartsWith("--", StringComparison.Ordinal))
             {
@@ -209,9 +236,9 @@ static class CheckBinary
             }
         }
 
-        if (files.Count == 0 || !ElfRules.TryParseVersion(maxText, out var max))
+        if (files.Count == 0 || !ElfRules.TryParseVersion(maxText, out var max) || !ElfRules.TryParseVersion(maxCxxText, out _))
         {
-            Console.Error.WriteLine("Aufruf: check-binary <Datei>... [--max-glibc 2.35]");
+            Console.Error.WriteLine("Aufruf: check-binary <Datei>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]");
             return 2;
         }
 
@@ -233,7 +260,7 @@ static class CheckBinary
                 continue;
             }
 
-            var problems = ElfRules.Violations(symbols, headers, max, maxText);
+            var problems = ElfRules.Violations(symbols, headers, max, maxText, maxCxxText);
             if (problems.Count == 0)
             {
                 Console.WriteLine($"{file}: ok");
@@ -1857,6 +1884,112 @@ static class AppImageRuntime
     }
 }
 
+// One pinned source archive that belongs to the AppImage runtime.
+record RuntimeSource(string FileName, string Url, long Size, string Sha256);
+
+// libfuse is inside the statically linked AppImage runtime under LGPL-2.1, which obliges us to offer its source with the
+// binary. The two archives are attached to every release (Docs/DECISIONS.md, entry "Quellangebot für libfuse ...").
+static class RuntimeSources
+{
+    // Both pins were computed from the downloads on 2026-10-23. fuse-3.15.0.tar.xz equals the SHA-256 that the runtime's own
+    // scripts/common/install-dependencies.sh checks. The type2-runtime archive is GitHub's generated tag archive; if
+    // GitHub ever changes its bytes, runtime-sources fails loudly and the pin must be renewed after comparing the contents.
+    public static readonly RuntimeSource[] All =
+    [
+        new("fuse-3.15.0.tar.xz",
+            "https://github.com/libfuse/libfuse/releases/download/fuse-3.15.0/fuse-3.15.0.tar.xz",
+            4589124,
+            "70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0"),
+        new($"type2-runtime-{AppImageRuntime.Version}.tar.gz",
+            $"https://github.com/AppImage/type2-runtime/archive/refs/tags/{AppImageRuntime.Version}.tar.gz",
+            31045,
+            "4c4f6df4647c9f01f871d7edd3716d8aeeffda9d22ffbebe3fccd95a6ab52c95"),
+    ];
+
+    // Puts every verified source into outDir (from fromDir instead of the network when given). 0 ok, 1 refused or failed.
+    public static int Fetch(IReadOnlyList<RuntimeSource> sources, string outDir, string? fromDir)
+    {
+        foreach (var source in sources)
+        {
+            if (Pinned.PinProblem(source.Sha256, $"RuntimeSources ({source.FileName})") is { } pinProblem)
+            {
+                Console.Error.WriteLine($"runtime-sources: {pinProblem}");
+                return 1;
+            }
+        }
+
+        Directory.CreateDirectory(outDir);
+        foreach (var source in sources)
+        {
+            var name = $"RuntimeSources ({source.FileName})";
+            var target = Path.Combine(outDir, source.FileName);
+            if (File.Exists(target))
+            {
+                if (Pinned.VerifyFile(target, source.Size, source.Sha256, name) is { } existing)
+                {
+                    Console.Error.WriteLine($"runtime-sources: vorhandene Datei {target} passt nicht ({existing}); nichts geladen, Datei bitte pruefen und loeschen");
+                    return 1;
+                }
+
+                Console.WriteLine($"runtime-sources: schon vorhanden und geprueft: {target}");
+                continue;
+            }
+
+            var download = target + ".download-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                if (fromDir is null)
+                {
+                    Console.WriteLine($"runtime-sources: lade {source.Url}");
+                    Pinned.Fetch(source.Url, download);
+                }
+                else
+                {
+                    File.Copy(Path.Combine(fromDir, source.FileName), download);
+                }
+
+                if (Pinned.VerifyFile(download, source.Size, source.Sha256, name) is { } problem)
+                {
+                    Console.Error.WriteLine($"runtime-sources: {source.FileName} abgelehnt: {problem}");
+                    return 1;
+                }
+
+                File.Move(download, target);
+                Console.WriteLine($"runtime-sources: {source.FileName} (SHA-256 geprueft) in {target}");
+            }
+            catch (Exception e) when (e is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"runtime-sources: {source.FileName}: {e.Message}");
+                return 1;
+            }
+            finally
+            {
+                if (File.Exists(download))
+                {
+                    File.Delete(download);
+                }
+            }
+        }
+
+        return 0;
+    }
+}
+
+static class RuntimeSourcesCommand
+{
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--out", "--from");
+        if (parsed is not { } p || p.Positional.Count != 0 || !p.Named.TryGetValue("--out", out var outDir))
+        {
+            Console.Error.WriteLine("Aufruf: runtime-sources --out <Ordner> [--from <Ordner>]");
+            return 2;
+        }
+
+        return RuntimeSources.Fetch(RuntimeSources.All, Path.GetFullPath(outDir), p.Named.GetValueOrDefault("--from") is { } from ? Path.GetFullPath(from) : null);
+    }
+}
+
 static class RuntimeFetch
 {
     public static int Run(string[] args)
@@ -2248,6 +2381,28 @@ static partial class AppImageSmoke
     }
 }
 
+// The tag check of .github/workflows/release.yml: the same rule once in PowerShell (-cnotmatch) and once in bash (=~).
+static class TagRules
+{
+    // PowerShell: if ($env:TAG -cnotmatch '<pattern>') { throw ... }
+    public static string? PowerShellPattern(string workflow)
+    {
+        var m = Regex.Match(workflow, @"-cnotmatch '(?<p>[^']+)'");
+        return m.Success ? m.Groups["p"].Value : null;
+    }
+
+    // bash: [[ "$TAG" =~ <pattern> ]]
+    public static string? BashPattern(string workflow)
+    {
+        var m = Regex.Match(workflow, @"\[\[ ""\$TAG"" =~ (?<p>\S+) \]\]");
+        return m.Success ? m.Groups["p"].Value : null;
+    }
+
+    // Case-sensitive, culture-independent; the pattern is anchored itself.
+    public static bool Accepts(string pattern, string tag) =>
+        Regex.IsMatch(tag, pattern, RegexOptions.CultureInvariant);
+}
+
 static class SelfTest
 {
     private static int s_checks;
@@ -2259,6 +2414,10 @@ static class SelfTest
         Header + string.Concat(versions.Select((v, i) =>
             $"0000000000000000      DF *UND*\t0000000000000000 (GLIBC_{v}) sym{i}\n")) +
         "0000000000001139 g    DF .text\t000000000000000b  Base        main\n";
+
+    private static string CxxSymbols(params string[] versions) =>
+        Header + string.Concat(versions.Select((v, i) =>
+            $"0000000000000000      DF *UND*\t0000000000000000 (GLIBCXX_{v}) _ZSt{i}\n"));
 
     private static string Needs(params string[] libs) =>
         "\nDynamic Section:\n" + string.Concat(libs.Select(l => $"  NEEDED               {l}\n")) +
@@ -2285,10 +2444,28 @@ static class SelfTest
         Expect("Version des hoechsten Symbols", ElfRules.HighestGlibc(Symbols("2.2.5", "2.34", "2.17"), out _) ?? "none", "2.34");
         Expect("Vergleich 2.35 = 2.35.0", ElfRules.Compare([2, 35], [2, 35, 0]), 0);
 
+        Expect("GLIBCXX 3.4.30 besteht (Grenze)", ElfRules.Violations(CxxSymbols("3.4.29", "3.4.30"), libc, max, maxText).Count, 0);
+        Expect("GLIBCXX 3.4.31 faellt durch", ElfRules.Violations(CxxSymbols("3.4.19", "3.4.31"), libc, max, maxText).Count, 1);
+        Expect("GLIBCXX 3.4.9 ist kleiner als 3.4.30 (Zahlentupel, nicht Text)", ElfRules.Violations(CxxSymbols("3.4.9"), libc, max, maxText).Count, 0);
+        Expect("GLIBCXX 3.4.100 ist groesser als 3.4.30", ElfRules.Violations(CxxSymbols("3.4.100"), libc, max, maxText).Count, 1);
+        Expect("GLIBCXX: --max-glibcxx hebt die Grenze", ElfRules.Violations(CxxSymbols("3.4.31"), libc, max, maxText, "3.4.31").Count, 0);
+        Expect("GLIBCXX: Meldung nennt Symbol und Grenze", ElfRules.Violations(CxxSymbols("3.4.31"), libc, max, maxText).SingleOrDefault() ?? "none",
+            "verlangt GLIBCXX_3.4.31 (erlaubt hoechstens GLIBCXX_3.4.30)");
+        Expect("GLIBCXX und GLIBC melden getrennt", ElfRules.Violations(CxxSymbols("3.4.31") + Symbols("2.38"), libc, max, maxText).Count, 2);
+        Expect("ohne GLIBCXX-Symbole besteht", ElfRules.Violations(Symbols("2.2.5"), libc, max, maxText).Count, 0);
+        Expect("GLIBCXX zaehlt nicht als GLIBC", ElfRules.HighestGlibc(CxxSymbols("3.4.31"), out _) ?? "none", "none");
+        Expect("hoechstes GLIBCXX-Symbol", ElfRules.HighestGlibcxx(CxxSymbols("3.4.9", "3.4.30", "3.4.19"), out _) ?? "none", "3.4.30");
+        Expect("check-binary mit ungueltigem --max-glibcxx liefert 2", Cli.Run(["check-binary", "x", "--max-glibcxx", "abc"]), 2);
+
         PackagingCommands();
         InstallerParts();
         DebParts();
         AppImageParts();
+        TagRuleParts();
+        RuntimeSourceParts();
+        BuildTelemetryParts();
+        WorkflowYamlParts();
+        LinuxContainerParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -2297,6 +2474,166 @@ static class SelfTest
             ? $"selftest: {s_checks} Pruefungen bestanden."
             : $"selftest: {s_failures} von {s_checks} Pruefungen fehlgeschlagen.");
         return s_failures == 0 ? 0 : 1;
+    }
+
+    // The tag rule exists twice in release.yml (PowerShell and bash). Both must be the same and must accept
+    // exactly SemVer tags, and a dry run must be able to build a branch without uploading it.
+    private static void TagRuleParts()
+    {
+        const string workflow = ".github/workflows/release.yml";
+        Expect($"tag: {workflow} vorhanden", File.Exists(workflow), true);
+        if (!File.Exists(workflow))
+        {
+            return;
+        }
+
+        var yml = File.ReadAllText(workflow);
+        var powerShell = TagRules.PowerShellPattern(yml);
+        var bash = TagRules.BashPattern(yml);
+        Expect("tag: PowerShell-Regel gefunden", powerShell is not null, true);
+        Expect("tag: bash-Regel gefunden", bash is not null, true);
+        if (powerShell is null || bash is null)
+        {
+            return;
+        }
+
+        Expect("tag: beide Regeln sind gleich", powerShell, bash);
+        foreach (var tag in new[] { "v0.1.0", "v10.20.30", "v0.1.0-rc.1", "v1.0.0-beta" })
+        {
+            Expect($"tag: {tag} wird angenommen", TagRules.Accepts(bash, tag), true);
+        }
+
+        foreach (var tag in new[] { "V0.1.0", "v0.1", "v0.1.0.", "0.1.0", "v0.1.0-", "v0.1.0 ", " v0.1.0", "v0.1.0-rc 1", "" })
+        {
+            Expect($"tag: '{tag}' wird abgelehnt", TagRules.Accepts(bash, tag), false);
+        }
+
+        Expect("tag: beide Checkouts bauen auch einen Branch (inputs.ref)", Regex.Count(yml, @"ref: \$\{\{ inputs\.ref \|\| "), 2);
+        Expect("tag: beide Jobs verweigern das Hochladen eines Branchs", Regex.Count(yml, "name: Refuse to upload a branch build"), 2);
+    }
+
+    // The AppImage contains libfuse (LGPL-2.1): its source and the runtime's build scripts are attached to every release.
+    private static void RuntimeSourceParts()
+    {
+        foreach (var source in RuntimeSources.All)
+        {
+            Expect($"sources: {source.FileName} ist festgehalten", Pinned.PinProblem(source.Sha256, source.FileName), null);
+            Expect($"sources: {source.FileName} hat eine Groesse", source.Size > 0, true);
+            Expect($"sources: {source.FileName} kommt von einer festen Version", source.Url.StartsWith("https://github.com/", StringComparison.Ordinal), true);
+        }
+
+        Expect("sources: libfuse 3.15.0 (wie in third-party/appimage-runtime/README.md)", RuntimeSources.All.Any(x => x.FileName == "fuse-3.15.0.tar.xz"), true);
+        Expect("sources: type2-runtime in der Version der Runtime", RuntimeSources.All.Any(x => x.FileName == $"type2-runtime-{AppImageRuntime.Version}.tar.gz"), true);
+
+        const string container = "packaging/linux/container-build.sh";
+        const string workflow = ".github/workflows/release.yml";
+        Expect($"sources: {container} vorhanden", File.Exists(container), true);
+        Expect($"sources: {workflow} vorhanden", File.Exists(workflow), true);
+        if (File.Exists(container) && File.Exists(workflow))
+        {
+            var script = File.ReadAllText(container);
+            var yml = File.ReadAllText(workflow);
+            Expect("sources: container-build.sh ruft runtime-sources", script.Contains("runtime-sources --out out/release", StringComparison.Ordinal), true);
+            foreach (var source in RuntimeSources.All)
+            {
+                Expect($"sources: {source.FileName} steht in SHA256SUMS-linux.txt", script.Contains($"out/release/{source.FileName}", StringComparison.Ordinal), true);
+                Expect($"sources: {source.FileName} wird hochgeladen", yml.Contains($"out/release/{source.FileName}", StringComparison.Ordinal), true);
+            }
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), "pagewing-sources-selftest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var from = Path.Combine(dir, "from");
+            Directory.CreateDirectory(from);
+            var good = new RuntimeSource("a.tar.gz", "https://example.invalid/a.tar.gz", 5, Convert.ToHexStringLower(SHA256.HashData("hello"u8)));
+            var other = new RuntimeSource("b.tar.xz", "https://example.invalid/b.tar.xz", 3, Convert.ToHexStringLower(SHA256.HashData("abc"u8)));
+            File.WriteAllText(Path.Combine(from, "a.tar.gz"), "hello");
+            File.WriteAllText(Path.Combine(from, "b.tar.xz"), "abc");
+
+            var outDir = Path.Combine(dir, "out");
+            Expect("sources: richtige Dateien werden uebernommen", RuntimeSources.Fetch([good, other], outDir, from), 0);
+            Expect("sources: Datei liegt im Ausgabeordner", File.ReadAllText(Path.Combine(outDir, "a.tar.gz")), "hello");
+            Expect("sources: kein Rest des Downloads", Directory.GetFiles(outDir).Length, 2);
+            Expect("sources: zweiter Lauf erkennt vorhandene, geprueftes Dateien", RuntimeSources.Fetch([good, other], outDir, from), 0);
+
+            File.WriteAllText(Path.Combine(from, "b.tar.xz"), "xyz");
+            var refused = Path.Combine(dir, "refused");
+            Expect("sources: falsche SHA-256 liefert 1", RuntimeSources.Fetch([good, other], refused, from), 1);
+            Expect("sources: falsche Datei wird nicht abgelegt", File.Exists(Path.Combine(refused, "b.tar.xz")), false);
+            Expect("sources: kein Download-Rest nach Ablehnung", Directory.GetFiles(refused).All(f => !f.Contains(".download-", StringComparison.Ordinal)), true);
+
+            File.WriteAllText(Path.Combine(outDir, "a.tar.gz"), "tampered");
+            Expect("sources: vorhandene falsche Datei wird abgelehnt", RuntimeSources.Fetch([good], outDir, from), 1);
+            Expect("sources: falsche Datei bleibt unangetastet", File.ReadAllText(Path.Combine(outDir, "a.tar.gz")), "tampered");
+
+            var unpinned = good with { Sha256 = "nicht festgehalten" };
+            Expect("sources: nicht festgehaltene Pruefsumme liefert 1", RuntimeSources.Fetch([unpinned], Path.Combine(dir, "u"), from), 1);
+            Expect("sources: fehlende Quelle liefert 1", RuntimeSources.Fetch([good with { FileName = "nope.tar.gz" }], Path.Combine(dir, "m"), from), 1);
+            Expect("runtime-sources: ohne --out liefert 2", Cli.Run(["runtime-sources"]), 2);
+            Expect("runtime-sources: unbekannte Option liefert 2", Cli.Run(["runtime-sources", "--out", dir, "--gibt-es-nicht", "x"]), 2);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // Avalonia.BuildServices collects usage data while compiling unless AVALONIA_TELEMETRY_OPTOUT=1 is set
+    // (Docs/DECISIONS.md, entry "Avalonia-Build-Telemetrie abschalten"). Every place that compiles the app must set it.
+    private static void BuildTelemetryParts()
+    {
+        foreach (var file in new[]
+        {
+            ".github/workflows/ci.yml", ".github/workflows/release.yml", ".github/workflows/hardware-measure.yml",
+            "packaging/linux/container-build.sh",
+        })
+        {
+            Expect($"telemetrie: {file} vorhanden", File.Exists(file), true);
+            if (File.Exists(file))
+            {
+                Expect($"telemetrie: {file} setzt AVALONIA_TELEMETRY_OPTOUT=1",
+                    Regex.IsMatch(File.ReadAllText(file), @"AVALONIA_TELEMETRY_OPTOUT(: '1'|=1)"), true);
+            }
+        }
+    }
+
+    // There is no YAML parser in the base library. The one mistake that broke release.yml once: an unquoted one-line
+    // "run: ..." value that contains ": " (YAML reads the second colon as a mapping and the whole file is invalid).
+    private static void WorkflowYamlParts()
+    {
+        foreach (var file in Directory.GetFiles(".github/workflows", "*.yml"))
+        {
+            var bad = File.ReadLines(file)
+                .Select((line, i) => (line, number: i + 1))
+                .Where(x => Regex.IsMatch(x.line, @"^\s*(- )?(run|name|if): [^|>'""\s#{\[&*!%@`-][^#]*: "))
+                .Select(x => $"{x.number}")
+                .ToList();
+            Expect($"yaml: {file} hat keinen einzeiligen Wert mit ': ' ohne Anfuehrungszeichen (Zeilen {string.Join(',', bad)})", bad.Count, 0);
+        }
+    }
+
+    // The Linux job builds as root in ubuntu:22.04 (packaging/linux/container-build.sh). Two things must hold even when
+    // the run is cancelled or times out: the workspace goes back to the runner user (else the next checkout of any
+    // workflow fails with "Permission denied"), and the tool's own self-test runs on the host, not in the container
+    // (jammy has squashfs-tools 4.5; the reproducibility checks of the self-test are verified with 4.6 only).
+    private static void LinuxContainerParts()
+    {
+        const string workflow = ".github/workflows/release.yml";
+        const string container = "packaging/linux/container-build.sh";
+        if (!File.Exists(workflow) || !File.Exists(container))
+        {
+            Expect("container: release.yml und container-build.sh vorhanden", false, true);
+            return;
+        }
+
+        var yml = File.ReadAllText(workflow);
+        Expect("container: Arbeitsordner geht auch nach Abbruch zurueck (if: always() mit chown)",
+            Regex.IsMatch(yml, @"name: Give the workspace back to the runner user \(Linux\)\s+if: always\(\)\s+run: \|[\s\S]*?chown -R"), true);
+        Expect("container: Selbsttest des Pakettools laeuft in beiden Jobs auf dem Host", Regex.Count(yml, "name: Self-test of the packaging tool"), 2);
+        Expect("container: container-build.sh startet den Selbsttest des Pakettools nicht",
+            File.ReadAllText(container).Contains("package.cs -- selftest", StringComparison.Ordinal), false);
     }
 
     private static void PackagingCommands()

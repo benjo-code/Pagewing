@@ -33,7 +33,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 6 | Komfort | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-18-milestone-06-komfort.md) | 2026-10-19 |
 | 7 | Drucken | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-07-drucken.md) | 2026-10-19 |
 | 8 | Verteilung | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-08-verteilung.md) | 2026-10-22 |
-| – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | ⬜ offen | – | – |
+| – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | 🟡 geplant | – | – |
 | 8.1 | Automatische Updates | 1 – Fundament & Viewer | ⬜ offen | – | – |
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
@@ -288,13 +288,16 @@ Pagewing ersetzt Acrobat beim Lesen von PDFs. Manuelle Abnahme durch den Projekt
 - [ ] Verteilung (aus M8), Linux: `.deb` auf Ubuntu 22.04 und 24.04, Debian 12 und 13 sowie Linux Mint (`sudo apt install ./pagewing_<Version>_amd64.deb`) und AppImage auf Ubuntu 24.04 ohne `libfuse2`, Linux Mint (auch aus einem Ordner mit Leerzeichen) und CachyOS: Eintrag im Anwendungsmenü mit Symbol, Doppelklick auf ein PDF im Dateimanager, Entfernen (`apt remove`)
 - [ ] Verteilung (aus M8): Karte „Als Standardprogramm festlegen“ beim ersten Start unter Windows (öffnet die Einstellungen von Windows, danach öffnet ein Doppelklick Pagewing) und unter Linux (setzt den Standard selbst, auch aus dem AppImage), „Später“ und „Nicht mehr fragen“; Karte und „Über Pagewing“ mit Narrator und Orca; Startzeit-Budgets mit den neuen Einträgen auf echter Hardware (die Messung in M8 ist nur relativ unter Linux/Xvfb)
 - [ ] Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien
-- [ ] Quellangebot für libfuse (LGPL-2.1) in der AppImage-Runtime klären: Quell-Tarballs (type2-runtime 20251108, libfuse 3.15.0) an jedes Release hängen oder ein schriftliches Angebot ins Paket legen (`Docs/DECISIONS.md`, Eintrag „Offen: Quellangebot für libfuse und type2-runtime“)
-- [ ] Vor dem ersten Release (aus M8): Mindest-glibc klären — den ersten PR-Lauf auf `dotnet-linux` mit der glibc-Ausgabe von `check-binary` ansehen, dann entscheiden (Linux-Build im Container `ubuntu:22.04` oder Mindest-glibc anheben) und die älteste unterstützte Distribution festlegen (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“)
-- [ ] Vor dem ersten Release: `check-binary` um eine GLIBCXX-Prüfung ergänzen
-- [ ] Vor dem ersten Release: Tag-Regex im Release-Workflow prüfen
-- [ ] Vor dem ersten Release: Symbolgrößen 22 und 96 px im hicolor-Satz prüfen
-- [ ] Vor dem ersten Release: Verhalten von `xdg-mime default` ohne vorhandenen Desktop-Eintrag prüfen
+- [x] Quellangebot für libfuse (LGPL-2.1) in der AppImage-Runtime klären: Quell-Tarballs (type2-runtime 20251108, libfuse 3.15.0) an jedes Release hängen oder ein schriftliches Angebot ins Paket legen (`Docs/DECISIONS.md`, Eintrag „Offen: Quellangebot für libfuse und type2-runtime“) – Quell-Tarballs am Release: `package.cs runtime-sources` mit festen SHA-256 gegen den Live-Download geprüft, `package.cs selftest` 286 Prüfungen (`RuntimeSourceParts`), Eintrag „Quellangebot für libfuse und type2-runtime: Quellarchive am Release“ (2026-10-23); der Upload selbst zeigt erst der Trockenlauf bzw. das Release
+- [ ] Vor dem ersten Release (aus M8): Mindest-glibc klären — den ersten PR-Lauf auf `dotnet-linux` mit der glibc-Ausgabe von `check-binary` ansehen, dann entscheiden (Linux-Build im Container `ubuntu:22.04` oder Mindest-glibc anheben) und die älteste unterstützte Distribution festlegen (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“). Stand 2026-10-23: Runner hat glibc 2.43, `Pagewing` verlangt `GLIBC_2.38`; Weg „Container `ubuntu:22.04`“ ist umgesetzt (`packaging/linux/container-build.sh`), abgehakt wird erst, wenn der Trockenlauf im Container `check-binary` besteht
+- [x] Vor dem ersten Release: `check-binary` um eine GLIBCXX-Prüfung ergänzen – `dotnet run tools/package.cs -- selftest` → 286 Prüfungen bestanden (11 neue GLIBCXX-Fälle: Grenze 3.4.30, Zahlen- statt Textvergleich, `--max-glibcxx`); echte Binaries prüft erst der Trockenlauf im Container (2026-10-23)
+- [x] Vor dem ersten Release: Tag-Regex im Release-Workflow prüfen – `package.cs selftest`, `TagRuleParts`: beide Regeln (PowerShell, bash) gleich, `v0.1.0`, `v0.1.0-rc.1` angenommen, `V0.1.0`, `v0.1`, `0.1.0` abgelehnt (2026-10-23). Dabei fiel ein ungültiges YAML in `release.yml` auf (behoben, Wächter `WorkflowYamlParts`)
+- [x] Vor dem ersten Release: Symbolgrößen 22 und 96 px im hicolor-Satz prüfen – `LinuxDefaultAppServiceTests.AppImageDefaultInstallsEveryIconSizeOfTheRepository` (rot: 22x22 fehlte, grün nach Fix von `IconSizes`), Klasse 16/16 unter Ubuntu 26.04 in WSL (2026-10-23); `.deb` und AppImage lieferten beide Größen schon aus
+- [ ] Vor dem ersten Release: Verhalten von `xdg-mime default` ohne vorhandenen Desktop-Eintrag prüfen (Stand 2026-10-23: Schutz im Dienst umgesetzt, `LinuxDefaultAppServiceTests` 16/16; die Handprüfung auf einer Distribution mit `xdg-utils` steht noch aus, Befehle im Plan, Task 5)
 - [ ] Vor dem ersten Release: Windows-Standardprogramm nach Verschieben der portablen ZIP von Hand prüfen (die Karte erscheint wieder, „Als Standard festlegen“ schreibt den neuen Pfad)
+
+**Plan**
+[Release v0.1.0 – Implementierungsplan](superpowers/plans/2026-10-23-release-v0.1.0.md): Phase 1 Vorbereitung (glibc des Linux-Runners, Trockenlauf ohne Tag, GLIBCXX-Prüfung, Symbolgrößen, `xdg-mime`, Quellangebot), Phase 2 Läufe und Abnahme, Phase 3 Veröffentlichen (nur auf Anweisung). Befund beim Planen: Der blockierende glibc-Schritt von `release.yml` scheitert auf dem Runner (Ubuntu 26.04, glibc 2.43; `Pagewing` verlangt `GLIBC_2.38`), siehe Plan.
 
 ## Milestone 8.1 – Automatische Updates
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M8 (Setzt das veröffentlichte Release `v0.1.0` voraus (siehe „Voraussetzungen“ unten).)

@@ -312,6 +312,23 @@ public sealed class DefaultAppPromptTests : PrintTestHost
     }
 
     [AvaloniaFact]
+    public async Task NotAvailableKeepsTheCardWithTheReason()
+    {
+        _service.Result = DefaultAppResult.NotAvailable;
+        var (window, viewModel, _) = await ShowAppAsync();
+        await WaitSharpAsync(window, viewModel);
+        await WaitUntilAsync(window, () => viewModel.DefaultAppPrompt is not null);
+
+        Click(window, Find<Button>(window, "DefaultAppSetButton"));
+        await WaitUntilAsync(window, () => viewModel.DefaultAppPrompt?.Message is not null);
+
+        var prompt = viewModel.DefaultAppPrompt!;
+        Assert.True(prompt.IsFailed);
+        Assert.Equal(Strings.DefaultAppNotAvailable, Find<TextBlock>(window, "DefaultAppMessage").Text);
+        Assert.NotEqual(Strings.DefaultAppFailed, Strings.DefaultAppNotAvailable);
+    }
+
+    [AvaloniaFact]
     public async Task FailedKeepsTheCardWithAMessage()
     {
         _service.Result = DefaultAppResult.Failed;

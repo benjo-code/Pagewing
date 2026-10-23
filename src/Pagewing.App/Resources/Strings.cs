@@ -229,6 +229,7 @@ public static class Strings
     public static string DefaultAppNever => Get("DefaultAppNever");
     public static string DefaultAppChooseHint => Get("DefaultAppChooseHint");
     public static string DefaultAppFailed => Get("DefaultAppFailed");
+    public static string DefaultAppNotAvailable => Get("DefaultAppNotAvailable");
     public static string CommandSetDefaultApp => Get("CommandSetDefaultApp");
     public static string PrintTitle => Get("PrintTitle");
     public static string PrintPrinter => Get("PrintPrinter");

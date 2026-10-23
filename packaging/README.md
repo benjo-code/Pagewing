@@ -25,6 +25,7 @@ Fehlt die PDFium-Bibliothek in App oder CLI, bricht der Befehl ab. Unter Linux s
 | `Pagewing-<Version>-win-x64-portable.zip` | portable ZIP für Windows |
 | `Pagewing-<Version>-win-x64-setup.exe` | Installer für Windows |
 | `SHA256SUMS-windows.txt`, `SHA256SUMS-linux.txt` | Zeilen `<sha256>  <Dateiname>`, je eine Datei für die Dateien des Windows- und des Linux-Jobs (jeder Job hängt seine Dateien selbst an das Release) |
+| `fuse-3.15.0.tar.xz`, `type2-runtime-20251108.tar.gz` | Quelltext von libfuse (LGPL-2.1) und der AppImage-Runtime samt Bauskripten, unverändert von den Upstream-Adressen geladen und gegen feste SHA-256 geprüft (`package.cs runtime-sources`); stehen in `SHA256SUMS-linux.txt` |
 | `pagewing_<Version>_amd64.deb` | Paket für Debian, Ubuntu, Linux Mint (Vorabversion `x.y.z-rc1` heißt im Paket `x.y.z~rc1`) |
 | `Pagewing-<Version>-x86_64.AppImage` | AppImage für alle Linux-Distributionen ab der glibc des Build-Rechners, ohne `libfuse2` |
 
@@ -34,9 +35,10 @@ Fehlt die PDFium-Bibliothek in App oder CLI, bricht der Befehl ab. Unter Linux s
 dotnet run tools/package.cs -- layout --rid linux-x64 --app <publish-app> --cli <publish-cli> --out <layout>
 dotnet run tools/package.cs -- zip --layout <layout> --version 1.0.0 --out Pagewing-1.0.0-win-x64-portable.zip   # nur Windows wird als ZIP ausgeliefert
 dotnet run tools/package.cs -- sums <Datei>... --out SHA256SUMS-windows.txt   # je Betriebssystem eine Datei: SHA256SUMS-windows.txt, SHA256SUMS-linux.txt
-dotnet run tools/package.cs -- check-binary <Datei>...   # GLIBC- und NEEDED-Prüfung
+dotnet run tools/package.cs -- check-binary <Datei>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]   # GLIBC-, GLIBCXX- und NEEDED-Prüfung
 dotnet run tools/package.cs -- deb --layout <layout> --version 1.0.0 --out pagewing_1.0.0_amd64.deb   # Linux, dpkg-deb
 dotnet run tools/package.cs -- deb-smoke pagewing_1.0.0_amd64.deb
+dotnet run tools/package.cs -- runtime-sources --out <Ordner>   # Quellen von libfuse und der AppImage-Runtime (LGPL-2.1), SHA-256 geprüft
 dotnet run tools/package.cs -- selftest
 ```
 
@@ -120,18 +122,21 @@ Das Release selbst legt der Projektinhaber an (`gh release create vX.Y.Z --targe
 
 1. Der Tag muss `vX.Y.Z` oder `vX.Y.Z-<Vorabversion>` heißen, sonst bricht der Job ab. Die Version (Tag ohne `v`) geht als `-p:Version=<Version>` an `dotnet publish` für App und CLI; ein `-rc1` heißt im `.deb` `~rc1`.
 2. Windows: Publish (Native AOT), `licenses check`, `layout`, `zip`, `inno-install`, `installer`, `installer-smoke`, `sums` nach `SHA256SUMS-windows.txt`, Hochladen. Dateien: `Pagewing-<Version>-win-x64-portable.zip`, `Pagewing-<Version>-win-x64-setup.exe`.
-3. Linux: Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `sums` nach `SHA256SUMS-linux.txt`, Hochladen. Dateien: `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`.
+3. Linux: Der Job baut in **einem** `docker run` von `ubuntu:22.04` (`packaging/linux/container-build.sh`, weil die glibc des Runners neuer als 2.35 ist; Eintrag „Mindest-glibc 2.35 und Bauweise der Linux-Pakete: Container …“): Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `runtime-sources`, `sums` nach `SHA256SUMS-linux.txt`. Hochgeladen wird danach auf dem Host (der Container sieht `GH_TOKEN` nie). Dateien: `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`, die zwei Quellarchive. Das Skript lässt sich auf einem Linux-Rechner mit Docker auch von Hand starten (Befehl im Kopf der Datei, dazu `VERSION` und `DEBVERSION`).
 4. Hochgeladen wird nur bei `release` oder `workflow_dispatch` mit `upload=true` (das Release muss dann existieren). Sonst baut der Lauf und führt alle Smoke-Tests aus.
 
-Trockenlauf (Bau und Smoke-Tests ohne Hochladen), vom Projektinhaber auf Wunsch zu starten; seine Runner müssen laufen:
+Trockenlauf (Bau und Smoke-Tests ohne Hochladen), vom Projektinhaber auf Wunsch zu starten; seine Runner müssen laufen. Vor `gh release create` gibt es den Tag noch nicht; `ref` baut deshalb einen Branch (die Version kommt aus `tag`), und mit `ref` wird nie hochgeladen (der Lauf bricht ab, wenn zusätzlich `upload=true` gesetzt ist):
 
 ```sh
-gh workflow run release.yml -f tag=v0.1.0 -f upload=false
+git push -u origin release/v0.1.0
+gh workflow run release.yml --ref release/v0.1.0 -f tag=v0.1.0 -f ref=release/v0.1.0 -f upload=false
 ```
+
+`dotnet run tools/package.cs -- selftest` (`TagRuleParts`) prüft, dass die Tag-Regel in beiden Jobs gleich ist und genau SemVer-Tags annimmt (`v0.1.0`, `v0.1.0-rc.1`; nicht `V0.1.0`, `v0.1`, `0.1.0`).
 
 Voraussetzungen der Runner (zusätzlich zu denen für Native AOT in `CLAUDE.md`):
 
-- Linux: `dpkg-deb` (Paket `dpkg`), `mksquashfs` (`squashfs-tools`), `objdump` (`binutils`), `xvfb-run` (`xvfb`), `libfontconfig1` und `gh`; empfohlen `lintian` und `desktop-file-utils` (`sudo apt-get install -y lintian desktop-file-utils`). Fehlen die beiden, überspringt `deb-smoke` ihre Prüfungen; der Workflow meldet das als Warnung.
+- Linux: `docker` (der Runner-Benutzer muss es nutzen dürfen, `docker info` ohne `sudo`) und `gh`. Alle Bauwerkzeuge (`clang`, `zlib1g-dev`, `dpkg`, `squashfs-tools`, `binutils`, `xvfb`, `lintian`, `desktop-file-utils` …) installiert `container-build.sh` im Container, das Image `ubuntu:22.04` und die Pakete kommen beim Lauf aus dem Netz.
 - Windows: `gh` im PATH (`winget install --id GitHub.cli`); Inno Setup holt `inno-install` selbst ins Benutzerprofil (kein Administrator).
 - `check-binary` erlaubt neben den glibc-Kernbibliotheken nur `libfontconfig.so.1` (NEEDED von `libSkiaSharp.so`). Sie ist im `.deb` über `Depends: libfontconfig1` abgedeckt; das AppImage setzt sie, wie die X11-Bibliotheken, auf dem Rechner voraus (es bringt keine Systembibliotheken mit).
 - Der Lauf braucht die Rechte `contents: write` nur zum Hochladen; er läuft nie für Forks (Repo privat, siehe `CLAUDE.md`, Abschnitt „CI“).
