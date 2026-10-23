@@ -69,6 +69,60 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
         Assert.Equal("query|default|application/pdf|", File.ReadAllText(_log).Trim());
     }
 
+    private void WriteUserDesktopFile(string appImage)
+    {
+        var applications = Path.Combine(_root, "data", "applications");
+        Directory.CreateDirectory(applications);
+        File.WriteAllText(Path.Combine(applications, "pagewing.desktop"), DesktopEntry.Render(appImage, "pagewing"));
+    }
+
+    [Fact]
+    public async Task StatusIsDefaultWhenTheDesktopFileStillPointsAtTheRunningAppImage()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime", "pagewing.desktop"));
+        var appImage = Path.Combine(_root, "My Apps", "Pagewing.AppImage");
+        WriteUserDesktopFile(appImage);
+        _env["APPIMAGE"] = appImage;
+
+        Assert.Equal(DefaultAppStatus.IsDefault, await Service().GetStatusAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task StatusIsNotDefaultWhenTheAppImageMoved()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime", "pagewing.desktop"));
+        WriteUserDesktopFile(Path.Combine(_root, "old place", "Pagewing.AppImage"));
+        _env["APPIMAGE"] = Path.Combine(_root, "new place", "Pagewing.AppImage");
+
+        Assert.Equal(DefaultAppStatus.NotDefault, await Service().GetStatusAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task StatusIsNotDefaultWhenTheAppImageHasNoDesktopFileOfItsOwn()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime", "pagewing.desktop"));
+        _env["APPIMAGE"] = Path.Combine(_root, "Pagewing.AppImage");
+
+        Assert.Equal(DefaultAppStatus.NotDefault, await Service().GetStatusAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task MakeDefaultFromAMovedAppImageReplacesTheStaleDesktopFile()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime"));
+        WriteUserDesktopFile(Path.Combine(_root, "old place", "Pagewing.AppImage"));
+        var moved = Path.Combine(_root, "new place", "Pagewing.AppImage");
+        _env["APPIMAGE"] = moved;
+
+        Assert.Equal(DefaultAppResult.Done, await Service().MakeDefaultAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(DesktopEntry.Render(moved, "pagewing"), File.ReadAllText(Path.Combine(_root, "data", "applications", "pagewing.desktop")));
+    }
+
     [Fact]
     public async Task StatusIsNotDefaultForAnotherViewer()
     {

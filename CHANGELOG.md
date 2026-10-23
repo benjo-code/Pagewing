@@ -56,6 +56,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 
 - Ein Start mit mehreren Dateien (`pagewing a.pdf b.pdf`) öffnet jede als Tab, nicht nur die erste; der Tab der ersten Datei bleibt aktiv.
 - Dieselbe Datei erneut öffnen, deren Tab eine Fehlerkarte zeigt, versucht es in diesem Tab noch einmal, statt nur die alte Fehlermeldung zu zeigen.
+- Linux, AppImage: Wird das AppImage nach „Als Standardprogramm festlegen“ verschoben oder umbenannt, erscheint die Karte wieder (der Menüeintrag zeigte vorher auf den alten Pfad); „Als Standard festlegen“ schreibt ihn neu.
 - Linux, „Als Standardprogramm festlegen“: Das AppImage trägt jetzt auch die Symbole in 22 und 96 Pixeln ein. Läuft Pagewing aus einem Ordner, ohne installiertes Paket und ohne AppImage, meldet die Karte, dass es von dort nicht geht, statt einen Standard zu setzen, der ins Leere zeigt.
 
 ### Removed
