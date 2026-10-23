@@ -565,7 +565,7 @@
           "done": false
         },
         {
-          "text": "Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien",
+          "text": "Verteilung (aus M8): Release-Workflow: Trockenlauf `gh workflow run release.yml -f tag=v0.1.0 -f upload=false` grün auf beiden Runnern (inklusive `check-binary --max-glibc 2.35` mit der geklärten glibc des Linux-Runners), danach das Release `v0.1.0` mit allen Dateien und beiden Prüfsummendateien. Stand 2026-10-23: Trockenlauf (mit `-f ref=release/v0.1.0`, siehe `packaging/README.md`) grün auf beiden Runnern, Lauf 39922614855: Windows ZIP, Installer, `installer-smoke` und Prüfsummen; Linux `.deb` (`deb-smoke` mit lintian), AppImage (`appimage-smoke`), Quellarchive und Prüfsummen. Offen: das Release selbst samt Upload und, auf Anraten des Reviews, ein Trockenlauf mit einem Vorabtag (`v0.1.0-rc.1`, Debian-Version `0.1.0~rc.1`)",
           "done": false
         },
         {
@@ -574,8 +574,9 @@
           "evidence": "Quell-Tarballs am Release: `package.cs runtime-sources` mit festen SHA-256 gegen den Live-Download geprüft, `package.cs selftest` 286 Prüfungen (`RuntimeSourceParts`), Eintrag „Quellangebot für libfuse und type2-runtime: Quellarchive am Release“ (2026-10-23); der Upload selbst zeigt erst der Trockenlauf bzw. das Release"
         },
         {
-          "text": "Vor dem ersten Release (aus M8): Mindest-glibc klären — den ersten PR-Lauf auf `dotnet-linux` mit der glibc-Ausgabe von `check-binary` ansehen, dann entscheiden (Linux-Build im Container `ubuntu:22.04` oder Mindest-glibc anheben) und die älteste unterstützte Distribution festlegen (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“). Stand 2026-10-23: Runner hat glibc 2.43, `Pagewing` verlangt `GLIBC_2.38`; Weg „Container `ubuntu:22.04`“ ist umgesetzt (`packaging/linux/container-build.sh`), abgehakt wird erst, wenn der Trockenlauf im Container `check-binary` besteht",
-          "done": false
+          "text": "Vor dem ersten Release (aus M8): Mindest-glibc klären — den ersten PR-Lauf auf `dotnet-linux` mit der glibc-Ausgabe von `check-binary` ansehen, dann entscheiden (Linux-Build im Container `ubuntu:22.04` oder Mindest-glibc anheben) und die älteste unterstützte Distribution festlegen (`Docs/DECISIONS.md`, Eintrag „Mindest-glibc 2.35 (vorläufig) …“). Stand 2026-10-23: Runner hat glibc 2.43, `Pagewing` verlangt dort `GLIBC_2.38` (`fmod`); Weg „Container `ubuntu:22.04`“ ist umgesetzt (`packaging/linux/container-build.sh`)",
+          "done": true,
+          "evidence": "Trockenlauf 39922614855 (`release/v0.1.0`, 2026-10-23): `check-binary --max-glibc 2.35 --max-glibcxx 3.4.30` im Container ok für `Pagewing`, `libSkiaSharp.so`, `libHarfBuzzSharp.so`, `libpdfium.so` und die CLI; Entscheidung im Eintrag „Mindest-glibc 2.35 und Bauweise der Linux-Pakete: Container `ubuntu:22.04`“. Die älteste unterstützte Distribution bleibt Ubuntu 22.04 (glibc 2.35)"
         },
         {
           "text": "Vor dem ersten Release: `check-binary` um eine GLIBCXX-Prüfung ergänzen",
