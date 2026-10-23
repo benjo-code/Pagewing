@@ -262,6 +262,75 @@ public sealed class AppImageUpdaterTests : UpdateTestHost
         // The file is replaced already (the next start of the user is the new version), but no session waits for anybody.
         Assert.Equal(Source.Content, File.ReadAllBytes(Target));
         Assert.False(File.Exists(SessionPath));
+
+        // The text says so, instead of "your version stays as it is".
+        Assert.Equal(Strings.UpdateErrorNotStarted, result.Message);
+        Assert.NotEqual(Strings.UpdateErrorInstallFailed, result.Message);
+    }
+
+    [Fact]
+    public void TheTextAfterAFailedStartSpeaksBothLanguages()
+    {
+        Strings.Culture = new System.Globalization.CultureInfo("en");
+        Assert.Equal("The new version is installed but did not start. It starts the next time you open Pagewing.", Strings.UpdateErrorNotStarted);
+        Strings.Culture = new System.Globalization.CultureInfo("de");
+        Assert.Equal("Die neue Version ist installiert, ließ sich aber nicht starten. Sie startet, wenn Sie Pagewing das nächste Mal öffnen.", Strings.UpdateErrorNotStarted);
+    }
+
+    [Fact]
+    public async Task AStaleLinkAtTheNewPathIsRemovedNotFollowed()
+    {
+        MakeTarget();
+        var victim = Path.Combine(ConfigDirectory, "elsewhere.txt");
+        File.WriteAllText(victim, "a file of somebody else");
+        CreateLinkOrSkip(() => File.CreateSymbolicLink(Target + ".new", victim));
+
+        var result = await Updater().ApplyAsync(Staged(Stage()), CancellationToken.None);
+
+        // The link goes, the file it points to is never written; the copy is a new file of its own.
+        Assert.True(result.IsRestarting);
+        Assert.Equal("a file of somebody else", File.ReadAllText(victim));
+        Assert.Equal(Source.Content, File.ReadAllBytes(Target));
+        Assert.Null(new FileInfo(Target).LinkTarget);
+        Assert.False(File.Exists(Target + ".new"));
+    }
+
+    [Fact]
+    public async Task AStaleLinkToAFolderAtTheNewPathIsRemovedNotItsFolder()
+    {
+        MakeTarget();
+        var folder = Path.Combine(ConfigDirectory, "a folder");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "keep.txt"), "kept");
+        CreateLinkOrSkip(() => Directory.CreateSymbolicLink(Target + ".new", folder));
+
+        var result = await Updater().ApplyAsync(Staged(Stage()), CancellationToken.None);
+
+        Assert.True(result.IsRestarting);
+        Assert.Equal("kept", File.ReadAllText(Path.Combine(folder, "keep.txt")));
+        Assert.Equal(Source.Content, File.ReadAllBytes(Target));
+        Assert.False(Path.Exists(Target + ".new"));
+    }
+
+    [Fact]
+    public async Task AStaleHardLinkAtTheNewPathIsRemovedNotOverwritten()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "ln makes hard links on Linux only.");
+        MakeTarget();
+        var victim = Path.Combine(ConfigDirectory, "elsewhere.txt");
+        File.WriteAllText(victim, "a file of somebody else");
+        using (var ln = System.Diagnostics.Process.Start("ln", [victim, Target + ".new"]))
+        {
+            await ln.WaitForExitAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(0, ln.ExitCode);
+        }
+
+        var result = await Updater().ApplyAsync(Staged(Stage()), CancellationToken.None);
+
+        // Opening the old name for writing would have written into the inode it shares with the other file.
+        Assert.True(result.IsRestarting);
+        Assert.Equal("a file of somebody else", File.ReadAllText(victim));
+        Assert.Equal(Source.Content, File.ReadAllBytes(Target));
     }
 
     [Fact]
@@ -524,6 +593,19 @@ public sealed class AppImageUpdaterTests : UpdateTestHost
         }
 
         Assert.Empty(_launcher.Waited);
+    }
+
+    // Windows makes symbolic links only with the developer mode or the right to; Linux always.
+    private static void CreateLinkOrSkip(Action create)
+    {
+        try
+        {
+            create();
+        }
+        catch (Exception exception) when (OperatingSystem.IsWindows() && exception is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("This Windows account may not make symbolic links: " + exception.Message);
+        }
     }
 
     private static void CopyStaging(string from, string to)

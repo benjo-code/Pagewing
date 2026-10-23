@@ -858,4 +858,7 @@
   <data name="UpdateErrorFolderWriteProtected" xml:space="preserve">
     <value>Der Ordner ist schreibgeschützt: {0}. Laden Sie das neue AppImage von Hand herunter.</value>
   </data>
+  <data name="UpdateErrorNotStarted" xml:space="preserve">
+    <value>Die neue Version ist installiert, ließ sich aber nicht starten. Sie startet, wenn Sie Pagewing das nächste Mal öffnen.</value>
+  </data>
 </root>

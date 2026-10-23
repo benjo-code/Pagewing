@@ -38,14 +38,16 @@ internal sealed record AppImageUpdaterSetup(
 /// running file stays valid through its open inode, so the file can be swapped while the app runs, before it ends.
 /// Steps, none of which touches the old file before the new one is complete and checked: the manifest of the staging
 /// folder is verified again with the keys of the program; the staged file is copied to <c>&lt;AppImage&gt;.new</c> next
-/// to the old one (the same file system, so the last step is atomic) and given the execute bit; the copy is checked
+/// to the old one (the same file system, so the last step is atomic) as a new file (a stale file or link there is removed
+/// first, never followed; a folder there is refused) and given the execute bit; the copy is checked
 /// against the size and SHA-256 of the manifest; the session is written (<c>session.json</c>, only then is
 /// <c>--restore-session</c> passed on); the copy is renamed over the old file; the new AppImage starts with
 /// <c>--after-process &lt;this process&gt;</c> (<see cref="Program.WaitForPredecessor"/>: it waits until this process has
 /// ended before it elects the instance) and the app ends the regular way.
 /// </summary>
 /// <remarks>
-/// A folder this user cannot write to (a read-only folder or mount) fails with the text for the download page; any other
+/// A folder this user cannot write to (a read-only folder or mount) fails with the text for the download page; a new file
+/// that does not start after the swap fails with a text that says it is installed and starts next time; any other
 /// failure leaves the old file and the app as they are, the window shows the error with "Try again" and "Close". The
 /// staging folder is left to the coordinator on a failure (it removes it) and deleted here once the file is replaced.
 /// </remarks>
@@ -170,9 +172,10 @@ internal sealed class AppImageUpdater(AppImageUpdaterSetup setup) : IUpdateAppli
 
             if (!setup.Launcher.Start(target, NewProgramArguments(setup.ProcessId, restore, setup.Language)))
             {
-                // The file is replaced (the next start is the new version) but nothing waits for the session.
+                // The file is replaced (the next start is the new version) but nothing waits for the session; the text
+                // says that, not that the version stays.
                 UpdateApplierSupport.DeleteSession(setup.ConfigDirectory);
-                return Refused(Strings.UpdateErrorInstallFailed);
+                return Refused(Strings.UpdateErrorNotStarted);
             }
 
             TryDeleteDirectory(verified.Staging!);
@@ -230,7 +233,10 @@ internal sealed class AppImageUpdater(AppImageUpdaterSetup setup) : IUpdateAppli
         FileStream destination;
         try
         {
-            destination = new FileStream(copy, FileMode.Create, FileAccess.Write, FileShare.None);
+            // A new file of its own: opening an existing name would write through a symbolic link, or into the inode a
+            // hard link shares with another file.
+            RemoveStale(copy);
+            destination = new FileStream(copy, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -261,6 +267,37 @@ internal sealed class AppImageUpdater(AppImageUpdaterSetup setup) : IUpdateAppli
         {
             // A full disk or a staged file that is gone.
             return Refused(Strings.UpdateErrorStorage);
+        }
+    }
+
+    /// <summary>
+    /// Removes what an earlier attempt (or anybody) left at <paramref name="copy"/>: a file or a link of any kind goes as
+    /// an entry, never what a link points to. A real folder stays (it is not ours to delete): creating the copy then fails
+    /// like in a folder that cannot be written. Throws for the file system, like creating the copy.
+    /// </summary>
+    private static void RemoveStale(string copy)
+    {
+        FileAttributes attributes;
+        try
+        {
+            attributes = File.GetAttributes(copy);
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return;
+        }
+
+        var isDirectory = (attributes & FileAttributes.Directory) != 0;
+        var isLink = (attributes & FileAttributes.ReparsePoint) != 0;
+        if (isLink && isDirectory && OperatingSystem.IsWindows())
+        {
+            // A link to a folder (or a junction): removing the folder entry removes the link, not the folder it names.
+            Directory.Delete(copy, recursive: false);
+        }
+        else if (isLink || !isDirectory)
+        {
+            // A file, a hard link (the other names keep the content) or a symbolic link (unlink never follows it).
+            File.Delete(copy);
         }
     }
 

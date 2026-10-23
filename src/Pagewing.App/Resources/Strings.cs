@@ -274,6 +274,7 @@ public static class Strings
     public static string UpdateErrorHelperInstallFailed => Get("UpdateErrorHelperInstallFailed");
     public static string UpdateErrorVersionMismatch => Get("UpdateErrorVersionMismatch");
     public static string UpdateErrorFolderWriteProtected => Get("UpdateErrorFolderWriteProtected");
+    public static string UpdateErrorNotStarted => Get("UpdateErrorNotStarted");
     public static string PrintTitle => Get("PrintTitle");
     public static string PrintPrinter => Get("PrintPrinter");
     public static string PrintSearching => Get("PrintSearching");

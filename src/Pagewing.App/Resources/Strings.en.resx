@@ -858,4 +858,7 @@
   <data name="UpdateErrorFolderWriteProtected" xml:space="preserve">
     <value>The folder is write-protected: {0}. Please download the new AppImage by hand.</value>
   </data>
+  <data name="UpdateErrorNotStarted" xml:space="preserve">
+    <value>The new version is installed but did not start. It starts the next time you open Pagewing.</value>
+  </data>
 </root>
