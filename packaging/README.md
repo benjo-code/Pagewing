@@ -120,7 +120,7 @@ Das Release selbst legt der Projektinhaber an (`gh release create vX.Y.Z --targe
 
 1. Der Tag muss `vX.Y.Z` oder `vX.Y.Z-<Vorabversion>` heißen, sonst bricht der Job ab. Die Version (Tag ohne `v`) geht als `-p:Version=<Version>` an `dotnet publish` für App und CLI; ein `-rc1` heißt im `.deb` `~rc1`.
 2. Windows: Publish (Native AOT), `licenses check`, `layout`, `zip`, `inno-install`, `installer`, `installer-smoke`, `sums` nach `SHA256SUMS-windows.txt`, Hochladen. Dateien: `Pagewing-<Version>-win-x64-portable.zip`, `Pagewing-<Version>-win-x64-setup.exe`.
-3. Linux: Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `sums` nach `SHA256SUMS-linux.txt`, Hochladen. Dateien: `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`.
+3. Linux: Der Job baut in **einem** `docker run` von `ubuntu:22.04` (`packaging/linux/container-build.sh`, weil die glibc des Runners neuer als 2.35 ist; Eintrag „Mindest-glibc 2.35 und Bauweise der Linux-Pakete: Container …“): Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `sums` nach `SHA256SUMS-linux.txt`. Hochgeladen wird danach auf dem Host (der Container sieht `GH_TOKEN` nie). Dateien: `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`. Das Skript lässt sich auf einem Linux-Rechner mit Docker auch von Hand starten (Befehl im Kopf der Datei, dazu `VERSION` und `DEBVERSION`).
 4. Hochgeladen wird nur bei `release` oder `workflow_dispatch` mit `upload=true` (das Release muss dann existieren). Sonst baut der Lauf und führt alle Smoke-Tests aus.
 
 Trockenlauf (Bau und Smoke-Tests ohne Hochladen), vom Projektinhaber auf Wunsch zu starten; seine Runner müssen laufen:
@@ -131,7 +131,7 @@ gh workflow run release.yml -f tag=v0.1.0 -f upload=false
 
 Voraussetzungen der Runner (zusätzlich zu denen für Native AOT in `CLAUDE.md`):
 
-- Linux: `dpkg-deb` (Paket `dpkg`), `mksquashfs` (`squashfs-tools`), `objdump` (`binutils`), `xvfb-run` (`xvfb`), `libfontconfig1` und `gh`; empfohlen `lintian` und `desktop-file-utils` (`sudo apt-get install -y lintian desktop-file-utils`). Fehlen die beiden, überspringt `deb-smoke` ihre Prüfungen; der Workflow meldet das als Warnung.
+- Linux: `docker` (der Runner-Benutzer muss es nutzen dürfen, `docker info` ohne `sudo`) und `gh`. Alle Bauwerkzeuge (`clang`, `zlib1g-dev`, `dpkg`, `squashfs-tools`, `binutils`, `xvfb`, `lintian`, `desktop-file-utils` …) installiert `container-build.sh` im Container, das Image `ubuntu:22.04` und die Pakete kommen beim Lauf aus dem Netz.
 - Windows: `gh` im PATH (`winget install --id GitHub.cli`); Inno Setup holt `inno-install` selbst ins Benutzerprofil (kein Administrator).
 - `check-binary` erlaubt neben den glibc-Kernbibliotheken nur `libfontconfig.so.1` (NEEDED von `libSkiaSharp.so`). Sie ist im `.deb` über `Depends: libfontconfig1` abgedeckt; das AppImage setzt sie, wie die X11-Bibliotheken, auf dem Rechner voraus (es bringt keine Systembibliotheken mit).
 - Der Lauf braucht die Rechte `contents: write` nur zum Hochladen; er läuft nie für Forks (Repo privat, siehe `CLAUDE.md`, Abschnitt „CI“).
