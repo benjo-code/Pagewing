@@ -270,6 +270,7 @@ public static class Strings
     public static string UpdateErrorStorage => Get("UpdateErrorStorage");
     public static string UpdateErrorNoInstaller => Get("UpdateErrorNoInstaller");
     public static string UpdateErrorInstallFailed => Get("UpdateErrorInstallFailed");
+    public static string UpdateErrorFolderWriteProtected => Get("UpdateErrorFolderWriteProtected");
     public static string PrintTitle => Get("PrintTitle");
     public static string PrintPrinter => Get("PrintPrinter");
     public static string PrintSearching => Get("PrintSearching");

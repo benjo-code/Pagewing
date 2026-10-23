@@ -21,6 +21,9 @@ internal static partial class Program
     /// <summary>How long a later launch tries to hand its files to the running instance.</summary>
     private static readonly TimeSpan HandOverTimeout = TimeSpan.FromSeconds(3);
 
+    /// <summary>How long the new version after an update waits for the old process to end.</summary>
+    private static readonly TimeSpan PredecessorTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>A measurement whose UI thread hangs is ended this long after its own time limit (exit code 3).</summary>
     private static readonly TimeSpan MeasurementWatchdogGrace = TimeSpan.FromSeconds(5);
 
@@ -57,6 +60,12 @@ internal static partial class Program
             // The helper of the updater (a copy of the program, started by the app it replaces): before the single-instance
             // election and without a document, Avalonia shows only its progress window.
             return RunUpdateHelper(args, options, staging);
+        }
+
+        if (options.AfterProcess is not null)
+        {
+            // Started by the old version after an update (AppImage): its process still holds the single-instance lock.
+            WaitForPredecessor(options, new SystemProcessLauncher(), PredecessorTimeout);
         }
 
         if (options.IsMeasurement)
@@ -118,6 +127,25 @@ internal static partial class Program
         var startup = new AppStartup(
             session, instance, settings, options.IsMeasurement ? options : null, restore is null ? options.MorePaths : [], recentFiles, restore);
         return Run(args, startup, software);
+    }
+
+    /// <summary>
+    /// The new AppImage after an update (<c>--after-process &lt;id&gt;</c>, <see cref="Platform.Linux.AppImageUpdater"/>) was
+    /// started by the old program, which still runs: it waits until that process ended (at most <paramref name="timeout"/>;
+    /// then it goes on and hands its files over to whatever still runs), so the single-instance election finds the lock free
+    /// and the program does not start as an extra instance. Does nothing without the switch, for the helper of the Windows
+    /// updater (which waits itself) and for a measurement.
+    /// </summary>
+    internal static void WaitForPredecessor(StartupOptions options, IProcessLauncher launcher, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(launcher);
+        if (options.AfterProcess is not { } process || options.FinishUpdate is not null || options.IsMeasurement)
+        {
+            return;
+        }
+
+        launcher.WaitForExitAsync(process, timeout, CancellationToken.None).GetAwaiter().GetResult();
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using Pagewing.App.Platform.Linux;
 using Pagewing.App.Platform.Windows;
 using Pagewing.Core;
 using Pagewing.Core.Settings;
@@ -45,13 +46,49 @@ internal static class PlatformUpdate
 
     /// <summary>
     /// The installer of this system, made when a verified update is ready: on Windows for an installation of the setup
-    /// program the helper copy (<see cref="WindowsUpdateInstaller"/>). The AppImage follows with task 11 of Milestone 8.1;
-    /// every other form gets none, and the progress window points to the download page.
+    /// program the helper copy (<see cref="WindowsUpdateInstaller"/>), on Linux for an AppImage the replacement of its own
+    /// file (<see cref="AppImageUpdater"/>). Every other form (<c>.deb</c>, portable archive, unknown) gets none, and the
+    /// progress window points to the download page.
     /// </summary>
-    private static WindowsUpdateInstaller? CreateApplier(PackageForm form, string? processPath, string config, UpdateAppHost? host)
+    private static IUpdateApplier? CreateApplier(PackageForm form, string? processPath, string config, UpdateAppHost? host) =>
+        CreateApplier(
+            form, OperatingSystem.IsWindows(), OperatingSystem.IsLinux(), processPath, Environment.GetEnvironmentVariable("APPIMAGE"), config, host);
+
+    /// <summary>
+    /// <see cref="CreateApplier(PackageForm, string?, string, UpdateAppHost?)"/> with the system and the <c>APPIMAGE</c>
+    /// variable as arguments (tests).
+    /// </summary>
+    internal static IUpdateApplier? CreateApplier(
+        PackageForm form,
+        bool isWindows,
+        bool isLinux,
+        string? processPath,
+        string? appImage,
+        string config,
+        UpdateAppHost? host)
     {
-        if (!OperatingSystem.IsWindows() || form != PackageForm.WindowsInstaller || host is null
-            || Path.GetDirectoryName(processPath) is not { Length: > 0 } programDirectory)
+        if (host is null)
+        {
+            return null;
+        }
+
+        if (isWindows && form == PackageForm.WindowsInstaller)
+        {
+            return CreateWindowsApplier(processPath, config, host);
+        }
+
+        return isLinux && form == PackageForm.AppImage && !string.IsNullOrEmpty(appImage)
+            ? new AppImageUpdater(new AppImageUpdaterSetup(
+                appImage, config, UpdateTrust.Keys, RunningVersion(), Environment.ProcessId, host.CaptureSession, host.Shutdown, new SystemProcessLauncher())
+            {
+                Language = StartupLanguage(),
+            })
+            : null;
+    }
+
+    private static WindowsUpdateInstaller? CreateWindowsApplier(string? processPath, string config, UpdateAppHost host)
+    {
+        if (Path.GetDirectoryName(processPath) is not { Length: > 0 } programDirectory)
         {
             return null;
         }
@@ -72,10 +109,12 @@ internal static class PlatformUpdate
             new SystemProcessLauncher(),
             TimeProvider.System)
         {
-            // Only a --lang of the command line goes on; the setting is read again by the helper and the new version.
-            Language = StartupOptions.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray()).Language,
+            Language = StartupLanguage(),
         });
     }
+
+    // Only a --lang of the command line goes on; the setting is read again by the helper and the new version.
+    private static string? StartupLanguage() => StartupOptions.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray()).Language;
 
     /// <summary>Where the program is installed: the folder of the AppImage for an AppImage, else the folder of the executable.</summary>
     private static string? TargetDirectory(PackageForm form, string? processPath, string? appImage)

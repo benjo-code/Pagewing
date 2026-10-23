@@ -846,4 +846,7 @@
   <data name="UpdateErrorInstallFailed" xml:space="preserve">
     <value>Installing failed. Your version stays as it is.</value>
   </data>
+  <data name="UpdateErrorFolderWriteProtected" xml:space="preserve">
+    <value>The folder is write-protected: {0}. Please download the new AppImage by hand.</value>
+  </data>
 </root>
