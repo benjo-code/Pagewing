@@ -53,7 +53,12 @@ dotnet run tools/package.cs -- runtime-fetch
 dotnet run tools/package.cs -- appimage --layout out/layout --version "$VERSION" --out "out/release/Pagewing-$VERSION-x86_64.AppImage"
 xvfb-run -a dotnet run tools/package.cs -- appimage-smoke "out/release/Pagewing-$VERSION-x86_64.AppImage"
 
+# libfuse inside the AppImage runtime is LGPL-2.1: its source and the runtime's build scripts go to the release too.
+dotnet run tools/package.cs -- runtime-sources --out out/release
+
 dotnet run tools/package.cs -- sums \
   "out/release/pagewing_${DEBVERSION}_amd64.deb" \
   "out/release/Pagewing-$VERSION-x86_64.AppImage" \
+  out/release/fuse-3.15.0.tar.xz \
+  out/release/type2-runtime-20251108.tar.gz \
   --out out/release/SHA256SUMS-linux.txt

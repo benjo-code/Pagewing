@@ -39,6 +39,7 @@ static class Cli
         "  deb --layout <Ordner> --version <x.y.z> --out <Datei>             baut pagewing_<Version>_amd64.deb (Linux, dpkg-deb)\n" +
         "  deb-smoke <Datei.deb>                                             entpackt, prueft Starter, Symlink, ruft die CLI auf, lintian/desktop-file-validate wenn vorhanden (Linux)\n" +
         "  runtime-fetch [--out <Datei>]                                     laedt die type2-Runtime (feste Version, SHA-256 geprueft) nach ~/.cache/PagewingBuildTools\n" +
+        "  runtime-sources --out <Ordner> [--from <Ordner>]                  laedt die Quellen der AppImage-Runtime (libfuse, type2-runtime; SHA-256 geprueft) fuer das Release\n" +
         "  appimage --layout <Ordner> --version <x.y.z> --out <Datei> [--runtime <Datei>]   baut Pagewing-<Version>-x86_64.AppImage (Linux, mksquashfs)\n" +
         "  appimage-smoke <Datei.AppImage>                                   prueft Runtime, entpackt, ruft die CLI auf, startet die App ohne FUSE (Linux)\n" +
         "  selftest                                     prueft die Werkzeugteile";
@@ -56,6 +57,7 @@ static class Cli
         ["deb"] = Deb.Run,
         ["deb-smoke"] = DebSmoke.Run,
         ["runtime-fetch"] = RuntimeFetch.Run,
+        ["runtime-sources"] = RuntimeSourcesCommand.Run,
         ["appimage"] = AppImage.Run,
         ["appimage-smoke"] = AppImageSmoke.Run,
         ["selftest"] = SelfTest.Run,
@@ -1882,6 +1884,112 @@ static class AppImageRuntime
     }
 }
 
+// One pinned source archive that belongs to the AppImage runtime.
+record RuntimeSource(string FileName, string Url, long Size, string Sha256);
+
+// libfuse is inside the statically linked AppImage runtime under LGPL-2.1, which obliges us to offer its source with the
+// binary. The two archives are attached to every release (Docs/DECISIONS.md, entry "Quellangebot für libfuse ...").
+static class RuntimeSources
+{
+    // Both pins were computed from the downloads on 2026-10-23. fuse-3.15.0.tar.xz equals the SHA-256 that the runtime's own
+    // scripts/common/install-dependencies.sh checks. The type2-runtime archive is GitHub's generated tag archive; if
+    // GitHub ever changes its bytes, runtime-sources fails loudly and the pin must be renewed after comparing the contents.
+    public static readonly RuntimeSource[] All =
+    [
+        new("fuse-3.15.0.tar.xz",
+            "https://github.com/libfuse/libfuse/releases/download/fuse-3.15.0/fuse-3.15.0.tar.xz",
+            4589124,
+            "70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0"),
+        new($"type2-runtime-{AppImageRuntime.Version}.tar.gz",
+            $"https://github.com/AppImage/type2-runtime/archive/refs/tags/{AppImageRuntime.Version}.tar.gz",
+            31045,
+            "4c4f6df4647c9f01f871d7edd3716d8aeeffda9d22ffbebe3fccd95a6ab52c95"),
+    ];
+
+    // Puts every verified source into outDir (from fromDir instead of the network when given). 0 ok, 1 refused or failed.
+    public static int Fetch(IReadOnlyList<RuntimeSource> sources, string outDir, string? fromDir)
+    {
+        foreach (var source in sources)
+        {
+            if (Pinned.PinProblem(source.Sha256, $"RuntimeSources ({source.FileName})") is { } pinProblem)
+            {
+                Console.Error.WriteLine($"runtime-sources: {pinProblem}");
+                return 1;
+            }
+        }
+
+        Directory.CreateDirectory(outDir);
+        foreach (var source in sources)
+        {
+            var name = $"RuntimeSources ({source.FileName})";
+            var target = Path.Combine(outDir, source.FileName);
+            if (File.Exists(target))
+            {
+                if (Pinned.VerifyFile(target, source.Size, source.Sha256, name) is { } existing)
+                {
+                    Console.Error.WriteLine($"runtime-sources: vorhandene Datei {target} passt nicht ({existing}); nichts geladen, Datei bitte pruefen und loeschen");
+                    return 1;
+                }
+
+                Console.WriteLine($"runtime-sources: schon vorhanden und geprueft: {target}");
+                continue;
+            }
+
+            var download = target + ".download-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                if (fromDir is null)
+                {
+                    Console.WriteLine($"runtime-sources: lade {source.Url}");
+                    Pinned.Fetch(source.Url, download);
+                }
+                else
+                {
+                    File.Copy(Path.Combine(fromDir, source.FileName), download);
+                }
+
+                if (Pinned.VerifyFile(download, source.Size, source.Sha256, name) is { } problem)
+                {
+                    Console.Error.WriteLine($"runtime-sources: {source.FileName} abgelehnt: {problem}");
+                    return 1;
+                }
+
+                File.Move(download, target);
+                Console.WriteLine($"runtime-sources: {source.FileName} (SHA-256 geprueft) in {target}");
+            }
+            catch (Exception e) when (e is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"runtime-sources: {source.FileName}: {e.Message}");
+                return 1;
+            }
+            finally
+            {
+                if (File.Exists(download))
+                {
+                    File.Delete(download);
+                }
+            }
+        }
+
+        return 0;
+    }
+}
+
+static class RuntimeSourcesCommand
+{
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--out", "--from");
+        if (parsed is not { } p || p.Positional.Count != 0 || !p.Named.TryGetValue("--out", out var outDir))
+        {
+            Console.Error.WriteLine("Aufruf: runtime-sources --out <Ordner> [--from <Ordner>]");
+            return 2;
+        }
+
+        return RuntimeSources.Fetch(RuntimeSources.All, Path.GetFullPath(outDir), p.Named.GetValueOrDefault("--from") is { } from ? Path.GetFullPath(from) : null);
+    }
+}
+
 static class RuntimeFetch
 {
     public static int Run(string[] args)
@@ -2354,6 +2462,7 @@ static class SelfTest
         DebParts();
         AppImageParts();
         TagRuleParts();
+        RuntimeSourceParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -2398,6 +2507,74 @@ static class SelfTest
 
         Expect("tag: beide Checkouts bauen auch einen Branch (inputs.ref)", Regex.Count(yml, @"ref: \$\{\{ inputs\.ref \|\| "), 2);
         Expect("tag: beide Jobs verweigern das Hochladen eines Branchs", Regex.Count(yml, "name: Refuse to upload a branch build"), 2);
+    }
+
+    // The AppImage contains libfuse (LGPL-2.1): its source and the runtime's build scripts are attached to every release.
+    private static void RuntimeSourceParts()
+    {
+        foreach (var source in RuntimeSources.All)
+        {
+            Expect($"sources: {source.FileName} ist festgehalten", Pinned.PinProblem(source.Sha256, source.FileName), null);
+            Expect($"sources: {source.FileName} hat eine Groesse", source.Size > 0, true);
+            Expect($"sources: {source.FileName} kommt von einer festen Version", source.Url.StartsWith("https://github.com/", StringComparison.Ordinal), true);
+        }
+
+        Expect("sources: libfuse 3.15.0 (wie in third-party/appimage-runtime/README.md)", RuntimeSources.All.Any(x => x.FileName == "fuse-3.15.0.tar.xz"), true);
+        Expect("sources: type2-runtime in der Version der Runtime", RuntimeSources.All.Any(x => x.FileName == $"type2-runtime-{AppImageRuntime.Version}.tar.gz"), true);
+
+        const string container = "packaging/linux/container-build.sh";
+        const string workflow = ".github/workflows/release.yml";
+        Expect($"sources: {container} vorhanden", File.Exists(container), true);
+        Expect($"sources: {workflow} vorhanden", File.Exists(workflow), true);
+        if (File.Exists(container) && File.Exists(workflow))
+        {
+            var script = File.ReadAllText(container);
+            var yml = File.ReadAllText(workflow);
+            Expect("sources: container-build.sh ruft runtime-sources", script.Contains("runtime-sources --out out/release", StringComparison.Ordinal), true);
+            foreach (var source in RuntimeSources.All)
+            {
+                Expect($"sources: {source.FileName} steht in SHA256SUMS-linux.txt", script.Contains($"out/release/{source.FileName}", StringComparison.Ordinal), true);
+                Expect($"sources: {source.FileName} wird hochgeladen", yml.Contains($"out/release/{source.FileName}", StringComparison.Ordinal), true);
+            }
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), "pagewing-sources-selftest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var from = Path.Combine(dir, "from");
+            Directory.CreateDirectory(from);
+            var good = new RuntimeSource("a.tar.gz", "https://example.invalid/a.tar.gz", 5, Convert.ToHexStringLower(SHA256.HashData("hello"u8)));
+            var other = new RuntimeSource("b.tar.xz", "https://example.invalid/b.tar.xz", 3, Convert.ToHexStringLower(SHA256.HashData("abc"u8)));
+            File.WriteAllText(Path.Combine(from, "a.tar.gz"), "hello");
+            File.WriteAllText(Path.Combine(from, "b.tar.xz"), "abc");
+
+            var outDir = Path.Combine(dir, "out");
+            Expect("sources: richtige Dateien werden uebernommen", RuntimeSources.Fetch([good, other], outDir, from), 0);
+            Expect("sources: Datei liegt im Ausgabeordner", File.ReadAllText(Path.Combine(outDir, "a.tar.gz")), "hello");
+            Expect("sources: kein Rest des Downloads", Directory.GetFiles(outDir).Length, 2);
+            Expect("sources: zweiter Lauf erkennt vorhandene, geprueftes Dateien", RuntimeSources.Fetch([good, other], outDir, from), 0);
+
+            File.WriteAllText(Path.Combine(from, "b.tar.xz"), "xyz");
+            var refused = Path.Combine(dir, "refused");
+            Expect("sources: falsche SHA-256 liefert 1", RuntimeSources.Fetch([good, other], refused, from), 1);
+            Expect("sources: falsche Datei wird nicht abgelegt", File.Exists(Path.Combine(refused, "b.tar.xz")), false);
+            Expect("sources: kein Download-Rest nach Ablehnung", Directory.GetFiles(refused).All(f => !f.Contains(".download-", StringComparison.Ordinal)), true);
+
+            File.WriteAllText(Path.Combine(outDir, "a.tar.gz"), "tampered");
+            Expect("sources: vorhandene falsche Datei wird abgelehnt", RuntimeSources.Fetch([good], outDir, from), 1);
+            Expect("sources: falsche Datei bleibt unangetastet", File.ReadAllText(Path.Combine(outDir, "a.tar.gz")), "tampered");
+
+            var unpinned = good with { Sha256 = "nicht festgehalten" };
+            Expect("sources: nicht festgehaltene Pruefsumme liefert 1", RuntimeSources.Fetch([unpinned], Path.Combine(dir, "u"), from), 1);
+            Expect("sources: fehlende Quelle liefert 1", RuntimeSources.Fetch([good with { FileName = "nope.tar.gz" }], Path.Combine(dir, "m"), from), 1);
+            Expect("runtime-sources: ohne --out liefert 2", Cli.Run(["runtime-sources"]), 2);
+            Expect("runtime-sources: unbekannte Option liefert 2", Cli.Run(["runtime-sources", "--out", dir, "--gibt-es-nicht", "x"]), 2);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     private static void PackagingCommands()

@@ -225,4 +225,6 @@ jobs:
           gh release upload "$TAG" \
             "out/release/pagewing_${DEBVERSION}_amd64.deb" \
             "out/release/Pagewing-$VERSION-x86_64.AppImage" \
+            out/release/fuse-3.15.0.tar.xz \
+            out/release/type2-runtime-20251108.tar.gz \
             out/release/SHA256SUMS-linux.txt --clobber

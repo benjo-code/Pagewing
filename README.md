@@ -30,7 +30,7 @@ Noch gibt es kein Release; die Pakete entstehen beim Veröffentlichen und hänge
 **Linux (x86-64)** – unterstützt sind Ubuntu 22.04 und neuer, Debian 12 und neuer, Linux Mint 21 und neuer sowie CachyOS (vorläufig: glibc ab 2.35).
 
 - `.deb`: `sudo apt install ./pagewing_<Version>_amd64.deb`. Das Paket legt Starter, Symbole und die Zuordnung zu PDF an; `pagewing` im Pfad ist die CLI.
-- AppImage: `chmod +x Pagewing-<Version>-x86_64.AppImage`, dann starten (Doppelklick oder Terminal). Es braucht kein `libfuse2`. Beim ersten Start bietet die Karte (unten) an, Pagewing als Standard für PDFs festzulegen; das AppImage trägt dabei Starter und Symbol in den Benutzerordner (`~/.local/share`) ein, sodass es im Anwendungsmenü erscheint.
+- AppImage: `chmod +x Pagewing-<Version>-x86_64.AppImage`, dann starten (Doppelklick oder Terminal). Es braucht kein `libfuse2`. Die Runtime des AppImage enthält libfuse unter LGPL-2.1; dessen Quelltext (`fuse-3.15.0.tar.xz`) und die Bauskripte der Runtime (`type2-runtime-20251108.tar.gz`) hängen an jedem Release. Beim ersten Start bietet die Karte (unten) an, Pagewing als Standard für PDFs festzulegen; das AppImage trägt dabei Starter und Symbol in den Benutzerordner (`~/.local/share`) ein, sodass es im Anwendungsmenü erscheint.
 
 **Standardprogramm für PDFs:** Beim ersten Start fragt eine Karte, ob Pagewing der Standard werden soll („Als Standard festlegen“, „Später“, „Nicht mehr fragen“). Unter Linux setzt Pagewing den Standard selbst; Windows erlaubt das nicht still, deshalb öffnet die Karte die Einstellungen von Windows, in denen man Pagewing wählt. Dieselbe Funktion steht jederzeit in der Befehlspalette (Strg+K): „Pagewing als Standard für PDFs festlegen“.
 
