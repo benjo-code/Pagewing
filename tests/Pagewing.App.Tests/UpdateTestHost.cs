@@ -24,6 +24,8 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
 
     private readonly List<IDisposable> _owned = [];
 
+    private readonly List<UpdateCoordinator> _coordinators = [];
+
     protected FakeUpdateSourceApp Source { get; } = new();
 
     /// <summary>Gets the installer the coordinators of the test hand a verified update to (unless a test passes another).</summary>
@@ -54,6 +56,9 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
             _owned[i].Dispose();
         }
 
+        // A disposed coordinator may still be writing into the folder (an installation on the pool finishes its step):
+        // wait for it, or the write could happen after the folder was deleted.
+        WaitUntilIdle(Task.WhenAll(_coordinators.Select(coordinator => coordinator.WhenIdle)));
         base.Dispose();
         Source.Dispose();
         if (Directory.Exists(_directory))
@@ -71,6 +76,7 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
     /// Makes a coordinator over <see cref="Source"/> whose updates go to <see cref="StagingOf"/> and to
     /// <paramref name="applier"/> (<see cref="Applier"/> without one; <paramref name="noApplier"/> for a system that has none).
     /// <paramref name="source"/> replaces <see cref="Source"/> for checking and downloading (the real source on a fake handler).
+    /// <paramref name="stagingWriteStarted"/> runs on the pool right before the staging files are written.
     /// </summary>
     protected UpdateCoordinator NewCoordinator(
         UserSettings? settings = null,
@@ -78,7 +84,8 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
         PackageForm form = PackageForm.WindowsInstaller,
         IUpdateApplier? applier = null,
         bool noApplier = false,
-        IUpdateSource? source = null)
+        IUpdateSource? source = null,
+        Action? stagingWriteStarted = null)
     {
         Directory.CreateDirectory(_directory);
         var time = clock ?? TimeProvider.System;
@@ -89,9 +96,11 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
         {
             ProcessPath = ProcessPath,
             TargetDirectory = Path.GetDirectoryName(ProcessPath),
+            StagingWriteStarted = stagingWriteStarted,
         };
         var coordinator = new UpdateCoordinator(checker, settings ?? UserSettings.Detached(), form, install);
         Own(coordinator);
+        _coordinators.Add(coordinator);
         return coordinator;
     }
 
@@ -173,6 +182,25 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
         {
             Settle(window);
             await Task.Delay(20);
+        }
+    }
+
+    // On the UI thread the continuations of the coordinators run through the dispatcher: run its jobs while waiting.
+    private static void WaitUntilIdle(Task idle)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        var onUiThread = Avalonia.Threading.Dispatcher.UIThread.CheckAccess();
+        while (!idle.IsCompleted && DateTime.UtcNow < deadline)
+        {
+            if (onUiThread)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                idle.Wait(TimeSpan.FromMilliseconds(10), CancellationToken.None);
+            }
+            else
+            {
+                idle.Wait(TimeSpan.FromMilliseconds(100), CancellationToken.None);
+            }
         }
     }
 

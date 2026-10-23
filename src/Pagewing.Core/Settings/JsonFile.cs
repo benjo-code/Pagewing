@@ -45,15 +45,16 @@ internal static class JsonFile
 
     /// <summary>
     /// Writes the text into <c>&lt;path&gt;.tmp</c> in the target folder first, then replaces the file in one step.
-    /// Returns <c>false</c> if that fails for a file system reason; the old file stays as it was.
+    /// Returns <c>false</c> if that fails for a file system reason; the old file stays as it was. The target folder is made
+    /// first unless <paramref name="createDirectory"/> is <see langword="false"/>, which fails for a missing folder.
     /// </summary>
-    internal static bool TryWrite(string path, string json)
+    internal static bool TryWrite(string path, string json, bool createDirectory = true)
     {
         var temp = path + ".tmp";
         try
         {
             var directory = Path.GetDirectoryName(Path.GetFullPath(path));
-            if (!string.IsNullOrEmpty(directory))
+            if (createDirectory && !string.IsNullOrEmpty(directory))
             {
                 Directory.CreateDirectory(directory);
             }

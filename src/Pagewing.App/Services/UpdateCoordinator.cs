@@ -26,6 +26,9 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
 
     private readonly CancellationTokenSource _lifetime = new();
     private Task? _running;
+
+    // The work of the check on the pool: a check that times out stops waiting for it, but it may still write update.json.
+    private Task? _checkWork;
     private bool _disposed;
 
     // The installation: the one that runs (all windows and clicks share it), the source that cancels its download, the
@@ -47,6 +50,14 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
 
     /// <summary>Gets how many handlers follow <see cref="Changed"/> (one per open window that follows the coordinator).</summary>
     internal int ListenerCount => Changed?.GetInvocationList().Length ?? 0;
+
+    /// <summary>
+    /// Gets a task that completes once nothing of the coordinator runs any more: the check (with its work on the pool, also
+    /// after the check stopped waiting for it) and the installation. Never faults. Tests wait for it before they delete the
+    /// folder that stands for the config folder (after <see cref="Dispose"/>, which cancels what can be cancelled).
+    /// </summary>
+    internal Task WhenIdle =>
+        Task.WhenAll(new[] { _running, _checkWork, _install }.OfType<Task>()).ContinueWith(static _ => { }, TaskScheduler.Default);
 
     /// <summary>Gets how the running program was installed.</summary>
     public PackageForm Form => form;
@@ -185,16 +196,20 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
 
             // Both on the pool: update.json is read there and the source does its work there; the UI thread only sets the result.
             // What earlier updates left behind goes first (UpdateStaging.DeleteOld).
-            var known = await Task.Run(
+            var knownWork = Task.Run(
                 () =>
                 {
                     DeleteOldStaging();
                     return checker.Known();
                 },
-                ct).WaitAsync(ct).ConfigureAwait(true);
+                ct);
+            _checkWork = knownWork;
+            var known = await knownWork.WaitAsync(ct).ConfigureAwait(true);
             Apply(known);
 
-            var state = await Task.Run(() => CheckOffTheUiThreadAsync(force, ct), ct).WaitAsync(ct).ConfigureAwait(true);
+            var checkWork = Task.Run(() => CheckOffTheUiThreadAsync(force, ct), ct);
+            _checkWork = checkWork;
+            var state = await checkWork.WaitAsync(ct).ConfigureAwait(true);
             if (state is not null)
             {
                 Apply(state);
@@ -322,11 +337,21 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
             // (5) The signed manifest, its signature and the request next to the file, for the installer to verify again.
             stage = UpdateStage.Ready;
             var request = Request(setup, offered, file);
-            if (!await Task.Run(() => WriteStaging(directory, documents, request), ct).ConfigureAwait(true))
+            if (!await Task.Run(
+                () =>
+                {
+                    setup.StagingWriteStarted?.Invoke();
+                    return WriteStaging(directory, documents, request);
+                },
+                ct).ConfigureAwait(true))
             {
                 Fail(UpdateFailure.Storage, stage, directory, afterwards: UpdateState.Offer(offered), retryable: true);
                 return;
             }
+
+            // "Cancel" is accepted until "Ready" shows, also while the files were written: it cancels here, before the
+            // installer is asked (the folder goes in the handler below).
+            ct.ThrowIfCancellationRequested();
 
             // (6) Ready; the installer of the system takes over from here (it writes the session and ends the app).
             SetState(new UpdateState(UpdateStage.Ready, offered, file, file.Size, null));

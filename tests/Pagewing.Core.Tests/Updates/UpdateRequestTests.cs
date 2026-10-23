@@ -80,6 +80,18 @@ public sealed class UpdateRequestTests : IDisposable
     }
 
     [Fact]
+    public void WritingNeverMakesTheFolder()
+    {
+        // The staging folder may have been removed meanwhile (cancelled, the app ending): the request goes into the folder
+        // that is there, or nowhere, and never brings a removed folder back.
+        var gone = Path.Combine(_directory, UpdateStaging.DirectoryName, "0.2.0");
+
+        Assert.False(new UpdateRequest { Version = "0.2.0", FileName = "a.exe" }.TryWrite(Path.Combine(gone, UpdateStaging.RequestFileName)));
+
+        Assert.False(Directory.Exists(Path.Combine(_directory, UpdateStaging.DirectoryName)));
+    }
+
+    [Fact]
     public void TheStagingFolderIsNamedAfterTheVersion()
     {
         Assert.Equal(

@@ -18,4 +18,10 @@ public sealed record UpdateInstallSetup(IUpdateSource Source, string ConfigDirec
 
     /// <summary>Gets the folder the program is installed in (for an AppImage the folder of the AppImage), for the request.</summary>
     public string? TargetDirectory { get; init; }
+
+    /// <summary>
+    /// Gets what runs on the thread pool right before the signed manifest, its signature and the request are written into
+    /// the staging folder; tests hold the write there (nothing in the app sets it).
+    /// </summary>
+    internal Action? StagingWriteStarted { get; init; }
 }

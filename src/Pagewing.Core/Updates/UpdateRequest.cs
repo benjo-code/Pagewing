@@ -136,9 +136,12 @@ public sealed class UpdateRequest
         }
     }
 
-    /// <summary>Writes the request atomically; <c>false</c> if that fails for a file system reason (a full disk, no access).</summary>
+    /// <summary>
+    /// Writes the request atomically into the folder that is there (the staging folder); <c>false</c> if that fails for a
+    /// file system reason (a full disk, no access, a folder that was removed meanwhile, which is never made again).
+    /// </summary>
     public bool TryWrite(string path) =>
-        JsonFile.TryWrite(path, JsonSerializer.Serialize(this, UpdateRequestJsonContext.Default.UpdateRequest));
+        JsonFile.TryWrite(path, JsonSerializer.Serialize(this, UpdateRequestJsonContext.Default.UpdateRequest), createDirectory: false);
 }
 
 /// <summary>Source-generated JSON metadata for the request (no reflection, Native AOT safe).</summary>

@@ -286,6 +286,33 @@ public sealed class UpdateFlowTests : UpdateTestHost
     }
 
     [AvaloniaFact]
+    public async Task CancelDuringTheStagingWriteGoesBackToTheOfferAndNeverInstalls()
+    {
+        using var reached = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        Source.Offer("0.2.0");
+        var coordinator = NewCoordinator(stagingWriteStarted: () =>
+        {
+            reached.Set();
+            release.Wait(TimeSpan.FromSeconds(15));
+        });
+        await coordinator.CheckNowAsync();
+
+        var install = coordinator.BeginInstallAsync();
+        await PumpUntilAsync(() => reached.IsSet);
+
+        // Still "Verifying" for the window, so "Cancel" is accepted: it must cancel, also while the files are written.
+        Assert.Equal(UpdateStage.Verifying, coordinator.State.Stage);
+        coordinator.CancelInstall();
+        release.Set();
+        await install;
+
+        Assert.Equal(UpdateState.Offer(Offered), coordinator.State);
+        Assert.Equal(0, Applier.Calls);
+        Assert.False(Directory.Exists(StagingOf("0.2.0")));
+    }
+
+    [AvaloniaFact]
     public async Task DiskFullShowsAnErrorAndRetryWorks()
     {
         var coordinator = await OfferedAsync();
