@@ -384,14 +384,49 @@ public sealed class GitHubUpdateSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task DeletesThePartFileWhenTheDiskIsFull()
+    public async Task AFullDiskThrowsAndDeletesThePartFile()
     {
+        // A full disk is no network trouble: the caller must hear it as what it is, not as "nothing received".
         var payload = Payload(100_000);
         var handler = new FakeHandler(_ => Bytes(payload));
         using var source = new GitHubUpdateSource(handler)
         {
             OpenDestination = path => new FullDiskStream(new FileStream(path, FileMode.Create, FileAccess.Write)),
         };
+
+        await Assert.ThrowsAsync<IOException>(
+            () => source.DownloadAsync(Version, FileOf(payload.Length), Destination, new Recorder(), CancellationToken.None));
+
+        Assert.False(File.Exists(PartFile));
+        Assert.False(File.Exists(Destination));
+    }
+
+    [Fact]
+    public async Task AFolderWithoutWriteAccessThrows()
+    {
+        var handler = new FakeHandler(_ => Bytes(Payload(10)));
+        using var source = new GitHubUpdateSource(handler)
+        {
+            OpenDestination = _ => throw new UnauthorizedAccessException("Access to the path is denied."),
+        };
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => source.DownloadAsync(Version, FileOf(10), Destination, new Recorder(), CancellationToken.None));
+
+        Assert.False(File.Exists(PartFile));
+        Assert.False(File.Exists(Destination));
+    }
+
+    [Fact]
+    public async Task AConnectionLostInTheMiddleIsNetworkTroubleAndLeavesNoFile()
+    {
+        // The body breaks off after the first chunk: an IOException of the network, not of the disk.
+        var payload = Payload(200_000);
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new BrokenStream(payload, breakAfter: 90_000)),
+        });
+        using var source = new GitHubUpdateSource(handler);
 
         var done = await source.DownloadAsync(Version, FileOf(payload.Length), Destination, new Recorder(), CancellationToken.None);
 
@@ -522,6 +557,35 @@ public sealed class GitHubUpdateSourceTests : IDisposable
     }
 
     private sealed record Seen(string Url, HttpMethod Method, string? UserAgent, IReadOnlyList<string> HeaderNames);
+
+    /// <summary>A response body that delivers its bytes up to <c>breakAfter</c> and then fails like a dropped connection.</summary>
+    private sealed class BrokenStream(byte[] data, int breakAfter) : MemoryStream(data, writable: false)
+    {
+        // Every read goes through the array overload of MemoryStream (its span overload calls back into it for derived types).
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (Position >= breakAfter)
+            {
+                throw new IOException("The response ended prematurely.");
+            }
+
+            return base.Read(buffer, offset, (int)Math.Min(count, breakAfter - Position));
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            var array = new byte[buffer.Length];
+            var read = Read(array, 0, array.Length);
+            array.AsSpan(0, read).CopyTo(buffer);
+            return read;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(Read(buffer.Span));
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            Task.FromResult(Read(buffer, offset, count));
+    }
 
     private sealed class FakeHandler(params Func<HttpRequestMessage, HttpResponseMessage>[] responses) : HttpMessageHandler
     {

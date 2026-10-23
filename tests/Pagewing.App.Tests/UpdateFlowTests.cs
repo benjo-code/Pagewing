@@ -308,6 +308,40 @@ public sealed class UpdateFlowTests : UpdateTestHost
     }
 
     [AvaloniaFact]
+    public async Task AFullDiskInTheRealSourceIsAStorageErrorAndRetryWorks()
+    {
+        // The shipped source on a fake handler (no network): the manifest of the fake, the file of 200,000 bytes, written
+        // to a disk that is full after the first chunk.
+        Source.Content = [.. Enumerable.Range(0, 200_000).Select(i => (byte)(i % 251))];
+        Source.Offer("0.2.0");
+        var full = true;
+        using var github = new GitHubUpdateSource(new ReleaseHandler(Source))
+        {
+            OpenDestination = path => new FullDiskFileStream(path, () => full),
+        };
+        var coordinator = NewCoordinator(source: github);
+        await coordinator.CheckNowAsync();
+        Assert.Equal(UpdateState.Offer(Offered), coordinator.State);
+
+        await coordinator.BeginInstallAsync();
+
+        // Not "check the internet connection": the disk is the problem, and nothing of the download stays.
+        Assert.Equal(UpdateStage.Failed, coordinator.State.Stage);
+        Assert.Equal(UpdateFailure.Storage, coordinator.State.Error);
+        Assert.Equal(UpdateStage.Downloading, coordinator.FailedAt);
+        Assert.False(Directory.Exists(StagingOf("0.2.0")));
+        Assert.Equal(0, Applier.Calls);
+        Assert.True(coordinator.CanRetry);
+
+        // Space was made: trying again installs.
+        full = false;
+        await coordinator.RetryAsync();
+
+        Assert.Equal(UpdateStage.Restarting, coordinator.State.Stage);
+        Assert.Equal(Source.Content, Applier.StagedBytes);
+    }
+
+    [AvaloniaFact]
     public async Task AStalledDownloadEndsWithAnError()
     {
         var clock = new PrintClock();
@@ -398,6 +432,32 @@ public sealed class UpdateFlowTests : UpdateTestHost
 
         Assert.Equal(1, heard);
         Assert.Equal(UpdateStage.Available, coordinator.State.Stage);
+    }
+
+    /// <summary>
+    /// Answers the requests of <see cref="GitHubUpdateSource"/> like the release storage: the latest release names 0.2.0,
+    /// manifest and signature are those of <paramref name="fake"/>, every other address is the file (its content).
+    /// </summary>
+    private sealed class ReleaseHandler(FakeUpdateSourceApp fake) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var url = request.RequestUri!.AbsoluteUri;
+            byte[] body = url.EndsWith("/releases/latest", StringComparison.Ordinal) ? Encoding.UTF8.GetBytes("""{"tag_name":"v0.2.0"}""")
+                : url.EndsWith("/" + UpdateStaging.ManifestFileName, StringComparison.Ordinal) ? fake.Documents!.Manifest
+                : url.EndsWith("/" + UpdateStaging.SignatureFileName, StringComparison.Ordinal) ? Encoding.UTF8.GetBytes(fake.Documents!.Signature)
+                : fake.Content;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(body) });
+        }
+    }
+
+    /// <summary>A file on a disk that is full after the first write while <paramref name="full"/> says so.</summary>
+    private sealed class FullDiskFileStream(string path, Func<bool> full) : FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true)
+    {
+        private int _writes;
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            _writes++ > 0 && full() ? throw new IOException("There is not enough space on the disk.") : base.WriteAsync(buffer, cancellationToken);
     }
 
     private async Task<UpdateCoordinator> OfferedAsync(PackageForm form = PackageForm.WindowsInstaller, TimeProvider? clock = null, bool noApplier = false)

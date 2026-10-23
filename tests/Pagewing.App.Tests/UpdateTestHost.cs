@@ -70,19 +70,22 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
     /// <summary>
     /// Makes a coordinator over <see cref="Source"/> whose updates go to <see cref="StagingOf"/> and to
     /// <paramref name="applier"/> (<see cref="Applier"/> without one; <paramref name="noApplier"/> for a system that has none).
+    /// <paramref name="source"/> replaces <see cref="Source"/> for checking and downloading (the real source on a fake handler).
     /// </summary>
     protected UpdateCoordinator NewCoordinator(
         UserSettings? settings = null,
         TimeProvider? clock = null,
         PackageForm form = PackageForm.WindowsInstaller,
         IUpdateApplier? applier = null,
-        bool noApplier = false)
+        bool noApplier = false,
+        IUpdateSource? source = null)
     {
         Directory.CreateDirectory(_directory);
         var time = clock ?? TimeProvider.System;
-        var checker = new UpdateChecker(Source, new UpdateStatusStore(StatusPath), time, Running, Source.Keys);
+        var from = source ?? Source;
+        var checker = new UpdateChecker(from, new UpdateStatusStore(StatusPath), time, Running, Source.Keys);
         var chosen = noApplier ? null : applier ?? Applier;
-        var install = new UpdateInstallSetup(Source, _directory, () => chosen, time)
+        var install = new UpdateInstallSetup(from, _directory, () => chosen, time)
         {
             ProcessPath = ProcessPath,
             TargetDirectory = Path.GetDirectoryName(ProcessPath),

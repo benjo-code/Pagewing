@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using Pagewing.Core.Updates;
@@ -8,7 +9,8 @@ namespace Pagewing.App.Services;
 
 /// <summary>
 /// The release storage of the project on GitHub as the source of updates, and the only code of Pagewing that
-/// touches the network. Never throws for network trouble (see <see cref="IUpdateSource"/>); cancelling throws.
+/// touches the network. Never throws for network trouble (see <see cref="IUpdateSource"/>); cancelling and a failure of
+/// the file system while a download is written throw.
 /// </summary>
 /// <remarks>
 /// The addresses of the manifest, the signature and the files are built from <see cref="UpdateTrust"/> and the
@@ -84,6 +86,11 @@ internal sealed class GitHubUpdateSource : IUpdateSource, IDisposable
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The network (a refused or dropped connection, a body that breaks off, a server error, a time limit of the client)
+    /// gives <see langword="false"/>; the file system (a full disk, no access to the folder) throws its exception, so the
+    /// caller can tell the user what really went wrong. Either way the part file is deleted first.
+    /// </remarks>
     public async Task<bool> DownloadAsync(
         UpdateVersion version,
         UpdateFile file,
@@ -96,10 +103,16 @@ internal sealed class GitHubUpdateSource : IUpdateSource, IDisposable
         try
         {
             complete = await DownloadToPartAsync(AssetUrl(version, file.Name), file.Size, part, bytesReceived, ct).ConfigureAwait(false)
-                && Promote(part, destinationPath);
+                && OnDisk(() => Promote(part, destinationPath));
             return complete;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or HttpRequestException
+        catch (StorageFailure failure)
+        {
+            // Rethrown as itself, after the part file is gone (finally).
+            ExceptionDispatchInfo.Throw(failure.InnerException!);
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or HttpRequestException
             || (exception is OperationCanceledException && !ct.IsCancellationRequested))
         {
             return false;
@@ -222,8 +235,9 @@ internal sealed class GitHubUpdateSource : IUpdateSource, IDisposable
         var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         await using (source.ConfigureAwait(false))
         {
-            var destination = OpenDestination(part);
-            await using (destination.ConfigureAwait(false))
+            // Reading is the network, writing the disk: only what the file does is marked as a failure of the disk.
+            var destination = OnDisk(() => OpenDestination(part));
+            try
             {
                 var chunk = new byte[BufferSize];
                 long total = 0;
@@ -237,13 +251,43 @@ internal sealed class GitHubUpdateSource : IUpdateSource, IDisposable
                         return false;
                     }
 
-                    await destination.WriteAsync(chunk.AsMemory(0, read), ct).ConfigureAwait(false);
+                    await OnDiskAsync(() => destination.WriteAsync(chunk.AsMemory(0, read), ct).AsTask()).ConfigureAwait(false);
                     bytesReceived.Report(total);
                 }
 
-                await destination.FlushAsync(ct).ConfigureAwait(false);
+                await OnDiskAsync(() => destination.FlushAsync(ct)).ConfigureAwait(false);
                 return total == expectedSize;
             }
+            finally
+            {
+                await OnDiskAsync(() => destination.DisposeAsync().AsTask()).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>Runs a file operation; a failure of the file system comes out as a <see cref="StorageFailure"/>.</summary>
+    private static T OnDisk<T>(Func<T> operation)
+    {
+        try
+        {
+            return operation();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new StorageFailure(exception);
+        }
+    }
+
+    /// <summary>Awaits a file operation; a failure of the file system comes out as a <see cref="StorageFailure"/>.</summary>
+    private static async Task OnDiskAsync(Func<Task> operation)
+    {
+        try
+        {
+            await operation().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new StorageFailure(exception);
         }
     }
 
@@ -294,4 +338,10 @@ internal sealed class GitHubUpdateSource : IUpdateSource, IDisposable
     private static bool IsRedirect(HttpStatusCode status) =>
         status is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther
             or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
+
+    /// <summary>
+    /// Marks a failure of the file system inside a download (the network throws <see cref="IOException"/> too), so it is
+    /// rethrown as itself instead of counting as "nothing received". Never leaves <see cref="DownloadAsync"/>.
+    /// </summary>
+    private sealed class StorageFailure(Exception inner) : Exception(inner.Message, inner);
 }
