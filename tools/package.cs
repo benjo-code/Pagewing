@@ -8,6 +8,7 @@
 //   dotnet run tools/package.cs -- inno-install [--dir <dir>]                         (Windows)
 //   dotnet run tools/package.cs -- installer --layout <dir> --version <x.y.z> --out <file> [--iscc <ISCC.exe>] [--repo <root>]   (Windows)
 //   dotnet run tools/package.cs -- installer-smoke <setup.exe> [--repo <root>]          (Windows)
+//   dotnet run tools/package.cs -- update-smoke <setup-old.exe> <setup-new.exe> --key <test-key.pem> [--key-id <id>]   (Windows, test build)
 //   dotnet run tools/package.cs -- deb --layout <dir> --version <x.y.z> --out <pagewing_x.y.z_amd64.deb> [--repo <root>]   (Linux)
 //   dotnet run tools/package.cs -- deb-smoke <file.deb> [--repo <root>]                  (Linux)
 //   dotnet run tools/package.cs -- runtime-fetch [--out <file>]                         (Linux)
@@ -36,6 +37,7 @@ static class Cli
         "  inno-install [--dir <Ordner>]                                     laedt Inno Setup (feste Version, SHA-256 geprueft) ins Benutzerprofil (Windows)\n" +
         "  installer --layout <Ordner> --version <x.y.z> --out <Datei> [--iscc <ISCC.exe>]   baut Pagewing-<Version>-win-x64-setup.exe (Windows)\n" +
         "  installer-smoke <Setup.exe>                                       installiert still, prueft, installiert erneut, deinstalliert (Windows)\n" +
+        "  update-smoke <Setup-alt.exe> <Setup-neu.exe> --key <Testschluessel.pem> [--key-id <Kennung>]   Update ueber den Helfermodus (Windows, Testaufbau)\n" +
         "  deb --layout <Ordner> --version <x.y.z> --out <Datei>             baut pagewing_<Version>_amd64.deb (Linux, dpkg-deb)\n" +
         "  deb-smoke <Datei.deb>                                             entpackt, prueft Starter, Symlink, ruft die CLI auf, lintian/desktop-file-validate wenn vorhanden (Linux)\n" +
         "  runtime-fetch [--out <Datei>]                                     laedt die type2-Runtime (feste Version, SHA-256 geprueft) nach ~/.cache/PagewingBuildTools\n" +
@@ -54,6 +56,7 @@ static class Cli
         ["inno-install"] = InnoInstall.Run,
         ["installer"] = Installer.Run,
         ["installer-smoke"] = InstallerSmoke.Run,
+        ["update-smoke"] = UpdateSmoke.Run,
         ["deb"] = Deb.Run,
         ["deb-smoke"] = DebSmoke.Run,
         ["runtime-fetch"] = RuntimeFetch.Run,
@@ -1021,6 +1024,16 @@ static class IssRules
             problems.Add("[Setup] PrivilegesRequiredOverridesAllowed muss genau 'commandline dialog' sein");
         }
 
+        // A silent update (the helper of the app passes neither /ALLUSERS, /CURRENTUSER nor /DIR) takes the install mode and
+        // the folder of the installation it finds by the AppId; both directives default to yes and must stay so.
+        foreach (var directive in new[] { "UsePreviousPrivileges", "UsePreviousAppDir" })
+        {
+            if (s.Setup.TryGetValue(directive, out var value) && !string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase))
+            {
+                problems.Add($"[Setup] {directive}={value}: ein Update muss Modus und Ordner der vorhandenen Installation uebernehmen (yes oder weglassen)");
+            }
+        }
+
         if (string.Equals(s.Setup.GetValueOrDefault("DisableDirPage"), "yes", StringComparison.OrdinalIgnoreCase))
         {
             problems.Add("[Setup] DisableDirPage=yes: der Zielordner muss waehlbar sein");
@@ -1382,6 +1395,274 @@ static class InstallerSmoke
             failures.Add($@"HKCU\{Installer.UninstallKey} fehlt (keine Benutzerinstallation?)");
         }
     }
+}
+
+// End-to-end check of the Windows updater (Milestone 8.1, task 10): installs the old version silently into a test folder
+// (like installer-smoke, with the same refusal over a real installation), puts the new setup program with a manifest
+// signed by the test key and request.json into a staging folder below a fake %APPDATA%, starts a copy of the program in
+// the helper mode (--finish-update) with a fake %APPDATA% and %LOCALAPPDATA% and then checks: Pagewing.exe reports the new
+// version, the staging folder is gone, settings.json and the real %APPDATA%\Pagewing are unchanged. The helper verifies
+// the signature with the keys compiled into the program: both setup programs must come from the test build with the
+// public half of --key (Milestone 8.1, task 13), otherwise it refuses. Shows windows (needs a desktop session); like
+// installer-smoke it writes the registration below HKCU (file types, uninstall entry) and removes it again.
+static partial class UpdateSmoke
+{
+    [GeneratedRegex(@"^Pagewing-(?<v>(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))-win-x64-setup\.exe$")]
+    private static partial Regex SetupName();
+
+    public static string TestDir(string temp) => Path.Combine(temp, "Pagewing Update Test ä&");
+
+    // The version of a setup program by its release name, or null.
+    public static string? VersionOf(string setup) => SetupName().Match(Path.GetFileName(setup)) is { Success: true } m ? m.Groups["v"].Value : null;
+
+    // The manifest of the release as the release job writes it (one Windows setup program).
+    public static byte[] Manifest(string version, string name, long size, string sha256) =>
+        Encoding.UTF8.GetBytes("{\"format\":1,\"version\":\"" + version + "\",\"files\":[{\"kind\":\"win-x64-setup\",\"name\":\"" + name +
+            "\",\"size\":" + size.ToString(CultureInfo.InvariantCulture) + ",\"sha256\":\"" + sha256 + "\"}]}");
+
+    // "<keyId>:<base64 of the IEEE P1363 ECDSA P-256 signature over the raw bytes>", as the app verifies it.
+    public static string Signature(byte[] manifest, ECDsa key, string keyId) =>
+        keyId + ":" + Convert.ToBase64String(key.SignData(manifest, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+
+    // request.json as the app writes it (UpdateRequest: camelCase, the form by its name).
+    public static string Request(string version, string fileName, string exePath, string targetDirectory) =>
+        new System.Text.Json.Nodes.JsonObject
+        {
+            ["format"] = 1,
+            ["version"] = version,
+            ["fileName"] = fileName,
+            ["form"] = "WindowsInstaller",
+            ["exePath"] = exePath,
+            ["targetDirectory"] = targetDirectory,
+        }.ToJsonString();
+
+    public static List<string> HelperArguments(string staging) => ["--finish-update", staging];
+
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--key", "--key-id");
+        if (parsed is not { } p || p.Positional.Count != 2 || !p.Named.TryGetValue("--key", out var keyFile))
+        {
+            Console.Error.WriteLine("Aufruf: update-smoke <Pagewing-<alt>-win-x64-setup.exe> <Pagewing-<neu>-win-x64-setup.exe> --key <Testschluessel.pem> [--key-id <Kennung>]");
+            return 2;
+        }
+
+        var oldSetup = Path.GetFullPath(p.Positional[0]);
+        var newSetup = Path.GetFullPath(p.Positional[1]);
+        if (VersionOf(oldSetup) is not { } oldVersion || VersionOf(newSetup) is not { } newVersion)
+        {
+            Console.Error.WriteLine("update-smoke: die Setups muessen Pagewing-<x.y.z>-win-x64-setup.exe heissen");
+            return 2;
+        }
+
+        foreach (var file in new[] { oldSetup, newSetup, Path.GetFullPath(keyFile) })
+        {
+            if (!File.Exists(file))
+            {
+                Console.Error.WriteLine($"update-smoke: Datei fehlt: {file}");
+                return 1;
+            }
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine("update-smoke: laeuft nur unter Windows");
+            return 1;
+        }
+
+        using var key = ECDsa.Create();
+        try
+        {
+            key.ImportFromPem(File.ReadAllText(keyFile));
+        }
+        catch (Exception e) when (e is ArgumentException or CryptographicException)
+        {
+            Console.Error.WriteLine($"update-smoke: kein ECDSA-Schluessel im PEM-Format: {keyFile}");
+            return 1;
+        }
+
+        var failures = RunOnWindows(oldSetup, oldVersion, newSetup, newVersion, key, p.Named.GetValueOrDefault("--key-id", "test"));
+        if (failures.Count == 0)
+        {
+            Console.WriteLine($"update-smoke: {oldVersion} -> {newVersion} ueber den Helfermodus bestanden");
+            return 0;
+        }
+
+        failures.ForEach(f => Console.Error.WriteLine($"update-smoke: {f}"));
+        return 1;
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static List<string> RunOnWindows(string oldSetup, string oldVersion, string newSetup, string newVersion, ECDsa key, string keyId)
+    {
+        var failures = new List<string>();
+        var hkcu = Microsoft.Win32.Registry.CurrentUser;
+        var hklm = Microsoft.Win32.Registry.LocalMachine;
+
+        // (0) Never over a real installation, as installer-smoke: the test uninstalls at the end.
+        foreach (var (root, path) in new[] { (hkcu, @"Software\Classes\Pagewing.PDF"), (hkcu, Installer.UninstallKey), (hklm, Installer.UninstallKey) })
+        {
+            using var existing = root.OpenSubKey(path);
+            if (existing is not null)
+            {
+                failures.Add($@"Pagewing ist schon installiert oder registriert ({root.Name}\{path}); erst deinstallieren, der Test wuerde es entfernen");
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            return failures;
+        }
+
+        var temp = Path.GetTempPath();
+        var dir = TestDir(temp);
+        var work = Path.Combine(temp, "pagewing-update-smoke");
+        foreach (var leftover in new[] { dir, work })
+        {
+            if (Directory.Exists(leftover))
+            {
+                Console.WriteLine($"update-smoke: entferne Reste eines frueheren Laufs: {leftover}");
+                Directory.Delete(leftover, true);
+            }
+        }
+
+        // A profile of its own: the helper and the restarted version take %APPDATA% and %LOCALAPPDATA% from the environment.
+        var roaming = Path.Combine(work, "Roaming");
+        var local = Path.Combine(work, "Local");
+        var config = Path.Combine(roaming, "Pagewing");
+        var logs = Path.Combine(work, "logs");
+        Directory.CreateDirectory(config);
+        Directory.CreateDirectory(logs);
+        File.WriteAllText(Path.Combine(config, "settings.json"), "{\n  \"updateCheck\": false\n}\n");
+        var settingsBefore = SettingsLine(config);
+
+        var realAppData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Pagewing");
+        var realBefore = InstallerSmoke.Snapshot(realAppData);
+        var uninstaller = Path.Combine(dir, "unins000.exe");
+        var exe = Path.Combine(dir, "Pagewing.exe");
+        try
+        {
+            // (1) The old version, silently, exactly the documented command line.
+            var code = ProcessRunner.RunInno(oldSetup, InstallerSmoke.SilentInstallArguments(dir, Path.Combine(logs, "install-old.log")), TimeSpan.FromMinutes(10));
+            if (code != 0 || !File.Exists(exe))
+            {
+                failures.Add($"Installation der alten Version: Exit {code}, {exe} {(File.Exists(exe) ? "da" : "fehlt")}");
+                return failures;
+            }
+
+            if (ProductVersion(exe) is not { } before || !before.StartsWith(oldVersion, StringComparison.Ordinal))
+            {
+                failures.Add($"{exe} meldet {ProductVersion(exe) ?? "keine Version"} statt {oldVersion}");
+                return failures;
+            }
+
+            // (2) The staging folder as the app leaves it: setup program, signed manifest, signature, request.
+            var staging = Path.Combine(config, "updates", newVersion);
+            Directory.CreateDirectory(staging);
+            var name = Path.GetFileName(newSetup);
+            File.Copy(newSetup, Path.Combine(staging, name));
+            var manifest = Manifest(newVersion, name, new FileInfo(newSetup).Length, Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(newSetup))));
+            File.WriteAllBytes(Path.Combine(staging, "update-manifest.json"), manifest);
+            File.WriteAllText(Path.Combine(staging, "update-manifest.json.sig"), Signature(manifest, key, keyId), new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(staging, "request.json"), Request(newVersion, name, exe, dir), new UTF8Encoding(false));
+
+            // (3) The helper runs from a copy of the program folder, never from the folder the setup program replaces.
+            var copy = Path.Combine(local, "Pagewing", "updater", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(copy);
+            foreach (var file in Directory.EnumerateFiles(dir))
+            {
+                File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+            }
+
+            var psi = new ProcessStartInfo(Path.Combine(copy, "Pagewing.exe")) { UseShellExecute = false, WorkingDirectory = copy };
+            HelperArguments(staging).ForEach(psi.ArgumentList.Add);
+            psi.Environment["APPDATA"] = roaming;
+            psi.Environment["LOCALAPPDATA"] = local;
+            Console.WriteLine($"update-smoke: starte den Helfer {psi.FileName} --finish-update {staging}");
+            using (var helper = Process.Start(psi)!)
+            {
+                if (!helper.WaitForExit(TimeSpan.FromMinutes(10)))
+                {
+                    helper.Kill(entireProcessTree: true);
+                    failures.Add("der Helfer endete nicht in 10 Minuten (Signatur abgelehnt? Beide Setups muessen aus dem Testaufbau mit dem Schluessel von --key stammen)");
+                }
+                else if (helper.ExitCode != 0)
+                {
+                    failures.Add($"der Helfer endete mit Exit {helper.ExitCode}");
+                }
+            }
+
+            // (4) The new version is installed, the update is gone, the settings are as they were.
+            var after = ProductVersion(exe);
+            if (after is null || !after.StartsWith(newVersion, StringComparison.Ordinal))
+            {
+                failures.Add($"{exe} meldet nach dem Update {after ?? "keine Version"} statt {newVersion} (Protokoll: {Path.Combine(staging, "setup.log")})");
+            }
+
+            if (Directory.Exists(staging))
+            {
+                failures.Add($"der Staging-Ordner ist nach dem Update noch da: {staging}");
+            }
+
+            failures.AddRange(InstallerSmoke.Differences(settingsBefore, SettingsLine(config)).Select(d => $"settings.json veraendert: {d}"));
+            return failures;
+        }
+        finally
+        {
+            // The helper starts the new version: end it (only the one from the test folder) before uninstalling.
+            foreach (var process in Process.GetProcessesByName("Pagewing"))
+            {
+                using (process)
+                {
+                    try
+                    {
+                        if (string.Equals(process.MainModule?.FileName, exe, StringComparison.OrdinalIgnoreCase))
+                        {
+                            process.Kill(entireProcessTree: true);
+                            process.WaitForExit(TimeSpan.FromSeconds(30));
+                        }
+                    }
+                    catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+                    {
+                        // Not ours, or gone already.
+                    }
+                }
+            }
+
+            if (File.Exists(uninstaller))
+            {
+                var code = ProcessRunner.RunInno(uninstaller, InstallerSmoke.SilentUninstallArguments(Path.Combine(logs, "uninstall.log")), TimeSpan.FromMinutes(5));
+                if (code != 0)
+                {
+                    failures.Add($"Deinstallation: Exit {code} (Protokoll: {Path.Combine(logs, "uninstall.log")})");
+                }
+            }
+
+            failures.AddRange(InstallerSmoke.Differences(realBefore, InstallerSmoke.Snapshot(realAppData)).Select(d => $@"%APPDATA%\Pagewing veraendert: {d}"));
+            if (failures.Count == 0)
+            {
+                try
+                {
+                    Directory.Delete(work, true);
+                }
+                catch (IOException)
+                {
+                    Console.WriteLine($"update-smoke: {work} wird beim naechsten Lauf entfernt");
+                }
+            }
+            else
+            {
+                Console.Error.WriteLine($"update-smoke: Protokolle und Testprofil bleiben fuer die Fehlersuche: {work}");
+            }
+        }
+    }
+
+    // The line of settings.json in a snapshot of the folder (size and time of the last write).
+    private static List<string> SettingsLine(string config) =>
+        InstallerSmoke.Snapshot(config).Where(l => l.StartsWith("settings.json ", StringComparison.Ordinal)).ToList();
+
+    private static string? ProductVersion(string exe) =>
+        File.Exists(exe) ? FileVersionInfo.GetVersionInfo(exe).ProductVersion : null;
 }
 
 enum DebEntryKind
@@ -3149,6 +3430,43 @@ static class SelfTest
         Expect("iss: Deinstallation ohne RunOnceId faellt auf", IssRules.Problems(Mutate("; RunOnceId: \"UnregisterFileTypes\"", "")).Count > 0, true);
         Expect("iss: Benutzerdaten anfassen faellt auf", IssRules.Problems(text + "\n[UninstallDelete]\nType: filesandordirs; Name: \"{userappdata}\\Pagewing\"\n").Count > 0, true);
         Expect("iss: Bereich ohne IsAdminInstallMode faellt auf", IssRules.Problems(Mutate("if IsAdminInstallMode then", "if True then")).Count > 0, true);
+        Expect("iss: UsePreviousPrivileges=no faellt auf", IssRules.Problems(Mutate("SolidCompression=yes", "SolidCompression=yes\nUsePreviousPrivileges=no")).Count > 0, true);
+        Expect("iss: UsePreviousAppDir=no faellt auf", IssRules.Problems(Mutate("SolidCompression=yes", "SolidCompression=yes\nUsePreviousAppDir=no")).Count > 0, true);
+        Expect("iss: UsePreviousPrivileges=yes ausdruecklich besteht", IssRules.Problems(Mutate("SolidCompression=yes", "SolidCompression=yes\nUsePreviousPrivileges=yes\nUsePreviousAppDir=yes")).Count, 0);
+
+        // update-smoke: what it lays out is what the app writes and the helper reads (no installation here).
+        Expect("update-smoke: Version aus dem Setup-Namen", UpdateSmoke.VersionOf(@"C:\o u\Pagewing-0.0.2-win-x64-setup.exe"), "0.0.2");
+        Expect("update-smoke: anderer Name hat keine Version", UpdateSmoke.VersionOf("setup.exe"), null);
+        Expect("update-smoke: Vorabversion wird nicht installiert", UpdateSmoke.VersionOf("Pagewing-0.0.2-rc.1-win-x64-setup.exe"), null);
+        var smokeManifest = UpdateSmoke.Manifest("0.0.2", "Pagewing-0.0.2-win-x64-setup.exe", 1234, new string('a', 64));
+        using (var parsed = System.Text.Json.JsonDocument.Parse(smokeManifest))
+        {
+            var file = parsed.RootElement.GetProperty("files")[0];
+            Expect("update-smoke: Manifest Format 1", parsed.RootElement.GetProperty("format").GetInt32(), 1);
+            Expect("update-smoke: Manifest Version", parsed.RootElement.GetProperty("version").GetString(), "0.0.2");
+            Expect("update-smoke: Manifest Art des Windows-Setups", file.GetProperty("kind").GetString(), "win-x64-setup");
+            Expect("update-smoke: Manifest Groesse", file.GetProperty("size").GetInt64(), 1234L);
+        }
+
+        // A throwaway key in memory: the signature has the form the app verifies (key id, 64 bytes P1363, over the raw bytes).
+        using (var throwaway = ECDsa.Create(ECCurve.NamedCurves.nistP256))
+        {
+            var signature = UpdateSmoke.Signature(smokeManifest, throwaway, "test");
+            var raw = Convert.FromBase64String(signature["test:".Length..]);
+            Expect("update-smoke: Signatur nennt die Kennung", signature.StartsWith("test:", StringComparison.Ordinal), true);
+            Expect("update-smoke: Signatur hat 64 Bytes", raw.Length, 64);
+            Expect("update-smoke: Signatur prueft ueber die Rohbytes", throwaway.VerifyData(smokeManifest, raw, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation), true);
+        }
+
+        using (var request = System.Text.Json.JsonDocument.Parse(UpdateSmoke.Request("0.0.2", "Pagewing-0.0.2-win-x64-setup.exe", @"C:\P a\Pagewing.exe", @"C:\P a")))
+        {
+            Expect("update-smoke: request.json Paketform", request.RootElement.GetProperty("form").GetString(), "WindowsInstaller");
+            Expect("update-smoke: request.json Programm", request.RootElement.GetProperty("exePath").GetString(), @"C:\P a\Pagewing.exe");
+            Expect("update-smoke: request.json Zielordner", request.RootElement.GetProperty("targetDirectory").GetString(), @"C:\P a");
+        }
+
+        Expect("update-smoke: Helfer nur mit dem Staging-Ordner", string.Join("|", UpdateSmoke.HelperArguments(@"C:\a b\updates\0.0.2")), @"--finish-update|C:\a b\updates\0.0.2");
+        Expect("update-smoke: Testordner mit Umlaut und &", Path.GetFileName(UpdateSmoke.TestDir(Path.GetTempPath())), "Pagewing Update Test ä&");
 
         // Command handling without Windows and without iscc.
         var dir = Path.Combine(Path.GetTempPath(), "pagewing-package-selftest-" + Guid.NewGuid().ToString("N"));
@@ -3172,6 +3490,11 @@ static class SelfTest
             Expect("installer: ohne Optionen liefert 2", Cli.Run(["installer"]), 2);
             Expect("installer-smoke: ohne Setup liefert 2", Cli.Run(["installer-smoke"]), 2);
             Expect("installer-smoke: fehlendes Setup liefert 1", Cli.Run(["installer-smoke", Path.Combine(dir, "nope.exe")]), 1);
+            Expect("update-smoke: ohne Schluessel liefert 2", Cli.Run(["update-smoke", "a.exe", "b.exe"]), 2);
+            Expect("update-smoke: ohne zweites Setup liefert 2", Cli.Run(["update-smoke", "a.exe", "--key", "k.pem"]), 2);
+            Expect("update-smoke: falsche Setup-Namen liefern 2", Cli.Run(["update-smoke", "a.exe", "b.exe", "--key", "k.pem"]), 2);
+            Expect("update-smoke: fehlende Setups liefern 1", Cli.Run(["update-smoke", Path.Combine(dir, "Pagewing-0.0.1-win-x64-setup.exe"),
+                Path.Combine(dir, "Pagewing-0.0.2-win-x64-setup.exe"), "--key", Path.Combine(dir, "k.pem")]), 1);
             Expect("inno-install: unbekannte Option liefert 2", Cli.Run(["inno-install", "--gibt-es-nicht", "x"]), 2);
             if (!OperatingSystem.IsWindows())
             {
