@@ -5,7 +5,8 @@ name: Release
 # attaches files to it. Each job uploads its own files directly (no artifact up- or download between the jobs).
 #
 # Dry run (build and all smoke tests, no upload):
-#   gh workflow run release.yml -f tag=v0.1.0 -f upload=false
+#   gh workflow run release.yml --ref release/v0.1.0 -f tag=v0.1.0 -f ref=release/v0.1.0 -f upload=false
+# (ref builds that branch, because the tag does not exist before the release; with ref set nothing is uploaded).
 # The repository is private; fork PRs must stay approval-gated (CLAUDE.md, section CI), this workflow never runs for forks.
 
 on:
@@ -16,6 +17,11 @@ on:
       tag:
         description: 'Tag to build, e.g. v0.1.0 (SemVer, with the leading v)'
         required: true
+        type: string
+      ref:
+        description: 'Branch or commit to build instead of the tag (dry run before the tag exists; no upload then)'
+        required: false
+        default: ''
         type: string
       upload:
         description: 'Upload the files to the release of this tag (the release must exist)'
@@ -49,9 +55,14 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
           Write-Host "Tag $env:TAG, Version $version, Hochladen: $env:UPLOAD"
 
+      # A branch build is a dry run: what is uploaded must be built from the tag.
+      - name: Refuse to upload a branch build
+        if: env.UPLOAD == 'true' && inputs.ref != ''
+        run: throw 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.'
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
           persist-credentials: false
 
       # See ci.yml: without git on PATH actions/checkout extracts a zip whose file times can be older than the
@@ -162,9 +173,16 @@ jobs:
           echo "DEBVERSION=${version/-/\~}" >> "$GITHUB_ENV"
           echo "Tag $TAG, Version $version, Hochladen: $UPLOAD"
 
+      # A branch build is a dry run: what is uploaded must be built from the tag.
+      - name: Refuse to upload a branch build
+        if: env.UPLOAD == 'true' && inputs.ref != ''
+        run: |
+          echo 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.' >&2
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)

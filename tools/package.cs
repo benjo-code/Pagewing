@@ -2248,6 +2248,28 @@ static partial class AppImageSmoke
     }
 }
 
+// The tag check of .github/workflows/release.yml: the same rule once in PowerShell (-cnotmatch) and once in bash (=~).
+static class TagRules
+{
+    // PowerShell: if ($env:TAG -cnotmatch '<pattern>') { throw ... }
+    public static string? PowerShellPattern(string workflow)
+    {
+        var m = Regex.Match(workflow, @"-cnotmatch '(?<p>[^']+)'");
+        return m.Success ? m.Groups["p"].Value : null;
+    }
+
+    // bash: [[ "$TAG" =~ <pattern> ]]
+    public static string? BashPattern(string workflow)
+    {
+        var m = Regex.Match(workflow, @"\[\[ ""\$TAG"" =~ (?<p>\S+) \]\]");
+        return m.Success ? m.Groups["p"].Value : null;
+    }
+
+    // Case-sensitive, culture-independent; the pattern is anchored itself.
+    public static bool Accepts(string pattern, string tag) =>
+        Regex.IsMatch(tag, pattern, RegexOptions.CultureInvariant);
+}
+
 static class SelfTest
 {
     private static int s_checks;
@@ -2289,6 +2311,7 @@ static class SelfTest
         InstallerParts();
         DebParts();
         AppImageParts();
+        TagRuleParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
         Expect("check-binary ohne Datei liefert 2", Cli.Run(["check-binary"]), 2);
@@ -2297,6 +2320,42 @@ static class SelfTest
             ? $"selftest: {s_checks} Pruefungen bestanden."
             : $"selftest: {s_failures} von {s_checks} Pruefungen fehlgeschlagen.");
         return s_failures == 0 ? 0 : 1;
+    }
+
+    // The tag rule exists twice in release.yml (PowerShell and bash). Both must be the same and must accept
+    // exactly SemVer tags, and a dry run must be able to build a branch without uploading it.
+    private static void TagRuleParts()
+    {
+        const string workflow = ".github/workflows/release.yml";
+        Expect($"tag: {workflow} vorhanden", File.Exists(workflow), true);
+        if (!File.Exists(workflow))
+        {
+            return;
+        }
+
+        var yml = File.ReadAllText(workflow);
+        var powerShell = TagRules.PowerShellPattern(yml);
+        var bash = TagRules.BashPattern(yml);
+        Expect("tag: PowerShell-Regel gefunden", powerShell is not null, true);
+        Expect("tag: bash-Regel gefunden", bash is not null, true);
+        if (powerShell is null || bash is null)
+        {
+            return;
+        }
+
+        Expect("tag: beide Regeln sind gleich", powerShell, bash);
+        foreach (var tag in new[] { "v0.1.0", "v10.20.30", "v0.1.0-rc.1", "v1.0.0-beta" })
+        {
+            Expect($"tag: {tag} wird angenommen", TagRules.Accepts(bash, tag), true);
+        }
+
+        foreach (var tag in new[] { "V0.1.0", "v0.1", "v0.1.0.", "0.1.0", "v0.1.0-", "v0.1.0 ", " v0.1.0", "v0.1.0-rc 1", "" })
+        {
+            Expect($"tag: '{tag}' wird abgelehnt", TagRules.Accepts(bash, tag), false);
+        }
+
+        Expect("tag: beide Checkouts bauen auch einen Branch (inputs.ref)", Regex.Count(yml, @"ref: \$\{\{ inputs\.ref \|\| "), 2);
+        Expect("tag: beide Jobs verweigern das Hochladen eines Branchs", Regex.Count(yml, "name: Refuse to upload a branch build"), 2);
     }
 
     private static void PackagingCommands()
