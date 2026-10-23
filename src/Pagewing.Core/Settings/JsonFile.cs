@@ -90,7 +90,8 @@ internal static class JsonFile
     private static bool IsFileError(Exception ex) =>
         ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
 
-    private static void DeleteQuietly(string file)
+    /// <summary>Deletes the file if it exists. A failure is ignored.</summary>
+    internal static void DeleteQuietly(string file)
     {
         try
         {

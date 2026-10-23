@@ -12,6 +12,7 @@ using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Hosting;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App;
@@ -31,13 +32,18 @@ namespace Pagewing.App;
 /// The history of recently opened files (<see cref="RecentFilesService.Load()"/>, not read yet; in memory only for a
 /// measurement), or <see langword="null"/> for one in memory only.
 /// </param>
+/// <param name="Restore">
+/// The session to restore after an update (<see cref="Program.LoadSession"/>), whose first window's active file
+/// <paramref name="Session"/> is opening; <see langword="null"/> for every other start.
+/// </param>
 internal sealed record AppStartup(
     ViewerSession Session,
     SingleInstance? Instance,
     UserSettings Settings,
     StartupOptions? Measurement = null,
     IReadOnlyList<string>? MorePaths = null,
-    RecentFilesService? RecentFiles = null)
+    RecentFilesService? RecentFiles = null,
+    SessionSnapshot? Restore = null)
 {
     /// <summary>Gets the further files of the command line, none by default.</summary>
     public IReadOnlyList<string> MorePaths { get; } = MorePaths ?? [];
@@ -127,7 +133,12 @@ public sealed class App : Application
             // The file of the command line, already opening since Program.Main: the first tab, in the first frame. The
             // window makes the tab, so it gets the default layout and zoom of the settings like every new tab.
             var adopted = session is not null && session.State != ViewerState.Empty;
-            if (adopted)
+            if (adopted && _startup?.Restore is { } restore)
+            {
+                // The restart after an update: the windows and tabs of the session, the first one the same way.
+                workspace.RestoreSession(restore, session!, BeforeShow);
+            }
+            else if (adopted)
             {
                 workspace.OpenWindowFor(session!, BeforeShow);
             }
@@ -217,7 +228,15 @@ public sealed class App : Application
     /// <see cref="MoreFilesFallbackDelay"/>, shorter in tests; <see cref="Timeout.InfiniteTimeSpan"/> waits without a limit.
     /// </param>
     internal static void OpenMoreFilesAfterFirstSharpTile(
-        MainWindow window, MainViewModel viewModel, TabViewModel first, IReadOnlyList<string> paths, TimeSpan fallbackDelay)
+        MainWindow window, MainViewModel viewModel, TabViewModel first, IReadOnlyList<string> paths, TimeSpan fallbackDelay) =>
+        AfterFirstSharpTile(window, viewModel, first, () => _ = viewModel.OpenInBackgroundAsync(paths), fallbackDelay);
+
+    /// <summary>
+    /// Runs <paramref name="open"/> once, in a job of <see cref="DispatcherPriority.Background"/>, when
+    /// <paramref name="first"/> has its first sharp tile, with the rules of <see cref="OpenMoreFilesAfterFirstSharpTile"/>
+    /// (also the restart after an update, <see cref="Workspace.RestoreSession"/>). A window closed before that runs nothing.
+    /// </summary>
+    internal static void AfterFirstSharpTile(MainWindow window, MainViewModel viewModel, TabViewModel first, Action open, TimeSpan fallbackDelay)
     {
         var done = false;
         IDisposable? fallback = null;
@@ -246,7 +265,7 @@ public sealed class App : Application
                 {
                     if (ReferenceEquals(window.DataContext, viewModel))
                     {
-                        _ = viewModel.OpenInBackgroundAsync(paths);
+                        open();
                     }
                 },
                 DispatcherPriority.Background);

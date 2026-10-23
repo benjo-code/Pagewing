@@ -11,6 +11,7 @@ using Pagewing.App.Services;
 using Pagewing.Core.Hosting;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
+using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App;
@@ -26,7 +27,8 @@ internal static partial class Program
     /// <summary>
     /// Startup order (startup path, keep it lean): parse the options; elect the single instance before Avalonia is
     /// loaded, and as a later launch hand the files over and exit; otherwise start opening the file of the command
-    /// line at once, so PDFium loads on its own thread while Avalonia builds the window; read the settings (nothing
+    /// line at once (after an update, with <c>--restore-session</c>, the active file of the first window of the session,
+    /// <see cref="LoadSession"/>), so PDFium loads on its own thread while Avalonia builds the window; read the settings (nothing
     /// without a settings file) and choose the UI language (<see cref="ChooseUiCulture"/>); on Windows choose the rendering
     /// mode (<see cref="UseSoftwareRendering"/>); show the window, whose first frame shows the tab with the file name;
     /// accept later launches after the first frame (<see cref="App"/>).
@@ -61,7 +63,9 @@ internal static partial class Program
         }
 
         // Primary, a measurement, or an extra instance without the lock when handing over failed (the running one
-        // hangs or is closing).
+        // hangs or is closing). Only the restart after an update (--restore-session) reads the session file, once.
+        var restore = LoadSession(
+            options, static () => new SessionStore(Path.Combine(UserDataPaths.ConfigDirectory(), SessionStore.FileName)), File.Exists);
         var session = new ViewerSession(new PdfEngine());
         if (options.IsMeasurement)
         {
@@ -74,7 +78,10 @@ internal static partial class Program
             };
         }
 
-        var path = options.IsMeasurement ? options.MeasurementPath : options.Paths.Count > 0 ? options.Paths[0] : null;
+        // A restored session starts like a file of the command line: the active file of its first window opens early.
+        var path = options.IsMeasurement ? options.MeasurementPath
+            : restore is not null ? restore.Windows[0].Active.Path
+            : options.Paths.Count > 0 ? options.Paths[0] : null;
         if (!string.IsNullOrEmpty(path))
         {
             // Sets Loading with the path at once and continues on the PDFium thread; failures end in an error card.
@@ -99,7 +106,35 @@ internal static partial class Program
 
         // Reads nothing: the history is read after the first sharp page (or the first frame of the start screen).
         var recentFiles = LoadRecentFiles(options, RecentFilesService.Load);
-        return Run(args, new AppStartup(session, instance, settings, options.IsMeasurement ? options : null, options.MorePaths, recentFiles), software);
+        var startup = new AppStartup(
+            session, instance, settings, options.IsMeasurement ? options : null, restore is null ? options.MorePaths : [], recentFiles, restore);
+        return Run(args, startup, software);
+    }
+
+    /// <summary>
+    /// The session to restore after an update: only with <c>--restore-session</c> (never for a measurement) is the store
+    /// made and the file read, then deleted at once, so it is restored only once whatever happens next. Files that
+    /// <paramref name="fileExists"/> does not find (moved or deleted) are dropped silently; <see langword="null"/> when
+    /// nothing is left, or without the switch. A start without the switch never touches the file.
+    /// </summary>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="store">Makes the store of <c>session.json</c> in the config folder (a temporary folder in tests).</param>
+    /// <param name="fileExists"><see cref="File.Exists(string)"/>.</param>
+    internal static SessionSnapshot? LoadSession(StartupOptions options, Func<SessionStore> store, Func<string, bool> fileExists)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(fileExists);
+        if (!options.RestoreSession || options.IsMeasurement)
+        {
+            return null;
+        }
+
+        var sessionStore = store();
+        var snapshot = sessionStore.Load();
+        sessionStore.Delete();
+        var existing = snapshot.KeepFiles(fileExists);
+        return existing.Windows.Count > 0 ? existing : null;
     }
 
     /// <summary>

@@ -655,9 +655,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     /// shows it like a tab shown again), then layout, zoom mode and zoom, in this order and without the zoom setter, which
     /// would turn a fit mode into the free zoom. A view with unusable values is ignored. The fraction is limited to
     /// -1 to 1 (a negative one is the margin above the first page, which the view keeps), the zoom to the zoom steps;
-    /// the page is limited to the document once it is open (<see cref="Refresh"/>).
+    /// the page is limited to the document once it is open (<see cref="Refresh"/>). Also used for a session that is
+    /// already opening when its tab is made (<see cref="MainViewModel.AdoptSession"/>, the restart after an update).
     /// </summary>
-    private void ApplyInitialView()
+    internal void ApplyInitialView()
     {
         var remembered = InitialView;
         InitialView = null;

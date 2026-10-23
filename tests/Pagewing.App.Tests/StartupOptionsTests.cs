@@ -211,6 +211,27 @@ public sealed class StartupOptionsTests
     }
 
     [Fact]
+    public void ParsesRestoreSession()
+    {
+        var options = StartupOptions.Parse(["--restore-session"]);
+
+        Assert.True(options.RestoreSession);
+        Assert.False(options.IsMeasurement);
+        Assert.Empty(options.Paths);
+        Assert.False(StartupOptions.Parse([]).RestoreSession);
+        Assert.False(StartupOptions.Parse(["doc.pdf"]).RestoreSession);
+        Assert.True(StartupOptions.Parse(["doc.pdf", "--restore-session"]).RestoreSession);
+    }
+
+    [Fact]
+    public void IgnoresItInAMeasurement()
+    {
+        Assert.False(StartupOptions.Parse(["--measure-startup", "a.pdf", "--restore-session"]).RestoreSession);
+        Assert.False(StartupOptions.Parse(["--restore-session", "--measure-second", "a.pdf", "b.pdf"]).RestoreSession);
+        Assert.False(StartupOptions.Parse(["--measure-scroll", "a.pdf", "--restore-session"]).RestoreSession);
+    }
+
+    [Fact]
     public void RegisterSwitchIsNotAMeasurement()
     {
         var options = StartupOptions.Parse(["--register-file-types"]);

@@ -9,6 +9,7 @@ using Pagewing.Core;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Text;
+using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
@@ -706,9 +707,63 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Adds a tab for a session that is already opening (the file of the command line, which <see cref="Program.Main"/>
     /// starts opening before the window exists; <see cref="Workspace.OpenWindowFor"/>) and activates it. Like every
-    /// new tab it starts with the default layout and zoom of the settings.
+    /// new tab it starts with the default layout and zoom of the settings, or, after an update
+    /// (<see cref="Workspace.RestoreSession"/>), where its file was read (<paramref name="view"/>).
     /// </summary>
-    public TabViewModel AdoptSession(ViewerSession session) => AddTab(NewTab(session));
+    public TabViewModel AdoptSession(ViewerSession session, RememberedView? view = null)
+    {
+        var tab = NewTab(session);
+        if (view is not null)
+        {
+            tab.InitialView = view;
+            tab.ApplyInitialView();
+        }
+
+        return AddTab(tab);
+    }
+
+    /// <summary>
+    /// The further tabs of a window after an update (<see cref="Workspace.RestoreSession"/>): like
+    /// <see cref="OpenInBackgroundAsync"/> they open without ever changing the active tab, but each at its old place
+    /// around it (<paramref name="before"/> to its left, <paramref name="after"/> to its right, in their order) and where
+    /// its file was read. A file that is already open in this window is skipped.
+    /// </summary>
+    /// <returns>Completes when every session has a result.</returns>
+    internal Task RestoreInBackgroundAsync(IReadOnlyList<SessionTab> before, IReadOnlyList<SessionTab> after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        var opens = new List<Task>();
+        var position = 0;
+        foreach (var saved in before)
+        {
+            if (AddRestoredTab(saved, opens) is { } tab)
+            {
+                // Added at the end, behind the active tab; moving it keeps the active tab.
+                Tabs.Move(tab, position++);
+            }
+        }
+
+        foreach (var saved in after)
+        {
+            AddRestoredTab(saved, opens);
+        }
+
+        return Task.WhenAll(opens);
+    }
+
+    private TabViewModel? AddRestoredTab(SessionTab saved, List<Task> opens)
+    {
+        if (string.IsNullOrEmpty(saved.Path) || FindOpenTab(saved.Path) is not null)
+        {
+            return null;
+        }
+
+        var tab = AddTab(NewTab(_sessionFactory()), background: true);
+        tab.InitialView = saved.View;
+        opens.Add(tab.OpenAsync(saved.Path));
+        return tab;
+    }
 
     /// <summary>
     /// Handles the files a later launch handed over (single instance). May be called on any thread: opens them on the
@@ -1024,9 +1079,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Where <paramref name="tab"/> shows its document, for the history: the position the document view saved
     /// (<see cref="TabViewModel.SavedView"/>), zoom, zoom mode and layout; <see langword="null"/> without an open document
-    /// or a saved position.
+    /// or a saved position. Also what the session for the restart after an update remembers (<see cref="Workspace.CaptureSession"/>).
     /// </summary>
-    private static (string Path, RememberedView View)? RememberedViewOf(TabViewModel? tab) =>
+    internal static (string Path, RememberedView View)? RememberedViewOf(TabViewModel? tab) =>
         tab is { IsReady: true, FullPath: { } path, SavedView: { } view }
             ? (path, new RememberedView(view, tab.Zoom, tab.ZoomMode, tab.LayoutMode))
             : null;

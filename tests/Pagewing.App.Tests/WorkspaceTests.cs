@@ -441,6 +441,53 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Equal(new Size(900, 650), second.ClientSize);
     }
 
+    [AvaloniaFact]
+    public async Task CaptureSessionListsEveryWindowWithItsActiveTab()
+    {
+        var workspace = CreateWorkspace();
+        var first = workspace.OpenWindow();
+        var far = await OpenReadyAsync(workspace, first, "thousand-pages.pdf");
+        await OpenReadyAsync(workspace, first, "hello_world.pdf");
+        first.ActivateTabCommand.Execute(far);
+        var view = Find<DocumentView>(workspace.WindowOf(first), "DocumentView");
+        await WaitUntilAsync(workspace, () => ReferenceEquals(view.DataContext, far) && view.Layout is not null);
+        far.GoToPage(40);
+        await WaitUntilAsync(workspace, () => far.CurrentPage == 40);
+
+        var second = workspace.OpenWindow();
+        await OpenReadyAsync(workspace, second, "vector-shapes.pdf");
+        await second.OpenAsync(TestData.Pdf("encrypted_hello_world_r3.pdf"));
+        var locked = second.ActiveTab!;
+        await WaitUntilAsync(workspace, () => locked.State == ViewerState.PasswordRequired);
+
+        // A window on the start screen has nothing to bring back.
+        workspace.OpenWindow();
+        Settle(workspace);
+
+        var snapshot = workspace.CaptureSession();
+
+        Assert.Equal(2, snapshot.Windows.Count);
+        var one = snapshot.Windows[0];
+        Assert.Equal([TestData.Pdf("thousand-pages.pdf"), TestData.Pdf("hello_world.pdf")], one.Tabs.Select(tab => tab.Path));
+        Assert.Equal(0, one.ActiveIndex);
+
+        // The active tab is remembered where it is shown now (not where it was when it was last left), with its zoom.
+        // (The top edge of the viewport lies on page 40 or in the gap above it, at the end of page 39.)
+        var shown = one.Tabs[0].View;
+        Assert.NotNull(shown);
+        Assert.Equal(far.SavedView, shown.View);
+        Assert.InRange(shown.View.Anchor.Page, 38, 39);
+        Assert.Equal(far.Zoom, shown.Zoom);
+        Assert.Equal(far.ZoomMode, shown.ZoomMode);
+        Assert.Equal(far.LayoutMode, shown.Layout);
+
+        // A tab without an open document keeps its path, without a view.
+        var two = snapshot.Windows[1];
+        Assert.Equal([TestData.Pdf("vector-shapes.pdf"), TestData.Pdf("encrypted_hello_world_r3.pdf")], two.Tabs.Select(tab => tab.Path));
+        Assert.Equal(1, two.ActiveIndex);
+        Assert.Null(two.Active.View);
+    }
+
     [Theory]
     [InlineData(100, 50, 900, 650, 1.0, 132, 82)]
     [InlineData(100, 50, 900, 650, 1.5, 148, 98)]

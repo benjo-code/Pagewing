@@ -22,6 +22,10 @@ namespace Pagewing.App;
 /// <see langword="null"/> without it or with an unknown scope.
 /// </param>
 /// <param name="UnregisterFileTypes">Switch <c>--unregister-file-types[=user|machine]</c>, like <paramref name="RegisterFileTypes"/>.</param>
+/// <param name="RestoreSession">
+/// Hidden switch <c>--restore-session</c>, which the updater passes when it starts the new version: the windows and tabs
+/// of the session file (<c>SessionStore</c>) open again. Only then is the file read. Never set for a measurement.
+/// </param>
 public sealed record StartupOptions(
     IReadOnlyList<string> Paths,
     string? MeasureStartup,
@@ -31,7 +35,8 @@ public sealed record StartupOptions(
     string? MeasureZoom = null,
     string? MeasureSettings = null,
     RegistrationScope? RegisterFileTypes = null,
-    RegistrationScope? UnregisterFileTypes = null)
+    RegistrationScope? UnregisterFileTypes = null,
+    bool RestoreSession = false)
 {
     /// <summary>Gets whether a hidden measurement switch was given (the run bypasses the single-instance election).</summary>
     public bool IsMeasurement => MeasureStartup is not null || MeasureSecond is not null || MeasureScroll is not null;
@@ -68,6 +73,7 @@ public sealed record StartupOptions(
         string? measureSettings = null;
         RegistrationScope? register = null;
         RegistrationScope? unregister = null;
+        var restoreSession = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -120,13 +126,19 @@ public sealed record StartupOptions(
                     // Without a value the measurement fails instead of measuring without settings.
                     measureSettings = i + 1 < args.Length ? args[++i] : string.Empty;
                     break;
+                case "--restore-session":
+                    restoreSession = true;
+                    break;
                 case "--lang" when i + 1 < args.Length:
                     language = args[++i];
                     break;
             }
         }
 
-        return new StartupOptions(paths, measureStartup, measureSecond, measureScroll, language, measureZoom, measureSettings, register, unregister);
+        var options = new StartupOptions(paths, measureStartup, measureSecond, measureScroll, language, measureZoom, measureSettings, register, unregister);
+
+        // A measurement never restores a session: it measures the start with its own file only.
+        return restoreSession && !options.IsMeasurement ? options with { RestoreSession = true } : options;
     }
 
     // "--name" means the user scope, "--name=user|machine" the given one; an unknown scope counts as not given.
