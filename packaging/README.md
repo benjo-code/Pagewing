@@ -199,3 +199,123 @@ Den Schlüssel erzeugt nur der Projektinhaber, einmal, auf dem eigenen Rechner. 
 5. Die Datei mit dem privaten Schlüssel offline sichern (Passwortmanager oder verschlüsselter Datenträger) und dann vom Rechner löschen.
 
 Schlüsselwechsel (Verdacht auf Diebstahl, etwa ein gekaperter Runner): mit `update-keygen` einen neuen Schlüssel unter neuer Kennung (`release-2`) erzeugen und **zusätzlich** in `UpdateTrust.Keys` eintragen; dieses Release wird noch mit dem alten Schlüssel signiert, denn nur ihm vertrauen die installierten Programme. Danach Secret und `UPDATE_KEY_ID` auf den neuen Schlüssel umstellen und im folgenden Release den alten Eintrag entfernen. Geht der private Schlüssel verloren, gibt es diesen Weg nicht: Die Nutzer müssen einmal von Hand auf eine Version mit neuem Schlüssel umsteigen.
+
+## Update prüfen
+
+Ende-zu-Ende-Prüfung des Updaters (Milestone 8.1) mit zwei lokal gebauten Versionen gegen einen Testserver auf dem eigenen Rechner. Sie ist **manuell** (Installer, UAC-Abfrage, Neustart der App) und läuft nie in der CI. Der echte Signaturschlüssel kommt darin nicht vor, und kein Release ist beteiligt.
+
+### Testaufbau
+
+Das ausgelieferte Programm vertraut nur den Schlüsseln und Adressen in `src/Pagewing.Core/Updates/UpdateTrust.cs` (GitHub; kein Schalter, keine Umgebungsvariable). Nur die Bauzeit-Eigenschaft `-p:PagewingUpdateTestBuild=true` ersetzt diese Datei durch `UpdateTrust.TestBuild.cs` (`Pagewing.Core.csproj`); der Release-Workflow setzt sie nie (`package.cs selftest` prüft `release.yml` und `container-build.sh`). Ein Testaufbau
+
+- braucht `-p:PagewingUpdateTestPort=<Port>` und `-p:PagewingUpdateTestKey=<öffentlicher Testschlüssel, Base64>`, sonst bricht der Bau mit einer Meldung ab;
+- vertraut genau diesem einen Schlüssel mit der Kennung `test-1` (nicht dem Platzhalter, nicht dem echten Schlüssel) und fragt nur `http://127.0.0.1:<Port>/` (`releases/latest`, `download/v<Version>/<Datei>`, als „Download-Seite“ `/`); einer Umleitung folgt er außer zu GitHub nur auf genau diese Adresse;
+- zeigt in „Über Pagewing“ hinter der Version „(Testaufbau)“ bzw. „(test build)“ (der Text steht nur in `UpdateTrust.TestBuild.cs`, ein Release enthält ihn nicht);
+- baut nach `bin\update-test-build\` und `obj\update-test-build\` jedes Projekts (`Directory.Build.props`), mischt sich also nie mit einem normalen Bau; ein normaler `dotnet build` oder `dotnet publish` danach braucht nichts zu löschen.
+
+Die Tests des Testaufbaus laufen einmal mit der Eigenschaft (`$Key` ist ein beliebiger öffentlicher P-256-Schlüssel, etwa der aus Schritt 1 unten; der normale `dotnet test` prüft den Release-Aufbau):
+
+```powershell
+dotnet test --project tests/Pagewing.Core.Tests -p:PagewingUpdateTestBuild=true -p:PagewingUpdateTestPort=8765 "-p:PagewingUpdateTestKey=$Key" -- --filter-class "*UpdateTrustTests"
+dotnet test --project tests/Pagewing.App.Tests -p:PagewingUpdateTestBuild=true -p:PagewingUpdateTestPort=8765 "-p:PagewingUpdateTestKey=$Key" -- --filter-class "*GitHubUpdateSourceTests" --filter-class "*AboutCardTests"
+```
+
+### Testserver
+
+`tools/update-testserver.cs` (Einzeldatei, `dotnet run`) legt den Ordner eines Test-Releases an und beantwortet Anfragen **nur auf 127.0.0.1**:
+
+```powershell
+dotnet run tools/update-testserver.cs -- prepare --version 0.0.2 --key <privater Testschlüssel> --out <neuer Ordner> <Release-Datei>... [--tamper signature|checksum]
+dotnet run tools/update-testserver.cs -- serve --root <Ordner> --port 8765     # Ende mit Strg+C
+dotnet run tools/update-testserver.cs -- selftest
+```
+
+- `prepare` kopiert die angegebenen Dateien (Namen wie im Release: `Pagewing-<Version>-win-x64-setup.exe`, `…-win-x64-portable.zip`, `…-x86_64.AppImage`, `pagewing_<Version>_amd64.deb`), schreibt `update-manifest.json` im Format des Release-Jobs, signiert es mit dem privaten Testschlüssel (die Datei von `update-keygen`, Kennung `test-1`) und schreibt `latest.json` (die Antwort von `releases/latest`). Es legt immer einen neuen Ordner an und gibt den öffentlichen Schlüssel aus, der zum Testaufbau passen muss. `--tamper signature` ändert das Manifest nach dem Signieren (die Signatur passt nicht mehr), `--tamper checksum` signiert ein Manifest mit falscher SHA-256.
+- `serve` liefert nur `/releases/latest`, `/download/v<x.y.z>/<Datei>` (302 auf `/assets/<Datei>`, wie GitHub auf seinen Speicher umleitet), `/assets/<Datei>` (nur Dateien direkt im Ordner) und `/`; alles andere ist 404 (kein `..`, keine `%`-Kodierung, kein Backslash, keine absoluten Pfade, keine Unterordner). Jede Anfrage steht mit Status im Terminal, so ist zu sehen, was die App fragt.
+- `selftest` (auch in der CI) prüft die Routen, Pfadtraversal gegen den laufenden Server und `prepare` mit einem Schlüssel im Speicher; der Server lauscht dabei auf einem freien Port von 127.0.0.1 und wird am Ende beendet.
+
+### Windows (Projektinhaber, manuell)
+
+Wo: ein Windows-Rechner **ohne installiertes Pagewing**, am besten eine VM. Der Installer hat dieselbe feste `AppId` wie die echten Releases und würde eine vorhandene Installation ersetzen; die Prüfung schreibt außerdem in `%APPDATA%\Pagewing` und registriert Dateitypen. Bauen geht auch auf dem Haupt-PC (.NET-10-SDK und Native-AOT-Voraussetzungen, siehe `CLAUDE.md`); dann die Setup-Dateien, den Ordner des Testservers und den Testserver als eigenständiges Programm in die VM kopieren (`dotnet publish tools/update-testserver.cs -r win-x64 --self-contained -o "$T\server-tool"`, Aufruf `& "$T\server-tool\update-testserver.exe" serve …`). Testserver und App müssen auf demselben Rechner laufen (127.0.0.1); die Windows Sandbox geht nur mit beiden darin.
+
+1. Testschlüssel und Port (Wegwerfschlüssel nur für diese Prüfung, **außerhalb** des Repos; `update-keygen` verweigert Pfade in einem Git-Arbeitsverzeichnis):
+
+   ```powershell
+   $T = "$env:TEMP\pagewing-update-test"; New-Item -ItemType Directory $T | Out-Null
+   dotnet run tools/package.cs -- update-keygen --id test-1 --private-out "$T\test-key.txt" | Out-File -Encoding utf8 "$T\test-key.cs"
+   $Key = (Select-String -Path "$T\test-key.cs" -Pattern 'FromBase64String\("([^"]+)"\)').Matches[0].Groups[1].Value
+   $Port = 8765
+   ```
+
+2. Alte (`0.0.1`) und neue (`0.0.2`) Version als Testaufbau bauen, je mit Installer (Inno Setup vorher mit `package.cs inno-install`):
+
+   ```powershell
+   foreach ($v in '0.0.1', '0.0.2') {
+     dotnet publish src/Pagewing.App -c Release -r win-x64 -o "$T\$v\app" "-p:Version=$v" -p:PagewingUpdateTestBuild=true "-p:PagewingUpdateTestPort=$Port" "-p:PagewingUpdateTestKey=$Key"
+     dotnet publish src/Pagewing.Cli -c Release -r win-x64 -o "$T\$v\cli" "-p:Version=$v"
+     dotnet run tools/package.cs -- layout --rid win-x64 --app "$T\$v\app" --cli "$T\$v\cli" --out "$T\$v\layout"
+     dotnet run tools/package.cs -- installer --layout "$T\$v\layout" --version $v --out "$T\Pagewing-$v-win-x64-setup.exe"
+   }
+   ```
+
+3. Test-Release `0.0.2` anlegen und den Testserver in einem **zweiten** Terminal starten (bleibt offen, zeigt jede Anfrage). Die von `prepare` ausgegebene Zeile „oeffentlicher Testschluessel“ muss `$Key` sein:
+
+   ```powershell
+   dotnet run tools/update-testserver.cs -- prepare --version 0.0.2 --key "$T\test-key.txt" --out "$T\server" "$T\Pagewing-0.0.2-win-x64-setup.exe"
+   dotnet run tools/update-testserver.cs -- serve --root "$T\server" --port 8765
+   ```
+
+4. Durchlauf A, **„nur für mich“**: `Pagewing-0.0.1-win-x64-setup.exe` starten und die Installation nur für den eigenen Benutzer wählen (Ordner `%LOCALAPPDATA%\Programs\Pagewing`). Pagewing 0.0.1 starten:
+   - „Über Pagewing“ zeigt „Programmversion 0.0.1 (Testaufbau)“.
+   - Zwei PDFs öffnen (etwa `testdata\pdfs\text-rich.pdf` und `text-dense.pdf`), im zweiten bis Seite 50 blättern und den Zoom ändern, ein zweites Fenster mit einem Tab öffnen. Die Karte „Pagewing als Standard für PDFs festlegen?“ mit „Als Standard festlegen“ beantworten und in der Liste, die Windows zeigt, Pagewing wählen.
+   - Einstellungen und Verlauf sichern (gibt es `settings.json` noch nicht, vorher eine Einstellung ändern): `New-Item -ItemType Directory "$T\before" -Force | Out-Null; Copy-Item "$env:APPDATA\Pagewing\settings.json", "$env:APPDATA\Pagewing\recent.json" "$T\before\"`
+   - Nach dem ersten scharfen Seitenbild erscheint in der Titelleiste „Aktualisieren“ (der Server zeigt `GET /releases/latest`, `…/update-manifest.json`, `…/update-manifest.json.sig`). Erscheint nichts: Befehlspalette (Strg+K) → „Nach Updates suchen“.
+   - „Aktualisieren“ → „Installieren“: Das Fenster „Pagewing wird aktualisiert“ zeigt Herunterladen, Prüfen, Installieren, Neustart (der Server zeigt die erneute Abfrage des Manifests, `GET /download/v0.0.2/… -> 302` und `GET /assets/… -> 200`).
+
+   Erwartet nach dem Neustart:
+   - „Über Pagewing“ zeigt „Programmversion 0.0.2 (Testaufbau)“; `(Get-Item "$env:LOCALAPPDATA\Programs\Pagewing\Pagewing.exe").VersionInfo.ProductVersion` beginnt mit `0.0.2`.
+   - Beide Fenster mit allen Tabs sind zurück, der aktive Tab ist derselbe, Seite 50 und der Zoom stimmen.
+   - `fc.exe /b "$T\before\settings.json" "$env:APPDATA\Pagewing\settings.json"` meldet keine Unterschiede. `fc.exe "$T\before\recent.json" "$env:APPDATA\Pagewing\recent.json"`: dieselben Dateien; geändert haben dürfen sich nur Seite und Zoom der beim Beenden offenen Tabs, die das Schließen wie immer schreibt.
+   - Das Standardprogramm bleibt: Doppelklick auf eine PDF im Explorer öffnet Pagewing 0.0.2; `reg query HKCU\Software\Classes\Pagewing.PDF\shell\open\command` zeigt auf `%LOCALAPPDATA%\Programs\Pagewing\Pagewing.exe`.
+   - **Keine** UAC-Abfrage erschien. Unter „Apps“ steht Pagewing genau einmal, mit Version 0.0.2. `%APPDATA%\Pagewing\updates` ist leer oder fehlt.
+
+   Danach Pagewing über „Apps“ deinstallieren (`%APPDATA%\Pagewing` bleibt stehen).
+
+5. Durchlauf B, **„alle Benutzer“**: wie Durchlauf A, aber im Installer die Installation für alle Benutzer wählen (UAC bestätigen; Ordner `C:\Program Files\Pagewing`). Vorher `Remove-Item "$env:APPDATA\Pagewing\update.json"` (sonst gilt die Prüfung aus Durchlauf A noch 24 Stunden; „Nach Updates suchen“ geht auch). Erwartet wie in A, außerdem: Beim Installieren des Updates **erscheint die UAC-Abfrage** des Installers; das Programm liegt danach in `C:\Program Files\Pagewing` (nicht zusätzlich unter `%LOCALAPPDATA%\Programs`), und `reg query HKLM\Software\Classes\Pagewing.PDF\shell\open\command` zeigt dorthin. Danach deinstallieren.
+
+6. Fehlerpfade (mit installiertem 0.0.1, „nur für mich“ genügt außer beim letzten Punkt; vor jedem Punkt `Remove-Item "$env:APPDATA\Pagewing\update.json" -ErrorAction SilentlyContinue`):
+   - **Server aus** (Strg+C im Server-Terminal): Pagewing startet und arbeitet normal, ohne Karte und ohne Meldung, auch nach „Nach Updates suchen“. Wird der Server erst beendet, nachdem „Aktualisieren“ erschienen ist, zeigt „Installieren“ „Pagewing konnte das Update nicht laden …“ mit „Erneut versuchen“; nach erneutem Start des Servers installiert „Erneut versuchen“.
+   - **Manifest manipuliert**: `prepare … --out "$T\server-bad-signature" --tamper signature`, dann `serve --root "$T\server-bad-signature" …`: kein „Aktualisieren“, keine Meldung, und der Server zeigt keine Anfrage nach der Setup-Datei. War „Aktualisieren“ von einem guten Server schon da, zeigt „Installieren“ „Das Update hat die Prüfung der Signatur nicht bestanden …“; nichts wird installiert.
+   - **Falsche Prüfsumme**: `prepare … --out "$T\server-bad-checksum" --tamper checksum`, dann `serve` darauf: „Aktualisieren“ erscheint (die Signatur stimmt); „Installieren“ lädt die Datei und zeigt „Die geladene Datei passt nicht zum signierten Manifest und wurde gelöscht …“. Die Version bleibt 0.0.1, `%APPDATA%\Pagewing\updates` enthält keine Setup-Datei.
+   - **UAC abgelehnt** (Installation „alle Benutzer“): bei der UAC-Abfrage „Nein“ wählen: 0.0.1 startet wieder, und das Fenster zeigt „Die Installation ist fehlgeschlagen. Ihre Version bleibt, wie sie ist.“ mit „Erneut versuchen“ (fragt erneut) und „Schließen“.
+
+7. Aufräumen: Pagewing deinstallieren, Server beenden, `Remove-Item -Recurse $T` (löscht auch den privaten Testschlüssel), bei Bedarf `%APPDATA%\Pagewing` und `%LOCALAPPDATA%\Pagewing` der Testmaschine löschen.
+
+Was der Projektinhaber beurteilt und als Nachweis in die Roadmap einträgt: Beide Durchläufe zeigen die erwarteten Ergebnisse (vor allem Tabs und Positionen, `settings.json` bytegleich, Standardprogramm, UAC nur bei „alle Benutzer“); Inno Setup behält beim stillen Update Installationsart und Ordner (keine zweite Installation, kein zweiter Eintrag unter „Apps“); die Fehlerpfade enden still bzw. mit der genannten Meldung und installieren nie etwas.
+
+Ohne Oberfläche prüft `dotnet run tools/package.cs -- update-smoke "$T\Pagewing-0.0.1-win-x64-setup.exe" "$T\Pagewing-0.0.2-win-x64-setup.exe" --key "$T\test-key.txt"` den Helfermodus mit genau diesen beiden Installern des Testaufbaus (`test-1` ist die Vorgabe von `--key-id`). Er installiert wie `installer-smoke` nach `%TEMP%` und schreibt die Registrierung unter `HKCU`, also ebenfalls nur auf einem Rechner ohne installiertes Pagewing.
+
+### Linux, AppImage (Projektinhaber, manuell)
+
+Auf einem Linux-Rechner oder einer VM mit .NET-10-SDK, `clang`, `zlib1g-dev` und `squashfs-tools`. Der Testaufbau ist an die glibc dieses Rechners gebunden; für die Prüfung genügt das.
+
+```sh
+T=$(mktemp -d /tmp/pagewing-update-test.XXXXXX); PORT=8765
+dotnet run tools/package.cs -- update-keygen --id test-1 --private-out "$T/test-key.txt" > "$T/test-key.cs"
+KEY=$(sed -n 's/.*FromBase64String("\([^"]*\)").*/\1/p' "$T/test-key.cs")
+dotnet run tools/package.cs -- runtime-fetch
+for v in 0.0.1 0.0.2; do
+  dotnet publish src/Pagewing.App -c Release -r linux-x64 -o "$T/$v/app" -p:Version=$v -p:PagewingUpdateTestBuild=true -p:PagewingUpdateTestPort=$PORT -p:PagewingUpdateTestKey=$KEY
+  dotnet publish src/Pagewing.Cli -c Release -r linux-x64 -o "$T/$v/cli" -p:Version=$v
+  dotnet run tools/package.cs -- layout --rid linux-x64 --app "$T/$v/app" --cli "$T/$v/cli" --out "$T/$v/layout"
+  dotnet run tools/package.cs -- appimage --layout "$T/$v/layout" --version $v --out "$T/Pagewing-$v-x86_64.AppImage"
+done
+dotnet run tools/update-testserver.cs -- prepare --version 0.0.2 --key "$T/test-key.txt" --out "$T/server" "$T/Pagewing-0.0.2-x86_64.AppImage"
+dotnet run tools/update-testserver.cs -- serve --root "$T/server" --port $PORT     # in einem zweiten Terminal
+```
+
+1. `mkdir -p ~/"Pagewing Test" && cp "$T/Pagewing-0.0.1-x86_64.AppImage" ~/"Pagewing Test"/ && chmod +x ~/"Pagewing Test"/Pagewing-0.0.1-x86_64.AppImage`, starten (Doppelklick oder Terminal), PDFs öffnen und Positionen ändern wie unter Windows, auf der Karte „Pagewing als Standard für PDFs festlegen?“ „Als Standard festlegen“ wählen, dann `cp ~/.config/pagewing/settings.json ~/.config/pagewing/recent.json "$T/"`.
+2. „Aktualisieren“ → „Installieren“. Erwartet: Die Datei `~/Pagewing Test/Pagewing-0.0.1-x86_64.AppImage` enthält jetzt die neue Version (der Name bleibt, „Über Pagewing“ zeigt „Programmversion 0.0.2 (Testaufbau)“); die App startet von selbst mit allen Fenstern, Tabs und Positionen; `cmp "$T/settings.json" ~/.config/pagewing/settings.json` gibt nichts aus; der Menüeintrag (`~/.local/share/applications/pagewing.desktop`) zeigt weiter auf die Datei; im Ordner bleibt keine `*.new`; `~/.config/pagewing/updates` ist leer oder fehlt.
+3. Fehlerpfade wie unter Windows (Server aus, `--tamper signature`, `--tamper checksum`; vorher jeweils `rm -f ~/.config/pagewing/update.json`), dazu der **schreibgeschützte Ordner**: `chmod 555 ~/"Pagewing Test"`, Update auslösen: Meldung „Der Ordner ist schreibgeschützt: … Laden Sie das neue AppImage von Hand herunter.“, die alte Datei bleibt unverändert; danach `chmod 755 ~/"Pagewing Test"`.
+4. `.deb` (optional): Ein Testaufbau als `.deb` (`package.cs deb` aus dem Layout von 0.0.1) zeigt statt „Installieren“ den Hinweis auf die Download-Seite; „Download-Seite öffnen“ fragt über die Link-Karte nach `http://127.0.0.1:8765/`.
+5. Aufräumen: `rm -rf "$T" ~/"Pagewing Test"` und `~/.local/share/applications/pagewing.desktop` löschen.

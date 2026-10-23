@@ -8,7 +8,7 @@
 //   dotnet run tools/package.cs -- inno-install [--dir <dir>]                         (Windows)
 //   dotnet run tools/package.cs -- installer --layout <dir> --version <x.y.z> --out <file> [--iscc <ISCC.exe>] [--repo <root>]   (Windows)
 //   dotnet run tools/package.cs -- installer-smoke <setup.exe> [--repo <root>]          (Windows)
-//   dotnet run tools/package.cs -- update-smoke <setup-old.exe> <setup-new.exe> --key <test-key.pem> [--key-id <id>]   (Windows, test build)
+//   dotnet run tools/package.cs -- update-smoke <setup-old.exe> <setup-new.exe> --key <test-key.txt> [--key-id <id>]   (Windows, test build)
 //   dotnet run tools/package.cs -- update-keygen --id <id> --private-out <file>   (the owner, once; never in a repository)
 //   dotnet run tools/package.cs -- update-manifest --version <x.y.z> --sums <SHA256SUMS-windows.txt> <SHA256SUMS-linux.txt> --sizes <assets.json> --out <update-manifest.json>
 //   dotnet run tools/package.cs -- update-sign --manifest <file> --key-env PAGEWING_UPDATE_SIGNING_KEY --id <id> --out <file.sig> [--source <UpdateTrust.cs>]
@@ -41,7 +41,7 @@ static class Cli
         "  inno-install [--dir <Ordner>]                                     laedt Inno Setup (feste Version, SHA-256 geprueft) ins Benutzerprofil (Windows)\n" +
         "  installer --layout <Ordner> --version <x.y.z> --out <Datei> [--iscc <ISCC.exe>]   baut Pagewing-<Version>-win-x64-setup.exe (Windows)\n" +
         "  installer-smoke <Setup.exe>                                       installiert still, prueft, installiert erneut, deinstalliert (Windows)\n" +
-        "  update-smoke <Setup-alt.exe> <Setup-neu.exe> --key <Testschluessel.pem> [--key-id <Kennung>]   Update ueber den Helfermodus (Windows, Testaufbau)\n" +
+        "  update-smoke <Setup-alt.exe> <Setup-neu.exe> --key <Testschluessel.txt> [--key-id <Kennung>]   Update ueber den Helfermodus (Windows, Testaufbau)\n" +
         "  update-keygen --id <Kennung> --private-out <Datei>                erzeugt den Signaturschluessel: privat nur in die Datei, oeffentlich als Eintrag fuer UpdateTrust.Keys\n" +
         "  update-manifest --version <x.y.z> --sums <SHA256SUMS-windows.txt> <SHA256SUMS-linux.txt> --sizes <assets.json> --out <Datei>   Update-Manifest des Releases\n" +
         "  update-sign --manifest <Datei> --key-env <Variable> --id <Kennung> --out <Datei.sig> [--source <UpdateTrust.cs>]   signiert (Schluessel nur aus der Umgebung) und prueft\n" +
@@ -1414,11 +1414,51 @@ static class InstallerSmoke
 // signed by the test key and request.json into a staging folder below a fake %APPDATA%, starts a copy of the program in
 // the helper mode (--finish-update) with a fake %APPDATA% and %LOCALAPPDATA% and then checks: Pagewing.exe reports the new
 // version, the staging folder is gone, settings.json and the real %APPDATA%\Pagewing are unchanged. The helper verifies
-// the signature with the keys compiled into the program: both setup programs must come from the test build with the
-// public half of --key (Milestone 8.1, task 13), otherwise it refuses. Shows windows (needs a desktop session); like
-// installer-smoke it writes the registration below HKCU (file types, uninstall entry) and removes it again.
+// the signature with the keys compiled into the program: both setup programs must come from the test build
+// (-p:PagewingUpdateTestBuild=true -p:PagewingUpdateTestKey=<public half of --key>, packaging/README.md, "Update pruefen"),
+// whose one key has the id test-1; otherwise the helper refuses. --key is the private file of update-keygen (PKCS#8 as
+// Base64; PEM is read too). Shows windows (needs a desktop session); like installer-smoke it writes the registration
+// below HKCU (file types, uninstall entry) and removes it again.
 static partial class UpdateSmoke
 {
+    // The id of the one key of the test build (src/Pagewing.Core/Updates/UpdateTrust.TestBuild.cs).
+    public const string TestKeyId = "test-1";
+
+    // A private P-256 key as update-keygen writes it (PKCS#8 as Base64) or as PEM; null if it is neither.
+    public static ECDsa? ReadKey(string text)
+    {
+        var key = ECDsa.Create();
+        try
+        {
+            if (text.Contains("-----BEGIN", StringComparison.Ordinal))
+            {
+                key.ImportFromPem(text);
+            }
+            else
+            {
+                var bytes = Convert.FromBase64String(string.Concat(text.Where(c => !char.IsWhiteSpace(c))));
+                key.ImportPkcs8PrivateKey(bytes, out var read);
+                CryptographicOperations.ZeroMemory(bytes);
+                if (read != bytes.Length)
+                {
+                    throw new FormatException();
+                }
+            }
+
+            if (key.KeySize == 256)
+            {
+                return key;
+            }
+        }
+        catch (Exception e) when (e is ArgumentException or FormatException or CryptographicException)
+        {
+            // Neither form.
+        }
+
+        key.Dispose();
+        return null;
+    }
+
     [GeneratedRegex(@"^Pagewing-(?<v>(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))-win-x64-setup\.exe$")]
     private static partial Regex SetupName();
 
@@ -1482,18 +1522,14 @@ static partial class UpdateSmoke
             return 1;
         }
 
-        using var key = ECDsa.Create();
-        try
+        using var key = ReadKey(File.ReadAllText(keyFile));
+        if (key is null)
         {
-            key.ImportFromPem(File.ReadAllText(keyFile));
-        }
-        catch (Exception e) when (e is ArgumentException or CryptographicException)
-        {
-            Console.Error.WriteLine($"update-smoke: kein ECDSA-Schluessel im PEM-Format: {keyFile}");
+            Console.Error.WriteLine($"update-smoke: kein privater P-256-Schluessel (Base64 wie von update-keygen oder PEM): {keyFile}");
             return 1;
         }
 
-        var failures = RunOnWindows(oldSetup, oldVersion, newSetup, newVersion, key, p.Named.GetValueOrDefault("--key-id", "test"));
+        var failures = RunOnWindows(oldSetup, oldVersion, newSetup, newVersion, key, p.Named.GetValueOrDefault("--key-id", TestKeyId));
         if (failures.Count == 0)
         {
             Console.WriteLine($"update-smoke: {oldVersion} -> {newVersion} ueber den Helfermodus bestanden");
@@ -4166,7 +4202,25 @@ static class SelfTest
             Expect("update-smoke: Signatur nennt die Kennung", signature.StartsWith("test:", StringComparison.Ordinal), true);
             Expect("update-smoke: Signatur hat 64 Bytes", raw.Length, 64);
             Expect("update-smoke: Signatur prueft ueber die Rohbytes", throwaway.VerifyData(smokeManifest, raw, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation), true);
+
+            // --key takes the private file of update-keygen (PKCS#8 as Base64, with a line break) and PEM.
+            var spki = throwaway.ExportSubjectPublicKeyInfo();
+            using (var fromKeygen = UpdateSmoke.ReadKey(Convert.ToBase64String(throwaway.ExportPkcs8PrivateKey()) + "\n"))
+            {
+                Expect("update-smoke: liest den Schluessel von update-keygen", fromKeygen?.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(spki), true);
+            }
+
+            using (var fromPem = UpdateSmoke.ReadKey(throwaway.ExportPkcs8PrivateKeyPem()))
+            {
+                Expect("update-smoke: liest den Schluessel als PEM", fromPem?.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(spki), true);
+            }
         }
+
+        Expect("update-smoke: kein Schluessel aus Unsinn", UpdateSmoke.ReadKey("kein Schluessel") is null, true);
+        Expect("update-smoke: kein Schluessel aus einem oeffentlichen Schluessel", UpdateSmoke.ReadKey("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfEyCOMU4IJ14osOpBY3eFP4/fxK726BrpSdQoUOGeMJ+2DsQaDm4maWvFaZ22iI1oti6dIVOk7thJ8J5Lkp59Q==") is null, true);
+        const string testTrust = "src/Pagewing.Core/Updates/UpdateTrust.TestBuild.cs";
+        Expect("update-smoke: die Kennung des Testaufbaus ist die Vorgabe von --key-id",
+            File.Exists(testTrust) && File.ReadAllText(testTrust).Contains($"private const string TestKeyId = \"{UpdateSmoke.TestKeyId}\";", StringComparison.Ordinal), true);
 
         using (var request = System.Text.Json.JsonDocument.Parse(UpdateSmoke.Request("0.0.2", "Pagewing-0.0.2-win-x64-setup.exe", @"C:\P a\Pagewing.exe", @"C:\P a")))
         {
