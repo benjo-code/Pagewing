@@ -74,6 +74,37 @@ internal static class PrintRangeText
     }
 }
 
+/// <summary>Reads the page choice out of the flags and ranges that <c>PrintDlgExW</c> returns.</summary>
+internal static class PrintDialogChoice
+{
+    internal const uint PageNumbers = 0x00000002;
+    internal const uint CurrentPage = 0x00400000;
+
+    /// <summary>
+    /// Returns the pages to print. The dialog reports a single page number typed into "Pages" (3, 5, 3-3) as
+    /// <c>PD_CURRENTPAGE</c> with that page in the first range (measured on Windows 11, 2026-10-23), and several ranges
+    /// (2-4,7) as <c>PD_PAGENUMS</c>. So <c>PD_CURRENTPAGE</c> means the current page of the viewer only when the ranges do
+    /// not name one valid page; otherwise the range counts (reading it as the current page printed page 112 for "3").
+    /// </summary>
+    /// <param name="flags">The <c>Flags</c> of the dialog after it returned.</param>
+    /// <param name="ranges">The page ranges the dialog returned.</param>
+    /// <param name="pageCount">The pages of the document.</param>
+    /// <returns>The page choice and, for a range, the text <see cref="PrintSettings.Range"/> takes.</returns>
+    public static (PrintPageChoice Pages, string Range) Read(uint flags, ReadOnlySpan<PrintPageRange> ranges, int pageCount)
+    {
+        var text = PrintRangeText.Format(ranges);
+        if ((flags & CurrentPage) != 0)
+        {
+            return IsOneValidPage(ranges, pageCount) ? (PrintPageChoice.Range, text) : (PrintPageChoice.CurrentPage, string.Empty);
+        }
+
+        return (flags & PageNumbers) != 0 && text.Length > 0 ? (PrintPageChoice.Range, text) : (PrintPageChoice.All, string.Empty);
+    }
+
+    private static bool IsOneValidPage(ReadOnlySpan<PrintPageRange> ranges, int pageCount) =>
+        ranges.Length == 1 && ranges[0].FromPage == ranges[0].ToPage && ranges[0].FromPage >= 1 && ranges[0].FromPage <= (uint)pageCount;
+}
+
 /// <summary>What the print dialog returned: the device context of the chosen printer, owned by the caller, and the choices.</summary>
 /// <param name="DeviceContext">The <c>HDC</c> of the printer; the caller deletes it.</param>
 /// <param name="Settings">What the user chose.</param>
@@ -85,9 +116,7 @@ internal static unsafe partial class PrintDialogNative
 {
     internal const uint ReturnDc = 0x00000100;
     internal const uint NoSelection = 0x00000004;
-    internal const uint PageNumbers = 0x00000002;
     internal const uint Collate = 0x00000010;
-    internal const uint CurrentPage = 0x00400000;
     internal const uint ResultPrint = 1;
     internal const uint StartPageGeneral = 0xFFFFFFFF;
     internal const int MaxRanges = 32;
@@ -140,7 +169,7 @@ internal static unsafe partial class PrintDialogNative
                 return null;
             }
 
-            return new PrintDialogResult(dialog.DeviceContext, ReadSettings(in dialog));
+            return new PrintDialogResult(dialog.DeviceContext, ReadSettings(in dialog, pageCount));
         }
         finally
         {
@@ -157,19 +186,10 @@ internal static unsafe partial class PrintDialogNative
         }
     }
 
-    private static PrintSettings ReadSettings(in PrintDlgEx dialog)
+    private static PrintSettings ReadSettings(in PrintDlgEx dialog, int pageCount)
     {
-        var pages = PrintPageChoice.All;
-        var range = string.Empty;
-        if ((dialog.Flags & CurrentPage) != 0)
-        {
-            pages = PrintPageChoice.CurrentPage;
-        }
-        else if ((dialog.Flags & PageNumbers) != 0)
-        {
-            range = PrintRangeText.Format(new ReadOnlySpan<PrintPageRange>(dialog.PageRanges, (int)Math.Min(dialog.PageRangeCount, MaxRanges)));
-            pages = range.Length > 0 ? PrintPageChoice.Range : PrintPageChoice.All;
-        }
+        var (pages, range) = PrintDialogChoice.Read(
+            dialog.Flags, new ReadOnlySpan<PrintPageRange>(dialog.PageRanges, (int)Math.Min(dialog.PageRangeCount, MaxRanges)), pageCount);
 
         var duplex = PrintDuplex.Default;
         var orientation = PrintOrientation.Default;
