@@ -3798,7 +3798,7 @@ static class SelfTest
         Expect("deb: Installed-Size", fields.GetValueOrDefault("Installed-Size"), "1234");
         Expect("deb: Section", fields.GetValueOrDefault("Section"), "graphics");
         Expect("deb: Priority", fields.GetValueOrDefault("Priority"), "optional");
-        Expect("deb: Depends", fields.GetValueOrDefault("Depends"), "libc6 (>= 2.35), libfontconfig1, libx11-6, libice6, libsm6");
+        Expect("deb: Depends", fields.GetValueOrDefault("Depends"), "libc6 (>= 2.35), libfontconfig1, libx11-6, libice6, libsm6, libssl3 | libssl3t64");
         Expect("deb: Recommends", fields.GetValueOrDefault("Recommends"), "libcups2, xdg-utils");
         Expect("deb: Homepage", fields.GetValueOrDefault("Homepage"), "https://github.com/benjo-code/Pagewing");
         Expect("deb: Description (Kurztext)", fields.GetValueOrDefault("Description")?.Length > 0, true);
