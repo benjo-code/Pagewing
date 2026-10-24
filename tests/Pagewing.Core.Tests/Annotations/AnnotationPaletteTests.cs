@@ -13,6 +13,10 @@ public sealed class AnnotationPaletteTests
         Assert.Equal(5, AnnotationPalette.All.Select(AnnotationPalette.ColorOf).Distinct().Count());
         Assert.Equal(5, AnnotationPalette.All.Select(AnnotationPalette.NameKey).Distinct().Count());
         Assert.All(AnnotationPalette.All, c => Assert.False(string.IsNullOrWhiteSpace(AnnotationPalette.NameKey(c))));
+
+        // The key is the name of the accessor of the UI texts (a C# name, no dots).
+        Assert.Equal("MarkupColorYellow", AnnotationPalette.NameKey(MarkupColor.Yellow));
+        Assert.Equal("MarkupColorOrange", AnnotationPalette.NameKey(MarkupColor.Orange));
     }
 
     [Fact]

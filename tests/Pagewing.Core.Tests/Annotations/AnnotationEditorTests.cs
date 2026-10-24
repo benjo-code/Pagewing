@@ -447,6 +447,58 @@ public sealed class AnnotationEditorTests : IDisposable
     }
 
     [Fact]
+    public async Task IsBusyFromTheCallUntilTheStepIsRecorded()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var rects = await WordRectsAsync(session.Document!, 0, "Hello");
+        Assert.False(editor.IsBusy);
+        Assert.True(editor.WhenIdleAsync().IsCompleted);
+        using var started = new ManualResetEventSlim();
+        using var hold = new ManualResetEventSlim();
+        var held = PdfiumThread.Shared.InvokeAsync(
+            () =>
+            {
+                started.Set();
+                hold.Wait(TimeSpan.FromSeconds(10));
+            },
+            PdfiumPriority.Interactive,
+            Ct);
+        Task<PdfAnnotation?> apply;
+        Task undo;
+        Task idle;
+        try
+        {
+            Assert.True(started.Wait(TimeSpan.FromSeconds(10), Ct));
+
+            // Accepted, not recorded yet: not dirty, but busy (closing must count it), and the wait covers both calls.
+            apply = editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, rects, Yellow, null, null);
+            undo = editor.UndoAsync();
+            idle = editor.WhenIdleAsync();
+            Assert.False(editor.IsDirty);
+            Assert.True(editor.IsBusy);
+            Assert.False(idle.IsCompleted);
+        }
+        finally
+        {
+            hold.Set();
+        }
+
+        await held;
+        await idle;
+        Assert.True(apply.IsCompleted);
+        Assert.True(undo.IsCompleted);
+        Assert.False(editor.IsBusy);
+        Assert.True(editor.CanRedo);
+
+        // A failing operation ends the busy state as well; empty geometry is refused before the editor takes it.
+        await Assert.ThrowsAsync<PdfAnnotationNotFoundException>(() => editor.DeleteAsync(new AnnotationLocator(0, 7, "missing")));
+        Assert.False(editor.IsBusy);
+        Assert.Null(await editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, [], Yellow, null, null));
+        Assert.False(editor.IsBusy);
+    }
+
+    [Fact]
     public async Task WithoutADocumentTheEditorRefuses()
     {
         using var session = new ViewerSession(engine);

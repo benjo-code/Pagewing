@@ -58,6 +58,9 @@ public sealed class AnnotationEditor
     // other in the order they were called (an asynchronous gate that needs no disposing).
     private Task tail = Task.CompletedTask;
 
+    // The operations accepted (called) and not ended yet; see IsBusy.
+    private int pending;
+
     /// <summary>Creates the editor of the document that <paramref name="session"/> has open now or opens later.</summary>
     /// <param name="session">The session; the editor does not own it.</param>
     /// <exception cref="ArgumentNullException"><paramref name="session"/> is <see langword="null"/>.</exception>
@@ -98,6 +101,24 @@ public sealed class AnnotationEditor
             lock (gate)
             {
                 return history.Version;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether an operation was called and has not ended yet: from the moment a call is accepted (before its first
+    /// await) until its step is recorded (or it failed). A change in flight is not on the history yet, so
+    /// <see cref="IsDirty"/> does not see it; whoever must not lose changes (closing a tab) counts a busy editor as dirty
+    /// and waits for <see cref="WhenIdleAsync"/>. A save keeps the editor busy as well. Changing it raises no
+    /// <see cref="Changed"/>.
+    /// </summary>
+    public bool IsBusy
+    {
+        get
+        {
+            lock (gate)
+            {
+                return pending > 0;
             }
         }
     }
@@ -317,6 +338,19 @@ public sealed class AnnotationEditor
             requireDocument: true);
     }
 
+    /// <summary>
+    /// Waits until every operation called so far has ended (also those that failed); operations called later are not
+    /// waited for. Never faults.
+    /// </summary>
+    /// <returns>A task that completes when the operations called before this call have ended.</returns>
+    public Task WhenIdleAsync()
+    {
+        lock (gate)
+        {
+            return tail;
+        }
+    }
+
     private static AnnotationLocator LocatorOf(PdfAnnotation annotation) => new(annotation.Page, annotation.Index, annotation.Name);
 
     /// <summary>The change that turns the colour and the comment of <paramref name="from"/> into those of <paramref name="to"/>.</summary>
@@ -464,6 +498,7 @@ public sealed class AnnotationEditor
         {
             previous = tail;
             tail = done.Task;
+            pending++;
         }
 
         return RunAfterAsync(previous, done, work, requireDocument);
@@ -511,6 +546,7 @@ public sealed class AnnotationEditor
             lock (gate)
             {
                 changed = history.Version != versionBefore;
+                pending--;
             }
 
             done.SetResult();

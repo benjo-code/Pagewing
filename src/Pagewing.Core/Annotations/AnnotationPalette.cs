@@ -45,13 +45,16 @@ public static class AnnotationPalette
         return null;
     }
 
-    /// <summary>Gets the key of the colour's name in the UI resources.</summary>
+    /// <summary>
+    /// Gets the key of the colour's name in the UI resources: <c>MarkupColor</c> and the name of the colour
+    /// (<c>MarkupColorYellow</c>), so the key is also the name of its accessor.
+    /// </summary>
     /// <param name="color">The colour.</param>
     /// <returns>The resource key.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="color"/> is not a defined colour.</exception>
     public static string NameKey(MarkupColor color)
     {
         _ = ColorOf(color);
-        return "Markup.Color." + color;
+        return "MarkupColor" + color;
     }
 }
