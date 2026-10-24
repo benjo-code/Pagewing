@@ -41,6 +41,40 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// </summary>
     public bool MayPrint => (Fpdf.FPDF_GetDocPermissions(Access()).Value & FpdfConstants.PermissionPrint) != 0;
 
+    /// <summary>
+    /// Gets whether the permissions of whoever opened the document allow changing annotations (PDF 32000-1 table 22,
+    /// bit 6); an unencrypted document, or one opened with its owner password, allows everything. Must be called on the PDFium thread.
+    /// </summary>
+    public bool MayAnnotate => AllowsAnnotating((uint)Fpdf.FPDF_GetDocPermissions(Access()).Value);
+
+    /// <summary>Gets the number of signatures and the most restrictive DocMDP level they declare. Must be called on the PDFium thread.</summary>
+    /// <returns>The signature count and the lowest DocMDP level (1 to 3), or 0 if no signature declares one.</returns>
+    public (int Count, int DocMdpLevel) GetSignatures()
+    {
+        var document = Access();
+        var count = Fpdf.FPDF_GetSignatureCount(document);
+        var level = 0;
+        for (var index = 0; index < count; index++)
+        {
+            var signature = Fpdf.FPDF_GetSignatureObject(document, index);
+            if (signature == 0)
+            {
+                continue;
+            }
+
+            var permission = Fpdf.FPDFSignatureObj_GetDocMDPPermission(signature);
+            if (permission is >= 1 and <= 3 && (level == 0 || permission < level))
+            {
+                level = (int)permission;
+            }
+        }
+
+        return (Math.Max(count, 0), level);
+    }
+
+    /// <summary>Tells whether a permission word (<c>/P</c> value as returned by PDFium) contains the "modify annotations" bit.</summary>
+    internal static bool AllowsAnnotating(uint permissions) => (permissions & FpdfConstants.PermissionAnnotate) != 0;
+
     /// <summary>Gets the PDF version from the file header (14 for 1.4), or <see langword="null"/> if unknown.</summary>
     public int? FileVersion
     {

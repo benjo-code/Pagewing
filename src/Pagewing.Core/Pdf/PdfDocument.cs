@@ -339,6 +339,35 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Reads how many signatures the document has and the most restrictive DocMDP level they declare. Pagewing never
+    /// validates a signature; this only reads the declaration.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PdfSignatureInfo> GetSignatureInfoAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return document.Thread.InvokeAsync(
+            () =>
+            {
+                var (count, level) = document.GetSignatures();
+                return new PdfSignatureInfo(count, (DocMdpLevel)level);
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads whether the permissions of whoever opened the document allow changing annotations (an unencrypted
+    /// document, or one opened with its owner password, allows it).
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<bool> MayAnnotateAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return document.Thread.InvokeAsync(() => document.MayAnnotate, PdfiumPriority.Background, cancellationToken);
+    }
+
+    /// <summary>
     /// Draws one page on a printer device context (Windows <c>HDC</c> with a page started), with its annotations, always in
     /// the light colours of the page. Runs as one short request with <see cref="PdfPriority.Background"/>, so the rendering
     /// of the tabs goes on between two pages of a job.
