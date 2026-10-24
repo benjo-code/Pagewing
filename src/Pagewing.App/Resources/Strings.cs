@@ -374,6 +374,36 @@ public static class Strings
     public static string CommentKindOtherNamed => Get("CommentKindOtherNamed");
     public static string CommentEntryName => Get("CommentEntryName");
     public static string CommentColor => Get("CommentColor");
+    public static string AnnotateModeName => Get("AnnotateModeName");
+    public static string AnnotateButtonTooltip => Get("AnnotateButtonTooltip");
+    public static string CommandAnnotateMode => Get("CommandAnnotateMode");
+    public static string CommandHighlight => Get("CommandHighlight");
+    public static string CommandUnderline => Get("CommandUnderline");
+    public static string CommandStrikeOut => Get("CommandStrikeOut");
+    public static string AnnotateToolbarName => Get("AnnotateToolbarName");
+    public static string AnnotateToolsName => Get("AnnotateToolsName");
+    public static string AnnotateColorsName => Get("AnnotateColorsName");
+    public static string AnnotateDone => Get("AnnotateDone");
+    public static string AnnotateDoneTooltip => Get("AnnotateDoneTooltip");
+    public static string AnnotateEscHint => Get("AnnotateEscHint");
+    public static string AnnotateForbidden => Get("AnnotateForbidden");
+    public static string AnnotateNotReady => Get("AnnotateNotReady");
+    public static string MarkupColorYellow => Get("MarkupColorYellow");
+    public static string MarkupColorGreen => Get("MarkupColorGreen");
+    public static string MarkupColorBlue => Get("MarkupColorBlue");
+    public static string MarkupColorPink => Get("MarkupColorPink");
+    public static string MarkupColorOrange => Get("MarkupColorOrange");
+    public static string CommentEditTitle => Get("CommentEditTitle");
+    public static string CommentEditField => Get("CommentEditField");
+    public static string CommentEditHint => Get("CommentEditHint");
+    public static string CommentEditColor => Get("CommentEditColor");
+    public static string CommentDelete => Get("CommentDelete");
+    public static string CommentViewOnly => Get("CommentViewOnly");
+    public static string CommentEditNone => Get("CommentEditNone");
+
+    /// <summary>Gets the name of a colour of the markup palette (<see cref="Pagewing.Core.Annotations.AnnotationPalette.NameKey"/>).</summary>
+    public static string ColorName(Pagewing.Core.Annotations.MarkupColor color) =>
+        Get(Pagewing.Core.Annotations.AnnotationPalette.NameKey(color));
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

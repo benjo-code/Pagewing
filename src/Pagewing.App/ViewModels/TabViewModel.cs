@@ -155,6 +155,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(IsReady));
                 OnPropertyChanged(nameof(IsFailed));
                 RaiseNavigationCanExecuteChanged();
+                OnAnnotateAvailabilityChanged();
             }
 
             // Also when the state stays the same: the password check depends on more than the state.
@@ -474,7 +475,13 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     public bool HasShownSharpPage
     {
         get => _hasShownSharpPage;
-        internal set => SetProperty(ref _hasShownSharpPage, value);
+        internal set
+        {
+            if (SetProperty(ref _hasShownSharpPage, value))
+            {
+                OnAnnotateAvailabilityChanged();
+            }
+        }
     }
 
     /// <summary>
@@ -1082,6 +1089,9 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             _thumbnails = null;
             CurrentPage = 0;
             CurrentPageLast = 0;
+
+            // No document, no mode.
+            ResetAnnotateMode();
         }
 
         // The password check is over once the session leaves Loading. The password stays only for another try.

@@ -1,0 +1,179 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             xmlns:ann="using:Pagewing.Core.Annotations"
+             x:Class="Pagewing.App.Views.AnnotationToolbar"
+             x:DataType="vm:TabViewModel"
+             Height="{DynamicResource Pw.Size.ToolbarHeight}"
+             AutomationProperties.Name="{x:Static res:Strings.AnnotateToolbarName}"
+             AutomationProperties.AccessibilityView="Content">
+  <!--
+    Toolbar of the mode "Comment" (milestone 9; design system 5.3, 5.4, 5.5, 6 point 4, 7.7 and 7.10): 44 px high
+    (density "Kompakt" 38, Pw.Size.ToolbarHeight) over the document area, surface.toolbar with a border.subtle bottom edge.
+    From the left: the name of the mode with its icon (message, accent.default), the three tools with icon and label
+    (toggle buttons for screen readers; the chosen one has an accent.subtle surface, an accent.default 1 px frame and the
+    accent.default label, so it is not marked by colour alone), the five colours (swatches in the colour of the markup,
+    which is PDF content, with a 1 px border.strong edge; the chosen one has a 2 px text.primary ring and a check mark in
+    search.on; name of the colour as tooltip and for screen readers), Undo and Redo; on the right the hint "Esc ends" and
+    the primary button "Done". Tab moves through tools, the colour group (one stop: the arrows move within it), Undo,
+    Redo and Done; Enter and Space press; Esc clears a text selection, then ends the mode. Too narrow: the hint goes first,
+    then the labels of the tools (their tooltips stay). Made when the mode is first started (MainWindow.Annotate.cs), never
+    in the startup path; its styles live here for the same reason. The DataContext is the active tab.
+  -->
+  <UserControl.Styles>
+    <Style Selector="Button.tool">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.tool.active">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button.tool.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.tool.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button.tool TextBlock">
+      <Setter Property="Margin" Value="6,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- A colour: a 28 px button with a 2 px ring (transparent, text.primary when chosen) around the swatch. -->
+    <Style Selector="Button.swatch">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.swatch:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.swatch:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.swatch.active">
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="Button.swatch.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.swatch.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="Border.swatchFill">
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.swatchCheck">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Brush" Value="{DynamicResource Pw.Brush.Search.On}" />
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Check}" />
+    </Style>
+
+    <Style Selector="Button.toolbarIcon">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="Border.toolbarSeparator">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Margin" Value="8,0" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="ToolbarFrame"
+          Background="{DynamicResource Pw.Brush.Surface.Toolbar}"
+          BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
+          BorderThickness="0,0,0,1">
+    <!-- In the order of the tab: the mode, the tools, colours, undo and redo, then the hint and "Done" on the right. -->
+    <Grid Name="ToolbarContent" Margin="12,0,8,0" ColumnDefinitions="Auto,*,Auto">
+      <StackPanel Name="ModeLabel" Grid.Column="0" Orientation="Horizontal" Spacing="6" Margin="0,0,12,0" VerticalAlignment="Center">
+        <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center"
+                        Brush="{DynamicResource Pw.Brush.Accent.Default}" Data="{StaticResource Pw.Icon.Message}" />
+        <TextBlock Name="ModeName" Classes="strong" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   Text="{x:Static res:Strings.AnnotateModeName}" />
+      </StackPanel>
+
+      <StackPanel Name="ToolsArea" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
+        <StackPanel Name="ToolGroup" Orientation="Horizontal" Spacing="4"
+                    AutomationProperties.Name="{x:Static res:Strings.AnnotateToolsName}"
+                    AutomationProperties.AccessibilityView="Content">
+          <ctl:ActionToggleButton Name="HighlightTool" Classes="icon tool"
+                                  Command="{Binding SetToolCommand}" CommandParameter="{x:Static ann:AnnotationKind.Highlight}"
+                                  AutomationProperties.Name="{x:Static res:Strings.CommandHighlight}">
+            <StackPanel Orientation="Horizontal">
+              <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Highlight}" />
+              <TextBlock Name="HighlightLabel" Classes="body toolLabel" Text="{x:Static res:Strings.CommandHighlight}" />
+            </StackPanel>
+          </ctl:ActionToggleButton>
+          <ctl:ActionToggleButton Name="UnderlineTool" Classes="icon tool"
+                                  Command="{Binding SetToolCommand}" CommandParameter="{x:Static ann:AnnotationKind.Underline}"
+                                  AutomationProperties.Name="{x:Static res:Strings.CommandUnderline}">
+            <StackPanel Orientation="Horizontal">
+              <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Underline}" />
+              <TextBlock Name="UnderlineLabel" Classes="body toolLabel" Text="{x:Static res:Strings.CommandUnderline}" />
+            </StackPanel>
+          </ctl:ActionToggleButton>
+          <ctl:ActionToggleButton Name="StrikeOutTool" Classes="icon tool"
+                                  Command="{Binding SetToolCommand}" CommandParameter="{x:Static ann:AnnotationKind.StrikeOut}"
+                                  AutomationProperties.Name="{x:Static res:Strings.CommandStrikeOut}">
+            <StackPanel Orientation="Horizontal">
+              <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Strikethrough}" />
+              <TextBlock Name="StrikeOutLabel" Classes="body toolLabel" Text="{x:Static res:Strings.CommandStrikeOut}" />
+            </StackPanel>
+          </ctl:ActionToggleButton>
+        </StackPanel>
+
+        <Border Classes="toolbarSeparator" />
+
+        <!-- The swatches are added in code (AnnotationToolbar.axaml.cs), one per colour of the palette. -->
+        <StackPanel Name="ColorGroup" Orientation="Horizontal" Spacing="2"
+                    KeyboardNavigation.TabNavigation="Once"
+                    AutomationProperties.Name="{x:Static res:Strings.AnnotateColorsName}"
+                    AutomationProperties.AccessibilityView="Content" />
+
+        <Border Classes="toolbarSeparator" />
+
+        <Button Name="UndoButton" Classes="icon toolbarIcon"
+                Command="{Binding UndoCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.CommandUndo}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ArrowBackUp}" />
+        </Button>
+        <Button Name="RedoButton" Classes="icon toolbarIcon" Margin="2,0,0,0"
+                Command="{Binding RedoCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.CommandRedo}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ArrowForwardUp}" />
+        </Button>
+      </StackPanel>
+
+      <StackPanel Name="DoneArea" Grid.Column="2" Margin="12,0,0,0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+        <TextBlock Name="EscHint" Classes="caption" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.AnnotateEscHint}" />
+        <Button Name="DoneButton" Classes="primary"
+                Command="{Binding EndAnnotateCommand}"
+                ToolTip.Tip="{x:Static res:Strings.AnnotateDoneTooltip}"
+                AutomationProperties.Name="{x:Static res:Strings.AnnotateDone}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Check}" />
+            <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.AnnotateDone}" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

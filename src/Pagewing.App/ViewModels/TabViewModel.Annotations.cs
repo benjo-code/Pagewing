@@ -180,9 +180,11 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets whether closing the tab asks first: it has unsaved changes (as last mirrored, or as the editor has them now, so
-    /// a change whose mirror is still on its way counts too).
+    /// a change whose mirror is still on its way counts too), or a change is in flight (a markup whose geometry is read, an
+    /// operation the editor accepted and has not recorded yet). The question waits for those first
+    /// (<see cref="WhenEditsSettledAsync"/>), so a change made a moment before closing is never dropped silently.
     /// </summary>
-    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _editor?.IsDirty == true);
+    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _editor is { IsDirty: true } or { IsBusy: true });
 
     /// <summary>
     /// Gets the version of the editor's history (<see cref="AnnotationEditor.Version"/>; 0 without an editor): a "Don't
@@ -204,6 +206,7 @@ public sealed partial class TabViewModel
             {
                 _isAskedAbout = value;
                 RaiseSaveCanExecuteChanged();
+                RaiseAnnotateCanExecuteChanged();
                 _undoCommand?.RaiseCanExecuteChanged();
                 _redoCommand?.RaiseCanExecuteChanged();
                 OnPropertyChanged();
@@ -248,17 +251,20 @@ public sealed partial class TabViewModel
         return info;
     }
 
-    /// <summary>Reads the state of the editor (UI thread): dirty, undo and redo.</summary>
+    /// <summary>
+    /// Reads the state of the editor (UI thread): dirty (also while a markup of the tab is on its way to it), undo and redo.
+    /// </summary>
     internal void SyncFromEditor()
     {
-        if (_editor is not { } editor || _disposed)
+        if (_disposed)
         {
             return;
         }
 
-        IsDirty = editor.IsDirty;
-        CanUndo = editor.CanUndo;
-        CanRedo = editor.CanRedo;
+        var editor = _editor;
+        IsDirty = editor?.IsDirty == true || _pendingEdits > 0;
+        CanUndo = editor?.CanUndo == true;
+        CanRedo = editor?.CanRedo == true;
     }
 
     /// <summary>The session swapped its document for the saved file (<see cref="Refresh"/>): what was read of it stays.</summary>
@@ -268,6 +274,8 @@ public sealed partial class TabViewModel
         {
             _signature = (adopted, known.Info);
         }
+
+        RebindAnnotateMode(old, adopted);
     }
 
     /// <summary>Another file is open in the tab: its signatures are read again at its first save, and the note may come again.</summary>
@@ -276,6 +284,7 @@ public sealed partial class TabViewModel
         _signature = null;
         _signatureNoteShown = false;
         UnsaveableReason = null;
+        ResetAnnotateMode();
         SyncFromEditor();
     }
 

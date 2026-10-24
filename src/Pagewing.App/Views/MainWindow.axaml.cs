@@ -92,6 +92,7 @@ public sealed partial class MainWindow : Window
         AttachPrint(old, _viewModel);
         AttachDefaultApp(old, _viewModel);
         AttachUpdate(old, _viewModel);
+        AttachAnnotate(old, _viewModel);
     }
 
     /// <summary>

@@ -14,7 +14,9 @@ namespace Pagewing.App.Views;
 /// In the list Up, Down, Page Up, Page Down, Home and End move the cursor without jumping (handled here: the window binds
 /// Page Up and Page Down to the pages of the document), and a click, Enter or Space shows the entry. The open filter list
 /// claims Esc and the page keys like the lists of the cards (<see cref="CardLists"/>). Built when the panel opens, released
-/// when it closes; the list itself belongs to the tab and outlives the panel.
+/// when it closes; the list itself belongs to the tab and outlives the panel. In the mode "Comment" the edit controls of
+/// the selected entry (<see cref="CommentEditor"/>) are built below the list, and Esc in the list ends the mode; outside
+/// the mode they do not exist.
 /// </summary>
 public sealed partial class CommentsPanel : UserControl
 {
@@ -22,6 +24,7 @@ public sealed partial class CommentsPanel : UserControl
 
     private TabViewModel? _tab;
     private CommentsViewModel? _comments;
+    private CommentEditor? _editor;
 
     public CommentsPanel()
     {
@@ -36,6 +39,13 @@ public sealed partial class CommentsPanel : UserControl
         {
             CommentList.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(key), Command = new RelayCommand(() => Move(key)) });
         }
+
+        // Esc in the list ends the mode "Comment" (outside the mode the key goes on).
+        CommentList.KeyBindings.Add(new KeyBinding
+        {
+            Gesture = new KeyGesture(Key.Escape),
+            Command = new RelayCommand(() => _tab?.EscapeAnnotate(), () => _tab is { IsAnnotating: true }),
+        });
     }
 
     // The window may hand the panel another tab just before it replaces the panel (a tab that shows another panel): the
@@ -62,14 +72,31 @@ public sealed partial class CommentsPanel : UserControl
         }
 
         CommentsRoot.DataContext = null;
+        if (_comments is not null)
+        {
+            _comments.PropertyChanged -= OnCommentsPropertyChanged;
+        }
+
         _comments = comments;
+        if (comments is not null)
+        {
+            comments.PropertyChanged += OnCommentsPropertyChanged;
+        }
+
         CommentsRoot.DataContext = comments;
+        UpdateEditor();
     }
 
     private void Detach()
     {
         CommentsRoot.DataContext = null;
+        if (_comments is not null)
+        {
+            _comments.PropertyChanged -= OnCommentsPropertyChanged;
+        }
+
         _comments = null;
+        UpdateEditor();
         if (_tab is not null)
         {
             _tab.PropertyChanged -= OnTabPropertyChanged;
@@ -84,6 +111,68 @@ public sealed partial class CommentsPanel : UserControl
         {
             Attach();
         }
+    }
+
+    private void OnCommentsPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CommentsViewModel.IsEditing))
+        {
+            UpdateEditor();
+        }
+        else if (e.PropertyName == nameof(CommentsViewModel.SelectedItem) && _comments?.SelectedItem is { } selected)
+        {
+            // A markup just made (or an edited one) is selected: the list shows it.
+            CommentList.ScrollIntoView(selected);
+        }
+    }
+
+    /// <summary>The edit controls exist only in the mode; leaving it drops them (the keys go to the list if they were there).</summary>
+    private void UpdateEditor()
+    {
+        if (_comments is { IsEditing: true } comments)
+        {
+            if (_editor is null)
+            {
+                _editor = new CommentEditor { Name = "CommentEditor" };
+                _editor.FocusReturnRequested += FocusSelectedEntry;
+            }
+
+            _editor.DataContext = comments;
+            CommentEditorHost.Content = _editor;
+            return;
+        }
+
+        if (_editor is null)
+        {
+            return;
+        }
+
+        var hadFocus = _editor.IsKeyboardFocusWithin;
+        _editor.FocusReturnRequested -= FocusSelectedEntry;
+        _editor.DataContext = null;
+        _editor = null;
+        CommentEditorHost.Content = null;
+        if (hadFocus)
+        {
+            FocusSelectedEntry();
+        }
+    }
+
+    /// <summary>Gives the keys to the selected entry of the list, or to the list itself.</summary>
+    private void FocusSelectedEntry()
+    {
+        var index = CommentList.SelectedIndex;
+        if (index >= 0)
+        {
+            CommentList.ScrollIntoView(index);
+            if (CommentList.ContainerFromIndex(index) is { } container)
+            {
+                container.Focus(NavigationMethod.Directional);
+                return;
+            }
+        }
+
+        CommentList.Focus(NavigationMethod.Directional);
     }
 
     private void OnFilterTemplateApplied(object? sender, TemplateAppliedEventArgs e) => CardLists.OnTemplateApplied(this, FilterBox, e);

@@ -186,6 +186,7 @@ public sealed partial class DocumentView : UserControl
     {
         SaveView();
         DisconnectHighlights();
+        CancelPendingMarkup();
         DropTexts();
         if (_viewModel is not null)
         {
@@ -254,7 +255,9 @@ public sealed partial class DocumentView : UserControl
         }
     }
 
-    // Any thread (the editor's): must not wait and must never throw. The images of those pages are rendered anew.
+    // Any thread (the editor's): must not wait and must never throw. The images of those pages are rendered anew, and
+    // their text (which the session dropped with them) is read again for the visible ones, so a link or the cursor works
+    // there at once after a markup.
     private void OnPagesInvalidated(IReadOnlySet<int> pages)
     {
         var session = _session;
@@ -265,6 +268,7 @@ public sealed partial class DocumentView : UserControl
                 if (session is not null && ReferenceEquals(session, _session) && _layout is not null)
                 {
                     PageCanvas.InvalidatePages(pages);
+                    PreloadText();
                 }
             });
         }
@@ -444,7 +448,11 @@ public sealed partial class DocumentView : UserControl
         }
     }
 
-    /// <summary>Esc in the document: clears the selection first; without one it ends an active search.</summary>
+    /// <summary>
+    /// Esc in the document: clears the selection first; without one it ends the mode "Comment", then an active search.
+    /// The window's own meanings of Esc (a waiting address, a card of the save flow, an overlay, the update card) come
+    /// before all of them (they are key bindings of the window).
+    /// </summary>
     /// <returns>Whether Esc had something to end.</returns>
     private bool TryEscape()
     {
@@ -453,9 +461,15 @@ public sealed partial class DocumentView : UserControl
             return false;
         }
 
+        CancelPendingMarkup();
         if (tab.HasTextSelection)
         {
             tab.TextSelection = null;
+            return true;
+        }
+
+        if (tab.EscapeAnnotate())
+        {
             return true;
         }
 

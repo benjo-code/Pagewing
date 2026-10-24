@@ -192,14 +192,18 @@ public sealed class CommentsPanelTests : IDisposable
         Assert.False(comments.IsEditing);
 
         // Nothing in the content of the panel edits or deletes: no button, no text field, no check box. The filter is a
-        // list that cannot be typed into (Fluent's template has a hidden field for editable boxes).
+        // list that cannot be typed into (Fluent's template has a hidden field for editable boxes). The one button is the
+        // way into the mode "Comment" (task 16), not an editing tool; the edit controls of the mode do not exist yet.
         var content = Find<CommentsPanel>(window, "CommentsContent");
         var filter = Assert.Single(content.GetVisualDescendants().OfType<ComboBox>());
         Assert.False(filter.IsEditable);
+        var annotate = Find<Control>(content, "AnnotateButton");
         var controls = content.GetVisualDescendants().OfType<Control>()
-            .Where(control => !control.GetVisualAncestors().Contains(filter))
+            .Where(control => !control.GetVisualAncestors().Contains(filter) && !ReferenceEquals(control, annotate)
+                && !control.GetVisualAncestors().Contains(annotate) && control.FindAncestorOfType<ScrollBar>() is null)
             .ToArray();
         Assert.DoesNotContain(controls, control => control is Button or TextBox or CheckBox or ToggleSwitch);
+        Assert.Null(FindOrNull<CommentEditor>(window, "CommentEditor"));
 
         // A click on an entry jumps, it changes nothing.
         Click(window, list.ContainerFromIndex(0)!);
@@ -243,6 +247,10 @@ public sealed class CommentsPanelTests : IDisposable
         Settle(window);
         Assert.True(viewModel.IsNarrowWindow);
         await WaitUntilAsync(window, () => IsShown(window, "CommentList") && list.ContainerFromIndex(0) is { IsEffectivelyVisible: true });
+
+        // The list was scrolled to its end above (the button "Comment" leaves it less room than all the entries need).
+        list.ScrollIntoView(0);
+        Settle(window);
         Click(window, list.ContainerFromIndex(0)!);
         Assert.Equal(1, tab.CurrentPage);
         Assert.Equal(SidePanelKind.None, tab.SidePanel);

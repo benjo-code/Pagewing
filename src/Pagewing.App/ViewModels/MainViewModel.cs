@@ -957,6 +957,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         UpdatePageThemes();
+
+        // The colour of a tool may come from another window.
+        foreach (var tab in Tabs)
+        {
+            tab.OnAnnotationSettingsChanged();
+        }
     }
 
     private static double DefaultFor(DensitySetting density) =>
@@ -1004,6 +1010,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         // Before the tab is shown: a tab from another window keeps its override and takes the page theme of this one.
         tab.AppPageTheme = AppPageTheme;
+
+        // The colours of the tools and the author come from the settings of the app.
+        tab.AnnotationSettings = Settings;
         var handlers = (
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),

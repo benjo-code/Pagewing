@@ -1041,4 +1041,82 @@
   <data name="CommentColor" xml:space="preserve">
     <value>Colour {0}</value>
   </data>
+  <data name="AnnotateModeName" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="AnnotateButtonTooltip" xml:space="preserve">
+    <value>Start or end commenting</value>
+  </data>
+  <data name="CommandAnnotateMode" xml:space="preserve">
+    <value>Start or end commenting</value>
+  </data>
+  <data name="CommandHighlight" xml:space="preserve">
+    <value>Highlight</value>
+  </data>
+  <data name="CommandUnderline" xml:space="preserve">
+    <value>Underline</value>
+  </data>
+  <data name="CommandStrikeOut" xml:space="preserve">
+    <value>Strike out</value>
+  </data>
+  <data name="AnnotateToolbarName" xml:space="preserve">
+    <value>Commenting tools</value>
+  </data>
+  <data name="AnnotateToolsName" xml:space="preserve">
+    <value>Kind of markup</value>
+  </data>
+  <data name="AnnotateColorsName" xml:space="preserve">
+    <value>Colour</value>
+  </data>
+  <data name="AnnotateDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="AnnotateDoneTooltip" xml:space="preserve">
+    <value>End commenting (Esc)</value>
+  </data>
+  <data name="AnnotateEscHint" xml:space="preserve">
+    <value>Esc ends</value>
+  </data>
+  <data name="AnnotateForbidden" xml:space="preserve">
+    <value>This document does not allow comments: its permissions forbid adding them.</value>
+  </data>
+  <data name="AnnotateNotReady" xml:space="preserve">
+    <value>Commenting is possible once the document is shown.</value>
+  </data>
+  <data name="MarkupColorYellow" xml:space="preserve">
+    <value>Yellow</value>
+  </data>
+  <data name="MarkupColorGreen" xml:space="preserve">
+    <value>Green</value>
+  </data>
+  <data name="MarkupColorBlue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+  <data name="MarkupColorPink" xml:space="preserve">
+    <value>Pink</value>
+  </data>
+  <data name="MarkupColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="CommentEditTitle" xml:space="preserve">
+    <value>Selected entry</value>
+  </data>
+  <data name="CommentEditField" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="CommentEditHint" xml:space="preserve">
+    <value>Ctrl+Enter applies, Esc discards.</value>
+  </data>
+  <data name="CommentEditColor" xml:space="preserve">
+    <value>Change colour</value>
+  </data>
+  <data name="CommentDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="CommentViewOnly" xml:space="preserve">
+    <value>View only</value>
+  </data>
+  <data name="CommentEditNone" xml:space="preserve">
+    <value>Select an entry to edit it.</value>
+  </data>
 </root>

@@ -12,8 +12,9 @@ namespace Pagewing.App.ViewModels;
 
 /// <summary>
 /// The "Comments" panel of one tab (milestone 9): the annotations of the document as a list sorted by page and position,
-/// a filter by kind, the summary and the jump to an entry. Read-only (design system 7.7: the reading view shows no editing
-/// tools). Created by the tab when the panel first opens (<see cref="TabViewModel.Comments"/>), never in the startup path;
+/// a filter by kind, the summary and the jump to an entry. Read-only outside the mode "Comment" (design system 7.7: the
+/// reading view shows no editing tools); in the mode (<see cref="IsEditing"/>) the selected entry can be edited: its
+/// comment, its colour, and deleting it (only highlights, underlines and strike-outs that are editable). Created by the tab when the panel first opens (<see cref="TabViewModel.Comments"/>), never in the startup path;
 /// it reads nothing before the first sharp page of the document (<see cref="TabViewModel.HasShownSharpPage"/>). Then it
 /// reads every page once, one after the other in the background (<see cref="PdfDocument.GetAnnotationsAsync"/> runs with
 /// <see cref="PdfPriority.Background"/>), and the list fills page by page. A page whose content the editor changed
@@ -41,6 +42,11 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     private CommentFilter _filter;
     private SettingsChoice<CommentFilter>? _filterChoice;
     private CommentItemViewModel? _current;
+    private CommentItemViewModel? _selected;
+    private string _commentDraft = string.Empty;
+
+    // A markup made by the tab that is to be selected once its page is read (by its name).
+    private (int Page, string Name)? _selectNext;
     private PdfDocument? _document;
     private CancellationTokenSource? _cancellation;
     private int _pageCount;
@@ -55,6 +61,10 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(tab);
         _tab = tab;
         JumpCommand = new RelayCommand<CommentItemViewModel>(Jump);
+        CommitCommentCommand = new RelayCommand(CommitComment, () => SelectedIsEditable);
+        DiscardCommentCommand = new RelayCommand(DiscardComment);
+        DeleteCommand = new RelayCommand(Delete, () => SelectedIsEditable);
+        SetItemColorCommand = new RelayCommand<MarkupColor>(SetItemColor);
         FilterChoices =
         [
             new(CommentFilter.All, Strings.CommentFilterAll),
@@ -170,8 +180,82 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// <summary>Gets whether pages are being read right now (for tests).</summary>
     internal bool IsReading => _reading;
 
-    /// <summary>Gets whether the entries can be edited here: never outside the mode "Comment" (milestone 9, task 16).</summary>
-    public bool IsEditing { get; }
+    /// <summary>
+    /// Gets whether the entries can be edited here: only in the mode "Comment" of the tab (<see cref="TabViewModel.IsAnnotating"/>);
+    /// the panel then shows the edit controls of the selected entry.
+    /// </summary>
+    public bool IsEditing => _tab.IsAnnotating;
+
+    /// <summary>
+    /// Gets or sets the selected entry of the list (the keyboard cursor, a click): the edit controls of the mode act on it.
+    /// Choosing another entry drops a comment that was typed and not applied.
+    /// </summary>
+    public CommentItemViewModel? SelectedItem
+    {
+        get => _selected;
+        set
+        {
+            if (!SetProperty(ref _selected, value))
+            {
+                return;
+            }
+
+            CommentDraft = value?.Annotation.Contents ?? string.Empty;
+            OnPropertyChanged(nameof(HasSelection));
+            OnPropertyChanged(nameof(SelectedIsEditable));
+            OnPropertyChanged(nameof(SelectedIsViewOnly));
+            OnPropertyChanged(nameof(SelectedColor));
+            CommitCommentCommand.RaiseCanExecuteChanged();
+            DeleteCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>Gets whether an entry is selected.</summary>
+    public bool HasSelection => _selected is not null;
+
+    /// <summary>Gets whether the selected entry can be edited: a highlight, underline or strike-out without replies.</summary>
+    public bool SelectedIsEditable => _selected is { Annotation.Editable: true };
+
+    /// <summary>Gets whether the selected entry is shown only ("View only"): any other annotation.</summary>
+    public bool SelectedIsViewOnly => _selected is { Annotation.Editable: false };
+
+    /// <summary>Gets the palette colour of the selected entry, or <see langword="null"/> (none, or a colour of another application).</summary>
+    public MarkupColor? SelectedColor => _selected?.Annotation.Color is { } color ? AnnotationPalette.Match(color) : null;
+
+    /// <summary>
+    /// Gets or sets the comment typed for the selected entry, not applied yet: Ctrl+Enter applies it
+    /// (<see cref="CommitCommentCommand"/>), Esc drops it (<see cref="DiscardCommentCommand"/>).
+    /// </summary>
+    public string CommentDraft
+    {
+        get => _commentDraft;
+        set => SetProperty(ref _commentDraft, value ?? string.Empty);
+    }
+
+    /// <summary>Ctrl+Enter in the comment field: the typed comment becomes the comment of the entry; an empty one removes it.</summary>
+    public RelayCommand CommitCommentCommand { get; }
+
+    /// <summary>Esc in the comment field: drops what was typed, the entry keeps its comment.</summary>
+    public RelayCommand DiscardCommentCommand { get; }
+
+    /// <summary>"Delete": removes the selected markup from the document; undo brings it back.</summary>
+    public RelayCommand DeleteCommand { get; }
+
+    /// <summary>A colour of the menu "Colour" (parameter: the <see cref="MarkupColor"/>): the selected markup gets it.</summary>
+    public ICommand SetItemColorCommand { get; }
+
+    /// <summary>
+    /// Selects the entry of <paramref name="created"/> once its page is read again (a markup the tab just made), so the
+    /// open panel shows it; without a name nothing is selected.
+    /// </summary>
+    internal void SelectWhenListed(PdfAnnotation created)
+    {
+        ArgumentNullException.ThrowIfNull(created);
+        if (!_disposed && created.Name is { } name)
+        {
+            _selectNext = (created.Page, name);
+        }
+    }
 
     /// <summary>Stops reading and lets go of the tab and the session. May be called more than once.</summary>
     public void Dispose()
@@ -189,6 +273,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         _byPage.Clear();
         _items.Clear();
         _current = null;
+        _selected = null;
         _document = null;
     }
 
@@ -322,12 +407,75 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
     private int EpochOf(int page) => _epochs.GetValueOrDefault(page);
 
+    private static AnnotationLocator LocatorOf(PdfAnnotation annotation) => new(annotation.Page, annotation.Index, annotation.Name);
+
     private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(TabViewModel.Document) or nameof(TabViewModel.HasShownSharpPage))
         {
             TryStart();
         }
+        else if (e.PropertyName == nameof(TabViewModel.IsAnnotating))
+        {
+            // In and out of the mode: the edit controls come or go; a comment typed and not applied goes with them.
+            CommentDraft = _selected?.Annotation.Contents ?? string.Empty;
+            foreach (var entries in _byPage.Values)
+            {
+                foreach (var item in entries)
+                {
+                    item.IsViewOnlyInMode = IsEditing && !item.Annotation.Editable;
+                }
+            }
+
+            OnPropertyChanged(nameof(IsEditing));
+        }
+    }
+
+    private void CommitComment()
+    {
+        if (_selected is not { Annotation.Editable: true } item)
+        {
+            return;
+        }
+
+        var text = _commentDraft;
+        if (text == (item.Annotation.Contents ?? string.Empty))
+        {
+            return;
+        }
+
+        var locator = LocatorOf(item.Annotation);
+        _ = _tab.RunEditAsync(editor => editor.UpdateAsync(locator, new AnnotationEdit(Contents: text)));
+    }
+
+    private void DiscardComment() => CommentDraft = _selected?.Annotation.Contents ?? string.Empty;
+
+    private void Delete()
+    {
+        if (_selected is not { Annotation.Editable: true } item)
+        {
+            return;
+        }
+
+        var locator = LocatorOf(item.Annotation);
+        _ = _tab.RunEditAsync(editor => editor.DeleteAsync(locator));
+    }
+
+    private void SetItemColor(MarkupColor color)
+    {
+        if (_selected is not { Annotation.Editable: true } item || !Enum.IsDefined(color))
+        {
+            return;
+        }
+
+        var value = AnnotationPalette.ColorOf(color);
+        if (item.Annotation.Color == value)
+        {
+            return;
+        }
+
+        var locator = LocatorOf(item.Annotation);
+        _ = _tab.RunEditAsync(editor => editor.UpdateAsync(locator, new AnnotationEdit(Color: value)));
     }
 
     // Any thread (the editor's): must not wait and must never throw.
@@ -500,7 +648,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
                 next = found + 1;
             }
 
-            fresh[i] = found >= 0 ? old[found] : new CommentItemViewModel(annotation, excerpt);
+            fresh[i] = found >= 0 ? old[found] : new CommentItemViewModel(annotation, excerpt) { IsViewOnlyInMode = IsEditing && !annotation.Editable };
             if (unchanged && !ReferenceEquals(fresh[i], old[i]))
             {
                 unchanged = false;
@@ -509,6 +657,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
         if (unchanged)
         {
+            SelectNew(page, fresh);
             return;
         }
 
@@ -527,6 +676,18 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
             // The current entry went with its annotation.
             current.IsCurrent = false;
             _current = null;
+        }
+
+        // A changed entry is a new object: the selection follows its annotation (by name, else by position), so an edited
+        // comment or colour stays selected; an entry that went leaves nothing selected.
+        // Taken now: the list drops its selection (and tells it back here) when the old entry leaves it.
+        var selectedBefore = _selected;
+        CommentItemViewModel? follower = null;
+        if (selectedBefore is { } selected && selected.PageIndex == page && Array.IndexOf(fresh, selected) < 0)
+        {
+            follower = Array.Find(fresh, item => selected.Annotation.Name is { } name
+                ? item.Annotation.Name == name
+                : item.Annotation.Index == selected.Annotation.Index && item.Kind == selected.Kind);
         }
 
         var start = LowerBound(page);
@@ -554,6 +715,29 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         {
             OnPropertyChanged(nameof(HasNoComments));
             OnPropertyChanged(nameof(Summary));
+        }
+
+        if (selectedBefore is { } stale && stale.PageIndex == page && Array.IndexOf(fresh, stale) < 0)
+        {
+            SelectedItem = follower is not null && _items.Contains(follower) ? follower : null;
+        }
+
+        SelectNew(page, fresh);
+    }
+
+    /// <summary>Selects the markup the tab just made once it is listed (<see cref="SelectWhenListed"/>).</summary>
+    private void SelectNew(int page, CommentItemViewModel[] fresh)
+    {
+        if (_selectNext is not { } next || next.Page != page)
+        {
+            return;
+        }
+
+        var item = Array.Find(fresh, entry => entry.Annotation.Name == next.Name);
+        if (item is not null && _items.Contains(item))
+        {
+            _selectNext = null;
+            SelectedItem = item;
         }
     }
 

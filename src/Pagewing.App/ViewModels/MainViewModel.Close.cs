@@ -94,6 +94,14 @@ public sealed partial class MainViewModel
                     break;
                 }
 
+                // A change in flight (a markup made a moment ago, on its way to the editor) ends first, so the question
+                // sees it and is not skipped; it takes milliseconds.
+                if (Tabs.FirstOrDefault(tab => (only is null || ReferenceEquals(tab, only)) && tab.HasEditsInFlight) is { } busy)
+                {
+                    await busy.WhenEditsSettledAsync();
+                    continue;
+                }
+
                 if (NextToAsk(only, discarded) is not { } tab)
                 {
                     return true;
@@ -142,6 +150,8 @@ public sealed partial class MainViewModel
         switch (await AskAsync(question, CancellationToken.None))
         {
             case PendingSaveChoice.Save:
+                // A change made while the card was shown is saved with the others.
+                await tab.WhenEditsSettledAsync();
                 if (!CanSaveNow(tab))
                 {
                     if (!tab.AsksBeforeClosing)

@@ -10,7 +10,8 @@ namespace Pagewing.App.ViewModels;
 
 /// <summary>
 /// One entry of the "Comments" panel: an annotation of the document with its page mark, its kind as a symbol and in words,
-/// author, date, the text under it and its comment. Read-only. UI thread only.
+/// author, date, the text under it and its comment. Changed only through the editor (the panel in the mode "Comment"); a
+/// changed annotation gets a new entry. UI thread only.
 /// </summary>
 public sealed class CommentItemViewModel : ViewModelBase
 {
@@ -18,6 +19,7 @@ public sealed class CommentItemViewModel : ViewModelBase
     private static (CultureInfo Culture, CompositeFormat Other, CompositeFormat Name, CompositeFormat Color)? _formats;
 
     private bool _isCurrent;
+    private bool _isViewOnlyInMode;
 
     /// <summary>Creates the entry of <paramref name="annotation"/>; <paramref name="excerpt"/> is the text under it, or <see langword="null"/>.</summary>
     internal CommentItemViewModel(PdfAnnotation annotation, string? excerpt)
@@ -134,6 +136,16 @@ public sealed class CommentItemViewModel : ViewModelBase
     {
         get => _isCurrent;
         internal set => SetProperty(ref _isCurrent, value);
+    }
+
+    /// <summary>
+    /// Gets whether the entry shows "View only": in the mode "Comment" an annotation Pagewing does not edit (any other kind,
+    /// or a markup with replies). Never outside the mode.
+    /// </summary>
+    public bool IsViewOnlyInMode
+    {
+        get => _isViewOnlyInMode;
+        internal set => SetProperty(ref _isViewOnlyInMode, value);
     }
 
     /// <summary>

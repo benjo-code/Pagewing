@@ -111,6 +111,14 @@ public sealed class CommandCatalog
         Tab("edit.redo", () => Strings.CommandRedo, EditGroup, CtrlShift(Key.Z), tab => tab.RedoCommand)
             with { AlternativeGestures = [Ctrl(Key.Y)], YieldsToTextInput = true },
 
+        // The mode "Comment" (design system 7.7): on and off, and the three markups, which start the mode and turn a text
+        // selection into a markup at once. Only once the document shows a sharp page and allows annotations (the palette
+        // offers them only then); the Esc of the mode belongs to the document, the toolbar and the panel, not to the window.
+        Tab("annotate.mode", () => Strings.CommandAnnotateMode, EditGroup, CtrlShift(Key.K), tab => tab.ToggleAnnotateCommand),
+        Tab("annotate.highlight", () => Strings.CommandHighlight, EditGroup, CtrlShift(Key.H), tab => tab.HighlightCommand),
+        Tab("annotate.underline", () => Strings.CommandUnderline, EditGroup, CtrlShift(Key.U), tab => tab.UnderlineCommand),
+        Tab("annotate.strikeout", () => Strings.CommandStrikeOut, EditGroup, CtrlShift(Key.X), tab => tab.StrikeOutCommand),
+
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
             with { AlternativeGestures = [CtrlShift(Key.OemPlus), Ctrl(Key.Add)] },
