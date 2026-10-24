@@ -5,6 +5,11 @@
   "scopeChanges": [
     {
       "date": "2026-10-24",
+      "context": "Neuer Milestone 12.1 „Öffentliches Repo und Sicherheitsprüfung“ vor dem Release v0.2.0",
+      "text": "Auf Wunsch des Projektinhabers (2026-10-24) gehören das Öffentlichmachen des Repos, die Prüfung der Git-Historie, eine allgemeine Sicherheitsprüfung des Codes und die Vorbereitung des Signaturschlüssels in einen eigenen kleinen Milestone 12.1 statt in M8.1. Lage: nach Milestone 12, vor dem Release `v0.2.0` (`afterMilestone` des Releases ist jetzt `12.1`). Begründung: Der Updater braucht das öffentliche Repo erst, wenn Nutzer eine Version mit Updater haben (`v0.1.0` hat keinen), und die Prüfung gelingt am besten kurz vor dem Veröffentlichen. M8.1 bleibt „in Arbeit“ mit seinen offenen Handprüfungen (Windows und Linux Ende zu Ende, Startzeit auf echter Hardware). Die Punkte „Signaturschlüssel anlegen“, „Repo öffentlich“ und „Trockenlauf des Release-Workflows“ aus dem Block „Stand der Abnahme und was der Projektinhaber tun muss“ von M8.1 sowie das Härten des Signier-Jobs liegen jetzt in 12.1."
+    },
+    {
+      "date": "2026-10-24",
       "context": "M8.1: Entscheidungen des Plans, Ergänzungen über die Aufgaben hinaus, bewusst nicht enthalten",
       "text": "Mit dem Projektinhaber im Brainstorming vom 2026-10-23 abgestimmt (Entwurf `superpowers/specs/2026-10-23-m81-automatische-updates-design.md`, Plan `superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md`). Entschieden, wo die Aufgaben „im Plan entscheiden“ sagten: Prüfung von Anfang an aktiv (ohne Frage beim ersten Start), Schalter in den Einstellungen; installiert wird nur nach „Installieren“, nicht beim Beenden; das AppImage ersetzt seine Datei selbst (keine eingebettete Update-Information), `.deb` und portable ZIP zeigen nur einen Hinweis mit der Download-Seite (kein apt-Repository); aus dem Backlog „Sitzung wiederherstellen“ kommt **nur** die Wiederherstellung nach dem Neustart durch den Updater (`--restore-session`), keine allgemeine Funktion bei jedem Start. Über die Roadmap-Aufgaben hinaus enthält M8.1: den Helfermodus derselben Exe unter Windows (`--finish-update`) und den versteckten Schalter `--after-process`; den Job `preflight` in `release.yml`, der ein Hochladen ohne echten Signaturschlüssel vor dem Bau stoppt (auch für Vorab-Releases); einen Testaufbau über die Bauzeit-Eigenschaft `PagewingUpdateTestBuild` samt Testserver `tools/update-testserver.cs` und `package.cs update-smoke`; die Bestätigungskarte für Links auch auf dem Startbildschirm (für „Download-Seite öffnen“); die Abhängigkeit `libssl3 | libssl3t64` im `.deb`. Bewusst nicht enthalten: Code-Signierung des Programms (Backlog), Kanäle oder Vorabversionen als Update-Quelle, ein Rollback über Inno hinaus, eine Rückfrage bei ungespeicherten Änderungen (gibt es erst ab M9; M9 muss den Installationsweg darum ergänzen). Der Milestone bleibt `in-progress`, bis der echte Signaturschlüssel angelegt ist, das Repo öffentlich ist und die Handprüfungen unter Windows und Linux sowie die Startzeitmessung auf echter Hardware vorliegen (Abnahme unten). Entscheidungen: `Docs/DECISIONS.md`, Einträge „… (M8.1)“."
     },
@@ -406,7 +411,7 @@
           "blocks": [
             {
               "title": "Stand der Abnahme und was der Projektinhaber tun muss (2026-10-24)",
-              "text": "Umgesetzt und mit Tests belegt ist alles, was ohne echtes Release geht (Fake-Netz, Fake-Installer, Wegwerfschlüssel). Offen und nur vom Projektinhaber oder auf echter Hardware zu erledigen:\n\n- **Signaturschlüssel** erzeugen, als Secret `PAGEWING_UPDATE_SIGNING_KEY` anlegen und den öffentlichen Schlüssel in `src/Pagewing.Core/Updates/UpdateTrust.cs` eintragen (`packaging/README.md`, „Signaturschlüssel für Updates“). Bis dahin scheitert jedes Release mit Upload im Job `preflight` (gewollt).\n- **Repo öffentlich** machen (vorher Fork-PRs auf den eigenen Runnern nur nach Freigabe, `CLAUDE.md`, „CI“); ohne das findet die App kein Release.\n- **Handprüfungen** nach `packaging/README.md`, „Update prüfen“: Windows „nur für mich“ und „alle Benutzer“ (mit UAC-Ablehnung und den Fehlerpfaden), AppImage auf Linux (auch schreibgeschützter Ordner), `.deb`-Hinweis.\n- **Startzeit** auf dem Haupt-PC (Workflow `hardware-measure.yml`, Runner von Hand starten) und der CI-Startzeit-Check auf beiden Runnern.\n- **Linux-only-Tests** der Klasse `AppImageUpdaterTests` auf `dotnet-linux` (CI-Lauf des PR).\n- **Trockenlauf** von `release.yml` und beim Release `v0.2.0` der erste echte Lauf der Jobs `preflight` und `manifest`."
+              "text": "Umgesetzt und mit Tests belegt ist alles, was ohne echtes Release geht (Fake-Netz, Fake-Installer, Wegwerfschlüssel). Offen und nur vom Projektinhaber oder auf echter Hardware zu erledigen:\n\n- **Signaturschlüssel, öffentliches Repo und Trockenlauf des Release-Workflows** sind in Milestone 12.1 verschoben (Scope-Änderung 2026-10-24). Bis dahin scheitert jedes Release mit Upload im Job `preflight` (gewollt), und ohne öffentliches Repo findet die App kein Release.\n- **Handprüfungen** nach `packaging/README.md`, „Update prüfen“: Windows „nur für mich“ und „alle Benutzer“ (mit UAC-Ablehnung und den Fehlerpfaden), AppImage auf Linux (auch schreibgeschützter Ordner), `.deb`-Hinweis.\n- **Startzeit** auf dem Haupt-PC (Workflow `hardware-measure.yml`, Runner von Hand starten) und der CI-Startzeit-Check auf beiden Runnern.\n- **Linux-only-Tests** der Klasse `AppImageUpdaterTests`: auf `dotnet-linux` gelaufen und grün (CI-Lauf von PR 27, 2026-10-24).\n- Der erste echte Lauf der Jobs `preflight` und `manifest` gehört zur Vorabversion in Milestone 12.1 bzw. zum Release `v0.2.0`."
             },
             {
               "title": "Voraussetzungen vor dem Start",
@@ -484,6 +489,39 @@
           ],
           "acceptance": [
             { "text": "Test prüft, dass der Hinweis im Dialog steht und „rechtsgültig“ in keinem UI-Text vorkommt", "done": false }
+          ]
+        },
+        {
+          "id": "12.1",
+          "title": "Öffentliches Repo und Sicherheitsprüfung",
+          "status": "open",
+          "prerequisites": ["8.1", "12"],
+          "goal": "Das Repo ist öffentlich und gehärtet, der Signaturschlüssel steht und der Release-Workflow hat einen Lauf mit Vorabversion bestanden, sodass `v0.2.0` mit funktionierender Update-Prüfung erscheinen kann.",
+          "tasks": [
+            { "text": "Plan erstellen (Brainstorming mit dem Projektinhaber): Reihenfolge der Schritte, was vor dem Öffentlichmachen privat erledigt wird, Umfang der Sicherheitsprüfung", "done": false },
+            { "text": "Git-Historie vor dem Öffentlichmachen prüfen: Secrets und Token, Schlüssel und Zertifikate, `.env`-Dateien, private oder vertrauliche PDFs, große Binärdateien, persönliche Daten in den Commit-Metadaten (Name und E-Mail der Autoren). Werkzeug und Befehl dokumentieren. Bei einem Fund nur nach Anweisung des Projektinhabers bereinigen (History umschreiben ist riskant)", "done": false },
+            { "text": "Inhalte des Repos durchsehen: `Docs/` samt Plänen und Mockups, `testdata/pdfs/LICENSES.md` (jede Datei mit klarer Lizenz), `third-party/`, README, Lizenzdatei, interne Hinweise oder Pfade", "done": false },
+            { "text": "GitHub-Einstellungen vor dem Öffentlichmachen (nur der Projektinhaber): Freigabe vor Lauf für PRs aus Forks, Workflow-Token standardmäßig nur lesend, Regeln für die selbst gehosteten Runner bei öffentlichem Repo (Runner-Gruppen, der Haupt-PC-Runner nie für Forks), Schutzregeln für `main` und `dev`, Secret scanning mit Push-Schutz, Dependabot-Warnungen, privates Melden von Sicherheitslücken, `SECURITY.md`", "done": false },
+            { "text": "Allgemeine Sicherheitsprüfung des Codes: Eingabepfade (PDF-Parser, Stand von PDFium), Updater (Vertrauenskette, Pfade, Prozessstart), externe Links, Single-Instance-Pipe bzw. Unix-Socket, Druck (CUPS, GDI), temporäre Dateien und Berechtigungen, Einstellungs- und Sitzungsdateien; dazu `dotnet list package --vulnerable --include-transitive` und eine statische Analyse in der CI (CodeQL oder gleichwertig, Entscheidung im Plan). Funde beheben oder mit Begründung in `Docs/DECISIONS.md` festhalten", "done": false },
+            { "text": "Signaturschlüssel anlegen (`update-keygen`, Schritte in `packaging/README.md`): Secret `PAGEWING_UPDATE_SIGNING_KEY` im Repo, an ein GitHub-Environment nur für `v*`-Tags gebunden, öffentlicher Schlüssel in `UpdateTrust.cs`, Sicherungskopie des privaten Schlüssels an einem sicheren Ort (nie im Chat, nie im Repo)", "done": false },
+            { "text": "Signier-Job härten (Rest aus M8.1): eigener oder kurzlebiger Runner statt des gemeinsam genutzten, SHA-256 der `SHA256SUMS`-Dateien als Job-Ausgabe prüfen", "done": false },
+            { "text": "Release-Workflow erproben: Trockenlauf (`upload=false`), danach ein echter Lauf mit einer Vorabversion einschließlich Job `manifest`", "done": false },
+            { "text": "Repo öffentlich schalten (nur der Projektinhaber, auf Anweisung) und von außen prüfen", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Historienprüfung ohne offenen Fund: Befehl und Ergebnis stehen in `Docs/DECISIONS.md`, jeder Fund ist behoben oder begründet", "done": false },
+            { "text": "Eine Probe ohne Zugangsdaten erreicht `https://api.github.com/repos/benjo-code/Pagewing/releases/latest` und die Assets des Releases (`curl` ohne Token)", "done": false },
+            { "text": "Ein PR aus einem Fork startet keinen Lauf ohne Freigabe (Probe mit einem Test-Fork oder `gh api` zur Einstellung)", "done": false },
+            { "text": "`dotnet list package --vulnerable --include-transitive` meldet nichts, oder jede Ausnahme steht mit Begründung in `Docs/DECISIONS.md`", "done": false },
+            { "text": "Release-Trockenlauf und Lauf mit Vorabversion grün: `preflight`, Bau- und Smoke-Schritte, Job `manifest` lädt `update-manifest.json` und `.sig` hoch; `dotnet run tools/package.cs -- update-verify` und die Prüfung der App nehmen das Manifest an", "done": false },
+            { "text": "`UpdateTrustTests.ReleaseKeysAreNotThePlaceholderWhenReleasing` ist mit `PAGEWING_REQUIRE_RELEASE_KEY=1` grün (der echte öffentliche Schlüssel steckt im Programm)", "done": false },
+            { "text": "Ergebnisse der Code-Sicherheitsprüfung liegen als Liste vor, jeder Punkt ist behoben oder begründet zurückgestellt; Build, Test und Format laufen grün (Befehle in `CLAUDE.md`)", "done": false }
+          ],
+          "blocks": [
+            {
+              "title": "Reihenfolge (Vorschlag, im Plan zu bestätigen)",
+              "text": "1. Historie und Inhalte prüfen (privat, nur lesend). 2. Code-Sicherheitsprüfung und Funde beheben. 3. GitHub-Einstellungen vorbereiten, die vor dem Öffentlichmachen gelten müssen (Fork-Freigabe, Token-Rechte). 4. Schlüssel anlegen und Signier-Job härten. 5. Trockenlauf des Release-Workflows, solange das Repo noch privat ist. 6. Repo öffentlich schalten. 7. Vorabversion veröffentlichen und von außen prüfen. Warum erst kurz vor `v0.2.0`: Der Updater braucht das öffentliche Repo erst, wenn Nutzer eine Version mit Updater haben; `v0.1.0` hat keinen."
+            }
           ]
         }
       ]
@@ -656,9 +694,9 @@
       "version": "0.2.0",
       "title": "annotieren, ausfüllen, unterschreiben",
       "status": "open",
-      "afterMilestone": "12",
-      "covers": ["8.1", "9", "10", "11", "12"],
-      "intro": "Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automatisch (Milestone 8.1)."
+      "afterMilestone": "12.1",
+      "covers": ["8.1", "9", "10", "11", "12", "12.1"],
+      "intro": "Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automatisch (Milestone 8.1). Setzt Milestone 12.1 voraus: Das Repo ist öffentlich und der echte Signaturschlüssel steckt im Programm."
     },
     {
       "version": "0.3.0",
