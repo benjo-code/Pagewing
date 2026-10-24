@@ -382,8 +382,11 @@ public sealed partial class TabViewModel
     private bool CanBeginAnnotate() =>
         !_isAnnotating && CanRequestAnnotate() && !(_permission is { Allowed: false } known && ReferenceEquals(known.Document, _document));
 
-    /// <summary>Whether a markup can be made now: the mode is on with an open document shown, and no card asks about the tab.</summary>
-    private bool CanRunMarkup() => CanRequestAnnotate() && !_isAskedAbout;
+    /// <summary>
+    /// Whether a markup can be made now: the mode is on with an open document shown, no card asks about the tab, and editing
+    /// is not locked for an update (<see cref="IsEditingFrozen"/>).
+    /// </summary>
+    private bool CanRunMarkup() => CanRequestAnnotate() && !_isAskedAbout && !_isEditingFrozen;
 
     /// <summary>
     /// Starts the mode, with <paramref name="tool"/> if given, once the permissions of the document allow it (read now on

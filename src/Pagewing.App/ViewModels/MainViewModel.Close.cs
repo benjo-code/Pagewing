@@ -9,8 +9,10 @@ namespace Pagewing.App.ViewModels;
 /// </summary>
 public sealed partial class MainViewModel
 {
-    // The window asks before closing tabs (one flow at a time).
+    // The window asks before closing tabs (one flow at a time), and the end of the flow that runs.
     private bool _resolving;
+    private TaskCompletionSource? _resolveEnded;
+    private bool _isEditingFrozen;
     private RelayCommand? _cancelPendingSaveCommand;
 
     /// <summary>
@@ -66,6 +68,51 @@ public sealed partial class MainViewModel
     /// <summary>Brings the window to the front (and out of the task bar when it is minimized).</summary>
     internal void BringToFront() => ActivationRequested?.Invoke();
 
+    /// <summary>Gets whether the window asks about unsaved changes now (before a tab or the window closes, or for the update).</summary>
+    internal bool IsResolving => _resolving;
+
+    /// <summary>Gets a task that completes when the question that runs now (<see cref="IsResolving"/>) has ended; completed without one.</summary>
+    internal Task WhenResolveEndsAsync() => _resolving && _resolveEnded is { } ended ? ended.Task : Task.CompletedTask;
+
+    /// <summary>
+    /// Gets or sets whether editing is locked in every tab of the window because an update is being installed (set by the
+    /// workspace from the user's last answer until the installation ends without a restart, <see cref="TabViewModel.IsEditingFrozen"/>).
+    /// Meanwhile tabs and the window do not close (the app is about to end anyway); the status bar says why.
+    /// </summary>
+    internal bool IsEditingFrozen
+    {
+        get => _isEditingFrozen;
+        set
+        {
+            if (_isEditingFrozen == value)
+            {
+                return;
+            }
+
+            _isEditingFrozen = value;
+            foreach (var tab in Tabs)
+            {
+                tab.IsEditingFrozen = value;
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Applies the typed and not yet applied comment of every tab (<see cref="TabViewModel.ApplyCommentDraft"/>).</summary>
+    internal void ApplyCommentDrafts()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        foreach (var tab in Tabs)
+        {
+            tab.ApplyCommentDraft();
+        }
+    }
+
     /// <summary>A tab with unsaved changes is to close: asks first (<see cref="ResolveAsync"/>), then closes it unless cancelled.</summary>
     private async Task CloseAfterAskingAsync(TabViewModel tab)
     {
@@ -90,6 +137,8 @@ public sealed partial class MainViewModel
         }
 
         _resolving = true;
+        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _resolveEnded = ended;
         var discarded = answers ?? [];
         try
         {
@@ -135,6 +184,7 @@ public sealed partial class MainViewModel
         finally
         {
             _resolving = false;
+            ended.TrySetResult();
         }
     }
 

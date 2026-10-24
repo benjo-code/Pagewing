@@ -125,6 +125,14 @@
         <TextBlock Name="UnsavedText" VerticalAlignment="Center" Text="{x:Static res:Strings.Unsaved}" />
       </StackPanel>
 
+      <!--
+        While an update is being installed (milestone 9, design system 7.11) editing is locked until the app ends: a neutral
+        note in text.secondary, like the rest of the bar; not focusable.
+      -->
+      <TextBlock Name="EditingLockedText" VerticalAlignment="Center"
+                 IsVisible="{Binding IsEditingFrozen, FallbackValue=False}"
+                 Text="{x:Static res:Strings.EditingLockedForUpdate}" />
+
       <!-- Document info: icon and label (below 760 px the icon only); only for an open document. -->
       <Button Name="DocumentInfoButton" Classes="icon status-value" Padding="4,0"
               IsVisible="{Binding IsReady}"

@@ -446,6 +446,13 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     private void ToggleCard()
     {
         CloseNote();
+        if (IsInFlow && _isAwaitingAnswer)
+        {
+            // The question right before the installer: the progress window stepped aside; the window that asks comes forward.
+            _coordinator.ShowQuestion();
+            return;
+        }
+
         if (IsInFlow)
         {
             IsCardOpen = false;

@@ -106,13 +106,25 @@ public sealed partial class MainWindow
     /// <summary>
     /// The user (or the program) closes the window while tabs have unsaved changes: the close is cancelled, the tabs are
     /// asked about in turn, and the window closes when every one was saved or may go. The end of the app and of the system
-    /// session close it without asking (Pagewing does not hold up a shutdown; the changes are lost there).
+    /// session close it without asking (Pagewing does not hold up a shutdown; the changes are lost there). While an update is
+    /// being installed (<see cref="MainViewModel.IsEditingFrozen"/>) the user's close is refused.
     /// </summary>
     /// <returns>Whether the close goes on now.</returns>
     private bool LetCloseGoOn(WindowClosingEventArgs e, MainViewModel viewModel)
     {
-        if (_closeConfirmed || e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown
-            || !viewModel.HasUnsavedChanges)
+        if (_closeConfirmed || e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
+        {
+            return true;
+        }
+
+        // While an update is being installed the window stays: the installer ends the app in a moment.
+        if (viewModel.IsEditingFrozen)
+        {
+            e.Cancel = true;
+            return false;
+        }
+
+        if (!viewModel.HasUnsavedChanges)
         {
             return true;
         }

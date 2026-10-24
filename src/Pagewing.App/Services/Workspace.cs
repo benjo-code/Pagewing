@@ -35,8 +35,11 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private UpdateCoordinator? _updateCoordinator;
     private bool _updateCoordinatorMade;
 
-    // The answers of the questions of the update about unsaved changes, from "Install" to the installer.
+    // The answers of the questions of the update about unsaved changes, from "Install" to the installer; the window that
+    // asks now; whether editing is locked because the installer has the update.
     private Dictionary<TabViewModel, int>? _updateAnswers;
+    private MainViewModel? _askingWindow;
+    private bool _editingFrozen;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
     private readonly List<MainViewModel> _activationOrder = [];
@@ -456,33 +459,102 @@ internal sealed class Workspace : IDisposable, ITabDragHost
 
     /// <summary>
     /// Right before the installer of the update takes over and ends the app (<see cref="UpdateCoordinator.BeforeApply"/>):
-    /// asks again about what changed since the answers of "Install" (a tab edited during the download).
+    /// asks again about what changed since the answers of "Install" (a tab edited during the download). With the last
+    /// answer editing is locked in every window (<see cref="EditingFrozen"/>), in the same step as the last look at the
+    /// windows, so no change can come between the answers and the end of the app.
     /// </summary>
-    internal Task<bool> BeforeUpdateApplyAsync() => ResolveUnsavedChangesAsync(_updateAnswers ??= []);
+    internal Task<bool> BeforeUpdateApplyAsync() => ResolveUnsavedChangesAsync(_updateAnswers ??= [], freezeWhenAnswered: true);
+
+    /// <summary>
+    /// Gets whether editing is locked in every window (<see cref="MainViewModel.IsEditingFrozen"/>): from the last answer
+    /// before the installer until the installation ends without a restart (a failure, or no installer). The installer copies
+    /// the program (Windows) or the AppImage and checks it again before it ends the app, which takes seconds, during which
+    /// the windows would otherwise take changes that the end of the app drops without a question.
+    /// </summary>
+    internal bool EditingFrozen
+    {
+        get => _editingFrozen;
+        private set
+        {
+            if (_editingFrozen == value)
+            {
+                return;
+            }
+
+            _editingFrozen = value;
+            foreach (var window in _windows)
+            {
+                window.IsEditingFrozen = value;
+            }
+        }
+    }
 
     /// <summary>
     /// Asks every window that has unsaved changes, one after another, with the card of closing
     /// (<see cref="MainViewModel.ResolveUnsavedChangesAsync(Dictionary{TabViewModel, int})"/>): the window that was active
     /// first, then the others from the oldest; each comes to the front while it asks, and a window without changes is not
     /// asked. Then the windows are looked at again until none is left to ask about (the user may change a tab of another
-    /// window while one asks). A window closed meanwhile is skipped. Completes at once when there is nothing to ask.
+    /// window while one asks). A window closed meanwhile is skipped. A window that asks already (a tab or the window is to
+    /// close) is waited for: its question is answered first, then what is left is asked. Before each look a comment typed in
+    /// a "Comments" panel and not applied is applied (<see cref="MainViewModel.ApplyCommentDrafts"/>), so it is asked about
+    /// like any other change. Completes at once when there is nothing to ask.
     /// </summary>
     /// <param name="answers">The "Don't save" answers so far (tab and version of its history), extended here.</param>
-    /// <returns><see langword="false"/> as soon as a window answers "Cancel" (or its save fails or another flow asks there).</returns>
-    internal async Task<bool> ResolveUnsavedChangesAsync(Dictionary<TabViewModel, int> answers)
+    /// <param name="freezeWhenAnswered">Locks editing (<see cref="EditingFrozen"/>) when nothing is left to ask.</param>
+    /// <returns><see langword="false"/> as soon as a window answers "Cancel" (or its save fails).</returns>
+    internal async Task<bool> ResolveUnsavedChangesAsync(Dictionary<TabViewModel, int> answers, bool freezeWhenAnswered = false)
     {
         ArgumentNullException.ThrowIfNull(answers);
         var first = ActiveWindow;
-        while (NextWindowToAsk(first, answers) is { } window)
+        try
         {
-            window.BringToFront();
-            if (!await window.ResolveUnsavedChangesAsync(answers).ConfigureAwait(true) && !window.IsDisposed)
+            while (true)
             {
-                return false;
+                foreach (var each in _windows.ToArray())
+                {
+                    each.ApplyCommentDrafts();
+                }
+
+                if (NextWindowToAsk(first, answers) is not { } window)
+                {
+                    if (freezeWhenAnswered)
+                    {
+                        EditingFrozen = true;
+                    }
+
+                    return true;
+                }
+
+                _askingWindow = window;
+                window.BringToFront();
+                if (window.IsResolving)
+                {
+                    // The window asks before a tab or itself closes: the user answers that first. Then the window may be
+                    // gone or its tab closed; what is left is asked about here.
+                    await window.WhenResolveEndsAsync().ConfigureAwait(true);
+                    await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                    continue;
+                }
+
+                if (!await window.ResolveUnsavedChangesAsync(answers).ConfigureAwait(true) && !window.IsDisposed)
+                {
+                    return false;
+                }
             }
         }
+        finally
+        {
+            _askingWindow = null;
+        }
+    }
 
-        return true;
+    // Raised on the UI thread by the coordinator; must not throw. The lock ends when the installation ends without a restart.
+    private void OnUpdateChanged()
+    {
+        if (_editingFrozen && _updateCoordinator is { State.Stage: not (UpdateStage.Ready or UpdateStage.Installing or UpdateStage.Restarting) })
+        {
+            EditingFrozen = false;
+        }
     }
 
     /// <summary>The next window with something to ask about: <paramref name="first"/>, then the open windows from the oldest.</summary>
@@ -501,9 +573,12 @@ internal sealed class Workspace : IDisposable, ITabDragHost
             _updateCoordinatorMade = true;
             if (_updateCoordinator is { } coordinator)
             {
-                // Pagewing ends after the installer took over: nothing unsaved may go without the user's answer.
+                // Pagewing ends after the installer took over: nothing unsaved may go without the user's answer. The button
+                // "Update" brings the window that asks to the front; the lock of editing ends with the installation.
                 coordinator.BeforeInstall = BeforeUpdateInstallAsync;
                 coordinator.BeforeApply = BeforeUpdateApplyAsync;
+                coordinator.QuestionShown = () => _askingWindow?.BringToFront();
+                coordinator.Changed += OnUpdateChanged;
             }
         }
 
@@ -544,6 +619,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         }
 
         viewModel.TabDragHost = this;
+        viewModel.IsEditingFrozen = _editingFrozen;
         viewModel.MoveToNewWindowRequested += tab => MoveToNewWindow(viewModel, tab);
         window.Activated += (_, _) =>
         {

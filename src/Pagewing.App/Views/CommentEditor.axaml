@@ -42,12 +42,13 @@
         <TextBlock Name="CommentBoxLabel" Classes="caption editorSecondary" Text="{x:Static res:Strings.CommentEditField}" />
         <TextBox Name="CommentBox"
                  Text="{Binding CommentDraft, Mode=TwoWay}"
+                 IsReadOnly="{Binding IsEditingFrozen}"
                  AcceptsReturn="True" TextWrapping="Wrap"
                  AutomationProperties.Name="{x:Static res:Strings.CommentEditField}"
                  AutomationProperties.HelpText="{x:Static res:Strings.CommentEditHint}" />
         <TextBlock Name="CommentBoxHint" Classes="caption editorSecondary" TextWrapping="Wrap" Text="{x:Static res:Strings.CommentEditHint}" />
         <WrapPanel Orientation="Horizontal">
-          <Button Name="CommentColorButton" Margin="0,0,8,4"
+          <Button Name="CommentColorButton" Margin="0,0,8,4" IsEnabled="{Binding !IsEditingFrozen}"
                   AutomationProperties.Name="{x:Static res:Strings.CommentEditColor}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <Border Name="CommentColorSwatch" Width="12" Height="12" BorderThickness="1" VerticalAlignment="Center"

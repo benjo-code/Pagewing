@@ -37,6 +37,9 @@ public interface IUpdateFlow
     /// </summary>
     bool IsAwaitingAnswer { get; }
 
+    /// <summary>The button "Update" while <see cref="IsAwaitingAnswer"/>: brings the window that asks to the front.</summary>
+    void ShowQuestion();
+
     /// <summary>"Install": starts the installation of the version on offer (once); never throws.</summary>
     Task BeginInstallAsync();
 

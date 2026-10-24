@@ -1019,8 +1019,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // Before the tab is shown: a tab from another window keeps its override and takes the page theme of this one.
         tab.AppPageTheme = AppPageTheme;
 
-        // The colours of the tools and the author come from the settings of the app.
+        // The colours of the tools and the author come from the settings of the app; a lock for an update holds for every tab.
         tab.AnnotationSettings = Settings;
+        tab.IsEditingFrozen = _isEditingFrozen;
         var handlers = (
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
@@ -1173,7 +1174,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void CloseTab(TabViewModel? tab)
     {
-        if (tab is null || Tabs.IndexOf(tab) < 0)
+        // While an update is being installed nothing closes: the app ends in a moment (the status bar says so).
+        if (tab is null || Tabs.IndexOf(tab) < 0 || _isEditingFrozen)
         {
             return;
         }

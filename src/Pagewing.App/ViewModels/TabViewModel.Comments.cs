@@ -28,6 +28,12 @@ public sealed partial class TabViewModel
     internal Func<PdfDocument, int, CancellationToken, Task<IReadOnlyList<PdfAnnotation>>> AnnotationReader { get; set; } =
         static (document, page, cancellationToken) => document.GetAnnotationsAsync(page, cancellationToken);
 
+    /// <summary>
+    /// Applies the comment typed in the "Comments" panel and not applied yet, as Ctrl+Enter would (before the update asks
+    /// about unsaved changes, so a typed comment is asked about and never dropped silently when the app ends).
+    /// </summary>
+    internal void ApplyCommentDraft() => _comments?.ApplyDraft();
+
     /// <summary>The list belongs to the document that was replaced or closed: it goes, a later access makes a new one.</summary>
     private void DiscardComments()
     {

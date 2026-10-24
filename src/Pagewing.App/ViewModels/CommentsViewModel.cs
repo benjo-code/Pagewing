@@ -45,6 +45,9 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     private CommentItemViewModel? _selected;
     private string _commentDraft = string.Empty;
 
+    // The comment last applied for an entry: ApplyDraft does not apply the same text twice before the list shows it.
+    private (CommentItemViewModel Item, string Text)? _applied;
+
     // A markup made by the tab that is to be selected once its page is read (by its name).
     private (int Page, string Name)? _selectNext;
     private PdfDocument? _document;
@@ -61,9 +64,9 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(tab);
         _tab = tab;
         JumpCommand = new RelayCommand<CommentItemViewModel>(Jump);
-        CommitCommentCommand = new RelayCommand(CommitComment, () => SelectedIsEditable);
+        CommitCommentCommand = new RelayCommand(CommitComment, () => SelectedIsEditable && !_tab.IsEditingFrozen);
         DiscardCommentCommand = new RelayCommand(DiscardComment);
-        DeleteCommand = new RelayCommand(Delete, () => SelectedIsEditable);
+        DeleteCommand = new RelayCommand(Delete, () => SelectedIsEditable && !_tab.IsEditingFrozen);
         SetItemColorCommand = new RelayCommand<MarkupColor>(SetItemColor);
         FilterChoices =
         [
@@ -210,6 +213,12 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets whether editing is locked for an update (<see cref="TabViewModel.IsEditingFrozen"/>): the comment field is
+    /// read-only and keeps what was typed; applying it, colour and "Delete" do nothing.
+    /// </summary>
+    public bool IsEditingFrozen => _tab.IsEditingFrozen;
+
     /// <summary>Gets whether an entry is selected.</summary>
     public bool HasSelection => _selected is not null;
 
@@ -255,6 +264,22 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         {
             _selectNext = (created.Page, name);
         }
+    }
+
+    /// <summary>
+    /// Applies the typed comment of the selected entry when it differs from its comment (as Ctrl+Enter does), unless that
+    /// text was applied for the entry already; only in the mode, and only while editing is possible.
+    /// </summary>
+    internal void ApplyDraft()
+    {
+        if (_disposed || !IsEditing || _selected is not { Annotation.Editable: true } item
+            || _commentDraft == (item.Annotation.Contents ?? string.Empty)
+            || (_applied is { } applied && ReferenceEquals(applied.Item, item) && applied.Text == _commentDraft))
+        {
+            return;
+        }
+
+        CommitComment();
     }
 
     /// <summary>Stops reading and lets go of the tab and the session. May be called more than once.</summary>
@@ -415,6 +440,13 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         {
             TryStart();
         }
+        else if (e.PropertyName == nameof(TabViewModel.IsEditingFrozen))
+        {
+            // Locked for an update: what was typed stays (read-only), nothing is applied.
+            OnPropertyChanged(nameof(IsEditingFrozen));
+            CommitCommentCommand.RaiseCanExecuteChanged();
+            DeleteCommand.RaiseCanExecuteChanged();
+        }
         else if (e.PropertyName == nameof(TabViewModel.IsAnnotating))
         {
             // In and out of the mode: the edit controls come or go; a comment typed and not applied goes with them.
@@ -445,6 +477,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         }
 
         var locator = LocatorOf(item.Annotation);
+        _applied = (item, text);
         _ = _tab.RunEditAsync(editor => editor.UpdateAsync(locator, new AnnotationEdit(Contents: text)));
     }
 

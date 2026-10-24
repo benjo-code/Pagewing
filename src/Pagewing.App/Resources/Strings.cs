@@ -240,6 +240,7 @@ public static class Strings
     public static string UpdateCardHave => Get("UpdateCardHave");
     public static string UpdateCardInstallText => Get("UpdateCardInstallText");
     public static string UpdateAwaitingAnswer => Get("UpdateAwaitingAnswer");
+    public static string EditingLockedForUpdate => Get("EditingLockedForUpdate");
     public static string UpdateInstall => Get("UpdateInstall");
     public static string UpdateLater => Get("UpdateLater");
     public static string UpdateDownloadPage => Get("UpdateDownloadPage");

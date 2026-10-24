@@ -126,6 +126,11 @@ internal sealed class WindowsUpdateHelper : IUpdateFlow, IDisposable
     // The helper has no windows with documents: it never waits for an answer about unsaved changes.
     public bool IsAwaitingAnswer => false;
 
+    public void ShowQuestion()
+    {
+        // Nothing asks in the helper.
+    }
+
     private string InstalledExe => Path.Combine(Request!.TargetDirectory!, WindowsUpdateInstaller.ExeName);
 
     private string SessionPath => Path.Combine(_setup.ConfigDirectory, SessionStore.FileName);

@@ -5,8 +5,10 @@ using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
+using Pagewing.Core.Text;
 using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 using Xunit;
@@ -429,6 +431,244 @@ public sealed class UpdateWithChangesTests : UpdateTestHost
     }
 
     [AvaloniaFact]
+    public async Task EditsWhileTheInstallerRunsAreRefusedUntilItFails()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, answered) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: true);
+        var view = Find<DocumentView>(window, "DocumentView");
+        var clean = await SaveCardHost.OpenAsync(window, a, view, _files.Copy("text-rich.pdf", "b.pdf"));
+        clean.BeginAnnotateCommand.Execute(null);
+        await WaitUntilAsync(window, () => clean.IsAnnotating);
+        var cleanBytes = await File.ReadAllBytesAsync(clean.FullPath!, TestContext.Current.CancellationToken);
+
+        // The installer waits: the app has not ended yet, as while the real one copies the program.
+        Applier.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Applier.Result = ApplyResult.Failed("The folder is read-only.");
+        var atApply = new List<string>();
+        Applier.OnApply = _ =>
+        {
+            // From the last answer on: every tab locked, none with a change nobody was asked about.
+            foreach (var tab in workspace.Windows.SelectMany(each => each.Tabs))
+            {
+                atApply.Add($"{tab.FileName}: frozen={tab.IsEditingFrozen} inFlight={tab.HasEditsInFlight}");
+            }
+        };
+        var install = coordinator.BeginInstallAsync();
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        Assert.Same(answered, a.PendingSave!.Tab);
+        a.PendingSave.Resolve(PendingSaveChoice.DontSave);
+        await WaitUntilAsync(window, () => Applier.Calls == 1);
+        var version = answered.EditVersion;
+        Assert.Equal(["a.pdf: frozen=True inFlight=False", "b.pdf: frozen=True inFlight=False"], atApply);
+        Assert.True(workspace.EditingFrozen);
+        Assert.True(a.IsEditingFrozen);
+
+        // A markup, the commands of the mode, undo, save and closing: nothing happens.
+        a.ActivateTabCommand.Execute(clean);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, clean.Session.Document));
+        var selection = await view.SelectAsync(0, 0, 5);
+        Assert.NotNull(selection);
+        Assert.False(clean.HighlightCommand.CanExecute(null));
+        clean.HighlightCommand.Execute(null);
+        await clean.ApplySelectionAsync(selection.Value, AnnotationKind.Underline);
+        await clean.RunEditAsync(editor => editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, [new PageRect(72, 72, 220, 90)], new AnnotationColor(255, 230, 0), null, null));
+        Assert.False(clean.HasEditsInFlight);
+        Assert.False(clean.IsDirty);
+        Assert.False(clean.AsksBeforeClosing);
+        Assert.False(answered.UndoCommand.CanExecute(null));
+        answered.UndoCommand.Execute(null);
+        Assert.False(answered.SaveCommand.CanExecute(null));
+        Assert.False(clean.SaveAsCommand.CanExecute(null));
+        a.ActivateTabCommand.Execute(answered);
+        Settle(window);
+        Assert.False(await a.SaveActiveTabAsync());
+        Assert.Equal(version, answered.EditVersion);
+        a.CloseActiveTabCommand.Execute(null);
+        a.CloseTabCommand.Execute(clean);
+        window.Close();
+        Settle(window);
+        Assert.Equal(2, a.Tabs.Count);
+        Assert.True(window.IsVisible);
+        Assert.Null(a.PendingSave);
+        Assert.True(Find<TextBlock>(window, "EditingLockedText").IsEffectivelyVisible);
+        Assert.Equal("Installing update – editing is locked", Strings.EditingLockedForUpdate);
+        Assert.Equal(cleanBytes, await File.ReadAllBytesAsync(clean.FullPath!, TestContext.Current.CancellationToken));
+
+        // The installer fails: the windows take changes again.
+        Applier.Gate.SetResult();
+        await WaitUntilAsync(window, () => install.IsCompleted);
+        Assert.Equal(UpdateStage.Failed, coordinator.State.Stage);
+        Assert.False(workspace.EditingFrozen);
+        Assert.False(answered.IsEditingFrozen);
+        Assert.True(answered.UndoCommand.CanExecute(null));
+        Assert.False(Find<TextBlock>(window, "EditingLockedText").IsEffectivelyVisible);
+        await SaveCardHost.MarkAsync(window, clean);
+    }
+
+    [AvaloniaFact]
+    public async Task WithoutAnInstallerTheLockEndsAtOnce()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync(noApplier: true);
+        var (a, window, tab) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: false);
+        var frozen = new List<bool>();
+        a.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.IsEditingFrozen))
+            {
+                frozen.Add(a.IsEditingFrozen);
+            }
+        };
+
+        await coordinator.BeginInstallAsync();
+
+        // Locked with the last look at the windows, unlocked with the failure.
+        Assert.Equal(UpdateFailure.NoInstaller, coordinator.State.Error);
+        Assert.Equal([true, false], frozen);
+        Assert.False(tab.IsEditingFrozen);
+        Assert.True(tab.SaveAsCommand.CanExecute(null));
+        Settle(window);
+    }
+
+    [AvaloniaFact]
+    public async Task ACommentTypedDuringTheDownloadIsAskedAboutAndSaved()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, tab) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: true);
+        Assert.True(await a.SaveActiveTabAsync());
+        tab.BeginAnnotateCommand.Execute(null);
+        var comments = tab.Comments;
+        await WaitUntilAsync(window, () => tab.IsAnnotating && !comments.IsLoading && comments.Items.Count == 1);
+        Source.DownloadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        string? contentsAtApply = null;
+        Applier.OnApply = _ => contentsAtApply = tab.Comments.SelectedItem?.Annotation.Contents;
+
+        // Clean at "Install": no question. A comment is typed during the download and not applied.
+        var install = coordinator.BeginInstallAsync();
+        await WaitUntilAsync(window, () => Source.DownloadCalls == 1);
+        comments.SelectedItem = comments.Items[0];
+        comments.CommentDraft = "Typed while it downloads";
+        Assert.False(tab.IsDirty);
+        Source.DownloadGate.SetResult();
+
+        // Before the installer it is applied and asked about like any change; "Save" writes it.
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        Assert.Same(tab, a.PendingSave!.Tab);
+        a.PendingSave.Resolve(PendingSaveChoice.Save);
+        await WaitUntilAsync(window, () => install.IsCompleted);
+
+        Assert.Equal(1, Applier.Calls);
+        await using var reopened = await new PdfEngine().OpenAsync(tab.FullPath!, cancellationToken: TestContext.Current.CancellationToken);
+        var saved = Assert.Single(await reopened.GetAnnotationsAsync(0, TestContext.Current.CancellationToken), annotation => annotation.Kind == AnnotationKind.Highlight);
+        Assert.Equal("Typed while it downloads", saved.Contents);
+
+        // Locked now: the comment field keeps its text, read-only; nothing more is applied.
+        Assert.True(comments.IsEditingFrozen);
+        Assert.Equal("Typed while it downloads", comments.CommentDraft);
+        Assert.False(comments.CommitCommentCommand.CanExecute(null));
+        Assert.False(comments.DeleteCommand.CanExecute(null));
+        Assert.NotNull(contentsAtApply);
+    }
+
+    [AvaloniaFact]
+    public async Task AKeptDownloadGoesWithTheProcess()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, tab) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: false);
+        Source.DownloadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var install = coordinator.BeginInstallAsync();
+        await WaitUntilAsync(window, () => Source.DownloadCalls == 1);
+        await SaveCardHost.MarkAsync(window, tab);
+        Source.DownloadGate.SetResult();
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        a.PendingSave!.Resolve(PendingSaveChoice.Cancel);
+        await WaitUntilAsync(window, () => install.IsCompleted);
+        Assert.True(Directory.Exists(StagingOf("0.2.0")));
+
+        // The app ends without installing: the kept download goes with it.
+        coordinator.Dispose();
+        Assert.False(Directory.Exists(StagingOf("0.2.0")));
+    }
+
+    [AvaloniaFact]
+    public async Task AQuestionOfClosingIsAnsweredFirstThenTheUpdateAsks()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, tab) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: true);
+
+        // The window asks before it closes; "Install" meanwhile waits for that answer and starts nothing.
+        window.Close();
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        var closing = a.PendingSave!;
+        var install = coordinator.BeginInstallAsync();
+        Settle(window);
+        Assert.False(install.IsCompleted);
+        Assert.True(coordinator.IsAwaitingAnswer);
+        Assert.Same(closing, a.PendingSave);
+        Assert.Equal(0, Source.DownloadCalls);
+
+        // "Cancel" there keeps the window; then the update asks for itself.
+        closing.Resolve(PendingSaveChoice.Cancel);
+        await WaitUntilAsync(window, () => a.PendingSave is { } next && !ReferenceEquals(next, closing));
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        Assert.True(window.IsVisible);
+        Assert.Equal(0, Source.DownloadCalls);
+        a.PendingSave!.Resolve(PendingSaveChoice.DontSave);
+        await WaitUntilAsync(window, () => install.IsCompleted);
+
+        Assert.Equal(UpdateStage.Restarting, coordinator.State.Stage);
+        Assert.Equal(1, Applier.Calls);
+        Assert.True(tab.IsDirty);
+    }
+
+    [AvaloniaFact]
+    public async Task AWindowThatClosesAfterItsOwnQuestionIsNotAskedAgain()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, _) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: true);
+        var asked = RecordQuestions(a);
+        window.Close();
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        var install = coordinator.BeginInstallAsync();
+
+        // "Don't save" closes the window: nothing is left to ask about, the installation goes on.
+        a.PendingSave!.Resolve(PendingSaveChoice.DontSave);
+        await PumpUntilAsync(() => install.IsCompleted);
+
+        Assert.False(window.IsVisible);
+        Assert.Single(asked);
+        Assert.Equal(UpdateStage.Restarting, coordinator.State.Stage);
+        Assert.Equal(1, Applier.Calls);
+    }
+
+    [AvaloniaFact]
+    public async Task TheUpdateButtonBringsTheAskingWindowForward()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, aWindow, tab) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: false);
+        var (b, bWindow, _) = await WindowWithFileAsync(workspace, "hello_world.pdf", "b.pdf", dirty: false);
+        Source.DownloadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var install = coordinator.BeginInstallAsync();
+        await WaitUntilAsync(aWindow, () => Source.DownloadCalls == 1);
+        await SaveCardHost.MarkAsync(aWindow, tab);
+        Source.DownloadGate.SetResult();
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(aWindow, a, PendingSaveKind.SaveChanges);
+
+        // The user went to the other window; its button "Update" brings the question back to the front.
+        bWindow.Activate();
+        Settle(bWindow);
+        Assert.Same(b, workspace.ActiveWindow);
+        await WaitUntilAsync(bWindow, () => b.Update is { IsAwaitingAnswer: true });
+        b.Update!.ToggleCardCommand.Execute(null);
+        Settle(aWindow);
+        Assert.Same(a, workspace.ActiveWindow);
+        Assert.False(b.Update.IsCardOpen);
+
+        a.PendingSave!.Resolve(PendingSaveChoice.DontSave);
+        await WaitUntilAsync(aWindow, () => install.IsCompleted);
+        Assert.Equal(UpdateStage.Restarting, coordinator.State.Stage);
+    }
+
+    [AvaloniaFact]
     public async Task MeasurementRunsAndTestsWithoutHooksBehaveAsBefore()
     {
         // A coordinator nobody gave the questions (tests without a workspace): "Install" starts at once, as in M8.1.
@@ -463,7 +703,7 @@ public sealed class UpdateWithChangesTests : UpdateTestHost
     /// A workspace whose windows share one coordinator over the fake source (offering 0.2.0, already found), with the
     /// file picker of the host; the windows open without taking the focus.
     /// </summary>
-    private async Task<(Workspace Workspace, UpdateCoordinator Coordinator)> WorkspaceAsync()
+    private async Task<(Workspace Workspace, UpdateCoordinator Coordinator)> WorkspaceAsync(bool noApplier = false)
     {
         Source.Offer("0.2.0");
         UpdateCoordinator? made = null;
@@ -471,7 +711,7 @@ public sealed class UpdateWithChangesTests : UpdateTestHost
             () => new ViewerSession(new PdfEngine()),
             () => new MainWindow { Width = 1024, Height = 720, ShowActivated = false },
             _ => _files.Picker,
-            updateFactory: () => made ??= NewCoordinator());
+            updateFactory: () => made ??= NewCoordinator(noApplier: noApplier));
         Own(workspace);
 
         // The windows make the coordinator when they first need it; here it is asked for directly.

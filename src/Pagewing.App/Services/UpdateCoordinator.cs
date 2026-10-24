@@ -88,6 +88,12 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
     /// </summary>
     public bool IsAwaitingAnswer { get; private set; }
 
+    /// <summary>
+    /// Gets or sets what brings the window that asks about unsaved changes to the front (<see cref="ShowQuestion"/>; set by
+    /// the workspace). <see langword="null"/> does nothing.
+    /// </summary>
+    public Action? QuestionShown { get; set; }
+
     /// <summary>Gets whether the check of the start was begun: the gate that makes it run once per process, whatever the number of windows.</summary>
     public bool CheckStarted { get; private set; }
 
@@ -168,6 +174,18 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         }
     }
 
+    /// <summary>
+    /// The button "Update" while the installation waits for an answer about unsaved changes (<see cref="IsAwaitingAnswer"/>):
+    /// brings the window that asks to the front (<see cref="QuestionShown"/>).
+    /// </summary>
+    public void ShowQuestion()
+    {
+        if (IsAwaitingAnswer && !_disposed)
+        {
+            QuestionShown?.Invoke();
+        }
+    }
+
     /// <summary>"Try again" after a failure that may go away (<see cref="CanRetry"/>): installs again, in the same window.</summary>
     public Task RetryAsync()
     {
@@ -194,7 +212,10 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         }
     }
 
-    /// <summary>Cancels a running check and a download that runs. May be called more than once.</summary>
+    /// <summary>
+    /// Cancels a running check and a download that runs, and deletes a download kept after "Cancel" at the question before
+    /// the installer (it is only reused by this process). May be called more than once.
+    /// </summary>
     public void Dispose()
     {
         if (!_disposed)
@@ -202,6 +223,11 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
             _disposed = true;
             _lifetime.Cancel();
             _lifetime.Dispose();
+            if (_keptStaging is { } kept)
+            {
+                _keptStaging = null;
+                DeleteStaging(kept);
+            }
         }
     }
 

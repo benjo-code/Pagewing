@@ -765,6 +765,9 @@
   <data name="UpdateAwaitingAnswer" xml:space="preserve">
     <value>Waiting for your answer …</value>
   </data>
+  <data name="EditingLockedForUpdate" xml:space="preserve">
+    <value>Installing update – editing is locked</value>
+  </data>
   <data name="UpdateInstall" xml:space="preserve">
     <value>Install</value>
   </data>
