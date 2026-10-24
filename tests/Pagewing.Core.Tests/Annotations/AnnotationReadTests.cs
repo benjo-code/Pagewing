@@ -194,6 +194,48 @@ public sealed class AnnotationReadTests
     }
 
     [Fact]
+    public async Task LinkWorkCountsEveryRawEntry()
+    {
+        using var folder = new TempFolder();
+
+        // 60,000 indirect entries, more than the 20,000 that are looked at: a link search still walks all of them. The
+        // first 1,000 are replies to the very last entry; entry 1,000 is a highlight that must end up read-only.
+        const int entries = 60_000;
+        const int replies = 1_000;
+        var last = entries + 3;
+        var objects = new List<string>
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            string.Empty,
+        };
+        var references = new StringBuilder();
+        for (var i = 0; i < entries; i++)
+        {
+            objects.Add(i < replies
+                ? $"<< /Subtype /Text /Rect [10 10 20 20] /IRT {last} 0 R >>"
+                : i == replies
+                    ? "<< /Subtype /Highlight /Rect [10 100 50 120] /QuadPoints [10 120 50 120 10 100 50 100] /C [1 1 0] /NM (plain) >>"
+                    : "<< /Subtype /Square /Rect [0 0 1 1] >>");
+            references.Append(System.Globalization.CultureInfo.InvariantCulture, $"{i + 4} 0 R ");
+        }
+
+        objects[2] = $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [{references}] >>";
+        var path = WritePdf(folder, "raw-entries.pdf", objects);
+
+        await using var document = await OpenAsync(path);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var annotations = await document.GetAnnotationsAsync(0, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => document.DeleteAnnotationAsync(new AnnotationLocator(0, replies, "plain"), TestContext.Current.CancellationToken));
+        watch.Stop();
+
+        var plain = annotations.Single(a => a.Name == "plain");
+        Assert.False(plain.Editable);
+        Assert.Equal(PdfDocument.MaxAnnotations, annotations.Count);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"Reading and checking took {watch.Elapsed}.");
+    }
+
+    [Fact]
     public async Task ReadingAPageWithoutAnnotationsGivesAnEmptyList()
     {
         await using var document = await OpenFixtureAsync("text-basic.pdf");
@@ -232,7 +274,7 @@ public sealed class AnnotationReadTests
     [Fact]
     public void RichTextIsEscapedAndValidXml()
     {
-        var rich = Pagewing.Pdfium.PdfiumAnnotations.RichTextOf("a&<>\"b\vc\u0001d\uD800e￾f\tg 😀\r\nh");
+        var rich = Pagewing.Pdfium.PdfiumAnnotations.RichTextOf("a&<>\"b\vc\u0001d\uD800e\uFFFEf\tg 😀\r\nh");
 
         Assert.Equal(
             "<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\"><p>a&amp;&lt;&gt;&quot;b</p><p>cdef\tg 😀</p><p>h</p></body>",

@@ -356,7 +356,9 @@ internal static unsafe class PdfiumAnnotations
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
-        var count = Math.Clamp(Fpdf.FPDFPage_GetAnnotCount(native), 0, MaxScannedPerPage);
+        // A link search walks the whole /Annots array, so it costs the raw entry count, not the clamped one.
+        var entries = Math.Max(0, Fpdf.FPDFPage_GetAnnotCount(native));
+        var count = Math.Min(entries, MaxScannedPerPage);
         var budget = MaxLinkWork;
         var remove = new SortedSet<int> { index };
         var annotation = Fpdf.FPDFPage_GetAnnot(native, index);
@@ -367,7 +369,7 @@ internal static unsafe class PdfiumAnnotations
 
         try
         {
-            var popup = LinkedIndex(native, annotation, "Popup\0"u8, count, ref budget);
+            var popup = LinkedIndex(native, annotation, "Popup\0"u8, entries, ref budget);
             if (popup >= 0 && popup != index && SubtypeAt(native, popup) == FpdfConstants.AnnotPopup)
             {
                 remove.Add(popup);
@@ -378,7 +380,7 @@ internal static unsafe class PdfiumAnnotations
             Fpdf.FPDFPage_CloseAnnot(annotation);
         }
 
-        for (var i = 0; i < count && budget >= count; i++)
+        for (var i = 0; i < count && budget >= entries; i++)
         {
             if (i % CancellationInterval == 0)
             {
@@ -393,7 +395,7 @@ internal static unsafe class PdfiumAnnotations
 
             try
             {
-                if (Fpdf.FPDFAnnot_GetSubtype(candidate) == FpdfConstants.AnnotPopup && LinkedIndex(native, candidate, "Parent\0"u8, count, ref budget) == index)
+                if (Fpdf.FPDFAnnot_GetSubtype(candidate) == FpdfConstants.AnnotPopup && LinkedIndex(native, candidate, "Parent\0"u8, entries, ref budget) == index)
                 {
                     remove.Add(i);
                 }
@@ -605,7 +607,7 @@ internal static unsafe class PdfiumAnnotations
                     continue;
                 }
 
-                if (char.IsSurrogate(c) || c is '￾' or '￿' || (c < ' ' && c != '\t'))
+                if (char.IsSurrogate(c) || c is '\uFFFE' or '\uFFFF' || (c < ' ' && c != '\t'))
                 {
                     continue;
                 }
@@ -651,7 +653,9 @@ internal static unsafe class PdfiumAnnotations
     /// </summary>
     private static PageScan Scan(nint page, CancellationToken cancellationToken)
     {
-        var count = Math.Clamp(Fpdf.FPDFPage_GetAnnotCount(page), 0, MaxScannedPerPage);
+        // A link search walks the whole /Annots array, so it costs the raw entry count, not the clamped one.
+        var entries = Math.Max(0, Fpdf.FPDFPage_GetAnnotCount(page));
+        var count = Math.Min(entries, MaxScannedPerPage);
         var subtypes = new int[count];
         var isReply = new bool[count];
         var repliedTo = new HashSet<int>();
@@ -680,7 +684,7 @@ internal static unsafe class PdfiumAnnotations
                     isReply[i] = true;
                     if (!exhausted)
                     {
-                        var target = LinkedIndex(page, annotation, "IRT\0"u8, count, ref budget);
+                        var target = LinkedIndex(page, annotation, "IRT\0"u8, entries, ref budget);
                         exhausted = target == LinkUnresolved;
                         if (target >= 0 && target != i)
                         {
@@ -847,7 +851,7 @@ internal static unsafe class PdfiumAnnotations
     /// <summary>
     /// The index on the page of the annotation that <paramref name="key"/> refers to, or -1 if there is none, or
     /// <see cref="LinkUnresolved"/> if <paramref name="budget"/> cannot pay the <paramref name="count"/> entries the
-    /// search may compare.
+    /// search may compare (the raw <c>FPDFPage_GetAnnotCount</c>, because the search walks the whole <c>/Annots</c>).
     /// </summary>
     private static int LinkedIndex(nint page, nint annotation, ReadOnlySpan<byte> key, int count, ref long budget)
     {

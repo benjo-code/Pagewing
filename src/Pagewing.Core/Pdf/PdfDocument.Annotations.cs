@@ -209,15 +209,25 @@ public sealed partial class PdfDocument
                     {
                         PdfiumAnnotations.Update(page, index, edit.Contents, color, name, date);
                     }
-                    catch (InvalidOperationException ex)
+                    catch (Exception ex)
                     {
                         failure = ex;
                     }
                 }
 
                 // Every changed annotation gets an appearance: one without (a foreign markup, or the old one dropped for a
-                // new colour, also when the change failed half way) is drawn once so that PDFium generates it.
-                var hasAppearance = EnsureAppearance(locator.Page, index);
+                // new colour, also when the change failed half way) is drawn once so that PDFium generates it. After a
+                // failed change the original error is what the caller gets, even if the repair fails as well.
+                bool hasAppearance;
+                try
+                {
+                    hasAppearance = EnsureAppearance(locator.Page, index);
+                }
+                catch (Exception) when (failure is not null)
+                {
+                    hasAppearance = false;
+                }
+
                 if (failure is not null)
                 {
                     ExceptionDispatchInfo.Throw(failure);
