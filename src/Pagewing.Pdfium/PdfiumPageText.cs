@@ -471,9 +471,21 @@ internal static unsafe class PdfiumPageText
         return false;
     }
 
-    /// <summary>Converts PDF user space (origin bottom left, before rotation) to points from the top left of the displayed page.</summary>
+    /// <summary>Gets the conversion between PDF user space and the displayed page of a loaded page.</summary>
+    internal static PageTransform TransformOf(PdfiumPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        return new PageTransform(page.Access(), page.Width, page.Height);
+    }
+
+    /// <summary>
+    /// Converts between PDF user space (origin bottom left, before rotation) and points from the top left of the displayed
+    /// page, with <c>FPDF_PageToDevice</c> and its inverse <c>FPDF_DeviceToPage</c> on a grid of 1/16 pt (the only
+    /// coordinate conversion of Pagewing, so rotation and CropBox are always PDFium's). Use it on the PDFium thread while
+    /// the page is open.
+    /// </summary>
     [StructLayout(LayoutKind.Auto)]
-    private readonly struct PageTransform
+    internal readonly struct PageTransform
     {
         private readonly nint page;
         private readonly int width;
@@ -489,23 +501,61 @@ internal static unsafe class PdfiumPageText
         /// <summary>Converts two opposite corners and joins them into an axis-aligned box; zeros if the conversion fails.</summary>
         public (double Left, double Top, double Right, double Bottom) ToPage(double x1, double y1, double x2, double y2)
         {
-            if (width <= 0 || height <= 0)
+            if (!TryToPage(x1, y1, out var ax, out var ay) || !TryToPage(x2, y2, out var bx, out var by))
             {
                 return default;
             }
 
-            int ax, ay, bx, by;
-            if (Fpdf.FPDF_PageToDevice(page, 0, 0, width, height, 0, x1, y1, &ax, &ay) == 0
-                || Fpdf.FPDF_PageToDevice(page, 0, 0, width, height, 0, x2, y2, &bx, &by) == 0)
+            return (Math.Min(ax, bx), Math.Min(ay, by), Math.Max(ax, bx), Math.Max(ay, by));
+        }
+
+        /// <summary>Converts a point of PDF user space to points from the top left of the displayed page.</summary>
+        public bool TryToPage(double x, double y, out double pageX, out double pageY)
+        {
+            pageX = 0;
+            pageY = 0;
+            if (width <= 0 || height <= 0 || !double.IsFinite(x) || !double.IsFinite(y))
             {
-                return default;
+                return false;
             }
 
-            return (
-                Math.Min(ax, bx) / (double)DeviceScale,
-                Math.Min(ay, by) / (double)DeviceScale,
-                Math.Max(ax, bx) / (double)DeviceScale,
-                Math.Max(ay, by) / (double)DeviceScale);
+            int deviceX, deviceY;
+            if (Fpdf.FPDF_PageToDevice(page, 0, 0, width, height, 0, x, y, &deviceX, &deviceY) == 0)
+            {
+                return false;
+            }
+
+            pageX = deviceX / (double)DeviceScale;
+            pageY = deviceY / (double)DeviceScale;
+            return true;
+        }
+
+        /// <summary>
+        /// Converts a point in points from the top left of the displayed page to PDF user space: the inverse of
+        /// <see cref="TryToPage"/> on the same grid of 1/16 pt. Points far outside the page (beyond the int range of the
+        /// grid) are not converted.
+        /// </summary>
+        public bool TryToUser(double x, double y, out double userX, out double userY)
+        {
+            userX = 0;
+            userY = 0;
+            var deviceX = Math.Round(x * DeviceScale);
+            var deviceY = Math.Round(y * DeviceScale);
+            if (width <= 0 || height <= 0 || !double.IsFinite(deviceX) || !double.IsFinite(deviceY)
+                || Math.Abs(deviceX) > int.MaxValue || Math.Abs(deviceY) > int.MaxValue)
+            {
+                return false;
+            }
+
+            double resultX, resultY;
+            if (Fpdf.FPDF_DeviceToPage(page, 0, 0, width, height, 0, (int)deviceX, (int)deviceY, &resultX, &resultY) == 0)
+            {
+                return false;
+            }
+
+            userX = resultX;
+            userY = resultY;
+            return true;
         }
     }
 }

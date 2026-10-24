@@ -8,7 +8,7 @@ namespace Pagewing.Core.Pdf;
 /// An open PDF document. Every PDFium access is queued to the PDFium thread, so all members may be called
 /// from any thread. After disposal every member throws <see cref="ObjectDisposedException"/>.
 /// </summary>
-public sealed class PdfDocument : IDisposable, IAsyncDisposable
+public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
 {
     /// <summary>The most bookmarks <see cref="GetOutlineAsync"/> returns; further ones are cut off silently.</summary>
     public const int MaxOutlineItems = 20_000;

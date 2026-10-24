@@ -394,6 +394,19 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint FPDFAnnot_GetLinkedAnnot(nint annotation, byte* key);
 
+    /// <summary>The index of an annotation in the page's <c>/Annots</c> (found by its dictionary), or -1.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_GetAnnotIndex(nint page, nint annotation);
+
+    /// <summary>
+    /// The content of the appearance stream of a mode as UTF-16LE text; the length is in bytes and includes the 2-byte
+    /// terminator. Read only: unlike <c>FPDFAnnot_GetObjectCount</c> it does not touch the stream dictionary.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetAP(nint annotation, int appearanceMode, ushort* buffer, CULong bufferLength);
+
     // Signatures (fpdf_signature.h).
 
     [LibraryImport(Library)]
