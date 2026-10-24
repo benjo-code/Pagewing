@@ -332,6 +332,8 @@ public sealed class WindowsUpdateInstallerTests : UpdateTestHost
     [Fact]
     public async Task TheInstallerCannotBeChangedWhileItRuns()
     {
+        // The helper only ever runs on Windows, and only there does the operating system enforce FileShare.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare is only enforced by the operating system on Windows.");
         var staging = Stage();
         var setup = Path.Combine(staging, SetupName);
         Exception? writing = null;
