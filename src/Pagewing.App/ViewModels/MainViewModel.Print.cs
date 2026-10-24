@@ -163,7 +163,10 @@ public sealed partial class MainViewModel
             tab.IsPrinting = true;
             try
             {
-                var request = new PrintJobRequest(document, tab.FullPath, tab.FileName ?? string.Empty, Math.Max(0, tab.CurrentPage - 1), ticket);
+                // With changes that are not saved (or still being made) the file on disk lacks them: no path, so a service that
+                // hands a file to the printing system (CUPS) writes one from the document in memory instead.
+                var path = tab.AsksBeforeClosing ? null : tab.FullPath;
+                var request = new PrintJobRequest(document, path, tab.FileName ?? string.Empty, Math.Max(0, tab.CurrentPage - 1), ticket);
                 await service.PrintAsync(request, progress, cancellation.Token);
                 job.Complete(progress.FailedPages);
             }

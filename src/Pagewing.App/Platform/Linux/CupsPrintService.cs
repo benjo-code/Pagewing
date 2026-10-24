@@ -72,7 +72,8 @@ internal sealed class CupsPrintService : IPrintService
             var file = job.Path;
             if (info.IsEncrypted || file is null)
             {
-                // CUPS cannot ask for a password: it gets a copy without encryption, readable by the user only.
+                // CUPS cannot ask for a password, and a file with unsaved changes (no path) lacks them: it gets a copy written
+                // from the document in memory, without encryption, readable by the user only.
                 temporaryFolder = Directory.CreateTempSubdirectory("pagewing-print-").FullName;
                 File.SetUnixFileMode(temporaryFolder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 file = Path.Combine(temporaryFolder, "document.pdf");

@@ -71,6 +71,9 @@ public abstract class PrintTestHost : IDisposable
         return (window, viewModel, Find<DocumentView>(window, "DocumentView"));
     }
 
+    /// <summary>Disposes <paramref name="item"/> when the test ends, after everything added later.</summary>
+    protected void AddCleanup(IDisposable item) => _cleanup.Add(item);
+
     /// <summary>Closes <paramref name="window"/> and disposes <paramref name="viewModel"/> when the test ends (for tests that build their own window).</summary>
     protected void Track(Window window, IDisposable viewModel)
     {
