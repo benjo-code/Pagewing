@@ -138,6 +138,11 @@ jobs:
       - name: Self-test of the licence tool
         run: dotnet run tools/licenses.cs -- selftest
 
+      # The test server of the manual update check (packaging/README.md, "Update prüfen"): routes, path traversal,
+      # signing; it listens on 127.0.0.1 only and stops at the end.
+      - name: Self-test of the update test server
+        run: dotnet run tools/update-testserver.cs -- selftest
+
       # Fails when a package, a native file or the notices file no longer matches third-party/licenses.json.
       - name: Check the licence inventory
         run: dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli

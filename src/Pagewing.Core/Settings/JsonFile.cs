@@ -13,9 +13,10 @@ internal static class JsonFile
 
     /// <summary>
     /// Reads the file. Returns <c>null</c> when it is missing, empty or unreadable; a file over
-    /// <see cref="MaxFileLength"/> is copied to <c>&lt;path&gt;.bad</c> first (it counts as corrupt).
+    /// <paramref name="maxLength"/> (<see cref="MaxFileLength"/> unless given) is copied to <c>&lt;path&gt;.bad</c> first
+    /// (it counts as corrupt).
     /// </summary>
-    internal static string? ReadText(string path)
+    internal static string? ReadText(string path, long maxLength = MaxFileLength)
     {
         string text;
         try
@@ -26,7 +27,7 @@ internal static class JsonFile
                 return null;
             }
 
-            if (info.Length > MaxFileLength)
+            if (info.Length > maxLength)
             {
                 KeepBackup(path);
                 return null;
@@ -44,15 +45,16 @@ internal static class JsonFile
 
     /// <summary>
     /// Writes the text into <c>&lt;path&gt;.tmp</c> in the target folder first, then replaces the file in one step.
-    /// Returns <c>false</c> if that fails for a file system reason; the old file stays as it was.
+    /// Returns <c>false</c> if that fails for a file system reason; the old file stays as it was. The target folder is made
+    /// first unless <paramref name="createDirectory"/> is <see langword="false"/>, which fails for a missing folder.
     /// </summary>
-    internal static bool TryWrite(string path, string json)
+    internal static bool TryWrite(string path, string json, bool createDirectory = true)
     {
         var temp = path + ".tmp";
         try
         {
             var directory = Path.GetDirectoryName(Path.GetFullPath(path));
-            if (!string.IsNullOrEmpty(directory))
+            if (createDirectory && !string.IsNullOrEmpty(directory))
             {
                 Directory.CreateDirectory(directory);
             }
@@ -90,7 +92,8 @@ internal static class JsonFile
     private static bool IsFileError(Exception ex) =>
         ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
 
-    private static void DeleteQuietly(string file)
+    /// <summary>Deletes the file if it exists. A failure is ignored.</summary>
+    internal static void DeleteQuietly(string file)
     {
         try
         {

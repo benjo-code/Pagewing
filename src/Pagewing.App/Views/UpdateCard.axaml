@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.UpdateCard"
+             x:DataType="vm:UpdateViewModel"
+             HorizontalAlignment="Right" VerticalAlignment="Top"
+             AutomationProperties.Name="{Binding CardName}">
+  <!--
+    The card "Pagewing 0.2.0 is available" under the button "Update" of the title bar (design system 7.11, section 2 of
+    the mockups): surface.raised, radius.overlay, card shadow, 320 wide, its right edge in line with the button
+    (MainWindow.Update.cs sets the margin). Not modal: it takes no input beside its own area and blocks nothing. The
+    download icon in accent.default, the title, the text in text.secondary (the running version and what "Install" does),
+    then "Later" and "Install" (primary) from the left, which is the tab order. A form that cannot update itself (Debian
+    package, portable archive, unknown) has the hint in the text and "Open download page" in place of "Install"; the
+    address goes through the confirmation card. Esc on the card is "Later". Made when it is first shown, never in the
+    startup path.
+
+    In the same place, only after the command "Check for updates" (design system 7.13): the note "You have the latest
+    version" with a check mark in accent.default, or "could not check" with the warning symbol in danger.default (the
+    state is the text and the shape of the symbol, never only a colour), the text in text.primary as a polite live region,
+    and "Close". It does not take the focus and goes with Esc, "Close" or after a few seconds; the card is then named by
+    the text of the note.
+  -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding DismissCardCommand}" />
+  </UserControl.KeyBindings>
+  <Border Name="UpdateBox" Width="320" Padding="16"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <Panel>
+      <Grid Name="UpdateOffer" ColumnDefinitions="Auto,*" IsVisible="{Binding !IsNoteOpen}">
+        <ctl:StrokeIcon Name="UpdateCardIcon" Width="16" Height="16" Margin="0,3,10,0" VerticalAlignment="Top"
+                        Data="{StaticResource Pw.Icon.Download}" Brush="{DynamicResource Pw.Brush.Accent.Default}" />
+        <StackPanel Grid.Column="1" Spacing="12">
+          <StackPanel Spacing="4">
+            <TextBlock Name="UpdateTitle" Classes="subtitle" TextWrapping="Wrap" Text="{Binding Title}" />
+            <TextBlock Name="UpdateText" Classes="body" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding Text}" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Name="UpdateLaterButton" Command="{Binding LaterCommand}" Content="{x:Static res:Strings.UpdateLater}" />
+            <Button Name="UpdateInstallButton" Classes="primary" IsVisible="{Binding CanInstall}"
+                    Command="{Binding InstallCommand}" Content="{x:Static res:Strings.UpdateInstall}" />
+            <Button Name="UpdateDownloadButton" Classes="primary" IsVisible="{Binding !CanInstall}"
+                    Command="{Binding OpenDownloadPageCommand}" Content="{x:Static res:Strings.UpdateDownloadPage}" />
+          </StackPanel>
+        </StackPanel>
+      </Grid>
+
+      <Grid Name="UpdateNotePanel" ColumnDefinitions="Auto,*" IsVisible="{Binding IsNoteOpen}">
+        <Panel Width="16" Height="16" Margin="0,2,10,0" VerticalAlignment="Top">
+          <ctl:StrokeIcon Name="UpdateNoteUpToDateIcon" Width="16" Height="16" IsVisible="{Binding IsNoteUpToDate}"
+                          Data="{StaticResource Pw.Icon.Check}" Brush="{DynamicResource Pw.Brush.Accent.Default}" />
+          <ctl:StrokeIcon Name="UpdateNoteFailedIcon" Width="16" Height="16" IsVisible="{Binding IsNoteFailed}"
+                          Data="{StaticResource Pw.Icon.AlertTriangle}" Brush="{DynamicResource Pw.Brush.Danger.Default}" />
+        </Panel>
+        <StackPanel Grid.Column="1" Spacing="12">
+          <TextBlock Name="UpdateNoteText" Classes="body" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Primary}" Text="{Binding NoteText}"
+                     AutomationProperties.LiveSetting="Polite" />
+          <Button Name="UpdateNoteCloseButton" HorizontalAlignment="Right" Command="{Binding CloseNoteCommand}"
+                  Content="{x:Static res:Strings.UpdateWindowClose}" />
+        </StackPanel>
+      </Grid>
+    </Panel>
+  </Border>
+</UserControl>

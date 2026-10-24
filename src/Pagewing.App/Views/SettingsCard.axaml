@@ -12,7 +12,8 @@
     title bar in the style of the help card and the link card (design system 7.8): surface.raised, radius.overlay, the
     card shadow with its 1 px border.subtle edge. Title and close button, then the groups "Appearance" (theme, density,
     dark pages, reduced motion), "View" (default layout and zoom of new tabs), "Language" and "History" (clear the
-    recently opened files), and "Done" at the bottom.
+    recently opened files), "Updates" (the switch for the automatic check, with the sentence of what it asks and what it does
+    not) and "Done" at the bottom.
     Every change applies at once (SettingsViewModel); there is no "Apply". A choice of several values is a combo box
     (the arrows change it while it is closed, Alt+Down or F4 opens it), a yes or no a switch (Space). Tab goes from top to
     bottom and stays on the card; Esc, the close button and "Done" close it and the focus goes back where it was
@@ -175,6 +176,20 @@
             </Grid>
             <TextBlock Name="RestartHint" Classes="caption settingsHint" IsVisible="{Binding LanguageNeedsRestart}"
                        Text="{x:Static res:Strings.SettingsRestartHint}" />
+          </StackPanel>
+
+          <!--
+            The automatic check for updates: one switch (Space), the sentence underneath says what is asked (the public
+            release page of Pagewing on GitHub) and what is not. Outside the row, so the row keeps one label.
+          -->
+          <StackPanel Name="UpdatesGroup" Classes="settingsGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupUpdates}" />
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsUpdateCheck}" />
+              <ToggleSwitch Name="UpdateCheckSwitch" Grid.Column="1" IsChecked="{Binding UpdateCheck, Mode=TwoWay}"
+                            AutomationProperties.Name="{x:Static res:Strings.SettingsUpdateCheck}" />
+            </Grid>
+            <TextBlock Name="UpdateCheckHint" Classes="caption settingsHint" Text="{x:Static res:Strings.SettingsUpdateHint}" />
           </StackPanel>
 
           <!--

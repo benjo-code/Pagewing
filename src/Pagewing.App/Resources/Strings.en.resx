@@ -45,8 +45,8 @@
   <data name="StartTitle" xml:space="preserve">
     <value>Open a document</value>
   </data>
-  <data name="StartOffline" xml:space="preserve">
-    <value>Pagewing works offline. Nothing leaves this computer.</value>
+  <data name="UpdateCheckNote" xml:space="preserve">
+    <value>Pagewing checks for updates by itself. It asks only the public release page of Pagewing on GitHub for the newest version and sends no identifier, no version and no data about you or your computer. Like any website, GitHub sees your IP address. You can switch the check off in the settings.</value>
   </data>
   <data name="StartDropHint" xml:space="preserve">
     <value>Or drop a PDF file into this window.</value>
@@ -384,9 +384,6 @@
   <data name="AboutVersion" xml:space="preserve">
     <value>Version {0}</value>
   </data>
-  <data name="AboutOffline" xml:space="preserve">
-    <value>Works completely offline: no telemetry, no network access.</value>
-  </data>
   <data name="AboutNotices" xml:space="preserve">
     <value>Third-party notices</value>
   </data>
@@ -551,6 +548,15 @@
   </data>
   <data name="StartRecentRemoveName" xml:space="preserve">
     <value>Remove “{0}” from the history</value>
+  </data>
+  <data name="SettingsGroupUpdates" xml:space="preserve">
+    <value>Updates</value>
+  </data>
+  <data name="SettingsUpdateCheck" xml:space="preserve">
+    <value>Automatically check for updates</value>
+  </data>
+  <data name="SettingsUpdateHint" xml:space="preserve">
+    <value>Asks only the public release page of Pagewing on GitHub for the newest version. Sends no identifier, no version and no data about you or your computer; like any website, GitHub sees your IP address.</value>
   </data>
   <data name="SettingsGroupHistory" xml:space="preserve">
     <value>History</value>
@@ -728,5 +734,140 @@
   </data>
   <data name="CommandSetDefaultApp" xml:space="preserve">
     <value>Set Pagewing as default for PDFs</value>
+  </data>
+  <data name="CommandCheckForUpdates" xml:space="preserve">
+    <value>Check for updates</value>
+  </data>
+  <data name="UpdateButton" xml:space="preserve">
+    <value>Update</value>
+  </data>
+  <data name="UpdateButtonName" xml:space="preserve">
+    <value>Update available</value>
+  </data>
+  <data name="UpdateCardTitle" xml:space="preserve">
+    <value>Pagewing {0} is available</value>
+  </data>
+  <data name="UpdateCardHave" xml:space="preserve">
+    <value>You have {0}.</value>
+  </data>
+  <data name="UpdateCardInstallText" xml:space="preserve">
+    <value>Pagewing downloads the update, installs it and then reopens your tabs.</value>
+  </data>
+  <data name="UpdateInstall" xml:space="preserve">
+    <value>Install</value>
+  </data>
+  <data name="UpdateLater" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="UpdateDownloadPage" xml:space="preserve">
+    <value>Open download page</value>
+  </data>
+  <data name="UpdateHintDeb" xml:space="preserve">
+    <value>Pagewing was installed from the .deb package and cannot replace it itself. The new package is on the download page.</value>
+  </data>
+  <data name="UpdateHintPortable" xml:space="preserve">
+    <value>The portable version does not update itself. The new archive is on the download page.</value>
+  </data>
+  <data name="UpdateHintUnknown" xml:space="preserve">
+    <value>Pagewing cannot update this installation itself. The new version is on the download page.</value>
+  </data>
+  <data name="UpdateNoteUpToDate" xml:space="preserve">
+    <value>You have the latest version of Pagewing ({0}).</value>
+  </data>
+  <data name="UpdateNoteFailed" xml:space="preserve">
+    <value>Pagewing could not check for updates right now. Check the internet connection or try again later.</value>
+  </data>
+  <data name="CommandCloseUpdateCard" xml:space="preserve">
+    <value>Close the update card</value>
+  </data>
+  <data name="UpdateWindowHeader" xml:space="preserve">
+    <value>Update Pagewing</value>
+  </data>
+  <data name="UpdateWindowTitle" xml:space="preserve">
+    <value>Updating Pagewing</value>
+  </data>
+  <data name="UpdateWindowFailedTitle" xml:space="preserve">
+    <value>The update did not go through</value>
+  </data>
+  <data name="UpdateWindowSubtitle" xml:space="preserve">
+    <value>{0} → {1} · Please keep this window open. Your tabs come back afterwards.</value>
+  </data>
+  <data name="UpdateStepDownload" xml:space="preserve">
+    <value>Download</value>
+  </data>
+  <data name="UpdateStepVerify" xml:space="preserve">
+    <value>Verify</value>
+  </data>
+  <data name="UpdateStepInstall" xml:space="preserve">
+    <value>Install</value>
+  </data>
+  <data name="UpdateStepRestart" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="UpdateStepDone" xml:space="preserve">
+    <value>done</value>
+  </data>
+  <data name="UpdateStepRunning" xml:space="preserve">
+    <value>in progress</value>
+  </data>
+  <data name="UpdateStepOpen" xml:space="preserve">
+    <value>not started</value>
+  </data>
+  <data name="UpdateStepFailed" xml:space="preserve">
+    <value>failed</value>
+  </data>
+  <data name="UpdateProgressName" xml:space="preserve">
+    <value>Progress</value>
+  </data>
+  <data name="UpdateProgressPercent" xml:space="preserve">
+    <value>{0}%</value>
+  </data>
+  <data name="UpdateProgressSize" xml:space="preserve">
+    <value>{0} of {1} MB</value>
+  </data>
+  <data name="UpdateWindowCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="UpdateWindowRetry" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="UpdateWindowClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="UpdateErrorUnreachable" xml:space="preserve">
+    <value>Pagewing could not download the update. Check the internet connection and try again.</value>
+  </data>
+  <data name="UpdateErrorWithdrawn" xml:space="preserve">
+    <value>This update is no longer offered. Your version stays as it is.</value>
+  </data>
+  <data name="UpdateErrorSuperseded" xml:space="preserve">
+    <value>Pagewing {0} has replaced this update. Close this window; the Update button then offers Pagewing {0}.</value>
+  </data>
+  <data name="UpdateErrorRejected" xml:space="preserve">
+    <value>The update failed the signature check and was refused. Your version stays as it is.</value>
+  </data>
+  <data name="UpdateErrorChecksum" xml:space="preserve">
+    <value>The downloaded file does not match the signed manifest and was deleted. Your version stays as it is.</value>
+  </data>
+  <data name="UpdateErrorStorage" xml:space="preserve">
+    <value>Pagewing could not save the update. Is there enough free space on the drive?</value>
+  </data>
+  <data name="UpdateErrorNoInstaller" xml:space="preserve">
+    <value>Pagewing cannot install itself here. The new version is on the download page.</value>
+  </data>
+  <data name="UpdateErrorInstallFailed" xml:space="preserve">
+    <value>Installing failed. Your version stays as it is.</value>
+  </data>
+  <data name="UpdateErrorHelperInstallFailed" xml:space="preserve">
+    <value>The update could not be completed. Pagewing starts again; try again, or download the new version by hand.</value>
+  </data>
+  <data name="UpdateErrorVersionMismatch" xml:space="preserve">
+    <value>The update could not be completed: Windows still has to restart to finish it, or Pagewing is installed elsewhere. Pagewing starts again.</value>
+  </data>
+  <data name="UpdateErrorFolderWriteProtected" xml:space="preserve">
+    <value>The folder is write-protected: {0}. Please download the new AppImage by hand.</value>
+  </data>
+  <data name="UpdateErrorNotStarted" xml:space="preserve">
+    <value>The new version is installed but did not start. It starts the next time you open Pagewing.</value>
   </data>
 </root>

@@ -11,6 +11,7 @@ using Pagewing.App.Services;
 using Pagewing.Core.Hosting;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
+using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App;
@@ -20,13 +21,19 @@ internal static partial class Program
     /// <summary>How long a later launch tries to hand its files to the running instance.</summary>
     private static readonly TimeSpan HandOverTimeout = TimeSpan.FromSeconds(3);
 
+    /// <summary>How long the new version after an update waits for the old process to end.</summary>
+    private static readonly TimeSpan PredecessorTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>A measurement whose UI thread hangs is ended this long after its own time limit (exit code 3).</summary>
     private static readonly TimeSpan MeasurementWatchdogGrace = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Startup order (startup path, keep it lean): parse the options; elect the single instance before Avalonia is
+    /// Startup order (startup path, keep it lean): parse the options; the switches that do something else than viewing
+    /// (<c>--register-file-types</c>, and the helper of the updater <c>--finish-update</c>, <see cref="RunUpdateHelper"/>)
+    /// branch off here, before the election; elect the single instance before Avalonia is
     /// loaded, and as a later launch hand the files over and exit; otherwise start opening the file of the command
-    /// line at once, so PDFium loads on its own thread while Avalonia builds the window; read the settings (nothing
+    /// line at once (after an update, with <c>--restore-session</c>, the active file of the first window of the session,
+    /// <see cref="LoadSession"/>), so PDFium loads on its own thread while Avalonia builds the window; read the settings (nothing
     /// without a settings file) and choose the UI language (<see cref="ChooseUiCulture"/>); on Windows choose the rendering
     /// mode (<see cref="UseSoftwareRendering"/>); show the window, whose first frame shows the tab with the file name;
     /// accept later launches after the first frame (<see cref="App"/>).
@@ -48,6 +55,19 @@ internal static partial class Program
             return RunFileTypeRegistration(options);
         }
 
+        if (OperatingSystem.IsWindows() && options.FinishUpdate is { } staging)
+        {
+            // The helper of the updater (a copy of the program, started by the app it replaces): before the single-instance
+            // election and without a document, Avalonia shows only its progress window.
+            return RunUpdateHelper(args, options, staging);
+        }
+
+        if (options.AfterProcess is not null)
+        {
+            // Started by the old version after an update (AppImage): its process still holds the single-instance lock.
+            WaitForPredecessor(options, new SystemProcessLauncher(), PredecessorTimeout);
+        }
+
         if (options.IsMeasurement)
         {
             // Diagnostic phases of a measurement run only (bench/startup/README.md, "Phasen").
@@ -61,7 +81,9 @@ internal static partial class Program
         }
 
         // Primary, a measurement, or an extra instance without the lock when handing over failed (the running one
-        // hangs or is closing).
+        // hangs or is closing). Only the restart after an update (--restore-session) reads the session file, once.
+        var restore = LoadSession(
+            options, static () => new SessionStore(Path.Combine(UserDataPaths.ConfigDirectory(), SessionStore.FileName)), File.Exists);
         var session = new ViewerSession(new PdfEngine());
         if (options.IsMeasurement)
         {
@@ -74,7 +96,10 @@ internal static partial class Program
             };
         }
 
-        var path = options.IsMeasurement ? options.MeasurementPath : options.Paths.Count > 0 ? options.Paths[0] : null;
+        // A restored session starts like a file of the command line: the active file of its first window opens early.
+        var path = options.IsMeasurement ? options.MeasurementPath
+            : restore is not null ? restore.Windows[0].Active.Path
+            : options.Paths.Count > 0 ? options.Paths[0] : null;
         if (!string.IsNullOrEmpty(path))
         {
             // Sets Loading with the path at once and continues on the PDFium thread; failures end in an error card.
@@ -99,7 +124,87 @@ internal static partial class Program
 
         // Reads nothing: the history is read after the first sharp page (or the first frame of the start screen).
         var recentFiles = LoadRecentFiles(options, RecentFilesService.Load);
-        return Run(args, new AppStartup(session, instance, settings, options.IsMeasurement ? options : null, options.MorePaths, recentFiles), software);
+        var startup = new AppStartup(
+            session, instance, settings, options.IsMeasurement ? options : null, restore is null ? options.MorePaths : [], recentFiles, restore);
+        return Run(args, startup, software);
+    }
+
+    /// <summary>
+    /// The new AppImage after an update (<c>--after-process &lt;id&gt;</c>, <see cref="Platform.Linux.AppImageUpdater"/>) was
+    /// started by the old program, which still runs: it waits until that process ended (at most <paramref name="timeout"/>;
+    /// then it goes on and hands its files over to whatever still runs), so the single-instance election finds the lock free
+    /// and the program does not start as an extra instance. Does nothing without the switch, for the helper of the Windows
+    /// updater (which waits itself) and for a measurement.
+    /// </summary>
+    internal static void WaitForPredecessor(StartupOptions options, IProcessLauncher launcher, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(launcher);
+        if (options.AfterProcess is not { } process || options.FinishUpdate is not null || options.IsMeasurement)
+        {
+            return;
+        }
+
+        launcher.WaitForExitAsync(process, timeout, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// The session to restore after an update: only with <c>--restore-session</c> (never for a measurement) is the store
+    /// made and the file read, then deleted at once, so it is restored only once whatever happens next. Files that
+    /// <paramref name="fileExists"/> does not find (moved or deleted) are dropped silently; <see langword="null"/> when
+    /// nothing is left, or without the switch. A start without the switch never touches the file.
+    /// </summary>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="store">Makes the store of <c>session.json</c> in the config folder (a temporary folder in tests).</param>
+    /// <param name="fileExists"><see cref="File.Exists(string)"/>.</param>
+    internal static SessionSnapshot? LoadSession(StartupOptions options, Func<SessionStore> store, Func<string, bool> fileExists)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(fileExists);
+        if (!options.RestoreSession || options.IsMeasurement)
+        {
+            return null;
+        }
+
+        var sessionStore = store();
+        var snapshot = sessionStore.Load();
+        sessionStore.Delete();
+        var existing = snapshot.KeepFiles(fileExists);
+        return existing.Windows.Count > 0 ? existing : null;
+    }
+
+    /// <summary>
+    /// The helper mode <c>--finish-update &lt;staging folder&gt;</c> (Windows, <see cref="Platform.Windows.WindowsUpdateHelper"/>):
+    /// reads the settings of the user (theme and language, never written), takes the keys compiled into the program
+    /// (<see cref="UpdateTrust.Keys"/>) and the running version as the installed one, and shows the progress window.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int RunUpdateHelper(string[] args, StartupOptions options, string staging)
+    {
+        var settings = UserSettings.Load();
+        if (ChooseUiCulture(options.Language, settings.Current.Language) is { } culture)
+        {
+            Strings.Culture = culture;
+        }
+
+        var config = UserDataPaths.ConfigDirectory();
+        var startup = new UpdateHelperStartup(settings, shutdown => new Platform.Windows.WindowsUpdateHelper(
+            new Platform.Windows.WindowsUpdateHelperSetup(
+                staging, config, UpdateTrust.Keys, PlatformUpdate.RunningVersion(), new SystemProcessLauncher(), shutdown)
+            {
+                AfterProcess = options.AfterProcess,
+                RestoreSession = options.RestoreSession,
+                Language = options.Language,
+            }));
+        var builder = AppBuilder.Configure(() => new App(startup)).UsePlatformDetect();
+        if (UseSoftwareRendering())
+        {
+            builder = builder.With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
+        }
+
+        return builder.StartWithClassicDesktopLifetime(args);
     }
 
     /// <summary>

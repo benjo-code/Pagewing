@@ -147,6 +147,10 @@ public sealed class CommandCatalog
         // No key either: offered whenever the system has a service that can set it, also after "Don't ask again".
         new("app.setDefault", () => Strings.CommandSetDefaultApp, WindowGroup, null, _window.CanSetDefaultApp, _window.SetDefaultAppFromCommand),
 
+        // No key either: on request only, also with the check in the background switched off. Offered where the app has an
+        // updater (not in a measurement run).
+        new("app.checkForUpdates", () => Strings.CommandCheckForUpdates, WindowGroup, null, _window.CanCheckForUpdates, _window.CheckForUpdatesFromCommand),
+
         // Esc drops an address that waits for confirmation, wherever the focus is; without one the key goes on. Not listed:
         // it is the key of the link card, not a command of its own.
         Window("link.cancel", () => Strings.LinkConfirmCancel, WindowGroup, new KeyGesture(Key.Escape), _window.CancelLinkCommand) with { Listed = false },
@@ -156,6 +160,11 @@ public sealed class CommandCatalog
         // this order, so a waiting address goes first.
         new("overlay.hide", () => Strings.CommandCloseOverlay, WindowGroup, new KeyGesture(Key.Escape),
             () => _window.Overlay != OverlayKind.None, _window.HideOverlay, Listed: false),
+
+        // Then Esc closes the update card or the note after "Check for updates", also when the focus is elsewhere (the card
+        // opened with the mouse, the note never takes the focus). Not listed either.
+        new("update.dismiss", () => Strings.CommandCloseUpdateCard, WindowGroup, new KeyGesture(Key.Escape),
+            () => _window.Update is { CanDismissCard: true }, _window.DismissUpdateCard, Listed: false),
     ];
 
     /// <summary>Whether the active tab has a search with matches (without making its search): F3 does something.</summary>

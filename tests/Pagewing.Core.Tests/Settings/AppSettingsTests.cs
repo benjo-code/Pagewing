@@ -24,6 +24,56 @@ public sealed class AppSettingsTests
         Assert.Equal(264d, settings.PanelWidth);
     }
 
+    [Fact]
+    public void UpdateCheckIsOnByDefault()
+    {
+        Assert.True(AppSettings.Default.UpdateCheck);
+        Assert.True(new AppSettings().UpdateCheck);
+        Assert.True(AppSettings.Default.Normalized().UpdateCheck);
+        Assert.False((AppSettings.Default with { UpdateCheck = false }).Normalized().UpdateCheck);
+    }
+
+    [Fact]
+    public void UpdateCheckSurvivesTheRoundTrip()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pagewing-settings-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new SettingsStore(Path.Combine(directory, "settings.json"));
+
+            Assert.True(store.TrySave(AppSettings.Default with { UpdateCheck = false }));
+            Assert.False(store.Load().UpdateCheck);
+
+            Assert.True(store.TrySave(AppSettings.Default with { UpdateCheck = true }));
+            Assert.True(store.Load().UpdateCheck);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AMissingUpdateCheckFieldKeepsTheDefault()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pagewing-settings-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, "{ \"Theme\": \"Dark\" }");
+
+            var loaded = new SettingsStore(path).Load();
+
+            Assert.Equal(ThemeSetting.Dark, loaded.Theme);
+            Assert.True(loaded.UpdateCheck);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(null, null)]
     [InlineData("", null)]

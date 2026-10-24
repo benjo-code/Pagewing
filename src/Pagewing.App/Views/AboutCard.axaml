@@ -10,7 +10,7 @@
   <!--
     About Pagewing (command "About Pagewing" in the palette, no key): a card over the window below the title bar like the
     help card (design system 7.5b and 7.8): surface.raised, radius.overlay, card shadow. Name, version, licence and the
-    offline line in the tokens of the other cards (text.primary, text.secondary on surface.raised, both 4.5:1 or better),
+    update note (what the check asks and what not) in the tokens of the other cards (text.primary, text.secondary on surface.raised, both 4.5:1 or better),
     then a button that opens the third-party notices. No link: an external address must go through the confirmation card.
     The notices are about 390 KB, read only when the list is first opened, and cut into rows of a few lines in a list
     that makes only the rows in view (VirtualizingStackPanel): one text block of that size would freeze the window.
@@ -45,8 +45,8 @@
       <StackPanel DockPanel.Dock="Top" Margin="24,8,24,12" Spacing="4">
         <TextBlock Name="AboutVersion" Classes="body" Text="{Binding VersionLine}" />
         <TextBlock Name="AboutLicense" Classes="body" Text="{Binding LicenseLine}" />
-        <TextBlock Name="AboutOffline" Classes="body" TextWrapping="Wrap" Margin="0,8,0,0"
-                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding OfflineLine}" />
+        <TextBlock Name="AboutUpdateNote" Classes="body" TextWrapping="Wrap" Margin="0,8,0,0"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding UpdateNote}" />
       </StackPanel>
       <ToggleButton Name="NoticesToggle" DockPanel.Dock="Top" Margin="24,0,24,12" HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Stretch" IsChecked="{Binding NoticesOpen, Mode=TwoWay}"

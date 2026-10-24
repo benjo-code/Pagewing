@@ -19,6 +19,7 @@ using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
+using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 using Pagewing.TestSupport;
 using Xunit;
@@ -478,6 +479,83 @@ public sealed class SettingsCardTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task UpdateSwitchIsOnByDefault()
+    {
+        var settings = Start();
+        var (window, viewModel, _) = Show(settings);
+        var card = await OpenCardAsync(window);
+
+        var toggle = Find<ToggleSwitch>(card, "UpdateCheckSwitch");
+        Assert.True(toggle.IsChecked);
+        Assert.True(settings.Current.UpdateCheck);
+        Assert.True(viewModel.SettingsCard!.UpdateCheck);
+        Assert.Equal(Strings.SettingsUpdateCheck, AutomationProperties.GetName(toggle));
+
+        // The row says what it does and the sentence underneath says what is asked and what is not.
+        var hint = Find<TextBlock>(card, "UpdateCheckHint");
+        Assert.True(hint.IsEffectivelyVisible);
+        Assert.Equal(Strings.SettingsUpdateHint, hint.Text);
+        Assert.Contains("GitHub", hint.Text);
+
+        // The switch writes the setting at once, the way back too.
+        toggle.IsChecked = false;
+        Settle(window);
+        Assert.False(settings.Current.UpdateCheck);
+        Assert.False(UserSettings.Load(_directory).Current.UpdateCheck);
+        toggle.IsChecked = true;
+        Settle(window);
+        Assert.True(UserSettings.Load(_directory).Current.UpdateCheck);
+    }
+
+    [AvaloniaFact]
+    public async Task TurningItOffWritesTheSettingAndStopsTheCheck()
+    {
+        var settings = Start();
+        using var source = new FakeUpdateSourceApp();
+        var made = 0;
+        var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker(), settings)
+        {
+            IsWindowsTitleBar = true,
+            UpdateCoordinatorFactory = () =>
+            {
+                made++;
+                var checker = new UpdateChecker(
+                    source,
+                    new UpdateStatusStore(System.IO.Path.Combine(_directory, UpdateStatusStore.FileName)),
+                    TimeProvider.System,
+                    new UpdateVersion(0, 1, 0),
+                    source.Keys);
+                return new UpdateCoordinator(checker, settings, PackageForm.WindowsInstaller);
+            },
+        };
+        _cleanup.Add(viewModel);
+
+        // The card's own model, the one the window makes when the card is first shown, switches the check off ...
+        var model = new SettingsViewModel(settings);
+        Assert.True(model.UpdateCheck);
+        model.UpdateCheck = false;
+        Assert.False(model.UpdateCheck);
+        Assert.False(settings.Current.UpdateCheck);
+        Assert.False(UserSettings.Load(_directory).Current.UpdateCheck);
+
+        // ... and the window then asks nobody: no coordinator is made, the source is not called, nothing is read.
+        var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720 };
+        _cleanup.Add(new Closer(window));
+        window.Show();
+        var until = DateTime.UtcNow.AddMilliseconds(500);
+        while (DateTime.UtcNow < until)
+        {
+            Settle(window);
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(0, made);
+        Assert.Equal(0, source.FetchCalls);
+        Assert.False(viewModel.UpdateStartGate.Started);
+        Assert.Null(viewModel.Update);
+    }
+
+    [AvaloniaFact]
     public async Task KeyboardOnlyUseWorks()
     {
         var settings = Start();
@@ -489,14 +567,14 @@ public sealed class SettingsCardTests : IDisposable
 
         // Tab goes from top to bottom and stays on the card; Shift+Tab goes back.
         var order = new List<string?>();
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < 11; i++)
         {
             Press(window, Key.Tab, PhysicalKey.Tab, None);
             order.Add((Focused(window) as Control)?.Name);
         }
 
         Assert.Equal(
-            ["DensityChoice", "DarkPagesSwitch", "ReduceMotionSwitch", "LayoutChoice", "ZoomChoice", "PrintScalingChoice", "LanguageChoice", "SettingsDoneButton", "SettingsCloseButton", "ThemeChoice"],
+            ["DensityChoice", "DarkPagesSwitch", "ReduceMotionSwitch", "LayoutChoice", "ZoomChoice", "PrintScalingChoice", "LanguageChoice", "UpdateCheckSwitch", "SettingsDoneButton", "SettingsCloseButton", "ThemeChoice"],
             order);
         Press(window, Key.Tab, PhysicalKey.Tab, Shift);
         Assert.Equal("SettingsCloseButton", (Focused(window) as Control)?.Name);
@@ -516,6 +594,11 @@ public sealed class SettingsCardTests : IDisposable
         Assert.Equal(PageAppearanceSetting.FollowTheme, settings.Current.PageAppearance);
         Press(window, Key.Space, PhysicalKey.Space, None);
         Assert.Equal(PageAppearanceSetting.Light, settings.Current.PageAppearance);
+        Find<ToggleSwitch>(window, "UpdateCheckSwitch").Focus(NavigationMethod.Tab);
+        Press(window, Key.Space, PhysicalKey.Space, None);
+        Assert.False(settings.Current.UpdateCheck);
+        Press(window, Key.Space, PhysicalKey.Space, None);
+        Assert.True(settings.Current.UpdateCheck);
 
         // The page keys stay on the card: the document behind it does not turn.
         Press(window, Key.PageDown, PhysicalKey.PageDown, None);
@@ -578,9 +661,9 @@ public sealed class SettingsCardTests : IDisposable
 
         string[] expected = language == "de"
             ? ["Einstellungen", "Darstellung", "Design", "Dichte", "Seiten dunkel darstellen, wenn das Design dunkel ist", "Animationen reduzieren",
-               "Ansicht", "Standard-Layout", "Standard-Zoom", "Gilt für Dateien, die Sie danach öffnen.", "Drucken", "Seitengröße beim Drucken", "Sprache", "Sprache der Oberfläche"]
+               "Ansicht", "Standard-Layout", "Standard-Zoom", "Gilt für Dateien, die Sie danach öffnen.", "Drucken", "Seitengröße beim Drucken", "Sprache", "Sprache der Oberfläche", "Aktualisierungen", "Automatisch nach Updates suchen", Strings.SettingsUpdateHint]
             : ["Settings", "Appearance", "Theme", "Density", "Show pages dark when the theme is dark", "Reduce animations",
-               "View", "Default layout", "Default zoom", "Applies to files you open from now on.", "Printing", "Page size when printing", "Language", "Interface language"];
+               "View", "Default layout", "Default zoom", "Applies to files you open from now on.", "Printing", "Page size when printing", "Language", "Interface language", "Updates", "Automatically check for updates", Strings.SettingsUpdateHint];
         var texts = card.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible).Select(text => text.Text).ToArray();
         foreach (var text in expected)
         {
@@ -603,7 +686,7 @@ public sealed class SettingsCardTests : IDisposable
             .Where(control => control.GetVisualAncestors().OfType<ComboBox>().FirstOrDefault() is null && control.GetVisualAncestors().OfType<ToggleSwitch>().FirstOrDefault() is null)
             .Where(control => control.GetVisualAncestors().OfType<ScrollBar>().FirstOrDefault() is null)
             .ToArray();
-        Assert.Equal(10, controls.Length);
+        Assert.Equal(11, controls.Length);
         foreach (var control in controls)
         {
             Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(control)), $"{control.Name} has no name");
@@ -645,6 +728,8 @@ public sealed class SettingsCardTests : IDisposable
         Assert.True(Ratio(TokenTests.Token("Border.Strong", variant), "Surface.Raised") >= 3);
         Assert.True(Ratio(TokenTests.Token("Text.Primary", variant), "Surface.Raised") >= 4.5);
         Assert.True(Ratio(TokenTests.Token("Text.Secondary", variant), "Surface.Raised") >= 4.5);
+        var updateHint = Find<TextBlock>(card, "UpdateCheckHint");
+        Assert.Equal(TokenTests.Token("Text.Secondary", variant), Assert.IsAssignableFrom<ISolidColorBrush>(updateHint.Foreground).Color);
 
         // The open list: drawn like the card, the chosen entry on accent.subtle with a check mark (not only a colour).
         list.IsDropDownOpen = true;

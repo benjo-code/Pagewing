@@ -12,6 +12,7 @@ using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Hosting;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App;
@@ -31,13 +32,18 @@ namespace Pagewing.App;
 /// The history of recently opened files (<see cref="RecentFilesService.Load()"/>, not read yet; in memory only for a
 /// measurement), or <see langword="null"/> for one in memory only.
 /// </param>
+/// <param name="Restore">
+/// The session to restore after an update (<see cref="Program.LoadSession"/>), whose first window's active file
+/// <paramref name="Session"/> is opening; <see langword="null"/> for every other start.
+/// </param>
 internal sealed record AppStartup(
     ViewerSession Session,
     SingleInstance? Instance,
     UserSettings Settings,
     StartupOptions? Measurement = null,
     IReadOnlyList<string>? MorePaths = null,
-    RecentFilesService? RecentFiles = null)
+    RecentFilesService? RecentFiles = null,
+    SessionSnapshot? Restore = null)
 {
     /// <summary>Gets the further files of the command line, none by default.</summary>
     public IReadOnlyList<string> MorePaths { get; } = MorePaths ?? [];
@@ -46,9 +52,15 @@ internal sealed record AppStartup(
     public RecentFilesService RecentFiles { get; } = RecentFiles ?? RecentFilesService.Detached();
 }
 
+/// <summary>What <see cref="Program.Main"/> prepared for the helper of the Windows updater (<c>--finish-update</c>).</summary>
+/// <param name="Settings">The settings of the user (theme, language), only read.</param>
+/// <param name="CreateHelper">Makes the helper over the way to end the app.</param>
+internal sealed record UpdateHelperStartup(UserSettings Settings, Func<IAppShutdown, Platform.Windows.WindowsUpdateHelper> CreateHelper);
+
 public sealed class App : Application
 {
     private readonly AppStartup? _startup;
+    private readonly UpdateHelperStartup? _helper;
     private bool _firstWindowCreated;
     private WindowIcon? _windowIcon;
 
@@ -70,6 +82,18 @@ public sealed class App : Application
         _startup = startup;
         Settings = startup.Settings;
         RecentFiles = startup.RecentFiles;
+    }
+
+    /// <summary>
+    /// Creates the app of the helper of the Windows updater: one window, the progress of the installation, and nothing of
+    /// the viewer (no document, no history, no single instance).
+    /// </summary>
+    internal App(UpdateHelperStartup helper)
+    {
+        ArgumentNullException.ThrowIfNull(helper);
+        _helper = helper;
+        Settings = helper.Settings;
+        RecentFiles = RecentFilesService.Detached();
     }
 
     /// <summary>Gets the settings of the app, which every window shares.</summary>
@@ -103,7 +127,11 @@ public sealed class App : Application
 
         // Theme and motion before the first window, so it never shows another theme first.
         Appearance = new Appearance(this, Settings);
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        if (_helper is { } helper && ApplicationLifetime is IClassicDesktopStyleApplicationLifetime helperDesktop)
+        {
+            StartUpdateHelper(helperDesktop, helper);
+        }
+        else if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Creating an engine does not start PDFium; that happens with the first document.
             var session = _startup?.Session;
@@ -112,10 +140,15 @@ public sealed class App : Application
             // The process ends with its last window, whichever it is (the default of the classic lifetime, made explicit).
             desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
 
-            // Creates no window yet; every window gets its own file dialog.
+            // Creates no window yet; every window gets its own file dialog. An installer of an update takes the session of
+            // all windows and ends the app (made only when an update is installed).
+            Workspace? created = null;
+            var updateHost = new UpdateAppHost(() => created?.CaptureSession() ?? SessionSnapshot.Empty, new DesktopShutdown(desktop));
             var workspace = new Workspace(
                 () => new ViewerSession(new PdfEngine()), CreateWindow, static window => new AvaloniaFilePicker(window), Settings, Appearance, RecentFiles,
-                PlatformDefaultAppServices.FactoryFor(_startup?.Measurement is not null));
+                PlatformDefaultAppServices.FactoryFor(_startup?.Measurement is not null),
+                PlatformUpdate.FactoryFor(_startup?.Measurement is not null, Settings, updateHost));
+            created = workspace;
 
             void BeforeShow(Window window, MainViewModel viewModel)
             {
@@ -126,7 +159,12 @@ public sealed class App : Application
             // The file of the command line, already opening since Program.Main: the first tab, in the first frame. The
             // window makes the tab, so it gets the default layout and zoom of the settings like every new tab.
             var adopted = session is not null && session.State != ViewerState.Empty;
-            if (adopted)
+            if (adopted && _startup?.Restore is { } restore)
+            {
+                // The restart after an update: the windows and tabs of the session, the first one the same way.
+                workspace.RestoreSession(restore, session!, BeforeShow);
+            }
+            else if (adopted)
             {
                 workspace.OpenWindowFor(session!, BeforeShow);
             }
@@ -148,6 +186,20 @@ public sealed class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// The helper of the Windows updater: its window takes the place of the progress window of the app, the installation
+    /// starts once it is shown, and the process ends with the window (or when the helper ends it).
+    /// </summary>
+    private static void StartUpdateHelper(IClassicDesktopStyleApplicationLifetime desktop, UpdateHelperStartup startup)
+    {
+        desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
+        var helper = startup.CreateHelper(new DesktopShutdown(desktop));
+        var window = UpdateWindow.ShowHelper(helper);
+        desktop.MainWindow = window;
+        desktop.Exit += (_, _) => helper.Dispose();
+        Dispatcher.UIThread.Post(() => _ = helper.RunAsync(), DispatcherPriority.Background);
     }
 
     /// <summary>
@@ -216,7 +268,15 @@ public sealed class App : Application
     /// <see cref="MoreFilesFallbackDelay"/>, shorter in tests; <see cref="Timeout.InfiniteTimeSpan"/> waits without a limit.
     /// </param>
     internal static void OpenMoreFilesAfterFirstSharpTile(
-        MainWindow window, MainViewModel viewModel, TabViewModel first, IReadOnlyList<string> paths, TimeSpan fallbackDelay)
+        MainWindow window, MainViewModel viewModel, TabViewModel first, IReadOnlyList<string> paths, TimeSpan fallbackDelay) =>
+        AfterFirstSharpTile(window, viewModel, first, () => _ = viewModel.OpenInBackgroundAsync(paths), fallbackDelay);
+
+    /// <summary>
+    /// Runs <paramref name="open"/> once, in a job of <see cref="DispatcherPriority.Background"/>, when
+    /// <paramref name="first"/> has its first sharp tile, with the rules of <see cref="OpenMoreFilesAfterFirstSharpTile"/>
+    /// (also the restart after an update, <see cref="Workspace.RestoreSession"/>). A window closed before that runs nothing.
+    /// </summary>
+    internal static void AfterFirstSharpTile(MainWindow window, MainViewModel viewModel, TabViewModel first, Action open, TimeSpan fallbackDelay)
     {
         var done = false;
         IDisposable? fallback = null;
@@ -245,7 +305,7 @@ public sealed class App : Application
                 {
                     if (ReferenceEquals(window.DataContext, viewModel))
                     {
-                        _ = viewModel.OpenInBackgroundAsync(paths);
+                        open();
                     }
                 },
                 DispatcherPriority.Background);

@@ -178,6 +178,17 @@ public sealed class SettingsViewModel : ViewModelBase
         set => PageAppearance = value ? PageAppearanceSetting.FollowTheme : PageAppearanceSetting.Light;
     }
 
+    /// <summary>
+    /// Gets or sets whether Pagewing checks for updates by itself (once per start, at most once in 24 hours). Off means no
+    /// network access at all; the command "Check for updates" still works on request. It takes effect at the next start:
+    /// the check of a running process has begun or not.
+    /// </summary>
+    public bool UpdateCheck
+    {
+        get => _settings.Current.UpdateCheck;
+        set => Change(current => current with { UpdateCheck = value });
+    }
+
     /// <summary>Gets or sets the page layout new tabs start with; the tabs that are open keep theirs.</summary>
     public PageLayoutMode DefaultLayout
     {
@@ -370,6 +381,7 @@ public sealed class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(Language));
         OnPropertyChanged(nameof(Density));
         OnPropertyChanged(nameof(ReduceMotion));
+        OnPropertyChanged(nameof(UpdateCheck));
         OnPropertyChanged(nameof(PageAppearance));
         OnPropertyChanged(nameof(DarkPages));
         OnPropertyChanged(nameof(DefaultLayout));

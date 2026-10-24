@@ -6,7 +6,8 @@ name: Release
 #
 # Dry run (build and all smoke tests, no upload):
 #   gh workflow run release.yml --ref release/v0.1.0 -f tag=v0.1.0 -f ref=release/v0.1.0 -f upload=false
-# (ref builds that branch, because the tag does not exist before the release; with ref set nothing is uploaded).
+# (ref builds that branch, because the tag does not exist before the release; with ref set nothing is uploaded, the
+# key check of the preflight job is skipped, and the job that signs the update manifest does not run at all).
 # The repository is private; fork PRs must stay approval-gated (CLAUDE.md, section CI), this workflow never runs for forks.
 
 on:
@@ -42,8 +43,55 @@ env:
   AVALONIA_TELEMETRY_OPTOUT: '1'
 
 jobs:
+  # Before anything is uploaded: the tag must trust a real update key. A release that ships only the placeholder of
+  # src/Pagewing.Core/Updates/UpdateTrust.cs could never update itself, and a rerun cannot fix a tag. A dry run
+  # (upload=false) skips the check, so the build can be tried before the signing key exists.
+  preflight:
+    name: release-preflight
+    runs-on: [self-hosted, dotnet-linux]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+    steps:
+      - name: Check the tag
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
+          echo "Tag $TAG, Hochladen: $UPLOAD"
+
+      # A branch build is a dry run: what is uploaded must be built from the tag.
+      - name: Refuse to upload a branch build
+        if: env.UPLOAD == 'true' && inputs.ref != ''
+        run: |
+          echo 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.' >&2
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.UPLOAD == 'true'
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
+        if: env.UPLOAD == 'true'
+        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: env.UPLOAD == 'true'
+        with:
+          dotnet-version: '10.0.x'
+
+      # Fails while UpdateTrust.cs holds only the placeholder (packaging/README.md, "Signaturschlüssel für Updates").
+      - name: Check that the tag trusts a real update key
+        if: env.UPLOAD == 'true'
+        run: dotnet run tools/package.cs -- update-verify --keys-from-source
+
   windows:
     name: release-windows
+    needs: preflight
     runs-on: [self-hosted, dotnet-windows]
     timeout-minutes: 60
     # Needed to attach files to the release (gh release upload).
@@ -160,6 +208,7 @@ jobs:
 
   linux:
     name: release-linux
+    needs: preflight
     runs-on: [self-hosted, dotnet-linux]
     timeout-minutes: 60
     # Needed to attach files to the release (gh release upload).
@@ -247,3 +296,129 @@ jobs:
             out/release/fuse-3.15.0.tar.xz \
             out/release/type2-runtime-20251108.tar.gz \
             out/release/SHA256SUMS-linux.txt --clobber
+
+  # The signed update manifest (Milestone 8.1): built from the checksums and the file sizes of the release, signed with
+  # the repository secret PAGEWING_UPDATE_SIGNING_KEY, verified with the keys compiled into the app, and uploaded. Runs
+  # only after both build jobs have uploaded their files. The secret appears in exactly one place, the env of the step
+  # "Sign the update manifest", which runs nothing but the signing command of the tool that the step before built from
+  # the tag's checkout into a fresh folder of this job (no dotnet run with its shared script cache on this runner);
+  # package.cs selftest (ManifestJobParts) keeps it so. A pre-release gets no manifest: the app reads only X.Y.Z
+  # versions, and releases/latest never names a pre-release.
+  manifest:
+    name: release-manifest
+    needs: [windows, linux]
+    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && (github.event_name == 'release' || inputs.upload) }}
+    runs-on: [self-hosted, dotnet-linux]
+    timeout-minutes: 30
+    # Needed to attach the manifest to the release (gh release upload).
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      # The id of the signing key; it must name a key in src/Pagewing.Core/Updates/UpdateTrust.cs (packaging/README.md,
+      # section "Signaturschlüssel für Updates").
+      UPDATE_KEY_ID: release-1
+    steps:
+      - name: Check the tag and derive the version
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
+          version="${TAG#v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [[ "$version" == *-* ]]; then
+            echo "STABLE=false" >> "$GITHUB_ENV"
+            echo "Tag $TAG ist eine Vorabversion: kein Update-Manifest (die App liest nur X.Y.Z)"
+          else
+            echo "STABLE=true" >> "$GITHUB_ENV"
+            echo "Tag $TAG, Version $version, Schluessel $UPDATE_KEY_ID"
+          fi
+
+      # A branch build is a dry run: what is signed must belong to the files built from the tag.
+      - name: Refuse to upload a branch build
+        if: inputs.ref != ''
+        run: |
+          echo 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.' >&2
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.STABLE == 'true'
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
+        if: env.STABLE == 'true'
+        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: env.STABLE == 'true'
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check the release prerequisites (gh)
+        if: env.STABLE == 'true'
+        run: |
+          command -v gh >/dev/null || { echo 'gh (GitHub CLI) not found on PATH: install it and restart the runner so that it sees the new PATH' >&2; exit 1; }
+          gh --version
+
+      - name: Self-test of the packaging tool
+        if: env.STABLE == 'true'
+        run: dotnet run tools/package.cs -- selftest
+
+      # A release must never ship the placeholder key as its only trust (UpdateTrustTests).
+      - name: Check that the release key is not the placeholder
+        if: env.STABLE == 'true'
+        env:
+          PAGEWING_REQUIRE_RELEASE_KEY: '1'
+        run: dotnet test --project tests/Pagewing.Core.Tests -c Release -- --filter-method "Pagewing.Core.Tests.Updates.UpdateTrustTests.ReleaseKeysAreNotThePlaceholderWhenReleasing"
+
+      # The tool that later sees the signing key: built from this checkout as a converted project into a folder of this
+      # job that is wiped first (own obj and bin, not the script cache that pull-request CI on this runner shares), with
+      # no build servers, no Directory.Build.* or Directory.Packages.props from above the folder and no response files.
+      - name: Build the packaging tool for signing
+        if: env.STABLE == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/package-tool"
+          mkdir -p "$RUNNER_TEMP/package-tool"
+          dotnet project convert tools/package.cs -o "$RUNNER_TEMP/package-tool/src"
+          dotnet build "$RUNNER_TEMP/package-tool/src" -c Release -o "$RUNNER_TEMP/package-tool/bin" --disable-build-servers -noAutoResponse -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false -p:ImportDirectoryPackagesProps=false
+          echo "PACKAGE_TOOL=$RUNNER_TEMP/package-tool/bin/package.dll" >> "$GITHUB_ENV"
+
+      - name: Download the checksums and the file sizes
+        if: env.STABLE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # No .git on the runner (checkout zip): name the repository explicitly.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          rm -rf out/manifest
+          mkdir -p out/manifest
+          gh release download "$TAG" --pattern SHA256SUMS-windows.txt --pattern SHA256SUMS-linux.txt --dir out/manifest
+          gh release view "$TAG" --json assets > out/manifest/assets.json
+
+      - name: Build the update manifest
+        if: env.STABLE == 'true'
+        run: dotnet "$PACKAGE_TOOL" update-manifest --version "$VERSION" --sums out/manifest/SHA256SUMS-windows.txt out/manifest/SHA256SUMS-linux.txt --sizes out/manifest/assets.json --out out/manifest/update-manifest.json
+
+      # The only step that sees the signing key. The tool reads it from the environment, never prints it, never writes
+      # it to disk, and verifies the signature with the public key of UpdateTrust.cs before it writes the .sig file.
+      - name: Sign the update manifest
+        if: env.STABLE == 'true'
+        env:
+          PAGEWING_UPDATE_SIGNING_KEY: ${{ secrets.PAGEWING_UPDATE_SIGNING_KEY }}
+        run: dotnet "$PACKAGE_TOOL" update-sign --manifest out/manifest/update-manifest.json --key-env PAGEWING_UPDATE_SIGNING_KEY --id "$UPDATE_KEY_ID" --out out/manifest/update-manifest.json.sig
+
+      - name: Verify the signature with the keys in UpdateTrust.cs
+        if: env.STABLE == 'true'
+        run: dotnet "$PACKAGE_TOOL" update-verify --manifest out/manifest/update-manifest.json --sig out/manifest/update-manifest.json.sig --keys-from-source
+
+      - name: Upload the manifest to the release
+        if: env.STABLE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # No .git on the runner (checkout zip): name the repository explicitly.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release upload "$TAG" out/manifest/update-manifest.json out/manifest/update-manifest.json.sig --clobber
