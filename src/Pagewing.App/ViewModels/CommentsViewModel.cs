@@ -64,7 +64,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(tab);
         _tab = tab;
         JumpCommand = new RelayCommand<CommentItemViewModel>(Jump);
-        CommitCommentCommand = new RelayCommand(CommitComment, () => SelectedIsEditable && !_tab.IsEditingFrozen);
+        CommitCommentCommand = new RelayCommand(CommitComment, () => SelectedIsEditable && _tab.CanRunEdit);
         DiscardCommentCommand = new RelayCommand(DiscardComment);
         DeleteCommand = new RelayCommand(Delete, () => SelectedIsEditable && !_tab.IsEditingFrozen);
         SetItemColorCommand = new RelayCommand<MarkupColor>(SetItemColor);
@@ -272,15 +272,20 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// </summary>
     internal void ApplyDraft()
     {
-        if (_disposed || !IsEditing || _selected is not { Annotation.Editable: true } item
-            || _commentDraft == (item.Annotation.Contents ?? string.Empty)
-            || (_applied is { } applied && ReferenceEquals(applied.Item, item) && applied.Text == _commentDraft))
+        if (HasPendingDraft)
         {
-            return;
+            CommitComment();
         }
-
-        CommitComment();
     }
+
+    /// <summary>
+    /// Gets whether a comment typed for the selected entry waits to be applied: it differs from the entry's comment and was
+    /// not applied yet (<see cref="ApplyDraft"/> applies it once the tab takes edits).
+    /// </summary>
+    internal bool HasPendingDraft =>
+        !_disposed && IsEditing && _selected is { Annotation.Editable: true } item
+        && _commentDraft != (item.Annotation.Contents ?? string.Empty)
+        && !(_applied is { } applied && ReferenceEquals(applied.Item, item) && applied.Text == _commentDraft);
 
     /// <summary>Stops reading and lets go of the tab and the session. May be called more than once.</summary>
     public void Dispose()
@@ -440,6 +445,11 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         {
             TryStart();
         }
+        else if (e.PropertyName == nameof(TabViewModel.IsAskedAbout))
+        {
+            // A card asks about the tab: Ctrl+Enter waits for its answer (the text stays).
+            CommitCommentCommand.RaiseCanExecuteChanged();
+        }
         else if (e.PropertyName == nameof(TabViewModel.IsEditingFrozen))
         {
             // Locked for an update: what was typed stays (read-only), nothing is applied.
@@ -460,6 +470,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
             }
 
             OnPropertyChanged(nameof(IsEditing));
+            CommitCommentCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -472,6 +483,13 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
         var text = _commentDraft;
         if (text == (item.Annotation.Contents ?? string.Empty))
+        {
+            return;
+        }
+
+        // Only an edit the tab takes counts as applied: one refused now (a card asks about the tab) keeps the text typed and
+        // is applied later (ApplyDraft), never dropped.
+        if (!_tab.CanRunEdit)
         {
             return;
         }

@@ -242,13 +242,20 @@ public sealed partial class TabViewModel
     internal Task RunEditAsync(Func<AnnotationEditor, Task> edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
-        if (_disposed || !_isAnnotating || !CanRunMarkup())
+        if (!CanRunEdit)
         {
             return Task.CompletedTask;
         }
 
         return Track(RunEditCoreAsync(edit));
     }
+
+    /// <summary>
+    /// Gets whether <see cref="RunEditAsync"/> takes an edit of the "Comments" panel now: the mode is on, no card of the save
+    /// flow asks about the tab (<see cref="IsAskedAbout"/>) and editing is not locked for an update. Otherwise it refuses
+    /// silently, so a caller that must not lose what the user typed asks first.
+    /// </summary>
+    internal bool CanRunEdit => !_disposed && _isAnnotating && CanRunMarkup();
 
     /// <summary>
     /// Waits until the changes the tab started (markups whose geometry is read, edits of the panel) and every operation of

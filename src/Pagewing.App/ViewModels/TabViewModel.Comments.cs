@@ -34,6 +34,12 @@ public sealed partial class TabViewModel
     /// </summary>
     internal void ApplyCommentDraft() => _comments?.ApplyDraft();
 
+    /// <summary>
+    /// Gets whether a typed comment waits and cannot be applied now because a card asks about the tab: the update asks again
+    /// once that card is answered.
+    /// </summary>
+    internal bool HasDraftWaitingForACard => _comments is { HasPendingDraft: true } && IsAskedAbout;
+
     /// <summary>The list belongs to the document that was replaced or closed: it goes, a later access makes a new one.</summary>
     private void DiscardComments()
     {

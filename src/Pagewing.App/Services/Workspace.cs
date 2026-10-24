@@ -540,6 +540,12 @@ internal sealed class Workspace : IDisposable, ITabDragHost
                 {
                     return false;
                 }
+
+                // A typed comment that waited for a card is applied in the next round; the dispatcher gets its turn first.
+                if (window.HasUnansweredChanges(answers))
+                {
+                    await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                }
             }
         }
         finally

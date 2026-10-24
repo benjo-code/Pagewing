@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
@@ -463,7 +464,7 @@ public sealed class UpdateWithChangesTests : UpdateTestHost
         Assert.True(workspace.EditingFrozen);
         Assert.True(a.IsEditingFrozen);
 
-        // A markup, the commands of the mode, undo, save and closing: nothing happens.
+        // A markup, the commands of the mode, undo and save: nothing happens.
         a.ActivateTabCommand.Execute(clean);
         await WaitUntilAsync(window, () => ReferenceEquals(view.Document, clean.Session.Document));
         var selection = await view.SelectAsync(0, 0, 5);
@@ -483,12 +484,6 @@ public sealed class UpdateWithChangesTests : UpdateTestHost
         Settle(window);
         Assert.False(await a.SaveActiveTabAsync());
         Assert.Equal(version, answered.EditVersion);
-        a.CloseActiveTabCommand.Execute(null);
-        a.CloseTabCommand.Execute(clean);
-        window.Close();
-        Settle(window);
-        Assert.Equal(2, a.Tabs.Count);
-        Assert.True(window.IsVisible);
         Assert.Null(a.PendingSave);
         Assert.True(Find<TextBlock>(window, "EditingLockedText").IsEffectivelyVisible);
         Assert.Equal("Installing update – editing is locked", Strings.EditingLockedForUpdate);
@@ -503,6 +498,178 @@ public sealed class UpdateWithChangesTests : UpdateTestHost
         Assert.True(answered.UndoCommand.CanExecute(null));
         Assert.False(Find<TextBlock>(window, "EditingLockedText").IsEffectivelyVisible);
         await SaveCardHost.MarkAsync(window, clean);
+    }
+
+    [AvaloniaFact]
+    public async Task ClosingIsAllowedWhileLockedAndEndsWithoutQuestions()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, answered) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: true);
+        var view = Find<DocumentView>(window, "DocumentView");
+        await SaveCardHost.OpenAsync(window, a, view, _files.Copy("text-rich.pdf", "b.pdf"));
+        var path = answered.FullPath!;
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        Applier.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var install = coordinator.BeginInstallAsync();
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        a.PendingSave!.Resolve(PendingSaveChoice.DontSave);
+        await WaitUntilAsync(window, () => Applier.Calls == 1 && a.IsEditingFrozen);
+        var asked = RecordQuestions(a);
+
+        // Every change was answered before the lock: the tab with the discarded changes closes without a question, unsaved.
+        a.CloseTabCommand.Execute(answered);
+        Settle(window);
+        Assert.DoesNotContain(answered, a.Tabs);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+
+        // The window closes too, without a question (the installer would end the app anyway).
+        window.Close();
+        Settle(window);
+        Assert.False(window.IsVisible);
+        Assert.Empty(workspace.Windows);
+        Assert.Empty(asked);
+
+        Applier.Gate.SetResult();
+        await PumpUntilAsync(() => install.IsCompleted);
+    }
+
+    [AvaloniaFact]
+    public async Task AWindowEmptiedByATabDragDuringTheLockClosesNormally()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, _) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: false);
+        var view = Find<DocumentView>(window, "DocumentView");
+        var second = await SaveCardHost.OpenAsync(window, a, view, _files.Copy("text-rich.pdf", "b.pdf"));
+        Applier.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var install = coordinator.BeginInstallAsync();
+        await WaitUntilAsync(window, () => Applier.Calls == 1 && a.IsEditingFrozen);
+
+        // A tab dragged out into a window of its own and back (Esc): the emptied window closes as always.
+        var drag = workspace.BeginTabDrag(a, second, new Avalonia.PixelPoint(300, 300), new Avalonia.PixelPoint(10, 10));
+        Assert.NotNull(drag);
+        Assert.Equal(2, workspace.Windows.Count);
+        var floating = workspace.WindowOf(workspace.Windows[1]);
+        Assert.True(workspace.Windows[1].IsEditingFrozen);
+        drag.Cancel();
+        await WaitUntilAsync(window, () => workspace.Windows.Count == 1);
+        Assert.False(floating.IsVisible);
+        Assert.Contains(second, a.Tabs);
+        Assert.True(second.IsEditingFrozen);
+
+        Applier.Gate.SetResult();
+        await WaitUntilAsync(window, () => install.IsCompleted);
+    }
+
+    [AvaloniaFact]
+    public async Task ACommentTypedBehindASaveCardIsAppliedAfterItAndAskedAbout()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, tab) = await WindowWithFileAsync(workspace, "signed-docmdp-3.pdf", "signed.pdf", dirty: true);
+        var comments = await CommentOfAsync(window, tab);
+
+        // Ctrl+S shows the note about the signature; behind it a comment is typed; then "Install".
+        var save = a.SaveActiveTabAsync();
+        await SaveCardHost.WaitForCardAsync<SignatureWarningCard>(window, a, PendingSaveKind.SignatureNote);
+        var note = a.PendingSave!;
+        comments.CommentDraft = "Typed behind the card";
+        Assert.False(comments.CommitCommentCommand.CanExecute(null));
+        var install = coordinator.BeginInstallAsync();
+        Settle(window);
+        Assert.Same(note, a.PendingSave);
+        Assert.Equal(0, Source.DownloadCalls);
+
+        // The note is answered and the save runs; then the comment is applied and asked about like any change.
+        note.Resolve(PendingSaveChoice.Save);
+        Assert.True(await save);
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        Assert.Same(tab, a.PendingSave!.Tab);
+        a.PendingSave.Resolve(PendingSaveChoice.Save);
+        await WaitUntilAsync(window, () => install.IsCompleted);
+
+        Assert.Equal(1, Applier.Calls);
+        Assert.Equal("Typed behind the card", await SavedCommentAsync(tab.FullPath!));
+    }
+
+    [AvaloniaFact]
+    public async Task CtrlEnterBehindACardAppliesNothingAndKeepsTheText()
+    {
+        var (window, viewModel, view) = _files.Show();
+        var (tab, _) = await _files.OpenCopyAsync(window, viewModel, view, "signed-docmdp-3.pdf");
+        await SaveCardHost.MarkAsync(window, tab);
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Comments);
+        var comments = await CommentOfAsync(window, tab);
+        await WaitUntilAsync(window, () => TryFind<TextBox>(window, "CommentBox") is { IsEffectivelyVisible: true });
+        var save = viewModel.SaveActiveTabAsync();
+        await SaveCardHost.WaitForCardAsync<SignatureWarningCard>(window, viewModel, PendingSaveKind.SignatureNote);
+        var version = tab.EditVersion;
+
+        // Typed and Ctrl+Enter while the card asks: the text stays as typed, nothing is applied or marked as applied.
+        var box = Find<TextBox>(window, "CommentBox");
+        box.Focus();
+        Settle(window);
+        window.KeyTextInput("Note");
+        SaveCardHost.Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.Control);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        Settle(window);
+        Assert.Equal("Note", comments.CommentDraft);
+        Assert.Equal(version, tab.EditVersion);
+        Assert.False(tab.HasEditsInFlight);
+        Assert.True(comments.HasPendingDraft);
+
+        // Answered: Ctrl+Enter applies it now.
+        viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel);
+        Assert.False(await save);
+        box.Focus();
+        Settle(window);
+        SaveCardHost.Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.Control);
+        await WaitUntilAsync(window, () => comments.SelectedItem?.Annotation.Contents == "Note");
+        Assert.False(comments.HasPendingDraft);
+    }
+
+    [AvaloniaFact]
+    public async Task ACommentTypedBehindTheWindowsOwnQuestionIsStillAskedAbout()
+    {
+        var (workspace, coordinator) = await WorkspaceAsync();
+        var (a, window, tab) = await WindowWithFileAsync(workspace, "text-basic.pdf", "a.pdf", dirty: true);
+        var comments = await CommentOfAsync(window, tab);
+
+        // The window asks before it closes; behind its card a comment is typed; then "Install".
+        window.Close();
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        var closing = a.PendingSave!;
+        comments.CommentDraft = "Typed behind the close card";
+        var install = coordinator.BeginInstallAsync();
+        Settle(window);
+        Assert.Same(closing, a.PendingSave);
+
+        // "Cancel" there: the update applies the comment and asks; "Save" writes the markup with it.
+        closing.Resolve(PendingSaveChoice.Cancel);
+        await WaitUntilAsync(window, () => a.PendingSave is { } next && !ReferenceEquals(next, closing));
+        await SaveCardHost.WaitForCardAsync<SaveChangesCard>(window, a, PendingSaveKind.SaveChanges);
+        a.PendingSave!.Resolve(PendingSaveChoice.Save);
+        await WaitUntilAsync(window, () => install.IsCompleted);
+
+        Assert.Equal(1, Applier.Calls);
+        Assert.Equal("Typed behind the close card", await SavedCommentAsync(tab.FullPath!));
+    }
+
+    /// <summary>Starts the mode of <paramref name="tab"/> and selects its highlight in the "Comments" list.</summary>
+    private static async Task<CommentsViewModel> CommentOfAsync(MainWindow window, TabViewModel tab)
+    {
+        tab.BeginAnnotateCommand.Execute(null);
+        var comments = tab.Comments;
+        await WaitUntilAsync(window, () => tab.IsAnnotating && !comments.IsLoading && comments.Items.Any(item => item.Kind == AnnotationKind.Highlight));
+        comments.SelectedItem = comments.Items.First(item => item.Kind == AnnotationKind.Highlight);
+        Settle(window);
+        return comments;
+    }
+
+    /// <summary>The comment of the highlight in the file at <paramref name="path"/>.</summary>
+    private static async Task<string?> SavedCommentAsync(string path)
+    {
+        await using var reopened = await new PdfEngine().OpenAsync(path, cancellationToken: TestContext.Current.CancellationToken);
+        var annotations = await reopened.GetAnnotationsAsync(0, TestContext.Current.CancellationToken);
+        return annotations.Single(annotation => annotation.Kind == AnnotationKind.Highlight).Contents;
     }
 
     [AvaloniaFact]

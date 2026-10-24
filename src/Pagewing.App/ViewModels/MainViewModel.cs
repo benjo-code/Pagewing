@@ -1174,9 +1174,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void CloseTab(TabViewModel? tab)
     {
-        // While an update is being installed nothing closes: the app ends in a moment (the status bar says so).
-        if (tab is null || Tabs.IndexOf(tab) < 0 || _isEditingFrozen)
+        if (tab is null || Tabs.IndexOf(tab) < 0)
         {
+            return;
+        }
+
+        // While an update is being installed every change was answered before and none can come: no question.
+        if (_isEditingFrozen)
+        {
+            CloseTabNow(tab);
             return;
         }
 

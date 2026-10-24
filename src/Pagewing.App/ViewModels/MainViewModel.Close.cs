@@ -60,10 +60,11 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Gets whether <see cref="ResolveUnsavedChangesAsync(Dictionary{TabViewModel, int})"/> has something to ask about with
-    /// <paramref name="answers"/>: a tab with unsaved changes and no "Don't save" for its present version, or a change on its way.
+    /// <paramref name="answers"/>: a tab with unsaved changes and no "Don't save" for its present version, a change on its way,
+    /// or a typed comment that waits for the answer of a card about its tab.
     /// </summary>
     internal bool HasUnansweredChanges(IReadOnlyDictionary<TabViewModel, int> answers) =>
-        !_disposed && (Tabs.Any(tab => tab.HasEditsInFlight) || NextToAsk(null, answers) is not null);
+        !_disposed && (Tabs.Any(tab => tab.HasEditsInFlight || tab.HasDraftWaitingForACard) || NextToAsk(null, answers) is not null);
 
     /// <summary>Brings the window to the front (and out of the task bar when it is minimized).</summary>
     internal void BringToFront() => ActivationRequested?.Invoke();
@@ -77,7 +78,8 @@ public sealed partial class MainViewModel
     /// <summary>
     /// Gets or sets whether editing is locked in every tab of the window because an update is being installed (set by the
     /// workspace from the user's last answer until the installation ends without a restart, <see cref="TabViewModel.IsEditingFrozen"/>).
-    /// Meanwhile tabs and the window do not close (the app is about to end anyway); the status bar says why.
+    /// Closing a tab or the window meanwhile goes through without asking (every change was answered before the lock, none
+    /// can come during it); the status bar says why nothing can be edited.
     /// </summary>
     internal bool IsEditingFrozen
     {
