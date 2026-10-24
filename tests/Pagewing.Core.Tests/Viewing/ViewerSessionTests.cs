@@ -798,6 +798,55 @@ public sealed class ViewerSessionTests
     }
 
     [Fact]
+    public async Task PagesInvalidatedNamesThePagesBeforeChanged()
+    {
+        var session = new ViewerSession(engine);
+        var events = new List<string>();
+        var gate = new object();
+        session.PagesInvalidated += pages =>
+        {
+            lock (gate)
+            {
+                events.Add("pages " + string.Join(",", pages.Order()));
+            }
+        };
+        session.Changed += () =>
+        {
+            lock (gate)
+            {
+                events.Add("changed");
+            }
+        };
+
+        // Without a document there is nothing to name.
+        session.InvalidatePages(new HashSet<int> { 0 });
+        Assert.Empty(events);
+
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        lock (gate)
+        {
+            events.Clear();
+        }
+
+        var pages = new HashSet<int> { 1, 0 };
+        session.InvalidatePages(pages);
+
+        // The pages first (on the calling thread), then the one Changed; the set is a copy the caller may change afterwards.
+        pages.Add(5);
+        lock (gate)
+        {
+            Assert.Equal(["pages 0,1", "changed"], events);
+            events.Clear();
+        }
+
+        // An empty set and a disposed session name nothing.
+        session.InvalidatePages(new HashSet<int>());
+        session.Dispose();
+        session.InvalidatePages(new HashSet<int> { 0 });
+        Assert.Empty(events);
+    }
+
+    [Fact]
     public async Task OpenRemembersThePathStampAndCloseForgetsIt()
     {
         using var folder = new TempFolder();

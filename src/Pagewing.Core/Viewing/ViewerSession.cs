@@ -130,6 +130,17 @@ public sealed class ViewerSession : IDisposable
     /// </summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// Occurs when <see cref="InvalidatePages"/> dropped what the session kept of some pages (their content changed), with
+    /// those zero-based pages as a copy, just before the <see cref="Changed"/> of the same call. Raised on the thread that
+    /// called <see cref="InvalidatePages"/> (any thread), never while the session holds a lock, and not for a call that a
+    /// newer document overtook or after <see cref="Dispose"/>. The UI drops the images it converted from those pages (they
+    /// are no longer in the caches) and plans again. A handler must not throw and must not wait for another thread; like a
+    /// handler of <see cref="Changed"/> it must not call <see cref="InvalidatePages"/>, <see cref="SetPageTheme"/> or
+    /// <see cref="AdoptSavedDocumentAsync"/>.
+    /// </summary>
+    public event Action<IReadOnlySet<int>>? PagesInvalidated;
+
     /// <summary>Gets whether the tab of the session is shown; see <see cref="SetActive"/> (for tests).</summary>
     internal bool IsActive
     {
@@ -644,6 +655,7 @@ public sealed class ViewerSession : IDisposable
             done = currentScheduler;
         }
 
+        RaisePagesInvalidated(new HashSet<int>(pages), mine);
         Raise(mine);
     }
 
@@ -991,6 +1003,42 @@ public sealed class ViewerSession : IDisposable
             catch (Exception ex)
             {
                 // A failing handler must not break the state machine; it surfaces like any unhandled exception on a pool thread.
+                var captured = ExceptionDispatchInfo.Capture(ex);
+                ThreadPool.UnsafeQueueUserWorkItem(static state => ((ExceptionDispatchInfo)state!).Throw(), captured);
+            }
+            finally
+            {
+                handlerDepth--;
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref raising);
+        }
+    }
+
+    /// <summary>
+    /// Raises <see cref="PagesInvalidated"/> like <see cref="Raise"/> raises <see cref="Changed"/>: not after
+    /// <see cref="Dispose"/> or for a superseded generation, counted in <see cref="raising"/> so that Dispose waits for it.
+    /// </summary>
+    private void RaisePagesInvalidated(IReadOnlySet<int> pages, long mine)
+    {
+        Interlocked.Increment(ref raising);
+        try
+        {
+            if (disposed || Volatile.Read(ref generation) != mine || PagesInvalidated is not { } handler)
+            {
+                return;
+            }
+
+            handlerDepth++;
+            try
+            {
+                handler(pages);
+            }
+            catch (Exception ex)
+            {
+                // As for Changed: a failing handler surfaces like any unhandled exception on a pool thread.
                 var captured = ExceptionDispatchInfo.Capture(ex);
                 ThreadPool.UnsafeQueueUserWorkItem(static state => ((ExceptionDispatchInfo)state!).Throw(), captured);
             }
