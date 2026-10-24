@@ -39,7 +39,8 @@ public sealed partial class MainViewModel
     /// Asks about every tab of this window with unsaved changes in turn, the active one first, then the others from left to
     /// right: each is shown and its card asks "Save", "Don't save" or "Cancel" (a tab whose changes cannot be saved:
     /// "Close and discard changes" or "Cancel"); "Save" saves it (with the questions of the save, <see cref="SaveTabAsync"/>).
-    /// A save that runs ends first. Nothing is closed here: the caller closes the tabs or the window when the answer is
+    /// A save that runs ends first. Then the tabs are looked at again until none is left to ask about: a tab changed after
+    /// its "Don't save", or one that came from another window meanwhile, is asked (again). Nothing is closed here: the caller closes the tabs or the window when the answer is
     /// <see langword="true"/>, and their changes go with them.
     /// </summary>
     /// <returns>
@@ -57,7 +58,13 @@ public sealed partial class MainViewModel
         }
     }
 
-    /// <summary>The flow of <see cref="ResolveUnsavedChangesAsync"/>, for every tab with changes or only <paramref name="only"/>.</summary>
+    /// <summary>
+    /// The flow of <see cref="ResolveUnsavedChangesAsync"/>, for every tab with changes or only <paramref name="only"/>. It
+    /// asks again and again until a pass finds no tab left to ask about: the other tabs stay usable meanwhile, so a tab
+    /// may change after its answer, or come from another window. A "Don't save" counts only for the version of the tab's
+    /// history it was given for (<see cref="TabViewModel.EditVersion"/>); a later change asks again. Each round asks the
+    /// user, and "Cancel" ends it, so it ends.
+    /// </summary>
     private async Task<bool> ResolveAsync(TabViewModel? only)
     {
         if (_disposed || _resolving)
@@ -66,41 +73,39 @@ public sealed partial class MainViewModel
         }
 
         _resolving = true;
+        var discarded = new Dictionary<TabViewModel, int>();
         try
         {
-            // A save that runs (it may wait on its own card) ends first; its tab is shown, so the user sees what waits.
-            while (_saveRun is { IsCompleted: false } running)
+            while (!_disposed)
             {
-                if (_pendingSave is { } waiting && Tabs.IndexOf(waiting.Tab) >= 0)
+                // A save that runs (it may wait on its own card) ends first; its tab is shown, so the user sees what waits.
+                while (_saveRun is { IsCompleted: false } running)
                 {
-                    Tabs.Activate(waiting.Tab);
+                    if (_pendingSave is { } waiting && Tabs.IndexOf(waiting.Tab) >= 0)
+                    {
+                        Tabs.Activate(waiting.Tab);
+                    }
+
+                    await running;
                 }
 
-                await running;
-            }
-
-            TabViewModel[] order = only is not null
-                ? [only]
-                : Tabs.Where(tab => ReferenceEquals(tab, ActiveTab)).Concat(Tabs.Where(tab => !ReferenceEquals(tab, ActiveTab))).ToArray();
-            foreach (var tab in order)
-            {
                 if (_disposed)
                 {
-                    return false;
+                    break;
                 }
 
-                if (Tabs.IndexOf(tab) < 0 || !tab.AsksBeforeClosing)
+                if (NextToAsk(only, discarded) is not { } tab)
                 {
-                    continue;
+                    return true;
                 }
 
-                if (!await AskBeforeClosingAsync(tab))
+                if (!await AskBeforeClosingAsync(tab, discarded))
                 {
                     return false;
                 }
             }
 
-            return !_disposed;
+            return false;
         }
         finally
         {
@@ -108,9 +113,26 @@ public sealed partial class MainViewModel
         }
     }
 
-    /// <summary>Shows <paramref name="tab"/> and asks about its changes; "Save" saves it.</summary>
-    /// <returns>Whether the tab may close.</returns>
-    private async Task<bool> AskBeforeClosingAsync(TabViewModel tab)
+    /// <summary>
+    /// The next tab to ask about, the active one first, then from left to right: it has unsaved changes and no "Don't save"
+    /// for its present version.
+    /// </summary>
+    private TabViewModel? NextToAsk(TabViewModel? only, Dictionary<TabViewModel, int> discarded)
+    {
+        IEnumerable<TabViewModel> candidates = only is not null
+            ? Tabs.Where(tab => ReferenceEquals(tab, only))
+            : Tabs.Where(tab => ReferenceEquals(tab, ActiveTab)).Concat(Tabs.Where(tab => !ReferenceEquals(tab, ActiveTab)));
+        return candidates.FirstOrDefault(tab =>
+            tab.AsksBeforeClosing && !(discarded.TryGetValue(tab, out var version) && version == tab.EditVersion));
+    }
+
+    /// <summary>
+    /// Shows <paramref name="tab"/> and asks about its changes. "Save" saves it; a save that cannot run now (the tab
+    /// prints, for example) says why on a card and keeps the tab, unless the tab is clean by then. "Don't save" is
+    /// remembered with the version of the tab's history.
+    /// </summary>
+    /// <returns>Whether the flow goes on (the tab was saved or its changes may go).</returns>
+    private async Task<bool> AskBeforeClosingAsync(TabViewModel tab, Dictionary<TabViewModel, int> discarded)
     {
         Tabs.Activate(tab);
         var path = tab.FullPath ?? tab.FileName ?? string.Empty;
@@ -120,12 +142,31 @@ public sealed partial class MainViewModel
         switch (await AskAsync(question, CancellationToken.None))
         {
             case PendingSaveChoice.Save:
-                // Saved (also under another name after the signature card): the tab is clean and may close.
-                return await SaveTabAsync(tab, saveAs: false) && !tab.AsksBeforeClosing;
+                if (!CanSaveNow(tab))
+                {
+                    if (!tab.AsksBeforeClosing)
+                    {
+                        // Clean meanwhile: nothing to save.
+                        return true;
+                    }
+
+                    await AskAsync(PendingSave.SaveNotPossible(tab, path, printing: tab.IsPrinting), CancellationToken.None);
+                    return false;
+                }
+
+                // Saved (also under another name after the signature card): the next pass asks again if it changed since.
+                // Not saved: the save showed why (its card) or the user cancelled there.
+                return await SaveTabAsync(tab, saveAs: false);
             case PendingSaveChoice.DontSave or PendingSaveChoice.Discard:
+                discarded[tab] = tab.EditVersion;
                 return true;
             default:
                 return false;
         }
     }
+
+    /// <summary>Whether <see cref="SaveTabAsync"/> would start a save of <paramref name="tab"/> now (it refuses silently otherwise).</summary>
+    private bool CanSaveNow(TabViewModel tab) =>
+        !_disposed && _savingTab is null && _pendingSave is null && Tabs.IndexOf(tab) >= 0 && tab.CanSave()
+        && tab.Document is not null && tab.FullPath is not null;
 }

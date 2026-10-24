@@ -37,9 +37,16 @@ public abstract class SaveCard : UserControl
         KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Cycle);
 
         // Key bindings of the window are matched from the focused element upwards before any key event: with the focus
-        // on the card, these keys of the document (page turning, history, search, page field) do nothing behind it.
+        // on the card, these keys of the document (page turning, history, search, page field) do nothing behind it, nor do
+        // the keys that would change, save or print the changes the card asks about (undo, redo, save, save as, print).
         foreach (var gesture in new[]
         {
+            new KeyGesture(Key.Z, KeyModifiers.Control),
+            new KeyGesture(Key.Z, KeyModifiers.Control | KeyModifiers.Shift),
+            new KeyGesture(Key.Y, KeyModifiers.Control),
+            new KeyGesture(Key.S, KeyModifiers.Control),
+            new KeyGesture(Key.S, KeyModifiers.Control | KeyModifiers.Shift),
+            new KeyGesture(Key.P, KeyModifiers.Control),
             new KeyGesture(Key.PageUp),
             new KeyGesture(Key.PageDown),
             new KeyGesture(Key.Left, KeyModifiers.Alt),

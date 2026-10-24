@@ -50,6 +50,25 @@ public sealed class AnnotationEditorTests : IDisposable
     }
 
     [Fact]
+    public async Task VersionChangesWithEveryStepAndNeverComesBack()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var seen = new List<int> { editor.Version };
+
+        var rects = await WordRectsAsync(session.Document!, 0, "Hello");
+        Assert.NotNull(await editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, rects, Yellow, null, null));
+        seen.Add(editor.Version);
+        await editor.UndoAsync();
+        seen.Add(editor.Version);
+        await editor.RedoAsync();
+        seen.Add(editor.Version);
+
+        // Every step has a version of its own, also the undo back to the opened state: nothing equals an earlier look.
+        Assert.Equal(seen.Count, seen.Distinct().Count());
+    }
+
+    [Fact]
     public async Task EmptyGeometryCreatesNothing()
     {
         using var session = await OpenSessionAsync("text-basic.pdf");

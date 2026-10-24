@@ -86,6 +86,22 @@ public sealed class AnnotationEditor
         }
     }
 
+    /// <summary>
+    /// Gets the version of the history: it changes with every step (a change, undo, redo, a save, a forgotten history) and
+    /// never comes back to an earlier value, so a caller can tell whether anything happened since it last looked (the
+    /// question before closing: a "Don't save" counts only for the version it was given for).
+    /// </summary>
+    public int Version
+    {
+        get
+        {
+            lock (gate)
+            {
+                return history.Version;
+            }
+        }
+    }
+
     /// <summary>Gets whether <see cref="UndoAsync"/> has something to undo.</summary>
     public bool CanUndo
     {

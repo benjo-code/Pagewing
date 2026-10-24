@@ -355,6 +355,8 @@ public static class Strings
     public static string DiscardChangesTitle => Get("DiscardChangesTitle");
     public static string DiscardChangesSourceModified => Get("DiscardChangesSourceModified");
     public static string DiscardChangesEncrypted => Get("DiscardChangesEncrypted");
+    public static string SaveNotPossiblePrinting => Get("SaveNotPossiblePrinting");
+    public static string SaveNotPossible => Get("SaveNotPossible");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

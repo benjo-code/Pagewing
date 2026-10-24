@@ -45,6 +45,9 @@ internal sealed class SaveCardHost : IDisposable
     /// <summary>Gets the clock of every window of the host (moves only when told to).</summary>
     public PrintClock Clock { get; } = new();
 
+    /// <summary>Gets the print service of the windows (never the system's).</summary>
+    public FakePrintService Print { get; } = new();
+
     /// <summary>Gets the file picker of the windows: its save dialog returns <see cref="SavePicker.Result"/>.</summary>
     public SavePicker Picker { get; } = new();
 
@@ -76,6 +79,7 @@ internal sealed class SaveCardHost : IDisposable
         {
             IsWindowsTitleBar = true,
             Clock = Clock,
+            PrintServiceFactory = () => Print,
         };
         _cleanup.Add(viewModel);
         var window = new MainWindow { DataContext = viewModel, Width = 1024, Height = 720, RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Light };

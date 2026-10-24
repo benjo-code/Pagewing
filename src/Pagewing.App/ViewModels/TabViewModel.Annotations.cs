@@ -22,6 +22,7 @@ public sealed partial class TabViewModel
     private bool _canRedo;
     private bool _isSaving;
     private bool _isPrinting;
+    private bool _isAskedAbout;
     private double _saveProgress;
 
     // The signatures of the document, read at its first save (never at open), and whether the note about a signature that
@@ -164,10 +165,10 @@ public sealed partial class TabViewModel
     public ICommand SaveAsCommand => _saveAsCommand ??= new RelayCommand(() => SaveRequested?.Invoke(true), CanSaveAs);
 
     /// <summary>Ctrl+Z: undoes the newest change of the annotations.</summary>
-    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(() => _ = StepAsync(undo: true), () => IsReady && _canUndo && !_isSaving);
+    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(() => _ = StepAsync(undo: true), () => IsReady && _canUndo && !_isSaving && !_isAskedAbout);
 
     /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again.</summary>
-    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(() => _ = StepAsync(undo: false), () => IsReady && _canRedo && !_isSaving);
+    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(() => _ = StepAsync(undo: false), () => IsReady && _canRedo && !_isSaving && !_isAskedAbout);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with
@@ -177,8 +178,38 @@ public sealed partial class TabViewModel
     /// </summary>
     public SaveFailureReason? UnsaveableReason { get; internal set; }
 
-    /// <summary>Gets whether closing the tab asks first: it has unsaved changes.</summary>
-    internal bool AsksBeforeClosing => !_disposed && _isDirty;
+    /// <summary>
+    /// Gets whether closing the tab asks first: it has unsaved changes (as last mirrored, or as the editor has them now, so
+    /// a change whose mirror is still on its way counts too).
+    /// </summary>
+    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _editor?.IsDirty == true);
+
+    /// <summary>
+    /// Gets the version of the editor's history (<see cref="AnnotationEditor.Version"/>; 0 without an editor): a "Don't
+    /// save" before closing counts only for this version, any later change asks again.
+    /// </summary>
+    internal int EditVersion => _editor?.Version ?? 0;
+
+    /// <summary>
+    /// Gets or sets whether a card of the save flow asks about this tab (set by the window with
+    /// <see cref="MainViewModel.PendingSave"/>): meanwhile undo, redo, save, "Save as" and printing do nothing, so the
+    /// changes the card is about stay as they are.
+    /// </summary>
+    internal bool IsAskedAbout
+    {
+        get => _isAskedAbout;
+        set
+        {
+            if (_isAskedAbout != value)
+            {
+                _isAskedAbout = value;
+                RaiseSaveCanExecuteChanged();
+                _undoCommand?.RaiseCanExecuteChanged();
+                _redoCommand?.RaiseCanExecuteChanged();
+                OnPropertyChanged();
+            }
+        }
+    }
 
     /// <summary>Gets whether the note about a signature that allows comments was shown for the open document (window, once per document).</summary>
     internal bool SignatureNoteShown
@@ -191,7 +222,7 @@ public sealed partial class TabViewModel
     internal bool CanSave() => CanSaveAs() && _isDirty;
 
     /// <summary>Whether "Save as" can run: an open document, no save and no print job of the tab running.</summary>
-    internal bool CanSaveAs() => !_disposed && IsReady && _document is not null && !_isSaving && !_isPrinting;
+    internal bool CanSaveAs() => !_disposed && IsReady && _document is not null && !_isSaving && !_isPrinting && !_isAskedAbout;
 
     /// <summary>
     /// Reads the signatures of the open document once per document (at its first save, never at open) with

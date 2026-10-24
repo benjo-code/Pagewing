@@ -984,4 +984,10 @@
   <data name="DiscardChangesEncrypted" xml:space="preserve">
     <value>Pagewing cannot save changes to this encrypted document. They are lost when you close the tab.</value>
   </data>
+  <data name="SaveNotPossiblePrinting" xml:space="preserve">
+    <value>Saving is not possible right now because the document is being printed.</value>
+  </data>
+  <data name="SaveNotPossible" xml:space="preserve">
+    <value>Saving is not possible right now. Your changes stay in this tab.</value>
+  </data>
 </root>

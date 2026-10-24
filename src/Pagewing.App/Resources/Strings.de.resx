@@ -984,4 +984,10 @@
   <data name="DiscardChangesEncrypted" xml:space="preserve">
     <value>Pagewing kann Änderungen an diesem verschlüsselten Dokument nicht speichern. Sie gehen beim Schließen verloren.</value>
   </data>
+  <data name="SaveNotPossiblePrinting" xml:space="preserve">
+    <value>Speichern ist gerade nicht möglich, weil gedruckt wird.</value>
+  </data>
+  <data name="SaveNotPossible" xml:space="preserve">
+    <value>Speichern ist gerade nicht möglich. Ihre Änderungen bleiben in diesem Tab erhalten.</value>
+  </data>
 </root>

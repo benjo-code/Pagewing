@@ -88,6 +88,9 @@ public sealed class PendingSave
 {
     private readonly TaskCompletionSource<PendingSaveChoice> _choice = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    // The text of a question whose text is not given by its kind and reason (SaveNotPossible), or null.
+    private readonly Func<string>? _message;
+
     // When the card was last laid out (Clock timestamp); none: no card shows the question now.
     private long? _shownAt;
 
@@ -101,8 +104,10 @@ public sealed class PendingSave
         PendingSaveChoice[] choices,
         PendingSaveChoice defaultChoice,
         SaveFailureReason? reason = null,
-        DocMdpLevel level = DocMdpLevel.NotSet)
+        DocMdpLevel level = DocMdpLevel.NotSet,
+        Func<string>? message = null)
     {
+        _message = message;
         Kind = kind;
         Tab = tab;
         Path = path;
@@ -158,7 +163,7 @@ public sealed class PendingSave
     };
 
     /// <summary>Gets the text of the card in the language of the interface (never "valid" for a signature).</summary>
-    public string Message => Kind switch
+    public string Message => _message?.Invoke() ?? Kind switch
     {
         PendingSaveKind.SaveChanges => Strings.SaveChangesText,
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningText,
@@ -288,6 +293,14 @@ public sealed class PendingSave
         reason is SaveFailureReason.SourceModified or SaveFailureReason.EncryptedNotSupported
             ? new(PendingSaveKind.SaveError, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, reason)
             : new(PendingSaveKind.SaveError, tab, path, [PendingSaveChoice.SaveAs, PendingSaveChoice.Cancel], PendingSaveChoice.SaveAs, reason);
+
+    /// <summary>
+    /// "Save" before closing cannot start now (the tab prints, or the document cannot be saved at the moment): the error card
+    /// says so, with "Cancel" alone; the tab stays with its changes.
+    /// </summary>
+    internal static PendingSave SaveNotPossible(TabViewModel tab, string path, bool printing) =>
+        new(PendingSaveKind.SaveError, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel,
+            message: printing ? static () => Strings.SaveNotPossiblePrinting : static () => Strings.SaveNotPossible);
 
     /// <summary>The cause on the error card in everyday words; <see cref="SaveFailureReason.SourceModified"/> says that the changes stay.</summary>
     private static string MessageOf(SaveFailureReason? reason) => reason switch

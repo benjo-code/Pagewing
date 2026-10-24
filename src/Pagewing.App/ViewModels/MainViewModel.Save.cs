@@ -32,7 +32,19 @@ public sealed partial class MainViewModel
         {
             if (!ReferenceEquals(_pendingSave, value))
             {
+                if (_pendingSave is { } old)
+                {
+                    old.Tab.IsAskedAbout = false;
+                }
+
                 _pendingSave = value;
+                if (value is not null)
+                {
+                    // Undo, redo, save and print of that tab wait for the answer.
+                    value.Tab.IsAskedAbout = true;
+                }
+
+                _printCommand?.RaiseCanExecuteChanged();
                 OnPropertyChanged();
             }
         }

@@ -7,6 +7,7 @@ using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Printing;
 using Pagewing.Core.Saving;
 using Pagewing.Core.Viewing;
 using Xunit;
@@ -350,5 +351,237 @@ public sealed class CloseWithChangesTests : IDisposable
         Click(window, card.ButtonOf(PendingSaveChoice.Discard)!);
         await WaitUntilAsync(window, () => viewModel.Tabs.Count == 0);
         Assert.Equal(before, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [AvaloniaFact]
+    public async Task ATabChangedAfterItsAnswerIsAskedAgainBeforeTheWindowCloses()
+    {
+        var (window, viewModel, view) = _host.Show();
+        var (b, _) = await _host.OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var (a, aPath) = await _host.OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await MarkAsync(window, a);
+        await MarkAsync(window, b);
+        var closed = 0;
+        window.Closed += (_, _) => closed++;
+
+        // A (active) is saved first; then the card for B waits.
+        window.Close();
+        var card = await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        Assert.Same(a, viewModel.PendingSave!.Tab);
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { } question && ReferenceEquals(question.Tab, b) && card.IsVisible);
+        Assert.False(a.IsDirty);
+
+        // Meanwhile the user goes back to A and changes it again, then answers B with "Don't save".
+        viewModel.ActivateTabCommand.Execute(a);
+        Settle(window);
+        Assert.False(card.IsVisible);
+        await MarkAsync(window, a, page: 1);
+        viewModel.ActivateTabCommand.Execute(b);
+        await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.DontSave)!);
+
+        // The window does not close: A is asked about its new change.
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { } question && ReferenceEquals(question.Tab, a) && card.IsVisible);
+        Assert.True(window.IsVisible);
+        Assert.Equal(0, closed);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.DontSave)!);
+        await WaitUntilAsync(window, () => closed == 1);
+
+        // A keeps only its first save.
+        await using var reopened = await new PdfEngine().OpenAsync(aPath, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Single(await reopened.GetAnnotationsAsync(0, TestContext.Current.CancellationToken));
+        Assert.Empty(await reopened.GetAnnotationsAsync(1, TestContext.Current.CancellationToken));
+    }
+
+    [AvaloniaFact]
+    public async Task ADirtyTabAttachedWhileTheWindowAsksIsAskedBeforeItCloses()
+    {
+        var (window, viewModel, view) = _host.Show();
+        var (other, otherViewModel, otherView) = _host.Show();
+        var (first, _) = await _host.OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await MarkAsync(window, first);
+        await _host.OpenCopyAsync(other, otherViewModel, otherView, "hello_world.pdf");
+        var (moved, _) = await _host.OpenCopyAsync(other, otherViewModel, otherView, "text-basic.pdf", "moved.pdf");
+        await MarkAsync(other, moved);
+        var closed = 0;
+        window.Closed += (_, _) => closed++;
+
+        window.Close();
+        var card = await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        Assert.Same(first, viewModel.PendingSave!.Tab);
+
+        // A dirty tab comes from the other window (a tab dropped on the strip) while the first question waits.
+        otherViewModel.DetachTab(moved);
+        viewModel.AttachTab(moved, 1);
+        Settle(window);
+        viewModel.ActivateTabCommand.Execute(first);
+        await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.DontSave)!);
+
+        // It is asked about too, before the window closes.
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { } question && ReferenceEquals(question.Tab, moved) && card.IsVisible);
+        Assert.Equal(0, closed);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.DontSave)!);
+        await WaitUntilAsync(window, () => closed == 1);
+    }
+
+    [AvaloniaFact]
+    public async Task ATabDiscardedAndNotTouchedIsNotAskedTwice()
+    {
+        var (window, viewModel, view) = _host.Show();
+        var (b, _) = await _host.OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var (a, _) = await _host.OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await MarkAsync(window, a);
+        await MarkAsync(window, b);
+        var asked = new List<TabViewModel>();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.PendingSave) && viewModel.PendingSave is { } question)
+            {
+                asked.Add(question.Tab);
+            }
+        };
+        var closed = 0;
+        window.Closed += (_, _) => closed++;
+
+        window.Close();
+        var card = await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.DontSave)!);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { } question && ReferenceEquals(question.Tab, b) && card.IsVisible);
+
+        // Looking at A again without changing it keeps its answer.
+        viewModel.ActivateTabCommand.Execute(a);
+        Settle(window);
+        viewModel.ActivateTabCommand.Execute(b);
+        await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.DontSave)!);
+
+        await WaitUntilAsync(window, () => closed == 1);
+        Assert.Equal([a, b], asked);
+    }
+
+    [AvaloniaFact]
+    public async Task SaveThatCannotRunNowSaysWhyAndKeepsTheTab()
+    {
+        var (window, viewModel, view) = _host.Show();
+        var (tab, path) = await _host.OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        await MarkAsync(window, tab);
+        var release = new TaskCompletionSource();
+        _host.Print.SystemDialog = true;
+        _host.Print.DialogTicket = new PrintTicket(new PrintSettings { Printer = "Plotter" });
+        _host.Print.OnPrint = async (_, _, cancellationToken) => await release.Task.WaitAsync(cancellationToken);
+        viewModel.PrintCommand.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.PrintJob is { IsRunning: true });
+
+        // "Save" on the close card while the tab prints: a card says why, with "Cancel" alone; the tab stays.
+        viewModel.CloseActiveTabCommand.Execute(null);
+        await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        var card = await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
+        Assert.Equal(Strings.SaveNotPossiblePrinting, Find<TextBlock>(card, "SaveErrorText").Text);
+        Assert.Equal([Strings.SaveChoiceCancel], ShownButtons(card));
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is null);
+        Assert.Contains(tab, viewModel.Tabs);
+        Assert.True(tab.IsDirty);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+
+        release.SetResult();
+        await WaitUntilAsync(window, () => viewModel.PrintJob is { IsRunning: false });
+    }
+
+    [AvaloniaFact]
+    public async Task EditAndPrintKeysDoNothingBehindTheCard()
+    {
+        var (window, viewModel, view) = _host.Show();
+        var (tab, _) = await _host.OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await MarkAsync(window, tab);
+        await MarkAsync(window, tab, page: 1);
+        await tab.Editor.UndoAsync();
+        await WaitUntilAsync(window, () => tab.CanRedo);
+        var version = tab.Editor.Version;
+
+        viewModel.CloseActiveTabCommand.Execute(null);
+        var card = await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        var question = viewModel.PendingSave!;
+
+        // With the focus on the card and elsewhere: undo, redo, save, save as and print do nothing.
+        foreach (var focusOnCard in new[] { true, false })
+        {
+            if (!focusOnCard)
+            {
+                Find<Button>(window, "PaletteButton").Focus();
+                Settle(window);
+            }
+
+            Press(window, Key.Z, PhysicalKey.Z, RawInputModifiers.Control);
+            Press(window, Key.Y, PhysicalKey.Y, RawInputModifiers.Control);
+            Press(window, Key.Z, PhysicalKey.Z, RawInputModifiers.Control | RawInputModifiers.Shift);
+            Press(window, Key.S, PhysicalKey.S, RawInputModifiers.Control);
+            Press(window, Key.S, PhysicalKey.S, RawInputModifiers.Control | RawInputModifiers.Shift);
+            Press(window, Key.P, PhysicalKey.P, RawInputModifiers.Control);
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+            Settle(window);
+
+            Assert.Equal(version, tab.Editor.Version);
+            Assert.Null(viewModel.PrintJob);
+            Assert.Equal(OverlayKind.None, viewModel.Overlay);
+            Assert.Same(question, viewModel.PendingSave);
+            Assert.Equal(0, _host.Picker.Calls);
+        }
+
+        Assert.False(viewModel.Commands.ById("edit.undo")!.CanExecute());
+        Assert.False(viewModel.Commands.ById("edit.redo")!.CanExecute());
+        Assert.False(viewModel.Commands.ById("file.save")!.CanExecute());
+        Assert.False(viewModel.Commands.ById("file.saveAs")!.CanExecute());
+        Assert.False(viewModel.Commands.ById("file.print")!.CanExecute());
+        Assert.True(card.IsVisible);
+
+        // Answered: they act again.
+        question.Resolve(PendingSaveChoice.Cancel);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is null);
+        Assert.True(viewModel.Commands.ById("edit.undo")!.CanExecute());
+        Assert.True(viewModel.Commands.ById("file.print")!.CanExecute());
+    }
+
+    [AvaloniaFact]
+    public async Task ATabDiscardedAndChangedAfterwardsIsAskedAgain()
+    {
+        var (window, viewModel, view) = _host.Show();
+        var (b, _) = await _host.OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var (a, _) = await _host.OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await MarkAsync(window, a);
+        await MarkAsync(window, b);
+        var closed = 0;
+        window.Closed += (_, _) => closed++;
+
+        // "Don't save" for A, then A changes while the card for B waits: the answer was for the old state of A.
+        window.Close();
+        var card = await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.DontSave)!);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { } question && ReferenceEquals(question.Tab, b) && card.IsVisible);
+        viewModel.ActivateTabCommand.Execute(a);
+        Settle(window);
+        await MarkAsync(window, a, page: 1);
+        viewModel.ActivateTabCommand.Execute(b);
+        await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveChanges);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.DontSave)!);
+
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { } question && ReferenceEquals(question.Tab, a) && card.IsVisible);
+        Assert.Equal(0, closed);
+        Press(window, Key.Escape, PhysicalKey.Escape);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is null);
+        Assert.True(window.IsVisible);
+        Assert.Equal(2, viewModel.Tabs.Count);
     }
 }

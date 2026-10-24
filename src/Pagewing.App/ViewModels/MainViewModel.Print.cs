@@ -68,7 +68,7 @@ public sealed partial class MainViewModel
     }
 
     // Not while the tab saves: the save swaps the document a job would print.
-    private bool CanPrint() => ActiveTab is { IsReady: true, Document: not null, IsSaving: false };
+    private bool CanPrint() => ActiveTab is { IsReady: true, Document: not null, IsSaving: false, IsAskedAbout: false };
 
     private async Task PrintAsync()
     {
