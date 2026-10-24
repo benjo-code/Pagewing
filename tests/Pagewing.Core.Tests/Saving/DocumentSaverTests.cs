@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -238,8 +239,8 @@ public sealed class DocumentSaverTests : IDisposable
         var path = Copy("text-basic.pdf");
         await using var document = await OpenAsync(path);
         var request = await MarkAsync(document, path, path);
-        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddMinutes(-5));
-        var before = await File.ReadAllBytesAsync(path, Ct);
+        var moved = ReplaceByRename(path);
+        var standIn = await File.ReadAllBytesAsync(path, Ct);
         var opened = false;
         var faults = new SaveFaults
         {
@@ -255,17 +256,18 @@ public sealed class DocumentSaverTests : IDisposable
 
         Assert.Equal(SaveFailureReason.OriginalChanged, failure.Reason);
         Assert.False(opened);
-        Assert.Equal(before, await File.ReadAllBytesAsync(path, Ct));
-        AssertOnlyFiles(path);
+        Assert.Equal(standIn, await File.ReadAllBytesAsync(path, Ct));
+        AssertOnlyFiles(path, moved);
     }
 
     [Fact]
-    public async Task OverwriteChangedOriginalSkipsThatCheck()
+    public async Task OverwriteChangedOriginalSavesTheOpenedFile()
     {
         var path = Copy("text-basic.pdf");
+        var before = await File.ReadAllBytesAsync(path, Ct);
         await using var document = await OpenAsync(path);
         var request = await MarkAsync(document, path, path) with { OverwriteChangedOriginal = true };
-        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddMinutes(-5));
+        var moved = ReplaceByRename(path);
 
         var result = await DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct);
         await using (result.Reopened)
@@ -274,17 +276,147 @@ public sealed class DocumentSaverTests : IDisposable
             Assert.Equal(FileStamp.Of(path), result.NewStamp);
         }
 
-        AssertOnlyFiles(path);
+        // The prefix is what PDFium copied from the opened file, not the stand-in that was at the path.
+        var after = await File.ReadAllBytesAsync(path, Ct);
+        Assert.Equal(before, after.AsSpan(0, before.Length).ToArray());
+        Assert.Equal(before, await File.ReadAllBytesAsync(moved, Ct));
+        AssertOnlyFiles(path, moved);
     }
 
     [Fact]
     public async Task SaveAsIsAllowedWhenTheOriginalChanged()
     {
         var path = Copy("text-basic.pdf");
+        var before = await File.ReadAllBytesAsync(path, Ct);
         var target = Path.Combine(folder.Path, "copy.pdf");
         await using var document = await OpenAsync(path);
         var request = await MarkAsync(document, path, target);
+        var moved = ReplaceByRename(path);
+
+        var result = await DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct);
+        await using (result.Reopened)
+        {
+            Assert.Single(await result.Reopened.GetAnnotationsAsync(0, Ct));
+        }
+
+        var saved = await File.ReadAllBytesAsync(target, Ct);
+        Assert.Equal(before, saved.AsSpan(0, before.Length).ToArray());
+        AssertOnlyFiles(path, moved, target);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public async Task SourceRewrittenInPlaceIsRefused(bool sameLength, bool saveAs)
+    {
+        var path = Copy("text-basic.pdf");
+        var target = saveAs ? Path.Combine(folder.Path, "copy.pdf") : path;
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, target) with { OverwriteChangedOriginal = true };
+
+        // Another program writes into the opened file itself, as most programs on Windows do.
+        var rewritten = await File.ReadAllBytesAsync(path, Ct);
+        rewritten[rewritten.Length / 2] ^= 0x20;
+        if (!sameLength)
+        {
+            rewritten = [.. rewritten, .. "\n% appended\n"u8.ToArray()];
+        }
+
+        await File.WriteAllBytesAsync(path, rewritten, Ct);
+        var opened = false;
+        var faults = new SaveFaults
+        {
+            WrapTemporary = inner =>
+            {
+                opened = true;
+                return inner;
+            },
+        };
+
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(
+            () => DocumentSaver.SaveAsync(document, engine, request, null, faults, Ct));
+
+        Assert.Equal(SaveFailureReason.SourceModified, failure.Reason);
+        Assert.False(opened);
+        Assert.Equal(rewritten, await File.ReadAllBytesAsync(path, Ct));
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public async Task TouchedSourceIsRefused()
+    {
+        var path = Copy("text-basic.pdf");
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path) with { OverwriteChangedOriginal = true };
         File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddMinutes(-5));
+
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(
+            () => DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct));
+
+        Assert.Equal(SaveFailureReason.SourceModified, failure.Reason);
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public async Task SourceStampMatchesTheStampOfThePath()
+    {
+        var path = Copy("text-basic.pdf");
+        await using var document = await OpenAsync(path);
+        Assert.Equal(FileStamp.Of(path), document.GetSourceStamp());
+        Assert.Equal(new FileInfo(path).Length, document.SourceLengthAtOpen);
+        await using var reader = document.OpenSourceReader();
+        using var copy = new MemoryStream();
+        await reader.CopyToAsync(copy, Ct);
+        Assert.Equal(await File.ReadAllBytesAsync(path, Ct), copy.ToArray());
+    }
+
+    [Fact]
+    public async Task ReadOnlyTargetIsRefused()
+    {
+        var path = Copy("text-basic.pdf");
+        var before = await File.ReadAllBytesAsync(path, Ct);
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path);
+        File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.ReadOnly);
+        try
+        {
+            var opened = false;
+            var faults = new SaveFaults
+            {
+                WrapTemporary = inner =>
+                {
+                    opened = true;
+                    return inner;
+                },
+            };
+
+            var failure = await Assert.ThrowsAsync<SaveFailureException>(
+                () => DocumentSaver.SaveAsync(document, engine, request, null, faults, Ct));
+
+            Assert.Equal(SaveFailureReason.NotWritable, failure.Reason);
+            Assert.False(opened);
+            Assert.True(File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly));
+        }
+        finally
+        {
+            File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.ReadOnly);
+        }
+
+        Assert.Equal(before, await File.ReadAllBytesAsync(path, Ct));
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public async Task LongTargetNameSaves()
+    {
+        var path = Copy("text-basic.pdf");
+        var target = Path.Combine(folder.Path, new string('n', 236) + ".pdf");
+        Assert.Equal(240, Path.GetFileName(target).Length);
+        File.Copy(path, target);
+        await using var document = await OpenAsync(target);
+        var request = await MarkAsync(document, target, target);
 
         var result = await DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct);
         await using (result.Reopened)
@@ -293,6 +425,191 @@ public sealed class DocumentSaverTests : IDisposable
         }
 
         AssertOnlyFiles(path, target);
+    }
+
+    [Fact]
+    public async Task UnusualCharactersInTheNameSave()
+    {
+        var path = Copy("text-basic.pdf");
+        var target = Path.Combine(folder.Path, "Bericht ä € #%& final.pdf");
+        File.Copy(path, target);
+        await using var document = await OpenAsync(target);
+        var request = await MarkAsync(document, target, target);
+
+        var result = await DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct);
+        await using (result.Reopened)
+        {
+            Assert.Single(await result.Reopened.GetAnnotationsAsync(0, Ct));
+        }
+
+        AssertOnlyFiles(path, target);
+    }
+
+    [Fact]
+    public async Task TemporaryNameCollisionIsAWriteFailure()
+    {
+        var path = Copy("text-basic.pdf");
+        var before = await File.ReadAllBytesAsync(path, Ct);
+        var taken = Path.Combine(folder.Path, ".pw-000000000000.tmp");
+        await File.WriteAllTextAsync(taken, "someone else's", Ct);
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path);
+        var faults = new SaveFaults { TemporaryName = () => Path.GetFileName(taken) };
+
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(
+            () => DocumentSaver.SaveAsync(document, engine, request, null, faults, Ct));
+
+        Assert.Equal(SaveFailureReason.WriteFailed, failure.Reason);
+        Assert.Equal(before, await File.ReadAllBytesAsync(path, Ct));
+
+        // The file that was there before is not ours, so the failed save must not delete it.
+        Assert.Equal("someone else's", await File.ReadAllTextAsync(taken, Ct));
+        File.Delete(taken);
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public async Task UnixPermissionsOfTheTargetAreKept()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes exist on Linux only.");
+        var path = Copy("text-basic.pdf");
+        const UnixFileMode Private = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        const UnixFileMode Shared = Private | UnixFileMode.GroupRead | UnixFileMode.GroupWrite;
+        foreach (var mode in new[] { Private, Shared })
+        {
+            SetUnixMode(path, mode);
+            await using var document = await OpenAsync(path);
+            var request = await MarkAsync(document, path, path);
+            var result = await DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct);
+            await result.Reopened.DisposeAsync();
+            Assert.Equal(mode, GetUnixMode(path));
+        }
+
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public async Task HiddenTargetStaysHidden()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Hidden attribute exists on Windows only.");
+        var path = Copy("text-basic.pdf");
+        File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Hidden);
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path);
+
+        var result = await DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct);
+        await result.Reopened.DisposeAsync();
+
+        Assert.True(File.GetAttributes(path).HasFlag(FileAttributes.Hidden));
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public async Task LockedTargetIsReportedAsInUse()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows locks a file that another program has open.");
+        var path = Copy("text-basic.pdf");
+        var before = await File.ReadAllBytesAsync(path, Ct);
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path);
+
+        SaveFailureException failure;
+        await using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            failure = await Assert.ThrowsAsync<SaveFailureException>(
+                () => DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct));
+        }
+
+        Assert.Equal(SaveFailureReason.WriteFailed, failure.Reason);
+        Assert.Equal("The file is in use by another program.", failure.Message);
+        Assert.Equal(before, await File.ReadAllBytesAsync(path, Ct));
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public async Task ReplacingAnOpenTargetIsAtomicOnWindows()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The POSIX rename of Windows.");
+        var path = Copy("text-basic.pdf");
+        var before = await File.ReadAllBytesAsync(path, Ct);
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path);
+        var movedAside = false;
+        var faults = new SaveFaults { AfterTargetMovedAside = () => movedAside = true };
+
+        var result = await DocumentSaver.SaveAsync(document, engine, request, null, faults, Ct);
+        await using (result.Reopened)
+        {
+            Assert.Single(await result.Reopened.GetAnnotationsAsync(0, Ct));
+            Assert.Single(await document.GetAnnotationsAsync(0, Ct));
+            await document.RenderPageAsync(0, 0.5, cancellationToken: Ct);
+        }
+
+        Assert.False(movedAside);
+        var after = await File.ReadAllBytesAsync(path, Ct);
+        Assert.True(after.Length > before.Length);
+        Assert.Equal(before, after.AsSpan(0, before.Length).ToArray());
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public async Task WithoutPosixRenameTheOpenTargetIsMovedAside()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows needs the fallback.");
+        var path = Copy("text-basic.pdf");
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path);
+        var movedAside = false;
+        var faults = new SaveFaults
+        {
+            AtomicReplace = (_, _) => 50,
+            AfterTargetMovedAside = () => movedAside = true,
+        };
+
+        var result = await DocumentSaver.SaveAsync(document, engine, request, null, faults, Ct);
+        await using (result.Reopened)
+        {
+            Assert.Single(await result.Reopened.GetAnnotationsAsync(0, Ct));
+            Assert.Single(await document.GetAnnotationsAsync(0, Ct));
+        }
+
+        Assert.True(movedAside);
+        await using (var reread = await OpenAsync(path))
+        {
+            Assert.Single(await reread.GetAnnotationsAsync(0, Ct));
+        }
+
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public void RequestTextHidesThePassword()
+    {
+        var request = new SaveRequest("a.pdf", "b.pdf", null, "s3cret-hôtel", 1, new Dictionary<int, int> { [0] = 1 }, false);
+        var text = request.ToString();
+        Assert.DoesNotContain("s3cret", text, StringComparison.Ordinal);
+        Assert.Contains("a.pdf", text, StringComparison.Ordinal);
+        Assert.Contains("Password = (hidden)", text, StringComparison.Ordinal);
+        Assert.Contains("Password = null", (request with { Password = null }).ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void RenameInfoHasTheLayoutOfTheWindowsHeader()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only.");
+        var info = WindowsFileRename.RenameInfo(@"C:\x\y.pdf");
+        Assert.Equal(3u, BitConverter.ToUInt32(info, 0));
+        Assert.Equal(0L, nint.Size == 8 ? BitConverter.ToInt64(info, 8) : BitConverter.ToInt32(info, 4));
+        var lengthOffset = 2 * nint.Size;
+        Assert.Equal((uint)(10 * sizeof(char)), BitConverter.ToUInt32(info, lengthOffset));
+        Assert.Equal(@"C:\x\y.pdf", Encoding.Unicode.GetString(info, lengthOffset + 4, 20));
+        Assert.Equal(0, BitConverter.ToUInt16(info, lengthOffset + 4 + 20));
+        Assert.True(info.Length >= (nint.Size == 8 ? 24 : 16) + 20);
+        Assert.Equal(@"\\?\C:\a", WindowsFileRename.LongPath(@"C:\a"));
+        Assert.Equal(@"\\?\UNC\server\share\a", WindowsFileRename.LongPath(@"\\server\share\a"));
+        Assert.Equal(@"\\?\C:\a", WindowsFileRename.LongPath(@"\\?\C:\a"));
     }
 
     [Fact]
@@ -412,6 +729,7 @@ public sealed class DocumentSaverTests : IDisposable
         var movedAside = false;
         var faults = new SaveFaults
         {
+            AtomicReplace = (_, _) => 50,
             AfterTargetMovedAside = () =>
             {
                 movedAside = true;
@@ -498,15 +816,14 @@ public sealed class DocumentSaverTests : IDisposable
     public async Task WrittenFileWithoutEncryptionIsRefused()
     {
         var path = Copy("encrypted_hello_world_r6.pdf");
-        await using var document = await OpenAsync(path, Password);
-        var request = await MarkAsync(document, path, path) with { Password = Password, OverwriteChangedOriginal = true };
-
-        // A changed original skips the prefix check, so the unencrypted stand-in reaches the later checks.
-        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddMinutes(-5));
         var before = await File.ReadAllBytesAsync(path, Ct);
+        await using var document = await OpenAsync(path, Password);
+        var request = await MarkAsync(document, path, path) with { Password = Password };
+
+        // The written file keeps the original bytes (the prefix check passes), but its last revision is unencrypted.
         var faults = new SaveFaults
         {
-            AfterWrite = () => File.Copy(TestData.Pdf("hello_world.pdf"), Assert.Single(Directory.GetFiles(folder.Path, "*.tmp")), overwrite: true),
+            AfterWrite = () => AppendUnencryptedRevision(Assert.Single(Directory.GetFiles(folder.Path, "*.tmp"))),
         };
 
         var failure = await Assert.ThrowsAsync<SaveFailureException>(
@@ -626,6 +943,51 @@ public sealed class DocumentSaverTests : IDisposable
 
     [UnsupportedOSPlatform("windows")]
     private static void AllowWritesOnUnix(DirectoryInfo directory, UnixFileMode mode) => File.SetUnixFileMode(directory.FullName, mode);
+
+    [UnsupportedOSPlatform("windows")]
+    private static void SetUnixMode(string path, UnixFileMode mode) => File.SetUnixFileMode(path, mode);
+
+    [UnsupportedOSPlatform("windows")]
+    private static UnixFileMode GetUnixMode(string path) => File.GetUnixFileMode(path) & (UnixFileMode)0x1FF;
+
+    /// <summary>Appends a complete unencrypted revision without <c>/Prev</c>, so PDFium reads only it (offsets from the file start).</summary>
+    private static void AppendUnencryptedRevision(string path)
+    {
+        var start = new FileInfo(path).Length;
+        var body = new StringBuilder("\n");
+        string[] objects =
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>",
+        ];
+        var offsets = new List<long>();
+        for (var i = 0; i < objects.Length; i++)
+        {
+            offsets.Add(start + body.Length);
+            body.Append(CultureInfo.InvariantCulture, $"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
+        }
+
+        var xref = start + body.Length;
+        body.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
+        foreach (var offset in offsets)
+        {
+            body.Append(CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
+        }
+
+        body.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        using var stream = new FileStream(path, FileMode.Append, FileAccess.Write);
+        stream.Write(Encoding.Latin1.GetBytes(body.ToString()));
+    }
+
+    /// <summary>What a program does that saves atomically: the opened file moves away, another file takes its path.</summary>
+    private static string ReplaceByRename(string path)
+    {
+        var moved = path + ".moved";
+        File.Move(path, moved);
+        File.Copy(TestData.Pdf("text-rich.pdf"), path);
+        return moved;
+    }
 
     private string Copy(string fixture)
     {

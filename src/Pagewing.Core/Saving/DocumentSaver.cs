@@ -1,3 +1,8 @@
+using System.ComponentModel;
+using System.Globalization;
+using System.Runtime.Versioning;
+using System.Security.Cryptography;
+using System.Text;
 using Pagewing.Core.Pdf;
 
 namespace Pagewing.Core.Saving;
@@ -6,16 +11,22 @@ namespace Pagewing.Core.Saving;
 /// <param name="OriginalPath">The file the document was opened from.</param>
 /// <param name="TargetPath">
 /// The file to write: <paramref name="OriginalPath"/> for "Save", another path for "Save As". An existing target is replaced
-/// (the caller asks the user first).
+/// (the caller asks the user first), unless it is read-only.
 /// </param>
-/// <param name="OriginalStamp">The stamp of the original taken when it was opened, or <see langword="null"/> to skip the check.</param>
-/// <param name="Password">The password the document was opened with, to reopen the written file; it is never written anywhere.</param>
+/// <param name="OriginalStamp">The stamp of the original taken when it was opened, or <see langword="null"/> to skip the stamp checks.</param>
+/// <param name="Password">
+/// The password the document was opened with, to reopen the written file; it is never written anywhere and
+/// <see cref="ToString"/> does not show it.
+/// </param>
 /// <param name="ExpectedPageCount">The number of pages the written file must have.</param>
 /// <param name="ExpectedAnnotationCounts">
 /// The changed pages (0-based index) and the number of annotations each must list, as
 /// <see cref="PdfDocument.GetAnnotationsAsync"/> counts them (without popups and replies).
 /// </param>
-/// <param name="OverwriteChangedOriginal">Whether the user confirmed overwriting an original that changed since it was opened.</param>
+/// <param name="OverwriteChangedOriginal">
+/// Whether the user confirmed overwriting the path of the original although another file now stands there (the stamp at
+/// the path differs while the opened file is untouched). It never overrides <see cref="SaveFailureReason.SourceModified"/>.
+/// </param>
 public sealed record SaveRequest(
     string OriginalPath,
     string TargetPath,
@@ -23,7 +34,17 @@ public sealed record SaveRequest(
     string? Password,
     int ExpectedPageCount,
     IReadOnlyDictionary<int, int> ExpectedAnnotationCounts,
-    bool OverwriteChangedOriginal);
+    bool OverwriteChangedOriginal)
+{
+    /// <summary>Prints the members like a record does, with the password replaced (secrets never reach a log).</summary>
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPageCount = {ExpectedPageCount}, ExpectedAnnotationCounts = {ExpectedAnnotationCounts?.Count ?? 0} pages, OverwriteChangedOriginal = {OverwriteChangedOriginal}");
+        return true;
+    }
+}
 
 /// <summary>A successful save.</summary>
 /// <param name="Reopened">The written file, opened and checked; the caller owns it and disposes it.</param>
@@ -39,7 +60,13 @@ internal sealed class SaveFaults
     /// <summary>Gets the action run after the temporary file is written and closed, before it is checked.</summary>
     public Action? AfterWrite { get; init; }
 
-    /// <summary>Gets the action run on Windows after an open target was moved aside, before the temporary file takes its name.</summary>
+    /// <summary>Gets the file name used for the temporary file instead of a random one.</summary>
+    public Func<string>? TemporaryName { get; init; }
+
+    /// <summary>Gets the stand-in for the atomic replace on Windows (source, target, returns a Win32 error code or 0).</summary>
+    public Func<string, string, int>? AtomicReplace { get; init; }
+
+    /// <summary>Gets the action run in the Windows fallback after the open target was moved aside, before the temporary file takes its name.</summary>
     public Action? AfterTargetMovedAside { get; init; }
 }
 
@@ -53,21 +80,31 @@ public static class DocumentSaver
     /// <summary>The longer side, in pixels, at which a changed page is rendered for the check.</summary>
     private const double CheckRenderSize = 1024;
 
+    private const string InUse = "The file is in use by another program.";
+
+    /// <summary><c>ERROR_SHARING_VIOLATION</c>: another handle without the needed sharing has the file open.</summary>
+    private const int ErrorSharingViolation = 32;
+
+    /// <summary><c>ERROR_LOCK_VIOLATION</c>.</summary>
+    private const int ErrorLockViolation = 33;
+
     /// <summary>
-    /// Saves <paramref name="document"/> as <paramref name="request"/> says. The steps: (1) if the target is the original and
-    /// its stamp no longer matches <see cref="SaveRequest.OriginalStamp"/>, fail with
-    /// <see cref="SaveFailureReason.OriginalChanged"/> before anything is written, unless
-    /// <see cref="SaveRequest.OverwriteChangedOriginal"/>; (2) write the incremental save into
-    /// <c>&lt;target&gt;.&lt;guid&gt;.tmp</c> (created new, not shared, flushed to disk); (3) check that it starts with the
-    /// bytes of the original file (skipped when the original changed since it was opened, because the file on disk is then
-    /// no longer what the document was read from); (4) open it with <paramref name="engine"/> and the password, and compare
-    /// the page count, the encryption and the annotation count of every changed page; (5) render every changed page;
-    /// (6) move it over the target. The document checked in step 4 is returned and stays open.
+    /// Saves <paramref name="document"/> as <paramref name="request"/> says. Before anything is written: the opened file must
+    /// still be what was opened (its stamp, read through PDFium's own handle, equals <see cref="SaveRequest.OriginalStamp"/>
+    /// and the length at open, otherwise <see cref="SaveFailureReason.SourceModified"/>); when the target is the original,
+    /// the stamp at the path must match too (otherwise <see cref="SaveFailureReason.OriginalChanged"/>, unless
+    /// <see cref="SaveRequest.OverwriteChangedOriginal"/>); an existing target must not be read-only
+    /// (<see cref="SaveFailureReason.NotWritable"/>). Then: (1) write the incremental save into <c>.pw-&lt;12 hex&gt;.tmp</c>
+    /// in the target folder (created new, not shared, flushed to disk; on Unix with the permissions of an existing target,
+    /// on Windows with its Hidden attribute); (2) check that it starts with the bytes PDFium copied, read through PDFium's
+    /// handle; (3) open it with <paramref name="engine"/> and the password, and compare the page count, the encryption and
+    /// the annotation count of every changed page; (4) render every changed page; (5) replace the target. The document
+    /// checked in step 3 is returned and stays open.
     /// </summary>
     /// <remarks>
     /// Replacing works while documents still have the old file open (Pagewing opens files shared for reading, writing and
-    /// deleting); they keep reading the old content. On Windows that needs three renames instead of one (see
-    /// <see cref="Replace"/>). "Save As" over an existing file replaces it the same way; the caller asks the user first.
+    /// deleting); they keep reading the old content. Linux renames atomically; Windows uses the atomic POSIX rename and only
+    /// on file systems without it moves the old file aside first (see <see cref="Replace"/>).
     /// </remarks>
     /// <param name="document">The document with the changes.</param>
     /// <param name="engine">Opens the written file for the check.</param>
@@ -113,37 +150,37 @@ public static class DocumentSaver
         cancellationToken.ThrowIfCancellationRequested();
         var original = Path.GetFullPath(request.OriginalPath);
         var target = Path.GetFullPath(request.TargetPath);
-        var current = FileStamp.Of(original);
-        var originalChanged = request.OriginalStamp is { } stamp && current != stamp;
-        if (originalChanged && SamePath(original, target) && !request.OverwriteChangedOriginal)
+        var folder = Path.GetDirectoryName(target)
+            ?? throw new SaveFailureException(SaveFailureReason.NotWritable, "The target has no folder.");
+
+        var sourceLength = CheckSource(document, request.OriginalStamp);
+        if (request.OriginalStamp is { } stamp && FileStamp.Of(original) != stamp && SamePath(original, target) && !request.OverwriteChangedOriginal)
         {
-            throw new SaveFailureException(SaveFailureReason.OriginalChanged, "The file was changed by another program since it was opened.");
+            throw new SaveFailureException(SaveFailureReason.OriginalChanged, "Another file stands at the path of the original since it was opened.");
         }
 
+        var existing = ReadTarget(target);
         var wasEncrypted = (await document.GetPrintInfoAsync(cancellationToken).ConfigureAwait(false)).IsEncrypted;
-        var temporary = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        var file = CreateTemporary(temporary);
+        var temporary = Path.Combine(folder, faults?.TemporaryName?.Invoke() ?? ShortName(".tmp"));
+        var file = CreateTemporary(temporary, existing.UnixMode);
         PdfDocument? reopened = null;
         var committed = false;
         try
         {
-            await WriteAsync(document, file, current?.Length ?? 0, progress, faults, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(document, file, sourceLength, progress, faults, cancellationToken).ConfigureAwait(false);
+            CopyTargetMetadata(temporary, existing);
             faults?.AfterWrite?.Invoke();
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!originalChanged)
-            {
-                await CheckPrefixAsync(temporary, original, current, cancellationToken).ConfigureAwait(false);
-            }
-
+            await CheckPrefixAsync(temporary, document, sourceLength, cancellationToken).ConfigureAwait(false);
             reopened = await ReopenAsync(engine, temporary, request.Password, cancellationToken).ConfigureAwait(false);
             await CheckAsync(reopened, request, wasEncrypted, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
-            Replace(temporary, target, faults);
+            Replace(temporary, target, folder, faults);
             committed = true;
 
-            // The move succeeded, so the file is there; a stamp that cannot be read only weakens the next check.
+            // The replace succeeded, so the file is there; a stamp that cannot be read only weakens the next check.
             return new SaveResult(reopened, FileStamp.Of(target) ?? new FileStamp(-1, DateTime.MinValue));
         }
         finally
@@ -182,30 +219,138 @@ public static class DocumentSaver
     {
         if (OperatingSystem.IsWindows())
         {
-            const int FacilityWin32 = 7;
-            return ((hresult >> 16) & 0x1FFF) == FacilityWin32 && (hresult & 0xFFFF) is 112 or 39;
+            return Win32CodeOf(hresult) is 112 or 39;
         }
 
         return hresult is 28 or 122;
     }
 
+    /// <summary>Whether a Windows error says another handle without the needed sharing has the file open.</summary>
+    private static bool IsSharingViolation(Exception error) =>
+        OperatingSystem.IsWindows() && error is IOException && Win32CodeOf(error.HResult) is ErrorSharingViolation or ErrorLockViolation;
+
+    /// <summary>The Win32 error code of an HRESULT of FACILITY_WIN32, otherwise -1.</summary>
+    private static int Win32CodeOf(int hresult)
+    {
+        const int FacilityWin32 = 7;
+        return ((hresult >> 16) & 0x1FFF) == FacilityWin32 ? hresult & 0xFFFF : -1;
+    }
+
     private static bool SamePath(string a, string b) =>
         string.Equals(a, b, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    private static FileStream CreateTemporary(string temporary)
+    /// <summary>A short name independent of the target's name, so a long target name never makes it too long.</summary>
+    private static string ShortName(string extension) => ".pw-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(6)) + extension;
+
+    /// <summary>
+    /// Checks that the file PDFium reads is still the file that was opened, before anything is written: PDFium copies its
+    /// bytes lazily through its own handle, so a rewrite in place since the open would end up in the saved file.
+    /// </summary>
+    /// <returns>The length of the opened file, which PDFium copies as the first bytes of the save.</returns>
+    private static long CheckSource(PdfDocument document, FileStamp? originalStamp)
+    {
+        FileStamp source;
+        long length;
+        try
+        {
+            source = document.GetSourceStamp();
+            length = document.SourceLengthAtOpen;
+        }
+        catch (IOException ex)
+        {
+            throw new SaveFailureException(SaveFailureReason.VerificationFailed, "The opened file cannot be read.", ex);
+        }
+
+        if (source.Length != length || (originalStamp is { } stamp && source != stamp))
+        {
+            throw new SaveFailureException(SaveFailureReason.SourceModified, "The opened file was changed by another program; it has to be opened again.");
+        }
+
+        return length;
+    }
+
+    /// <summary>What an existing target passes on to its replacement; a read-only target is refused here.</summary>
+    private static TargetInfo ReadTarget(string target)
+    {
+        FileAttributes attributes;
+        try
+        {
+            if (!File.Exists(target))
+            {
+                return default;
+            }
+
+            attributes = File.GetAttributes(target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return default;
+        }
+
+        if ((attributes & FileAttributes.ReadOnly) != 0)
+        {
+            throw new SaveFailureException(SaveFailureReason.NotWritable, "The file is read-only.");
+        }
+
+        UnixFileMode? mode = null;
+        if (!OperatingSystem.IsWindows())
+        {
+            const UnixFileMode Permissions = (UnixFileMode)0x1FF;
+            mode = File.GetUnixFileMode(target) & Permissions;
+        }
+
+        return new TargetInfo(Exists: true, Hidden: (attributes & FileAttributes.Hidden) != 0, UnixMode: mode);
+    }
+
+    private static FileStream CreateTemporary(string temporary, UnixFileMode? mode)
+    {
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            BufferSize = 81920,
+        };
+        if (mode is { } unixMode && !OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = unixMode;
+        }
+
+        try
+        {
+            return new FileStream(temporary, options);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            throw new SaveFailureException(SaveFailureReason.NotWritable, "The folder cannot be written to.", ex);
+        }
+        catch (IOException ex)
+        {
+            throw FailureOf(ex, "The temporary file could not be created.");
+        }
+    }
+
+    /// <summary>
+    /// Gives the temporary file the permissions of the target on Unix (exactly, without the umask that applied when it was
+    /// created) and its Hidden attribute on Windows.
+    /// </summary>
+    private static void CopyTargetMetadata(string temporary, TargetInfo existing)
     {
         try
         {
-            return new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 81920);
+            if (existing.UnixMode is { } mode && !OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(temporary, mode);
+            }
+
+            if (existing.Hidden && OperatingSystem.IsWindows())
+            {
+                File.SetAttributes(temporary, File.GetAttributes(temporary) | FileAttributes.Hidden);
+            }
         }
-        catch (IOException ex) when (IsDiskFull(ex))
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new SaveFailureException(SaveFailureReason.DiskFull, "The disk is full.", ex);
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or NotSupportedException)
-        {
-            // A missing folder (DirectoryNotFoundException), no access, a read-only medium or a path that is too long.
-            throw new SaveFailureException(SaveFailureReason.NotWritable, "The folder cannot be written to.", ex);
+            throw FailureOf(ex, "The file could not be written.");
         }
     }
 
@@ -236,37 +381,34 @@ public static class DocumentSaver
             // The progress stream stops the writer on cancellation; PDFium then reports a failed save.
             throw new OperationCanceledException("The save was canceled.", ex, cancellationToken);
         }
-        catch (IOException ex) when (IsDiskFull(ex))
-        {
-            throw new SaveFailureException(SaveFailureReason.DiskFull, "The disk is full.", ex);
-        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            throw new SaveFailureException(SaveFailureReason.WriteFailed, "The file could not be written.", ex);
+            throw FailureOf(ex, "The file could not be written.");
         }
     }
 
-    /// <summary>Checks that the temporary file starts with the bytes of the original (the proof that signed bytes are untouched).</summary>
-    private static async Task CheckPrefixAsync(string temporary, string original, FileStamp? stamp, CancellationToken cancellationToken)
+    /// <summary>
+    /// Checks that the temporary file starts with exactly the bytes PDFium copied from the opened file (the proof that signed
+    /// bytes are untouched), read through PDFium's own handle, not the path.
+    /// </summary>
+    private static async Task CheckPrefixAsync(string temporary, PdfDocument document, long length, CancellationToken cancellationToken)
     {
-        if (stamp is null)
-        {
-            throw new SaveFailureException(SaveFailureReason.VerificationFailed, "The original file cannot be read for the check.");
-        }
-
         bool same;
         try
         {
             var written = new FileStream(temporary, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 0, useAsync: true);
             await using (written.ConfigureAwait(false))
             {
-                var source = new FileStream(original, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, bufferSize: 0, useAsync: true);
+                var source = document.OpenSourceReader();
                 await using (source.ConfigureAwait(false))
                 {
-                    same = source.Length == stamp.Value.Length && written.Length >= source.Length
-                        && await StartsWithAsync(written, source, source.Length, cancellationToken).ConfigureAwait(false);
+                    same = written.Length >= length && await StartsWithAsync(written, source, length, cancellationToken).ConfigureAwait(false);
                 }
             }
+        }
+        catch (EndOfStreamException ex)
+        {
+            throw new SaveFailureException(SaveFailureReason.VerificationFailed, "The opened file became shorter during the save.", ex);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -349,46 +491,53 @@ public static class DocumentSaver
     }
 
     /// <summary>
-    /// Moves the checked temporary file over the target. On Linux (and on Windows when nothing has the target open) this is
-    /// one atomic rename. Windows refuses to rename over a file another handle has open, even one shared for deleting (the
-    /// old document of the tab always has it open), and <see cref="File.Replace(string, string, string?)"/> refuses a
-    /// replacement that is open (the reopened document has it open). So Windows then moves the target aside to
-    /// <c>&lt;target&gt;.&lt;guid&gt;.old</c> (renaming a file opened shared for deleting is allowed), moves the temporary
-    /// file to the target and deletes the old file (its name goes at once on NTFS; the documents keep reading it). If the
-    /// second move fails, the old file is moved back.
+    /// Moves the checked temporary file over the target. Linux: one atomic <c>rename</c>, which replaces the target even while
+    /// it is open. Windows: the atomic POSIX rename (<see cref="WindowsFileRename.ReplaceAtomically"/>); Windows' ordinary
+    /// rename refuses to replace a file another handle has open, even one shared for deleting, and the old document of the
+    /// tab always has it open. Only when the file system does not offer the POSIX rename (FAT, exFAT, some SMB servers) is
+    /// the ordinary rename tried, and if the open target blocks it, the target is moved aside to <c>.pw-&lt;12 hex&gt;.old</c>
+    /// (renaming a file opened shared for deleting is allowed), the temporary file takes its name and the old file is
+    /// deleted. If that second move fails, the old file is moved back.
     /// </summary>
-    private static void Replace(string temporary, string target, SaveFaults? faults)
+    private static void Replace(string temporary, string target, string folder, SaveFaults? faults)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            var error = faults?.AtomicReplace is { } replace ? replace(temporary, target) : WindowsFileRename.ReplaceAtomically(temporary, target);
+            if (error == 0)
+            {
+                return;
+            }
+
+            if (!WindowsFileRename.IsUnsupported(error))
+            {
+                throw FailureOfWin32(error);
+            }
+        }
+
         try
         {
             File.Move(temporary, target, overwrite: true);
             return;
         }
-        catch (Exception ex) when (OperatingSystem.IsWindows() && ex is UnauthorizedAccessException or IOException && File.Exists(target))
+        catch (UnauthorizedAccessException) when (OperatingSystem.IsWindows() && File.Exists(target))
         {
-            // The target is open; replace it in three steps below.
+            // Without POSIX rename Windows refuses to rename over an open target (ACCESS_DENIED); a read-only target was
+            // refused before anything was written. Replace it in three steps below.
         }
-        catch (UnauthorizedAccessException ex)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            throw new SaveFailureException(SaveFailureReason.NotWritable, "The file cannot be replaced.", ex);
-        }
-        catch (IOException ex)
-        {
-            throw new SaveFailureException(SaveFailureReason.WriteFailed, "The file could not be replaced.", ex);
+            throw FailureOf(ex, "The file could not be replaced.");
         }
 
-        var aside = target + "." + Guid.NewGuid().ToString("N") + ".old";
+        var aside = Path.Combine(folder, ShortName(".old"));
         try
         {
             File.Move(target, aside);
         }
-        catch (UnauthorizedAccessException ex)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            throw new SaveFailureException(SaveFailureReason.NotWritable, "The file cannot be replaced.", ex);
-        }
-        catch (IOException ex)
-        {
-            throw new SaveFailureException(SaveFailureReason.WriteFailed, "The file could not be replaced.", ex);
+            throw FailureOf(ex, "The file could not be replaced.");
         }
 
         try
@@ -411,10 +560,41 @@ public static class DocumentSaver
                     new AggregateException(ex, restore));
             }
 
-            throw new SaveFailureException(SaveFailureReason.WriteFailed, "The file could not be replaced.", ex);
+            throw FailureOf(ex, "The file could not be replaced.");
         }
 
         TryDelete(aside);
+    }
+
+    /// <summary>Maps a write or replace error: full disk, file in use, no access, anything else.</summary>
+    private static SaveFailureException FailureOf(Exception error, string message)
+    {
+        if (IsDiskFull(error))
+        {
+            return new SaveFailureException(SaveFailureReason.DiskFull, "The disk is full.", error);
+        }
+
+        if (IsSharingViolation(error))
+        {
+            return new SaveFailureException(SaveFailureReason.WriteFailed, InUse, error);
+        }
+
+        return error is UnauthorizedAccessException
+            ? new SaveFailureException(SaveFailureReason.NotWritable, "The file cannot be replaced.", error)
+            : new SaveFailureException(SaveFailureReason.WriteFailed, message, error);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static SaveFailureException FailureOfWin32(int error)
+    {
+        var inner = new Win32Exception(error);
+        return error switch
+        {
+            ErrorSharingViolation or ErrorLockViolation => new SaveFailureException(SaveFailureReason.WriteFailed, InUse, inner),
+            WindowsFileRename.ErrorAccessDenied => new SaveFailureException(SaveFailureReason.NotWritable, "The file cannot be replaced.", inner),
+            112 or 39 => new SaveFailureException(SaveFailureReason.DiskFull, "The disk is full.", inner),
+            _ => new SaveFailureException(SaveFailureReason.WriteFailed, "The file could not be replaced.", inner),
+        };
     }
 
     private static void TryDelete(string path)
@@ -428,6 +608,9 @@ public static class DocumentSaver
             // Nothing more can be done; the file (.tmp or .old) is not the target.
         }
     }
+
+    /// <summary>What an existing target passes on to the file that replaces it.</summary>
+    private readonly record struct TargetInfo(bool Exists, bool Hidden, UnixFileMode? UnixMode);
 
     /// <summary>
     /// Passes the writes of PDFium on, reports the progress and stops the writer on cancellation (PDFium only learns

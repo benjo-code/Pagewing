@@ -22,12 +22,28 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     internal const long MaxFileLength = uint.MaxValue;
 
     private readonly DocumentHandle handle;
+    private readonly FileReadContext source;
     private volatile bool disposed;
 
-    private PdfiumDocument(DocumentHandle handle) => this.handle = handle;
+    private PdfiumDocument(DocumentHandle handle, FileReadContext source)
+    {
+        this.handle = handle;
+        this.source = source;
+    }
 
     /// <summary>Gets the PDFium thread the document belongs to.</summary>
     public PdfiumThread Thread => handle.OwningThread;
+
+    /// <summary>
+    /// Gets the handle of the file PDFium reads the document from (the file that was opened, even after its path was
+    /// renamed or replaced). It must only be read (positional reads such as <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>)
+    /// and never disposed; it is closed with the document. Unlike the other members it may be used from any thread, because
+    /// it does not touch PDFium.
+    /// </summary>
+    internal SafeFileHandle SourceFile => source.FileHandle;
+
+    /// <summary>Gets the length of the source file when the document was opened, the length PDFium reads. Any thread.</summary>
+    internal long SourceLengthAtOpen => source.Length;
 
     /// <summary>Gets the number of pages.</summary>
     public int PageCount => Fpdf.FPDF_GetPageCount(Access());
@@ -129,7 +145,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
                 throw;
             }
 
-            return new PdfiumDocument(handle);
+            return new PdfiumDocument(handle, context);
         }
         catch
         {
@@ -497,6 +513,9 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         }
 
         public long Length { get; }
+
+        /// <summary>Gets the open file.</summary>
+        public SafeFileHandle FileHandle => file;
 
         /// <summary>Gets the value passed as <c>m_Param</c>.</summary>
         public nint Cookie => GCHandle.ToIntPtr(self);

@@ -15,6 +15,69 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-24 – Speicher-Pipeline: Ersetzen, Vorgaben und Grenzen (M9)
+**Kontext:** Spec Teilprojekt 2, Abschnitt „Speichern“, und `CLAUDE.md`, „Speichern“: inkrementell, immer atomar über eine temporäre Datei im Zielordner, die vor dem Ersetzen mit PDFium geprüft wird; das Original darf nie halb überschrieben werden, das neue Dokument ist geöffnet und geprüft, bevor das alte geschlossen wird. Umgesetzt in `Pagewing.Core.Saving.DocumentSaver` (Aufgabe 9), dazu `FileStamp`, `SaveRequest`, `SaveResult`, `SaveFailureReason`/`SaveFailureException` und `WindowsFileRename`.
+**Entscheidung:**
+- **Ablauf** (`DocumentSaver.SaveAsync`). Vor dem ersten geschriebenen Byte:
+  1. Die Quelle ist unverändert. Gemeint ist die Datei, die PDFium liest: ihr Stempel über PDFiums **eigenes Handle** (`PdfDocument.GetSourceStamp`) muss gleich `SaveRequest.OriginalStamp` und ihre Länge gleich der Länge beim Öffnen sein. Sonst `SourceModified`.
+  2. Ist das Ziel das Original, muss auch der Stempel **am Pfad** passen. Sonst `OriginalChanged`, außer `OverwriteChangedOriginal`.
+  3. Ein vorhandenes Ziel ist nicht schreibgeschützt (`FileAttributes.ReadOnly`). Sonst `NotWritable`.
+
+  Danach:
+  1. Die inkrementelle Speicherung geht in `.pw-<12 hex>.tmp` im Zielordner (`FileMode.CreateNew`, `FileShare.None`, auf die Platte geschrieben).
+  2. Prüfung 1: Die ersten *n* Bytes sind gleich denen der Quelle, gelesen über PDFiums Handle (`PdfDocument.OpenSourceReader`); *n* ist die Länge beim Öffnen.
+  3. Prüfung 2: Die Datei wird mit dem Passwort neu geöffnet. Seitenzahl, Verschlüsselung und die Annotationszahl jeder geänderten Seite stimmen (gezählt wie `GetAnnotationsAsync`, ohne Popups und Antworten; die erwarteten Zahlen bringt der Aufrufer mit).
+  4. Prüfung 3: Jede geänderte Seite rendert (längere Seite höchstens 1024 px).
+  5. Die Datei ersetzt das Ziel. Das in Prüfung 2 geöffnete Dokument bleibt offen und geht an den Aufrufer (`SaveResult.Reopened`).
+- **Was ein Fehler hinterlässt:** Jeder Fehler und jeder Abbruch vor dem Ersetzen schließt das geprüfte Dokument, löscht die temporäre Datei und lässt das Ziel byteweise unverändert.
+  - Ein Abbruch durch den Aufrufer wirft `OperationCanceledException`; `SaveFailureReason.Canceled` und `WriterNotSupported` sind reserviert und werden heute nicht gemeldet.
+  - Zuordnung:
+    - Ordner fehlt oder kein Zugriff beim Anlegen: `NotWritable`.
+    - Volle Platte oder Kontingent: `DiskFull` (Windows `ERROR_DISK_FULL`/`ERROR_HANDLE_DISK_FULL`, Linux `ENOSPC`/`EDQUOT`).
+    - Ziel von einem anderen Programm ohne Freigabe geöffnet (`ERROR_SHARING_VIOLATION`/`ERROR_LOCK_VIOLATION`): `WriteFailed` mit „The file is in use by another program.“
+    - Jeder andere Schreib- oder Ersetzungsfehler, auch ein schon belegter temporärer Name: `WriteFailed`.
+    - Eine Prüfung schlägt fehl: `VerificationFailed`.
+- **Prüfung gegen das Handle, Regel `SourceModified`:** PDFium liest die Quelle verzögert über sein eigenes Handle (`FileShare.ReadWrite | FileShare.Delete`) und kopiert beim Speichern genau diese Bytes.
+  - Wird die Datei umbenannt oder durch Umbenennen ersetzt, sieht das Handle weiter die alte Datei. Die Ausgabe ist eine gültige Fortsetzung; nur der Pfad zeigt auf etwas anderes, das ist `OriginalChanged` und mit „Überschreiben“ erlaubt.
+  - Wird die Datei **an Ort und Stelle** neu geschrieben (unter Windows üblich), kopiert PDFium die neuen Bytes, während Querverweis, `/Prev` und Objektnummern aus dem alten Lesen stammen. Die gespeicherte Datei wäre in sich widersprüchlich.
+  - Deshalb lehnt Pagewing das ohne Übersteuerung ab (`SourceModified`, auch für „Speichern unter“). Die Oberfläche bittet, die Datei neu zu öffnen. Schon ein geänderter Zeitstempel der geöffneten Datei zählt.
+- **Ersetzen unter Windows: atomare POSIX-Umbenennung** (`WindowsFileRename.ReplaceAtomically`).
+  - Aufruf: `CreateFileW` auf die temporäre Datei mit `DELETE`, Freigabe Lesen, Schreiben und Löschen. Dann `SetFileInformationByHandle(FileRenameInfoEx = 22)` mit `FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS` (0x1 | 0x2) und dem vollen Zielpfad in `\\?\`-Form.
+  - `FILE_RENAME_FLAG_IGNORE_READONLY_ATTRIBUTE` (0x40) ist bewusst nicht gesetzt.
+  - Aufbau von `FILE_RENAME_INFO`: `Flags` bei 0, `RootDirectory` bei Zeigergröße, `FileNameLength` in Bytes, dann der Name. Geprüft gegen die Microsoft-Dokumentation zu `FILE_RENAME_INFO` (winbase.h), `FILE_INFO_BY_HANDLE_CLASS` (minwinbase.h, `FileRenameInfoEx` ist der 23. Wert, also 22) und `FILE_RENAME_INFORMATION` (ntifs.h, Werte der Flags).
+  - Vorhandene Handles auf das ersetzte Ziel bleiben gültig und lesen den alten Inhalt. Die alten Dokumente der Tabs arbeiten also weiter, und das geprüfte Dokument hält die umbenannte Datei.
+  - Nachgewiesen auf NTFS (Windows 11, `ReplacingAnOpenTargetIsAtomicOnWindows`).
+  - Grund: Windows' gewöhnliches Umbenennen (`MoveFileEx`, `File.Move`) ersetzt keine Datei, die ein anderes Handle offen hat, auch mit Löschfreigabe nicht (`ACCESS_DENIED`). `ReplaceFile` (`File.Replace`) lehnt eine Ersatzdatei ab, die offen ist (das geprüfte Dokument hat sie offen). In der App hat der Tab das Original beim Speichern immer offen.
+- **Rückfall ohne POSIX-Umbenennung:** Meldet Windows `ERROR_INVALID_FUNCTION`, `ERROR_NOT_SUPPORTED` oder `ERROR_INVALID_PARAMETER` (FAT, exFAT, manche SMB-Server, Windows vor 10 1709), versucht Pagewing `File.Move(…, overwrite: true)`.
+  - Blockiert das offene Ziel das, wird es nach `.pw-<12 hex>.old` geschoben (eine mit Löschfreigabe geöffnete Datei darf umbenannt werden). Dann nimmt die temporäre Datei seinen Namen, und `.old` wird gelöscht.
+  - Scheitert der zweite Schritt, kommt `.old` zurück.
+  - **Grenze des Rückfalls:** Zwischen dem Beiseiteschieben und dem Hereinschieben fehlt die Datei unter ihrem Namen für Mikrosekunden. Ein Absturz genau dort lässt `.pw-….old` (das Original) und `.pw-….tmp` (die geprüfte neue Datei) als vollständige Dateien im Ordner zurück. Halb überschrieben wird nie etwas.
+  - Linux ersetzt mit einem `rename` atomar, auch bei offenem Ziel.
+- **Kurze Namen:** Temporäre und beiseitegeschobene Dateien heißen `.pw-<12 hex>.tmp` bzw. `.old`, unabhängig vom Namen des Ziels. So überschreitet ein langer Zielname (bis 255 Zeichen) nie die Grenze, und der Punkt am Anfang versteckt sie unter Linux.
+- **Schreibschutz und Rechte:**
+  - Ein schreibgeschütztes Ziel wird nie ersetzt (`NotWritable` vor dem Schreiben).
+  - Unter Unix bekommt die temporäre Datei die Rechte eines vorhandenen Ziels (`FileStreamOptions.UnixCreateMode`, danach `File.SetUnixFileMode`, weil die Umask beim Anlegen wirkt). So bleibt ein privates PDF mit 0600 bei 0600.
+  - Unter Windows bleibt das Attribut „Versteckt“ erhalten. ACLs und andere Attribute des alten Ziels gehen nicht über; die neue Datei erbt die des Ordners.
+  - „Speichern unter“ auf eine vorhandene Datei ersetzt sie wie „Speichern“; die Oberfläche fragt vorher.
+- **Verschlüsselte Dateien:** PDFium speichert die Testdateien `encrypted_hello_world_r6.pdf` (AES-256, R6) und `_r3.pdf` (R3) inkrementell **mit** Verschlüsselung.
+  - Ohne Passwort öffnet die Datei nicht, mit Passwort zeigt sie die neue Markierung samt Kommentar.
+  - Der Kommentar steht im angehängten Teil nicht im Klartext (`EncryptedDocumentStaysEncryptedOrIsRefused`).
+  - Als Sicherung prüft Prüfung 2, dass die neu geöffnete Datei noch verschlüsselt ist; sonst `EncryptedNotSupported` (`WrittenFileWithoutEncryptionIsRefused`).
+  - Das Passwort steht nur im Arbeitsspeicher; `SaveRequest.ToString` zeigt es nicht.
+**Begründung:** Die Prüfung gegen das Handle beweist, was die Spec verlangt: Die Bytes, die PDFium kopiert hat, sind unverändert, signierte Bereiche eingeschlossen. Ein Vergleich mit dem Pfad wäre nach einem Ersetzen durch Umbenennen grundlos gescheitert und hätte ein Neuschreiben an Ort und Stelle nicht erkannt. Die POSIX-Umbenennung ist der einzige atomare Weg unter Windows, solange das Original offen ist, und braucht keinen Tab ohne Dokument.
+**Verworfene Alternativen:**
+- Prefix-Prüfung gegen den Pfad und Auslassen der Prüfung bei geändertem Original (erste Fassung): falsch in beiden Richtungen, siehe oben.
+- Das alte Dokument vor dem Ersetzen schließen: Der Tab stünde ohne Dokument da, wenn danach etwas scheitert.
+- `File.Replace`: scheitert an der offenen Ersatzdatei.
+- Nur Beiseiteschieben: hätte die Lücke im Normalfall.
+**Bekannte Grenzen (bewusst offen):**
+- `SamePath` vergleicht volle Pfade als Text. Symbolische Links, 8.3-Namen und harte Links zählen als „Speichern unter“.
+- Der Ordner wird nach dem Umbenennen nicht mit `fsync` gesichert.
+- Ein Fehler im Schreib-Callback, der keine I/O-Ausnahme ist, erscheint nur als allgemeiner Schreibfehler.
+- Wie das Neuöffnen scheitert, wird nicht feiner unterschieden (alles `VerificationFailed`).
+- Der Fortschritt rechnet mit der Länge des Originals und steht während des angehängten Teils auf 100 %.
+- **Nur unter Linux, hier nicht gelaufen:** `UnixPermissionsOfTheTargetAreKept` (Rechte 0600 und 0660 bleiben), `TheSystemReportsAFullDiskAsDiskFull` (echtes `ENOSPC` über `/dev/full`), `UnwritableFolderReportsNotWritable` mit `chmod` und `ReplacingAnOpenTargetWorks` mit `rename`. Befehl auf dem Linux-Runner: `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Saving"`.
+
 ## 2026-10-24 – Erscheinungsbild der Annotationen: PDFium-Generator (Variante D), kein eigener Schreiber (M9)
 **Kontext:** Spec Teilprojekt 2, „Erscheinungsbild der Annotationen (das Kernrisiko)“ und „Entschieden nach der Gegenlese“, Punkt 2: Jede angelegte oder geänderte Markierung braucht ein eigenes `/AP` als Form-XObject, Hervorhebungen mit Mischmodus Multiplizieren, `QuadPoints` in Acrobat-Reihenfolge, Flag Print; sonst gilt Weg (a), ein eigener Schreiber für den angehängten Teil. Der Spike (Aufgabe 2, Wegwerf-Test `tests/Pagewing.Core.Tests/Spikes/MarkupSpikeTests.cs`, nicht eingecheckt) hat 72 Dateien erzeugt: Hervorhebung, Unterstreichung, Durchstreichung auf `annotations.pdf`, `rotated-page.pdf`, `cropbox.pdf` und `text-basic.pdf`, je Variante:
 - **A** – nur `FPDFPage_CreateAnnot` (Rect, QuadPoints, Farbe, F = 4, Contents/T/NM/M/CreationDate), kein `/AP`: in PDFium richtig, in der Datei aber ohne Erscheinungsbild.
