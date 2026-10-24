@@ -167,6 +167,9 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// </summary>
     public ICommand JumpCommand { get; }
 
+    /// <summary>Gets whether pages are being read right now (for tests).</summary>
+    internal bool IsReading => _reading;
+
     /// <summary>Gets whether the entries can be edited here: never outside the mode "Comment" (milestone 9, task 16).</summary>
     public bool IsEditing { get; }
 
@@ -191,15 +194,22 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// The session swapped the document for the saved file (the same pages and annotations): the list stays, and what is
-    /// still to read (also a page whose read on the closed document fails) is read from <paramref name="adopted"/>.
+    /// still to read (also a page whose read on the closed document failed, before or after this call) is read from
+    /// <paramref name="adopted"/>; a reading that stopped on the closed document starts again.
     /// </summary>
     internal void OnDocumentAdopted(PdfDocument adopted)
     {
         ArgumentNullException.ThrowIfNull(adopted);
-        if (!_disposed && _document is not null)
+        if (_disposed || _document is null)
         {
-            _document = adopted;
+            return;
         }
+
+        _document = adopted;
+
+        // A read that met the closed old document before the tab learned of the new one stopped and left its page to be
+        // read: it goes on now (it does nothing while a read runs or nothing is left).
+        ReadPending();
     }
 
     /// <summary>Reads <paramref name="pages"/> again (their content changed); before the first read of every page it does nothing.</summary>
@@ -401,20 +411,29 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
                 {
                     return;
                 }
-                catch (ObjectDisposedException) when (!ReferenceEquals(document, _document))
-                {
-                    // The saved file replaced the document meanwhile: read the page from it.
-                    _pending.Add(page);
-                    continue;
-                }
                 catch (ObjectDisposedException)
                 {
-                    // Closed: the tab drops this list with the document.
+                    // The document was closed under the read: the page stays to be read. After a save the session closes
+                    // the old document before the tab learns of the new one, so this may come first; once the tab has
+                    // passed the saved document on (OnDocumentAdopted) the reading goes on there. A document that was
+                    // really closed takes this list with it.
+                    _pending.Add(page);
+                    if (!ReferenceEquals(document, _document))
+                    {
+                        continue;
+                    }
+
                     return;
                 }
                 catch (Exception)
                 {
-                    // A damaged page (or one PDFium refuses) lists nothing; the others go on.
+                    // A damaged page (or one PDFium refuses) lists nothing; the others go on. A page that was read before
+                    // keeps its entries: a read that fails once does not make its annotations vanish.
+                    if (_byPage.ContainsKey(page))
+                    {
+                        continue;
+                    }
+
                     entries = [];
                 }
 

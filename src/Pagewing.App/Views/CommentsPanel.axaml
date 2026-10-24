@@ -106,7 +106,7 @@
       <Setter Property="Data" Value="{StaticResource Pw.Icon.Strikethrough}" />
     </Style>
 
-    <!-- The swatch of the annotation's colour: a 1 px border.strong edge, so a pale colour still shows on the panel. -->
+    <!-- The swatch of the annotation's colour: round (radius.control on 12 px), with a 1 px border.strong edge, so a pale colour still shows on the panel. -->
     <Style Selector="Border.swatch">
       <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
     </Style>
@@ -158,7 +158,7 @@
                   <TextBlock Name="CommentKind" Grid.Column="1" Classes="body commentPrimary" Text="{Binding KindText}"
                              TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                   <Border Name="CommentSwatch" Grid.Column="2" Classes="swatch"
-                          Width="12" Height="12" Margin="8,0,0,0" CornerRadius="3" BorderThickness="1" VerticalAlignment="Center"
+                          Width="12" Height="12" Margin="8,0,0,0" CornerRadius="{DynamicResource Pw.Radius.Control}" BorderThickness="1" VerticalAlignment="Center"
                           Background="{Binding ColorBrush}"
                           IsVisible="{Binding HasColor}"
                           ToolTip.Tip="{Binding ColorName}"

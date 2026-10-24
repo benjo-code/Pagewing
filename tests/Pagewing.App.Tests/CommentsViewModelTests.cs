@@ -258,6 +258,87 @@ public sealed class CommentsViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ASaveDuringTheFirstReadDoesNotStopTheList()
+    {
+        // The session closes the old document before the tab learns of the saved one: a read of page 1 meets the closed
+        // document while the tab still has it (simulated: the reader throws as the closed document would).
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closedOnce = 0;
+        var tab = await OpenAsync("annotations-foreign.pdf", configure: tab => tab.AnnotationReader = async (document, page, token) =>
+        {
+            if (page == 0 && Interlocked.Exchange(ref closedOnce, 1) == 0)
+            {
+                await gate.Task.WaitAsync(token);
+                throw new ObjectDisposedException(nameof(PdfDocument));
+            }
+
+            return await document.GetAnnotationsAsync(page, token);
+        });
+        await tab.Editor.ApplyMarkupAsync(1, AnnotationKind.Highlight, [new PageRect(40, 250, 300, 270)], new AnnotationColor(255, 230, 0), null, null);
+        await WaitUntilAsync(() => tab.IsDirty);
+        tab.SidePanel = SidePanelKind.Comments;
+        var comments = tab.Comments;
+        Pump();
+        Assert.True(comments.IsReading);
+
+        gate.SetResult();
+        await WaitUntilAsync(() => !comments.IsReading);
+        Assert.True(comments.IsLoading);
+
+        // The save swaps the document: the reading goes on there, and every entry is listed (7 + the new highlight).
+        var old = tab.Document!;
+        var saved = await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken);
+        Assert.True(saved.Adopted);
+        await WaitUntilAsync(() => !ReferenceEquals(tab.Document, old) && !comments.IsLoading);
+        Assert.Equal(8, comments.Items.Count);
+        Assert.Equal([0, 0, 0, 0, 0, 1, 1, 1], comments.Items.Select(item => item.PageIndex));
+        Assert.Equal("8 comments on 2 pages", comments.Summary);
+    }
+
+    [AvaloniaFact]
+    public async Task AnEditThatRacedTheSwapIsStillListed()
+    {
+        var closedOnce = 1;
+        var tab = await OpenAsync("annotations-foreign.pdf", configure: tab => tab.AnnotationReader = (document, page, token) =>
+            page == 1 && Interlocked.Exchange(ref closedOnce, 1) == 0
+                ? Task.FromException<IReadOnlyList<PdfAnnotation>>(new ObjectDisposedException(nameof(PdfDocument)))
+                : document.GetAnnotationsAsync(page, token));
+        var comments = await OpenCommentsAsync(tab);
+        Assert.Equal(7, comments.Items.Count);
+
+        // A change on page 2 is read again, but that read meets the old document the save closes (simulated) ...
+        Volatile.Write(ref closedOnce, 0);
+        await tab.Editor.ApplyMarkupAsync(1, AnnotationKind.Underline, [new PageRect(40, 250, 300, 270)], new AnnotationColor(0, 0, 255), "Raced", null);
+        await WaitUntilAsync(() => Volatile.Read(ref closedOnce) == 1 && !comments.IsReading);
+        Assert.Equal(7, comments.Items.Count);
+
+        // ... and once the saved document is there, the page is read from it.
+        var old = tab.Document!;
+        await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => !ReferenceEquals(tab.Document, old) && comments.Items.Count == 8);
+        Assert.Contains(comments.Items, item => item.Comment == "Raced");
+    }
+
+    [AvaloniaFact]
+    public async Task AFailedReadAgainKeepsTheEntriesOfThePage()
+    {
+        var fail = 0;
+        var tab = await OpenAsync("annotations-foreign.pdf", configure: tab => tab.AnnotationReader = (document, page, token) =>
+            page == 0 && Interlocked.Exchange(ref fail, 0) == 1
+                ? Task.FromException<IReadOnlyList<PdfAnnotation>>(new InvalidDataException("The page is damaged."))
+                : document.GetAnnotationsAsync(page, token));
+        var comments = await OpenCommentsAsync(tab);
+        var before = comments.Items.ToArray();
+
+        Volatile.Write(ref fail, 1);
+        comments.Invalidate(new HashSet<int> { 0 });
+        await WaitUntilAsync(() => Volatile.Read(ref fail) == 0 && !comments.IsReading);
+
+        Assert.Equal(before, comments.Items);
+        Assert.Equal("7 comments on 2 pages", comments.Summary);
+    }
+
+    [AvaloniaFact]
     public async Task AnotherDocumentInTheTabDiscardsTheList()
     {
         var tab = await OpenAsync("annotations-foreign.pdf");
