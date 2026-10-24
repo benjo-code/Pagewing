@@ -112,16 +112,30 @@
       </Button>
     </StackPanel>
 
-    <!-- Document info: icon and label (below 760 px the icon only); only for an open document. -->
-    <Button Name="DocumentInfoButton" Grid.Column="1" Classes="icon status-value" Padding="4,0"
-            IsVisible="{Binding IsReady}"
-            ToolTip.Tip="{x:Static res:Strings.DocumentInfo}"
-            AutomationProperties.Name="{x:Static res:Strings.DocumentInfo}">
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <ctl:StrokeIcon Name="DocumentInfoIcon" Width="16" Height="16" VerticalAlignment="Center"
-                        Data="{StaticResource Pw.Icon.InfoCircle}" />
-        <TextBlock Name="DocumentInfoText" VerticalAlignment="Center" Text="{x:Static res:Strings.DocumentInfo}" />
+    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{StaticResource Pw.Space.3}">
+      <!--
+        Unsaved changes (design system 7.7, 7.10): a dot and the text "Unsaved", never colour alone; the text is what screen
+        readers read. Not focusable. Sizes from the spacing tokens; the text is type.caption like the rest of the bar, so it
+        fits the bar in both densities.
+      -->
+      <StackPanel Name="UnsavedIndicator" Orientation="Horizontal" Spacing="{StaticResource Pw.Space.1}" VerticalAlignment="Center"
+                  IsVisible="{Binding IsDirty, FallbackValue=False}">
+        <Ellipse Width="{StaticResource Pw.Space.2}" Height="{StaticResource Pw.Space.2}" VerticalAlignment="Center"
+                 Fill="{DynamicResource Pw.Brush.Text.Secondary}" />
+        <TextBlock Name="UnsavedText" VerticalAlignment="Center" Text="{x:Static res:Strings.Unsaved}" />
       </StackPanel>
-    </Button>
+
+      <!-- Document info: icon and label (below 760 px the icon only); only for an open document. -->
+      <Button Name="DocumentInfoButton" Classes="icon status-value" Padding="4,0"
+              IsVisible="{Binding IsReady}"
+              ToolTip.Tip="{x:Static res:Strings.DocumentInfo}"
+              AutomationProperties.Name="{x:Static res:Strings.DocumentInfo}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <ctl:StrokeIcon Name="DocumentInfoIcon" Width="16" Height="16" VerticalAlignment="Center"
+                          Data="{StaticResource Pw.Icon.InfoCircle}" />
+          <TextBlock Name="DocumentInfoText" VerticalAlignment="Center" Text="{x:Static res:Strings.DocumentInfo}" />
+        </StackPanel>
+      </Button>
+    </StackPanel>
   </Grid>
 </UserControl>

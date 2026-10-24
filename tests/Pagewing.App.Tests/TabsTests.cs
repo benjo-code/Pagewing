@@ -700,6 +700,8 @@ public sealed class TabsTests : IDisposable
             Calls++;
             return Failure is { } failure ? Task.FromException<string?>(failure) : Task.FromResult(Result);
         }
+
+        public Task<string?> PickSavePdfAsync(string suggestedName, string? folder) => Task.FromResult<string?>(null);
     }
 
     private sealed class Closer(Window window) : IDisposable

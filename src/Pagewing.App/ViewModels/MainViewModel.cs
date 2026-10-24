@@ -76,7 +76,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
-    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed)> _tabHandlers = [];
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private int? _tabDropIndex;
     private bool _picking;
@@ -830,6 +830,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Tabs.Close(tab);
         Unhook(tab);
         CancelPrintingOf(tab);
+        CancelSavingOf(tab);
 
         // The window it goes to has not drawn it yet: its thumbnails wait for the first sharp page there, which sets the
         // flag again.
@@ -891,6 +892,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _palette?.OnClosed();
         _settingsCard?.OnClosed();
         DisposePrinting();
+        DisposeSaving();
         DisposeDefaultApp();
         DisposeUpdate();
         Settings.Changed -= OnSettingsChanged;
@@ -1002,10 +1004,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         var handlers = (
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
-            Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)));
+            Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)),
+            Save: (Action<bool>)(saveAs => _ = SaveTabAsync(tab, saveAs)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;
         tab.PropertyChanged += handlers.Changed;
+        tab.SaveRequested += handlers.Save;
         _tabHandlers[tab] = handlers;
 
         // The file of the command line may be open already when its tab comes; a tab from another window was reported there.
@@ -1040,6 +1044,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             tab.CloseRequested -= handlers.Close;
             tab.OpenOtherRequested -= handlers.OpenOther;
             tab.PropertyChanged -= handlers.Changed;
+            tab.SaveRequested -= handlers.Save;
         }
     }
 
@@ -1154,6 +1159,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Tabs.Close(tab);
         Unhook(tab);
         CancelPrintingOf(tab);
+        CancelSavingOf(tab);
         if (_recent is not null && RememberedViewOf(tab) is { } closed)
         {
             _recent.Closed([closed]);
@@ -1208,7 +1214,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             RaiseActivePanelChanged();
         }
 
-        if (e.PropertyName is nameof(TabViewModel.IsReady) or nameof(TabViewModel.Document))
+        if (e.PropertyName is nameof(TabViewModel.IsReady) or nameof(TabViewModel.Document) or nameof(TabViewModel.IsSaving))
         {
             // The print button of the action bar is enabled once the document of the active tab is open.
             _printCommand?.RaiseCanExecuteChanged();

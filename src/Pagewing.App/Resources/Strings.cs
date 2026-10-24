@@ -320,6 +320,37 @@ public static class Strings
     public static string SettingsGroupComments => Get("SettingsGroupComments");
     public static string SettingsAuthor => Get("SettingsAuthor");
     public static string SettingsAuthorHint => Get("SettingsAuthorHint");
+    public static string CommandGroupEdit => Get("CommandGroupEdit");
+    public static string CommandSave => Get("CommandSave");
+    public static string CommandSaveAs => Get("CommandSaveAs");
+    public static string CommandUndo => Get("CommandUndo");
+    public static string CommandRedo => Get("CommandRedo");
+    public static string SaveAsTitle => Get("SaveAsTitle");
+    public static string Unsaved => Get("Unsaved");
+    public static string TabUnsavedName => Get("TabUnsavedName");
+    public static string SaveBlockedPrinting => Get("SaveBlockedPrinting");
+    public static string SaveChangesTitle => Get("SaveChangesTitle");
+    public static string SaveChangesText => Get("SaveChangesText");
+    public static string SignatureWarningTitle => Get("SignatureWarningTitle");
+    public static string SignatureWarningText => Get("SignatureWarningText");
+    public static string SignatureNoteTitle => Get("SignatureNoteTitle");
+    public static string SignatureNoteText => Get("SignatureNoteText");
+    public static string FileChangedTitle => Get("FileChangedTitle");
+    public static string FileChangedText => Get("FileChangedText");
+    public static string SaveErrorTitle => Get("SaveErrorTitle");
+    public static string SaveErrorNotWritable => Get("SaveErrorNotWritable");
+    public static string SaveErrorDiskFull => Get("SaveErrorDiskFull");
+    public static string SaveErrorWriteFailed => Get("SaveErrorWriteFailed");
+    public static string SaveErrorVerificationFailed => Get("SaveErrorVerificationFailed");
+    public static string SaveErrorSourceModified => Get("SaveErrorSourceModified");
+    public static string SaveErrorEncrypted => Get("SaveErrorEncrypted");
+    public static string SaveErrorUnknown => Get("SaveErrorUnknown");
+    public static string SaveChoiceSave => Get("SaveChoiceSave");
+    public static string SaveChoiceDontSave => Get("SaveChoiceDontSave");
+    public static string SaveChoiceSaveAs => Get("SaveChoiceSaveAs");
+    public static string SaveChoiceSaveAnyway => Get("SaveChoiceSaveAnyway");
+    public static string SaveChoiceOverwrite => Get("SaveChoiceOverwrite");
+    public static string SaveChoiceCancel => Get("SaveChoiceCancel");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

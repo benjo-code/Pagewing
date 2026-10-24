@@ -879,4 +879,97 @@
   <data name="UpdateErrorNotStarted" xml:space="preserve">
     <value>Die neue Version ist installiert, ließ sich aber nicht starten. Sie startet, wenn Sie Pagewing das nächste Mal öffnen.</value>
   </data>
+  <data name="CommandGroupEdit" xml:space="preserve">
+    <value>Bearbeiten</value>
+  </data>
+  <data name="CommandSave" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="CommandSaveAs" xml:space="preserve">
+    <value>Speichern unter …</value>
+  </data>
+  <data name="CommandUndo" xml:space="preserve">
+    <value>Rückgängig</value>
+  </data>
+  <data name="CommandRedo" xml:space="preserve">
+    <value>Wiederholen</value>
+  </data>
+  <data name="SaveAsTitle" xml:space="preserve">
+    <value>Speichern unter</value>
+  </data>
+  <data name="Unsaved" xml:space="preserve">
+    <value>Nicht gespeichert</value>
+  </data>
+  <data name="TabUnsavedName" xml:space="preserve">
+    <value>{0}, nicht gespeichert</value>
+  </data>
+  <data name="SaveBlockedPrinting" xml:space="preserve">
+    <value>Das Dokument wird gerade gedruckt. Speichern Sie es, wenn der Druck fertig ist.</value>
+  </data>
+  <data name="SaveChangesTitle" xml:space="preserve">
+    <value>Änderungen an „{0}“ speichern?</value>
+  </data>
+  <data name="SaveChangesText" xml:space="preserve">
+    <value>Ihre Änderungen gehen verloren, wenn Sie sie nicht speichern.</value>
+  </data>
+  <data name="SignatureWarningTitle" xml:space="preserve">
+    <value>Diese Signatur erlaubt keine Kommentare</value>
+  </data>
+  <data name="SignatureWarningText" xml:space="preserve">
+    <value>Nach dem Speichern wird sie in Programmen wie Acrobat als ungültig angezeigt.</value>
+  </data>
+  <data name="SignatureNoteTitle" xml:space="preserve">
+    <value>Dieses Dokument ist signiert</value>
+  </data>
+  <data name="SignatureNoteText" xml:space="preserve">
+    <value>Pagewing hängt Ihre Änderungen nur an, die signierten Bytes bleiben unverändert.</value>
+  </data>
+  <data name="FileChangedTitle" xml:space="preserve">
+    <value>„{0}“ wurde seit dem Öffnen ersetzt</value>
+  </data>
+  <data name="FileChangedText" xml:space="preserve">
+    <value>An ihrer Stelle steht jetzt eine andere Datei. Mit Ihrer Fassung überschreiben oder unter einem anderen Namen speichern?</value>
+  </data>
+  <data name="SaveErrorTitle" xml:space="preserve">
+    <value>„{0}“ konnte nicht gespeichert werden</value>
+  </data>
+  <data name="SaveErrorNotWritable" xml:space="preserve">
+    <value>Die Datei oder ihr Ordner ist schreibgeschützt. Speichern Sie unter einem anderen Namen.</value>
+  </data>
+  <data name="SaveErrorDiskFull" xml:space="preserve">
+    <value>Der Datenträger ist voll. Schaffen Sie Platz oder speichern Sie unter einem anderen Namen.</value>
+  </data>
+  <data name="SaveErrorWriteFailed" xml:space="preserve">
+    <value>Die Datei ließ sich nicht schreiben, vielleicht verwendet ein anderes Programm sie. Das Original ist unverändert.</value>
+  </data>
+  <data name="SaveErrorVerificationFailed" xml:space="preserve">
+    <value>Die gespeicherte Datei hat die Prüfung nicht bestanden und wurde nicht übernommen. Das Original ist unverändert.</value>
+  </data>
+  <data name="SaveErrorSourceModified" xml:space="preserve">
+    <value>Ein anderes Programm hat die Datei seit dem Öffnen verändert. Pagewing kann Ihre Änderungen jetzt nicht speichern, auch nicht unter einem anderen Namen, weil sich sonst beide Fassungen mischen würden. Ihre Änderungen bleiben in diesem Tab erhalten, solange er offen ist.</value>
+  </data>
+  <data name="SaveErrorEncrypted" xml:space="preserve">
+    <value>Pagewing kann dieses verschlüsselte Dokument nicht speichern, ohne die Verschlüsselung zu verlieren, und hat es deshalb nicht gespeichert.</value>
+  </data>
+  <data name="SaveErrorUnknown" xml:space="preserve">
+    <value>Das Dokument konnte nicht gespeichert werden. Das Original ist unverändert.</value>
+  </data>
+  <data name="SaveChoiceSave" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="SaveChoiceDontSave" xml:space="preserve">
+    <value>Nicht speichern</value>
+  </data>
+  <data name="SaveChoiceSaveAs" xml:space="preserve">
+    <value>Speichern unter …</value>
+  </data>
+  <data name="SaveChoiceSaveAnyway" xml:space="preserve">
+    <value>Trotzdem speichern</value>
+  </data>
+  <data name="SaveChoiceOverwrite" xml:space="preserve">
+    <value>Überschreiben</value>
+  </data>
+  <data name="SaveChoiceCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
 </root>

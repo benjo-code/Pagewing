@@ -85,9 +85,155 @@ public sealed class CommandCatalogTests : IDisposable
         // Only the meanings of Esc at window level stay out of the lists: the link card's, the overlays', then the update
         // card's (with the note after "Check for updates").
         Assert.Equal(["link.cancel", "overlay.hide", "update.dismiss"], catalog.All.Where(command => !command.Listed).Select(command => command.Id));
-        Assert.Equal(["file", "view", "nav", "search", "window"], CommandCatalog.Groups);
+        Assert.Equal(["file", "edit", "view", "nav", "search", "window"], CommandCatalog.Groups);
         Strings.Culture = new CultureInfo("de");
-        Assert.Equal(["Datei", "Ansicht", "Navigation", "Suche", "Fenster"], CommandCatalog.Groups.Select(CommandCatalog.GroupTitle));
+        Assert.Equal(["Datei", "Bearbeiten", "Ansicht", "Navigation", "Suche", "Fenster"], CommandCatalog.Groups.Select(CommandCatalog.GroupTitle));
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en", "Save", "Save as …", "Undo", "Redo", "Edit")]
+    [InlineData("de", "Speichern", "Speichern unter …", "Rückgängig", "Wiederholen", "Bearbeiten")]
+    public void EveryNewCommandHasATitleInBothLanguages(string language, string save, string saveAs, string undo, string redo, string editGroup)
+    {
+        var catalog = NewViewModel(new CountingPicker()).Commands;
+        Strings.Culture = new CultureInfo(language);
+
+        Assert.Equal(save, catalog.ById("file.save")!.Title());
+        Assert.Equal(saveAs, catalog.ById("file.saveAs")!.Title());
+        Assert.Equal(undo, catalog.ById("edit.undo")!.Title());
+        Assert.Equal(redo, catalog.ById("edit.redo")!.Title());
+        Assert.Equal(editGroup, CommandCatalog.GroupTitle(CommandCatalog.EditGroup));
+
+        // Saving belongs to the files, undo and redo to their own group; all four are listed (help card, palette).
+        Assert.Equal(CommandCatalog.FileGroup, catalog.ById("file.save")!.Group);
+        Assert.Equal(CommandCatalog.FileGroup, catalog.ById("file.saveAs")!.Group);
+        Assert.Equal(CommandCatalog.EditGroup, catalog.ById("edit.undo")!.Group);
+        Assert.Equal(CommandCatalog.EditGroup, catalog.ById("edit.redo")!.Group);
+        Assert.All(["file.save", "file.saveAs", "edit.undo", "edit.redo"], id => Assert.True(catalog.ById(id)!.Listed));
+    }
+
+    [AvaloniaFact]
+    public void NewShortcutsDoNotCollide()
+    {
+        var catalog = NewViewModel(new CountingPicker()).Commands;
+        var expected = new (string Id, string[] Gestures)[]
+        {
+            ("file.save", ["Ctrl+S"]),
+            ("file.saveAs", ["Ctrl+Shift+S"]),
+            ("edit.undo", ["Ctrl+Z"]),
+            ("edit.redo", ["Ctrl+Shift+Z", "Ctrl+Y"]),
+        };
+
+        foreach (var (id, gestures) in expected)
+        {
+            var command = catalog.ById(id)!;
+            Assert.Equal(gestures, command.Gestures.Select(gesture => gesture.ToString()));
+            foreach (var gesture in command.Gestures)
+            {
+                // No other command has the key (NoGestureBelongsToTwoCommands checks the whole catalog).
+                Assert.Same(command, catalog.ForGesture(gesture));
+                Assert.Single(catalog.All, other => other.Gestures.Contains(gesture));
+            }
+        }
+
+        // The shortcut texts as the help card shows them; undo and redo leave their keys to a focused text field.
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Strg+S", GestureText.Of(catalog.ById("file.save")!.Gesture!));
+        Assert.Equal("Strg+Umschalt+S", GestureText.Of(catalog.ById("file.saveAs")!.Gesture!));
+        Assert.Equal("Strg+Z", GestureText.Of(catalog.ById("edit.undo")!.Gesture!));
+        Assert.Equal("Strg+Umschalt+Z", GestureText.Of(catalog.ById("edit.redo")!.Gesture!));
+        Assert.True(catalog.ById("edit.undo")!.YieldsToTextInput);
+        Assert.True(catalog.ById("edit.redo")!.YieldsToTextInput);
+        Assert.False(catalog.ById("file.save")!.YieldsToTextInput);
+    }
+
+    [AvaloniaFact]
+    public async Task SaveAndUndoAreOnlyOfferedWhenTheyCanRun()
+    {
+        var (window, viewModel, view, _) = Show(new CountingPicker());
+        var catalog = viewModel.Commands;
+        bool Offered(string id) => catalog.ById(id) is { } command && command.CanExecute() && (command.Offered?.Invoke() ?? true);
+
+        // Without a tab nothing of it runs.
+        Assert.All(["file.save", "file.saveAs", "edit.undo", "edit.redo"], id => Assert.False(Offered(id)));
+
+        // An open document can be saved under another name; nothing to save, undo or redo yet, and no editor is made for asking.
+        var tab = await OpenAsync(window, viewModel, view, "text-basic.pdf");
+        Assert.True(Offered("file.saveAs"));
+        Assert.False(Offered("file.save"));
+        Assert.False(Offered("edit.undo"));
+        Assert.False(Offered("edit.redo"));
+        Assert.False(tab.HasEditor);
+
+        // A change: save and undo. (The document is only changed in memory here; nothing is saved.)
+        await tab.Editor.ApplyMarkupAsync(0, Core.Annotations.AnnotationKind.Highlight, [new PageRect(72, 72, 220, 90)], new Core.Annotations.AnnotationColor(255, 230, 0), null, null);
+        await WaitUntilAsync(window, () => tab.CanUndo);
+        Assert.True(Offered("file.save"));
+        Assert.True(Offered("edit.undo"));
+        Assert.False(Offered("edit.redo"));
+
+        // Undone: redo, and still unsaved (the history moved since the file was opened).
+        catalog.ById("edit.undo")!.Execute();
+        await WaitUntilAsync(window, () => tab.CanRedo);
+        Assert.False(Offered("edit.undo"));
+        Assert.True(Offered("edit.redo"));
+        Assert.True(Offered("file.save"));
+        Assert.Empty(await tab.Document!.GetAnnotationsAsync(0, TestContext.Current.CancellationToken));
+
+        // Redone with its second key.
+        view.Focus();
+        Press(window, Key.Y, PhysicalKey.Y, Ctrl);
+        await WaitUntilAsync(window, () => tab.CanUndo && !tab.CanRedo);
+        Assert.Single(await tab.Document!.GetAnnotationsAsync(0, TestContext.Current.CancellationToken));
+    }
+
+    [AvaloniaFact]
+    public async Task CtrlZInTextFieldsIsNotConsumed()
+    {
+        var (window, viewModel, view, _) = Show(new CountingPicker());
+        var tab = await OpenAsync(window, viewModel, view, "text-rich.pdf");
+        await tab.Editor.ApplyMarkupAsync(0, Core.Annotations.AnnotationKind.Highlight, [new PageRect(72, 72, 220, 90)], new Core.Annotations.AnnotationColor(255, 230, 0), null, null);
+        await WaitUntilAsync(window, () => tab.CanUndo);
+
+        // The page has its links as annotations too.
+        var marked = (await tab.Document!.GetAnnotationsAsync(0, TestContext.Current.CancellationToken)).Count;
+
+        // The first stop of a key event is the window (tunnel): handled there means a key binding took the key.
+        bool? takenByABinding = null;
+        window.AddHandler(InputElement.KeyDownEvent, (_, e) => takenByABinding ??= e.Handled, RoutingStrategies.Tunnel, handledEventsToo: true);
+        bool Pressed(Key key, PhysicalKey physical, RawInputModifiers modifiers)
+        {
+            takenByABinding = null;
+            Press(window, key, physical, modifiers);
+            return takenByABinding ?? throw new InvalidOperationException("The key did not arrive.");
+        }
+
+        // The search field undoes its own typing; the markup stays.
+        Press(window, Key.F, PhysicalKey.F, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "SearchField" });
+        var search = (TextBox)Focused(window)!;
+        window.KeyTextInput("abc");
+        Settle(window);
+        Assert.Equal("abc", search.Text);
+        Assert.False(Pressed(Key.Z, PhysicalKey.Z, Ctrl));
+        Assert.NotEqual("abc", search.Text);
+        Assert.False(Pressed(Key.Y, PhysicalKey.Y, Ctrl));
+        Assert.False(Pressed(Key.Z, PhysicalKey.Z, Ctrl | Shift));
+        Assert.True(tab.CanUndo);
+        Assert.Equal(marked, (await tab.Document!.GetAnnotationsAsync(0, TestContext.Current.CancellationToken)).Count);
+
+        // So does the page field.
+        Press(window, Key.G, PhysicalKey.G, Ctrl);
+        await WaitUntilAsync(window, () => Focused(window) is TextBox { Name: "PageField" });
+        Assert.False(Pressed(Key.Z, PhysicalKey.Z, Ctrl));
+        Assert.True(tab.CanUndo);
+
+        // In the document the same key undoes the markup.
+        view.Focus();
+        Settle(window);
+        Assert.True(Pressed(Key.Z, PhysicalKey.Z, Ctrl));
+        await WaitUntilAsync(window, () => !tab.CanUndo);
+        Assert.Equal(marked - 1, (await tab.Document!.GetAnnotationsAsync(0, TestContext.Current.CancellationToken)).Count);
     }
 
     [AvaloniaFact]
@@ -890,6 +1036,8 @@ public sealed class CommandCatalogTests : IDisposable
             Calls++;
             return Task.FromResult<string?>(null);
         }
+
+        public Task<string?> PickSavePdfAsync(string suggestedName, string? folder) => Task.FromResult<string?>(null);
     }
 
     /// <summary>A clipboard of the document view that only records what it is given.</summary>

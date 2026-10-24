@@ -18,6 +18,9 @@ public sealed class CommandCatalog
     /// <summary>Group of the commands for files and the history.</summary>
     public const string FileGroup = "file";
 
+    /// <summary>Group of undo and redo of the changes to a document.</summary>
+    public const string EditGroup = "edit";
+
     /// <summary>Group of zoom, layout, page theme and panels.</summary>
     public const string ViewGroup = "view";
 
@@ -42,7 +45,7 @@ public sealed class CommandCatalog
     }
 
     /// <summary>Gets the groups in the order the help card and the palette show them.</summary>
-    public static IReadOnlyList<string> Groups { get; } = [FileGroup, ViewGroup, NavigationGroup, SearchGroup, WindowGroup];
+    public static IReadOnlyList<string> Groups { get; } = [FileGroup, EditGroup, ViewGroup, NavigationGroup, SearchGroup, WindowGroup];
 
     /// <summary>Gets every command, grouped in the order of <see cref="Groups"/>.</summary>
     public IReadOnlyList<AppCommand> All { get; }
@@ -51,6 +54,7 @@ public sealed class CommandCatalog
     public static string GroupTitle(string group) => group switch
     {
         FileGroup => Strings.CommandGroupFile,
+        EditGroup => Strings.CommandGroupEdit,
         ViewGroup => Strings.CommandGroupView,
         NavigationGroup => Strings.CommandGroupNavigation,
         SearchGroup => Strings.CommandGroupSearch,
@@ -91,11 +95,21 @@ public sealed class CommandCatalog
         // File. Ctrl+O opens the dialog in every state of the window, as before.
         Window("file.open", () => Strings.OpenFile, FileGroup, Ctrl(Key.O), _window.OpenCommand),
         Window("file.closeTab", () => Strings.CloseTabTooltip, FileGroup, Ctrl(Key.W), _window.CloseActiveTabCommand),
+
+        // Ctrl+S only while there is something to save; "Save as" once the document is open. Neither while the tab prints.
+        Tab("file.save", () => Strings.CommandSave, FileGroup, Ctrl(Key.S), tab => tab.SaveCommand),
+        Tab("file.saveAs", () => Strings.CommandSaveAs, FileGroup, CtrlShift(Key.S), tab => tab.SaveAsCommand),
         Window("file.print", () => Strings.CommandPrint, FileGroup, Ctrl(Key.P), _window.PrintCommand),
         new(
             "recent.clear", () => Strings.CommandClearRecent, FileGroup, null,
             () => _window.ClearRecentFiles is not null,
             () => _window.ClearRecentFiles?.Invoke()),
+
+        // Edit: undo and redo of the annotations, only while there is a step. A text field keeps these keys for its own text
+        // (YieldsToTextInput), as it keeps Ctrl+C.
+        Tab("edit.undo", () => Strings.CommandUndo, EditGroup, Ctrl(Key.Z), tab => tab.UndoCommand) with { YieldsToTextInput = true },
+        Tab("edit.redo", () => Strings.CommandRedo, EditGroup, CtrlShift(Key.Z), tab => tab.RedoCommand)
+            with { AlternativeGestures = [Ctrl(Key.Y)], YieldsToTextInput = true },
 
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
