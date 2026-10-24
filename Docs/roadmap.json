@@ -5,6 +5,11 @@
   "scopeChanges": [
     {
       "date": "2026-10-24",
+      "context": "M8.1 abgeschlossen, Handprüfungen auf die Abnahme von v0.2.0 verschoben",
+      "text": "Auf Wunsch des Projektinhabers (2026-10-24) ist Milestone 8.1 mit dem umgesetzten und getesteten Stand abgeschlossen. Die manuellen Ende-zu-Ende-Prüfungen des Updaters (Windows „nur für mich“ und „alle Benutzer“, Linux-AppImage mit `.deb`-Hinweis, Tabs nach einem echten Update) werden nicht mehr in M8.1 abgenommen, sondern bei der Abnahme des Release `v0.2.0` (Anleitung `packaging/README.md`, „Update prüfen“); sie stehen dort als offene Kriterien. Folge: M8.1 gilt als fertig, ohne dass der Updater auf einem echten System durchgelaufen ist; belegt sind die Tests, die Startzeit auf dem Haupt-PC und die Linux-only-Tests in der CI. Verlässt sich jemand vor `v0.2.0` auf den Updater, ist das ungeprüft."
+    },
+    {
+      "date": "2026-10-24",
       "context": "Neuer Milestone 12.1 „Öffentliches Repo und Sicherheitsprüfung“ vor dem Release v0.2.0",
       "text": "Auf Wunsch des Projektinhabers (2026-10-24) gehören das Öffentlichmachen des Repos, die Prüfung der Git-Historie, eine allgemeine Sicherheitsprüfung des Codes und die Vorbereitung des Signaturschlüssels in einen eigenen kleinen Milestone 12.1 statt in M8.1. Lage: nach Milestone 12, vor dem Release `v0.2.0` (`afterMilestone` des Releases ist jetzt `12.1`). Begründung: Der Updater braucht das öffentliche Repo erst, wenn Nutzer eine Version mit Updater haben (`v0.1.0` hat keinen), und die Prüfung gelingt am besten kurz vor dem Veröffentlichen. M8.1 bleibt „in Arbeit“ mit seinen offenen Handprüfungen (Windows und Linux Ende zu Ende, Startzeit auf echter Hardware). Die Punkte „Signaturschlüssel anlegen“, „Repo öffentlich“ und „Trockenlauf des Release-Workflows“ aus dem Block „Stand der Abnahme und was der Projektinhaber tun muss“ von M8.1 sowie das Härten des Signier-Jobs liegen jetzt in 12.1."
     },
@@ -364,7 +369,8 @@
         {
           "id": "8.1",
           "title": "Automatische Updates",
-          "status": "in-progress",
+          "status": "done",
+          "completedOn": "2026-10-24",
           "plan": "superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md",
           "spec": "superpowers/specs/2026-10-23-m81-automatische-updates-design.md",
           "prerequisites": ["8"],
@@ -400,9 +406,11 @@
               "done": true,
               "evidence": "2026-10-24: `UpdateDisabledTests.NoCallWhenTheSettingIsOff` (echte `GitHubUpdateSource` mit einem Handler, der jeden Aufruf zählt und als Fehler meldet; Ergebnis 0 Aufrufe, die Fabrik des Koordinators wird nie gerufen) grün, dazu `SettingsCardTests.TurningItOffWritesTheSettingAndStopsTheCheck` und `NoCoordinatorInAMeasurementRun`. Ausnahme mit Absicht: Der Befehl „Nach Updates suchen“ prüft auch bei abgeschalteter Einstellung (`TheCommandWorksEvenWhenTheSettingIsOff`)."
             },
-            { "text": "Windows, Ende zu Ende: Eine ältere Testversion aktualisiert sich gegen ein echtes Test-Release auf die neue, für „nur für mich“ und für „alle Benutzer“; Einstellungen und Verlauf bleiben erhalten, die Standardprogramm-Zuordnung bleibt gesetzt (manuelle Prüfung, `installer-smoke` für den stillen Pfad). Stand 2026-10-24 **offen**: „echtes Test-Release“ ist nach dem Entwurf der Testaufbau gegen den lokalen Testserver (kein öffentliches Testrelease). Prüfen auf einem Windows-Rechner ohne installiertes Pagewing nach `packaging/README.md`, „Update prüfen“ → „Windows“ (Durchlauf A „nur für mich“, Durchlauf B „alle Benutzer“, Fehlerpfade Server aus, `--tamper signature`, `--tamper checksum`, UAC abgelehnt); stiller Pfad „nur für mich“ auch mit `dotnet run tools/package.cs -- update-smoke Pagewing-0.0.1-win-x64-setup.exe Pagewing-0.0.2-win-x64-setup.exe --key <Testschlüssel>`. Nicht auf dem Entwicklungsrechner ausgeführt (installiert Pagewing und schreibt in die echte Registry)", "done": false },
-            { "text": "Linux, Ende zu Ende: AppImage aktualisiert sich auf die neue Version; `.deb` verhält sich wie im Plan festgelegt (manuelle Prüfung). Stand 2026-10-24 **offen**: Prüfen nach `packaging/README.md`, „Update prüfen“ → „Linux, AppImage“ (auch schreibgeschützter Ordner und `.deb`-Hinweis); dazu die drei Linux-only-Tests mit `dotnet test --project tests/Pagewing.App.Tests -- --filter-class \"*AppImageUpdaterTests\"` auf `dotnet-linux` und `deb-smoke` mit der neuen Abhängigkeit `libssl3 | libssl3t64`", "done": false },
-            { "text": "Ein Update unterbricht nie eine laufende Arbeit: Es installiert nicht mitten in einer Sitzung und verliert keine offenen Tabs (Test und manuelle Prüfung). Stand 2026-10-24: Der Testteil ist grün (`UpdateFlowTests.NoSessionIsWrittenBeforeTheApplyStarts`, `TheAppIsNotClosedBeforeTheChecksumMatched`, `DoubleClickStartsOneInstall`, `TwoWindowsStartOneInstall`, `SessionRestoreTests` mit `RestoresTabsAndPositionsOfOneWindow`, `RestoresSeveralWindowsAsBefore`, `AskForThePasswordOfAProtectedPdf`, `ATabThatWasStillLoadingComesBack`, `WindowsUpdateInstallerTests.WritesTheSessionBeforeStarting`, `SuccessStartsTheNewVersionWithRestoreSession`); **offen** ist die manuelle Prüfung (Tabs nach einem echten Update unter Windows und mit dem AppImage, `packaging/README.md`, „Update prüfen“)", "done": false },
+            {
+              "text": "Ein Update unterbricht nie eine laufende Arbeit: Es installiert nicht mitten in einer Sitzung und verliert keine offenen Tabs (Test; die manuelle Prüfung nach einem echten Update ist auf Wunsch des Projektinhabers in die Abnahme des Release `v0.2.0` verschoben)",
+              "done": true,
+              "evidence": "Tests (Stand 2026-10-24, grün in der CI von PR 27): `UpdateFlowTests.NoSessionIsWrittenBeforeTheApplyStarts`, `TheAppIsNotClosedBeforeTheChecksumMatched`, `DoubleClickStartsOneInstall`, `TwoWindowsStartOneInstall`, `SessionRestoreTests.RestoresTabsAndPositionsOfOneWindow`, `RestoresSeveralWindowsAsBefore`, `AskForThePasswordOfAProtectedPdf`, `ATabThatWasStillLoadingComesBack`, `WindowsUpdateInstallerTests.WritesTheSessionBeforeStarting`, `SuccessStartsTheNewVersionWithRestoreSession`. Die manuelle Prüfung nach einem echten Update steht in der Abnahme des Release `v0.2.0`."
+            },
             {
               "text": "`dotnet run tools/licenses.cs -- check` ist grün, falls ein Paket hinzukam; Build, Test und Format laufen grün (Befehle in `CLAUDE.md`)",
               "done": true,
@@ -412,7 +420,7 @@
           "blocks": [
             {
               "title": "Stand der Abnahme und was der Projektinhaber tun muss (2026-10-24)",
-              "text": "Umgesetzt und mit Tests belegt ist alles, was ohne echtes Release geht (Fake-Netz, Fake-Installer, Wegwerfschlüssel). Offen und nur vom Projektinhaber oder auf echter Hardware zu erledigen:\n\n- **Signaturschlüssel, öffentliches Repo und Trockenlauf des Release-Workflows** sind in Milestone 12.1 verschoben (Scope-Änderung 2026-10-24). Bis dahin scheitert jedes Release mit Upload im Job `preflight` (gewollt), und ohne öffentliches Repo findet die App kein Release.\n- **Handprüfungen** nach `packaging/README.md`, „Update prüfen“: Windows „nur für mich“ und „alle Benutzer“ (mit UAC-Ablehnung und den Fehlerpfaden), AppImage auf Linux (auch schreibgeschützter Ordner), `.deb`-Hinweis.\n- **Startzeit** ist belegt (Abnahmekriterium oben: Haupt-PC am 2026-10-24, kein Unterschied zu `v0.1.0`, CI-Startzeit-Check grün).\n- **Linux-only-Tests** der Klasse `AppImageUpdaterTests`: auf `dotnet-linux` gelaufen und grün (CI-Lauf von PR 27, 2026-10-24).\n- Der erste echte Lauf der Jobs `preflight` und `manifest` gehört zur Vorabversion in Milestone 12.1 bzw. zum Release `v0.2.0`."
+              "text": "Umgesetzt und mit Tests belegt ist alles, was ohne echtes Release geht (Fake-Netz, Fake-Installer, Wegwerfschlüssel). Offen und nur vom Projektinhaber oder auf echter Hardware zu erledigen:\n\n- **Signaturschlüssel, öffentliches Repo und Trockenlauf des Release-Workflows** sind in Milestone 12.1 verschoben (Scope-Änderung 2026-10-24). Bis dahin scheitert jedes Release mit Upload im Job `preflight` (gewollt), und ohne öffentliches Repo findet die App kein Release.\n- **Handprüfungen** (Windows „nur für mich“ und „alle Benutzer“ mit UAC-Ablehnung und Fehlerpfaden, AppImage auf Linux auch im schreibgeschützten Ordner, `.deb`-Hinweis, Tabs nach einem echten Update) sind auf Wunsch des Projektinhabers (2026-10-24) in die Abnahme des Release `v0.2.0` verschoben; Anleitung: `packaging/README.md`, „Update prüfen“.\n- **Startzeit** ist belegt (Abnahmekriterium oben: Haupt-PC am 2026-10-24, kein Unterschied zu `v0.1.0`, CI-Startzeit-Check grün).\n- **Linux-only-Tests** der Klasse `AppImageUpdaterTests`: auf `dotnet-linux` gelaufen und grün (CI-Lauf von PR 27, 2026-10-24).\n- Der erste echte Lauf der Jobs `preflight` und `manifest` gehört zur Vorabversion in Milestone 12.1 bzw. zum Release `v0.2.0`."
             },
             {
               "title": "Voraussetzungen vor dem Start",
@@ -697,7 +705,12 @@
       "status": "open",
       "afterMilestone": "12.1",
       "covers": ["8.1", "9", "10", "11", "12", "12.1"],
-      "intro": "Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automatisch (Milestone 8.1). Setzt Milestone 12.1 voraus: Das Repo ist öffentlich und der echte Signaturschlüssel steckt im Programm."
+      "intro": "Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automatisch (Milestone 8.1). Setzt Milestone 12.1 voraus: Das Repo ist öffentlich und der echte Signaturschlüssel steckt im Programm.",
+      "acceptance": [
+        { "text": "Aus M8.1, auf Wunsch des Projektinhabers (2026-10-24) hierher verschoben: Windows, Ende zu Ende: Eine ältere Testversion aktualisiert sich gegen ein echtes Test-Release auf die neue, für „nur für mich“ und für „alle Benutzer“; Einstellungen und Verlauf bleiben erhalten, die Standardprogramm-Zuordnung bleibt gesetzt (manuelle Prüfung, `installer-smoke` für den stillen Pfad). Stand 2026-10-24 **offen**: „echtes Test-Release“ ist nach dem Entwurf der Testaufbau gegen den lokalen Testserver (kein öffentliches Testrelease). Prüfen auf einem Windows-Rechner ohne installiertes Pagewing nach `packaging/README.md`, „Update prüfen“ → „Windows“ (Durchlauf A „nur für mich“, Durchlauf B „alle Benutzer“, Fehlerpfade Server aus, `--tamper signature`, `--tamper checksum`, UAC abgelehnt); stiller Pfad „nur für mich“ auch mit `dotnet run tools/package.cs -- update-smoke Pagewing-0.0.1-win-x64-setup.exe Pagewing-0.0.2-win-x64-setup.exe --key <Testschlüssel>`. Nicht auf dem Entwicklungsrechner ausgeführt (installiert Pagewing und schreibt in die echte Registry)", "done": false },
+        { "text": "Aus M8.1, auf Wunsch des Projektinhabers (2026-10-24) hierher verschoben: Linux, Ende zu Ende: AppImage aktualisiert sich auf die neue Version; `.deb` verhält sich wie im Plan festgelegt (manuelle Prüfung). Stand 2026-10-24 **offen**: Prüfen nach `packaging/README.md`, „Update prüfen“ → „Linux, AppImage“ (auch schreibgeschützter Ordner und `.deb`-Hinweis); dazu die drei Linux-only-Tests mit `dotnet test --project tests/Pagewing.App.Tests -- --filter-class \"*AppImageUpdaterTests\"` auf `dotnet-linux` und `deb-smoke` mit der neuen Abhängigkeit `libssl3 | libssl3t64`", "done": false },
+        { "text": "Aus M8.1, auf Wunsch des Projektinhabers (2026-10-24) hierher verschoben: Tabs und Positionen bleiben nach einem echten Update unter Windows und mit dem AppImage erhalten (manuelle Prüfung nach `packaging/README.md`, „Update prüfen“; der Testteil ist in M8.1 belegt)", "done": false }
+      ]
     },
     {
       "version": "0.3.0",
