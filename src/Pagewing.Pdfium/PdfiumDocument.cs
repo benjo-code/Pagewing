@@ -350,7 +350,18 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// PDFium thread; the call returns when the last block is written.
     /// </summary>
     /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
-    public void SaveWithoutSecurity(Stream destination)
+    public void SaveWithoutSecurity(Stream destination) =>
+        Save(destination, FpdfConstants.SaveNoIncremental | FpdfConstants.SaveRemoveSecurity);
+
+    /// <summary>
+    /// Writes the original bytes of the document followed by the changes made since it was opened to
+    /// <paramref name="destination"/> (<c>FPDF_INCREMENTAL</c>); an existing digital signature stays valid. Must be called on
+    /// the PDFium thread; the call returns when the last block is written.
+    /// </summary>
+    /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
+    internal void SaveIncremental(Stream destination) => Save(destination, FpdfConstants.SaveIncremental);
+
+    private void Save(Stream destination, int flags)
     {
         ArgumentNullException.ThrowIfNull(destination);
         var native = Access();
@@ -363,7 +374,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             var block = stackalloc SaveBlock[1];
             block->Writer = new FpdfFileWrite { Version = 1, WriteBlock = &WriteSaveBlock };
             block->Cookie = GCHandle.ToIntPtr(self);
-            var saved = Fpdf.FPDF_SaveAsCopy(native, &block->Writer, new CULong((nuint)(FpdfConstants.SaveNoIncremental | FpdfConstants.SaveRemoveSecurity))) != 0;
+            var saved = Fpdf.FPDF_SaveAsCopy(native, &block->Writer, new CULong((nuint)flags)) != 0;
             if (!saved || context.Failed)
             {
                 throw new IOException("The document could not be saved.", context.Error);

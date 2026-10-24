@@ -420,6 +420,24 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
             cancellationToken);
     }
 
+    /// <summary>
+    /// Writes the original bytes of the document followed by the changes made since it was opened to
+    /// <paramref name="destination"/> (incremental update; an existing digital signature stays valid). The stream is written
+    /// from the PDFium thread, in blocks; the caller decides where it goes (the safe replace of a file is not done here).
+    /// </summary>
+    /// <exception cref="IOException">The document or the stream could not be written.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the save started.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task SaveIncrementalAsync(Stream destination, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(destination);
+        return document.Thread.InvokeAsync(
+            () => document.SaveIncremental(destination),
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
     /// <summary>Closes the document. The close is queued to the PDFium thread; this call does not wait.</summary>
     public void Dispose()
     {

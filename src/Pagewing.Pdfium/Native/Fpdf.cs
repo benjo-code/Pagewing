@@ -5,7 +5,7 @@ namespace Pagewing.Pdfium.Native;
 
 /// <summary>
 /// Raw PDFium bindings (package <c>bblanchon.PDFium.*</c> 157.0.8100, headers <c>fpdfview.h</c>,
-/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
+/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
 /// <c>FS_FLOAT</c> is <c>float</c>. Only functions Pagewing needs are bound.
 /// Every call must run on the <see cref="PdfiumThread"/>. C <c>unsigned long</c> is bound as
 /// <see cref="CULong"/> because it is 32-bit on Windows and 64-bit on Linux.
@@ -290,6 +290,124 @@ internal static unsafe partial class Fpdf
         float* x,
         float* y,
         float* zoom);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_DeviceToPage(
+        nint page,
+        int startX,
+        int startY,
+        int sizeX,
+        int sizeY,
+        int rotate,
+        int deviceX,
+        int deviceY,
+        double* pageX,
+        double* pageY);
+
+    // Annotations (fpdf_annot.h; experimental API). FPDF_ANNOTATION_SUBTYPE and FPDF_ANNOT_APPEARANCEMODE are int,
+    // FPDF_BYTESTRING is a NUL-terminated byte string (UTF-8 keys), FPDF_WIDESTRING and FPDF_WCHAR* are UTF-16LE.
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_GetAnnotCount(nint page);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPage_GetAnnot(nint page, int index);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFPage_CloseAnnot(nint annotation);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPage_CreateAnnot(nint page, int subtype);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_RemoveAnnot(nint page, int index);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_IsSupportedSubtype(int subtype);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetSubtype(nint annotation);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetRect(nint annotation, FsRectF* rect);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_SetRect(nint annotation, FsRectF* rect);
+
+    /// <summary><c>size_t</c> in the header, so <see cref="nuint"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nuint FPDFAnnot_CountAttachmentPoints(nint annotation);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetAttachmentPoints(nint annotation, nuint quadIndex, FsQuadPointsF* quadPoints);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_AppendAttachmentPoints(nint annotation, FsQuadPointsF* quadPoints);
+
+    /// <summary><c>type</c> is <c>FPDFANNOT_COLORTYPE</c>: 0 for <c>Color</c>, 1 for <c>InteriorColor</c>. The channels are <c>unsigned int</c>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetColor(nint annotation, int type, uint* r, uint* g, uint* b, uint* a);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_SetColor(nint annotation, int type, uint r, uint g, uint b, uint a);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetStringValue(nint annotation, byte* key, ushort* buffer, CULong bufferLength);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_SetStringValue(nint annotation, byte* key, ushort* value);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_HasKey(nint annotation, byte* key);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_SetAP(nint annotation, int appearanceMode, ushort* value);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetFlags(nint annotation);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_SetFlags(nint annotation, int flags);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFAnnot_GetLinkedAnnot(nint annotation, byte* key);
+
+    // Signatures (fpdf_signature.h).
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_GetSignatureCount(nint document);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDF_GetSignatureObject(nint document, int index);
+
+    /// <summary>Returns the DocMDP permission (1 to 3) of a signature, or 0 on error (header: <c>unsigned int</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial uint FPDFSignatureObj_GetDocMDPPermission(nint signature);
 }
 
 /// <summary><c>FPDF_FILEACCESS</c> from <c>fpdfview.h</c>: random read access to a document.</summary>
@@ -345,6 +463,38 @@ internal struct FsRectF
 
     /// <summary>The y-coordinate of the edge named <c>bottom</c>.</summary>
     public float Bottom;
+}
+
+/// <summary>
+/// <c>FS_QUADPOINTSF</c> from <c>fpdfview.h</c>: the four corners of a quadrilateral in PDF user space (y up), in the
+/// order of the header (<c>x1 y1 x2 y2 x3 y3 x4 y4</c>).
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FsQuadPointsF
+{
+    /// <summary>The x-coordinate of the first corner (<c>x1</c>).</summary>
+    public float X1;
+
+    /// <summary>The y-coordinate of the first corner (<c>y1</c>).</summary>
+    public float Y1;
+
+    /// <summary>The x-coordinate of the second corner (<c>x2</c>).</summary>
+    public float X2;
+
+    /// <summary>The y-coordinate of the second corner (<c>y2</c>).</summary>
+    public float Y2;
+
+    /// <summary>The x-coordinate of the third corner (<c>x3</c>).</summary>
+    public float X3;
+
+    /// <summary>The y-coordinate of the third corner (<c>y3</c>).</summary>
+    public float Y3;
+
+    /// <summary>The x-coordinate of the fourth corner (<c>x4</c>).</summary>
+    public float X4;
+
+    /// <summary>The y-coordinate of the fourth corner (<c>y4</c>).</summary>
+    public float Y4;
 }
 
 /// <summary><c>FS_MATRIX</c> from <c>fpdfview.h</c>: the affine matrix [a b c d e f].</summary>

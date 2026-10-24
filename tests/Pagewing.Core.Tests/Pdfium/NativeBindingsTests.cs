@@ -36,6 +36,19 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.RenderFailed)] = "FPDF_RENDER_FAILED",
         [nameof(FpdfConstants.ActionGoTo)] = "PDFACTION_GOTO",
         [nameof(FpdfConstants.ActionUri)] = "PDFACTION_URI",
+        [nameof(FpdfConstants.SaveIncremental)] = "FPDF_INCREMENTAL",
+        [nameof(FpdfConstants.AnnotText)] = "FPDF_ANNOT_TEXT",
+        [nameof(FpdfConstants.AnnotLink)] = "FPDF_ANNOT_LINK",
+        [nameof(FpdfConstants.AnnotFreeText)] = "FPDF_ANNOT_FREETEXT",
+        [nameof(FpdfConstants.AnnotHighlight)] = "FPDF_ANNOT_HIGHLIGHT",
+        [nameof(FpdfConstants.AnnotUnderline)] = "FPDF_ANNOT_UNDERLINE",
+        [nameof(FpdfConstants.AnnotSquiggly)] = "FPDF_ANNOT_SQUIGGLY",
+        [nameof(FpdfConstants.AnnotStrikeout)] = "FPDF_ANNOT_STRIKEOUT",
+        [nameof(FpdfConstants.AnnotInk)] = "FPDF_ANNOT_INK",
+        [nameof(FpdfConstants.AnnotPopup)] = "FPDF_ANNOT_POPUP",
+        [nameof(FpdfConstants.AnnotWidget)] = "FPDF_ANNOT_WIDGET",
+        [nameof(FpdfConstants.AnnotFlagPrint)] = "FPDF_ANNOT_FLAG_PRINT",
+        [nameof(FpdfConstants.AnnotAppearanceNormal)] = "FPDF_ANNOT_APPEARANCEMODE_NORMAL",
     };
 
     /// <summary>
@@ -47,6 +60,7 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.FontFlagForceBold)] = 1L << (19 - 1),
         [nameof(FpdfConstants.FontFlagItalic)] = 1L << (7 - 1),
         [nameof(FpdfConstants.PermissionPrint)] = 1L << (3 - 1),
+        [nameof(FpdfConstants.PermissionAnnotate)] = 1L << (6 - 1),
     };
 
     [Fact]
@@ -79,7 +93,7 @@ public sealed partial class NativeBindingsTests
             "include",
             "pdfium");
         var defines = new Dictionary<string, long>();
-        foreach (var header in new[] { "fpdfview.h", "fpdf_progressive.h", "fpdf_doc.h", "fpdf_save.h" })
+        foreach (var header in new[] { "fpdfview.h", "fpdf_progressive.h", "fpdf_doc.h", "fpdf_save.h", "fpdf_annot.h" })
         {
             foreach (Match match in DefinePattern().Matches(File.ReadAllText(Path.Combine(headerDirectory, header))))
             {
