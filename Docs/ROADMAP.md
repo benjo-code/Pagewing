@@ -35,7 +35,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 8 | Verteilung | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-19-milestone-08-verteilung.md) | 2026-10-22 |
 | – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | ✅ fertig | – | 2026-10-23 |
 | 8.1 | Automatische Updates | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md) | 2026-10-24 |
-| 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
+| 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | 🟡 geplant | [Plan](superpowers/plans/2026-10-24-milestone-09-speichern-textmarkierungen.md) | – |
 | 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 11 | Formulare | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 12 | Sichtbare Unterschrift | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
@@ -50,6 +50,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 
 ## Scope-Änderungen
 
+- **2026-10-24 (M9: Zuschnitt aus dem Brainstorming, Löschen und Rückgängig vorgezogen, Abnahme „Signatur“ umformuliert):** Mit dem Projektinhaber im Brainstorming vom 2026-10-24 abgestimmt (Spec `superpowers/specs/2026-10-24-teilprojekt2-annotieren-design.md`, Plan `superpowers/plans/2026-10-24-milestone-09-speichern-textmarkierungen.md`). **Vorgezogen aus M10:** Löschen und Rückgängig/Wiederholen für Markierungen und Kommentare (ein Fehlklick wäre sonst dauerhaft); M10 behält Auswählen und Verschieben und weitet Löschen und Rückgängig auf die neuen Arten aus. **Abnahme geändert:** Statt „Signatur bleibt nach Annotieren gültig“ gilt: Die ersten *n* Bytes der gespeicherten Datei sind identisch mit dem Original (Test); Pagewing liest die DocMDP-Stufe der Signatur und warnt bei Stufe 1 und 2 vor dem Speichern; ob Acrobat die Signatur danach als gültig anzeigt, ist eine Handprüfung. Pagewing behauptet nie, eine Signatur sei gültig. **Zugefügt:** der Update-Weg fragt vor der Installation nach ungespeicherten Änderungen (Voraussetzung aus der Spec von M8.1). **Entschieden:** Gleiches Aussehen in jedem Viewer geht vor kleinem Umfang; zeigt der Spike (erste Aufgabe), dass PDFium allein kein sauberes Erscheinungsbild schreiben kann, gilt ein eigener Schreiber für den angehängten Teil der Datei, und M9 wird in zwei Teile geteilt (Roadmap-Änderung dann im Plan). Keine schwebende Leiste an der Textmarkierung in der Leseansicht (Design-Spec 7.7 bleibt); stattdessen Modus „Kommentieren“ und Befehle mit Kürzel. **Bewusst nicht enthalten** (Backlog): Zusammenfassung der Kommentare als Text, Wiederherstellungsdatei bei Absturz, Antwortketten, Filter nach Autor oder Farbe, Bearbeiten fremder Annotationen, Haftnotiz, Bereinigen beim Speichern (vollständiger Neuschrieb), Textauswahl per Tastatur. **Bekannte Grenze:** Inkrementelles Speichern behält die alte Fassung; ein gelöschter Kommentar steht weiter in den Rohbytes früherer Revisionen.
 - **2026-10-24 (M8.1 abgeschlossen, Handprüfungen auf die Abnahme von v0.2.0 verschoben):** Auf Wunsch des Projektinhabers (2026-10-24) ist Milestone 8.1 mit dem umgesetzten und getesteten Stand abgeschlossen. Die manuellen Ende-zu-Ende-Prüfungen des Updaters (Windows „nur für mich“ und „alle Benutzer“, Linux-AppImage mit `.deb`-Hinweis, Tabs nach einem echten Update) werden nicht mehr in M8.1 abgenommen, sondern bei der Abnahme des Release `v0.2.0` (Anleitung `packaging/README.md`, „Update prüfen“); sie stehen dort als offene Kriterien. Folge: M8.1 gilt als fertig, ohne dass der Updater auf einem echten System durchgelaufen ist; belegt sind die Tests, die Startzeit auf dem Haupt-PC und die Linux-only-Tests in der CI. Verlässt sich jemand vor `v0.2.0` auf den Updater, ist das ungeprüft.
 - **2026-10-24 (Neuer Milestone 12.1 „Öffentliches Repo und Sicherheitsprüfung“ vor dem Release v0.2.0):** Auf Wunsch des Projektinhabers (2026-10-24) gehören das Öffentlichmachen des Repos, die Prüfung der Git-Historie, eine allgemeine Sicherheitsprüfung des Codes und die Vorbereitung des Signaturschlüssels in einen eigenen kleinen Milestone 12.1 statt in M8.1. Lage: nach Milestone 12, vor dem Release `v0.2.0` (`afterMilestone` des Releases ist jetzt `12.1`). Begründung: Der Updater braucht das öffentliche Repo erst, wenn Nutzer eine Version mit Updater haben (`v0.1.0` hat keinen), und die Prüfung gelingt am besten kurz vor dem Veröffentlichen. M8.1 bleibt „in Arbeit“ mit seinen offenen Handprüfungen (Windows und Linux Ende zu Ende, Startzeit auf echter Hardware). Die Punkte „Signaturschlüssel anlegen“, „Repo öffentlich“ und „Trockenlauf des Release-Workflows“ aus dem Block „Stand der Abnahme und was der Projektinhaber tun muss“ von M8.1 sowie das Härten des Signier-Jobs liegen jetzt in 12.1.
 - **2026-10-24 (M8.1: Entscheidungen des Plans, Ergänzungen über die Aufgaben hinaus, bewusst nicht enthalten):** Mit dem Projektinhaber im Brainstorming vom 2026-10-23 abgestimmt (Entwurf `superpowers/specs/2026-10-23-m81-automatische-updates-design.md`, Plan `superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md`). Entschieden, wo die Aufgaben „im Plan entscheiden“ sagten: Prüfung von Anfang an aktiv (ohne Frage beim ersten Start), Schalter in den Einstellungen; installiert wird nur nach „Installieren“, nicht beim Beenden; das AppImage ersetzt seine Datei selbst (keine eingebettete Update-Information), `.deb` und portable ZIP zeigen nur einen Hinweis mit der Download-Seite (kein apt-Repository); aus dem Backlog „Sitzung wiederherstellen“ kommt **nur** die Wiederherstellung nach dem Neustart durch den Updater (`--restore-session`), keine allgemeine Funktion bei jedem Start. Über die Roadmap-Aufgaben hinaus enthält M8.1: den Helfermodus derselben Exe unter Windows (`--finish-update`) und den versteckten Schalter `--after-process`; den Job `preflight` in `release.yml`, der ein Hochladen ohne echten Signaturschlüssel vor dem Bau stoppt (auch für Vorab-Releases); einen Testaufbau über die Bauzeit-Eigenschaft `PagewingUpdateTestBuild` samt Testserver `tools/update-testserver.cs` und `package.cs update-smoke`; die Bestätigungskarte für Links auch auf dem Startbildschirm (für „Download-Seite öffnen“); die Abhängigkeit `libssl3 | libssl3t64` im `.deb`. Bewusst nicht enthalten: Code-Signierung des Programms (Backlog), Kanäle oder Vorabversionen als Update-Quelle, ein Rollback über Inno hinaus, eine Rückfrage bei ungespeicherten Änderungen (gibt es erst ab M9; M9 muss den Installationsweg darum ergänzen). Der Milestone bleibt `in-progress`, bis der echte Signaturschlüssel angelegt ist, das Repo öffentlich ist und die Handprüfungen unter Windows und Linux sowie die Startzeitmessung auf echter Hardware vorliegen (Abnahme unten). Entscheidungen: `Docs/DECISIONS.md`, Einträge „… (M8.1)“.
@@ -348,23 +349,27 @@ Umgesetzt und mit Tests belegt ist alles, was ohne echtes Release geht (Fake-Net
 
 # Teilprojekt 2 – Annotieren, Ausfüllen, Unterschreiben
 
-**Spec:** noch nicht erstellt (wird in M9 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
+**Spec:** [2026-10-24-teilprojekt2-annotieren-design.md](superpowers/specs/2026-10-24-teilprojekt2-annotieren-design.md) Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6; Milestone 9 im Detail, M10 bis M12 als Rahmen
 
 ## Milestone 9 – Speichern & Textmarkierungen
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M8, M8.1
+**Status:** 🟡 geplant · **Plan:** [2026-10-24-milestone-09-speichern-textmarkierungen.md](superpowers/plans/2026-10-24-milestone-09-speichern-textmarkierungen.md) · **Spec:** [2026-10-24-teilprojekt2-annotieren-design.md](superpowers/specs/2026-10-24-teilprojekt2-annotieren-design.md) · **Voraussetzungen:** M8, M8.1
 
 Ziel: Text lässt sich hervorheben, unter- und durchstreichen und kommentieren, und Änderungen werden sicher gespeichert.
 
 **Aufgaben**
-- [ ] Spec erstellen (Brainstorming) für Teilprojekt 2
+- [x] Spec erstellen (Brainstorming) für Teilprojekt 2
+- [ ] Spike: Erscheinungsbild der Annotationen in Chrome und Acrobat, Entscheidung PDFium allein oder eigener Schreiber
 - [ ] Speicher-Pipeline: inkrementell, atomar (temporäre Datei, Prüfung, Ersetzen), Speichern unter, Ungespeichert-Hinweis
+- [ ] Signaturrechte (DocMDP) lesen und vor dem Speichern warnen
 - [ ] Hervorheben, Unterstreichen, Durchstreichen
 - [ ] Kommentare mit Seitenleiste
+- [ ] Löschen und Rückgängig/Wiederholen für Markierungen und Kommentare (aus M10 vorgezogen)
+- [ ] Update-Weg: vor der Installation nach ungespeicherten Änderungen fragen
 
 **Abnahmekriterien**
-- [ ] Gespeicherte Annotationen erscheinen in einem anderen Viewer (z. B. Chrome) korrekt (manuelle Prüfung)
+- [ ] Gespeicherte Annotationen erscheinen in einem anderen Viewer (Chrome und Acrobat Reader) korrekt, auch auf gedrehten Seiten und mit versetzter CropBox (manuelle Prüfung; Round-Trip-Test für den Teil in PDFium)
 - [ ] Abbruch während des Speicherns lässt das Original unverändert (Test)
-- [ ] Digital signierte Test-PDF: Signatur bleibt nach Annotieren gültig (Test oder Prüfung in Acrobat Reader)
+- [ ] Digital signierte Test-PDF: Die ersten Bytes der gespeicherten Datei sind identisch mit dem Original (Test); Warnkarte bei DocMDP-Stufe 1 und 2, nicht bei Stufe 3 (Test); ob Acrobat die Signatur danach als gültig anzeigt, ist eine Handprüfung
 
 ## Milestone 10 – Zeichnen & Formen
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M9
@@ -375,7 +380,7 @@ Ziel: Freihandzeichnungen, Formen und Textfelder lassen sich hinzufügen, bearbe
 - [ ] Freihand zeichnen
 - [ ] Formen: Rechteck, Kreis, Linie, Pfeil (Umsetzung für Linie/Pfeil laut Spec von Teilprojekt 2)
 - [ ] Textfelder hinzufügen
-- [ ] Annotationen auswählen, verschieben, löschen, Rückgängig/Wiederholen
+- [ ] Annotationen auswählen und verschieben; Löschen und Rückgängig/Wiederholen auf die neuen Arten ausweiten (Grundlage seit M9)
 
 **Abnahmekriterien**
 - [ ] Round-Trip-Tests: angelegte Annotationen sind nach Speichern und Neuladen unverändert
@@ -518,6 +523,13 @@ Ziel: Vorhandene Textzeilen und Tippfehler lassen sich korrigieren, mit Ersatzsc
 
 Bewusst nicht eingeplant. Ideen, die `/ideen` hier ablegt, stehen als Liste; bei Bedarf wird daraus ein Milestone.
 
+- **Kommentare als Text zusammenfassen und kopieren (M9):** Alle Markierungen und Kommentare eines Dokuments als Text (Zitat mit Seitenzahl und Kommentar) in die Zwischenablage legen, etwa für Lernen und Prüfen. Aus M9 herausgenommen (Brainstorming 2026-10-24).
+- **Wiederherstellungsdatei bei Absturz (M9):** Ungespeicherte Annotationen in einer Datei neben dem Original (nie im Original) sichern und beim nächsten Start anbieten. Schließt auch die Lücke bei Abmelden, Herunterfahren und SIGTERM, die M9 ohne diese Datei hat. Braucht einen eigenen Lebenszyklus (Ort, Aufräumen, Datenschutz).
+- **Antwortketten, Filter nach Autor oder Farbe, Bearbeiten fremder Annotationen (M9):** Antworten auf Kommentare (`/IRT`), Filter der Kommentar-Seitenleiste nach Autor oder Farbe, und das Bearbeiten von Annotationen, die Pagewing nicht versteht oder die Antworten haben. M9 zeigt sie an und lässt sie beim Speichern unberührt.
+- **Haftnotiz (M9):** Eine freistehende Text-Annotation (Notiz-Symbol) ohne Textmarkierung. In M9 hängt ein Kommentar immer an einer Hervorhebung, Unterstreichung oder Durchstreichung. Liegt nahe bei M10 (Textfelder).
+- **Bereinigen beim Speichern: vollständiger Neuschrieb (M9):** Inkrementelles Speichern behält die alte Fassung; ein gelöschter Kommentar steht weiter in den Rohbytes früherer Revisionen. Eine Option „Speichern unter“ mit vollständigem Neuschrieb (`FPDF_NO_INCREMENTAL`) würde das beseitigen, macht aber vorhandene Signaturen ungültig und braucht die Warnung. Gehört fachlich zum Schwärzen (M14).
+- **Textauswahl per Tastatur (M9):** Das Erzeugen einer Markierung braucht eine Textauswahl, und die gibt es seit M5 nur mit der Maus. Eine Auswahl per Tastatur (Umschalt+Pfeile, Wortweise, Zeilenweise) würde das Annotieren ohne Maus ermöglichen.
+- **Schwebende Leiste an der Textmarkierung (M9):** Eine kleine Leiste an der Auswahl in der Leseansicht (Hervorheben, Unterstreichen, Durchstreichen, Kommentar) wäre schneller als der Modus „Kommentieren“, verstößt aber gegen Design-Spec 7.7 („Die Leseansicht zeigt nie Bearbeitungswerkzeuge“). Nur mit bewusster Änderung der Design-Spec und eigenem `DECISIONS`-Eintrag.
 - **Flaky: `PanelTests.UserClosingThePanelPreventsTheAutoOpen` (M4):** Einmaliger Fehlschlag auf `build-windows` im PR-Lauf 39973057069 (nur Roadmap geändert): `Assert.True(SidePanels(window).All(panel => !panel.IsEffectivelyVisible))` bei `PanelTests.cs` (Zeile 406) mit „Expected: True, Actual: False“, nach `Settle(window)`. Beobachtet: Nach dem Schließen und dem ersten scharfen Bild war ein Panel noch wirksam sichtbar. Vermutung, nicht geprüft: Der Test wartet nicht auf das Ende der Schließ-Animation des Panels (`Pw.Duration.Close`), `Settle` reicht auf einem ausgelasteten Runner nicht. Zweiter zeitabhängiger UI-Test mit einem einmaligen Fehlschlag in zwei Tagen (siehe „Flaky: `RecentFilesViewTests.TheHistoryIsNotReadInTheStartPath`“); zu klären ist, ob eine gemeinsame Ursache (Last auf dem Runner, zu knappes `Settle`) dahintersteckt. Zu tun: auf das Zustandsende statt auf eine Wartezeit warten (Ereignisprotokoll oder `WaitUntilAsync` auf den Zustand) und den Test unter Last wiederholen.
 - **Abnahme von v0.1.0 nachholen: Drucken (Rest):** Aus der Abnahme genommen (Scope-Änderung 2026-10-23): Windows: `print-mixed.pdf` mit zwei Kopien sortiert, Duplex lang, „Tatsächliche Größe“ (schneidet ab), Querseiten gedreht und zentriert, Abbrechen mitten in `thousand-pages.pdf`. Linux: alles am Papierdrucker über CUPS (Seite allein, Bereich, Kopien sortiert, Duplex, „Tatsächliche Größe“, Drehung der Querseiten) und die CUPS-Tests mit einer CUPS-PDF-Warteschlange (`PAGEWING_TEST_CUPS_PRINTER`, `PAGEWING_TEST_CUPS_OUTPUT`, siehe `CLAUDE.md`, „Drucken“).
 - **Abnahme von v0.1.0 nachholen: Screenreader:** Aus der Abnahme genommen (Scope-Änderung 2026-10-23): Narrator (Windows), NVDA und Orca für Druckkarte und Fortschritt, die Karte „Als Standardprogramm festlegen“ und „Über Pagewing“. Verwandt mit dem Eintrag „Erweiterte Barrierefreiheit“.

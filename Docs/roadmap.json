@@ -5,6 +5,11 @@
   "scopeChanges": [
     {
       "date": "2026-10-24",
+      "context": "M9: Zuschnitt aus dem Brainstorming, Löschen und Rückgängig vorgezogen, Abnahme „Signatur“ umformuliert",
+      "text": "Mit dem Projektinhaber im Brainstorming vom 2026-10-24 abgestimmt (Spec `superpowers/specs/2026-10-24-teilprojekt2-annotieren-design.md`, Plan `superpowers/plans/2026-10-24-milestone-09-speichern-textmarkierungen.md`). **Vorgezogen aus M10:** Löschen und Rückgängig/Wiederholen für Markierungen und Kommentare (ein Fehlklick wäre sonst dauerhaft); M10 behält Auswählen und Verschieben und weitet Löschen und Rückgängig auf die neuen Arten aus. **Abnahme geändert:** Statt „Signatur bleibt nach Annotieren gültig“ gilt: Die ersten *n* Bytes der gespeicherten Datei sind identisch mit dem Original (Test); Pagewing liest die DocMDP-Stufe der Signatur und warnt bei Stufe 1 und 2 vor dem Speichern; ob Acrobat die Signatur danach als gültig anzeigt, ist eine Handprüfung. Pagewing behauptet nie, eine Signatur sei gültig. **Zugefügt:** der Update-Weg fragt vor der Installation nach ungespeicherten Änderungen (Voraussetzung aus der Spec von M8.1). **Entschieden:** Gleiches Aussehen in jedem Viewer geht vor kleinem Umfang; zeigt der Spike (erste Aufgabe), dass PDFium allein kein sauberes Erscheinungsbild schreiben kann, gilt ein eigener Schreiber für den angehängten Teil der Datei, und M9 wird in zwei Teile geteilt (Roadmap-Änderung dann im Plan). Keine schwebende Leiste an der Textmarkierung in der Leseansicht (Design-Spec 7.7 bleibt); stattdessen Modus „Kommentieren“ und Befehle mit Kürzel. **Bewusst nicht enthalten** (Backlog): Zusammenfassung der Kommentare als Text, Wiederherstellungsdatei bei Absturz, Antwortketten, Filter nach Autor oder Farbe, Bearbeiten fremder Annotationen, Haftnotiz, Bereinigen beim Speichern (vollständiger Neuschrieb), Textauswahl per Tastatur. **Bekannte Grenze:** Inkrementelles Speichern behält die alte Fassung; ein gelöschter Kommentar steht weiter in den Rohbytes früherer Revisionen."
+    },
+    {
+      "date": "2026-10-24",
       "context": "M8.1 abgeschlossen, Handprüfungen auf die Abnahme von v0.2.0 verschoben",
       "text": "Auf Wunsch des Projektinhabers (2026-10-24) ist Milestone 8.1 mit dem umgesetzten und getesteten Stand abgeschlossen. Die manuellen Ende-zu-Ende-Prüfungen des Updaters (Windows „nur für mich“ und „alle Benutzer“, Linux-AppImage mit `.deb`-Hinweis, Tabs nach einem echten Update) werden nicht mehr in M8.1 abgenommen, sondern bei der Abnahme des Release `v0.2.0` (Anleitung `packaging/README.md`, „Update prüfen“); sie stehen dort als offene Kriterien. Folge: M8.1 gilt als fertig, ohne dass der Updater auf einem echten System durchgelaufen ist; belegt sind die Tests, die Startzeit auf dem Haupt-PC und die Linux-only-Tests in der CI. Verlässt sich jemand vor `v0.2.0` auf den Updater, ist das ungeprüft."
     },
@@ -433,24 +438,30 @@
     {
       "number": 2,
       "name": "Annotieren, Ausfüllen, Unterschreiben",
-      "spec": { "text": "noch nicht erstellt (wird in M9 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6" },
+      "spec": { "link": "superpowers/specs/2026-10-24-teilprojekt2-annotieren-design.md", "text": "Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6; Milestone 9 im Detail, M10 bis M12 als Rahmen" },
       "milestones": [
         {
           "id": "9",
           "title": "Speichern & Textmarkierungen",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-24-milestone-09-speichern-textmarkierungen.md",
+          "spec": "superpowers/specs/2026-10-24-teilprojekt2-annotieren-design.md",
           "prerequisites": ["8", "8.1"],
           "goal": "Text lässt sich hervorheben, unter- und durchstreichen und kommentieren, und Änderungen werden sicher gespeichert.",
           "tasks": [
-            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 2", "done": false },
+            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 2", "done": true },
+            { "text": "Spike: Erscheinungsbild der Annotationen in Chrome und Acrobat, Entscheidung PDFium allein oder eigener Schreiber", "done": false },
             { "text": "Speicher-Pipeline: inkrementell, atomar (temporäre Datei, Prüfung, Ersetzen), Speichern unter, Ungespeichert-Hinweis", "done": false },
+            { "text": "Signaturrechte (DocMDP) lesen und vor dem Speichern warnen", "done": false },
             { "text": "Hervorheben, Unterstreichen, Durchstreichen", "done": false },
-            { "text": "Kommentare mit Seitenleiste", "done": false }
+            { "text": "Kommentare mit Seitenleiste", "done": false },
+            { "text": "Löschen und Rückgängig/Wiederholen für Markierungen und Kommentare (aus M10 vorgezogen)", "done": false },
+            { "text": "Update-Weg: vor der Installation nach ungespeicherten Änderungen fragen", "done": false }
           ],
           "acceptance": [
-            { "text": "Gespeicherte Annotationen erscheinen in einem anderen Viewer (z. B. Chrome) korrekt (manuelle Prüfung)", "done": false },
+            { "text": "Gespeicherte Annotationen erscheinen in einem anderen Viewer (Chrome und Acrobat Reader) korrekt, auch auf gedrehten Seiten und mit versetzter CropBox (manuelle Prüfung; Round-Trip-Test für den Teil in PDFium)", "done": false },
             { "text": "Abbruch während des Speicherns lässt das Original unverändert (Test)", "done": false },
-            { "text": "Digital signierte Test-PDF: Signatur bleibt nach Annotieren gültig (Test oder Prüfung in Acrobat Reader)", "done": false }
+            { "text": "Digital signierte Test-PDF: Die ersten Bytes der gespeicherten Datei sind identisch mit dem Original (Test); Warnkarte bei DocMDP-Stufe 1 und 2, nicht bei Stufe 3 (Test); ob Acrobat die Signatur danach als gültig anzeigt, ist eine Handprüfung", "done": false }
           ]
         },
         {
@@ -463,7 +474,7 @@
             { "text": "Freihand zeichnen", "done": false },
             { "text": "Formen: Rechteck, Kreis, Linie, Pfeil (Umsetzung für Linie/Pfeil laut Spec von Teilprojekt 2)", "done": false },
             { "text": "Textfelder hinzufügen", "done": false },
-            { "text": "Annotationen auswählen, verschieben, löschen, Rückgängig/Wiederholen", "done": false }
+            { "text": "Annotationen auswählen und verschieben; Löschen und Rückgängig/Wiederholen auf die neuen Arten ausweiten (Grundlage seit M9)", "done": false }
           ],
           "acceptance": [
             { "text": "Round-Trip-Tests: angelegte Annotationen sind nach Speichern und Neuladen unverändert", "done": false }
@@ -728,6 +739,13 @@
     }
   ],
   "backlog": [
+    { "title": "Kommentare als Text zusammenfassen und kopieren (M9)", "text": "Alle Markierungen und Kommentare eines Dokuments als Text (Zitat mit Seitenzahl und Kommentar) in die Zwischenablage legen, etwa für Lernen und Prüfen. Aus M9 herausgenommen (Brainstorming 2026-10-24)." },
+    { "title": "Wiederherstellungsdatei bei Absturz (M9)", "text": "Ungespeicherte Annotationen in einer Datei neben dem Original (nie im Original) sichern und beim nächsten Start anbieten. Schließt auch die Lücke bei Abmelden, Herunterfahren und SIGTERM, die M9 ohne diese Datei hat. Braucht einen eigenen Lebenszyklus (Ort, Aufräumen, Datenschutz)." },
+    { "title": "Antwortketten, Filter nach Autor oder Farbe, Bearbeiten fremder Annotationen (M9)", "text": "Antworten auf Kommentare (`/IRT`), Filter der Kommentar-Seitenleiste nach Autor oder Farbe, und das Bearbeiten von Annotationen, die Pagewing nicht versteht oder die Antworten haben. M9 zeigt sie an und lässt sie beim Speichern unberührt." },
+    { "title": "Haftnotiz (M9)", "text": "Eine freistehende Text-Annotation (Notiz-Symbol) ohne Textmarkierung. In M9 hängt ein Kommentar immer an einer Hervorhebung, Unterstreichung oder Durchstreichung. Liegt nahe bei M10 (Textfelder)." },
+    { "title": "Bereinigen beim Speichern: vollständiger Neuschrieb (M9)", "text": "Inkrementelles Speichern behält die alte Fassung; ein gelöschter Kommentar steht weiter in den Rohbytes früherer Revisionen. Eine Option „Speichern unter“ mit vollständigem Neuschrieb (`FPDF_NO_INCREMENTAL`) würde das beseitigen, macht aber vorhandene Signaturen ungültig und braucht die Warnung. Gehört fachlich zum Schwärzen (M14)." },
+    { "title": "Textauswahl per Tastatur (M9)", "text": "Das Erzeugen einer Markierung braucht eine Textauswahl, und die gibt es seit M5 nur mit der Maus. Eine Auswahl per Tastatur (Umschalt+Pfeile, Wortweise, Zeilenweise) würde das Annotieren ohne Maus ermöglichen." },
+    { "title": "Schwebende Leiste an der Textmarkierung (M9)", "text": "Eine kleine Leiste an der Auswahl in der Leseansicht (Hervorheben, Unterstreichen, Durchstreichen, Kommentar) wäre schneller als der Modus „Kommentieren“, verstößt aber gegen Design-Spec 7.7 („Die Leseansicht zeigt nie Bearbeitungswerkzeuge“). Nur mit bewusster Änderung der Design-Spec und eigenem `DECISIONS`-Eintrag." },
     { "title": "Flaky: `PanelTests.UserClosingThePanelPreventsTheAutoOpen` (M4)", "text": "Einmaliger Fehlschlag auf `build-windows` im PR-Lauf 39973057069 (nur Roadmap geändert): `Assert.True(SidePanels(window).All(panel => !panel.IsEffectivelyVisible))` bei `PanelTests.cs` (Zeile 406) mit „Expected: True, Actual: False“, nach `Settle(window)`. Beobachtet: Nach dem Schließen und dem ersten scharfen Bild war ein Panel noch wirksam sichtbar. Vermutung, nicht geprüft: Der Test wartet nicht auf das Ende der Schließ-Animation des Panels (`Pw.Duration.Close`), `Settle` reicht auf einem ausgelasteten Runner nicht. Zweiter zeitabhängiger UI-Test mit einem einmaligen Fehlschlag in zwei Tagen (siehe „Flaky: `RecentFilesViewTests.TheHistoryIsNotReadInTheStartPath`“); zu klären ist, ob eine gemeinsame Ursache (Last auf dem Runner, zu knappes `Settle`) dahintersteckt. Zu tun: auf das Zustandsende statt auf eine Wartezeit warten (Ereignisprotokoll oder `WaitUntilAsync` auf den Zustand) und den Test unter Last wiederholen." },
     { "title": "Abnahme von v0.1.0 nachholen: Drucken (Rest)", "text": "Aus der Abnahme genommen (Scope-Änderung 2026-10-23): Windows: `print-mixed.pdf` mit zwei Kopien sortiert, Duplex lang, „Tatsächliche Größe“ (schneidet ab), Querseiten gedreht und zentriert, Abbrechen mitten in `thousand-pages.pdf`. Linux: alles am Papierdrucker über CUPS (Seite allein, Bereich, Kopien sortiert, Duplex, „Tatsächliche Größe“, Drehung der Querseiten) und die CUPS-Tests mit einer CUPS-PDF-Warteschlange (`PAGEWING_TEST_CUPS_PRINTER`, `PAGEWING_TEST_CUPS_OUTPUT`, siehe `CLAUDE.md`, „Drucken“)." },
     { "title": "Abnahme von v0.1.0 nachholen: Screenreader", "text": "Aus der Abnahme genommen (Scope-Änderung 2026-10-23): Narrator (Windows), NVDA und Orca für Druckkarte und Fortschritt, die Karte „Als Standardprogramm festlegen“ und „Über Pagewing“. Verwandt mit dem Eintrag „Erweiterte Barrierefreiheit“." },
