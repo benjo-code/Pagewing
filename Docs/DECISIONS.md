@@ -19,8 +19,8 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Kontext:** Spec Teilprojekt 2, Abschnitt „Speichern“, und `CLAUDE.md`, „Speichern“: inkrementell, immer atomar über eine temporäre Datei im Zielordner, die vor dem Ersetzen mit PDFium geprüft wird; das Original darf nie halb überschrieben werden, das neue Dokument ist geöffnet und geprüft, bevor das alte geschlossen wird. Umgesetzt in `Pagewing.Core.Saving.DocumentSaver` (Aufgabe 9), dazu `FileStamp`, `SaveRequest`, `SaveResult`, `SaveFailureReason`/`SaveFailureException` und `WindowsFileRename`.
 **Entscheidung:**
 - **Ablauf** (`DocumentSaver.SaveAsync`). Vor dem ersten geschriebenen Byte:
-  1. Die Quelle ist unverändert. Gemeint ist die Datei, die PDFium liest: ihr Stempel über PDFiums **eigenes Handle** (`PdfDocument.GetSourceStamp`) muss gleich `SaveRequest.OriginalStamp` und ihre Länge gleich der Länge beim Öffnen sein. Sonst `SourceModified`.
-  2. Ist das Ziel das Original, muss auch der Stempel **am Pfad** passen. Sonst `OriginalChanged`, außer `OverwriteChangedOriginal`.
+  1. Die Quelle ist unverändert. Gemeint ist die Datei, die PDFium liest: ihr Stempel über PDFiums **eigenes Handle** (`PdfDocument.GetSourceStamp`) muss gleich dem Stempel sein, den dasselbe Handle beim Öffnen geliefert hat (`PdfDocument.SourceStampAtOpen`, aufgenommen in `PdfiumDocument.FileReadContext.Open`). Verglichen wird also Handle mit Handle, nie mit dem Pfad. Sonst `SourceModified`.
+  2. Ist das Ziel das Original, muss der Stempel **am Pfad** (`FileStamp.Of`) noch gleich `SaveRequest.OriginalStamp` sein, also Pfad mit Pfad. Sonst `OriginalChanged`, außer `OverwriteChangedOriginal`. `SaveRequest.OriginalStamp` dient nur dieser Prüfung.
   3. Ein vorhandenes Ziel ist nicht schreibgeschützt (`FileAttributes.ReadOnly`). Sonst `NotWritable`.
 
   Danach:
@@ -28,7 +28,8 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
   2. Prüfung 1: Die ersten *n* Bytes sind gleich denen der Quelle, gelesen über PDFiums Handle (`PdfDocument.OpenSourceReader`); *n* ist die Länge beim Öffnen.
   3. Prüfung 2: Die Datei wird mit dem Passwort neu geöffnet. Seitenzahl, Verschlüsselung und die Annotationszahl jeder geänderten Seite stimmen (gezählt wie `GetAnnotationsAsync`, ohne Popups und Antworten; die erwarteten Zahlen bringt der Aufrufer mit).
   4. Prüfung 3: Jede geänderte Seite rendert (längere Seite höchstens 1024 px).
-  5. Die Datei ersetzt das Ziel. Das in Prüfung 2 geöffnete Dokument bleibt offen und geht an den Aufrufer (`SaveResult.Reopened`).
+  5. Die Quelle wird nach dem Schreiben, nach Prüfung 1 und unmittelbar vor dem Ersetzen noch einmal wie in Schritt 1 geprüft (`SourceModified`). Das Kopieren kann bei großen Dateien Sekunden dauern. Schreibt ein anderes Programm in dieser Zeit in die Datei, kopiert PDFium die neuen Bytes, und Prüfung 1 vergliche sie mit denselben neuen Bytes.
+  6. Die Datei ersetzt das Ziel. Das in Prüfung 2 geöffnete Dokument bleibt offen und geht an den Aufrufer (`SaveResult.Reopened`). `SaveResult.NewStamp` kommt aus dessen Handle; das Ersetzen erhält die Datei und ihre Zeiten.
 - **Was ein Fehler hinterlässt:** Jeder Fehler und jeder Abbruch vor dem Ersetzen schließt das geprüfte Dokument, löscht die temporäre Datei und lässt das Ziel byteweise unverändert.
   - Ein Abbruch durch den Aufrufer wirft `OperationCanceledException`; `SaveFailureReason.Canceled` und `WriterNotSupported` sind reserviert und werden heute nicht gemeldet.
   - Zuordnung:
@@ -41,6 +42,7 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
   - Wird die Datei umbenannt oder durch Umbenennen ersetzt, sieht das Handle weiter die alte Datei. Die Ausgabe ist eine gültige Fortsetzung; nur der Pfad zeigt auf etwas anderes, das ist `OriginalChanged` und mit „Überschreiben“ erlaubt.
   - Wird die Datei **an Ort und Stelle** neu geschrieben (unter Windows üblich), kopiert PDFium die neuen Bytes, während Querverweis, `/Prev` und Objektnummern aus dem alten Lesen stammen. Die gespeicherte Datei wäre in sich widersprüchlich.
   - Deshalb lehnt Pagewing das ohne Übersteuerung ab (`SourceModified`, auch für „Speichern unter“). Die Oberfläche bittet, die Datei neu zu öffnen. Schon ein geänderter Zeitstempel der geöffneten Datei zählt.
+  - Warum Handle mit Handle: Der Stempel am Pfad beschreibt bei einem symbolischen Link unter Windows den Link selbst (Länge 0, Zeit des Links), das Handle die Datei dahinter. Ein Vergleich über Kreuz hätte jede verlinkte Datei für immer als geändert gemeldet (`SymlinkedOriginalSaves`, `SourceCheckDoesNotUseThePathStamp`).
 - **Ersetzen unter Windows: atomare POSIX-Umbenennung** (`WindowsFileRename.ReplaceAtomically`).
   - Aufruf: `CreateFileW` auf die temporäre Datei mit `DELETE`, Freigabe Lesen, Schreiben und Löschen. Dann `SetFileInformationByHandle(FileRenameInfoEx = 22)` mit `FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS` (0x1 | 0x2) und dem vollen Zielpfad in `\\?\`-Form.
   - `FILE_RENAME_FLAG_IGNORE_READONLY_ATTRIBUTE` (0x40) ist bewusst nicht gesetzt.
@@ -72,11 +74,12 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 - Nur Beiseiteschieben: hätte die Lücke im Normalfall.
 **Bekannte Grenzen (bewusst offen):**
 - `SamePath` vergleicht volle Pfade als Text. Symbolische Links, 8.3-Namen und harte Links zählen als „Speichern unter“.
+- Speichern auf den Pfad eines symbolischen Links ersetzt den Link durch eine gewöhnliche Datei. Die Datei, auf die er zeigte, bleibt unverändert (`SymlinkedOriginalSaves`).
 - Der Ordner wird nach dem Umbenennen nicht mit `fsync` gesichert.
 - Ein Fehler im Schreib-Callback, der keine I/O-Ausnahme ist, erscheint nur als allgemeiner Schreibfehler.
 - Wie das Neuöffnen scheitert, wird nicht feiner unterschieden (alles `VerificationFailed`).
 - Der Fortschritt rechnet mit der Länge des Originals und steht während des angehängten Teils auf 100 %.
-- **Nur unter Linux, hier nicht gelaufen:** `UnixPermissionsOfTheTargetAreKept` (Rechte 0600 und 0660 bleiben), `TheSystemReportsAFullDiskAsDiskFull` (echtes `ENOSPC` über `/dev/full`), `UnwritableFolderReportsNotWritable` mit `chmod` und `ReplacingAnOpenTargetWorks` mit `rename`. Befehl auf dem Linux-Runner: `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Saving"`.
+- **Nur unter Linux, hier nicht gelaufen:** `UnixPermissionsOfTheTargetAreKept` (Rechte 0600 und 0660 bleiben), `TheSystemReportsAFullDiskAsDiskFull` (echtes `ENOSPC` über `/dev/full`), `UnwritableFolderReportsNotWritable` mit `chmod`, `ReplacingAnOpenTargetWorks` mit `rename` und `SymlinkedOriginalSaves` mit einem Linux-Link (unter Windows lief er mit Entwicklermodus). Befehl auf dem Linux-Runner: `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Saving"`.
 
 ## 2026-10-24 – Erscheinungsbild der Annotationen: PDFium-Generator (Variante D), kein eigener Schreiber (M9)
 **Kontext:** Spec Teilprojekt 2, „Erscheinungsbild der Annotationen (das Kernrisiko)“ und „Entschieden nach der Gegenlese“, Punkt 2: Jede angelegte oder geänderte Markierung braucht ein eigenes `/AP` als Form-XObject, Hervorhebungen mit Mischmodus Multiplizieren, `QuadPoints` in Acrobat-Reihenfolge, Flag Print; sonst gilt Weg (a), ein eigener Schreiber für den angehängten Teil. Der Spike (Aufgabe 2, Wegwerf-Test `tests/Pagewing.Core.Tests/Spikes/MarkupSpikeTests.cs`, nicht eingecheckt) hat 72 Dateien erzeugt: Hervorhebung, Unterstreichung, Durchstreichung auf `annotations.pdf`, `rotated-page.pdf`, `cropbox.pdf` und `text-basic.pdf`, je Variante:

@@ -344,6 +344,95 @@ public sealed class DocumentSaverTests : IDisposable
         AssertOnlyFiles(path);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SourceRewrittenWhileCopyingIsRefused(bool sameBytes)
+    {
+        var path = Copy("text-basic.pdf");
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path) with { OverwriteChangedOriginal = true };
+        var rewritten = await File.ReadAllBytesAsync(path, Ct);
+        if (!sameBytes)
+        {
+            rewritten[rewritten.Length / 2] ^= 0x20;
+        }
+
+        // Another program writes into the opened file while PDFium copies it; same bytes still count as a rewrite.
+        var faults = new SaveFaults
+        {
+            AfterWrite = () =>
+            {
+                File.WriteAllBytes(path, rewritten);
+                File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(1));
+            },
+        };
+
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(
+            () => DocumentSaver.SaveAsync(document, engine, request, null, faults, Ct));
+
+        Assert.Equal(SaveFailureReason.SourceModified, failure.Reason);
+        Assert.Equal(rewritten, await File.ReadAllBytesAsync(path, Ct));
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    public async Task SourceCheckDoesNotUseThePathStamp()
+    {
+        var path = Copy("text-basic.pdf");
+        var target = Path.Combine(folder.Path, "copy.pdf");
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, target);
+
+        // A path stamp that has nothing to do with the opened file, as the stamp of a symbolic link has on Windows.
+        var linkLike = new FileStamp(0, DateTime.UnixEpoch);
+        var result = await DocumentSaver.SaveAsync(document, engine, request with { OriginalStamp = linkLike }, cancellationToken: Ct);
+        await using (result.Reopened)
+        {
+            Assert.Single(await result.Reopened.GetAnnotationsAsync(0, Ct));
+            Assert.Equal(result.Reopened.GetSourceStamp(), result.NewStamp);
+            Assert.Equal(FileStamp.Of(target), result.NewStamp);
+        }
+
+        // Saving over the original compares path with path, so the same stamp is "another file at the path".
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(
+            () => DocumentSaver.SaveAsync(document, engine, request with { TargetPath = path, OriginalStamp = linkLike }, cancellationToken: Ct));
+        Assert.Equal(SaveFailureReason.OriginalChanged, failure.Reason);
+        AssertOnlyFiles(path, target);
+    }
+
+    [Fact]
+    public async Task SymlinkedOriginalSaves()
+    {
+        var real = Copy("text-basic.pdf");
+        var before = await File.ReadAllBytesAsync(real, Ct);
+        var link = Path.Combine(folder.Path, "link.pdf");
+        try
+        {
+            File.CreateSymbolicLink(link, real);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"This account cannot create symbolic links here ({ex.GetType().Name}: {ex.Message}); on Windows that needs developer mode or administrator rights.");
+        }
+
+        await using var document = await OpenAsync(link);
+        var request = await MarkAsync(document, link, link);
+
+        var result = await DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct);
+        await using (result.Reopened)
+        {
+            Assert.Single(await result.Reopened.GetAnnotationsAsync(0, Ct));
+        }
+
+        // Known limit: the rename replaces the link by a regular file; the file it pointed to stays as it was.
+        Assert.Null(new FileInfo(link).LinkTarget);
+        Assert.Equal(before, await File.ReadAllBytesAsync(real, Ct));
+        var saved = await File.ReadAllBytesAsync(link, Ct);
+        Assert.Equal(before, saved.AsSpan(0, before.Length).ToArray());
+        AssertOnlyFiles(real, link);
+    }
+
     [Fact]
     public async Task TouchedSourceIsRefused()
     {
@@ -365,6 +454,7 @@ public sealed class DocumentSaverTests : IDisposable
         var path = Copy("text-basic.pdf");
         await using var document = await OpenAsync(path);
         Assert.Equal(FileStamp.Of(path), document.GetSourceStamp());
+        Assert.Equal(document.SourceStampAtOpen, document.GetSourceStamp());
         Assert.Equal(new FileInfo(path).Length, document.SourceLengthAtOpen);
         await using var reader = document.OpenSourceReader();
         using var copy = new MemoryStream();

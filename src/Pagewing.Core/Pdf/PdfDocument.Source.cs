@@ -18,6 +18,21 @@ public sealed partial class PdfDocument
     }
 
     /// <summary>
+    /// Gets the stamp of the file PDFium reads from, taken through its handle when the document was opened: the same
+    /// function as <see cref="GetSourceStamp"/>, so the two compare even for a file opened through a symbolic link (whose
+    /// path stamp describes the link, not the file).
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    internal FileStamp SourceStampAtOpen
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return new FileStamp(document.SourceLengthAtOpen, document.SourceLastWriteUtcAtOpen);
+        }
+    }
+
+    /// <summary>
     /// Reads the stamp of the file PDFium reads from, through its open handle: after the path was renamed or replaced it is
     /// still the opened file; after the file was rewritten in place it shows the new length and time. Any thread.
     /// </summary>

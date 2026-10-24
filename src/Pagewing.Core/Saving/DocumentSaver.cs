@@ -13,7 +13,10 @@ namespace Pagewing.Core.Saving;
 /// The file to write: <paramref name="OriginalPath"/> for "Save", another path for "Save As". An existing target is replaced
 /// (the caller asks the user first), unless it is read-only.
 /// </param>
-/// <param name="OriginalStamp">The stamp of the original taken when it was opened, or <see langword="null"/> to skip the stamp checks.</param>
+/// <param name="OriginalStamp">
+/// The stamp at the path of the original (<see cref="FileStamp.Of"/>) taken when it was opened, or <see langword="null"/>
+/// to skip the <see cref="SaveFailureReason.OriginalChanged"/> check. The check of the opened file itself does not use it.
+/// </param>
 /// <param name="Password">
 /// The password the document was opened with, to reopen the written file; it is never written anywhere and
 /// <see cref="ToString"/> does not show it.
@@ -48,7 +51,7 @@ public sealed record SaveRequest(
 
 /// <summary>A successful save.</summary>
 /// <param name="Reopened">The written file, opened and checked; the caller owns it and disposes it.</param>
-/// <param name="NewStamp">The stamp of the written file, for the next save.</param>
+/// <param name="NewStamp">The stamp of the written file, read through the handle of <paramref name="Reopened"/>.</param>
 public sealed record SaveResult(PdfDocument Reopened, FileStamp NewStamp);
 
 /// <summary>Hooks into a save, for tests only.</summary>
@@ -90,16 +93,18 @@ public static class DocumentSaver
 
     /// <summary>
     /// Saves <paramref name="document"/> as <paramref name="request"/> says. Before anything is written: the opened file must
-    /// still be what was opened (its stamp, read through PDFium's own handle, equals <see cref="SaveRequest.OriginalStamp"/>
-    /// and the length at open, otherwise <see cref="SaveFailureReason.SourceModified"/>); when the target is the original,
-    /// the stamp at the path must match too (otherwise <see cref="SaveFailureReason.OriginalChanged"/>, unless
-    /// <see cref="SaveRequest.OverwriteChangedOriginal"/>); an existing target must not be read-only
-    /// (<see cref="SaveFailureReason.NotWritable"/>). Then: (1) write the incremental save into <c>.pw-&lt;12 hex&gt;.tmp</c>
-    /// in the target folder (created new, not shared, flushed to disk; on Unix with the permissions of an existing target,
-    /// on Windows with its Hidden attribute); (2) check that it starts with the bytes PDFium copied, read through PDFium's
-    /// handle; (3) open it with <paramref name="engine"/> and the password, and compare the page count, the encryption and
-    /// the annotation count of every changed page; (4) render every changed page; (5) replace the target. The document
-    /// checked in step 3 is returned and stays open.
+    /// still be what was opened (its stamp, read through PDFium's own handle, equals the one taken the same way when it was
+    /// opened, <see cref="PdfDocument.SourceStampAtOpen"/>; otherwise <see cref="SaveFailureReason.SourceModified"/>); when the
+    /// target is the original, the stamp at the path must still equal <see cref="SaveRequest.OriginalStamp"/> (path against
+    /// path; otherwise <see cref="SaveFailureReason.OriginalChanged"/>, unless <see cref="SaveRequest.OverwriteChangedOriginal"/>);
+    /// an existing target must not be read-only (<see cref="SaveFailureReason.NotWritable"/>). Then: (1) write the incremental
+    /// save into <c>.pw-&lt;12 hex&gt;.tmp</c> in the target folder (created new, not shared, flushed to disk; on Unix with
+    /// the permissions of an existing target, on Windows with its Hidden attribute); (2) check that it starts with the bytes
+    /// PDFium copied, read through PDFium's handle; (3) open it with <paramref name="engine"/> and the password, and compare
+    /// the page count, the encryption and the annotation count of every changed page; (4) render every changed page;
+    /// (5) replace the target. The source check runs again after the write, after the prefix check and immediately before
+    /// the replace, so a rewrite in place while PDFium copies is refused too. The document checked in step 3 is returned and
+    /// stays open.
     /// </summary>
     /// <remarks>
     /// Replacing works while documents still have the old file open (Pagewing opens files shared for reading, writing and
@@ -153,7 +158,7 @@ public static class DocumentSaver
         var folder = Path.GetDirectoryName(target)
             ?? throw new SaveFailureException(SaveFailureReason.NotWritable, "The target has no folder.");
 
-        var sourceLength = CheckSource(document, request.OriginalStamp);
+        var sourceLength = CheckSource(document);
         if (request.OriginalStamp is { } stamp && FileStamp.Of(original) != stamp && SamePath(original, target) && !request.OverwriteChangedOriginal)
         {
             throw new SaveFailureException(SaveFailureReason.OriginalChanged, "Another file stands at the path of the original since it was opened.");
@@ -172,16 +177,19 @@ public static class DocumentSaver
             faults?.AfterWrite?.Invoke();
             cancellationToken.ThrowIfCancellationRequested();
 
+            // PDFium copied the source while it wrote, which can take seconds: a rewrite in place meanwhile ends up in the
+            // copy, and the prefix check would compare it with the same new bytes. So the source is checked again.
+            CheckSource(document);
             await CheckPrefixAsync(temporary, document, sourceLength, cancellationToken).ConfigureAwait(false);
+            CheckSource(document);
             reopened = await ReopenAsync(engine, temporary, request.Password, cancellationToken).ConfigureAwait(false);
             await CheckAsync(reopened, request, wasEncrypted, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
+            CheckSource(document);
             Replace(temporary, target, folder, faults);
             committed = true;
-
-            // The replace succeeded, so the file is there; a stamp that cannot be read only weakens the next check.
-            return new SaveResult(reopened, FileStamp.Of(target) ?? new FileStamp(-1, DateTime.MinValue));
+            return new SaveResult(reopened, StampOf(reopened));
         }
         finally
         {
@@ -243,36 +251,55 @@ public static class DocumentSaver
     private static string ShortName(string extension) => ".pw-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(6)) + extension;
 
     /// <summary>
-    /// Checks that the file PDFium reads is still the file that was opened, before anything is written: PDFium copies its
-    /// bytes lazily through its own handle, so a rewrite in place since the open would end up in the saved file.
+    /// Checks that the file PDFium reads is still the file that was opened: PDFium copies its bytes lazily through its own
+    /// handle, so a rewrite in place since the open would end up in the saved file. Handle against handle (the stamp now
+    /// against <see cref="PdfDocument.SourceStampAtOpen"/>), never against the path, whose stamp describes a symbolic link
+    /// instead of the file behind it.
     /// </summary>
     /// <returns>The length of the opened file, which PDFium copies as the first bytes of the save.</returns>
-    private static long CheckSource(PdfDocument document, FileStamp? originalStamp)
+    private static long CheckSource(PdfDocument document)
     {
-        FileStamp source;
-        long length;
+        FileStamp now;
+        FileStamp atOpen;
         try
         {
-            source = document.GetSourceStamp();
-            length = document.SourceLengthAtOpen;
+            now = document.GetSourceStamp();
+            atOpen = document.SourceStampAtOpen;
         }
         catch (IOException ex)
         {
             throw new SaveFailureException(SaveFailureReason.VerificationFailed, "The opened file cannot be read.", ex);
         }
 
-        if (source.Length != length || (originalStamp is { } stamp && source != stamp))
+        if (now != atOpen)
         {
             throw new SaveFailureException(SaveFailureReason.SourceModified, "The opened file was changed by another program; it has to be opened again.");
         }
 
-        return length;
+        return atOpen.Length;
+    }
+
+    /// <summary>
+    /// The stamp of the saved file for the next save, through the handle of the reopened document like
+    /// <see cref="CheckSource"/>; the replace keeps the file and its times, so the stamp at its open still fits.
+    /// </summary>
+    private static FileStamp StampOf(PdfDocument reopened)
+    {
+        try
+        {
+            return reopened.GetSourceStamp();
+        }
+        catch (IOException)
+        {
+            return reopened.SourceStampAtOpen;
+        }
     }
 
     /// <summary>What an existing target passes on to its replacement; a read-only target is refused here.</summary>
     private static TargetInfo ReadTarget(string target)
     {
         FileAttributes attributes;
+        UnixFileMode? mode = null;
         try
         {
             if (!File.Exists(target))
@@ -281,22 +308,21 @@ public static class DocumentSaver
             }
 
             attributes = File.GetAttributes(target);
+            if (!OperatingSystem.IsWindows())
+            {
+                const UnixFileMode Permissions = (UnixFileMode)0x1FF;
+                mode = File.GetUnixFileMode(target) & Permissions;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // The target went away or cannot be read; the save then goes on as for a new file.
             return default;
         }
 
         if ((attributes & FileAttributes.ReadOnly) != 0)
         {
             throw new SaveFailureException(SaveFailureReason.NotWritable, "The file is read-only.");
-        }
-
-        UnixFileMode? mode = null;
-        if (!OperatingSystem.IsWindows())
-        {
-            const UnixFileMode Permissions = (UnixFileMode)0x1FF;
-            mode = File.GetUnixFileMode(target) & Permissions;
         }
 
         return new TargetInfo(Exists: true, Hidden: (attributes & FileAttributes.Hidden) != 0, UnixMode: mode);

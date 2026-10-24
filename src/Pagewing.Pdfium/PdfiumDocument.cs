@@ -45,6 +45,9 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// <summary>Gets the length of the source file when the document was opened, the length PDFium reads. Any thread.</summary>
     internal long SourceLengthAtOpen => source.Length;
 
+    /// <summary>Gets the last write time (UTC) of the source file when it was opened, read through the handle. Any thread.</summary>
+    internal DateTime SourceLastWriteUtcAtOpen => source.LastWriteUtc;
+
     /// <summary>Gets the number of pages.</summary>
     public int PageCount => Fpdf.FPDF_GetPageCount(Access());
 
@@ -505,14 +508,18 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         private GCHandle self;
         private int disposed;
 
-        private FileReadContext(SafeFileHandle file, long length)
+        private FileReadContext(SafeFileHandle file, long length, DateTime lastWriteUtc)
         {
             this.file = file;
             Length = length;
+            LastWriteUtc = lastWriteUtc;
             self = GCHandle.Alloc(this);
         }
 
         public long Length { get; }
+
+        /// <summary>Gets the last write time when the file was opened, read through the handle like a later check.</summary>
+        public DateTime LastWriteUtc { get; }
 
         /// <summary>Gets the open file.</summary>
         public SafeFileHandle FileHandle => file;
@@ -531,7 +538,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
                     throw new IOException($"The file is larger than {MaxFileLength} bytes and cannot be opened.");
                 }
 
-                return new FileReadContext(file, length);
+                return new FileReadContext(file, length, File.GetLastWriteTimeUtc(file));
             }
             catch
             {
