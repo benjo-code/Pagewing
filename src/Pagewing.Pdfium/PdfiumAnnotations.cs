@@ -51,8 +51,25 @@ internal sealed record PdfiumAnnotation(
 /// </remarks>
 internal static unsafe class PdfiumAnnotations
 {
-    /// <summary>The most entries of a page's <c>/Annots</c> that are looked at; further ones are ignored.</summary>
-    public const int MaxScannedPerPage = 100_000;
+    /// <summary>
+    /// The most entries of a page's <c>/Annots</c> that are looked at; further ones are ignored (the document lists at most
+    /// 10,000 anyway).
+    /// </summary>
+    public const int MaxScannedPerPage = 20_000;
+
+    /// <summary>
+    /// The work allowed for resolving links (<c>/IRT</c>, <c>/Popup</c>, <c>/Parent</c>) of one page in one operation, in
+    /// entries compared: <c>FPDFPage_GetAnnotIndex</c> walks <c>/Annots</c> and resolves each reference, so every link
+    /// costs as much as the page has entries. On a page with many links the budget runs out; then every markup of the page
+    /// counts as answered (read-only), and popups beyond the budget stay when a markup is deleted.
+    /// </summary>
+    public const long MaxLinkWork = 2_000_000;
+
+    /// <summary>How many entries pass between two checks of the cancellation token.</summary>
+    private const int CancellationInterval = 64;
+
+    /// <summary>What <see cref="LinkedIndex"/> returns when the link budget is used up.</summary>
+    private const int LinkUnresolved = -2;
 
     /// <summary>The most quadrilaterals of one markup; a markup with more is treated as damaged and skipped.</summary>
     public const int MaxQuads = 4_096;
@@ -87,12 +104,17 @@ internal static unsafe class PdfiumAnnotations
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
+        var result = new List<PdfiumAnnotation>();
+        if (limit <= 0)
+        {
+            return result;
+        }
+
         var scan = Scan(native, cancellationToken);
         var transform = PdfiumPageText.TransformOf(page);
-        var result = new List<PdfiumAnnotation>();
         for (var index = 0; index < scan.Subtypes.Length && result.Count < limit; index++)
         {
-            if ((index & 255) == 0)
+            if (index % CancellationInterval == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
@@ -102,7 +124,7 @@ internal static unsafe class PdfiumAnnotations
                 continue;
             }
 
-            if (ReadOne(native, transform, index, scan.Subtypes[index], scan.RepliedTo.Contains(index)) is { } annotation)
+            if (ReadOne(native, transform, index, scan.Subtypes[index], scan.HasReplies(index)) is { } annotation)
             {
                 result.Add(annotation);
             }
@@ -112,28 +134,30 @@ internal static unsafe class PdfiumAnnotations
     }
 
     /// <summary>Reads the annotation at <paramref name="index"/>, or <see langword="null"/> if it is missing, a popup, a reply or damaged.</summary>
-    public static PdfiumAnnotation? ReadAt(PdfiumPage page, int index)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while reading.</exception>
+    public static PdfiumAnnotation? ReadAt(PdfiumPage page, int index, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
-        var scan = Scan(native, CancellationToken.None);
+        var scan = Scan(native, cancellationToken);
         if (index < 0 || index >= scan.Subtypes.Length || scan.IsReply[index] || scan.Subtypes[index] == FpdfConstants.AnnotPopup)
         {
             return null;
         }
 
-        return ReadOne(native, PdfiumPageText.TransformOf(page), index, scan.Subtypes[index], scan.RepliedTo.Contains(index));
+        return ReadOne(native, PdfiumPageText.TransformOf(page), index, scan.Subtypes[index], scan.HasReplies(index));
     }
 
     /// <summary>
     /// Finds an annotation: by <c>/NM</c> when <paramref name="name"/> is given (then only by name), else by
     /// <paramref name="index"/>. Returns its index, or -1 if there is none.
     /// </summary>
-    public static int Find(PdfiumPage page, string? name, int index)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while searching.</exception>
+    public static int Find(PdfiumPage page, string? name, int index, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
-        var count = Math.Min(Fpdf.FPDFPage_GetAnnotCount(native), MaxScannedPerPage);
+        var count = Math.Clamp(Fpdf.FPDFPage_GetAnnotCount(native), 0, MaxScannedPerPage);
         if (name is null)
         {
             return index >= 0 && index < count ? index : -1;
@@ -141,6 +165,11 @@ internal static unsafe class PdfiumAnnotations
 
         for (var i = 0; i < count; i++)
         {
+            if (i % CancellationInterval == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             var annotation = Fpdf.FPDFPage_GetAnnot(native, i);
             if (annotation == 0)
             {
@@ -164,13 +193,14 @@ internal static unsafe class PdfiumAnnotations
     }
 
     /// <summary>Whether Pagewing may change or delete the annotation: a highlight, underline or strike-out that no other annotation answers.</summary>
-    public static bool IsEditable(PdfiumPage page, int index)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while checking.</exception>
+    public static bool IsEditable(PdfiumPage page, int index, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
-        var scan = Scan(native, CancellationToken.None);
+        var scan = Scan(native, cancellationToken);
         return index >= 0 && index < scan.Subtypes.Length && IsMarkup(scan.Subtypes[index])
-            && !scan.IsReply[index] && !scan.RepliedTo.Contains(index);
+            && !scan.IsReply[index] && !scan.HasReplies(index);
     }
 
     /// <summary>
@@ -209,6 +239,12 @@ internal static unsafe class PdfiumAnnotations
         try
         {
             index = Fpdf.FPDFPage_GetAnnotIndex(native, annotation);
+            if (index < 0)
+            {
+                // Not in /Annots, so there is nothing to remove either.
+                throw new InvalidOperationException("PDFium did not add the annotation to the page.");
+            }
+
             var rect = Hull(quads);
             Check(Fpdf.FPDFAnnot_SetRect(annotation, &rect));
             foreach (var quad in quads)
@@ -263,7 +299,9 @@ internal static unsafe class PdfiumAnnotations
     /// Changes an annotation: a new <paramref name="contents"/> (an existing <c>/RC</c> is replaced by the same text as
     /// plain XHTML, so old rich text cannot cover it; PDFium cannot remove a key); a new <paramref name="color"/> drops
     /// the appearance so that <see cref="GenerateAppearance"/> builds it anew; <paramref name="name"/> is written when
-    /// the annotation has no <c>/NM</c>; <c>/M</c> becomes <paramref name="date"/>.
+    /// the annotation has no <c>/NM</c>; <c>/M</c> becomes <paramref name="date"/>; the flag Print is set. The caller
+    /// then makes sure the annotation has an appearance (<see cref="HasAppearance"/>, <see cref="GenerateAppearance"/>),
+    /// also when this method throws after the old appearance was dropped.
     /// </summary>
     /// <exception cref="InvalidOperationException">PDFium refused a change.</exception>
     public static void Update(PdfiumPage page, int index, string? contents, (byte R, byte G, byte B)? color, string name, string date)
@@ -300,6 +338,7 @@ internal static unsafe class PdfiumAnnotations
             }
 
             Check(WriteString(annotation, "M\0"u8, date));
+            Check(Fpdf.FPDFAnnot_SetFlags(annotation, Fpdf.FPDFAnnot_GetFlags(annotation) | FpdfConstants.AnnotFlagPrint));
         }
         finally
         {
@@ -307,13 +346,18 @@ internal static unsafe class PdfiumAnnotations
         }
     }
 
-    /// <summary>Removes an annotation and its popups (the one its <c>/Popup</c> names and every popup whose <c>/Parent</c> is the annotation).</summary>
+    /// <summary>
+    /// Removes an annotation and its popups: the one its <c>/Popup</c> names (only if that entry is a popup) and every
+    /// popup whose <c>/Parent</c> is the annotation, as far as <see cref="MaxLinkWork"/> reaches (a popup beyond it stays).
+    /// </summary>
     /// <exception cref="InvalidOperationException">PDFium could not remove an entry.</exception>
-    public static void Delete(PdfiumPage page, int index)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before anything was removed.</exception>
+    public static void Delete(PdfiumPage page, int index, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
-        var count = Math.Min(Fpdf.FPDFPage_GetAnnotCount(native), MaxScannedPerPage);
+        var count = Math.Clamp(Fpdf.FPDFPage_GetAnnotCount(native), 0, MaxScannedPerPage);
+        var budget = MaxLinkWork;
         var remove = new SortedSet<int> { index };
         var annotation = Fpdf.FPDFPage_GetAnnot(native, index);
         if (annotation == 0)
@@ -323,8 +367,8 @@ internal static unsafe class PdfiumAnnotations
 
         try
         {
-            var popup = LinkedIndex(native, annotation, "Popup\0"u8);
-            if (popup >= 0)
+            var popup = LinkedIndex(native, annotation, "Popup\0"u8, count, ref budget);
+            if (popup >= 0 && popup != index && SubtypeAt(native, popup) == FpdfConstants.AnnotPopup)
             {
                 remove.Add(popup);
             }
@@ -334,8 +378,13 @@ internal static unsafe class PdfiumAnnotations
             Fpdf.FPDFPage_CloseAnnot(annotation);
         }
 
-        for (var i = 0; i < count; i++)
+        for (var i = 0; i < count && budget >= count; i++)
         {
+            if (i % CancellationInterval == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             var candidate = Fpdf.FPDFPage_GetAnnot(native, i);
             if (candidate == 0)
             {
@@ -344,7 +393,7 @@ internal static unsafe class PdfiumAnnotations
 
             try
             {
-                if (Fpdf.FPDFAnnot_GetSubtype(candidate) == FpdfConstants.AnnotPopup && LinkedIndex(native, candidate, "Parent\0"u8) == index)
+                if (Fpdf.FPDFAnnot_GetSubtype(candidate) == FpdfConstants.AnnotPopup && LinkedIndex(native, candidate, "Parent\0"u8, count, ref budget) == index)
                 {
                     remove.Add(i);
                 }
@@ -354,6 +403,8 @@ internal static unsafe class PdfiumAnnotations
                 Fpdf.FPDFPage_CloseAnnot(candidate);
             }
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         // From the back, so the indices still to remove stay valid.
         foreach (var entry in remove.Reverse())
@@ -384,6 +435,13 @@ internal static unsafe class PdfiumAnnotations
         }
 
         using var page = document.LoadPage(pageIndex);
+        return HasAppearance(page, index);
+    }
+
+    /// <summary>Whether the annotation at <paramref name="index"/> has an <c>/AP</c>.</summary>
+    public static bool HasAppearance(PdfiumPage page, int index)
+    {
+        ArgumentNullException.ThrowIfNull(page);
         var annotation = Fpdf.FPDFPage_GetAnnot(page.Access(), index);
         if (annotation == 0)
         {
@@ -481,7 +539,8 @@ internal static unsafe class PdfiumAnnotations
                     {
                         if (operandCount == operands.Length)
                         {
-                            operands[..^1].CopyTo(operands);
+                            // Keep the last operands, as PDFium does (Span.CopyTo handles the overlap).
+                            operands[1..].CopyTo(operands);
                             operandCount--;
                         }
 
@@ -526,14 +585,31 @@ internal static unsafe class PdfiumAnnotations
     }
 
     /// <summary>The plain text as the XHTML body of a <c>/RC</c> entry: one paragraph per line, with escaped characters.</summary>
+    /// <remarks>
+    /// Characters XML 1.0 does not allow are dropped (C0 controls other than tab, line feed and carriage return,
+    /// U+FFFE, U+FFFF and lone surrogates); a vertical tab or form feed counts as a line break.
+    /// </remarks>
     internal static string RichTextOf(string text)
     {
         var builder = new StringBuilder("<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\">");
-        foreach (var line in text.ReplaceLineEndings("\n").Split('\n'))
+        var lines = text.Replace('\v', '\n').Replace('\f', '\n').ReplaceLineEndings("\n").Split('\n');
+        foreach (var line in lines)
         {
             builder.Append("<p>");
-            foreach (var c in line)
+            for (var i = 0; i < line.Length; i++)
             {
+                var c = line[i];
+                if (char.IsHighSurrogate(c) && i + 1 < line.Length && char.IsLowSurrogate(line[i + 1]))
+                {
+                    builder.Append(c).Append(line[++i]);
+                    continue;
+                }
+
+                if (char.IsSurrogate(c) || c is '￾' or '￿' || (c < ' ' && c != '\t'))
+                {
+                    continue;
+                }
+
                 builder.Append(c switch
                 {
                     '&' => "&amp;",
@@ -550,15 +626,40 @@ internal static unsafe class PdfiumAnnotations
         return builder.Append("</body>").ToString();
     }
 
-    private static (int[] Subtypes, bool[] IsReply, HashSet<int> RepliedTo) Scan(nint page, CancellationToken cancellationToken)
+    private static int SubtypeAt(nint page, int index)
+    {
+        var annotation = Fpdf.FPDFPage_GetAnnot(page, index);
+        if (annotation == 0)
+        {
+            return -1;
+        }
+
+        try
+        {
+            return Fpdf.FPDFAnnot_GetSubtype(annotation);
+        }
+        finally
+        {
+            Fpdf.FPDFPage_CloseAnnot(annotation);
+        }
+    }
+
+    /// <summary>
+    /// One pass over <c>/Annots</c>: subtypes, which entries are replies, and which entries they answer. Resolving a
+    /// reply's target costs as much as the page has entries, so only <see cref="MaxLinkWork"/> is spent; when it runs out,
+    /// every entry counts as answered.
+    /// </summary>
+    private static PageScan Scan(nint page, CancellationToken cancellationToken)
     {
         var count = Math.Clamp(Fpdf.FPDFPage_GetAnnotCount(page), 0, MaxScannedPerPage);
         var subtypes = new int[count];
         var isReply = new bool[count];
         var repliedTo = new HashSet<int>();
+        var budget = MaxLinkWork;
+        var exhausted = false;
         for (var i = 0; i < count; i++)
         {
-            if ((i & 255) == 0)
+            if (i % CancellationInterval == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
@@ -577,10 +678,14 @@ internal static unsafe class PdfiumAnnotations
                 if (HasKey(annotation, "IRT\0"u8))
                 {
                     isReply[i] = true;
-                    var target = LinkedIndex(page, annotation, "IRT\0"u8);
-                    if (target >= 0 && target != i)
+                    if (!exhausted)
                     {
-                        repliedTo.Add(target);
+                        var target = LinkedIndex(page, annotation, "IRT\0"u8, count, ref budget);
+                        exhausted = target == LinkUnresolved;
+                        if (target >= 0 && target != i)
+                        {
+                            repliedTo.Add(target);
+                        }
                     }
                 }
             }
@@ -590,7 +695,7 @@ internal static unsafe class PdfiumAnnotations
             }
         }
 
-        return (subtypes, isReply, repliedTo);
+        return new PageScan(subtypes, isReply, repliedTo, exhausted);
     }
 
     private static PdfiumAnnotation? ReadOne(nint page, PdfiumPageText.PageTransform transform, int index, int subtype, bool hasReplies)
@@ -739,9 +844,24 @@ internal static unsafe class PdfiumAnnotations
         }
     }
 
-    /// <summary>The index on the page of the annotation that <paramref name="key"/> refers to, or -1.</summary>
-    private static int LinkedIndex(nint page, nint annotation, ReadOnlySpan<byte> key)
+    /// <summary>
+    /// The index on the page of the annotation that <paramref name="key"/> refers to, or -1 if there is none, or
+    /// <see cref="LinkUnresolved"/> if <paramref name="budget"/> cannot pay the <paramref name="count"/> entries the
+    /// search may compare.
+    /// </summary>
+    private static int LinkedIndex(nint page, nint annotation, ReadOnlySpan<byte> key, int count, ref long budget)
     {
+        if (!HasKey(annotation, key))
+        {
+            return -1;
+        }
+
+        if (budget < count)
+        {
+            return LinkUnresolved;
+        }
+
+        budget -= Math.Max(count, 1);
         nint linked;
         fixed (byte* keyPointer = key)
         {
@@ -887,5 +1007,16 @@ internal static unsafe class PdfiumAnnotations
         }
 
         return content.Length;
+    }
+
+    /// <summary>The result of <see cref="Scan"/>.</summary>
+    /// <param name="Subtypes">The subtype of each entry (a popup for an entry that is no dictionary).</param>
+    /// <param name="IsReply">Whether each entry has <c>/IRT</c>.</param>
+    /// <param name="RepliedTo">The entries that a resolved <c>/IRT</c> points at.</param>
+    /// <param name="Unresolved">Whether some <c>/IRT</c> was not resolved because the link budget ran out.</param>
+    private sealed record PageScan(int[] Subtypes, bool[] IsReply, HashSet<int> RepliedTo, bool Unresolved)
+    {
+        /// <summary>Whether the entry may have replies: it has a resolved one, or not every reply was resolved.</summary>
+        public bool HasReplies(int index) => Unresolved || RepliedTo.Contains(index);
     }
 }

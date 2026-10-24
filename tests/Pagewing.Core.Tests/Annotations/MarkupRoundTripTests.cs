@@ -197,6 +197,94 @@ public sealed partial class MarkupRoundTripTests
     }
 
     [Fact]
+    public async Task DeleteFollowsPopupOnlyToARealPopup()
+    {
+        using var folder = new TempFolder();
+
+        // A damaged /Popup that names a note instead of a popup: the note must stay.
+        var path = WritePdf(folder, "false-popup.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [4 0 R 5 0 R] >>",
+            "<< /Type /Annot /Subtype /Highlight /Rect [10 100 50 120] /QuadPoints [10 120 50 120 10 100 50 100] /C [1 1 0] /F 4 /NM (hl) /Popup 5 0 R >>",
+            "<< /Type /Annot /Subtype /Text /Rect [200 200 218 218] /NM (note) /Contents (stays) >>",
+        ]);
+        await using var document = await OpenAsync(path);
+
+        await document.DeleteAnnotationAsync(new AnnotationLocator(0, 0, "hl"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(["note"], (await document.GetAnnotationsAsync(0, TestContext.Current.CancellationToken)).Select(a => a.Name));
+    }
+
+    [Fact]
+    public async Task UpdatingOnlyTheCommentGivesAnAppearance()
+    {
+        using var folder = new TempFolder();
+        var original = await File.ReadAllBytesAsync(TestData.Pdf("annotations-foreign.pdf"), TestContext.Current.CancellationToken);
+        string name;
+        string saved;
+        await using (var document = await OpenFixtureAsync("annotations-foreign.pdf"))
+        {
+            // Index 3 is the bare highlight: no /NM and no /AP.
+            var updated = await document.UpdateAnnotationAsync(new AnnotationLocator(0, 3, null), new AnnotationEdit(Contents: "Only the comment"), TestContext.Current.CancellationToken);
+            name = updated.Name!;
+            saved = await SaveAsync(document, folder);
+        }
+
+        var appended = Appended(original, await File.ReadAllBytesAsync(saved, TestContext.Current.CancellationToken));
+        var dictionary = AnnotationDictionary(appended, name);
+        Assert.Matches(FlagPrintPattern(), dictionary);
+        Assert.Matches(FormPattern(), AppearanceObject(appended, dictionary));
+    }
+
+    [Fact]
+    public async Task UpdateSetsThePrintFlag()
+    {
+        using var folder = new TempFolder();
+        var path = WritePdf(folder, "no-flags.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [4 0 R] >>",
+            "<< /Type /Annot /Subtype /Underline /Rect [10 100 50 120] /QuadPoints [10 120 50 120 10 100 50 100] /C [0 0 1] /NM (no-flags) >>",
+        ]);
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        string saved;
+        await using (var document = await OpenAsync(path))
+        {
+            await document.UpdateAnnotationAsync(new AnnotationLocator(0, 0, "no-flags"), new AnnotationEdit(Contents: "x"), TestContext.Current.CancellationToken);
+            saved = await SaveAsync(document, folder);
+        }
+
+        var dictionary = AnnotationDictionary(Appended(original, await File.ReadAllBytesAsync(saved, TestContext.Current.CancellationToken)), "no-flags");
+        Assert.Matches(FlagPrintPattern(), dictionary);
+    }
+
+    [Fact]
+    public async Task ColorChangeSurvivesSaveAndReopenWithItsAppearance()
+    {
+        using var folder = new TempFolder();
+        var original = await File.ReadAllBytesAsync(TestData.Pdf("annotations.pdf"), TestContext.Current.CancellationToken);
+        string name;
+        string saved;
+        await using (var document = await OpenFixtureAsync("annotations.pdf"))
+        {
+            var updated = await document.UpdateAnnotationAsync(new AnnotationLocator(0, 1, null), new AnnotationEdit(Color: Blue), TestContext.Current.CancellationToken);
+            name = updated.Name!;
+            saved = await SaveAsync(document, folder);
+        }
+
+        var appended = Appended(original, await File.ReadAllBytesAsync(saved, TestContext.Current.CancellationToken));
+        var appearance = AppearanceObject(appended, AnnotationDictionary(appended, name));
+        Assert.Matches(FormPattern(), appearance);
+        Assert.Matches(MultiplyPattern(), appearance);
+        await using var reopened = await OpenAsync(saved);
+        var highlight = (await reopened.GetAnnotationsAsync(0, TestContext.Current.CancellationToken)).Single(a => a.Name == name);
+        Assert.Equal(Blue, highlight.Color);
+    }
+
+    [Fact]
     public async Task DeletingByIndexRemovesTheAnnotationWithoutAName()
     {
         await using var document = await OpenFixtureAsync("annotations-foreign.pdf");

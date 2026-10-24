@@ -156,6 +156,44 @@ public sealed class AnnotationReadTests
     }
 
     [Fact]
+    public async Task ManyRepliesAreResolvedInBoundedTime()
+    {
+        using var folder = new TempFolder();
+
+        // 19,000 indirect replies point with /IRT at a highlight that is the last entry of /Annots, so every unbounded
+        // lookup of a reply's target would walk (and resolve) the whole list.
+        const int replies = 19_000;
+        var objects = new List<string>
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            string.Empty,
+        };
+        var highlight = replies + 4;
+        var references = new StringBuilder();
+        for (var i = 0; i < replies; i++)
+        {
+            objects.Add($"<< /Type /Annot /Subtype /Text /Rect [10 10 20 20] /IRT {highlight} 0 R >>");
+            references.Append(System.Globalization.CultureInfo.InvariantCulture, $"{i + 4} 0 R ");
+        }
+
+        objects.Add("<< /Type /Annot /Subtype /Highlight /Rect [10 100 50 120] /QuadPoints [10 120 50 120 10 100 50 100] /C [1 1 0] /NM (target) >>");
+        objects[2] = $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [{references}{highlight} 0 R] >>";
+        var path = WritePdf(folder, "replies.pdf", objects);
+
+        await using var document = await OpenAsync(path);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var annotations = await document.GetAnnotationsAsync(0, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => document.DeleteAnnotationAsync(new AnnotationLocator(0, replies, "target"), TestContext.Current.CancellationToken));
+        watch.Stop();
+
+        var target = Assert.Single(annotations);
+        Assert.Equal("target", target.Name);
+        Assert.False(target.Editable);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"Reading and checking took {watch.Elapsed}.");
+    }
+
+    [Fact]
     public async Task ReadingAPageWithoutAnnotationsGivesAnEmptyList()
     {
         await using var document = await OpenFixtureAsync("text-basic.pdf");
@@ -172,6 +210,9 @@ public sealed class AnnotationReadTests
     [InlineData("q (a string with 1 0 0 rg inside \\) and \\( parens) Tj 0.5 g Q", true, 128, 128, 128)]
     [InlineData("% 1 0 0 rg comment\n0 0 0 1 k", true, 0, 0, 0)]
     [InlineData("0 1 0 0 K", false, 255, 0, 255)]
+    [InlineData("0.1 0.2 0.3 0.4 1 0.2 0 rg", true, 255, 51, 0)]
+    [InlineData("0.3 0.1 0.2 0.6 1 g", true, 255, 255, 255)]
+    [InlineData("0.5 0.5 0 1 0 0 K", false, 255, 0, 255)]
     [InlineData("<< /BM /Multiply >> BDC [1 2 3] 0 d .25 .5 .75 rg", true, 64, 128, 191)]
     public void ColorOfAnAppearanceIsItsFirstFillOrStrokeColor(string content, bool preferFill, byte r, byte g, byte b) =>
         Assert.Equal((r, g, b), Pagewing.Pdfium.PdfiumAnnotations.ColorFromAppearance(content, preferFill));
@@ -187,4 +228,16 @@ public sealed class AnnotationReadTests
     [Fact]
     public void FormatsPdfDatesInUtc() =>
         Assert.Equal("D:20261024073005Z", PdfDocument.FormatPdfDate(new DateTimeOffset(2026, 10, 24, 9, 30, 5, TimeSpan.FromHours(2))));
+
+    [Fact]
+    public void RichTextIsEscapedAndValidXml()
+    {
+        var rich = Pagewing.Pdfium.PdfiumAnnotations.RichTextOf("a&<>\"b\vc\u0001d\uD800e￾f\tg 😀\r\nh");
+
+        Assert.Equal(
+            "<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\"><p>a&amp;&lt;&gt;&quot;b</p><p>cdef\tg 😀</p><p>h</p></body>",
+            rich);
+        var document = System.Xml.Linq.XDocument.Parse(rich);
+        Assert.Equal(3, document.Root!.Elements().Count());
+    }
 }
