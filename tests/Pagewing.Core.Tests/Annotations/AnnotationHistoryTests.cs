@@ -90,6 +90,34 @@ public sealed class AnnotationHistoryTests
     }
 
     [Fact]
+    public void DiscardForgetsOnlyTheNewestCommandOfAStack()
+    {
+        var history = new AnnotationHistory();
+        var first = Command(1);
+        var second = Command(2);
+        history.Push(first);
+        history.Push(second);
+
+        // Undone, the second one is the newest of the redo stack; forgetting it leaves the first one to undo. A command
+        // that is the newest of neither stack is not forgotten.
+        Assert.Same(second, history.TakeUndo());
+        var version = history.Version;
+        Assert.False(history.Discard(Command(9)));
+        Assert.Equal(version, history.Version);
+        Assert.True(history.Discard(second));
+        Assert.True(history.Version > version);
+        Assert.False(history.CanRedo);
+        Assert.Same(first, history.TakeUndo());
+
+        // Redone, it is the newest of the undo stack.
+        Assert.Same(first, history.TakeRedo());
+        Assert.True(history.Discard(first));
+        Assert.False(history.CanUndo);
+        Assert.False(history.CanRedo);
+        Assert.False(history.Discard(first));
+    }
+
+    [Fact]
     public void ClearEmptiesBothStacksButKeepsVersionIncreasing()
     {
         var history = new AnnotationHistory();

@@ -18,6 +18,14 @@ public sealed partial class PdfDocument
     }
 
     /// <summary>
+    /// Gets the stamp at the path the document was opened from (<see cref="FileStamp.Of"/>, path, not handle), taken by
+    /// <see cref="PdfEngine.OpenAsync"/> on the PDFium thread immediately before the file was opened, or
+    /// <see langword="null"/> when it could not be read. Before, not after: a file replaced in between then makes a save
+    /// warn about another file at the path (<see cref="SaveFailureReason.OriginalChanged"/>) instead of overwriting it.
+    /// </summary>
+    internal FileStamp? PathStampAtOpen { get; init; }
+
+    /// <summary>
     /// Gets the stamp of the file PDFium reads from, taken through its handle when the document was opened: the same
     /// function as <see cref="GetSourceStamp"/>, so the two compare even for a file opened through a symbolic link (whose
     /// path stamp describes the link, not the file).

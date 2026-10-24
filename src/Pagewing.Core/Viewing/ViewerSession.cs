@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Runtime.ExceptionServices;
+using System.Text;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
 using Pagewing.Core.Text;
@@ -259,8 +261,9 @@ public sealed class ViewerSession : IDisposable
     }
 
     /// <summary>
-    /// Gets the stamp at <see cref="Path"/> (<see cref="FileStamp.Of"/>) of the open document: read just before the file
-    /// was opened, and again by <see cref="AdoptSavedDocumentAsync"/> after a save. It is what
+    /// Gets the stamp at <see cref="Path"/> (<see cref="FileStamp.Of"/>) of the open document: read on the PDFium thread
+    /// just before the file was opened (<c>PdfDocument.PathStampAtOpen</c>), and again by
+    /// <see cref="AdoptSavedDocumentAsync"/> after a save. It is what
     /// <see cref="SaveRequest.OriginalStamp"/> compares with to notice another file at the path. It belongs to
     /// <see cref="Document"/> and is <see langword="null"/> without one (or when the stamp could not be read).
     /// </summary>
@@ -288,6 +291,21 @@ public sealed class ViewerSession : IDisposable
             {
                 return password;
             }
+        }
+    }
+
+    /// <summary>
+    /// Gets the open document with its path, its stamp at the path and its password, read together under the lock of
+    /// the session, so all four belong to the same document; <see langword="null"/> unless the state is
+    /// <see cref="ViewerState.Ready"/> (for the editor).
+    /// </summary>
+    internal ReadySnapshot? SnapshotForSave()
+    {
+        lock (gate)
+        {
+            return !disposed && state == ViewerState.Ready && document is not null && path is not null
+                ? new ReadySnapshot(document, path, openedStamp, password)
+                : null;
         }
     }
 
@@ -345,10 +363,10 @@ public sealed class ViewerSession : IDisposable
         {
             try
             {
-                // Before the open, not after: a file that is replaced in between then makes the save warn about another
-                // file at the path (OriginalChanged) instead of overwriting it silently.
-                stamp = FileStamp.Of(fullPath);
                 opened = await open(fullPath, password, source.Token).ConfigureAwait(false);
+
+                // Taken on the PDFium thread just before the file was opened (never here: the caller may be the UI thread).
+                stamp = opened.PathStampAtOpen;
                 sizes = new PdfPageSize[opened.PageCount];
                 var first = await loadSizes(opened, 0, Math.Min(FirstBatchSize, sizes.Length), PdfPriority.Interactive, source.Token).ConfigureAwait(false);
                 firstCount = first.Count;
@@ -643,8 +661,9 @@ public sealed class ViewerSession : IDisposable
     /// source of <see cref="EnsurePageTexts"/> stays the same object with its texts (a search that is running goes on
     /// with it) and reads from the new document from now on; the thumbnails, whose scheduler belongs to the old
     /// document, are disposed and made anew by the next <see cref="EnsureThumbnails"/>. <see cref="Path"/> becomes
-    /// <paramref name="path"/> ("Save As"), <see cref="OpenedStamp"/> is read again from it, and the password of the
-    /// last open is kept (in memory only). Only after the new document is installed is the old one closed, together
+    /// <paramref name="path"/> ("Save As"), <see cref="OpenedStamp"/> is read again from it (on the calling thread: the
+    /// editor calls this from a pool thread after the save, never from the UI thread), and the password of the last open
+    /// is kept (in memory only). Only after the new document is installed is the old one closed, together
     /// with its scheduler; the returned task completes when that is done. Then <see cref="Changed"/> is raised once.
     /// </para>
     /// <para>
@@ -741,6 +760,9 @@ public sealed class ViewerSession : IDisposable
                         }
 
                         loadedSizes = new ArraySegment<PdfPageSize>(sizes, 0, loaded);
+
+                        // The new loader starts clean; only a failure of its own is reported.
+                        backgroundLoadFailure = null;
                     }
                 }
             }
@@ -980,6 +1002,23 @@ public sealed class ViewerSession : IDisposable
         finally
         {
             Interlocked.Decrement(ref raising);
+        }
+    }
+
+    /// <summary>The open document of a ready session with what belongs to it (<see cref="SnapshotForSave"/>).</summary>
+    /// <param name="Document">The open document.</param>
+    /// <param name="Path">The full path it was opened from or saved to.</param>
+    /// <param name="OpenedStamp">The stamp at <paramref name="Path"/>, see <see cref="OpenedStamp"/>.</param>
+    /// <param name="Password">The password it was opened with; <see cref="ToString"/> does not show it.</param>
+    internal sealed record ReadySnapshot(PdfDocument Document, string Path, FileStamp? OpenedStamp, string? Password)
+    {
+        /// <summary>Prints the members like a record does, with the password replaced (secrets never reach a log).</summary>
+        private bool PrintMembers(StringBuilder builder)
+        {
+            builder.Append(
+                CultureInfo.InvariantCulture,
+                $"Path = {Path}, OpenedStamp = {OpenedStamp}, Password = {(Password is null ? "null" : "(hidden)")}");
+            return true;
         }
     }
 }

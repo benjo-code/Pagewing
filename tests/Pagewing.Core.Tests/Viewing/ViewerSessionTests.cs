@@ -806,10 +806,16 @@ public sealed class ViewerSessionTests
 
         await session.OpenAsync(path);
         Assert.Equal(FileStamp.Of(path), session.OpenedStamp);
+        Assert.Equal(session.OpenedStamp, session.Document!.PathStampAtOpen);
         Assert.Null(session.OpenPassword);
+        var snapshot = session.SnapshotForSave()!;
+        Assert.Same(session.Document, snapshot.Document);
+        Assert.Equal(session.Path, snapshot.Path);
+        Assert.Equal(session.OpenedStamp, snapshot.OpenedStamp);
 
         session.Close();
         Assert.Null(session.OpenedStamp);
+        Assert.Null(session.SnapshotForSave());
 
         await session.OpenAsync(TestData.Pdf("does-not-exist.pdf"));
         Assert.Null(session.OpenedStamp);
@@ -925,6 +931,8 @@ public sealed class ViewerSessionTests
         await session.OpenAsync(path, UserPassword);
         Assert.Equal(ViewerState.Ready, session.State);
         Assert.Equal(UserPassword, session.OpenPassword);
+        Assert.Equal(UserPassword, session.SnapshotForSave()!.Password);
+        Assert.DoesNotContain(UserPassword, session.SnapshotForSave()!.ToString(), StringComparison.Ordinal);
         var editor = new AnnotationEditor(session);
         using var recorder = new Recorder(session);
 

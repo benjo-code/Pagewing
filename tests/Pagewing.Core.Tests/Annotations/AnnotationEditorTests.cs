@@ -139,6 +139,67 @@ public sealed class AnnotationEditorTests : IDisposable
     }
 
     [Fact]
+    public async Task MarkupWithoutAnAreaIsNotDeletedAndOneWithBoundsOnlyComesBackFromThem()
+    {
+        // A foreign highlight whose quadrilateral and rectangle have no area, and one whose quadrilateral is flat but whose
+        // rectangle is fine (both damaged, both still listed as editable).
+        var path = WritePdf(folder, "flat-markups.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Annots [4 0 R 5 0 R] >>",
+            "<< /Type /Annot /Subtype /Highlight /Rect [50 50 50 50] /QuadPoints [50 50 50 50 50 50 50 50] /C [1 1 0] /NM (flat) /Contents (flat) >>",
+            "<< /Type /Annot /Subtype /Highlight /Rect [20 100 120 120] /QuadPoints [20 120 20 120 20 120 20 120] /C [0 1 0] /NM (rect-only) /Contents (rect only) >>",
+        ]);
+        using var session = await OpenSessionAsync(path);
+        var editor = new AnnotationEditor(session);
+        var listed = await session.Document!.GetAnnotationsAsync(0, Ct);
+        var flat = listed.Single(a => a.Name == "flat");
+        var rectOnly = listed.Single(a => a.Name == "rect-only");
+        Assert.True(flat.Editable);
+        Assert.True(rectOnly.Editable);
+
+        // Undo could not create the flat one again: the delete is refused before the document is touched.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => editor.DeleteAsync(new AnnotationLocator(0, flat.Index, flat.Name)));
+        Assert.Contains(await session.Document!.GetAnnotationsAsync(0, Ct), a => a.Name == "flat");
+        Assert.False(editor.IsDirty);
+        Assert.False(editor.CanUndo);
+
+        // The other one comes back from its bounds.
+        await editor.DeleteAsync(new AnnotationLocator(0, rectOnly.Index, rectOnly.Name));
+        Assert.DoesNotContain(await session.Document!.GetAnnotationsAsync(0, Ct), a => a.Name == "rect-only");
+        await editor.UndoAsync();
+        var restored = (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == "rect-only");
+        Assert.Equal("rect only", restored.Contents);
+        Assert.Equal(new AnnotationColor(0, 255, 0), restored.Color);
+        AssertRectNear(rectOnly.Bounds, Assert.Single(restored.QuadRects), 0.5);
+    }
+
+    [Fact]
+    public async Task AStepThatFailsIsDroppedAndTheOlderStepsStayUsable()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var hello = await WordRectsAsync(session.Document!, 0, "Hello");
+        var pagewing = await WordRectsAsync(session.Document!, 0, "Pagewing");
+        var first = (await editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, hello, Yellow, null, null))!;
+        var second = (await editor.ApplyMarkupAsync(0, AnnotationKind.Underline, pagewing, Blue, null, null))!;
+
+        // The second markup disappears behind the editor's back: undoing its creation fails, every time it would be tried.
+        await session.Document!.DeleteAnnotationAsync(new AnnotationLocator(0, second.Index, second.Name), Ct);
+        await Assert.ThrowsAsync<PdfAnnotationNotFoundException>(() => editor.UndoAsync());
+
+        // The failed step is gone (not on either stack), and the older one undoes and redoes as before.
+        Assert.True(editor.CanUndo);
+        Assert.False(editor.CanRedo);
+        await editor.UndoAsync();
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+        await editor.RedoAsync();
+        Assert.Equal(first.Name, Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct)).Name);
+        Assert.False(editor.CanRedo);
+    }
+
+    [Fact]
     public async Task UndoOfAnEditRestoresColorAndComment()
     {
         using var session = await OpenSessionAsync("text-basic.pdf");
@@ -183,7 +244,8 @@ public sealed class AnnotationEditorTests : IDisposable
         Assert.Empty(editor.ChangedPages);
         Assert.True(Volatile.Read(ref changes) >= 1);
         Assert.Equal(ViewerState.Ready, session.State);
-        Assert.Same(result.Reopened, session.Document);
+        Assert.True(result.Adopted);
+        Assert.Same(result.Saved.Reopened, session.Document);
         Assert.Same(cache, session.Cache);
         Assert.Throws<ObjectDisposedException>(() => old.PageCount);
         Assert.Equal(created.Name, Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct)).Name);
@@ -373,8 +435,11 @@ public sealed class AnnotationEditorTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, [new PageRect(10, 10, 50, 20)], Yellow, null, null));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => editor.SaveAsync(engine, Path.Combine(folder.Path, "x.pdf"), overwriteChangedOriginal: false, progress: null, Ct));
         await editor.UndoAsync();
         Assert.False(editor.IsDirty);
+        Assert.Empty(Directory.GetFiles(folder.Path));
     }
 
     private static RenderedImage SmallImage() => new(1, 1, 4, new byte[4]);

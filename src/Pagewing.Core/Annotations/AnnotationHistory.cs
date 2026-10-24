@@ -93,6 +93,29 @@ public sealed class AnnotationHistory
         return command;
     }
 
+    /// <summary>
+    /// Forgets <paramref name="command"/> if it is the newest command of either stack, for example a step that
+    /// <see cref="TakeUndo"/> or <see cref="TakeRedo"/> just moved and that cannot be applied: the other commands stay
+    /// usable. Changes <see cref="Version"/> when it forgets something.
+    /// </summary>
+    /// <param name="command">The command to forget.</param>
+    /// <returns>Whether it was the newest command of a stack and is forgotten.</returns>
+    public bool Discard(AnnotationCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        foreach (var stack in (ReadOnlySpan<List<AnnotationCommand>>)[_redo, _undo])
+        {
+            if (stack.Count > 0 && ReferenceEquals(stack[^1], command))
+            {
+                stack.RemoveAt(stack.Count - 1);
+                Version++;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Empties both stacks, for example after the document was reloaded; <see cref="Version"/> keeps increasing.</summary>
     public void Clear()
     {

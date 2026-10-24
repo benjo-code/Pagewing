@@ -21,9 +21,11 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 - **Rückgängig durch Neuanlegen:** Der Verlauf (`AnnotationHistory`) speichert Schnappschüsse (`PdfAnnotation`), keine Bytes.
   - Rückgängig eines Löschens und Wiederholen eines Anlegens legen die Markierung mit `CreateMarkupAsync` neu an: Art, Zeilen (`QuadRects`), Farbe, Kommentar und Autor aus dem Schnappschuss. `/M` und `/CreationDate` werden neu gesetzt, das Erscheinungsbild erzeugt PDFium neu.
   - Schlüssel, die Pagewing nicht liest (herstellerspezifische Einträge, `/RC`, ein fremdes Erscheinungsbild, `/Popup` samt Inhalt, die Position in `/Annots`), gehen beim Neuanlegen einer gelöschten fremden Markierung verloren. Eine fremde Markierung ohne `/C` bekommt beim Neuanlegen Gelb aus der Palette.
+  - Die Eckpunkte kommen nach dem Rückgängigmachen eines Löschens als achsparallele Rechtecke zurück: Der Schnappschuss hält `QuadRects` (Rechtecke), nicht die Viereckpunkte. Nebeneinanderliegende Vierecke einer Zeile werden dabei zu einem (`MarkupGeometry.LinesFor`).
+  - Das Löschen nimmt die Zeilen des Schnappschusses vorher durch `MarkupGeometry.LinesFor`. Hat kein Viereck eine Fläche, nimmt es die Grenzen (`Bounds`) der Markierung. Bleibt auch dann nichts, lehnt es das Löschen ab (`InvalidOperationException`), bevor das Dokument angefasst wird: Eine solche Markierung ließe sich nicht wiederherstellen.
   - Die neu angelegte Markierung behält ihren alten `/NM` (interne Überladung `PdfDocument.CreateMarkupAsync(…, name, …)`), damit spätere Schritte des Verlaufs sie über den Namen finden. Eine gelöschte Markierung ohne `/NM` bekommt im Schnappschuss einen neuen Namen, unter dem sie wieder entsteht.
   - Rückgängig einer Änderung setzt Farbe und Kommentar des Schnappschusses „vorher“ wieder (`UpdateAnnotationAsync` über den Namen nach der Änderung). Eine fehlende Farbe lässt sich nicht als „fehlend“ wiederherstellen; die Markierung behält dann die neue.
-  - Scheitert ein Schritt, kommt er auf seinen Stapel zurück.
+  - Scheitert ein Schritt mit `OperationCanceledException` oder `ObjectDisposedException`, kommt er auf seinen Stapel zurück (mit ihm war nichts falsch). Jeder andere Fehler (Markierung fehlt, PDFium lehnt ab, Neuanlegen scheitert) träte bei jedem Versuch wieder auf und versperrte alle älteren Schritte: Der Schritt wird verworfen (`AnnotationHistory.Discard`), der Aufrufer bekommt die Ausnahme einmal, die älteren Schritte bleiben nutzbar (`AStepThatFailsIsDroppedAndTheOlderStepsStayUsable`).
 - **Reihenfolge:** Alle Operationen des Editors laufen nacheinander in der Reihenfolge ihres Aufrufs (asynchrone Kette über eine `Task`, kein `SemaphoreSlim`, damit der Editor nichts freigeben muss). Ein Rückgängig direkt nach einer Markierung wartet auf sie und nimmt sie zurück. Der Aufrufer wird nie blockiert, PDFium läuft nur auf dem `PdfiumThread`.
 - **Verlauf beim Speichern geleert:** Nach einem erfolgreichen Speichern sind Verlauf und `ChangedPages` leer, `IsDirty` ist falsch. Gespeichertes lässt sich nicht mehr zurücknehmen. Jeder Fehler und jeder Abbruch lassen Verlauf, `ChangedPages` und `IsDirty` unverändert (`SaveFailureKeepsDirtyAndTheHistory`). Öffnet die Sitzung inzwischen ein anderes Dokument, beginnt der Editor beim nächsten Aufruf leer.
 - **Dokumenttausch nach dem Speichern** (`ViewerSession.AdoptSavedDocumentAsync`):
@@ -33,7 +35,29 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
   - `PageTextSource` bleibt dasselbe Objekt mit seinen Texten und liest ab jetzt aus dem neuen Dokument (`Rebind`); laufende Ladevorgänge am alten Dokument werden vergessen. Die Seitenvorschau (`ThumbnailSource`) hängt an einem Scheduler des alten Dokuments und wird deshalb verworfen und beim nächsten `EnsureThumbnails` neu angelegt.
   - `Path` wird das Ziel („Speichern unter“), `OpenedStamp` wird am Ziel neu gelesen (`FileStamp.Of`, Pfad mit Pfad; nie `SaveResult.NewStamp`, das aus dem Handle kommt). `Changed` kommt genau einmal.
   - Wurde die Sitzung inzwischen geschlossen oder verworfen, läuft ein neueres Öffnen oder ist ein anderes Dokument offen als das gespeicherte, schließt die Sitzung das neue Dokument und ändert nichts.
-- **Stempel und Passwort in der Sitzung:** `ViewerSession.OpenedStamp` wird beim Öffnen **vor** dem Öffnen gelesen. Wird die Datei dazwischen ersetzt, warnt das Speichern also (`OriginalChanged`), statt still zu überschreiben. Das kostet im Startpfad einen `stat`. Das Passwort des letzten erfolgreichen Öffnens hält die Sitzung nur im Arbeitsspeicher (internes `OpenPassword`, nur für den Editor; nie in Meldungen). `Close` und `Dispose` vergessen beides.
+- **Stempel und Passwort in der Sitzung:**
+  - `ViewerSession.OpenedStamp` ist der Pfadstempel **vor** dem Öffnen. Wird die Datei dazwischen ersetzt, warnt das Speichern also (`OriginalChanged`), statt still zu überschreiben.
+  - Gelesen wird er im Öffnungsauftrag auf dem `PdfiumThread`, unmittelbar vor `PdfiumDocument.Open` (`PdfEngine.OpenAsync`, `PdfDocument.PathStampAtOpen`). Nie auf dem Thread des Aufrufers: Das wäre beim Start der Haupt-Thread vor Avalonia, später der UI-Thread. Auf einem Netzlaufwerk oder einer anlaufenden Platte kann ein `stat` Sekunden blockieren.
+  - Ein `Task.Run` dafür ist verworfen: zusätzlicher Thread-Wechsel im Startpfad. Die erste Fassung las den Stempel in `OpenAsync` vor dem ersten `await`.
+  - Das Passwort des letzten erfolgreichen Öffnens hält die Sitzung nur im Arbeitsspeicher (internes `OpenPassword`, nur für den Editor; nie in Meldungen). `Close` und `Dispose` vergessen beides.
+  - Der Editor liest Dokument, Pfad, Stempel und Passwort einmal gemeinsam unter der Sperre der Sitzung (`ViewerSession.SnapshotForSave`). Ohne `Ready` lehnt er das Speichern ab.
+  - `AdoptSavedDocumentAsync` liest den Stempel am Ziel auf dem Thread des Aufrufers; der Editor ruft es nach dem Speichern von einem Pool-Thread auf.
+- **Messung des Startpfads** (Haupt-PC des Entwicklers, Windows 11, Native AOT `win-x64`, `bench/startup/startup.cs`, `text-basic.pdf`; keine Frame-Takt-Warnung, aber kein CI-Runner). Drei Stände:
+  - „base“: vor Aufgabe 11, `db7a3f7`.
+  - „head“: Stempel auf dem Aufrufer-Thread, `cbbea25`.
+  - „fix“: Stempel auf dem `PdfiumThread`.
+
+  | Messung | base | head | fix |
+  |---|---|---|---|
+  | `warm`, Median, 2 Runden abwechselnd | 267,0 / 271,6 ms | 263,6 / 276,0 ms | 278,2 / 272,7 ms |
+  | `cold`, Median, 2 Runden | 269,1 / 274,8 ms | 272,7 ms (1 Runde) | 277,4 / 269,6 ms |
+  | Phase `main` → `session-open-started` (warm) | 0,5 / 2,4 ms | 6,1 / 7,5 ms | 0,7 / 0,5 ms |
+  | Phase `session-ready` (warm) | 42,2 / 42,2 ms | 42,5 / 42,1 ms | 47,1 / 44,3 ms |
+
+  - Der `stat` auf dem Haupt-Thread kostete vor dem Start von Avalonia rund 6 ms. Auf dem `PdfiumThread` liegt er nicht mehr auf dem Weg zum ersten Frame (`first-frame` in allen Ständen 229 bis 239 ms).
+  - `session-ready` ist um 2 bis 5 ms später; das Öffnen läuft parallel zum Aufbau des Fensters.
+  - Die Unterschiede der Mediane liegen im Rauschen (±10 ms zwischen Runden desselben Stands).
+  - `warm` liegt auf diesem Rechner in allen drei Ständen über der Grenze von 250 ms, auch „base“. Das ist ein Befund dieses Rechners, keiner dieser Änderung. Budgets bleiben unverändert.
 **Begründung:** Neuanlegen braucht keinen eigenen PDF-Schreiber und keine Kopie von Objekten, die PDFium nicht freilegt. Der Verlust betrifft nur fremde Markierungen, die gelöscht und zurückgeholt werden; ihre sichtbaren Eigenschaften bleiben. Der Tausch unter einer Sperre ist die einzige Reihenfolge ohne Tab ohne Dokument. Der geteilte Cache erspart nach jedem Speichern das neue Rendern.
 **Verworfene Alternativen:**
 - „Löschen erst beim Speichern ausführen“ (von der Spec erlaubt): Die Ansicht, die Zählung der Prüfung nach dem Speichern und das Panel müssten zwischen Dokument und Plan unterscheiden.

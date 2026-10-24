@@ -29,6 +29,19 @@ namespace Pagewing.Core.Annotations;
 /// The history belongs to the document the editor worked on. When the session opens another document meanwhile, the
 /// next call forgets the history and starts clean (the caller asks about unsaved changes before it opens another file).
 /// </para>
+/// <para>
+/// A step of undo or redo that fails is put back only when it was canceled or the document was being closed
+/// (<see cref="OperationCanceledException"/>, <see cref="ObjectDisposedException"/>), so it can be tried again. Any other
+/// failure (the annotation is gone, PDFium refuses, the copy cannot be created again) would fail the same way every time:
+/// that step is dropped from the history, its exception reaches the caller once, and the older steps stay usable.
+/// </para>
+/// <para>
+/// Re-entrancy: an operation raises <see cref="ViewerSession.Changed"/> of the session on its own thread while it runs
+/// (<see cref="ViewerSession.InvalidatePages"/>, and the adoption after a save). A handler of
+/// <see cref="ViewerSession.Changed"/> must therefore never wait synchronously for an operation of the editor: that
+/// operation waits for the one that raised the event, which waits for the handler, a deadlock. Starting one without
+/// waiting for it is fine.
+/// </para>
 /// </remarks>
 public sealed class AnnotationEditor
 {
@@ -149,17 +162,35 @@ public sealed class AnnotationEditor
         }).ConfigureAwait(false);
     }
 
-    /// <summary>Deletes a highlight, underline or strike-out (also one of another application) together with its popup.</summary>
+    /// <summary>
+    /// Deletes a highlight, underline or strike-out (also one of another application) together with its popup. The copy
+    /// that undo creates again from is taken first: its lines are the quadrilaterals as rectangles
+    /// (<see cref="MarkupGeometry.LinesFor"/>), or the bounds of the annotation when no quadrilateral has an area. A markup
+    /// with neither could not be restored, so it is not deleted.
+    /// </summary>
     /// <param name="locator">Finds the annotation: by name if it has one, else by index.</param>
     /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
-    /// <exception cref="InvalidOperationException">The session has no ready document, or the annotation is not editable.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The session has no ready document, the annotation is not editable, or it has no area that undo could create again
+    /// (the document is unchanged).
+    /// </exception>
     public Task DeleteAsync(AnnotationLocator locator) =>
         RunAsync(async document =>
         {
             var removed = await FindAsync(document, locator).ConfigureAwait(false);
+            if (!removed.Editable)
+            {
+                throw new InvalidOperationException("Only highlights, underlines and strike-outs without replies can be deleted.");
+            }
+
+            var lines = RestorableLines(removed);
+            if (lines.Count == 0)
+            {
+                throw new InvalidOperationException("The markup has no area that undo could restore, so it is not deleted.");
+            }
 
             // The copy gets a name if it has none: undo creates it again under that name, so redo finds it again.
-            removed = removed.Name is null ? removed with { Name = Guid.NewGuid().ToString("N") } : removed;
+            removed = removed with { QuadRects = lines, Name = removed.Name ?? Guid.NewGuid().ToString("N") };
             await document.DeleteAnnotationAsync(locator).ConfigureAwait(false);
             Record(locator.Page, new AnnotationCommand.Delete(removed));
             return true;
@@ -198,16 +229,24 @@ public sealed class AnnotationEditor
     /// clean, its history and <see cref="ChangedPages"/> are empty, and <see cref="ViewerSession.OpenedStamp"/> is the stamp
     /// of the written file. On any failure or cancellation the document stays as it was, still unsaved, with its history.
     /// </summary>
+    /// <remarks>
+    /// The file is saved once the call returns, also when the session did not adopt it because it was closed or opened
+    /// another file meanwhile (<see cref="AnnotationSaveResult.Adopted"/> is <see langword="false"/>): then the session has
+    /// already closed <see cref="SaveResult.Reopened"/>, and the editor is clean all the same (the changes are on disk).
+    /// </remarks>
     /// <param name="engine">Opens the written file for the check.</param>
     /// <param name="targetPath">The path of the open document ("Save") or another one ("Save As"); an existing file is replaced.</param>
     /// <param name="overwriteChangedOriginal">Whether the user confirmed overwriting another file that now stands at the path of the original.</param>
     /// <param name="progress">Receives 0 to 1 while the file is written (from the PDFium thread).</param>
     /// <param name="cancellationToken">Cancels the save until the target is replaced.</param>
-    /// <returns>The result; its document now belongs to the session (do not dispose it).</returns>
+    /// <returns>
+    /// The result of the save and whether the session adopted it. An adopted document belongs to the session (do not
+    /// dispose it); one that was not adopted is already closed.
+    /// </returns>
     /// <exception cref="SaveFailureException">The save failed; the target is unchanged.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled; the target is unchanged.</exception>
-    /// <exception cref="InvalidOperationException">The session has no ready document.</exception>
-    public Task<SaveResult> SaveAsync(
+    /// <exception cref="InvalidOperationException">The session is not <see cref="ViewerState.Ready"/>; nothing is written.</exception>
+    public Task<AnnotationSaveResult> SaveAsync(
         PdfEngine engine,
         string targetPath,
         bool overwriteChangedOriginal,
@@ -216,45 +255,50 @@ public sealed class AnnotationEditor
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentException.ThrowIfNullOrEmpty(targetPath);
-        return RunAsync(async document =>
-        {
-            int[] pages;
-            lock (gate)
+        return RunAsync(
+            async snapshot =>
             {
-                pages = [.. changedPages];
-            }
+                // RunAsync refuses without a ready session, so the snapshot is there; document, path, stamp and password
+                // are read together and belong to the same document.
+                var (document, originalPath, openedStamp, password) = snapshot!;
+                int[] pages;
+                lock (gate)
+                {
+                    pages = [.. changedPages];
+                }
 
-            var counts = new Dictionary<int, int>(pages.Length);
-            foreach (var page in pages)
-            {
-                counts[page] = (await document.GetAnnotationsAsync(page, cancellationToken).ConfigureAwait(false)).Count;
-            }
+                var counts = new Dictionary<int, int>(pages.Length);
+                foreach (var page in pages)
+                {
+                    counts[page] = (await document.GetAnnotationsAsync(page, cancellationToken).ConfigureAwait(false)).Count;
+                }
 
-            var originalPath = session.Path ?? throw new InvalidOperationException("The session has no file.");
-            var request = new SaveRequest(
-                originalPath,
-                targetPath,
-                session.OpenedStamp,
-                session.OpenPassword,
-                document.PageCount,
-                counts,
-                overwriteChangedOriginal);
+                var request = new SaveRequest(
+                    originalPath,
+                    targetPath,
+                    openedStamp,
+                    password,
+                    document.PageCount,
+                    counts,
+                    overwriteChangedOriginal);
 
-            // A failure leaves everything as it is; the saver closes the document it may have reopened.
-            var result = await DocumentSaver.SaveAsync(document, engine, request, progress, cancellationToken).ConfigureAwait(false);
+                // A failure leaves everything as it is; the saver closes the document it may have reopened.
+                var result = await DocumentSaver.SaveAsync(document, engine, request, progress, cancellationToken).ConfigureAwait(false);
 
-            // The file is saved from here on, whatever happens to the session: the changes are on disk.
-            var adopted = await session.AdoptSavedDocumentAsync(result.Reopened, targetPath, replacing: document).ConfigureAwait(false);
-            lock (gate)
-            {
-                history.Clear();
-                versionAtLastSave = history.Version;
-                changedPages.Clear();
-                bound = adopted ? result.Reopened : null;
-            }
+                // The file is saved from here on, whatever happens to the session: the changes are on disk. A session that
+                // does not adopt the document closes it.
+                var adopted = await session.AdoptSavedDocumentAsync(result.Reopened, targetPath, replacing: document).ConfigureAwait(false);
+                lock (gate)
+                {
+                    history.Clear();
+                    versionAtLastSave = history.Version;
+                    changedPages.Clear();
+                    bound = adopted ? result.Reopened : null;
+                }
 
-            return result;
-        });
+                return new AnnotationSaveResult(result, adopted);
+            },
+            requireDocument: true);
     }
 
     private static AnnotationLocator LocatorOf(PdfAnnotation annotation) => new(annotation.Page, annotation.Index, annotation.Name);
@@ -280,12 +324,22 @@ public sealed class AnnotationEditor
         throw new PdfAnnotationNotFoundException("The annotation was not found on its page.");
     }
 
+    /// <summary>
+    /// The lines a markup can be created again with: its quadrilaterals as rectangles, or its bounds when none of them has
+    /// an area; empty when neither has one.
+    /// </summary>
+    private static IReadOnlyList<PageRect> RestorableLines(PdfAnnotation annotation)
+    {
+        var lines = MarkupGeometry.LinesFor(annotation.QuadRects);
+        return lines.Count > 0 ? lines : MarkupGeometry.LinesFor([annotation.Bounds]);
+    }
+
     /// <summary>Creates a markup again from its copy, under its old name.</summary>
     private static Task<PdfAnnotation> RecreateAsync(PdfDocument document, PdfAnnotation copy) =>
         document.CreateMarkupAsync(
             copy.Page,
             copy.Kind,
-            copy.QuadRects,
+            RestorableLines(copy),
             copy.Color ?? AnnotationPalette.ColorOf(MarkupColor.Yellow),
             copy.Contents,
             copy.Author,
@@ -314,31 +368,44 @@ public sealed class AnnotationEditor
 
     private Task<bool> StepAsync(bool undo) =>
         RunAsync(
-            async document =>
+            async snapshot =>
             {
                 // Decided only now, after the operations before it: an undo right after a change undoes that change.
                 AnnotationCommand? command;
                 lock (gate)
                 {
-                    command = undo ? history.TakeUndo() : history.TakeRedo();
-                }
+                    if (undo ? !history.CanUndo : !history.CanRedo)
+                    {
+                        // Nothing to do needs no document.
+                        return false;
+                    }
 
-                if (command is null)
-                {
-                    // Nothing to do needs no document.
-                    return false;
+                    if (snapshot is null)
+                    {
+                        throw new InvalidOperationException("The session has no open document.");
+                    }
+
+                    command = (undo ? history.TakeUndo() : history.TakeRedo())!;
                 }
 
                 try
                 {
-                    await ApplyAsync(document ?? throw new InvalidOperationException("The session has no open document."), command, undo).ConfigureAwait(false);
+                    await ApplyAsync(snapshot.Document, command, undo).ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Put the step back where it was; the document did not change (each PDFium job changes all or nothing).
                     lock (gate)
                     {
-                        _ = undo ? history.TakeRedo() : history.TakeUndo();
+                        if (ex is OperationCanceledException or ObjectDisposedException)
+                        {
+                            // Nothing was wrong with the step: put it back where it was (the job changed all or nothing).
+                            _ = undo ? history.TakeRedo() : history.TakeUndo();
+                        }
+                        else
+                        {
+                            // It would fail the same way every time and block every older step: forget it.
+                            history.Discard(command);
+                        }
                     }
 
                     throw;
@@ -371,9 +438,9 @@ public sealed class AnnotationEditor
     /// Runs <paramref name="work"/> on the ready document of the session after every earlier operation, and raises
     /// <see cref="Changed"/> once afterwards (after a failure too, since the history may have moved).
     /// </summary>
-    private Task<T> RunAsync<T>(Func<PdfDocument, Task<T>> work) => RunAsync<T>(document => work(document!), requireDocument: true);
+    private Task<T> RunAsync<T>(Func<PdfDocument, Task<T>> work) => RunAsync<T>(snapshot => work(snapshot!.Document), requireDocument: true);
 
-    private Task<T> RunAsync<T>(Func<PdfDocument?, Task<T>> work, bool requireDocument)
+    private Task<T> RunAsync<T>(Func<ViewerSession.ReadySnapshot?, Task<T>> work, bool requireDocument)
     {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task previous;
@@ -386,7 +453,7 @@ public sealed class AnnotationEditor
         return RunAfterAsync(previous, done, work, requireDocument);
     }
 
-    private async Task<T> RunAfterAsync<T>(Task previous, TaskCompletionSource done, Func<PdfDocument?, Task<T>> work, bool requireDocument)
+    private async Task<T> RunAfterAsync<T>(Task previous, TaskCompletionSource done, Func<ViewerSession.ReadySnapshot?, Task<T>> work, bool requireDocument)
     {
         // Never faults: every operation completes its own task in the finally below.
         await previous.ConfigureAwait(false);
@@ -398,7 +465,9 @@ public sealed class AnnotationEditor
 
         try
         {
-            var document = session.State == ViewerState.Ready ? session.Document : null;
+            // One consistent read of the session: the ready document with its path, stamp and password, or nothing.
+            var snapshot = session.SnapshotForSave();
+            var document = snapshot?.Document;
             lock (gate)
             {
                 // The history belongs to the document it was made on; another document starts clean.
@@ -417,7 +486,7 @@ public sealed class AnnotationEditor
                 throw new InvalidOperationException("The session has no open document.");
             }
 
-            return await work(document).ConfigureAwait(false);
+            return await work(snapshot).ConfigureAwait(false);
         }
         finally
         {
@@ -456,3 +525,14 @@ public sealed class AnnotationEditor
         }
     }
 }
+
+/// <summary>A save of <see cref="AnnotationEditor.SaveAsync"/>.</summary>
+/// <param name="Saved">
+/// The result of <see cref="DocumentSaver"/>. Its document belongs to the session when <paramref name="Adopted"/> is
+/// <see langword="true"/>, and is already closed otherwise.
+/// </param>
+/// <param name="Adopted">
+/// Whether the session adopted the saved document; <see langword="false"/> when it was closed or opened another file
+/// while the save ran (the file is saved all the same).
+/// </param>
+public sealed record AnnotationSaveResult(SaveResult Saved, bool Adopted);
