@@ -229,11 +229,7 @@ public sealed partial class TabViewModel
 
         var color = AnnotationPalette.ColorOf(ColorOf(kind));
         var author = AnnotationSettings.Current.AuthorName;
-        _pendingEdits++;
-        var run = ApplyCoreAsync(_documentGeneration, selection, kind, color, author);
-        _editsSettled = _editsSettled.IsCompleted ? run : Task.WhenAll(_editsSettled, run);
-        SyncFromEditor();
-        return run;
+        return Track(ApplyCoreAsync(_documentGeneration, selection, kind, color, author));
     }
 
     /// <summary>
@@ -243,36 +239,22 @@ public sealed partial class TabViewModel
     /// </summary>
     /// <param name="edit">The operation of the editor.</param>
     /// <returns>Completes when the operation has ended; it never fails.</returns>
-    internal async Task RunEditAsync(Func<AnnotationEditor, Task> edit)
+    internal Task RunEditAsync(Func<AnnotationEditor, Task> edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
         if (_disposed || !_isAnnotating || !CanRunMarkup())
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        _pendingEdits++;
-        var run = edit(Editor);
-        _editsSettled = _editsSettled.IsCompleted ? run : Task.WhenAll(_editsSettled, run);
-        SyncFromEditor();
-        try
-        {
-            await run;
-        }
-        catch (Exception)
-        {
-            // The annotation went meanwhile, or PDFium refused: the editor recorded nothing.
-        }
-        finally
-        {
-            _pendingEdits--;
-            SyncFromEditor();
-        }
+        return Track(RunEditCoreAsync(edit));
     }
 
     /// <summary>
-    /// Waits until the changes the tab started (markups whose geometry is read) and every operation of the editor have
-    /// ended, then mirrors the editor: the question before closing then sees what was really changed.
+    /// Waits until the changes the tab started (markups whose geometry is read, edits of the panel) and every operation of
+    /// the editor have ended, then mirrors the editor: the question before closing then sees what was really changed. It
+    /// waits for the tasks of those changes, never on a counter alone: each tracked task ends only after its change left
+    /// the count (<see cref="Track"/>), and every round yields once, so a continuation that is still posted runs first.
     /// </summary>
     internal async Task WhenEditsSettledAsync()
     {
@@ -284,16 +266,49 @@ public sealed partial class TabViewModel
             }
             catch (Exception)
             {
-                // A change that failed changed nothing; only its end matters here.
+                // The tracked tasks never fail; only their end matters here.
             }
 
             if (_editor is { } editor)
             {
                 await editor.WhenIdleAsync();
             }
+
+            // A safety net: never a round without giving the dispatcher a turn.
+            await Task.Yield();
         }
 
         SyncFromEditor();
+    }
+
+    /// <summary>
+    /// Takes a change of the tab into account: <paramref name="run"/> counts the change up before its first await and down
+    /// in its own <c>finally</c>, so when it ends the count is down already; <see cref="WhenEditsSettledAsync"/> waits for it.
+    /// </summary>
+    private Task Track(Task run)
+    {
+        _editsSettled = _editsSettled.IsCompleted ? run : Task.WhenAll(_editsSettled, run);
+        SyncFromEditor();
+        return run;
+    }
+
+    /// <summary>An edit of the panel, counted from the call to its end; a failure (also a synchronous throw) changes nothing.</summary>
+    private async Task RunEditCoreAsync(Func<AnnotationEditor, Task> edit)
+    {
+        try
+        {
+            _pendingEdits++;
+            await edit(Editor);
+        }
+        catch (Exception)
+        {
+            // The annotation went meanwhile, or PDFium refused: the editor recorded nothing.
+        }
+        finally
+        {
+            _pendingEdits--;
+            SyncFromEditor();
+        }
     }
 
     /// <summary>The settings changed (any window): the colour of the tool may be another one now.</summary>
@@ -451,6 +466,8 @@ public sealed partial class TabViewModel
     {
         try
         {
+            // Counted before the first await, down again in the finally: the task ends after the count is down (Track).
+            _pendingEdits++;
             for (var page = selection.Start.Page; page <= selection.End.Page; page++)
             {
                 if (await ReadTextAsync(generation, page) is not { } text)

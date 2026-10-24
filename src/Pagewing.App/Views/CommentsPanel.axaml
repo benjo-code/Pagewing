@@ -148,8 +148,9 @@
     </StackPanel>
 
     <!-- The DataContext of the content is the list of the tab, set by CommentsPanel.axaml.cs only while the tab shows "Comments". -->
-    <DockPanel Name="CommentsRoot" x:DataType="vm:CommentsViewModel">
-      <StackPanel DockPanel.Dock="Top" Margin="14,0,14,6" Spacing="8">
+    <!-- Rows in the order of the tab: filter and summary, the hint or the list, the edit controls of the mode. -->
+    <Grid Name="CommentsRoot" x:DataType="vm:CommentsViewModel" RowDefinitions="Auto,Auto,*,Auto">
+      <StackPanel Grid.Row="0" Margin="14,0,14,6" Spacing="8">
         <ComboBox Name="FilterBox"
                   ItemsSource="{Binding FilterChoices}" SelectedItem="{Binding SelectedFilterChoice, Mode=TwoWay}"
                   ItemTemplate="{StaticResource CommentFilterTemplate}"
@@ -161,15 +162,12 @@
                    TextWrapping="Wrap" MinHeight="16" />
       </StackPanel>
 
-      <!-- The edit controls of the mode (CommentEditor) are put here by CommentsPanel.axaml.cs, only while the mode is on. -->
-      <ContentControl Name="CommentEditorHost" DockPanel.Dock="Bottom" HorizontalContentAlignment="Stretch" />
-
-      <TextBlock Name="CommentsEmptyHint" DockPanel.Dock="Top" Classes="body commentSecondary"
+      <TextBlock Name="CommentsEmptyHint" Grid.Row="1" Classes="body commentSecondary"
                  Margin="14,4,14,0" TextWrapping="Wrap"
                  IsVisible="{Binding HasNoComments}"
                  Text="{x:Static res:Strings.CommentsEmpty}" />
 
-      <ListBox Name="CommentList" Classes="comments"
+      <ListBox Name="CommentList" Grid.Row="2" Classes="comments"
                ItemsSource="{Binding Items}"
                IsVisible="{Binding !HasNoComments}"
                SelectionMode="Single"
@@ -218,6 +216,9 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
-    </DockPanel>
+
+      <!-- The edit controls of the mode (CommentEditor) are put here by CommentsPanel.axaml.cs, only while the mode is on. -->
+      <ContentControl Name="CommentEditorHost" Grid.Row="3" HorizontalContentAlignment="Stretch" />
+    </Grid>
   </DockPanel>
 </UserControl>

@@ -25,8 +25,14 @@ public sealed partial class AnnotationToolbar : UserControl
 {
     private readonly Dictionary<MarkupColor, ActionToggleButton> _swatches = [];
     private readonly Dictionary<MarkupColor, StrokeIcon> _checks = [];
+    private readonly System.Collections.ObjectModel.ObservableCollection<Control> _moreEntries = [];
     private TabViewModel? _tab;
     private bool _fitting;
+    private bool _undoInMenu;
+    private bool _colorsInMenu;
+
+    /// <summary>The last level of <see cref="Fit"/>: the colours are in the menu "⋯" as well.</summary>
+    private const int MaxFitLevel = 5;
 
     public AnnotationToolbar()
     {
@@ -43,13 +49,30 @@ public sealed partial class AnnotationToolbar : UserControl
         }
 
         // Esc of the toolbar: a text selection first, then the mode (the keys go back to the document then, see MainWindow).
+        // An Esc of the window (a waiting address, a card) comes first: this binding lies nearer the focus, so it lets the
+        // key go on then.
         KeyBindings.Add(new KeyBinding
         {
             Gesture = new KeyGesture(Key.Escape),
-            Command = new RelayCommand(() => _tab?.EscapeAnnotate()),
+            Command = new RelayCommand(
+                () => _tab?.EscapeAnnotate(),
+                () => _tab is { IsAnnotating: true } && TopLevel.GetTopLevel(this)?.DataContext is not MainViewModel { HasWindowEscape: true }),
         });
         SizeChanged += (_, _) => Fit();
+
+        var more = new MenuFlyout { ItemsSource = _moreEntries };
+        more.Opening += OnMoreMenuOpening;
+
+        // The entries hold the commands of the tab: a closed menu drops them.
+        more.Closed += (_, _) => _moreEntries.Clear();
+        MoreButton.Flyout = more;
     }
+
+    /// <summary>Gets whether Undo and Redo are in the menu "⋯" (for tests).</summary>
+    internal bool IsUndoInMenu => _undoInMenu;
+
+    /// <summary>Gets whether the colours are in the menu "⋯" (for tests).</summary>
+    internal bool AreColorsInMenu => _colorsInMenu;
 
     /// <summary>Gets the button of a colour (for tests).</summary>
     internal ActionToggleButton SwatchOf(MarkupColor color) => _swatches[color];
@@ -187,8 +210,9 @@ public sealed partial class AnnotationToolbar : UserControl
     }
 
     /// <summary>
-    /// Too narrow for everything (design system 6, narrow window): first the hint "Esc ends" goes, then the labels of the
-    /// tools (icons with tooltips stay). Mode name and "Done" always stay.
+    /// Too narrow for everything (design system 6, narrow window), step by step until it fits: first the hint "Esc ends"
+    /// goes, then the labels of the tools (icons with tooltips stay), then the text of the mode name (its icon stays), then
+    /// Undo and Redo and after them the colours move into the menu "⋯". The tools and "Done" always stay in the row.
     /// </summary>
     private void Fit()
     {
@@ -206,20 +230,14 @@ public sealed partial class AnnotationToolbar : UserControl
                 return;
             }
 
-            ShowLabels(true);
-            EscHint.IsVisible = true;
-            if (Needs() <= width)
+            for (var level = 0; level <= MaxFitLevel; level++)
             {
-                return;
+                ApplyFitLevel(level);
+                if (level == MaxFitLevel || Needs() <= width)
+                {
+                    break;
+                }
             }
-
-            EscHint.IsVisible = false;
-            if (Needs() <= width)
-            {
-                return;
-            }
-
-            ShowLabels(false);
         }
         finally
         {
@@ -230,10 +248,64 @@ public sealed partial class AnnotationToolbar : UserControl
         }
     }
 
+    /// <summary>Shows what the toolbar has at a level of <see cref="Fit"/> (0: everything).</summary>
+    private void ApplyFitLevel(int level)
+    {
+        EscHint.IsVisible = level < 1;
+        ShowLabels(level < 2);
+        ModeName.IsVisible = level < 3;
+        _undoInMenu = level >= 4;
+        _colorsInMenu = level >= 5;
+        UndoButton.IsVisible = !_undoInMenu;
+        RedoButton.IsVisible = !_undoInMenu;
+        UndoSeparator.IsVisible = !_colorsInMenu;
+        ColorGroup.IsVisible = !_colorsInMenu;
+        ColorSeparator.IsVisible = true;
+        MoreButton.IsVisible = _undoInMenu;
+    }
+
     private double Needs()
     {
         ToolbarContent.Measure(Size.Infinity);
         return ToolbarContent.DesiredSize.Width - ToolbarContent.Margin.Left - ToolbarContent.Margin.Right;
+    }
+
+    /// <summary>
+    /// Fills the menu "⋯" when it opens with what is not in the row: Undo and Redo (with their keys), then the colours (each
+    /// with its swatch and name, the chosen one with a check mark).
+    /// </summary>
+    private void OnMoreMenuOpening(object? sender, EventArgs e)
+    {
+        MenuKeyboardFocus.EnsureRegistered();
+        _moreEntries.Clear();
+        if (_tab is not { } tab)
+        {
+            return;
+        }
+
+        if (_undoInMenu)
+        {
+            _moreEntries.Add(MenuEntry("MoreUndo", Strings.CommandUndo, tab.UndoCommand, null, new KeyGesture(Key.Z, KeyModifiers.Control)));
+            _moreEntries.Add(MenuEntry("MoreRedo", Strings.CommandRedo, tab.RedoCommand, null, new KeyGesture(Key.Z, KeyModifiers.Control | KeyModifiers.Shift)));
+        }
+
+        if (_colorsInMenu)
+        {
+            _moreEntries.Add(new Separator());
+            foreach (var color in AnnotationPalette.All)
+            {
+                var entry = MenuEntry("More" + color, Strings.ColorName(color), tab.SetColorCommand, color, null);
+                entry.Icon = CommentEditor.Swatch(color, tab.ActiveColor == color);
+                _moreEntries.Add(entry);
+            }
+        }
+    }
+
+    private static MenuItem MenuEntry(string name, string header, System.Windows.Input.ICommand command, object? parameter, KeyGesture? gesture)
+    {
+        var entry = new MenuItem { Name = name, Header = header, Command = command, CommandParameter = parameter, InputGesture = gesture };
+        AutomationProperties.SetName(entry, header);
+        return entry;
     }
 
     private void ShowLabels(bool show)

@@ -329,12 +329,12 @@ public sealed class CommentsPanelTests : IDisposable
         var (firstComments, _) = await OpenPanelAsync(window, viewModel, first);
         var second = await OpenAsync(window, viewModel, "annotations.pdf");
         var (secondComments, _) = await OpenPanelAsync(window, viewModel, second);
-        var root = Find<DockPanel>(window, "CommentsRoot");
+        var root = Find<Grid>(window, "CommentsRoot");
         Assert.Same(secondComments, root.DataContext);
 
         viewModel.ActivateTabCommand.Execute(first);
         Settle(window);
-        Assert.Same(firstComments, Find<DockPanel>(window, "CommentsRoot").DataContext);
+        Assert.Same(firstComments, Find<Grid>(window, "CommentsRoot").DataContext);
         Assert.Same(firstComments, first.Comments);
         Assert.Same(secondComments, second.Comments);
     }

@@ -19,7 +19,8 @@
     search.on; name of the colour as tooltip and for screen readers), Undo and Redo; on the right the hint "Esc ends" and
     the primary button "Done". Tab moves through tools, the colour group (one stop: the arrows move within it), Undo,
     Redo and Done; Enter and Space press; Esc clears a text selection, then ends the mode. Too narrow: the hint goes first,
-    then the labels of the tools (their tooltips stay). Made when the mode is first started (MainWindow.Annotate.cs), never
+    then the labels of the tools (their tooltips stay), then the text of the mode name (its icon stays), then Undo and
+    Redo and after them the colours move into the menu "⋯" (dots), so every tool stays reachable. Made when the mode is first started (MainWindow.Annotate.cs), never
     in the startup path; its styles live here for the same reason. The DataContext is the active tab.
   -->
   <UserControl.Styles>
@@ -138,7 +139,7 @@
           </ctl:ActionToggleButton>
         </StackPanel>
 
-        <Border Classes="toolbarSeparator" />
+        <Border Name="ColorSeparator" Classes="toolbarSeparator" />
 
         <!-- The swatches are added in code (AnnotationToolbar.axaml.cs), one per colour of the palette. -->
         <StackPanel Name="ColorGroup" Orientation="Horizontal" Spacing="2"
@@ -146,7 +147,7 @@
                     AutomationProperties.Name="{x:Static res:Strings.AnnotateColorsName}"
                     AutomationProperties.AccessibilityView="Content" />
 
-        <Border Classes="toolbarSeparator" />
+        <Border Name="UndoSeparator" Classes="toolbarSeparator" />
 
         <Button Name="UndoButton" Classes="icon toolbarIcon"
                 Command="{Binding UndoCommand}"
@@ -157,6 +158,13 @@
                 Command="{Binding RedoCommand}"
                 AutomationProperties.Name="{x:Static res:Strings.CommandRedo}">
           <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ArrowForwardUp}" />
+        </Button>
+
+        <!-- Only when the toolbar is too narrow: what does not fit (undo and redo, then the colours) is in its menu. -->
+        <Button Name="MoreButton" Classes="icon toolbarIcon" Margin="2,0,0,0" IsVisible="False"
+                ToolTip.Tip="{x:Static res:Strings.AnnotateMore}"
+                AutomationProperties.Name="{x:Static res:Strings.AnnotateMore}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.Dots}" />
         </Button>
       </StackPanel>
 

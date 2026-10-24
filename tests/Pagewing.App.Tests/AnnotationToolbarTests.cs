@@ -220,23 +220,16 @@ public sealed class AnnotationToolbarTests : IDisposable
         var (window, _, toolbar, _) = await ShowInModeAsync();
         Assert.True(Find<TextBlock>(toolbar, "EscHint").IsEffectivelyVisible);
         Assert.True(Find<TextBlock>(toolbar, "HighlightLabel").IsEffectivelyVisible);
+        Assert.False(Find<Button>(toolbar, "MoreButton").IsVisible);
 
-        // At the smallest width of the window the name of the mode and "Done" stay whole inside the toolbar.
+        // At the smallest width of the window the hint and the labels go; the name of the mode and every tool stay.
         window.Width = 640;
         Settle(window);
         Settle(window);
         Assert.False(Find<TextBlock>(toolbar, "EscHint").IsVisible);
-        var done = Find<Button>(toolbar, "DoneButton");
-        var name = Find<TextBlock>(toolbar, "ModeName");
-        Assert.True(done.IsEffectivelyVisible && name.IsEffectivelyVisible);
-        var doneRight = done.TranslatePoint(new Point(done.Bounds.Width, 0), toolbar)!.Value.X;
-        Assert.True(doneRight <= toolbar.Bounds.Width, $"Done ends at {doneRight} of {toolbar.Bounds.Width}");
-        var lastSwatch = toolbar.SwatchOf(MarkupColor.Orange);
-        var swatchRight = lastSwatch.TranslatePoint(new Point(lastSwatch.Bounds.Width, 0), toolbar)!.Value.X;
-        var doneLeft = done.TranslatePoint(default, toolbar)!.Value.X;
-        Assert.True(swatchRight < doneLeft, $"the colours end at {swatchRight}, Done starts at {doneLeft}");
         Assert.False(Find<TextBlock>(toolbar, "HighlightLabel").IsVisible);
         Assert.Equal("Highlight (Ctrl+Shift+H)", ToolTip.GetTip(Find<ActionToggleButton>(toolbar, "HighlightTool")));
+        await AssertEverythingReachableAsync(window, toolbar);
 
         // Wide again: everything is back.
         window.Width = 1200;
@@ -244,6 +237,127 @@ public sealed class AnnotationToolbarTests : IDisposable
         Settle(window);
         Assert.True(Find<TextBlock>(toolbar, "EscHint").IsEffectivelyVisible);
         Assert.True(Find<TextBlock>(toolbar, "HighlightLabel").IsEffectivelyVisible);
+        Assert.True(Find<TextBlock>(toolbar, "ModeName").IsEffectivelyVisible);
+        Assert.False(Find<Button>(toolbar, "MoreButton").IsVisible);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en", 640, false)]
+    [InlineData("de", 640, false)]
+    [InlineData("en", 900, true)]
+    [InlineData("de", 900, true)]
+    public async Task EveryToolStaysReachableInANarrowDocumentArea(string language, double width, bool widePanel)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var (window, tab, toolbar, _) = await ShowInModeAsync();
+        var viewModel = (MainViewModel)window.DataContext!;
+        window.Width = width;
+        Settle(window);
+        if (widePanel)
+        {
+            // The widest panel beside the document in the narrowest window that docks it: the document area is 448 px.
+            viewModel.PanelWidth = MainViewModel.MaxPanelWidth;
+            viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Comments);
+            await WaitUntilAsync(window, () => !viewModel.IsNarrowWindow && Find<Control>(window, "PanelHost").IsEffectivelyVisible);
+        }
+
+        Settle(window);
+        Settle(window);
+        await AssertEverythingReachableAsync(window, toolbar);
+        if (widePanel)
+        {
+            // There everything that does not fit is in the menu "⋯": undo, redo and the colours.
+            Assert.True(toolbar.IsUndoInMenu);
+            Assert.True(toolbar.AreColorsInMenu);
+            Assert.False(Find<TextBlock>(toolbar, "ModeName").IsVisible);
+        }
+
+        Assert.NotNull(tab);
+    }
+
+    /// <summary>
+    /// Every control of the toolbar is either whole inside it (not under "Done", not clipped) and on the way of Tab, or an
+    /// entry of the menu "⋯", which Tab reaches and Enter opens.
+    /// </summary>
+    private static async Task AssertEverythingReachableAsync(MainWindow window, AnnotationToolbar toolbar)
+    {
+        var area = Find<StackPanel>(toolbar, "ToolsArea");
+        var areaRight = area.TranslatePoint(new Point(area.Bounds.Width, 0), toolbar)!.Value.X;
+        var done = Find<Button>(toolbar, "DoneButton");
+        var doneLeft = done.TranslatePoint(default, toolbar)!.Value.X;
+        Assert.True(done.TranslatePoint(new Point(done.Bounds.Width, 0), toolbar)!.Value.X <= toolbar.Bounds.Width, "Done is whole");
+        Assert.True(areaRight <= doneLeft + 0.5, "the tools end before Done");
+        var inRow = new List<Control>
+        {
+            Find<ActionToggleButton>(toolbar, "HighlightTool"),
+            Find<ActionToggleButton>(toolbar, "UnderlineTool"),
+            Find<ActionToggleButton>(toolbar, "StrikeOutTool"),
+        };
+        if (!toolbar.AreColorsInMenu)
+        {
+            inRow.AddRange(AnnotationPalette.All.Select(color => (Control)toolbar.SwatchOf(color)));
+        }
+
+        if (!toolbar.IsUndoInMenu)
+        {
+            inRow.Add(Find<Button>(toolbar, "UndoButton"));
+            inRow.Add(Find<Button>(toolbar, "RedoButton"));
+        }
+
+        foreach (var control in inRow)
+        {
+            Assert.True(control.IsEffectivelyVisible, $"{control.Name} is shown");
+            var right = control.TranslatePoint(new Point(control.Bounds.Width, 0), toolbar)!.Value.X;
+            Assert.True(right <= areaRight + 0.5, $"{control.Name} ends at {right}, the row at {areaRight}");
+        }
+
+        // Tab from the first tool reaches the colours (once), the menu "⋯" when it is there, and "Done" (undo and redo
+        // cannot run yet, so Tab skips them).
+        var more = Find<Button>(toolbar, "MoreButton");
+        Assert.Equal(toolbar.IsUndoInMenu, more.IsEffectivelyVisible);
+        Find<ActionToggleButton>(toolbar, "HighlightTool").Focus(NavigationMethod.Tab);
+        Settle(window);
+        var visited = new List<object?>();
+        for (var i = 0; i < 12 && !done.IsFocused; i++)
+        {
+            Press(window, Key.Tab, PhysicalKey.Tab);
+            visited.Add(Focused(window));
+        }
+
+        Assert.True(done.IsFocused, "Tab reaches Done");
+        if (!toolbar.AreColorsInMenu)
+        {
+            Assert.Contains(visited, focused => focused is ActionToggleButton { Name: { } name } && name.StartsWith("Swatch", StringComparison.Ordinal));
+        }
+
+        if (!more.IsEffectivelyVisible)
+        {
+            return;
+        }
+
+        Assert.Contains(more, visited);
+        Assert.Equal(Strings.AnnotateMore, AutomationProperties.GetName(more));
+        more.Focus(NavigationMethod.Tab);
+        Settle(window);
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        var menu = Assert.IsType<MenuFlyout>(more.Flyout);
+        await WaitUntilAsync(window, () => menu.IsOpen);
+        var names = menu.Items.OfType<MenuItem>().Select(entry => (string)entry.Header!).ToArray();
+        Assert.Contains(Strings.CommandUndo, names);
+        Assert.Contains(Strings.CommandRedo, names);
+        if (toolbar.AreColorsInMenu)
+        {
+            Assert.All(AnnotationPalette.All, color => Assert.Contains(Strings.ColorName(color), names));
+
+            // A colour of the menu chooses it, as the swatch would.
+            var tab = (TabViewModel)toolbar.DataContext!;
+            var green = menu.Items.OfType<MenuItem>().Single(entry => (string)entry.Header! == Strings.ColorName(MarkupColor.Green));
+            green.Command!.Execute(green.CommandParameter);
+            Assert.Equal(MarkupColor.Green, tab.ActiveColor);
+        }
+
+        menu.Hide();
+        Settle(window);
     }
 
     private static ToggleState ToggleStateOf(Control control) =>

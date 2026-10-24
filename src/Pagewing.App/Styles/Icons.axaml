@@ -58,6 +58,8 @@
   <StreamGeometry x:Key="Pw.Icon.ArrowBackUp">M9 14l-4 -4l4 -4 M5 10h11a4 4 0 1 1 0 8h-1</StreamGeometry>
   <!-- arrow-forward-up (toolbar of a mode: redo) -->
   <StreamGeometry x:Key="Pw.Icon.ArrowForwardUp">M15 14l4 -4l-4 -4 M19 10h-11a4 4 0 1 0 0 8h1</StreamGeometry>
+  <!-- dots (toolbar of a mode: the menu of what does not fit) -->
+  <StreamGeometry x:Key="Pw.Icon.Dots">M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0</StreamGeometry>
   <!-- trash ("Comments" panel in the mode: delete) -->
   <StreamGeometry x:Key="Pw.Icon.Trash">M4 7l16 0 M10 11l0 6 M14 11l0 6 M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12 M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3</StreamGeometry>
   <!-- settings (action bar: settings) -->

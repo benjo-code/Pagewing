@@ -71,7 +71,7 @@ public sealed partial class CommentEditor : UserControl
     }
 
     /// <summary>A swatch of a palette colour (content of the PDF) with a border.strong edge, and a check mark when it is the chosen one.</summary>
-    private static Panel Swatch(MarkupColor color, bool chosen)
+    internal static Panel Swatch(MarkupColor color, bool chosen)
     {
         var rgb = AnnotationPalette.ColorOf(color);
         var fill = new Border

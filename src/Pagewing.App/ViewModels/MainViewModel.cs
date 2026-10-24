@@ -165,6 +165,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public CommandCatalog Commands => _commands ??= new CommandCatalog(this);
 
     /// <summary>
+    /// Gets whether Esc has a meaning of the window now (a waiting address, a card of the save flow, an overlay, the update
+    /// card: the Esc commands of <see cref="Commands"/> that can run). The Esc of the mode "Comment" in the toolbar and the
+    /// panel, whose bindings lie nearer the focus than the window's, then lets the key go on, so these come first.
+    /// </summary>
+    internal bool HasWindowEscape => Commands.All.Any(command =>
+        command.Gestures.Any(gesture => gesture is { Key: Avalonia.Input.Key.Escape, KeyModifiers: Avalonia.Input.KeyModifiers.None }) && command.CanExecute());
+
+    /// <summary>
     /// Gets what lies over the window: the command palette, the settings or the help card, or nothing. Only one at a
     /// time; the window makes each of them when it is first shown.
     /// </summary>

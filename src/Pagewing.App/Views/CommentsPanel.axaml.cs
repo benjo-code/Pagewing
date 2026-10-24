@@ -1,10 +1,13 @@
 using System.ComponentModel;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using Pagewing.App.Commands;
+using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
 
 namespace Pagewing.App.Views;
@@ -40,12 +43,32 @@ public sealed partial class CommentsPanel : UserControl
             CommentList.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(key), Command = new RelayCommand(() => Move(key)) });
         }
 
-        // Esc in the list ends the mode "Comment" (outside the mode the key goes on).
-        CommentList.KeyBindings.Add(new KeyBinding
+        // Esc anywhere in the panel (the list, the filter, the button "Comment", the edit controls) ends the mode "Comment":
+        // a text selection first, then the mode. Outside the mode the key goes on. The comment field keeps its own Esc
+        // (drop what was typed) and the open filter list its own (close the list): their bindings are nearer the focus.
+        KeyBindings.Add(new KeyBinding
         {
             Gesture = new KeyGesture(Key.Escape),
-            Command = new RelayCommand(() => _tab?.EscapeAnnotate(), () => _tab is { IsAnnotating: true }),
+            Command = new RelayCommand(
+                () => _tab?.EscapeAnnotate(),
+                () => _tab is { IsAnnotating: true } && TopLevel.GetTopLevel(this)?.DataContext is not MainViewModel { HasWindowEscape: true }),
         });
+    }
+
+    /// <summary>The button "Comment" names its shortcut as the catalog has it ("Start or end commenting (Ctrl+Shift+K)").</summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (TopLevel.GetTopLevel(this)?.DataContext is MainViewModel { Commands: var catalog } && catalog.ById("annotate.mode")?.Gesture is { } gesture)
+        {
+            var keys = GestureText.Of(gesture);
+            ToolTip.SetTip(AnnotateButton, $"{Strings.AnnotateButtonTooltip} ({keys})");
+            AutomationProperties.SetAcceleratorKey(AnnotateButton, keys);
+        }
+        else
+        {
+            ToolTip.SetTip(AnnotateButton, Strings.AnnotateButtonTooltip);
+        }
     }
 
     // The window may hand the panel another tab just before it replaces the panel (a tab that shows another panel): the

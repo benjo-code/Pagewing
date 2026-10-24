@@ -213,14 +213,13 @@ public sealed class AnnotateModeTests : IDisposable
         // Undo it; then a triple click marks the line, not the word as well.
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => !tab.CanUndo && !tab.Editor.IsBusy);
-        // Elsewhere on the line and after the double-click time, so the clicks do not continue the double click above.
-        await Task.Delay(TimeSpan.FromMilliseconds(800), TestContext.Current.CancellationToken);
+        // Elsewhere on the line (farther than a double click may move), so the clicks do not continue the double click above.
         Click(window, ScreenPoint(view, window, 0, Centre(text.Chars[3].Box)), clicks: 3);
         var line = Assert.Single(await AnnotationsAsync(window, tab, 0, count: 1));
         var (start, end) = text.LineAt(12);
         AssertRectNear(Assert.Single(TabViewModel.MarkupLinesOf(text, start, end)), Assert.Single(line.QuadRects), 0.5);
-        await Task.Delay(TimeSpan.FromMilliseconds(300), TestContext.Current.CancellationToken);
-        Settle(window);
+        // No word waits to be marked after the third click: nothing more comes.
+        Assert.False(view.IsMarkupPending);
         Assert.Single(await MarkupsAsync(tab, 0));
     }
 
@@ -243,9 +242,9 @@ public sealed class AnnotateModeTests : IDisposable
         Assert.Single(await AnnotationsAsync(window, tab, 0, count: 1, kind: AnnotationKind.Highlight));
         Assert.Null(viewModel.PendingLink);
 
-        // A plain click on the link still asks first (the card), it never opens anything. After the double-click time, so it
-        // is a click of its own.
-        await Task.Delay(TimeSpan.FromMilliseconds(800), TestContext.Current.CancellationToken);
+        // A plain click on the link still asks first (the card), it never opens anything. In the middle of the link, farther
+        // from the press of the drag than a double click may move, so it is a click of its own.
+        Assert.True(box.Width * view.Layout!.Zoom * DocumentLayout.DipsPerPoint / 2 > 8, "the link is wide enough");
         await WaitUntilAsync(window, () => view.PendingTextRequests == 0);
         Click(window, ScreenPoint(view, window, 0, new Point((box.Left + box.Right) / 2, (box.Top + box.Bottom) / 2)));
         await WaitUntilAsync(window, () => viewModel.PendingLink is not null);
@@ -792,6 +791,166 @@ public sealed class AnnotateModeTests : IDisposable
 
         // The Esc of the mode is not a key of the window: popups, menus and a dragged tab keep their Esc.
         Assert.DoesNotContain(catalog.All, command => command.Id.StartsWith("annotate.", StringComparison.Ordinal) && command.Gestures.Any(gesture => gesture.Key == Key.Escape));
+    }
+
+    [AvaloniaFact]
+    public async Task OverlappingEditsSettleWithoutSpinning()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, tool: null);
+
+        // Two edits in flight, the second behind the first; their continuations come back to the UI thread, the gates open
+        // on a pool thread (as the PDFium thread finishes an operation). The wait must end once both did.
+        var first = new TaskCompletionSource();
+        var second = new TaskCompletionSource();
+        var a = tab.RunEditAsync(_ => first.Task);
+        var b = tab.RunEditAsync(async _ =>
+        {
+            await first.Task;
+            await second.Task;
+        });
+        Assert.True(tab.HasEditsInFlight);
+        Assert.True(tab.AsksBeforeClosing);
+        var settled = tab.WhenEditsSettledAsync();
+        Assert.False(settled.IsCompleted);
+
+        await Task.Run(() =>
+        {
+            first.SetResult();
+            second.SetResult();
+        });
+        await WaitUntilAsync(window, () => settled.IsCompleted);
+        Assert.True(a.IsCompletedSuccessfully && b.IsCompletedSuccessfully);
+        Assert.False(tab.HasEditsInFlight);
+        Assert.False(tab.AsksBeforeClosing);
+    }
+
+    [AvaloniaFact]
+    public async Task AnEditThatThrowsAtOnceLeavesNothingPending()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, tool: null);
+
+        var thrown = tab.RunEditAsync(_ => throw new InvalidOperationException("Refused."));
+        Assert.True(thrown.IsCompletedSuccessfully);
+        Assert.False(tab.HasEditsInFlight);
+        Assert.False(tab.AsksBeforeClosing);
+        Assert.False(tab.IsDirty);
+        Assert.True(tab.WhenEditsSettledAsync().IsCompleted);
+
+        // Not stuck asking: the tab closes at once.
+        viewModel.CloseActiveTabCommand.Execute(null);
+        await WaitUntilAsync(window, () => !viewModel.Tabs.Contains(tab));
+        Assert.Null(viewModel.PendingSave);
+    }
+
+    [AvaloniaFact]
+    public async Task ClosingWithTwoOverlappingEditsAsksAndKeepsBoth()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var (comments, _) = await OpenPanelAsync(window, viewModel, tab);
+        await MarkWithCommandAsync(window, view, tab, viewModel);
+        await WaitUntilAsync(window, () => comments.SelectedItem is not null);
+        Assert.True(await viewModel.SaveActiveTabAsync());
+        await WaitUntilAsync(window, () => !tab.IsDirty && !tab.IsSaving && comments.SelectedItem is not null);
+
+        // A colour and a delete in one turn, then closing right away: the close waits for both and asks.
+        comments.SetItemColorCommand.Execute(MarkupColor.Green);
+        comments.DeleteCommand.Execute(null);
+        Assert.True(tab.HasEditsInFlight);
+        viewModel.CloseActiveTabCommand.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { Kind: PendingSaveKind.SaveChanges });
+        Assert.False(tab.HasEditsInFlight);
+        Assert.Empty(await MarkupsAsync(tab, 0));
+        Assert.True(tab.CanUndo);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel));
+        Settle(window);
+        Assert.Contains(tab, viewModel.Tabs);
+
+        // Both steps are on the history: undo the delete (the green markup comes back), then the colour.
+        tab.UndoCommand.Execute(null);
+        await WaitUntilAsync(window, () => comments.Items.Count == 1 && !tab.HasEditsInFlight);
+        Assert.Equal(MarkupColor.Green, AnnotationPalette.Match(Assert.Single(await MarkupsAsync(tab, 0)).Color!.Value));
+        tab.UndoCommand.Execute(null);
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight && comments.Items.Count == 1
+            && comments.Items[0].Annotation.Color is { } color && AnnotationPalette.Match(color) == MarkupColor.Yellow);
+    }
+
+    [AvaloniaFact]
+    public async Task EscAnywhereInThePanelEndsTheModeButTheFieldKeepsItsOwn()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var (comments, _) = await OpenPanelAsync(window, viewModel, tab);
+        await MarkWithCommandAsync(window, view, tab, viewModel);
+        await WaitUntilAsync(window, () => comments.SelectedItem is not null && IsShown(window, "CommentDeleteButton"));
+
+        // The comment field: Esc drops what was typed, the mode stays.
+        var box = Find<TextBox>(window, "CommentBox");
+        box.Focus();
+        Settle(window);
+        window.KeyTextInput("x");
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.True(tab.IsAnnotating);
+
+        // The filter, the button "Comment", the button "Delete": Esc ends the mode from each of them.
+        foreach (var name in new[] { "FilterBox", "AnnotateButton", "CommentDeleteButton" })
+        {
+            if (!tab.IsAnnotating)
+            {
+                await BeginAsync(window, tab, tool: null);
+                await WaitUntilAsync(window, () => comments.SelectedItem is not null && IsShown(window, "CommentDeleteButton"));
+            }
+
+            Find<Control>(window, name).Focus(NavigationMethod.Tab);
+            Settle(window);
+            Press(window, Key.Escape, PhysicalKey.Escape, None);
+            Assert.False(tab.IsAnnotating, name);
+        }
+
+        // A waiting address goes first, also with the keys in the panel or in the toolbar: Esc drops it, the mode stays.
+        await BeginAsync(window, tab, tool: null);
+        foreach (var name in new[] { "FilterBox", "DoneButton" })
+        {
+            Find<Control>(window, name).Focus(NavigationMethod.Tab);
+            Settle(window);
+            tab.FollowLink(new PageLink([new PageRect(0, 0, 10, 10)], new UriTarget("https://example.org/docs")));
+            Settle(window);
+            Assert.NotNull(viewModel.PendingLink);
+            Press(window, Key.Escape, PhysicalKey.Escape, None);
+            Assert.Null(viewModel.PendingLink);
+            Assert.True(tab.IsAnnotating, name);
+        }
+
+        // The button "Comment" names its shortcut.
+        var button = Find<ActionToggleButton>(window, "AnnotateButton");
+        Assert.Equal("Start or end commenting (Ctrl+Shift+K)", ToolTip.GetTip(button));
+        Assert.Equal("Ctrl+Shift+K", Avalonia.Automation.AutomationProperties.GetAcceleratorKey(button));
+    }
+
+    [AvaloniaFact]
+    public async Task PanelTabOrderIsButtonFilterListEditor()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var (comments, list) = await OpenPanelAsync(window, viewModel, tab);
+        await MarkWithCommandAsync(window, view, tab, viewModel);
+        await WaitUntilAsync(window, () => comments.SelectedItem is not null && IsShown(window, "CommentDeleteButton"));
+
+        Find<Control>(window, "AnnotateButton").Focus(NavigationMethod.Tab);
+        Settle(window);
+        var order = new List<string>();
+        for (var i = 0; i < 5; i++)
+        {
+            Press(window, Key.Tab, PhysicalKey.Tab, None);
+            var focused = window.FocusManager!.GetFocusedElement() as Control;
+            order.Add(ReferenceEquals(focused?.FindAncestorOfType<ListBox>(includeSelf: true), list) ? "CommentList" : focused?.Name ?? "none");
+        }
+
+        Assert.Equal(["FilterBox", "CommentList", "CommentBox", "CommentColorButton", "CommentDeleteButton"], order);
     }
 
     private static void AssertRectNear(PageRect expected, PageRect actual, double tolerance)

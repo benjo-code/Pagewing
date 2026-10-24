@@ -1119,4 +1119,7 @@
   <data name="CommentEditNone" xml:space="preserve">
     <value>Wählen Sie einen Eintrag, um ihn zu bearbeiten.</value>
   </data>
+  <data name="AnnotateMore" xml:space="preserve">
+    <value>Weitere Werkzeuge</value>
+  </data>
 </root>
