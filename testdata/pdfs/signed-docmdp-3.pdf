@@ -1,0 +1,46 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R] /SigFlags 3 >> /Perms << /DocMDP 5 0 R >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [4 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing Signaturattrappe DocMDP 3) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Annots [6 0 R] /Resources << /Font << /F1 7 0 R >> >> /Contents 8 0 R >>
+endobj
+5 0 obj
+<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0 0 0] /Contents <00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000> /Name (Pagewing test dummy) /M (D:20260101000000Z) /Reason (Structure dummy, not a signature) /Reference [<< /Type /SigRef /TransformMethod /DocMDP /TransformParams << /Type /TransformParams /P 3 /V /1.2 >> >>] >>
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Sig /T (Signature1) /Rect [0 0 0 0] /F 132 /V 5 0 R /P 4 0 R >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+8 0 obj
+<<  /Length 112 >>
+stream
+BT /F1 18 Tf 30 110 Td (Signed document) Tj ET
+BT /F1 12 Tf 30 85 Td (Structure dummy, no real signature.) Tj ET
+endstream
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000135 00000 n 
+0000000192 00000 n 
+0000000293 00000 n 
+0000000435 00000 n 
+0000001279 00000 n 
+0000001396 00000 n 
+0000001493 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R /Info 3 0 R >>
+startxref
+1657
+%%EOF
