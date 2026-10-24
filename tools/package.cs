@@ -4184,7 +4184,8 @@ static class SelfTest
         Expect("iss: UsePreviousPrivileges=yes ausdruecklich besteht", IssRules.Problems(Mutate("SolidCompression=yes", "SolidCompression=yes\nUsePreviousPrivileges=yes\nUsePreviousAppDir=yes")).Count, 0);
 
         // update-smoke: what it lays out is what the app writes and the helper reads (no installation here).
-        Expect("update-smoke: Version aus dem Setup-Namen", UpdateSmoke.VersionOf(@"C:\o u\Pagewing-0.0.2-win-x64-setup.exe"), "0.0.2");
+        // A path with the separators of the running OS: update-smoke gets real paths, and Path.GetFileName splits only on '/' outside Windows.
+        Expect("update-smoke: Version aus dem Setup-Namen", UpdateSmoke.VersionOf(Path.Combine(Path.GetTempPath(), "o u", "Pagewing-0.0.2-win-x64-setup.exe")), "0.0.2");
         Expect("update-smoke: anderer Name hat keine Version", UpdateSmoke.VersionOf("setup.exe"), null);
         Expect("update-smoke: Vorabversion wird nicht installiert", UpdateSmoke.VersionOf("Pagewing-0.0.2-rc.1-win-x64-setup.exe"), null);
         var smokeManifest = UpdateSmoke.Manifest("0.0.2", "Pagewing-0.0.2-win-x64-setup.exe", 1234, new string('a', 64));
