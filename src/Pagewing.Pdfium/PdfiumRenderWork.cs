@@ -439,10 +439,25 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
         return ticks >= long.MaxValue / 2 ? long.MaxValue : (long)ticks;
     }
 
-    /// <summary><c>IFSDK_PAUSE.NeedToPauseNow</c>: pause once the deadline of the current step has passed.</summary>
+    /// <summary>
+    /// <c>IFSDK_PAUSE.NeedToPauseNow</c>: pause once the deadline of the current step has passed. The clock is read in
+    /// <see cref="Now"/>, never inline: see there why.
+    /// </summary>
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int NeedToPauseNow(IfsdkPause* pause) =>
-        Stopwatch.GetTimestamp() >= ((PauseState*)pause)->Deadline ? 1 : 0;
+        Now() >= ((PauseState*)pause)->Deadline ? 1 : 0;
+
+    /// <summary>
+    /// Reads <see cref="Stopwatch.GetTimestamp"/> outside the callback. Its P/Invoke (<c>QueryPerformanceCounter</c>,
+    /// <c>SystemNative_GetTimestamp</c>) has <c>SuppressGCTransition</c>; inlined into an <c>[UnmanagedCallersOnly]</c>
+    /// method, the JIT (CoreCLR and Native AOT, .NET 10) puts the GC poll of that call after the reverse P/Invoke exit.
+    /// A collection pending there returns the thread to PDFium in cooperative mode, and PDFium's next call of the callback
+    /// ends the process ("attempted to call a UnmanagedCallersOnly method from managed code", <c>0xC0000602</c>). Here
+    /// the poll runs inside this method, while the thread is still in cooperative mode, as it must. Docs/DECISIONS.md,
+    /// entry "Absturz „UnmanagedCallersOnly aus verwaltetem Code“: Ursache und Behebung (M9)".
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static long Now() => Stopwatch.GetTimestamp();
 
     /// <summary>
     /// The pause interface followed by the deadline the callback reads (cast from its pointer), and the colour scheme

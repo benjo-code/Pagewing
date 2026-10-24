@@ -233,6 +233,68 @@ public sealed class PdfiumRenderWorkTests
         }
     }
 
+    [Fact]
+    public async Task PauseCallbackSurvivesGarbageCollectionsDuringTheRender()
+    {
+        // Regression: the pause callback once read the clock inline (Stopwatch.GetTimestamp, a P/Invoke with
+        // SuppressGCTransition). The JIT then placed that call's GC poll after the reverse P/Invoke exit, so a garbage
+        // collection pending at that moment sent the thread back into PDFium in cooperative mode, and PDFium's next call
+        // of the callback (within the same render step) ended the process with 0xC0000602, "attempted to call a
+        // UnmanagedCallersOnly method from managed code". With collections running all the time on another thread the
+        // old callback crashed this test process in every run (3 of 3, Release; DECISIONS.md, entry "Absturz
+        // „UnmanagedCallersOnly aus verwaltetem Code“ …"). Only an optimized build inlines the clock, so only Release
+        // (as in the CI) shows the defect. A race cannot be forced: the bound keeps the test short, and the collection
+        // count shows that collections really overlapped the renders.
+        const int Renders = 300;
+        var thread = PdfiumThread.Shared;
+        using var stop = new CancellationTokenSource();
+        var collector = new Thread(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                GC.Collect(0, GCCollectionMode.Forced, blocking: true);
+            }
+        })
+        {
+            IsBackground = true,
+        };
+
+        var collectionsBefore = GC.CollectionCount(0);
+        collector.Start();
+        int stepsPerRender;
+        try
+        {
+            stepsPerRender = await thread.InvokeAsync(
+                () =>
+                {
+                    using var document = PdfiumDocument.Open(thread, TestData.Pdf("wide-page.pdf"), null);
+                    var steps = 0;
+                    for (var i = 0; i < Renders; i++)
+                    {
+                        // Unlimited slice: PDFium asks the callback several times within one step, which is what the
+                        // defect needed (the call after the one that returned in cooperative mode failed).
+                        using var work = new PdfiumRenderWork(document, 0, 0.5, null, annotations: true, NoPause);
+                        while (!work.Step())
+                        {
+                        }
+
+                        steps += work.StepCount;
+                    }
+
+                    return steps / Renders;
+                },
+                cancellationToken: TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            collector.Join();
+        }
+
+        Assert.Equal(1, stepsPerRender);
+        Assert.True(GC.CollectionCount(0) - collectionsBefore > Renders, "Collections did not overlap the renders.");
+    }
+
     /// <summary>Renders on the PDFium thread from start to end and disposes the work.</summary>
     private static PdfiumImage RenderToEnd(PdfiumDocument document, int pageIndex, double scale, PdfiumPixelRect? tile, TimeSpan slice)
     {
