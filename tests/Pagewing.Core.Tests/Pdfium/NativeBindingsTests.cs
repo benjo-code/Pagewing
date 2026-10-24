@@ -47,7 +47,9 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.AnnotInk)] = "FPDF_ANNOT_INK",
         [nameof(FpdfConstants.AnnotPopup)] = "FPDF_ANNOT_POPUP",
         [nameof(FpdfConstants.AnnotWidget)] = "FPDF_ANNOT_WIDGET",
+        [nameof(FpdfConstants.AnnotFlagHidden)] = "FPDF_ANNOT_FLAG_HIDDEN",
         [nameof(FpdfConstants.AnnotFlagPrint)] = "FPDF_ANNOT_FLAG_PRINT",
+        [nameof(FpdfConstants.AnnotFlagNoView)] = "FPDF_ANNOT_FLAG_NOVIEW",
         [nameof(FpdfConstants.AnnotAppearanceNormal)] = "FPDF_ANNOT_APPEARANCEMODE_NORMAL",
     };
 

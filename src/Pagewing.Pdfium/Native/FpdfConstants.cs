@@ -69,8 +69,14 @@ internal static class FpdfConstants
     /// <summary><c>FPDF_ANNOT_WIDGET</c>: a form field widget.</summary>
     public const int AnnotWidget = 20;
 
+    /// <summary><c>FPDF_ANNOT_FLAG_HIDDEN</c>: the annotation is neither shown nor printed (annotation flag <c>F</c>, bit 2).</summary>
+    public const int AnnotFlagHidden = 1 << 1;
+
     /// <summary><c>FPDF_ANNOT_FLAG_PRINT</c>: the annotation is printed (annotation flag <c>F</c>, bit 3).</summary>
     public const int AnnotFlagPrint = 1 << 2;
+
+    /// <summary><c>FPDF_ANNOT_FLAG_NOVIEW</c>: the annotation is not shown on screen (annotation flag <c>F</c>, bit 6).</summary>
+    public const int AnnotFlagNoView = 1 << 5;
 
     /// <summary><c>FPDF_ANNOT_APPEARANCEMODE_NORMAL</c>: the normal appearance (<c>FPDFAnnot_SetAP</c>).</summary>
     public const int AnnotAppearanceNormal = 0;

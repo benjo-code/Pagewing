@@ -767,7 +767,7 @@ internal static unsafe class PdfiumAnnotations
     /// <c>/C</c> through <c>FPDFAnnot_GetColor</c>, which fails for an annotation with an appearance; then the colour
     /// its appearance paints with. <see langword="null"/> without <c>/C</c>.
     /// </summary>
-    private static (byte R, byte G, byte B)? ReadColor(nint annotation, int subtype)
+    internal static (byte R, byte G, byte B)? ReadColor(nint annotation, int subtype)
     {
         if (!HasKey(annotation, "C\0"u8))
         {
@@ -925,7 +925,7 @@ internal static unsafe class PdfiumAnnotations
 
     private static bool IsSane(float value) => float.IsFinite(value) && Math.Abs(value) <= MaxCoordinate;
 
-    private static bool IsSane(FsQuadPointsF p) =>
+    internal static bool IsSane(FsQuadPointsF p) =>
         IsSane(p.X1) && IsSane(p.Y1) && IsSane(p.X2) && IsSane(p.Y2) && IsSane(p.X3) && IsSane(p.Y3) && IsSane(p.X4) && IsSane(p.Y4);
 
     private static void Check(int result)

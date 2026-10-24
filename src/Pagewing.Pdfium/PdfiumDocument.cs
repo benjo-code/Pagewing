@@ -25,6 +25,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     private readonly FileReadContext source;
     private volatile bool disposed;
 
+    private int darkMarkupScans;
+
     private PdfiumDocument(DocumentHandle handle, FileReadContext source)
     {
         this.handle = handle;
@@ -47,6 +49,15 @@ internal sealed unsafe class PdfiumDocument : IDisposable
 
     /// <summary>Gets the last write time (UTC) of the source file when it was opened, read through the handle. Any thread.</summary>
     internal DateTime SourceLastWriteUtcAtOpen => source.LastWriteUtc;
+
+    /// <summary>
+    /// Gets how often the markups of a page were read for painting them on a dark page (<see cref="PdfiumDarkMarkups"/>),
+    /// for tests that check that a light page never reads them. Written on the PDFium thread only.
+    /// </summary>
+    internal int DarkMarkupScans => Volatile.Read(ref darkMarkupScans);
+
+    /// <summary>Counts one read of <see cref="DarkMarkupScans"/>. PDFium thread only.</summary>
+    internal void CountDarkMarkupScan() => Volatile.Write(ref darkMarkupScans, darkMarkupScans + 1);
 
     /// <summary>Gets the number of pages.</summary>
     public int PageCount => Fpdf.FPDF_GetPageCount(Access());

@@ -25,6 +25,9 @@ public sealed partial class PdfDocument
     /// </summary>
     internal FileStamp? PathStampAtOpen { get; init; }
 
+    /// <summary>Gets how often a dark render read the markups of a page (for tests; see <c>PdfiumDocument.DarkMarkupScans</c>).</summary>
+    internal int DarkMarkupScans => document.DarkMarkupScans;
+
     /// <summary>
     /// Gets the stamp of the file PDFium reads from, taken through its handle when the document was opened: the same
     /// function as <see cref="GetSourceStamp"/>, so the two compare even for a file opened through a symbolic link (whose
