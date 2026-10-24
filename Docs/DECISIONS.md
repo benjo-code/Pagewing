@@ -15,6 +15,33 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-24 – Rückgängig durch Neuanlegen, Verlust herstellerspezifischer Schlüssel; Verlauf wird beim Speichern geleert; Dokumenttausch nach dem Speichern (M9)
+**Kontext:** Spec Teilprojekt 2, „Daten und Zustand“ und die Setzungen „Rückgängig stellt durch Neuanlegen wieder her“ und „Neuöffnen nach dem Speichern, ohne dass je ein Tab ohne Dokument entsteht“. Umgesetzt in `Pagewing.Core.Annotations.AnnotationEditor` und `ViewerSession.AdoptSavedDocumentAsync` (Aufgabe 11).
+**Entscheidung:**
+- **Rückgängig durch Neuanlegen:** Der Verlauf (`AnnotationHistory`) speichert Schnappschüsse (`PdfAnnotation`), keine Bytes.
+  - Rückgängig eines Löschens und Wiederholen eines Anlegens legen die Markierung mit `CreateMarkupAsync` neu an: Art, Zeilen (`QuadRects`), Farbe, Kommentar und Autor aus dem Schnappschuss. `/M` und `/CreationDate` werden neu gesetzt, das Erscheinungsbild erzeugt PDFium neu.
+  - Schlüssel, die Pagewing nicht liest (herstellerspezifische Einträge, `/RC`, ein fremdes Erscheinungsbild, `/Popup` samt Inhalt, die Position in `/Annots`), gehen beim Neuanlegen einer gelöschten fremden Markierung verloren. Eine fremde Markierung ohne `/C` bekommt beim Neuanlegen Gelb aus der Palette.
+  - Die neu angelegte Markierung behält ihren alten `/NM` (interne Überladung `PdfDocument.CreateMarkupAsync(…, name, …)`), damit spätere Schritte des Verlaufs sie über den Namen finden. Eine gelöschte Markierung ohne `/NM` bekommt im Schnappschuss einen neuen Namen, unter dem sie wieder entsteht.
+  - Rückgängig einer Änderung setzt Farbe und Kommentar des Schnappschusses „vorher“ wieder (`UpdateAnnotationAsync` über den Namen nach der Änderung). Eine fehlende Farbe lässt sich nicht als „fehlend“ wiederherstellen; die Markierung behält dann die neue.
+  - Scheitert ein Schritt, kommt er auf seinen Stapel zurück.
+- **Reihenfolge:** Alle Operationen des Editors laufen nacheinander in der Reihenfolge ihres Aufrufs (asynchrone Kette über eine `Task`, kein `SemaphoreSlim`, damit der Editor nichts freigeben muss). Ein Rückgängig direkt nach einer Markierung wartet auf sie und nimmt sie zurück. Der Aufrufer wird nie blockiert, PDFium läuft nur auf dem `PdfiumThread`.
+- **Verlauf beim Speichern geleert:** Nach einem erfolgreichen Speichern sind Verlauf und `ChangedPages` leer, `IsDirty` ist falsch. Gespeichertes lässt sich nicht mehr zurücknehmen. Jeder Fehler und jeder Abbruch lassen Verlauf, `ChangedPages` und `IsDirty` unverändert (`SaveFailureKeepsDirtyAndTheHistory`). Öffnet die Sitzung inzwischen ein anderes Dokument, beginnt der Editor beim nächsten Aufruf leer.
+- **Dokumenttausch nach dem Speichern** (`ViewerSession.AdoptSavedDocumentAsync`):
+  - Das geprüfte neue Dokument wird unter der Sperre der Sitzung eingesetzt; erst danach werden der alte Scheduler und das alte Dokument geschlossen. `State` bleibt die ganze Zeit `Ready`, `Document` ist nie `null`.
+  - `Cache` bleibt dieselbe Instanz mit Bildern und Budget (gleicher Inhalt). Ein neuer `RenderScheduler` rendert das neue Dokument mit dem aktuellen Seitenthema hinein. Die Sitzung nimmt dafür zuerst die Theme-Sperre, damit ein gleichzeitiger Themenwechsel nicht beim schon geschlossenen alten Scheduler landet und Bilder des alten Themas im geteilten Cache blieben. `InvalidatePages` wiederholt sich auf dem neuen Scheduler, wenn ein Tausch dazwischenkam.
+  - Die Seitengrößen bleiben. Fehlende liest die Sitzung aus dem neuen Dokument nach, in ein neues Feld.
+  - `PageTextSource` bleibt dasselbe Objekt mit seinen Texten und liest ab jetzt aus dem neuen Dokument (`Rebind`); laufende Ladevorgänge am alten Dokument werden vergessen. Die Seitenvorschau (`ThumbnailSource`) hängt an einem Scheduler des alten Dokuments und wird deshalb verworfen und beim nächsten `EnsureThumbnails` neu angelegt.
+  - `Path` wird das Ziel („Speichern unter“), `OpenedStamp` wird am Ziel neu gelesen (`FileStamp.Of`, Pfad mit Pfad; nie `SaveResult.NewStamp`, das aus dem Handle kommt). `Changed` kommt genau einmal.
+  - Wurde die Sitzung inzwischen geschlossen oder verworfen, läuft ein neueres Öffnen oder ist ein anderes Dokument offen als das gespeicherte, schließt die Sitzung das neue Dokument und ändert nichts.
+- **Stempel und Passwort in der Sitzung:** `ViewerSession.OpenedStamp` wird beim Öffnen **vor** dem Öffnen gelesen. Wird die Datei dazwischen ersetzt, warnt das Speichern also (`OriginalChanged`), statt still zu überschreiben. Das kostet im Startpfad einen `stat`. Das Passwort des letzten erfolgreichen Öffnens hält die Sitzung nur im Arbeitsspeicher (internes `OpenPassword`, nur für den Editor; nie in Meldungen). `Close` und `Dispose` vergessen beides.
+**Begründung:** Neuanlegen braucht keinen eigenen PDF-Schreiber und keine Kopie von Objekten, die PDFium nicht freilegt. Der Verlust betrifft nur fremde Markierungen, die gelöscht und zurückgeholt werden; ihre sichtbaren Eigenschaften bleiben. Der Tausch unter einer Sperre ist die einzige Reihenfolge ohne Tab ohne Dokument. Der geteilte Cache erspart nach jedem Speichern das neue Rendern.
+**Verworfene Alternativen:**
+- „Löschen erst beim Speichern ausführen“ (von der Spec erlaubt): Die Ansicht, die Zählung der Prüfung nach dem Speichern und das Panel müssten zwischen Dokument und Plan unterscheiden.
+- Eine Zuordnung „alter Name → aktueller Name“ im Editor statt des festen `/NM`: mehr Zustand für dasselbe Ergebnis.
+- Seitenvorschau umhängen statt neu anlegen: Die Miniaturenliste hängt an den Ereignissen des alten Schedulers und erkennt eine neue Quelle nur an ihrer Identität.
+- `SemaphoreSlim` als Sperre: Der Editor müsste `IDisposable` werden (CA1001), und ein Freigeben während wartender Aufrufe würfe.
+**Bekannte Grenzen:** Eine laufende Suche (`DocumentSearch` arbeitet direkt auf dem `PdfDocument`) endet nach dem Tausch mit `ObjectDisposedException`; die App muss sie nach dem Speichern neu starten (Aufgabe der App-Anbindung).
+
 ## 2026-10-24 – Speicher-Pipeline: Ersetzen, Vorgaben und Grenzen (M9)
 **Kontext:** Spec Teilprojekt 2, Abschnitt „Speichern“, und `CLAUDE.md`, „Speichern“: inkrementell, immer atomar über eine temporäre Datei im Zielordner, die vor dem Ersetzen mit PDFium geprüft wird; das Original darf nie halb überschrieben werden, das neue Dokument ist geöffnet und geprüft, bevor das alte geschlossen wird. Umgesetzt in `Pagewing.Core.Saving.DocumentSaver` (Aufgabe 9), dazu `FileStamp`, `SaveRequest`, `SaveResult`, `SaveFailureReason`/`SaveFailureException` und `WindowsFileRename`.
 **Entscheidung:**

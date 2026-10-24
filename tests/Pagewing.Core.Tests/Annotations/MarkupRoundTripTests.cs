@@ -53,6 +53,25 @@ public sealed partial class MarkupRoundTripTests
     }
 
     [Fact]
+    public async Task CreatedMarkupKeepsAGivenName()
+    {
+        using var folder = new TempFolder();
+        string saved;
+        await using (var document = await OpenFixtureAsync("text-basic.pdf"))
+        {
+            var rects = await WordRectsAsync(document, 0, "Hello");
+            var created = await document.CreateMarkupAsync(0, AnnotationKind.Highlight, rects, Yellow, null, null, "restored-0001", TestContext.Current.CancellationToken);
+            Assert.Equal("restored-0001", created.Name);
+            await Assert.ThrowsAsync<ArgumentException>(
+                () => document.CreateMarkupAsync(0, AnnotationKind.Highlight, rects, Yellow, null, null, "  ", TestContext.Current.CancellationToken));
+            saved = await SaveAsync(document, folder);
+        }
+
+        await using var reopened = await OpenAsync(saved);
+        Assert.Equal("restored-0001", Assert.Single(await reopened.GetAnnotationsAsync(0, TestContext.Current.CancellationToken)).Name);
+    }
+
+    [Fact]
     public async Task UnderlineAndStrikeOutSurvive()
     {
         using var folder = new TempFolder();

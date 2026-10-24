@@ -83,11 +83,33 @@ public sealed partial class PdfDocument
         AnnotationColor color,
         string? contents,
         string? author,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        CreateMarkupAsync(pageIndex, kind, lineRects, color, contents, author, name: null, cancellationToken);
+
+    /// <summary>
+    /// Like the public overload, but gives the annotation <paramref name="name"/> as its <c>/NM</c> instead of a new one
+    /// (when not <see langword="null"/>). Undo and redo create an annotation again under the name it had, so that the
+    /// later steps of the history still find it.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is empty or blank, or see the public overload.</exception>
+    internal Task<PdfAnnotation> CreateMarkupAsync(
+        int pageIndex,
+        AnnotationKind kind,
+        IReadOnlyList<PageRect> lineRects,
+        AnnotationColor color,
+        string? contents,
+        string? author,
+        string? name,
+        CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ThrowIfNotAPage(pageIndex);
         var subtype = SubtypeOf(kind);
+        if (name is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        }
+
         ArgumentNullException.ThrowIfNull(lineRects);
         if (lineRects.Count == 0)
         {
@@ -104,7 +126,7 @@ public sealed partial class PdfDocument
         }
 
         var rects = lineRects.ToArray();
-        var name = NewName();
+        name ??= NewName();
         var date = FormatPdfDate(Clock.GetUtcNow());
         var trimmedAuthor = string.IsNullOrWhiteSpace(author) ? null : author.Trim();
         return document.Thread.InvokeAsync(

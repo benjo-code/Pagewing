@@ -24,7 +24,9 @@ public sealed class PageTextSource : IDisposable
     /// <summary>The number of pages whose text is kept.</summary>
     public const int MaxCachedPages = 32;
 
-    private readonly Func<int, PdfPriority, Task<PageText>> read;
+    // Whether read reads a document (and Rebind may point it at another one) or is the stand-in of a test.
+    private readonly bool readsDocument;
+    private Func<int, PdfPriority, Task<PageText>> read;
 
     // Guards everything below. Never held while the document is called back into or an event is raised.
     private readonly object gate = new();
@@ -43,7 +45,8 @@ public sealed class PageTextSource : IDisposable
     internal PageTextSource(PdfDocument document, Func<int, PdfPriority, Task<PageText>>? read)
     {
         ArgumentNullException.ThrowIfNull(document);
-        this.read = read ?? ((page, priority) => document.GetPageTextAsync(page, priority, CancellationToken.None));
+        readsDocument = read is null;
+        this.read = read ?? ReaderOf(document);
     }
 
     /// <summary>
@@ -195,6 +198,30 @@ public sealed class PageTextSource : IDisposable
     }
 
     /// <summary>
+    /// Reads the pages from <paramref name="document"/> from now on, a document with the same content (the saved file that
+    /// replaces the open one, <see cref="Viewing.ViewerSession.AdoptSavedDocumentAsync"/>): the cached texts stay. Loads
+    /// that are running still read the old document; they are forgotten, so a later call reads the page from the new one
+    /// instead of joining them, and their result is not cached. A source made with its own way to read keeps it. Does
+    /// nothing after <see cref="Dispose"/>.
+    /// </summary>
+    /// <param name="document">The document to read from.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="document"/> is <see langword="null"/>.</exception>
+    internal void Rebind(PdfDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        lock (gate)
+        {
+            if (disposed || !readsDocument)
+            {
+                return;
+            }
+
+            read = ReaderOf(document);
+            loading.Clear();
+        }
+    }
+
+    /// <summary>
     /// Empties the cache and makes every later call throw <see cref="ObjectDisposedException"/>. Loads that are
     /// running cannot be stopped; callers that wait for them still get their result, which is not cached.
     /// Safe to call more than once.
@@ -216,7 +243,7 @@ public sealed class PageTextSource : IDisposable
         {
             // Without the token of a caller: the load is shared. The continuation runs on a pool thread because
             // the PDFium thread completes its tasks asynchronously.
-            text = await read(pageIndex, priority).ConfigureAwait(false);
+            text = await Volatile.Read(ref read)(pageIndex, priority).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -259,6 +286,9 @@ public sealed class PageTextSource : IDisposable
 
         completion.SetResult(text);
     }
+
+    private static Func<int, PdfPriority, Task<PageText>> ReaderOf(PdfDocument document) =>
+        (page, priority) => document.GetPageTextAsync(page, priority, CancellationToken.None);
 
     // Must run under the lock. Removes the load of the page if it is still the registered one (RemovePages may have
     // forgotten it, and a newer load may have taken its place) and says whether it was.

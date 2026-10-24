@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Saving;
 using Pagewing.Core.Text;
 
 namespace Pagewing.Core.Viewing;
@@ -38,7 +39,8 @@ public enum ViewerState
 /// <see cref="State"/> being <see cref="ViewerState.Loading"/>) until the new request has a result; then it is
 /// closed, whatever the result is. <see cref="Document"/>, <see cref="Cache"/>, <see cref="Scheduler"/> and
 /// <see cref="LoadedSizes"/> of a new document appear together with <see cref="ViewerState.Ready"/>; after a
-/// failure or a password prompt they are <see langword="null"/> and empty.
+/// failure or a password prompt they are <see langword="null"/> and empty. After a save,
+/// <see cref="AdoptSavedDocumentAsync"/> swaps the document without leaving <see cref="ViewerState.Ready"/>.
 /// </para>
 /// <para>
 /// <see cref="OpenAsync"/> completes when the request has reached its result, that is
@@ -95,6 +97,11 @@ public sealed class ViewerSession : IDisposable
     private volatile bool disposed;
     private bool active = true;
     private PageTheme pageTheme;
+
+    // The stamp at the path of the open document and the password it was opened with. The password stays in memory
+    // only: no property shows it publicly, no message contains it, and Close and Dispose forget it.
+    private FileStamp? openedStamp;
+    private string? password;
 
     // The number of Changed invocations that are running or about to; Dispose waits for it to drop to zero.
     private int raising;
@@ -252,6 +259,39 @@ public sealed class ViewerSession : IDisposable
     }
 
     /// <summary>
+    /// Gets the stamp at <see cref="Path"/> (<see cref="FileStamp.Of"/>) of the open document: read just before the file
+    /// was opened, and again by <see cref="AdoptSavedDocumentAsync"/> after a save. It is what
+    /// <see cref="SaveRequest.OriginalStamp"/> compares with to notice another file at the path. It belongs to
+    /// <see cref="Document"/> and is <see langword="null"/> without one (or when the stamp could not be read).
+    /// </summary>
+    public FileStamp? OpenedStamp
+    {
+        get
+        {
+            lock (gate)
+            {
+                return openedStamp;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the password the open document was opened with, so that the editor can open the saved file again without
+    /// asking (<see cref="Annotations.AnnotationEditor.SaveAsync"/>). It is kept in memory only and never written, logged
+    /// or put into a message. It belongs to <see cref="Document"/>; <see langword="null"/> without a password or a document.
+    /// </summary>
+    internal string? OpenPassword
+    {
+        get
+        {
+            lock (gate)
+            {
+                return password;
+            }
+        }
+    }
+
+    /// <summary>
     /// Opens a file; a request that is still running is superseded. Failures do not throw but end in
     /// <see cref="ViewerState.Failed"/>, <see cref="ViewerState.PasswordRequired"/> or
     /// <see cref="ViewerState.PasswordIncorrect"/>. After <see cref="Dispose"/> this does nothing.
@@ -299,11 +339,15 @@ public sealed class ViewerSession : IDisposable
         PdfDocument? opened = null;
         PdfPageSize[]? sizes = null;
         var firstCount = 0;
+        FileStamp? stamp = null;
         PdfOpenError? failure = invalidPath;
         if (failure is null)
         {
             try
             {
+                // Before the open, not after: a file that is replaced in between then makes the save warn about another
+                // file at the path (OriginalChanged) instead of overwriting it silently.
+                stamp = FileStamp.Of(fullPath);
                 opened = await open(fullPath, password, source.Token).ConfigureAwait(false);
                 sizes = new PdfPageSize[opened.PageCount];
                 var first = await loadSizes(opened, 0, Math.Min(FirstBatchSize, sizes.Length), PdfPriority.Interactive, source.Token).ConfigureAwait(false);
@@ -355,6 +399,8 @@ public sealed class ViewerSession : IDisposable
                     backgroundLoadFailure = null;
                     state = ViewerState.Ready;
                     error = null;
+                    openedStamp = stamp;
+                    this.password = password;
                 }
                 else
                 {
@@ -364,6 +410,8 @@ public sealed class ViewerSession : IDisposable
                     loadedSizes = [];
                     state = StateOf(failure!.Value);
                     error = failure;
+                    openedStamp = null;
+                    this.password = null;
                 }
             }
         }
@@ -520,8 +568,10 @@ public sealed class ViewerSession : IDisposable
     /// lock of its own beyond the short one of the session, and never holds that one while it calls the schedulers or
     /// raises the event (lock order as everywhere: the session's lock is released before a scheduler's lock is taken).
     /// It waits for no event handler, but like <see cref="SetPageTheme"/> it must not be called from a handler of a
-    /// scheduler (see <see cref="RenderScheduler.InvalidatePages"/>). If a newer document is published meanwhile, the
-    /// call ends quietly: the old objects are being disposed and the new document starts empty anyway.
+    /// scheduler (see <see cref="RenderScheduler.InvalidatePages"/>). If a newer document is opened meanwhile, the
+    /// call ends quietly: the old objects are being disposed and the new document starts empty anyway. If a saved
+    /// document is adopted meanwhile (<see cref="AdoptSavedDocumentAsync"/>), which keeps the cache, the pages are dropped
+    /// through the new scheduler as well.
     /// </remarks>
     /// <param name="pages">The zero-based indices of the pages whose content changed.</param>
     /// <exception cref="ArgumentNullException"><paramref name="pages"/> is <see langword="null"/>.</exception>
@@ -533,29 +583,192 @@ public sealed class ViewerSession : IDisposable
             return;
         }
 
-        RenderScheduler? currentScheduler;
-        ThumbnailSource? currentThumbnails;
-        PageTextSource? currentPageTexts;
-        long mine;
-        lock (gate)
+        RenderScheduler? done = null;
+        RenderCache? doneCache = null;
+        long mine = 0;
+        while (true)
         {
-            if (disposed || scheduler is null)
+            RenderScheduler currentScheduler;
+            ThumbnailSource? currentThumbnails;
+            PageTextSource? currentPageTexts;
+            lock (gate)
             {
-                return;
+                if (disposed || scheduler is null)
+                {
+                    if (done is null)
+                    {
+                        return;
+                    }
+
+                    break;
+                }
+
+                // A document that was opened meanwhile has a cache of its own and starts empty: nothing to drop. One that
+                // was adopted after a save keeps the cache, so its new scheduler must drop the pages too.
+                if (done is not null && (ReferenceEquals(scheduler, done) || !ReferenceEquals(cache, doneCache)))
+                {
+                    break;
+                }
+
+                mine = Volatile.Read(ref generation);
+                currentScheduler = scheduler;
+                doneCache = cache;
+                currentThumbnails = thumbnails;
+                currentPageTexts = pageTexts;
             }
 
-            mine = Volatile.Read(ref generation);
-            currentScheduler = scheduler;
-            currentThumbnails = thumbnails;
-            currentPageTexts = pageTexts;
+            // Outside the lock. Each of them ignores the call once it is disposed, which a replacing open, an adoption or
+            // a Close may do meanwhile; then Raise sees the newer generation and stays silent, and after an adoption the
+            // loop goes on with the new scheduler.
+            currentScheduler.InvalidatePages(pages);
+            currentThumbnails?.Scheduler.InvalidatePages(pages);
+            currentPageTexts?.RemovePages(pages);
+            done = currentScheduler;
         }
 
-        // Outside the lock. Each of them ignores the call once it is disposed, which a replacing open or a Close may do
-        // meanwhile; then Raise sees the newer generation and stays silent.
-        currentScheduler.InvalidatePages(pages);
-        currentThumbnails?.Scheduler.InvalidatePages(pages);
-        currentPageTexts?.RemovePages(pages);
         Raise(mine);
+    }
+
+    /// <summary>
+    /// Replaces the open document by <paramref name="reopened"/>, the file that was just saved from it and checked
+    /// (<see cref="DocumentSaver"/>), without a moment without a document: <see cref="State"/> stays
+    /// <see cref="ViewerState.Ready"/> and <see cref="Document"/> goes straight from the old document to the new one. The
+    /// session takes ownership of <paramref name="reopened"/> in every case.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The content is the same, so <see cref="Cache"/> stays the same instance with its images and budget, and
+    /// <see cref="LoadedSizes"/> stays (the sizes that are still missing are read from the new document). A new
+    /// <see cref="Scheduler"/> renders the new document into that cache in the current <see cref="PageTheme"/>. The
+    /// source of <see cref="EnsurePageTexts"/> stays the same object with its texts (a search that is running goes on
+    /// with it) and reads from the new document from now on; the thumbnails, whose scheduler belongs to the old
+    /// document, are disposed and made anew by the next <see cref="EnsureThumbnails"/>. <see cref="Path"/> becomes
+    /// <paramref name="path"/> ("Save As"), <see cref="OpenedStamp"/> is read again from it, and the password of the
+    /// last open is kept (in memory only). Only after the new document is installed is the old one closed, together
+    /// with its scheduler; the returned task completes when that is done. Then <see cref="Changed"/> is raised once.
+    /// </para>
+    /// <para>
+    /// After <see cref="Dispose"/> or <see cref="Close"/>, while a newer <see cref="OpenAsync"/> is running or has
+    /// replaced the document, and when <paramref name="replacing"/> is given but no longer the open document,
+    /// <paramref name="reopened"/> is closed and nothing changes (no event). Like <see cref="SetPageTheme"/> it waits for a
+    /// running handler of a scheduler, so it must not be called from a handler of a scheduler, and it must not be called
+    /// from a handler of <see cref="Changed"/> either (the handler would see the session half way).
+    /// </para>
+    /// </remarks>
+    /// <param name="reopened">The saved file, opened and checked; it must have as many pages as the open document.</param>
+    /// <param name="path">The path the document was saved to.</param>
+    /// <param name="replacing">The document that was saved, or <see langword="null"/> to replace whatever document is open.</param>
+    /// <returns>Whether <paramref name="reopened"/> became the open document.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reopened"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="path"/> is empty or invalid, or <paramref name="reopened"/> has another number of pages (it is closed).
+    /// </exception>
+    public async Task<bool> AdoptSavedDocumentAsync(PdfDocument reopened, string path, PdfDocument? replacing = null)
+    {
+        ArgumentNullException.ThrowIfNull(reopened);
+        string fullPath;
+        try
+        {
+            ArgumentException.ThrowIfNullOrEmpty(path);
+            fullPath = System.IO.Path.GetFullPath(path);
+        }
+        catch (Exception)
+        {
+            await reopened.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        int pageCount;
+        try
+        {
+            pageCount = reopened.PageCount;
+        }
+        catch (ObjectDisposedException)
+        {
+            throw new ArgumentException("The saved document is already closed.", nameof(reopened));
+        }
+
+        var stamp = FileStamp.Of(fullPath);
+        PdfDocument? oldDocument = null;
+        RenderScheduler? oldScheduler = null;
+        ThumbnailSource? oldThumbnails = null;
+        CancellationTokenSource? superseded = null;
+        CancellationTokenSource? source = null;
+        PdfPageSize[]? sizes = null;
+        var loaded = 0;
+        var mismatch = false;
+        long mine = 0;
+
+        // themeGate first, as in SetPageTheme: the cache is shared, so a theme change must not reach the old scheduler
+        // (which ignores it once disposed) while the new one is created with the old theme.
+        lock (themeGate)
+        {
+            lock (gate)
+            {
+                if (disposed || state != ViewerState.Ready || document is null || cache is null
+                    || (replacing is not null && !ReferenceEquals(document, replacing)))
+                {
+                    // Nothing to replace any more; reopened is closed below.
+                }
+                else if (document.PageCount != pageCount)
+                {
+                    mismatch = true;
+                }
+                else
+                {
+                    mine = Interlocked.Increment(ref generation);
+                    oldDocument = document;
+                    oldScheduler = scheduler;
+                    oldThumbnails = thumbnails;
+                    thumbnails = null;
+                    pageTexts?.Rebind(reopened);
+                    document = reopened;
+                    scheduler = new RenderScheduler(reopened, cache, pageTheme);
+                    this.path = fullPath;
+                    openedStamp = stamp;
+
+                    // The loader of the old document goes quiet with the new generation; the rest is read from the new one,
+                    // into a new array, so the two never write the same one.
+                    superseded = request;
+                    source = request = new CancellationTokenSource();
+                    loaded = loadedSizes.Count;
+                    if (loaded < pageCount)
+                    {
+                        sizes = new PdfPageSize[pageCount];
+                        for (var i = 0; i < loaded; i++)
+                        {
+                            sizes[i] = loadedSizes[i];
+                        }
+
+                        loadedSizes = new ArraySegment<PdfPageSize>(sizes, 0, loaded);
+                    }
+                }
+            }
+        }
+
+        if (oldDocument is null)
+        {
+            await reopened.DisposeAsync().ConfigureAwait(false);
+            if (mismatch)
+            {
+                throw new ArgumentException("The saved document has another number of pages.", nameof(reopened));
+            }
+
+            return false;
+        }
+
+        Cancel(superseded);
+        oldThumbnails?.Dispose();
+        oldScheduler?.Dispose();
+        await oldDocument.DisposeAsync().ConfigureAwait(false);
+        Raise(mine);
+
+        if (sizes is not null)
+        {
+            _ = LoadRemainingSizesAsync(reopened, mine, sizes, loaded, source!.Token);
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -664,6 +877,8 @@ public sealed class ViewerSession : IDisposable
         loadedSizes = [];
         backgroundLoadFailure = null;
         request = null;
+        openedStamp = null;
+        password = null;
         return result;
     }
 
