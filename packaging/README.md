@@ -320,3 +320,43 @@ dotnet run tools/update-testserver.cs -- serve --root "$T/server" --port $PORT  
 3. Fehlerpfade wie unter Windows (Server aus, `--tamper signature`, `--tamper checksum`; vorher jeweils `rm -f ~/.config/pagewing/update.json`), dazu der **schreibgeschützte Ordner**: `chmod 555 ~/"Pagewing Test"`, Update auslösen: Meldung „Der Ordner ist schreibgeschützt: … Laden Sie das neue AppImage von Hand herunter.“, die alte Datei bleibt unverändert; danach `chmod 755 ~/"Pagewing Test"`.
 4. `.deb` (optional): Ein Testaufbau als `.deb` (`package.cs deb` aus dem Layout von 0.0.1) zeigt statt „Installieren“ den Hinweis auf die Download-Seite; „Download-Seite öffnen“ fragt über die Link-Karte nach `http://127.0.0.1:8765/`.
 5. Aufräumen: `rm -rf "$T" ~/"Pagewing Test"` und `~/.local/share/applications/pagewing.desktop` löschen.
+
+## Annotationen im Fremdviewer prüfen
+
+Handprüfung des Projektinhabers zu Milestone 9: Was Pagewing speichert (Hervorhebung, Unterstreichung, Durchstreichung mit Kommentar, Erscheinungsbild als eigenes Objekt von PDFiums Generator, Druck-Flag, inkrementelles Speichern), muss in anderen Programmen an derselben Stelle und in derselben Farbe erscheinen. Der Round-Trip in PDFium ist automatisch getestet (`MarkupRoundTripTests`, `InteropSampleTests`); wie Chrome und Acrobat die Dateien zeigen, prüft nur ein Mensch. Die Prüfung läuft nie in der CI.
+
+### Muster erzeugen
+
+`tests/Pagewing.Core.Tests/Annotations/InteropSampleTests.cs` annotiert die Testdateien über die echte Pipeline der App (`AnnotationEditor` über eine `ViewerSession`, Speichern über `DocumentSaver` mit Prüfung vor dem Ersetzen) und legt je Quelle das unveränderte Original `<name>.pdf` und die annotierte Fassung `<name>__annotated.pdf` in einen Ordner, dazu `README-interop.txt`: welches Wort welche Markierung in welcher Farbe trägt, die Kommentartexte und die Hinweise zu signierten und verschlüsselten Dateien. Der Test prüft dabei selbst, dass die ersten Bytes jeder Datei das Original sind, dass PDFium sie öffnet und Art, Farbe, Vierecke und Kommentar wieder liest und dass jedes Erscheinungsbild ein eigenes Objekt ist. Ohne die Umgebungsvariable meldet er sich als übersprungen; er schreibt nur in den angegebenen Ordner (gearbeitet wird in einem Temp-Ordner), nie in `testdata/`.
+
+```powershell
+$env:PAGEWING_INTEROP_OUT = "$env:TEMP\pagewing-interop"
+dotnet test tests/Pagewing.Core.Tests --filter-class "*InteropSampleTests"
+Remove-Item Env:PAGEWING_INTEROP_OUT
+```
+
+```sh
+PAGEWING_INTEROP_OUT=/tmp/pagewing-interop dotnet test tests/Pagewing.Core.Tests --filter-class "*InteropSampleTests"
+```
+
+Quellen: `text-basic.pdf`, `text-rich.pdf` (eine Hervorhebung über zwei Zeilen, eine Unterstreichung über einer Webadresse), `rotated-page.pdf` (`/Rotate 90`), `cropbox.pdf` (versetzte CropBox), `annotations.pdf` (die fremde Hervorhebung wird blau umgefärbt), `annotations-foreign.pdf` (die fremde grüne Hervorhebung ohne Namen wird gelöscht), `signed-docmdp-3.pdf`, `signed-docmdp-1.pdf`, `encrypted_hello_world_r6.pdf` (Passwort `hôtel`) und `linearized.pdf`. Der Inhalt ist bei jedem Lauf gleich (Texte, Farben, Autor „Pagewing Interop“, Datum 2026-10-24 12:00 UTC); nur die `/NM`-Namen sind zufällig.
+
+### Prüfliste je Viewer
+
+Pflicht unter Windows: **Chrome** (eingebauter PDF-Viewer) und **Adobe Acrobat Reader**. Optional: Edge, Firefox (pdf.js), unter Linux Okular und Evince. Original und annotierte Fassung nebeneinander öffnen, `README-interop.txt` daneben:
+
+1. **Lage und Farbe:** Jede Markierung liegt genau auf den Wörtern aus `README-interop.txt`, in der dort genannten Farbe der Palette (Gelb `#FFEB3B`, Grün `#8BE08B`, Blau `#7CC4FA`, Rosa `#FF8FC7`, Orange `#FFB454`); die Hervorhebung über zwei Zeilen in `text-rich` deckt beide Zeilen und nicht den Zwischenraum.
+2. **Text unter der Hervorhebung lesbar:** Die Farbe liegt hinter dem Text (multipliziert), die Buchstaben bleiben dunkel und scharf.
+3. **Unterstreichung und Durchstreichung:** Die Unterstreichung sitzt knapp unter den Wörtern, die Durchstreichung läuft durch ihre Mitte, beide in der Farbe der Markierung und nicht länger als die Wörter.
+4. **Kommentar:** Acrobat: Der Kommentarbereich („Kommentare“) listet jede Markierung mit Kommentartext und Autor „Pagewing Interop“, beim Überfahren mit der Maus erscheint der Kommentar. Chrome und die übrigen: notieren, ob und wie sie den Kommentar zeigen (Chrome zeigt Kommentare von Markierungen nicht immer; das ist dann kein Fehler von Pagewing, solange das Erscheinungsbild stimmt).
+5. **Gedrehte Seite und CropBox:** In `rotated-page__annotated.pdf` liegt die Hervorhebung auf „Rotated“ in der gedrehten Ansicht, in `cropbox__annotated.pdf` auf „CropBox“ innerhalb des sichtbaren Ausschnitts.
+6. **Fremde Annotationen:** `annotations__annotated.pdf`: Die vorhandene Hervorhebung ist blau statt gelb und trägt den neuen Kommentar, Link und übrige Annotationen sind unverändert. `annotations-foreign__annotated.pdf`: Die grüne Hervorhebung über „Second mark without a name.“ fehlt; Antwort („Agreed“), Popup, Ink, Freitext, Notiz und Link sind wie im Original.
+7. **Signierte Dateien** (Acrobat, Unterschriftenbereich): Die beiden Testdateien sind Strukturattrappen ohne gültige Signatur; Acrobat meldet sie im Original und in der Kopie als ungültig bzw. nicht prüfbar, und das ist erwartet. Aussagekräftig ist nur eine **echt signierte** Datei, die der Projektinhaber selbst signiert und nie eincheckt: in Acrobat eine beliebige eigene PDF signieren (eigene digitale ID; „Zertifizieren“ mit „Kommentieren erlaubt“ ergibt DocMDP-Stufe 3, „Zertifizieren“ ohne Änderungen Stufe 1, eine einfache Signatur ist ohne DocMDP), außerhalb des Repos speichern, in Pagewing markieren und mit Strg+S speichern (bei Stufe 1 und 2 warnt Pagewing vorher; trotzdem speichern), dann in Acrobat öffnen. Erwartet bei Stufe 3 und ohne DocMDP: Die Signatur gilt weiter, Acrobat nennt die Änderungen nach dem Signieren als erlaubt („Kommentare hinzugefügt“). Erwartet bei Stufe 1: Acrobat meldet die Zertifizierung als durch nicht erlaubte Änderungen ungültig. Pagewing selbst behauptet nie, eine Signatur sei gültig; festgehalten wird nur, was Acrobat anzeigt.
+8. **Verschlüsselt:** `encrypted_hello_world_r6__annotated.pdf` fragt nach dem Passwort `hôtel` und zeigt danach die Hervorhebung samt Kommentar; ohne Passwort öffnet sie nicht.
+9. **Linearisiert:** `linearized__annotated.pdf` öffnet ohne Fehlermeldung mit beiden Markierungen (Seite 1 und 2). Dass Acrobat unter „Dokumenteigenschaften“ für die Kopie „Schnelle Webansicht: Nein“ zeigt, ist erwartet (ein inkrementelles Update hebt die Linearisierung auf).
+10. **Ohne Reparatur:** Keine Datei löst eine Meldung „beschädigt“ oder „repariert“ aus, und Acrobat fragt beim Schließen einer unveränderten Datei nicht nach dem Speichern (diese Frage heißt, dass Acrobat die Datei beim Öffnen repariert hat).
+11. **Druck:** In der Druckvorschau (Acrobat „Drucken“, Chrome Strg+P) erscheinen die Markierungen (Druck-Flag gesetzt).
+
+### Ergebnis festhalten
+
+Das Ergebnis ist der Nachweis der Abnahmekriterien von Milestone 9 „Gespeicherte Annotationen erscheinen in einem anderen Viewer …“ und „Digital signierte Test-PDF …“ in `Docs/roadmap.json` (danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence` je Viewer: Datum, Programm und Version, Betriebssystem, für jede Datei „wie erwartet“ oder die Abweichung (welche Datei, welcher Punkt der Prüfliste, was zu sehen war). Ein Kriterium wird erst abgehakt, wenn Chrome und Acrobat Reader geprüft sind; die Acrobat-Aussage zur echt signierten Datei gehört nur dann dazu, wenn sie geprüft wurde, sonst bleibt dieser Teil ausdrücklich offen. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
