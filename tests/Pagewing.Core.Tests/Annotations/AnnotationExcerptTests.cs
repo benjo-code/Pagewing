@@ -31,28 +31,35 @@ public sealed class AnnotationExcerptTests
         return new PageText(0, 300, PageHeight, chars, []);
     }
 
-    /// <summary>The quad of a rectangle given in page points (origin top left), as the file stores it (origin bottom left).</summary>
-    private static Quad QuadOf(double left, double top, double right, double bottom) => MarkupGeometry.ToQuad(
-        new PagePoint(left, PageHeight - top),
-        new PagePoint(right, PageHeight - top),
-        new PagePoint(right, PageHeight - bottom),
-        new PagePoint(left, PageHeight - bottom));
-
-    private static PdfAnnotation Annotation(params Quad[] quads) => new(
-        0, 0, null, AnnotationKind.Highlight, "Highlight", null, quads, new PageRect(0, 0, 0, 0), null, null, null, true);
+    /// <summary>An annotation whose quadrilaterals are given as rectangles in page points (origin top left).</summary>
+    private static PdfAnnotation Annotation(params PageRect[] rects) => new(
+        0, 0, null, AnnotationKind.Highlight, "Highlight", null, [], rects, new PageRect(0, 0, 0, 0), null, null, null, true);
 
     [Fact]
     public void ExcerptReadsTheTextUnderTheQuadsAndShortens()
     {
         // "Hello big world" on line one, "second line" on line two.
         var text = Page("Hello big world", "second line");
-        var lineOne = QuadOf(10, 10, 160, 22);
-        var lineTwo = QuadOf(10, 22, 70, 34);
+        var lineOne = new PageRect(10, 10, 160, 22);
+        var lineTwo = new PageRect(10, 22, 70, 34);
 
         Assert.Equal("Hello big world second", AnnotationExcerpt.For(Annotation(lineOne, lineTwo), text));
-        Assert.Equal("big wo", AnnotationExcerpt.For(Annotation(QuadOf(60, 10, 130, 22)), text));
+        Assert.Equal("big wo", AnnotationExcerpt.For(Annotation(new PageRect(60, 10, 130, 22)), text));
         Assert.Equal("Hello big…", AnnotationExcerpt.For(Annotation(lineOne, lineTwo), text, 11));
         Assert.Equal("…", AnnotationExcerpt.For(Annotation(lineOne), text, 1));
+    }
+
+    [Fact]
+    public void ExcerptUsesThePageRectsAsTheyAreOnAnOffsetOrRotatedPage()
+    {
+        // The file stores the quadrilateral in PDF user space; on a page with an offset box or a rotation that has
+        // nothing to do with the page points of the text. Only QuadRects count: mapping the quad below with
+        // y to Height - y gives a rectangle far outside the page that holds no character at all.
+        var text = Page("Hello big world", "second line");
+        var offsetQuad = MarkupGeometry.ToQuad(new(510, 744), new(560, 744), new(560, 732), new(510, 732));
+        var annotation = Annotation(new PageRect(10, 22, 70, 34)) with { Quads = [offsetQuad] };
+
+        Assert.Equal("second", AnnotationExcerpt.For(annotation, text));
     }
 
     [Fact]
@@ -60,7 +67,7 @@ public sealed class AnnotationExcerptTests
     {
         var text = Page("Hello big world", "second line");
 
-        Assert.Equal("second", AnnotationExcerpt.For(Annotation(QuadOf(10, 22, 70, 34)), text));
+        Assert.Equal("second", AnnotationExcerpt.For(Annotation(new PageRect(10, 22, 70, 34)), text));
     }
 
     [Fact]
@@ -77,7 +84,7 @@ public sealed class AnnotationExcerptTests
     {
         var text = Page("Hello");
 
-        Assert.Equal(string.Empty, AnnotationExcerpt.For(Annotation(QuadOf(200, 50, 250, 62)), text));
+        Assert.Equal(string.Empty, AnnotationExcerpt.For(Annotation(new PageRect(200, 50, 250, 62)), text));
         Assert.Equal(string.Empty, AnnotationExcerpt.For(Annotation(), text));
     }
 
@@ -90,6 +97,6 @@ public sealed class AnnotationExcerptTests
         var withEmoji = new PageText(0, 300, PageHeight, chars, []);
 
         // "a😀b" is four UTF-16 units; a maximum of 3 leaves room for "a" plus the ellipsis only.
-        Assert.Equal("a…", AnnotationExcerpt.For(Annotation(QuadOf(10, 10, 160, 22)), withEmoji, 3));
+        Assert.Equal("a…", AnnotationExcerpt.For(Annotation(new PageRect(10, 10, 160, 22)), withEmoji, 3));
     }
 }

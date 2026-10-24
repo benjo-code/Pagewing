@@ -10,12 +10,11 @@ public static class AnnotationExcerpt
 
     /// <summary>
     /// Gets the text under the quadrilaterals of an annotation in reading order (the order of the characters on the
-    /// page): a character counts if the centre of its box lies inside one quadrilateral. Whitespace runs, line
-    /// breaks included, become one space. The quadrilaterals are in PDF user space and are mapped to the page
-    /// points of <paramref name="text"/> by keeping x and turning y into <c>text.Height - y</c>; that is right for a
-    /// page without rotation whose box starts at the origin. For an annotation without quadrilaterals, or if the
-    /// mapped quadrilaterals cover no character (a rotated or offset page), the text under
-    /// <see cref="PdfAnnotation.Bounds"/> is used instead, which is already in page points.
+    /// page): a character counts if the centre of its box lies inside one of <see cref="PdfAnnotation.QuadRects"/>,
+    /// which are already in the page points of <paramref name="text"/> (origin top left, after rotation and CropBox),
+    /// so no coordinate conversion happens here. Whitespace runs, line breaks included, become one space. Without
+    /// <see cref="PdfAnnotation.QuadRects"/>, or if they cover no character, the text under
+    /// <see cref="PdfAnnotation.Bounds"/> is used instead.
     /// </summary>
     /// <param name="annotation">The annotation.</param>
     /// <param name="text">The text of the annotation's page.</param>
@@ -27,13 +26,7 @@ public static class AnnotationExcerpt
         ArgumentNullException.ThrowIfNull(text);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxLength, 1);
 
-        var areas = new List<PageRect>(annotation.Quads.Count);
-        foreach (var quad in annotation.Quads)
-        {
-            areas.Add(ToPageRect(quad, text.Height));
-        }
-
-        var found = CharsUnder(text, areas);
+        var found = CharsUnder(text, annotation.QuadRects);
         if (found.Count == 0)
         {
             found = CharsUnder(text, [annotation.Bounds]);
@@ -63,24 +56,6 @@ public static class AnnotationExcerpt
         }
 
         return Shorten(builder.ToString().Trim(), maxLength);
-    }
-
-    private static PageRect ToPageRect(Quad quad, double pageHeight)
-    {
-        Span<PagePoint> points = [quad.TopLeft, quad.TopRight, quad.BottomLeft, quad.BottomRight];
-        var left = double.PositiveInfinity;
-        var right = double.NegativeInfinity;
-        var low = double.PositiveInfinity;
-        var high = double.NegativeInfinity;
-        foreach (var p in points)
-        {
-            left = Math.Min(left, p.X);
-            right = Math.Max(right, p.X);
-            low = Math.Min(low, p.Y);
-            high = Math.Max(high, p.Y);
-        }
-
-        return new PageRect(left, pageHeight - high, right, pageHeight - low);
     }
 
     private static List<int> CharsUnder(PageText text, IReadOnlyList<PageRect> areas)
