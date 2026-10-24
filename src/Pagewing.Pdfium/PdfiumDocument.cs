@@ -56,6 +56,12 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// </summary>
     internal int DarkMarkupScans => Volatile.Read(ref darkMarkupScans);
 
+    /// <summary>
+    /// Gets or sets what reads the markups for a dark render instead of <see cref="PdfiumDarkMarkups.Read"/>, or
+    /// <see langword="null"/> (tests replace it to make the read fail). PDFium thread only.
+    /// </summary>
+    internal Func<PdfiumPage, PdfiumPageColors, DarkMarkupPaint>? DarkMarkupReader { get; set; }
+
     /// <summary>Counts one read of <see cref="DarkMarkupScans"/>. PDFium thread only.</summary>
     internal void CountDarkMarkupScan() => Volatile.Write(ref darkMarkupScans, darkMarkupScans + 1);
 

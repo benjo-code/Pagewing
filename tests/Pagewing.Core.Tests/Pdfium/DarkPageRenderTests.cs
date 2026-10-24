@@ -342,6 +342,191 @@ public sealed class DarkPageRenderTests
     }
 
     [Fact]
+    public async Task HighlightIsPaintedWhateverTheOrderOfItsCorners()
+    {
+        // Acrobat writes /QuadPoints as top left, top right, bottom left, bottom right; ISO 32000 describes them
+        // counter-clockwise (bottom left, bottom right, top right, top left). Both are valid and both must be painted.
+        using var folder = new TempFolder();
+        var path = WritePdf(folder, "order.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Annots [4 0 R 5 0 R] >>",
+            "<< /Type /Annot /Subtype /Highlight /Rect [20 20 90 80] /F 4 /C [1 0.8 0.2] /QuadPoints [20 80 90 80 20 20 90 20] /AP << /N 6 0 R >> >>",
+            "<< /Type /Annot /Subtype /Highlight /Rect [110 20 180 80] /F 4 /C [1 0.8 0.2] /QuadPoints [110 20 180 20 180 80 110 80] /AP << /N 7 0 R >> >>",
+            Form("20 20 90 80", "1 0.8 0.2 rg 20 20 70 60 re f"),
+            Form("110 20 180 80", "1 0.8 0.2 rg 110 20 70 60 re f"),
+        ]);
+        await using var document = await OpenAsync(path);
+        const double Scale = 2;
+        var image = await document.RenderPageAsync(0, Scale, Dark, TestContext.Current.CancellationToken);
+
+        // The same tint fills both quads (display y 20..80, an empty page under them).
+        var tint = Pixel(image, 110, 100);
+        Assert.NotEqual(Ground, tint);
+        var zOrder = Pixels(new PageRect(20, 20, 90, 80), Scale, inset: 3).Count(p => Pixel(image, p.X, p.Y) == tint);
+        var isoOrder = Pixels(new PageRect(110, 20, 180, 80), Scale, inset: 3).Count(p => Pixel(image, p.X, p.Y) == tint);
+        var inside = Pixels(new PageRect(20, 20, 90, 80), Scale, inset: 3).Count();
+        Assert.Equal(inside, zOrder);
+        Assert.Equal(inside, isoOrder);
+        Assert.Equal(Ground, Pixel(image, 200, 100));
+    }
+
+    [Fact]
+    public void ACornerOrderWithoutAreaFallsBackToItsBox()
+    {
+        // Corners on one line enclose nothing: the bounding box (here a line, so nothing) instead of a crossed polygon.
+        var transform = DisplayTransform.Identity;
+        var line = PdfiumDarkMarkups.AreaOf(transform, Quad(10, 50, 20, 50, 30, 50, 40, 50), 0xFF102030);
+        Assert.Equal((10.0, 40.0), (Math.Min(line.P1.X, line.P3.X), Math.Max(line.P1.X, line.P3.X)));
+
+        // A crossed order (a bow tie) becomes the rectangle round its corners.
+        var crossed = PdfiumDarkMarkups.AreaOf(transform, Quad(0, 0, 10, 10, 10, 0, 0, 10), 0xFF102030);
+        DarkMarkupPoint[] corners = [crossed.P1, crossed.P2, crossed.P3, crossed.P4];
+        Assert.Equal(4, corners.Distinct().Count());
+        Assert.All(corners, c => Assert.True((c.X is 0 or 10) && (c.Y is 0 or 10), c.ToString()));
+
+        // In order round it: every turn goes the same way, so no edge crosses another.
+        var turns = Enumerable.Range(0, 4).Select(i =>
+        {
+            var (a, b, c) = (corners[i], corners[(i + 1) % 4], corners[(i + 2) % 4]);
+            return Math.Sign(((b.X - a.X) * (c.Y - b.Y)) - ((b.Y - a.Y) * (c.X - b.X)));
+        }).Distinct().ToList();
+        Assert.Single(turns);
+        Assert.NotEqual(0, turns[0]);
+    }
+
+    [Fact]
+    public async Task AFailingReadLeavesThePlainDarkPage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var document = await OpenFixtureAsync("text-basic.pdf");
+        await document.CreateMarkupAsync(0, AnnotationKind.Highlight, await WordRectsAsync(document, 0, "Hello"), Yellow, null, null, ct);
+        await document.ReplaceDarkMarkupReaderAsync((_, _) => DarkMarkupPaint.Empty);
+        var plain = await document.RenderPageAsync(0, 2, Dark, ct);
+
+        // Even running out of memory only drops the markups: the page renders dark as PDFium draws it.
+        await document.ReplaceDarkMarkupReaderAsync((_, _) => throw new InsufficientMemoryException("hostile page"));
+        var failed = await document.RenderPageAsync(0, 2, Dark, ct);
+        var tile = await document.RenderTileAsync(0, 2, new PixelRect(0, 0, 200, 200), Dark, ct);
+
+        Assert.True(plain.Pixels.Span.SequenceEqual(failed.Pixels.Span));
+        Assert.Equal(Pixel(plain, 150, 150), Pixel(tile, 150, 150));
+    }
+
+    [Fact]
+    public async Task AHostilePageWithDuplicatedMarkupsRendersInTime()
+    {
+        // One highlight with 4,096 page-sized quadrilaterals, listed 20,000 times in /Annots (a small file): unbounded, that
+        // would be 82 million quadrilaterals per read and one fill of the whole tile for each. The budgets stop reading at
+        // MaxTotalQuads and painting at MaxPaintedLayers, and the page renders.
+        using var folder = new TempFolder();
+        var quads = string.Join(' ', Enumerable.Repeat("0 100 200 100 0 0 200 0", PdfiumAnnotations.MaxQuads));
+        var annots = string.Join(' ', Enumerable.Repeat("4 0 R", PdfiumAnnotations.MaxScannedPerPage));
+        var path = WritePdf(folder, "hostile.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Annots [{annots}] >>",
+            $"<< /Type /Annot /Subtype /Highlight /Rect [0 0 200 100] /F 4 /C [1 1 0] /QuadPoints [{quads}] /AP << /N 5 0 R >> >>",
+            Form("0 0 200 100", "1 1 0 rg 0 0 200 100 re f"),
+        ]);
+        await using var document = await OpenAsync(path);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var image = await document.RenderPageAsync(0, 1, Dark, TestContext.Current.CancellationToken);
+        var elapsed = watch.Elapsed;
+
+        Assert.NotEqual(Ground, Pixel(image, 100, 50));
+        Assert.True(elapsed < TimeSpan.FromSeconds(20), $"the dark render took {elapsed}");
+        var paint = await ReadPaintAsync(path);
+        Assert.Equal(PdfiumDarkMarkups.MaxTotalQuads, paint.Areas.Count);
+    }
+
+    [Fact]
+    public async Task AppearancesAreDecodedOnlyWithinTheBudget()
+    {
+        // A shared appearance of about 800 KB (UTF-16) for 20,000 entries would be decoded 20,000 times, 16 GB; the budget
+        // stops the read after MaxAppearanceBytes and keeps what it has.
+        using var folder = new TempFolder();
+        var annots = string.Join(' ', Enumerable.Repeat("4 0 R", PdfiumAnnotations.MaxScannedPerPage));
+        var filler = string.Concat(Enumerable.Repeat("% padding padding padding padding padding padding padding\n", 7_000));
+        var path = WritePdf(folder, "big-appearance.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Annots [{annots}] >>",
+            "<< /Type /Annot /Subtype /Highlight /Rect [20 20 180 80] /F 4 /C [1 1 0] /QuadPoints [20 80 180 80 20 20 180 20] /AP << /N 5 0 R >> >>",
+            Form("20 20 180 80", "1 1 0 rg 20 20 160 60 re f\n" + filler),
+        ]);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var paint = await ReadPaintAsync(path);
+        var elapsed = watch.Elapsed;
+
+        var perEntry = 2 * ("1 1 0 rg 20 20 160 60 re f\n" + filler).Length;
+        Assert.InRange(paint.Areas.Count, 1, (int)(PdfiumDarkMarkups.MaxAppearanceBytes / perEntry) + 1);
+        Assert.True(elapsed < TimeSpan.FromSeconds(10), $"the read took {elapsed}");
+    }
+
+    [Theory]
+    [InlineData(AnnotationKind.Underline, 16.0)]
+    [InlineData(AnnotationKind.Underline, 32.0)]
+    [InlineData(AnnotationKind.StrikeOut, 16.0)]
+    [InlineData(AnnotationKind.StrikeOut, 32.0)]
+    public async Task LinesStayOnPdfiumsLineAtHighZoom(AnnotationKind kind, double scale)
+    {
+        // At 32 pixels per point a grid of 1/16 pt would put the painted line up to a pixel beside PDFium's.
+        var ct = TestContext.Current.CancellationToken;
+        await using var plainDocument = await OpenFixtureAsync("text-basic.pdf");
+        await using var document = await OpenFixtureAsync("text-basic.pdf");
+        var rects = await WordRectsAsync(document, 0, "Pagewing");
+        var lightBefore = await document.RenderTileAsync(0, scale, TileOf(rects[0], kind, scale), cancellationToken: ct);
+        await document.CreateMarkupAsync(0, kind, rects, Blue, null, null, ct);
+        var tile = TileOf(rects[0], kind, scale);
+        var lightAfter = await document.RenderTileAsync(0, scale, tile, cancellationToken: ct);
+        var plain = await plainDocument.RenderTileAsync(0, scale, tile, Dark, ct);
+        var marked = await document.RenderTileAsync(0, scale, tile, Dark, ct);
+        var color = ToBgra(Rgb(Blue));
+
+        // PDFium's line is where the light page changed; on the dark page exactly those pixels (and nothing else) are blue.
+        var line = AllPoints(lightBefore).Where(p => Pixel(lightBefore, p.X, p.Y) != Pixel(lightAfter, p.X, p.Y)).ToHashSet();
+        Assert.True(line.Count > 1000, $"only {line.Count} pixels of the line in the tile");
+        var changed = AllPoints(marked).Where(p => Pixel(plain, p.X, p.Y) != Pixel(marked, p.X, p.Y)).ToList();
+        Assert.All(changed, p => Assert.Equal(color, Pixel(marked, p.X, p.Y)));
+        Assert.All(line, p => Assert.Equal(color, Pixel(marked, p.X, p.Y)));
+    }
+
+    /// <summary>A tile of about 400 x 6 pt around the line of a markup over <paramref name="rect"/>.</summary>
+    private static PixelRect TileOf(PageRect rect, AnnotationKind kind, double scale)
+    {
+        var centre = kind == AnnotationKind.Underline ? rect.Bottom - 1 : (rect.Top + rect.Bottom) / 2;
+        var x = (int)Math.Floor(rect.Left * scale) + 4;
+        var y = (int)Math.Floor((centre - 3) * scale);
+        return new PixelRect(x, y, Math.Min(512, (int)(rect.Width * scale) - 8), (int)Math.Ceiling(6 * scale));
+    }
+
+    /// <summary>Reads the markups of page 1 of a file as a dark render would (on the PDFium thread).</summary>
+    private static Task<DarkMarkupPaint> ReadPaintAsync(string path)
+    {
+        var thread = PdfiumThread.Shared;
+        return thread.InvokeAsync(
+            () =>
+            {
+                using var document = PdfiumDocument.Open(thread, path, null);
+                using var page = document.LoadPage(0);
+                return PdfiumDarkMarkups.Read(page, new PdfiumPageColors(PageThemeColors.DarkBackground, PageThemeColors.DarkForeground));
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>A form XObject (an appearance stream) with <paramref name="content"/>.</summary>
+    private static string Form(string bbox, string content) =>
+        $"<< /Type /XObject /Subtype /Form /BBox [{bbox}] /Length {content.Length} >>\nstream\n{content}\nendstream";
+
+    private static FsQuadPointsF Quad(float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4) =>
+        new() { X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, X3 = x3, Y3 = y3, X4 = x4, Y4 = y4 };
+
+    [Fact]
     public void OverlayMeetsContrastOnTheDarkPage()
     {
         // Lines: at least 3:1 against the dark ground (WCAG 2.2, non-text contrast), a colour too dark is lightened towards
@@ -403,15 +588,16 @@ public sealed class DarkPageRenderTests
         }
     }
 
-    /// <summary>The pixels a horizontal 1 pt line centred on <paramref name="centre"/> touches (at least one pixel high).</summary>
+    /// <summary>The pixels a horizontal 1 pt line centred on <paramref name="centre"/> touches (at least one pixel high, edges moved out by <see cref="PdfiumDarkMarkups.EdgeSlack"/>).</summary>
     private static PixelBand Band(double left, double right, double centre, double scale)
     {
         var half = Math.Max(0.5 * scale, 0.5);
+        const double Slack = PdfiumDarkMarkups.EdgeSlack;
         return new PixelBand(
-            (int)Math.Floor(left * scale),
-            (int)Math.Floor((centre * scale) - half),
-            (int)Math.Ceiling(right * scale),
-            (int)Math.Ceiling((centre * scale) + half));
+            (int)Math.Floor((left * scale) - Slack),
+            (int)Math.Floor((centre * scale) - half - Slack),
+            (int)Math.Ceiling((right * scale) + Slack),
+            (int)Math.Ceiling((centre * scale) + half + Slack));
     }
 
     private static uint Rgb(AnnotationColor color) => 0xFF000000u | ((uint)color.R << 16) | ((uint)color.G << 8) | color.B;

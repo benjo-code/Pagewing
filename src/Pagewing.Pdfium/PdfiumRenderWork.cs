@@ -56,7 +56,7 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
     private readonly int flags;
     private readonly bool recoloured;
     private readonly long sliceTicks;
-    private readonly DarkMarkupPaint? markups;
+    private DarkMarkupPaint? markups;
     private readonly PdfiumPageColors? colors;
     private BitmapHandle? bitmap;
     private byte[]? pixels;
@@ -121,8 +121,8 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
             if (colors is { } markupColors && annotations)
             {
                 // Read before the render starts, so PDFium's render state of the page is never touched in between.
-                markups = PdfiumDarkMarkups.Read(page, markupColors);
                 document.CountDarkMarkupScan();
+                markups = ReadMarkups(document, page, markupColors);
             }
 
             stride = width * BytesPerPixel;
@@ -345,18 +345,43 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
             return;
         }
 
+        markups = null;
         var bitmapWidth = width + overlap;
-        PdfiumDarkMarkups.Apply(
-            paint,
-            colors!.Value,
-            pixels.AsSpan(0, bitmapWidth * BytesPerPixel * height),
-            bitmapWidth,
-            height,
-            bitmapWidth * BytesPerPixel,
-            pageWidth / page.Width,
-            pageHeight / page.Height,
-            startX,
-            startY);
+        try
+        {
+            PdfiumDarkMarkups.Apply(
+                paint,
+                colors!.Value,
+                pixels.AsSpan(0, bitmapWidth * BytesPerPixel * height),
+                bitmapWidth,
+                height,
+                bitmapWidth * BytesPerPixel,
+                pageWidth / page.Width,
+                pageHeight / page.Height,
+                startX,
+                startY);
+        }
+        catch (Exception)
+        {
+            // The markups are an addition: whatever goes wrong, the dark page itself is shown. Apply allocates nothing
+            // and writes pixel by pixel; what it painted before the failure stays.
+        }
+    }
+
+    /// <summary>
+    /// Reads the markups for the dark page; any failure (also running out of memory on a hostile page) drops them, and the
+    /// page renders dark as PDFium draws it.
+    /// </summary>
+    private static DarkMarkupPaint? ReadMarkups(PdfiumDocument document, PdfiumPage page, PdfiumPageColors colors)
+    {
+        try
+        {
+            return (document.DarkMarkupReader ?? PdfiumDarkMarkups.Read)(page, colors);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>Moves the rows together in place so the overlap columns are gone and the stride is the tile's.</summary>

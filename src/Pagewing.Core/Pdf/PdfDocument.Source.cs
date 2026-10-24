@@ -1,5 +1,6 @@
 using Microsoft.Win32.SafeHandles;
 using Pagewing.Core.Saving;
+using Pagewing.Pdfium;
 
 namespace Pagewing.Core.Pdf;
 
@@ -27,6 +28,10 @@ public sealed partial class PdfDocument
 
     /// <summary>Gets how often a dark render read the markups of a page (for tests; see <c>PdfiumDocument.DarkMarkupScans</c>).</summary>
     internal int DarkMarkupScans => document.DarkMarkupScans;
+
+    /// <summary>Replaces what reads the markups of a dark render (tests); runs on the PDFium thread.</summary>
+    internal Task ReplaceDarkMarkupReaderAsync(Func<PdfiumPage, PdfiumPageColors, DarkMarkupPaint>? reader) =>
+        document.Thread.InvokeAsync(() => document.DarkMarkupReader = reader);
 
     /// <summary>
     /// Gets the stamp of the file PDFium reads from, taken through its handle when the document was opened: the same

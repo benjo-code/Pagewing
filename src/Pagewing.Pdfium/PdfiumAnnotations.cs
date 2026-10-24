@@ -767,7 +767,7 @@ internal static unsafe class PdfiumAnnotations
     /// <c>/C</c> through <c>FPDFAnnot_GetColor</c>, which fails for an annotation with an appearance; then the colour
     /// its appearance paints with. <see langword="null"/> without <c>/C</c>.
     /// </summary>
-    internal static (byte R, byte G, byte B)? ReadColor(nint annotation, int subtype)
+    private static (byte R, byte G, byte B)? ReadColor(nint annotation, int subtype)
     {
         if (!HasKey(annotation, "C\0"u8))
         {
@@ -799,6 +799,47 @@ internal static unsafe class PdfiumAnnotations
         }
 
         var text = buffer.AsSpan(0, buffer.Length - 1);
+        return ColorFromAppearance(text[..Math.Min(text.Length, AppearanceScanLength)], subtype == FpdfConstants.AnnotHighlight);
+    }
+
+    /// <summary>
+    /// Like <see cref="ReadColor"/>, but decodes the appearance at most once (into <paramref name="scratch"/>, made on first
+    /// use and kept by the caller for the next annotation) and charges the bytes PDFium reports to
+    /// <paramref name="appearanceBudget"/>. Without budget left the appearance is not looked at (<see langword="null"/>).
+    /// </summary>
+    internal static (byte R, byte G, byte B)? ReadColor(nint annotation, int subtype, ref char[]? scratch, ref long appearanceBudget)
+    {
+        if (!HasKey(annotation, "C\0"u8))
+        {
+            return null;
+        }
+
+        uint r, g, b, a;
+        if (Fpdf.FPDFAnnot_GetColor(annotation, 0, &r, &g, &b, &a) != 0)
+        {
+            return ((byte)Math.Min(r, 255), (byte)Math.Min(g, 255), (byte)Math.Min(b, 255));
+        }
+
+        if (appearanceBudget <= 0)
+        {
+            return null;
+        }
+
+        // One call: PDFium copies the string only when it fits, and reports its length either way.
+        scratch ??= new char[MaxAppearanceBytes / 2];
+        nuint length;
+        fixed (char* pointer = scratch)
+        {
+            length = Fpdf.FPDFAnnot_GetAP(annotation, FpdfConstants.AnnotAppearanceNormal, (ushort*)pointer, new CULong((nuint)(scratch.Length * 2))).Value;
+        }
+
+        appearanceBudget -= (long)Math.Min((ulong)length, long.MaxValue);
+        if (length <= 2 || length > (nuint)(scratch.Length * 2))
+        {
+            return null;
+        }
+
+        var text = scratch.AsSpan(0, ((int)length / 2) - 1);
         return ColorFromAppearance(text[..Math.Min(text.Length, AppearanceScanLength)], subtype == FpdfConstants.AnnotHighlight);
     }
 
