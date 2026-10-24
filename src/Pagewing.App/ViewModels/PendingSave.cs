@@ -264,7 +264,7 @@ public sealed class PendingSave
         }
     }
 
-    /// <summary>The question before a tab with unsaved changes closes (<see cref="MainViewModel.ResolveUnsavedChangesAsync"/>).</summary>
+    /// <summary>The question before a tab with unsaved changes closes (<see cref="MainViewModel.ResolveUnsavedChangesAsync()"/>).</summary>
     internal static PendingSave SaveChanges(TabViewModel tab, string path) =>
         new(PendingSaveKind.SaveChanges, tab, path, [PendingSaveChoice.Save, PendingSaveChoice.DontSave, PendingSaveChoice.Cancel], PendingSaveChoice.Save);
 

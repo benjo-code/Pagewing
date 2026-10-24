@@ -54,7 +54,12 @@ public sealed partial class UpdateWindow : Window
 
         if (For(coordinator) is { } open)
         {
-            open.Activate();
+            // Out of the way while a window asks about unsaved changes (it comes back by itself afterwards).
+            if (open.IsVisible)
+            {
+                open.Activate();
+            }
+
             return open;
         }
 
@@ -183,6 +188,26 @@ public sealed partial class UpdateWindow : Window
             // Cancelled, or the failure was closed: back to the offer, the window goes.
             _closingByFlow = true;
             Close();
+        }
+        else if (e.PropertyName == nameof(UpdateViewModel.IsAwaitingAnswer))
+        {
+            // Right before the installer the windows are asked about unsaved changes: the card lies in the middle of a
+            // main window, where this window (in front of its owner) would cover it. It steps aside until the answer.
+            if (viewModel.IsAwaitingAnswer)
+            {
+                Hide();
+            }
+            else if (!IsVisible && viewModel.IsInFlow)
+            {
+                if (Owner is Window owner)
+                {
+                    Show(owner);
+                }
+                else
+                {
+                    Show();
+                }
+            }
         }
         else if (e.PropertyName == nameof(UpdateViewModel.OffersDownloadPage) && viewModel.IsFailed)
         {

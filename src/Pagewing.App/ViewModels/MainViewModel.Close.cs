@@ -4,7 +4,7 @@ namespace Pagewing.App.ViewModels;
 
 /// <summary>
 /// Closing with unsaved changes: before a tab with changes closes, and before the window closes with such tabs, the card
-/// "Save the changes?" asks for each of them in turn (<see cref="ResolveUnsavedChangesAsync"/>); a tab whose changes cannot
+/// "Save the changes?" asks for each of them in turn (<see cref="ResolveUnsavedChangesAsync()"/>); a tab whose changes cannot
 /// be saved warns that they are lost instead (<see cref="PendingSaveKind.DiscardChanges"/>). "Cancel" keeps everything open.
 /// </summary>
 public sealed partial class MainViewModel
@@ -15,7 +15,7 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Gets whether a tab of this window has unsaved changes, so closing the window asks first
-    /// (<see cref="ResolveUnsavedChangesAsync"/>).
+    /// (<see cref="ResolveUnsavedChangesAsync()"/>).
     /// </summary>
     public bool HasUnsavedChanges => !_disposed && Tabs.Any(tab => tab.AsksBeforeClosing);
 
@@ -47,25 +47,42 @@ public sealed partial class MainViewModel
     /// <see langword="true"/> when every tab was saved or its changes may go; <see langword="false"/> as soon as the user
     /// cancels, a save fails or is cancelled, another flow asks already, or the window went meanwhile.
     /// </returns>
-    public Task<bool> ResolveUnsavedChangesAsync() => ResolveAsync(null);
+    public Task<bool> ResolveUnsavedChangesAsync() => ResolveAsync(null, null);
+
+    /// <summary>
+    /// <see cref="ResolveUnsavedChangesAsync()"/> with the "Don't save" answers of a flow over several windows (the update,
+    /// <see cref="Services.Workspace"/>): a tab answered in it before and unchanged since is not asked again, and the answers
+    /// given here are added to <paramref name="answers"/> (the tab and the version of its history).
+    /// </summary>
+    internal Task<bool> ResolveUnsavedChangesAsync(Dictionary<TabViewModel, int> answers) => ResolveAsync(null, answers);
+
+    /// <summary>
+    /// Gets whether <see cref="ResolveUnsavedChangesAsync(Dictionary{TabViewModel, int})"/> has something to ask about with
+    /// <paramref name="answers"/>: a tab with unsaved changes and no "Don't save" for its present version, or a change on its way.
+    /// </summary>
+    internal bool HasUnansweredChanges(IReadOnlyDictionary<TabViewModel, int> answers) =>
+        !_disposed && (Tabs.Any(tab => tab.HasEditsInFlight) || NextToAsk(null, answers) is not null);
+
+    /// <summary>Brings the window to the front (and out of the task bar when it is minimized).</summary>
+    internal void BringToFront() => ActivationRequested?.Invoke();
 
     /// <summary>A tab with unsaved changes is to close: asks first (<see cref="ResolveAsync"/>), then closes it unless cancelled.</summary>
     private async Task CloseAfterAskingAsync(TabViewModel tab)
     {
-        if (await ResolveAsync(tab))
+        if (await ResolveAsync(tab, null))
         {
             CloseTabNow(tab);
         }
     }
 
     /// <summary>
-    /// The flow of <see cref="ResolveUnsavedChangesAsync"/>, for every tab with changes or only <paramref name="only"/>. It
+    /// The flow of <see cref="ResolveUnsavedChangesAsync()"/>, for every tab with changes or only <paramref name="only"/>. It
     /// asks again and again until a pass finds no tab left to ask about: the other tabs stay usable meanwhile, so a tab
     /// may change after its answer, or come from another window. A "Don't save" counts only for the version of the tab's
     /// history it was given for (<see cref="TabViewModel.EditVersion"/>); a later change asks again. Each round asks the
     /// user, and "Cancel" ends it, so it ends.
     /// </summary>
-    private async Task<bool> ResolveAsync(TabViewModel? only)
+    private async Task<bool> ResolveAsync(TabViewModel? only, Dictionary<TabViewModel, int>? answers)
     {
         if (_disposed || _resolving)
         {
@@ -73,7 +90,7 @@ public sealed partial class MainViewModel
         }
 
         _resolving = true;
-        var discarded = new Dictionary<TabViewModel, int>();
+        var discarded = answers ?? [];
         try
         {
             while (!_disposed)
@@ -125,7 +142,7 @@ public sealed partial class MainViewModel
     /// The next tab to ask about, the active one first, then from left to right: it has unsaved changes and no "Don't save"
     /// for its present version.
     /// </summary>
-    private TabViewModel? NextToAsk(TabViewModel? only, Dictionary<TabViewModel, int> discarded)
+    private TabViewModel? NextToAsk(TabViewModel? only, IReadOnlyDictionary<TabViewModel, int> discarded)
     {
         IEnumerable<TabViewModel> candidates = only is not null
             ? Tabs.Where(tab => ReferenceEquals(tab, only))

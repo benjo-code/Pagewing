@@ -762,6 +762,9 @@
   <data name="UpdateCardInstallText" xml:space="preserve">
     <value>Pagewing lädt das Update, installiert es und öffnet danach Ihre Tabs wieder.</value>
   </data>
+  <data name="UpdateAwaitingAnswer" xml:space="preserve">
+    <value>Wartet auf Ihre Antwort …</value>
+  </data>
   <data name="UpdateInstall" xml:space="preserve">
     <value>Installieren</value>
   </data>

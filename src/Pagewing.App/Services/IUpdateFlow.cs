@@ -31,6 +31,12 @@ public interface IUpdateFlow
     /// <summary>Gets whether trying a failed installation again can help (<see cref="RetryAsync"/>).</summary>
     bool CanRetry { get; }
 
+    /// <summary>
+    /// Gets whether the installation waits for the user's answer about unsaved changes before its next step
+    /// (<see cref="UpdateCoordinator.IsAwaitingAnswer"/>); "Install" starts nothing meanwhile.
+    /// </summary>
+    bool IsAwaitingAnswer { get; }
+
     /// <summary>"Install": starts the installation of the version on offer (once); never throws.</summary>
     Task BeginInstallAsync();
 

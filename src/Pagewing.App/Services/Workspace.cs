@@ -34,6 +34,9 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private readonly UpdateStartGate _updateStartGate = new();
     private UpdateCoordinator? _updateCoordinator;
     private bool _updateCoordinatorMade;
+
+    // The answers of the questions of the update about unsaved changes, from "Install" to the installer.
+    private Dictionary<TabViewModel, int>? _updateAnswers;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
     private readonly List<MainViewModel> _activationOrder = [];
@@ -422,6 +425,73 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         _updateCoordinator?.Dispose();
     }
 
+    /// <summary>
+    /// Gets the coordinator all windows share, or <see langword="null"/> without an updater. Reading it makes it (tests ask
+    /// for it before a window needs it) and lets the open windows follow it.
+    /// </summary>
+    internal UpdateCoordinator? UpdateCoordinator
+    {
+        get
+        {
+            var coordinator = GetUpdateCoordinator();
+            if (coordinator is not null)
+            {
+                _updateStartGate.Publish(coordinator);
+            }
+
+            return coordinator;
+        }
+    }
+
+    /// <summary>
+    /// "Install" of the update, before anything of it starts (<see cref="UpdateCoordinator.BeforeInstall"/>): asks every
+    /// window with unsaved changes in turn (<see cref="ResolveUnsavedChangesAsync"/>). The answers count for the question
+    /// before the installer of the same installation too.
+    /// </summary>
+    internal Task<bool> BeforeUpdateInstallAsync()
+    {
+        _updateAnswers = [];
+        return ResolveUnsavedChangesAsync(_updateAnswers);
+    }
+
+    /// <summary>
+    /// Right before the installer of the update takes over and ends the app (<see cref="UpdateCoordinator.BeforeApply"/>):
+    /// asks again about what changed since the answers of "Install" (a tab edited during the download).
+    /// </summary>
+    internal Task<bool> BeforeUpdateApplyAsync() => ResolveUnsavedChangesAsync(_updateAnswers ??= []);
+
+    /// <summary>
+    /// Asks every window that has unsaved changes, one after another, with the card of closing
+    /// (<see cref="MainViewModel.ResolveUnsavedChangesAsync(Dictionary{TabViewModel, int})"/>): the window that was active
+    /// first, then the others from the oldest; each comes to the front while it asks, and a window without changes is not
+    /// asked. Then the windows are looked at again until none is left to ask about (the user may change a tab of another
+    /// window while one asks). A window closed meanwhile is skipped. Completes at once when there is nothing to ask.
+    /// </summary>
+    /// <param name="answers">The "Don't save" answers so far (tab and version of its history), extended here.</param>
+    /// <returns><see langword="false"/> as soon as a window answers "Cancel" (or its save fails or another flow asks there).</returns>
+    internal async Task<bool> ResolveUnsavedChangesAsync(Dictionary<TabViewModel, int> answers)
+    {
+        ArgumentNullException.ThrowIfNull(answers);
+        var first = ActiveWindow;
+        while (NextWindowToAsk(first, answers) is { } window)
+        {
+            window.BringToFront();
+            if (!await window.ResolveUnsavedChangesAsync(answers).ConfigureAwait(true) && !window.IsDisposed)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>The next window with something to ask about: <paramref name="first"/>, then the open windows from the oldest.</summary>
+    private MainViewModel? NextWindowToAsk(MainViewModel? first, Dictionary<TabViewModel, int> answers)
+    {
+        var order = first is not null && _windows.Contains(first) ? _windows.Where(window => !ReferenceEquals(window, first)).Prepend(first) : _windows;
+        return order.FirstOrDefault(window => window.HasUnansweredChanges(answers));
+    }
+
     /// <summary>The coordinator all windows share, made by the factory the first time a window needs it.</summary>
     private UpdateCoordinator? GetUpdateCoordinator()
     {
@@ -429,6 +499,12 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         {
             _updateCoordinator = _updateFactory?.Invoke();
             _updateCoordinatorMade = true;
+            if (_updateCoordinator is { } coordinator)
+            {
+                // Pagewing ends after the installer took over: nothing unsaved may go without the user's answer.
+                coordinator.BeforeInstall = BeforeUpdateInstallAsync;
+                coordinator.BeforeApply = BeforeUpdateApplyAsync;
+            }
         }
 
         return _updateCoordinator;

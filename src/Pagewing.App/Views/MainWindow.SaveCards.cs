@@ -9,7 +9,7 @@ namespace Pagewing.App.Views;
 /// The cards of the save flow (<see cref="MainViewModel.PendingSave"/>): shown over the document area of the tab the question
 /// is about, while that tab is the active one (other tabs stay usable; the question waits until its tab is shown again).
 /// Each card is made when its first question comes, so nothing of it is built in the startup path. Closing the window with
-/// unsaved changes asks first (<see cref="MainViewModel.ResolveUnsavedChangesAsync"/>).
+/// unsaved changes asks first (<see cref="MainViewModel.ResolveUnsavedChangesAsync()"/>).
 /// </summary>
 public sealed partial class MainWindow
 {

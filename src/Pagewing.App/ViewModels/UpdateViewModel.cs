@@ -29,6 +29,9 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         nameof(IsInFlow), nameof(IsFailed), nameof(IsLocked), nameof(Heading), nameof(Subtitle), nameof(Steps),
         nameof(Percent), nameof(IsProgressIndeterminate), nameof(ShowsProgress), nameof(PercentText), nameof(SizeText),
         nameof(ShowsSize), nameof(FailureText), nameof(CanCancel), nameof(CanRetry), nameof(OffersDownloadPage),
+
+        // After IsInFlow: a wait that ends with the end of the flow closes the progress window before it would show again.
+        nameof(IsAwaitingAnswer), nameof(Text),
     ];
 
     private readonly IUpdateFlow _coordinator;
@@ -41,6 +44,10 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     private UpdateNote _note;
     private ITimer? _noteTimer;
     private int _noteNumber;
+    private bool _isAwaitingAnswer;
+
+    // "Install" was chosen here while the question about unsaved changes waits: the progress window shows once it starts.
+    private bool _progressWindowWanted;
 
     /// <summary>Creates the view model and starts following <paramref name="coordinator"/> until <see cref="Dispose"/>.</summary>
     /// <param name="coordinator">The update check of the process (<see cref="UpdateCoordinator"/>), or the installation of the helper.</param>
@@ -56,12 +63,13 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         _requestLink = requestLink;
         _clock = clock ?? TimeProvider.System;
         _state = coordinator.State;
+        _isAwaitingAnswer = coordinator.IsAwaitingAnswer;
         _steps = MakeSteps();
         ToggleCardCommand = new RelayCommand(ToggleCard);
         LaterCommand = new RelayCommand(() => IsCardOpen = false);
         CloseNoteCommand = new RelayCommand(CloseNote);
         DismissCardCommand = new RelayCommand(DismissCard);
-        InstallCommand = new RelayCommand(Install);
+        InstallCommand = new RelayCommand(Install, () => !_isAwaitingAnswer);
         OpenDownloadPageCommand = new RelayCommand(OpenDownloadPage);
         CancelCommand = new RelayCommand(coordinator.CancelInstall);
         RetryCommand = new RelayCommand(() => _ = coordinator.RetryAsync());
@@ -94,8 +102,10 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Gets the text of the card: the running version (<see cref="AppInfo.Version"/>, as the About card shows it), then what
     /// "Install" does or, for a form that cannot update itself, the hint that points to the download page.
+    /// While the installation waits for the answer about unsaved changes, it says so instead.
     /// </summary>
-    public string Text => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.UpdateCardHave), AppInfo.Version) + " " + (CanInstall ? Strings.UpdateCardInstallText : Hint);
+    public string Text => _isAwaitingAnswer ? Strings.UpdateAwaitingAnswer
+        : string.Format(Strings.Culture, CompositeFormat.Parse(Strings.UpdateCardHave), AppInfo.Version) + " " + (CanInstall ? Strings.UpdateCardInstallText : Hint);
 
     /// <summary>Gets or sets whether the card of this window is open; it closes by itself when the offer goes.</summary>
     public bool IsCardOpen
@@ -186,6 +196,12 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
 
     /// <summary>Gets whether an installation runs or waits with its failure: the time of the progress window.</summary>
     public bool IsInFlow => IsFlowStage(_state.Stage);
+
+    /// <summary>
+    /// Gets whether the installation waits for the answer about unsaved changes (the card of a window asks, before the
+    /// installation starts or right before the installer): the card says so and "Install" does nothing meanwhile.
+    /// </summary>
+    public bool IsAwaitingAnswer => _isAwaitingAnswer;
 
     /// <summary>Gets whether the installation failed.</summary>
     public bool IsFailed => _state.Stage == UpdateStage.Failed;
@@ -355,7 +371,13 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         }
 
         var old = _state;
+        var wasAwaiting = _isAwaitingAnswer;
         _state = _coordinator.State;
+        _isAwaitingAnswer = _coordinator.IsAwaitingAnswer;
+        if (wasAwaiting != _isAwaitingAnswer && InstallCommand is RelayCommand install)
+        {
+            install.RaiseCanExecuteChanged();
+        }
         if (old.Stage != _state.Stage)
         {
             _steps = MakeSteps();
@@ -378,6 +400,17 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         if (!ShowButton || IsInFlow)
         {
             IsCardOpen = false;
+        }
+
+        // "Install" of this window waited for the answer: the installation has started now (its window shows), or it was
+        // cancelled (nothing shows).
+        if (_progressWindowWanted && !_isAwaitingAnswer)
+        {
+            _progressWindowWanted = false;
+            if (IsInFlow)
+            {
+                ProgressWindowRequested?.Invoke();
+            }
         }
     }
 
@@ -425,7 +458,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
 
     private void Install()
     {
-        if (!CanInstall)
+        if (!CanInstall || _isAwaitingAnswer)
         {
             return;
         }
@@ -435,6 +468,11 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         if (IsInFlow)
         {
             ProgressWindowRequested?.Invoke();
+        }
+        else if (_isAwaitingAnswer)
+        {
+            // The windows are asked about unsaved changes first; the progress window comes when the installation starts.
+            _progressWindowWanted = true;
         }
     }
 
