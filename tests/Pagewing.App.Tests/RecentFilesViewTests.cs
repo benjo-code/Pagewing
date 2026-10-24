@@ -628,16 +628,24 @@ public sealed class RecentFilesViewTests : IDisposable
         Assert.False(Directory.Exists(_directory));
     }
 
-    [AvaloniaFact]
-    public async Task TheHistoryIsNotReadInTheStartPath()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TheHistoryIsNotReadInTheStartPath(bool openBeforeTheTab)
     {
         WriteHistory(Full("hello_world.pdf"));
         var recent = RecentFilesService.Load(_directory);
         Assert.Equal(0, recent.Reads);
 
-        // As Program.Main and the app do it: the session opens the file, the window adopts the tab.
+        // As Program.Main and the app do it: the session opens the file, the window adopts the tab. The open runs on
+        // the PDFium thread and may be ready before the tab exists (a fast file, a slow start of the window).
         var session = new ViewerSession(new PdfEngine());
-        _ = session.OpenAsync(TestData.Pdf("text-dense.pdf"));
+        var opening = session.OpenAsync(TestData.Pdf("text-dense.pdf"));
+        if (openBeforeTheTab)
+        {
+            await opening;
+        }
+
         var tab = new TabViewModel(session);
         int? readsAtReady = null;
         int? readsAtSharpPage = null;
@@ -652,6 +660,14 @@ public sealed class RecentFilesViewTests : IDisposable
                 readsAtSharpPage ??= recent.Reads;
             }
         };
+
+        // A tab made for a ready session is ready from its constructor on and raises no change of its state.
+        Assert.True(tab.IsReady || !openBeforeTheTab);
+        if (tab.IsReady)
+        {
+            readsAtReady = recent.Reads;
+        }
+
         var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker(), UserSettings.Detached(), recent) { IsWindowsTitleBar = true };
         _cleanup.Add(viewModel);
         viewModel.AttachTab(tab);
