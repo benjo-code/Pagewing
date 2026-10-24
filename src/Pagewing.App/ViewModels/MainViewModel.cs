@@ -1146,9 +1146,35 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             DispatcherPriority.Background);
     }
 
+    /// <summary>
+    /// Closes <paramref name="tab"/> (its close button, Ctrl+W, the tab menu): a tab with unsaved changes asks first
+    /// (<see cref="CloseAfterAskingAsync"/>); while a card of this window asks about that tab, or the window asks before
+    /// closing, a further request for it is ignored.
+    /// </summary>
     private void CloseTab(TabViewModel? tab)
     {
         if (tab is null || Tabs.IndexOf(tab) < 0)
+        {
+            return;
+        }
+
+        if (tab.AsksBeforeClosing)
+        {
+            if (!_resolving && !(_pendingSave is { } question && ReferenceEquals(question.Tab, tab)))
+            {
+                _ = CloseAfterAskingAsync(tab);
+            }
+
+            return;
+        }
+
+        CloseTabNow(tab);
+    }
+
+    /// <summary>Closes <paramref name="tab"/> without asking (its changes, if any, were saved or discarded by the user).</summary>
+    private void CloseTabNow(TabViewModel tab)
+    {
+        if (Tabs.IndexOf(tab) < 0)
         {
             return;
         }

@@ -17,6 +17,9 @@ public sealed partial class MainViewModel
     private TabViewModel? _savingTab;
     private CancellationTokenSource? _saveCancellation;
 
+    // The save that runs or ran last (the close flow waits for one that still runs).
+    private Task<bool>? _saveRun;
+
     /// <summary>
     /// Gets the question the save flow waits for (the signature, another file at the path, a failure), or
     /// <see langword="null"/>. At most one at a time; it is answered on its card (<see cref="PendingSave.Resolve"/>), and
@@ -65,15 +68,23 @@ public sealed partial class MainViewModel
     /// its changes until a save succeeded; then it is clean and shows the written file, where it was.
     /// </summary>
     /// <returns><see langword="true"/> when a file was written.</returns>
-    internal async Task<bool> SaveTabAsync(TabViewModel tab, bool saveAs)
+    /// <remarks>Nothing happens while another question of the window waits (the one before closing, for example).</remarks>
+    internal Task<bool> SaveTabAsync(TabViewModel tab, bool saveAs)
     {
         ArgumentNullException.ThrowIfNull(tab);
-        if (_disposed || _savingTab is not null || Tabs.IndexOf(tab) < 0 || !(saveAs ? tab.CanSaveAs() : tab.CanSave())
-            || tab.Document is not { } document || tab.FullPath is not { } path)
+        if (_disposed || _savingTab is not null || _pendingSave is not null || Tabs.IndexOf(tab) < 0
+            || !(saveAs ? tab.CanSaveAs() : tab.CanSave()) || tab.Document is not { } document || tab.FullPath is not { } path)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
+        var run = SaveTabCoreAsync(tab, document, path, saveAs);
+        _saveRun = run;
+        return run;
+    }
+
+    private async Task<bool> SaveTabCoreAsync(TabViewModel tab, PdfDocument document, string path, bool saveAs)
+    {
         using var cancellation = new CancellationTokenSource();
         _savingTab = tab;
         _saveCancellation = cancellation;
@@ -200,6 +211,12 @@ public sealed partial class MainViewModel
         }
         catch (SaveFailureException ex) when (ex.Reason != SaveFailureReason.Canceled)
         {
+            if (ex.Reason is SaveFailureReason.SourceModified or SaveFailureReason.EncryptedNotSupported)
+            {
+                // Every further save fails the same way: closing the tab warns that the changes are lost.
+                tab.UnsaveableReason = ex.Reason;
+            }
+
             return (false, await AskAsync(PendingSave.SaveError(tab, target, ex.Reason), cancellationToken));
         }
         catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or IOException or UnauthorizedAccessException
@@ -215,6 +232,7 @@ public sealed partial class MainViewModel
 
         // Back on the UI thread: the tab shows the written file now (path and title after "Save as") and is clean.
         tab.SyncDocumentFromSession();
+        tab.UnsaveableReason = null;
         tab.SyncFromEditor();
         return (true, null);
     }
@@ -253,6 +271,7 @@ public sealed partial class MainViewModel
     /// <summary>Shows <paramref name="question"/> and waits for its answer; the tab or window going (or a cancel) answers "Cancel".</summary>
     private async Task<PendingSaveChoice> AskAsync(PendingSave question, CancellationToken cancellationToken)
     {
+        question.Clock = Clock;
         PendingSave = question;
         try
         {

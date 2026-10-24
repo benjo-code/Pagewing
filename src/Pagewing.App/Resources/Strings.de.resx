@@ -972,4 +972,16 @@
   <data name="SaveChoiceCancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>
+  <data name="SaveChoiceDiscard" xml:space="preserve">
+    <value>Schließen und Änderungen verwerfen</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>Die Änderungen an „{0}“ lassen sich nicht speichern</value>
+  </data>
+  <data name="DiscardChangesSourceModified" xml:space="preserve">
+    <value>Die Datei wurde von einem anderen Programm verändert. Ihre Änderungen können nicht gespeichert werden und gehen beim Schließen verloren.</value>
+  </data>
+  <data name="DiscardChangesEncrypted" xml:space="preserve">
+    <value>Pagewing kann Änderungen an diesem verschlüsselten Dokument nicht speichern. Sie gehen beim Schließen verloren.</value>
+  </data>
 </root>

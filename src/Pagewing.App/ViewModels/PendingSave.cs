@@ -1,5 +1,6 @@
 using System.Text;
 using System.Windows.Input;
+using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
@@ -35,6 +36,13 @@ public enum PendingSaveKind
     /// name cannot help (<see cref="PendingSave.SaveError"/>). The tab keeps its document and its changes.
     /// </summary>
     SaveError,
+
+    /// <summary>
+    /// The tab with unsaved changes is about to close, but its changes cannot be saved any more (another program changed
+    /// the file, or an encryption the written file would lose: <see cref="PendingSave.Reason"/>): closing discards them.
+    /// "Close and discard changes" and "Cancel" (default); no "Save" that could not work.
+    /// </summary>
+    DiscardChanges,
 }
 
 /// <summary>An answer to a <see cref="PendingSave"/>.</summary>
@@ -57,18 +65,34 @@ public enum PendingSaveChoice
 
     /// <summary>Replace the other file at the path of the original (only <see cref="PendingSaveKind.FileChanged"/>).</summary>
     Overwrite,
+
+    /// <summary>Close and discard the changes that cannot be saved (only <see cref="PendingSaveKind.DiscardChanges"/>).</summary>
+    Discard,
 }
 
 /// <summary>
 /// A question of the save flow of a window (<see cref="MainViewModel.PendingSave"/>) that waits for the user: its kind, the
 /// file, the reason or the signature level, the choices with the default, and the texts of its card (design system 7.8:
 /// a card in the document area, not a modal dialog; the views come with the cards). The flow awaits <see cref="Choice"/>;
-/// the card answers with <see cref="ResolveCommand"/> or <see cref="Resolve"/>. Each question is answered once; the window
-/// answers <see cref="PendingSaveChoice.Cancel"/> for it when its tab closes or the window goes. UI thread only.
+/// the card answers with <see cref="Choose"/> (its buttons, which keep to the lock of the dangerous choices), the flow and
+/// tests with <see cref="ResolveCommand"/> or <see cref="Resolve"/>. Each question is answered once; the window answers
+/// <see cref="PendingSaveChoice.Cancel"/> for it when its tab closes or the window goes. UI thread only.
 /// </summary>
+/// <remarks>
+/// A choice that loses or overwrites something (<see cref="IsDangerous"/>: "Don't save", "Save anyway", "Overwrite",
+/// "Close and discard changes") is never the default and does nothing for <see cref="ArmingDelay"/> after the card was laid
+/// out (<see cref="OnCardShown"/>), like "Open" of the link card: a second Enter or the second click of a double click
+/// never lands on it.
+/// </remarks>
 public sealed class PendingSave
 {
     private readonly TaskCompletionSource<PendingSaveChoice> _choice = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    // When the card was last laid out (Clock timestamp); none: no card shows the question now.
+    private long? _shownAt;
+
+    // Ends the lock of the dangerous choices visibly (raises ArmedChanged); made when the card is shown, never before.
+    private ITimer? _armingTimer;
 
     private PendingSave(
         PendingSaveKind kind,
@@ -113,10 +137,20 @@ public sealed class PendingSave
     /// <summary>Gets the answer that has the focus and Enter (one of <see cref="Choices"/>).</summary>
     public PendingSaveChoice DefaultChoice { get; }
 
+    /// <summary>How long after its card was laid out a dangerous choice stays without effect (the lock of the link card, 400 ms).</summary>
+    public static TimeSpan ArmingDelay => MainViewModel.LinkArmingDelay;
+
+    /// <summary>Gets or sets the clock (and timer) of <see cref="ArmingDelay"/>: the window's (<see cref="MainViewModel.Clock"/>).</summary>
+    internal TimeProvider Clock { get; set; } = TimeProvider.System;
+
+    /// <summary>Raised on the UI thread when <see cref="IsArmed"/> may have changed (the card was shown, the lock ended, the answer came).</summary>
+    public event Action? ArmedChanged;
+
     /// <summary>Gets the title of the card in the language of the interface.</summary>
     public string Title => Kind switch
     {
         PendingSaveKind.SaveChanges => Format(Strings.SaveChangesTitle, FileName),
+        PendingSaveKind.DiscardChanges => Format(Strings.DiscardChangesTitle, FileName),
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningTitle,
         PendingSaveKind.SignatureNote => Strings.SignatureNoteTitle,
         PendingSaveKind.FileChanged => Format(Strings.FileChangedTitle, FileName),
@@ -130,8 +164,18 @@ public sealed class PendingSave
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningText,
         PendingSaveKind.SignatureNote => Strings.SignatureNoteText,
         PendingSaveKind.FileChanged => Strings.FileChangedText,
+        PendingSaveKind.DiscardChanges => Reason == SaveFailureReason.EncryptedNotSupported
+            ? Strings.DiscardChangesEncrypted
+            : Strings.DiscardChangesSourceModified,
         _ => MessageOf(Reason),
     };
+
+    /// <summary>
+    /// Gets whether the card warns that something is lost or changed for good (the signature, another file, changes that
+    /// cannot be saved, a failure): it shows the warning symbol with its text, and screen readers announce the text.
+    /// </summary>
+    public bool IsWarning => Kind is PendingSaveKind.SignatureWarning or PendingSaveKind.FileChanged or PendingSaveKind.SaveError
+        or PendingSaveKind.DiscardChanges;
 
     /// <summary>Gets whether the question was answered.</summary>
     public bool IsResolved => _choice.Task.IsCompleted;
@@ -150,19 +194,81 @@ public sealed class PendingSave
         PendingSaveChoice.SaveAs => Strings.SaveChoiceSaveAs,
         PendingSaveChoice.SaveAnyway => Strings.SaveChoiceSaveAnyway,
         PendingSaveChoice.Overwrite => Strings.SaveChoiceOverwrite,
+        PendingSaveChoice.Discard => Strings.SaveChoiceDiscard,
         _ => Strings.SaveChoiceCancel,
     };
 
+    /// <summary>Gets whether <paramref name="choice"/> loses or overwrites something: never the default, locked at first (<see cref="ArmingDelay"/>).</summary>
+    public static bool IsDangerous(PendingSaveChoice choice) =>
+        choice is PendingSaveChoice.DontSave or PendingSaveChoice.SaveAnyway or PendingSaveChoice.Overwrite or PendingSaveChoice.Discard;
+
+    /// <summary>
+    /// Gets whether the card's button of <paramref name="choice"/> acts now: the question offers it and is not answered yet,
+    /// and for a dangerous choice <see cref="ArmingDelay"/> has passed since the card was laid out.
+    /// </summary>
+    public bool IsArmed(PendingSaveChoice choice) =>
+        !IsResolved && Choices.Contains(choice)
+        && (!IsDangerous(choice) || (_shownAt is { } shown && Clock.GetElapsedTime(shown) >= ArmingDelay));
+
+    /// <summary>A button of the card: answers with <paramref name="choice"/> while it is armed (<see cref="IsArmed"/>).</summary>
+    /// <returns><see langword="false"/> when the choice is locked, not offered, or the question was answered.</returns>
+    public bool Choose(PendingSaveChoice choice) => IsArmed(choice) && Resolve(choice);
+
+    /// <summary>
+    /// The card of this question has been laid out (UI thread): the lock of the dangerous choices starts now (again when the
+    /// card comes back after another tab was shown), and a one-shot timer ends it.
+    /// </summary>
+    internal void OnCardShown()
+    {
+        if (IsResolved)
+        {
+            return;
+        }
+
+        _shownAt = Clock.GetTimestamp();
+        StartArmingTimer();
+        ArmedChanged?.Invoke();
+    }
+
+    /// <summary>The card went (another tab is shown): the dangerous choices stay locked until it is laid out again.</summary>
+    internal void OnCardHidden()
+    {
+        _shownAt = null;
+        StopArmingTimer();
+    }
+
     /// <summary>Answers the question with <paramref name="choice"/>.</summary>
     /// <returns><see langword="false"/> when the question was answered already or does not offer <paramref name="choice"/>.</returns>
-    public bool Resolve(PendingSaveChoice choice) => Choices.Contains(choice) && _choice.TrySetResult(choice);
+    public bool Resolve(PendingSaveChoice choice)
+    {
+        if (!Choices.Contains(choice) || !_choice.TrySetResult(choice))
+        {
+            return false;
+        }
+
+        Answered();
+        return true;
+    }
 
     /// <summary>Answers <see cref="PendingSaveChoice.Cancel"/> (the tab or the window goes), whatever the card offers.</summary>
-    internal void Abandon() => _choice.TrySetResult(PendingSaveChoice.Cancel);
+    internal void Abandon()
+    {
+        if (_choice.TrySetResult(PendingSaveChoice.Cancel))
+        {
+            Answered();
+        }
+    }
 
-    /// <summary>The question before a tab with unsaved changes closes (the cards and the closing come with a later task).</summary>
+    /// <summary>The question before a tab with unsaved changes closes (<see cref="MainViewModel.ResolveUnsavedChangesAsync"/>).</summary>
     internal static PendingSave SaveChanges(TabViewModel tab, string path) =>
         new(PendingSaveKind.SaveChanges, tab, path, [PendingSaveChoice.Save, PendingSaveChoice.DontSave, PendingSaveChoice.Cancel], PendingSaveChoice.Save);
+
+    /// <summary>
+    /// The question before a tab closes whose changes cannot be saved (<see cref="TabViewModel.UnsaveableReason"/>): closing
+    /// discards them, so "Cancel" is the default and there is no "Save".
+    /// </summary>
+    internal static PendingSave DiscardChanges(TabViewModel tab, string path, SaveFailureReason reason) =>
+        new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, reason);
 
     internal static PendingSave SignatureWarning(TabViewModel tab, string path, DocMdpLevel level) =>
         new(PendingSaveKind.SignatureWarning, tab, path, [PendingSaveChoice.Cancel, PendingSaveChoice.SaveAs, PendingSaveChoice.SaveAnyway], PendingSaveChoice.Cancel, level: level);
@@ -194,6 +300,64 @@ public sealed class PendingSave
         SaveFailureReason.EncryptedNotSupported => Strings.SaveErrorEncrypted,
         _ => Strings.SaveErrorUnknown,
     };
+
+    private void Answered()
+    {
+        StopArmingTimer();
+        ArmedChanged?.Invoke();
+    }
+
+    private void StartArmingTimer()
+    {
+        StopArmingTimer();
+        if (_shownAt is not { } shown || !Choices.Any(IsDangerous))
+        {
+            return;
+        }
+
+        var remaining = ArmingDelay - Clock.GetElapsedTime(shown);
+        if (remaining > TimeSpan.Zero)
+        {
+            _armingTimer = Clock.CreateTimer(_ => PostArmed(), null, remaining, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    // The timer's thread (any): must never throw.
+    private void PostArmed()
+    {
+        try
+        {
+            Dispatcher.UIThread.Post(OnArmed);
+        }
+        catch (Exception)
+        {
+            // The dispatcher is shutting down: nobody sees the buttons any more.
+        }
+    }
+
+    private void OnArmed()
+    {
+        if (IsResolved || _shownAt is not { } shown)
+        {
+            return;
+        }
+
+        if (Clock.GetElapsedTime(shown) < ArmingDelay)
+        {
+            // The timer fired a little before the clock says the lock is over: wait for the rest.
+            StartArmingTimer();
+            return;
+        }
+
+        StopArmingTimer();
+        ArmedChanged?.Invoke();
+    }
+
+    private void StopArmingTimer()
+    {
+        _armingTimer?.Dispose();
+        _armingTimer = null;
+    }
 
     private static string Format(string format, string name) => string.Format(Strings.Culture, CompositeFormat.Parse(format), name);
 }

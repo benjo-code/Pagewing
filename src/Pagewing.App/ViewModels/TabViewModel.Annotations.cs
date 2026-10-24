@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.Core.Annotations;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Saving;
 
 namespace Pagewing.App.ViewModels;
 
@@ -168,6 +169,17 @@ public sealed partial class TabViewModel
     /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again.</summary>
     public ICommand RedoCommand => _redoCommand ??= new RelayCommand(() => _ = StepAsync(undo: false), () => IsReady && _canRedo && !_isSaving);
 
+    /// <summary>
+    /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with
+    /// <see cref="SaveFailureReason.SourceModified"/> or <see cref="SaveFailureReason.EncryptedNotSupported"/>
+    /// (every further save would fail the same way), cleared by a save that succeeds and when another file opens in the
+    /// tab. Closing the tab then warns that its changes are lost instead of offering "Save" (<see cref="PendingSaveKind.DiscardChanges"/>).
+    /// </summary>
+    public SaveFailureReason? UnsaveableReason { get; internal set; }
+
+    /// <summary>Gets whether closing the tab asks first: it has unsaved changes.</summary>
+    internal bool AsksBeforeClosing => !_disposed && _isDirty;
+
     /// <summary>Gets whether the note about a signature that allows comments was shown for the open document (window, once per document).</summary>
     internal bool SignatureNoteShown
     {
@@ -232,6 +244,7 @@ public sealed partial class TabViewModel
     {
         _signature = null;
         _signatureNoteShown = false;
+        UnsaveableReason = null;
         SyncFromEditor();
     }
 

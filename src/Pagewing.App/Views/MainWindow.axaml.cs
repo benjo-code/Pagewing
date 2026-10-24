@@ -86,6 +86,7 @@ public sealed partial class MainWindow : Window
 
         AttachPanel(old, _viewModel);
         AttachLinkCard(old, _viewModel);
+        AttachSaveCards(old, _viewModel);
         AttachShortcuts(_viewModel);
         AttachOverlays(old, _viewModel);
         AttachPrint(old, _viewModel);
@@ -94,13 +95,14 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The window closes (the user, the end of the app, its last tab gone): the document view saves where it shows the
-    /// active tab now, then every tab of the window with an open document goes into the history with its position.
+    /// The window closes (the user, the end of the app, its last tab gone): tabs with unsaved changes are asked about first
+    /// (<see cref="LetCloseGoOn"/>; the close waits for the answers). Then the document view saves where it shows the active
+    /// tab now, and every tab of the window with an open document goes into the history with its position, once.
     /// </summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
-        if (!e.Cancel && _viewModel is { } viewModel)
+        if (!e.Cancel && _viewModel is { } viewModel && LetCloseGoOn(e, viewModel))
         {
             DocumentView.SaveView();
             viewModel.RememberOpenTabs();

@@ -351,6 +351,10 @@ public static class Strings
     public static string SaveChoiceSaveAnyway => Get("SaveChoiceSaveAnyway");
     public static string SaveChoiceOverwrite => Get("SaveChoiceOverwrite");
     public static string SaveChoiceCancel => Get("SaveChoiceCancel");
+    public static string SaveChoiceDiscard => Get("SaveChoiceDiscard");
+    public static string DiscardChangesTitle => Get("DiscardChangesTitle");
+    public static string DiscardChangesSourceModified => Get("DiscardChangesSourceModified");
+    public static string DiscardChangesEncrypted => Get("DiscardChangesEncrypted");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

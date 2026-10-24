@@ -427,10 +427,15 @@ public sealed class SaveCommandTests : IDisposable
         Assert.Equal(other, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
         Assert.True(tab.IsDirty);
 
-        // Closing the tab while its question waits answers "Cancel".
+        // Closing the tab while its card asks is ignored (task 14: the card is answered first); "Cancel" then writes nothing.
         save = viewModel.SaveActiveTabAsync();
         await WaitUntilAsync(window, () => viewModel.PendingSave is not null);
+        var question = viewModel.PendingSave!;
         viewModel.CloseActiveTabCommand.Execute(null);
+        Settle(window);
+        Assert.Same(question, viewModel.PendingSave);
+        Assert.Contains(tab, viewModel.Tabs);
+        question.Resolve(PendingSaveChoice.Cancel);
         Assert.False(await save);
         Assert.Null(viewModel.PendingSave);
         Assert.Equal(other, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));

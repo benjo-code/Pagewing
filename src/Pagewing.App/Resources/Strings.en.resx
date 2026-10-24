@@ -972,4 +972,16 @@
   <data name="SaveChoiceCancel" xml:space="preserve">
     <value>Cancel</value>
   </data>
+  <data name="SaveChoiceDiscard" xml:space="preserve">
+    <value>Close and discard changes</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>The changes to “{0}” cannot be saved</value>
+  </data>
+  <data name="DiscardChangesSourceModified" xml:space="preserve">
+    <value>Another program changed the file. Your changes cannot be saved and are lost when you close the tab.</value>
+  </data>
+  <data name="DiscardChangesEncrypted" xml:space="preserve">
+    <value>Pagewing cannot save changes to this encrypted document. They are lost when you close the tab.</value>
+  </data>
 </root>

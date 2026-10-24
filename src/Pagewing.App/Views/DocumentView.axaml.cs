@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Pagewing.App.Controls;
 using Pagewing.App.ViewModels;
 using Pagewing.Core.Pdf;
@@ -393,7 +394,15 @@ public sealed partial class DocumentView : UserControl
             return;
         }
 
-        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox { IsEffectivelyVisible: true })
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+        if (focused is Visual visual && visual.FindAncestorOfType<SaveCard>(includeSelf: true) is { IsVisible: true })
+        {
+            // A card of the save flow asks about this tab (shown again with it): its buttons keep the keys.
+            _focusPending = false;
+            return;
+        }
+
+        if (focused is TextBox { IsEffectivelyVisible: true })
         {
             // The password field of the card that unlocked this document stays until the view model has seen the
             // document (the session may be ahead of it); the view model's change tries again. Any other field keeps

@@ -169,6 +169,10 @@ public sealed class CommandCatalog
         // it is the key of the link card, not a command of its own.
         Window("link.cancel", () => Strings.LinkConfirmCancel, WindowGroup, new KeyGesture(Key.Escape), _window.CancelLinkCommand) with { Listed = false },
 
+        // Then Esc answers "Cancel" on a card of the save flow shown in the active tab (save before closing, signature,
+        // another file at the path, a failure), wherever the focus is. Not listed: it is the key of those cards.
+        Window("save.cancel", () => Strings.SaveChoiceCancel, WindowGroup, new KeyGesture(Key.Escape), _window.CancelPendingSaveCommand) with { Listed = false },
+
         // Then Esc hides an overlay whose own Esc does not get the key (the focus has left it); without an overlay the key
         // goes on to the focused element (the document, the search field). Not listed either. The window binds the keys in
         // this order, so a waiting address goes first.

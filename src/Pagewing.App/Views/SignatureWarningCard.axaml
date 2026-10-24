@@ -1,0 +1,48 @@
+<views:SaveCard xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:vm="using:Pagewing.App.ViewModels"
+                xmlns:views="using:Pagewing.App.Views"
+                xmlns:ctl="using:Pagewing.App.Controls"
+                x:Class="Pagewing.App.Views.SignatureWarningCard"
+                x:DataType="vm:PendingSave"
+                AutomationProperties.Name="{Binding Title}"
+                AutomationProperties.HelpText="{Binding Message}">
+  <!--
+    Before the save of a signed document (design system 7.14). DocMDP level 1 or 2 (PendingSaveKind.SignatureWarning, before
+    every save): warning symbol in danger.default and the text "This signature does not allow comments" / "After saving,
+    programs such as Acrobat will show the signature as invalid.", "Cancel" (primary, focus and Enter), "Save as" and "Save
+    anyway" (locked for the first 400 ms). Level 3 or no level (PendingSaveKind.SignatureNote, once per tab and document):
+    only a note with the info symbol, "This document is signed" / "Pagewing only appends your changes; the signed bytes stay
+    unchanged.", "Save" (primary, focus) and "Cancel". No text says the signature is valid. Card and buttons as SaveCard.
+  -->
+  <Border Name="SignatureBox" MaxWidth="480" Margin="24" Padding="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Spacing="12">
+      <ctl:StrokeIcon Name="SignatureNoteIcon" Width="24" Height="24" HorizontalAlignment="Left"
+                      Data="{StaticResource Pw.Icon.InfoCircle}"
+                      Brush="{DynamicResource Pw.Brush.Text.Secondary}"
+                      IsVisible="{Binding !IsWarning}" />
+      <ctl:StrokeIcon Name="SignatureWarningIcon" Width="24" Height="24" HorizontalAlignment="Left"
+                      Data="{StaticResource Pw.Icon.AlertTriangle}"
+                      Brush="{DynamicResource Pw.Brush.Danger.Default}"
+                      IsVisible="{Binding IsWarning}" />
+      <StackPanel Spacing="4">
+        <TextBlock Name="SignatureTitle" Classes="subtitle" TextWrapping="Wrap" Text="{Binding Title}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <TextBlock Name="SignatureText" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{Binding Message}" AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+
+      <StackPanel Name="SignatureButtons" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Name="SignatureSaveButton" />
+        <Button Name="SignatureCancelButton" />
+        <Button Name="SignatureSaveAsButton" />
+        <Button Name="SignatureSaveAnywayButton" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</views:SaveCard>

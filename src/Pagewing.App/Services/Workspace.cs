@@ -401,7 +401,15 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         {
             if (_views.TryGetValue(viewModel, out var window))
             {
-                window.Close();
+                // The app ends: nothing can be asked any more.
+                if (window is MainWindow main)
+                {
+                    main.CloseWithoutAsking();
+                }
+                else
+                {
+                    window.Close();
+                }
             }
         }
 
