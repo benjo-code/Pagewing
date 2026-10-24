@@ -147,6 +147,36 @@ public sealed class RenderCache
         }
     }
 
+    /// <summary>
+    /// Removes every image of the given pages (previews and tiles at every scale) and keeps the rest with its order of
+    /// use. The budget stays as it is. Runs in time proportional to the number of cached images.
+    /// </summary>
+    /// <param name="pages">The zero-based indices of the pages whose images are dropped; an empty set changes nothing.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="pages"/> is <see langword="null"/>.</exception>
+    public void RemovePages(IReadOnlySet<int> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (pages.Count == 0)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            var node = order.First;
+            while (node is not null)
+            {
+                var following = node.Next;
+                if (pages.Contains(node.Value.Key.Page))
+                {
+                    RemoveEntry(node.Value.Key);
+                }
+
+                node = following;
+            }
+        }
+    }
+
     // Must run under the lock.
     private void Trim()
     {

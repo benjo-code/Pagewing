@@ -51,8 +51,8 @@ public enum ViewerState
 /// <see cref="Dispose"/>. <see cref="Dispose"/> waits for a handler that is running on another thread, so a
 /// handler must not wait for the thread that disposes the session; a handler may call
 /// <see cref="Close"/> and <see cref="Dispose"/> itself. The session does not subscribe to the events of the
-/// scheduler, but it disposes the scheduler and changes its page theme, so it must not be closed or disposed, and
-/// <see cref="SetPageTheme"/> must not be called, from a scheduler handler.
+/// scheduler, but it disposes the scheduler and changes its page theme and pages, so it must not be closed or disposed,
+/// and neither <see cref="SetPageTheme"/> nor <see cref="InvalidatePages"/> may be called, from a scheduler handler.
 /// </para>
 /// </remarks>
 public sealed class ViewerSession : IDisposable
@@ -504,6 +504,58 @@ public sealed class ViewerSession : IDisposable
             currentScheduler?.SetPageTheme(theme);
             currentThumbnails?.SetPageTheme(theme);
         }
+    }
+
+    /// <summary>
+    /// Drops everything the session keeps of <paramref name="pages"/> of the open document, because their content
+    /// changed (an annotation was added, changed or removed): the images in <see cref="Cache"/> and the work of
+    /// <see cref="Scheduler"/> (<see cref="RenderScheduler.InvalidatePages"/>), the thumbnails of those pages if
+    /// <see cref="EnsureThumbnails"/> created them, and their text if <see cref="EnsurePageTexts"/> created the text
+    /// source. The other pages keep their images, thumbnails and text; the objects stay the same (a search that is
+    /// running goes on with its text source) and keep their budgets. Then raises <see cref="Changed"/> once, so the UI
+    /// plans again: the preview of a page comes first, then its sharp tiles, as when scrolling.
+    /// </summary>
+    /// <remarks>
+    /// Does nothing (and raises nothing) without a document, for an empty set and after <see cref="Dispose"/>. Takes no
+    /// lock of its own beyond the short one of the session, and never holds that one while it calls the schedulers or
+    /// raises the event (lock order as everywhere: the session's lock is released before a scheduler's lock is taken).
+    /// It waits for no event handler, but like <see cref="SetPageTheme"/> it must not be called from a handler of a
+    /// scheduler (see <see cref="RenderScheduler.InvalidatePages"/>). If a newer document is published meanwhile, the
+    /// call ends quietly: the old objects are being disposed and the new document starts empty anyway.
+    /// </remarks>
+    /// <param name="pages">The zero-based indices of the pages whose content changed.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="pages"/> is <see langword="null"/>.</exception>
+    public void InvalidatePages(IReadOnlySet<int> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (pages.Count == 0)
+        {
+            return;
+        }
+
+        RenderScheduler? currentScheduler;
+        ThumbnailSource? currentThumbnails;
+        PageTextSource? currentPageTexts;
+        long mine;
+        lock (gate)
+        {
+            if (disposed || scheduler is null)
+            {
+                return;
+            }
+
+            mine = Volatile.Read(ref generation);
+            currentScheduler = scheduler;
+            currentThumbnails = thumbnails;
+            currentPageTexts = pageTexts;
+        }
+
+        // Outside the lock. Each of them ignores the call once it is disposed, which a replacing open or a Close may do
+        // meanwhile; then Raise sees the newer generation and stays silent.
+        currentScheduler.InvalidatePages(pages);
+        currentThumbnails?.Scheduler.InvalidatePages(pages);
+        currentPageTexts?.RemovePages(pages);
+        Raise(mine);
     }
 
     /// <summary>

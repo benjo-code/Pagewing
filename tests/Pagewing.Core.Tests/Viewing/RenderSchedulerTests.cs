@@ -332,4 +332,134 @@ public sealed class RenderSchedulerTests
             Assert.Equal(request.Rect.Height, image.Height);
         }
     }
+
+    [Fact]
+    public async Task InvalidatedPageIsRenderedAgainAndAnOldResultIsDiscarded()
+    {
+        // The fake delivers its image although the scheduler cancelled it, as a render that finishes in a race would.
+        var renderer = new FakeRenderer { HonorsCancellation = false };
+        var cache = new RenderCache();
+        using var scheduler = new RenderScheduler(renderer.Render, cache);
+        using var events = new EventLog(scheduler);
+
+        scheduler.Update([Request(1)]);
+        var old = await renderer.NextCallAsync();
+        scheduler.InvalidatePages(new HashSet<int> { 1 });
+
+        Assert.True(old.Token.IsCancellationRequested);
+        Assert.Equal(0, scheduler.PendingCount);
+        old.Complete(Image());
+
+        // Planned again, the page renders anew; the image of the old epoch reaches neither the cache nor the events.
+        scheduler.Update([Request(1)]);
+        var again = await renderer.NextCallAsync();
+        Assert.Equal(Request(1).Key, again.Request.Key);
+        var fresh = Image();
+        again.Complete(fresh);
+
+        Assert.Equal(Request(1).Key, await events.NextReadyAsync());
+        Assert.True(cache.TryGet(Request(1).Key, out var stored));
+        Assert.Same(fresh, stored);
+        Assert.Single(events.Ready);
+        Assert.Empty(events.Failed);
+        Assert.Equal(2, renderer.CallCount);
+    }
+
+    [Fact]
+    public async Task OtherPagesKeepTheirTiles()
+    {
+        var renderer = new FakeRenderer();
+        var cache = new RenderCache();
+        var pageOne = new TileKey(1, 2000, 1, 1);
+        var pageTwo = new TileKey(2, 2000, 1, 1);
+        cache.Add(Request(1).Key, Image());
+        cache.Add(pageOne, Image());
+        cache.Add(pageTwo, Image());
+        using var scheduler = new RenderScheduler(renderer.Render, cache);
+        using var events = new EventLog(scheduler);
+
+        scheduler.Update([Request(3), Request(4)]);
+        var running = await renderer.NextCallAsync();
+        Assert.Equal(3, running.Request.Key.Page);
+
+        scheduler.InvalidatePages(new HashSet<int> { 1 });
+
+        // Only the tiles of page 1 are gone; the running request of another page goes on, and so does the queue.
+        Assert.False(cache.Contains(Request(1).Key));
+        Assert.False(cache.Contains(pageOne));
+        Assert.True(cache.Contains(pageTwo));
+        Assert.False(running.Token.IsCancellationRequested);
+        Assert.Equal(2, scheduler.PendingCount);
+
+        running.Complete(Image());
+        Assert.Equal(Request(3).Key, await events.NextReadyAsync());
+        var next = await renderer.NextCallAsync();
+        Assert.Equal(4, next.Request.Key.Page);
+        next.Complete(Image());
+        Assert.Equal(Request(4).Key, await events.NextReadyAsync());
+        Assert.True(cache.Contains(Request(3).Key));
+        Assert.True(cache.Contains(Request(4).Key));
+        Assert.True(cache.Contains(pageTwo));
+    }
+
+    [Fact]
+    public async Task InvalidatePagesForgetsTheFailuresOfThosePagesOnly()
+    {
+        var renderer = new FakeRenderer();
+        using var scheduler = new RenderScheduler(renderer.Render, new RenderCache());
+        using var events = new EventLog(scheduler);
+        scheduler.Update([Request(1), Request(2)]);
+        (await renderer.NextCallAsync()).Fail(new InvalidDataException("damaged page"));
+        (await renderer.NextCallAsync()).Fail(new InvalidDataException("damaged page"));
+        Assert.Equal(1, (await events.NextFailedAsync()).Key.Page);
+        Assert.Equal(2, (await events.NextFailedAsync()).Key.Page);
+
+        scheduler.InvalidatePages(new HashSet<int> { 2 });
+        scheduler.Update([Request(1), Request(2)]);
+
+        // Page 1 is still known as failed and is skipped; page 2 changed and is tried again.
+        var again = await renderer.NextCallAsync();
+        Assert.Equal(2, again.Request.Key.Page);
+        Assert.Equal(1, scheduler.PendingCount);
+    }
+
+    [Fact]
+    public async Task InvalidatePagesDoesNotWaitForARunningHandler()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var renderer = new FakeRenderer();
+        var cache = new RenderCache();
+        using var scheduler = new RenderScheduler(renderer.Render, cache);
+        using var inHandler = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        scheduler.TileReady += _ =>
+        {
+            inHandler.Set();
+            release.Wait(SchedulerWait.Due, ct);
+        };
+
+        scheduler.Update([Request(1)]);
+        (await renderer.NextCallAsync()).Complete(Image());
+        Assert.True(inHandler.Wait(SchedulerWait.Due, ct));
+
+        // The handler of page 1 still runs; the invalidation returns at once all the same.
+        await Task.Run(() => scheduler.InvalidatePages(new HashSet<int> { 1 }), ct).WaitAsync(SchedulerWait.Due, ct);
+        Assert.False(cache.Contains(Request(1).Key));
+        release.Set();
+    }
+
+    [Fact]
+    public void InvalidatePagesAfterDisposeDoesNothing()
+    {
+        var renderer = new FakeRenderer();
+        var cache = new RenderCache();
+        cache.Add(Request(1).Key, Image());
+        var scheduler = new RenderScheduler(renderer.Render, cache);
+        scheduler.Dispose();
+
+        scheduler.InvalidatePages(new HashSet<int> { 1 });
+
+        Assert.True(cache.Contains(Request(1).Key));
+        Assert.Throws<ArgumentNullException>(() => scheduler.InvalidatePages(null!));
+    }
 }

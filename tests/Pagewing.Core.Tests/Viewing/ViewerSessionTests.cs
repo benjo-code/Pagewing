@@ -720,6 +720,81 @@ public sealed class ViewerSessionTests
         Assert.Equal(0, session.Cache.Count);
     }
 
+    [Fact]
+    public async Task SessionInvalidatePagesDropsThumbnailsAndPageText()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var session = new ViewerSession(engine);
+        session.SetActive(false);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var cache = session.Cache!;
+        var thumbnails = session.EnsureThumbnails()!;
+        var pageTexts = session.EnsurePageTexts()!;
+        for (var page = 0; page < 2; page++)
+        {
+            cache.Add(new TileKey(page, TileKey.PreviewScaleKey, 0, 0), SmallImage());
+            cache.Add(new TileKey(page, 1000, 0, 0), SmallImage());
+            thumbnails.Cache.Add(new TileKey(page, TileKey.PreviewScaleKey, 0, 0), SmallImage());
+            await pageTexts.GetAsync(page, cancellationToken: ct);
+        }
+
+        session.InvalidatePages(new HashSet<int> { 0 });
+
+        // Page 0 is gone from the view, the thumbnails and the page texts; page 1 keeps everything.
+        Assert.False(cache.Contains(new TileKey(0, TileKey.PreviewScaleKey, 0, 0)));
+        Assert.False(cache.Contains(new TileKey(0, 1000, 0, 0)));
+        Assert.True(cache.Contains(new TileKey(1, TileKey.PreviewScaleKey, 0, 0)));
+        Assert.True(cache.Contains(new TileKey(1, 1000, 0, 0)));
+        Assert.False(thumbnails.Cache.Contains(new TileKey(0, TileKey.PreviewScaleKey, 0, 0)));
+        Assert.True(thumbnails.Cache.Contains(new TileKey(1, TileKey.PreviewScaleKey, 0, 0)));
+        Assert.False(pageTexts.TryGet(0, out _));
+        Assert.True(pageTexts.TryGet(1, out _));
+
+        // The sources stay what they were, with their budgets, so a running search or the pages panel goes on with them.
+        Assert.Same(cache, session.Cache);
+        Assert.Same(thumbnails, session.EnsureThumbnails());
+        Assert.True(session.HasPageTexts);
+        Assert.Same(pageTexts, session.EnsurePageTexts());
+        Assert.False(thumbnails.IsDisposed);
+        Assert.False(pageTexts.IsDisposed);
+        Assert.Equal(TabBudget.InactiveBytes, cache.BudgetBytes);
+        Assert.Equal(ThumbnailSource.BudgetBytes, thumbnails.Cache.BudgetBytes);
+
+        // The text of page 0 is read again on the next request.
+        var again = await pageTexts.GetAsync(0, cancellationToken: ct);
+        Assert.Equal(0, again.PageIndex);
+        Assert.True(pageTexts.TryGet(0, out _));
+    }
+
+    [Fact]
+    public async Task InvalidatePagesRaisesChangedOnce()
+    {
+        var session = new ViewerSession(engine);
+        using var recorder = new Recorder(session);
+
+        // Without a document there is nothing to drop and nothing to report.
+        session.InvalidatePages(new HashSet<int> { 0 });
+        Assert.Equal(0, recorder.Count);
+
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var before = recorder.Count;
+
+        session.InvalidatePages(new HashSet<int> { 0, 1 });
+
+        Assert.Equal(before + 1, recorder.Count);
+        Assert.Equal(new Snapshot(ViewerState.Ready, session.Path, 2), recorder.Events[^1]);
+
+        // An empty set changes nothing, a missing one is an error, and after Dispose nothing happens.
+        session.InvalidatePages(new HashSet<int>());
+        Assert.Equal(before + 1, recorder.Count);
+        Assert.Throws<ArgumentNullException>(() => session.InvalidatePages(null!));
+        session.Dispose();
+        session.InvalidatePages(new HashSet<int> { 0 });
+        Assert.Equal(before + 1, recorder.Count);
+    }
+
+    private static RenderedImage SmallImage() => new(1, 1, 4, new byte[4]);
+
     // Fills the cache with images of 8 MiB each (they are not rendered, only stored).
     private static void FillCache(RenderCache cache, int count)
     {

@@ -159,6 +159,42 @@ public sealed class PageTextSource : IDisposable
     }
 
     /// <summary>
+    /// Forgets the text of the given pages, because their content changed; the other pages stay cached with their
+    /// order of use. A load of such a page that is running is forgotten too: callers that already wait for it still
+    /// get its (old) text, but it is not cached, and a later call reads the page again instead of joining it. An empty
+    /// set, and any call after <see cref="Dispose"/>, do nothing.
+    /// </summary>
+    /// <param name="pages">The zero-based indices of the pages to forget.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="pages"/> is <see langword="null"/>.</exception>
+    internal void RemovePages(IReadOnlySet<int> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (pages.Count == 0)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            foreach (var page in pages)
+            {
+                if (cached.Remove(page, out var node))
+                {
+                    recent.Remove(node);
+                }
+
+                // The running load keeps its completion; it sees below that it is no longer the registered one.
+                loading.Remove(page);
+            }
+        }
+    }
+
+    /// <summary>
     /// Empties the cache and makes every later call throw <see cref="ObjectDisposedException"/>. Loads that are
     /// running cannot be stopped; callers that wait for them still get their result, which is not cached.
     /// Safe to call more than once.
@@ -186,7 +222,7 @@ public sealed class PageTextSource : IDisposable
         {
             lock (gate)
             {
-                loading.Remove(pageIndex);
+                ForgetLoad(pageIndex, completion);
             }
 
             completion.SetException(ex);
@@ -196,8 +232,8 @@ public sealed class PageTextSource : IDisposable
         var keep = false;
         lock (gate)
         {
-            loading.Remove(pageIndex);
-            if (!disposed)
+            // A load that RemovePages forgot read the page before its change; its text is not cached.
+            if (ForgetLoad(pageIndex, completion) && !disposed)
             {
                 keep = true;
                 if (cached.Remove(pageIndex, out var stale))
@@ -222,6 +258,19 @@ public sealed class PageTextSource : IDisposable
         }
 
         completion.SetResult(text);
+    }
+
+    // Must run under the lock. Removes the load of the page if it is still the registered one (RemovePages may have
+    // forgotten it, and a newer load may have taken its place) and says whether it was.
+    private bool ForgetLoad(int pageIndex, TaskCompletionSource<PageText> completion)
+    {
+        if (loading.TryGetValue(pageIndex, out var registered) && registered == completion.Task)
+        {
+            loading.Remove(pageIndex);
+            return true;
+        }
+
+        return false;
     }
 
     private void RaiseLoaded(int pageIndex)

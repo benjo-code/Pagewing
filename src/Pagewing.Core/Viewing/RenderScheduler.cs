@@ -28,6 +28,12 @@ namespace Pagewing.Core.Viewing;
 /// treats everything of the old theme like a request that is no longer wanted: the running request is cancelled
 /// and leaves no trace, and the queue, the cache and the failed keys are emptied.
 /// </para>
+/// <para>
+/// In the same way every request renders one epoch of its page. <see cref="InvalidatePages"/> starts a new epoch for
+/// the pages whose content changed (an annotation was added, changed or removed): their images and failed keys are
+/// dropped, a running request of such a page is cancelled, and a result of an older epoch of the page is never stored
+/// or reported. Unlike <see cref="SetPageTheme"/> it waits for nothing and leaves the other pages and the queue alone.
+/// </para>
 /// </remarks>
 public sealed class RenderScheduler : IDisposable
 {
@@ -60,6 +66,11 @@ public sealed class RenderScheduler : IDisposable
     // theme changes: a job of an earlier epoch belongs to an old theme, even after a switch back to its colours.
     private PageTheme theme;
     private long themeEpoch;
+
+    // The epoch of each page that InvalidatePages has dropped at least once (a page without an entry is at 0). Changed
+    // and read only under gate: InvalidatePages must not wait for eventGate, so Raise takes gate to read it. A job of
+    // an earlier epoch of its page shows content the page no longer has.
+    private readonly Dictionary<int, long> pageEpochs = [];
 
     /// <summary>Creates a scheduler that renders the pages of <paramref name="document"/> into <paramref name="cache"/>.</summary>
     /// <remarks>
@@ -100,7 +111,7 @@ public sealed class RenderScheduler : IDisposable
     /// <summary>
     /// Occurs on a thread-pool thread when rendering a key failed, or when its image is larger than the budget of the
     /// cache (it could never be stored). Each key is reported once and not tried again until the scheduler is
-    /// disposed or <see cref="SetPageTheme"/> changes the theme.
+    /// disposed, <see cref="SetPageTheme"/> changes the theme or <see cref="InvalidatePages"/> drops its page.
     /// </summary>
     public event Action<TileKey, Exception>? TileFailed;
 
@@ -217,6 +228,57 @@ public sealed class RenderScheduler : IDisposable
     }
 
     /// <summary>
+    /// Drops what the scheduler has of <paramref name="pages"/>, because their content changed: starts a new epoch for
+    /// each of them, removes their images from the cache (<see cref="RenderCache.RemovePages"/>) and forgets their
+    /// failed keys, and cancels the running request if it belongs to one of them. A result of an older epoch of such a
+    /// page that is still on its way is neither stored nor reported (no <see cref="TileReady"/>, no
+    /// <see cref="TileFailed"/>, not marked as failed). Queued requests stay queued and render the new epoch. Plan
+    /// again with <see cref="Update"/> afterwards; the cancelled request is rendered again only if it is wanted then.
+    /// Images and requests of other pages are not touched, and the budget of the cache stays as it is. An empty set,
+    /// and any call after <see cref="Dispose"/>, do nothing.
+    /// </summary>
+    /// <remarks>
+    /// Takes only the lock of the queue, never the one that serializes the events, so it does not wait for an event
+    /// handler and may be called from any thread. Do not call it from a handler of <see cref="TileReady"/> or
+    /// <see cref="TileFailed"/>: a handler that drops the page it was told about would make the scheduler render that
+    /// page again and again. An event that has already started when this is called may still name a key of the old
+    /// epoch; its image is no longer in the cache then, as with any evicted image.
+    /// </remarks>
+    /// <param name="pages">The zero-based indices of the pages whose content changed.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="pages"/> is <see langword="null"/>.</exception>
+    public void InvalidatePages(IReadOnlySet<int> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (pages.Count == 0)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            foreach (var page in pages)
+            {
+                pageEpochs[page] = PageEpochOf(page) + 1;
+            }
+
+            if (current is { } running && pages.Contains(running.Request.Key.Page))
+            {
+                running.Cancel();
+            }
+
+            failed.RemoveWhere(key => pages.Contains(key.Page));
+
+            // Under this lock, like the images that are stored, so none of an old epoch can be added after this.
+            cache.RemovePages(pages);
+        }
+    }
+
+    /// <summary>
     /// Stops the scheduler: the queue is dropped, the running request is cancelled, and no event is raised after
     /// this returns. Does not wait for the running request; it waits only for an event handler that is running.
     /// </summary>
@@ -313,7 +375,7 @@ public sealed class RenderScheduler : IDisposable
                     continue;
                 }
 
-                job = new Job(request, theme, themeEpoch);
+                job = new Job(request, theme, themeEpoch, PageEpochOf(request.Key.Page));
                 current = job;
                 return true;
             }
@@ -362,10 +424,11 @@ public sealed class RenderScheduler : IDisposable
         {
             current = null;
 
-            // A cancelled job (no longer wanted, of an old page theme, or disposed) leaves no trace, even if an image
-            // arrived in a race. SetPageTheme cancels the running job, so the theme check only states the rule.
-            // Its token source is not disposed: the cancellation callbacks may still be running on a pool thread.
-            if (job.IsCancelled || !rendering.IsCompleted || job.ThemeEpoch != themeEpoch)
+            // A cancelled job (no longer wanted, of an old page theme or page epoch, or disposed) leaves no trace, even
+            // if an image arrived in a race. SetPageTheme and InvalidatePages cancel the running job, so the epoch checks
+            // only state the rule. Its token source is not disposed: the cancellation callbacks may still be running on
+            // a pool thread.
+            if (job.IsCancelled || !rendering.IsCompleted || job.ThemeEpoch != themeEpoch || IsOutdatedPage(job))
             {
                 return;
             }
@@ -395,6 +458,12 @@ public sealed class RenderScheduler : IDisposable
         Raise(job, error);
     }
 
+    // Must run under the lock.
+    private long PageEpochOf(int page) => pageEpochs.GetValueOrDefault(page);
+
+    // Must run under the lock. Whether InvalidatePages has dropped the page of the job since the job started.
+    private bool IsOutdatedPage(Job job) => job.PageEpoch != PageEpochOf(job.Request.Key.Page);
+
     private static Exception FailureOf(Task<RenderedImage> rendering)
     {
         if (rendering.IsCanceled)
@@ -423,6 +492,16 @@ public sealed class RenderScheduler : IDisposable
                 return;
             }
 
+            // The same for the epoch of the page. It is only guarded by gate, which may be taken inside eventGate (never
+            // the other way round). InvalidatePages may still come right after this check; see its remarks.
+            lock (gate)
+            {
+                if (IsOutdatedPage(job))
+                {
+                    return;
+                }
+            }
+
             try
             {
                 if (error is null)
@@ -443,16 +522,17 @@ public sealed class RenderScheduler : IDisposable
         }
     }
 
-    /// <summary>The running request, its page theme and the source of its cancellation.</summary>
+    /// <summary>The running request, its page theme, the epoch of its page and the source of its cancellation.</summary>
     private sealed class Job : IDisposable
     {
         private readonly CancellationTokenSource source = new();
 
-        public Job(RenderRequest request, PageTheme theme, long themeEpoch)
+        public Job(RenderRequest request, PageTheme theme, long themeEpoch, long pageEpoch)
         {
             Request = request;
             Theme = theme;
             ThemeEpoch = themeEpoch;
+            PageEpoch = pageEpoch;
             Token = source.Token;
         }
 
@@ -462,6 +542,9 @@ public sealed class RenderScheduler : IDisposable
         public PageTheme Theme { get; }
 
         public long ThemeEpoch { get; }
+
+        // The epoch of the request's page when the job started (see InvalidatePages).
+        public long PageEpoch { get; }
 
         public CancellationToken Token { get; }
 
