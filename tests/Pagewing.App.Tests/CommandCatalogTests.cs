@@ -82,8 +82,9 @@ public sealed class CommandCatalogTests : IDisposable
             Assert.NotEqual(englishGroup, germanGroup);
         }
 
-        // Only the two meanings of Esc at window level stay out of the lists: the link card's, then the overlays'.
-        Assert.Equal(["link.cancel", "overlay.hide"], catalog.All.Where(command => !command.Listed).Select(command => command.Id));
+        // Only the meanings of Esc at window level stay out of the lists: the link card's, the overlays', then the update
+        // card's (with the note after "Check for updates").
+        Assert.Equal(["link.cancel", "overlay.hide", "update.dismiss"], catalog.All.Where(command => !command.Listed).Select(command => command.Id));
         Assert.Equal(["file", "view", "nav", "search", "window"], CommandCatalog.Groups);
         Strings.Culture = new CultureInfo("de");
         Assert.Equal(["Datei", "Ansicht", "Navigation", "Suche", "Fenster"], CommandCatalog.Groups.Select(CommandCatalog.GroupTitle));
@@ -101,11 +102,12 @@ public sealed class CommandCatalogTests : IDisposable
             {
                 // Avalonia matches the plus and minus of the number pad as those of the main block (KeyGesture.Matches),
                 // which only the alternatives of one command may share.
-                // Esc alone has two unlisted commands, which the window asks in turn: the link card first, then an overlay.
+                // Esc alone has three unlisted commands, which the window asks in turn: the link card first, then an
+                // overlay, then the update card or its note.
                 var key = (Normalized(gesture.Key), gesture.KeyModifiers);
                 if (owners.TryGetValue(key, out var owner))
                 {
-                    var escape = gesture.Equals(new KeyGesture(Key.Escape)) && owner == "link.cancel" && command.Id == "overlay.hide";
+                    var escape = gesture.Equals(new KeyGesture(Key.Escape)) && owner == "link.cancel" && command.Id is "overlay.hide" or "update.dismiss";
                     Assert.True(owner == command.Id || escape, $"{gesture} belongs to {owner} and {command.Id}");
                 }
                 else

@@ -9,7 +9,8 @@ namespace Pagewing.App.Services;
 /// The update check of the running process, shared by all windows: starts it once after the first sharp page (or the
 /// first frame of the start screen) when the setting allows it, runs it on the thread pool with a time limit, keeps the
 /// result and tells the windows. Failing is silent (no network, a timeout, a refused manifest, a source that throws:
-/// nothing changes and nothing is shown). After "Install" it runs the installation once for the whole process
+/// nothing changes and nothing is shown); only the command "Check for updates" learns the outcome
+/// (<see cref="CheckNowAsync"/>) and shows it. After "Install" it runs the installation once for the whole process
 /// (<see cref="BeginInstallAsync"/>), where a failure is shown and can be tried again. Used on the UI thread, where
 /// <see cref="Changed"/> is raised.
 /// </summary>
@@ -26,7 +27,7 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
     private static readonly TimeSpan OverallLimit = UpdateChecker.CheckTimeout + TimeSpan.FromSeconds(5);
 
     private readonly CancellationTokenSource _lifetime = new();
-    private Task? _running;
+    private Task<UpdateCheckOutcome>? _running;
 
     // The work of the check on the pool: a check that times out stops waiting for it, but it may still write update.json.
     private Task? _checkWork;
@@ -101,9 +102,11 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
 
     /// <summary>
     /// The command "Check for updates": checks now, also with the background check switched off and whatever the
-    /// schedule says. A check that is running already is the one the caller waits for. Never throws.
+    /// schedule says, and tells what it found (the window shows it, <see cref="ViewModels.UpdateViewModel.ShowCheckOutcome"/>).
+    /// A check that is running already is the one the caller waits for, with its outcome (one flight; a check of the start
+    /// that was not due answers with what the last check remembered). Never throws.
     /// </summary>
-    public Task CheckNowAsync() => RunAsync(force: true);
+    public Task<UpdateCheckOutcome> CheckNowAsync() => RunAsync(force: true);
 
     /// <summary>
     /// Installs the version on offer: fetches and verifies the manifest again (it must still name the version on offer),
@@ -184,10 +187,10 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         }
     }
 
-    private Task RunAsync(bool force) =>
+    private Task<UpdateCheckOutcome> RunAsync(bool force) =>
         _running is { IsCompleted: false } running ? running : _running = CheckAsync(force);
 
-    private async Task CheckAsync(bool force)
+    private async Task<UpdateCheckOutcome> CheckAsync(bool force)
     {
         try
         {
@@ -210,23 +213,28 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
 
             var checkWork = Task.Run(() => CheckOffTheUiThreadAsync(force, ct), ct);
             _checkWork = checkWork;
-            var state = await checkWork.WaitAsync(ct).ConfigureAwait(true);
-            if (state is not null)
+            if (await checkWork.WaitAsync(ct).ConfigureAwait(true) is not { } result)
             {
-                Apply(state);
+                return UpdateCheckOutcome.Failed;
             }
+
+            Apply(result.State);
+            return result.Failed ? UpdateCheckOutcome.Failed
+                : result.State.Stage == UpdateStage.Available ? UpdateCheckOutcome.Available
+                : UpdateCheckOutcome.UpToDate;
         }
         catch (Exception)
         {
-            // A check that fails, times out or is cancelled changes nothing and shows nothing.
+            // A check that fails, times out or is cancelled changes nothing; only the command shows that it failed.
+            return UpdateCheckOutcome.Failed;
         }
     }
 
-    private async Task<UpdateState?> CheckOffTheUiThreadAsync(bool force, CancellationToken ct)
+    private async Task<UpdateCheckResult?> CheckOffTheUiThreadAsync(bool force, CancellationToken ct)
     {
         try
         {
-            return await checker.CheckAsync(force, ct).ConfigureAwait(false);
+            return await checker.CheckDetailedAsync(force, ct).ConfigureAwait(false);
         }
         catch (Exception)
         {

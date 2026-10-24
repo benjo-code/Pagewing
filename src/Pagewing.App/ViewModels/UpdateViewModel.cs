@@ -33,26 +33,34 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
 
     private readonly IUpdateFlow _coordinator;
     private readonly Action<string> _requestLink;
+    private readonly TimeProvider _clock;
     private UpdateState _state;
     private IReadOnlyList<UpdateStep> _steps = [];
     private bool _isCardOpen;
     private bool _disposed;
+    private UpdateNote _note;
+    private ITimer? _noteTimer;
+    private int _noteNumber;
 
     /// <summary>Creates the view model and starts following <paramref name="coordinator"/> until <see cref="Dispose"/>.</summary>
     /// <param name="coordinator">The update check of the process (<see cref="UpdateCoordinator"/>), or the installation of the helper.</param>
     /// <param name="requestLink">
     /// Asks the user before an address is opened (<see cref="MainViewModel.RequestExternalLink"/>); never opens it itself.
     /// </param>
-    public UpdateViewModel(IUpdateFlow coordinator, Action<string> requestLink)
+    /// <param name="clock">The clock of the note after the command (<see cref="NoteLifetime"/>); tests drive it.</param>
+    public UpdateViewModel(IUpdateFlow coordinator, Action<string> requestLink, TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(coordinator);
         ArgumentNullException.ThrowIfNull(requestLink);
         _coordinator = coordinator;
         _requestLink = requestLink;
+        _clock = clock ?? TimeProvider.System;
         _state = coordinator.State;
         _steps = MakeSteps();
         ToggleCardCommand = new RelayCommand(ToggleCard);
         LaterCommand = new RelayCommand(() => IsCardOpen = false);
+        CloseNoteCommand = new RelayCommand(CloseNote);
+        DismissCardCommand = new RelayCommand(DismissCard);
         InstallCommand = new RelayCommand(Install);
         OpenDownloadPageCommand = new RelayCommand(OpenDownloadPage);
         CancelCommand = new RelayCommand(coordinator.CancelInstall);
@@ -93,8 +101,64 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
     public bool IsCardOpen
     {
         get => _isCardOpen;
-        set => SetProperty(ref _isCardOpen, value && ShowButton && !IsInFlow && !_disposed);
+        set
+        {
+            if (SetProperty(ref _isCardOpen, value && ShowButton && !IsInFlow && !_disposed) && _isCardOpen)
+            {
+                // The offer takes the place of a note.
+                CloseNote();
+            }
+        }
     }
+
+    /// <summary>How long the note after the command "Check for updates" stays before it goes by itself.</summary>
+    public static TimeSpan NoteLifetime { get; } = TimeSpan.FromSeconds(8);
+
+    /// <summary>Gets the note in the place of the card after the command (<see cref="ShowCheckOutcome"/>), or <see cref="UpdateNote.None"/>.</summary>
+    public UpdateNote Note
+    {
+        get => _note;
+        private set
+        {
+            if (SetProperty(ref _note, value))
+            {
+                OnPropertyChanged(nameof(IsNoteOpen));
+                OnPropertyChanged(nameof(IsNoteUpToDate));
+                OnPropertyChanged(nameof(IsNoteFailed));
+                OnPropertyChanged(nameof(NoteText));
+                OnPropertyChanged(nameof(CardName));
+            }
+        }
+    }
+
+    /// <summary>Gets whether the note shows (in the place of the card).</summary>
+    public bool IsNoteOpen => _note != UpdateNote.None;
+
+    /// <summary>Gets whether the note says that Pagewing is up to date (the check mark).</summary>
+    public bool IsNoteUpToDate => _note == UpdateNote.UpToDate;
+
+    /// <summary>Gets whether the note says that the check failed (the warning symbol).</summary>
+    public bool IsNoteFailed => _note == UpdateNote.CheckFailed;
+
+    /// <summary>Gets the text of the note: up to date with the running version, or that the check failed.</summary>
+    public string NoteText => _note switch
+    {
+        UpdateNote.UpToDate => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.UpdateNoteUpToDate), AppInfo.Version),
+        UpdateNote.CheckFailed => Strings.UpdateNoteFailed,
+        _ => string.Empty,
+    };
+
+    /// <summary>Gets the accessible name of the card: the text of the note while it shows, else the title of the offer.</summary>
+    public string CardName => IsNoteOpen ? NoteText : Title;
+
+    /// <summary>"Close" on the note.</summary>
+    public ICommand CloseNoteCommand { get; }
+
+    /// <summary>Esc on the card: closes the offer ("Later") or the note.</summary>
+    public ICommand DismissCardCommand { get; }
+
+    /// <summary>Gets whether the card or the note of this window shows (Esc of the window closes it).</summary>
+    public bool CanDismissCard => IsCardOpen || IsNoteOpen;
 
     /// <summary>The button: opens the card, or closes it when it is open; while an installation runs, shows its window.</summary>
     public ICommand ToggleCardCommand { get; }
@@ -221,7 +285,63 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
             _disposed = true;
             _coordinator.Changed -= OnChanged;
             IsCardOpen = false;
+            CloseNote();
         }
+    }
+
+    /// <summary>
+    /// Shows what the command "Check for updates" found, only after the command (the check in the background stays
+    /// silent): an update opens the card (or brings the progress window back while an installation runs); up to date and a
+    /// failed check show the note in the place of the card, which goes with Esc, "Close" or after <see cref="NoteLifetime"/>.
+    /// </summary>
+    internal void ShowCheckOutcome(UpdateCheckOutcome outcome)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (outcome == UpdateCheckOutcome.Available && ShowButton)
+        {
+            if (IsInFlow)
+            {
+                ProgressWindowRequested?.Invoke();
+                return;
+            }
+
+            IsCardOpen = true;
+            return;
+        }
+
+        IsCardOpen = false;
+        _noteTimer?.Dispose();
+        var number = ++_noteNumber;
+        Note = outcome == UpdateCheckOutcome.Failed ? UpdateNote.CheckFailed : UpdateNote.UpToDate;
+        _noteTimer = _clock.CreateTimer(
+            _ => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (number == _noteNumber)
+                {
+                    CloseNote();
+                }
+            }),
+            null,
+            NoteLifetime,
+            Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>Esc of the window: closes the card or the note of this window.</summary>
+    internal void DismissCard()
+    {
+        IsCardOpen = false;
+        CloseNote();
+    }
+
+    private void CloseNote()
+    {
+        _noteTimer?.Dispose();
+        _noteTimer = null;
+        Note = UpdateNote.None;
     }
 
     private static bool IsFlowStage(UpdateStage stage) => stage is not (UpdateStage.None or UpdateStage.Available);
@@ -247,6 +367,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
         {
             OnPropertyChanged(nameof(VersionText));
             OnPropertyChanged(nameof(Title));
+            OnPropertyChanged(nameof(CardName));
         }
 
         foreach (var name in ProgressProperties)
@@ -291,6 +412,7 @@ public sealed class UpdateViewModel : ViewModelBase, IDisposable
 
     private void ToggleCard()
     {
+        CloseNote();
         if (IsInFlow)
         {
             IsCardOpen = false;

@@ -165,19 +165,43 @@ public sealed partial class MainViewModel
         }
     }
 
-    /// <summary>The command "Check for updates": checks now, whatever the setting says; a failing check is silent.</summary>
+    /// <summary>
+    /// The command "Check for updates": checks now, whatever the setting says, and shows in this window what it found
+    /// (<see cref="UpdateViewModel.ShowCheckOutcome"/>: the card for an update, a note for up to date or a failed check).
+    /// </summary>
     internal void CheckForUpdatesFromCommand()
     {
         try
         {
             if (UpdateCoordinator is { } coordinator)
             {
-                _ = coordinator.CheckNowAsync();
+                _ = ShowWhatTheCheckFoundAsync(coordinator);
             }
         }
         catch (Exception)
         {
-            // The check never throws; a factory that does is as silent.
+            // The check never throws; a factory that does is silent.
+        }
+    }
+
+    /// <summary>Esc of the window: closes the update card or its note when one shows (<see cref="UpdateViewModel.CanDismissCard"/>).</summary>
+    internal void DismissUpdateCard() => _update?.DismissCard();
+
+    private async Task ShowWhatTheCheckFoundAsync(UpdateCoordinator coordinator)
+    {
+        UpdateCheckOutcome outcome;
+        try
+        {
+            outcome = await coordinator.CheckNowAsync().ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            outcome = UpdateCheckOutcome.Failed;
+        }
+
+        if (!_disposed)
+        {
+            _update?.ShowCheckOutcome(outcome);
         }
     }
 
@@ -192,7 +216,7 @@ public sealed partial class MainViewModel
     }
 
     private void FollowUpdates(UpdateCoordinator? coordinator) =>
-        Update = coordinator is null || _disposed ? null : new UpdateViewModel(coordinator, RequestExternalLink);
+        Update = coordinator is null || _disposed ? null : new UpdateViewModel(coordinator, RequestExternalLink, Clock);
 
     /// <summary>Lets go of the coordinator of the process: the window is closing.</summary>
     private void DisposeUpdate()

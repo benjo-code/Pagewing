@@ -771,6 +771,15 @@
   <data name="UpdateHintUnknown" xml:space="preserve">
     <value>Pagewing cannot update this installation itself. The new version is on the download page.</value>
   </data>
+  <data name="UpdateNoteUpToDate" xml:space="preserve">
+    <value>You have the latest version of Pagewing ({0}).</value>
+  </data>
+  <data name="UpdateNoteFailed" xml:space="preserve">
+    <value>Pagewing could not check for updates right now. Check the internet connection or try again later.</value>
+  </data>
+  <data name="CommandCloseUpdateCard" xml:space="preserve">
+    <value>Close the update card</value>
+  </data>
   <data name="UpdateWindowHeader" xml:space="preserve">
     <value>Update Pagewing</value>
   </data>

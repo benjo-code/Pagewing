@@ -1,5 +1,10 @@
 namespace Pagewing.Core.Updates;
 
+/// <summary>What a check found (<see cref="UpdateChecker.CheckDetailedAsync"/>).</summary>
+/// <param name="State">The state after the check: an offer, nothing newer, or what was known before when asking failed.</param>
+/// <param name="Failed">Whether asking failed: nothing was received (no network, a timeout, a server answer that is not a manifest) or the manifest was refused.</param>
+public readonly record struct UpdateCheckResult(UpdateState State, bool Failed);
+
 /// <summary>
 /// The schedule of the update check and what it makes of the answer. A check is due when nothing is remembered, when
 /// the last one is at least <see cref="Interval"/> ago or when the remembered time lies in the future (a wrong clock
@@ -45,30 +50,36 @@ public sealed class UpdateChecker(
     /// without touching the network. A manifest that is valid but not newer ends the check as well (the time is
     /// remembered, the offer is dropped); every other failure changes nothing.
     /// </summary>
-    public async Task<UpdateState> CheckAsync(bool force, CancellationToken ct)
+    public async Task<UpdateState> CheckAsync(bool force, CancellationToken ct) => (await CheckDetailedAsync(force, ct)).State;
+
+    /// <summary>
+    /// Like <see cref="CheckAsync"/>, and says whether asking failed (<see cref="UpdateCheckResult.Failed"/>): nothing
+    /// received, a refused manifest. A check that was not due asked nothing and did not fail.
+    /// </summary>
+    public async Task<UpdateCheckResult> CheckDetailedAsync(bool force, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         var status = store.Load();
         var now = clock.GetUtcNow();
         if (!force && !IsDue(status.LastChecked, now))
         {
-            return Known();
+            return new UpdateCheckResult(Known(), Failed: false);
         }
 
         var result = await FetchVerifiedAsync(ct);
         if (result.Manifest is { } manifest && UpdateVersion.TryParse(manifest.Version, out var version))
         {
             store.TrySave(new UpdateStatus(now, version.ToString()));
-            return UpdateState.Offer(version);
+            return new UpdateCheckResult(UpdateState.Offer(version), Failed: false);
         }
 
         if (result.Rejection == ManifestRejection.NotNewer)
         {
             store.TrySave(new UpdateStatus(now, null));
-            return UpdateState.None;
+            return new UpdateCheckResult(UpdateState.None, Failed: false);
         }
 
-        return Known();
+        return new UpdateCheckResult(Known(), Failed: true);
     }
 
     /// <summary>

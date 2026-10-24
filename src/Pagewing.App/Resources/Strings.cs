@@ -245,6 +245,9 @@ public static class Strings
     public static string UpdateHintDeb => Get("UpdateHintDeb");
     public static string UpdateHintPortable => Get("UpdateHintPortable");
     public static string UpdateHintUnknown => Get("UpdateHintUnknown");
+    public static string UpdateNoteUpToDate => Get("UpdateNoteUpToDate");
+    public static string UpdateNoteFailed => Get("UpdateNoteFailed");
+    public static string CommandCloseUpdateCard => Get("CommandCloseUpdateCard");
     public static string UpdateWindowHeader => Get("UpdateWindowHeader");
     public static string UpdateWindowTitle => Get("UpdateWindowTitle");
     public static string UpdateWindowFailedTitle => Get("UpdateWindowFailedTitle");

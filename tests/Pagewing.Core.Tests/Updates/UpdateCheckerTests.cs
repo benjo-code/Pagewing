@@ -49,6 +49,33 @@ public sealed class UpdateCheckerTests : IDisposable
     }
 
     [Fact]
+    public async Task TheDetailedCheckSaysWhetherAskingFailed()
+    {
+        SaveStatus(Start - TimeSpan.FromHours(1), "0.2.0");
+
+        // Not due: nothing asked, nothing failed, the remembered offer.
+        var notDue = await Checker().CheckDetailedAsync(force: false, CancellationToken.None);
+        Assert.Equal((UpdateState.Offer(new UpdateVersion(0, 2, 0)), false), (notDue.State, notDue.Failed));
+
+        // Nothing received: failed, the remembered offer stays.
+        var nothing = await Checker().CheckDetailedAsync(force: true, CancellationToken.None);
+        Assert.Equal((UpdateState.Offer(new UpdateVersion(0, 2, 0)), true), (nothing.State, nothing.Failed));
+
+        // A refused manifest: failed.
+        _source.Offer("0.3.0");
+        _source.Documents = _source.Documents! with { Signature = "test-key:" + Convert.ToBase64String(new byte[64]) };
+        Assert.True((await Checker().CheckDetailedAsync(force: true, CancellationToken.None)).Failed);
+
+        // Not newer and newer: both answers, not failures.
+        _source.Offer("0.1.0");
+        Assert.Equal((UpdateState.None, false), Pair(await Checker().CheckDetailedAsync(force: true, CancellationToken.None)));
+        _source.Offer("0.3.0");
+        Assert.Equal((UpdateState.Offer(new UpdateVersion(0, 3, 0)), false), Pair(await Checker().CheckDetailedAsync(force: true, CancellationToken.None)));
+
+        static (UpdateState, bool) Pair(UpdateCheckResult result) => (result.State, result.Failed);
+    }
+
+    [Fact]
     public async Task ChecksWhenNoStatusExists()
     {
         _source.Offer("0.2.0");

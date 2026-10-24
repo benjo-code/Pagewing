@@ -8,8 +8,9 @@ namespace Pagewing.App.Views;
 
 /// <summary>
 /// The card "Pagewing X is available" under the button "Update" of the title bar (design system 7.11), in the work area
-/// of the window at the top right. It is made when it is first opened, so nothing of it is built in the startup path.
-/// Opened by keyboard it takes the focus (on "Later"); when it goes with the focus, the focus goes back to the button.
+/// of the window at the top right, and in its place the note after the command "Check for updates" (7.13). It is made
+/// when it is first opened, so nothing of it is built in the startup path. Opened by keyboard the card takes the focus (on
+/// "Later"); when it goes with the focus, the focus goes back to the button. The note never takes the focus.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -76,7 +77,7 @@ public sealed partial class MainWindow
 
     private void OnUpdatePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(UpdateViewModel.IsCardOpen))
+        if (e.PropertyName is nameof(UpdateViewModel.IsCardOpen) or nameof(UpdateViewModel.IsNoteOpen))
         {
             UpdateUpdateCard();
         }
@@ -84,12 +85,14 @@ public sealed partial class MainWindow
 
     private void UpdateUpdateCard()
     {
-        if (_update is { IsCardOpen: true } update)
+        // The offer, or the note after the command "Check for updates" in its place (design system 7.13).
+        if (_update is { } update && (update.IsCardOpen || update.IsNoteOpen))
         {
             var button = TitleBar.UpdateButton;
 
-            // Enter or Space on the button (it shows the focus ring only then): the keys follow onto the card.
-            var byKeyboard = button.IsFocused && button.Classes.Contains(":focus-visible");
+            // Enter or Space on the button (it shows the focus ring only then): the keys follow onto the card. The note
+            // never takes the focus.
+            var byKeyboard = update.IsCardOpen && button.IsFocused && button.Classes.Contains(":focus-visible");
             var card = _updateCard ??= CreateUpdateCard();
             card.DataContext = update;
             card.Margin = new Thickness(0, UpdateCardGap, RightOfUpdateButton(button), 0);
