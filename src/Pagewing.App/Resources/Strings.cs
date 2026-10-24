@@ -357,6 +357,23 @@ public static class Strings
     public static string DiscardChangesEncrypted => Get("DiscardChangesEncrypted");
     public static string SaveNotPossiblePrinting => Get("SaveNotPossiblePrinting");
     public static string SaveNotPossible => Get("SaveNotPossible");
+    public static string CommentsPanelTitle => Get("CommentsPanelTitle");
+    public static string CommandCommentsPanel => Get("CommandCommentsPanel");
+    public static string CommentsLoading => Get("CommentsLoading");
+    public static string CommentsNone => Get("CommentsNone");
+    public static string CommentsSummaryOne => Get("CommentsSummaryOne");
+    public static string CommentsSummaryOnePage => Get("CommentsSummaryOnePage");
+    public static string CommentsSummaryPages => Get("CommentsSummaryPages");
+    public static string CommentsEmpty => Get("CommentsEmpty");
+    public static string CommentsFilter => Get("CommentsFilter");
+    public static string CommentFilterAll => Get("CommentFilterAll");
+    public static string CommentKindHighlight => Get("CommentKindHighlight");
+    public static string CommentKindUnderline => Get("CommentKindUnderline");
+    public static string CommentKindStrikeOut => Get("CommentKindStrikeOut");
+    public static string CommentKindOther => Get("CommentKindOther");
+    public static string CommentKindOtherNamed => Get("CommentKindOtherNamed");
+    public static string CommentEntryName => Get("CommentEntryName");
+    public static string CommentColor => Get("CommentColor");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

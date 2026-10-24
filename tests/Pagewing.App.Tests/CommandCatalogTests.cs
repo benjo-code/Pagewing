@@ -35,7 +35,7 @@ public sealed class CommandCatalogTests : IDisposable
         "file.open", "file.closeTab", "tab.next", "tab.previous", "view.zoomIn", "view.zoomOut", "view.fitPage",
         "view.actualSize", "view.fitWidth", "view.layout.single", "view.layout.continuous", "view.layout.spread",
         "view.layout.spreadCover", "view.pageTheme.toggle", "nav.goToPage", "nav.previousPage", "nav.nextPage", "nav.back",
-        "nav.forward", "panel.pages", "panel.contents", "search.open", "search.next", "search.previous", "palette.show",
+        "nav.forward", "panel.pages", "panel.contents", "panel.comments", "search.open", "search.next", "search.previous", "palette.show",
         "settings.show", "help.show", "app.about", "recent.clear", "app.checkForUpdates",
     ];
 
@@ -122,6 +122,7 @@ public sealed class CommandCatalogTests : IDisposable
             ("file.saveAs", ["Ctrl+Shift+S"]),
             ("edit.undo", ["Ctrl+Z"]),
             ("edit.redo", ["Ctrl+Shift+Z", "Ctrl+Y"]),
+            ("panel.comments", ["Ctrl+Shift+D3"]),
         };
 
         foreach (var (id, gestures) in expected)
@@ -142,6 +143,11 @@ public sealed class CommandCatalogTests : IDisposable
         Assert.Equal("Strg+Umschalt+S", GestureText.Of(catalog.ById("file.saveAs")!.Gesture!));
         Assert.Equal("Strg+Z", GestureText.Of(catalog.ById("edit.undo")!.Gesture!));
         Assert.Equal("Strg+Umschalt+Z", GestureText.Of(catalog.ById("edit.redo")!.Gesture!));
+        Assert.Equal("Strg+Umschalt+3", GestureText.Of(catalog.ById("panel.comments")!.Gesture!));
+        Assert.Equal("Kommentare ein- oder ausblenden", catalog.ById("panel.comments")!.Title());
+        Assert.Equal(CommandCatalog.ViewGroup, catalog.ById("panel.comments")!.Group);
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Show or hide comments", catalog.ById("panel.comments")!.Title());
         Assert.True(catalog.ById("edit.undo")!.YieldsToTextInput);
         Assert.True(catalog.ById("edit.redo")!.YieldsToTextInput);
         Assert.False(catalog.ById("file.save")!.YieldsToTextInput);
@@ -598,6 +604,7 @@ public sealed class CommandCatalogTests : IDisposable
         Assert.Equal("help.show", catalog.ForGesture(new KeyGesture(Key.F1))?.Id);
         Assert.Equal("panel.pages", catalog.ForGesture(new KeyGesture(Key.D1, KeyModifiers.Control | KeyModifiers.Shift))?.Id);
         Assert.Equal("panel.contents", catalog.ForGesture(new KeyGesture(Key.D2, KeyModifiers.Control | KeyModifiers.Shift))?.Id);
+        Assert.Equal("panel.comments", catalog.ForGesture(new KeyGesture(Key.D3, KeyModifiers.Control | KeyModifiers.Shift))?.Id);
         Assert.Equal("view.pageTheme.toggle", catalog.ForGesture(new KeyGesture(Key.D, KeyModifiers.Control | KeyModifiers.Shift))?.Id);
 
         await FocusAsync(window, view);
@@ -620,6 +627,10 @@ public sealed class CommandCatalogTests : IDisposable
         Press(window, Key.D2, PhysicalKey.Digit2, Ctrl | Shift);
         Assert.Equal(SidePanelKind.Contents, tab.SidePanel);
         Press(window, Key.D2, PhysicalKey.Digit2, Ctrl | Shift);
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+        Press(window, Key.D3, PhysicalKey.Digit3, Ctrl | Shift);
+        Assert.Equal(SidePanelKind.Comments, tab.SidePanel);
+        Press(window, Key.D3, PhysicalKey.Digit3, Ctrl | Shift);
         Assert.Equal(SidePanelKind.None, tab.SidePanel);
 
         // The page of this tab, dark and light again.

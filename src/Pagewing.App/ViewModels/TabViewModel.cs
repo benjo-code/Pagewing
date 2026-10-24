@@ -788,6 +788,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         DisposeAnnotations();
         ResetOutline();
         _search?.Dispose();
+        _comments?.Dispose();
         TextSelection = null;
         ClearHistory();
         _checkingPassword = false;
@@ -1100,6 +1101,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         {
             // The same pages: a search that was running on the closed document starts again on the new one.
             _search?.OnDocumentAdopted(oldDocument!);
+            _comments?.OnDocumentAdopted(document!);
             OnPropertyChanged(nameof(Document));
         }
         else if (documentChanged)
@@ -1109,6 +1111,9 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (hadDocument)
             {
                 _search?.Reset();
+
+                // So does the list of its annotations; the panel asks for a new one.
+                DiscardComments();
             }
             else if (isNewDocument)
             {

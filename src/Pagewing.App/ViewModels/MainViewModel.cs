@@ -528,6 +528,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Gets whether the active tab shows the search ("Search" is the active entry of the action bar).</summary>
     public bool IsSearchPanelOpen => ActivePanel == SidePanelKind.Search;
 
+    /// <summary>Gets whether the active tab shows its annotations ("Comments" is the active entry of the action bar).</summary>
+    public bool IsCommentsPanelOpen => ActivePanel == SidePanelKind.Comments;
+
     /// <summary>
     /// An entry of the action bar (parameter: the <see cref="SidePanelKind"/>): opens its panel in the active tab, or
     /// closes it when it is the open one; another open panel is replaced, so at most one is open.
@@ -1253,6 +1256,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsPagesPanelOpen));
         OnPropertyChanged(nameof(IsContentsPanelOpen));
         OnPropertyChanged(nameof(IsSearchPanelOpen));
+        OnPropertyChanged(nameof(IsCommentsPanelOpen));
     }
 
     // The conditions are checked again: the user may have chosen a panel, or the window may have narrowed meanwhile.
@@ -1288,7 +1292,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// The user opened or closed a panel: opening "Pages" or "Contents" makes it the start panel of the next window,
-    /// closing it makes that none. "Search" never changes it, neither by opening nor by closing.
+    /// closing it makes that none. "Search" and "Comments" never change it, neither by opening nor by closing.
     /// </summary>
     private void RememberStartPanel(SidePanelKind old, SidePanelKind next)
     {

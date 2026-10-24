@@ -21,7 +21,7 @@ public sealed partial class ActionBar : UserControl
     }
 
     /// <summary>
-    /// The tooltips of "Pages" and "Contents" name their shortcuts as the catalog has them ("Seiten (Strg+Umschalt+1)"),
+    /// The tooltips of "Pages", "Contents" and "Comments" name their shortcuts as the catalog has them ("Seiten (Strg+Umschalt+1)"),
     /// so a changed gesture cannot leave a stale text; the names stay what the entries are, and every panel entry tells
     /// screen readers its shortcut as the accelerator key. The window built the catalog already, for its key bindings.
     /// </summary>
@@ -29,6 +29,7 @@ public sealed partial class ActionBar : UserControl
     {
         Describe(PagesButton, Strings.PagesTooltip, catalog.ById("panel.pages"));
         Describe(ContentsButton, Strings.ContentsTooltip, catalog.ById("panel.contents"));
+        Describe(CommentsButton, Strings.CommentsPanelTitle, catalog.ById("panel.comments"));
         Describe(PrintButton, Strings.PrintTitle, catalog.ById("file.print"));
         if (catalog.ById("search.open")?.Gesture is { } search)
         {

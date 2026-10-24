@@ -258,14 +258,15 @@ public sealed class CommandPaletteTests : IDisposable
         Press(window, Key.K, PhysicalKey.K, Ctrl);
         var palette = viewModel.Palette!;
 
-        foreach (var query in new[] { "3", "0", "-1", "+1", "1.5", "99999999999" })
+        foreach (var query in new[] { "3", "7", "0", "-1", "+1", "1.5", "99999999999" })
         {
             palette.Query = query;
             Assert.DoesNotContain(palette.Groups, group => group.Kind == PaletteKind.Page);
         }
 
-        // Enter without an entry does nothing and keeps the palette.
-        palette.Query = "3";
+        // Enter without an entry does nothing and keeps the palette ("7": no page of the document, no shortcut; "3" finds
+        // Ctrl+Shift+3 of the comments since milestone 9).
+        palette.Query = "7";
         Assert.Empty(palette.Items);
         Assert.Equal(-1, palette.SelectedIndex);
         Press(window, Key.Enter, PhysicalKey.Enter, None);

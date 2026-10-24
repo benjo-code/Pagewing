@@ -990,4 +990,55 @@
   <data name="SaveNotPossible" xml:space="preserve">
     <value>Speichern ist gerade nicht möglich. Ihre Änderungen bleiben in diesem Tab erhalten.</value>
   </data>
+  <data name="CommentsPanelTitle" xml:space="preserve">
+    <value>Kommentare</value>
+  </data>
+  <data name="CommandCommentsPanel" xml:space="preserve">
+    <value>Kommentare ein- oder ausblenden</value>
+  </data>
+  <data name="CommentsLoading" xml:space="preserve">
+    <value>Lädt …</value>
+  </data>
+  <data name="CommentsNone" xml:space="preserve">
+    <value>Keine Kommentare</value>
+  </data>
+  <data name="CommentsSummaryOne" xml:space="preserve">
+    <value>1 Kommentar auf Seite {0}</value>
+  </data>
+  <data name="CommentsSummaryOnePage" xml:space="preserve">
+    <value>{0} Kommentare, alle auf Seite {1}</value>
+  </data>
+  <data name="CommentsSummaryPages" xml:space="preserve">
+    <value>{0} Kommentare auf {1} Seiten</value>
+  </data>
+  <data name="CommentsEmpty" xml:space="preserve">
+    <value>Dieses Dokument enthält keine Kommentare.</value>
+  </data>
+  <data name="CommentsFilter" xml:space="preserve">
+    <value>Nach Art filtern</value>
+  </data>
+  <data name="CommentFilterAll" xml:space="preserve">
+    <value>Alle Arten</value>
+  </data>
+  <data name="CommentKindHighlight" xml:space="preserve">
+    <value>Hervorhebung</value>
+  </data>
+  <data name="CommentKindUnderline" xml:space="preserve">
+    <value>Unterstreichung</value>
+  </data>
+  <data name="CommentKindStrikeOut" xml:space="preserve">
+    <value>Durchstreichung</value>
+  </data>
+  <data name="CommentKindOther" xml:space="preserve">
+    <value>Sonstige</value>
+  </data>
+  <data name="CommentKindOtherNamed" xml:space="preserve">
+    <value>Sonstige: {0}</value>
+  </data>
+  <data name="CommentEntryName" xml:space="preserve">
+    <value>Seite {0}: {1}</value>
+  </data>
+  <data name="CommentColor" xml:space="preserve">
+    <value>Farbe {0}</value>
+  </data>
 </root>

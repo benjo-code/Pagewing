@@ -14,4 +14,7 @@ public enum SidePanelKind
 
     /// <summary>The full-text search with its list of matches.</summary>
     Search,
+
+    /// <summary>The annotations of the document (milestone 9), read when the panel first opens.</summary>
+    Comments,
 }

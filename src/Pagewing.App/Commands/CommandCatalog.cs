@@ -129,6 +129,7 @@ public sealed class CommandCatalog
         Tab("view.pageTheme.toggle", () => Strings.CommandTogglePageTheme, ViewGroup, CtrlShift(Key.D), tab => tab.TogglePageThemeCommand, ready: true),
         Panel("panel.pages", () => Strings.CommandPagesPanel, CtrlShift(Key.D1), SidePanelKind.Pages),
         Panel("panel.contents", () => Strings.CommandContentsPanel, CtrlShift(Key.D2), SidePanelKind.Contents),
+        Panel("panel.comments", () => Strings.CommandCommentsPanel, CtrlShift(Key.D3), SidePanelKind.Comments),
 
         // Navigation: the page field, page by page, back and forward along the link jumps (only while there is one).
         Tab("nav.goToPage", () => Strings.CommandGoToPage, NavigationGroup, Ctrl(Key.G), tab => tab.FocusPageFieldCommand),
