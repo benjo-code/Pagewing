@@ -317,6 +317,9 @@ public static class Strings
     public static string PrintJobClose => Get("PrintJobClose");
     public static string SettingsGroupPrint => Get("SettingsGroupPrint");
     public static string SettingsPrintScaling => Get("SettingsPrintScaling");
+    public static string SettingsGroupComments => Get("SettingsGroupComments");
+    public static string SettingsAuthor => Get("SettingsAuthor");
+    public static string SettingsAuthorHint => Get("SettingsAuthorHint");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

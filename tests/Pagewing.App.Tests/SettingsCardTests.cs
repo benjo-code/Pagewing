@@ -508,6 +508,72 @@ public sealed class SettingsCardTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AuthorFieldChangesTheSettingAndSavesAtOnce()
+    {
+        var settings = Start();
+        var (window, viewModel, _) = Show(settings);
+        var card = await OpenCardAsync(window);
+
+        // Empty by default: no name of the system user ends up in a shared file.
+        var field = Find<TextBox>(card, "AuthorField");
+        Assert.True(field.IsEffectivelyVisible);
+        Assert.True(string.IsNullOrEmpty(field.Text));
+        Assert.Null(settings.Current.AuthorName);
+        Assert.Equal(AppSettings.MaxAuthorNameLength, field.MaxLength);
+        Assert.Equal(Strings.SettingsAuthor, AutomationProperties.GetName(field));
+        Assert.Equal("Author", Strings.SettingsAuthor);
+
+        // The group, its label and the hint underneath (caption, text.secondary, outside the row).
+        var texts = card.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible).Select(text => text.Text).ToArray();
+        Assert.Contains("Comments", texts);
+        Assert.Contains("Author", texts);
+        var hint = Find<TextBlock>(card, "AuthorHint");
+        Assert.True(hint.IsEffectivelyVisible);
+        Assert.Equal(Strings.SettingsAuthorHint, hint.Text);
+        Assert.Contains("stored in the file", hint.Text);
+        Assert.Contains("caption", hint.Classes);
+
+        // What is typed is in the settings and in the file at once (no "Apply").
+        field.Text = "Anna Beispiel";
+        Settle(window);
+        Assert.Equal("Anna Beispiel", settings.Current.AuthorName);
+        Assert.Equal("Anna Beispiel", viewModel.SettingsCard!.AuthorName);
+        Assert.Equal("Anna Beispiel", UserSettings.Load(_directory).Current.AuthorName);
+
+        // Emptied, the name is gone again (null, so nothing is written to an annotation).
+        field.Text = string.Empty;
+        Settle(window);
+        Assert.Null(settings.Current.AuthorName);
+        Assert.Null(UserSettings.Load(_directory).Current.AuthorName);
+
+        // A change made elsewhere shows in the field while the card is open.
+        settings.Update(current => current with { AuthorName = "Max" });
+        Settle(window);
+        Assert.Equal("Max", field.Text);
+    }
+
+    [AvaloniaFact]
+    public async Task EscInTheAuthorFieldStillClosesTheCard()
+    {
+        var settings = Start();
+        var (window, viewModel, _) = Show(settings);
+        var card = await OpenCardAsync(window);
+        var field = Find<TextBox>(card, "AuthorField");
+
+        // With the keys in the field: typing works, Esc leaves the name as typed and closes the card.
+        field.Focus(NavigationMethod.Tab);
+        Settle(window);
+        Assert.Same(field, Focused(window));
+        window.KeyTextInput("Ben");
+        Settle(window);
+        Assert.Equal("Ben", settings.Current.AuthorName);
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        Assert.False(card.IsVisible);
+        Assert.Equal("Ben", UserSettings.Load(_directory).Current.AuthorName);
+    }
+
+    [AvaloniaFact]
     public async Task TurningItOffWritesTheSettingAndStopsTheCheck()
     {
         var settings = Start();
@@ -567,14 +633,14 @@ public sealed class SettingsCardTests : IDisposable
 
         // Tab goes from top to bottom and stays on the card; Shift+Tab goes back.
         var order = new List<string?>();
-        for (var i = 0; i < 11; i++)
+        for (var i = 0; i < 12; i++)
         {
             Press(window, Key.Tab, PhysicalKey.Tab, None);
             order.Add((Focused(window) as Control)?.Name);
         }
 
         Assert.Equal(
-            ["DensityChoice", "DarkPagesSwitch", "ReduceMotionSwitch", "LayoutChoice", "ZoomChoice", "PrintScalingChoice", "LanguageChoice", "UpdateCheckSwitch", "SettingsDoneButton", "SettingsCloseButton", "ThemeChoice"],
+            ["DensityChoice", "DarkPagesSwitch", "ReduceMotionSwitch", "LayoutChoice", "ZoomChoice", "PrintScalingChoice", "AuthorField", "LanguageChoice", "UpdateCheckSwitch", "SettingsDoneButton", "SettingsCloseButton", "ThemeChoice"],
             order);
         Press(window, Key.Tab, PhysicalKey.Tab, Shift);
         Assert.Equal("SettingsCloseButton", (Focused(window) as Control)?.Name);
@@ -661,9 +727,9 @@ public sealed class SettingsCardTests : IDisposable
 
         string[] expected = language == "de"
             ? ["Einstellungen", "Darstellung", "Design", "Dichte", "Seiten dunkel darstellen, wenn das Design dunkel ist", "Animationen reduzieren",
-               "Ansicht", "Standard-Layout", "Standard-Zoom", "Gilt für Dateien, die Sie danach öffnen.", "Drucken", "Seitengröße beim Drucken", "Sprache", "Sprache der Oberfläche", "Aktualisierungen", "Automatisch nach Updates suchen", Strings.SettingsUpdateHint]
+               "Ansicht", "Standard-Layout", "Standard-Zoom", "Gilt für Dateien, die Sie danach öffnen.", "Drucken", "Seitengröße beim Drucken", "Kommentare", "Autor", Strings.SettingsAuthorHint, "Sprache", "Sprache der Oberfläche", "Aktualisierungen", "Automatisch nach Updates suchen", Strings.SettingsUpdateHint]
             : ["Settings", "Appearance", "Theme", "Density", "Show pages dark when the theme is dark", "Reduce animations",
-               "View", "Default layout", "Default zoom", "Applies to files you open from now on.", "Printing", "Page size when printing", "Language", "Interface language", "Updates", "Automatically check for updates", Strings.SettingsUpdateHint];
+               "View", "Default layout", "Default zoom", "Applies to files you open from now on.", "Printing", "Page size when printing", "Comments", "Author", Strings.SettingsAuthorHint, "Language", "Interface language", "Updates", "Automatically check for updates", Strings.SettingsUpdateHint];
         var texts = card.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible).Select(text => text.Text).ToArray();
         foreach (var text in expected)
         {
@@ -730,6 +796,8 @@ public sealed class SettingsCardTests : IDisposable
         Assert.True(Ratio(TokenTests.Token("Text.Secondary", variant), "Surface.Raised") >= 4.5);
         var updateHint = Find<TextBlock>(card, "UpdateCheckHint");
         Assert.Equal(TokenTests.Token("Text.Secondary", variant), Assert.IsAssignableFrom<ISolidColorBrush>(updateHint.Foreground).Color);
+        var authorHint = Find<TextBlock>(card, "AuthorHint");
+        Assert.Equal(TokenTests.Token("Text.Secondary", variant), Assert.IsAssignableFrom<ISolidColorBrush>(authorHint.Foreground).Color);
 
         // The open list: drawn like the card, the chosen entry on accent.subtle with a check mark (not only a colour).
         list.IsDropDownOpen = true;

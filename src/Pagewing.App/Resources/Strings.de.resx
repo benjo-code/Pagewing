@@ -708,6 +708,15 @@
   <data name="SettingsPrintScaling" xml:space="preserve">
     <value>Seitengröße beim Drucken</value>
   </data>
+  <data name="SettingsGroupComments" xml:space="preserve">
+    <value>Kommentare</value>
+  </data>
+  <data name="SettingsAuthor" xml:space="preserve">
+    <value>Autor</value>
+  </data>
+  <data name="SettingsAuthorHint" xml:space="preserve">
+    <value>Der Name wird in der Datei jeder Annotation gespeichert, die Sie anlegen. Leer lassen, um keinen Namen zu speichern.</value>
+  </data>
   <data name="DefaultAppTitle" xml:space="preserve">
     <value>Pagewing als Standard für PDFs festlegen?</value>
   </data>

@@ -708,6 +708,15 @@
   <data name="SettingsPrintScaling" xml:space="preserve">
     <value>Page size when printing</value>
   </data>
+  <data name="SettingsGroupComments" xml:space="preserve">
+    <value>Comments</value>
+  </data>
+  <data name="SettingsAuthor" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="SettingsAuthorHint" xml:space="preserve">
+    <value>The name is stored in the file of every annotation you create. Leave it empty to store no name.</value>
+  </data>
   <data name="DefaultAppTitle" xml:space="preserve">
     <value>Set Pagewing as the default for PDFs?</value>
   </data>

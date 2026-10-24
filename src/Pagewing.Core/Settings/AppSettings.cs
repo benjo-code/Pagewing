@@ -1,3 +1,4 @@
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Printing;
 using Pagewing.Core.Viewing;
 
@@ -137,12 +138,34 @@ public sealed record AppSettings
     /// <summary>Whether Pagewing checks for a newer version by itself (at most once in 24 hours). Off means no network access at all.</summary>
     public bool UpdateCheck { get; set; } = true;
 
-    /// <summary>Returns a copy whose values are all valid: undefined enum values become the default, the width is clamped, an empty or overlong printer name is dropped.</summary>
+    /// <summary>The longest author name that is kept (a longer name is dropped).</summary>
+    public const int MaxAuthorNameLength = 128;
+
+    /// <summary>
+    /// The name written to the <c>/T</c> entry of every annotation the user creates, or <see langword="null"/> for none
+    /// (the default: no name of the system user lands in a file that is shared).
+    /// </summary>
+    public string? AuthorName { get; set; }
+
+    /// <summary>The colour the text highlight starts with (the toolbar remembers the last one chosen).</summary>
+    public MarkupColor HighlightColor { get; set; } = MarkupColor.Yellow;
+
+    /// <summary>The colour the underline starts with (the toolbar remembers the last one chosen).</summary>
+    public MarkupColor UnderlineColor { get; set; } = MarkupColor.Blue;
+
+    /// <summary>The colour the strike-out starts with (the toolbar remembers the last one chosen).</summary>
+    public MarkupColor StrikeOutColor { get; set; } = MarkupColor.Pink;
+
+    /// <summary>Returns a copy whose values are all valid: undefined enum values become the default, the width is clamped, an empty or overlong printer or author name is dropped.</summary>
     public AppSettings Normalized()
     {
         var defaults = Default;
         return this with
         {
+            AuthorName = string.IsNullOrWhiteSpace(AuthorName) || AuthorName.Length > MaxAuthorNameLength ? null : AuthorName,
+            HighlightColor = Enum.IsDefined(HighlightColor) ? HighlightColor : defaults.HighlightColor,
+            UnderlineColor = Enum.IsDefined(UnderlineColor) ? UnderlineColor : defaults.UnderlineColor,
+            StrikeOutColor = Enum.IsDefined(StrikeOutColor) ? StrikeOutColor : defaults.StrikeOutColor,
             Theme = Enum.IsDefined(Theme) ? Theme : defaults.Theme,
             Language = Enum.IsDefined(Language) ? Language : defaults.Language,
             Density = Enum.IsDefined(Density) ? Density : defaults.Density,
