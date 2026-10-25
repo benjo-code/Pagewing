@@ -77,65 +77,73 @@ internal static unsafe class PdfiumDarkMarkups
         var bands = new List<DarkMarkupBand>();
         long quadBudget = MaxTotalQuads;
         long appearanceBudget = MaxAppearanceBytes;
+        // Rented on the first appearance that is decoded, returned when the read ends (also by an exception).
         char[]? scratch = null;
-        for (var i = 0; i < count && quadBudget > 0 && appearanceBudget > 0; i++)
+        try
         {
-            var annotation = Fpdf.FPDFPage_GetAnnot(native, i);
-            if (annotation == 0)
+            for (var i = 0; i < count && quadBudget > 0 && appearanceBudget > 0; i++)
             {
-                continue;
-            }
-
-            try
-            {
-                var subtype = Fpdf.FPDFAnnot_GetSubtype(annotation);
-                if (!PdfiumAnnotations.IsMarkup(subtype)
-                    || (Fpdf.FPDFAnnot_GetFlags(annotation) & (FpdfConstants.AnnotFlagHidden | FpdfConstants.AnnotFlagNoView)) != 0)
+                var annotation = Fpdf.FPDFPage_GetAnnot(native, i);
+                if (annotation == 0)
                 {
                     continue;
                 }
 
-                var quadCount = Fpdf.FPDFAnnot_CountAttachmentPoints(annotation);
-                if (quadCount == 0 || quadCount > PdfiumAnnotations.MaxQuads)
+                try
                 {
-                    continue;
-                }
-
-                var highlight = subtype == FpdfConstants.AnnotHighlight;
-                var rgb = PdfiumAnnotations.ReadColor(annotation, subtype, ref scratch, ref appearanceBudget) is { } c
-                    ? 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | c.B
-                    : highlight ? DefaultHighlight : DefaultLine;
-                var color = highlight ? FillTint(rgb, colors.Background, colors.Foreground) : LineColor(rgb, colors.Background);
-                for (nuint q = 0; q < quadCount && quadBudget > 0; q++)
-                {
-                    quadBudget--;
-                    FsQuadPointsF points;
-                    if (Fpdf.FPDFAnnot_GetAttachmentPoints(annotation, q, &points) == 0 || !PdfiumAnnotations.IsSane(points))
+                    var subtype = Fpdf.FPDFAnnot_GetSubtype(annotation);
+                    if (!PdfiumAnnotations.IsMarkup(subtype)
+                        || (Fpdf.FPDFAnnot_GetFlags(annotation) & (FpdfConstants.AnnotFlagHidden | FpdfConstants.AnnotFlagNoView)) != 0)
                     {
                         continue;
                     }
 
-                    if (highlight)
+                    var quadCount = Fpdf.FPDFAnnot_CountAttachmentPoints(annotation);
+                    if (quadCount == 0 || quadCount > PdfiumAnnotations.MaxQuads)
                     {
-                        areas.Add(AreaOf(transform, points, color));
                         continue;
                     }
 
-                    // PDFium's generator: the bounding rectangle in PDF space, the line 1 pt above its bottom or through its middle.
-                    var left = Math.Min(Math.Min(points.X1, points.X2), Math.Min(points.X3, points.X4));
-                    var right = Math.Max(Math.Max(points.X1, points.X2), Math.Max(points.X3, points.X4));
-                    var bottom = Math.Min(Math.Min(points.Y1, points.Y2), Math.Min(points.Y3, points.Y4));
-                    var top = Math.Max(Math.Max(points.Y1, points.Y2), Math.Max(points.Y3, points.Y4));
-                    var y = subtype == FpdfConstants.AnnotUnderline ? bottom + LineWidth : (top + bottom) / 2;
-                    var a = transform.ToDisplay(left, y - (LineWidth / 2));
-                    var b = transform.ToDisplay(right, y + (LineWidth / 2));
-                    bands.Add(new DarkMarkupBand(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), color));
+                    var highlight = subtype == FpdfConstants.AnnotHighlight;
+                    var rgb = PdfiumAnnotations.ReadColor(annotation, subtype, ref scratch, ref appearanceBudget) is { } c
+                        ? 0xFF000000u | ((uint)c.R << 16) | ((uint)c.G << 8) | c.B
+                        : highlight ? DefaultHighlight : DefaultLine;
+                    var color = highlight ? FillTint(rgb, colors.Background, colors.Foreground) : LineColor(rgb, colors.Background);
+                    for (nuint q = 0; q < quadCount && quadBudget > 0; q++)
+                    {
+                        quadBudget--;
+                        FsQuadPointsF points;
+                        if (Fpdf.FPDFAnnot_GetAttachmentPoints(annotation, q, &points) == 0 || !PdfiumAnnotations.IsSane(points))
+                        {
+                            continue;
+                        }
+
+                        if (highlight)
+                        {
+                            areas.Add(AreaOf(transform, points, color));
+                            continue;
+                        }
+
+                        // PDFium's generator: the bounding rectangle in PDF space, the line 1 pt above its bottom or through its middle.
+                        var left = Math.Min(Math.Min(points.X1, points.X2), Math.Min(points.X3, points.X4));
+                        var right = Math.Max(Math.Max(points.X1, points.X2), Math.Max(points.X3, points.X4));
+                        var bottom = Math.Min(Math.Min(points.Y1, points.Y2), Math.Min(points.Y3, points.Y4));
+                        var top = Math.Max(Math.Max(points.Y1, points.Y2), Math.Max(points.Y3, points.Y4));
+                        var y = subtype == FpdfConstants.AnnotUnderline ? bottom + LineWidth : (top + bottom) / 2;
+                        var a = transform.ToDisplay(left, y - (LineWidth / 2));
+                        var b = transform.ToDisplay(right, y + (LineWidth / 2));
+                        bands.Add(new DarkMarkupBand(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), color));
+                    }
+                }
+                finally
+                {
+                    Fpdf.FPDFPage_CloseAnnot(annotation);
                 }
             }
-            finally
-            {
-                Fpdf.FPDFPage_CloseAnnot(annotation);
-            }
+        }
+        finally
+        {
+            PdfiumAnnotations.ReturnScratch(ref scratch);
         }
 
         return areas.Count == 0 && bands.Count == 0 ? DarkMarkupPaint.Empty : new DarkMarkupPaint(areas, bands);

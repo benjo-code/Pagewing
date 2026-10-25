@@ -468,6 +468,59 @@ public sealed class DarkPageRenderTests
         Assert.True(elapsed < TimeSpan.FromSeconds(10), $"the read took {elapsed}");
     }
 
+    [Fact]
+    public async Task ReadingTheMarkupsForADarkRenderAllocatesLittle()
+    {
+        // Every dark render (each tile and preview) reads the markups once. 120 highlights, underlines and strike-outs with
+        // an appearance of their own (as PDFium's generator writes them): FPDFAnnot_GetColor fails for those, so each colour
+        // comes from the decoded appearance. The buffer for that is rented, not made per read: measured 1,068,000 bytes per
+        // read with a new buffer and 19,368 with the rented one (the lists of areas and bands), Debug and Release alike.
+        const int Markups = 120;
+        using var folder = new TempFolder();
+        string[] subtypes = ["Highlight", "Underline", "StrikeOut"];
+        var annots = string.Join(' ', Enumerable.Range(0, Markups).Select(i => $"{4 + i} 0 R"));
+        var objects = new List<string>
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Annots [{annots}] >>",
+        };
+        for (var i = 0; i < Markups; i++)
+        {
+            var (bottom, top) = (10 + (i * 6), 14 + (i * 6));
+            objects.Add($"<< /Type /Annot /Subtype /{subtypes[i % 3]} /Rect [20 {bottom} 580 {top}] /F 4 /C [1 0.8 0.2] /QuadPoints [20 {top} 580 {top} 20 {bottom} 580 {bottom}] /AP << /N {4 + Markups + i} 0 R >> >>");
+        }
+
+        for (var i = 0; i < Markups; i++)
+        {
+            var (bottom, top) = (10 + (i * 6), 14 + (i * 6));
+            objects.Add(Form($"20 {bottom} 580 {top}", $"1 0.8 0.2 rg 20 {bottom} 560 4 re f"));
+        }
+
+        var path = WritePdf(folder, "many-markups.pdf", objects);
+        var thread = PdfiumThread.Shared;
+        var (count, perRead) = await thread.InvokeAsync(
+            () =>
+            {
+                using var document = PdfiumDocument.Open(thread, path, null);
+                using var page = document.LoadPage(0);
+                var colors = new PdfiumPageColors(PageThemeColors.DarkBackground, PageThemeColors.DarkForeground);
+                var count = PdfiumDarkMarkups.Read(page, colors).Areas.Count;
+                const int Reads = 20;
+                var before = GC.GetAllocatedBytesForCurrentThread();
+                for (var i = 0; i < Reads; i++)
+                {
+                    PdfiumDarkMarkups.Read(page, colors);
+                }
+
+                return (count, (GC.GetAllocatedBytesForCurrentThread() - before) / Reads);
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(Markups / 3, count);
+        Assert.True(perRead < 64 * 1024, $"one read allocated {perRead} bytes");
+    }
+
     [Theory]
     [InlineData(AnnotationKind.Underline, 16.0)]
     [InlineData(AnnotationKind.Underline, 32.0)]

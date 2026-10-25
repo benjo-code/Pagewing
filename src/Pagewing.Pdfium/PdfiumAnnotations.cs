@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -82,6 +83,9 @@ internal static unsafe class PdfiumAnnotations
 
     /// <summary>The longest appearance stream whose colour is looked for, in bytes of UTF-16LE.</summary>
     private const int MaxAppearanceBytes = 1024 * 1024;
+
+    /// <summary>The characters of the buffer an appearance stream is decoded into (<see cref="MaxAppearanceBytes"/>).</summary>
+    private const int ScratchLength = MaxAppearanceBytes / 2;
 
     /// <summary>The part of an appearance stream that is searched for its colour, in characters.</summary>
     private const int AppearanceScanLength = 64 * 1024;
@@ -803,9 +807,11 @@ internal static unsafe class PdfiumAnnotations
     }
 
     /// <summary>
-    /// Like <see cref="ReadColor"/>, but decodes the appearance at most once (into <paramref name="scratch"/>, made on first
-    /// use and kept by the caller for the next annotation) and charges the bytes PDFium reports to
-    /// <paramref name="appearanceBudget"/>. Without budget left the appearance is not looked at (<see langword="null"/>).
+    /// Like <see cref="ReadColor"/>, but decodes the appearance at most once (into <paramref name="scratch"/>, rented from
+    /// <see cref="ArrayPool{T}.Shared"/> on first use; the caller keeps it for the next annotation and returns it with
+    /// <see cref="ReturnScratch"/>) and charges the bytes PDFium reports to <paramref name="appearanceBudget"/>. Without
+    /// budget left the appearance is not looked at (<see langword="null"/>). A new 1 MiB array per read (one per dark tile
+    /// or preview) cost a large-object allocation each time.
     /// </summary>
     internal static (byte R, byte G, byte B)? ReadColor(nint annotation, int subtype, ref char[]? scratch, ref long appearanceBudget)
     {
@@ -826,21 +832,32 @@ internal static unsafe class PdfiumAnnotations
         }
 
         // One call: PDFium copies the string only when it fits, and reports its length either way.
-        scratch ??= new char[MaxAppearanceBytes / 2];
+        // The pool may hand out a longer array; only ScratchLength of it is offered, so the limit stays the same.
+        scratch ??= ArrayPool<char>.Shared.Rent(ScratchLength);
         nuint length;
         fixed (char* pointer = scratch)
         {
-            length = Fpdf.FPDFAnnot_GetAP(annotation, FpdfConstants.AnnotAppearanceNormal, (ushort*)pointer, new CULong((nuint)(scratch.Length * 2))).Value;
+            length = Fpdf.FPDFAnnot_GetAP(annotation, FpdfConstants.AnnotAppearanceNormal, (ushort*)pointer, new CULong((nuint)(ScratchLength * 2))).Value;
         }
 
         appearanceBudget -= (long)Math.Min((ulong)length, long.MaxValue);
-        if (length <= 2 || length > (nuint)(scratch.Length * 2))
+        if (length <= 2 || length > (nuint)(ScratchLength * 2))
         {
             return null;
         }
 
         var text = scratch.AsSpan(0, ((int)length / 2) - 1);
         return ColorFromAppearance(text[..Math.Min(text.Length, AppearanceScanLength)], subtype == FpdfConstants.AnnotHighlight);
+    }
+
+    /// <summary>Gives a buffer rented by <see cref="ReadColor(nint, int, ref char[], ref long)"/> back to the pool (nothing without one).</summary>
+    internal static void ReturnScratch(ref char[]? scratch)
+    {
+        if (scratch is not null)
+        {
+            ArrayPool<char>.Shared.Return(scratch);
+            scratch = null;
+        }
     }
 
     /// <summary>Reads a string or name value (UTF-16LE); <see langword="null"/> when missing, empty, of another type or longer than <see cref="MaxStringBytes"/>.</summary>
