@@ -17,7 +17,7 @@
           Padding="12,0,6,0"
           CornerRadius="{StaticResource Pw.Radius.Tab}"
           ToolTip.Tip="{Binding FullPath}"
-          AutomationProperties.Name="{Binding FileName}"
+          AutomationProperties.Name="{Binding TabAutomationName}"
           AutomationProperties.AutomationId="Tab"
           chrome:WindowDecorationProperties.ElementRole="User">
     <DockPanel>
@@ -34,6 +34,16 @@
               chrome:WindowDecorationProperties.ElementRole="User">
         <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
       </Button>
+      <!--
+        Unsaved changes (design system 7.2, 7.7, 7.10): a dot before the close button, not colour alone; screen readers
+        hear it in the name of the tab ("file.pdf, unsaved changes"). Sizes from the spacing tokens, the same in both
+        densities (the tab keeps its height).
+      -->
+      <Panel Name="TabUnsavedDot" DockPanel.Dock="Right" Width="{StaticResource Pw.Space.4}" VerticalAlignment="Center"
+             IsVisible="{Binding IsDirty, FallbackValue=False}">
+        <Ellipse Width="{StaticResource Pw.Space.2}" Height="{StaticResource Pw.Space.2}" HorizontalAlignment="Center"
+                 Fill="{DynamicResource Pw.Brush.Text.Primary}" />
+      </Panel>
       <ctl:MiddleEllipsisTextBlock Name="TabName" VerticalAlignment="Center" Text="{Binding FileName}" />
     </DockPanel>
   </Border>

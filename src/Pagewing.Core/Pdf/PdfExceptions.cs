@@ -87,3 +87,25 @@ public sealed class PdfRenderException : Exception
     {
     }
 }
+
+/// <summary>
+/// An annotation could not be found again: no annotation of the page has the name of the locator, or the page has no
+/// annotation at its index. <see cref="Exception.Message"/> is a short English explanation.
+/// </summary>
+public sealed class PdfAnnotationNotFoundException : Exception
+{
+    public PdfAnnotationNotFoundException()
+        : base("The annotation was not found.")
+    {
+    }
+
+    public PdfAnnotationNotFoundException(string message)
+        : base(message)
+    {
+    }
+
+    public PdfAnnotationNotFoundException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}

@@ -542,6 +542,9 @@ public sealed partial class DocumentView
         var position = e.GetPosition(PageCanvas);
         _pointer = position;
         _pressedLink = null;
+
+        // A word of a double click waits for this press: a third click makes it a line, any other press lets it go now.
+        OnPressForMarkup(e.ClickCount);
         var press = new TextPress(position, e.ClickCount) { Modifiers = e.KeyModifiers };
         _press = press;
         e.Pointer.Capture(this);
@@ -622,10 +625,13 @@ public sealed partial class DocumentView
 
         if (text.LinkAt(x, y) is { } link && IsClickableCached(link))
         {
-            // Followed on the release, never here (DocumentView.Links.cs).
+            // Followed on the release, never here (DocumentView.Links.cs). With a tool of the mode "Comment" a drag from
+            // the link selects text instead (and the link is not followed, it was dragged).
             press.Kind = PressKind.Link;
             press.Link = link;
             press.Text = text;
+            press.Anchor = new TextPosition(press.Page, text.CaretAt(x, y));
+            press.SelectsOnDrag = press.ClickCount <= 1 && MarksOnRelease(tab) is not null;
             _pressedLink = link;
             return;
         }
@@ -658,6 +664,16 @@ public sealed partial class DocumentView
             if (!press.Moved && Distance(position, press.Start) >= ClickSlop)
             {
                 press.Moved = true;
+                if (press is { Kind: PressKind.Link, SelectsOnDrag: true })
+                {
+                    // The drag starts a selection at the link (a tool of the mode is on); the link is not followed.
+                    press.Kind = PressKind.Selecting;
+                    _pressedLink = null;
+                    if (_viewModel is { } tab)
+                    {
+                        tab.TextSelection = null;
+                    }
+                }
             }
 
             if (press.Kind == PressKind.Selecting)
@@ -700,6 +716,9 @@ public sealed partial class DocumentView
         }
 
         var link = LinkToFollow(press, position, e.KeyModifiers);
+
+        // With a tool of the mode "Comment" the selection becomes a markup now (DocumentView.Annotations.cs).
+        ApplyMarkupOnRelease(press, position);
         EndPress(press);
         if (ReferenceEquals(e.Pointer.Captured, this))
         {
@@ -932,6 +951,9 @@ public sealed partial class DocumentView
 
         /// <summary>Whether the pointer moved by <see cref="ClickSlop"/> or more since the press.</summary>
         public bool Moved { get; set; }
+
+        /// <summary>Whether a drag from the pressed link selects text (a tool of the mode "Comment" is on).</summary>
+        public bool SelectsOnDrag { get; set; }
 
         /// <summary>The modifier keys held when the button went down.</summary>
         public KeyModifiers Modifiers { get; init; }

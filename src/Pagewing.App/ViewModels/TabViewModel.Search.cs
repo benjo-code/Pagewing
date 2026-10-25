@@ -91,27 +91,45 @@ public sealed partial class TabViewModel
     internal void RevealSearchHit(SearchHit hit, bool fromPanel)
     {
         ArgumentNullException.ThrowIfNull(hit);
-        if (!IsReady || hit.PageIndex < 0 || hit.PageIndex >= PageCount || RevealRequested is not { } reveal)
-        {
-            return;
-        }
-
+        PageRect? area = null;
         if (hit.Rects.Count > 0)
         {
-            // The view scrolls to the rectangle (not to the top of the page) and only when it is not fully visible; the
-            // page it ends on becomes the current page of the tab. A jump to the page first would scroll twice.
             var rect = hit.Rects[0];
             for (var i = 1; i < hit.Rects.Count; i++)
             {
                 rect = rect.Union(hit.Rects[i]);
             }
 
-            reveal(hit.PageIndex, rect);
+            area = rect;
+        }
+
+        RevealArea(hit.PageIndex, area, fromPanel);
+    }
+
+    /// <summary>
+    /// Shows an area of a page the way a search match is shown (design system 7.4; also the entries of the "Comments"
+    /// panel): the view scrolls to <paramref name="area"/> (page points from the top left of the 0-based page) only when it
+    /// is not fully visible, and the page it ends on becomes the current page; without an area the page becomes the current
+    /// one with <see cref="GoToPage"/>. <paramref name="fromPanel"/> then raises <see cref="PanelPagePicked"/>. A tab that
+    /// no view shows, a page outside the document and a tab that is not ready do nothing.
+    /// </summary>
+    internal void RevealArea(int pageIndex, PageRect? area, bool fromPanel)
+    {
+        if (!IsReady || pageIndex < 0 || pageIndex >= PageCount || RevealRequested is not { } reveal)
+        {
+            return;
+        }
+
+        if (area is { } rect)
+        {
+            // The view scrolls to the rectangle (not to the top of the page) and only when it is not fully visible; the
+            // page it ends on becomes the current page of the tab. A jump to the page first would scroll twice.
+            reveal(pageIndex, rect);
         }
         else
         {
-            // The match has no geometry: at least its page is the current one.
-            GoToPage(hit.PageIndex + 1);
+            // No geometry: at least the page is the current one.
+            GoToPage(pageIndex + 1);
         }
 
         if (fromPanel)

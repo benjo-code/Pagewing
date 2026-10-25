@@ -155,10 +155,17 @@ internal sealed class ThumbnailList : ListBox
     private static readonly PdfPageSize StandInSize = new(595.28, 841.89);
 
     private readonly HashSet<int> _withBitmaps = [];
+
+    // Entries whose thumbnail shows content that changed (an annotation, or the saved file in place of the document): kept
+    // until the new image replaces it, so the frame does not go empty in between.
+    private readonly HashSet<int> _stale = [];
     private ThumbnailItem[] _items = [];
     private TabViewModel? _tab;
     private ViewerSession? _session;
     private PdfDocument? _document;
+
+    // The render cache of the session when _document was shown: the same cache with another document is the saved file.
+    private RenderCache? _documentCache;
     private int _knownSizes;
     private ThumbnailSource? _source;
     private SourceHandler? _handler;
@@ -208,6 +215,9 @@ internal sealed class ThumbnailList : ListBox
 
     /// <summary>Gets the thumbnails the list draws from, or <see langword="null"/> before it asked for them (for tests).</summary>
     internal ThumbnailSource? Source => _source;
+
+    /// <summary>Gets the entries whose thumbnail shows content that changed and waits for its new image (for tests).</summary>
+    internal IReadOnlySet<int> StaleEntries => _stale;
 
     /// <summary>
     /// Gets or sets the number of entries per row: 1 (density "Normal", the list box's own VirtualizingStackPanel) or
@@ -345,6 +355,7 @@ internal sealed class ThumbnailList : ListBox
         _session = tab.Session;
         tab.PropertyChanged += OnTabPropertyChanged;
         _session.Changed += OnSessionChanged;
+        _session.PagesInvalidated += OnPagesInvalidated;
         SyncDocument();
     }
 
@@ -357,6 +368,7 @@ internal sealed class ThumbnailList : ListBox
 
         _tab.PropertyChanged -= OnTabPropertyChanged;
         _session!.Changed -= OnSessionChanged;
+        _session.PagesInvalidated -= OnPagesInvalidated;
         ResetDocument();
         _tab = null;
         _session = null;
@@ -375,6 +387,43 @@ internal sealed class ThumbnailList : ListBox
         }
     }
 
+    // Any thread (the editor's): must not wait and must never throw. The thumbnails of those pages are rendered anew.
+    private void OnPagesInvalidated(IReadOnlySet<int> pages)
+    {
+        var session = _session;
+        try
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (session is not null && ReferenceEquals(session, _session))
+                {
+                    MarkStale(pages);
+                }
+            });
+        }
+        catch (Exception)
+        {
+            // The dispatcher is shutting down: nothing left to show.
+        }
+    }
+
+    /// <summary>
+    /// The thumbnails of <paramref name="pages"/> show content that changed: they stay until their new images arrive (the
+    /// session dropped the old ones from the cache), and the next plan renders them anew.
+    /// </summary>
+    private void MarkStale(IEnumerable<int> pages)
+    {
+        foreach (var index in pages)
+        {
+            if (_withBitmaps.Contains(index))
+            {
+                _stale.Add(index);
+            }
+        }
+
+        SchedulePlan();
+    }
+
     /// <summary>Shows what the session holds now: a new document (new entries), more page sizes, or nothing.</summary>
     private void SyncDocument()
     {
@@ -386,10 +435,29 @@ internal sealed class ThumbnailList : ListBox
         // The tab first, so its current page belongs to the document read below.
         tab.SyncDocumentFromSession();
         var document = session.State == ViewerState.Ready ? session.Document : null;
+        var cache = session.Cache;
         var sizes = session.LoadedSizes;
         if (document is not null && !ReferenceEquals(document, session.Document))
         {
             // The session moved on between the reads; its next event brings a consistent state.
+            return;
+        }
+
+        if (document is not null && _document is not null && !ReferenceEquals(document, _document)
+            && cache is not null && ReferenceEquals(cache, _documentCache) && PageCountOf(document) == _items.Length)
+        {
+            // The saved file in place of the document (the session kept the cache): the same pages, so the entries and the
+            // position of the list stay. Its thumbnails are new (the old ones went with the old document): every image
+            // shown is replaced once the new one is there.
+            StopWork();
+            DetachSource();
+            _document = document;
+            MarkStale([.. _withBitmaps]);
+            if (sizes.Count > _knownSizes)
+            {
+                AddSizes(sizes);
+            }
+
             return;
         }
 
@@ -413,6 +481,7 @@ internal sealed class ThumbnailList : ListBox
             }
 
             _document = document;
+            _documentCache = cache;
             BuildItems(pageCount, sizes);
             UpdateCurrent(scroll: false);
 
@@ -425,6 +494,19 @@ internal sealed class ThumbnailList : ListBox
         {
             AddSizes(sizes);
             SchedulePlan();
+        }
+    }
+
+    /// <summary>The number of pages of <paramref name="document"/>, or -1 when it was closed meanwhile.</summary>
+    private static int PageCountOf(PdfDocument document)
+    {
+        try
+        {
+            return document.PageCount;
+        }
+        catch (ObjectDisposedException)
+        {
+            return -1;
         }
     }
 
@@ -468,6 +550,7 @@ internal sealed class ThumbnailList : ListBox
         ReleaseBitmaps(keep: null);
         _items = [];
         _document = null;
+        _documentCache = null;
         _knownSizes = 0;
         _marked = (-1, -1);
         ItemsSource = null;
@@ -651,7 +734,7 @@ internal sealed class ThumbnailList : ListBox
         // The scheduler skips what the cache holds, so no TileReady comes for it.
         foreach (var index in realized)
         {
-            if (_items[index].Bitmap is null && source.Cache.TryGet(KeyOf(index), out var image) && IsPlannedSize(index, image))
+            if (NeedsBitmap(index) && source.Cache.TryGet(KeyOf(index), out var image) && IsPlannedSize(index, image))
             {
                 SetBitmap(index, image);
             }
@@ -710,7 +793,7 @@ internal sealed class ThumbnailList : ListBox
         }
 
         var index = key.Page;
-        if (index >= 0 && index < _items.Length && _items[index].Bitmap is null && ContainerFromIndex(index) is not null
+        if (index >= 0 && index < _items.Length && NeedsBitmap(index) && ContainerFromIndex(index) is not null
             && source.Cache.TryGet(key, out var image))
         {
             if (IsPlannedSize(index, image))
@@ -729,6 +812,9 @@ internal sealed class ThumbnailList : ListBox
         ThumbnailReceived?.Invoke(key);
     }
 
+    /// <summary>Whether entry <paramref name="index"/> has no thumbnail yet, or one of content that changed.</summary>
+    private bool NeedsBitmap(int index) => _items[index].Bitmap is null || _stale.Contains(index);
+
     private void SetBitmap(int index, RenderedImage image)
     {
         Bitmap bitmap;
@@ -738,11 +824,15 @@ internal sealed class ThumbnailList : ListBox
         }
         catch (Exception ex) when (ex is OutOfMemoryException or ArgumentException or InvalidOperationException)
         {
-            // The bitmap could not be made (memory, or the platform refused the size): the frame stays empty.
+            // The bitmap could not be made (memory, or the platform refused the size): the frame keeps what it shows.
             return;
         }
 
+        // A stale thumbnail goes once its new image is there; the entry lets go of it first.
+        var old = _items[index].Bitmap;
         _items[index].Bitmap = bitmap;
+        old?.Dispose();
+        _stale.Remove(index);
         _withBitmaps.Add(index);
     }
 
@@ -762,6 +852,7 @@ internal sealed class ThumbnailList : ListBox
             }
 
             _withBitmaps.Remove(index);
+            _stale.Remove(index);
             if (index < _items.Length && _items[index].Bitmap is { } bitmap)
             {
                 _items[index].Bitmap = null;

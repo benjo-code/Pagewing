@@ -118,6 +118,10 @@ internal sealed class DocumentCanvas : Control
     private HashSet<TileKey> _wanted = [];
     private HashSet<TileKey> _shown = [];
 
+    // Bitmaps of pages whose content changed (InvalidatePages): drawn until the new image of the same key replaces them,
+    // so the page does not flash empty, and never kept once that image is there.
+    private readonly HashSet<TileKey> _stale = [];
+
     // The marks on the pages, grouped by page once per SetHighlights and sorted in drawing order; Render only looks up
     // the visible pages.
     private Dictionary<int, PageHighlight[]> _highlights = [];
@@ -293,6 +297,12 @@ internal sealed class DocumentCanvas : Control
     /// <summary>Gets the scheduler of the attached document, or <see langword="null"/> (for tests).</summary>
     internal RenderScheduler? Scheduler => _source?.Scheduler;
 
+    /// <summary>Gets the cache of the attached document, or <see langword="null"/>.</summary>
+    internal RenderCache? Cache => _source?.Cache;
+
+    /// <summary>Gets the keys whose bitmap shows content that changed and waits for its new image (for tests).</summary>
+    internal IReadOnlySet<TileKey> StaleKeys => _stale;
+
     /// <summary>
     /// Starts drawing a document. The layout stays owned by the caller, who calls <see cref="SetViewport"/> after
     /// every change of it; the scheduler and the cache belong to the session and may be disposed on another thread.
@@ -320,6 +330,7 @@ internal sealed class DocumentCanvas : Control
         _shown = [];
         _failedPages.Clear();
         _bitmaps.Clear();
+        _stale.Clear();
 
         // The marks belong to the document that goes.
         _highlights = [];
@@ -333,6 +344,61 @@ internal sealed class DocumentCanvas : Control
             source.Scheduler.Update([]);
             InvalidateVisual();
         }
+    }
+
+    /// <summary>
+    /// The session swapped the document for the file it just saved (<see cref="ViewerSession.AdoptSavedDocumentAsync"/>):
+    /// the same pages in the same cache, rendered from now on by <paramref name="scheduler"/>. Layout, bitmaps and marks
+    /// stay; what the old scheduler still reports is dropped, and the viewport is planned again with the new one.
+    /// </summary>
+    internal void ReplaceScheduler(RenderScheduler scheduler)
+    {
+        ArgumentNullException.ThrowIfNull(scheduler);
+        if (_source is not { } old || ReferenceEquals(old.Scheduler, scheduler))
+        {
+            return;
+        }
+
+        old.Scheduler.TileReady -= old.OnTileReady;
+        old.Scheduler.TileFailed -= old.OnTileFailed;
+        var source = new Source(this, old.Layout, scheduler, old.Cache)
+        {
+            FirstSharpTileReported = old.FirstSharpTileReported,
+            FirstSharpPageReported = old.FirstSharpPageReported,
+        };
+        scheduler.TileReady += source.OnTileReady;
+        scheduler.TileFailed += source.OnTileFailed;
+        _source = source;
+
+        // A page that failed in the old document may render in the new one.
+        _failedPages.Clear();
+        SetViewport(_viewport, _renderScaling);
+    }
+
+    /// <summary>
+    /// The content of <paramref name="pages"/> changed (<see cref="ViewerSession.PagesInvalidated"/>): the session dropped
+    /// their images from the cache, so their bitmaps here show the old content. They stay until their new images arrive
+    /// (no empty page in between), and the viewport is planned again, which renders those pages anew: the preview first,
+    /// then the sharp tiles.
+    /// </summary>
+    internal void InvalidatePages(IReadOnlySet<int> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (_source is null || pages.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var key in _bitmaps.Keys)
+        {
+            if (pages.Contains(key.Page))
+            {
+                _stale.Add(key);
+            }
+        }
+
+        _failedPages.RemoveWhere(pages.Contains);
+        SetViewport(_viewport, _renderScaling);
     }
 
     /// <summary>
@@ -378,12 +444,17 @@ internal sealed class DocumentCanvas : Control
         _shown = shown;
         source.Scheduler.Update(requests);
         _bitmaps.Retain(wanted);
+        if (_stale.Count > 0)
+        {
+            _stale.RemoveWhere(key => !_bitmaps.Contains(key));
+        }
 
         // What the cache already holds (scrolling back, a preview from the background buffer) shows at once; the
-        // scheduler skips cached keys, so no TileReady would come for them.
+        // scheduler skips cached keys, so no TileReady would come for them. A stale bitmap is replaced as soon as the
+        // cache has the new image of its key.
         foreach (var request in requests)
         {
-            if (!request.Background && !_bitmaps.Contains(request.Key) && source.Cache.TryGet(request.Key, out var image))
+            if (!request.Background && NeedsBitmap(request.Key) && source.Cache.TryGet(request.Key, out var image))
             {
                 AddBitmap(request.Key, image);
             }
@@ -714,6 +785,7 @@ internal sealed class DocumentCanvas : Control
     {
         Interlocked.Increment(ref _themeEpoch);
         _bitmaps.Clear();
+        _stale.Clear();
         _failedPages.Clear();
         if (_source is not null)
         {
@@ -829,11 +901,16 @@ internal sealed class DocumentCanvas : Control
         }
     }
 
+    /// <summary>Whether <paramref name="key"/> has no bitmap yet, or one of content that changed.</summary>
+    private bool NeedsBitmap(TileKey key) => !_bitmaps.Contains(key) || _stale.Contains(key);
+
     private void AddBitmap(TileKey key, RenderedImage image)
     {
         try
         {
+            // Replaces (and disposes) a stale bitmap of the same key.
             _bitmaps.Add(key, TileBitmaps.Create(image));
+            _stale.Remove(key);
         }
         catch (Exception ex) when (ex is OutOfMemoryException or ArgumentException or InvalidOperationException)
         {
@@ -854,7 +931,7 @@ internal sealed class DocumentCanvas : Control
         }
 
         // Only what the viewport shows becomes a bitmap; a background preview stays in the cache until it is shown.
-        if (_shown.Contains(key) && !_bitmaps.Contains(key) && source.Cache.TryGet(key, out var image))
+        if (_shown.Contains(key) && NeedsBitmap(key) && source.Cache.TryGet(key, out var image))
         {
             AddBitmap(key, image);
             InvalidateVisual();

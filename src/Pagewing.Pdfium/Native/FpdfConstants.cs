@@ -18,6 +18,9 @@ internal static class FpdfConstants
     /// <summary><c>FPDF_PRINTING</c>: render for a printer (<c>FPDF_RenderPage</c> on a printer device context).</summary>
     public const int RenderPrinting = 0x800;
 
+    /// <summary><c>FPDF_INCREMENTAL</c>: append the changes to the original bytes (<c>FPDF_SaveAsCopy</c>).</summary>
+    public const int SaveIncremental = 1 << 0;
+
     /// <summary><c>FPDF_NO_INCREMENTAL</c>: write the whole file (<c>FPDF_SaveAsCopy</c>).</summary>
     public const int SaveNoIncremental = 1 << 1;
 
@@ -29,6 +32,54 @@ internal static class FpdfConstants
     /// ISO 32000-1, table 22; bit n has the value 1 &lt;&lt; (n - 1)).
     /// </summary>
     public const int PermissionPrint = 1 << 2;
+
+    /// <summary>
+    /// Permission bit 6 of the permission flags (<c>FPDF_GetDocPermissions</c>): adding or modifying annotations is allowed
+    /// (PDF specification, ISO 32000-1, table 22; bit n has the value 1 &lt;&lt; (n - 1)). The PDFium headers define no name for it.
+    /// </summary>
+    public const int PermissionAnnotate = 1 << 5;
+
+    /// <summary><c>FPDF_ANNOT_TEXT</c> (<c>fpdf_annot.h</c>): a text (sticky note) annotation.</summary>
+    public const int AnnotText = 1;
+
+    /// <summary><c>FPDF_ANNOT_LINK</c>: a link annotation.</summary>
+    public const int AnnotLink = 2;
+
+    /// <summary><c>FPDF_ANNOT_FREETEXT</c>: a free text annotation.</summary>
+    public const int AnnotFreeText = 3;
+
+    /// <summary><c>FPDF_ANNOT_HIGHLIGHT</c>: a highlight annotation.</summary>
+    public const int AnnotHighlight = 9;
+
+    /// <summary><c>FPDF_ANNOT_UNDERLINE</c>: an underline annotation.</summary>
+    public const int AnnotUnderline = 10;
+
+    /// <summary><c>FPDF_ANNOT_SQUIGGLY</c>: a squiggly underline annotation.</summary>
+    public const int AnnotSquiggly = 11;
+
+    /// <summary><c>FPDF_ANNOT_STRIKEOUT</c>: a strikeout annotation.</summary>
+    public const int AnnotStrikeout = 12;
+
+    /// <summary><c>FPDF_ANNOT_INK</c>: an ink (freehand) annotation.</summary>
+    public const int AnnotInk = 15;
+
+    /// <summary><c>FPDF_ANNOT_POPUP</c>: a popup annotation.</summary>
+    public const int AnnotPopup = 16;
+
+    /// <summary><c>FPDF_ANNOT_WIDGET</c>: a form field widget.</summary>
+    public const int AnnotWidget = 20;
+
+    /// <summary><c>FPDF_ANNOT_FLAG_HIDDEN</c>: the annotation is neither shown nor printed (annotation flag <c>F</c>, bit 2).</summary>
+    public const int AnnotFlagHidden = 1 << 1;
+
+    /// <summary><c>FPDF_ANNOT_FLAG_PRINT</c>: the annotation is printed (annotation flag <c>F</c>, bit 3).</summary>
+    public const int AnnotFlagPrint = 1 << 2;
+
+    /// <summary><c>FPDF_ANNOT_FLAG_NOVIEW</c>: the annotation is not shown on screen (annotation flag <c>F</c>, bit 6).</summary>
+    public const int AnnotFlagNoView = 1 << 5;
+
+    /// <summary><c>FPDF_ANNOT_APPEARANCEMODE_NORMAL</c>: the normal appearance (<c>FPDFAnnot_SetAP</c>).</summary>
+    public const int AnnotAppearanceNormal = 0;
 
     /// <summary><c>FPDF_ERR_SUCCESS</c>.</summary>
     public const int ErrSuccess = 0;

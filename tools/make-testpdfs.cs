@@ -107,6 +107,12 @@ static class TestPdfs
         new("thousand-pages.pdf", ThousandPages()),
         new("outline.pdf", Outline()),
         new("outline-cycle.pdf", OutlineCycle()),
+        new("signed-docmdp-none.pdf", SignedDocument(null)),
+        new("signed-docmdp-1.pdf", SignedDocument(1)),
+        new("signed-docmdp-2.pdf", SignedDocument(2)),
+        new("signed-docmdp-3.pdf", SignedDocument(3)),
+        new("linearized.pdf", Linearized()),
+        new("annotations-foreign.pdf", AnnotationsForeign()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -527,6 +533,112 @@ static class TestPdfs
         return doc.Build();
     }
 
+    // One page 300 x 200 with a signature field (an invisible widget) whose value is a STRUCTURE DUMMY of a signature:
+    // /ByteRange and /Contents are placeholders (no real cryptography, no certificate; Pagewing never validates one).
+    // docMdpLevel 1, 2 or 3 adds a /Reference entry with the DocMDP transform (/P = level) and the catalog's /Perms;
+    // null signs without any DocMDP.
+    private static byte[] SignedDocument(int? docMdpLevel)
+    {
+        var doc = new PdfDoc(docMdpLevel is { } level ? $"Pagewing Signaturattrappe DocMDP {level}" : "Pagewing Signaturattrappe ohne DocMDP");
+        var page = doc.Reserve();
+        var reference = docMdpLevel is { } p
+            ? string.Create(CultureInfo.InvariantCulture, $" /Reference [<< /Type /SigRef /TransformMethod /DocMDP /TransformParams << /Type /TransformParams /P {p} /V /1.2 >> >>]")
+            : string.Empty;
+        var signature = doc.Add(
+            "<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0 0 0] /Contents <" + new string('0', 512) + "> "
+            + "/Name (Pagewing test dummy) /M (D:20260101000000Z) /Reason (Structure dummy, not a signature)" + reference + " >>");
+        var widget = doc.Add($"<< /Type /Annot /Subtype /Widget /FT /Sig /T (Signature1) /Rect [0 0 0 0] /F 132 /V {signature} 0 R /P {page} 0 R >>");
+        doc.AddPage(
+            $"/MediaBox [0 0 300 200] /Annots [{widget} 0 R]",
+            "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>",
+            "BT /F1 18 Tf 30 110 Td (Signed document) Tj ET\nBT /F1 12 Tf 30 85 Td (Structure dummy, no real signature.) Tj ET",
+            page);
+        doc.CatalogEntries = $"/AcroForm << /Fields [{widget} 0 R] /SigFlags 3 >>" + (docMdpLevel is null ? string.Empty : $" /Perms << /DocMDP {signature} 0 R >>");
+        return doc.Build();
+    }
+
+    // Two pages 300 x 200 with a /Linearized dictionary as the first object of the file. The file is not optimised
+    // for the web (objects keep their ids, no hint stream); the dictionary only has to look like the one of a linearized file.
+    // /L is the real file length (all numbers have a fixed width, so the length does not depend on them).
+    private static byte[] Linearized()
+    {
+        var doc = new PdfDoc("Pagewing linearisierte Datei");
+        var linearization = doc.Reserve();
+        doc.FirstObject = linearization;
+        var fonts = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        var first = doc.AddPage("/MediaBox [0 0 300 200]", fonts, "BT /F1 24 Tf 30 100 Td (Linearized, page one) Tj ET");
+        doc.AddPage("/MediaBox [0 0 300 200]", fonts, "BT /F1 24 Tf 30 100 Td (Linearized, page two) Tj ET");
+
+        string Dictionary(int length) => string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Linearized 1 /L {length:D10} /H [{0:D10} {0:D10}] /O {first} /E {0:D10} /N {2} /T {0:D10} >>");
+
+        doc.Set(linearization, Dictionary(0));
+        doc.Set(linearization, Dictionary(doc.Build().Length));
+        return doc.Build();
+    }
+
+    // Annotations as other programs write them. Page 1 (400 x 300): a Highlight with /Popup (an indirect object), /RC, /Contents, /NM,
+    // /T, /C, /QuadPoints and an appearance stream; a reply (Text with /IRT on that Highlight); a Highlight without /NM and /AP;
+    // an Ink; a FreeText; a Text note; a Link. Page 2: an Underline and a StrikeOut. Every annotation line has text to select.
+    private static byte[] AnnotationsForeign()
+    {
+        var doc = new PdfDoc("Pagewing fremde Anmerkungen");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        const string date = "/M (D:20260101120000Z) /CreationDate (D:20260101120000Z)";
+
+        var highlightAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [38 246 250 264] /Resources << /ExtGState << /GS << /BM /Multiply >> >> >>",
+            Text("/GS gs 1 0.9 0 rg 38 246 212 18 re f"));
+        var inkAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [38 160 200 185]",
+            Text("1 0 0 RG 2 w 40 165 m 80 180 l 120 165 l 160 180 l 195 165 l S"));
+        var freeTextAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [38 110 200 140]",
+            Text("0 0 1 RG 1 w 38.5 110.5 161 29 re S"));
+
+        var highlight = doc.Reserve();
+        var popup = doc.Add($"<< /Type /Annot /Subtype /Popup /Rect [260 200 380 260] /Parent {highlight} 0 R /Open false >>");
+        doc.Set(highlight, $"<< /Type /Annot /Subtype /Highlight /Rect [38 246 250 264] /QuadPoints [38 264 250 264 38 246 250 246] /C [1 0.9 0] /F 4 "
+            + $"/NM (hl-0001) /T (Alice) /Subj (Highlight) /Contents (Check this sentence) "
+            + "/RC (<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\"><p>Check <b>this</b> sentence</p></body>) "
+            + $"/Popup {popup} 0 R {date} /AP << /N {highlightAppearance} 0 R >> >>");
+        var reply = doc.Add(
+            $"<< /Type /Annot /Subtype /Text /Rect [280 246 298 264] /Name /Comment /F 28 /NM (reply-0001) /T (Bob) /Contents (Agreed) /IRT {highlight} 0 R /RT /R /C [1 0.9 0] {date} >>");
+        var bareHighlight = doc.Add("<< /Type /Annot /Subtype /Highlight /Rect [38 216 230 234] /QuadPoints [38 234 230 234 38 216 230 216] /C [0.6 1 0.6] /F 4 /T (Alice) /Contents (No name, no appearance) >>");
+        var ink = doc.Add($"<< /Type /Annot /Subtype /Ink /Rect [38 160 200 185] /InkList [[40 165 80 180 120 165 160 180 195 165]] /C [1 0 0] /BS << /W 2 >> /F 4 /NM (ink-0001) /T (Alice) {date} /AP << /N {inkAppearance} 0 R >> >>");
+        var freeText = doc.Add($"<< /Type /Annot /Subtype /FreeText /Rect [38 110 200 140] /DA (/Helv 12 Tf 0 0 1 rg) /Q 0 /F 4 /NM (ft-0001) /T (Alice) /Contents (Free text note) {date} /AP << /N {freeTextAppearance} 0 R >> >>");
+        var note = doc.Add($"<< /Type /Annot /Subtype /Text /Rect [220 110 238 128] /Name /Note /F 28 /NM (note-0001) /T (Alice) /Contents (Sticky note) /C [1 1 0] {date} >>");
+        var link = doc.Add("<< /Type /Annot /Subtype /Link /Rect [38 60 200 80] /Border [0 0 1] /C [0 0 1] /F 4 /A << /S /URI /URI (https://example.com/pagewing) >> >>");
+        doc.AddPage(
+            $"/MediaBox [0 0 400 300] /Annots [{highlight} 0 R {popup} 0 R {reply} 0 R {bareHighlight} 0 R {ink} 0 R {freeText} 0 R {note} 0 R {link} 0 R]",
+            resources,
+            """
+            BT /F1 14 Tf 40 250 Td (Pagewing marks this sentence.) Tj ET
+            BT /F1 14 Tf 40 220 Td (Second mark without a name.) Tj ET
+            BT /F1 14 Tf 40 190 Td (Ink is drawn below.) Tj ET
+            BT /F1 14 Tf 40 120 Td (Free text) Tj ET
+            BT /F1 14 Tf 40 65 Td (Link to Pagewing) Tj ET
+            """);
+
+        var underlineAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [38 246 250 264]",
+            Text("0 0.6 0 RG 1 w 38 247 m 250 247 l S"));
+        var strikeAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [38 216 250 234]",
+            Text("1 0 0 RG 1 w 38 225 m 250 225 l S"));
+        var underline = doc.Add($"<< /Type /Annot /Subtype /Underline /Rect [38 246 250 264] /QuadPoints [38 264 250 264 38 246 250 246] /C [0 0.6 0] /F 4 /NM (ul-0001) /T (Alice) /Contents (Underlined) {date} /AP << /N {underlineAppearance} 0 R >> >>");
+        var strike = doc.Add($"<< /Type /Annot /Subtype /StrikeOut /Rect [38 216 250 234] /QuadPoints [38 234 250 234 38 216 250 216] /C [1 0 0] /F 4 /NM (so-0001) /T (Alice) /Contents (Struck out) {date} /AP << /N {strikeAppearance} 0 R >> >>");
+        doc.AddPage(
+            $"/MediaBox [0 0 400 300] /Annots [{underline} 0 R {strike} 0 R]",
+            resources,
+            """
+            BT /F1 14 Tf 40 250 Td (This text is underlined.) Tj ET
+            BT /F1 14 Tf 40 220 Td (This text is struck out.) Tj ET
+            """);
+        return doc.Build();
+    }
+
     private static int[] ThreeEmptyPages(PdfDoc doc)
     {
         var pages = new int[3];
@@ -571,6 +683,9 @@ sealed class PdfDoc
 
     // Extra entries for the catalog dictionary, for example "/Outlines 7 0 R".
     public string CatalogEntries { get; set; } = string.Empty;
+
+    // Id of an object that Build writes first in the file (the /Linearized dictionary), or null for plain id order.
+    public int? FirstObject { get; set; }
 
     // Allocates an object id whose body is set later with Set (for forward references).
     public int Reserve()
@@ -619,8 +734,10 @@ sealed class PdfDoc
         output.Write(Latin1("%PDF-1.7\n"));
         output.Write([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]);
 
+        // FirstObject (the /Linearized dictionary) is written before all others; the xref table still lists the ids in order.
+        var order = Enumerable.Range(0, objects.Count).OrderBy(i => i + 1 == FirstObject ? 0 : 1).ThenBy(i => i).ToList();
         var offsets = new long[objects.Count];
-        for (var i = 0; i < objects.Count; i++)
+        foreach (var i in order)
         {
             offsets[i] = output.Position;
             output.Write(Latin1($"{i + 1} 0 obj\n"));

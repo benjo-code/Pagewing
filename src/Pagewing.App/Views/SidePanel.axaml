@@ -27,6 +27,9 @@
     <DataTemplate x:Key="Search">
       <views:SearchPanel Name="SearchContent" />
     </DataTemplate>
+    <DataTemplate x:Key="Comments">
+      <views:CommentsPanel Name="CommentsContent" />
+    </DataTemplate>
   </UserControl.Resources>
 
   <UserControl.Styles>

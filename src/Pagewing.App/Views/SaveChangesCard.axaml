@@ -1,0 +1,50 @@
+<views:SaveCard xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:vm="using:Pagewing.App.ViewModels"
+                xmlns:views="using:Pagewing.App.Views"
+                xmlns:ctl="using:Pagewing.App.Controls"
+                x:Class="Pagewing.App.Views.SaveChangesCard"
+                x:DataType="vm:PendingSave"
+                AutomationProperties.Name="{Binding Title}"
+                AutomationProperties.HelpText="{Binding Message}">
+  <!--
+    Before a tab with unsaved changes closes (design system 7.14, PendingSaveKind.SaveChanges): file symbol, title "Save the
+    changes to "<file>"?", the text, "Save" (primary, focus and Enter), "Don't save" (locked for the first 400 ms) and
+    "Cancel"; Esc cancels. When the changes cannot be saved (PendingSaveKind.DiscardChanges: another program changed the
+    file, an encryption that saving would lose) the card warns instead: warning symbol in danger.default, the text that
+    closing loses the changes, "Close and discard changes" (locked at first) and "Cancel" (primary, focus). Card:
+    surface.raised, radius.overlay, card shadow with its 1 px border.subtle edge, in the document area of the tab like the
+    password and the error card. The buttons and the lock come from SaveCard. Made when first needed, never in the startup
+    path (MainWindow.SaveCards.cs).
+  -->
+  <Border Name="SaveChangesBox" MaxWidth="480" Margin="24" Padding="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Spacing="12">
+      <ctl:StrokeIcon Name="SaveChangesIcon" Width="24" Height="24" HorizontalAlignment="Left"
+                      Data="{StaticResource Pw.Icon.File}"
+                      Brush="{DynamicResource Pw.Brush.Text.Secondary}"
+                      IsVisible="{Binding !IsWarning}" />
+      <ctl:StrokeIcon Name="SaveChangesWarningIcon" Width="24" Height="24" HorizontalAlignment="Left"
+                      Data="{StaticResource Pw.Icon.AlertTriangle}"
+                      Brush="{DynamicResource Pw.Brush.Danger.Default}"
+                      IsVisible="{Binding IsWarning}" />
+      <StackPanel Spacing="4">
+        <TextBlock Name="SaveChangesTitle" Classes="subtitle" TextWrapping="Wrap" Text="{Binding Title}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <TextBlock Name="SaveChangesText" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{Binding Message}" AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+
+      <StackPanel Name="SaveChangesButtons" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Name="SaveChangesSaveButton" />
+        <Button Name="SaveChangesDontSaveButton" />
+        <Button Name="SaveChangesDiscardButton" />
+        <Button Name="SaveChangesCancelButton" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</views:SaveCard>

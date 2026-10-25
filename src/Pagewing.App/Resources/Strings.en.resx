@@ -708,6 +708,15 @@
   <data name="SettingsPrintScaling" xml:space="preserve">
     <value>Page size when printing</value>
   </data>
+  <data name="SettingsGroupComments" xml:space="preserve">
+    <value>Comments</value>
+  </data>
+  <data name="SettingsAuthor" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="SettingsAuthorHint" xml:space="preserve">
+    <value>The name is stored in the file of every annotation you create. Leave it empty to store no name.</value>
+  </data>
   <data name="DefaultAppTitle" xml:space="preserve">
     <value>Set Pagewing as the default for PDFs?</value>
   </data>
@@ -752,6 +761,12 @@
   </data>
   <data name="UpdateCardInstallText" xml:space="preserve">
     <value>Pagewing downloads the update, installs it and then reopens your tabs.</value>
+  </data>
+  <data name="UpdateAwaitingAnswer" xml:space="preserve">
+    <value>Waiting for your answer …</value>
+  </data>
+  <data name="EditingLockedForUpdate" xml:space="preserve">
+    <value>Installing update – editing is locked</value>
   </data>
   <data name="UpdateInstall" xml:space="preserve">
     <value>Install</value>
@@ -869,5 +884,248 @@
   </data>
   <data name="UpdateErrorNotStarted" xml:space="preserve">
     <value>The new version is installed but did not start. It starts the next time you open Pagewing.</value>
+  </data>
+  <data name="CommandGroupEdit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="CommandSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="CommandSaveAs" xml:space="preserve">
+    <value>Save as …</value>
+  </data>
+  <data name="CommandUndo" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="CommandRedo" xml:space="preserve">
+    <value>Redo</value>
+  </data>
+  <data name="SaveAsTitle" xml:space="preserve">
+    <value>Save as</value>
+  </data>
+  <data name="Unsaved" xml:space="preserve">
+    <value>Unsaved</value>
+  </data>
+  <data name="TabUnsavedName" xml:space="preserve">
+    <value>{0}, unsaved changes</value>
+  </data>
+  <data name="SaveBlockedPrinting" xml:space="preserve">
+    <value>The document is being printed. Save it once printing has finished.</value>
+  </data>
+  <data name="SaveChangesTitle" xml:space="preserve">
+    <value>Save the changes to “{0}”?</value>
+  </data>
+  <data name="SaveChangesText" xml:space="preserve">
+    <value>Your changes are lost if you do not save them.</value>
+  </data>
+  <data name="SignatureWarningTitle" xml:space="preserve">
+    <value>This signature does not allow comments</value>
+  </data>
+  <data name="SignatureWarningText" xml:space="preserve">
+    <value>After saving, programs such as Acrobat will show the signature as invalid.</value>
+  </data>
+  <data name="SignatureNoteTitle" xml:space="preserve">
+    <value>This document is signed</value>
+  </data>
+  <data name="SignatureNoteText" xml:space="preserve">
+    <value>Pagewing only appends your changes; the signed bytes stay unchanged.</value>
+  </data>
+  <data name="FileChangedTitle" xml:space="preserve">
+    <value>“{0}” was replaced since it was opened</value>
+  </data>
+  <data name="FileChangedText" xml:space="preserve">
+    <value>The file was changed since it was opened, for example by saving in another tab or by another program. Overwriting discards those changes. Overwrite it with your version, or save under another name?</value>
+  </data>
+  <data name="SaveErrorTitle" xml:space="preserve">
+    <value>“{0}” could not be saved</value>
+  </data>
+  <data name="SaveErrorNotWritable" xml:space="preserve">
+    <value>The file or its folder is write-protected. Save it under another name.</value>
+  </data>
+  <data name="SaveErrorDiskFull" xml:space="preserve">
+    <value>The disk is full. Free some space or save it under another name.</value>
+  </data>
+  <data name="SaveErrorWriteFailed" xml:space="preserve">
+    <value>The file could not be written; perhaps another program is using it. The original is unchanged.</value>
+  </data>
+  <data name="SaveErrorVerificationFailed" xml:space="preserve">
+    <value>The saved file did not pass the check, so it was not used. The original is unchanged.</value>
+  </data>
+  <data name="SaveErrorSourceModified" xml:space="preserve">
+    <value>Another program changed the file since it was opened. Pagewing cannot save your changes now, not under another name either, because the two versions would mix. Your changes stay in this tab while it is open.</value>
+  </data>
+  <data name="SaveErrorEncrypted" xml:space="preserve">
+    <value>Pagewing cannot save this encrypted document without losing its encryption, so it did not save it.</value>
+  </data>
+  <data name="SaveErrorUnknown" xml:space="preserve">
+    <value>The document could not be saved. The original is unchanged.</value>
+  </data>
+  <data name="SaveChoiceSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="SaveChoiceDontSave" xml:space="preserve">
+    <value>Don't save</value>
+  </data>
+  <data name="SaveChoiceSaveAs" xml:space="preserve">
+    <value>Save as …</value>
+  </data>
+  <data name="SaveChoiceSaveAnyway" xml:space="preserve">
+    <value>Save anyway</value>
+  </data>
+  <data name="SaveChoiceOverwrite" xml:space="preserve">
+    <value>Overwrite</value>
+  </data>
+  <data name="SaveChoiceCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="SaveChoiceDiscard" xml:space="preserve">
+    <value>Close and discard changes</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>The changes to “{0}” cannot be saved</value>
+  </data>
+  <data name="DiscardChangesSourceModified" xml:space="preserve">
+    <value>Another program changed the file. Your changes cannot be saved and are lost when you close the tab.</value>
+  </data>
+  <data name="DiscardChangesEncrypted" xml:space="preserve">
+    <value>Pagewing cannot save changes to this encrypted document. They are lost when you close the tab.</value>
+  </data>
+  <data name="SaveNotPossiblePrinting" xml:space="preserve">
+    <value>Saving is not possible right now because the document is being printed.</value>
+  </data>
+  <data name="SaveNotPossible" xml:space="preserve">
+    <value>Saving is not possible right now. Your changes stay in this tab.</value>
+  </data>
+  <data name="CommentsPanelTitle" xml:space="preserve">
+    <value>Comments</value>
+  </data>
+  <data name="CommandCommentsPanel" xml:space="preserve">
+    <value>Show or hide comments</value>
+  </data>
+  <data name="CommentsLoading" xml:space="preserve">
+    <value>Loading …</value>
+  </data>
+  <data name="CommentsNone" xml:space="preserve">
+    <value>No comments</value>
+  </data>
+  <data name="CommentsSummaryOne" xml:space="preserve">
+    <value>1 comment on page {0}</value>
+  </data>
+  <data name="CommentsSummaryOnePage" xml:space="preserve">
+    <value>{0} comments, all on page {1}</value>
+  </data>
+  <data name="CommentsSummaryPages" xml:space="preserve">
+    <value>{0} comments on {1} pages</value>
+  </data>
+  <data name="CommentsEmpty" xml:space="preserve">
+    <value>This document has no comments.</value>
+  </data>
+  <data name="CommentsFilter" xml:space="preserve">
+    <value>Filter by kind</value>
+  </data>
+  <data name="CommentFilterAll" xml:space="preserve">
+    <value>All kinds</value>
+  </data>
+  <data name="CommentKindHighlight" xml:space="preserve">
+    <value>Highlight</value>
+  </data>
+  <data name="CommentKindUnderline" xml:space="preserve">
+    <value>Underline</value>
+  </data>
+  <data name="CommentKindStrikeOut" xml:space="preserve">
+    <value>Strike-out</value>
+  </data>
+  <data name="CommentKindOther" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="CommentKindOtherNamed" xml:space="preserve">
+    <value>Other: {0}</value>
+  </data>
+  <data name="CommentEntryName" xml:space="preserve">
+    <value>Page {0}: {1}</value>
+  </data>
+  <data name="CommentColor" xml:space="preserve">
+    <value>Colour {0}</value>
+  </data>
+  <data name="AnnotateModeName" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="AnnotateButtonTooltip" xml:space="preserve">
+    <value>Start or end commenting</value>
+  </data>
+  <data name="CommandAnnotateMode" xml:space="preserve">
+    <value>Start or end commenting</value>
+  </data>
+  <data name="CommandHighlight" xml:space="preserve">
+    <value>Highlight</value>
+  </data>
+  <data name="CommandUnderline" xml:space="preserve">
+    <value>Underline</value>
+  </data>
+  <data name="CommandStrikeOut" xml:space="preserve">
+    <value>Strike out</value>
+  </data>
+  <data name="AnnotateToolbarName" xml:space="preserve">
+    <value>Commenting tools</value>
+  </data>
+  <data name="AnnotateToolsName" xml:space="preserve">
+    <value>Kind of markup</value>
+  </data>
+  <data name="AnnotateColorsName" xml:space="preserve">
+    <value>Colour</value>
+  </data>
+  <data name="AnnotateDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="AnnotateDoneTooltip" xml:space="preserve">
+    <value>End commenting (Esc)</value>
+  </data>
+  <data name="AnnotateEscHint" xml:space="preserve">
+    <value>Esc ends</value>
+  </data>
+  <data name="AnnotateForbidden" xml:space="preserve">
+    <value>This document does not allow comments: its permissions forbid adding them.</value>
+  </data>
+  <data name="AnnotateNotReady" xml:space="preserve">
+    <value>Commenting is possible once the document is shown.</value>
+  </data>
+  <data name="MarkupColorYellow" xml:space="preserve">
+    <value>Yellow</value>
+  </data>
+  <data name="MarkupColorGreen" xml:space="preserve">
+    <value>Green</value>
+  </data>
+  <data name="MarkupColorBlue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+  <data name="MarkupColorPink" xml:space="preserve">
+    <value>Pink</value>
+  </data>
+  <data name="MarkupColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="CommentEditTitle" xml:space="preserve">
+    <value>Selected entry</value>
+  </data>
+  <data name="CommentEditField" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="CommentEditHint" xml:space="preserve">
+    <value>Ctrl+Enter applies, Esc discards.</value>
+  </data>
+  <data name="CommentEditColor" xml:space="preserve">
+    <value>Change colour</value>
+  </data>
+  <data name="CommentDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="CommentViewOnly" xml:space="preserve">
+    <value>View only</value>
+  </data>
+  <data name="CommentEditNone" xml:space="preserve">
+    <value>Select an entry to edit it.</value>
+  </data>
+  <data name="AnnotateMore" xml:space="preserve">
+    <value>More tools</value>
   </data>
 </root>

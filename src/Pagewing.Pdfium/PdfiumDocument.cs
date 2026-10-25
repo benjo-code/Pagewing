@@ -22,12 +22,48 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     internal const long MaxFileLength = uint.MaxValue;
 
     private readonly DocumentHandle handle;
+    private readonly FileReadContext source;
     private volatile bool disposed;
 
-    private PdfiumDocument(DocumentHandle handle) => this.handle = handle;
+    private int darkMarkupScans;
+
+    private PdfiumDocument(DocumentHandle handle, FileReadContext source)
+    {
+        this.handle = handle;
+        this.source = source;
+    }
 
     /// <summary>Gets the PDFium thread the document belongs to.</summary>
     public PdfiumThread Thread => handle.OwningThread;
+
+    /// <summary>
+    /// Gets the handle of the file PDFium reads the document from (the file that was opened, even after its path was
+    /// renamed or replaced). It must only be read (positional reads such as <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>)
+    /// and never disposed; it is closed with the document. Unlike the other members it may be used from any thread, because
+    /// it does not touch PDFium.
+    /// </summary>
+    internal SafeFileHandle SourceFile => source.FileHandle;
+
+    /// <summary>Gets the length of the source file when the document was opened, the length PDFium reads. Any thread.</summary>
+    internal long SourceLengthAtOpen => source.Length;
+
+    /// <summary>Gets the last write time (UTC) of the source file when it was opened, read through the handle. Any thread.</summary>
+    internal DateTime SourceLastWriteUtcAtOpen => source.LastWriteUtc;
+
+    /// <summary>
+    /// Gets how often the markups of a page were read for painting them on a dark page (<see cref="PdfiumDarkMarkups"/>),
+    /// for tests that check that a light page never reads them. Written on the PDFium thread only.
+    /// </summary>
+    internal int DarkMarkupScans => Volatile.Read(ref darkMarkupScans);
+
+    /// <summary>
+    /// Gets or sets what reads the markups for a dark render instead of <see cref="PdfiumDarkMarkups.Read"/>, or
+    /// <see langword="null"/> (tests replace it to make the read fail). PDFium thread only.
+    /// </summary>
+    internal Func<PdfiumPage, PdfiumPageColors, DarkMarkupPaint>? DarkMarkupReader { get; set; }
+
+    /// <summary>Counts one read of <see cref="DarkMarkupScans"/>. PDFium thread only.</summary>
+    internal void CountDarkMarkupScan() => Volatile.Write(ref darkMarkupScans, darkMarkupScans + 1);
 
     /// <summary>Gets the number of pages.</summary>
     public int PageCount => Fpdf.FPDF_GetPageCount(Access());
@@ -40,6 +76,40 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// with its owner password, allows everything. Must be called on the PDFium thread.
     /// </summary>
     public bool MayPrint => (Fpdf.FPDF_GetDocPermissions(Access()).Value & FpdfConstants.PermissionPrint) != 0;
+
+    /// <summary>
+    /// Gets whether the permissions of whoever opened the document allow changing annotations (PDF 32000-1 table 22,
+    /// bit 6); an unencrypted document, or one opened with its owner password, allows everything. Must be called on the PDFium thread.
+    /// </summary>
+    public bool MayAnnotate => AllowsAnnotating((uint)Fpdf.FPDF_GetDocPermissions(Access()).Value);
+
+    /// <summary>Gets the number of signatures and the most restrictive DocMDP level they declare. Must be called on the PDFium thread.</summary>
+    /// <returns>The signature count and the lowest DocMDP level (1 to 3), or 0 if no signature declares one.</returns>
+    public (int Count, int DocMdpLevel) GetSignatures()
+    {
+        var document = Access();
+        var count = Fpdf.FPDF_GetSignatureCount(document);
+        var level = 0;
+        for (var index = 0; index < count; index++)
+        {
+            var signature = Fpdf.FPDF_GetSignatureObject(document, index);
+            if (signature == 0)
+            {
+                continue;
+            }
+
+            var permission = Fpdf.FPDFSignatureObj_GetDocMDPPermission(signature);
+            if (permission is >= 1 and <= 3 && (level == 0 || permission < level))
+            {
+                level = (int)permission;
+            }
+        }
+
+        return (Math.Max(count, 0), level);
+    }
+
+    /// <summary>Tells whether a permission word (<c>/P</c> value as returned by PDFium) contains the "modify annotations" bit.</summary>
+    internal static bool AllowsAnnotating(uint permissions) => (permissions & FpdfConstants.PermissionAnnotate) != 0;
 
     /// <summary>Gets the PDF version from the file header (14 for 1.4), or <see langword="null"/> if unknown.</summary>
     public int? FileVersion
@@ -95,7 +165,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
                 throw;
             }
 
-            return new PdfiumDocument(handle);
+            return new PdfiumDocument(handle, context);
         }
         catch
         {
@@ -350,7 +420,18 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// PDFium thread; the call returns when the last block is written.
     /// </summary>
     /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
-    public void SaveWithoutSecurity(Stream destination)
+    public void SaveWithoutSecurity(Stream destination) =>
+        Save(destination, FpdfConstants.SaveNoIncremental | FpdfConstants.SaveRemoveSecurity);
+
+    /// <summary>
+    /// Writes the original bytes of the document followed by the changes made since it was opened to
+    /// <paramref name="destination"/> (<c>FPDF_INCREMENTAL</c>); an existing digital signature stays valid. Must be called on
+    /// the PDFium thread; the call returns when the last block is written.
+    /// </summary>
+    /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
+    internal void SaveIncremental(Stream destination) => Save(destination, FpdfConstants.SaveIncremental);
+
+    private void Save(Stream destination, int flags)
     {
         ArgumentNullException.ThrowIfNull(destination);
         var native = Access();
@@ -363,7 +444,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             var block = stackalloc SaveBlock[1];
             block->Writer = new FpdfFileWrite { Version = 1, WriteBlock = &WriteSaveBlock };
             block->Cookie = GCHandle.ToIntPtr(self);
-            var saved = Fpdf.FPDF_SaveAsCopy(native, &block->Writer, new CULong((nuint)(FpdfConstants.SaveNoIncremental | FpdfConstants.SaveRemoveSecurity))) != 0;
+            var saved = Fpdf.FPDF_SaveAsCopy(native, &block->Writer, new CULong((nuint)flags)) != 0;
             if (!saved || context.Failed)
             {
                 throw new IOException("The document could not be saved.", context.Error);
@@ -421,6 +502,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
 
         public Exception? Error { get; private set; }
 
+        /// <summary>Called from <see cref="WriteSaveBlock"/>; never inlined into the callback (see <see cref="PdfiumRenderWork"/>, <c>Now</c>).</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public bool Write(void* data, nuint size)
         {
             try
@@ -444,14 +527,21 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         private GCHandle self;
         private int disposed;
 
-        private FileReadContext(SafeFileHandle file, long length)
+        private FileReadContext(SafeFileHandle file, long length, DateTime lastWriteUtc)
         {
             this.file = file;
             Length = length;
+            LastWriteUtc = lastWriteUtc;
             self = GCHandle.Alloc(this);
         }
 
         public long Length { get; }
+
+        /// <summary>Gets the last write time when the file was opened, read through the handle like a later check.</summary>
+        public DateTime LastWriteUtc { get; }
+
+        /// <summary>Gets the open file.</summary>
+        public SafeFileHandle FileHandle => file;
 
         /// <summary>Gets the value passed as <c>m_Param</c>.</summary>
         public nint Cookie => GCHandle.ToIntPtr(self);
@@ -467,7 +557,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
                     throw new IOException($"The file is larger than {MaxFileLength} bytes and cannot be opened.");
                 }
 
-                return new FileReadContext(file, length);
+                return new FileReadContext(file, length, File.GetLastWriteTimeUtc(file));
             }
             catch
             {
@@ -476,7 +566,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             }
         }
 
-        /// <summary>Reads exactly <paramref name="size"/> bytes at <paramref name="position"/>.</summary>
+        /// <summary>Reads exactly <paramref name="size"/> bytes at <paramref name="position"/>. Called from <see cref="ReadBlock"/>; never inlined into the callback (see <see cref="PdfiumRenderWork"/>, <c>Now</c>).</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public bool Read(nuint position, byte* buffer, nuint size)
         {
             if (position > (ulong)Length || size > (ulong)Length - position)

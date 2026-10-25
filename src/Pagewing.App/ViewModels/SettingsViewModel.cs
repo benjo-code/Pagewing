@@ -219,6 +219,17 @@ public sealed class SettingsViewModel : ViewModelBase
         set => Change(current => current with { PrintScaling = value });
     }
 
+    /// <summary>
+    /// Gets or sets the author name as the card's text field shows it (empty for none); it is written at once. The name
+    /// goes into the <c>/T</c> entry of every annotation created from then on, never into one that exists. An empty or
+    /// blank text is no name (<see cref="AppSettings.AuthorName"/> is then <see langword="null"/>).
+    /// </summary>
+    public string AuthorName
+    {
+        get => _settings.Current.AuthorName ?? string.Empty;
+        set => Change(current => current with { AuthorName = value });
+    }
+
     /// <summary>Gets or sets the chosen entry of <see cref="PrintScalingChoices"/>.</summary>
     public SettingsChoice<PrintScaling>? SelectedPrintScaling
     {
@@ -382,6 +393,7 @@ public sealed class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(Density));
         OnPropertyChanged(nameof(ReduceMotion));
         OnPropertyChanged(nameof(UpdateCheck));
+        OnPropertyChanged(nameof(AuthorName));
         OnPropertyChanged(nameof(PageAppearance));
         OnPropertyChanged(nameof(DarkPages));
         OnPropertyChanged(nameof(DefaultLayout));

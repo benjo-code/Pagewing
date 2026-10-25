@@ -8,7 +8,7 @@ namespace Pagewing.Core.Pdf;
 /// An open PDF document. Every PDFium access is queued to the PDFium thread, so all members may be called
 /// from any thread. After disposal every member throws <see cref="ObjectDisposedException"/>.
 /// </summary>
-public sealed class PdfDocument : IDisposable, IAsyncDisposable
+public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
 {
     /// <summary>The most bookmarks <see cref="GetOutlineAsync"/> returns; further ones are cut off silently.</summary>
     public const int MaxOutlineItems = 20_000;
@@ -339,6 +339,35 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Reads how many signatures the document has and the most restrictive DocMDP level they declare. Pagewing never
+    /// validates a signature; this only reads the declaration.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PdfSignatureInfo> GetSignatureInfoAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return document.Thread.InvokeAsync(
+            () =>
+            {
+                var (count, level) = document.GetSignatures();
+                return new PdfSignatureInfo(count, (DocMdpLevel)level);
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads whether the permissions of whoever opened the document allow changing annotations (an unencrypted
+    /// document, or one opened with its owner password, allows it).
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<bool> MayAnnotateAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return document.Thread.InvokeAsync(() => document.MayAnnotate, PdfiumPriority.Background, cancellationToken);
+    }
+
+    /// <summary>
     /// Draws one page on a printer device context (Windows <c>HDC</c> with a page started), with its annotations, always in
     /// the light colours of the page. Runs as one short request with <see cref="PdfPriority.Background"/>, so the rendering
     /// of the tabs goes on between two pages of a job.
@@ -416,6 +445,24 @@ public sealed class PdfDocument : IDisposable, IAsyncDisposable
                     throw;
                 }
             },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes the original bytes of the document followed by the changes made since it was opened to
+    /// <paramref name="destination"/> (incremental update; an existing digital signature stays valid). The stream is written
+    /// from the PDFium thread, in blocks; the caller decides where it goes (the safe replace of a file is not done here).
+    /// </summary>
+    /// <exception cref="IOException">The document or the stream could not be written.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the save started.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task SaveIncrementalAsync(Stream destination, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(destination);
+        return document.Thread.InvokeAsync(
+            () => document.SaveIncremental(destination),
             PdfiumPriority.Background,
             cancellationToken);
     }

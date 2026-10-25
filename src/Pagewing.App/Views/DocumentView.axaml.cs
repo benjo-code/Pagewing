@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Pagewing.App.Controls;
 using Pagewing.App.ViewModels;
 using Pagewing.Core.Pdf;
@@ -177,6 +178,7 @@ public sealed partial class DocumentView : UserControl
         ConnectHighlights(viewModel);
         ConnectLinks(viewModel);
         _session.Changed += OnSessionChanged;
+        _session.PagesInvalidated += OnPagesInvalidated;
         Sync();
     }
 
@@ -184,6 +186,7 @@ public sealed partial class DocumentView : UserControl
     {
         SaveView();
         DisconnectHighlights();
+        CancelPendingMarkup();
         DropTexts();
         if (_viewModel is not null)
         {
@@ -197,6 +200,7 @@ public sealed partial class DocumentView : UserControl
         if (_session is not null)
         {
             _session.Changed -= OnSessionChanged;
+            _session.PagesInvalidated -= OnPagesInvalidated;
             _session = null;
         }
 
@@ -251,6 +255,29 @@ public sealed partial class DocumentView : UserControl
         }
     }
 
+    // Any thread (the editor's): must not wait and must never throw. The images of those pages are rendered anew, and
+    // their text (which the session dropped with them) is read again for the visible ones, so a link or the cursor works
+    // there at once after a markup.
+    private void OnPagesInvalidated(IReadOnlySet<int> pages)
+    {
+        var session = _session;
+        try
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (session is not null && ReferenceEquals(session, _session) && _layout is not null)
+                {
+                    PageCanvas.InvalidatePages(pages);
+                    PreloadText();
+                }
+            });
+        }
+        catch (Exception)
+        {
+            // The dispatcher is shutting down: nothing left to show.
+        }
+    }
+
     /// <summary>Shows what the session holds now: a new document, more page sizes, or nothing.</summary>
     private void Sync()
     {
@@ -290,6 +317,20 @@ public sealed partial class DocumentView : UserControl
             catch (ObjectDisposedException)
             {
                 // Replaced or closed meanwhile; the event of that change follows.
+                return;
+            }
+
+            if (_document is not null && _layout is { } layout && pageCount == layout.PageCount && ReferenceEquals(cache, PageCanvas.Cache))
+            {
+                // The saved file in place of the shown document (the session kept the cache): the same pages, so layout,
+                // zoom, position, marks and text stay; only the scheduler is new.
+                _document = document;
+                PageCanvas.ReplaceScheduler(scheduler);
+                if (sizes.Count > _loadedSizes)
+                {
+                    AddSizes(sizes);
+                }
+
                 return;
             }
 
@@ -357,7 +398,15 @@ public sealed partial class DocumentView : UserControl
             return;
         }
 
-        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox { IsEffectivelyVisible: true })
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+        if (focused is Visual visual && visual.FindAncestorOfType<SaveCard>(includeSelf: true) is { IsVisible: true })
+        {
+            // A card of the save flow asks about this tab (shown again with it): its buttons keep the keys.
+            _focusPending = false;
+            return;
+        }
+
+        if (focused is TextBox { IsEffectivelyVisible: true })
         {
             // The password field of the card that unlocked this document stays until the view model has seen the
             // document (the session may be ahead of it); the view model's change tries again. Any other field keeps
@@ -399,7 +448,11 @@ public sealed partial class DocumentView : UserControl
         }
     }
 
-    /// <summary>Esc in the document: clears the selection first; without one it ends an active search.</summary>
+    /// <summary>
+    /// Esc in the document: clears the selection first; without one it ends the mode "Comment", then an active search.
+    /// The window's own meanings of Esc (a waiting address, a card of the save flow, an overlay, the update card) come
+    /// before all of them (they are key bindings of the window).
+    /// </summary>
     /// <returns>Whether Esc had something to end.</returns>
     private bool TryEscape()
     {
@@ -408,9 +461,15 @@ public sealed partial class DocumentView : UserControl
             return false;
         }
 
+        CancelPendingMarkup();
         if (tab.HasTextSelection)
         {
             tab.TextSelection = null;
+            return true;
+        }
+
+        if (tab.EscapeAnnotate())
+        {
             return true;
         }
 

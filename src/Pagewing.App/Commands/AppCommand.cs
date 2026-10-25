@@ -32,6 +32,13 @@ public sealed record AppCommand(
     /// </summary>
     public Func<bool>? Offered { get; init; }
 
+    /// <summary>
+    /// Gets whether the keys of the command go on to a text field that has the keyboard focus (the search field, the page
+    /// field, a field of a card), which uses them for its own text: undo and redo of the document must not take Ctrl+Z away
+    /// from the field. The palette and the help card still offer the command.
+    /// </summary>
+    public bool YieldsToTextInput { get; init; }
+
     /// <summary>Gets <see cref="Gesture"/> and then <see cref="AlternativeGestures"/>: every key the window binds to the command.</summary>
     public IEnumerable<KeyGesture> Gestures => Gesture is null ? AlternativeGestures : [Gesture, .. AlternativeGestures];
 }

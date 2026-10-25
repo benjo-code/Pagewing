@@ -118,9 +118,10 @@ testdata/pdfs/             Test-PDFs mit LICENSES.md je Herkunft
 
 ### 5.5 Speichern
 
-- **Normalfall ist inkrementelles Speichern** (`FPDF_SaveAsCopy` mit `FPDF_INCREMENTAL`). Es ist schnell, und vorhandene digitale Signaturen bleiben gültig.
+- **Normalfall ist inkrementelles Speichern** (`FPDF_SaveAsCopy` mit `FPDF_INCREMENTAL`, umgesetzt seit M9 in `Pagewing.Core.Saving.DocumentSaver`). Es ist schnell, und die Bytes der Originaldatei, auch signierte Bereiche, bleiben der unveränderte Anfang der neuen Datei. Ob eine Signatur danach als gültig angezeigt wird, hängt an ihren Rechten (DocMDP): Pagewing liest sie vor dem ersten Speichern, warnt bei Stufe 1 und 2 vor jedem Speichern und gibt bei Stufe 3 oder ohne Angabe einen Hinweis; „gültig“ behauptet es nie.
 - **Vollständiger Neuschrieb** (`FPDF_NO_INCREMENTAL`) beim Schwärzen und bei Seitenoperationen. Ist das Dokument digital signiert, warnt die App vorher, dass die Signatur ungültig wird.
-- **Immer atomar:** Pagewing schreibt in eine temporäre Datei im Zielordner, prüft sie, indem es sie mit PDFium wieder öffnet, und ersetzt erst dann das Ziel. Das Original wird nie halb überschrieben.
+- **Immer atomar:** Pagewing schreibt in eine temporäre Datei im Zielordner, prüft sie und ersetzt erst dann das Ziel. Das Original wird nie halb überschrieben. Die Prüfungen (M9): Die Datei, die PDFium liest, ist seit dem Öffnen unverändert (sonst lehnt Pagewing ab, auch für „Speichern unter“); steht am Pfad des Originals eine andere Datei, fragt eine Karte; die ersten *n* Bytes der neuen Datei sind byteweise die des Originals (*n* = dessen Länge); PDFium öffnet die neue Datei wieder (Seitenzahl, Verschlüsselung, Annotationen der geänderten Seiten) und rendert die geänderten Seiten. Ersetzt wird unter Windows mit einer atomaren Umbenennung, auch während das alte Dokument die Datei offen hat; das geprüfte neue Dokument wird das Dokument des Tabs, ohne dass je ein Tab ohne Dokument entsteht.
+- **Ungespeicherte Änderungen:** Tab (Punkt) und Statusleiste zeigen sie; Schließen und die Installation eines Updates fragen vorher („Speichern“, „Nicht speichern“, „Abbrechen“). Es gibt kein automatisches Speichern und in M9 keine Wiederherstellungsdatei; Herunterfahren und Beenden von außen fragen nicht. Inkrementelles Speichern behält die alte Fassung: Gelöschte Kommentare stehen weiter in früheren Revisionen der Datei.
 - Die Konstanten der Speicher-Flags kommen aus den Headern der ausgelieferten PDFium-Version. `FPDF_REMOVE_SECURITY` wechselte ab `chromium/8100` von 3 auf 4.
 
 ### 5.6 Sicherheit
@@ -174,7 +175,7 @@ M9 Speichern & Textmarkierungen (Hervorheben, Unterstreichen, Durchstreichen, Ko
 - Die Unterschrift baut auf Freihand- und Stempel-Annotationen auf.
 
 **Regeln:**
-- **Linie und Pfeil:** PDFium kann keine `/Line`-Annotationen anlegen. Die Spec von Teilprojekt 2 entscheidet zwischen Stempel-Annotation mit Pfad-Objekten und QPDF.
+- **Linie und Pfeil:** PDFium kann keine `/Line`-Annotationen anlegen. Die Spec zu M10 entscheidet zwischen Stempel-Annotation mit Pfad-Objekten, QPDF und einem eigenen Schreiber für den angehängten Teil (M9 kam ohne eigenen Schreiber aus: das Erscheinungsbild der Markierungen erzeugt PDFiums eigener Generator; Spec von Teilprojekt 2 `2026-10-24-teilprojekt2-annotieren-design.md`, `Docs/DECISIONS.md`, Eintrag „Erscheinungsbild der Annotationen: PDFium-Generator (Variante D) …“).
 - **Formulare:** Ohne V8 laufen keine JavaScript-Berechnungen. Hat ein Formular berechnete Felder, weist die App darauf hin, dass sie sich nicht automatisch aktualisieren.
 - **Sichtbare Unterschrift:** Sie wird nie als „rechtsgültig“ bezeichnet. Der Dialog zeigt den Hinweis: „Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.“ Gezeichnete oder importierte Unterschriften werden lokal gespeichert und lassen sich wiederverwenden.
 

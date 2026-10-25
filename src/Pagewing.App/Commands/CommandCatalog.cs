@@ -18,6 +18,9 @@ public sealed class CommandCatalog
     /// <summary>Group of the commands for files and the history.</summary>
     public const string FileGroup = "file";
 
+    /// <summary>Group of undo and redo of the changes to a document.</summary>
+    public const string EditGroup = "edit";
+
     /// <summary>Group of zoom, layout, page theme and panels.</summary>
     public const string ViewGroup = "view";
 
@@ -42,7 +45,7 @@ public sealed class CommandCatalog
     }
 
     /// <summary>Gets the groups in the order the help card and the palette show them.</summary>
-    public static IReadOnlyList<string> Groups { get; } = [FileGroup, ViewGroup, NavigationGroup, SearchGroup, WindowGroup];
+    public static IReadOnlyList<string> Groups { get; } = [FileGroup, EditGroup, ViewGroup, NavigationGroup, SearchGroup, WindowGroup];
 
     /// <summary>Gets every command, grouped in the order of <see cref="Groups"/>.</summary>
     public IReadOnlyList<AppCommand> All { get; }
@@ -51,6 +54,7 @@ public sealed class CommandCatalog
     public static string GroupTitle(string group) => group switch
     {
         FileGroup => Strings.CommandGroupFile,
+        EditGroup => Strings.CommandGroupEdit,
         ViewGroup => Strings.CommandGroupView,
         NavigationGroup => Strings.CommandGroupNavigation,
         SearchGroup => Strings.CommandGroupSearch,
@@ -91,11 +95,29 @@ public sealed class CommandCatalog
         // File. Ctrl+O opens the dialog in every state of the window, as before.
         Window("file.open", () => Strings.OpenFile, FileGroup, Ctrl(Key.O), _window.OpenCommand),
         Window("file.closeTab", () => Strings.CloseTabTooltip, FileGroup, Ctrl(Key.W), _window.CloseActiveTabCommand),
+
+        // Ctrl+S only while there is something to save; "Save as" once the document is open. Neither while the tab prints.
+        Tab("file.save", () => Strings.CommandSave, FileGroup, Ctrl(Key.S), tab => tab.SaveCommand),
+        Tab("file.saveAs", () => Strings.CommandSaveAs, FileGroup, CtrlShift(Key.S), tab => tab.SaveAsCommand),
         Window("file.print", () => Strings.CommandPrint, FileGroup, Ctrl(Key.P), _window.PrintCommand),
         new(
             "recent.clear", () => Strings.CommandClearRecent, FileGroup, null,
             () => _window.ClearRecentFiles is not null,
             () => _window.ClearRecentFiles?.Invoke()),
+
+        // Edit: undo and redo of the annotations, only while there is a step. A text field keeps these keys for its own text
+        // (YieldsToTextInput), as it keeps Ctrl+C.
+        Tab("edit.undo", () => Strings.CommandUndo, EditGroup, Ctrl(Key.Z), tab => tab.UndoCommand) with { YieldsToTextInput = true },
+        Tab("edit.redo", () => Strings.CommandRedo, EditGroup, CtrlShift(Key.Z), tab => tab.RedoCommand)
+            with { AlternativeGestures = [Ctrl(Key.Y)], YieldsToTextInput = true },
+
+        // The mode "Comment" (design system 7.7): on and off, and the three markups, which start the mode and turn a text
+        // selection into a markup at once. Only once the document shows a sharp page and allows annotations (the palette
+        // offers them only then); the Esc of the mode belongs to the document, the toolbar and the panel, not to the window.
+        Tab("annotate.mode", () => Strings.CommandAnnotateMode, EditGroup, CtrlShift(Key.K), tab => tab.ToggleAnnotateCommand),
+        Tab("annotate.highlight", () => Strings.CommandHighlight, EditGroup, CtrlShift(Key.H), tab => tab.HighlightCommand),
+        Tab("annotate.underline", () => Strings.CommandUnderline, EditGroup, CtrlShift(Key.U), tab => tab.UnderlineCommand),
+        Tab("annotate.strikeout", () => Strings.CommandStrikeOut, EditGroup, CtrlShift(Key.X), tab => tab.StrikeOutCommand),
 
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
@@ -115,6 +137,7 @@ public sealed class CommandCatalog
         Tab("view.pageTheme.toggle", () => Strings.CommandTogglePageTheme, ViewGroup, CtrlShift(Key.D), tab => tab.TogglePageThemeCommand, ready: true),
         Panel("panel.pages", () => Strings.CommandPagesPanel, CtrlShift(Key.D1), SidePanelKind.Pages),
         Panel("panel.contents", () => Strings.CommandContentsPanel, CtrlShift(Key.D2), SidePanelKind.Contents),
+        Panel("panel.comments", () => Strings.CommandCommentsPanel, CtrlShift(Key.D3), SidePanelKind.Comments),
 
         // Navigation: the page field, page by page, back and forward along the link jumps (only while there is one).
         Tab("nav.goToPage", () => Strings.CommandGoToPage, NavigationGroup, Ctrl(Key.G), tab => tab.FocusPageFieldCommand),
@@ -154,6 +177,10 @@ public sealed class CommandCatalog
         // Esc drops an address that waits for confirmation, wherever the focus is; without one the key goes on. Not listed:
         // it is the key of the link card, not a command of its own.
         Window("link.cancel", () => Strings.LinkConfirmCancel, WindowGroup, new KeyGesture(Key.Escape), _window.CancelLinkCommand) with { Listed = false },
+
+        // Then Esc answers "Cancel" on a card of the save flow shown in the active tab (save before closing, signature,
+        // another file at the path, a failure), wherever the focus is. Not listed: it is the key of those cards.
+        Window("save.cancel", () => Strings.SaveChoiceCancel, WindowGroup, new KeyGesture(Key.Escape), _window.CancelPendingSaveCommand) with { Listed = false },
 
         // Then Esc hides an overlay whose own Esc does not get the key (the focus has left it); without an overlay the key
         // goes on to the focused element (the document, the search field). Not listed either. The window binds the keys in

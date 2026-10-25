@@ -41,6 +41,9 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
     private UpdateState _afterFailure = UpdateState.None;
     private bool _retryable;
 
+    // The staging folder of a verified download whose installation was cancelled at the question before the installer.
+    private string? _keptStaging;
+
     /// <summary>Raised on the UI thread when <see cref="State"/> changed.</summary>
     public event Action? Changed;
 
@@ -63,6 +66,33 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
 
     /// <summary>Gets how the running program was installed.</summary>
     public PackageForm Form => form;
+
+    /// <summary>
+    /// Gets or sets what "Install" asks first, before anything of the installation starts (no manifest, no download, no
+    /// staging folder): the workspace asks every window with unsaved changes (<see cref="Workspace"/>). <see langword="false"/>
+    /// stops the installation, and the offer stays. <see langword="null"/> (tests, a run without a workspace) asks nothing.
+    /// </summary>
+    public Func<Task<bool>>? BeforeInstall { get; set; }
+
+    /// <summary>
+    /// Gets or sets what is asked again right before the installer gets the verified update (<see cref="IUpdateApplier"/>,
+    /// which ends the app): the user may have changed tabs during the download. <see langword="false"/> installs nothing;
+    /// the verified download stays staged, the offer comes back, and the next "Install" uses the staged file (verified
+    /// again) instead of downloading it again. <see langword="null"/> asks nothing.
+    /// </summary>
+    public Func<Task<bool>>? BeforeApply { get; set; }
+
+    /// <summary>
+    /// Gets whether the installation waits for the answer to <see cref="BeforeInstall"/> or <see cref="BeforeApply"/>: it
+    /// runs (a further "Install" starts nothing) but has not started its next step.
+    /// </summary>
+    public bool IsAwaitingAnswer { get; private set; }
+
+    /// <summary>
+    /// Gets or sets what brings the window that asks about unsaved changes to the front (<see cref="ShowQuestion"/>; set by
+    /// the workspace). <see langword="null"/> does nothing.
+    /// </summary>
+    public Action? QuestionShown { get; set; }
 
     /// <summary>Gets whether the check of the start was begun: the gate that makes it run once per process, whatever the number of windows.</summary>
     public bool CheckStarted { get; private set; }
@@ -117,6 +147,8 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
     /// (<see cref="UpdateStage.Restarting"/>). Once per process: while it runs, every further call (a second click, another
     /// window) gets the running one; without an offer it does nothing. A failure deletes what was downloaded and ends in
     /// <see cref="UpdateStage.Failed"/>; cancelling (<see cref="CancelInstall"/>) goes back to the offer. Never throws.
+    /// Before all of it <see cref="BeforeInstall"/> is asked, and before the installer <see cref="BeforeApply"/>; while an
+    /// answer is awaited (<see cref="IsAwaitingAnswer"/>) the installation counts as running.
     /// </summary>
     public Task BeginInstallAsync()
     {
@@ -125,20 +157,12 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
             return running;
         }
 
-        if (_disposed || install is null || State is not { Stage: UpdateStage.Available, Version: { } version })
+        if (_disposed || install is null || IsAwaitingAnswer || State is not { Stage: UpdateStage.Available, Version: { } version })
         {
             return Task.CompletedTask;
         }
 
-        var cancel = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _installCancel = cancel;
-        var attempt = ++_attempt;
-        FailureMessage = null;
-        FailureOffersDownloadPage = false;
-
-        // The stage leaves "Available" before anything is awaited, so a second call cannot start a second installation.
-        SetState(new UpdateState(UpdateStage.Downloading, version, null, 0, null));
-        return _install = InstallAsync(install, version, attempt, cancel, _lifetime.Token);
+        return _install = BeforeInstall is { } ask ? AskThenInstallAsync(install, ask, version) : StartInstall(install, version);
     }
 
     /// <summary>"Cancel" (and Esc, and closing the window): stops a download or check that runs; the offer stays. Later stages cannot be cancelled.</summary>
@@ -147,6 +171,18 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         if (State.Stage is UpdateStage.Downloading or UpdateStage.Verifying)
         {
             _installCancel?.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// The button "Update" while the installation waits for an answer about unsaved changes (<see cref="IsAwaitingAnswer"/>):
+    /// brings the window that asks to the front (<see cref="QuestionShown"/>).
+    /// </summary>
+    public void ShowQuestion()
+    {
+        if (IsAwaitingAnswer && !_disposed)
+        {
+            QuestionShown?.Invoke();
         }
     }
 
@@ -176,7 +212,10 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         }
     }
 
-    /// <summary>Cancels a running check and a download that runs. May be called more than once.</summary>
+    /// <summary>
+    /// Cancels a running check and a download that runs, and deletes a download kept after "Cancel" at the question before
+    /// the installer (it is only reused by this process). May be called more than once.
+    /// </summary>
     public void Dispose()
     {
         if (!_disposed)
@@ -184,7 +223,94 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
             _disposed = true;
             _lifetime.Cancel();
             _lifetime.Dispose();
+            if (_keptStaging is { } kept)
+            {
+                _keptStaging = null;
+                DeleteStaging(kept);
+            }
         }
+    }
+
+    // The question of "Install" first: the stage stays "Available" while it waits, so nothing has begun when the user
+    // cancels. Only the version the user agreed to is installed: a check meanwhile may have changed the offer.
+    private async Task AskThenInstallAsync(UpdateInstallSetup setup, Func<Task<bool>> ask, UpdateVersion version)
+    {
+        if (!await AskAsync(ask).ConfigureAwait(true) || State is not { Stage: UpdateStage.Available } || State.Version != version)
+        {
+            EndAwaiting(null);
+            return;
+        }
+
+        // The next state (the download) tells the windows that the wait is over.
+        IsAwaitingAnswer = false;
+        await StartInstall(setup, version).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Asks <paramref name="ask"/>; whether to go on (also <see langword="false"/> when it throws or the app ends meanwhile).
+    /// While its answer is open <see cref="IsAwaitingAnswer"/> is set and the windows are told; an answer that is there at
+    /// once (no window has changes) tells them nothing. The caller ends the wait (<see cref="EndAwaiting"/>, or the next state).
+    /// </summary>
+    private async Task<bool> AskAsync(Func<Task<bool>> ask)
+    {
+        Task<bool> answer;
+        try
+        {
+            answer = ask();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        if (!answer.IsCompleted)
+        {
+            IsAwaitingAnswer = true;
+            RaiseChanged();
+        }
+
+        try
+        {
+            return await answer.ConfigureAwait(true) && !_disposed;
+        }
+        catch (Exception)
+        {
+            // The question must not end the flow with an exception: a failed question is a "no".
+            return false;
+        }
+    }
+
+    /// <summary>Ends the wait for an answer: with the state <paramref name="next"/>, or the one there is, and tells the windows once.</summary>
+    private void EndAwaiting(UpdateState? next)
+    {
+        var waited = IsAwaitingAnswer;
+        IsAwaitingAnswer = false;
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (next is not null && next != State)
+        {
+            SetState(next);
+        }
+        else if (waited)
+        {
+            RaiseChanged();
+        }
+    }
+
+    private Task StartInstall(UpdateInstallSetup setup, UpdateVersion version)
+    {
+        var cancel = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _installCancel = cancel;
+        var attempt = ++_attempt;
+        FailureMessage = null;
+        FailureOffersDownloadPage = false;
+
+        // The stage leaves "Available" before anything is awaited, so a second call cannot start a second installation.
+        SetState(new UpdateState(UpdateStage.Downloading, version, null, 0, null));
+        return InstallAsync(setup, version, attempt, cancel, _lifetime.Token);
     }
 
     private Task<UpdateCheckOutcome> RunAsync(bool force) =>
@@ -260,6 +386,11 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         }
 
         State = state;
+        RaiseChanged();
+    }
+
+    private void RaiseChanged()
+    {
         if (Changed is not { } handlers)
         {
             return;
@@ -284,6 +415,10 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         var ct = cancel.Token;
         var directory = UpdateStaging.DirectoryFor(setup.ConfigDirectory, offered);
         var stage = UpdateStage.Downloading;
+
+        // A download verified by an earlier attempt that stopped at the question before the installer (BeforeApply).
+        var kept = _keptStaging == directory;
+        _keptStaging = null;
         try
         {
             // (1) The manifest again, verified: the offer may be a day old, and only a verified manifest says what to download.
@@ -331,17 +466,24 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
                 return;
             }
 
-            // (3) Into a fresh staging folder, with a limit on how long no byte may arrive.
+            // (3) Into a fresh staging folder, with a limit on how long no byte may arrive. A download this process kept
+            // after the question before the installer is used again instead (it is checked again in step 4).
             SetState(new UpdateState(UpdateStage.Downloading, offered, file, 0, null));
             var target = Path.Combine(directory, file.Name);
-            await Task.Run(
+            var reused = await Task.Run(
                 () =>
                 {
                     DeleteOldStaging();
+                    if (kept && File.Exists(target))
+                    {
+                        return true;
+                    }
+
                     PrepareStaging(directory);
+                    return false;
                 },
                 ct).ConfigureAwait(true);
-            if (!await DownloadAsync(setup, offered, file, target, attempt, ct).ConfigureAwait(true))
+            if (!reused && !await DownloadAsync(setup, offered, file, target, attempt, ct).ConfigureAwait(true))
             {
                 Fail(UpdateFailure.Unreachable, stage, directory, afterwards: UpdateState.Offer(offered), retryable: true);
                 return;
@@ -375,8 +517,30 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
             // installer is asked (the folder goes in the handler below).
             ct.ThrowIfCancellationRequested();
 
-            // (6) Ready; the installer of the system takes over from here (it writes the session and ends the app).
+            // (6) Ready; the installer of the system takes over from here (it writes the session and ends the app). Before
+            // that the windows are asked again: a tab may have changed during the download. "Cancel" keeps the verified
+            // download for the next "Install"; nothing was handed over.
             SetState(new UpdateState(UpdateStage.Ready, offered, file, file.Size, null));
+            if (BeforeApply is { } confirm)
+            {
+                if (!await AskAsync(confirm).ConfigureAwait(true))
+                {
+                    if (_disposed)
+                    {
+                        IsAwaitingAnswer = false;
+                        DeleteStaging(directory);
+                        return;
+                    }
+
+                    _keptStaging = directory;
+                    EndAwaiting(UpdateState.Offer(offered));
+                    return;
+                }
+
+                // The next state tells the windows that the wait is over.
+                IsAwaitingAnswer = false;
+            }
+
             if (setup.ApplierFactory() is not { } applier)
             {
                 Fail(UpdateFailure.NoInstaller, stage, directory, afterwards: UpdateState.Offer(offered), retryable: false, offersDownloadPage: true);

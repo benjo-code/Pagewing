@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- Only for the code the LibraryImport generator emits (Saving\WindowsFileRename.cs); Core itself has no unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Pagewing.Pdfium\Pagewing.Pdfium.csproj" />

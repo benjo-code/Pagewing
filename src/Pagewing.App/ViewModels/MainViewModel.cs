@@ -76,7 +76,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
-    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed)> _tabHandlers = [];
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private int? _tabDropIndex;
     private bool _picking;
@@ -163,6 +163,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// gets this view model).
     /// </summary>
     public CommandCatalog Commands => _commands ??= new CommandCatalog(this);
+
+    /// <summary>
+    /// Gets whether Esc has a meaning of the window now (a waiting address, a card of the save flow, an overlay, the update
+    /// card: the Esc commands of <see cref="Commands"/> that can run). The Esc of the mode "Comment" in the toolbar and the
+    /// panel, whose bindings lie nearer the focus than the window's, then lets the key go on, so these come first.
+    /// </summary>
+    internal bool HasWindowEscape => Commands.All.Any(command =>
+        command.Gestures.Any(gesture => gesture is { Key: Avalonia.Input.Key.Escape, KeyModifiers: Avalonia.Input.KeyModifiers.None }) && command.CanExecute());
 
     /// <summary>
     /// Gets what lies over the window: the command palette, the settings or the help card, or nothing. Only one at a
@@ -528,6 +536,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Gets whether the active tab shows the search ("Search" is the active entry of the action bar).</summary>
     public bool IsSearchPanelOpen => ActivePanel == SidePanelKind.Search;
 
+    /// <summary>Gets whether the active tab shows its annotations ("Comments" is the active entry of the action bar).</summary>
+    public bool IsCommentsPanelOpen => ActivePanel == SidePanelKind.Comments;
+
     /// <summary>
     /// An entry of the action bar (parameter: the <see cref="SidePanelKind"/>): opens its panel in the active tab, or
     /// closes it when it is the open one; another open panel is replaced, so at most one is open.
@@ -830,6 +841,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Tabs.Close(tab);
         Unhook(tab);
         CancelPrintingOf(tab);
+        CancelSavingOf(tab);
 
         // The window it goes to has not drawn it yet: its thumbnails wait for the first sharp page there, which sets the
         // flag again.
@@ -891,6 +903,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _palette?.OnClosed();
         _settingsCard?.OnClosed();
         DisposePrinting();
+        DisposeSaving();
         DisposeDefaultApp();
         DisposeUpdate();
         Settings.Changed -= OnSettingsChanged;
@@ -952,6 +965,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         UpdatePageThemes();
+
+        // The colour of a tool may come from another window.
+        foreach (var tab in Tabs)
+        {
+            tab.OnAnnotationSettingsChanged();
+        }
     }
 
     private static double DefaultFor(DensitySetting density) =>
@@ -999,13 +1018,19 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         // Before the tab is shown: a tab from another window keeps its override and takes the page theme of this one.
         tab.AppPageTheme = AppPageTheme;
+
+        // The colours of the tools and the author come from the settings of the app; a lock for an update holds for every tab.
+        tab.AnnotationSettings = Settings;
+        tab.IsEditingFrozen = _isEditingFrozen;
         var handlers = (
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
-            Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)));
+            Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)),
+            Save: (Action<bool>)(saveAs => _ = SaveTabAsync(tab, saveAs)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;
         tab.PropertyChanged += handlers.Changed;
+        tab.SaveRequested += handlers.Save;
         _tabHandlers[tab] = handlers;
 
         // The file of the command line may be open already when its tab comes; a tab from another window was reported there.
@@ -1040,6 +1065,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             tab.CloseRequested -= handlers.Close;
             tab.OpenOtherRequested -= handlers.OpenOther;
             tab.PropertyChanged -= handlers.Changed;
+            tab.SaveRequested -= handlers.Save;
         }
     }
 
@@ -1141,9 +1167,42 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             DispatcherPriority.Background);
     }
 
+    /// <summary>
+    /// Closes <paramref name="tab"/> (its close button, Ctrl+W, the tab menu): a tab with unsaved changes asks first
+    /// (<see cref="CloseAfterAskingAsync"/>); while a card of this window asks about that tab, or the window asks before
+    /// closing, a further request for it is ignored.
+    /// </summary>
     private void CloseTab(TabViewModel? tab)
     {
         if (tab is null || Tabs.IndexOf(tab) < 0)
+        {
+            return;
+        }
+
+        // While an update is being installed every change was answered before and none can come: no question.
+        if (_isEditingFrozen)
+        {
+            CloseTabNow(tab);
+            return;
+        }
+
+        if (tab.AsksBeforeClosing)
+        {
+            if (!_resolving && !(_pendingSave is { } question && ReferenceEquals(question.Tab, tab)))
+            {
+                _ = CloseAfterAskingAsync(tab);
+            }
+
+            return;
+        }
+
+        CloseTabNow(tab);
+    }
+
+    /// <summary>Closes <paramref name="tab"/> without asking (its changes, if any, were saved or discarded by the user).</summary>
+    private void CloseTabNow(TabViewModel tab)
+    {
+        if (Tabs.IndexOf(tab) < 0)
         {
             return;
         }
@@ -1154,6 +1213,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Tabs.Close(tab);
         Unhook(tab);
         CancelPrintingOf(tab);
+        CancelSavingOf(tab);
         if (_recent is not null && RememberedViewOf(tab) is { } closed)
         {
             _recent.Closed([closed]);
@@ -1208,7 +1268,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             RaiseActivePanelChanged();
         }
 
-        if (e.PropertyName is nameof(TabViewModel.IsReady) or nameof(TabViewModel.Document))
+        if (e.PropertyName is nameof(TabViewModel.IsReady) or nameof(TabViewModel.Document) or nameof(TabViewModel.IsSaving))
         {
             // The print button of the action bar is enabled once the document of the active tab is open.
             _printCommand?.RaiseCanExecuteChanged();
@@ -1221,6 +1281,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsPagesPanelOpen));
         OnPropertyChanged(nameof(IsContentsPanelOpen));
         OnPropertyChanged(nameof(IsSearchPanelOpen));
+        OnPropertyChanged(nameof(IsCommentsPanelOpen));
     }
 
     // The conditions are checked again: the user may have chosen a panel, or the window may have narrowed meanwhile.
@@ -1256,7 +1317,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// The user opened or closed a panel: opening "Pages" or "Contents" makes it the start panel of the next window,
-    /// closing it makes that none. "Search" never changes it, neither by opening nor by closing.
+    /// closing it makes that none. "Search" and "Comments" never change it, neither by opening nor by closing.
     /// </summary>
     private void RememberStartPanel(SidePanelKind old, SidePanelKind next)
     {

@@ -1,3 +1,4 @@
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Printing;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
@@ -118,6 +119,84 @@ public sealed class AppSettingsTests
         Assert.Equal(StartPanelSetting.Pages, fixedSettings.StartPanel);
         Assert.Equal(DefaultAppPromptSetting.Ask, fixedSettings.DefaultAppPrompt);
         Assert.Equal(DefaultAppPromptSetting.Ask, AppSettings.Default.DefaultAppPrompt);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData("Anna Beispiel", "Anna Beispiel")]
+    public void AuthorNameIsDroppedWhenEmptyOrTooLong(string? name, string? expected)
+    {
+        Assert.Null(AppSettings.Default.AuthorName);
+        Assert.Equal(expected, (AppSettings.Default with { AuthorName = name }).Normalized().AuthorName);
+        Assert.Equal(new string('x', AppSettings.MaxAuthorNameLength), (AppSettings.Default with { AuthorName = new string('x', AppSettings.MaxAuthorNameLength) }).Normalized().AuthorName);
+        Assert.Equal(128, AppSettings.MaxAuthorNameLength);
+        Assert.Null((AppSettings.Default with { AuthorName = new string('x', AppSettings.MaxAuthorNameLength + 1) }).Normalized().AuthorName);
+    }
+
+    [Fact]
+    public void InvalidMarkupColorsFallBackToTheDefaults()
+    {
+        Assert.Equal(MarkupColor.Yellow, AppSettings.Default.HighlightColor);
+        Assert.Equal(MarkupColor.Blue, AppSettings.Default.UnderlineColor);
+        Assert.Equal(MarkupColor.Pink, AppSettings.Default.StrikeOutColor);
+
+        var fixedSettings = (AppSettings.Default with
+        {
+            HighlightColor = (MarkupColor)99,
+            UnderlineColor = (MarkupColor)(-1),
+            StrikeOutColor = (MarkupColor)99,
+        }).Normalized();
+
+        Assert.Equal(MarkupColor.Yellow, fixedSettings.HighlightColor);
+        Assert.Equal(MarkupColor.Blue, fixedSettings.UnderlineColor);
+        Assert.Equal(MarkupColor.Pink, fixedSettings.StrikeOutColor);
+
+        var kept = (AppSettings.Default with
+        {
+            HighlightColor = MarkupColor.Green,
+            UnderlineColor = MarkupColor.Orange,
+            StrikeOutColor = MarkupColor.Yellow,
+        }).Normalized();
+
+        Assert.Equal(MarkupColor.Green, kept.HighlightColor);
+        Assert.Equal(MarkupColor.Orange, kept.UnderlineColor);
+        Assert.Equal(MarkupColor.Yellow, kept.StrikeOutColor);
+    }
+
+    [Fact]
+    public void OldSettingsFileWithoutTheNewFieldsLoadsWithDefaults()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pagewing-settings-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, "{ \"Theme\": \"Dark\", \"UpdateCheck\": false }");
+
+            var store = new SettingsStore(path);
+            var loaded = store.Load();
+
+            Assert.Equal(ThemeSetting.Dark, loaded.Theme);
+            Assert.False(loaded.UpdateCheck);
+            Assert.Null(loaded.AuthorName);
+            Assert.Equal(MarkupColor.Yellow, loaded.HighlightColor);
+            Assert.Equal(MarkupColor.Blue, loaded.UnderlineColor);
+            Assert.Equal(MarkupColor.Pink, loaded.StrikeOutColor);
+
+            // And the new values survive a round trip.
+            Assert.True(store.TrySave(loaded with { AuthorName = "Anna", HighlightColor = MarkupColor.Green, StrikeOutColor = MarkupColor.Orange }));
+            var again = store.Load();
+            Assert.Equal("Anna", again.AuthorName);
+            Assert.Equal(MarkupColor.Green, again.HighlightColor);
+            Assert.Equal(MarkupColor.Blue, again.UnderlineColor);
+            Assert.Equal(MarkupColor.Orange, again.StrikeOutColor);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Fact]

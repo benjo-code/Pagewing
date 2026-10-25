@@ -67,11 +67,12 @@ public sealed partial class MainViewModel
         }
     }
 
-    private bool CanPrint() => ActiveTab is { IsReady: true, Document: not null };
+    // Not while the tab saves: the save swaps the document a job would print.
+    private bool CanPrint() => ActiveTab is { IsReady: true, Document: not null, IsSaving: false, IsAskedAbout: false };
 
     private async Task PrintAsync()
     {
-        if (ActiveTab is not { IsReady: true, Document: { } document } tab)
+        if (ActiveTab is not { IsReady: true, Document: { } document, IsSaving: false } tab)
         {
             return;
         }
@@ -109,7 +110,8 @@ public sealed partial class MainViewModel
                 var ticket = await service.ShowDialogAsync(request, CancellationToken.None);
                 if (ticket is not null)
                 {
-                    await RunPrintJobAsync(service, tab, document, ticket);
+                    // The document the tab has now: a save while the dialog was open swapped it for the written file.
+                    await RunPrintJobAsync(service, tab, tab.Document ?? document, ticket);
                 }
 
                 return;
@@ -134,7 +136,9 @@ public sealed partial class MainViewModel
         dialog.Confirmed += ticket =>
         {
             HideOverlay();
-            _ = RunPrintJobAsync(service, tab, document, ticket);
+
+            // The document the tab has now: a save while the dialog was open swapped it for the written file.
+            _ = RunPrintJobAsync(service, tab, tab.Document ?? document, ticket);
         };
         _print?.Dispose();
         _print = dialog;
@@ -154,9 +158,15 @@ public sealed partial class MainViewModel
             var job = new PrintJobViewModel(tab, 0, cancellation.Cancel, DismissPrintJob);
             PrintJob = job;
             var progress = new JobProgress(job);
+
+            // The job prints this document: a save would close it, so the tab cannot be saved until the job ends.
+            tab.IsPrinting = true;
             try
             {
-                var request = new PrintJobRequest(document, tab.FullPath, tab.FileName ?? string.Empty, Math.Max(0, tab.CurrentPage - 1), ticket);
+                // With changes that are not saved (or still being made) the file on disk lacks them: no path, so a service that
+                // hands a file to the printing system (CUPS) writes one from the document in memory instead.
+                var path = tab.AsksBeforeClosing ? null : tab.FullPath;
+                var request = new PrintJobRequest(document, path, tab.FileName ?? string.Empty, Math.Max(0, tab.CurrentPage - 1), ticket);
                 await service.PrintAsync(request, progress, cancellation.Token);
                 job.Complete(progress.FailedPages);
             }
@@ -175,6 +185,7 @@ public sealed partial class MainViewModel
             finally
             {
                 _printCancellation = null;
+                tab.IsPrinting = false;
             }
 
             if (!job.IsFailed && !_disposed && ReferenceEquals(_printJob, job))
