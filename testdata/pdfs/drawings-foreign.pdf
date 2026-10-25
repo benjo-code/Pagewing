@@ -1,0 +1,109 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 2 /Kids [17 0 R 21 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing fremde Zeichnungen) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /XObject /Subtype /Form /BBox [28 238 192 282] /Length 81 >>
+stream
+1 0 0 RG 2 w 1 J 1 j 30 240 m 60 280 l 90 240 l S 110 240 m 150 280 l 190 240 l S
+endstream
+endobj
+6 0 obj
+<< /Type /XObject /Subtype /Form /BBox [38 38 118 98] /Resources << /ExtGState << /GS << /CA 0.5 /ca 0.5 >> >> >> /Length 38 >>
+stream
+/GS gs 0 0.5 0 RG 4 w 40 40 76 56 re S
+endstream
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Ink /Rect [28 238 192 282] /InkList [[30 240 60 280 90 240] [110 240 150 280 190 240]] /C [1 0 0] /BS << /W 2 >> /F 4 /NM (ink-0001) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) /AP << /N 5 0 R >> >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Ink /Rect [218 238 372 282] /InkList [[220 240 250 280 280 240 310 280 370 240]] /C [0 0 1] /BS << /W 3 >> /F 4 /NM (ink-0002) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Square /Rect [28 158 108 218] /C [0 0.5 0] /BS << /W 2 /S /D /D [4 2] >> /F 4 /NM (square-0003) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+10 0 obj
+<< /Type /Annot /Subtype /Square /Rect [128 158 208 218] /C [0.5 0 0.5] /BS << /W 2 /S /S >> /BE << /S /C /I 1 >> /F 4 /NM (square-0004) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+11 0 obj
+<< /Type /Annot /Subtype /Square /Rect [38 38 118 98] /C [0 0.5 0] /BS << /W 4 >> /CA 0.5 /F 4 /NM (square-0005) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) /AP << /N 6 0 R >> >>
+endobj
+12 0 obj
+<< /Type /Annot /Subtype /Circle /Rect [228 158 308 218] /C [1 0.5 0] /BS << /W 2 /S /S >> /F 4 /NM (circle-0006) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+13 0 obj
+<< /Type /Annot /Subtype /Line /Rect [128 78 208 118] /L [130 80 206 116] /LE [/None /OpenArrow] /C [0 0 0] /BS << /W 2 >> /F 4 /NM (line-0007) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+14 0 obj
+<< /Type /Annot /Subtype /Ink /InkList [[250 60 270 90 290 60 310 90 330 60]] /Rect [248 58 332 92] /C [0 0.6 0.6] /BS << /W 2 >> /F 4 /NM (ink-0008) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+15 0 obj
+<< /Type /Annot /Subtype /Text /Rect [336 58 354 76] /Name /Comment /F 28 /NM (reply-0008) /T (Bob) /Contents (Nice stroke) /IRT 14 0 R /RT /R /C [1 0.9 0] /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+16 0 obj
+<<  /Length 56 >>
+stream
+BT /F1 14 Tf 40 20 Td (Foreign drawings, page one) Tj ET
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Annots [7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R 15 0 R] /Resources << /Font << /F1 4 0 R >> >> /Contents 16 0 R >>
+endobj
+18 0 obj
+<< /Type /XObject /Subtype /Form /BBox [88 118 192 182] /Length 57 >>
+stream
+0.8 0 0.8 RG 2 w 90 120 m 120 180 l 150 120 l 190 180 l S
+endstream
+endobj
+19 0 obj
+<< /Type /Annot /Subtype /Ink /Rect [88 118 192 182] /InkList [[90 120 120 180 150 120 190 180]] /C [0.8 0 0.8] /BS << /W 2 >> /F 4 /NM (ink-0009) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) /AP << /N 18 0 R >> >>
+endobj
+20 0 obj
+<<  /Length 57 >>
+stream
+BT /F1 14 Tf 40 250 Td (Foreign drawings, page two) Tj ET
+endstream
+endobj
+21 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 10 380 290] /Rotate 90 /Annots [19 0 R] /Resources << /Font << /F1 4 0 R >> >> /Contents 20 0 R >>
+endobj
+xref
+0 22
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000129 00000 n 
+0000000223 00000 n 
+0000000320 00000 n 
+0000000504 00000 n 
+0000000703 00000 n 
+0000000967 00000 n 
+0000001206 00000 n 
+0000001414 00000 n 
+0000001638 00000 n 
+0000001857 00000 n 
+0000002058 00000 n 
+0000002289 00000 n 
+0000002526 00000 n 
+0000002758 00000 n 
+0000002866 00000 n 
+0000003064 00000 n 
+0000003225 00000 n 
+0000003479 00000 n 
+0000003588 00000 n 
+trailer
+<< /Size 22 /Root 1 0 R /Info 3 0 R >>
+startxref
+3769
+%%EOF

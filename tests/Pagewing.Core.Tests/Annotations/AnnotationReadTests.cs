@@ -54,6 +54,23 @@ public sealed class AnnotationReadTests
     }
 
     [Fact]
+    public async Task DrawingsForeignFixtureListsAllEntries()
+    {
+        await using var document = await OpenFixtureAsync(DrawingsForeign);
+
+        var first = await document.GetAnnotationsAsync(0, TestContext.Current.CancellationToken);
+        var second = await document.GetAnnotationsAsync(1, TestContext.Current.CancellationToken);
+
+        // Raw order on page 1: eight drawings and, last, the reply to the eighth (a Text with /IRT, never listed).
+        Assert.Equal([0, 1, 2, 3, 4, 5, 6, 7], first.Select(a => a.Index));
+        Assert.Equal(["Ink", "Ink", "Square", "Square", "Square", "Circle", "Line", "Ink"], first.Select(a => a.Subtype));
+        Assert.DoesNotContain(first, a => a.Name == "reply-0008");
+        Assert.All(first, a => Assert.Equal(AnnotationKind.Other, a.Kind));
+        Assert.Equal("Ink", Assert.Single(second).Subtype);
+        Assert.Equal(1, second[0].Page);
+    }
+
+    [Fact]
     public async Task MarksOnlyPlainMarkupAsEditable()
     {
         await using var document = await OpenFixtureAsync("annotations-foreign.pdf");
