@@ -40,6 +40,8 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.AnnotText)] = "FPDF_ANNOT_TEXT",
         [nameof(FpdfConstants.AnnotLink)] = "FPDF_ANNOT_LINK",
         [nameof(FpdfConstants.AnnotFreeText)] = "FPDF_ANNOT_FREETEXT",
+        [nameof(FpdfConstants.AnnotSquare)] = "FPDF_ANNOT_SQUARE",
+        [nameof(FpdfConstants.AnnotCircle)] = "FPDF_ANNOT_CIRCLE",
         [nameof(FpdfConstants.AnnotHighlight)] = "FPDF_ANNOT_HIGHLIGHT",
         [nameof(FpdfConstants.AnnotUnderline)] = "FPDF_ANNOT_UNDERLINE",
         [nameof(FpdfConstants.AnnotSquiggly)] = "FPDF_ANNOT_SQUIGGLY",

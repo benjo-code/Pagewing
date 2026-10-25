@@ -67,7 +67,7 @@ internal static unsafe class PdfiumAnnotations
     public const long MaxLinkWork = 2_000_000;
 
     /// <summary>How many entries pass between two checks of the cancellation token.</summary>
-    private const int CancellationInterval = 64;
+    internal const int CancellationInterval = 64;
 
     /// <summary>What <see cref="LinkedIndex"/> returns when the link budget is used up.</summary>
     private const int LinkUnresolved = -2;
@@ -81,14 +81,14 @@ internal static unsafe class PdfiumAnnotations
     /// <summary>The longest string value read, in bytes of UTF-16LE; a longer one reads as missing.</summary>
     private const int MaxStringBytes = 8 * 1024 * 1024;
 
-    /// <summary>The longest appearance stream whose colour is looked for, in bytes of UTF-16LE.</summary>
-    private const int MaxAppearanceBytes = 1024 * 1024;
+    /// <summary>The longest appearance stream whose colour (or a drawing's line width) is looked for, in bytes of UTF-16LE.</summary>
+    internal const int MaxAppearanceBytes = 1024 * 1024;
 
     /// <summary>The characters of the buffer an appearance stream is decoded into (<see cref="MaxAppearanceBytes"/>).</summary>
     private const int ScratchLength = MaxAppearanceBytes / 2;
 
-    /// <summary>The part of an appearance stream that is searched for its colour, in characters.</summary>
-    private const int AppearanceScanLength = 64 * 1024;
+    /// <summary>The part of an appearance stream that is searched for its colour (or a drawing's line width), in characters.</summary>
+    internal const int AppearanceScanLength = 64 * 1024;
 
     /// <summary>The scale of the render that makes PDFium generate missing appearances (the bitmap is thrown away).</summary>
     private const double GenerateScale = 0.25;
@@ -96,6 +96,10 @@ internal static unsafe class PdfiumAnnotations
     /// <summary>Whether a subtype is one of the text markups Pagewing creates and changes.</summary>
     public static bool IsMarkup(int subtype) =>
         subtype is FpdfConstants.AnnotHighlight or FpdfConstants.AnnotUnderline or FpdfConstants.AnnotStrikeout;
+
+    /// <summary>Whether a subtype is one of the drawings Pagewing creates (ink, square, circle; see <see cref="PdfiumDrawings"/>).</summary>
+    public static bool IsDrawing(int subtype) =>
+        subtype is FpdfConstants.AnnotInk or FpdfConstants.AnnotSquare or FpdfConstants.AnnotCircle;
 
     /// <summary>
     /// Reads the annotations of a page in <c>/Annots</c> order, at most <paramref name="limit"/>. Popups and replies
@@ -194,6 +198,18 @@ internal static unsafe class PdfiumAnnotations
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// Whether the entry at <paramref name="index"/> is a reply (<c>/IRT</c>) or may be answered by one (an <c>/IRT</c>
+    /// points at it, or the link budget ran out); <see langword="true"/> for an index outside the page.
+    /// </summary>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while checking.</exception>
+    internal static bool IsReplyOrAnswered(PdfiumPage page, int index, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var scan = Scan(page.Access(), cancellationToken);
+        return index < 0 || index >= scan.Subtypes.Length || scan.IsReply[index] || scan.HasReplies(index);
     }
 
     /// <summary>Whether Pagewing may change or delete the annotation: a highlight, underline or strike-out that no other annotation answers.</summary>
@@ -331,9 +347,17 @@ internal static unsafe class PdfiumAnnotations
 
             if (color is { } rgb)
             {
+                // PDFium's generator widens the /Rect of an ink by half its width each time it builds the appearance, so the
+                // /Rect is set anew from the strokes before the appearance is dropped (the width may come from it).
+                var inkRect = Fpdf.FPDFAnnot_GetSubtype(annotation) == FpdfConstants.AnnotInk ? PdfiumDrawings.InkRectOf(annotation) : null;
+
                 // FPDFAnnot_SetColor refuses an annotation with an appearance; null clears the appearance of every mode.
                 Check(Fpdf.FPDFAnnot_SetAP(annotation, FpdfConstants.AnnotAppearanceNormal, null));
                 Check(Fpdf.FPDFAnnot_SetColor(annotation, 0, rgb.R, rgb.G, rgb.B, 255));
+                if (inkRect is { } rect)
+                {
+                    Check(Fpdf.FPDFAnnot_SetRect(annotation, &rect));
+                }
             }
 
             if (ReadString(annotation, "NM\0"u8) is null)
@@ -861,7 +885,7 @@ internal static unsafe class PdfiumAnnotations
     }
 
     /// <summary>Reads a string or name value (UTF-16LE); <see langword="null"/> when missing, empty, of another type or longer than <see cref="MaxStringBytes"/>.</summary>
-    private static string? ReadString(nint annotation, ReadOnlySpan<byte> key)
+    internal static string? ReadString(nint annotation, ReadOnlySpan<byte> key)
     {
         fixed (byte* keyPointer = key)
         {
@@ -888,7 +912,7 @@ internal static unsafe class PdfiumAnnotations
         }
     }
 
-    private static int WriteString(nint annotation, ReadOnlySpan<byte> key, string value)
+    internal static int WriteString(nint annotation, ReadOnlySpan<byte> key, string value)
     {
         fixed (byte* keyPointer = key)
         fixed (char* valuePointer = value)
@@ -898,7 +922,7 @@ internal static unsafe class PdfiumAnnotations
         }
     }
 
-    private static bool HasKey(nint annotation, ReadOnlySpan<byte> key)
+    internal static bool HasKey(nint annotation, ReadOnlySpan<byte> key)
     {
         fixed (byte* keyPointer = key)
         {
@@ -981,12 +1005,12 @@ internal static unsafe class PdfiumAnnotations
         return new FsRectF { Left = (float)left, Top = (float)top, Right = (float)right, Bottom = (float)bottom };
     }
 
-    private static bool IsSane(float value) => float.IsFinite(value) && Math.Abs(value) <= MaxCoordinate;
+    internal static bool IsSane(float value) => float.IsFinite(value) && Math.Abs(value) <= MaxCoordinate;
 
     internal static bool IsSane(FsQuadPointsF p) =>
         IsSane(p.X1) && IsSane(p.Y1) && IsSane(p.X2) && IsSane(p.Y2) && IsSane(p.X3) && IsSane(p.Y3) && IsSane(p.X4) && IsSane(p.Y4);
 
-    private static void Check(int result)
+    internal static void Check(int result)
     {
         if (result == 0)
         {
@@ -1040,12 +1064,12 @@ internal static unsafe class PdfiumAnnotations
 
     private static byte ToByte(double channel) => (byte)Math.Round(channel * 255, MidpointRounding.AwayFromZero);
 
-    private static bool IsWhite(char c) => c is ' ' or '\t' or '\r' or '\n' or '\f' or '\0';
+    internal static bool IsWhite(char c) => c is ' ' or '\t' or '\r' or '\n' or '\f' or '\0';
 
-    private static bool IsDelimiter(char c) => c is '(' or ')' or '<' or '>' or '[' or ']' or '{' or '}' or '/' or '%';
+    internal static bool IsDelimiter(char c) => c is '(' or ')' or '<' or '>' or '[' or ']' or '{' or '}' or '/' or '%';
 
     /// <summary>Skips a literal string with nested parentheses and backslash escapes; returns the index after it.</summary>
-    private static int SkipString(ReadOnlySpan<char> content, int start)
+    internal static int SkipString(ReadOnlySpan<char> content, int start)
     {
         var depth = 0;
         for (var i = start; i < content.Length; i++)

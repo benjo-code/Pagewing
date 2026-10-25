@@ -48,6 +48,12 @@ internal static class FpdfConstants
     /// <summary><c>FPDF_ANNOT_FREETEXT</c>: a free text annotation.</summary>
     public const int AnnotFreeText = 3;
 
+    /// <summary><c>FPDF_ANNOT_SQUARE</c>: a square (rectangle) annotation.</summary>
+    public const int AnnotSquare = 5;
+
+    /// <summary><c>FPDF_ANNOT_CIRCLE</c>: a circle (ellipse) annotation.</summary>
+    public const int AnnotCircle = 6;
+
     /// <summary><c>FPDF_ANNOT_HIGHLIGHT</c>: a highlight annotation.</summary>
     public const int AnnotHighlight = 9;
 

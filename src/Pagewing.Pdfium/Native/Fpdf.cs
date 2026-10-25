@@ -394,6 +394,37 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint FPDFAnnot_GetLinkedAnnot(nint annotation, byte* key);
 
+    /// <summary>
+    /// Appends a stroke to the <c>/InkList</c> of an ink annotation (created if missing); <c>point_count</c> is <c>size_t</c>.
+    /// Returns the index of the new stroke, or -1.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_AddInkStroke(nint annotation, FsPointF* points, nuint pointCount);
+
+    /// <summary>The number of strokes of the <c>/InkList</c> of an ink annotation, 0 for other subtypes (<c>unsigned long</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetInkListCount(nint annotation);
+
+    /// <summary>
+    /// Copies stroke <c>path_index</c> of the <c>/InkList</c> into <c>buffer</c> if <c>length</c> (in points) is large enough;
+    /// returns the number of points of the stroke either way (0 for other subtypes). Both are <c>unsigned long</c>.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetInkListPath(nint annotation, CULong pathIndex, FsPointF* buffer, CULong length);
+
+    /// <summary>Writes <c>/Border [h v w]</c> and removes the appearance (<c>/AP</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_SetBorder(nint annotation, float horizontalRadius, float verticalRadius, float borderWidth);
+
+    /// <summary>Reads <c>/Border</c>; fails without the array or with fewer than three entries (<c>/BS</c> is not read).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetBorder(nint annotation, float* horizontalRadius, float* verticalRadius, float* borderWidth);
+
     /// <summary>The index of an annotation in the page's <c>/Annots</c> (found by its dictionary), or -1.</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -459,6 +490,17 @@ internal struct FsSizeF
 
     /// <summary>Height in points (<c>height</c>).</summary>
     public float Height;
+}
+
+/// <summary><c>FS_POINTF</c> from <c>fpdfview.h</c>: a point; for ink strokes in PDF user space (y up).</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FsPointF
+{
+    /// <summary>The x-coordinate (<c>x</c>).</summary>
+    public float X;
+
+    /// <summary>The y-coordinate (<c>y</c>).</summary>
+    public float Y;
 }
 
 /// <summary><c>FS_RECTF</c> from <c>fpdfview.h</c>: a rectangle; for link annotations in PDF user space (y up).</summary>

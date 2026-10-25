@@ -511,9 +511,11 @@ internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IRead
 }
 
 /// <summary>
-/// Converts PDF user space to points from the top left of the displayed page in double precision. The affine map comes from
-/// three corners of the page through <c>FPDF_DeviceToPage</c> (which returns doubles), inverted here; PDFium stays the only
-/// source of rotation and CropBox, and no coordinate is rounded to a grid as with <c>FPDF_PageToDevice</c>.
+/// Converts between PDF user space and points from the top left of the displayed page in double precision. The affine map
+/// comes from three corners of the page through <c>FPDF_DeviceToPage</c> (which returns doubles), inverted here for
+/// <see cref="ToDisplay"/>; PDFium stays the only source of rotation and CropBox, and no coordinate is rounded to a grid as
+/// with <c>FPDF_PageToDevice</c>. <see cref="ToUser"/> is the map itself, so a point converted there and back stays the
+/// same up to double rounding (drawings, M10).
 /// </summary>
 internal readonly struct DisplayTransform
 {
@@ -526,18 +528,28 @@ internal readonly struct DisplayTransform
     private readonly double originX;
     private readonly double originY;
 
-    private DisplayTransform(double m11, double m12, double m21, double m22, double originX, double originY)
+    // The map from display points to user space: user = origin + displayX * (ax, ay) + displayY * (bx, by).
+    private readonly double ax;
+    private readonly double ay;
+    private readonly double bx;
+    private readonly double by;
+
+    private DisplayTransform(double ax, double ay, double bx, double by, double determinant, double originX, double originY)
     {
-        this.m11 = m11;
-        this.m12 = m12;
-        this.m21 = m21;
-        this.m22 = m22;
+        m11 = by / determinant;
+        m12 = -bx / determinant;
+        m21 = -ay / determinant;
+        m22 = ax / determinant;
+        this.ax = ax;
+        this.ay = ay;
+        this.bx = bx;
+        this.by = by;
         this.originX = originX;
         this.originY = originY;
     }
 
     /// <summary>Gets the transform that keeps every point (for tests of the geometry).</summary>
-    public static DisplayTransform Identity { get; } = new(1, 0, 0, 1, 0, 0);
+    public static DisplayTransform Identity { get; } = new(1, 0, 0, 1, 1, 0, 0);
 
     /// <summary>Builds the transform of a loaded page (PDFium thread); <see langword="false"/> when PDFium cannot convert.</summary>
     public static unsafe bool TryCreate(nint page, double width, double height, out DisplayTransform transform)
@@ -565,7 +577,7 @@ internal readonly struct DisplayTransform
             return false;
         }
 
-        transform = new DisplayTransform(by / determinant, -bx / determinant, -ay / determinant, ax / determinant, x0, y0);
+        transform = new DisplayTransform(ax, ay, bx, by, determinant, x0, y0);
         return true;
     }
 
@@ -576,4 +588,8 @@ internal readonly struct DisplayTransform
         var dy = y - originY;
         return new DarkMarkupPoint((m11 * dx) + (m12 * dy), (m21 * dx) + (m22 * dy));
     }
+
+    /// <summary>Converts a point in points from the top left of the displayed page to PDF user space (the inverse of <see cref="ToDisplay"/>).</summary>
+    public (double X, double Y) ToUser(double x, double y) =>
+        (originX + (ax * x) + (bx * y), originY + (ay * x) + (by * y));
 }
