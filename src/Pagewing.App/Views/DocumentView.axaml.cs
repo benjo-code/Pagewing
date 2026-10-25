@@ -17,7 +17,8 @@ namespace Pagewing.App.Views;
 /// see DocumentView.LayoutModes.cs), zoom with Ctrl+wheel (around the pointer) and through the view model
 /// (Ctrl+Plus/Minus, status bar), the zoom modes of the tab (page width, whole page, actual size; see
 /// <see cref="Refit"/>), page jumps, the current page (row) for the status bar, the marks on the pages
-/// (DocumentView.Highlights.cs) and selecting text with the mouse (DocumentView.Text.cs). Its
+/// (DocumentView.Highlights.cs), selecting text with the mouse (DocumentView.Text.cs) and drawing with a drawing tool
+/// (DocumentView.Drawing.cs). Its
 /// <c>DataContext</c> is the active <see cref="TabViewModel"/> of the window; it mirrors the document of the tab's
 /// session. A change of the <c>DataContext</c> (another tab) disconnects from the old tab and shows the new one.
 /// </summary>
@@ -185,6 +186,7 @@ public sealed partial class DocumentView : UserControl
     private void Disconnect()
     {
         SaveView();
+        EndGesture();
         DisconnectHighlights();
         CancelPendingMarkup();
         DropTexts();
@@ -193,6 +195,7 @@ public sealed partial class DocumentView : UserControl
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.PageRequested -= OnPageRequested;
             _viewModel.DocumentFocusRequested -= OnDocumentFocusRequested;
+            DisconnectDrawing();
             DisconnectLinks(_viewModel);
             _viewModel = null;
         }
@@ -323,7 +326,8 @@ public sealed partial class DocumentView : UserControl
             if (_document is not null && _layout is { } layout && pageCount == layout.PageCount && ReferenceEquals(cache, PageCanvas.Cache))
             {
                 // The saved file in place of the shown document (the session kept the cache): the same pages, so layout,
-                // zoom, position, marks and text stay; only the scheduler is new.
+                // zoom, position, marks and text stay; only the scheduler is new. A stroke being drawn goes with the old one.
+                EndGesture();
                 _document = document;
                 PageCanvas.ReplaceScheduler(scheduler);
                 if (sizes.Count > _loadedSizes)
@@ -362,7 +366,8 @@ public sealed partial class DocumentView : UserControl
         layout.Zoom = tab?.Zoom ?? ZoomSteps.Default;
         layout.PageMargin = ValidMargin(PageMargin);
 
-        // The text of the document shown before goes with it.
+        // The text of the document shown before goes with it, and a stroke being drawn on it.
+        EndGesture();
         DropTexts();
         _document = document;
         _layout = layout;
@@ -449,7 +454,8 @@ public sealed partial class DocumentView : UserControl
     }
 
     /// <summary>
-    /// Esc in the document: clears the selection first; without one it ends the mode "Comment", then an active search.
+    /// Esc in the document: drops a stroke of a drawing tool that is being dragged first (DocumentView.Drawing.cs), then clears
+    /// the selection; without one it ends the mode "Comment", then an active search.
     /// The window's own meanings of Esc (a waiting address, a card of the save flow, an overlay, the update card) come
     /// before all of them (they are key bindings of the window).
     /// </summary>
@@ -462,6 +468,13 @@ public sealed partial class DocumentView : UserControl
         }
 
         CancelPendingMarkup();
+
+        // A stroke being drawn first: the next Esc ends the mode.
+        if (EndGesture())
+        {
+            return true;
+        }
+
         if (tab.HasTextSelection)
         {
             tab.TextSelection = null;
@@ -526,6 +539,7 @@ public sealed partial class DocumentView : UserControl
             return;
         }
 
+        EndGesture();
         DropTexts();
         _document = null;
         _layout = null;
@@ -774,6 +788,7 @@ public sealed partial class DocumentView : UserControl
         // The text of what is visible now (DocumentView.Text.cs): read ahead, and the visible part of the selection.
         PreloadText();
         FollowSelectionWithViewport();
+        FollowGestureWithViewport();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -809,6 +824,14 @@ public sealed partial class DocumentView : UserControl
             // Page, zoom, scroll position and selection stay.
             PageCanvas.PageTheme = tab.EffectivePageTheme;
         }
+        else if (e.PropertyName is nameof(TabViewModel.ActiveTool) or nameof(TabViewModel.IsAnnotating) && _press is null && _gesture is null
+            && Scroller.IsPointerOver)
+        {
+            // Another tool: the crosshair comes or goes where the pointer rests.
+            UpdateCursor(_pointer);
+        }
+
+        CheckGesture(e.PropertyName);
     }
 
     /// <summary>Zooms so that the content under the zoom anchor (the pointer, or the middle of the viewport) stays in place.</summary>

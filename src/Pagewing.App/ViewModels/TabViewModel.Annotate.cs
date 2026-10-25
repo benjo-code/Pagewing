@@ -194,8 +194,8 @@ public sealed partial class TabViewModel
     internal bool HasEditsInFlight => !_disposed && (_pendingEdits > 0 || _editor?.IsBusy == true);
 
     /// <summary>
-    /// Esc of the mode, after the text selection (DocumentView, the toolbar, the "Comments" list): clears the selection,
-    /// else ends the mode.
+    /// Esc of the mode (DocumentView, the toolbar, the "Comments" list): drops a stroke of a drawing tool that is being
+    /// dragged (<see cref="CancelDrawingGesture"/>), else clears the selection, else ends the mode.
     /// </summary>
     /// <returns>Whether Esc had something to end.</returns>
     internal bool EscapeAnnotate()
@@ -203,6 +203,11 @@ public sealed partial class TabViewModel
         if (!_isAnnotating)
         {
             return false;
+        }
+
+        if (CancelDrawingGesture?.Invoke() == true)
+        {
+            return true;
         }
 
         if (HasTextSelection)

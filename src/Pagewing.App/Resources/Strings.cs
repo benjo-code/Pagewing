@@ -423,6 +423,8 @@ public static class Strings
     public static string CommentViewOnly => Get("CommentViewOnly");
     public static string CommentEditNone => Get("CommentEditNone");
     public static string AnnotateMore => Get("AnnotateMore");
+    public static string DrawingLimitReached => Get("DrawingLimitReached");
+    public static string DrawingFailed => Get("DrawingFailed");
 
     /// <summary>Gets the name of a colour of the markup palette (<see cref="Pagewing.Core.Annotations.AnnotationPalette.NameKey"/>).</summary>
     public static string ColorName(Pagewing.Core.Annotations.MarkupColor color) =>

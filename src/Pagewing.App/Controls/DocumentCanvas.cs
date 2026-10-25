@@ -554,6 +554,39 @@ internal sealed class DocumentCanvas : Control
         static double DistanceAcross(double x, DipRect rect) => x < rect.X ? rect.X - x : x > rect.Right ? x - rect.Right : 0;
     }
 
+    /// <summary>
+    /// Converts a point of the viewport (DIPs) to PDF points on <paramref name="page"/> (from the top left of the page as
+    /// shown), wherever the point lies, also beside the page; <see langword="null"/> without a document or for no page.
+    /// </summary>
+    internal Point? PointOnPage(int page, Point viewportPoint)
+    {
+        var layout = _source?.Layout;
+        if (layout is null || page < 0 || page >= layout.PageCount)
+        {
+            return null;
+        }
+
+        var rect = layout.GetPageRect(page);
+        var dipsPerPoint = DocumentLayout.DipsPerPoint * layout.Zoom;
+        return new Point((viewportPoint.X + _viewport.X - rect.X) / dipsPerPoint, (viewportPoint.Y + _viewport.Y - rect.Y) / dipsPerPoint);
+    }
+
+    /// <summary>
+    /// Gets where <paramref name="page"/> is drawn in the viewport (DIPs, its origin on whole device pixels as <see cref="Render"/>
+    /// puts it) and the DIPs per PDF point, or <see langword="null"/> without a document or for no page.
+    /// </summary>
+    internal (Rect PageRect, double DipsPerPoint)? PagePlacement(int page)
+    {
+        var layout = _source?.Layout;
+        if (layout is null || page < 0 || page >= layout.PageCount)
+        {
+            return null;
+        }
+
+        var rect = layout.GetPageRect(page);
+        return (new Rect(Snap(rect.X - _viewport.X), Snap(rect.Y - _viewport.Y), rect.Width, rect.Height), DocumentLayout.DipsPerPoint * layout.Zoom);
+    }
+
     public override void Render(DrawingContext context)
     {
         var source = _source;

@@ -1188,4 +1188,10 @@
   <data name="AnnotateMore" xml:space="preserve">
     <value>Weitere Werkzeuge</value>
   </data>
+  <data name="DrawingLimitReached" xml:space="preserve">
+    <value>Die Zeichnung wurde nicht hinzugefügt: Das Dokument hat schon so viele Annotationen, wie Pagewing verarbeitet ({0:N0}).</value>
+  </data>
+  <data name="DrawingFailed" xml:space="preserve">
+    <value>Die Zeichnung konnte nicht hinzugefügt werden.</value>
+  </data>
 </root>

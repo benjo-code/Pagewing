@@ -1,5 +1,8 @@
+using System.Text;
 using System.Windows.Input;
+using Pagewing.App.Resources;
 using Pagewing.Core.Annotations;
+using Pagewing.Core.Pdf;
 
 namespace Pagewing.App.ViewModels;
 
@@ -108,6 +111,99 @@ public sealed partial class TabViewModel
     /// <param name="kind">The kind of annotation the tool creates.</param>
     /// <returns>The style.</returns>
     public ToolStyle StyleOf(AnnotationKind kind) => AnnotationSettings.Current.StyleOf(kind);
+
+    /// <summary>
+    /// Gets or sets how the document view drops the stroke of a drawing tool that is being dragged (set by the view from the
+    /// press to the end of the stroke, else <see langword="null"/>): the first meaning of Esc in the mode
+    /// (<see cref="EscapeAnnotate"/>). Returns whether there was one.
+    /// </summary>
+    internal Func<bool>? CancelDrawingGesture { get; set; }
+
+    /// <summary>
+    /// Gets whether a press of a drawing tool may start a stroke now: the mode is on with an open document whose first sharp
+    /// page was shown, no card asks about the tab, editing is not locked for an update, and the tab neither saves nor prints.
+    /// </summary>
+    internal bool CanDraw => CanRunEdit && !_isSaving && !_isPrinting;
+
+    /// <summary>Gets the stroke width in points of a drawing tool (its style): the only place a drawing gets its width from.</summary>
+    /// <param name="kind">The kind the tool draws.</param>
+    /// <returns>1, 2 or 4 points.</returns>
+    internal double StrokeWidthOf(AnnotationKind kind) => StrokeWidths.PointsOf(StyleOf(kind).Width);
+
+    /// <summary>Gets the colour of a drawing tool (its style).</summary>
+    /// <param name="kind">The kind the tool draws.</param>
+    /// <returns>The RGB value.</returns>
+    internal AnnotationColor DrawColorOf(AnnotationKind kind) => DrawPalette.ColorOf(StyleOf(kind).Color);
+
+    /// <summary>
+    /// Makes the drawing of a stroke of a drawing tool: one annotation on <paramref name="page"/>, in the colour of the tool of
+    /// its kind and by the author of the settings, as a markup is made (<see cref="ApplySelectionAsync"/>). The geometry carries
+    /// its width (<see cref="StrokeWidthOf"/>). An empty geometry makes nothing and leaves the history alone. Runs in the
+    /// background through the editor; the UI never waits for it. From the call on the tab counts as having changes
+    /// (<see cref="AsksBeforeClosing"/>). A drawing the document has no room for (<see cref="PdfAnnotationLimitException"/>) or
+    /// that PDFium refuses changes nothing; <see cref="DrawingRefused"/> says why.
+    /// </summary>
+    /// <param name="page">The 0-based page.</param>
+    /// <param name="geometry">The shape in page points of the page as shown.</param>
+    /// <returns>Completes when the drawing was made or refused; it never fails.</returns>
+    internal Task ApplyDrawingAsync(int page, DrawingGeometry geometry)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+        if (_disposed || !IsDrawKind(geometry.Kind) || geometry.IsEmpty || !CanDraw)
+        {
+            return Task.CompletedTask;
+        }
+
+        var color = DrawColorOf(geometry.Kind);
+        var author = AnnotationSettings.Current.AuthorName;
+        return Track(ApplyDrawingCoreAsync(page, geometry, color, author));
+    }
+
+    /// <summary>
+    /// Raised on the UI thread when a drawing was not made, with the text that says why (the document view shows it as a
+    /// hint): the document lists as many annotations as Pagewing reads, or PDFium refused it.
+    /// </summary>
+    internal event Action<string>? DrawingRefused;
+
+    private async Task ApplyDrawingCoreAsync(int page, DrawingGeometry geometry, AnnotationColor color, string? author)
+    {
+        try
+        {
+            // Counted before the first await, down again in the finally: the task ends after the count is down (Track).
+            _pendingEdits++;
+            PdfAnnotation? created;
+            try
+            {
+                created = await Editor.ApplyDrawingAsync(page, geometry, color, null, author);
+            }
+            catch (PdfAnnotationLimitException)
+            {
+                DrawingRefused?.Invoke(string.Format(Strings.Culture, CompositeFormat.Parse(Strings.DrawingLimitReached), PdfDocument.MaxAnnotations));
+                return;
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
+            {
+                // The document or the tab went meanwhile: nothing to say about it.
+                return;
+            }
+            catch (Exception)
+            {
+                // PDFium refused the drawing: nothing changed (the editor recorded nothing). The task never fails.
+                DrawingRefused?.Invoke(Strings.DrawingFailed);
+                return;
+            }
+
+            if (created is not null)
+            {
+                _comments?.SelectWhenListed(created);
+            }
+        }
+        finally
+        {
+            _pendingEdits--;
+            SyncFromEditor();
+        }
+    }
 
     /// <summary>Whether the kind is made by a drawing tool: freehand, rectangle, oval, line or arrow (the text box has its own tool later).</summary>
     internal static bool IsDrawKind(AnnotationKind kind) =>
