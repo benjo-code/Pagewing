@@ -28,6 +28,8 @@ namespace Pagewing.Core.Annotations;
 /// change is undone by applying the old colour and comment again; a drawing also gets its old shape back (it is replaced
 /// by the old one, under the same name). A colour that the annotation did not have cannot be restored as missing: the
 /// annotation keeps the one it has. A move, a resize or a change of colour and width together is one step.
+/// A drawing of another application that is not <see cref="PdfAnnotation.GeometryEditable"/> can still be deleted; undoing
+/// that creates it again from the shape Pagewing could read, with Pagewing's own appearance (see <see cref="DeleteAsync"/>).
 /// Saving empties the history: what is saved cannot be undone.
 /// </para>
 /// <para>
@@ -266,6 +268,13 @@ public sealed class AnnotationEditor
     /// area; for a drawing it is the shape as read. A markup with neither and a drawing whose shape cannot be read could
     /// not be restored, so they are not deleted.
     /// </summary>
+    /// <remarks>
+    /// A drawing that is not <see cref="PdfAnnotation.GeometryEditable"/> (another application's appearance, border style or
+    /// cloud, fill, opacity, a box that differs from the strokes, or a stroke list the reading cut short) can be deleted all
+    /// the same. Undoing the deletion creates it again from the shape Pagewing could read, with Pagewing's own appearance and
+    /// under the same name: the foreign appearance, fill, opacity, border style, the difference between box and strokes and
+    /// every stroke that was not read are lost, the last one for good. It then is <see cref="PdfAnnotation.GeometryEditable"/>.
+    /// </remarks>
     /// <param name="locator">Finds the annotation: by name if it has one, else by index.</param>
     /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
     /// <exception cref="InvalidOperationException">

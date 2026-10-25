@@ -681,6 +681,59 @@ public sealed class AnnotationEditorTests : IDisposable
     }
 
     [Fact]
+    public async Task UndoOfDeletingALockedForeignDrawingRecreatesItFromTheReadShape()
+    {
+        using var session = await OpenSessionAsync(DrawingsForeign);
+        var editor = new AnnotationEditor(session);
+
+        // ink-0001 is locked by its own appearance, square-0003 by a dashed /BS border.
+        foreach (var name in new[] { "ink-0001", "square-0003" })
+        {
+            var locked = (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == name);
+            Assert.True(locked.Editable);
+            Assert.False(locked.GeometryEditable);
+            var locator = new AnnotationLocator(0, locked.Index, locked.Name);
+
+            await editor.DeleteAsync(locator);
+            Assert.DoesNotContain(await session.Document!.GetAnnotationsAsync(0, Ct), a => a.Name == name);
+            await editor.UndoAsync();
+
+            // What Pagewing read comes back, under the same name, drawn by Pagewing from now on.
+            var restored = (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == name);
+            Assert.Equal(locked.Kind, restored.Kind);
+            Assert.Equal(locked.Color, restored.Color);
+            Assert.Equal(locked.Contents, restored.Contents);
+            Assert.Equal(locked.Author, restored.Author);
+            Assert.Equal(locked.Drawing!.Width, restored.Drawing!.Width, 6);
+            AssertSameShape(locked.Drawing!, restored.Drawing!, 1e-3);
+            Assert.True(restored.GeometryEditable);
+            Assert.True(restored.Editable);
+        }
+    }
+
+    [Fact]
+    public async Task ColorOnlyChangeOfADrawingUndoesAndRedoes()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var created = (await editor.ApplyDrawingAsync(0, DrawingGeometry.Ellipse(new PageRect(60, 60, 160, 120), 2), Red, "e", null))!;
+        var locator = new AnnotationLocator(0, created.Index, created.Name);
+        var version = editor.Version;
+
+        var changed = await editor.UpdateAsync(locator, new AnnotationEdit(Color: Blue));
+
+        Assert.Equal(version + 1, editor.Version);
+        Assert.Equal(Blue, changed.Color);
+        await editor.UndoAsync();
+        var undone = Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(Red, undone.Color);
+        AssertSameShape(created.Drawing!, undone.Drawing!, 1e-3);
+        Assert.Equal("e", undone.Contents);
+        await editor.RedoAsync();
+        Assert.Equal(Blue, Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct)).Color);
+    }
+
+    [Fact]
     public async Task ColorAndWidthChangeAreOneStep()
     {
         using var session = await OpenSessionAsync("text-basic.pdf");
