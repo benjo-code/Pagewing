@@ -513,6 +513,284 @@ public sealed class AnnotationEditorTests : IDisposable
         Assert.Empty(Directory.GetFiles(folder.Path));
     }
 
+    [Fact]
+    public async Task EmptyDrawingChangesNothing()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var cache = session.Cache!;
+        cache.Add(new TileKey(0, 1000, 0, 0), SmallImage());
+        var editor = new AnnotationEditor(session);
+        var changes = 0;
+        editor.Changed += () => Interlocked.Increment(ref changes);
+        var version = editor.Version;
+
+        Assert.Null(await editor.ApplyDrawingAsync(0, DrawingGeometry.Rectangle(new PageRect(10, 10, 10, 50), 2), Red, null, null));
+        Assert.Null(await editor.ApplyDrawingAsync(0, DrawingGeometry.Ink([[new(10, 10)]], 2), Red, null, null));
+
+        Assert.Equal(version, editor.Version);
+        Assert.False(editor.IsDirty);
+        Assert.False(editor.CanUndo);
+        Assert.Empty(editor.ChangedPages);
+        Assert.Equal(0, Volatile.Read(ref changes));
+        Assert.True(cache.Contains(new TileKey(0, 1000, 0, 0)));
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+    }
+
+    [Fact]
+    public async Task UndoOfCreateDeletesTheDrawing()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var geometry = DrawingGeometry.Ink([[new(20, 30), new(40, 60), new(90, 35)]], 2);
+        var created = (await editor.ApplyDrawingAsync(0, geometry, Red, "note", "Ada"))!;
+        Assert.True(editor.IsDirty);
+        Assert.Equal([0], editor.ChangedPages);
+        var cache = session.Cache!;
+        cache.Add(new TileKey(0, 1000, 0, 0), SmallImage());
+
+        await editor.UndoAsync();
+
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.False(editor.CanUndo);
+        Assert.True(editor.CanRedo);
+        Assert.False(cache.Contains(new TileKey(0, 1000, 0, 0)));
+
+        // Redo creates it again under its old name, with everything it had.
+        await editor.RedoAsync();
+        var restored = Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(created.Name, restored.Name);
+        Assert.Equal(AnnotationKind.Ink, restored.Kind);
+        Assert.Equal(Red, restored.Color);
+        Assert.Equal("note", restored.Contents);
+        Assert.Equal("Ada", restored.Author);
+        AssertSameShape(created.Drawing!, restored.Drawing!, 1e-4);
+
+        // The re-created drawing is found by its name again.
+        await editor.UndoAsync();
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+    }
+
+    [Fact]
+    public async Task UndoOfMoveRestoresTheOldGeometry()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var created = (await editor.ApplyDrawingAsync(0, DrawingGeometry.Rectangle(new PageRect(50, 50, 150, 100), 3), Red, "kept", "Ada"))!;
+        var versionBefore = editor.Version;
+
+        var moved = await editor.ReplaceGeometryAsync(
+            new AnnotationLocator(0, created.Index, created.Name),
+            DrawingTransform.Move(created.Drawing!, 40, 25, new PageRect(0, 0, 500, 500)));
+
+        Assert.Equal(versionBefore + 1, editor.Version);
+        Assert.Equal(created.Name, moved.Name);
+        AssertSameShape(DrawingGeometry.Rectangle(new PageRect(90, 75, 190, 125), 3), moved.Drawing!, 1e-3);
+
+        await editor.UndoAsync();
+
+        // Only the move is undone: the drawing is still there, at its old place, the creation is still on the stack.
+        var undone = Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(created.Name, undone.Name);
+        Assert.Equal("kept", undone.Contents);
+        Assert.Equal("Ada", undone.Author);
+        Assert.Equal(Red, undone.Color);
+        AssertSameShape(created.Drawing!, undone.Drawing!, 1e-3);
+        Assert.True(editor.CanUndo);
+        Assert.True(editor.CanRedo);
+    }
+
+    [Fact]
+    public async Task RedoOfMoveAppliesItAgain()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var created = (await editor.ApplyDrawingAsync(0, DrawingGeometry.Ellipse(new PageRect(60, 60, 160, 120), 2), Blue, null, null))!;
+        var moved = await editor.ReplaceGeometryAsync(
+            new AnnotationLocator(0, created.Index, created.Name),
+            DrawingTransform.Move(created.Drawing!, -10, 30, new PageRect(0, 0, 500, 500)));
+        await editor.UndoAsync();
+
+        await editor.RedoAsync();
+
+        var redone = Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(created.Name, redone.Name);
+        Assert.Equal(Blue, redone.Color);
+        AssertSameShape(moved.Drawing!, redone.Drawing!, 1e-3);
+        Assert.False(editor.CanRedo);
+        Assert.True(editor.IsDirty);
+
+        // And the move can be undone once more.
+        await editor.UndoAsync();
+        AssertSameShape(created.Drawing!, Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct)).Drawing!, 1e-3);
+    }
+
+    [Fact]
+    public async Task UndoOfDeleteRecreatesUnderTheSameName()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var created = (await editor.ApplyDrawingAsync(
+            0, DrawingGeometry.Arrow(new DisplayPoint(30.3, 150.7), new DisplayPoint(250.9, 40.1), 4), Red, "pointing", "Ada"))!;
+
+        await editor.DeleteAsync(new AnnotationLocator(0, created.Index, created.Name));
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+
+        await editor.UndoAsync();
+
+        var restored = Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(created.Name, restored.Name);
+        Assert.Equal(AnnotationKind.Arrow, restored.Kind);
+        Assert.Equal(Red, restored.Color);
+        Assert.Equal("pointing", restored.Contents);
+        Assert.Equal("Ada", restored.Author);
+        Assert.True(restored.GeometryEditable);
+        AssertSameShape(created.Drawing!, restored.Drawing!, 1e-4);
+
+        // Redo deletes it again (by name), and another undo brings it back once more.
+        await editor.RedoAsync();
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+        await editor.UndoAsync();
+        Assert.Equal(created.Name, Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct)).Name);
+    }
+
+    [Fact]
+    public async Task AForeignDrawingCanBeDeletedAndCommentedAndComesBackFromItsCopy()
+    {
+        using var session = await OpenSessionAsync(DrawingsForeign);
+        var editor = new AnnotationEditor(session);
+        var ink = (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == "ink-0001");
+        Assert.True(ink.Editable);
+        Assert.False(ink.GeometryEditable);
+        var locator = new AnnotationLocator(0, ink.Index, ink.Name);
+
+        await editor.DeleteAsync(locator);
+        Assert.DoesNotContain(await session.Document!.GetAnnotationsAsync(0, Ct), a => a.Name == "ink-0001");
+        await editor.UndoAsync();
+
+        var restored = (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == "ink-0001");
+        Assert.Equal(AnnotationKind.Ink, restored.Kind);
+        Assert.Equal(ink.Color, restored.Color);
+        Assert.Equal(ink.Contents, restored.Contents);
+        AssertSameShape(ink.Drawing!, restored.Drawing!, 1e-3);
+
+        // A comment alone needs no geometry rights.
+        var commented = await editor.UpdateAsync(new AnnotationLocator(0, restored.Index, restored.Name), new AnnotationEdit("Seen"));
+        Assert.Equal("Seen", commented.Contents);
+        await editor.UndoAsync();
+        Assert.Equal(ink.Contents, (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == "ink-0001").Contents);
+    }
+
+    [Fact]
+    public async Task ColorAndWidthChangeAreOneStep()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var created = (await editor.ApplyDrawingAsync(0, DrawingGeometry.Ink([[new(20, 30), new(60, 90), new(120, 40)]], 2), Red, "c", null))!;
+        var locator = new AnnotationLocator(0, created.Index, created.Name);
+        var versionBefore = editor.Version;
+
+        var changed = await editor.UpdateAsync(locator, new AnnotationEdit(Color: Blue, Geometry: DrawingGeometry.Ink(created.Drawing!.Strokes, 6)));
+
+        Assert.Equal(versionBefore + 1, editor.Version);
+        Assert.Equal(Blue, changed.Color);
+        Assert.Equal(6, changed.Drawing!.Width, 6);
+        Assert.Equal("c", changed.Contents);
+
+        // One undo takes back both.
+        await editor.UndoAsync();
+        var undone = Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(Red, undone.Color);
+        Assert.Equal(2, undone.Drawing!.Width, 6);
+        Assert.True(editor.CanUndo);
+
+        await editor.RedoAsync();
+        var redone = Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(Blue, redone.Color);
+        Assert.Equal(6, redone.Drawing!.Width, 6);
+    }
+
+    [Fact]
+    public async Task LockedForeignDrawingRefusesReplace()
+    {
+        using var session = await OpenSessionAsync(DrawingsForeign);
+        var editor = new AnnotationEditor(session);
+        var ink = (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == "ink-0001");
+        Assert.False(ink.GeometryEditable);
+        var locator = new AnnotationLocator(0, ink.Index, ink.Name);
+        var moved = DrawingTransform.Move(ink.Drawing!, 10, 10, new PageRect(0, 0, 400, 300));
+        var version = editor.Version;
+        var changes = 0;
+        editor.Changed += () => Interlocked.Increment(ref changes);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => editor.ReplaceGeometryAsync(locator, moved));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => editor.UpdateAsync(locator, new AnnotationEdit(Color: Blue)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => editor.UpdateAsync(locator, new AnnotationEdit(Geometry: moved)));
+
+        // The history, the version and the drawing are as before.
+        Assert.Equal(version, editor.Version);
+        Assert.False(editor.IsDirty);
+        Assert.False(editor.CanUndo);
+        Assert.Equal(0, Volatile.Read(ref changes));
+        var after = (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == "ink-0001");
+        Assert.Equal(ink.Index, after.Index);
+        AssertSameShape(ink.Drawing!, after.Drawing!, 1e-6);
+
+        // A drawing with a reply cannot even be deleted.
+        var answered = (await session.Document!.GetAnnotationsAsync(0, Ct)).Single(a => a.Name == "ink-0008");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => editor.DeleteAsync(new AnnotationLocator(0, answered.Index, answered.Name)));
+        Assert.False(editor.CanUndo);
+    }
+
+    [Fact]
+    public async Task DocumentLimitSurfacesAsException()
+    {
+        var notes = string.Concat(Enumerable.Repeat("<< /Subtype /Text /Rect [10 10 20 20] >> ", PdfDocument.MaxAnnotations));
+        var path = WritePdf(folder, "full.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [{notes}] >>",
+        ]);
+        using var session = await OpenSessionAsync(path);
+        var editor = new AnnotationEditor(session);
+        var version = editor.Version;
+        var changes = 0;
+        editor.Changed += () => Interlocked.Increment(ref changes);
+
+        await Assert.ThrowsAsync<PdfAnnotationLimitException>(
+            () => editor.ApplyDrawingAsync(0, DrawingGeometry.Ink([[new(20, 30), new(40, 60)]], 2), Red, null, null));
+
+        Assert.Equal(version, editor.Version);
+        Assert.False(editor.IsDirty);
+        Assert.False(editor.CanUndo);
+        Assert.False(editor.IsBusy);
+        Assert.Empty(editor.ChangedPages);
+        Assert.Equal(0, Volatile.Read(ref changes));
+        Assert.Equal(PdfDocument.MaxAnnotations, (await session.Document!.GetAnnotationsAsync(0, Ct)).Count);
+    }
+
+    private static readonly AnnotationColor Red = new(220, 30, 30);
+
+    private static void AssertSameShape(DrawingGeometry expected, DrawingGeometry actual, double tolerance)
+    {
+        Assert.Equal(expected.Kind, actual.Kind);
+        Assert.Equal(expected.Width, actual.Width, 6);
+        Assert.Equal(expected.Strokes.Count, actual.Strokes.Count);
+        for (var s = 0; s < expected.Strokes.Count; s++)
+        {
+            Assert.Equal(expected.Strokes[s].Count, actual.Strokes[s].Count);
+            for (var i = 0; i < expected.Strokes[s].Count; i++)
+            {
+                Assert.True(
+                    Math.Abs(expected.Strokes[s][i].X - actual.Strokes[s][i].X) <= tolerance
+                    && Math.Abs(expected.Strokes[s][i].Y - actual.Strokes[s][i].Y) <= tolerance,
+                    $"Expected {expected.Strokes[s][i]}, got {actual.Strokes[s][i]}.");
+            }
+        }
+
+        AssertRectNear(expected.Box, actual.Box, tolerance);
+    }
+
     private static RenderedImage SmallImage() => new(1, 1, 4, new byte[4]);
 
     private string Copy(string fixture)

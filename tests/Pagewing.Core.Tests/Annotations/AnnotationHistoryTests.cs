@@ -140,6 +140,28 @@ public sealed class AnnotationHistoryTests
     }
 
     [Fact]
+    public void MoveCountsAsOneVersionStep()
+    {
+        var history = new AnnotationHistory();
+        var before = Annotation(1) with { Drawing = DrawingGeometry.Rectangle(new PageRect(10, 10, 60, 40), 2), GeometryEditable = true };
+        var after = before with { Drawing = DrawingGeometry.Rectangle(new PageRect(30, 20, 80, 50), 2) };
+        history.Push(new AnnotationCommand.Create(before));
+        var version = history.Version;
+
+        // A move is one command on the stack and one step of the version, however many mouse events led to it.
+        var move = new AnnotationCommand.Edit(before, after);
+        history.Push(move);
+
+        Assert.Equal(version + 1, history.Version);
+        Assert.Same(move, history.TakeUndo());
+        Assert.Equal(version + 2, history.Version);
+        Assert.Same(move, history.TakeRedo());
+        Assert.Equal(version + 3, history.Version);
+        Assert.True(history.CanUndo);
+        Assert.False(history.CanRedo);
+    }
+
+    [Fact]
     public void VersionChangesWithEveryStep()
     {
         var history = new AnnotationHistory();
