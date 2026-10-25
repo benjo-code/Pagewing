@@ -318,17 +318,20 @@ public sealed partial class TabViewModel
         _saveAsCommand?.RaiseCanExecuteChanged();
     }
 
-    /// <summary>Undo or redo in the background; a step that fails is dropped by the editor and changes nothing here.</summary>
+    /// <summary>
+    /// Undo or redo in the background; a step that fails is dropped by the editor (or put back after a cancel) and changes
+    /// nothing here. Every failure is observed here, also an unexpected one: the command starts this without awaiting it.
+    /// </summary>
     private async Task StepAsync(bool undo)
     {
         try
         {
             await (undo ? Editor.UndoAsync() : Editor.RedoAsync());
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or OperationCanceledException
-            or PdfAnnotationNotFoundException or ArgumentOutOfRangeException)
+        catch (Exception)
         {
-            // The document went, or PDFium refused the step: the editor forgot it, the history shows what is left.
+            // The document went, PDFium refused the step, or something nobody expected: the editor forgot the step (or
+            // kept it after a cancel), the history shows what is left.
         }
 
         SyncFromEditor();

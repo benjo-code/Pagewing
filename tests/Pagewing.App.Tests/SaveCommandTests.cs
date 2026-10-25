@@ -117,6 +117,50 @@ public sealed class SaveCommandTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AnUnexpectedFailureOfTheSaveShowsTheErrorCard()
+    {
+        var (window, viewModel, view) = Show(new SavePicker());
+        var (tab, path) = await OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await MarkAsync(window, tab, page: 0);
+        var before = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+
+        // A failure none of the expected types covers, first before the writer (reading the signatures): the error card,
+        // then the tab as it was. Never a silent failed save.
+        var signatures = viewModel.SignatureReader;
+        viewModel.SignatureReader = static (_, _) => throw new NotSupportedException("secret detail of the reader");
+        var save = viewModel.SaveActiveTabAsync();
+        await WaitUntilAsync(window, () => viewModel.PendingSave is not null);
+        Assert.Equal(PendingSaveKind.SaveError, viewModel.PendingSave!.Kind);
+        Assert.Equal(SaveFailureReason.WriteFailed, viewModel.PendingSave.Reason);
+        Assert.True(viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel));
+        Assert.False(await save);
+        Assert.False(tab.IsSaving);
+        Assert.True(tab.IsDirty);
+
+        // Then from the writer itself (Ctrl+S, which does not wait for the save).
+        viewModel.SignatureReader = signatures;
+        viewModel.DocumentWriter = static (_, _, _, _, _, _) => throw new NotSupportedException("secret detail of the writer");
+        view.Focus();
+        Press(window, Key.S, PhysicalKey.S, Ctrl);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is not null);
+
+        var question = viewModel.PendingSave!;
+        Assert.Equal(PendingSaveKind.SaveError, question.Kind);
+        Assert.Equal(SaveFailureReason.WriteFailed, question.Reason);
+        Assert.Same(tab, question.Tab);
+        Assert.DoesNotContain("secret", question.Message, StringComparison.Ordinal);
+        Assert.True(question.Resolve(PendingSaveChoice.Cancel));
+        await WaitUntilAsync(window, () => !tab.IsSaving);
+
+        // The tab keeps its document and its change and can be saved again; the file is untouched.
+        Assert.Null(viewModel.PendingSave);
+        Assert.True(tab.IsDirty);
+        Assert.True(tab.SaveCommand.CanExecute(null));
+        Assert.Equal(before, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.Equal(0, CountTemporaryFiles());
+    }
+
+    [AvaloniaFact]
     public async Task SaveAsChangesTheTabToTheNewFile()
     {
         var recent = RecentFilesService.Detached();

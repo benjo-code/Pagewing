@@ -934,7 +934,7 @@
     <value>“{0}” was replaced since it was opened</value>
   </data>
   <data name="FileChangedText" xml:space="preserve">
-    <value>Another file now stands at its place. Overwrite it with your version, or save under another name?</value>
+    <value>The file was changed since it was opened, for example by saving in another tab or by another program. Overwriting discards those changes. Overwrite it with your version, or save under another name?</value>
   </data>
   <data name="SaveErrorTitle" xml:space="preserve">
     <value>“{0}” could not be saved</value>

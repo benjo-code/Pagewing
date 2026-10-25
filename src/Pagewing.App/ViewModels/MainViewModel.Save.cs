@@ -54,6 +54,13 @@ public sealed partial class MainViewModel
     internal Func<PdfDocument, CancellationToken, Task<PdfSignatureInfo>> SignatureReader { get; set; } =
         static (document, cancellationToken) => document.GetSignatureInfoAsync(cancellationToken);
 
+    /// <summary>
+    /// Gets or sets what writes the document of a tab (<see cref="Core.Annotations.AnnotationEditor.SaveAsync"/>; tests
+    /// make it fail in ways the editor does not).
+    /// </summary>
+    internal Func<Core.Annotations.AnnotationEditor, PdfEngine, string, bool, IProgress<double>, CancellationToken, Task> DocumentWriter { get; set; } =
+        static (editor, engine, target, overwrite, progress, cancellationToken) => editor.SaveAsync(engine, target, overwrite, progress, cancellationToken);
+
     /// <summary>Gets or sets what opens the written file for the check of a save (made on the first save).</summary>
     internal PdfEngine SaveEngine
     {
@@ -141,6 +148,17 @@ public sealed partial class MainViewModel
             // The tab or the window went, or the user cancelled: nothing is shown.
             return false;
         }
+        catch (Exception)
+        {
+            // Anything else (the signatures, the file dialog, a bug): never a silent failed save. The error card says the
+            // file was not saved; the tab keeps its document and its changes. The exception text is not shown.
+            if (!_disposed && Tabs.IndexOf(tab) >= 0)
+            {
+                await AskAsync(PendingSave.SaveError(tab, path, SaveFailureReason.WriteFailed), CancellationToken.None);
+            }
+
+            return false;
+        }
         finally
         {
             _saveCancellation = null;
@@ -215,7 +233,7 @@ public sealed partial class MainViewModel
         try
         {
             // On the thread pool: the save reads file stamps and its adoption closes the old document, never on the UI thread.
-            await Task.Run(() => editor.SaveAsync(engine, target, overwrite, progress, cancellationToken), cancellationToken);
+            await Task.Run(() => DocumentWriter(editor, engine, target, overwrite, progress, cancellationToken), cancellationToken);
         }
         catch (SaveFailureException ex) when (ex.Reason == SaveFailureReason.OriginalChanged)
         {
@@ -231,9 +249,15 @@ public sealed partial class MainViewModel
 
             return (false, await AskAsync(PendingSave.SaveError(tab, target, ex.Reason), cancellationToken));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or IOException or UnauthorizedAccessException
-            or PdfRenderException or ArgumentException)
+        catch (SaveFailureException)
         {
+            // Canceled (reserved, not reported today): like a cancel, nothing is shown.
+            return (false, PendingSaveChoice.Cancel);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Any other failure, also one nobody expected (NotSupportedException, a Win32 error, a bug): the error card,
+            // never a silent failed save. The tab stays dirty; the exception text (it may name the path) is not shown.
             if (_disposed || Tabs.IndexOf(tab) < 0)
             {
                 return (false, PendingSaveChoice.Cancel);
