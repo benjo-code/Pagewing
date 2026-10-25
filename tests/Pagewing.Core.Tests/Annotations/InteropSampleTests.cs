@@ -33,6 +33,9 @@ public sealed partial class InteropSampleTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>The annotations of drawings-foreign.pdf that have no /AP in the source (PDFium makes one when it saves).</summary>
+    private static readonly HashSet<string> WithoutAppearance = ["ink-0002", "square-0003", "square-0004", "circle-0006", "ink-0008"];
+
     /// <summary>
     /// The drawing samples of milestone 10: all five kinds on a plain page, next to the annotations of other programs, on a
     /// rotated page, inside a CropBox, moved and recoloured. Positions are fractions of the displayed page (origin top left).
@@ -470,7 +473,7 @@ public sealed partial class InteropSampleTests
                 var key = string.Create(
                     CultureInfo.InvariantCulture,
                     $"{a.Subtype}|{a.Name}|{a.Contents}|{a.Author}|{a.Editable}|{a.GeometryEditable}|{ShapeOf(a.Drawing)}");
-                list.Add(new ForeignView(key, a.Color, a.Bounds));
+                list.Add(new ForeignView(key, a.Color, a.Bounds, a.Name));
             }
 
             list.Sort((x, y) => string.CompareOrdinal(x.Key, y.Key));
@@ -525,8 +528,8 @@ public sealed partial class InteropSampleTests
                 }
 
                 // PDFium builds the appearance of an annotation that has none when it loads the page, and then also adjusts
-                // /Rect to the stroke it draws (a few points at most); a foreign annotation is not byte-identical after a save.
-                AssertRectNear(before[i].Bounds, foreignAfter[page][i].Bounds, 4);
+                // /Rect to the stroke it draws (by half the stroke width); only those named in WithoutAppearance may move (2 pt), all others keep their box exactly.
+                AssertRectNear(before[i].Bounds, foreignAfter[page][i].Bounds, before[i].Name is { } name && WithoutAppearance.Contains(name) ? 2 : 0.01);
             }
         }
     }
@@ -703,9 +706,9 @@ public sealed partial class InteropSampleTests
             text.AppendLine(CultureInfo.InvariantCulture, $"  {drawn.Count} drawing(s) created by Pagewing.");
             if (sample.File == "drawings-foreign.pdf")
             {
-                text.AppendLine("  Annotations of other programs: same kind, name, comment, author, colour (+-1/255) and shape, and the box moves by at most");
-                text.AppendLine("  4 points. Those WITHOUT an appearance of their own get one from PDFium when the file is saved (/PDFIUM_HasGeneratedAP):");
-                text.AppendLine("  drawings-foreign.pdf ink-0002, square-0003, square-0004 (cloud border /BE becomes a plain frame?), circle-0006. Note per viewer how they look");
+                text.AppendLine("  Annotations of other programs: same kind, name, comment, author, colour (+-1/255) and shape, and the box of those with an appearance stays exactly,");
+                text.AppendLine("  the others move by at most 2 points. Those WITHOUT an appearance of their own get one from PDFium when the file is saved (/PDFIUM_HasGeneratedAP):");
+                text.AppendLine("  drawings-foreign.pdf ink-0002, ink-0008, square-0003, square-0004 (cloud border /BE becomes a plain frame?), circle-0006. Note per viewer how they look");
                 text.AppendLine("  next to the source file; the line with an arrowhead (line-0007) has none and PDFium does not make one.");
             }
 
@@ -790,7 +793,7 @@ public sealed partial class InteropSampleTests
     private sealed record Draw(int Page, AnnotationKind Kind, double X0, double Y0, double X1, double Y1, DrawColor Color, StrokeWidth Width, string? Comment = null, double MoveX = 0, double MoveY = 0, DrawColor? RecolorTo = null);
 
     /// <summary>What a drawing must be after saving and reading again.</summary>
-    private sealed record ForeignView(string Key, AnnotationColor? Color, PageRect Bounds);
+    private sealed record ForeignView(string Key, AnnotationColor? Color, PageRect Bounds, string? Name);
 
     private sealed record ExpectedDraw(string Name, int Page, AnnotationKind Kind, AnnotationColor Color, string? Comment, DrawingGeometry Geometry, DrawingGeometry OriginalGeometry, DrawColor? RecoloredFrom);
 
