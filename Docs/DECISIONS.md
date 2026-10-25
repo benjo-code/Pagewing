@@ -15,6 +15,90 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-25 – Zeichnen: Messwerte (M10)
+**Kontext:** Aufgabe 14 von Milestone 10: Dauer des Auftrags beim Loslassen, Vereinfachen und Glätten eines Strichs, Dateigröße, Speichern und Rendern mit 1.000 Strichen, Kosten der Vorschau beim Ziehen, Scrollen und Startzeit; dazu die Muster für die Handprüfung in Chrome und Acrobat (`packaging/README.md`, „Annotationen im Fremdviewer prüfen“, Punkte 12 bis 20). Wie in M9 wird nichts davon in ein Budget gegossen.
+**Rechner:** dieselbe Windows-11-VM wie in M9 (QEMU „Standard PC (Q35 + ICH9)“, AMD Ryzen 7 3800X mit 6 virtuellen Kernen, 16 GiB, einzige Anzeige „Red Hat VirtIO GPU DOD controller“, also keine GPU, Windows Defender an). `bench/startup/startup.cs` schrieb in keinem Lauf eine `Warnung:`-Zeile, aber ohne GPU sind die Startzeiten nur ein Vergleich, kein Abgleich mit den Budgets (Eintrag „Frame-Takt der Desktop-Komposition …“); der Frame-Takt der Komposition liegt hier bei rund 31 ms (alle Scrollwerte unten: p99 um 31 ms), ein Frame ist auf diesem Rechner also doppelt so lang wie bei 60 Hz.
+**Methode:** (a) bis (e) und die Dateien für das Scrollen erzeugt `AnnotationMeasurementTests.MeasuresDrawings` (`AnnotationMeasurementTests.Drawings.cs`), (f) `DrawingPreviewMeasurementTests` in `Pagewing.App.Tests`; beide laufen nur mit `PAGEWING_MEASURE_OUT=<Ordner>`, melden sich sonst als übersprungen und prüfen nie eine Zeit: `$env:PAGEWING_MEASURE_OUT="<Ordner>"; dotnet test tests/Pagewing.Core.Tests -c Release --filter-method "*MeasuresDrawings"` und `dotnet test tests/Pagewing.App.Tests -c Release --filter-class "*DrawingPreviewMeasurementTests"` (Ergebnisse `drawing-measurements.txt`, `drawing-preview-measurements.txt`). Striche sind synthetisch (zwei Sinuskurven mit zufälliger Phase und 0,4 pt Rauschen, feste Startwerte), geformt wie beim Loslassen (Vereinfachen mit 0,5 pt, dann Glätten, 2 pt). Scrollen und Startzeit gegen das Native-AOT-Binary (`dotnet publish src/Pagewing.App -c Release -r win-x64`, `Pagewing.exe --measure-scroll` mit und ohne `--measure-settings <dunkle settings.json>`; `bench/startup/startup.cs`).
+**Messwerte:**
+- **(a) Der Auftrag beim Loslassen** (`AnnotationEditor.ApplyDrawingAsync`: PDFium legt an, der Generator schreibt das Erscheinungsbild, die Seite wird zurückgelesen; Seite ohne weitere Zeichnungen, 20 Läufe nach einem Aufwärmlauf, jeder rückgängig gemacht), Median (Min–Max) in ms:
+
+  | Form | `text-basic.pdf` | `text-dense.pdf` |
+  |---|---|---|
+  | Freihand, 300 Rohpunkte → 118 bzw. 128 geschrieben | 0,7 (0,6–1,6) | 2,1 (1,7–5,7) |
+  | Freihand, 300 Rohpunkte unvereinfacht | 1,1 (0,9–1,5) | 2,2 (2,0–2,7) |
+  | Rechteck | 0,4 (0,3–0,5) | 1,5 (1,3–2,4) |
+  | Pfeil | 0,4 (0,3–0,6) | 1,5 (1,4–7,1) |
+
+  Das Neuzeichnen der Seite danach kommt dazu (M9: 1 bis 10 ms bis zum scharfen Bild). Der Auftrag wächst mit den Zeichnungen, die schon auf der Seite liegen: Beim Anlegen von 1.000 Strichen auf einer Seite stieg er von 3 bis 5 ms (die ersten 100) auf 56 ms (die letzten 100; Median über alle 1.000: 29,4 ms auf `text-basic.pdf`, 31,5 ms auf Seite 1 von `text-dense.pdf`); verteilt auf 200 Seiten (5 je Seite) bleibt es bei 1,7 ms. Ursache vermutlich das Zurücklesen der Seite (`GetAnnotationsAsync` mit 1.000 Strichen: 26 ms) und das Zählen für die Grenze von 10.000; nicht untersucht.
+- **(b) Vereinfachen und Glätten auf dem UI-Thread** (`StrokeSimplifier.Simplify` mit 0,5 pt, dann `Smooth`; Median von 20 Läufen, bei 20.000 Punkten von 5) in ms, zusammen:
+
+  | Punkte | Handschrift (Welle) | Zittern, 0,4-pt-Schritte | Spirale | Zickzack ±3 pt | wachsender Zickzack (Gegenprobe) |
+  |---|---|---|---|---|---|
+  | 300 | 0,15 | 0,14 | 0,10 | 0,42 | 0,43 |
+  | 5.000 | 0,43 | 2,1 | 1,7 | 94,8 (Max 104,9) | 94,6 (Max 102,1) |
+  | 20.000 | 1,4 | 13,7 | 21,7 | 1.350 (Max 1.369) | 1.508 (Max 1.526) |
+
+  `Smooth` allein kostet höchstens 0,2 ms. Das Vereinfachen ist im schlechten Fall quadratisch (Douglas-Peucker: jede Runde streicht nur einen Punkt, wenn der fernste Punkt immer neben dem Ende liegt); der „wachsende Zickzack“ (Amplitude wächst mit jedem Punkt) ist als Gegenprobe gebaut und trifft den schlechtesten Fall. Dabei bleiben fast alle Punkte erhalten (19.988 bzw. 20.000 von 20.000), die Vereinfachung bringt also nichts.
+- **(c) Dateigröße je 100 Freihand-Striche** (`text-basic.pdf`, eine Seite von 300 × 200 pt, frisches Dokument, inkrementell gespeichert; zugewachsene Bytes, in Klammern die geschriebenen Punkte je Strich):
+
+  | Rohpunkte je Strich | roh übernommen | Vereinfachen (0,5) | Vereinfachen + Glätten (wie freigegeben) |
+  |---|---|---|---|
+  | 120 | 380 KiB (120) | 163 KiB (36,8) | 258 KiB (73,6) |
+  | 600 | 1.584 KiB (600) | 168 KiB (38,7) | 268 KiB (77,5) |
+
+  Ein freigegebener Strich kostet rund 2,6 bis 2,7 KiB, fast unabhängig davon, wie lang er gezogen wurde. Das Glätten (Chaikin, 2n Punkte) macht die Datei 1,6-mal so groß wie das Vereinfachen allein; ohne Vereinfachen wüchse sie mit der Abtastrate (600 Punkte: 5,9-mal so groß wie freigegeben).
+- **(d) Speichern mit 1.000 Strichen** (`AnnotationEditor.SaveAsync`, je 60 Rohpunkte → rund 74 geschrieben, 2 pt), gesamt (davor / Schreiben und Leeren / danach: Präfixprüfung, Öffnen, Prüfrendern, Ersetzen, Übernahme) und Dateigröße; danach ein weiterer Strich und erneut Speichern:
+
+  | Datei | Speichern 1 | Datei 1 | Speichern 2 (ein Strich mehr) | Datei 2 |
+  |---|---|---|---|---|
+  | `text-basic.pdf`, alle auf Seite 1 | 497 ms (42 / 102 / 353) | 1,3 → 2.202 KiB | 448 ms (46 / 72 / 330) | 4.405 KiB |
+  | `text-dense.pdf`, 5 je Seite auf 200 Seiten | 1.625 ms (82 / 111 / 1.432) | 497 → 2.773 KiB | 631 ms (2 / 79 / 549) | 5.052 KiB |
+  | `text-dense.pdf`, alle auf Seite 1 | 944 ms (26 / 111 / 807) | 497 → 2.707 KiB | 920 ms (45 / 75 / 800) | 4.889 KiB |
+
+  Der Anteil „danach“ ist wie in M9 überwiegend der Virenscanner beim ersten Öffnen der frisch geschriebenen Datei. **Das zweite Speichern hängt die 1.000 Striche erneut an** (2.203, 2.279 und 2.182 KiB für einen einzigen neuen Strich): PDFium schreibt beim inkrementellen Speichern alle Objekte der geladenen Seiten neu (Eintrag „Erscheinungsbild der Annotationen: PDFium-Generator (Variante D) …“, M9); die Datei wächst je Speichern mit der Zahl der Zeichnungen auf den geladenen Seiten, nicht mit der Zahl der Änderungen.
+- **(e) Rendern einer Seite mit 1.000 Strichen** (`RenderPageAsync`, ganze Seite, interaktiv, Median von 10 nach einem Aufwärmlauf, Erscheinungsbilder von PDFium erzeugt), ms:
+
+  | Seite | Maßstab | ohne Striche hell / dunkel | mit 1.000 Strichen hell / dunkel |
+  |---|---|---|---|
+  | `text-basic.pdf` (300 × 200 pt) | 1 | 0,3 / 0,3 | 80,1 / 119,1 |
+  | | 2 | 0,4 / 0,5 | 112,5 / 191,1 |
+  | `text-dense.pdf` (612 × 792 pt) | 1 | 1,8 / 1,9 | 81,3 / 152,3 |
+  | | 2 | 4,2 / 4,1 | 121,2 / 229,4 |
+
+  Hell kostet jeder Strich rund 0,08 ms (PDFium zeichnet 1.000 Formulare), das Nachmalen der dunklen Seite kommt mit 39 bis 108 ms dazu (Aufgabe 9 maß mit dichter überlappenden Strichen 26 bis 46 ms Aufschlag; die Striche hier sind länger und liegen weiter verstreut).
+- **(f) Vorschau beim Ziehen** (Headless-Avalonia mit Software-Skia, wie die App unter Windows rendert; Fenster 1024 × 720 DIP, `text-dense.pdf` bei 100 %, Werkzeug Freihand, Median von 20, ms): ein Zeigerereignis, das einen Punkt aufnimmt (`window.MouseMove`, im Headless-Fenster einschließlich des Frames, den die Eingabe auslöst: Hit-Test, Geste, neuer Punkt, `Render()` der Zeichenschicht, Rasterisieren des geänderten Bereichs), das Ereignis ohne neuen Punkt, und das Zeichnen der Zeichenschicht allein in eine Bitmap:
+
+  | Punkte im Strich | Zeigerereignis mit neuem Punkt | dasselbe Ereignis, Punkt wird ignoriert | Zeichenschicht in eine Bitmap |
+  |---|---|---|---|
+  | 3 bis 23 | 3,6 (Max 52,8) | – | 1,65 |
+  | 100 | 7,1 | 0,05 | 3,0 |
+  | 1.000 | 13,7 | 0,02 | 6,3 |
+  | 5.000 | 31,2 (Max 34,6) | 0,02 | 24,3 |
+
+  Die Eingabe selbst kostet nichts (ignorierter Punkt: 0,02 bis 0,05 ms); der Preis eines Punktes wächst linear mit der Länge des Strichs, weil `DrawingOverlay.Render` bei jedem Punkt für jedes Segment ein `DrawLine` aufzeichnet und Skia sie neu rasterisiert (etwa 4,6 bis 5,2 µs je Segment). Der feste Anteil (3,6 ms) ist der Frame mit Seiten, Schatten und Leisten.
+- **(g) Scrollen** (`Pagewing.exe --measure-scroll`, 100 %, 600 Schritte durch `text-dense.pdf`; 3 Läufe abwechselnd je Datei, alle Exit-Code 0, kein Absturz; „dunkel“ mit `{"Theme": "Dark", "PageAppearance": "FollowTheme"}`), Bereich der drei Läufe, ms:
+
+  | | ohne Striche p99 / Max / Mittel | 1.000 Striche, 5 je Seite p99 / Max / Mittel | 1.000 Striche auf Seite 1 p99 / Max / Mittel |
+  |---|---|---|---|
+  | hell | 31,2–31,3 / 31,7–32,3 / 17,7–18,1 | 31,0–31,9 / 32,1–33,0 / 17,6–18,2 | 30,9–31,7 / 32,4–33,1 / 18,1–18,3 |
+  | dunkel | 31,2–31,4 / 32,7–33,2 / 17,7–18,1 | 30,7–31,6 / 32,3–32,5 / 17,9–18,2 | 31,0–31,5 / 32,9–33,4 / 17,9–18,0 |
+
+  Wie in M9 ändern die Annotationen die Frame-Abstände nicht messbar; p99 um 31 ms ist der Takt dieser VM, nicht das Zeichnen (der UI-Thread wartet nie auf PDFium; rendert PDFium eine Seite mit vielen Strichen, bleibt sie länger unscharf, das misst dieser Lauf nicht). Die Datei mit 1.000 Strichen auf Seite 1 liegt beim Scrollen von oben nach unten nur in den ersten Schritten im Bild; sie sagt wenig über eine dauerhaft sichtbare Seite mit 1.000 Strichen.
+- **(h) Startzeit** (`bench/startup/startup.cs`, Native-AOT-Binary vom Stand dieses Commits, `text-basic.pdf`, je 10 Läufe, ms): cold Median 236,9 (226,5–254,9); warm 241,9 (227,6–248,8) und in einem zweiten Lauf 232,9 (226,7–248,1); thousand 240,5 (227,1–248,8); second 47,6 (36,3–65,2). Phasen warm (Median): `window-created` 96,7, `first-frame` 201,8, `tile-drawn` 207,2, `frame-after-tile` 240,4. Gegen die Budgets: cold (400/500), thousand (300/375) und second (100/125) innerhalb der Grenze, warm über dem Budget von 200 ms, aber innerhalb der Grenze von 250 ms (auf diesem Rechner wie in M9, dort 262,6 ms Median über 30 Läufe, damals über der Grenze). M10 ändert den Startpfad nur um sechs Icon-Pfade in `Icons.axaml` (rund 600 Byte) und Felder in `TabViewModel`; ein Unterschied zum Stand vor M10 ist nicht zu sehen, aber die Läufe von M9 und M10 liegen in verschiedenen Sitzungen und sind kein A/B-Vergleich. Ohne GPU gilt das alles nicht als Nachweis gegen die Budgets.
+**Nicht gemessen:**
+- **Zeigerereignis bis sichtbarer Strich** (Ziel der Aufgabe: höchstens ein Frame hinterher): Die Headless-Plattform hat weder Compositor noch GPU, und ohne Bildschirm gibt es keine Zeit vom Ereignis bis zum Pixel. (f) zeigt nur die CPU-Arbeit im UI-Thread je Punkt. Vorschlag für die Handmessung auf dem Haupt-PC (`hardware-measure.yml` bzw. von Hand): ein versteckter Messschalter nach dem Muster von `--measure-scroll` (etwa `--measure-draw <pdf>`), der nach dem ersten scharfen Bild 1.000 und 5.000 synthetische Zeigerereignisse einer Freihand-Geste einspeist und je Ereignis die Zeit bis zum nächsten Frame-Rückruf (`TopLevel.RequestAnimationFrame`) schreibt; oder eine Aufnahme mit einer Kamera mit 240 Bildern pro Sekunde (Stift auf dem Bildschirm, Strich gegen Stiftspitze). Beides ist offen.
+- Stift und Zeichentablett (Rohereignisse, Druck, Verlauf der Zwischenpunkte), Linux, die GPU-Pfade, ein Kaltstart nach einem Neustart, die Zeit bis zum scharfen Bild nach dem Loslassen in der App (M9: unter einem Frame), Dateien mit mehr als 1.000 Strichen auf einer Seite und der Speicherbedarf der Vorschau.
+**Befunde (aus den Mustern und den Messungen):**
+1. **Fremde Annotationen ohne eigenes Erscheinungsbild bekommen beim Speichern eines von PDFium.** In `drawings-foreign.pdf` schreibt jedes Speichern (auch ohne Änderung an ihnen) `ink-0002`, `square-0003`, `square-0004` und `circle-0006` mit `/AP` und `/PDFIUM_HasGeneratedAP true` neu; `/Rect` von `ink-0002` wächst um die halbe Strichstärke (218 → 216,5 pt), die Farbe `/C [1 0.5 0]` kommt als `[1 .5 0]` zurück (gelesen 127 → 128 von 255), und `/BS /W 2` eines Kreises ohne `/Border` liest Pagewing danach als Breite 2 statt 1. Der Wolkenrahmen von `square-0004` (`/BE /S /C`) wird vermutlich ein glatter Rahmen (Handprüfung Punkt 16). `line-0007` bekommt kein Erscheinungsbild. Das ist dieselbe Eigenschaft wie in M9 („PDFium schreibt alle geladenen Objekte neu“), nur sichtbar, weil `drawings-foreign.pdf` fremde Annotationen ohne Erscheinungsbild enthält; `InteropSampleTests` prüft darum Art, Name, Kommentar, Autor, Form, Farbe (± 1/255) und Rahmen (± 4 pt), nicht die Bytes.
+2. **Ein ersetztes Objekt lässt seine erste Fassung in der angehängten Revision zurück.** Wird eine Zeichnung vor dem ersten Speichern verschoben oder umgefärbt (Ersetzen = Neuanlegen unter demselben `/NM`, dann Löschen), steht ihre erste Fassung als Objekt ohne Verweis in der Revision (`drawings-moved` und `drawings-recolored`: je 5, `drawings-drawings-foreign`: 1). Keine Seite führt sie in `/Annots` auf, PDFium und der Test finden genau eine Fassung je Name; ein Viewer, der die Datei reparieren muss und alle Objekte durchsucht, könnte sie als zweite Zeichnung zeigen (Handprüfung Punkt 17). Gehört zur bekannten Grenze „alte Fassungen bleiben in früheren Revisionen“.
+3. **Die Vorschau ist je Zeigerereignis O(n)** (Messwert f) und das **Vereinfachen im schlechten Fall O(n²)** (Messwert b); beides sind keine Fehler im Normalbetrieb (ein Mausstrich hat Hunderte Punkte, 5.000 Punkte sind rund 40 s Zeichnen bei 120 Hz), aber die Obergrenze von 20.000 Punkten hält sie nicht klein genug.
+**Entscheidung:** Kein neues Budget und keine Codeänderung in dieser Aufgabe. Die Auftragsdauer beim Loslassen (unter 3 ms), die Dateigröße (rund 2,6 KiB je Strich) und das Scrollen (unverändert gegenüber ohne Striche) brauchen nichts. Für die drei Befunde und die Grenzen von (f) und (b) gilt das Folgende; es gehört in den Backlog (die Einträge in `Docs/roadmap.json` legt der Controller an, diese Aufgabe fasst die Roadmap nicht an):
+- Vorschau: den Strich in einem Zug als einen Pfad (`StreamGeometry`) zeichnen oder den schon gezeichneten Teil als Bitmap zwischenspeichern und je Zeigerereignis nur das neue Segment zeichnen, damit der Preis je Punkt nicht mit der Länge wächst; erst nach der Handmessung (oben) entscheiden, ob es nötig ist (auf der VM ist ein Frame 31 ms und 5.000 Punkte kosten 31 ms; bei 60 Hz wären es zwei Frames).
+- Vereinfachen: die Arbeit begrenzen (Obergrenze der Entfernungsberechnungen, danach gleichmäßig ausdünnen) oder aus dem UI-Thread nehmen; das wirkt nur auf Striche über etwa 5.000 Punkten mit lauter Ausschlägen über der Toleranz.
+- Anlegen mit sehr vielen Zeichnungen auf einer Seite: die Kosten je Anlegen (56 ms bei 1.000) untersuchen (Zurücklesen und Zählen der Seite).
+- Speichern: Wächst die Datei je Speichern um alle Zeichnungen der geladenen Seiten (rund 2,2 MiB je 1.000 Striche), sollte ein vollständiger Neuschrieb (nicht inkrementell, ohne die erste Fassung ersetzter Objekte) angeboten oder bei starkem Wachstum gewählt werden; das ist auch die Voraussetzung dafür, alte Fassungen zu entfernen (Befund 2).
+**Offen:** dieselben Messungen auf dem Haupt-PC mit GPU und unter Linux (Startzeit und Scrollen: `hardware-measure.yml`); die Handprüfung der Muster in Chrome und Acrobat (Punkte 12 bis 20; Muster erzeugen mit `$env:PAGEWING_INTEROP_OUT="<Ordner>"; dotnet test tests/Pagewing.Core.Tests --filter-class "*InteropSampleTests"`), darunter die offene Frage aus Spike A, ob Acrobat `/Subj` „Line“ und „Arrow“ beim eigenen Speichern behält.
+
 ## 2026-10-25 – Werkzeugleiste: Formen im Überlauf bei schmalem Fenster (M10)
 **Kontext:** Aufgabe 13 von Milestone 10. Die Werkzeugleiste des Modus „Kommentieren“ bekommt sechs Werkzeuge dazu (Auswählen, Freihand, Rechteck, Ellipse, Linie, Pfeil) und für Zeichenwerkzeuge fünf Farben und drei Strichstärken. Design-Spec 7.7 verlangte bisher, dass alle Werkzeuge und „Fertig“ immer in der Zeile bleiben, geprüft bei 640 px Fensterbreite und im schmalsten Dokumentbereich mit Panel daneben (900 px Fenster, 400 px Panel: 448 px). Gemessen (Headless, `text-rich.pdf`, Stand vor der Änderung, DIP): Leiste 448, Inhalt ohne Ränder 428; auf der letzten Stufe brauchte die Zeile 295 (englisch 291): Modus-Icon 30 (18 + 12 Rand), drei Werkzeuge ohne Beschriftung 116 (je 36 + 4 Abstand), Trenner 17, „⋯“ 34, „Fertig“ 86 (englisch 82) + 12 Abstand. Mit neun Werkzeugknöpfen wären es 552 (englisch 548): 124 px zu breit; auch 32-px-Knöpfe ohne Modus-Icon (486) passten nicht. Bei 640 px (Inhalt 568) passten neun Werkzeuge knapp, ohne Platz für Farben oder Stärken.
 **Entscheidung:** (Vorgabe des Controllers auf Grundlage dieser Messung, Option A.)
