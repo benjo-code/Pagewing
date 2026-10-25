@@ -33,6 +33,9 @@ namespace Pagewing.Pdfium;
 /// fourth byte of the BGRx bitmap until the end of <see cref="Apply"/>, so the drawing under it and the overlapping pieces of
 /// one drawing leave it alone. Reading runs with the markups (<see cref="PdfiumDarkMarkups.Read"/>), at most
 /// <see cref="MaxTotalPoints"/> points per page; painting shares the budget of <see cref="PdfiumDarkMarkups.MaxPaintedLayers"/>.
+/// Every path, piece and row looked at costs at least one of it besides the pixels, so drawings that lie beside a tile or
+/// far off the page cannot make the work free; a path or piece whose box misses the bitmap is passed over at once, and a
+/// piece visits only the rows where it lies within the bitmap's columns.
 /// </para>
 /// </remarks>
 internal static class PdfiumDarkDrawings
@@ -123,7 +126,7 @@ internal static class PdfiumDarkDrawings
 
     /// <summary>
     /// Paints the drawings into a rendered BGRx bitmap with the mapping PDFium rendered with (see
-    /// <see cref="PdfiumDarkMarkups.Apply"/>), charging every pixel looked at to <paramref name="budget"/>; stops, keeping
+    /// <see cref="PdfiumDarkMarkups.Apply"/>), charging every pixel, path, piece and row looked at to <paramref name="budget"/>; stops, keeping
     /// what is painted, once it is used up.
     /// </summary>
     /// <returns><see langword="false"/> when the budget ran out.</returns>
@@ -138,9 +141,29 @@ internal static class PdfiumDarkDrawings
         double scaleY,
         double offsetX,
         double offsetY,
-        ref long budget)
+        ref long budget) =>
+        Apply(drawings, colors, pixels, width, height, stride, scaleX, scaleY, offsetX, offsetY, ref budget, out _);
+
+    /// <summary>
+    /// Like the other overload; <paramref name="work"/> is the number of paths, pieces and rows looked at, each of which costs
+    /// at least one of the budget besides the pixels (for tests).
+    /// </summary>
+    internal static bool Apply(
+        IReadOnlyList<DarkDrawing> drawings,
+        PdfiumPageColors colors,
+        Span<byte> pixels,
+        int width,
+        int height,
+        int stride,
+        double scaleX,
+        double scaleY,
+        double offsetX,
+        double offsetY,
+        ref long budget,
+        out long work)
     {
         ArgumentNullException.ThrowIfNull(drawings);
+        work = 0;
         if (drawings.Count == 0)
         {
             return true;
@@ -160,6 +183,18 @@ internal static class PdfiumDarkDrawings
                 var half = Math.Max(drawing.Width, 1 / Math.Min(scaleX, scaleY)) / 2;
                 foreach (var path in drawing.Paths)
                 {
+                    // A path that misses the bitmap is passed over before it is copied or flattened (an arc lies within
+                    // its control points), for one of the budget.
+                    if (!painter.Charge(1))
+                    {
+                        return false;
+                    }
+
+                    if (!painter.MeetsPath(path, half + (1 / Math.Min(scaleX, scaleY))))
+                    {
+                        continue;
+                    }
+
                     var points = Compact(path, scaleX, scaleY, ref buffer, out var curveSlack);
                     if (!StrokePolyline(ref painter, points, path.Closed, half + curveSlack))
                     {
@@ -173,6 +208,7 @@ internal static class PdfiumDarkDrawings
         finally
         {
             budget = painter.Budget;
+            work = painter.Work;
             painter.ClearMarks();
             if (buffer is not null)
             {
@@ -433,75 +469,161 @@ internal static class PdfiumDarkDrawings
         /// </summary>
         public bool FillConvex(scoped ReadOnlySpan<(double X, double Y)> polygon)
         {
+            // Every piece costs at least one, whether it meets the bitmap or not: a hostile page cannot make the work free.
+            Work++;
+            if (!Charge(1))
+            {
+                return false;
+            }
+
             Span<(double X, double Y)> device = stackalloc (double X, double Y)[polygon.Length];
-            double minY = double.MaxValue, maxY = double.MinValue;
+            double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
             for (var i = 0; i < polygon.Length; i++)
             {
                 device[i] = ((polygon[i].X * scaleX) + offsetX, (polygon[i].Y * scaleY) + offsetY);
+                minX = Math.Min(minX, device[i].X);
+                maxX = Math.Max(maxX, device[i].X);
                 minY = Math.Min(minY, device[i].Y);
                 maxY = Math.Max(maxY, device[i].Y);
             }
 
             const double Slack = PdfiumDarkMarkups.EdgeSlack;
-            var y0 = (int)Math.Clamp(Math.Floor(minY - Slack), 0, height);
-            var y1 = (int)Math.Clamp(Math.Ceiling(maxY + Slack), 0, height);
+            if (!Meets(minX, minY, maxX, maxY, Slack))
+            {
+                // Left or right of the bitmap (most pieces in a tile), above or below it, or not a number.
+                return true;
+            }
+
+            // Only the rows where the piece lies within the bitmap's columns: its extent in y clipped to them (a long piece
+            // that reaches into a tile from far beside it visits a few rows, not all it spans).
+            if (!Extent(device, alongY: false, -Slack, width + Slack, out var firstY, out var lastY))
+            {
+                return true;
+            }
+
+            var y0 = (int)Math.Clamp(Math.Floor(firstY - Slack), 0, height);
+            var y1 = (int)Math.Clamp(Math.Ceiling(lastY + Slack), 0, height);
             for (var y = y0; y < y1; y++)
             {
-                // The polygon clipped to the band of the row is convex; its extent in x is reached on a clipped edge.
-                var (top, bottom) = (y - Slack, y + 1 + Slack);
-                double minX = double.MaxValue, maxX = double.MinValue;
-                for (var i = 0; i < device.Length; i++)
+                // A row costs at least one even where the piece misses the bitmap's columns in it.
+                Work++;
+                if (!Charge(1))
                 {
-                    var (a, b) = (device[i], device[(i + 1) % device.Length]);
-                    if (a.Y == b.Y)
-                    {
-                        if (a.Y >= top && a.Y <= bottom)
-                        {
-                            minX = Math.Min(minX, Math.Min(a.X, b.X));
-                            maxX = Math.Max(maxX, Math.Max(a.X, b.X));
-                        }
-
-                        continue;
-                    }
-
-                    var t0 = (top - a.Y) / (b.Y - a.Y);
-                    var t1 = (bottom - a.Y) / (b.Y - a.Y);
-                    var low = Math.Max(0, Math.Min(t0, t1));
-                    var high = Math.Min(1, Math.Max(t0, t1));
-                    if (low > high)
-                    {
-                        continue;
-                    }
-
-                    var xLow = a.X + ((b.X - a.X) * low);
-                    var xHigh = a.X + ((b.X - a.X) * high);
-                    minX = Math.Min(minX, Math.Min(xLow, xHigh));
-                    maxX = Math.Max(maxX, Math.Max(xLow, xHigh));
+                    return false;
                 }
 
-                if (minX > maxX)
+                // The polygon clipped to the band of the row is convex; its extent in x is reached on a clipped edge.
+                if (!Extent(device, alongY: true, y - Slack, y + 1 + Slack, out var rowLeft, out var rowRight))
                 {
                     continue;
                 }
 
-                var x0 = (int)Math.Clamp(Math.Floor(minX - Slack), 0, width);
-                var x1 = (int)Math.Clamp(Math.Ceiling(maxX + Slack), 0, width);
+                var x0 = (int)Math.Clamp(Math.Floor(rowLeft - Slack), 0, width);
+                var x1 = (int)Math.Clamp(Math.Ceiling(rowRight + Slack), 0, width);
                 if (x1 <= x0)
                 {
                     continue;
                 }
 
-                if (x1 - x0 > Budget)
+                if (!Charge(x1 - x0))
                 {
-                    Budget = 0;
                     return false;
                 }
 
-                Budget -= x1 - x0;
                 PaintRow(y, x0, x1);
             }
 
             return true;
+        }
+
+        /// <summary>Gets the pieces and rows looked at so far (for tests: each costs at least one of the budget).</summary>
+        public long Work { get; private set; }
+
+        /// <summary>
+        /// Whether a rectangle in pixels of the bitmap (widened by <paramref name="slack"/>) meets the bitmap; a coordinate that
+        /// is not a number never does.
+        /// </summary>
+        public readonly bool Meets(double minX, double minY, double maxX, double maxY, double slack) =>
+            maxX + slack >= 0 && minX - slack <= width && maxY + slack >= 0 && minY - slack <= height;
+
+        /// <summary>
+        /// Whether the points of a path, widened by <paramref name="reach"/> points (half the stroke and the curve slack) times
+        /// the reach of a miter (<see cref="MiterLimit"/> + 1), may meet the bitmap; counts as work (the caller charges it).
+        /// </summary>
+        public bool MeetsPath(DarkDrawingPath path, double reach)
+        {
+            Work++;
+
+            double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
+            foreach (var (x, y) in path.Points)
+            {
+                minX = Math.Min(minX, x);
+                maxX = Math.Max(maxX, x);
+                minY = Math.Min(minY, y);
+                maxY = Math.Max(maxY, y);
+            }
+
+            var spread = reach * (MiterLimit + 1);
+            return Meets(
+                ((minX - spread) * scaleX) + offsetX,
+                ((minY - spread) * scaleY) + offsetY,
+                ((maxX + spread) * scaleX) + offsetX,
+                ((maxY + spread) * scaleY) + offsetY,
+                PdfiumDarkMarkups.EdgeSlack);
+        }
+
+        /// <summary>Takes <paramref name="cost"/> from the budget; <see langword="false"/> (the budget is then 0) once it is used up.</summary>
+        public bool Charge(long cost)
+        {
+            if (cost > Budget)
+            {
+                Budget = 0;
+                return false;
+            }
+
+            Budget -= cost;
+            return true;
+        }
+
+        /// <summary>
+        /// The extent of a convex polygon clipped to a band: with <paramref name="alongY"/> the band is
+        /// <paramref name="low"/> &lt;= y &lt;= <paramref name="high"/> and the extent is in x, otherwise the other way round.
+        /// The extent of a convex region is reached on its clipped edges; <see langword="false"/> when the band misses it.
+        /// </summary>
+        private static bool Extent(scoped ReadOnlySpan<(double X, double Y)> polygon, bool alongY, double low, double high, out double min, out double max)
+        {
+            (min, max) = (double.MaxValue, double.MinValue);
+            for (var i = 0; i < polygon.Length; i++)
+            {
+                var (a, b) = (polygon[i], polygon[(i + 1) % polygon.Length]);
+                var (aBand, bBand, aOther, bOther) = alongY ? (a.Y, b.Y, a.X, b.X) : (a.X, b.X, a.Y, b.Y);
+                if (aBand == bBand)
+                {
+                    if (aBand >= low && aBand <= high)
+                    {
+                        min = Math.Min(min, Math.Min(aOther, bOther));
+                        max = Math.Max(max, Math.Max(aOther, bOther));
+                    }
+
+                    continue;
+                }
+
+                var t0 = (low - aBand) / (bBand - aBand);
+                var t1 = (high - aBand) / (bBand - aBand);
+                var from = Math.Max(0, Math.Min(t0, t1));
+                var to = Math.Min(1, Math.Max(t0, t1));
+                if (from > to)
+                {
+                    continue;
+                }
+
+                var first = aOther + ((bOther - aOther) * from);
+                var last = aOther + ((bOther - aOther) * to);
+                min = Math.Min(min, Math.Min(first, last));
+                max = Math.Max(max, Math.Max(first, last));
+            }
+
+            return min <= max;
         }
 
         /// <summary>Gives every pixel marked in this paint its opaque fourth byte back.</summary>

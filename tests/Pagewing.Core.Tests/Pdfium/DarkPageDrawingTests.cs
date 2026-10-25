@@ -253,6 +253,76 @@ public sealed class DarkPageDrawingTests : IDisposable
     }
 
     [Fact]
+    public async Task StrokesOutsideTheBitmapCostLittle()
+    {
+        // A left tile of a page whose drawings lie mostly outside it (OutsidePage): it renders in time, and the line inside
+        // it is still painted. Before pieces outside the bitmap were charged, painting this tile took 3.2 s (Release).
+        const double Scale = 4;
+        var path = OutsidePage();
+        await using var document = await OpenAsync(path);
+        var tile = new PixelRect(0, 0, 256, 400);
+        await document.RenderTileAsync(0, Scale, tile, Dark, Ct);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var image = await document.RenderTileAsync(0, Scale, tile, Dark, Ct);
+        var painted = watch.Elapsed;
+        await document.ReplaceDarkMarkupReaderAsync((_, _) => DarkMarkupPaint.Empty);
+        watch.Restart();
+        await document.RenderTileAsync(0, Scale, tile, Dark, Ct);
+        var pdfium = watch.Elapsed;
+
+        Assert.Equal(0xFFFF0000u, Pixel(image, 120, 200));
+        Assert.True(painted - pdfium < TimeSpan.FromSeconds(1), $"painting took {painted - pdfium} (render {painted}, PDFium alone {pdfium})");
+    }
+
+    [Fact]
+    public async Task PaintWorkOutsideTheBitmapIsCharged()
+    {
+        // The same drawings painted directly into the left tile: every path, piece and row looked at costs at least one of
+        // the budget besides the pixels, so the work stays within MaxPaintedLayers covers of the bitmap however much of it
+        // lies outside; the line under them (painted last) still gets its colour.
+        const int Width = 256, Height = 400;
+        const double Scale = 4;
+        var paint = await ReadPaintAsync(OutsidePage());
+        Assert.Equal(5, paint.Drawings.Count);
+        var colors = new PdfiumPageColors(PageThemeColors.DarkBackground, PageThemeColors.DarkForeground);
+
+        var (pixels, budget) = (LineTile(), PdfiumDarkMarkups.MaxPaintedLayers * (long)Width * Height);
+        var initial = budget;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        PdfiumDarkDrawings.Apply(paint.Drawings, colors, pixels, Width, Height, Width * 4, Scale, Scale, 0, 0, ref budget, out var work);
+        var elapsed = watch.Elapsed;
+        Assert.True(work > 100_000, $"only {work} pieces and rows looked at: the hostile drawings were not reached");
+        Assert.True(work <= initial - budget, $"{work} pieces and rows looked at, {initial - budget} charged");
+        Assert.True(elapsed < TimeSpan.FromSeconds(1), $"painting took {elapsed}");
+        Assert.True(At(pixels, 120, 200) == 0xFFFF0000u, $"line {At(pixels, 120, 200):X8}, work {work}, budget left {budget} of {initial}");
+        Assert.All(Enumerable.Range(0, Width * Height), i => Assert.Equal(0xFF, pixels[(i * 4) + 3]));
+
+        // A small budget: painting stops once it is used up, and nothing looked at is free.
+        (pixels, budget) = (LineTile(), 10_000);
+        Assert.False(PdfiumDarkDrawings.Apply(paint.Drawings, colors, pixels, Width, Height, Width * 4, Scale, Scale, 0, 0, ref budget, out work));
+        Assert.Equal(0, budget);
+        Assert.InRange(work, 1, 10_000);
+        Assert.All(Enumerable.Range(0, Width * Height), i => Assert.Equal(0xFF, pixels[(i * 4) + 3]));
+
+        // The dark ground with the light line of PDFium where the 4 pt line from (10, 50) to (50, 50) lies.
+        byte[] LineTile()
+        {
+            var tile = new byte[Width * Height * 4];
+            for (var i = 0; i < Width * Height; i++)
+            {
+                var (x, y) = (i % Width, i / Width);
+                var c = x >= 40 && x < 200 && y >= 192 && y < 208 ? PageThemeColors.DarkForeground : PageThemeColors.DarkBackground;
+                (tile[i * 4], tile[(i * 4) + 1], tile[(i * 4) + 2], tile[(i * 4) + 3]) = ((byte)c, (byte)(c >> 8), (byte)(c >> 16), 0xFF);
+            }
+
+            return tile;
+        }
+
+        static uint At(byte[] tile, int x, int y) =>
+            0xFF000000u | ((uint)tile[(((y * Width) + x) * 4) + 2] << 16) | ((uint)tile[(((y * Width) + x) * 4) + 1] << 8) | tile[((y * Width) + x) * 4];
+    }
+
+    [Fact]
     public async Task HiddenDrawingsAreNotPainted()
     {
         // Hidden (F bit 2) or not viewed (bit 6): PDFium draws nothing, and nothing is read for painting.
@@ -331,6 +401,32 @@ public sealed class DarkPageDrawingTests : IDisposable
         await document.ReplaceDarkMarkupReaderAsync(null);
         var painted = await document.RenderPageAsync(0, scale, Dark, Ct);
         return new Renders(plain, pdfium, painted);
+    }
+
+    /// <summary>
+    /// A page of 200 x 100 pt whose drawings lie mostly outside a left tile at scale 4 (0..256 px), in /Annots order: a red
+    /// line of 4 pt from (10, 50) to (50, 50) inside the tile (painted last); an ink of 10,000 points from just inside the tile
+    /// to x 5,000,000 pt and back (each segment spans the tile's rows but meets almost none of its columns; all of them meet in
+    /// the same corner, so they cost about a third of the budget); inks of 100,000 points zigzagging over the whole height near
+    /// the right edge (starting in the tile, so the path meets it), far to the right (x 5,000,000 pt) over every row, and far
+    /// below the page. In this order all five are read before their appearances use up MaxAppearanceBytes (which ends a read).
+    /// </summary>
+    private string OutsidePage()
+    {
+        static string Ink(string points, int width = 1) =>
+            $"<< /Type /Annot /Subtype /Ink /Rect [0 0 200 100] /F 4 /C [1 0 0] /Border [0 0 {width}] /InkList [[{points}]] >>";
+        static string Zigzag(Func<int, string> point, int count = 100_000) => string.Join(' ', Enumerable.Range(0, count).Select(point));
+        return WritePdf(folder, Guid.NewGuid().ToString("N")[..8] + "-outside.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Annots [4 0 R 5 0 R 6 0 R 7 0 R 8 0 R] >>",
+            Ink("10 50 50 50", 4),
+            Ink(Zigzag(i => i % 2 == 0 ? $"60 {i / 2 % 2 * 100}" : "5000000 50", 10_000)),
+            Ink("10 90 " + Zigzag(i => $"{196 + (i % 2 * 3)} {i % 2 * 100}", 99_999)),
+            Ink(Zigzag(i => $"{5_000_000 + (i % 7)} {(i % 2 * 2_000_000) - 1_000_000}")),
+            Ink(Zigzag(i => $"{i % 2 * 200} {-5_000_000 - (i % 5)}")),
+        ]);
     }
 
     /// <summary>A page of 300 x 200 pt without content.</summary>
