@@ -281,7 +281,8 @@ public sealed partial class DocumentView
 
     /// <summary>
     /// The keys of the selection in the mode (see the class): Tab and Shift+Tab walk the selectable annotations of the page
-    /// (also from no selection while the select tool is on, unless the page is known to have none), the arrows nudge a movable
+    /// (also from no selection while the select tool is on, unless the page is known to have none; after the last, or before
+    /// the first, the selection goes and the key moves the focus on as usual), the arrows nudge a movable
     /// selection (Shift: 10 points), Delete and Backspace delete it, Enter opens its comment. Any other key first makes a
     /// waiting nudge. Without the mode or a selection nothing is taken.
     /// </summary>
@@ -313,6 +314,14 @@ public sealed partial class DocumentView
                 var walk = modifiers == KeyModifiers.Shift ? tab.SelectPreviousCommand : tab.SelectNextCommand;
                 if (!walk.CanExecute(null))
                 {
+                    return false;
+                }
+
+                if (tab.SelectionWalkEnds(forward: modifiers != KeyModifiers.Shift))
+                {
+                    // Past the last (or before the first) annotation: the selection goes and the key moves the focus on, so
+                    // Tab never traps the keys in the document.
+                    tab.ClearSelection();
                     return false;
                 }
 

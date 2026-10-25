@@ -182,10 +182,31 @@ internal sealed class DrawingOverlay : Control
     {
         HandleKind? found = null;
         var best = double.PositiveInfinity;
-        foreach (var (kind, centre) in HandleCentres())
+
+        // A box smaller than a handle would be all handles: inside it a press moves the drawing, its handles are taken from
+        // outside only. An end of a line wins only nearer to it than to the middle of the line, so the middle of a short line
+        // moves it.
+        var frame = FrameRect();
+        var small = frame is { } f && (f.Width < HandleHitSize || f.Height < HandleHitSize);
+        var centres = HandleCentres().ToList();
+        var ends = centres.Where(handle => handle.Kind is HandleKind.Start or HandleKind.End).Select(handle => handle.Centre).ToList();
+        var middle = ends.Count == 2 ? new Point((ends[0].X + ends[1].X) / 2, (ends[0].Y + ends[1].Y) / 2) : default;
+        foreach (var (kind, centre) in centres)
         {
             var dx = Math.Abs(viewportPoint.X - centre.X);
             var dy = Math.Abs(viewportPoint.Y - centre.Y);
+            if (kind is HandleKind.Start or HandleKind.End)
+            {
+                if (ends.Count == 2 && Distance(viewportPoint, centre) >= Distance(viewportPoint, middle))
+                {
+                    continue;
+                }
+            }
+            else if (small && frame!.Value.Contains(viewportPoint))
+            {
+                continue;
+            }
+
             if (dx <= HandleHitSize / 2 && dy <= HandleHitSize / 2 && dx + dy < best)
             {
                 best = dx + dy;
@@ -247,6 +268,8 @@ internal sealed class DrawingOverlay : Control
 
         return finalSize;
     }
+
+    private static double Distance(Point a, Point b) => Math.Sqrt(((a.X - b.X) * (a.X - b.X)) + ((a.Y - b.Y) * (a.Y - b.Y)));
 
     private static Point ToView(Rect pageRect, double scale, DisplayPoint point) => new(pageRect.X + (point.X * scale), pageRect.Y + (point.Y * scale));
 

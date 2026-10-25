@@ -77,6 +77,8 @@ public sealed partial class MainViewModel
             return;
         }
 
+        // A nudge of the selection that waits for the keys to rest is made before the job: during it the tab takes no edit.
+        tab.FlushNudge();
         try
         {
             if (_printJob is { IsRunning: true })
@@ -159,7 +161,9 @@ public sealed partial class MainViewModel
             PrintJob = job;
             var progress = new JobProgress(job);
 
-            // The job prints this document: a save would close it, so the tab cannot be saved until the job ends.
+            // The job prints this document: a save would close it, so the tab cannot be saved until the job ends. A nudge
+            // begun while the dialog was open is made first.
+            tab.FlushNudge();
             tab.IsPrinting = true;
             try
             {

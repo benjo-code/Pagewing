@@ -101,10 +101,10 @@ public sealed partial class TabViewModel
         ? Strings.SelectionLockedForeign
         : null;
 
-    /// <summary>Tab in the document: selects the next selectable annotation of the page in reading order (wraps at the end).</summary>
+    /// <summary>Tab in the document: selects the next selectable annotation of the page in reading order; after the last one the selection goes.</summary>
     public ICommand SelectNextCommand => _selectNextCommand ??= new RelayCommand(() => _ = SelectInOrderAsync(forward: true), () => CanSelect);
 
-    /// <summary>Shift+Tab in the document: selects the previous one (wraps at the start).</summary>
+    /// <summary>Shift+Tab in the document: selects the previous one; before the first one the selection goes.</summary>
     public ICommand SelectPreviousCommand => _selectPreviousCommand ??= new RelayCommand(() => _ = SelectInOrderAsync(forward: false), () => CanSelect);
 
     /// <summary>
@@ -204,7 +204,12 @@ public sealed partial class TabViewModel
         return StartReplace(selected, geometry);
     }
 
-    /// <summary>Makes a waiting nudge now (see the remarks of the class); nothing when there is none.</summary>
+    /// <summary>
+    /// Makes a waiting nudge now (see the remarks of the class); nothing when there is none. While the tab takes no edit for a
+    /// moment (it prints or saves, a card asks about it, editing is locked for an update) the nudge is not dropped: it stays
+    /// waiting, still shown and counted as a change, and is tried again after <see cref="NudgeDelay"/> (or at the next key or
+    /// flush). It goes only with its document, the mode or the tab.
+    /// </summary>
     internal void FlushNudge()
     {
         if (_nudge is not { } nudge)
@@ -212,12 +217,20 @@ public sealed partial class TabViewModel
             return;
         }
 
-        _nudge = null;
         _nudgeGeneration++;
         _nudgeTimer?.Dispose();
         _nudgeTimer = null;
+        var changes = !_disposed && nudge.Generation == _documentGeneration && !SameShape(nudge.Original, nudge.Geometry);
+        if (changes && _isAnnotating && !CanDraw)
+        {
+            // Not now: kept, and tried again later.
+            StartNudgeTimer();
+            return;
+        }
+
+        _nudge = null;
         var target = _selectedAnnotation is { } selected && SameAnnotation(selected, nudge.Target) ? selected : nudge.Target;
-        if (!_disposed && nudge.Generation == _documentGeneration && !SameShape(nudge.Original, nudge.Geometry))
+        if (changes)
         {
             _ = StartReplace(target, nudge.Geometry);
         }
@@ -327,10 +340,31 @@ public sealed partial class TabViewModel
         }
 
         var at = _selectedAnnotation is { } selected ? ordered.FindIndex(a => SameAnnotation(a, selected)) : -1;
-        var next = at < 0
-            ? (forward ? 0 : ordered.Count - 1)
-            : (at + (forward ? 1 : ordered.Count - 1)) % ordered.Count;
+        var next = at < 0 ? (forward ? 0 : ordered.Count - 1) : at + (forward ? 1 : -1);
+        if (next < 0 || next >= ordered.Count)
+        {
+            // Past the last (or before the first): the selection goes, the keys go on (no trap in the document).
+            ClearSelection();
+            return;
+        }
+
         Select(ordered[next]);
+    }
+
+    /// <summary>
+    /// Gets whether Tab (<paramref name="forward"/>) or Shift+Tab leaves the annotations of the page: the selection is the last
+    /// (or first) in reading order; <see langword="false"/> without a selection or while its page is not read.
+    /// </summary>
+    internal bool SelectionWalkEnds(bool forward)
+    {
+        if (_selectedAnnotation is not { } selected || !TryGetPageAnnotations(selected.Page, out var annotations))
+        {
+            return false;
+        }
+
+        var ordered = ReadingOrder(annotations);
+        var at = ordered.FindIndex(a => SameAnnotation(a, selected));
+        return at >= 0 && (forward ? at == ordered.Count - 1 : at == 0);
     }
 
     private void Nudge(int dx, int dy, bool large)
@@ -346,11 +380,16 @@ public sealed partial class TabViewModel
         nudge.Geometry = DrawingTransform.Move(nudge.Geometry, Math.Sign(dx) * step, Math.Sign(dy) * step, page);
 
         // The timer starts again with every press: the step is made once the keys rest.
+        StartNudgeTimer();
+        OnPropertyChanged(nameof(SelectionGeometry));
+        SyncFromEditor();
+    }
+
+    private void StartNudgeTimer()
+    {
         var generation = ++_nudgeGeneration;
         _nudgeTimer?.Dispose();
         _nudgeTimer = SelectionClock.CreateTimer(_ => PostNudgeFlush(generation), null, NudgeDelay, Timeout.InfiniteTimeSpan);
-        OnPropertyChanged(nameof(SelectionGeometry));
-        SyncFromEditor();
     }
 
     // Any thread (the timer's): must not wait and must never throw.
@@ -394,7 +433,7 @@ public sealed partial class TabViewModel
 
     private Task StartReplace(PdfAnnotation target, DrawingGeometry geometry)
     {
-        if (!CanRunEdit || WaitsForReplaceWithoutName(target))
+        if (!CanDraw || WaitsForReplaceWithoutName(target))
         {
             return Task.CompletedTask;
         }

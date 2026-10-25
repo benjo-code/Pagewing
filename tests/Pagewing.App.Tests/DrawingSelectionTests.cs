@@ -14,6 +14,7 @@ using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Annotations;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Printing;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
@@ -245,22 +246,106 @@ public sealed class DrawingSelectionTests : IDisposable
         view.Focus();
         Settle(window);
 
-        // From no selection Tab takes the first in reading order (top to bottom, then left to right), and wraps at the end.
-        string?[] order = [topLeft.Name, topRight.Name, middle.Name, low.Name, topLeft.Name];
+        // From no selection Tab takes the first in reading order (top to bottom, then left to right).
+        string?[] order = [topLeft.Name, topRight.Name, middle.Name, low.Name];
         foreach (var name in order)
         {
             Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
             await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == name);
         }
 
-        // Shift+Tab goes back, wrapping at the start.
-        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.Shift);
-        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == low.Name);
+        // Shift+Tab goes back.
         Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.Shift);
         await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == middle.Name);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.Shift);
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == topRight.Name);
 
-        // The keys stayed in the document.
+        // The keys stayed in the document meanwhile.
         Assert.True(view.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public async Task TabLeavesTheViewAfterTheLastAnnotation()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        var first = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(100, 150, 160, 190), 2));
+        var last = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(100, 300, 160, 340), 2));
+        ChooseSelectTool(window, tab);
+
+        // Tab past the last annotation: the selection goes and the key is not taken, so the focus leaves the document.
+        view.Focus();
+        Settle(window);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == first.Name);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == last.Name);
+        Assert.True(view.IsFocused);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+        Assert.Null(tab.SelectedAnnotation);
+        Assert.False(view.IsKeyboardFocusWithin);
+
+        // Shift+Tab before the first one does the same, the other way.
+        view.Focus();
+        Settle(window);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.Shift);
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == last.Name);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.Shift);
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == first.Name);
+        Assert.True(view.IsFocused);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.Shift);
+        Assert.Null(tab.SelectedAnnotation);
+        Assert.False(view.IsKeyboardFocusWithin);
+        Assert.True(tab.IsAnnotating);
+    }
+
+    [AvaloniaFact]
+    public async Task SmallShapeCanBeMovedByItsBody()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        var small = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(200, 200, 212, 210), 1));
+        var line = await DrawAsync(window, tab, DrawingGeometry.Line(new DisplayPoint(300, 300), new DisplayPoint(312, 300), 1));
+        ChooseSelectTool(window, tab);
+
+        // A box smaller than a handle: a press in its middle moves it and keeps its size.
+        await ClickAndWaitAsync(window, view, tab, new Point(206, 200), small.Name);
+        Drag(window, ScreenPoint(view, window, 0, new Point(206, 205)), ScreenPoint(view, window, 0, new Point(236, 225)));
+        await WaitForBoxAsync(window, tab, small.Name, new PageRect(230, 220, 242, 230));
+
+        // The middle of a short line moves the whole line; its ends stay apart as they were.
+        await ClickAndWaitAsync(window, view, tab, new Point(306, 300), line.Name);
+        Drag(window, ScreenPoint(view, window, 0, new Point(306, 300)), ScreenPoint(view, window, 0, new Point(306, 320)));
+        var moved = await WaitForDrawingAsync(window, tab, line.Name, a => Math.Abs(a.Drawing!.Strokes[0][0].Y - 320) < 0.6);
+        AssertNear(new DisplayPoint(300, 320), moved.Drawing!.Strokes[0][0], 0.6);
+        AssertNear(new DisplayPoint(312, 320), moved.Drawing.Strokes[0][1], 0.6);
+    }
+
+    [AvaloniaFact]
+    public async Task SmallShapeCanStillBeResizedFromOutsideItsBox()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        var small = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(200, 200, 212, 210), 1));
+        var line = await DrawAsync(window, tab, DrawingGeometry.Line(new DisplayPoint(300, 300), new DisplayPoint(312, 300), 1));
+        ChooseSelectTool(window, tab);
+        var scale = DocumentLayout.DipsPerPoint * view.Layout!.Zoom;
+
+        // Beside the bottom right corner, outside the box: the corner handle; the box grows to the right and down.
+        await ClickAndWaitAsync(window, view, tab, new Point(206, 200), small.Name);
+        var corner = HandleCentre(window, "SelectionHandleBottomRight");
+        Drag(window, corner + new Point(6, 6), corner + new Point(6 + (20 * scale), 6 + (10 * scale)));
+        await WaitForBoxAsync(window, tab, small.Name, new PageRect(200, 200, 232, 220));
+
+        // Beyond the end of the short line: its end handle; the start stays.
+        await ClickAndWaitAsync(window, view, tab, new Point(306, 300), line.Name);
+        var end = HandleCentre(window, "SelectionHandleEnd");
+        Drag(window, end + new Point(5, 0), end + new Point(5 + (30 * scale), 0));
+        var longer = await WaitForDrawingAsync(window, tab, line.Name, a => Math.Abs(a.Drawing!.Strokes[0][1].X - 342) < 0.6);
+        AssertNear(new DisplayPoint(300, 300), longer.Drawing!.Strokes[0][0], 0.01);
     }
 
     [AvaloniaFact]
@@ -647,6 +732,44 @@ public sealed class DrawingSelectionTests : IDisposable
         Assert.Equal(version, tab.EditVersion);
         Assert.Equal(rectangle.Name, tab.SelectedAnnotation?.Name);
         AssertRectNear(new PageRect(120, 180, 280, 300), (await DrawingAsync(tab, rectangle.Name)).Drawing!.Box, 0.01);
+    }
+
+    [AvaloniaFact]
+    public async Task NudgeIsNotLostWhenPrintingStarts()
+    {
+        var (window, viewModel, view) = Show();
+        var service = new FakePrintService { SystemDialog = true, DialogTicket = new PrintTicket(new PrintSettings { Printer = "Plotter" }) };
+        var gate = new TaskCompletionSource();
+        service.OnPrint = (_, _, _) => gate.Task;
+        viewModel.PrintServiceFactory = () => service;
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var clock = new PrintClock();
+        tab.SelectionClock = clock;
+        await BeginAsync(window, tab);
+        var rectangle = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(120, 180, 280, 300), 2));
+        ChooseSelectTool(window, tab);
+        await ClickAndWaitAsync(window, view, tab, new Point(200, 181), rectangle.Name);
+
+        // A nudge waits for the keys to rest when printing starts: it is made first.
+        Press(window, Key.Right, PhysicalKey.ArrowRight, RawInputModifiers.None);
+        viewModel.PrintCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.IsPrinting);
+        await WaitForBoxAsync(window, tab, rectangle.Name, new PageRect(121, 180, 281, 300));
+        gate.SetResult();
+        await WaitUntilAsync(window, () => !tab.IsPrinting);
+
+        // A nudge whose pause ends while the tab takes no edit (here a card asks about it) stays, shown and counted, and is
+        // made once the tab takes edits again.
+        Press(window, Key.Right, PhysicalKey.ArrowRight, RawInputModifiers.None);
+        tab.IsAskedAbout = true;
+        clock.Advance(TabViewModel.NudgeDelay);
+        Settle(window);
+        AssertRectNear(new PageRect(122, 180, 282, 300), tab.SelectionGeometry!.Box, 1e-6);
+        Assert.True(tab.AsksBeforeClosing);
+        Assert.Equal(121, (await DrawingAsync(tab, rectangle.Name)).Drawing!.Box.Left, 1);
+        tab.IsAskedAbout = false;
+        clock.Advance(TabViewModel.NudgeDelay);
+        await WaitForBoxAsync(window, tab, rectangle.Name, new PageRect(122, 180, 282, 300));
     }
 
     [AvaloniaFact]

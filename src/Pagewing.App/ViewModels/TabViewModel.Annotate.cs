@@ -191,7 +191,7 @@ public sealed partial class TabViewModel
     /// Gets whether a change is in flight: a markup or an edit of the panel on its way to the editor, or an operation the
     /// editor took and has not ended (also a save). <see cref="WhenEditsSettledAsync"/> waits for them.
     /// </summary>
-    internal bool HasEditsInFlight => !_disposed && (_pendingEdits > 0 || _editor?.IsBusy == true || _nudge is not null);
+    internal bool HasEditsInFlight => !_disposed && (_pendingEdits > 0 || _editor?.IsBusy == true);
 
     /// <summary>
     /// Esc of the mode (DocumentView, the toolbar, the "Comments" list): drops a stroke of a drawing tool that is being
