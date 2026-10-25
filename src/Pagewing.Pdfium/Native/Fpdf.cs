@@ -425,6 +425,11 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFAnnot_GetBorder(nint annotation, float* horizontalRadius, float* verticalRadius, float* borderWidth);
 
+    /// <summary>Reads a number value of the annotation's dictionary; fails when the key is missing or no number.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetNumberValue(nint annotation, byte* key, float* value);
+
     /// <summary>The index of an annotation in the page's <c>/Annots</c> (found by its dictionary), or -1.</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

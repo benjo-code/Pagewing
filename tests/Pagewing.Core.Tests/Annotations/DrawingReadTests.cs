@@ -217,6 +217,86 @@ public sealed class DrawingReadTests
     }
 
     [Fact]
+    public async Task OpacityFillAndBoxDifferenceLockTheGeometry()
+    {
+        // Without /AP and /BS, so only the key under test can lock: a replaced drawing would be opaque, unfilled and as big as its /Rect.
+        using var folder = new TempFolder();
+        const string Ink = "/Type /Annot /Subtype /Ink /Rect [28 238 92 282] /InkList [[30 240 60 280 90 240]] /C [1 0 0] /Border [0 0 2] /F 4";
+        const string Square = "/Type /Annot /Subtype /Square /Rect [28 158 108 218] /C [0 0.5 0] /Border [0 0 2] /F 4";
+        const string Circle = "/Type /Annot /Subtype /Circle /Rect [228 158 308 218] /C [1 0.5 0] /Border [0 0 2] /F 4";
+        var path = WritePdf(folder, "opacity-fill-rd.pdf", [
+            Catalog,
+            Pages,
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Annots [4 0 R 5 0 R 6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R] >>",
+            $"<< {Ink} /CA 0.5 >>",
+            $"<< {Ink} /CA 1 >>",
+            $"<< {Ink} /CA /Half >>",
+            $"<< {Square} /IC [1 0 0] >>",
+            $"<< {Circle} /IC [0 0 1] >>",
+            $"<< {Square} /RD [5 5 5 5] >>",
+            $"<< {Circle} /RD [5 5 5 5] >>",
+            $"<< {Circle} >>",
+        ]);
+
+        Assert.False(await IsGeometryEditableAsync(path, 0, 0));
+        Assert.True(await IsGeometryEditableAsync(path, 0, 1));
+        Assert.False(await IsGeometryEditableAsync(path, 0, 2));
+        Assert.False(await IsGeometryEditableAsync(path, 0, 3));
+        Assert.False(await IsGeometryEditableAsync(path, 0, 4));
+        Assert.False(await IsGeometryEditableAsync(path, 0, 5));
+        Assert.False(await IsGeometryEditableAsync(path, 0, 6));
+        Assert.True(await IsGeometryEditableAsync(path, 0, 7));
+    }
+
+    [Fact]
+    public async Task OwnDrawingsStayEditableAfterTheAppearanceAndARecolour()
+    {
+        using var folder = new TempFolder();
+        var copy = Path.Combine(folder.Path, "copy.pdf");
+        File.Copy(TestData.Pdf("text-basic.pdf"), copy);
+        var specs = new[]
+        {
+            Spec(PdfiumDrawingKind.Arrow, ArrowGeometry.Strokes(new(120, 120), new(220, 120), 2, head: true), 2),
+            new PdfiumDrawing(PdfiumDrawingKind.Square, [], (150, 20, 250, 80), 4),
+            new PdfiumDrawing(PdfiumDrawingKind.Circle, [], (150, 100, 230, 160), 1),
+        };
+        var thread = PdfiumThread.Shared;
+        var editable = await thread.InvokeAsync(
+            () =>
+            {
+                using var document = PdfiumDocument.Open(thread, copy, null);
+                var indices = new List<int>();
+                using (var page = document.LoadPage(0))
+                {
+                    indices.AddRange(specs.Select(spec => PdfiumDrawings.Create(page, spec, (220, 30, 30), null, null, Guid.NewGuid().ToString("N"), "D:20261025120000Z")));
+                }
+
+                var result = new List<bool>();
+                Assert.True(PdfiumAnnotations.GenerateAppearance(document, 0, indices[0]));
+                using (var page = document.LoadPage(0))
+                {
+                    result.AddRange(indices.Select(i => PdfiumDrawings.IsGeometryEditable(page, i)));
+                    foreach (var index in indices)
+                    {
+                        PdfiumAnnotations.Update(page, index, null, (30, 80, 220), Guid.NewGuid().ToString("N"), "D:20261025130000Z");
+                    }
+                }
+
+                Assert.True(PdfiumAnnotations.GenerateAppearance(document, 0, indices[0]));
+                using (var page = document.LoadPage(0))
+                {
+                    result.AddRange(indices.Select(i => PdfiumDrawings.IsGeometryEditable(page, i)));
+                }
+
+                return result;
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(6, editable.Count);
+        Assert.All(editable, Assert.True);
+    }
+
+    [Fact]
     public async Task ArrowOnTheRotatedPageReadsBackPrecisely()
     {
         using var folder = new TempFolder();

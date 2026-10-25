@@ -317,13 +317,23 @@ internal static unsafe class PdfiumDrawings
     /// </item>
     /// <item>no <c>/BE</c> (a cloudy border);</item>
     /// <item>
+    /// no <c>/CA</c> below 1 (read with <c>FPDFAnnot_GetNumberValue</c>; a <c>/CA</c> that is no number locks too): the new
+    /// annotation is opaque, because <c>FPDFAnnot_SetColor</c> writes <c>/CA</c> 1 with alpha 255 (so Pagewing's own
+    /// drawings always carry <c>/CA 1</c>);
+    /// </item>
+    /// <item>no <c>/IC</c> (interior colour): PDFium's generator paints it as a fill, and Pagewing never writes one;</item>
+    /// <item>
+    /// no <c>/RD</c> (the difference between <c>/Rect</c> and the drawn box of a square or circle): the box is read as the
+    /// whole <c>/Rect</c>, so a replaced shape would grow to its edges;
+    /// </item>
+    /// <item>
     /// no appearance, or one PDFium generated (<c>/PDFIUM_HasGeneratedAP</c>): another program's appearance would be
     /// replaced by PDFium's;
     /// </item>
     /// <item>every stroke readable within <see cref="MaxInkStrokes"/> and <see cref="MaxInkPoints"/> (<see cref="PdfiumDrawing.IsComplete"/>).</item>
     /// </list>
     /// A known gap: dashes in a fourth entry of <c>/Border</c> cannot be read either (<c>FPDFAnnot_GetBorder</c> reads three)
-    /// and are lost on replacing.
+    /// and are lost on replacing. Locked like <c>/BS</c> and <c>/BE</c>: <c>/CA</c> below 1, <c>/IC</c> and <c>/RD</c>.
     /// </summary>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while checking.</exception>
     public static bool IsGeometryEditable(PdfiumPage page, int index, CancellationToken cancellationToken = default)
@@ -345,6 +355,9 @@ internal static unsafe class PdfiumDrawings
             if (!PdfiumAnnotations.IsDrawing(Fpdf.FPDFAnnot_GetSubtype(annotation))
                 || PdfiumAnnotations.HasKey(annotation, "BS\0"u8)
                 || PdfiumAnnotations.HasKey(annotation, "BE\0"u8)
+                || PdfiumAnnotations.HasKey(annotation, "IC\0"u8)
+                || PdfiumAnnotations.HasKey(annotation, "RD\0"u8)
+                || !IsOpaque(annotation)
                 || (PdfiumAnnotations.HasKey(annotation, "AP\0"u8) && !PdfiumAnnotations.HasKey(annotation, "PDFIUM_HasGeneratedAP\0"u8)))
             {
                 return false;
@@ -681,6 +694,21 @@ internal static unsafe class PdfiumDrawings
         }
 
         return excess;
+    }
+
+    /// <summary>Whether the annotation has no <c>/CA</c> or a number of at least 1 there.</summary>
+    private static bool IsOpaque(nint annotation)
+    {
+        if (!PdfiumAnnotations.HasKey(annotation, "CA\0"u8))
+        {
+            return true;
+        }
+
+        float opacity;
+        fixed (byte* key = "CA\0"u8)
+        {
+            return Fpdf.FPDFAnnot_GetNumberValue(annotation, key, &opacity) != 0 && opacity >= 1;
+        }
     }
 
     private static bool IsSane(FsRectF rect) =>
