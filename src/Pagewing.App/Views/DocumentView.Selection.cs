@@ -272,8 +272,9 @@ public sealed partial class DocumentView
         var shown = geometry is not null ? selected with { Drawing = geometry } : selected;
         var preview = geometry is not null && !ReferenceEquals(geometry, selected.Drawing) ? geometry : null;
         var color = selected.Color is { } rgb ? Color.FromRgb(rgb.R, rgb.G, rgb.B) : Colors.Black;
-        var name = string.Format(Strings.Culture, FrameNameFormat(), Strings.KindName(selected.Kind) ?? selected.Subtype, selected.Page + 1);
-        EnsureDrawingOverlay().ShowSelection(new SelectionView(selected.Page, FrameOf(shown), SelectionHandles.For(shown), preview, color, tab.SelectionLockReason, name));
+        var kindName = Strings.KindName(selected.Kind) ?? selected.Subtype;
+        var name = string.Format(Strings.Culture, FrameNameFormat(), kindName, selected.Page + 1);
+        EnsureDrawingOverlay().ShowSelection(new SelectionView(selected.Page, FrameOf(shown), SelectionHandles.For(shown), preview, color, tab.SelectionLockReason, name, kindName));
     }
 
     /// <summary>The view scrolled or zoomed: the selection is placed again.</summary>

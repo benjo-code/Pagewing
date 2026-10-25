@@ -576,6 +576,64 @@ public sealed class AnnotationToolbarTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task FastColourClicksEndOnTheLastColour()
+    {
+        var (window, tab, toolbar, _) = await ShowInModeAsync(copy: true);
+        var created = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(100, 100, 200, 160), 2));
+        await SelectAsync(window, tab, new DisplayPoint(100, 130), created.Name);
+        var version = tab.EditVersion;
+
+        // Blue, and straight back to red before the first change is made (no turn of the dispatcher in between).
+        toolbar.DrawSwatchOf(DrawColor.Blue).Command!.Execute(DrawColor.Blue);
+        Assert.Equal(DrawColor.Blue, tab.SelectionDrawColor);
+        toolbar.DrawSwatchOf(DrawColor.Red).Command!.Execute(DrawColor.Red);
+        Assert.Equal(DrawColor.Red, tab.SelectionDrawColor);
+
+        // Both changes are made, in this order: the drawing ends red, two steps of the history; the toolbar shows red.
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight && tab.EditVersion == version + 2);
+        var final = await WaitForAsync(window, tab, created.Name, _ => true);
+        Assert.Equal(DrawPalette.ColorOf(DrawColor.Red), final.Color);
+        Assert.Equal(DrawPalette.ColorOf(DrawColor.Red), tab.SelectedAnnotation!.Color);
+        Settle(window);
+        Assert.Equal(ToggleState.On, ToggleStateOf(toolbar.DrawSwatchOf(DrawColor.Red)));
+        Assert.Equal(ToggleState.Off, ToggleStateOf(toolbar.DrawSwatchOf(DrawColor.Blue)));
+
+        // The same for a selected highlight.
+        var highlight = await tab.Editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, [new PageRect(260, 300, 360, 314)], AnnotationPalette.ColorOf(MarkupColor.Yellow), null, null);
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
+        await SelectAsync(window, tab, new DisplayPoint(300, 307), highlight!.Name);
+        tab.SetSelectionMarkupColorCommand.Execute(MarkupColor.Pink);
+        tab.SetSelectionMarkupColorCommand.Execute(MarkupColor.Yellow);
+        Assert.Equal(MarkupColor.Yellow, tab.SelectionMarkupColor);
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
+        Assert.Equal(AnnotationPalette.ColorOf(MarkupColor.Yellow), (await WaitForAsync(window, tab, highlight.Name, _ => true)).Color);
+    }
+
+    [AvaloniaFact]
+    public async Task FastWidthClicksEndOnTheLastWidth()
+    {
+        var (window, tab, toolbar, _) = await ShowInModeAsync(copy: true);
+        var created = await DrawAsync(window, tab, DrawingGeometry.Arrow(new DisplayPoint(100, 100), new DisplayPoint(220, 160), 2));
+        await SelectAsync(window, tab, new DisplayPoint(160, 130), created.Name);
+        var version = tab.EditVersion;
+
+        // Thick, and straight back to medium before the first change is made.
+        toolbar.WidthButtonOf(StrokeWidth.Thick).Command!.Execute(StrokeWidth.Thick);
+        Assert.Equal(StrokeWidth.Thick, tab.SelectionStrokeWidth);
+        toolbar.WidthButtonOf(StrokeWidth.Medium).Command!.Execute(StrokeWidth.Medium);
+        Assert.Equal(StrokeWidth.Medium, tab.SelectionStrokeWidth);
+
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight && tab.EditVersion == version + 2);
+        var final = await WaitForAsync(window, tab, created.Name, _ => true);
+        Assert.Equal(2, final.Drawing!.Width);
+        Assert.Equal(AnnotationKind.Arrow, final.Kind);
+        Assert.Equal(2, tab.SelectedAnnotation!.Drawing!.Width);
+        Settle(window);
+        Assert.Equal(ToggleState.On, ToggleStateOf(toolbar.WidthButtonOf(StrokeWidth.Medium)));
+        Assert.Equal(ToggleState.Off, ToggleStateOf(toolbar.WidthButtonOf(StrokeWidth.Thick)));
+    }
+
+    [AvaloniaFact]
     public async Task LockedSelectionOffersNoColourControls()
     {
         var (window, tab, toolbar, _) = await ShowInModeAsync("drawings-foreign.pdf", copy: true);

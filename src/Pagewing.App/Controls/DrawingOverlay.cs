@@ -1,3 +1,4 @@
+using System.Text;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Automation.Peers;
@@ -46,6 +47,9 @@ namespace Pagewing.App.Controls;
 /// </remarks>
 internal sealed class DrawingOverlay : Control
 {
+    // The name of a handle with what it belongs to for screen readers, parsed once per language (UI thread only).
+    private static (string Text, CompositeFormat Format)? _handleName;
+
     /// <summary>The side of a drawn handle in DIPs.</summary>
     internal const double HandleSize = 8;
 
@@ -457,8 +461,27 @@ internal sealed class DrawingOverlay : Control
         AutomationProperties.SetHelpText(_frameElement, _selection?.LockReason);
         foreach (var (kind, handle) in _handleElements)
         {
-            handle.IsVisible = _selection?.Handles.Any(h => h.Kind == kind) == true;
+            var shown = _selection?.Handles.Any(h => h.Kind == kind) == true;
+            handle.IsVisible = shown;
+            if (shown && _selection is { KindName: { } subject } selection)
+            {
+                // What the handle belongs to: "Top left handle, Rectangle, page 1".
+                AutomationProperties.SetName(handle, string.Format(Strings.Culture, HandleNameFormat(), Strings.SelectionHandleName(kind), subject, selection.Page + 1));
+            }
         }
+    }
+
+    /// <summary>The parsed name of a handle with what it belongs to, parsed again only when the language changed (UI thread only).</summary>
+    private static CompositeFormat HandleNameFormat()
+    {
+        var text = Strings.SelectionHandleNameOf;
+        if (_handleName is not { } known || !string.Equals(known.Text, text, StringComparison.Ordinal))
+        {
+            known = (text, CompositeFormat.Parse(text));
+            _handleName = known;
+        }
+
+        return known.Format;
     }
 
     /// <summary>
@@ -554,4 +577,4 @@ internal sealed class DrawingOverlay : Control
 /// handles, the shape it is dragged or nudged to (or <see langword="null"/>) in the colour of the annotation, and why it is
 /// locked, for screen readers.
 /// </summary>
-internal sealed record SelectionView(int Page, PageRect Frame, IReadOnlyList<Handle> Handles, DrawingGeometry? Preview, Color Color, string? LockReason, string? Name = null);
+internal sealed record SelectionView(int Page, PageRect Frame, IReadOnlyList<Handle> Handles, DrawingGeometry? Preview, Color Color, string? LockReason, string? Name = null, string? KindName = null);

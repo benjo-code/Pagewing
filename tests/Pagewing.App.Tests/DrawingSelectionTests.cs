@@ -571,6 +571,40 @@ public sealed class DrawingSelectionTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task HandleNamesSayWhatIsSelected()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        var rectangle = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(120, 180, 280, 300), 2));
+        var line = await DrawAsync(window, tab, DrawingGeometry.Line(new DisplayPoint(60, 340), new DisplayPoint(300, 340), 2));
+        ChooseSelectTool(window, tab);
+
+        // Each handle names itself, the kind of the selection and its page, like the frame does.
+        await ClickAndWaitAsync(window, view, tab, new Point(200, 181), rectangle.Name);
+        Assert.Equal("Rectangle selected, page 1", AutomationProperties.GetName(FindOrNull<Border>(window, "SelectionFrame")!));
+        foreach (var handle in Handles(window))
+        {
+            var kind = Enum.Parse<HandleKind>(handle.Name!["SelectionHandle".Length..]);
+            Assert.Equal($"{Strings.SelectionHandleName(kind)}, Rectangle, page 1", AutomationProperties.GetName(handle));
+        }
+
+        // Another selection: the names follow it.
+        await ClickAndWaitAsync(window, view, tab, new Point(180, 340), line.Name);
+        var start = Assert.Single(Handles(window), handle => handle.Name == "SelectionHandleStart");
+        Assert.Equal($"{Strings.SelectionHandleStart}, Line, page 1", AutomationProperties.GetName(start));
+
+        // In German.
+        Strings.Culture = new CultureInfo("de");
+        tab.ClearSelection();
+        Settle(window);
+        await ClickAndWaitAsync(window, view, tab, new Point(200, 181), rectangle.Name);
+        var corner = Assert.Single(Handles(window), handle => handle.Name == "SelectionHandleTopLeft");
+        Assert.Equal($"{Strings.SelectionHandleTopLeft}, Rechteck, Seite 1", AutomationProperties.GetName(corner));
+        Assert.Equal("Rechteck ausgewählt, Seite 1", AutomationProperties.GetName(FindOrNull<Border>(window, "SelectionFrame")!));
+    }
+
+    [AvaloniaFact]
     public async Task HandlesHaveA24DipHitArea()
     {
         var (window, viewModel, view) = Show();
@@ -590,7 +624,7 @@ public sealed class DrawingSelectionTests : IDisposable
             Assert.False(string.IsNullOrEmpty(AutomationProperties.GetName(handle)));
             Assert.Equal(AccessibilityView.Content, AutomationProperties.GetAccessibilityView(handle));
         });
-        Assert.Equal(Strings.SelectionHandleBottomRight, AutomationProperties.GetName(handles.Single(h => h.Name == "SelectionHandleBottomRight")));
+        Assert.Equal($"{Strings.SelectionHandleBottomRight}, Rectangle, page 1", AutomationProperties.GetName(handles.Single(h => h.Name == "SelectionHandleBottomRight")));
         var overlay = view.DrawingOverlay!;
         Assert.True(Wcag.Contrast(overlay.SelectionFrameColor, Colors.White) >= 3);
         Assert.True(Wcag.Contrast(overlay.SelectionHaloColor, overlay.SelectionFrameColor) >= 3);
@@ -769,7 +803,7 @@ public sealed class DrawingSelectionTests : IDisposable
 
         var handles = Handles(window);
         Assert.Equal(["SelectionHandleEnd", "SelectionHandleStart"], handles.Select(h => h.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(Strings.SelectionHandleEnd, AutomationProperties.GetName(handles.Single(h => h.Name == "SelectionHandleEnd")));
+        Assert.Equal($"{Strings.SelectionHandleEnd}, Arrow, page 1", AutomationProperties.GetName(handles.Single(h => h.Name == "SelectionHandleEnd")));
 
         // The tip goes down by 50 points; the tail stays, the head is built again for the new direction.
         var tip = HandleCentre(window, "SelectionHandleEnd");

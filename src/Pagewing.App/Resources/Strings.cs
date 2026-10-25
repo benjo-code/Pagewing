@@ -439,6 +439,7 @@ public static class Strings
     public static string SelectionHandleEnd => Get("SelectionHandleEnd");
     public static string SelectionLockedForeign => Get("SelectionLockedForeign");
     public static string SelectionFrameNameOf => Get("SelectionFrameNameOf");
+    public static string SelectionHandleNameOf => Get("SelectionHandleNameOf");
     public static string AnnotateWidthsName => Get("AnnotateWidthsName");
     public static string CommentFilterDrawings => Get("CommentFilterDrawings");
     public static string CommentInkGroup => Get("CommentInkGroup");

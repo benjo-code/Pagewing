@@ -304,6 +304,32 @@ public sealed class CommentsPanelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LockReasonFitsTheEditorAtTheNarrowestPanel()
+    {
+        var (window, viewModel) = Show();
+        viewModel.PanelWidth = MainViewModel.MinPanelWidth;
+        var tab = await OpenAsync(window, viewModel, "drawings-foreign.pdf");
+        var (comments, _) = await OpenPanelAsync(window, viewModel, tab);
+        tab.BeginAnnotateCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.IsAnnotating && FindOrNull<CommentEditor>(window, "CommentEditor") is { IsEffectivelyVisible: true });
+
+        // A locked drawing of another program: the reason wraps inside the edit controls of a 200 px panel, all of it.
+        comments.SelectedItem = comments.Items.Single(item => item.Annotation.Name == "ink-0001");
+        await WaitUntilAsync(window, () => Find<TextBlock>(window, "CommentEditorLockReason").IsEffectivelyVisible);
+        var editor = Find<CommentEditor>(window, "CommentEditor");
+        var reason = Find<TextBlock>(window, "CommentEditorLockReason");
+        Assert.Equal(Strings.SelectionLockedForeign, reason.Text);
+        var right = reason.TranslatePoint(new Point(reason.Bounds.Width, reason.Bounds.Height), editor)!.Value;
+        Assert.True(editor.Bounds.Width <= MainViewModel.MinPanelWidth + 0.5, $"the editor is {editor.Bounds.Width} wide");
+        Assert.True(right.X <= editor.Bounds.Width + 0.5, $"the reason ends at {right.X}, the editor at {editor.Bounds.Width}");
+        Assert.True(right.Y <= editor.Bounds.Height + 0.5, $"the reason ends at {right.Y} down, the editor at {editor.Bounds.Height}");
+
+        // It wraps instead of being cut off: its text needs more than one line there, and none of it is trimmed.
+        Assert.True(reason.Bounds.Height > reason.FontSize * 2, $"the reason is {reason.Bounds.Height} high");
+        Assert.Equal(Avalonia.Media.TextTrimming.None, reason.TextTrimming);
+    }
+
+    [AvaloniaFact]
     public async Task TwoHundredStrokesStayScrollable()
     {
         var (window, viewModel) = Show();

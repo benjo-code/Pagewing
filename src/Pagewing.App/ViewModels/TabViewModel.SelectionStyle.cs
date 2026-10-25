@@ -18,8 +18,12 @@ public sealed partial class TabViewModel
     private RelayCommand<StrokeWidth>? _setSelectionWidthCommand;
     private RelayCommand<MarkupColor>? _setSelectionMarkupColorCommand;
 
+    // The colour a change of the selection is on its way to (shown and compared against until it is made), so a second click
+    // before the first change is made is compared with the colour the user chose, not with the old one.
+    private PendingColor? _pendingColor;
+
     /// <summary>Gets the colour of a movable selected drawing in the drawing palette, or <see langword="null"/> (none, or a colour of another program).</summary>
-    public DrawColor? SelectionDrawColor => CanMoveSelection && _selectedAnnotation!.Color is { } color ? DrawPalette.Match(color) : null;
+    public DrawColor? SelectionDrawColor => CanMoveSelection && ShownColorOf(_selectedAnnotation!) is { } color ? DrawPalette.Match(color) : null;
 
     /// <summary>Gets the stroke width of a movable selected drawing as one of the three steps, or <see langword="null"/> (another width).</summary>
     public StrokeWidth? SelectionStrokeWidth => CanMoveSelection && SelectionGeometry is { } shape ? StepOf(shape.Width) : null;
@@ -28,7 +32,7 @@ public sealed partial class TabViewModel
     public bool IsMarkupSelected => _selectedAnnotation is { Editable: true } selected && IsMarkupKind(selected.Kind);
 
     /// <summary>Gets the colour of a selected markup in the markup palette, or <see langword="null"/>.</summary>
-    public MarkupColor? SelectionMarkupColor => IsMarkupSelected && _selectedAnnotation!.Color is { } color ? AnnotationPalette.Match(color) : null;
+    public MarkupColor? SelectionMarkupColor => IsMarkupSelected && ShownColorOf(_selectedAnnotation!) is { } color ? AnnotationPalette.Match(color) : null;
 
     /// <summary>A colour of the toolbar for the selected drawing (parameter: the <see cref="DrawColor"/>): one step of the history.</summary>
     public ICommand SetSelectionColorCommand => _setSelectionColorCommand ??= new RelayCommand<DrawColor>(color => RestyleSelection(color, null));
@@ -105,7 +109,7 @@ public sealed partial class TabViewModel
         }
 
         var shape = SelectionGeometry ?? drawing;
-        AnnotationColor? newColor = color is { } chosen && DrawPalette.ColorOf(chosen) != target.Color ? DrawPalette.ColorOf(chosen) : null;
+        AnnotationColor? newColor = color is { } chosen && DrawPalette.ColorOf(chosen) != ShownColorOf(target) ? DrawPalette.ColorOf(chosen) : null;
         DrawingGeometry? newShape = width is { } step && StrokeWidths.PointsOf(step) != shape.Width ? WithWidth(shape, StrokeWidths.PointsOf(step)) : null;
         if (newColor is null && newShape is null)
         {
@@ -121,6 +125,7 @@ public sealed partial class TabViewModel
             OnPropertyChanged(nameof(SelectionGeometry));
         }
 
+        var pendingColor = newColor is { } shownColor ? SetPendingColor(target, shownColor) : null;
         _ = RunEditAsync(async editor =>
         {
             try
@@ -142,9 +147,34 @@ public sealed partial class TabViewModel
                 {
                     _pendingGeometry = null;
                     OnPropertyChanged(nameof(SelectionGeometry));
+                    OnPropertyChanged(nameof(SelectionStrokeWidth));
                 }
+
+                ClearPendingColor(pendingColor);
             }
         });
+    }
+
+    /// <summary>The colour <paramref name="annotation"/> is shown with: the one a change is on its way to, else its own.</summary>
+    private AnnotationColor? ShownColorOf(PdfAnnotation annotation) =>
+        _pendingColor is { } pending && SameAnnotation(pending.Target, annotation) ? pending.Color : annotation.Color;
+
+    private PendingColor SetPendingColor(PdfAnnotation target, AnnotationColor color)
+    {
+        var pending = new PendingColor(target, color);
+        _pendingColor = pending;
+        OnSelectionStyleChanged();
+        return pending;
+    }
+
+    /// <summary>A change of the colour ended: it is no longer pending, unless a newer one took its place.</summary>
+    private void ClearPendingColor(PendingColor? pending)
+    {
+        if (pending is not null && ReferenceEquals(_pendingColor, pending))
+        {
+            _pendingColor = null;
+            OnSelectionStyleChanged();
+        }
     }
 
     /// <summary>Gives the selected markup another colour of the markup palette (one step), as the "Comments" panel does.</summary>
@@ -156,19 +186,30 @@ public sealed partial class TabViewModel
         }
 
         var value = AnnotationPalette.ColorOf(color);
-        if (target.Color == value)
+        if (ShownColorOf(target) == value)
         {
             return;
         }
 
         var locator = new AnnotationLocator(target.Page, target.Index, target.Name);
+        var pending = SetPendingColor(target, value);
         _ = RunEditAsync(async editor =>
         {
-            var changed = await editor.UpdateAsync(locator, new AnnotationEdit(Color: value));
-            if (_selectedAnnotation is { } now && SameAnnotation(now, target))
+            try
             {
-                SelectedAnnotation = changed;
+                var changed = await editor.UpdateAsync(locator, new AnnotationEdit(Color: value));
+                if (_selectedAnnotation is { } now && SameAnnotation(now, target))
+                {
+                    SelectedAnnotation = changed;
+                }
+            }
+            finally
+            {
+                ClearPendingColor(pending);
             }
         });
     }
+
+    /// <summary>A colour a change of <paramref name="Target"/> is on its way to.</summary>
+    private sealed record PendingColor(PdfAnnotation Target, AnnotationColor Color);
 }

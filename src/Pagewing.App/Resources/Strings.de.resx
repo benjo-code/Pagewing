@@ -1254,4 +1254,7 @@
   <data name="DrawingChangeFailed" xml:space="preserve">
     <value>Die Zeichnung konnte nicht geändert werden.</value>
   </data>
+  <data name="SelectionHandleNameOf" xml:space="preserve">
+    <value>{0}, {1}, Seite {2}</value>
+  </data>
 </root>

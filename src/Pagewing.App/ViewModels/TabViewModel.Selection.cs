@@ -485,7 +485,7 @@ public sealed partial class TabViewModel
     /// Whether an annotation without a name is on its way to another shape: it is found by its index, which the replace
     /// changes, so nothing else is done to it until the replace is made (and it has its new index and a name).
     /// </summary>
-    private bool WaitsForReplaceWithoutName(PdfAnnotation target) => target.Name is null && _pendingGeometry is not null;
+    private bool WaitsForReplaceWithoutName(PdfAnnotation target) => target.Name is null && (_pendingGeometry is not null || _pendingColor is not null);
 
     /// <summary>The page of the selection changed: it is read again, and the selection takes the annotation as it is now or goes with it.</summary>
     private async Task FollowSelectionAsync(PdfAnnotation selected)
