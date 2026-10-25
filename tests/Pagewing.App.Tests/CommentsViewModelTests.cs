@@ -70,8 +70,9 @@ public sealed class CommentsViewModelTests : IDisposable
         Assert.True(first.HasColor);
         Assert.Equal("Colour #FFE600", first.ColorName);
         var ink = comments.Items[2];
-        Assert.True(ink.IsOther);
-        Assert.Equal("Other: Ink", ink.KindText);
+        Assert.False(ink.IsOther);
+        Assert.True(ink.IsDrawing);
+        Assert.Equal(Strings.ToolInk, ink.KindText);
         Assert.Null(ink.Excerpt);
         Assert.Equal(Strings.CommentKindUnderline, comments.Items[5].KindText);
         Assert.Equal(Strings.CommentKindStrikeOut, comments.Items[6].KindText);
@@ -100,10 +101,13 @@ public sealed class CommentsViewModelTests : IDisposable
         comments.Filter = CommentFilter.StrikeOut;
         Assert.Equal(["so-0001"], comments.Items.Select(item => item.Annotation.Name));
         comments.Filter = CommentFilter.Other;
-        Assert.Equal(["ink-0001", "ft-0001", "note-0001"], comments.Items.Select(item => item.Annotation.Name));
+        Assert.Equal(["ft-0001", "note-0001"], comments.Items.Select(item => item.Annotation.Name));
+        comments.Filter = CommentFilter.Drawings;
+        Assert.Equal(["ink-0001"], comments.Items.Select(item => item.Annotation.Name));
+        comments.Filter = CommentFilter.Other;
 
         // The choices of the list are the filters, in this order, and choosing one sets the filter.
-        Assert.Equal([CommentFilter.All, CommentFilter.Highlight, CommentFilter.Underline, CommentFilter.StrikeOut, CommentFilter.Other], comments.FilterChoices.Select(choice => choice.Value));
+        Assert.Equal([CommentFilter.All, CommentFilter.Highlight, CommentFilter.Underline, CommentFilter.StrikeOut, CommentFilter.Drawings, CommentFilter.Other], comments.FilterChoices.Select(choice => choice.Value));
         Assert.Equal(CommentFilter.Other, comments.SelectedFilterChoice!.Value);
         comments.SelectedFilterChoice = comments.FilterChoices[0];
         Assert.Equal(CommentFilter.All, comments.Filter);
@@ -159,7 +163,7 @@ public sealed class CommentsViewModelTests : IDisposable
 
         // One page: the page is named.
         comments.Filter = CommentFilter.Other;
-        Assert.Equal(language == "en" ? "3 comments, all on page 1" : "3 Kommentare, alle auf Seite 1", comments.Summary);
+        Assert.Equal(language == "en" ? "2 comments, all on page 1" : "2 Kommentare, alle auf Seite 1", comments.Summary);
         comments.Filter = CommentFilter.Underline;
         Assert.Equal(language == "en" ? "1 comment on page 2" : "1 Kommentar auf Seite 2", comments.Summary);
     }
@@ -385,6 +389,249 @@ public sealed class CommentsViewModelTests : IDisposable
         Assert.True(comments.Items[0].IsCurrent);
         Assert.Equal(2, reveals.Count);
     }
+
+    [AvaloniaTheory]
+    [InlineData("en", "Freehand", "Rectangle", "Oval", "Line", "Arrow")]
+    [InlineData("de", "Freihand", "Rechteck", "Ellipse", "Linie", "Pfeil")]
+    public async Task ListsDrawingsWithKind(string language, string ink, string rectangle, string ellipse, string line, string arrow)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var tab = await OpenAsync("text-basic.pdf");
+        var red = DrawPalette.ColorOf(DrawColor.Red);
+
+        // One drawing of each kind, from top to bottom, made as the drawing tools make them.
+        await tab.Editor.ApplyDrawingAsync(0, DrawingGeometry.Ink([[new DisplayPoint(40, 100), new DisplayPoint(80, 110), new DisplayPoint(120, 100)]], 2), red, null, "Bob");
+        await tab.Editor.ApplyDrawingAsync(0, DrawingGeometry.Rectangle(new PageRect(40, 200, 140, 240), 2), red, "Box", "Bob");
+        await tab.Editor.ApplyDrawingAsync(0, DrawingGeometry.Ellipse(new PageRect(40, 300, 140, 340), 2), red, null, null);
+        await tab.Editor.ApplyDrawingAsync(0, DrawingGeometry.Line(new DisplayPoint(40, 400), new DisplayPoint(140, 420), 2), red, null, null);
+        await tab.Editor.ApplyDrawingAsync(0, DrawingGeometry.Arrow(new DisplayPoint(40, 500), new DisplayPoint(140, 520), 2), red, null, null);
+        var comments = await OpenCommentsAsync(tab);
+
+        // The kind in words (and by its symbol in the panel), never "Other"; author and comment as for any entry.
+        Assert.Equal([ink, rectangle, ellipse, line, arrow], comments.Items.Select(item => item.KindText));
+        Assert.Equal([AnnotationKind.Ink, AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Line, AnnotationKind.Arrow], comments.Items.Select(item => item.Kind));
+        Assert.All(comments.Items, item => Assert.True(item.IsDrawing));
+        Assert.All(comments.Items, item => Assert.False(item.IsOther));
+        Assert.True(comments.Items[0].IsInk);
+        Assert.True(comments.Items[1].IsRectangle);
+        Assert.True(comments.Items[2].IsEllipse);
+        Assert.True(comments.Items[3].IsLine);
+        Assert.True(comments.Items[4].IsArrow);
+        Assert.Equal("Bob", comments.Items[1].Author);
+        Assert.Equal("Box", comments.Items[1].Comment);
+        Assert.StartsWith(string.Format(CultureInfo.InvariantCulture, language == "en" ? "Page 1: {0}" : "Seite 1: {0}", rectangle), comments.Items[1].AutomationName, StringComparison.Ordinal);
+        Assert.All(comments.Items, item => Assert.Null(item.LockReason));
+
+        // Drawings of another program in the same words; a /Line of another program (not recognised) is "Other".
+        var foreign = await OpenCommentsAsync(await OpenAsync("drawings-foreign.pdf"));
+        var square = foreign.Items.First(item => item.Annotation.Subtype == "Square");
+        Assert.Equal(rectangle, square.KindText);
+        Assert.Equal(ellipse, foreign.Items.Single(item => item.Annotation.Subtype == "Circle").KindText);
+        Assert.Equal(ink, foreign.Items.Single(item => item.Annotation.Name == "ink-0001").KindText);
+        var other = foreign.Items.Single(item => item.Annotation.Subtype == "Line");
+        Assert.True(other.IsOther);
+        Assert.False(other.IsDrawing);
+        Assert.Equal(string.Format(CultureInfo.InvariantCulture, language == "en" ? "Other: {0}" : "Sonstige: {0}", "Line"), other.KindText);
+    }
+
+    [AvaloniaFact]
+    public async Task GroupsManyCommentlessStrokes()
+    {
+        // Page 1: six strokes without a comment and a highlight between them; page 2: four strokes.
+        PdfAnnotation[] first = [.. Enumerable.Range(0, 3).Select(i => Stroke(0, i, 100 + i)), Highlight(0, 3, 150), .. Enumerable.Range(4, 3).Select(i => Stroke(0, i, 200 + i))];
+        PdfAnnotation[] second = [.. Enumerable.Range(0, 4).Select(i => Stroke(1, i, 100 + i))];
+        var tab = await OpenAsync("annotations-foreign.pdf", configure: tab => tab.AnnotationReader = (_, page, _) =>
+            Task.FromResult<IReadOnlyList<PdfAnnotation>>(page == 0 ? first : second));
+        var comments = await OpenCommentsAsync(tab);
+
+        // One row for the six strokes, where the first of them is; the highlight on its own; page 2 with four rows.
+        Assert.Equal(6, comments.Items.Count);
+        var group = comments.Items[0];
+        Assert.True(group.IsGroup);
+        Assert.False(group.IsExpanded);
+        Assert.Equal(6, group.GroupCount);
+        Assert.Equal("Freehand, 6 strokes", group.KindText);
+        Assert.Equal("1", group.PageText);
+        Assert.True(group.IsInk);
+        Assert.StartsWith("Page 1: Freehand, 6 strokes", group.AutomationName, StringComparison.Ordinal);
+        Assert.Contains(Strings.CommentGroupCollapsed, group.AutomationName, StringComparison.Ordinal);
+        Assert.Equal(AnnotationKind.Highlight, comments.Items[1].Kind);
+        Assert.All(comments.Items.Skip(2), item => Assert.False(item.IsGroup));
+        Assert.All(comments.Items.Skip(2), item => Assert.Equal(1, item.PageIndex));
+
+        // The summary counts the comments, not the rows.
+        Assert.Equal("11 comments on 2 pages", comments.Summary);
+
+        // A group row is no entry to edit.
+        comments.SelectedItem = group;
+        Assert.False(comments.HasSelection);
+        Assert.False(comments.SelectedIsEditable);
+        Assert.False(comments.SelectedIsViewOnly);
+
+        // In German.
+        Strings.Culture = new CultureInfo("de");
+        var german = await OpenCommentsAsync(await OpenAsync("annotations-foreign.pdf", "german.pdf", tab => tab.AnnotationReader = (_, page, _) =>
+            Task.FromResult<IReadOnlyList<PdfAnnotation>>(page == 0 ? first : second)));
+        Assert.Equal("Freihand, 6 Striche", german.Items[0].KindText);
+    }
+
+    [AvaloniaFact]
+    public async Task GroupRowExpandsAndCollapses()
+    {
+        PdfAnnotation[] strokes = [.. Enumerable.Range(0, 5).Select(i => Stroke(0, i, 100 + (i * 10))), Highlight(0, 5, 125)];
+        var tab = await OpenAsync("annotations-foreign.pdf", configure: tab => tab.AnnotationReader = (_, page, _) =>
+            Task.FromResult<IReadOnlyList<PdfAnnotation>>(page == 0 ? strokes : []));
+        var comments = await OpenCommentsAsync(tab);
+        var group = comments.Items[0];
+        Assert.Equal(2, comments.Items.Count);
+
+        // A click, Enter or Space on the row opens it: the row stays, the strokes follow it in the order of the page.
+        comments.JumpCommand.Execute(group);
+        Assert.True(group.IsExpanded);
+        Assert.Contains(Strings.CommentGroupExpanded, group.AutomationName, StringComparison.Ordinal);
+        Assert.Same(group, comments.Items[0]);
+        Assert.Equal(7, comments.Items.Count);
+        Assert.Equal(["s0", "s1", "s2", null, "s3", "s4"], comments.Items.Skip(1).Select(item => item.Kind == AnnotationKind.Ink ? item.Annotation.Name : null));
+        Assert.Equal("6 comments, all on page 1", comments.Summary);
+
+        // A stroke of the open group is an entry like any other: it can be selected and jumped to.
+        var stroke = comments.Items[1];
+        comments.SelectedItem = stroke;
+        Assert.True(comments.HasSelection);
+        Assert.True(comments.SelectedIsEditable);
+
+        // Reading the page again keeps the group open (the same row).
+        comments.Invalidate(new HashSet<int> { 0 });
+        await WaitUntilAsync(() => !comments.IsReading);
+        Assert.Same(group, comments.Items[0]);
+        Assert.True(group.IsExpanded);
+        Assert.Equal(7, comments.Items.Count);
+
+        // A second time closes it again; the selected stroke is no longer listed.
+        comments.JumpCommand.Execute(group);
+        Assert.False(group.IsExpanded);
+        Assert.Equal(2, comments.Items.Count);
+        Assert.Null(comments.SelectedItem);
+
+        // A filter that hides the strokes hides the row; "Drawings" shows it again.
+        comments.Filter = CommentFilter.Highlight;
+        Assert.Single(comments.Items);
+        comments.Filter = CommentFilter.Drawings;
+        Assert.Same(group, Assert.Single(comments.Items));
+    }
+
+    [AvaloniaFact]
+    public async Task StrokesWithACommentAreNeverGrouped()
+    {
+        // Four strokes without a comment and two with one: no group (it needs five).
+        PdfAnnotation[] few = [.. Enumerable.Range(0, 4).Select(i => Stroke(0, i, 100 + i)), Stroke(0, 4, 104, "Look"), Stroke(0, 5, 105, "Here")];
+        var tab = await OpenAsync("annotations-foreign.pdf", configure: tab => tab.AnnotationReader = (_, page, _) =>
+            Task.FromResult<IReadOnlyList<PdfAnnotation>>(page == 0 ? few : []));
+        var comments = await OpenCommentsAsync(tab);
+        Assert.Equal(6, comments.Items.Count);
+        Assert.All(comments.Items, item => Assert.False(item.IsGroup));
+
+        // Five without a comment and two with one: one row for the five, the two on their own.
+        PdfAnnotation[] many = [Stroke(0, 0, 100, "First"), .. Enumerable.Range(1, 5).Select(i => Stroke(0, i, 100 + i)), Stroke(0, 6, 106, "Last")];
+        var other = await OpenCommentsAsync(await OpenAsync("annotations-foreign.pdf", "many.pdf", tab => tab.AnnotationReader = (_, page, _) =>
+            Task.FromResult<IReadOnlyList<PdfAnnotation>>(page == 0 ? many : [])));
+        Assert.Equal(3, other.Items.Count);
+        Assert.Equal("First", other.Items[0].Comment);
+        Assert.True(other.Items[1].IsGroup);
+        Assert.Equal(5, other.Items[1].GroupCount);
+        Assert.Equal("Last", other.Items[2].Comment);
+
+        // A stroke that gets a comment leaves the group (four left: no group any more).
+        many[3] = Stroke(0, 3, 103, "Now with a comment");
+        other.Invalidate(new HashSet<int> { 0 });
+        await WaitUntilAsync(() => !other.IsReading && other.Items.Count == 7);
+        Assert.All(other.Items, item => Assert.False(item.IsGroup));
+    }
+
+    [AvaloniaFact]
+    public async Task FilterDrawings()
+    {
+        var tab = await OpenAsync("drawings-foreign.pdf");
+        var comments = await OpenCommentsAsync(tab);
+        var all = comments.Items.ToArray();
+        Assert.Contains(all, item => item.IsDrawing);
+        Assert.Contains(all, item => item.IsOther);
+
+        // "Drawings" lets every freehand drawing, rectangle, oval, line and arrow through, nothing else.
+        comments.Filter = CommentFilter.Drawings;
+        Assert.Equal(all.Where(item => item.IsDrawing), comments.Items);
+        Assert.All(comments.Items, item => Assert.Contains(item.Kind, new[] { AnnotationKind.Ink, AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Line, AnnotationKind.Arrow }));
+        Assert.Equal(Strings.CommentFilterDrawings, comments.SelectedFilterChoice!.Title);
+
+        // "Other" no longer lists drawings.
+        comments.Filter = CommentFilter.Other;
+        Assert.Equal(all.Where(item => item.IsOther), comments.Items);
+        Assert.DoesNotContain(comments.Items, item => item.IsDrawing);
+    }
+
+    [AvaloniaFact]
+    public async Task LockedReasonIsShown()
+    {
+        var tab = await OpenAsync("drawings-foreign.pdf");
+
+        // A drawing of Pagewing next to those of another program (in the temp copy).
+        var own = await tab.Editor.ApplyDrawingAsync(0, DrawingGeometry.Rectangle(new PageRect(300, 200, 380, 260), 2), DrawPalette.ColorOf(DrawColor.Blue), null, null);
+        var comments = await OpenCommentsAsync(tab);
+
+        // A drawing of another program that Pagewing cannot redraw without loss: the reason in words.
+        var locked = comments.Items.Single(item => item.Annotation.Name == "ink-0001");
+        Assert.Equal(Strings.SelectionLockedForeign, locked.LockReason);
+        Assert.False(locked.ShowsLockReason);
+        Assert.All(comments.Items.Where(item => item.IsDrawing && item.Annotation.Editable && item.Annotation.Name != own!.Name), item => Assert.Equal(Strings.SelectionLockedForeign, item.LockReason));
+        var free = comments.Items.Single(item => item.Annotation.Name == own!.Name);
+        Assert.Null(free.LockReason);
+
+        // A drawing with a reply is "View only", not locked.
+        Assert.Null(comments.Items.Single(item => item.Annotation.Name == "ink-0008").LockReason);
+
+        // In the mode the row and the edit controls say it; only the comment and deleting are offered, no colour.
+        tab.BeginAnnotateCommand.Execute(null);
+        await WaitUntilAsync(() => tab.IsAnnotating);
+        Assert.True(locked.ShowsLockReason);
+        Assert.False(free.ShowsLockReason);
+        comments.SelectedItem = locked;
+        Assert.True(comments.SelectedIsEditable);
+        Assert.Equal(Strings.SelectionLockedForeign, comments.SelectedLockReason);
+        Assert.False(comments.SelectedCanChangeColor);
+        Assert.True(comments.DeleteCommand.CanExecute(null));
+        comments.SelectedItem = free;
+        Assert.Null(comments.SelectedLockReason);
+        Assert.True(comments.SelectedCanChangeColor);
+        Assert.True(comments.SelectedIsDrawing);
+    }
+
+    [AvaloniaFact]
+    public async Task SelectingADrawingRowSelectsItInTheDocument()
+    {
+        var tab = await OpenAsync("text-basic.pdf");
+        await tab.Editor.ApplyDrawingAsync(0, DrawingGeometry.Rectangle(new PageRect(40, 200, 140, 240), 2), DrawPalette.ColorOf(DrawColor.Red), null, null);
+        var comments = await OpenCommentsAsync(tab);
+        var entry = Assert.Single(comments.Items);
+
+        // Outside the mode a jump only shows it.
+        comments.JumpCommand.Execute(entry);
+        Assert.Null(tab.SelectedAnnotation);
+
+        // With the select tool the jump selects it in the document as well.
+        tab.BeginAnnotateCommand.Execute(null);
+        await WaitUntilAsync(() => tab.IsAnnotating);
+        tab.SelectToolCommand.Execute(null);
+        comments.JumpCommand.Execute(entry);
+        Assert.Equal(entry.Annotation.Name, tab.SelectedAnnotation?.Name);
+        Assert.True(tab.CanMoveSelection);
+    }
+
+    private static PdfAnnotation Stroke(int page, int index, double top, string? contents = null) =>
+        new(page, index, $"s{index}", AnnotationKind.Ink, "Ink", DrawPalette.ColorOf(DrawColor.Red), [], [], new PageRect(40, top, 80, top + 4), contents, "Bot", null,
+            Editable: true, Drawing: DrawingGeometry.Ink([[new DisplayPoint(40, top), new DisplayPoint(80, top + 4)]], 2), GeometryEditable: true);
+
+    private static PdfAnnotation Highlight(int page, int index, double top) =>
+        new(page, index, $"h{index}", AnnotationKind.Highlight, "Highlight", AnnotationPalette.ColorOf(MarkupColor.Yellow), [], [new PageRect(40, top, 200, top + 12)], new PageRect(40, top, 200, top + 12), null, "Bot", null, Editable: true);
 
     private static void Pump()
     {

@@ -84,7 +84,7 @@ public sealed class DrawingSelectionTests : IDisposable
         var frame = FindOrNull<Border>(window, "SelectionFrame");
         Assert.NotNull(frame);
         Assert.True(frame.IsVisible);
-        Assert.Equal(Strings.SelectionFrameName, AutomationProperties.GetName(frame));
+        Assert.Equal("Highlight selected, page 1", AutomationProperties.GetName(frame));
         Assert.Equal(AccessibilityView.Content, AutomationProperties.GetAccessibilityView(frame));
 
         // A click on nothing clears the selection; nothing was changed.

@@ -453,6 +453,7 @@ internal sealed class DrawingOverlay : Control
         }
 
         _frameElement.IsVisible = _selection is not null;
+        AutomationProperties.SetName(_frameElement, _selection?.Name ?? Strings.SelectionFrameName);
         AutomationProperties.SetHelpText(_frameElement, _selection?.LockReason);
         foreach (var (kind, handle) in _handleElements)
         {
@@ -553,4 +554,4 @@ internal sealed class DrawingOverlay : Control
 /// handles, the shape it is dragged or nudged to (or <see langword="null"/>) in the colour of the annotation, and why it is
 /// locked, for screen readers.
 /// </summary>
-internal sealed record SelectionView(int Page, PageRect Frame, IReadOnlyList<Handle> Handles, DrawingGeometry? Preview, Color Color, string? LockReason);
+internal sealed record SelectionView(int Page, PageRect Frame, IReadOnlyList<Handle> Handles, DrawingGeometry? Preview, Color Color, string? LockReason, string? Name = null);

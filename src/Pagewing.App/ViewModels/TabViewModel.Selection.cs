@@ -82,6 +82,7 @@ public sealed partial class TabViewModel
             OnPropertyChanged(nameof(CanMoveSelection));
             OnPropertyChanged(nameof(SelectionLockReason));
             OnPropertyChanged(nameof(SelectionGeometry));
+            OnSelectionStyleChanged();
             RaiseSelectionCanExecuteChanged();
         }
     }

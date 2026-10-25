@@ -11,7 +11,7 @@
     "View only". For a highlight, underline or strike-out: the comment in a multi-line field (Ctrl+Enter applies it, an
     empty field removes it, Esc drops what was typed and gives the keys back to the entry; Ctrl+Z in the field undoes its
     text, not the document), "Change colour" (a menu of the five colours, each with its swatch and name, the colour of the
-    markup with a check mark) and "Delete" (trash; undo brings it back). Built by CommentsPanel only while the mode is on,
+    markup with a check mark; for a drawing the colours of the drawing tools, none for a locked drawing of another program, which says why instead) and "Delete" (trash; undo brings it back). Built by CommentsPanel only while the mode is on,
     so the reading view has none of it. Tokens only: surface.sidebar with a border.subtle line on top, labels in
     type.caption and text.secondary.
   -->
@@ -39,6 +39,13 @@
       <TextBlock Name="CommentEditorViewOnly" Classes="caption editorSecondary" TextWrapping="Wrap"
                  IsVisible="{Binding SelectedIsViewOnly}" Text="{x:Static res:Strings.CommentViewOnly}" />
       <StackPanel Name="CommentEditorFields" Spacing="6" IsVisible="{Binding SelectedIsEditable}">
+        <!-- A drawing of another program Pagewing cannot redraw: why only the comment and deleting are offered (M10). -->
+        <StackPanel Name="CommentEditorLocked" Orientation="Horizontal" Spacing="6"
+                    IsVisible="{Binding SelectedLockReason, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Lock}" />
+          <TextBlock Name="CommentEditorLockReason" Classes="caption editorSecondary" TextWrapping="Wrap" MaxWidth="320"
+                     Text="{Binding SelectedLockReason}" />
+        </StackPanel>
         <TextBlock Name="CommentBoxLabel" Classes="caption editorSecondary" Text="{x:Static res:Strings.CommentEditField}" />
         <TextBox Name="CommentBox"
                  Text="{Binding CommentDraft, Mode=TwoWay}"
@@ -49,6 +56,7 @@
         <TextBlock Name="CommentBoxHint" Classes="caption editorSecondary" TextWrapping="Wrap" Text="{x:Static res:Strings.CommentEditHint}" />
         <WrapPanel Orientation="Horizontal">
           <Button Name="CommentColorButton" Margin="0,0,8,4" IsEnabled="{Binding !IsEditingFrozen}"
+                  IsVisible="{Binding SelectedCanChangeColor}"
                   AutomationProperties.Name="{x:Static res:Strings.CommentEditColor}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <Border Name="CommentColorSwatch" Width="12" Height="12" BorderThickness="1" VerticalAlignment="Center"

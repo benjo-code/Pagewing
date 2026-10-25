@@ -1230,4 +1230,28 @@
   <data name="SelectionLockedForeign" xml:space="preserve">
     <value>Von einem anderen Programm gezeichnet: Sie können die Zeichnung kommentieren oder löschen, aber nicht verschieben oder ändern.</value>
   </data>
+  <data name="AnnotateWidthsName" xml:space="preserve">
+    <value>Strichstärken</value>
+  </data>
+  <data name="CommentFilterDrawings" xml:space="preserve">
+    <value>Zeichnungen</value>
+  </data>
+  <data name="CommentInkGroup" xml:space="preserve">
+    <value>Freihand, {0} Striche</value>
+  </data>
+  <data name="CommentGroupCollapsed" xml:space="preserve">
+    <value>zugeklappt</value>
+  </data>
+  <data name="CommentGroupExpanded" xml:space="preserve">
+    <value>aufgeklappt</value>
+  </data>
+  <data name="CommentGroupHint" xml:space="preserve">
+    <value>Eingabe oder Leertaste zeigt oder verbirgt die Striche.</value>
+  </data>
+  <data name="SelectionFrameNameOf" xml:space="preserve">
+    <value>{0} ausgewählt, Seite {1}</value>
+  </data>
+  <data name="DrawingChangeFailed" xml:space="preserve">
+    <value>Die Zeichnung konnte nicht geändert werden.</value>
+  </data>
 </root>

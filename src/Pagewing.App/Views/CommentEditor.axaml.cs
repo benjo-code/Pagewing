@@ -80,9 +80,14 @@ public sealed partial class CommentEditor : UserControl
     }
 
     /// <summary>A swatch of a palette colour (content of the PDF) with a border.strong edge, and a check mark when it is the chosen one.</summary>
-    internal static Panel Swatch(MarkupColor color, bool chosen)
+    internal static Panel Swatch(MarkupColor color, bool chosen) => Swatch(AnnotationPalette.ColorOf(color), chosen);
+
+    /// <summary>
+    /// A swatch of a colour of a palette (markup or drawing; content of the PDF) with a border.strong edge, and a check mark
+    /// when it is the chosen one: dark on a light colour, light on a dark one (<see cref="AnnotationToolbar.CheckTokenFor"/>).
+    /// </summary>
+    internal static Panel Swatch(AnnotationColor rgb, bool chosen)
     {
-        var rgb = AnnotationPalette.ColorOf(color);
         var fill = new Border
         {
             Width = 16,
@@ -96,7 +101,7 @@ public sealed partial class CommentEditor : UserControl
         if (chosen)
         {
             var check = new StrokeIcon { Width = 12, Height = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            check.Bind(StrokeIcon.BrushProperty, check.GetResourceObservable("Pw.Brush.Search.On"));
+            check.Bind(StrokeIcon.BrushProperty, check.GetResourceObservable("Pw.Brush." + AnnotationToolbar.CheckTokenFor(rgb)));
             check.Bind(StrokeIcon.DataProperty, check.GetResourceObservable("Pw.Icon.Check"));
             panel.Children.Add(check);
         }
@@ -106,7 +111,7 @@ public sealed partial class CommentEditor : UserControl
 
     private void OnCommentsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(CommentsViewModel.SelectedColor) or nameof(CommentsViewModel.SelectedItem))
+        if (e.PropertyName is nameof(CommentsViewModel.SelectedColor) or nameof(CommentsViewModel.SelectedDrawColor) or nameof(CommentsViewModel.SelectedItem))
         {
             UpdateColorSwatch();
         }
@@ -131,8 +136,29 @@ public sealed partial class CommentEditor : UserControl
     {
         MenuKeyboardFocus.EnsureRegistered();
         _colorEntries.Clear();
-        if (_comments is not { SelectedIsEditable: true } comments)
+        if (_comments is not { SelectedCanChangeColor: true } comments)
         {
+            return;
+        }
+
+        if (comments.SelectedIsDrawing)
+        {
+            // A drawing: the colours of the drawing tools (one step each, the drawing is redrawn).
+            foreach (var color in DrawPalette.All)
+            {
+                var name = Strings.DrawColorName(color);
+                var entry = new MenuItem
+                {
+                    Name = "DrawColorEntry" + color,
+                    Header = name,
+                    Command = comments.SetItemDrawColorCommand,
+                    CommandParameter = color,
+                    Icon = Swatch(DrawPalette.ColorOf(color), comments.SelectedDrawColor == color),
+                };
+                AutomationProperties.SetName(entry, name);
+                _colorEntries.Add(entry);
+            }
+
             return;
         }
 

@@ -1,8 +1,10 @@
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Pagewing.App.Controls;
+using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
 using Pagewing.Core.Annotations;
 using Pagewing.Core.Text;
@@ -30,6 +32,9 @@ public sealed partial class DocumentView
 {
     /// <summary>How far (DIPs) from a stroke or outline a click of the select tool still picks it.</summary>
     internal const double PickTolerance = 6;
+
+    // The name of the selection frame for screen readers, parsed once per language (UI thread only).
+    private static (string Text, CompositeFormat Format)? _frameName;
 
     private SelectionDrag? _selectionDrag;
     private WindowBase? _selectionDragWindow;
@@ -261,15 +266,31 @@ public sealed partial class DocumentView
             return;
         }
 
+        // A change of the selection (its colour or width in the toolbar) that PDFium refuses is told like a refused drawing.
+        ListenForRefusedDrawings(tab);
         var geometry = _selectionDrag is { } drag && ReferenceEquals(drag.Tab, tab) ? drag.Geometry ?? drag.Original : tab.SelectionGeometry;
         var shown = geometry is not null ? selected with { Drawing = geometry } : selected;
         var preview = geometry is not null && !ReferenceEquals(geometry, selected.Drawing) ? geometry : null;
         var color = selected.Color is { } rgb ? Color.FromRgb(rgb.R, rgb.G, rgb.B) : Colors.Black;
-        EnsureDrawingOverlay().ShowSelection(new SelectionView(selected.Page, FrameOf(shown), SelectionHandles.For(shown), preview, color, tab.SelectionLockReason));
+        var name = string.Format(Strings.Culture, FrameNameFormat(), Strings.KindName(selected.Kind) ?? selected.Subtype, selected.Page + 1);
+        EnsureDrawingOverlay().ShowSelection(new SelectionView(selected.Page, FrameOf(shown), SelectionHandles.For(shown), preview, color, tab.SelectionLockReason, name));
     }
 
     /// <summary>The view scrolled or zoomed: the selection is placed again.</summary>
     private void FollowSelectionViewWithViewport() => _drawingOverlay?.RefreshSelection();
+
+    /// <summary>The parsed name of the selection frame ("Rectangle selected, page 1"), parsed again only when the language changed.</summary>
+    private static CompositeFormat FrameNameFormat()
+    {
+        var text = Strings.SelectionFrameNameOf;
+        if (_frameName is not { } known || !string.Equals(known.Text, text, StringComparison.Ordinal))
+        {
+            known = (text, CompositeFormat.Parse(text));
+            _frameName = known;
+        }
+
+        return known.Format;
+    }
 
     /// <summary>The view leaves the tab or its document: a drag goes, and the selection with it (a waiting nudge is made first).</summary>
     private void DisconnectSelection()

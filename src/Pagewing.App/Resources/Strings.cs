@@ -425,6 +425,7 @@ public static class Strings
     public static string AnnotateMore => Get("AnnotateMore");
     public static string DrawingLimitReached => Get("DrawingLimitReached");
     public static string DrawingFailed => Get("DrawingFailed");
+    public static string DrawingChangeFailed => Get("DrawingChangeFailed");
     public static string SelectionFrameName => Get("SelectionFrameName");
     public static string SelectionHandleTopLeft => Get("SelectionHandleTopLeft");
     public static string SelectionHandleTop => Get("SelectionHandleTop");
@@ -437,6 +438,30 @@ public static class Strings
     public static string SelectionHandleStart => Get("SelectionHandleStart");
     public static string SelectionHandleEnd => Get("SelectionHandleEnd");
     public static string SelectionLockedForeign => Get("SelectionLockedForeign");
+    public static string SelectionFrameNameOf => Get("SelectionFrameNameOf");
+    public static string AnnotateWidthsName => Get("AnnotateWidthsName");
+    public static string CommentFilterDrawings => Get("CommentFilterDrawings");
+    public static string CommentInkGroup => Get("CommentInkGroup");
+    public static string CommentGroupCollapsed => Get("CommentGroupCollapsed");
+    public static string CommentGroupExpanded => Get("CommentGroupExpanded");
+    public static string CommentGroupHint => Get("CommentGroupHint");
+
+    /// <summary>
+    /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",
+    /// "Rectangle" …; <see langword="null"/> for a kind without a word of its own (the panel names its PDF subtype then).
+    /// </summary>
+    public static string? KindName(Pagewing.Core.Annotations.AnnotationKind kind) => kind switch
+    {
+        Pagewing.Core.Annotations.AnnotationKind.Highlight => CommentKindHighlight,
+        Pagewing.Core.Annotations.AnnotationKind.Underline => CommentKindUnderline,
+        Pagewing.Core.Annotations.AnnotationKind.StrikeOut => CommentKindStrikeOut,
+        Pagewing.Core.Annotations.AnnotationKind.Ink => ToolInk,
+        Pagewing.Core.Annotations.AnnotationKind.Rectangle => ToolRectangle,
+        Pagewing.Core.Annotations.AnnotationKind.Ellipse => ToolEllipse,
+        Pagewing.Core.Annotations.AnnotationKind.Line => ToolLine,
+        Pagewing.Core.Annotations.AnnotationKind.Arrow => ToolArrow,
+        _ => null,
+    };
 
     /// <summary>Gets the name of a colour of the markup palette (<see cref="Pagewing.Core.Annotations.AnnotationPalette.NameKey"/>).</summary>
     public static string ColorName(Pagewing.Core.Annotations.MarkupColor color) =>

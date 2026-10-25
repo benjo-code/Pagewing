@@ -146,7 +146,7 @@ public sealed class CommentsPanelTests : IDisposable
         foreach (var (index, iconKey, kind) in new[]
         {
             (0, "Pw.Icon.Highlight", "Highlight"),
-            (2, "Pw.Icon.Note", "Other: Ink"),
+            (2, "Pw.Icon.Pencil", "Freehand"),
             (4, "Pw.Icon.Note", "Other: Text"),
             (5, "Pw.Icon.Underline", "Underline"),
             (6, "Pw.Icon.Strikethrough", "Strike-out"),
@@ -301,6 +301,51 @@ public sealed class CommentsPanelTests : IDisposable
         Press(window, Key.End, PhysicalKey.End);
         await WaitUntilAsync(window, () => FocusedIndex(window, list) == 4999);
         Assert.InRange(list.GetRealizedContainers().Count(), 1, 60);
+    }
+
+    [AvaloniaFact]
+    public async Task TwoHundredStrokesStayScrollable()
+    {
+        var (window, viewModel) = Show();
+        var tab = await OpenAsync(window, viewModel, "text-basic.pdf");
+
+        // 200 freehand strokes without a comment on page 1, made through the editor of the tab (in the temp copy).
+        var red = DrawPalette.ColorOf(DrawColor.Red);
+        for (var i = 0; i < 200; i++)
+        {
+            var top = 60 + (i * 3);
+            await tab.Editor.ApplyDrawingAsync(0, DrawingGeometry.Ink([[new DisplayPoint(40, top), new DisplayPoint(120, top + 2)]], 1), red, null, null);
+        }
+
+        var (comments, list) = await OpenPanelAsync(window, viewModel, tab);
+        await WaitUntilAsync(window, () => list.ContainerFromIndex(0) is { IsEffectivelyVisible: true });
+
+        // One row: "Freehand, 200 strokes", with the symbol of the kind and the chevron of a closed group.
+        var group = Assert.Single(comments.Items);
+        Assert.True(group.IsGroup);
+        Assert.Equal("Freehand, 200 strokes", Find<TextBlock>(list.ContainerFromIndex(0)!, "CommentKind").Text);
+        Assert.Same(Resource("Pw.Icon.Pencil"), Find<StrokeIcon>(list.ContainerFromIndex(0)!, "CommentKindIcon").Data);
+        Assert.Same(Resource("Pw.Icon.ChevronRight"), Find<StrokeIcon>(list.ContainerFromIndex(0)!, "CommentGroupChevron").Data);
+        Assert.Equal("200 comments, all on page 1", comments.Summary);
+
+        // Enter on the row opens it: 200 rows more, still virtualized, and the keyboard reaches the end.
+        list.ContainerFromIndex(0)!.Focus(NavigationMethod.Tab);
+        Settle(window);
+        Press(window, Key.Enter, PhysicalKey.Enter);
+        await WaitUntilAsync(window, () => comments.Items.Count == 201);
+        Assert.True(group.IsExpanded);
+        Assert.Same(Resource("Pw.Icon.ChevronDown"), Find<StrokeIcon>(list.ContainerFromIndex(0)!, "CommentGroupChevron").Data);
+        Assert.InRange(list.GetRealizedContainers().Count(), 1, 60);
+        Press(window, Key.End, PhysicalKey.End);
+        await WaitUntilAsync(window, () => FocusedIndex(window, list) == 200);
+        Assert.InRange(list.GetRealizedContainers().Count(), 1, 60);
+
+        // Home and Space close it again.
+        Press(window, Key.Home, PhysicalKey.Home);
+        await WaitUntilAsync(window, () => FocusedIndex(window, list) == 0);
+        Press(window, Key.Space, PhysicalKey.Space);
+        await WaitUntilAsync(window, () => comments.Items.Count == 1);
+        Assert.False(group.IsExpanded);
     }
 
     [AvaloniaFact]

@@ -1230,4 +1230,28 @@
   <data name="SelectionLockedForeign" xml:space="preserve">
     <value>Drawn by another program: it can be commented on or deleted, but not moved or changed.</value>
   </data>
+  <data name="AnnotateWidthsName" xml:space="preserve">
+    <value>Stroke widths</value>
+  </data>
+  <data name="CommentFilterDrawings" xml:space="preserve">
+    <value>Drawings</value>
+  </data>
+  <data name="CommentInkGroup" xml:space="preserve">
+    <value>Freehand, {0} strokes</value>
+  </data>
+  <data name="CommentGroupCollapsed" xml:space="preserve">
+    <value>collapsed</value>
+  </data>
+  <data name="CommentGroupExpanded" xml:space="preserve">
+    <value>expanded</value>
+  </data>
+  <data name="CommentGroupHint" xml:space="preserve">
+    <value>Enter or Space shows or hides the strokes.</value>
+  </data>
+  <data name="SelectionFrameNameOf" xml:space="preserve">
+    <value>{0} selected, page {1}</value>
+  </data>
+  <data name="DrawingChangeFailed" xml:space="preserve">
+    <value>The drawing could not be changed.</value>
+  </data>
 </root>

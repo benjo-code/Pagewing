@@ -107,12 +107,7 @@ public sealed partial class DocumentView
 
         // Only now, never at connect: nothing of the drawing costs anything before the first stroke.
         tab.CancelDrawingGesture = EndGesture;
-        if (!ReferenceEquals(_drawingTab, tab))
-        {
-            DisconnectDrawing();
-            _drawingTab = tab;
-            tab.DrawingRefused += ShowHint;
-        }
+        ListenForRefusedDrawings(tab);
 
         EnsureDrawingOverlay().Show(preview);
         if (_topLevel is WindowBase window)
@@ -223,6 +218,22 @@ public sealed partial class DocumentView
         {
             _drawingOverlay?.Refresh();
         }
+    }
+
+    /// <summary>
+    /// Shows why a drawing of <paramref name="tab"/> was refused (a new one, or a change of the selected one) as a hint, from
+    /// its first stroke or selection here until the view leaves the tab.
+    /// </summary>
+    private void ListenForRefusedDrawings(TabViewModel tab)
+    {
+        if (ReferenceEquals(_drawingTab, tab))
+        {
+            return;
+        }
+
+        DisconnectDrawing();
+        _drawingTab = tab;
+        tab.DrawingRefused += ShowHint;
     }
 
     /// <summary>The view leaves the tab: its refused drawings are no longer shown here.</summary>
