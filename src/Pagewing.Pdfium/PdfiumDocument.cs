@@ -502,6 +502,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
 
         public Exception? Error { get; private set; }
 
+        /// <summary>Called from <see cref="WriteSaveBlock"/>; never inlined into the callback (see <see cref="PdfiumRenderWork"/>, <c>Now</c>).</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public bool Write(void* data, nuint size)
         {
             try
@@ -564,7 +566,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             }
         }
 
-        /// <summary>Reads exactly <paramref name="size"/> bytes at <paramref name="position"/>.</summary>
+        /// <summary>Reads exactly <paramref name="size"/> bytes at <paramref name="position"/>. Called from <see cref="ReadBlock"/>; never inlined into the callback (see <see cref="PdfiumRenderWork"/>, <c>Now</c>).</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public bool Read(nuint position, byte* buffer, nuint size)
         {
             if (position > (ulong)Length || size > (ulong)Length - position)
