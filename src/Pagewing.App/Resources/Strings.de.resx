@@ -1065,6 +1065,66 @@
   <data name="CommandStrikeOut" xml:space="preserve">
     <value>Durchstreichen</value>
   </data>
+  <data name="CommandSelectTool" xml:space="preserve">
+    <value>Zeichnungen auswählen und verschieben</value>
+  </data>
+  <data name="CommandInk" xml:space="preserve">
+    <value>Freihand zeichnen</value>
+  </data>
+  <data name="CommandRectangle" xml:space="preserve">
+    <value>Rechteck zeichnen</value>
+  </data>
+  <data name="CommandEllipse" xml:space="preserve">
+    <value>Ellipse zeichnen</value>
+  </data>
+  <data name="CommandLine" xml:space="preserve">
+    <value>Linie zeichnen</value>
+  </data>
+  <data name="CommandArrow" xml:space="preserve">
+    <value>Pfeil zeichnen</value>
+  </data>
+  <data name="ToolSelect" xml:space="preserve">
+    <value>Auswählen</value>
+  </data>
+  <data name="ToolInk" xml:space="preserve">
+    <value>Freihand</value>
+  </data>
+  <data name="ToolRectangle" xml:space="preserve">
+    <value>Rechteck</value>
+  </data>
+  <data name="ToolEllipse" xml:space="preserve">
+    <value>Ellipse</value>
+  </data>
+  <data name="ToolLine" xml:space="preserve">
+    <value>Linie</value>
+  </data>
+  <data name="ToolArrow" xml:space="preserve">
+    <value>Pfeil</value>
+  </data>
+  <data name="DrawColorRed" xml:space="preserve">
+    <value>Rot</value>
+  </data>
+  <data name="DrawColorBlack" xml:space="preserve">
+    <value>Schwarz</value>
+  </data>
+  <data name="DrawColorBlue" xml:space="preserve">
+    <value>Blau</value>
+  </data>
+  <data name="DrawColorGreen" xml:space="preserve">
+    <value>Grün</value>
+  </data>
+  <data name="DrawColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="StrokeWidthThin" xml:space="preserve">
+    <value>Dünn (1 pt)</value>
+  </data>
+  <data name="StrokeWidthMedium" xml:space="preserve">
+    <value>Mittel (2 pt)</value>
+  </data>
+  <data name="StrokeWidthThick" xml:space="preserve">
+    <value>Dick (4 pt)</value>
+  </data>
   <data name="AnnotateToolbarName" xml:space="preserve">
     <value>Werkzeuge zum Kommentieren</value>
   </data>

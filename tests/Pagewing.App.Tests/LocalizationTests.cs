@@ -52,8 +52,8 @@ public sealed partial class LocalizationTests : IDisposable
     {
         var english = ReadKeys("Strings.en.resx");
         var german = ReadKeys("Strings.de.resx");
-        // The name of the app, and the colour "Orange" of the markup palette, which German writes as English does.
-        var same = english.Where(pair => pair.Key is not ("AppName" or "MarkupColorOrange") && german[pair.Key] == pair.Value)
+        // The name of the app, and the colour "Orange" of the two palettes, which German writes as English does.
+        var same = english.Where(pair => pair.Key is not ("AppName" or "MarkupColorOrange" or "DrawColorOrange") && german[pair.Key] == pair.Value)
             .Select(pair => pair.Key)
             .ToArray();
 

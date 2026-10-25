@@ -382,6 +382,26 @@ public static class Strings
     public static string CommandHighlight => Get("CommandHighlight");
     public static string CommandUnderline => Get("CommandUnderline");
     public static string CommandStrikeOut => Get("CommandStrikeOut");
+    public static string CommandSelectTool => Get("CommandSelectTool");
+    public static string CommandInk => Get("CommandInk");
+    public static string CommandRectangle => Get("CommandRectangle");
+    public static string CommandEllipse => Get("CommandEllipse");
+    public static string CommandLine => Get("CommandLine");
+    public static string CommandArrow => Get("CommandArrow");
+    public static string ToolSelect => Get("ToolSelect");
+    public static string ToolInk => Get("ToolInk");
+    public static string ToolRectangle => Get("ToolRectangle");
+    public static string ToolEllipse => Get("ToolEllipse");
+    public static string ToolLine => Get("ToolLine");
+    public static string ToolArrow => Get("ToolArrow");
+    public static string DrawColorRed => Get("DrawColorRed");
+    public static string DrawColorBlack => Get("DrawColorBlack");
+    public static string DrawColorBlue => Get("DrawColorBlue");
+    public static string DrawColorGreen => Get("DrawColorGreen");
+    public static string DrawColorOrange => Get("DrawColorOrange");
+    public static string StrokeWidthThin => Get("StrokeWidthThin");
+    public static string StrokeWidthMedium => Get("StrokeWidthMedium");
+    public static string StrokeWidthThick => Get("StrokeWidthThick");
     public static string AnnotateToolbarName => Get("AnnotateToolbarName");
     public static string AnnotateToolsName => Get("AnnotateToolsName");
     public static string AnnotateColorsName => Get("AnnotateColorsName");
@@ -407,6 +427,19 @@ public static class Strings
     /// <summary>Gets the name of a colour of the markup palette (<see cref="Pagewing.Core.Annotations.AnnotationPalette.NameKey"/>).</summary>
     public static string ColorName(Pagewing.Core.Annotations.MarkupColor color) =>
         Get(Pagewing.Core.Annotations.AnnotationPalette.NameKey(color));
+
+    /// <summary>Gets the name of a colour of the drawing palette (<see cref="Pagewing.Core.Annotations.DrawPalette.NameKey"/>).</summary>
+    public static string DrawColorName(Pagewing.Core.Annotations.DrawColor color) =>
+        Get(Pagewing.Core.Annotations.DrawPalette.NameKey(color));
+
+    /// <summary>Gets the name of a stroke width with its size in points, for example "Thin (1 pt)".</summary>
+    public static string StrokeWidthName(Pagewing.Core.Annotations.StrokeWidth width) => width switch
+    {
+        Pagewing.Core.Annotations.StrokeWidth.Thin => StrokeWidthThin,
+        Pagewing.Core.Annotations.StrokeWidth.Medium => StrokeWidthMedium,
+        Pagewing.Core.Annotations.StrokeWidth.Thick => StrokeWidthThick,
+        _ => throw new ArgumentOutOfRangeException(nameof(width)),
+    };
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

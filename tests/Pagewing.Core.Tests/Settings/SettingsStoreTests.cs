@@ -209,6 +209,34 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void WithToolStyleKeepsTheOtherToolsAndDoesNotAliasTheOldDictionary()
+    {
+        var first = AppSettings.Default.WithToolStyle(AnnotationKind.Ink, new ToolStyle(DrawColor.Blue, StrokeWidth.Thick));
+        var second = first.WithToolStyle(AnnotationKind.Arrow, new ToolStyle(DrawColor.Black, StrokeWidth.Thin));
+
+        // Both tools are there; the one before is untouched, and the first settings do not see the second tool.
+        Assert.Equal(new ToolStyle(DrawColor.Blue, StrokeWidth.Thick), second.StyleOf(AnnotationKind.Ink));
+        Assert.Equal(new ToolStyle(DrawColor.Black, StrokeWidth.Thin), second.StyleOf(AnnotationKind.Arrow));
+        Assert.Equal(AppSettings.DefaultToolStyle, second.StyleOf(AnnotationKind.Rectangle));
+        Assert.NotSame(first.ToolStyles, second.ToolStyles);
+        Assert.Equal([AnnotationKind.Ink], first.ToolStyles!.Keys.ToArray());
+        Assert.Equal(AppSettings.DefaultToolStyle, first.StyleOf(AnnotationKind.Arrow));
+
+        // Changing a tool again replaces its style only, again in a new dictionary.
+        var third = second.WithToolStyle(AnnotationKind.Ink, new ToolStyle(DrawColor.Green, StrokeWidth.Medium));
+        Assert.Equal(new ToolStyle(DrawColor.Green, StrokeWidth.Medium), third.StyleOf(AnnotationKind.Ink));
+        Assert.Equal(new ToolStyle(DrawColor.Blue, StrokeWidth.Thick), second.StyleOf(AnnotationKind.Ink));
+        Assert.Equal(new ToolStyle(DrawColor.Black, StrokeWidth.Thin), third.StyleOf(AnnotationKind.Arrow));
+        Assert.NotSame(second.ToolStyles, third.ToolStyles);
+
+        // The other settings come along; the source is not changed; a kind that is no drawing tool changes nothing.
+        var themed = (AppSettings.Default with { Theme = ThemeSetting.Dark }).WithToolStyle(AnnotationKind.Line, new ToolStyle(DrawColor.Orange, StrokeWidth.Thin));
+        Assert.Equal(ThemeSetting.Dark, themed.Theme);
+        Assert.Null(AppSettings.Default.ToolStyles);
+        Assert.Null(AppSettings.Default.WithToolStyle(AnnotationKind.Highlight, new ToolStyle(DrawColor.Blue, StrokeWidth.Thin)).ToolStyles);
+    }
+
+    [Fact]
     public void ToolStylesRoundTripAndFallBackToDefaults()
     {
         var store = new SettingsStore(FilePath);

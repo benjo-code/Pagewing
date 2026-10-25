@@ -179,6 +179,28 @@ public sealed record AppSettings
             ? style
             : DefaultToolStyle;
 
+    /// <summary>
+    /// Returns a copy in which <paramref name="kind"/> has <paramref name="style"/> and every other tool keeps its style.
+    /// The copy has a new dictionary: the dictionary of this instance is never edited, so settings handed out earlier (and
+    /// the equality of two settings, which compares the dictionary by reference) stay what they were.
+    /// </summary>
+    /// <param name="kind">The kind of annotation the tool creates; a kind that is no drawing tool changes nothing.</param>
+    /// <param name="style">The style.</param>
+    /// <returns>The changed copy.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="style"/> is <see langword="null"/>.</exception>
+    public AppSettings WithToolStyle(AnnotationKind kind, ToolStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(style);
+        if (!ToolStyleKinds.Contains(kind))
+        {
+            return this;
+        }
+
+        var styles = ToolStyles is null ? new Dictionary<AnnotationKind, ToolStyle>() : new Dictionary<AnnotationKind, ToolStyle>(ToolStyles);
+        styles[kind] = style;
+        return this with { ToolStyles = styles };
+    }
+
     private static bool IsValid(ToolStyle? style) =>
         style is not null && Enum.IsDefined(style.Color) && Enum.IsDefined(style.Width);
 

@@ -38,9 +38,9 @@ public sealed partial class DocumentView
     /// <summary>Gets whether the word of a double click waits to be marked (for tests).</summary>
     internal bool IsMarkupPending => _pendingMarkup is not null;
 
-    /// <summary>The tool a release marks with: the mode "Comment" is on with a tool; otherwise <see langword="null"/>.</summary>
+    /// <summary>The tool a release marks with: the mode "Comment" is on with a text markup tool; otherwise <see langword="null"/> (a drawing tool does not mark text).</summary>
     private static AnnotationKind? MarksOnRelease(TabViewModel tab) =>
-        tab is { IsAnnotating: true, ActiveTool: { } tool, HasShownSharpPage: true } ? tool : null;
+        tab is { IsAnnotating: true, ActiveTool: { } tool, HasShownSharpPage: true } && TabViewModel.IsMarkupKind(tool) ? tool : null;
 
     /// <summary>
     /// The release of a press: with a tool of the mode, a selection made by a drag, a double or a triple click becomes a

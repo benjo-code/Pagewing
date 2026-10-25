@@ -24,6 +24,9 @@ public sealed partial class TabViewModel
     // The kind whose colour the colour buttons show without a tool: the last tool chosen (the highlight at first).
     private AnnotationKind _lastTool = AnnotationKind.Highlight;
 
+    // The drawing tool whose style the style controls show without a tool: the last drawing tool chosen (the pen at first).
+    private AnnotationKind _lastDrawTool = AnnotationKind.Ink;
+
     // Whether the open document allows annotations (its permissions), read on the first request of the mode for it, and
     // the document it was read for; a read that runs.
     private (PdfDocument Document, bool Allowed)? _permission;
@@ -64,8 +67,11 @@ public sealed partial class TabViewModel
     }
 
     /// <summary>
-    /// Gets the tool of the mode: <see cref="AnnotationKind.Highlight"/>, <see cref="AnnotationKind.Underline"/>,
-    /// <see cref="AnnotationKind.StrikeOut"/>, or <see langword="null"/> (a selection only selects, Ctrl+C copies it).
+    /// Gets the tool of the mode: a text markup (<see cref="AnnotationKind.Highlight"/>, <see cref="AnnotationKind.Underline"/>,
+    /// <see cref="AnnotationKind.StrikeOut"/>), a drawing tool (<see cref="AnnotationKind.Ink"/>, <see cref="AnnotationKind.Rectangle"/>,
+    /// <see cref="AnnotationKind.Ellipse"/>, <see cref="AnnotationKind.Line"/>, <see cref="AnnotationKind.Arrow"/>; see
+    /// <c>TabViewModel.Drawing.cs</c>), or <see langword="null"/> (a selection only selects, Ctrl+C copies it; the select
+    /// tool, <see cref="IsSelectTool"/>, is none of these). A tool stays on until another is chosen or the mode ends.
     /// </summary>
     public AnnotationKind? ActiveTool
     {
@@ -76,20 +82,23 @@ public sealed partial class TabViewModel
             {
                 if (value is { } tool)
                 {
-                    _lastTool = tool;
+                    RememberTool(tool);
+                    IsSelectTool = false;
                 }
 
                 OnPropertyChanged(nameof(ActiveColor));
+                OnActiveToolChangedForDrawing();
             }
         }
     }
 
     /// <summary>
-    /// Gets the colour of the tool (without one, of the last tool chosen): the colour remembered for that kind in the
-    /// settings (<see cref="AppSettings.HighlightColor"/>, <see cref="AppSettings.UnderlineColor"/>,
-    /// <see cref="AppSettings.StrikeOutColor"/>; yellow, blue and pink at first).
+    /// Gets the colour of the text markup tool (without one, of the last text markup tool chosen): the colour remembered for
+    /// that kind in the settings (<see cref="AppSettings.HighlightColor"/>, <see cref="AppSettings.UnderlineColor"/>,
+    /// <see cref="AppSettings.StrikeOutColor"/>; yellow, blue and pink at first). A drawing tool has its style instead
+    /// (<see cref="ActiveStyle"/>).
     /// </summary>
-    public MarkupColor ActiveColor => ColorOf(_activeTool ?? _lastTool);
+    public MarkupColor ActiveColor => ColorOf(_activeTool is { } tool && IsMarkupKind(tool) ? tool : _lastTool);
 
     /// <summary>
     /// Gets why the mode cannot start now, for the "Comments" panel, or <see langword="null"/>: the document forbids
@@ -126,15 +135,12 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Chooses a tool of the mode (parameter: the <see cref="AnnotationKind"/>); choosing the tool that is on again turns
-    /// it off (the selection only selects). Only in the mode, and only the three kinds of text markup.
+    /// it off (the selection only selects). Only in the mode, and only the kinds that have a tool: the three text markups
+    /// and the drawing tools (<see cref="IsToolKind"/>). It takes the place of the select tool.
     /// </summary>
-    public ICommand SetToolCommand => _setToolCommand ??= new RelayCommand<AnnotationKind>(kind =>
-    {
-        if (_isAnnotating && IsMarkupKind(kind))
-        {
-            ActiveTool = _activeTool == kind ? null : kind;
-        }
-    });
+    public ICommand SetToolCommand => _setToolCommand ??= new RelayCommand<AnnotationKind>(
+        kind => ActiveTool = _activeTool == kind ? null : kind,
+        kind => _isAnnotating && IsToolKind(kind));
 
     /// <summary>
     /// Chooses the colour (parameter: the <see cref="MarkupColor"/>) of the tool, or without one of the last tool, which it
@@ -147,7 +153,7 @@ public sealed partial class TabViewModel
             return;
         }
 
-        var kind = _activeTool ?? _lastTool;
+        var kind = _activeTool is { } tool && IsMarkupKind(tool) ? tool : _lastTool;
         AnnotationSettings.Update(current => kind switch
         {
             AnnotationKind.Underline => current with { UnderlineColor = color },
@@ -324,6 +330,7 @@ public sealed partial class TabViewModel
         if (_isAnnotating)
         {
             OnPropertyChanged(nameof(ActiveColor));
+            OnPropertyChanged(nameof(ActiveStyle));
         }
     }
 
@@ -349,8 +356,23 @@ public sealed partial class TabViewModel
 
     private static bool IsBlank(TextChar c) => !Rune.IsValid(c.CodePoint) || Rune.IsWhiteSpace(new Rune(c.CodePoint));
 
-    private static bool IsMarkupKind(AnnotationKind kind) =>
+    internal static bool IsMarkupKind(AnnotationKind kind) =>
         kind is AnnotationKind.Highlight or AnnotationKind.Underline or AnnotationKind.StrikeOut;
+
+    /// <summary>Whether the kind has a tool in the mode: a text markup or a drawing tool.</summary>
+    private static bool IsToolKind(AnnotationKind kind) => IsMarkupKind(kind) || IsDrawKind(kind);
+
+    private void RememberTool(AnnotationKind tool)
+    {
+        if (IsMarkupKind(tool))
+        {
+            _lastTool = tool;
+        }
+        else if (IsDrawKind(tool))
+        {
+            _lastDrawTool = tool;
+        }
+    }
 
     private MarkupColor ColorOf(AnnotationKind kind)
     {
@@ -396,11 +418,12 @@ public sealed partial class TabViewModel
     private bool CanRunMarkup() => CanRequestAnnotate() && !_isAskedAbout && !_isEditingFrozen;
 
     /// <summary>
-    /// Starts the mode, with <paramref name="tool"/> if given, once the permissions of the document allow it (read now on
-    /// the first request for this document); with <paramref name="apply"/> a text selection becomes a markup of that tool
-    /// at once. A document that forbids annotations gets no mode: the "Comments" panel opens and says why.
+    /// Starts the mode, with <paramref name="tool"/> if given (or, with <paramref name="selectTool"/>, with the select tool),
+    /// once the permissions of the document allow it (read now on the first request for this document); with
+    /// <paramref name="apply"/> a text selection becomes a markup of that tool at once. A document that forbids annotations
+    /// gets no mode: the "Comments" panel opens and says why.
     /// </summary>
-    private async Task RequestAnnotateAsync(AnnotationKind? tool, bool apply)
+    private async Task RequestAnnotateAsync(AnnotationKind? tool, bool apply, bool selectTool = false)
     {
         if (!CanBeginAnnotate() || _document is not { } document)
         {
@@ -450,10 +473,14 @@ public sealed partial class TabViewModel
         }
 
         IsAnnotating = true;
-        if (tool is { } kind)
+        if (selectTool)
+        {
+            IsSelectTool = true;
+        }
+        else if (tool is { } kind)
         {
             ActiveTool = kind;
-            if (selection is { IsEmpty: false } selected && TextSelection == selected && CanRunMarkup())
+            if (selection is { IsEmpty: false } selected && IsMarkupKind(kind) && TextSelection == selected && CanRunMarkup())
             {
                 TextSelection = null;
                 _ = ApplySelectionAsync(selected, kind);
@@ -469,6 +496,7 @@ public sealed partial class TabViewModel
         }
 
         ActiveTool = null;
+        IsSelectTool = false;
         IsAnnotating = false;
     }
 
@@ -587,5 +615,6 @@ public sealed partial class TabViewModel
         _highlightCommand?.RaiseCanExecuteChanged();
         _underlineCommand?.RaiseCanExecuteChanged();
         _strikeOutCommand?.RaiseCanExecuteChanged();
+        RaiseDrawCanExecuteChanged();
     }
 }
