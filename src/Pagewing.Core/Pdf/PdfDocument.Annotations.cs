@@ -180,6 +180,9 @@ public sealed partial class PdfDocument
                 using var page = document.LoadPage(locator.Page);
                 var index = FindEditable(page, locator, cancellationToken);
                 PdfiumAnnotations.Delete(page, index, cancellationToken);
+
+                // Popups are never listed; only the annotation itself leaves the count.
+                CountListed(locator.Page, -1);
             },
             PdfiumPriority.Interactive,
             cancellationToken);
@@ -442,7 +445,9 @@ public sealed partial class PdfDocument
                 throw new InvalidOperationException("PDFium did not generate the appearance of the annotation.");
             }
 
-            return ReadBack(pageIndex, index);
+            var created = ReadBack(pageIndex, index);
+            CountListed(pageIndex, +1);
+            return created;
         }
         catch (Exception ex)
         {
@@ -453,6 +458,19 @@ public sealed partial class PdfDocument
             }
 
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Keeps the count of a page that was listed current after a change made here (create +1, delete -1; replacing changes
+    /// nothing), so that <see cref="EnsureRoomForOneMore"/> does not judge by an old count until the page is listed again. A
+    /// page that was never listed stays out. Runs on the PDFium thread, like every access of <see cref="listedAnnotations"/>.
+    /// </summary>
+    private void CountListed(int pageIndex, int change)
+    {
+        if (listedAnnotations.TryGetValue(pageIndex, out var count))
+        {
+            listedAnnotations[pageIndex] = Math.Max(0, count + change);
         }
     }
 

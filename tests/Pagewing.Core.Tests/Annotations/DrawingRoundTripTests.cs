@@ -381,6 +381,27 @@ public sealed partial class DrawingRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task LimitCountsWhatWasCreatedAndDeletedSinceTheListing()
+    {
+        // Page 1 is listed with one place left; creating there fills it, so page 2 has no room any more, until a delete.
+        var path = WriteNotes("almost.pdf", PdfDocument.MaxAnnotations - 1, 0);
+        var geometry = DrawingGeometry.Ink([[new(20, 30), new(40, 60)]], 2);
+        await using var document = await OpenAsync(path);
+        Assert.Equal(PdfDocument.MaxAnnotations - 1, (await document.GetAnnotationsAsync(0, Ct)).Count);
+
+        var filling = await document.CreateDrawingAsync(0, geometry, Red, null, null, Ct);
+        await Assert.ThrowsAsync<PdfAnnotationLimitException>(() => document.CreateDrawingAsync(1, geometry, Red, null, null, Ct));
+        await Assert.ThrowsAsync<PdfAnnotationLimitException>(() => document.CreateMarkupAsync(1, AnnotationKind.Highlight, [new PageRect(20, 20, 60, 40)], Yellow, null, null, Ct));
+
+        // Replacing keeps the count; deleting frees the place again.
+        var moved = await document.ReplaceDrawingAsync(new AnnotationLocator(0, filling.Index, filling.Name), DrawingTransform.Move(filling.Drawing!, 5, 5, new PageRect(0, 0, 300, 300)), Blue, Ct);
+        await Assert.ThrowsAsync<PdfAnnotationLimitException>(() => document.CreateDrawingAsync(1, geometry, Red, null, null, Ct));
+        await document.DeleteAnnotationAsync(new AnnotationLocator(0, moved.Index, moved.Name), Ct);
+        var other = await document.CreateDrawingAsync(1, geometry, Red, null, null, Ct);
+        Assert.Contains(await document.GetAnnotationsAsync(1, Ct), a => a.Name == other.Name);
+    }
+
+    [Fact]
     public async Task CreateRejectsEmptyAndOversizedDrawings()
     {
         await using var document = await OpenCopyAsync("text-basic.pdf");
