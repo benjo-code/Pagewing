@@ -244,7 +244,16 @@ internal static unsafe class PdfiumDrawings
     /// (PDFium cannot read <c>/BS</c>).
     /// </summary>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while reading.</exception>
-    public static PdfiumDrawing? ReadGeometry(PdfiumPage page, int index, DisplayTransform transform, CancellationToken cancellationToken = default)
+    public static PdfiumDrawing? ReadGeometry(PdfiumPage page, int index, DisplayTransform transform, CancellationToken cancellationToken = default) =>
+        ReadGeometry(page, index, transform, MaxInkPoints, cancellationToken);
+
+    /// <summary>
+    /// Like <see cref="ReadGeometry(PdfiumPage, int, DisplayTransform, CancellationToken)"/>, but reads at most
+    /// <paramref name="maxPoints"/> points of an ink (at most <see cref="MaxInkPoints"/>): the dark page shares a budget
+    /// across the drawings of a page (<see cref="PdfiumDarkDrawings.MaxTotalPoints"/>).
+    /// </summary>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while reading.</exception>
+    public static PdfiumDrawing? ReadGeometry(PdfiumPage page, int index, DisplayTransform transform, int maxPoints, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(page);
         var annotation = Fpdf.FPDFPage_GetAnnot(page.Access(), index);
@@ -270,7 +279,7 @@ internal static unsafe class PdfiumDrawings
                 return new PdfiumDrawing(kind, [], BoxToDisplay(transform, rect), width);
             }
 
-            var strokes = ReadStrokes(annotation, out var complete, cancellationToken);
+            var strokes = ReadStrokes(annotation, Math.Clamp(maxPoints, 0, MaxInkPoints), out var complete, cancellationToken);
             if (strokes.Count == 0)
             {
                 return null;
@@ -474,17 +483,17 @@ internal static unsafe class PdfiumDrawings
     /// </summary>
     internal static FsRectF? InkRectOf(nint annotation)
     {
-        var strokes = ReadStrokes(annotation, out var complete, CancellationToken.None);
+        var strokes = ReadStrokes(annotation, MaxInkPoints, out var complete, CancellationToken.None);
         return complete && strokes.Count > 0 ? InkRect(strokes, ReadWidth(annotation)) : null;
     }
 
-    /// <summary>The strokes of an ink in user space, within the limits (see <see cref="ReadGeometry(PdfiumPage, int, DisplayTransform, CancellationToken)"/>).</summary>
-    private static List<FsPointF[]> ReadStrokes(nint annotation, out bool complete, CancellationToken cancellationToken)
+    /// <summary>The strokes of an ink in user space, within the limits and at most <paramref name="maxPoints"/> points (see <see cref="ReadGeometry(PdfiumPage, int, DisplayTransform, CancellationToken)"/>).</summary>
+    private static List<FsPointF[]> ReadStrokes(nint annotation, int maxPoints, out bool complete, CancellationToken cancellationToken)
     {
         var strokes = new List<FsPointF[]>();
         var count = Fpdf.FPDFAnnot_GetInkListCount(annotation).Value;
         complete = count <= MaxInkStrokes;
-        var budget = MaxInkPoints;
+        var budget = maxPoints;
         for (nuint path = 0; path < Math.Min(count, MaxInkStrokes); path++)
         {
             if (path % PdfiumAnnotations.CancellationInterval == 0)

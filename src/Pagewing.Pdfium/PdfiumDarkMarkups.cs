@@ -10,7 +10,8 @@ namespace Pagewing.Pdfium;
 /// like the text. After PDFium has rendered, a highlight's area takes a tint of its colour behind the text (the ground
 /// becomes the tint, the light text stays, the counterpart of the multiplication on a light page), and the line of an
 /// underline or strike-out is painted over every pixel PDFium's own appearance touched, opaque in its colour. Measurement
-/// and rules: <c>Docs/DECISIONS.md</c>, entry "Markierungen auf der dunklen Seite und im Druck (M9)".
+/// and rules: <c>Docs/DECISIONS.md</c>, entry "Markierungen auf der dunklen Seite und im Druck (M9)". The same read and
+/// paint also take the drawings of the page (<see cref="PdfiumDarkDrawings"/>, M10), between the areas and the lines.
 /// </summary>
 /// <remarks>
 /// The lines lie where PDFium's appearance generator (<c>CPDF_GenerateAP</c>, chromium/8100) draws them: on the bounding
@@ -61,7 +62,9 @@ internal static unsafe class PdfiumDarkMarkups
     /// Reads the visible highlights, underlines and strike-outs of the page (not hidden, not "no view") with the colours
     /// they get on the dark page. Must be called on the PDFium thread, before the page is rendered. Reading stops, keeping
     /// what it has, once <see cref="MaxTotalQuads"/> quadrilaterals or <see cref="MaxAppearanceBytes"/> of appearance
-    /// strings are used up (a hostile page may list the same large markup thousands of times).
+    /// strings are used up (a hostile page may list the same large markup thousands of times). The visible drawings come
+    /// along (<see cref="PdfiumDarkDrawings.Read"/>) within <see cref="PdfiumDarkDrawings.MaxTotalPoints"/>; each kind
+    /// stops at its own budget, the appearance budget stops both.
     /// </summary>
     public static DarkMarkupPaint Read(PdfiumPage page, PdfiumPageColors colors)
     {
@@ -75,13 +78,15 @@ internal static unsafe class PdfiumDarkMarkups
 
         var areas = new List<DarkMarkupArea>();
         var bands = new List<DarkMarkupBand>();
+        List<DarkDrawing>? drawings = null;
         long quadBudget = MaxTotalQuads;
+        long pointBudget = PdfiumDarkDrawings.MaxTotalPoints;
         long appearanceBudget = MaxAppearanceBytes;
         // Rented on the first appearance that is decoded, returned when the read ends (also by an exception).
         char[]? scratch = null;
         try
         {
-            for (var i = 0; i < count && quadBudget > 0 && appearanceBudget > 0; i++)
+            for (var i = 0; i < count && (quadBudget > 0 || pointBudget > 0) && appearanceBudget > 0; i++)
             {
                 var annotation = Fpdf.FPDFPage_GetAnnot(native, i);
                 if (annotation == 0)
@@ -92,9 +97,20 @@ internal static unsafe class PdfiumDarkMarkups
                 try
                 {
                     var subtype = Fpdf.FPDFAnnot_GetSubtype(annotation);
-                    if (!PdfiumAnnotations.IsMarkup(subtype)
+                    var drawing = PdfiumAnnotations.IsDrawing(subtype);
+                    if (!(drawing ? pointBudget > 0 : PdfiumAnnotations.IsMarkup(subtype) && quadBudget > 0)
                         || (Fpdf.FPDFAnnot_GetFlags(annotation) & (FpdfConstants.AnnotFlagHidden | FpdfConstants.AnnotFlagNoView)) != 0)
                     {
+                        continue;
+                    }
+
+                    if (drawing)
+                    {
+                        if (PdfiumDarkDrawings.Read(page, i, annotation, subtype, transform, colors, ref pointBudget, ref scratch, ref appearanceBudget) is { } read)
+                        {
+                            (drawings ??= []).Add(read);
+                        }
+
                         continue;
                     }
 
@@ -146,7 +162,7 @@ internal static unsafe class PdfiumDarkMarkups
             PdfiumAnnotations.ReturnScratch(ref scratch);
         }
 
-        return areas.Count == 0 && bands.Count == 0 ? DarkMarkupPaint.Empty : new DarkMarkupPaint(areas, bands);
+        return areas.Count == 0 && bands.Count == 0 && drawings is null ? DarkMarkupPaint.Empty : new DarkMarkupPaint(areas, bands, drawings);
     }
 
     /// <summary>
@@ -242,6 +258,10 @@ internal static unsafe class PdfiumDarkMarkups
                 break;
             }
         }
+
+        // The drawings over the areas (their shares are taken against the dark ground, which an area would have changed),
+        // and under the lines.
+        PdfiumDarkDrawings.Apply(paint.Drawings, colors, pixels, width, height, stride, scaleX, scaleY, offsetX, offsetY, ref budget);
 
         // The lines last: a strike-out through a highlight stays a line.
         foreach (var band in paint.Bands)
@@ -495,7 +515,7 @@ internal readonly record struct DarkMarkupArea(DarkMarkupPoint P1, DarkMarkupPoi
 internal readonly record struct DarkMarkupBand(double Left, double Top, double Right, double Bottom, uint Color);
 
 /// <summary>What <see cref="PdfiumDarkMarkups.Apply"/> paints on one dark render.</summary>
-internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IReadOnlyList<DarkMarkupBand> bands)
+internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IReadOnlyList<DarkMarkupBand> bands, IReadOnlyList<DarkDrawing>? drawings = null)
 {
     /// <summary>Gets a page without markups.</summary>
     public static DarkMarkupPaint Empty { get; } = new([], []);
@@ -506,8 +526,11 @@ internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IRead
     /// <summary>Gets the lines of the underlines and strike-outs.</summary>
     public IReadOnlyList<DarkMarkupBand> Bands { get; } = bands;
 
+    /// <summary>Gets the drawings (ink, square, circle) in <c>/Annots</c> order.</summary>
+    public IReadOnlyList<DarkDrawing> Drawings { get; } = drawings ?? [];
+
     /// <summary>Gets whether there is nothing to paint.</summary>
-    public bool IsEmpty => Areas.Count == 0 && Bands.Count == 0;
+    public bool IsEmpty => Areas.Count == 0 && Bands.Count == 0 && Drawings.Count == 0;
 }
 
 /// <summary>
