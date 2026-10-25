@@ -16,7 +16,8 @@ namespace Pagewing.App.Controls;
 /// The layer draws nothing but the stroke, no background: Avalonia's compositor redraws the bounds of what a visual drew
 /// before and after a change (the bounds of its render data), so a move redraws only the rectangle of the stroke and its new
 /// segment, never the pages around it. <see cref="LastInvalidatedRect"/> is that rectangle as the layer computes it: the
-/// union of the bounds of the stroke before and after the change, each widened by half the pen and 2 DIPs.
+/// union of the bounds of the stroke before and after the change, each widened by half the pen and 2 DIPs, within the
+/// layer. The layer clips as <see cref="DocumentCanvas"/> clips its pages (its rounded corner, <see cref="DocumentCanvas.CornerRadius"/>).
 /// </para>
 /// <para>
 /// The preview has the colour of the tool also on a dark page (it is not lightened as the dark page lightens the drawing,
@@ -112,6 +113,11 @@ internal sealed class DrawingOverlay : Control
         var (pageRect, scale) = placement;
         var pen = PenFor(preview.Color, Math.Max(1, preview.Width * scale));
         Point ToView(DisplayPoint p) => new(pageRect.X + (p.X * scale), pageRect.Y + (p.Y * scale));
+
+        // Clipped as the canvas clips its pages (the layer lies over the canvas with the same bounds): a stroke on a page
+        // taller than the view never paints over the status bar, the toolbar or a panel. A clip does not widen what the
+        // compositor redraws (the bounds of the render data are those of what is drawn inside it).
+        using var clip = context.PushClip(new RoundedRect(new Rect(Bounds.Size), _canvas.CornerRadius));
         switch (preview.Kind)
         {
             case AnnotationKind.Ink:
@@ -191,7 +197,8 @@ internal sealed class DrawingOverlay : Control
 
     private void Invalidate(Rect rect)
     {
-        LastInvalidatedRect = rect;
+        // Nothing outside the layer is drawn (see Render).
+        LastInvalidatedRect = Bounds.Width > 0 && Bounds.Height > 0 ? rect.Intersect(new Rect(Bounds.Size)) : rect;
         InvalidationCount++;
         InvalidateVisual();
     }

@@ -563,13 +563,196 @@ public sealed class DrawingInputTests : IDisposable
         {
             var onStroke = CanvasPoint(view, 0, new Point(110, 305));
             var color = pixels.GetColor((int)onStroke.X, (int)onStroke.Y);
-            Assert.True(color.R > 150 && color.G < 100 && color.B < 100, $"stroke pixel {color}");
+            Assert.True(IsStrokeRed(color), $"stroke pixel {color}");
         }
 
         window.MouseUp(ScreenPoint(view, window, 0, new Point(140, 300)), MouseButton.Left);
         Settle(window);
         await WaitForDrawingsAsync(window, tab, 0, count: 1);
     }
+
+    [AvaloniaFact]
+    public async Task PreviewIsClippedToTheView()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+
+        // Zoomed in and scrolled into the page, so the page covers the whole view, also its rounded top left corner.
+        tab.Zoom = 2;
+        Settle(window);
+        view.ScrollViewer.Offset = new Vector(300, 400);
+        Settle(window);
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        var canvas = view.Canvas;
+        var corner = canvas.TranslatePoint(default, window)!.Value;
+        var bottom = canvas.TranslatePoint(new Point(0, canvas.Bounds.Height), window)!.Value.Y;
+        var centre = canvas.TranslatePoint(new Point(canvas.Bounds.Width / 2, canvas.Bounds.Height / 2), window)!.Value;
+        Assert.True(canvas.CornerRadius.TopLeft >= 8, "the view has a rounded top left corner");
+        Assert.True(canvas.PagePointAt(new Point(1, 1)) is { } hit && hit.Position.X > 0 && hit.Position.Y > 0, "the page lies under the corner");
+
+        // From the middle of the view into its corner: the stroke is drawn up to the rounded edge, not into the corner.
+        var into = corner + new Point(1, 1);
+        window.MouseDown(centre, MouseButton.Left);
+        Settle(window);
+        window.MouseMove(centre + ((into - centre) / 2), Left);
+        Settle(window);
+        window.MouseMove(into, Left);
+        Settle(window);
+        Assert.True(view.IsDrawing);
+        using (var frame = new FramePixels(window.CaptureRenderedFrame()!))
+        {
+            var scaling = window.RenderScaling;
+            Avalonia.Media.Color At(Point point) => frame.GetColor((int)(point.X * scaling), (int)(point.Y * scaling));
+            var inside = At(corner + new Point(30, 30 * (centre.Y - corner.Y) / (centre.X - corner.X)));
+            Assert.True(IsStrokeRed(inside), $"inside the view {inside}");
+            Assert.False(IsStrokeRed(At(into)), $"in the rounded corner {At(into)}");
+        }
+
+        // On down past the bottom of the view (the page goes on below it): nothing beyond the view is redrawn or painted.
+        var below = new Point(centre.X, window.Bounds.Height - 2);
+        window.MouseMove(below, Left);
+        Settle(window);
+        Assert.True(view.IsDrawing);
+        var overlay = view.DrawingOverlay!;
+        Assert.True(overlay.LastInvalidatedRect.Bottom <= overlay.Bounds.Height + 0.01, $"{overlay.LastInvalidatedRect} in {overlay.Bounds}");
+        Assert.True(overlay.LastInvalidatedRect.Top >= -0.01 && overlay.LastInvalidatedRect.Left >= -0.01, $"{overlay.LastInvalidatedRect}");
+        using (var frame = new FramePixels(window.CaptureRenderedFrame()!))
+        {
+            var scaling = window.RenderScaling;
+            foreach (var y in new[] { bottom + 3, below.Y })
+            {
+                var outside = frame.GetColor((int)(below.X * scaling), (int)(y * scaling));
+                Assert.False(IsStrokeRed(outside), $"below the view at {y}: {outside}");
+            }
+        }
+
+        Press(window, Key.Escape, PhysicalKey.Escape, RawInputModifiers.None);
+        window.MouseUp(below, MouseButton.Left);
+        Settle(window);
+    }
+
+    [AvaloniaFact]
+    public async Task ScrollDuringTheDragKeepsTheAnchorOnThePage()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+
+        window.MouseDown(ScreenPoint(view, window, 0, new Point(100, 250)), MouseButton.Left);
+        Settle(window);
+        window.MouseMove(ScreenPoint(view, window, 0, new Point(150, 280)), Left);
+        Settle(window);
+        var before = view.DrawingOverlay!.LastInvalidatedRect;
+        var offset = view.ScrollViewer.Offset;
+
+        // The view scrolls by 100 DIPs while the button is held (the keys, the scroll bar, a jump): the stroke moves with
+        // its page, its points stay where they were on the page.
+        view.ScrollViewer.Offset = offset + new Vector(0, 100);
+        Settle(window);
+        Assert.Equal(offset.Y + 100, view.ScrollViewer.Offset.Y, 3);
+        Assert.True(view.IsDrawing);
+        var after = view.DrawingOverlay.LastInvalidatedRect;
+        Assert.Equal(before.Top - 100, after.Top, 1);
+        Assert.Equal(before.Left, after.Left, 1);
+
+        window.MouseMove(ScreenPoint(view, window, 0, new Point(200, 300)), Left);
+        Settle(window);
+        window.MouseUp(ScreenPoint(view, window, 0, new Point(200, 300)), MouseButton.Left);
+        Settle(window);
+        var stroke = Assert.Single(Assert.Single(await WaitForDrawingsAsync(window, tab, 0, count: 1)).Drawing!.Strokes);
+        AssertNear(new DisplayPoint(100, 250), stroke[0], 0.5);
+        AssertNear(new DisplayPoint(200, 300), stroke[^1], 0.5);
+    }
+
+    [AvaloniaFact]
+    public async Task ZoomDuringTheDragKeepsTheAnchorOnThePage()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Line);
+
+        window.MouseDown(ScreenPoint(view, window, 0, new Point(100, 200)), MouseButton.Left);
+        Settle(window);
+        window.MouseMove(ScreenPoint(view, window, 0, new Point(150, 220)), Left);
+        Settle(window);
+        var before = view.DrawingOverlay!.LastInvalidatedRect;
+
+        // Zoomed in while the button is held (Ctrl+Plus, the status bar): the shape grows with its page.
+        var zoom = tab.Zoom;
+        tab.ZoomInCommand.Execute(null);
+        Settle(window);
+        Assert.True(tab.Zoom > zoom);
+        Assert.True(view.IsDrawing);
+        var after = view.DrawingOverlay.LastInvalidatedRect;
+        var expected = CanvasRect(view, 0, new PageRect(100, 200, 150, 220));
+        Assert.True(after.Contains(expected), $"{expected} in {after}");
+        Assert.True(after.Width > before.Width * tab.Zoom / zoom * 0.9, $"{before} to {after}");
+
+        window.MouseMove(ScreenPoint(view, window, 0, new Point(200, 240)), Left);
+        Settle(window);
+        window.MouseUp(ScreenPoint(view, window, 0, new Point(200, 240)), MouseButton.Left);
+        Settle(window);
+        var line = Assert.Single(await WaitForDrawingsAsync(window, tab, 0, count: 1));
+        Assert.True(ArrowGeometry.TryRecognize(line.Drawing!.Strokes, out var start, out var end, out _));
+        AssertNear(new DisplayPoint(100, 200), start, 0.5);
+        AssertNear(new DisplayPoint(200, 240), end, 0.5);
+    }
+
+    [AvaloniaFact]
+    public async Task WindowDeactivationDiscardsTheStroke()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        window.Activate();
+        await WaitUntilAsync(window, () => window.IsActive);
+
+        window.MouseDown(ScreenPoint(view, window, 0, new Point(100, 250)), MouseButton.Left);
+        Settle(window);
+        window.MouseMove(ScreenPoint(view, window, 0, new Point(150, 280)), Left);
+        Settle(window);
+        Assert.True(view.IsDrawing);
+
+        // The window loses the activation in the middle of a stroke (Alt+Tab, minimised): the stroke goes. The headless
+        // platform reports a deactivation only when a window is hidden (activating another window does not deactivate it).
+        window.Hide();
+        await WaitUntilAsync(window, () => !window.IsActive);
+        Assert.False(view.IsDrawing);
+        Assert.False(view.DrawingOverlay!.HasPreview);
+        window.Show();
+        window.Activate();
+        await WaitUntilAsync(window, () => window.IsActive);
+        window.MouseUp(ScreenPoint(view, window, 0, new Point(200, 300)), MouseButton.Left);
+        Settle(window);
+        Assert.False(tab.HasEditor);
+        Assert.Empty(await DrawingsAsync(tab, 0));
+    }
+
+    [AvaloniaFact]
+    public async Task LayoutChangeDiscardsTheStroke()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Rectangle);
+
+        window.MouseDown(ScreenPoint(view, window, 0, new Point(100, 250)), MouseButton.Left);
+        Settle(window);
+        window.MouseMove(ScreenPoint(view, window, 0, new Point(150, 280)), Left);
+        Settle(window);
+        Assert.True(view.IsDrawing);
+
+        // Two pages side by side in the middle of a stroke: the page moves under it, the stroke goes.
+        tab.SetLayoutModeCommand.Execute(PageLayoutMode.TwoPages);
+        Settle(window);
+        Assert.False(view.IsDrawing);
+        Assert.False(view.DrawingOverlay!.HasPreview);
+        window.MouseUp(ScreenPoint(view, window, 0, new Point(160, 290)), MouseButton.Left);
+        Settle(window);
+        Assert.False(tab.HasEditor);
+        Assert.Empty(await DrawingsAsync(tab, 0));
+    }
+
+    private static bool IsStrokeRed(Avalonia.Media.Color color) => color.R > 150 && color.G < 100 && color.B < 100;
 
     private static void AssertNear(DisplayPoint expected, DisplayPoint actual, double tolerance)
     {
