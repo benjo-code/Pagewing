@@ -16,7 +16,13 @@ namespace Pagewing.App.ViewModels;
 /// </summary>
 public sealed partial class TabViewModel
 {
+    /// <summary>The tolerance in points with which a freehand stroke is thinned before it is smoothed (see DECISIONS).</summary>
+    private const double SimplifyTolerance = 0.5;
+
     private bool _isSelectTool;
+
+    // The last drawing queued: the next one is made after it (QueueDrawing).
+    private Task _drawingTail = Task.CompletedTask;
 
     private RelayCommand? _selectToolCommand;
     private RelayCommand? _chooseSelectToolCommand;
@@ -161,10 +167,46 @@ public sealed partial class TabViewModel
             return Task.CompletedTask;
         }
 
-        var color = DrawColorOf(geometry.Kind);
-        var author = AnnotationSettings.Current.AuthorName;
-        return Track(ApplyDrawingCoreAsync(page, geometry, color, author));
+        return QueueDrawing(page, geometry.Kind, Task.FromResult(geometry));
     }
+
+    /// <summary>
+    /// Makes the drawing of a freehand stroke from the raw points of the gesture: the points are thinned and smoothed
+    /// (<see cref="ReduceFreehand"/>) on a thread-pool thread, never on the UI thread (the thinning is quadratic in the worst
+    /// case: 20,000 points of a zig-zag took 1.4 s), and then the drawing is made as <see cref="ApplyDrawingAsync"/> makes it,
+    /// with the stroke width of the style of the freehand tool (<see cref="StrokeWidthOf"/>: the only place it comes from). A stroke
+    /// without extent makes nothing and leaves the history alone. Strokes and shapes are made in the order they were
+    /// released, whatever the thinning of each takes. From the call on the tab counts as having changes; a stroke whose
+    /// document was replaced by another file, or whose tab was disposed, before the thinning ended is dropped without a trace.
+    /// </summary>
+    /// <param name="page">The 0-based page.</param>
+    /// <param name="rawPoints">The points in page points of the page as shown. The tab reads the list on another thread: the caller must not change it afterwards.</param>
+    /// <returns>Completes when the drawing was made, refused or dropped; it never fails.</returns>
+    internal Task ApplyFreehandAsync(int page, IReadOnlyList<DisplayPoint> rawPoints)
+    {
+        ArgumentNullException.ThrowIfNull(rawPoints);
+        if (_disposed || rawPoints.Count < 2 || !CanDraw)
+        {
+            return Task.CompletedTask;
+        }
+
+        // Read here, on the UI thread: the style and the reducer as they are at the release.
+        var width = StrokeWidthOf(AnnotationKind.Ink);
+        var reduce = FreehandReducer ?? ReduceFreehand;
+        return QueueDrawing(page, AnnotationKind.Ink, Task.Run(() => DrawingGeometry.Ink([reduce(rawPoints)], width)));
+    }
+
+    /// <summary>
+    /// Thins a freehand stroke (Douglas-Peucker, <see cref="SimplifyTolerance"/>) and rounds its corners. Pure computation: no
+    /// PDFium, no UI.
+    /// </summary>
+    /// <param name="points">The raw points of the stroke.</param>
+    /// <returns>The points the stroke is written with.</returns>
+    internal static IReadOnlyList<DisplayPoint> ReduceFreehand(IReadOnlyList<DisplayPoint> points) =>
+        StrokeSimplifier.Smooth(StrokeSimplifier.Simplify(points, SimplifyTolerance));
+
+    /// <summary>Gets or sets what thins a freehand stroke instead of <see cref="ReduceFreehand"/> (tests hold it to order and cancel the strokes); it runs on a thread-pool thread.</summary>
+    internal Func<IReadOnlyList<DisplayPoint>, IReadOnlyList<DisplayPoint>>? FreehandReducer { get; set; }
 
     /// <summary>
     /// Raised on the UI thread when a drawing was not made, with the text that says why (the document view shows it as a
@@ -172,12 +214,54 @@ public sealed partial class TabViewModel
     /// </summary>
     internal event Action<string>? DrawingRefused;
 
-    private async Task ApplyDrawingCoreAsync(int page, DrawingGeometry geometry, AnnotationColor color, string? author)
+    /// <summary>
+    /// Takes a drawing in: the colour and the author are read now, the tab counts as having changes from here on, and the
+    /// drawing is made after every drawing queued before it, so the order of the releases is the order of the history
+    /// whatever the geometry of each takes to be ready.
+    /// </summary>
+    private Task QueueDrawing(int page, AnnotationKind kind, Task<DrawingGeometry> geometry)
+    {
+        var color = DrawColorOf(kind);
+        var author = AnnotationSettings.Current.AuthorName;
+        var run = Track(ApplyDrawingCoreAsync(_documentGeneration, page, geometry, _drawingTail, color, author));
+        _drawingTail = run;
+        return run;
+    }
+
+    private async Task ApplyDrawingCoreAsync(int generation, int page, Task<DrawingGeometry> pending, Task before, AnnotationColor color, string? author)
     {
         try
         {
             // Counted before the first await, down again in the finally: the task ends after the count is down (Track).
             _pendingEdits++;
+            DrawingGeometry geometry;
+            try
+            {
+                geometry = await pending;
+            }
+            catch (Exception)
+            {
+                // The thinning failed (it is pure computation, so this is not expected); nothing was made.
+                DrawingRefused?.Invoke(Strings.DrawingFailed);
+                return;
+            }
+
+            try
+            {
+                // Every drawing queued earlier is done first (their tasks never fail; only their end matters).
+                await before;
+            }
+            catch (Exception)
+            {
+                // Nothing to learn from it here.
+            }
+
+            if (_disposed || generation != _documentGeneration || geometry.IsEmpty)
+            {
+                // Another file is open in the tab, or the tab is gone, or there is nothing to draw: nothing is made.
+                return;
+            }
+
             PdfAnnotation? created;
             try
             {

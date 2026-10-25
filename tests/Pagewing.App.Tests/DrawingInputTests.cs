@@ -752,6 +752,213 @@ public sealed class DrawingInputTests : IDisposable
         Assert.Empty(await DrawingsAsync(tab, 0));
     }
 
+    [AvaloniaFact]
+    public async Task ReleaseOfAZigZagStrokeDoesNotBlockTheUiThread()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+
+        // The worst case of the thinning (the amplitude grows with every point, so every round of Douglas-Peucker peels one
+        // point): 20,000 points, the most a stroke collects. On the UI thread this took over a second (DECISIONS, "Zeichnen:
+        // Messwerte (M10)"); on release the view only hands the points to the tab.
+        var origin = ScreenPoint(view, window, 0, new Point(0, 0));
+        var scale = (ScreenPoint(view, window, 0, new Point(100, 0)).X - origin.X) / 100;
+        static DisplayPoint PagePoint(int i) => new(20 + (i * 0.02), 250 + ((i % 2 == 0 ? 1 : -1) * (1 + (i * 0.005))));
+        Point Screen(int i) => origin + new Point(PagePoint(i).X * scale, PagePoint(i).Y * scale);
+        window.MouseDown(Screen(0), MouseButton.Left);
+        Settle(window);
+        window.MouseMove(Screen(1), Left);
+        Settle(window);
+        Assert.True(view.IsDrawing);
+
+        // The points go straight into the preview (20,000 pointer events through the headless window take minutes); the
+        // release adds the last one.
+        var preview = view.StrokePreview!;
+        for (var i = 2; i < DocumentView.MaxStrokePoints - 1; i++)
+        {
+            preview.Add(PagePoint(i));
+        }
+
+        Assert.Equal(DocumentView.MaxStrokePoints - 1, preview.Points.Count);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        window.MouseUp(Screen(DocumentView.MaxStrokePoints - 1), MouseButton.Left);
+        Settle(window);
+        watch.Stop();
+        Assert.True(watch.ElapsedMilliseconds < 500, $"the release took {watch.ElapsedMilliseconds} ms on the UI thread");
+        Assert.False(view.IsDrawing);
+
+        // The stroke is made all the same, in the background.
+        var ink = Assert.Single(await WaitForDrawingsAsync(window, tab, 0, count: 1));
+        Assert.Equal(AnnotationKind.Ink, ink.Kind);
+        Assert.True(tab.IsDirty);
+    }
+
+    [AvaloniaFact]
+    public async Task FreehandReductionRunsOffTheUiThread()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        var uiThread = Environment.CurrentManagedThreadId;
+        int? reducedOn = null;
+        var onPool = false;
+        tab.FreehandReducer = points =>
+        {
+            reducedOn = Environment.CurrentManagedThreadId;
+            onPool = Thread.CurrentThread.IsThreadPoolThread;
+            return TabViewModel.ReduceFreehand(points);
+        };
+
+        await tab.ApplyFreehandAsync(0, [new DisplayPoint(100, 300), new DisplayPoint(130, 310), new DisplayPoint(160, 330), new DisplayPoint(200, 320)]);
+
+        Assert.NotNull(reducedOn);
+        Assert.NotEqual(uiThread, reducedOn);
+        Assert.True(onPool);
+        var ink = Assert.Single(await WaitForDrawingsAsync(window, tab, 0, count: 1));
+
+        // The width is the style's: the one place a drawing gets it from.
+        Assert.Equal(StrokeWidths.PointsOf(StrokeWidth.Medium), ink.Drawing!.Width, 3);
+        Assert.Equal(DrawPalette.ColorOf(DrawColor.Red), ink.Color);
+    }
+
+    [AvaloniaFact]
+    public async Task TwoQuickStrokesAreAppliedInReleaseOrder()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+
+        // The first stroke is slow to reduce (it waits for the gate), the second and a shape released after them are not.
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        tab.FreehandReducer = points =>
+        {
+            if (points.Count > 3)
+            {
+                entered.Set();
+                gate.Wait(Timeout);
+            }
+
+            return TabViewModel.ReduceFreehand(points);
+        };
+
+        var first = tab.ApplyFreehandAsync(0, [new DisplayPoint(50, 100), new DisplayPoint(80, 140), new DisplayPoint(110, 100), new DisplayPoint(140, 140)]);
+        await WaitUntilAsync(window, () => entered.IsSet);
+        var second = tab.ApplyFreehandAsync(0, [new DisplayPoint(300, 100), new DisplayPoint(330, 140), new DisplayPoint(360, 100)]);
+        var third = tab.ApplyDrawingAsync(0, DrawingGeometry.Rectangle(new PageRect(300, 300, 400, 360), 2));
+
+        // Nothing overtook the first stroke: the editor has not been asked for anything yet, but the tab has a change.
+        for (var i = 0; i < 20; i++)
+        {
+            Settle(window);
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        Assert.False(tab.HasEditor);
+        Assert.True(tab.AsksBeforeClosing);
+
+        gate.Set();
+        await Task.WhenAll(first, second, third);
+        var drawings = await WaitForDrawingsAsync(window, tab, 0, count: 3);
+        Assert.Equal([AnnotationKind.Ink, AnnotationKind.Ink, AnnotationKind.Rectangle], drawings.Select(d => d.Kind));
+        AssertRectNear(new PageRect(50, 100, 140, 140), drawings[0].Drawing!.Box, 0.5);
+        AssertRectNear(new PageRect(300, 100, 360, 130), drawings[1].Drawing!.Box, 0.5);
+
+        // The history has them in the same order: undo takes the rectangle first.
+        tab.UndoCommand.Execute(null);
+        Assert.Equal(2, (await WaitForDrawingsAsync(window, tab, 0, count: 2)).Length);
+        Assert.DoesNotContain(await DrawingsAsync(tab, 0), d => d.Kind == AnnotationKind.Rectangle);
+    }
+
+    [AvaloniaFact]
+    public async Task StrokeIsDroppedWhenTheDocumentChangesBeforeTheReductionFinishes()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        tab.FreehandReducer = points =>
+        {
+            entered.Set();
+            gate.Wait(Timeout);
+            return TabViewModel.ReduceFreehand(points);
+        };
+
+        var stroke = tab.ApplyFreehandAsync(0, [new DisplayPoint(50, 100), new DisplayPoint(80, 140), new DisplayPoint(110, 100)]);
+        await WaitUntilAsync(window, () => entered.IsSet);
+
+        // Another file in the tab while the points are still being reduced: the stroke belongs to the old one and goes without
+        // an error, a hint or a change in the history of the new one.
+        var hints = new List<string>();
+        tab.DrawingRefused += hints.Add;
+        await tab.OpenAsync(Copy("text-basic.pdf", "other.pdf"));
+        await WaitUntilAsync(window, () => tab.Session.Document is not null && tab.HasShownSharpPage);
+        gate.Set();
+        await stroke;
+        Settle(window);
+
+        Assert.Empty(hints);
+        Assert.False(tab.HasEditor);
+        Assert.False(tab.IsDirty);
+        Assert.False(tab.CanUndo);
+        Assert.False(tab.HasEditsInFlight);
+        Assert.Empty(await DrawingsAsync(tab, 0));
+    }
+
+    [AvaloniaFact]
+    public async Task StrokeIsDroppedWhenTheTabIsDisposedBeforeTheReductionFinishes()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var other = await OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        tab.FreehandReducer = points =>
+        {
+            entered.Set();
+            gate.Wait(Timeout);
+            return TabViewModel.ReduceFreehand(points);
+        };
+
+        var stroke = tab.ApplyFreehandAsync(0, [new DisplayPoint(50, 100), new DisplayPoint(80, 140), new DisplayPoint(110, 100)]);
+        await WaitUntilAsync(window, () => entered.IsSet);
+        viewModel.Tabs.Activate(other);
+        Settle(window);
+        tab.Dispose();
+        gate.Set();
+
+        // It ends without an exception, and nothing is asked of the editor of a tab that is gone.
+        await stroke;
+        Settle(window);
+        Assert.False(tab.HasEditor);
+    }
+
+    [AvaloniaFact]
+    public async Task EmptyFreehandStrokeStillCreatesNothing()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        var hints = new List<string>();
+        tab.DrawingRefused += hints.Add;
+
+        // One point, and points on one spot: no stroke, no history, no hint.
+        await tab.ApplyFreehandAsync(0, [new DisplayPoint(100, 100)]);
+        await tab.ApplyFreehandAsync(0, [new DisplayPoint(100, 100), new DisplayPoint(100, 100), new DisplayPoint(100, 100)]);
+        Settle(window);
+
+        Assert.Empty(hints);
+        Assert.False(tab.HasEditor);
+        Assert.False(tab.IsDirty);
+        Assert.False(tab.CanUndo);
+        Assert.False(tab.AsksBeforeClosing);
+        Assert.Empty(await DrawingsAsync(tab, 0));
+    }
+
     private static bool IsStrokeRed(Avalonia.Media.Color color) => color.R > 150 && color.G < 100 && color.B < 100;
 
     private static void AssertNear(DisplayPoint expected, DisplayPoint actual, double tolerance)

@@ -13,7 +13,8 @@ namespace Pagewing.App.Views;
 /// Drawing with a drawing tool of the mode "Comment" (milestone 10, design system 7.7): with freehand, rectangle, oval, line
 /// or arrow a press of the left button with the mouse or the pen on a page starts a stroke on that page, the drag shows it
 /// on the drawing layer (<see cref="DrawingOverlay"/>), and the release makes one annotation of it
-/// (<see cref="TabViewModel.ApplyDrawingAsync"/>; PDFium runs only then). A finger (<see cref="PointerType.Touch"/>) does
+/// (<see cref="TabViewModel.ApplyDrawingAsync"/>, a freehand stroke after thinning it in the background by
+/// <see cref="TabViewModel.ApplyFreehandAsync"/>; PDFium runs only then). A finger (<see cref="PointerType.Touch"/>) does
 /// not draw: it scrolls and zooms as it does without the tool. Shift snaps a line or an arrow to multiples of 45 degrees and
 /// makes a rectangle a square and an oval a circle. A drawing tool owns the press: text is not selected meanwhile.
 /// </summary>
@@ -36,9 +37,6 @@ public sealed partial class DocumentView
     /// <summary>The smallest distance in points between two points of a freehand stroke; closer points are left out.</summary>
     private const double MinPointDistance = 0.25;
 
-    /// <summary>The tolerance in points with which a freehand stroke is thinned before it is smoothed (see DECISIONS).</summary>
-    private const double SimplifyTolerance = 0.5;
-
     /// <summary>The angle step of Shift for a line or an arrow, in degrees.</summary>
     private const double SnapStepDegrees = 45;
 
@@ -59,6 +57,9 @@ public sealed partial class DocumentView
 
     /// <summary>Gets the drawing layer, or <see langword="null"/> before the first press of a drawing tool (for tests).</summary>
     internal DrawingOverlay? DrawingOverlay => _drawingOverlay;
+
+    /// <summary>Gets what the drawing layer shows of the stroke being dragged (for tests, which fill it faster than a pointer).</summary>
+    internal DrawingPreview? StrokePreview => _drawingPreview;
 
     /// <summary>Gets whether a stroke of a drawing tool is being dragged.</summary>
     internal bool IsDrawing => _gesture is not null;
@@ -153,12 +154,25 @@ public sealed partial class DocumentView
 
         var position = e.GetPosition(PageCanvas);
         UpdateGesture(gesture, position, e.KeyModifiers);
-        var geometry = gesture.Moved ? GeometryOf(preview) : null;
         var page = preview.Page;
+        var kind = preview.Kind;
+
+        // A freehand stroke is not computed here: its raw points go to the tab, which thins them on a thread-pool thread (the
+        // thinning is quadratic in the worst case). The preview keeps and reuses its list, so the tab gets a copy. A shape is
+        // a few numbers.
+        var raw = gesture.Moved && kind == AnnotationKind.Ink ? preview.Points.ToArray() : null;
+        var shape = gesture.Moved && kind != AnnotationKind.Ink ? GeometryOf(preview) : null;
         EndGesture();
-        if (geometry is { IsEmpty: false } && ReferenceEquals(gesture.Tab, _viewModel) && DrawsWith(gesture.Tab) == geometry.Kind)
+        if (ReferenceEquals(gesture.Tab, _viewModel) && DrawsWith(gesture.Tab) == kind)
         {
-            _ = gesture.Tab.ApplyDrawingAsync(page, geometry);
+            if (raw is not null)
+            {
+                _ = gesture.Tab.ApplyFreehandAsync(page, raw);
+            }
+            else if (shape is { IsEmpty: false })
+            {
+                _ = gesture.Tab.ApplyDrawingAsync(page, shape);
+            }
         }
 
         UpdateCursor(position);
@@ -306,13 +320,13 @@ public sealed partial class DocumentView
         _drawingOverlay?.Refresh();
     }
 
-    /// <summary>The drawing of the stroke: the width of the tool's style, a freehand stroke thinned and smoothed.</summary>
+    /// <summary>The drawing of a shape: the width of the tool's style. A freehand stroke is made by the tab (<see cref="TabViewModel.ApplyFreehandAsync"/>).</summary>
     private static DrawingGeometry GeometryOf(DrawingPreview preview)
     {
         var width = preview.Width;
         return preview.Kind switch
         {
-            AnnotationKind.Ink => DrawingGeometry.Ink([StrokeSimplifier.Smooth(StrokeSimplifier.Simplify(preview.Points, SimplifyTolerance))], width),
+            AnnotationKind.Ink => throw new InvalidOperationException("A freehand stroke is made by the tab."),
             AnnotationKind.Line => DrawingGeometry.Line(preview.Anchor, preview.End, width),
             AnnotationKind.Arrow => DrawingGeometry.Arrow(preview.Anchor, preview.End, width),
             AnnotationKind.Ellipse => DrawingGeometry.Ellipse(BoxOf(preview.Anchor, preview.End), width),
