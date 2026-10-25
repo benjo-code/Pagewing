@@ -36,7 +36,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | – | **Release `v0.1.0`** – schneller Viewer (M0 bis M8) | – | ✅ fertig | – | 2026-10-23 |
 | 8.1 | Automatische Updates | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md) | 2026-10-24 |
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-24-milestone-09-speichern-textmarkierungen.md) | 2026-10-25 |
-| 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
+| 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | 🟡 geplant | [Plan](superpowers/plans/2026-10-25-milestone-10-zeichnen-formen.md) | – |
 | 11 | Formulare | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 12 | Sichtbare Unterschrift | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 12.1 | Öffentliches Repo und Sicherheitsprüfung | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
@@ -383,7 +383,7 @@ Alle Aufgaben sind umgesetzt und getestet. Der Milestone ist auf Wunsch des Proj
 - **Gefunden und behoben in M9:** ein seit M1 bestehender, seltener Absturz im Pause-Rückruf des Renderns (betrifft `v0.1.0`; Eintrag „Absturz „UnmanagedCallersOnly aus verwaltetem Code“ …“).
 
 ## Milestone 10 – Zeichnen & Formen
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M9
+**Status:** 🟡 geplant · **Plan:** [2026-10-25-milestone-10-zeichnen-formen.md](superpowers/plans/2026-10-25-milestone-10-zeichnen-formen.md) · **Spec:** [2026-10-25-m10-zeichnen-formen-design.md](superpowers/specs/2026-10-25-m10-zeichnen-formen-design.md) · **Voraussetzungen:** M9
 
 Ziel: Freihandzeichnungen, Formen und Textfelder lassen sich hinzufügen, bearbeiten und speichern.
 
