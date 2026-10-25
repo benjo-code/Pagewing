@@ -123,6 +123,7 @@ testdata/pdfs/             Test-PDFs mit LICENSES.md je Herkunft
 - **Immer atomar:** Pagewing schreibt in eine temporäre Datei im Zielordner, prüft sie und ersetzt erst dann das Ziel. Das Original wird nie halb überschrieben. Die Prüfungen (M9): Die Datei, die PDFium liest, ist seit dem Öffnen unverändert (sonst lehnt Pagewing ab, auch für „Speichern unter“); steht am Pfad des Originals eine andere Datei, fragt eine Karte; die ersten *n* Bytes der neuen Datei sind byteweise die des Originals (*n* = dessen Länge); PDFium öffnet die neue Datei wieder (Seitenzahl, Verschlüsselung, Annotationen der geänderten Seiten) und rendert die geänderten Seiten. Ersetzt wird unter Windows mit einer atomaren Umbenennung, auch während das alte Dokument die Datei offen hat; das geprüfte neue Dokument wird das Dokument des Tabs, ohne dass je ein Tab ohne Dokument entsteht.
 - **Ungespeicherte Änderungen:** Tab (Punkt) und Statusleiste zeigen sie; Schließen und die Installation eines Updates fragen vorher („Speichern“, „Nicht speichern“, „Abbrechen“). Es gibt kein automatisches Speichern und in M9 keine Wiederherstellungsdatei; Herunterfahren und Beenden von außen fragen nicht. Inkrementelles Speichern behält die alte Fassung: Gelöschte Kommentare stehen weiter in früheren Revisionen der Datei.
 - Die Konstanten der Speicher-Flags kommen aus den Headern der ausgelieferten PDFium-Version. `FPDF_REMOVE_SECURITY` wechselte ab `chromium/8100` von 3 auf 4.
+- **Zeichnungen (M10):** Freihand, Rechteck und Ellipse sind Ink-, Square- und Circle-Annotationen; **Linie und Pfeil sind Ink-Annotationen** (Pfeil = Schaft plus Spitze als zwei Striche, Merkmal `/Subj` „Line“ bzw. „Arrow“), weil PDFium keine `/Line`-Annotation schreiben kann. Das Erscheinungsbild erzeugt wie bei den Markierungen PDFiums Generator (Variante D), ohne eigenen Schreiber; eine Füllung gibt es nicht (der Generator kann Rand und Fläche nicht mit verschiedener Deckkraft malen). Verschieben, Größe und Farbe ersetzen die Annotation unter demselben `/NM`. Ein echter `/Line`-Schreiber bleibt Sache von QPDF (Teilprojekt 3). Einzelheiten: `Docs/DECISIONS.md`, Einträge „Zeichnungen: Erscheinungsbild, Pfeil als Ink …“ und „Zeichnungen: Grenzen und Backlog (M10)“.
 
 ### 5.6 Sicherheit
 
@@ -175,7 +176,7 @@ M9 Speichern & Textmarkierungen (Hervorheben, Unterstreichen, Durchstreichen, Ko
 - Die Unterschrift baut auf Freihand- und Stempel-Annotationen auf.
 
 **Regeln:**
-- **Linie und Pfeil:** PDFium kann keine `/Line`-Annotationen anlegen. Die Spec zu M10 entscheidet zwischen Stempel-Annotation mit Pfad-Objekten, QPDF und einem eigenen Schreiber für den angehängten Teil (M9 kam ohne eigenen Schreiber aus: das Erscheinungsbild der Markierungen erzeugt PDFiums eigener Generator; Spec von Teilprojekt 2 `2026-10-24-teilprojekt2-annotieren-design.md`, `Docs/DECISIONS.md`, Eintrag „Erscheinungsbild der Annotationen: PDFium-Generator (Variante D) …“).
+- **Linie und Pfeil:** PDFium kann keine `/Line`-Annotationen anlegen. Entschieden in M10: Ink-Annotationen (Pfeil aus zwei Strichen, Merkmal `/Subj`) mit PDFiums Generator, ohne QPDF und ohne eigenen Schreiber (M9 kam ohne eigenen Schreiber aus: das Erscheinungsbild der Markierungen erzeugt PDFiums eigener Generator; Spec von Teilprojekt 2 `2026-10-24-teilprojekt2-annotieren-design.md`, `Docs/DECISIONS.md`, Eintrag „Erscheinungsbild der Annotationen: PDFium-Generator (Variante D) …“).
 - **Formulare:** Ohne V8 laufen keine JavaScript-Berechnungen. Hat ein Formular berechnete Felder, weist die App darauf hin, dass sie sich nicht automatisch aktualisieren.
 - **Sichtbare Unterschrift:** Sie wird nie als „rechtsgültig“ bezeichnet. Der Dialog zeigt den Hinweis: „Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.“ Gezeichnete oder importierte Unterschriften werden lokal gespeichert und lassen sich wiederverwenden.
 
@@ -257,7 +258,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 - **Veröffentlichung des Repos:** Das Repo ist privat. Wann es öffentlich wird, ist noch offen, spätestens aber zu v0.1.0.
 - **Älteste unterstützte Linux-Distribution (glibc):** wird in M8 festgelegt.
 - **Auslieferung von Tesseract und Sprachdaten:** im Paket enthalten oder als optionale Komponente. Entscheidet die Spec von Teilprojekt 4.
-- **QPDF:** kommt es dazu oder nicht? Entscheidet die Spec von Teilprojekt 3, für Linie und Pfeil schon die Spec von Teilprojekt 2.
+- **QPDF:** kommt es dazu oder nicht? Entscheidet die Spec von Teilprojekt 3 (für Linie und Pfeil ist es in M10 mit Ink-Annotationen entschieden).
 
 ## 12. Quellen (geprüft 2026-10-16)
 
