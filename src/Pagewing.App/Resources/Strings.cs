@@ -425,6 +425,18 @@ public static class Strings
     public static string AnnotateMore => Get("AnnotateMore");
     public static string DrawingLimitReached => Get("DrawingLimitReached");
     public static string DrawingFailed => Get("DrawingFailed");
+    public static string SelectionFrameName => Get("SelectionFrameName");
+    public static string SelectionHandleTopLeft => Get("SelectionHandleTopLeft");
+    public static string SelectionHandleTop => Get("SelectionHandleTop");
+    public static string SelectionHandleTopRight => Get("SelectionHandleTopRight");
+    public static string SelectionHandleRight => Get("SelectionHandleRight");
+    public static string SelectionHandleBottomRight => Get("SelectionHandleBottomRight");
+    public static string SelectionHandleBottom => Get("SelectionHandleBottom");
+    public static string SelectionHandleBottomLeft => Get("SelectionHandleBottomLeft");
+    public static string SelectionHandleLeft => Get("SelectionHandleLeft");
+    public static string SelectionHandleStart => Get("SelectionHandleStart");
+    public static string SelectionHandleEnd => Get("SelectionHandleEnd");
+    public static string SelectionLockedForeign => Get("SelectionLockedForeign");
 
     /// <summary>Gets the name of a colour of the markup palette (<see cref="Pagewing.Core.Annotations.AnnotationPalette.NameKey"/>).</summary>
     public static string ColorName(Pagewing.Core.Annotations.MarkupColor color) =>
@@ -433,6 +445,9 @@ public static class Strings
     /// <summary>Gets the name of a colour of the drawing palette (<see cref="Pagewing.Core.Annotations.DrawPalette.NameKey"/>).</summary>
     public static string DrawColorName(Pagewing.Core.Annotations.DrawColor color) =>
         Get(Pagewing.Core.Annotations.DrawPalette.NameKey(color));
+
+    /// <summary>Gets the name of a handle of a selected drawing for screen readers, for example "Top left handle".</summary>
+    public static string SelectionHandleName(Pagewing.Core.Annotations.HandleKind handle) => Get("SelectionHandle" + handle);
 
     /// <summary>Gets the name of a stroke width with its size in points, for example "Thin (1 pt)".</summary>
     public static string StrokeWidthName(Pagewing.Core.Annotations.StrokeWidth width) => width switch

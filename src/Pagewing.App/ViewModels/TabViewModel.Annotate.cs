@@ -191,11 +191,12 @@ public sealed partial class TabViewModel
     /// Gets whether a change is in flight: a markup or an edit of the panel on its way to the editor, or an operation the
     /// editor took and has not ended (also a save). <see cref="WhenEditsSettledAsync"/> waits for them.
     /// </summary>
-    internal bool HasEditsInFlight => !_disposed && (_pendingEdits > 0 || _editor?.IsBusy == true);
+    internal bool HasEditsInFlight => !_disposed && (_pendingEdits > 0 || _editor?.IsBusy == true || _nudge is not null);
 
     /// <summary>
     /// Esc of the mode (DocumentView, the toolbar, the "Comments" list): drops a stroke of a drawing tool that is being
-    /// dragged (<see cref="CancelDrawingGesture"/>), else clears the selection, else ends the mode.
+    /// dragged (<see cref="CancelDrawingGesture"/>), else a drag of the selected annotation (<see cref="CancelSelectionDrag"/>),
+    /// else clears the selected annotation (<see cref="SelectedAnnotation"/>), else the text selection, else ends the mode.
     /// </summary>
     /// <returns>Whether Esc had something to end.</returns>
     internal bool EscapeAnnotate()
@@ -207,6 +208,17 @@ public sealed partial class TabViewModel
 
         if (CancelDrawingGesture?.Invoke() == true)
         {
+            return true;
+        }
+
+        if (CancelSelectionDrag?.Invoke() == true)
+        {
+            return true;
+        }
+
+        if (_selectedAnnotation is not null)
+        {
+            ClearSelection();
             return true;
         }
 
@@ -276,6 +288,8 @@ public sealed partial class TabViewModel
     /// </summary>
     internal async Task WhenEditsSettledAsync()
     {
+        // Nudges that wait for the keys to rest are made now: they are changes like the others.
+        FlushNudge();
         while (!_disposed && (_pendingEdits > 0 || _editor?.IsBusy == true))
         {
             try

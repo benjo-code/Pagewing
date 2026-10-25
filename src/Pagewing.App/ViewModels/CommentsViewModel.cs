@@ -50,6 +50,10 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
     // A markup made by the tab that is to be selected once its page is read (by its name).
     private (int Page, string Name)? _selectNext;
+
+    // An annotation whose comment the document asked to edit (Enter on a selection) and that is not listed yet.
+    private PdfAnnotation? _editNext;
+    private bool _isCommentFocusRequested;
     private PdfDocument? _document;
     private CancellationTokenSource? _cancellation;
     private int _pageCount;
@@ -265,6 +269,42 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
             _selectNext = (created.Page, name);
         }
     }
+
+    /// <summary>
+    /// Gets whether the panel is to give the keys to the comment field of the selected entry (Enter on a selection in the
+    /// document, <see cref="BeginEdit"/>); the panel takes the request when it acts on it (<see cref="TakeCommentFocusRequest"/>).
+    /// </summary>
+    internal bool IsCommentFocusRequested
+    {
+        get => _isCommentFocusRequested;
+        private set => SetProperty(ref _isCommentFocusRequested, value);
+    }
+
+    /// <summary>
+    /// Selects the entry of <paramref name="annotation"/> (by name, else by index on its page) and asks the panel to put the
+    /// keys into its comment field: Enter on a selection in the document. An annotation not listed yet is selected once its
+    /// page is read; one the filter hides shows all kinds again.
+    /// </summary>
+    internal void BeginEdit(PdfAnnotation annotation)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        if (_disposed)
+        {
+            return;
+        }
+
+        _editNext = null;
+        if (FindEntry(annotation) is not { } item)
+        {
+            _editNext = annotation;
+            return;
+        }
+
+        StartEditing(item);
+    }
+
+    /// <summary>The panel acted on <see cref="IsCommentFocusRequested"/>.</summary>
+    internal void TakeCommentFocusRequest() => IsCommentFocusRequested = false;
 
     /// <summary>
     /// Applies the typed comment of the selected entry when it differs from its comment (as Ctrl+Enter does), unless that
@@ -777,9 +817,33 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         SelectNew(page, fresh);
     }
 
+    /// <summary>The entry of an annotation: by name if it has one, else by index on its page.</summary>
+    private CommentItemViewModel? FindEntry(PdfAnnotation annotation) =>
+        _byPage.TryGetValue(annotation.Page, out var entries)
+            ? Array.Find(entries, item => annotation.Name is { } name ? item.Annotation.Name == name : item.Annotation.Index == annotation.Index)
+            : null;
+
+    private void StartEditing(CommentItemViewModel item)
+    {
+        if (!_items.Contains(item))
+        {
+            Filter = CommentFilter.All;
+        }
+
+        SelectedItem = item;
+        IsCommentFocusRequested = true;
+    }
+
     /// <summary>Selects the markup the tab just made once it is listed (<see cref="SelectWhenListed"/>).</summary>
     private void SelectNew(int page, CommentItemViewModel[] fresh)
     {
+        if (_editNext is { } edit && edit.Page == page && FindEntry(edit) is { } editing)
+        {
+            _editNext = null;
+            StartEditing(editing);
+            return;
+        }
+
         if (_selectNext is not { } next || next.Page != page)
         {
             return;

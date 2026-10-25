@@ -166,10 +166,10 @@ public sealed partial class TabViewModel
     public ICommand SaveAsCommand => _saveAsCommand ??= new RelayCommand(() => SaveRequested?.Invoke(true), CanSaveAs);
 
     /// <summary>Ctrl+Z: undoes the newest change of the annotations.</summary>
-    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(() => _ = StepAsync(undo: true), () => IsReady && _canUndo && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
+    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(UndoAfterNudge, () => IsReady && _canUndo && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again.</summary>
-    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(() => _ = StepAsync(undo: false), () => IsReady && _canRedo && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
+    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(RedoAfterNudge, () => IsReady && _canRedo && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with
@@ -185,7 +185,7 @@ public sealed partial class TabViewModel
     /// operation the editor accepted and has not recorded yet). The question waits for those first
     /// (<see cref="WhenEditsSettledAsync"/>), so a change made a moment before closing is never dropped silently.
     /// </summary>
-    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _editor is { IsDirty: true } or { IsBusy: true });
+    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _nudge is not null || _editor is { IsDirty: true } or { IsBusy: true });
 
     /// <summary>
     /// Gets the version of the editor's history (<see cref="AnnotationEditor.Version"/>; 0 without an editor): a "Don't
@@ -286,7 +286,7 @@ public sealed partial class TabViewModel
         }
 
         var editor = _editor;
-        IsDirty = editor?.IsDirty == true || _pendingEdits > 0;
+        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null;
         CanUndo = editor?.CanUndo == true;
         CanRedo = editor?.CanRedo == true;
     }
@@ -316,6 +316,19 @@ public sealed partial class TabViewModel
     {
         _saveCommand?.RaiseCanExecuteChanged();
         _saveAsCommand?.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>A waiting nudge is made first, so undo undoes it (the editor runs the operations in this order).</summary>
+    private void UndoAfterNudge()
+    {
+        FlushNudge();
+        _ = StepAsync(undo: true);
+    }
+
+    private void RedoAfterNudge()
+    {
+        FlushNudge();
+        _ = StepAsync(undo: false);
     }
 
     /// <summary>
@@ -357,5 +370,7 @@ public sealed partial class TabViewModel
         {
             _editor.Changed -= OnEditorChanged;
         }
+
+        DisposeSelection();
     }
 }

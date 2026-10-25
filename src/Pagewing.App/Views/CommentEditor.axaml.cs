@@ -53,6 +53,15 @@ public sealed partial class CommentEditor : UserControl
     /// <summary>Raised when Esc in the comment field dropped what was typed: the keys go back to the entry in the list.</summary>
     internal event Action? FocusReturnRequested;
 
+    /// <summary>Gives the keys to the comment field (Enter on a selection in the document), when the entry has one.</summary>
+    internal void FocusComment()
+    {
+        if (CommentBox.IsEffectivelyVisible)
+        {
+            CommentBox.Focus(NavigationMethod.Tab);
+        }
+    }
+
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);

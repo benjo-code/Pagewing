@@ -187,6 +187,7 @@ public sealed partial class DocumentView : UserControl
     {
         SaveView();
         EndGesture();
+        DisconnectSelection();
         DisconnectHighlights();
         CancelPendingMarkup();
         DropTexts();
@@ -272,6 +273,9 @@ public sealed partial class DocumentView : UserControl
                 {
                     PageCanvas.InvalidatePages(pages);
                     PreloadText();
+
+                    // A selection on such a page follows its annotation (TabViewModel.Selection.cs).
+                    _viewModel?.OnSelectionPagesInvalidated(pages);
                 }
             });
         }
@@ -326,8 +330,10 @@ public sealed partial class DocumentView : UserControl
             if (_document is not null && _layout is { } layout && pageCount == layout.PageCount && ReferenceEquals(cache, PageCanvas.Cache))
             {
                 // The saved file in place of the shown document (the session kept the cache): the same pages, so layout,
-                // zoom, position, marks and text stay; only the scheduler is new. A stroke being drawn goes with the old one.
+                // zoom, position, marks and text stay; only the scheduler is new. A stroke being drawn goes with the old one,
+                // and so does a drag of the selection.
                 EndGesture();
+                EndSelectionDrag();
                 _document = document;
                 PageCanvas.ReplaceScheduler(scheduler);
                 if (sizes.Count > _loadedSizes)
@@ -368,6 +374,7 @@ public sealed partial class DocumentView : UserControl
 
         // The text of the document shown before goes with it, and a stroke being drawn on it.
         EndGesture();
+        EndSelectionDrag();
         DropTexts();
         _document = document;
         _layout = layout;
@@ -434,6 +441,11 @@ public sealed partial class DocumentView : UserControl
         {
             e.Handled = true;
         }
+        else if (!e.Handled && TrySelectionKey(e.Key, e.KeyModifiers))
+        {
+            // The keys of the selection of the select tool (DocumentView.Selection.cs): only in the mode with a selection.
+            e.Handled = true;
+        }
         else if (!e.Handled && e.Key == Key.C && e.KeyModifiers is KeyModifiers.Control or (KeyModifiers.Control | KeyModifiers.Shift)
             && HasCopyableSelection)
         {
@@ -454,8 +466,9 @@ public sealed partial class DocumentView : UserControl
     }
 
     /// <summary>
-    /// Esc in the document: drops a stroke of a drawing tool that is being dragged first (DocumentView.Drawing.cs), then clears
-    /// the selection; without one it ends the mode "Comment", then an active search.
+    /// Esc in the document: drops a stroke of a drawing tool that is being dragged first (DocumentView.Drawing.cs), then a drag
+    /// of the selected annotation, then that selection (DocumentView.Selection.cs), then the text selection; without one it
+    /// ends the mode "Comment", then an active search.
     /// The window's own meanings of Esc (a waiting address, a card of the save flow, an overlay, the update card) come
     /// before all of them (they are key bindings of the window).
     /// </summary>
@@ -472,6 +485,18 @@ public sealed partial class DocumentView : UserControl
         // A stroke being drawn first: the next Esc ends the mode.
         if (EndGesture())
         {
+            return true;
+        }
+
+        // Then a drag of the selection (nothing changes), then the selection.
+        if (EndSelectionDrag())
+        {
+            return true;
+        }
+
+        if (tab.SelectedAnnotation is not null)
+        {
+            tab.ClearSelection();
             return true;
         }
 
@@ -540,6 +565,8 @@ public sealed partial class DocumentView : UserControl
         }
 
         EndGesture();
+        EndSelectionDrag();
+        _drawingOverlay?.ShowSelection(null);
         DropTexts();
         _document = null;
         _layout = null;
@@ -789,6 +816,7 @@ public sealed partial class DocumentView : UserControl
         PreloadText();
         FollowSelectionWithViewport();
         FollowGestureWithViewport();
+        FollowSelectionViewWithViewport();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -823,8 +851,16 @@ public sealed partial class DocumentView : UserControl
             // The session renders in the new theme already: the canvas drops the tiles of the old one and plans again.
             // Page, zoom, scroll position and selection stay.
             PageCanvas.PageTheme = tab.EffectivePageTheme;
+
+            // The frame of a selection takes the colours of the new page ground.
+            _drawingOverlay?.RefreshSelection();
         }
-        else if (e.PropertyName is nameof(TabViewModel.ActiveTool) or nameof(TabViewModel.IsAnnotating) && _press is null && _gesture is null
+        else if (e.PropertyName is nameof(TabViewModel.SelectedAnnotation) or nameof(TabViewModel.SelectionGeometry) or nameof(TabViewModel.SelectionLockReason))
+        {
+            RefreshSelectionView();
+        }
+        else if (e.PropertyName is nameof(TabViewModel.ActiveTool) or nameof(TabViewModel.IsAnnotating) or nameof(TabViewModel.IsSelectTool)
+            && _press is null && _gesture is null && _selectionDrag is null
             && Scroller.IsPointerOver)
         {
             // Another tool: the crosshair comes or goes where the pointer rests.
@@ -832,6 +868,7 @@ public sealed partial class DocumentView : UserControl
         }
 
         CheckGesture(e.PropertyName);
+        CheckSelectionDrag(e.PropertyName);
     }
 
     /// <summary>Zooms so that the content under the zoom anchor (the pointer, or the middle of the viewport) stays in place.</summary>

@@ -1194,4 +1194,40 @@
   <data name="DrawingFailed" xml:space="preserve">
     <value>Die Zeichnung konnte nicht hinzugefügt werden.</value>
   </data>
+  <data name="SelectionFrameName" xml:space="preserve">
+    <value>Auswahlrahmen</value>
+  </data>
+  <data name="SelectionHandleTopLeft" xml:space="preserve">
+    <value>Griff oben links</value>
+  </data>
+  <data name="SelectionHandleTop" xml:space="preserve">
+    <value>Griff oben</value>
+  </data>
+  <data name="SelectionHandleTopRight" xml:space="preserve">
+    <value>Griff oben rechts</value>
+  </data>
+  <data name="SelectionHandleRight" xml:space="preserve">
+    <value>Griff rechts</value>
+  </data>
+  <data name="SelectionHandleBottomRight" xml:space="preserve">
+    <value>Griff unten rechts</value>
+  </data>
+  <data name="SelectionHandleBottom" xml:space="preserve">
+    <value>Griff unten</value>
+  </data>
+  <data name="SelectionHandleBottomLeft" xml:space="preserve">
+    <value>Griff unten links</value>
+  </data>
+  <data name="SelectionHandleLeft" xml:space="preserve">
+    <value>Griff links</value>
+  </data>
+  <data name="SelectionHandleStart" xml:space="preserve">
+    <value>Griff Anfangspunkt</value>
+  </data>
+  <data name="SelectionHandleEnd" xml:space="preserve">
+    <value>Griff Endpunkt</value>
+  </data>
+  <data name="SelectionLockedForeign" xml:space="preserve">
+    <value>Von einem anderen Programm gezeichnet: Sie können die Zeichnung kommentieren oder löschen, aber nicht verschieben oder ändern.</value>
+  </data>
 </root>

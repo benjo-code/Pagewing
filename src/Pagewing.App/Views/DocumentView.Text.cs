@@ -86,6 +86,9 @@ public sealed partial class DocumentView
 
         /// <summary>A drawing tool over a page (crosshair).</summary>
         Draw,
+
+        /// <summary>The select tool over a movable selection or one of its handles (DocumentView.Selection.cs).</summary>
+        Selection,
     }
 
     private enum PressKind
@@ -537,8 +540,9 @@ public sealed partial class DocumentView
 
         var properties = e.GetCurrentPoint(this).Properties;
 
-        // A drawing tool owns the press (DocumentView.Drawing.cs): no text selection, no link.
-        if (PressForDrawing(e, properties))
+        // A drawing tool owns the press (DocumentView.Drawing.cs), and so does the select tool (DocumentView.Selection.cs):
+        // no text selection, no link.
+        if (PressForDrawing(e, properties) || PressForSelection(e, properties))
         {
             return;
         }
@@ -667,7 +671,7 @@ public sealed partial class DocumentView
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (MoveForDrawing(e))
+        if (MoveForDrawing(e) || MoveForSelection(e))
         {
             return;
         }
@@ -712,7 +716,7 @@ public sealed partial class DocumentView
 
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (ReleaseForDrawing(e))
+        if (ReleaseForDrawing(e) || ReleaseForSelection(e))
         {
             return;
         }
@@ -763,6 +767,12 @@ public sealed partial class DocumentView
             EndGesture();
         }
 
+        if (_selectionDrag is { } drag && ReferenceEquals(e.Pointer, drag.Pointer))
+        {
+            // The same for a drag of the selection: nothing changes.
+            EndSelectionDrag();
+        }
+
         if (_press is { } press)
         {
             EndPress(press);
@@ -806,6 +816,22 @@ public sealed partial class DocumentView
         {
             // A drawing tool: the crosshair over a page, whatever is on it.
             SetCursor(PageCanvas.PagePointAt(position) is { } on && IsOnPage(on.Page, on.Position) ? CursorKind.Draw : CursorKind.Arrow);
+            return;
+        }
+
+        if (_viewModel is { } selecting && SelectsWith(selecting))
+        {
+            // The select tool: a resize arrow over a handle, the move cross inside a movable selection, else the arrow.
+            if (SelectionCursorAt(position) is { } cursor)
+            {
+                _cursorKind = CursorKind.Selection;
+                Scroller.Cursor = cursor;
+            }
+            else
+            {
+                SetCursor(CursorKind.Arrow);
+            }
+
             return;
         }
 

@@ -44,7 +44,14 @@ public sealed partial class TabViewModel
 
             if (SetProperty(ref _isSelectTool, value))
             {
+                if (!value)
+                {
+                    // The selection belongs to the select tool (TabViewModel.Selection.cs): a waiting nudge is made first.
+                    ClearSelection();
+                }
+
                 OnActiveToolChangedForDrawing();
+                RaiseSelectionCanExecuteChanged();
             }
         }
     }
@@ -244,5 +251,6 @@ public sealed partial class TabViewModel
         _ellipseCommand?.RaiseCanExecuteChanged();
         _lineCommand?.RaiseCanExecuteChanged();
         _arrowCommand?.RaiseCanExecuteChanged();
+        RaiseSelectionCanExecuteChanged();
     }
 }
