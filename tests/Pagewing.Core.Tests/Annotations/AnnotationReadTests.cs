@@ -33,7 +33,7 @@ public sealed class AnnotationReadTests
         AssertRectNear(new PageRect(28, 60, 190, 86), highlight.Bounds, 0.1);
         Assert.True(highlight.Editable);
 
-        Assert.Equal(AnnotationKind.Other, annotations[0].Kind);
+        Assert.Equal(AnnotationKind.Rectangle, annotations[0].Kind);
         Assert.Equal(new AnnotationColor(255, 0, 0), annotations[0].Color);
         Assert.Empty(annotations[0].Quads);
         Assert.Equal(AnnotationKind.Other, annotations[2].Kind);
@@ -65,13 +65,15 @@ public sealed class AnnotationReadTests
         Assert.Equal([0, 1, 2, 3, 4, 5, 6, 7], first.Select(a => a.Index));
         Assert.Equal(["Ink", "Ink", "Square", "Square", "Square", "Circle", "Line", "Ink"], first.Select(a => a.Subtype));
         Assert.DoesNotContain(first, a => a.Name == "reply-0008");
-        Assert.All(first, a => Assert.Equal(AnnotationKind.Other, a.Kind));
+        Assert.Equal(
+            [AnnotationKind.Ink, AnnotationKind.Ink, AnnotationKind.Rectangle, AnnotationKind.Rectangle, AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Other, AnnotationKind.Ink],
+            first.Select(a => a.Kind));
         Assert.Equal("Ink", Assert.Single(second).Subtype);
         Assert.Equal(1, second[0].Page);
     }
 
     [Fact]
-    public async Task MarksOnlyPlainMarkupAsEditable()
+    public async Task MarksPlainMarkupAndDrawingsAsEditable()
     {
         await using var document = await OpenFixtureAsync("annotations-foreign.pdf");
 
@@ -84,11 +86,16 @@ public sealed class AnnotationReadTests
         Assert.Equal(new AnnotationColor(153, 255, 153), bare.Color);
         Assert.Equal("No name, no appearance", bare.Contents);
         Assert.True(bare.Editable);
-        Assert.All(first.Where(a => a.Subtype is "Ink" or "FreeText" or "Text" or "Link"), a =>
+        Assert.All(first.Where(a => a.Subtype is "FreeText" or "Text" or "Link"), a =>
         {
             Assert.Equal(AnnotationKind.Other, a.Kind);
             Assert.False(a.Editable);
         });
+
+        // An ink without a reply can be deleted and commented on since M10.
+        var ink = first.Single(a => a.Subtype == "Ink");
+        Assert.Equal(AnnotationKind.Ink, ink.Kind);
+        Assert.True(ink.Editable);
 
         Assert.Equal([AnnotationKind.Underline, AnnotationKind.StrikeOut], second.Select(a => a.Kind));
         Assert.All(second, a => Assert.True(a.Editable));

@@ -22,7 +22,19 @@ namespace Pagewing.Core.Annotations;
 /// <param name="Contents">The comment, or <see langword="null"/> if there is none.</param>
 /// <param name="Author">The author (T entry), or <see langword="null"/>.</param>
 /// <param name="Modified">The modification date, or <see langword="null"/> if unknown.</param>
-/// <param name="Editable">Whether Pagewing may change or delete it.</param>
+/// <param name="Editable">
+/// Whether Pagewing may delete it and change its comment (and the colour of a highlight, underline or strike-out): a
+/// markup or a drawing (ink, square, circle) that no reply answers.
+/// </param>
+/// <param name="Drawing">
+/// The shape of a drawing (ink, square, circle) in page points from the top left, or <see langword="null"/> for any other
+/// kind and for a drawing whose shape cannot be read. An ink with the marker of a line or an arrow whose strokes have that
+/// shape is a <see cref="AnnotationKind.Line"/> or <see cref="AnnotationKind.Arrow"/>, any other ink is freehand.
+/// </param>
+/// <param name="GeometryEditable">
+/// Whether Pagewing may move, resize, recolour or rewiden the drawing (it does so by replacing it): only when nothing of the
+/// annotation would be lost on the way, see <see cref="Pdf.PdfDocument.ReplaceDrawingAsync"/>.
+/// </param>
 public sealed record PdfAnnotation(
     int Page,
     int Index,
@@ -36,4 +48,6 @@ public sealed record PdfAnnotation(
     string? Contents,
     string? Author,
     DateTimeOffset? Modified,
-    bool Editable);
+    bool Editable,
+    DrawingGeometry? Drawing = null,
+    bool GeometryEditable = false);

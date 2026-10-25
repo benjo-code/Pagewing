@@ -431,7 +431,8 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         CommentFilter.Highlight => item.Kind == AnnotationKind.Highlight,
         CommentFilter.Underline => item.Kind == AnnotationKind.Underline,
         CommentFilter.StrikeOut => item.Kind == AnnotationKind.StrikeOut,
-        CommentFilter.Other => item.Kind == AnnotationKind.Other,
+        // Drawings have their own kinds since M10; until the panel has a filter for them they stay under "Other".
+        CommentFilter.Other => item.IsOther,
         _ => true,
     };
 

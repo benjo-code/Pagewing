@@ -83,8 +83,11 @@ public sealed class CommentItemViewModel : ViewModelBase
     /// <summary>Gets whether the annotation is a strike-out (its symbol: Tabler "strikethrough").</summary>
     public bool IsStrikeOut => Kind == AnnotationKind.StrikeOut;
 
-    /// <summary>Gets whether the annotation is of another kind (its symbol: Tabler "note").</summary>
-    public bool IsOther => Kind == AnnotationKind.Other;
+    /// <summary>
+    /// Gets whether the annotation is of another kind than a highlight, underline or strike-out (its symbol: Tabler "note");
+    /// drawings count here until the panel shows them as their own kinds.
+    /// </summary>
+    public bool IsOther => Kind is not (AnnotationKind.Highlight or AnnotationKind.Underline or AnnotationKind.StrikeOut);
 
     /// <summary>
     /// Gets the kind in words, next to its symbol (never by the symbol or the colour alone): "Highlight", "Underline",

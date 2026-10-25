@@ -7,7 +7,10 @@ using Pagewing.Pdfium.Native;
 
 namespace Pagewing.Core.Pdf;
 
-/// <summary>The annotations of the document: reading, and creating, changing and deleting text markup.</summary>
+/// <summary>
+/// The annotations of the document: reading, and creating, changing and deleting text markup and drawings (the drawings
+/// themselves are in <c>PdfDocument.Drawings.cs</c>).
+/// </summary>
 public sealed partial class PdfDocument
 {
     /// <summary>The most annotations <see cref="GetAnnotationsAsync"/> lists for the whole document; further ones are left out silently.</summary>
@@ -26,8 +29,11 @@ public sealed partial class PdfDocument
     /// Reads the annotations of a page in the order of the page's annotation list. Popups and replies (<c>/IRT</c>)
     /// never appear; damaged entries (no <c>/Rect</c>, coordinates that are not finite or absurdly large, a markup without a complete quadrilateral) are skipped. Across the document at
     /// most <see cref="MaxAnnotations"/> are listed: each page counts with what its last read listed, so reading a page
-    /// again does not count twice. <see cref="PdfAnnotation.Editable"/> is set for highlights, underlines and
-    /// strike-outs that no other annotation answers. Runs with <see cref="PdfPriority.Background"/>.
+    /// again does not count twice. <see cref="PdfAnnotation.Editable"/> is set for highlights, underlines, strike-outs and
+    /// drawings (ink, square, circle) that no other annotation answers; a drawing also gets its
+    /// <see cref="PdfAnnotation.Drawing"/> and <see cref="PdfAnnotation.GeometryEditable"/> (at most
+    /// <see cref="MaxDrawingPointsPerPage"/> points per read of a page, later drawings of the page are listed without their
+    /// shape). Runs with <see cref="PdfPriority.Background"/>.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
@@ -49,10 +55,11 @@ public sealed partial class PdfDocument
                 using var loaded = document.LoadPage(pageIndex);
                 var read = PdfiumAnnotations.Read(loaded, Math.Max(0, MaxAnnotations - others), cancellationToken);
                 listedAnnotations[pageIndex] = read.Count;
+                var drawings = new DrawingReader(loaded, MaxDrawingPointsPerPage);
                 var result = new PdfAnnotation[read.Count];
                 for (var i = 0; i < result.Length; i++)
                 {
-                    result[i] = ToAnnotation(pageIndex, read[i]);
+                    result[i] = ToAnnotation(pageIndex, read[i], drawings.Read(read[i], cancellationToken));
                 }
 
                 return result;
@@ -72,6 +79,7 @@ public sealed partial class PdfDocument
     /// <returns>The new annotation as <see cref="GetAnnotationsAsync"/> reads it.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page, or <paramref name="kind"/> is not a markup kind.</exception>
     /// <exception cref="ArgumentException"><paramref name="lineRects"/> is empty or has a rectangle that is empty or not finite.</exception>
+    /// <exception cref="PdfAnnotationLimitException">The document lists <see cref="MaxAnnotations"/> already (see <see cref="CreateDrawingAsync"/>); nothing is created.</exception>
     /// <exception cref="InvalidOperationException">PDFium could not create the annotation or its appearance; the page is left unchanged.</exception>
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the annotation was created.</exception>
@@ -135,6 +143,7 @@ public sealed partial class PdfDocument
                 int index;
                 using (var page = document.LoadPage(pageIndex))
                 {
+                    EnsureRoomForOneMore(page, pageIndex, cancellationToken);
                     var transform = PdfiumPageText.TransformOf(page);
                     var quads = new PdfiumQuad[rects.Length];
                     for (var i = 0; i < rects.Length; i++)
@@ -145,34 +154,15 @@ public sealed partial class PdfDocument
                     index = PdfiumAnnotations.CreateMarkup(page, subtype, quads, (color.R, color.G, color.B), contents, trimmedAuthor, name, date);
                 }
 
-                // From here on the annotation is on the page: whatever fails, it is removed again before the error goes on.
-                try
-                {
-                    if (!PdfiumAnnotations.GenerateAppearance(document, pageIndex, index))
-                    {
-                        throw new InvalidOperationException("PDFium did not generate the appearance of the annotation.");
-                    }
-
-                    return ReadBack(pageIndex, index);
-                }
-                catch (Exception ex)
-                {
-                    TryRemove(pageIndex, index);
-                    if (ex is PdfiumRenderException)
-                    {
-                        throw new InvalidOperationException("PDFium did not generate the appearance of the annotation.", ex);
-                    }
-
-                    throw;
-                }
+                return FinishCreated(pageIndex, index);
             },
             PdfiumPriority.Interactive,
             cancellationToken);
     }
 
     /// <summary>
-    /// Deletes a highlight, underline or strike-out together with its popup. The locator finds it by name if it has one,
-    /// else by index. Runs with <see cref="PdfPriority.Interactive"/>. The deleted annotation stays in the bytes of the
+    /// Deletes a highlight, underline, strike-out or drawing together with its popup. The locator finds it by name if it has
+    /// one, else by index. Runs with <see cref="PdfPriority.Interactive"/>. The deleted annotation stays in the bytes of the
     /// earlier revisions of an incrementally saved file.
     /// </summary>
     /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
@@ -196,16 +186,22 @@ public sealed partial class PdfDocument
     }
 
     /// <summary>
-    /// Changes a highlight, underline or strike-out. A new comment replaces <c>/Contents</c> (an empty string empties it)
-    /// and a formatted <c>/RC</c> by the same text, so old rich text never covers it; a new colour makes PDFium build the
-    /// appearance anew (an old, foreign appearance is dropped). The annotation gets a <c>/NM</c> if it has none and the
-    /// flag Print, <c>/M</c> becomes now, and it always leaves with an appearance: one without (also a foreign markup whose
-    /// comment alone changed) gets PDFium's. Cancellation counts until the change starts. Runs with
-    /// <see cref="PdfPriority.Interactive"/>.
+    /// Changes a highlight, underline, strike-out or drawing. A new comment replaces <c>/Contents</c> (an empty string
+    /// empties it) and a formatted <c>/RC</c> by the same text, so old rich text never covers it; a new colour of a markup
+    /// makes PDFium build the appearance anew (an old, foreign appearance is dropped). A drawing whose colour or
+    /// <see cref="AnnotationEdit.Geometry"/> changes is replaced in the same job, as by <see cref="ReplaceDrawingAsync"/>
+    /// (the new comment, if any, goes with it); that needs <see cref="PdfAnnotation.GeometryEditable"/>. The annotation
+    /// gets a <c>/NM</c> if it has none and the flag Print, <c>/M</c> becomes now, and it always leaves with an appearance:
+    /// one without (also a foreign markup whose comment alone changed) gets PDFium's. Cancellation counts until the change
+    /// starts. Runs with <see cref="PdfPriority.Interactive"/>.
     /// </summary>
     /// <returns>The changed annotation as <see cref="GetAnnotationsAsync"/> reads it.</returns>
     /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
-    /// <exception cref="InvalidOperationException">The annotation is not editable (another kind, or it has replies), or PDFium refused.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The annotation is not editable (another kind, or it has replies), a geometry is given for a markup, a drawing that is
+    /// not <see cref="PdfAnnotation.GeometryEditable"/> gets a new colour or geometry, or PDFium refused.
+    /// </exception>
+    /// <exception cref="ArgumentException">The geometry is of another kind than the drawing, or see <see cref="CreateDrawingAsync"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The page of the locator is not a page of the document.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the annotation was changed.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
@@ -214,6 +210,7 @@ public sealed partial class PdfDocument
         ThrowIfDisposed();
         ThrowIfNotAPage(locator.Page);
         ArgumentNullException.ThrowIfNull(edit);
+        var spec = edit.Geometry is { } geometry ? ToPdfium(geometry) : null;
         var name = NewName();
         var date = FormatPdfDate(Clock.GetUtcNow());
         (byte R, byte G, byte B)? color = edit.Color is { } c ? (c.R, c.G, c.B) : null;
@@ -224,17 +221,36 @@ public sealed partial class PdfDocument
                 // left half changed.
                 int index;
                 Exception? failure = null;
+                Replacement? replacement = null;
                 using (var page = document.LoadPage(locator.Page))
                 {
                     index = FindEditable(page, locator, cancellationToken);
-                    try
+                    var isDrawing = PdfiumAnnotations.IsDrawing(PdfiumAnnotations.SubtypeOf(page, index));
+                    if (edit.Geometry is not null && !isDrawing)
                     {
-                        PdfiumAnnotations.Update(page, index, edit.Contents, color, name, date);
+                        throw new InvalidOperationException("Only a drawing has a geometry to change.");
                     }
-                    catch (Exception ex)
+
+                    if (isDrawing && (edit.Geometry is not null || color is not null))
                     {
-                        failure = ex;
+                        replacement = PrepareReplacement(page, index, edit.Geometry, spec, color, edit.Contents, name, date, cancellationToken);
                     }
+                    else
+                    {
+                        try
+                        {
+                            PdfiumAnnotations.Update(page, index, edit.Contents, color, name, date);
+                        }
+                        catch (Exception ex)
+                        {
+                            failure = ex;
+                        }
+                    }
+                }
+
+                if (replacement is not null)
+                {
+                    return Replace(locator.Page, replacement);
                 }
 
                 // Every changed annotation gets an appearance: one without (a foreign markup, or the old one dropped for a
@@ -309,9 +325,9 @@ public sealed partial class PdfDocument
         new PdfiumPoint(quad.BottomLeft.X, quad.BottomLeft.Y),
         new PdfiumPoint(quad.BottomRight.X, quad.BottomRight.Y));
 
-    private static PdfAnnotation ToAnnotation(int pageIndex, PdfiumAnnotation annotation)
+    private static PdfAnnotation ToAnnotation(int pageIndex, PdfiumAnnotation annotation, DrawingRead drawing)
     {
-        var kind = KindOf(annotation.Subtype);
+        var kind = drawing.Geometry?.Kind ?? KindOf(annotation.Subtype);
         var quads = new Quad[annotation.Quads.Count];
         for (var i = 0; i < quads.Length; i++)
         {
@@ -342,7 +358,9 @@ public sealed partial class PdfDocument
             annotation.Contents,
             annotation.Author,
             PdfDate.TryParse(annotation.Modified),
-            kind != AnnotationKind.Other && !annotation.HasReplies);
+            kind != AnnotationKind.Other && !annotation.HasReplies,
+            drawing.Geometry,
+            drawing.GeometryEditable && !annotation.HasReplies);
     }
 
     private static AnnotationKind KindOf(int subtype) => subtype switch
@@ -350,6 +368,9 @@ public sealed partial class PdfDocument
         FpdfConstants.AnnotHighlight => AnnotationKind.Highlight,
         FpdfConstants.AnnotUnderline => AnnotationKind.Underline,
         FpdfConstants.AnnotStrikeout => AnnotationKind.StrikeOut,
+        FpdfConstants.AnnotInk => AnnotationKind.Ink,
+        FpdfConstants.AnnotSquare => AnnotationKind.Rectangle,
+        FpdfConstants.AnnotCircle => AnnotationKind.Ellipse,
         _ => AnnotationKind.Other,
     };
 
@@ -376,7 +397,7 @@ public sealed partial class PdfDocument
 
         if (!PdfiumAnnotations.IsEditable(page, index, cancellationToken))
         {
-            throw new InvalidOperationException("Only highlights, underlines and strike-outs without replies can be changed.");
+            throw new InvalidOperationException("Only highlights, underlines, strike-outs and drawings without replies can be changed.");
         }
 
         return index;
@@ -399,11 +420,39 @@ public sealed partial class PdfDocument
 
         try
         {
-            return PdfiumAnnotations.GenerateAppearance(document, pageIndex, index);
+            return AppearanceGenerator(document, pageIndex, index);
         }
         catch (PdfiumRenderException ex)
         {
             throw new InvalidOperationException("PDFium did not generate the appearance of the annotation.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Gives a just created annotation (on the page at <paramref name="index"/>) its appearance and reads it back; whatever
+    /// fails, it is removed again before the error goes on. Runs on the PDFium thread.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">PDFium did not generate the appearance.</exception>
+    private PdfAnnotation FinishCreated(int pageIndex, int index)
+    {
+        try
+        {
+            if (!AppearanceGenerator(document, pageIndex, index))
+            {
+                throw new InvalidOperationException("PDFium did not generate the appearance of the annotation.");
+            }
+
+            return ReadBack(pageIndex, index);
+        }
+        catch (Exception ex)
+        {
+            TryRemove(pageIndex, index);
+            if (ex is PdfiumRenderException)
+            {
+                throw new InvalidOperationException("PDFium did not generate the appearance of the annotation.", ex);
+            }
+
+            throw;
         }
     }
 
@@ -427,7 +476,7 @@ public sealed partial class PdfDocument
         using var page = document.LoadPage(pageIndex);
         var annotation = PdfiumAnnotations.ReadAt(page, index)
             ?? throw new InvalidOperationException("The changed annotation could not be read back.");
-        return ToAnnotation(pageIndex, annotation);
+        return ToAnnotation(pageIndex, annotation, new DrawingReader(page, long.MaxValue).Read(annotation, CancellationToken.None));
     }
 
     private void ThrowIfNotAPage(int pageIndex)

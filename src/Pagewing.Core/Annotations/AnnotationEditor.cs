@@ -215,7 +215,9 @@ public sealed class AnnotationEditor
         RunAsync(async document =>
         {
             var removed = await FindAsync(document, locator).ConfigureAwait(false);
-            if (!removed.Editable)
+
+            // Drawings are editable since M10, but undo can only create markups again so far.
+            if (!removed.Editable || removed.Kind is not (AnnotationKind.Highlight or AnnotationKind.Underline or AnnotationKind.StrikeOut))
             {
                 throw new InvalidOperationException("Only highlights, underlines and strike-outs without replies can be deleted.");
             }

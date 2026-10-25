@@ -97,8 +97,9 @@ internal static unsafe class PdfiumDrawings
     /// Creates an ink (for <see cref="PdfiumDrawingKind.Ink"/>, <see cref="PdfiumDrawingKind.Line"/> and
     /// <see cref="PdfiumDrawingKind.Arrow"/>), a square or a circle without an appearance: <c>/Rect</c> (see the remarks of
     /// the class), the strokes (<c>/InkList</c>), <c>/C</c> with alpha 255, <c>/Border [0 0 w]</c>, <c>/F</c> Print,
-    /// <c>/Subj</c> for a line and an arrow, <c>/NM</c>, <c>/M</c>, <c>/CreationDate</c>, and <c>/Contents</c> and <c>/T</c>
-    /// when given. Never an interior colour. Every point is checked and converted before anything is added; on failure
+    /// <c>/Subj</c> for a line and an arrow, <c>/NM</c>, <c>/M</c>, <c>/CreationDate</c> (<paramref name="creationDate"/> when
+    /// given, so that a replaced drawing keeps the date it was first made, else <paramref name="date"/>), and <c>/Contents</c>
+    /// and <c>/T</c> when given. Never an interior colour. Every point is checked and converted before anything is added; on failure
     /// nothing is left on the page.
     /// </summary>
     /// <returns>The index of the new annotation.</returns>
@@ -116,7 +117,8 @@ internal static unsafe class PdfiumDrawings
         string? contents,
         string? author,
         string name,
-        string date)
+        string date,
+        string? creationDate = null)
     {
         ArgumentNullException.ThrowIfNull(page);
         ArgumentNullException.ThrowIfNull(drawing);
@@ -203,7 +205,7 @@ internal static unsafe class PdfiumDrawings
 
             PdfiumAnnotations.Check(PdfiumAnnotations.WriteString(annotation, "NM\0"u8, name));
             PdfiumAnnotations.Check(PdfiumAnnotations.WriteString(annotation, "M\0"u8, date));
-            PdfiumAnnotations.Check(PdfiumAnnotations.WriteString(annotation, "CreationDate\0"u8, date));
+            PdfiumAnnotations.Check(PdfiumAnnotations.WriteString(annotation, "CreationDate\0"u8, string.IsNullOrEmpty(creationDate) ? date : creationDate));
             return index;
         }
         catch
@@ -344,6 +346,18 @@ internal static unsafe class PdfiumDrawings
             return false;
         }
 
+        return KeysAllowReplacing(page, index) && ReadGeometry(page, index, cancellationToken) is { IsComplete: true };
+    }
+
+    /// <summary>
+    /// The part of <see cref="IsGeometryEditable"/> that looks at the dictionary alone: a drawing without <c>/BS</c>,
+    /// <c>/BE</c>, <c>/IC</c>, <c>/RD</c> and <c>/CA</c> below 1, with no appearance or PDFium's own. Replies and the strokes
+    /// are not checked; a caller that knows them already (a read of the whole page) uses this one and saves a scan of the
+    /// page per annotation.
+    /// </summary>
+    public static bool KeysAllowReplacing(PdfiumPage page, int index)
+    {
+        ArgumentNullException.ThrowIfNull(page);
         var annotation = Fpdf.FPDFPage_GetAnnot(page.Access(), index);
         if (annotation == 0)
         {
@@ -352,23 +366,18 @@ internal static unsafe class PdfiumDrawings
 
         try
         {
-            if (!PdfiumAnnotations.IsDrawing(Fpdf.FPDFAnnot_GetSubtype(annotation))
-                || PdfiumAnnotations.HasKey(annotation, "BS\0"u8)
-                || PdfiumAnnotations.HasKey(annotation, "BE\0"u8)
-                || PdfiumAnnotations.HasKey(annotation, "IC\0"u8)
-                || PdfiumAnnotations.HasKey(annotation, "RD\0"u8)
-                || !IsOpaque(annotation)
-                || (PdfiumAnnotations.HasKey(annotation, "AP\0"u8) && !PdfiumAnnotations.HasKey(annotation, "PDFIUM_HasGeneratedAP\0"u8)))
-            {
-                return false;
-            }
+            return PdfiumAnnotations.IsDrawing(Fpdf.FPDFAnnot_GetSubtype(annotation))
+                && !PdfiumAnnotations.HasKey(annotation, "BS\0"u8)
+                && !PdfiumAnnotations.HasKey(annotation, "BE\0"u8)
+                && !PdfiumAnnotations.HasKey(annotation, "IC\0"u8)
+                && !PdfiumAnnotations.HasKey(annotation, "RD\0"u8)
+                && IsOpaque(annotation)
+                && (!PdfiumAnnotations.HasKey(annotation, "AP\0"u8) || PdfiumAnnotations.HasKey(annotation, "PDFIUM_HasGeneratedAP\0"u8));
         }
         finally
         {
             Fpdf.FPDFPage_CloseAnnot(annotation);
         }
-
-        return ReadGeometry(page, index, cancellationToken) is { IsComplete: true };
     }
 
     /// <summary>

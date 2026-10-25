@@ -212,15 +212,56 @@ internal static unsafe class PdfiumAnnotations
         return index < 0 || index >= scan.Subtypes.Length || scan.IsReply[index] || scan.HasReplies(index);
     }
 
-    /// <summary>Whether Pagewing may change or delete the annotation: a highlight, underline or strike-out that no other annotation answers.</summary>
+    /// <summary>
+    /// Whether Pagewing may change or delete the annotation: a highlight, underline or strike-out, or a drawing (ink,
+    /// square, circle), that is no reply and that no other annotation answers. Whether a drawing may also be replaced is
+    /// <see cref="PdfiumDrawings.IsGeometryEditable"/>.
+    /// </summary>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while checking.</exception>
     public static bool IsEditable(PdfiumPage page, int index, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
         var scan = Scan(native, cancellationToken);
-        return index >= 0 && index < scan.Subtypes.Length && IsMarkup(scan.Subtypes[index])
+        return index >= 0 && index < scan.Subtypes.Length && (IsMarkup(scan.Subtypes[index]) || IsDrawing(scan.Subtypes[index]))
             && !scan.IsReply[index] && !scan.HasReplies(index);
+    }
+
+    /// <summary>The number of entries of the page's <c>/Annots</c> as PDFium counts them (popups, replies and links included).</summary>
+    public static int CountEntries(PdfiumPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        return Math.Max(0, Fpdf.FPDFPage_GetAnnotCount(page.Access()));
+    }
+
+    /// <summary>The <c>FPDF_ANNOTATION_SUBTYPE</c> of the entry at <paramref name="index"/>, or -1 if there is none.</summary>
+    public static int SubtypeOf(PdfiumPage page, int index)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        return SubtypeAt(page.Access(), index);
+    }
+
+    /// <summary>
+    /// Reads a string value of the entry at <paramref name="index"/> (for example <c>"CreationDate\0"u8</c>);
+    /// <see langword="null"/> when the entry or the value is missing (see <see cref="ReadString"/>).
+    /// </summary>
+    public static string? ReadStringAt(PdfiumPage page, int index, ReadOnlySpan<byte> key)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var annotation = Fpdf.FPDFPage_GetAnnot(page.Access(), index);
+        if (annotation == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return ReadString(annotation, key);
+        }
+        finally
+        {
+            Fpdf.FPDFPage_CloseAnnot(annotation);
+        }
     }
 
     /// <summary>

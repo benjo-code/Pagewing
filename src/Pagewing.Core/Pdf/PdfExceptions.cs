@@ -109,3 +109,26 @@ public sealed class PdfAnnotationNotFoundException : Exception
     {
     }
 }
+
+/// <summary>
+/// An annotation was not created because the document already lists the most annotations Pagewing reads
+/// (<see cref="PdfDocument.MaxAnnotations"/>): a new one would not be listed. <see cref="Exception.Message"/> is a short
+/// English explanation.
+/// </summary>
+public sealed class PdfAnnotationLimitException : Exception
+{
+    public PdfAnnotationLimitException()
+        : base("The document already has as many annotations as Pagewing lists.")
+    {
+    }
+
+    public PdfAnnotationLimitException(string message)
+        : base(message)
+    {
+    }
+
+    public PdfAnnotationLimitException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
