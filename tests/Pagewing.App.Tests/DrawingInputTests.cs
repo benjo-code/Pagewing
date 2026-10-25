@@ -959,6 +959,133 @@ public sealed class DrawingInputTests : IDisposable
         Assert.Empty(await DrawingsAsync(tab, 0));
     }
 
+    [AvaloniaFact]
+    public async Task UndoRightAfterAReleaseRemovesThatStroke()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        using var gate = new ManualResetEventSlim();
+        tab.FreehandReducer = points =>
+        {
+            gate.Wait(Timeout);
+            return TabViewModel.ReduceFreehand(points);
+        };
+
+        // The history is empty and the stroke is still being reduced: Ctrl+Z is possible, and it waits for the stroke.
+        var stroke = tab.ApplyFreehandAsync(0, [new DisplayPoint(50, 100), new DisplayPoint(80, 140), new DisplayPoint(110, 100)]);
+        Assert.False(tab.CanUndo);
+        Assert.True(tab.UndoCommand.CanExecute(null));
+        tab.UndoCommand.Execute(null);
+        Settle(window);
+        Assert.False(tab.HasEditor);
+
+        gate.Set();
+        await stroke;
+        await WaitUntilAsync(window, () => tab.EditVersion >= 2 && !tab.HasEditsInFlight);
+
+        // The stroke was made and then undone: nothing on the page, redo brings it back.
+        Assert.Empty(await DrawingsAsync(tab, 0));
+        Assert.True(tab.CanRedo);
+        Assert.False(tab.CanUndo);
+        Assert.False(tab.UndoCommand.CanExecute(null));
+
+        // With a change before it, Ctrl+Z takes the stroke and leaves the change before.
+        tab.FreehandReducer = null;
+        await tab.ApplyFreehandAsync(0, [new DisplayPoint(300, 300), new DisplayPoint(330, 340), new DisplayPoint(360, 300)]);
+        using var secondGate = new ManualResetEventSlim();
+        tab.FreehandReducer = points =>
+        {
+            secondGate.Wait(Timeout);
+            return TabViewModel.ReduceFreehand(points);
+        };
+        var version = tab.EditVersion;
+        var second = tab.ApplyFreehandAsync(0, [new DisplayPoint(50, 100), new DisplayPoint(80, 140), new DisplayPoint(110, 100)]);
+        tab.UndoCommand.Execute(null);
+        secondGate.Set();
+        await second;
+        await WaitUntilAsync(window, () => tab.EditVersion >= version + 2 && !tab.HasEditsInFlight);
+        var left = Assert.Single(await DrawingsAsync(tab, 0));
+        AssertRectNear(new PageRect(300, 300, 360, 330), left.Drawing!.Box, 0.5);
+        Assert.True(tab.CanRedo);
+        Assert.True(tab.CanUndo);
+    }
+
+    [AvaloniaFact]
+    public async Task RedoWaitsForTheStrokesInFlightToo()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        using var gate = new ManualResetEventSlim();
+        tab.FreehandReducer = points =>
+        {
+            gate.Wait(Timeout);
+            return TabViewModel.ReduceFreehand(points);
+        };
+
+        // Undo and redo pressed while the stroke is in flight: the stroke is made, undone and made again, in that order.
+        var stroke = tab.ApplyFreehandAsync(0, [new DisplayPoint(50, 100), new DisplayPoint(80, 140), new DisplayPoint(110, 100)]);
+        Assert.True(tab.RedoCommand.CanExecute(null));
+        tab.UndoCommand.Execute(null);
+        tab.RedoCommand.Execute(null);
+        Settle(window);
+        Assert.False(tab.HasEditor);
+
+        gate.Set();
+        await stroke;
+        await WaitUntilAsync(window, () => tab.EditVersion >= 3 && !tab.HasEditsInFlight);
+        Assert.Single(await DrawingsAsync(tab, 0));
+        Assert.True(tab.CanUndo);
+        Assert.False(tab.CanRedo);
+    }
+
+    [AvaloniaFact]
+    public async Task AFailedReductionDoesNotLetLaterStrokesOvertakeEarlierOnes()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab, AnnotationKind.Ink);
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        tab.FreehandReducer = points =>
+        {
+            if (points[0].X < 100)
+            {
+                entered.Set();
+                gate.Wait(Timeout);
+            }
+            else if (points[0].X < 250)
+            {
+                throw new InvalidOperationException("The reduction of the second stroke failed.");
+            }
+
+            return TabViewModel.ReduceFreehand(points);
+        };
+        var hints = new List<string>();
+        tab.DrawingRefused += hints.Add;
+
+        // A is held, B fails at once, C is fine: neither the hint of B nor C comes before A.
+        var a = tab.ApplyFreehandAsync(0, [new DisplayPoint(50, 100), new DisplayPoint(80, 140), new DisplayPoint(110, 100)]);
+        await WaitUntilAsync(window, () => entered.IsSet);
+        var b = tab.ApplyFreehandAsync(0, [new DisplayPoint(200, 100), new DisplayPoint(230, 140), new DisplayPoint(260, 100)]);
+        var c = tab.ApplyFreehandAsync(0, [new DisplayPoint(300, 100), new DisplayPoint(330, 140), new DisplayPoint(360, 100)]);
+        for (var i = 0; i < 20; i++)
+        {
+            Settle(window);
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        Assert.False(tab.HasEditor);
+        Assert.Empty(hints);
+
+        gate.Set();
+        await Task.WhenAll(a, b, c);
+        var drawings = await WaitForDrawingsAsync(window, tab, 0, count: 2);
+        Assert.True(drawings[0].Drawing!.Box.Left < 100 && drawings[1].Drawing!.Box.Left > 250, "A is made before C");
+        Assert.Equal([Strings.DrawingFailed], hints);
+    }
+
     private static bool IsStrokeRed(Avalonia.Media.Color color) => color.R > 150 && color.G < 100 && color.B < 100;
 
     private static void AssertNear(DisplayPoint expected, DisplayPoint actual, double tolerance)

@@ -23,6 +23,7 @@ public sealed partial class TabViewModel
 
     // The last drawing queued: the next one is made after it (QueueDrawing).
     private Task _drawingTail = Task.CompletedTask;
+    private int _drawingsInFlight;
 
     private RelayCommand? _selectToolCommand;
     private RelayCommand? _chooseSelectToolCommand;
@@ -234,16 +235,19 @@ public sealed partial class TabViewModel
         {
             // Counted before the first await, down again in the finally: the task ends after the count is down (Track).
             _pendingEdits++;
-            DrawingGeometry geometry;
+            _drawingsInFlight++;
+            RaiseStepCanExecuteChanged();
+            DrawingGeometry? geometry = null;
+            var reductionFailed = false;
             try
             {
                 geometry = await pending;
             }
             catch (Exception)
             {
-                // The thinning failed (it is pure computation, so this is not expected); nothing was made.
-                DrawingRefused?.Invoke(Strings.DrawingFailed);
-                return;
+                // The thinning failed (it is pure computation, so this is not expected); nothing is made. This run still waits
+                // for the drawings queued before it below, so the ones after it never overtake them and the hint comes in order.
+                reductionFailed = true;
             }
 
             try
@@ -256,7 +260,13 @@ public sealed partial class TabViewModel
                 // Nothing to learn from it here.
             }
 
-            if (_disposed || generation != _documentGeneration || geometry.IsEmpty)
+            if (reductionFailed)
+            {
+                DrawingRefused?.Invoke(Strings.DrawingFailed);
+                return;
+            }
+
+            if (geometry is null || _disposed || generation != _documentGeneration || geometry.IsEmpty)
             {
                 // Another file is open in the tab, or the tab is gone, or there is nothing to draw: nothing is made.
                 return;
@@ -292,8 +302,25 @@ public sealed partial class TabViewModel
         finally
         {
             _pendingEdits--;
+            _drawingsInFlight--;
+            RaiseStepCanExecuteChanged();
             SyncFromEditor();
         }
+    }
+
+    /// <summary>
+    /// Gets the last drawing queued (<see cref="QueueDrawing"/>): the task ends after the drawing was made, refused or dropped
+    /// and never fails. Undo and redo wait for it, so a Ctrl+Z right after the release undoes that stroke.
+    /// </summary>
+    private Task DrawingTail => _drawingTail;
+
+    /// <summary>Undo and redo are executable while a drawing is in flight: it is the change they act on once it is made.</summary>
+    private bool HasDrawingInFlight => _drawingsInFlight > 0;
+
+    private void RaiseStepCanExecuteChanged()
+    {
+        _undoCommand?.RaiseCanExecuteChanged();
+        _redoCommand?.RaiseCanExecuteChanged();
     }
 
     /// <summary>Whether the kind is made by a drawing tool: freehand, rectangle, oval, line or arrow (the text box has its own tool later).</summary>

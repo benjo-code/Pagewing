@@ -166,10 +166,10 @@ public sealed partial class TabViewModel
     public ICommand SaveAsCommand => _saveAsCommand ??= new RelayCommand(() => SaveRequested?.Invoke(true), CanSaveAs);
 
     /// <summary>Ctrl+Z: undoes the newest change of the annotations.</summary>
-    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(UndoAfterNudge, () => IsReady && _canUndo && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
+    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(UndoAfterNudge, () => IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again.</summary>
-    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(RedoAfterNudge, () => IsReady && _canRedo && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
+    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(RedoAfterNudge, () => IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with
@@ -337,8 +337,12 @@ public sealed partial class TabViewModel
     /// </summary>
     private async Task StepAsync(bool undo)
     {
+        // The drawings released before the key are made first (read now, before the first await): Ctrl+Z right after a
+        // release undoes that stroke, not the change before it. The tail never fails.
+        var drawings = DrawingTail;
         try
         {
+            await drawings;
             await (undo ? Editor.UndoAsync() : Editor.RedoAsync());
         }
         catch (Exception)
