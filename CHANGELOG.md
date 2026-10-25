@@ -14,6 +14,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 
 - Das `.deb` verlangt zusätzlich `libssl3` (bzw. `libssl3t64`) für die Update-Prüfung.
 
+### Fixed
+
+- Seltener Absturz beim Rendern („attempted to call a UnmanagedCallersOnly method from managed code“, unter Windows Exit-Code `0xC0000602`), wenn während des Zeichnens einer Seite eine Speicherbereinigung lief.
+
 ## [0.1.0] – 2026-10-23
 
 Enthaltene Milestones: 0 (Repo-Grundgerüst und CI), 1 (PDFium-Anbindung und Render-Kern), 2 (Designrichtungen), 3 (App-Shell und schnelles Öffnen), 4 (Navigation), 4.1 (Tabs zwischen Fenstern ziehen), 5 (Text und Suche), 6 (Komfort), 7 (Drucken) und 8 (Verteilung). Pagewing ist in diesem Release ein schneller Viewer; Bearbeiten kommt in späteren Versionen.
