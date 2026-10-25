@@ -301,6 +301,97 @@ public sealed class DrawingSelectionTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task TabAfterAMoveOfTheLastAnnotationLeavesTheView()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        var clock = new PrintClock();
+        tab.SelectionClock = clock;
+        await BeginAsync(window, tab);
+        var first = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(100, 150, 160, 190), 2));
+        var last = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(100, 300, 160, 340), 2));
+        ChooseSelectTool(window, tab);
+        view.Focus();
+        Settle(window);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == first.Name);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == last.Name);
+
+        // The last one is nudged and the nudge is made: the history moved, so the list of the page is read again. That read
+        // is held back here, so Tab comes while the list is cold (the worst case of a quick Tab after a change).
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = tab.AnnotationReader;
+        tab.AnnotationReader = async (document, page, cancellationToken) =>
+        {
+            await gate.Task;
+            return await reader(document, page, cancellationToken);
+        };
+        Press(window, Key.Right, PhysicalKey.ArrowRight, RawInputModifiers.None);
+        clock.Advance(TabViewModel.NudgeDelay);
+        await WaitForBoxAsync(window, tab, last.Name, new PageRect(101, 300, 161, 340));
+        Assert.False(tab.IsPageRead(0));
+
+        // Tab now: past the last annotation once the page is read, the selection goes and the focus leaves the document
+        // (no new round through the page).
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+        gate.SetResult();
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation is null && !view.IsKeyboardFocusWithin);
+        Settle(window);
+        Assert.Null(tab.SelectedAnnotation);
+        Assert.False(view.IsKeyboardFocusWithin);
+    }
+
+    [AvaloniaFact]
+    public async Task TabWithAColdCacheDoesNotSwallowTheKey()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        ChooseSelectTool(window, tab);
+        TaskCompletionSource? gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = tab.AnnotationReader;
+        tab.AnnotationReader = async (document, page, cancellationToken) =>
+        {
+            if (gate is { } waiting)
+            {
+                await waiting.Task;
+            }
+
+            return await reader(document, page, cancellationToken);
+        };
+
+        // A page without anything to select, not read yet: the key waits for the read, then the focus leaves the document.
+        view.Focus();
+        Settle(window);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+        Assert.True(view.IsFocused);
+        gate.SetResult();
+        await WaitUntilAsync(window, () => !view.IsKeyboardFocusWithin);
+        Assert.Null(tab.SelectedAnnotation);
+
+        // A drawing is made with another tool (the select tool reads nothing meanwhile); back in the select tool the list of
+        // the page is cold again: the first Tab selects the first annotation once the page is read.
+        gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        tab.SetToolCommand.Execute(AnnotationKind.Ink);
+        var rectangle = await DrawAsync(window, tab, DrawingGeometry.Rectangle(new PageRect(100, 150, 160, 190), 2));
+        ChooseSelectTool(window, tab);
+        view.Focus();
+        Settle(window);
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+        Assert.True(view.IsFocused);
+        Assert.Null(tab.SelectedAnnotation);
+        gate.SetResult();
+        await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Name == rectangle.Name);
+        Assert.True(view.IsFocused);
+
+        // Shift+Tab from it (the list is read now): before the first one, the focus leaves at once.
+        Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.Shift);
+        Assert.Null(tab.SelectedAnnotation);
+        Assert.False(view.IsKeyboardFocusWithin);
+    }
+
+    [AvaloniaFact]
     public async Task SmallShapeCanBeMovedByItsBody()
     {
         var (window, viewModel, view) = Show();

@@ -102,10 +102,10 @@ public sealed partial class TabViewModel
         : null;
 
     /// <summary>Tab in the document: selects the next selectable annotation of the page in reading order; after the last one the selection goes.</summary>
-    public ICommand SelectNextCommand => _selectNextCommand ??= new RelayCommand(() => _ = SelectInOrderAsync(forward: true), () => CanSelect);
+    public ICommand SelectNextCommand => _selectNextCommand ??= new RelayCommand(() => _ = WalkSelectionAsync(forward: true), () => CanSelect);
 
     /// <summary>Shift+Tab in the document: selects the previous one; before the first one the selection goes.</summary>
-    public ICommand SelectPreviousCommand => _selectPreviousCommand ??= new RelayCommand(() => _ = SelectInOrderAsync(forward: false), () => CanSelect);
+    public ICommand SelectPreviousCommand => _selectPreviousCommand ??= new RelayCommand(() => _ = WalkSelectionAsync(forward: false), () => CanSelect);
 
     /// <summary>
     /// An arrow key (parameter: the direction <c>(Dx, Dy)</c>, each -1, 0 or 1, and whether Shift is held): moves a movable
@@ -256,6 +256,14 @@ public sealed partial class TabViewModel
         {
             _ = FollowSelectionAsync(selected);
         }
+
+        // The current page is read again at once too, so Tab after an edit decides from a current list (TabViewModel.Selection
+        // keeps the keyboard walk independent of what is read, but a warm list spares the round trip).
+        var current = Math.Max(0, CurrentPage - 1);
+        if (CanSelect && pages.Contains(current) && _selectedAnnotation?.Page != current)
+        {
+            _ = GetPageAnnotationsAsync(current);
+        }
     }
 
     /// <summary>Enter in the document: opens the "Comments" panel with the entry of the selection, its comment field focused.</summary>
@@ -318,38 +326,47 @@ public sealed partial class TabViewModel
         SelectedAnnotation = annotation;
     }
 
-    private async Task SelectInOrderAsync(bool forward)
+    /// <summary>
+    /// Walks the selectable annotations of the page of the selection (without one, of the current page) in reading order:
+    /// Tab (<paramref name="forward"/>) or Shift+Tab. Completes at once when the page is read, else once it is.
+    /// </summary>
+    /// <returns>
+    /// <see cref="SelectionWalk.Selected"/> when another annotation is selected; <see cref="SelectionWalk.Ended"/> when the walk
+    /// went past the last (or before the first) one, the page has none or cannot be read (the selection is gone then: the key
+    /// is to move the focus on); <see cref="SelectionWalk.Dropped"/> when a newer click or key, or another tool, mode or
+    /// document came meanwhile.
+    /// </returns>
+    internal async Task<SelectionWalk> WalkSelectionAsync(bool forward)
     {
         if (!CanSelect)
         {
-            return;
+            return SelectionWalk.Dropped;
         }
 
         var request = ++_selectionRequest;
         var page = _selectedAnnotation?.Page ?? Math.Max(0, CurrentPage - 1);
         var annotations = TryGetPageAnnotations(page, out var cached) ? cached : await GetPageAnnotationsAsync(page);
-        if (annotations is null || request != _selectionRequest || !CanSelect)
+        if (request != _selectionRequest || !CanSelect)
         {
-            return;
+            return SelectionWalk.Dropped;
         }
 
-        var ordered = ReadingOrder(annotations);
-        if (ordered.Count == 0)
-        {
-            return;
-        }
-
+        var ordered = annotations is null ? [] : ReadingOrder(annotations);
         var at = _selectedAnnotation is { } selected ? ordered.FindIndex(a => SameAnnotation(a, selected)) : -1;
         var next = at < 0 ? (forward ? 0 : ordered.Count - 1) : at + (forward ? 1 : -1);
         if (next < 0 || next >= ordered.Count)
         {
-            // Past the last (or before the first): the selection goes, the keys go on (no trap in the document).
+            // Past the last (or before the first), or nothing there: the selection goes, the keys go on (no trap).
             ClearSelection();
-            return;
+            return SelectionWalk.Ended;
         }
 
         Select(ordered[next]);
+        return SelectionWalk.Selected;
     }
+
+    /// <summary>Gets whether the annotations of <paramref name="page"/> are read and current (a walk there decides at once).</summary>
+    internal bool IsPageRead(int page) => TryGetPageAnnotations(page, out _);
 
     /// <summary>
     /// Gets whether Tab (<paramref name="forward"/>) or Shift+Tab leaves the annotations of the page: the selection is the last
@@ -579,6 +596,19 @@ public sealed partial class TabViewModel
         _nudgeTimer = null;
         _nudge = null;
         _pageAnnotations.Clear();
+    }
+
+    /// <summary>What a walk of Tab or Shift+Tab did (<see cref="WalkSelectionAsync"/>).</summary>
+    internal enum SelectionWalk
+    {
+        /// <summary>Another annotation is selected.</summary>
+        Selected,
+
+        /// <summary>Past the last or before the first, or nothing to select: the selection is gone, the focus is to move on.</summary>
+        Ended,
+
+        /// <summary>A newer click or key, or another tool, mode or document, came meanwhile: nothing happened.</summary>
+        Dropped,
     }
 
     /// <summary>A shape a replace of <paramref name="Target"/> is on its way to.</summary>

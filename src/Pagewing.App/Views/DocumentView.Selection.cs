@@ -306,27 +306,7 @@ public sealed partial class DocumentView
         switch (key)
         {
             case Key.Tab when plain:
-                if (selected is null && !(tab.IsSelectTool && tab.HasSelectable(Math.Max(0, tab.CurrentPage - 1)) != false))
-                {
-                    return false;
-                }
-
-                var walk = modifiers == KeyModifiers.Shift ? tab.SelectPreviousCommand : tab.SelectNextCommand;
-                if (!walk.CanExecute(null))
-                {
-                    return false;
-                }
-
-                if (tab.SelectionWalkEnds(forward: modifiers != KeyModifiers.Shift))
-                {
-                    // Past the last (or before the first) annotation: the selection goes and the key moves the focus on, so
-                    // Tab never traps the keys in the document.
-                    tab.ClearSelection();
-                    return false;
-                }
-
-                walk.Execute(null);
-                return true;
+                return TryWalkSelection(tab, selected, forward: modifiers != KeyModifiers.Shift);
             case Key.Left or Key.Right or Key.Up or Key.Down when plain && selected is not null && tab.CanMoveSelection:
                 var dx = key == Key.Left ? -1 : key == Key.Right ? 1 : 0;
                 var dy = key == Key.Up ? -1 : key == Key.Down ? 1 : 0;
@@ -340,6 +320,49 @@ public sealed partial class DocumentView
                 return true;
             default:
                 return false;
+        }
+    }
+
+    /// <summary>
+    /// Tab or Shift+Tab with the select tool or a selection. With the page read it decides at once: past the last (or before
+    /// the first) annotation, or on a page without any, the selection goes and the key is not taken, so the focus moves on
+    /// (Tab never traps the keys in the document). With the page not read (the first Tab, or right after a change) the key is
+    /// taken and the walk acts once the page is there; when it then ends, the view moves the focus on itself, as the key would
+    /// have done. So a Tab never goes without effect.
+    /// </summary>
+    /// <returns>Whether the key was taken.</returns>
+    private bool TryWalkSelection(TabViewModel tab, PdfAnnotation? selected, bool forward)
+    {
+        if (!tab.CanSelect || (selected is null && !tab.IsSelectTool))
+        {
+            return false;
+        }
+
+        var page = selected?.Page ?? Math.Max(0, tab.CurrentPage - 1);
+        if (tab.IsPageRead(page))
+        {
+            if (selected is null ? tab.HasSelectable(page) == false : tab.SelectionWalkEnds(forward))
+            {
+                tab.ClearSelection();
+                return false;
+            }
+
+            // Read: the walk selects at once.
+            _ = tab.WalkSelectionAsync(forward);
+            return true;
+        }
+
+        _ = WalkWhenReadAsync(tab, forward);
+        return true;
+    }
+
+    private async Task WalkWhenReadAsync(TabViewModel tab, bool forward)
+    {
+        var walk = await tab.WalkSelectionAsync(forward);
+        if (walk == TabViewModel.SelectionWalk.Ended && ReferenceEquals(tab, _viewModel) && IsKeyboardFocusWithin)
+        {
+            // The key was taken while the page was read: the focus moves on now, as the key would have moved it.
+            TopLevel.GetTopLevel(this)?.FocusManager?.TryMoveFocus(forward ? NavigationDirection.Next : NavigationDirection.Previous);
         }
     }
 
