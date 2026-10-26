@@ -401,9 +401,11 @@ public sealed partial class FormRoundTripTests : IDisposable
         await using (var inherited = await OpenAsync(WriteInheritedMaxLengthForm()))
         {
             Assert.Null((await FieldAsync(inherited, "Erbe")).MaxLength);
-            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => inherited.SetFormValueAsync("Erbe", FormFieldState.OfText("1234567"), Ct));
+            var error = await Assert.ThrowsAsync<FormWriteException>(() => inherited.SetFormValueAsync("Erbe", FormFieldState.OfText("1234567"), Ct));
             Assert.Contains("not accepted", error.Message, StringComparison.Ordinal);
             Assert.Contains("different text", error.Message, StringComparison.Ordinal);
+            Assert.True(error.Restored);
+            Assert.Equal([0], error.Pages.Order());
             Assert.Equal(FormFieldState.OfText("abc"), (await FieldAsync(inherited, "Erbe")).State);
             Assert.Equal(FormFieldState.OfText("12345"), (await inherited.SetFormValueAsync("Erbe", FormFieldState.OfText("12345"), Ct)).After);
         }
@@ -421,17 +423,21 @@ public sealed partial class FormRoundTripTests : IDisposable
         await using var document = await OpenFixtureAsync(FormsBasic);
         await document.SetFormValueAsync("Telefon", FormFieldState.OfText("vorher"), Ct);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        var error = await Assert.ThrowsAsync<FormWriteException>(
             () => document.SetFormValueAsync("Telefon", FormFieldState.OfText("Šárka"), checkCharacters: false, Ct));
 
         Assert.Contains("not accepted", error.Message, StringComparison.Ordinal);
         Assert.Contains("font", error.Message, StringComparison.Ordinal);
+        Assert.True(error.Restored);
+        Assert.Equal([1], error.Pages.Order());
         Assert.Equal(FormFieldState.OfText("vorher"), (await FieldAsync(document, "Telefon")).State);
 
         // Name has no /DA of its own (inherited from the field): then the appearance may use one font only.
-        var inherited = await Assert.ThrowsAsync<InvalidOperationException>(
+        var inherited = await Assert.ThrowsAsync<FormWriteException>(
             () => document.SetFormValueAsync("Name", FormFieldState.OfText("Šárka"), checkCharacters: false, Ct));
         Assert.Contains("font", inherited.Message, StringComparison.Ordinal);
+        Assert.True(inherited.Restored);
+        Assert.Equal([0, 1], inherited.Pages.Order());
         Assert.All(await WidgetsAsync(document, "Name"), f => Assert.Equal(FormFieldState.OfText("Alt"), f.State));
     }
 

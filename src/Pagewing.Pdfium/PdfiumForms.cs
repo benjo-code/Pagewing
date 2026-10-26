@@ -73,7 +73,9 @@ internal sealed record PdfiumFormField(
 /// <param name="FormatScripts">Whether a field has a key stroke, format or validation script (<c>/AA /K</c>, <c>/F</c>, <c>/V</c>).</param>
 /// <param name="SignatureField">Whether a field is a signature field.</param>
 /// <param name="Buttons">Whether a field is a push button.</param>
-internal sealed record PdfiumFormPageInfo(int Widgets, bool Calculated, bool FormatScripts, bool SignatureField, bool Buttons);
+/// <param name="FieldNames">The usable full names of the fields with widgets on the page, each once, in <c>/Annots</c> order
+/// (a name read within the time budget; none longer than <see cref="PdfiumForms.MaxNameLength"/> or with a NUL).</param>
+internal sealed record PdfiumFormPageInfo(int Widgets, bool Calculated, bool FormatScripts, bool SignatureField, bool Buttons, string[]? FieldNames = null);
 
 /// <summary>What a document's form contains, for the hints of milestone 11.</summary>
 /// <param name="HasFields">Whether any page has a widget.</param>
@@ -236,6 +238,7 @@ internal static unsafe class PdfiumForms
         var budget = new CallBudget(clock ?? TimeProvider.System);
         var widgets = 0;
         bool calculated = false, formatScripts = false, signature = false, buttons = false;
+        var names = new NameSet();
         ForEachWidget(native, (index, annotation) =>
         {
             if (!HasUsableRect(annotation, out _))
@@ -258,6 +261,7 @@ internal static unsafe class PdfiumForms
                 return;
             }
 
+            names.Add(ReadName(form, annotation));
             buttons |= type == FpdfConstants.FormFieldPushButton;
             signature |= type == FpdfConstants.FormFieldSignature;
             calculated = calculated || HasScript(form, annotation, FpdfConstants.AnnotActionCalculate);
@@ -268,7 +272,39 @@ internal static unsafe class PdfiumForms
             budget.Spend(budget.Since(start));
         });
 
-        return new PdfiumFormPageInfo(widgets, calculated, formatScripts, signature, buttons);
+        return new PdfiumFormPageInfo(widgets, calculated, formatScripts, signature, buttons, names.ToArray());
+    }
+
+    /// <summary>
+    /// Reads only the full names of the fields with widgets on a page, each once in <c>/Annots</c> order, within the same time
+    /// budget as <see cref="ReadPage"/> (one name call per widget). Empty for a page of a document without a form environment.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The page or the environment is closed.</exception>
+    public static string[] ReadPageFieldNames(PdfiumPage page, TimeProvider? clock = null)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var native = page.Access();
+        if (page.Handle.FormEnvironment is not { } environment)
+        {
+            return [];
+        }
+
+        var form = environment.Handle;
+        var budget = new CallBudget(clock ?? TimeProvider.System);
+        var names = new NameSet();
+        ForEachWidget(native, (index, annotation) =>
+        {
+            if (budget.Exhausted || !HasUsableRect(annotation, out _))
+            {
+                return;
+            }
+
+            var start = budget.Now();
+            names.Add(ReadName(form, annotation));
+            budget.Spend(budget.Since(start));
+        });
+
+        return names.ToArray();
     }
 
     /// <summary>
@@ -925,6 +961,30 @@ internal static unsafe class PdfiumForms
         }
 
         return written == length ? new string(buffer, 0, buffer.Length - 1) : null;
+    }
+
+    /// <summary>The full name of the widget's field, or <see langword="null"/> when it is missing, too long or has a NUL (as <see cref="ReadField"/>).</summary>
+    private static string? ReadName(nint form, nint annotation)
+    {
+        var name = ReadText(&Fpdf.FPDFAnnot_GetFormFieldName, form, annotation, MaxNameLength, out var tooLong);
+        return tooLong || string.IsNullOrEmpty(name) || name.Contains('\0', StringComparison.Ordinal) ? null : name;
+    }
+
+    /// <summary>Names in the order they come first, each once.</summary>
+    private sealed class NameSet
+    {
+        private readonly HashSet<string> seen = new(StringComparer.Ordinal);
+        private readonly List<string> names = [];
+
+        public void Add(string? name)
+        {
+            if (name is not null && seen.Add(name))
+            {
+                names.Add(name);
+            }
+        }
+
+        public string[] ToArray() => [.. names];
     }
 
     /// <summary>The time spent in form calls during one read of a page (<see cref="MaxFormCallTimePerPage"/>).</summary>

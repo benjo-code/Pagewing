@@ -24,10 +24,28 @@ public sealed partial class PdfDocument
             | FormFieldTraits.FileSelect | FormFieldTraits.MultiSelect | FormFieldTraits.DoNotSpellCheck
             | FormFieldTraits.DoNotScroll | FormFieldTraits.Comb | FormFieldTraits.RichText);
 
+    /// <summary>
+    /// The most pages one field may have widgets on to be written: a write keeps every page of its field loaded in one job, so a
+    /// field placed on more pages is refused (and read as <see cref="FormLock.Unsupported"/> once the form was scanned).
+    /// </summary>
+    public const int MaxPagesPerField = 100;
+
     private static readonly IReadOnlyList<FormField> NoFields = [];
+
+    /// <summary>Gets or sets hooks into form writes, for tests only.</summary>
+    internal FormWriteFaults? FormFaults { get; set; }
+
+    /// <summary>Gets or sets the most characters of field names the scan keeps in its index (tests lower it to force the fallback).</summary>
+    internal int FormNameIndexLimit { get; set; } = MaxIndexedNameCharacters;
 
     /// <summary>What the first complete scan found (the pages with fields feed the search for all widgets of a field).</summary>
     private FormInfo? formInfo;
+
+    /// <summary>
+    /// The pages of each field name the first complete scan found, written before <see cref="formInfo"/>; its dictionary is
+    /// <see langword="null"/> when the names went beyond the limits (a write then reads the names page by page).
+    /// </summary>
+    private FormNameIndex? formNames;
 
     /// <summary>
     /// Gets whether the document has an AcroForm (<c>FPDF_GetFormType</c> was not <c>NONE</c> when it was opened; set by
@@ -104,6 +122,7 @@ public sealed partial class PdfDocument
         hints |= combined.SignatureField ? FormHint.SignatureField : FormHint.None;
         hints |= combined.Buttons ? FormHint.Buttons : FormHint.None;
         var info = new FormInfo(combined.HasFields, hints, combined.FieldCount, combined.PagesWithFields);
+        Volatile.Write(ref formNames, NameIndex(pages, FormNameIndexLimit));
         Volatile.Write(ref formInfo, info);
         return info;
     }
@@ -151,15 +170,32 @@ public sealed partial class PdfDocument
 
     /// <summary>
     /// Writes the value of a form field through PDFium's form engine, which writes <c>/V</c> and the appearance of every widget,
-    /// in one short <see cref="PdfPriority.Interactive"/> job: the field is found by its full name on every page with widgets
-    /// (never by an annotation index; the pages come from <see cref="GetFormInfoAsync"/>, scanned first when not known yet), its
-    /// state before is read, the value is written (a text: focus, select all, replace, leave; a check box or radio button: a
-    /// click on the widget; a combo box or list box: its options), read back and compared with what was asked for. A value the
-    /// engine did not take as it was (shortened at an inherited <c>/MaxLen</c>, changed, or drawn with a font other than the
-    /// field's own) is written back to the state before in the same job and refused. A state equal to the one before changes
-    /// nothing (not even the focus) and gives <see cref="FormChange.Before"/> equal to <see cref="FormChange.After"/>. Nothing on
-    /// a session or in a history is touched; the caller redraws <see cref="FormChange.Pages"/>.
+    /// in one short <see cref="PdfPriority.Interactive"/> job. The pages of the field come from the name index of
+    /// <see cref="GetFormInfoAsync"/> (scanned first when not known yet; when the form has more names than the index keeps, the
+    /// names of every page with fields are read in short jobs first); only those pages are loaded and read, and the field is
+    /// found on them by its full name (never by an annotation index). Its state before is read, the value is written (a text:
+    /// focus, select all, replace, leave; a check box or radio button: a click on the widget; a combo box or list box: its
+    /// options), read back and compared with what was asked for. A value the engine did not take as it was (shortened at an
+    /// inherited <c>/MaxLen</c>, changed, or drawn with a font other than the field's own), and any failure after the first
+    /// native call, is written back to the state before in the same job and ends as a <see cref="FormWriteException"/>. A
+    /// state equal to the one before changes nothing (not even the focus) and gives <see cref="FormChange.Before"/> equal to
+    /// <see cref="FormChange.After"/>. Nothing on a session or in a history is touched; the caller redraws
+    /// <see cref="FormChange.Pages"/>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A caller must treat a <see cref="FormWriteException"/> with <see cref="FormWriteException.Restored"/>
+    /// <see langword="false"/>, and any other exception that comes after the job started with an unknown outcome, as "the
+    /// document may have changed": redraw <see cref="FormWriteException.Pages"/> and do not take the field as unchanged.
+    /// </para>
+    /// <para>
+    /// PDFium runs a field's native actions without JavaScript when the write focuses or clicks it: a <c>/ResetForm</c> or
+    /// <c>/Hide</c> in <c>/AA</c> (focus, blur, mouse down or up) changes other fields during the write. Such changes are not
+    /// in <see cref="FormChange.Pages"/>, and they reach widgets on other pages only partly (the value, not the appearance);
+    /// see <c>Docs/DECISIONS.md</c>, "Formulare: Schreiben nur auf den Seiten des Feldes, FormWriteException, native Aktionen
+    /// (M11)".
+    /// </para>
+    /// </remarks>
     /// <param name="fieldName">The fully qualified field name.</param>
     /// <param name="state">
     /// The value: <see cref="FormFieldState.Text"/> for a text field (<see langword="null"/> is empty; line breaks of a multiline
@@ -172,7 +208,8 @@ public sealed partial class PdfDocument
     /// <exception cref="ArgumentException"><paramref name="fieldName"/> is empty; the text is refused by <see cref="FormValueRules.CheckText"/> (the message is the reason); the state does not fit the kind of field (no export value of the group, several options of a single-choice field).</exception>
     /// <exception cref="ArgumentOutOfRangeException">An option index is not an option of the field.</exception>
     /// <exception cref="FormFieldNotFoundException">No page has a widget of a field with that name.</exception>
-    /// <exception cref="InvalidOperationException">The field is locked (<see cref="FormField.Lock"/>, the reason in the message); a radio group is asked for no choice (the engine never undoes a choice), or a combo box without typed text for no option; the engine did not take the value (the field is as before).</exception>
+    /// <exception cref="FormWriteException">The write began but the value was not kept: the engine did not take it, or reading it back failed; <see cref="FormWriteException.Restored"/> says whether the field is as before.</exception>
+    /// <exception cref="InvalidOperationException">Before anything is written: the field is locked (<see cref="FormField.Lock"/>, the reason in the message) or has widgets on more than <see cref="MaxPagesPerField"/> pages; a radio group is asked for no choice (the engine never undoes a choice), or a combo box without typed text for no option.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the job started.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task<FormChange> SetFormValueAsync(string fieldName, FormFieldState state, CancellationToken cancellationToken = default) =>
@@ -192,21 +229,130 @@ public sealed partial class PdfDocument
             throw NotFound(fieldName);
         }
 
-        var pages = CachedPagesWithFields ?? (await GetFormInfoAsync(cancellationToken).ConfigureAwait(false)).PagesWithFields;
+        var pages = await PagesOfFieldAsync(fieldName, cancellationToken).ConfigureAwait(false);
+        if (pages.Count == 0)
+        {
+            throw NotFound(fieldName);
+        }
+
+        if (pages.Count > MaxPagesPerField)
+        {
+            throw new InvalidOperationException(TooManyPages(fieldName));
+        }
+
+        var faults = FormFaults;
         return await document.Thread.InvokeAsync(
-            () => WriteFormValue(fieldName, state, checkCharacters, pages),
+            () => WriteFormValue(fieldName, state, checkCharacters, pages, faults),
             PdfiumPriority.Interactive,
             cancellationToken).ConfigureAwait(false);
     }
 
     private static FormFieldNotFoundException NotFound(string fieldName) => new($"The form has no field named '{fieldName}'.");
 
+    private static string TooManyPages(string fieldName) =>
+        $"The field '{fieldName}' has widgets on more than {MaxPagesPerField} pages; Pagewing does not write it.";
+
     /// <summary>
-    /// The job of <see cref="SetFormValueAsync(string, FormFieldState, bool, CancellationToken)"/>. Every page with a widget of
-    /// the field stays loaded until the job ends, so the engine renews the appearance of all of them (it reaches only widgets of
-    /// loaded pages: no <c>FFI_GetPage</c> callback); the other pages are closed right after reading.
+    /// The index of field names over the pages of a scan, or one without a dictionary when the names together are longer than
+    /// <paramref name="characterLimit"/> or name more than <see cref="MaxIndexedEntries"/> pages.
     /// </summary>
-    private FormChange WriteFormValue(string fieldName, FormFieldState state, bool checkCharacters, IReadOnlyList<int> pages)
+    private static FormNameIndex NameIndex(PdfiumFormPageInfo[] pages, int characterLimit)
+    {
+        var index = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        long characters = 0, entries = 0;
+        for (var pageIndex = 0; pageIndex < pages.Length; pageIndex++)
+        {
+            foreach (var name in pages[pageIndex].FieldNames ?? [])
+            {
+                if (!index.TryGetValue(name, out var list))
+                {
+                    characters += name.Length;
+                    list = [];
+                    index[name] = list;
+                }
+
+                list.Add(pageIndex);
+                if (characters > characterLimit || ++entries > MaxIndexedEntries)
+                {
+                    return new FormNameIndex(null);
+                }
+            }
+        }
+
+        return new FormNameIndex(index.ToDictionary(pair => pair.Key, pair => pair.Value.ToArray(), StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// The pages with a widget of the field, ascending: from the index of the scan (scanned first when not known yet), or when
+    /// the index is incomplete by reading only the field names of every page with fields (one short job per page, stopping once
+    /// more than <see cref="MaxPagesPerField"/> pages are found). Empty when no page has the field.
+    /// </summary>
+    private async Task<IReadOnlyList<int>> PagesOfFieldAsync(string fieldName, CancellationToken cancellationToken)
+    {
+        var info = await GetFormInfoAsync(cancellationToken).ConfigureAwait(false);
+        if (Volatile.Read(ref formNames)?.Pages is { } index)
+        {
+            return index.TryGetValue(fieldName, out var known) ? known : [];
+        }
+
+        var found = new List<int>();
+        foreach (var pageIndex in info.PagesWithFields)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var names = await document.Thread.InvokeAsync(
+                () =>
+                {
+                    try
+                    {
+                        using var page = document.LoadPage(pageIndex);
+                        return PdfiumForms.ReadPageFieldNames(page);
+                    }
+                    catch (InvalidDataException)
+                    {
+                        return [];
+                    }
+                },
+                PdfiumPriority.Interactive,
+                cancellationToken).ConfigureAwait(false);
+            if (names.Contains(fieldName, StringComparer.Ordinal))
+            {
+                found.Add(pageIndex);
+                if (found.Count > MaxPagesPerField)
+                {
+                    break;
+                }
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>Locks the fields the index knows on more than <see cref="MaxPagesPerField"/> pages (a write refuses them).</summary>
+    private static FormField[] LockSpread(FormField[] fields, IReadOnlyDictionary<string, int[]>? index)
+    {
+        if (index is null)
+        {
+            return fields;
+        }
+
+        for (var i = 0; i < fields.Length; i++)
+        {
+            var field = fields[i];
+            if (field.Lock == FormLock.None && index.TryGetValue(field.Key.FieldName, out var pages) && pages.Length > MaxPagesPerField)
+            {
+                fields[i] = field with { Lock = FormLock.Unsupported, LockReason = TooManyPages(field.Key.FieldName) };
+            }
+        }
+
+        return fields;
+    }
+
+    /// <summary>
+    /// The job of <see cref="SetFormValueAsync(string, FormFieldState, bool, CancellationToken)"/>, given the pages of the
+    /// field. Every one of them stays loaded until the job ends, so the engine renews the appearance of all widgets of the
+    /// field (it reaches only widgets of loaded pages: no <c>FFI_GetPage</c> callback).
+    /// </summary>
+    private FormChange WriteFormValue(string fieldName, FormFieldState state, bool checkCharacters, IReadOnlyList<int> pages, FormWriteFaults? faults)
     {
         var widgets = new List<FormWidget>();
         var loaded = new List<PdfiumPage>();
@@ -225,24 +371,17 @@ public sealed partial class PdfDocument
                     continue;
                 }
 
+                // Held from here on, so it is closed whatever the reading below throws.
+                loaded.Add(page);
+                faults?.PageLoaded?.Invoke(pageIndex);
                 var read = PdfiumForms.ReadPage(page);
                 var fields = ToFormFields(pageIndex, read);
-                var before = widgets.Count;
                 for (var i = 0; i < read.Length; i++)
                 {
                     if (string.Equals(read[i].Name, fieldName, StringComparison.Ordinal))
                     {
                         widgets.Add(new FormWidget(page, read[i], fields[i]));
                     }
-                }
-
-                if (widgets.Count > before)
-                {
-                    loaded.Add(page);
-                }
-                else
-                {
-                    page.Dispose();
                 }
             }
 
@@ -251,7 +390,7 @@ public sealed partial class PdfDocument
                 throw NotFound(fieldName);
             }
 
-            return Write(fieldName, widgets, state, checkCharacters);
+            return Write(fieldName, widgets, state, checkCharacters, faults);
         }
         finally
         {
@@ -262,7 +401,12 @@ public sealed partial class PdfDocument
         }
     }
 
-    private static FormChange Write(string fieldName, List<FormWidget> widgets, FormFieldState state, bool checkCharacters)
+    /// <summary>
+    /// Writes into the field once everything is checked. Every failure from the first native call on (the engine refused the
+    /// value, the read-back or a check threw) goes through <see cref="Restore"/> and ends as a <see cref="FormWriteException"/>
+    /// that says whether the field is verified to be as before.
+    /// </summary>
+    private static FormChange Write(string fieldName, List<FormWidget> widgets, FormFieldState state, bool checkCharacters, FormWriteFaults? faults)
     {
         var field = widgets[0].Field;
         if (widgets.FirstOrDefault(w => w.Field.Lock != FormLock.None) is { } locked)
@@ -270,7 +414,8 @@ public sealed partial class PdfDocument
             throw new InvalidOperationException($"The field '{fieldName}' cannot be changed: {locked.Field.LockReason}");
         }
 
-        var before = field.State;
+        // A check box is checked when any of its widgets is (widgets may have different export values).
+        var before = field.Kind == FormFieldKind.CheckBox ? FormFieldState.OfChecked(widgets.Any(w => w.Widget.Checked)) : field.State;
         var pages = new SortedSet<int>(widgets.Select(w => w.Field.Key.Page));
         var write = Plan(field, widgets, state, checkCharacters);
         if (write.Matches(before))
@@ -279,17 +424,37 @@ public sealed partial class PdfDocument
         }
 
         write.Refuse?.Invoke();
-        write.Apply();
-        var after = write.ReadBack();
-        var deviation = write.Verify(after);
-        if (deviation is null)
+        string deviation;
+        Exception? failure = null;
+        try
         {
-            return new FormChange(before, after, pages);
+            write.Apply();
+            if (faults?.ReadBackThrows == true)
+            {
+                throw new InvalidOperationException("The read-back failed (test fault).");
+            }
+
+            var after = write.ReadBack();
+            if (write.Verify(after) is not { } found)
+            {
+                return new FormChange(before, after, pages);
+            }
+
+            deviation = found;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            failure = exception;
+            deviation = "the field could not be written or read back (" + exception.Message + ")";
         }
 
-        var restored = Restore(field, widgets, before);
-        throw new InvalidOperationException(
-            $"The value was not accepted by the form engine: {deviation}" + (restored ? string.Empty : " The value before could not be restored."));
+        var restored = Restore(field, widgets, faults);
+        throw new FormWriteException(
+            $"The value was not accepted by the form engine: {deviation}"
+                + (restored ? string.Empty : " The value before could not be restored; the document may have changed."),
+            pages,
+            restored,
+            failure);
     }
 
     /// <summary>How one value is written into one field, read back and checked; validated against the field before anything is written.</summary>
@@ -302,11 +467,13 @@ public sealed partial class PdfDocument
                 return PlanText(field, first, state.Text ?? string.Empty, checkCharacters);
 
             case FormFieldKind.CheckBox:
+                // On: click the first widget. Off: click the widget that is checked (widgets may have different export values).
                 var wanted = state.Checked ?? throw new ArgumentException("A check box takes a checked state.", nameof(state));
+                var target = wanted ? first : widgets.FirstOrDefault(w => w.Widget.Checked) ?? first;
                 return new FormWrite(
                     before => before.Checked == wanted,
-                    () => PdfiumForms.Click(first.Page, first.Widget.Index),
-                    () => first.ReadState(),
+                    () => PdfiumForms.Click(target.Page, target.Widget.Index),
+                    () => FormFieldState.OfChecked(widgets.Any(w => w.IsChecked())),
                     after => after.Checked == wanted ? null : "the check box did not change.");
 
             case FormFieldKind.RadioButton:
@@ -403,22 +570,44 @@ public sealed partial class PdfDocument
         };
     }
 
-    /// <summary>Writes the state before back after a refused write; whether the field reads as before afterwards.</summary>
-    private static bool Restore(FormField field, List<FormWidget> widgets, FormFieldState before)
+    /// <summary>
+    /// Writes the state the job read before the write back, and tells whether every widget of the field reads exactly as
+    /// before: value (<c>/V</c>, for a check box the export value of the checked widget), checked state and chosen options.
+    /// Never throws; a failure is "not restored".
+    /// </summary>
+    private static bool Restore(FormField field, List<FormWidget> widgets, FormWriteFaults? faults)
     {
         try
         {
+            if (faults?.RestoreThrows == true)
+            {
+                throw new InvalidOperationException("Restoring failed (test fault).");
+            }
+
             var first = widgets[0];
+            var before = field.State;
             switch (field.Kind)
             {
                 case FormFieldKind.Text:
                 case FormFieldKind.ComboBox when before.SelectedOptions.Count == 0 && field.Traits.HasFlag(FormFieldTraits.Edit):
-                    PdfiumForms.ReplaceText(first.Page, first.Widget.Index, before.Text ?? string.Empty);
+                    PdfiumForms.ReplaceText(first.Page, first.Widget.Index, first.Widget.Value ?? string.Empty);
                     break;
-                case FormFieldKind.CheckBox when first.ReadState().Checked != before.Checked:
-                    PdfiumForms.Click(first.Page, first.Widget.Index);
+                case FormFieldKind.CheckBox:
+                    // Check the widget that was checked; or, when none was, uncheck the one that is now.
+                    if (widgets.FirstOrDefault(w => w.Widget.Checked) is { } wasOn)
+                    {
+                        if (!wasOn.IsChecked())
+                        {
+                            PdfiumForms.Click(wasOn.Page, wasOn.Widget.Index);
+                        }
+                    }
+                    else if (widgets.FirstOrDefault(w => w.IsChecked()) is { } nowOn)
+                    {
+                        PdfiumForms.Click(nowOn.Page, nowOn.Widget.Index);
+                    }
+
                     break;
-                case FormFieldKind.RadioButton when widgets.FirstOrDefault(w => string.Equals(w.Widget.ExportValue, before.Text, StringComparison.Ordinal)) is { } button:
+                case FormFieldKind.RadioButton when widgets.FirstOrDefault(w => w.Widget.Checked) is { } button:
                     PdfiumForms.Click(button.Page, button.Widget.Index);
                     break;
                 case FormFieldKind.ComboBox:
@@ -427,9 +616,9 @@ public sealed partial class PdfDocument
                     break;
             }
 
-            return first.ReadState().Equals(before);
+            return widgets.All(w => w.ReadsAsBefore());
         }
-        catch (InvalidOperationException)
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             return false;
         }
@@ -438,6 +627,15 @@ public sealed partial class PdfDocument
     /// <summary>Line breaks as the engine writes them in a multiline field: CR LF.</summary>
     private static string NormalizeBreaks(string text) =>
         text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Replace("\n", "\r\n", StringComparison.Ordinal);
+
+    /// <summary>The most characters of field names (each name once) the index of the scan keeps; beyond, writes read the names page by page.</summary>
+    internal const int MaxIndexedNameCharacters = 1_000_000;
+
+    /// <summary>The most (name, page) pairs the index of the scan keeps; beyond, writes read the names page by page.</summary>
+    internal const int MaxIndexedEntries = 1_000_000;
+
+    /// <summary>The pages of each field name, or <see langword="null"/> when the scan found more names than the index keeps.</summary>
+    private sealed record FormNameIndex(IReadOnlyDictionary<string, int[]>? Pages);
 
     /// <summary>A widget of the field being written, on a page loaded for the whole job.</summary>
     private sealed record FormWidget(PdfiumPage Page, PdfiumFormField Widget, FormField Field)
@@ -450,6 +648,13 @@ public sealed partial class PdfDocument
 
         /// <summary>Whether this widget (a check box or radio button) is checked now.</summary>
         public bool IsChecked() => PdfiumForms.ReadWidget(Page, Widget.Index)?.Checked == true;
+
+        /// <summary>Whether this widget reads now as it did before the write: value, checked state and chosen options.</summary>
+        public bool ReadsAsBefore() =>
+            PdfiumForms.ReadWidget(Page, Widget.Index) is { } now
+            && string.Equals(now.Value, Widget.Value, StringComparison.Ordinal)
+            && now.Checked == Widget.Checked
+            && now.Selected.SequenceEqual(Widget.Selected);
     }
 
     /// <summary>The steps of one write; <see cref="Verify"/> gives the deviation or <see langword="null"/>.</summary>
@@ -472,11 +677,12 @@ public sealed partial class PdfDocument
             return Task.FromResult(NoFields);
         }
 
+        var index = Volatile.Read(ref formNames)?.Pages;
         return document.Thread.InvokeAsync<IReadOnlyList<FormField>>(
             () =>
             {
                 using var page = document.LoadPage(pageIndex);
-                return ToFormFields(pageIndex, PdfiumForms.ReadPage(page));
+                return LockSpread(ToFormFields(pageIndex, PdfiumForms.ReadPage(page)), index);
             },
             priority,
             cancellationToken);
@@ -594,4 +800,17 @@ public sealed partial class PdfDocument
         FormFieldKind.Text => FormFieldState.OfText(widget.Value ?? string.Empty),
         _ => FormFieldState.OfText(null),
     };
+}
+
+/// <summary>Hooks into <see cref="PdfDocument.SetFormValueAsync(string, FormFieldState, CancellationToken)"/>, for tests only.</summary>
+internal sealed class FormWriteFaults
+{
+    /// <summary>Gets a value indicating whether reading the field back after the write throws.</summary>
+    public bool ReadBackThrows { get; init; }
+
+    /// <summary>Gets a value indicating whether writing the state before back throws.</summary>
+    public bool RestoreThrows { get; init; }
+
+    /// <summary>Gets the action called with every page the write job loads.</summary>
+    public Action<int>? PageLoaded { get; init; }
 }
