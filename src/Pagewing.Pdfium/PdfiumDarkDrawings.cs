@@ -133,16 +133,11 @@ internal static class PdfiumDarkDrawings
         ref char[]? scratch,
         ref long appearanceBudget)
     {
-        if (PdfiumTextBoxes.Read(page, index, transform) is not { IsOwn: true } box)
-        {
-            return null;
-        }
-
-        var content = PdfiumTextBoxes.ReadAppearance(annotation, ref scratch);
-
-        // Read twice: once for the marker, once here.
-        appearanceBudget -= 4L * content.Length;
-        if (content.IsEmpty || PdfiumTextBoxes.ParseGlyphs(content, transform, ref pointBudget) is not { Count: > 0 } glyphs)
+        // The appearance is read once, within the budget of the read (also for another program's text box, which then counts
+        // as not own and is left as PDFium draws it), and parsed from the buffer it was read into.
+        if (PdfiumTextBoxes.Read(page, index, transform, ref appearanceBudget, ref scratch, out var length) is not { IsOwn: true } box
+            || scratch is null || length == 0
+            || PdfiumTextBoxes.ParseGlyphs(scratch.AsSpan(0, length), transform, ref pointBudget) is not { Count: > 0 } glyphs)
         {
             return null;
         }

@@ -243,35 +243,140 @@ public sealed partial class TextBoxRoundTripTests : IDisposable
     [Fact]
     public async Task AcrobatEditedAppearanceLocksTheBox()
     {
-        // Pagewing's marker with the fingerprint of the text, size and colour and the box: own. The same marker after the
-        // text changed (as when another program edits /Contents) or an appearance without the marker (Acrobat writes its own
-        // when the text is edited there): locked.
+        // Pagewing's marker with the fingerprint of the text, size and colour and the box, /DS and /RC as Pagewing writes
+        // them, flag Print only and none of the keys it never writes: own. Anything another program changed without
+        // rewriting the appearance (the text, the box, a flag, /DS, /RC, an added key) or an appearance without the marker
+        // (Acrobat writes its own when the text is edited there): locked.
         const string Rect = "20 200 220 260";
-        var own = Marker("Hello", "12", (30, 80, 220), 20, 200, 220, 260);
-        var path = WritePdf(folder, "edited.pdf",
-        [
-            "<< /Type /Catalog /Pages 2 0 R >>",
-            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [4 0 R 6 0 R 8 0 R] >>",
-            FreeText("Hello", Rect, 5, "own"),
-            Form(Rect, own + "q 0 0 1 rg 30 210 100 20 re f Q"),
-            FreeText("Hello again", Rect, 7, "text-changed"),
-            Form(Rect, own + "q 0 0 1 rg 30 210 100 20 re f Q"),
-            FreeText("Hello", Rect, 9, "acrobat"),
-            Form(Rect, "q BT /Helv 12 Tf 0.1176 0.3137 0.8627 rg 22 240 Td (Hello) Tj ET Q"),
-        ]);
+        var marker = Marker("Hello", "12", (30, 80, 220), 20, 200, 220, 260);
+        var cases = new (string Name, string Contents, string AppearanceContent, string Extra, string RectOf, bool Own)[]
+        {
+            ("own", "Hello", marker, string.Empty, Rect, true),
+            ("text-changed", "Hello again", marker, string.Empty, Rect, false),
+            ("acrobat", "Hello", string.Empty, string.Empty, Rect, false),
+            ("moved", "Hello", marker, string.Empty, "60 200 260 260", false),
+            ("other-flag", "Hello", marker, "/F 36", Rect, false),
+            ("ds-changed", "Hello", marker, "/DS (font: Helvetica 14pt)", Rect, false),
+            ("rc-changed", "Hello", marker, "/RC (<body><p>Other</p></body>)", Rect, false),
+            ("key-C", "Hello", marker, "/C [1 0 0]", Rect, false),
+            ("key-IC", "Hello", marker, "/IC [1 0 0]", Rect, false),
+            ("key-CA", "Hello", marker, "/CA 0.5", Rect, false),
+            ("key-BS", "Hello", marker, "/BS << /W 2 >>", Rect, false),
+            ("key-BE", "Hello", marker, "/BE << /S /C /I 1 >>", Rect, false),
+            ("key-RD", "Hello", marker, "/RD [1 1 1 1]", Rect, false),
+            ("key-IT", "Hello", marker, "/IT /FreeTextCallout", Rect, false),
+            ("key-CL", "Hello", marker, "/CL [10 10 20 20]", Rect, false),
+            ("key-LE", "Hello", marker, "/LE /OpenArrow", Rect, false),
+        };
+        var objects = new List<string> { "<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", string.Empty };
+        var annots = new List<string>();
+        foreach (var (name, contents, appearance, extra, rect, _) in cases)
+        {
+            annots.Add(string.Create(CultureInfo.InvariantCulture, $"{objects.Count + 1} 0 R"));
+            var content = appearance.Length > 0
+                ? appearance + "q 0 0 1 rg 30 210 100 20 re f Q"
+                : "q BT /Helv 12 Tf 0.1176 0.3137 0.8627 rg 22 240 Td (Hello) Tj ET Q";
+            objects.Add(OwnFreeText(contents, rect, objects.Count + 2, name, extra));
+            objects.Add(Form(Rect, content));
+        }
+
+        objects[2] = $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [{string.Join(' ', annots)}] >>";
+        var path = WritePdf(folder, "edited.pdf", objects);
 
         await using var document = await OpenAsync(path);
         var annotations = await document.GetAnnotationsAsync(0, Ct);
 
-        Assert.Equal(["own", "text-changed", "acrobat"], annotations.Select(a => a.Name));
+        Assert.Equal(cases.Select(c => c.Name), annotations.Select(a => a.Name));
         Assert.All(annotations, a => Assert.Equal(AnnotationKind.TextBox, a.Kind));
         Assert.All(annotations, a => Assert.True(a.Editable));
-        Assert.Equal([true, false, false], annotations.Select(a => a.GeometryEditable));
+        foreach (var (expected, annotation) in cases.Zip(annotations))
+        {
+            Assert.True(expected.Own == annotation.GeometryEditable, $"{expected.Name}: own {annotation.GeometryEditable}, expected {expected.Own}.");
+        }
+
         Assert.Equal("Hello again", annotations[1].Contents);
         Assert.Equal(TextBlue, annotations[2].TextBox!.Color);
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             document.ReplaceTextBoxAsync(LocatorOf(annotations[2]), annotations[2].TextBox! with { Text = "Changed" }, Ct));
+    }
+
+    [Fact]
+    public async Task AppearanceReadsOfAHostilePageStayWithinTheBudget()
+    {
+        // An own text box first, then 300 FreeTexts that look own up to the appearance and share one appearance of 600,000
+        // characters (1.2 MB as PDFium reports it). The listing decodes appearances only within its budget: the own box is
+        // still recognised, the others count as foreign, and at most budget / 1.2 MB + 1 appearances are asked for.
+        const string Rect = "20 200 220 260";
+        var hostileContent = new StringBuilder(PdfiumTextBoxes.Marker).Append(new string('0', 32)).Append(" 20 200 220 260\n");
+        while (hostileContent.Length < 600_000)
+        {
+            hostileContent.Append("q 0 0 1 rg 30 210 100 20 re f Q\n");
+        }
+
+        var objects = new List<string>
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            string.Empty,
+            OwnFreeText("Hello", Rect, 5, "own", string.Empty),
+            Form(Rect, Marker("Hello", "12", (30, 80, 220), 20, 200, 220, 260) + "q 0 0 1 rg 30 210 100 20 re f Q"),
+            Form(Rect, hostileContent.ToString()),
+        };
+        var annots = new List<string> { "4 0 R" };
+        for (var i = 0; i < 300; i++)
+        {
+            annots.Add(string.Create(CultureInfo.InvariantCulture, $"{objects.Count + 1} 0 R"));
+            objects.Add(OwnFreeText("Hello", Rect, 6, "hostile-" + i, string.Empty));
+        }
+
+        objects[2] = $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [{string.Join(' ', annots)}] >>";
+        var path = WritePdf(folder, "hostile.pdf", objects);
+
+        // The read of the page as the listing does it, counting what was charged.
+        var (own, foreign, charged) = await PdfiumThread.Shared.InvokeAsync(
+            () =>
+            {
+                using var pdf = PdfiumDocument.Open(PdfiumThread.Shared, path, null);
+                using var page = pdf.LoadPage(0);
+                Assert.True(DisplayTransform.TryCreate(page.Access(), page.Width, page.Height, out var transform));
+                var budget = PdfiumTextBoxes.MaxAppearanceBytesPerPage;
+                char[]? scratch = null;
+                var (ownCount, foreignCount) = (0, 0);
+                for (var i = 0; i < annots.Count; i++)
+                {
+                    var box = PdfiumTextBoxes.Read(page, i, transform, ref budget, ref scratch, out _);
+                    _ = box!.IsOwn ? ownCount++ : foreignCount++;
+                }
+
+                PdfiumTextBoxes.ReturnScratch(ref scratch);
+                return (ownCount, foreignCount, PdfiumTextBoxes.MaxAppearanceBytesPerPage - budget);
+            },
+            cancellationToken: Ct);
+
+        Assert.Equal(1, own);
+        Assert.Equal(300, foreign);
+        var hostileBytes = (long)(hostileContent.Length + 1) * 2;
+        Assert.True(charged <= PdfiumTextBoxes.MaxAppearanceBytesPerPage + hostileBytes, $"{charged} bytes charged");
+        Assert.True(charged / hostileBytes <= (PdfiumTextBoxes.MaxAppearanceBytesPerPage / hostileBytes) + 2, $"{charged / hostileBytes} appearances read");
+
+        // The document listing reads the page the same way and still lists the own box as own.
+        await using var document = await OpenAsync(path);
+        var annotations = await document.GetAnnotationsAsync(0, Ct);
+        Assert.True(annotations[0].GeometryEditable);
+        Assert.All(annotations.Skip(1), a => Assert.False(a.GeometryEditable));
+    }
+
+    /// <summary>A FreeText as Pagewing writes it (text "Hello"-like, 12 pt, blue), with <paramref name="extra"/> keys.</summary>
+    private static string OwnFreeText(string contents, string rect, int appearance, string name, string extra)
+    {
+        (byte, byte, byte) blue = (30, 80, 220);
+
+        // An extra /DS, /RC or /F takes the place of the one Pagewing writes (a dictionary has each key once).
+        var ds = extra.Contains("/DS ", StringComparison.Ordinal) ? string.Empty : $"/DS ({PdfiumTextBoxes.DefaultStyle(12, blue)}) ";
+        var rc = extra.Contains("/RC ", StringComparison.Ordinal) ? string.Empty : $"/RC ({PdfiumTextBoxes.RichText(contents, 12, blue)}) ";
+        var flags = extra.Contains("/F ", StringComparison.Ordinal) ? string.Empty : "/F 4 ";
+        return $"<< /Type /Annot /Subtype /FreeText /Rect [{rect}] /Contents ({contents}) /DA ({PdfiumTextBoxes.DefaultAppearance("12", blue)}) "
+            + $"{ds}{rc}/NM ({name}) {flags}{extra} /AP << /N {appearance} 0 R >> >>";
     }
 
     [Fact]
@@ -356,9 +461,6 @@ public sealed partial class TextBoxRoundTripTests : IDisposable
     private static string Marker(string text, string size, (byte R, byte G, byte B) color, double l, double b, double r, double t) =>
         string.Create(CultureInfo.InvariantCulture, $"{PdfiumTextBoxes.Marker}{PdfiumTextBoxes.Fingerprint(text, size, color)} {l} {b} {r} {t}\n");
 
-    private static string FreeText(string contents, string rect, int appearance, string name) =>
-        $"<< /Type /Annot /Subtype /FreeText /Rect [{rect}] /Contents ({contents}) /DA (/Helv 12 Tf 0.1176 0.3137 0.8627 rg) /NM ({name}) /F 4 /AP << /N {appearance} 0 R >> >>";
-
     private static string Form(string rect, string content) =>
         $"<< /Type /XObject /Subtype /Form /BBox [{rect}] /Length {content.Length} >>\nstream\n{content}\nendstream";
 
@@ -431,7 +533,8 @@ public sealed partial class TextBoxRoundTripTests : IDisposable
         char[]? scratch = null;
         try
         {
-            return PdfiumTextBoxes.ReadAppearance(annotation, ref scratch).ToString();
+            var budget = long.MaxValue;
+            return PdfiumTextBoxes.ReadAppearance(annotation, ref scratch, ref budget).ToString();
         }
         finally
         {

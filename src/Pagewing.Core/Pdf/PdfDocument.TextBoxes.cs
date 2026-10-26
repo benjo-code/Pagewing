@@ -191,9 +191,15 @@ public sealed partial class PdfDocument
             ? (null, false)
             : (new TextBoxSpec(ToPageRect(read.Box), read.Text, read.FontSize, new AnnotationColor(read.Color.R, read.Color.G, read.Color.B)), read.IsOwn);
 
-    /// <summary>Reads the text boxes of one loaded page with one conversion of the page. Runs on the PDFium thread.</summary>
-    private sealed class TextBoxReader(PdfiumPage page)
+    /// <summary>
+    /// Reads the text boxes of one loaded page with one conversion of the page and one budget of appearance bytes for the
+    /// whole read (<see cref="PdfiumTextBoxes.MaxAppearanceBytesPerPage"/>: past it a text box counts as not own). Runs on
+    /// the PDFium thread; dispose it to give its buffer back.
+    /// </summary>
+    private sealed class TextBoxReader(PdfiumPage page) : IDisposable
     {
+        private long budget = PdfiumTextBoxes.MaxAppearanceBytesPerPage;
+        private char[]? scratch;
         private bool prepared;
         private bool hasTransform;
         private DisplayTransform transform;
@@ -212,7 +218,9 @@ public sealed partial class PdfDocument
                 hasTransform = DisplayTransform.TryCreate(page.Access(), page.Width, page.Height, out transform);
             }
 
-            return hasTransform ? ToTextBox(PdfiumTextBoxes.Read(page, annotation.Index, transform)) : default;
+            return hasTransform ? ToTextBox(PdfiumTextBoxes.Read(page, annotation.Index, transform, ref budget, ref scratch, out _)) : default;
         }
+
+        public void Dispose() => PdfiumTextBoxes.ReturnScratch(ref scratch);
     }
 }

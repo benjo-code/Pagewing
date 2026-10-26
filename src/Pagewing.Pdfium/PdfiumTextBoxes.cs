@@ -67,6 +67,18 @@ internal static unsafe class PdfiumTextBoxes
     /// <summary>The longest appearance written or read, in characters (UTF-16LE: twice as many bytes).</summary>
     public const int MaxAppearanceChars = 4 * 1024 * 1024;
 
+    /// <summary>
+    /// The most characters of appearance one character of an own text box may bring (its matrix and outline; Geist's longest
+    /// outline is far shorter): an appearance longer than that for its text is no own one and is never copied.
+    /// </summary>
+    public const int MaxCharsPerGlyph = 4096;
+
+    /// <summary>
+    /// The bytes (UTF-16LE, as PDFium reports them) of text box appearances one read of a page may decode for the marker
+    /// (<see cref="Read(PdfiumPage, int, DisplayTransform, ref long, ref char[], out int)"/>): the listing of the page.
+    /// </summary>
+    public const long MaxAppearanceBytesPerPage = 16L * 1024 * 1024;
+
     /// <summary>How far the box of the marker may lie from <c>/Rect</c>, in points (both are written rounded).</summary>
     private const double RectTolerance = 0.02;
 
@@ -174,29 +186,58 @@ internal static unsafe class PdfiumTextBoxes
         }
     }
 
-    /// <summary>Reads the text box at <paramref name="index"/> with the page's <see cref="DisplayTransform"/>; see the other overload.</summary>
+    /// <summary>Reads the text box at <paramref name="index"/> with the page's <see cref="DisplayTransform"/> and a budget of one read; see the other overload.</summary>
     public static PdfiumTextBox? Read(PdfiumPage page, int index)
     {
         ArgumentNullException.ThrowIfNull(page);
-        return DisplayTransform.TryCreate(page.Access(), page.Width, page.Height, out var transform) ? Read(page, index, transform) : null;
+        if (!DisplayTransform.TryCreate(page.Access(), page.Width, page.Height, out var transform))
+        {
+            return null;
+        }
+
+        var budget = (long)MaxAppearanceChars * 2;
+        char[]? scratch = null;
+        try
+        {
+            return Read(page, index, transform, ref budget, ref scratch, out _);
+        }
+        finally
+        {
+            ReturnScratch(ref scratch);
+        }
     }
 
     /// <summary>
     /// Reads the FreeText at <paramref name="index"/>: <see langword="null"/> for any other subtype and for a damaged one (no
     /// <c>/Rect</c>, or coordinates that are not finite or beyond <see cref="PdfiumAnnotations.MaxCoordinate"/>). A missing
     /// size in <c>/DA</c> reads as 12 pt, a missing colour as black, missing <c>/Contents</c> as an empty text.
-    /// <see cref="PdfiumTextBox.IsOwn"/> needs the appearance, which is read up to <see cref="MaxAppearanceChars"/>.
     /// </summary>
-    public static PdfiumTextBox? Read(PdfiumPage page, int index, DisplayTransform transform)
+    /// <remarks>
+    /// <see cref="PdfiumTextBox.IsOwn"/> is decided by what costs little first (flags, <c>/DA</c>, the keys of
+    /// <see cref="IsLockedByKeys"/>, <c>/DS</c> and <c>/RC</c> as Pagewing writes them), and only then by the appearance: the
+    /// length PDFium reports for it is charged to <paramref name="appearanceBudget"/> (bytes of UTF-16LE) before it is
+    /// copied, an appearance longer than an own one of this text could be (<see cref="MaxOwnAppearanceChars"/>) is never
+    /// copied, and without budget left the appearance is not asked for at all: the text box then counts as another
+    /// program's (a false "foreign" is safe, it only locks). A hostile page that lists one large appearance thousands of
+    /// times costs at most the budget. The appearance of an own text box is left in <paramref name="scratch"/>, its length in
+    /// <paramref name="appearanceLength"/> (0 otherwise), so the dark page parses it without a second read.
+    /// </remarks>
+    internal static PdfiumTextBox? Read(
+        PdfiumPage page,
+        int index,
+        DisplayTransform transform,
+        ref long appearanceBudget,
+        ref char[]? scratch,
+        out int appearanceLength)
     {
         ArgumentNullException.ThrowIfNull(page);
+        appearanceLength = 0;
         var annotation = Fpdf.FPDFPage_GetAnnot(page.Access(), index);
         if (annotation == 0)
         {
             return null;
         }
 
-        char[]? scratch = null;
         try
         {
             FsRectF rect;
@@ -210,31 +251,80 @@ internal static unsafe class PdfiumTextBoxes
             var (size, color) = ParseDefaultAppearance(PdfiumAnnotations.ReadString(annotation, "DA\0"u8));
             var fontSize = size ?? DefaultFontSize;
             var rgb = color ?? ((byte)0, (byte)0, (byte)0);
-            var own = (Fpdf.FPDFAnnot_GetFlags(annotation) & ~FpdfConstants.AnnotFlagPrint) == 0
+            var own = false;
+            if ((Fpdf.FPDFAnnot_GetFlags(annotation) & ~FpdfConstants.AnnotFlagPrint) == 0
                 && size is not null
                 && color is not null
-                && MarkerMatches(ReadAppearance(annotation, ref scratch), rect, Fingerprint(text, FormatSize(fontSize), rgb));
+                && !IsLockedByKeys(annotation)
+                && PdfiumAnnotations.ReadString(annotation, "DS\0"u8) == DefaultStyle(fontSize, rgb)
+                && PdfiumAnnotations.ReadString(annotation, "RC\0"u8) == RichText(text, fontSize, rgb))
+            {
+                var appearance = ReadAppearance(annotation, ref scratch, ref appearanceBudget, MaxOwnAppearanceChars(text));
+                own = MarkerMatches(appearance, rect, Fingerprint(text, FormatSize(fontSize), rgb));
+                appearanceLength = own ? appearance.Length : 0;
+            }
+
             return new PdfiumTextBox(BoxToDisplay(transform, rect), text, fontSize, rgb) { IsOwn = own };
         }
         finally
         {
-            if (scratch is not null)
-            {
-                ArrayPool<char>.Shared.Return(scratch);
-            }
-
             Fpdf.FPDFPage_CloseAnnot(annotation);
         }
     }
 
     /// <summary>
-    /// The normal appearance of the annotation as text, up to <see cref="MaxAppearanceChars"/> (empty when missing or longer),
-    /// decoded into <paramref name="scratch"/> (rented from <see cref="ArrayPool{T}.Shared"/> on first use; the caller returns it).
+    /// The keys Pagewing never writes on a text box and could not keep when it replaces one: <c>/C</c> (background), <c>/IC</c>,
+    /// <c>/CA</c> (opacity), <c>/BS</c>, <c>/BE</c> (border style and cloud), <c>/RD</c>, <c>/IT</c> (intent, e.g. a callout),
+    /// <c>/CL</c> (callout line), <c>/LE</c> (line ending), <c>/Popup</c>, <c>/IRT</c> and <c>/OC</c>. A text box with any
+    /// of them was changed by another program and is locked, whatever its appearance says.
     /// </summary>
-    internal static ReadOnlySpan<char> ReadAppearance(nint annotation, ref char[]? scratch)
+    internal static bool IsLockedByKeys(nint annotation) =>
+        PdfiumAnnotations.HasKey(annotation, "C\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "IC\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "CA\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "BS\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "BE\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "RD\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "IT\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "CL\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "LE\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "Popup\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "IRT\0"u8)
+        || PdfiumAnnotations.HasKey(annotation, "OC\0"u8);
+
+    /// <summary>
+    /// The longest appearance an own text box of <paramref name="text"/> can have, in characters: the marker and the frame
+    /// plus, for every character, its matrix and the longest glyph outline (a generous bound; Geist's are far shorter).
+    /// </summary>
+    internal static int MaxOwnAppearanceChars(string text) =>
+        (int)Math.Min(MaxAppearanceChars, 1024 + ((long)text.Length * MaxCharsPerGlyph));
+
+    /// <summary>Gives a buffer of <see cref="ReadAppearance"/> back to the pool (nothing without one).</summary>
+    internal static void ReturnScratch(ref char[]? scratch)
     {
+        if (scratch is not null)
+        {
+            ArrayPool<char>.Shared.Return(scratch);
+            scratch = null;
+        }
+    }
+
+    /// <summary>
+    /// The normal appearance of the annotation as text, at most <paramref name="maxChars"/> (empty when missing, longer, or
+    /// when <paramref name="budget"/> is used up), decoded into <paramref name="scratch"/> (rented from
+    /// <see cref="ArrayPool{T}.Shared"/> on first use; the caller returns it). The length PDFium reports is charged to
+    /// <paramref name="budget"/> (bytes) before the appearance is copied; without budget left PDFium is not asked.
+    /// </summary>
+    internal static ReadOnlySpan<char> ReadAppearance(nint annotation, ref char[]? scratch, ref long budget, int maxChars = MaxAppearanceChars)
+    {
+        if (budget <= 0)
+        {
+            return [];
+        }
+
         var length = Fpdf.FPDFAnnot_GetAP(annotation, FpdfConstants.AnnotAppearanceNormal, null, new CULong(0)).Value;
-        if (length <= 2 || length > (nuint)MaxAppearanceChars * 2)
+        budget -= (long)Math.Min((ulong)length, long.MaxValue);
+        if (length <= 2 || length > (nuint)Math.Min(maxChars, MaxAppearanceChars) * 2 || budget < 0)
         {
             return [];
         }
@@ -242,11 +332,7 @@ internal static unsafe class PdfiumTextBoxes
         var chars = (int)length / 2;
         if (scratch is null || scratch.Length < chars)
         {
-            if (scratch is not null)
-            {
-                ArrayPool<char>.Shared.Return(scratch);
-            }
-
+            ReturnScratch(ref scratch);
             scratch = ArrayPool<char>.Shared.Rent(chars);
         }
 
@@ -553,14 +639,14 @@ internal static unsafe class PdfiumTextBoxes
         static string C(byte value) => (value / 255.0).ToString("0.####", CultureInfo.InvariantCulture);
     }
 
-    private static string DefaultAppearance(string size, (byte R, byte G, byte B) color) =>
+    internal static string DefaultAppearance(string size, (byte R, byte G, byte B) color) =>
         string.Create(CultureInfo.InvariantCulture, $"/Helv {size} Tf {color.R / 255.0:0.####} {color.G / 255.0:0.####} {color.B / 255.0:0.####} rg");
 
-    private static string DefaultStyle(double size, (byte R, byte G, byte B) color) =>
+    internal static string DefaultStyle(double size, (byte R, byte G, byte B) color) =>
         string.Create(CultureInfo.InvariantCulture, $"font: Helvetica,sans-serif {size:0.0#}pt; text-align:left; color:#{color.R:X2}{color.G:X2}{color.B:X2}");
 
     /// <summary>The text as the XHTML of <c>/RC</c>, styled like <c>/DS</c>, one paragraph per line (as Acrobat writes it).</summary>
-    private static string RichText(string text, double size, (byte R, byte G, byte B) color)
+    internal static string RichText(string text, double size, (byte R, byte G, byte B) color)
     {
         var builder = new StringBuilder(
             "<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\" xfa:APIVersion=\"Acrobat:11.0.0\" xfa:spec=\"2.0.2\" ");

@@ -56,7 +56,7 @@ public sealed partial class PdfDocument
                 var read = PdfiumAnnotations.Read(loaded, Math.Max(0, MaxAnnotations - others), cancellationToken);
                 listedAnnotations[pageIndex] = read.Count;
                 var drawings = new DrawingReader(loaded, MaxDrawingPointsPerPage);
-                var textBoxes = new TextBoxReader(loaded);
+                using var textBoxes = new TextBoxReader(loaded);
                 var result = new PdfAnnotation[read.Count];
                 for (var i = 0; i < result.Length; i++)
                 {
@@ -519,8 +519,9 @@ public sealed partial class PdfDocument
         using var page = document.LoadPage(pageIndex);
         var annotation = PdfiumAnnotations.ReadAt(page, index)
             ?? throw new InvalidOperationException("The changed annotation could not be read back.");
+        using var textBoxes = new TextBoxReader(page);
         return ToAnnotation(
-            pageIndex, annotation, new DrawingReader(page, long.MaxValue).Read(annotation, CancellationToken.None), new TextBoxReader(page).Read(annotation));
+            pageIndex, annotation, new DrawingReader(page, long.MaxValue).Read(annotation, CancellationToken.None), textBoxes.Read(annotation));
     }
 
     private void ThrowIfNotAPage(int pageIndex)
