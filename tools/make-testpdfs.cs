@@ -114,6 +114,12 @@ static class TestPdfs
         new("linearized.pdf", Linearized()),
         new("annotations-foreign.pdf", AnnotationsForeign()),
         new("drawings-foreign.pdf", DrawingsForeign()),
+        new("forms-basic.pdf", FormsBasic()),
+        new("forms-calc.pdf", FormsCalc()),
+        new("forms-xfa.pdf", FormsXfa()),
+        new("forms-signed.pdf", FormsSigned()),
+        new("forms-rotated.pdf", FormsRotated()),
+        new("forms-hostile.pdf", FormsHostile()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -686,6 +692,295 @@ static class TestPdfs
             $"/MediaBox [0 0 400 300] /CropBox [20 10 380 290] /Rotate 90 /Annots [{rotatedInk} 0 R]",
             resources,
             "BT /F1 14 Tf 40 250 Td (Foreign drawings, page two) Tj ET");
+        return doc.Build();
+    }
+
+    // ---- Forms (milestone 11). Fields omit /AP on purpose where PDFium's engine writes it on the first change; check boxes and radio
+    // buttons carry /AP /N states (their value is the state name). Every field has /DA (/Helv) and the AcroForm /DR has /Helv. ----
+
+    private const string FormLook = "/F 4 /MK << /BC [0 0 0] /BG [1 1 1] >>";
+    private const string FormDa = "/DA (/Helv 10 Tf 0 g)";
+
+    private static string AcroFormEntry(PdfDoc doc, IEnumerable<int> fields, string extra = "") =>
+        $"/AcroForm << /Fields [{AnnotRefs(fields)}] /DA (/Helv 10 Tf 0 g) /DR << /Font << /Helv {doc.Add(Helvetica)} 0 R >> >> {extra} >>";
+
+    private static string AnnotRefs(IEnumerable<int> ids) => string.Join(' ', ids.Select(a => $"{a} 0 R"));
+
+    private static string FormRect(int left, int bottom, int right, int top) => $"[{left} {bottom} {right} {top}]";
+
+    // A merged field/widget (text, choice, ...) on a page.
+    private static int FormField(PdfDoc doc, int page, string rect, string entries) =>
+        doc.Add($"<< /Type /Annot /Subtype /Widget /Rect {rect} /P {page} 0 R {FormLook} {entries} >>");
+
+    // The shared appearance streams of 18 x 18 pt boxes: off, check mark, radio dot.
+    private static (int Off, int Check, int Dot) ButtonAppearances(PdfDoc doc)
+    {
+        const string box = "0 G 0.5 w 0.5 0.5 17 17 re S";
+        const string head = "/Type /XObject /Subtype /Form /BBox [0 0 18 18]";
+        return (
+            doc.AddStream(head, Text(box)),
+            doc.AddStream(head, Text(box + " 1.5 w 4 4 m 14 14 l 4 14 m 14 4 l S")),
+            doc.AddStream(head, Text(box + " 0 g 5 5 8 8 re f")));
+    }
+
+    // A check box or radio button widget with the states /<on> and /Off; entries carry /FT, /T or /Parent and the value.
+    private static int ButtonWidget(PdfDoc doc, int page, string rect, string entries, string on, int onStream, int offStream) =>
+        doc.Add($"<< /Type /Annot /Subtype /Widget /Rect {rect} /P {page} 0 R {FormLook} {entries} /AS /Off /AP << /N << /{on} {onStream} 0 R /Off {offStream} 0 R >> >> >>");
+
+    private static void FormLabel(StringBuilder content, int x, int y, string text) =>
+        content.Append(CultureInfo.InvariantCulture, $"BT /F1 9 Tf {x} {y} Td ({text}) Tj ET\n");
+
+    // Page 1 (400 x 640), 17 widgets in this /Annots order: Name (text, value "Alt", first widget of a field with two widgets), Bemerkung (multiline),
+    // Kamm (comb, /MaxLen 8), Kurz (/MaxLen 5), Gesperrt (read-only), Pflicht (required), Passwort, Agb (check box, export Yes), Zustimmung (check box,
+    // export Ja), Zahlung Bar and Karte (radio group of three, no /NoToggleToOff), Stufe 1 and 2 (radio group with /NoToggleToOff), Farbe (combo with
+    // /Opt pairs), Frei (editable combo), Liste (list), Mehrfach (multi-select list). Page 2 (400 x 300), 4 widgets: Zahlung Rechnung (the third
+    // widget of the group), the second widget of Name, Telefon, Ort. Tab order across the pages is the page order and /Annots order.
+    private static byte[] FormsBasic()
+    {
+        var doc = new PdfDoc("Pagewing Formularprobe");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        var (off, check, dot) = ButtonAppearances(doc);
+        var page1 = doc.Reserve();
+        var page2 = doc.Reserve();
+        var content1 = new StringBuilder("BT /F1 12 Tf 20 618 Td (Form fixture, page one) Tj ET\n");
+        var content2 = new StringBuilder("BT /F1 12 Tf 20 270 Td (Form fixture, page two) Tj ET\n");
+        var annots1 = new List<int>();
+        var fields = new List<int>();
+
+        var y = 600;
+        (int Bottom, int Top) Row(string label, int height)
+        {
+            var top = y;
+            FormLabel(content1, 20, top - 13, label);
+            y -= height + 10;
+            return (top - height, top);
+        }
+
+        // Name: one field with two widgets (page 1 and page 2); value and default "Alt".
+        var name = doc.Reserve();
+        var (bottom, top) = Row("Name", 22);
+        var nameFirst = doc.Add($"<< /Type /Annot /Subtype /Widget /Rect {FormRect(150, bottom, 380, top)} /P {page1} 0 R {FormLook} /Parent {name} 0 R >>");
+        annots1.Add(nameFirst);
+
+        void Field(string label, int height, string entries)
+        {
+            var (fieldBottom, fieldTop) = Row(label, height);
+            var id = FormField(doc, page1, FormRect(150, fieldBottom, 380, fieldTop), entries);
+            annots1.Add(id);
+            fields.Add(id);
+        }
+
+        Field("Bemerkung", 52, $"/FT /Tx /Ff 4096 /T (Bemerkung) {FormDa}");
+        Field("Kamm", 22, $"/FT /Tx /Ff 16777216 /MaxLen 8 /T (Kamm) {FormDa}");
+        Field("Kurz", 22, $"/FT /Tx /MaxLen 5 /T (Kurz) {FormDa}");
+        Field("Gesperrt", 22, $"/FT /Tx /Ff 1 /T (Gesperrt) /V (Fest) {FormDa}");
+        Field("Pflicht", 22, $"/FT /Tx /Ff 2 /T (Pflicht) {FormDa}");
+        Field("Passwort", 22, $"/FT /Tx /Ff 8192 /T (Passwort) {FormDa}");
+
+        (bottom, top) = Row("Agb / Zustimmung", 18);
+        var agree = ButtonWidget(doc, page1, FormRect(150, bottom, 168, top), "/FT /Btn /T (Agb) /V /Off", "Yes", check, off);
+        var consent = ButtonWidget(doc, page1, FormRect(190, bottom, 208, top), "/FT /Btn /T (Zustimmung) /V /Off", "Ja", check, off);
+        annots1.AddRange([agree, consent]);
+        fields.AddRange([agree, consent]);
+
+        var payment = doc.Reserve();
+        (bottom, top) = Row("Zahlung", 18);
+        var bar = ButtonWidget(doc, page1, FormRect(150, bottom, 168, top), $"/Parent {payment} 0 R", "Bar", dot, off);
+        var card = ButtonWidget(doc, page1, FormRect(190, bottom, 208, top), $"/Parent {payment} 0 R", "Karte", dot, off);
+        annots1.AddRange([bar, card]);
+
+        var level = doc.Reserve();
+        (bottom, top) = Row("Stufe", 18);
+        var one = ButtonWidget(doc, page1, FormRect(150, bottom, 168, top), $"/Parent {level} 0 R", "1", dot, off);
+        var two = ButtonWidget(doc, page1, FormRect(190, bottom, 208, top), $"/Parent {level} 0 R", "2", dot, off);
+        annots1.AddRange([one, two]);
+
+        Field("Farbe", 22, $"/FT /Ch /Ff 131072 /T (Farbe) /Opt [[(r) (Rot)] [(g) (Gruen)] [(b) (Blau)]] {FormDa}");
+        Field("Frei", 22, $"/FT /Ch /Ff 393216 /T (Frei) /Opt [(Eins) (Zwei) (Drei)] {FormDa}");
+        Field("Liste", 52, $"/FT /Ch /T (Liste) /Opt [(Alpha) (Beta) (Gamma) (Delta)] {FormDa}");
+        Field("Mehrfach", 52, $"/FT /Ch /Ff 2097152 /T (Mehrfach) /Opt [(Alpha) (Beta) (Gamma) (Delta)] {FormDa}");
+
+        // Page 2.
+        FormLabel(content2, 20, 237, "Zahlung Rechnung");
+        var invoice = ButtonWidget(doc, page2, FormRect(150, 234, 168, 252), $"/Parent {payment} 0 R", "Rechnung", dot, off);
+        FormLabel(content2, 20, 197, "Name (second widget)");
+        var nameSecond = doc.Add($"<< /Type /Annot /Subtype /Widget /Rect {FormRect(150, 190, 380, 212)} /P {page2} 0 R {FormLook} /Parent {name} 0 R >>");
+        FormLabel(content2, 20, 157, "Telefon");
+        var phone = FormField(doc, page2, FormRect(150, 150, 380, 172), $"/FT /Tx /T (Telefon) {FormDa}");
+        FormLabel(content2, 20, 117, "Ort");
+        var city = FormField(doc, page2, FormRect(150, 110, 380, 132), $"/FT /Tx /T (Ort) {FormDa}");
+
+        doc.Set(name, $"<< /FT /Tx /T (Name) /V (Alt) /DV (Alt) {FormDa} /Kids [{nameFirst} 0 R {nameSecond} 0 R] >>");
+        doc.Set(payment, $"<< /FT /Btn /Ff 32768 /T (Zahlung) /V /Off /Kids [{bar} 0 R {card} 0 R {invoice} 0 R] >>");
+        doc.Set(level, $"<< /FT /Btn /Ff 49152 /T (Stufe) /V /Off /Kids [{one} 0 R {two} 0 R] >>");
+
+        doc.AddPage($"/MediaBox [0 0 400 640] /Annots [{AnnotRefs(annots1)}]", resources, content1.ToString(), page1);
+        doc.AddPage($"/MediaBox [0 0 400 300] /Annots [{AnnotRefs([invoice, nameSecond, phone, city])}]", resources, content2.ToString(), page2);
+
+        // Top-level fields: Name and the group parents plus every merged field/widget.
+        doc.CatalogEntries = AcroFormEntry(doc, [name, .. fields, payment, level, phone, city]);
+        return doc.Build();
+    }
+
+    // One page 300 x 260: two numbers, Summe (calculation script AFSimple_Calculate "SUM"), Datum (format script AFDate_FormatEx and keystroke
+    // script), Bereich (validation script AFRange_Validate). None of the scripts ever runs in Pagewing (no JavaScript engine).
+    private static byte[] FormsCalc()
+    {
+        var doc = new PdfDoc("Pagewing Formularprobe mit Skripten");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        var page = doc.Reserve();
+        var content = new StringBuilder("BT /F1 12 Tf 20 238 Td (Form fixture with scripts) Tj ET\n");
+        var y = 190;
+        int Field(string label, string entries)
+        {
+            FormLabel(content, 20, y + 7, label);
+            var id = FormField(doc, page, FormRect(110, y, 280, y + 22), entries);
+            y -= 40;
+            return id;
+        }
+
+        var number1 = Field("Zahl1", $"/FT /Tx /T (Zahl1) /V (10) {FormDa}");
+        var number2 = Field("Zahl2", $"/FT /Tx /T (Zahl2) /V (32) {FormDa}");
+        var sum = Field("Summe", $"/FT /Tx /T (Summe) /V (42) {FormDa} /AA << /C << /S /JavaScript /JS (AFSimple_Calculate(\"SUM\", new Array (\"Zahl1\", \"Zahl2\"));) >> >>");
+        var date = Field(
+            "Datum",
+            $"/FT /Tx /T (Datum) /V (26.10.2026) {FormDa} /AA << /F << /S /JavaScript /JS (AFDate_FormatEx(\"dd.mm.yyyy\");) >> /K << /S /JavaScript /JS (AFDate_KeystrokeEx(\"dd.mm.yyyy\");) >> >>");
+        var range = Field("Bereich", $"/FT /Tx /T (Bereich) /V (50) {FormDa} /AA << /V << /S /JavaScript /JS (AFRange_Validate(true, 0, true, 100);) >> >>");
+        doc.AddPage($"/MediaBox [0 0 300 260] /Annots [{AnnotRefs([number1, number2, sum, date, range])}]", resources, content.ToString(), page);
+        doc.CatalogEntries = AcroFormEntry(doc, [number1, number2, sum, date, range], $"/CO [{sum} 0 R]");
+        return doc.Build();
+    }
+
+    // One page 300 x 140 with an AcroForm that has an /XFA entry (a STUB: two XML snippets, no real XFA form) and one text field.
+    private static byte[] FormsXfa()
+    {
+        var doc = new PdfDoc("Pagewing Formularprobe mit XFA-Attrappe");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        var page = doc.Reserve();
+        var template = doc.AddStream(string.Empty, Text("<xdp:xdp xmlns:xdp=\"http://ns.adobe.com/xdp/\"><template xmlns=\"http://www.xfa.org/schema/xfa-template/3.3/\"/></xdp:xdp>"));
+        var datasets = doc.AddStream(string.Empty, Text("<xfa:datasets xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\"><xfa:data/></xfa:datasets>"));
+        var field = FormField(doc, page, FormRect(110, 60, 280, 82), $"/FT /Tx /T (Name) {FormDa}");
+        doc.AddPage(
+            $"/MediaBox [0 0 300 140] /Annots [{field} 0 R]",
+            resources,
+            "BT /F1 12 Tf 20 110 Td (Form fixture with an XFA stub) Tj ET\nBT /F1 9 Tf 20 67 Td (Name) Tj ET",
+            page);
+        doc.CatalogEntries = AcroFormEntry(doc, [field], $"/XFA [(template) {template} 0 R (datasets) {datasets} 0 R]");
+        return doc.Build();
+    }
+
+    // One page 300 x 220: Signature1 (a signature value that is a STRUCTURE DUMMY like signed-docmdp-2.pdf: DocMDP level 2, no cryptography),
+    // Signature2 (empty), Senden (push button with a SubmitForm action) and Name (text). Pagewing never validates or runs anything of it.
+    private static byte[] FormsSigned()
+    {
+        var doc = new PdfDoc("Pagewing Formularprobe mit Signaturattrappe");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        var page = doc.Reserve();
+        var signature = doc.Add(
+            "<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0 0 0] /Contents <" + new string('0', 512) + "> "
+            + "/Name (Pagewing test dummy) /M (D:20260101000000Z) /Reason (Structure dummy, not a signature) "
+            + "/Reference [<< /Type /SigRef /TransformMethod /DocMDP /TransformParams << /Type /TransformParams /P 2 /V /1.2 >> >>] >>");
+        var content = new StringBuilder("BT /F1 12 Tf 20 198 Td (Form fixture with a signature dummy) Tj ET\n");
+        FormLabel(content, 20, 168, "Signature1");
+        var signed = doc.Add($"<< /Type /Annot /Subtype /Widget /FT /Sig /T (Signature1) /Rect {FormRect(110, 160, 280, 185)} /F 4 /MK << /BC [0 0 0] >> /V {signature} 0 R /P {page} 0 R >>");
+        FormLabel(content, 20, 128, "Signature2");
+        var unsigned = doc.Add($"<< /Type /Annot /Subtype /Widget /FT /Sig /T (Signature2) /Rect {FormRect(110, 120, 280, 145)} /F 4 /MK << /BC [0 0 0] >> /P {page} 0 R >>");
+        var send = doc.Add(
+            $"<< /Type /Annot /Subtype /Widget /FT /Btn /Ff 65536 /T (Senden) /Rect {FormRect(110, 80, 190, 105)} /P {page} 0 R /F 4 {FormDa} "
+            + "/MK << /BC [0 0 0] /BG [0.9 0.9 0.9] /CA (Send) >> /A << /S /SubmitForm /F << /FS /URL /F (https://example.com/submit) >> /Flags 4 >> >>");
+        FormLabel(content, 20, 47, "Name");
+        var name = FormField(doc, page, FormRect(110, 40, 280, 62), $"/FT /Tx /T (Name) {FormDa}");
+        doc.AddPage($"/MediaBox [0 0 300 220] /Annots [{AnnotRefs([signed, unsigned, send, name])}]", resources, content.ToString(), page);
+        doc.CatalogEntries = AcroFormEntry(doc, [signed, unsigned, send, name], "/SigFlags 3") + $" /Perms << /DocMDP {signature} 0 R >>";
+        return doc.Build();
+    }
+
+    // Page 1: /Rotate 90, MediaBox 400 x 300 with a CropBox [20 10 380 290] that is offset inside it; page 2: /Rotate 270, 300 x 400.
+    // Each page has a text field, a check box and a combo (all inside the CropBox).
+    private static byte[] FormsRotated()
+    {
+        var doc = new PdfDoc("Pagewing Formularprobe gedrehter Seiten");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        var (off, check, _) = ButtonAppearances(doc);
+        var page1 = doc.Reserve();
+        var page2 = doc.Reserve();
+        var content1 = new StringBuilder("BT /F1 12 Tf 40 265 Td (Rotated form, page one) Tj ET\n");
+        var content2 = new StringBuilder("BT /F1 12 Tf 20 365 Td (Rotated form, page two) Tj ET\n");
+        FormLabel(content1, 30, 227, "Text1");
+        var text1 = FormField(doc, page1, FormRect(80, 220, 260, 242), $"/FT /Tx /T (Text1) /V (Eins) {FormDa}");
+        FormLabel(content1, 30, 177, "Check1");
+        var check1 = ButtonWidget(doc, page1, FormRect(80, 170, 98, 188), "/FT /Btn /T (Check1) /V /Off", "Yes", check, off);
+        FormLabel(content1, 30, 117, "Combo1");
+        var combo1 = FormField(doc, page1, FormRect(80, 110, 260, 132), $"/FT /Ch /Ff 131072 /T (Combo1) /Opt [(Eins) (Zwei) (Drei)] {FormDa}");
+        FormLabel(content2, 20, 327, "Text2");
+        var text2 = FormField(doc, page2, FormRect(70, 320, 250, 342), $"/FT /Tx /T (Text2) /V (Zwei) {FormDa}");
+        FormLabel(content2, 20, 277, "Check2");
+        var check2 = ButtonWidget(doc, page2, FormRect(70, 270, 88, 288), "/FT /Btn /T (Check2) /V /Off", "Yes", check, off);
+        FormLabel(content2, 20, 217, "Combo2");
+        var combo2 = FormField(doc, page2, FormRect(70, 210, 250, 232), $"/FT /Ch /Ff 131072 /T (Combo2) /Opt [(Eins) (Zwei) (Drei)] {FormDa}");
+        doc.AddPage($"/MediaBox [0 0 400 300] /CropBox [20 10 380 290] /Rotate 90 /Annots [{AnnotRefs([text1, check1, combo1])}]", resources, content1.ToString(), page1);
+        doc.AddPage($"/MediaBox [0 0 300 400] /Rotate 270 /Annots [{AnnotRefs([text2, check2, combo2])}]", resources, content2.ToString(), page2);
+        doc.CatalogEntries = AcroFormEntry(doc, [text1, check1, combo1, text2, check2, combo2]);
+        return doc.Build();
+    }
+
+    // One page 300 x 400 of a hostile form: Normal (a plain first field), Loop (a field whose /Kids lead back to it through an inner node, with one
+    // widget leaf), NoType (a widget without /FT), NoRect (a widget without /Rect: not listed), NoName (a field without /T), Big (a combo with 20,000
+    // /Opt entries; focusing it in PDFium takes seconds, so no test ever focuses it), a name of 2,000 characters and a name with a NUL character.
+    private static byte[] FormsHostile()
+    {
+        var doc = new PdfDoc("Pagewing feindliche Formularprobe");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        var page = doc.Reserve();
+        var content = new StringBuilder("BT /F1 12 Tf 20 378 Td (Hostile form fixture) Tj ET\n");
+        var y = 350;
+        var annots = new List<int>();
+        var fields = new List<int>();
+
+        string Rect(string label)
+        {
+            FormLabel(content, 20, y + 7, label);
+            var rect = FormRect(110, y, 280, y + 20);
+            y -= 32;
+            return rect;
+        }
+
+        void Plain(string label, string entries)
+        {
+            var id = FormField(doc, page, Rect(label), entries);
+            annots.Add(id);
+            fields.Add(id);
+        }
+
+        Plain("Normal", $"/FT /Tx /T (Normal) {FormDa}");
+
+        var outer = doc.Reserve();
+        var inner = doc.Reserve();
+        var leaf = doc.Add($"<< /Type /Annot /Subtype /Widget /Rect {Rect("Loop")} /P {page} 0 R {FormLook} /Parent {outer} 0 R >>");
+        doc.Set(outer, $"<< /FT /Tx /T (Loop) {FormDa} /Kids [{inner} 0 R {leaf} 0 R] >>");
+        doc.Set(inner, $"<< /T (Inner) /Parent {outer} 0 R /Kids [{outer} 0 R] >>");
+        annots.Add(leaf);
+        fields.Add(outer);
+
+        Plain("NoType", "/T (NoType)");
+        var noRect = doc.Add($"<< /Type /Annot /Subtype /Widget /P {page} 0 R {FormLook} /FT /Tx /T (NoRect) {FormDa} >>");
+        annots.Add(noRect);
+        fields.Add(noRect);
+        Plain("NoName", $"/FT /Tx {FormDa}");
+
+        var options = new StringBuilder("[");
+        for (var i = 1; i <= 20_000; i++)
+        {
+            options.Append(CultureInfo.InvariantCulture, $"(Option {i:D5}) ");
+        }
+
+        options.Append(']');
+        Plain("Big", $"/FT /Ch /Ff 131072 /T (Big) /Opt {options} {FormDa}");
+        Plain("LongName", $"/FT /Tx /T ({new string('n', 2_000)}) {FormDa}");
+        Plain("NulName", $"/FT /Tx /T (Nul\\000Name) {FormDa}");
+
+        doc.AddPage($"/MediaBox [0 0 300 400] /Annots [{AnnotRefs(annots)}]", resources, content.ToString(), page);
+        doc.CatalogEntries = AcroFormEntry(doc, fields);
         return doc.Build();
     }
 

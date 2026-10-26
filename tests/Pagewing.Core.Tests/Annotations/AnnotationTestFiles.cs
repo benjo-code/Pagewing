@@ -18,6 +18,19 @@ internal static class AnnotationTestFiles
     /// <summary>Drawings written by other programs (ink, square, circle, line, a reply); see tools/make-testpdfs.cs.</summary>
     public const string DrawingsForeign = "drawings-foreign.pdf";
 
+    /// <summary>The form fixtures of milestone 11 (fields, scripts, XFA stub, signature dummies, rotated pages, a hostile tree); see tools/make-testpdfs.cs.</summary>
+    public const string FormsBasic = "forms-basic.pdf";
+
+    public const string FormsCalc = "forms-calc.pdf";
+
+    public const string FormsXfa = "forms-xfa.pdf";
+
+    public const string FormsSigned = "forms-signed.pdf";
+
+    public const string FormsRotated = "forms-rotated.pdf";
+
+    public const string FormsHostile = "forms-hostile.pdf";
+
     /// <summary>Hands the shipped Geist Regular to the text boxes, as the app does on first use (the first source set stays).</summary>
     public static void UseTextBoxFont() => TextBoxFont.Use(static () => File.ReadAllBytes(TestData.GeistRegular));
 

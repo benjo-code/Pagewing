@@ -66,11 +66,14 @@ internal static class RenderCorpus
     /// print placement and the print to PDF), not how PDFium draws it; and the structure fixtures of milestone 9
     /// (the four signed-docmdp-*.pdf, linearized.pdf and annotations-foreign.pdf), whose subject is the file structure
     /// (signature dummies, the linearization dictionary, annotations written by other programs), not the drawing; and
-    /// drawings-foreign.pdf of milestone 10 (drawings written by other programs, read and round-tripped, not rendered here).
+    /// drawings-foreign.pdf of milestone 10 (drawings written by other programs, read and round-tripped, not rendered here);
+    /// and the six forms-*.pdf of milestone 11 (form fields, scripts, an XFA stub, signature dummies, rotated pages and a hostile
+    /// field tree), whose subject is reading and filling the fields, not the plain page drawing.
     /// </summary>
     public static IReadOnlyList<string> Skipped { get; } =
     [
-        "annotations-foreign.pdf", "drawings-foreign.pdf", "empty.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "print-mixed.pdf",
+        "annotations-foreign.pdf", "drawings-foreign.pdf", "empty.pdf", "forms-basic.pdf", "forms-calc.pdf", "forms-hostile.pdf", "forms-rotated.pdf", "forms-signed.pdf",
+        "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "print-mixed.pdf",
         "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "text-dense.pdf", "text-rich.pdf",
     ];
 
