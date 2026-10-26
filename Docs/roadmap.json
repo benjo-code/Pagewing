@@ -527,13 +527,13 @@
         {
           "id": "11",
           "title": "Formulare",
-          "status": "planned",
+          "status": "in-progress",
           "plan": "superpowers/plans/2026-10-26-milestone-11-formulare.md",
           "spec": "superpowers/specs/2026-10-26-m11-formulare-design.md",
           "prerequisites": ["9"],
           "goal": "AcroForm-Formulare lassen sich ausfüllen und speichern.",
           "tasks": [
-            { "text": "Spec erstellen (Brainstorming) und Spike: trägt die Hybrid-Architektur (Eingabe in Avalonia, Werte und Erscheinungsbild über PDFiums Formular-Engine)? Haltepunkt bei negativem Ergebnis", "done": false },
+            { "text": "Spec erstellen (Brainstorming) und Spike: trägt die Hybrid-Architektur (Eingabe in Avalonia, Werte und Erscheinungsbild über PDFiums Formular-Engine)? Haltepunkt bei negativem Ergebnis", "done": true },
             { "text": "AcroForm-Felder ausfüllen (Text, Checkbox, Radio, Liste, Combo), Tab-Reihenfolge (Reihenfolge der Annotationen, PDFium liest kein `/Tabs`), Felder hervorheben, Bedienung nur mit der Tastatur", "done": false },
             { "text": "Rückgängig/Wiederholen für Formularwerte im gemeinsamen Verlauf mit den Annotationen", "done": false },
             { "text": "Speichern der Werte über die Pipeline aus M9, zusammen mit Annotationen in einem Vorgang; Warnung bei leeren Pflichtfeldern", "done": false },
