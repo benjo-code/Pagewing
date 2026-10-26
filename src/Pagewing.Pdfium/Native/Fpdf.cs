@@ -558,6 +558,71 @@ internal static unsafe partial class Fpdf
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDF_GetFormType(nint document);
+
+    // Form fields of widget annotations (fpdf_annot.h; experimental API). Every function takes the FPDF_FORMHANDLE of the
+    // document's environment. Strings are UTF-16LE (FPDF_WCHAR*) with a 2-byte terminator; lengths are in bytes and
+    // unsigned long (CULong). Read only: nothing here focuses a field (focusing a combo with many options takes seconds).
+
+    /// <summary>One of <c>FPDF_FORMFIELD_*</c> (<see cref="FpdfConstants.FormFieldPushButton"/> and the others), -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetFormFieldType(nint form, nint annotation);
+
+    /// <summary>The field flags (<c>/Ff</c>, inherited), or 0 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetFormFieldFlags(nint form, nint annotation);
+
+    /// <summary>The fully qualified field name; 0 on error, 2 for an empty name.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormFieldName(nint form, nint annotation, ushort* buffer, CULong bufferLength);
+
+    /// <summary>The alternate field name (<c>/TU</c>); 0 on error, 2 for an empty name.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormFieldAlternateName(nint form, nint annotation, ushort* buffer, CULong bufferLength);
+
+    /// <summary>
+    /// The field value (<c>/V</c>): the export value of a combo box's option, the state name of a check box or radio group,
+    /// only the first entry of a list box's array. 0 on error, 2 for an empty value.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormFieldValue(nint form, nint annotation, ushort* buffer, CULong bufferLength);
+
+    /// <summary>The export value of a check box or radio button widget; 0 on error, 2 for an empty value.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormFieldExportValue(nint form, nint annotation, ushort* buffer, CULong bufferLength);
+
+    /// <summary>The number of options (<c>/Opt</c>) of a combo box or list box, -1 without one or on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetOptionCount(nint form, nint annotation);
+
+    /// <summary>The label of an option (the header gives no export value of options); 0 on error, 2 for an empty label.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetOptionLabel(nint form, nint annotation, int index, ushort* buffer, CULong bufferLength);
+
+    /// <summary>Whether an option of a combo box or list box is chosen (the only way to read a list box's selection).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_IsOptionSelected(nint form, nint annotation, int index);
+
+    /// <summary>Whether a check box or radio button widget is checked.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_IsChecked(nint form, nint annotation);
+
+    /// <summary>
+    /// The JavaScript of an additional action of the field (<c>event</c> one of <c>FPDF_ANNOT_AACTION_*</c>); 2 without a script,
+    /// 0 on error. Only its length is read: no script ever runs.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormAdditionalActionJavaScript(nint form, nint annotation, int formEvent, ushort* buffer, CULong bufferLength);
 }
 
 /// <summary>

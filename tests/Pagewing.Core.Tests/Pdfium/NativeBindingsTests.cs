@@ -63,11 +63,32 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.FormTypeAcroForm)] = "FORMTYPE_ACRO_FORM",
         [nameof(FpdfConstants.FormTypeXfaFull)] = "FORMTYPE_XFA_FULL",
         [nameof(FpdfConstants.FormTypeXfaForeground)] = "FORMTYPE_XFA_FOREGROUND",
+        [nameof(FpdfConstants.FormFieldUnknown)] = "FPDF_FORMFIELD_UNKNOWN",
+        [nameof(FpdfConstants.FormFieldPushButton)] = "FPDF_FORMFIELD_PUSHBUTTON",
+        [nameof(FpdfConstants.FormFieldCheckBox)] = "FPDF_FORMFIELD_CHECKBOX",
+        [nameof(FpdfConstants.FormFieldRadioButton)] = "FPDF_FORMFIELD_RADIOBUTTON",
+        [nameof(FpdfConstants.FormFieldComboBox)] = "FPDF_FORMFIELD_COMBOBOX",
+        [nameof(FpdfConstants.FormFieldListBox)] = "FPDF_FORMFIELD_LISTBOX",
+        [nameof(FpdfConstants.FormFieldTextField)] = "FPDF_FORMFIELD_TEXTFIELD",
+        [nameof(FpdfConstants.FormFieldSignature)] = "FPDF_FORMFIELD_SIGNATURE",
+        [nameof(FpdfConstants.FormFlagReadOnly)] = "FPDF_FORMFLAG_READONLY",
+        [nameof(FpdfConstants.FormFlagRequired)] = "FPDF_FORMFLAG_REQUIRED",
+        [nameof(FpdfConstants.FormFlagNoExport)] = "FPDF_FORMFLAG_NOEXPORT",
+        [nameof(FpdfConstants.FormFlagTextMultiline)] = "FPDF_FORMFLAG_TEXT_MULTILINE",
+        [nameof(FpdfConstants.FormFlagTextPassword)] = "FPDF_FORMFLAG_TEXT_PASSWORD",
+        [nameof(FpdfConstants.FormFlagChoiceCombo)] = "FPDF_FORMFLAG_CHOICE_COMBO",
+        [nameof(FpdfConstants.FormFlagChoiceEdit)] = "FPDF_FORMFLAG_CHOICE_EDIT",
+        [nameof(FpdfConstants.FormFlagChoiceMultiSelect)] = "FPDF_FORMFLAG_CHOICE_MULTI_SELECT",
+        [nameof(FpdfConstants.AnnotActionKeyStroke)] = "FPDF_ANNOT_AACTION_KEY_STROKE",
+        [nameof(FpdfConstants.AnnotActionFormat)] = "FPDF_ANNOT_AACTION_FORMAT",
+        [nameof(FpdfConstants.AnnotActionValidate)] = "FPDF_ANNOT_AACTION_VALIDATE",
+        [nameof(FpdfConstants.AnnotActionCalculate)] = "FPDF_ANNOT_AACTION_CALCULATE",
     };
 
     /// <summary>
     /// Constants without a header define: font descriptor flags returned by <c>FPDFText_GetFontInfo</c>, whose
-    /// header comment refers to the PDF specification (ISO 32000-1, table 123; flag bit n has the value 1 &lt;&lt; (n - 1)).
+    /// header comment refers to the PDF specification (ISO 32000-1, table 123; flag bit n has the value 1 &lt;&lt; (n - 1)),
+    /// the permission bits (table 22) and the field flags <c>fpdf_annot.h</c> does not name (tables 226, 228 and 230).
     /// </summary>
     private static readonly Dictionary<string, long> SpecificationValues = new()
     {
@@ -75,6 +96,12 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.FontFlagItalic)] = 1L << (7 - 1),
         [nameof(FpdfConstants.PermissionPrint)] = 1L << (3 - 1),
         [nameof(FpdfConstants.PermissionAnnotate)] = 1L << (6 - 1),
+        [nameof(FpdfConstants.FormFlagNoToggleToOff)] = 1L << (15 - 1),
+        [nameof(FpdfConstants.FormFlagFileSelect)] = 1L << (21 - 1),
+        [nameof(FpdfConstants.FormFlagDoNotSpellCheck)] = 1L << (23 - 1),
+        [nameof(FpdfConstants.FormFlagDoNotScroll)] = 1L << (24 - 1),
+        [nameof(FpdfConstants.FormFlagComb)] = 1L << (25 - 1),
+        [nameof(FpdfConstants.FormFlagRichText)] = 1L << (26 - 1),
     };
 
     [Fact]

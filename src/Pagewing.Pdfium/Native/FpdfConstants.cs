@@ -3,7 +3,8 @@ namespace Pagewing.Pdfium.Native;
 /// <summary>
 /// PDFium constants used by Pagewing. Values are checked against the headers of the shipped package by
 /// <c>NativeBindingsTests.ConstantsMatchThePackageHeaders</c>, because they change between PDFium versions. The
-/// font descriptor flags have no header define; that test checks them against the PDF specification instead.
+/// font descriptor flags, the permission bits and some field flags have no header define; that test checks them against the
+/// PDF specification instead.
 /// </summary>
 internal static class FpdfConstants
 {
@@ -146,6 +147,87 @@ internal static class FpdfConstants
 
     /// <summary><c>FORMTYPE_XFA_FOREGROUND</c>: the form uses the XFAF subset (the AcroForm fields stay fillable).</summary>
     public const int FormTypeXfaForeground = 3;
+
+    /// <summary><c>FPDF_FORMFIELD_UNKNOWN</c> (<c>fpdf_formfill.h</c>, <c>FPDFAnnot_GetFormFieldType</c>): no field type.</summary>
+    public const int FormFieldUnknown = 0;
+
+    /// <summary><c>FPDF_FORMFIELD_PUSHBUTTON</c>: a push button.</summary>
+    public const int FormFieldPushButton = 1;
+
+    /// <summary><c>FPDF_FORMFIELD_CHECKBOX</c>: a check box.</summary>
+    public const int FormFieldCheckBox = 2;
+
+    /// <summary><c>FPDF_FORMFIELD_RADIOBUTTON</c>: a radio button.</summary>
+    public const int FormFieldRadioButton = 3;
+
+    /// <summary><c>FPDF_FORMFIELD_COMBOBOX</c>: a combo box.</summary>
+    public const int FormFieldComboBox = 4;
+
+    /// <summary><c>FPDF_FORMFIELD_LISTBOX</c>: a list box.</summary>
+    public const int FormFieldListBox = 5;
+
+    /// <summary><c>FPDF_FORMFIELD_TEXTFIELD</c>: a text field.</summary>
+    public const int FormFieldTextField = 6;
+
+    /// <summary><c>FPDF_FORMFIELD_SIGNATURE</c>: a signature field.</summary>
+    public const int FormFieldSignature = 7;
+
+    /// <summary><c>FPDF_FORMFLAG_READONLY</c> (<c>fpdf_annot.h</c>, field flags <c>/Ff</c>): the value cannot be changed.</summary>
+    public const int FormFlagReadOnly = 1 << 0;
+
+    /// <summary><c>FPDF_FORMFLAG_REQUIRED</c>: the field must have a value.</summary>
+    public const int FormFlagRequired = 1 << 1;
+
+    /// <summary><c>FPDF_FORMFLAG_NOEXPORT</c>: the field is not exported.</summary>
+    public const int FormFlagNoExport = 1 << 2;
+
+    /// <summary><c>FPDF_FORMFLAG_TEXT_MULTILINE</c>: a text field with several lines.</summary>
+    public const int FormFlagTextMultiline = 1 << 12;
+
+    /// <summary><c>FPDF_FORMFLAG_TEXT_PASSWORD</c>: a text field that hides its text.</summary>
+    public const int FormFlagTextPassword = 1 << 13;
+
+    /// <summary>
+    /// Field flag <c>NoToggleToOff</c> (bit 15) of a radio group. No header define; the value comes from the PDF specification
+    /// (ISO 32000-1, table 226; flag bit n has the value 1 &lt;&lt; (n - 1)).
+    /// </summary>
+    public const int FormFlagNoToggleToOff = 1 << 14;
+
+    /// <summary><c>FPDF_FORMFLAG_CHOICE_COMBO</c>: a choice field that is a combo box.</summary>
+    public const int FormFlagChoiceCombo = 1 << 17;
+
+    /// <summary><c>FPDF_FORMFLAG_CHOICE_EDIT</c>: a combo box that also takes typed text.</summary>
+    public const int FormFlagChoiceEdit = 1 << 18;
+
+    /// <summary>Field flag <c>FileSelect</c> (bit 21) of a text field; from the PDF specification (ISO 32000-1, table 228).</summary>
+    public const int FormFlagFileSelect = 1 << 20;
+
+    /// <summary><c>FPDF_FORMFLAG_CHOICE_MULTI_SELECT</c>: a list box with several choices.</summary>
+    public const int FormFlagChoiceMultiSelect = 1 << 21;
+
+    /// <summary>Field flag <c>DoNotSpellCheck</c> (bit 23); from the PDF specification (ISO 32000-1, tables 228 and 230).</summary>
+    public const int FormFlagDoNotSpellCheck = 1 << 22;
+
+    /// <summary>Field flag <c>DoNotScroll</c> (bit 24) of a text field; from the PDF specification (ISO 32000-1, table 228).</summary>
+    public const int FormFlagDoNotScroll = 1 << 23;
+
+    /// <summary>Field flag <c>Comb</c> (bit 25) of a text field; from the PDF specification (ISO 32000-1, table 228).</summary>
+    public const int FormFlagComb = 1 << 24;
+
+    /// <summary>Field flag <c>RichText</c> (bit 26) of a text field; from the PDF specification (ISO 32000-1, table 228).</summary>
+    public const int FormFlagRichText = 1 << 25;
+
+    /// <summary><c>FPDF_ANNOT_AACTION_KEY_STROKE</c> (<c>fpdf_annot.h</c>): the JavaScript run on each key stroke (<c>/AA /K</c>).</summary>
+    public const int AnnotActionKeyStroke = 12;
+
+    /// <summary><c>FPDF_ANNOT_AACTION_FORMAT</c>: the JavaScript that formats the value (<c>/AA /F</c>).</summary>
+    public const int AnnotActionFormat = 13;
+
+    /// <summary><c>FPDF_ANNOT_AACTION_VALIDATE</c>: the JavaScript that validates the value (<c>/AA /V</c>).</summary>
+    public const int AnnotActionValidate = 14;
+
+    /// <summary><c>FPDF_ANNOT_AACTION_CALCULATE</c>: the JavaScript that calculates the value (<c>/AA /C</c>).</summary>
+    public const int AnnotActionCalculate = 15;
 
     /// <summary><c>PDFACTION_GOTO</c> (<c>fpdf_doc.h</c>): go to a destination in the same document.</summary>
     public const int ActionGoTo = 1;
