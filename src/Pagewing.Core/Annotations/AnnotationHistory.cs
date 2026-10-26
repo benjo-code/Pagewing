@@ -1,3 +1,5 @@
+using Pagewing.Core.Forms;
+
 namespace Pagewing.Core.Annotations;
 
 /// <summary>
@@ -18,6 +20,16 @@ public abstract record AnnotationCommand
     /// <param name="Before">The annotation before the change.</param>
     /// <param name="After">The annotation after the change.</param>
     public sealed record Edit(PdfAnnotation Before, PdfAnnotation After) : AnnotationCommand;
+
+    /// <summary>
+    /// The value of a form field was changed; undo writes <paramref name="Before"/> again, redo <paramref name="After"/>. The
+    /// field is found by its full name, never by an annotation index, which shifts when annotations come and go.
+    /// </summary>
+    /// <param name="FieldName">The fully qualified name of the field.</param>
+    /// <param name="Before">The state before the change.</param>
+    /// <param name="After">The state after the change, as read back.</param>
+    /// <param name="Pages">Every page with a widget of the field.</param>
+    public sealed record FormValue(string FieldName, FormFieldState Before, FormFieldState After, IReadOnlySet<int> Pages) : AnnotationCommand;
 }
 
 /// <summary>
@@ -115,6 +127,12 @@ public sealed class AnnotationHistory
 
         return false;
     }
+
+    /// <summary>
+    /// Moves <see cref="Version"/> without a step: something may have changed in the document that the history cannot undo (a
+    /// form write that failed and could not be taken back), so the document counts as changed since the last save.
+    /// </summary>
+    public void MarkChanged() => Version++;
 
     /// <summary>Empties both stacks, for example after the document was reloaded; <see cref="Version"/> keeps increasing.</summary>
     public void Clear()

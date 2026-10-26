@@ -415,7 +415,7 @@ Ziel: AcroForm-Formulare lassen sich ausfüllen und speichern.
 **Aufgaben**
 - [x] Spec erstellen (Brainstorming) und Spike: trägt die Hybrid-Architektur (Eingabe in Avalonia, Werte und Erscheinungsbild über PDFiums Formular-Engine)? Haltepunkt bei negativem Ergebnis
 - [ ] AcroForm-Felder ausfüllen (Text, Checkbox, Radio, Liste, Combo), Tab-Reihenfolge (Reihenfolge der Annotationen, PDFium liest kein `/Tabs`), Felder hervorheben, Bedienung nur mit der Tastatur
-- [ ] Rückgängig/Wiederholen für Formularwerte im gemeinsamen Verlauf mit den Annotationen
+- [x] Rückgängig/Wiederholen für Formularwerte im gemeinsamen Verlauf mit den Annotationen
 - [ ] Speichern der Werte über die Pipeline aus M9, zusammen mit Annotationen in einem Vorgang; Warnung bei leeren Pflichtfeldern
 - [ ] Hinweise (ohne V8 keine JavaScript-Berechnung, Formate und Prüfungen; XFA; digitales Signaturfeld; Schaltflächen führen nie eine Aktion aus)
 - [ ] Felder zeichnen (PDFium zeichnet Widgets nur mit `FPDF_FFLDraw`); dunkle Seite und Druck zeigen ausgefüllte Werte

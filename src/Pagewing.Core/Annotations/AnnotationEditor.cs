@@ -1,4 +1,5 @@
 using System.Runtime.ExceptionServices;
+using Pagewing.Core.Forms;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
 using Pagewing.Core.Text;
@@ -8,8 +9,9 @@ using Pagewing.Pdfium;
 namespace Pagewing.Core.Annotations;
 
 /// <summary>
-/// Changes the text markup and the drawings of the document of a <see cref="ViewerSession"/> and keeps the undo history
-/// and the "unsaved changes" state of it; saves the document and lets the session adopt the saved file.
+/// Changes the text markup, the drawings and the form values of the document of a <see cref="ViewerSession"/> and keeps the
+/// one undo history and the "unsaved changes" state of it (a form value is a step by field name, see
+/// <see cref="SetFormValueAsync"/>); saves the document and lets the session adopt the saved file.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -394,6 +396,61 @@ public sealed class AnnotationEditor
         });
     }
 
+    /// <summary>
+    /// Writes the value of a form field (<see cref="PdfDocument.SetFormValueAsync(string, FormFieldState, CancellationToken)"/>)
+    /// as one step of the history: undo writes the state before, redo the state after. A value equal to the one the field has
+    /// is no step (nothing changes, the editor stays as clean as it was). Every page with a widget of the field is dropped
+    /// from the session's images and counts as changed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <see cref="FormWriteException"/> with <see cref="FormWriteException.Restored"/> leaves the field as it was: no step,
+    /// the pages are redrawn and the exception reaches the caller. Without <see cref="FormWriteException.Restored"/> the
+    /// document may have changed without a step to undo it: the pages are redrawn and count as changed, the editor is
+    /// <see cref="IsDirty"/>, there is no step, and the exception reaches the caller. Any other exception comes before the
+    /// first native call and changes nothing.
+    /// </para>
+    /// <para>
+    /// Undo or redo that fails drops its step like any failed step (see the class remarks). A radio group cannot be taken back
+    /// to "no choice" (the engine never undoes a choice): undoing the first choice fails with
+    /// <see cref="InvalidOperationException"/> and the step is forgotten.
+    /// </para>
+    /// </remarks>
+    /// <param name="fieldName">The fully qualified name of the field.</param>
+    /// <param name="state">The new value (see <see cref="PdfDocument.SetFormValueAsync(string, FormFieldState, CancellationToken)"/>).</param>
+    /// <returns>The change, or <see langword="null"/> when the field already had the value.</returns>
+    /// <exception cref="ArgumentException"><paramref name="fieldName"/> is empty, or the value is refused (nothing changes).</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="state"/> is <see langword="null"/>.</exception>
+    /// <exception cref="FormFieldNotFoundException">No page has a widget of a field with that name.</exception>
+    /// <exception cref="FormWriteException">The write began but the value was not kept (see the remarks).</exception>
+    /// <exception cref="InvalidOperationException">The session has no ready document, the field is locked or cannot be written (nothing changes).</exception>
+    public Task<FormChange?> SetFormValueAsync(string fieldName, FormFieldState state)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(fieldName);
+        ArgumentNullException.ThrowIfNull(state);
+        return RunAsync<FormChange?>(async document =>
+        {
+            FormChange change;
+            try
+            {
+                change = await document.SetFormValueAsync(fieldName, state, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (FormWriteException ex)
+            {
+                NoteFailedFormWrite(ex);
+                throw;
+            }
+
+            if (change.Before.Equals(change.After))
+            {
+                return null;
+            }
+
+            Record(change.Pages, new AnnotationCommand.FormValue(fieldName, change.Before, change.After, change.Pages));
+            return change;
+        });
+    }
+
     /// <summary>Undoes the newest change; does nothing when there is none.</summary>
     /// <exception cref="InvalidOperationException">The session has no ready document, or PDFium refused; the history is as before.</exception>
     public Task UndoAsync() => StepAsync(undo: true);
@@ -600,8 +657,20 @@ public sealed class AnnotationEditor
                 copy.Name,
                 CancellationToken.None);
 
-    /// <summary>Reverses (<paramref name="undo"/>) or repeats a step of the history.</summary>
-    private static Task ApplyAsync(PdfDocument document, AnnotationCommand command, bool undo) => command switch
+    /// <summary>Reverses (<paramref name="undo"/>) or repeats a step of the history; gives the pages that changed.</summary>
+    private static async Task<IReadOnlySet<int>> ApplyAsync(PdfDocument document, AnnotationCommand command, bool undo)
+    {
+        if (command is AnnotationCommand.FormValue form)
+        {
+            var change = await document.SetFormValueAsync(form.FieldName, undo ? form.Before : form.After, CancellationToken.None).ConfigureAwait(false);
+            return change.Pages;
+        }
+
+        await ApplyAnnotationAsync(document, command, undo).ConfigureAwait(false);
+        return new HashSet<int> { PageOf(command) };
+    }
+
+    private static Task ApplyAnnotationAsync(PdfDocument document, AnnotationCommand command, bool undo) => command switch
     {
         AnnotationCommand.Create create when undo => document.DeleteAnnotationAsync(LocatorOf(create.Created)),
         AnnotationCommand.Create create => RecreateAsync(document, create.Created),
@@ -642,9 +711,10 @@ public sealed class AnnotationEditor
                     command = (undo ? history.TakeUndo() : history.TakeRedo())!;
                 }
 
+                IReadOnlySet<int> pages;
                 try
                 {
-                    await ApplyAsync(snapshot.Document, command, undo).ConfigureAwait(false);
+                    pages = await ApplyAsync(snapshot.Document, command, undo).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -662,30 +732,59 @@ public sealed class AnnotationEditor
                         }
                     }
 
+                    if (ex is FormWriteException form)
+                    {
+                        NoteFailedFormWrite(form);
+                    }
+
                     throw;
                 }
 
-                var page = PageOf(command);
                 lock (gate)
                 {
-                    changedPages.Add(page);
+                    changedPages.UnionWith(pages);
                 }
 
-                session.InvalidatePages(new HashSet<int> { page });
+                session.InvalidatePages(pages);
                 return true;
             },
             requireDocument: false);
 
     /// <summary>Records a change that was made: the page, the step of the history and what the session shows.</summary>
-    private void Record(int page, AnnotationCommand command)
+    private void Record(int page, AnnotationCommand command) => Record(new HashSet<int> { page }, command);
+
+    /// <summary>Records a change that touched several pages.</summary>
+    private void Record(IReadOnlySet<int> pages, AnnotationCommand command)
     {
         lock (gate)
         {
             history.Push(command);
-            changedPages.Add(page);
+            changedPages.UnionWith(pages);
         }
 
-        session.InvalidatePages(new HashSet<int> { page });
+        session.InvalidatePages(pages);
+    }
+
+    /// <summary>
+    /// A form write failed after the first native call. The appearance of the field may have been renewed, so its pages are
+    /// redrawn; when the field could not be taken back, the document may differ from what the history knows: its pages count
+    /// as changed and the editor as dirty (no step, nothing to undo).
+    /// </summary>
+    private void NoteFailedFormWrite(FormWriteException failure)
+    {
+        if (!failure.Restored)
+        {
+            lock (gate)
+            {
+                changedPages.UnionWith(failure.Pages);
+                history.MarkChanged();
+            }
+        }
+
+        if (failure.Pages.Count > 0)
+        {
+            session.InvalidatePages(failure.Pages);
+        }
     }
 
     /// <summary>
