@@ -114,6 +114,8 @@ public sealed partial class MainViewModel
         tab.SaveProgress = 0;
         try
         {
+            // A change made a moment ago (the text of a text box field applied by FlushNudge above) is saved with the rest.
+            await tab.WhenEditsSettledAsync();
             switch (await AskAboutSignaturesAsync(tab, document, path, cancellation.Token))
             {
                 case SignatureAnswer.Stop:

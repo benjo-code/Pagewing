@@ -1293,4 +1293,10 @@
   <data name="SelectionLockedForeignTextBox" xml:space="preserve">
     <value>Von einem anderen Programm angelegt oder geändert: Sie können das Textfeld löschen, aber nicht verschieben oder ändern.</value>
   </data>
+  <data name="TextBoxNotNow" xml:space="preserve">
+    <value>Der Text kann gerade nicht übernommen werden. Er bleibt hier: mit Strg+Eingabe erneut übernehmen oder mit Esc verwerfen.</value>
+  </data>
+  <data name="TextBoxEmpty" xml:space="preserve">
+    <value>Ein Textfeld braucht Text. Zum Entfernen löschen Sie es.</value>
+  </data>
 </root>

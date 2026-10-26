@@ -54,6 +54,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     private CommentItemViewModel? _current;
     private CommentItemViewModel? _selected;
     private string _commentDraft = string.Empty;
+    private string? _commentProblem;
 
     // The comment last applied for an entry: ApplyDraft does not apply the same text twice before the list shows it.
     private (CommentItemViewModel Item, string Text)? _applied;
@@ -231,6 +232,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
             }
 
             CommentDraft = value is { IsGroup: false } entry ? entry.Annotation.Contents ?? string.Empty : string.Empty;
+            CommentProblem = null;
             OnPropertyChanged(nameof(HasSelection));
             OnPropertyChanged(nameof(SelectedIsEditable));
             OnPropertyChanged(nameof(SelectedIsViewOnly));
@@ -292,7 +294,23 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     public string CommentDraft
     {
         get => _commentDraft;
-        set => SetProperty(ref _commentDraft, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _commentDraft, value ?? string.Empty))
+            {
+                CommentProblem = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets why the typed comment of a text box was not applied (its comment is its text: a character a text box cannot show,
+    /// or no text at all), shown under the comment field; <see langword="null"/> otherwise. Typing clears it.
+    /// </summary>
+    public string? CommentProblem
+    {
+        get => _commentProblem;
+        private set => SetProperty(ref _commentProblem, value);
     }
 
     /// <summary>Ctrl+Enter in the comment field: the typed comment becomes the comment of the entry; an empty one removes it.</summary>
@@ -719,11 +737,18 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // The comment of a text box is its text: only Pagewing's own, and only a text it can show (the typed text stays).
-        if (item.IsTextBox && (!item.Annotation.GeometryEditable || TabViewModel.TextBoxProblemOf(text) is not null
-            || TextBoxSpec.CheckText(text).Problem == TextBoxTextProblem.Empty))
+        // The comment of a text box is its text: only Pagewing's own, and only a text it can show (the typed text stays and
+        // the field says why).
+        if (item.IsTextBox)
         {
-            return;
+            var problem = !item.Annotation.GeometryEditable ? item.LockReason
+                : TextBoxSpec.CheckText(text).Problem == TextBoxTextProblem.Empty ? Strings.TextBoxEmpty
+                : TabViewModel.TextBoxProblemOf(text);
+            if (problem is not null)
+            {
+                CommentProblem = problem;
+                return;
+            }
         }
 
         // Only an edit the tab takes counts as applied: one refused now (a card asks about the tab) keeps the text typed and

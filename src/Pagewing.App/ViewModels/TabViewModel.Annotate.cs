@@ -514,6 +514,8 @@ public sealed partial class TabViewModel
             return;
         }
 
+        // The text of an open text box field is applied while the tab still takes edits (TabViewModel.TextBoxes.cs).
+        FlushTextBoxDraft();
         ActiveTool = null;
         IsSelectTool = false;
         IsAnnotating = false;

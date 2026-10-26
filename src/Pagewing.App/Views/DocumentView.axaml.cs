@@ -181,6 +181,7 @@ public sealed partial class DocumentView : UserControl
         _session.Changed += OnSessionChanged;
         _session.PagesInvalidated += OnPagesInvalidated;
         Sync();
+        ReopenTextBoxDraft();
     }
 
     private void Disconnect()

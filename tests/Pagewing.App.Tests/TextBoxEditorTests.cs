@@ -332,6 +332,175 @@ public sealed class TextBoxEditorTests : IDisposable
         Assert.Null(item.LockReason);
     }
 
+    [AvaloniaFact]
+    public async Task CtrlSWhileTheFieldHasFocusSavesTheTypedText()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        OpenByDrag(window, view, new Point(60, 80), new Point(260, 120));
+        window.KeyTextInput("Saved with Ctrl+S");
+        Settle(window);
+
+        // The open field is an unsaved change: Save runs, applies the text first and writes it.
+        Assert.True(tab.IsDirty);
+        Press(window, Key.S, PhysicalKey.S, Ctrl);
+        await WaitUntilAsync(window, () => !tab.IsSaving && !tab.IsDirty && view.TextBoxEditor is null);
+
+        await using var saved = await new PdfEngine().OpenAsync(tab.FullPath!, cancellationToken: TestContext.Current.CancellationToken);
+        var box = Assert.Single(await saved.GetAnnotationsAsync(0, TestContext.Current.CancellationToken), a => a.Kind == AnnotationKind.TextBox);
+        Assert.Equal("Saved with Ctrl+S", box.Contents);
+    }
+
+    [AvaloniaFact]
+    public async Task ModeEndWithTheFieldOpenAppliesTheText()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        OpenByDrag(window, view, new Point(60, 80), new Point(260, 120));
+        window.KeyTextInput("Kept at the end of the mode");
+        Settle(window);
+
+        Press(window, Key.K, PhysicalKey.K, Ctrl | RawInputModifiers.Shift);
+
+        Assert.False(tab.IsAnnotating);
+        Assert.Null(view.TextBoxEditor);
+        Assert.Equal("Kept at the end of the mode", Assert.Single(await WaitForTextBoxesAsync(window, tab, count: 1)).Contents);
+    }
+
+    [AvaloniaFact]
+    public async Task PrintWithTheFieldOpenAppliesTheText()
+    {
+        var (window, viewModel, view) = Show();
+        viewModel.PrintServiceFactory = () => new FakePrintService();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        OpenByDrag(window, view, new Point(60, 80), new Point(260, 120));
+        window.KeyTextInput("Printed");
+        Settle(window);
+
+        Press(window, Key.P, PhysicalKey.P, Ctrl);
+        await WaitUntilAsync(window, () => viewModel.Overlay == OverlayKind.Print);
+
+        Assert.Null(view.TextBoxEditor);
+        Assert.Equal("Printed", Assert.Single(await WaitForTextBoxesAsync(window, tab, count: 1)).Contents);
+    }
+
+    [AvaloniaFact]
+    public async Task CloseTabWithTheFieldOpenDoesNotLoseTheText()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        OpenByDrag(window, view, new Point(60, 80), new Point(260, 120));
+        window.KeyTextInput("Do not lose me");
+        Settle(window);
+
+        // Ctrl+W applies the text and asks about the change, as for any other one; "Cancel" keeps the tab with the text box.
+        Press(window, Key.W, PhysicalKey.W, Ctrl);
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { Kind: PendingSaveKind.SaveChanges });
+        Assert.Contains(tab, viewModel.Tabs);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel));
+        Settle(window);
+        Assert.Contains(tab, viewModel.Tabs);
+        Assert.Equal("Do not lose me", Assert.Single(await WaitForTextBoxesAsync(window, tab, count: 1)).Contents);
+        Assert.True(tab.IsDirty);
+    }
+
+    [AvaloniaFact]
+    public async Task RefusedApplyKeepsTheFieldAndShowsAHint()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        var editor = OpenByDrag(window, view, new Point(60, 80), new Point(260, 120));
+        window.KeyTextInput("Not now");
+        Settle(window);
+
+        // While the tab takes no edit (here: the lock of an update), the field stays open with the text and says why.
+        tab.IsEditingFrozen = true;
+        Settle(window);
+        Assert.Same(editor, view.TextBoxEditor);
+        Assert.True(editor.HasProblem);
+        Assert.Equal(Strings.TextBoxNotNow, editor.ProblemText.Text);
+        Press(window, Key.Enter, PhysicalKey.Enter, Ctrl);
+        Assert.Same(editor, view.TextBoxEditor);
+        Assert.Equal("Not now", editor.Text);
+        Assert.Empty(await TextBoxesAsync(tab));
+        Assert.True(tab.AsksBeforeClosing);
+
+        // Once the tab takes edits again, Ctrl+Enter applies it.
+        tab.IsEditingFrozen = false;
+        editor.FocusField();
+        Settle(window);
+        Press(window, Key.Enter, PhysicalKey.Enter, Ctrl);
+        Assert.Equal("Not now", Assert.Single(await WaitForTextBoxesAsync(window, tab, count: 1)).Contents);
+    }
+
+    [AvaloniaFact]
+    public async Task AFieldTheViewLeavesWithoutApplyingComesBackWithTheTab()
+    {
+        var (window, viewModel, view) = Show();
+        var first = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, first);
+        OpenByDrag(window, view, new Point(60, 80), new Point(260, 120));
+        window.KeyTextInput("Ωmega");
+        Settle(window);
+
+        // Another tab: the text cannot be applied (a character a text box cannot show), so it stays with its tab.
+        await OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        Assert.Null(view.TextBoxEditor);
+        Assert.Equal("Ωmega", first.PendingTextBoxDraft?.Text);
+        Assert.True(first.AsksBeforeClosing);
+
+        // Back on the tab, its field opens again with the text and the reason.
+        viewModel.Tabs.Activate(first);
+        await WaitUntilAsync(window, () => view.TextBoxEditor is not null);
+        Assert.Equal("Ωmega", view.TextBoxEditor!.Text);
+        Assert.True(view.TextBoxEditor.HasProblem);
+        Assert.Null(first.PendingTextBoxDraft);
+    }
+
+    [AvaloniaFact]
+    public async Task PanelEditorNamesTheUnsupportedCharacters()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await BeginAsync(window, tab);
+        OpenByDrag(window, view, new Point(60, 80), new Point(260, 120));
+        window.KeyTextInput("Panel text");
+        Press(window, Key.Enter, PhysicalKey.Enter, Ctrl);
+        await WaitForTextBoxesAsync(window, tab, count: 1);
+
+        tab.SidePanel = SidePanelKind.Comments;
+        await WaitUntilAsync(window, () => tab.Comments.Items.Any(i => i.IsTextBox));
+        var comments = tab.Comments;
+        comments.SelectedItem = comments.Items.Single(i => i.IsTextBox);
+        Settle(window);
+
+        // The comment of a text box is its text: a character it cannot show is named under the field, nothing is applied.
+        comments.CommentDraft = "Ωmega";
+        comments.CommitCommentCommand.Execute(null);
+        Settle(window);
+        Assert.NotNull(comments.CommentProblem);
+        Assert.Contains("Ω", comments.CommentProblem, StringComparison.Ordinal);
+        var problem = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "CommentProblemText");
+        Assert.True(problem.IsEffectivelyVisible);
+        Assert.Equal(comments.CommentProblem, Avalonia.Automation.AutomationProperties.GetName(problem));
+        Assert.Equal("Panel text", Assert.Single(await TextBoxesAsync(tab)).Contents);
+
+        // An empty text says so as well; typing clears the reason, a good text is applied.
+        comments.CommentDraft = string.Empty;
+        comments.CommitCommentCommand.Execute(null);
+        Assert.Equal(Strings.TextBoxEmpty, comments.CommentProblem);
+        comments.CommentDraft = "New text";
+        Assert.Null(comments.CommentProblem);
+        comments.CommitCommentCommand.Execute(null);
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
+        Assert.Equal("New text", Assert.Single(await TextBoxesAsync(tab)).Contents);
+    }
+
     private static TextBoxEditor OpenByDrag(Window window, DocumentView view, Point from, Point to)
     {
         Drag(window, ScreenPoint(view, window, 0, from), ScreenPoint(view, window, 0, to));

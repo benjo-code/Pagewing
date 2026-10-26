@@ -37,7 +37,11 @@ public sealed partial class TextBoxEditor : UserControl
             Command = new RelayCommand(() => DiscardRequested?.Invoke(this)),
         });
         Field.LostFocus += OnFieldLostFocus;
-        Field.TextChanged += (_, _) => ShowProblem(null);
+        Field.TextChanged += (_, _) =>
+        {
+            ShowProblem(null);
+            TextEdited?.Invoke(this);
+        };
     }
 
     /// <summary>Raised when the field asks to apply its text: Ctrl+Enter (<see langword="false"/>) or the focus left it (<see langword="true"/>).</summary>
@@ -45,6 +49,9 @@ public sealed partial class TextBoxEditor : UserControl
 
     /// <summary>Raised when the field asks to drop its text (Esc).</summary>
     internal event Action<TextBoxEditor>? DiscardRequested;
+
+    /// <summary>Raised when the user changed the text of the field (the tab counts it as an unsaved change).</summary>
+    internal event Action<TextBoxEditor>? TextEdited;
 
     /// <summary>Gets the tab the field belongs to.</summary>
     internal TabViewModel? Tab { get; private set; }
@@ -61,6 +68,9 @@ public sealed partial class TextBoxEditor : UserControl
     /// <summary>Gets the font size of the text in points.</summary>
     internal double FontSizePoints { get; private set; }
 
+    /// <summary>Gets the colour of the text.</summary>
+    internal AnnotationColor Color { get; private set; }
+
     /// <summary>Gets the text of the field.</summary>
     internal string Text => Field.Text ?? string.Empty;
 
@@ -75,7 +85,8 @@ public sealed partial class TextBoxEditor : UserControl
         Box = box;
         Target = target;
         FontSizePoints = fontSize;
-        var ink = new ImmutableSolidColorBrush(Color.FromRgb(color.R, color.G, color.B));
+        Color = color;
+        var ink = new ImmutableSolidColorBrush(Avalonia.Media.Color.FromRgb(color.R, color.G, color.B));
 
         // The paper behind the text in every state of the field (Fluent paints its own surface on focus and hover).
         foreach (var key in (ReadOnlySpan<string>)["TextControlBackground", "TextControlBackgroundFocused", "TextControlBackgroundPointerOver"])

@@ -406,6 +406,8 @@ public static class Strings
     public static string TextBoxTooLong => Get("TextBoxTooLong");
     public static string TextBoxTooManyLines => Get("TextBoxTooManyLines");
     public static string SelectionLockedForeignTextBox => Get("SelectionLockedForeignTextBox");
+    public static string TextBoxNotNow => Get("TextBoxNotNow");
+    public static string TextBoxEmpty => Get("TextBoxEmpty");
     public static string DrawColorRed => Get("DrawColorRed");
     public static string DrawColorBlack => Get("DrawColorBlack");
     public static string DrawColorBlue => Get("DrawColorBlue");

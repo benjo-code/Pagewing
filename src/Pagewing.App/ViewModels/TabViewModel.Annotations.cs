@@ -187,7 +187,7 @@ public sealed partial class TabViewModel
     /// operation the editor accepted and has not recorded yet). The question waits for those first
     /// (<see cref="WhenEditsSettledAsync"/>), so a change made a moment before closing is never dropped silently.
     /// </summary>
-    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _nudge is not null || _editor is { IsDirty: true } or { IsBusy: true });
+    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || _editor is { IsDirty: true } or { IsBusy: true });
 
     /// <summary>
     /// Gets the version of the editor's history (<see cref="AnnotationEditor.Version"/>; 0 without an editor): a "Don't
@@ -288,7 +288,7 @@ public sealed partial class TabViewModel
         }
 
         var editor = _editor;
-        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null;
+        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText;
         CanUndo = editor?.CanUndo == true;
         CanRedo = editor?.CanRedo == true;
     }

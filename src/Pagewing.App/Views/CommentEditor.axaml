@@ -54,6 +54,13 @@
                  AcceptsReturn="True" TextWrapping="Wrap"
                  AutomationProperties.Name="{x:Static res:Strings.CommentEditField}"
                  AutomationProperties.HelpText="{x:Static res:Strings.CommentEditHint}" />
+        <!-- A text box whose typed text was not applied (its comment is its text): why, as in its field on the page (M10). -->
+        <Border Name="CommentProblemFrame" Padding="8,4" BorderThickness="1" CornerRadius="{DynamicResource Pw.Radius.Control}"
+                Background="{DynamicResource Pw.Brush.Surface.Raised}" BorderBrush="{DynamicResource Pw.Brush.Danger.Default}"
+                IsVisible="{Binding CommentProblem, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <TextBlock Name="CommentProblemText" Classes="caption editorPrimary" TextWrapping="Wrap" Text="{Binding CommentProblem}"
+                     AutomationProperties.Name="{Binding CommentProblem}" />
+        </Border>
         <TextBlock Name="CommentBoxHint" Classes="caption editorSecondary" TextWrapping="Wrap" Text="{x:Static res:Strings.CommentEditHint}" />
         <WrapPanel Orientation="Horizontal">
           <Button Name="CommentColorButton" Margin="0,0,8,4" IsEnabled="{Binding !IsEditingFrozen}"

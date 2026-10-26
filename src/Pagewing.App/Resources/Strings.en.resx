@@ -1293,4 +1293,10 @@
   <data name="SelectionLockedForeignTextBox" xml:space="preserve">
     <value>Made or changed by another program: it can be deleted, but not moved or changed.</value>
   </data>
+  <data name="TextBoxNotNow" xml:space="preserve">
+    <value>The text cannot be applied right now. It stays here: apply it again with Ctrl+Enter, or drop it with Esc.</value>
+  </data>
+  <data name="TextBoxEmpty" xml:space="preserve">
+    <value>A text box needs text. To remove it, delete it.</value>
+  </data>
 </root>

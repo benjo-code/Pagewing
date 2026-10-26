@@ -1186,6 +1186,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // The text of an open text box field is applied first: closing then asks about it like about any change.
+        tab.FlushTextBoxDraft();
         if (tab.AsksBeforeClosing)
         {
             if (!_resolving && !(_pendingSave is { } question && ReferenceEquals(question.Tab, tab)))

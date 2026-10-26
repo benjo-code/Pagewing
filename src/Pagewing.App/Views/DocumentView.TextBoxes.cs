@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Threading;
+using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
 using Pagewing.Core.Annotations;
 using Pagewing.Core.Text;
@@ -11,10 +12,17 @@ namespace Pagewing.App.Views;
 /// a click over a box of <see cref="TextBoxSpec.DefaultWidth"/> × <see cref="TextBoxSpec.DefaultHeight"/> points at the click
 /// (moved onto the page); Enter on a selected text box of Pagewing's opens it with its text. Ctrl+Enter or leaving the field
 /// applies the text (<see cref="TabViewModel.ApplyTextBoxAsync"/>, <see cref="TabViewModel.ReplaceTextBoxTextAsync"/>); a
-/// blank text makes nothing; a text with characters a text box cannot show keeps the field open with the reason. Esc drops
-/// the text. Another tab, document or the end of the mode closes the field and applies a text it can apply. The field
-/// follows its box when the view scrolls or zooms. A press on the page right after the field was left only ends it.
+/// blank text makes nothing; Esc drops the text. The field follows its box when the view scrolls or zooms. A press on the
+/// page right after the field was left only ends it.
 /// </summary>
+/// <remarks>
+/// Typed text is never dropped silently. While a field is open the tab counts its text as an unsaved change
+/// (<see cref="TabViewModel.HasTextBoxText"/>) and applies it through <see cref="TabViewModel.FlushTextBoxDraft"/> before
+/// anything that ends or blocks editing (saving, printing, the end of the mode, closing, the question before an update),
+/// while the tab still takes the edit. A text that cannot be applied (a character a text box cannot show, or the tab takes
+/// no edit now) keeps the field open with the reason; when the view leaves the tab, such a text stays with the tab
+/// (<see cref="TabViewModel.PendingTextBoxDraft"/>) and its field opens again when the view shows the tab.
+/// </remarks>
 public sealed partial class DocumentView
 {
     /// <summary>A drag smaller than this in either direction (points) counts as a click: the box gets the default size.</summary>
@@ -66,6 +74,7 @@ public sealed partial class DocumentView
             _textBoxEditor = new TextBoxEditor { Name = "TextBoxEditor" };
             _textBoxEditor.CommitRequested += OnTextBoxCommitRequested;
             _textBoxEditor.DiscardRequested += _ => CloseTextBoxEditor(apply: false);
+            _textBoxEditor.TextEdited += editor => editor.Tab?.SyncFromEditor();
 
             // Above the pages and the scroll viewer: the field takes the keys and the pointer.
             DocumentLayers.Children.Add(_textBoxEditor);
@@ -74,6 +83,9 @@ public sealed partial class DocumentView
         var editor = _textBoxEditor;
         editor.Start(tab, page, box, target, text, fontSize, color);
         editor.IsVisible = true;
+        tab.TextBoxFieldFlush = () => FlushTextBoxField(editor);
+        tab.TextBoxFieldHasText = () => ReferenceEquals(TextBoxEditor, editor) && !string.IsNullOrWhiteSpace(editor.Text);
+        tab.SyncFromEditor();
         PlaceTextBoxEditor();
 
         // After the input of the press or key that opened it (the view takes the focus at a release), and laid out.
@@ -103,15 +115,9 @@ public sealed partial class DocumentView
 
     private void OnTextBoxCommitRequested(TextBoxEditor editor, bool focusLeft)
     {
-        if (!ReferenceEquals(editor, TextBoxEditor))
+        if (!ReferenceEquals(editor, TextBoxEditor) || !FlushTextBoxField(editor))
         {
-            return;
-        }
-
-        if (TabViewModel.TextBoxProblemOf(editor.Text) is { } problem)
-        {
-            // Never changed silently: the field stays and says why (also when the focus left it).
-            editor.ShowProblem(problem);
+            // The text stays in the field, which says why (also when the focus left it).
             return;
         }
 
@@ -120,17 +126,60 @@ public sealed partial class DocumentView
             _textBoxJustClosed = true;
             Dispatcher.UIThread.Post(() => _textBoxJustClosed = false, DispatcherPriority.Background);
         }
-
-        CloseTextBoxEditor(apply: true);
-        if (!focusLeft)
+        else
         {
             Focus();
         }
     }
 
     /// <summary>
-    /// Closes the field: with <paramref name="apply"/> its text becomes the text box (if it can; a text it cannot apply is
-    /// dropped only when the field must go, as with another tab), otherwise it is dropped.
+    /// Applies the text of the field now: a blank text closes it and makes nothing; a text a text box cannot show, or one the
+    /// tab cannot take now, stays in the field with the reason; otherwise the field closes and the text becomes the text box.
+    /// </summary>
+    /// <returns>Whether nothing is left in the field (see <see cref="TabViewModel.TextBoxFieldFlush"/>).</returns>
+    private bool FlushTextBoxField(TextBoxEditor editor)
+    {
+        if (!ReferenceEquals(editor, TextBoxEditor) || editor.Tab is not { } tab)
+        {
+            return true;
+        }
+
+        var text = editor.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            HideTextBoxEditor(editor);
+            return true;
+        }
+
+        if (TabViewModel.TextBoxProblemOf(text) is { } problem)
+        {
+            editor.ShowProblem(problem);
+            return false;
+        }
+
+        if (!tab.CanDraw)
+        {
+            editor.ShowProblem(Strings.TextBoxNotNow);
+            return false;
+        }
+
+        HideTextBoxEditor(editor);
+        if (editor.Target is { } target)
+        {
+            _ = tab.ReplaceTextBoxTextAsync(target, text);
+        }
+        else
+        {
+            _ = tab.ApplyTextBoxAsync(editor.Page, editor.Box, text);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Closes the field: with <paramref name="apply"/> its text becomes the text box (<see cref="FlushTextBoxField"/>); a text
+    /// that cannot be applied now stays with the tab as its draft (the view left the tab) and nothing is lost. Without
+    /// <paramref name="apply"/> (Esc) the text is dropped.
     /// </summary>
     private void CloseTextBoxEditor(bool apply)
     {
@@ -139,28 +188,64 @@ public sealed partial class DocumentView
             return;
         }
 
-        var text = editor.Text;
-        editor.IsVisible = false;
-        if (apply && TabViewModel.TextBoxProblemOf(text) is null)
+        if (!apply)
         {
-            if (editor.Target is { } target)
-            {
-                _ = tab.ReplaceTextBoxTextAsync(target, text);
-            }
-            else
-            {
-                _ = tab.ApplyTextBoxAsync(editor.Page, editor.Box, text);
-            }
+            HideTextBoxEditor(editor);
+            return;
+        }
+
+        if (!FlushTextBoxField(editor))
+        {
+            tab.PendingTextBoxDraft = new TextBoxDraft(editor.Page, editor.Box, editor.Target, editor.Text, editor.FontSizePoints, editor.Color);
+            HideTextBoxEditor(editor);
         }
     }
 
-    /// <summary>After a change of the tab: the field closes (applying what it can) when the mode ended or the tab cannot take an edit.</summary>
+    /// <summary>Hides the field and lets its tab go (the tab no longer counts its text).</summary>
+    private static void HideTextBoxEditor(TextBoxEditor editor)
+    {
+        editor.IsVisible = false;
+        if (editor.Tab is { } tab)
+        {
+            tab.TextBoxFieldFlush = null;
+            tab.TextBoxFieldHasText = null;
+            tab.SyncFromEditor();
+        }
+    }
+
+    /// <summary>After a change of the tab: a field whose tab takes no edit now says so (the text stays until it can be applied or Esc drops it).</summary>
     private void CheckTextBoxEditor()
     {
-        if (TextBoxEditor is { Tab: { } tab } && (!ReferenceEquals(tab, _viewModel) || !tab.IsAnnotating || !tab.CanDraw))
+        if (TextBoxEditor is { Tab: { } tab } editor && ReferenceEquals(tab, _viewModel) && !tab.CanDraw && !editor.HasProblem)
         {
-            CloseTextBoxEditor(apply: true);
+            editor.ShowProblem(Strings.TextBoxNotNow);
         }
+    }
+
+    /// <summary>The view shows a tab with a text box draft it kept: its field opens again with the text and the reason.</summary>
+    private void ReopenTextBoxDraft()
+    {
+        if (_viewModel is not { PendingTextBoxDraft: { } draft } tab)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (!ReferenceEquals(_viewModel, tab) || tab.PendingTextBoxDraft != draft || _layout is null)
+                {
+                    return;
+                }
+
+                tab.PendingTextBoxDraft = null;
+                OpenTextBoxEditor(tab, draft.Page, draft.Box, draft.Target, draft.Text, draft.FontSize, draft.Color);
+                if (TextBoxEditor is { } editor)
+                {
+                    editor.ShowProblem(TabViewModel.TextBoxProblemOf(draft.Text) ?? Strings.TextBoxNotNow);
+                }
+            },
+            DispatcherPriority.Background);
     }
 
     /// <summary>A press on the page right after the field was left by it only ends the field (no new text box, no selection).</summary>
