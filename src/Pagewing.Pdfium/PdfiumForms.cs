@@ -176,6 +176,12 @@ internal static unsafe class PdfiumForms
     /// <summary>The time of form calls one read of a page may spend; then the remaining widgets are skipped without a call.</summary>
     public static readonly TimeSpan MaxFormCallTimePerPage = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>
+    /// The longest appearance stream whose fonts are checked after a write, in bytes of UTF-16 (16 MiB); a longer one counts
+    /// as not checkable. A text of <see cref="MaxValueLength"/> characters stays well below it.
+    /// </summary>
+    public const long MaxCheckedAppearanceBytes = 16L * 1024 * 1024;
+
     /// <summary>The <see cref="PdfiumFormField.SkipReason"/> of a widget skipped by the time budget.</summary>
     internal const string SlowReason = "The field tree is too deep or too slow to read.";
 
@@ -289,6 +295,373 @@ internal static unsafe class PdfiumForms
 
         return PdfiumFormDocumentInfo.Combine(xfa, pages);
     }
+
+    /// <summary>
+    /// Reads one widget again (after a write), without the time budget: the caller found it by <see cref="ReadPage"/> in the
+    /// same job, so its first call was fast. <see langword="null"/> when the index is no widget with a usable <c>/Rect</c>.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The page or the environment is closed.</exception>
+    public static PdfiumFormField? ReadWidget(PdfiumPage page, int index)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var (form, native) = FormOf(page);
+        var transform = PdfiumPageText.TransformOf(page);
+        return WithWidget(native, index, annotation =>
+        {
+            if (!HasUsableRect(annotation, out var rect))
+            {
+                return null;
+            }
+
+            var bounds = transform.ToPage(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            return ReadField(form, index, annotation, bounds, Fpdf.FPDFAnnot_GetFormFieldType(form, annotation));
+        });
+    }
+
+    /// <summary>
+    /// Writes <paramref name="text"/> into a text field or editable combo box the way the spike found (Docs/DECISIONS.md,
+    /// "Formulare: Formular-Engine …", point 1): focus the widget, select all, replace the selection, leave the focus. The
+    /// engine writes <c>/V</c> and a new <c>/AP</c> for every widget of the field on a loaded page; it may shorten or change the
+    /// text (<c>/MaxLen</c>, control characters), so the caller reads it back. The focus is always left.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">PDFium did not focus the widget; nothing was written.</exception>
+    /// <exception cref="ObjectDisposedException">The page or the environment is closed.</exception>
+    public static void ReplaceText(PdfiumPage page, int index, string text)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(text);
+        var (form, native) = FormOf(page);
+        WithWidget<object?>(native, index, annotation =>
+        {
+            Focus(form, annotation);
+            try
+            {
+                _ = Fpdf.FORM_SelectAllText(form, native);
+                fixed (char* value = text)
+                {
+                    // A .NET string is NUL-terminated, as FPDF_WIDESTRING must be.
+                    Fpdf.FORM_ReplaceSelection(form, native, (ushort*)value);
+                }
+            }
+            finally
+            {
+                LeaveFocus(form);
+            }
+
+            return null;
+        });
+    }
+
+    /// <summary>
+    /// Clicks a check box or radio button widget in the middle of its <c>/Rect</c> (PDF user space, so rotation and CropBox play
+    /// no part): a check box toggles, a radio button is chosen (a click on the chosen one never undoes the choice). The focus the
+    /// click gives is left afterwards.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The widget has no usable rectangle.</exception>
+    /// <exception cref="ObjectDisposedException">The page or the environment is closed.</exception>
+    public static void Click(PdfiumPage page, int index)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var (form, native) = FormOf(page);
+        WithWidget<object?>(native, index, annotation =>
+        {
+            if (!HasUsableRect(annotation, out var rect))
+            {
+                throw new InvalidOperationException("The widget has no usable rectangle to click.");
+            }
+
+            var x = (rect.Left + (double)rect.Right) / 2;
+            var y = (rect.Top + (double)rect.Bottom) / 2;
+            try
+            {
+                _ = Fpdf.FORM_OnLButtonDown(form, native, 0, x, y);
+                _ = Fpdf.FORM_OnLButtonUp(form, native, 0, x, y);
+            }
+            finally
+            {
+                LeaveFocus(form);
+            }
+
+            return null;
+        });
+    }
+
+    /// <summary>
+    /// Chooses exactly the options <paramref name="selected"/> of a combo box or list box: focus, deselect every chosen option
+    /// that is not wanted (a list box only; the engine cannot deselect in a combo box), select the wanted ones, leave the focus
+    /// (which writes <c>/V</c>, <c>/I</c> and <c>/AP</c>). A widget with more than <see cref="MaxOptionsPerField"/> options is
+    /// never focused (focusing grows faster than linearly with the options; spike point 12).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The field has too many options, or PDFium did not focus the widget; nothing was written.</exception>
+    /// <exception cref="ObjectDisposedException">The page or the environment is closed.</exception>
+    public static void SelectOptions(PdfiumPage page, int index, IReadOnlyList<int> selected)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(selected);
+        var (form, native) = FormOf(page);
+        WithWidget<object?>(native, index, annotation =>
+        {
+            var count = Fpdf.FPDFAnnot_GetOptionCount(form, annotation);
+            if (count > MaxOptionsPerField)
+            {
+                throw new InvalidOperationException($"The field has more than {MaxOptionsPerField} options.");
+            }
+
+            var combo = Fpdf.FPDFAnnot_GetFormFieldType(form, annotation) == FpdfConstants.FormFieldComboBox;
+            Focus(form, annotation);
+            try
+            {
+                if (!combo)
+                {
+                    for (var option = 0; option < count; option++)
+                    {
+                        if (!selected.Contains(option) && Fpdf.FPDFAnnot_IsOptionSelected(form, annotation, option) != 0)
+                        {
+                            _ = Fpdf.FORM_SetIndexSelected(form, native, option, 0);
+                        }
+                    }
+                }
+
+                foreach (var option in selected)
+                {
+                    if (option >= 0 && option < count)
+                    {
+                        _ = Fpdf.FORM_SetIndexSelected(form, native, option, 1);
+                    }
+                }
+            }
+            finally
+            {
+                LeaveFocus(form);
+            }
+
+            return null;
+        });
+    }
+
+    /// <summary>
+    /// The fonts the normal appearance (<c>/AP /N</c>) of a widget selects with <c>Tf</c>, each once; empty without an
+    /// appearance. <see langword="null"/> when the appearance is longer than <see cref="MaxCheckedAppearanceBytes"/> or cannot
+    /// be read (the caller treats that as a deviation). Read only (<c>FPDFAnnot_GetAP</c> does not touch the stream dictionary).
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The page is closed.</exception>
+    public static IReadOnlyList<string>? AppearanceFonts(PdfiumPage page, int index)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var native = page.Access();
+        return WithWidget(native, index, annotation =>
+        {
+            var length = Fpdf.FPDFAnnot_GetAP(annotation, FpdfConstants.AnnotAppearanceNormal, null, new CULong(0)).Value;
+            if (length <= 2)
+            {
+                return [];
+            }
+
+            if (length > MaxCheckedAppearanceBytes || length % 2 != 0)
+            {
+                return null;
+            }
+
+            var buffer = new char[(int)(length / 2)];
+            nuint written;
+            fixed (char* pointer = buffer)
+            {
+                written = Fpdf.FPDFAnnot_GetAP(annotation, FpdfConstants.AnnotAppearanceNormal, (ushort*)pointer, new CULong(length)).Value;
+            }
+
+            return written == length ? FontsOfContent(buffer.AsSpan(0, buffer.Length - 1)) : null;
+        });
+    }
+
+    /// <summary>
+    /// The fonts the widget's own <c>/DA</c> selects (normally one), or <see langword="null"/> when the widget has no
+    /// <c>/DA</c> of its own: an inherited one (from the parent field or the AcroForm) cannot be read through PDFium's API.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The page is closed.</exception>
+    public static IReadOnlyList<string>? DefaultAppearanceFonts(PdfiumPage page, int index)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var native = page.Access();
+        return WithWidget(native, index, annotation =>
+            PdfiumAnnotations.ReadString(annotation, "DA\0"u8) is { } appearance ? FontsOfContent(appearance) : null);
+    }
+
+    /// <summary>
+    /// The font names a content stream selects with the <c>Tf</c> operator (<c>/Name size Tf</c>), each once in the order they
+    /// come first. A small tokenizer, no parser: literal strings (nested, with escapes), hex strings and comments are skipped,
+    /// so text a user typed never counts as a font; anything but a name, a number and <c>Tf</c> in a row is no font selection.
+    /// </summary>
+    internal static IReadOnlyList<string> FontsOfContent(ReadOnlySpan<char> content)
+    {
+        var fonts = new List<string>();
+        string? name = null;
+        var sized = false;
+        var i = 0;
+        while (i < content.Length)
+        {
+            var c = content[i];
+            if (IsWhite(c))
+            {
+                i++;
+                continue;
+            }
+
+            switch (c)
+            {
+                case '%':
+                    while (i < content.Length && content[i] is not ('\r' or '\n'))
+                    {
+                        i++;
+                    }
+
+                    break;
+                case '(':
+                    i = SkipLiteralString(content, i);
+                    name = null;
+                    break;
+                case '<':
+                    i = i + 1 < content.Length && content[i + 1] == '<' ? i + 2 : SkipPast(content, i + 1, '>');
+                    name = null;
+                    break;
+                case '/':
+                    var end = EndOfToken(content, i + 1);
+                    name = content[(i + 1)..end].ToString();
+                    sized = false;
+                    i = end;
+                    break;
+                default:
+                    if (IsDelimiter(c))
+                    {
+                        name = null;
+                        i++;
+                        break;
+                    }
+
+                    var tokenEnd = EndOfToken(content, i);
+                    var token = content[i..tokenEnd];
+                    i = tokenEnd;
+                    if (name is not null && !sized && IsNumber(token))
+                    {
+                        sized = true;
+                        break;
+                    }
+
+                    if (name is not null && sized && token.SequenceEqual("Tf") && !fonts.Contains(name, StringComparer.Ordinal))
+                    {
+                        fonts.Add(name);
+                    }
+
+                    name = null;
+                    break;
+            }
+        }
+
+        return fonts;
+    }
+
+    private static bool IsWhite(char c) => c is '\0' or '\t' or '\n' or '\f' or '\r' or ' ';
+
+    private static bool IsDelimiter(char c) => c is '(' or ')' or '<' or '>' or '[' or ']' or '{' or '}' or '/' or '%';
+
+    private static int EndOfToken(ReadOnlySpan<char> content, int start)
+    {
+        var end = start;
+        while (end < content.Length && !IsWhite(content[end]) && !IsDelimiter(content[end]))
+        {
+            end++;
+        }
+
+        return end;
+    }
+
+    private static bool IsNumber(ReadOnlySpan<char> token) =>
+        double.TryParse(token, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
+
+    /// <summary>The index after the literal string starting at <paramref name="start"/> (balanced parentheses, backslash escapes).</summary>
+    private static int SkipLiteralString(ReadOnlySpan<char> content, int start)
+    {
+        var depth = 0;
+        for (var i = start; i < content.Length; i++)
+        {
+            switch (content[i])
+            {
+                case '\\':
+                    i++;
+                    break;
+                case '(':
+                    depth++;
+                    break;
+                case ')':
+                    if (--depth == 0)
+                    {
+                        return i + 1;
+                    }
+
+                    break;
+            }
+        }
+
+        return content.Length;
+    }
+
+    private static int SkipPast(ReadOnlySpan<char> content, int start, char end)
+    {
+        var index = content[start..].IndexOf(end);
+        return index < 0 ? content.Length : start + index + 1;
+    }
+
+    /// <summary>The form handle and the native page; throws when the page has no form environment.</summary>
+    private static (nint Form, nint Page) FormOf(PdfiumPage page)
+    {
+        var native = page.Access();
+        if (page.Handle.FormEnvironment is not { } environment)
+        {
+            throw new InvalidOperationException("The document has no form.");
+        }
+
+        return (environment.Handle, native);
+    }
+
+    /// <summary>Calls <paramref name="use"/> with the widget at <paramref name="index"/>; the handle is closed afterwards.</summary>
+    /// <exception cref="InvalidOperationException">The index is no widget annotation of the page.</exception>
+    private static T WithWidget<T>(nint page, int index, Func<nint, T> use)
+    {
+        var annotation = Fpdf.FPDFPage_GetAnnot(page, index);
+        if (annotation == 0)
+        {
+            throw new InvalidOperationException($"The page has no annotation at index {index}.");
+        }
+
+        try
+        {
+            if (Fpdf.FPDFAnnot_GetSubtype(annotation) != FpdfConstants.AnnotWidget)
+            {
+                throw new InvalidOperationException($"The annotation at index {index} is no widget.");
+            }
+
+            return use(annotation);
+        }
+        finally
+        {
+            Fpdf.FPDFPage_CloseAnnot(annotation);
+        }
+    }
+
+    /// <summary>Focuses the widget, or throws when PDFium does not.</summary>
+    private static void Focus(nint form, nint annotation)
+    {
+        if (Fpdf.FORM_SetFocusedAnnot(form, annotation) == 0)
+        {
+            LeaveFocus(form);
+            throw new InvalidOperationException("The form engine did not focus the field.");
+        }
+    }
+
+    /// <summary>
+    /// Leaves the focus, which makes the engine write a changed value. Its result is not used: whether the value arrived is
+    /// what the caller reads back.
+    /// </summary>
+    private static void LeaveFocus(nint form) => _ = Fpdf.FORM_ForceToKillFocus(form);
 
     /// <summary>Calls <paramref name="read"/> for every widget of the page within the limits; the handle is closed afterwards.</summary>
     private static void ForEachWidget(nint page, Action<int, nint> read)

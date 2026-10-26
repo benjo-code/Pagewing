@@ -554,6 +554,56 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial void FORM_OnBeforeClosePage(nint page, nint form);
 
+    /// <summary>
+    /// Draws the widgets of a page onto a bitmap the page was rendered on, with the same area, rotation and flags as the render
+    /// (<c>FPDF_RenderPageBitmap*</c> draws no widget). Widgets without an appearance get one generated when their page loads.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_FFLDraw(nint form, nint bitmap, nint page, int startX, int startY, int sizeX, int sizeY, int rotate, int flags);
+
+    // Writing a value (spike, Docs/DECISIONS.md, "Formulare: Formular-Engine …", point 1): focus the widget, select all, replace,
+    // leave the focus; /V and /AP are written only when the focus leaves. Check boxes and radio buttons by a click in the middle
+    // of the widget (page coordinates), combo and list boxes by FORM_SetIndexSelected on the focused widget.
+
+    /// <summary>Focuses a widget (experimental API); the annotation must belong to a page announced to the environment.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_SetFocusedAnnot(nint form, nint annotation);
+
+    /// <summary>Selects all text of the focused text field or editable combo box (experimental API).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_SelectAllText(nint form, nint page);
+
+    /// <summary>Replaces the selected text of the focused field by <paramref name="text"/> (UTF-16LE with a terminator).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FORM_ReplaceSelection(nint form, nint page, ushort* text);
+
+    /// <summary>Leaves the focus; a changed value is written (<c>/V</c> and <c>/AP</c>) now.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_ForceToKillFocus(nint form);
+
+    /// <summary>The left mouse button goes down at a point of the page, in PDF user space (<c>modifier</c>: <c>FWL_EVENTFLAG_*</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_OnLButtonDown(nint form, nint page, int modifier, double pageX, double pageY);
+
+    /// <summary>The left mouse button goes up at a point of the page, in PDF user space.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_OnLButtonUp(nint form, nint page, int modifier, double pageX, double pageY);
+
+    /// <summary>
+    /// Selects or deselects an option of the focused combo box or list box (experimental API); deselecting in a combo box is a
+    /// no-op that returns false.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_SetIndexSelected(nint form, nint page, int index, int selected);
+
     /// <summary>One of <c>FORMTYPE_*</c> (<see cref="FpdfConstants.FormTypeNone"/> and the others). Experimental API.</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
