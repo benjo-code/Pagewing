@@ -229,6 +229,36 @@ public sealed class PrintSupportTests : IDisposable
     }
 
     [Fact]
+    public async Task PrintedPageIncludesATextBoxInItsColour()
+    {
+        // A text box prints light, as its own appearance draws it: solid glyphs in its colour; the dark page read nothing.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Printing to a device context needs Windows.");
+        var ct = TestContext.Current.CancellationToken;
+        UseTextBoxFont();
+        await using var document = await OpenFixtureAsync("text-basic.pdf");
+        await document.CreateTextBoxAsync(0, new TextBoxSpec(new PageRect(20, 120, 280, 190), "Gedruckt 5 €", 36, Blue), null, ct);
+        await document.RenderPageAsync(0, 2, new RenderOptions { PageTheme = PageTheme.Dark }, ct);
+        var scans = document.DarkMarkupScans;
+
+        const int Width = 600, Height = 400;
+        var pixels = await PrintToMemoryAsync(document, Width, Height, ct);
+
+        Assert.Equal(scans, document.DarkMarkupScans);
+        var blue = 0;
+        for (var y = 240; y < 380; y++)
+        {
+            for (var x = 40; x < 560; x++)
+            {
+                var (r, g, b) = At(pixels, Width, x, y);
+                blue += b > 200 && r < 80 && g < 140 ? 1 : 0;
+            }
+        }
+
+        Assert.True(blue > 3000, $"{blue} blue pixels in the text box");
+        Assert.DoesNotContain(Enumerable.Range(0, Width * Height), i => pixels[(i * 4) + 2] == 0x1E && pixels[(i * 4) + 1] == 0x21 && pixels[i * 4] == 0x27);
+    }
+
+    [Fact]
     public async Task DecryptedCopyIncludesUnsavedMarkups()
     {
         // The copy that CUPS gets (Linux) is written from the document in memory: a markup that is not saved is in it,

@@ -86,11 +86,18 @@ public sealed class AnnotationReadTests
         Assert.Equal(new AnnotationColor(153, 255, 153), bare.Color);
         Assert.Equal("No name, no appearance", bare.Contents);
         Assert.True(bare.Editable);
-        Assert.All(first.Where(a => a.Subtype is "FreeText" or "Text" or "Link"), a =>
+        Assert.All(first.Where(a => a.Subtype is "Text" or "Link"), a =>
         {
             Assert.Equal(AnnotationKind.Other, a.Kind);
             Assert.False(a.Editable);
         });
+
+        // A text box of another program can be deleted since M10, but not changed (its text is what its own appearance shows).
+        var freeText = first.Single(a => a.Subtype == "FreeText");
+        Assert.Equal(AnnotationKind.TextBox, freeText.Kind);
+        Assert.True(freeText.Editable);
+        Assert.False(freeText.GeometryEditable);
+        Assert.NotNull(freeText.TextBox);
 
         // An ink without a reply can be deleted and commented on since M10.
         var ink = first.Single(a => a.Subtype == "Ink");

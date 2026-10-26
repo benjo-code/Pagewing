@@ -242,6 +242,55 @@ public sealed class AnnotationEditor
     }
 
     /// <summary>
+    /// Creates a text box (<see cref="PdfDocument.CreateTextBoxAsync"/>; the box grows to fit the text). A text that is empty or
+    /// only white space creates nothing and changes nothing.
+    /// </summary>
+    /// <param name="page">The 0-based page index.</param>
+    /// <param name="spec">The box, text, size and colour.</param>
+    /// <param name="author">The author (the setting "Author name"), or <see langword="null"/>.</param>
+    /// <returns>The new annotation, or <see langword="null"/> when the text is blank.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="spec"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">The text has characters a text box cannot show, is too long, or the box is too small (see <see cref="TextBoxSpec.Validate"/>).</exception>
+    /// <exception cref="InvalidOperationException">The session has no ready document, or PDFium could not create the text box.</exception>
+    /// <exception cref="PdfAnnotationLimitException">The document lists the most annotations Pagewing reads; nothing changes.</exception>
+    public async Task<PdfAnnotation?> ApplyTextBoxAsync(int page, TextBoxSpec spec, string? author)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(spec.Text, nameof(spec));
+        if (TextBoxSpec.CheckText(spec.Text).Problem == TextBoxTextProblem.Empty)
+        {
+            return null;
+        }
+
+        return await RunAsync<PdfAnnotation?>(async document =>
+        {
+            var created = await document.CreateTextBoxAsync(page, spec, author).ConfigureAwait(false);
+            Record(page, new AnnotationCommand.Create(created));
+            return created;
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Moves, resizes, retypes or recolours a text box: it is replaced by <paramref name="spec"/> under the same name (author and
+    /// creation date stay). One step of the history however much changes.
+    /// </summary>
+    /// <param name="locator">Finds the text box: by name if it has one, else by index.</param>
+    /// <param name="spec">The new text box.</param>
+    /// <returns>The replaced text box; its index may have changed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="spec"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">The new text box is refused (see <see cref="TextBoxSpec.Validate"/>; the history is unchanged).</exception>
+    /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The session has no ready document, or the annotation is no text box or not <see cref="PdfAnnotation.GeometryEditable"/>
+    /// (another program's; the history and the document are unchanged).
+    /// </exception>
+    public Task<PdfAnnotation> ReplaceTextBoxAsync(AnnotationLocator locator, TextBoxSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        return UpdateAsync(locator, new AnnotationEdit(TextBox: spec));
+    }
+
+    /// <summary>
     /// Moves or resizes a drawing, or changes its stroke width: it is replaced by <paramref name="geometry"/> (of the same
     /// kind) under the same name; colour, comment and author stay. It is one step of the history however it came about; a
     /// move with the mouse calls this once, on release.
@@ -299,6 +348,13 @@ public sealed class AnnotationEditor
                 }
 
                 removed = removed with { QuadRects = lines };
+            }
+            else if (removed.Kind == AnnotationKind.TextBox)
+            {
+                if (!CanRecreateTextBox(removed))
+                {
+                    throw new InvalidOperationException("The text box has a text Pagewing cannot show, so undo could not restore it; it is not deleted.");
+                }
             }
             else if (!CanRecreateDrawing(removed))
             {
@@ -448,7 +504,8 @@ public sealed class AnnotationEditor
 
         // A missing colour cannot be restored as missing; the annotation keeps the one it has.
         Color: from.Color == to.Color ? null : to.Color,
-        Geometry: from.Drawing is { } was && to.Drawing is { } now && !SameShape(was, now) ? now : null);
+        Geometry: from.Drawing is { } was && to.Drawing is { } now && !SameShape(was, now) ? now : null,
+        TextBox: from.TextBox is { } before && to.TextBox is { } after && before != after ? after : null);
 
     private static bool SameShape(DrawingGeometry a, DrawingGeometry b)
     {
@@ -474,6 +531,25 @@ public sealed class AnnotationEditor
         }
 
         return true;
+    }
+
+    /// <summary>Whether a text box can be created again from what was read of it (undo of a delete): its text, size and box are accepted.</summary>
+    private static bool CanRecreateTextBox(PdfAnnotation annotation)
+    {
+        if (annotation.TextBox is not { } spec)
+        {
+            return false;
+        }
+
+        try
+        {
+            (spec with { Text = TextBoxSpec.NormalizeText(spec.Text) }).Validate();
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Whether a drawing can be created again from its read shape (undo of a delete).</summary>
@@ -509,7 +585,9 @@ public sealed class AnnotationEditor
     /// which is how PDFium draws it.
     /// </summary>
     private static Task<PdfAnnotation> RecreateAsync(PdfDocument document, PdfAnnotation copy) =>
-        copy.Drawing is { } shape
+        copy.TextBox is { } textBox
+            ? document.CreateTextBoxAsync(copy.Page, textBox, copy.Author, copy.Name, CancellationToken.None)
+        : copy.Drawing is { } shape
             ? document.CreateDrawingAsync(
                 copy.Page, shape, copy.Color ?? new AnnotationColor(0, 0, 0), copy.Contents, copy.Author, copy.Name, CancellationToken.None)
             : document.CreateMarkupAsync(

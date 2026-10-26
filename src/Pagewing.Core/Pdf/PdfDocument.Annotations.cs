@@ -56,10 +56,11 @@ public sealed partial class PdfDocument
                 var read = PdfiumAnnotations.Read(loaded, Math.Max(0, MaxAnnotations - others), cancellationToken);
                 listedAnnotations[pageIndex] = read.Count;
                 var drawings = new DrawingReader(loaded, MaxDrawingPointsPerPage);
+                var textBoxes = new TextBoxReader(loaded);
                 var result = new PdfAnnotation[read.Count];
                 for (var i = 0; i < result.Length; i++)
                 {
-                    result[i] = ToAnnotation(pageIndex, read[i], drawings.Read(read[i], cancellationToken));
+                    result[i] = ToAnnotation(pageIndex, read[i], drawings.Read(read[i], cancellationToken), textBoxes.Read(read[i]));
                 }
 
                 return result;
@@ -214,6 +215,11 @@ public sealed partial class PdfDocument
         ThrowIfNotAPage(locator.Page);
         ArgumentNullException.ThrowIfNull(edit);
         var spec = edit.Geometry is { } geometry ? ToPdfium(geometry) : null;
+        if (edit.TextBox is { } textBox)
+        {
+            edit = edit with { TextBox = Normalized(textBox) };
+        }
+
         var name = NewName();
         var date = FormatPdfDate(Clock.GetUtcNow());
         (byte R, byte G, byte B)? color = edit.Color is { } c ? (c.R, c.G, c.B) : null;
@@ -225,16 +231,28 @@ public sealed partial class PdfDocument
                 int index;
                 Exception? failure = null;
                 Replacement? replacement = null;
+                var isTextBox = false;
                 using (var page = document.LoadPage(locator.Page))
                 {
                     index = FindEditable(page, locator, cancellationToken);
-                    var isDrawing = PdfiumAnnotations.IsDrawing(PdfiumAnnotations.SubtypeOf(page, index));
+                    var subtype = PdfiumAnnotations.SubtypeOf(page, index);
+                    var isDrawing = PdfiumAnnotations.IsDrawing(subtype);
+                    isTextBox = PdfiumAnnotations.IsTextBox(subtype);
+                    if (edit.TextBox is not null && !isTextBox)
+                    {
+                        throw new InvalidOperationException("Only a text box has a text box to change.");
+                    }
+
                     if (edit.Geometry is not null && !isDrawing)
                     {
                         throw new InvalidOperationException("Only a drawing has a geometry to change.");
                     }
 
-                    if (isDrawing && (edit.Geometry is not null || color is not null))
+                    if (isTextBox)
+                    {
+                        // Read and replaced below, with no handle of the page open.
+                    }
+                    else if (isDrawing && (edit.Geometry is not null || color is not null))
                     {
                         replacement = PrepareReplacement(page, index, edit.Geometry, spec, color, edit.Contents, name, date, cancellationToken);
                     }
@@ -249,6 +267,11 @@ public sealed partial class PdfDocument
                             failure = ex;
                         }
                     }
+                }
+
+                if (isTextBox)
+                {
+                    return ReplaceTextBox(locator.Page, index, edit, name, date, cancellationToken);
                 }
 
                 if (replacement is not null)
@@ -328,7 +351,7 @@ public sealed partial class PdfDocument
         new PdfiumPoint(quad.BottomLeft.X, quad.BottomLeft.Y),
         new PdfiumPoint(quad.BottomRight.X, quad.BottomRight.Y));
 
-    private static PdfAnnotation ToAnnotation(int pageIndex, PdfiumAnnotation annotation, DrawingRead drawing)
+    private static PdfAnnotation ToAnnotation(int pageIndex, PdfiumAnnotation annotation, DrawingRead drawing, (TextBoxSpec? Spec, bool Own) textBox)
     {
         var kind = drawing.Geometry?.Kind ?? KindOf(annotation.Subtype);
         var quads = new Quad[annotation.Quads.Count];
@@ -358,12 +381,13 @@ public sealed partial class PdfDocument
             quads,
             rects,
             new PageRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom),
-            annotation.Contents,
+            textBox.Spec is { } spec ? (spec.Text.Length > 0 ? spec.Text : null) : annotation.Contents,
             annotation.Author,
             PdfDate.TryParse(annotation.Modified),
             kind != AnnotationKind.Other && !annotation.HasReplies,
             drawing.Geometry,
-            drawing.GeometryEditable && !annotation.HasReplies);
+            (drawing.GeometryEditable || textBox.Own) && !annotation.HasReplies,
+            textBox.Spec);
     }
 
     private static AnnotationKind KindOf(int subtype) => subtype switch
@@ -374,6 +398,7 @@ public sealed partial class PdfDocument
         FpdfConstants.AnnotInk => AnnotationKind.Ink,
         FpdfConstants.AnnotSquare => AnnotationKind.Rectangle,
         FpdfConstants.AnnotCircle => AnnotationKind.Ellipse,
+        FpdfConstants.AnnotFreeText => AnnotationKind.TextBox,
         _ => AnnotationKind.Other,
     };
 
@@ -494,7 +519,8 @@ public sealed partial class PdfDocument
         using var page = document.LoadPage(pageIndex);
         var annotation = PdfiumAnnotations.ReadAt(page, index)
             ?? throw new InvalidOperationException("The changed annotation could not be read back.");
-        return ToAnnotation(pageIndex, annotation, new DrawingReader(page, long.MaxValue).Read(annotation, CancellationToken.None));
+        return ToAnnotation(
+            pageIndex, annotation, new DrawingReader(page, long.MaxValue).Read(annotation, CancellationToken.None), new TextBoxReader(page).Read(annotation));
     }
 
     private void ThrowIfNotAPage(int pageIndex)

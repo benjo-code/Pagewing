@@ -33,7 +33,13 @@ namespace Pagewing.Core.Annotations;
 /// </param>
 /// <param name="GeometryEditable">
 /// Whether Pagewing may move, resize, recolour or rewiden the drawing (it does so by replacing it): only when nothing of the
-/// annotation would be lost on the way, see <see cref="Pdf.PdfDocument.ReplaceDrawingAsync"/>.
+/// annotation would be lost on the way, see <see cref="Pdf.PdfDocument.ReplaceDrawingAsync"/>. For a text box: whether it
+/// is Pagewing's own and unchanged since (<see cref="Pdf.PdfDocument.ReplaceTextBoxAsync"/>), so that it may be moved,
+/// resized, retyped and recoloured; another program's text box can only be deleted.
+/// </param>
+/// <param name="TextBox">
+/// The text box (FreeText) as read: <c>/Rect</c>, the text (<c>/Contents</c> with line feeds, also in
+/// <paramref name="Contents"/>), the size and colour of <c>/DA</c>; <see langword="null"/> for any other kind.
 /// </param>
 public sealed record PdfAnnotation(
     int Page,
@@ -50,4 +56,5 @@ public sealed record PdfAnnotation(
     DateTimeOffset? Modified,
     bool Editable,
     DrawingGeometry? Drawing = null,
-    bool GeometryEditable = false);
+    bool GeometryEditable = false,
+    TextBoxSpec? TextBox = null);

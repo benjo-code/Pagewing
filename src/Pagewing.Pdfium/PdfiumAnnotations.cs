@@ -101,6 +101,9 @@ internal static unsafe class PdfiumAnnotations
     public static bool IsDrawing(int subtype) =>
         subtype is FpdfConstants.AnnotInk or FpdfConstants.AnnotSquare or FpdfConstants.AnnotCircle;
 
+    /// <summary>Whether a subtype is a text box (FreeText; see <see cref="PdfiumTextBoxes"/>).</summary>
+    public static bool IsTextBox(int subtype) => subtype == FpdfConstants.AnnotFreeText;
+
     /// <summary>
     /// Reads the annotations of a page in <c>/Annots</c> order, at most <paramref name="limit"/>. Popups and replies
     /// (entries with <c>/IRT</c>) are left out; damaged entries (no <c>/Rect</c>, coordinates that are not finite or
@@ -213,8 +216,8 @@ internal static unsafe class PdfiumAnnotations
     }
 
     /// <summary>
-    /// Whether Pagewing may change or delete the annotation: a highlight, underline or strike-out, or a drawing (ink,
-    /// square, circle), that is no reply and that no other annotation answers. Whether a drawing may also be replaced is
+    /// Whether Pagewing may change or delete the annotation: a highlight, underline or strike-out, a drawing (ink,
+    /// square, circle) or a text box (FreeText), that is no reply and that no other annotation answers. Whether a drawing may also be replaced is
     /// <see cref="PdfiumDrawings.IsGeometryEditable"/>.
     /// </summary>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while checking.</exception>
@@ -223,7 +226,7 @@ internal static unsafe class PdfiumAnnotations
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
         var scan = Scan(native, cancellationToken);
-        return index >= 0 && index < scan.Subtypes.Length && (IsMarkup(scan.Subtypes[index]) || IsDrawing(scan.Subtypes[index]))
+        return index >= 0 && index < scan.Subtypes.Length && (IsMarkup(scan.Subtypes[index]) || IsDrawing(scan.Subtypes[index]) || IsTextBox(scan.Subtypes[index]))
             && !scan.IsReply[index] && !scan.HasReplies(index);
     }
 

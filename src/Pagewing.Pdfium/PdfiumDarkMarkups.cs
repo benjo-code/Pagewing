@@ -97,10 +97,21 @@ internal static unsafe class PdfiumDarkMarkups
                 try
                 {
                     var subtype = Fpdf.FPDFAnnot_GetSubtype(annotation);
-                    var drawing = PdfiumAnnotations.IsDrawing(subtype);
+                    var textBox = PdfiumAnnotations.IsTextBox(subtype);
+                    var drawing = PdfiumAnnotations.IsDrawing(subtype) || textBox;
                     if (!(drawing ? pointBudget > 0 : PdfiumAnnotations.IsMarkup(subtype) && quadBudget > 0)
                         || (Fpdf.FPDFAnnot_GetFlags(annotation) & (FpdfConstants.AnnotFlagHidden | FpdfConstants.AnnotFlagNoView)) != 0)
                     {
+                        continue;
+                    }
+
+                    if (textBox)
+                    {
+                        if (PdfiumDarkDrawings.ReadTextBox(page, i, annotation, transform, colors, ref pointBudget, ref scratch, ref appearanceBudget) is { } text)
+                        {
+                            (drawings ??= []).Add(text);
+                        }
+
                         continue;
                     }
 
@@ -277,12 +288,20 @@ internal static unsafe class PdfiumDarkMarkups
     /// The colour of a line on the dark ground (ARGB): the annotation's colour if it reaches <see cref="LineContrast"/>
     /// against <paramref name="background"/>, otherwise the first step towards white that does, so the hue stays.
     /// </summary>
-    public static uint LineColor(uint rgb, uint background)
+    public static uint LineColor(uint rgb, uint background) => Lightened(rgb, background, LineContrast);
+
+    /// <summary>
+    /// The colour of the text of a text box on the dark ground (ARGB): its colour if it reaches <see cref="TextContrast"/>
+    /// against <paramref name="background"/>, otherwise the first step towards white that does (WCAG 2.2, text).
+    /// </summary>
+    public static uint TextColor(uint rgb, uint background) => Lightened(rgb, background, TextContrast);
+
+    private static uint Lightened(uint rgb, uint background, double contrast)
     {
         for (var step = 0; step <= LightenSteps; step++)
         {
             var color = Mix(rgb, 0xFFFFFFFF, step, LightenSteps);
-            if (Contrast(color, background) >= LineContrast)
+            if (Contrast(color, background) >= contrast)
             {
                 return color;
             }
@@ -611,6 +630,12 @@ internal readonly struct DisplayTransform
         var dy = y - originY;
         return new DarkMarkupPoint((m11 * dx) + (m12 * dy), (m21 * dx) + (m22 * dy));
     }
+
+    /// <summary>Gets the step in user space of one display point to the right (the linear part of <see cref="ToUser"/>).</summary>
+    public (double X, double Y) AlongX => (ax, ay);
+
+    /// <summary>Gets the step in user space of one display point down (the linear part of <see cref="ToUser"/>).</summary>
+    public (double X, double Y) AlongY => (bx, by);
 
     /// <summary>Converts a point in points from the top left of the displayed page to PDF user space (the inverse of <see cref="ToDisplay"/>).</summary>
     public (double X, double Y) ToUser(double x, double y) =>

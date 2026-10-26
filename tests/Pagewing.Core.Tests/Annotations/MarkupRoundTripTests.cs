@@ -322,7 +322,8 @@ public sealed partial class MarkupRoundTripTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => document.DeleteAnnotationAsync(new AnnotationLocator(0, 0, "hl-0001"), TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<InvalidOperationException>(() => document.UpdateAnnotationAsync(new AnnotationLocator(0, 0, "hl-0001"), new AnnotationEdit("x"), TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => document.DeleteAnnotationAsync(new AnnotationLocator(0, 5, "ft-0001"), TestContext.Current.CancellationToken));
+        // A text box of another program (since M10 a text box, deletable) cannot be changed.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => document.UpdateAnnotationAsync(new AnnotationLocator(0, 5, "ft-0001"), new AnnotationEdit("x"), TestContext.Current.CancellationToken));
         Assert.Equal(6, (await document.GetAnnotationsAsync(0, TestContext.Current.CancellationToken)).Count);
     }
 

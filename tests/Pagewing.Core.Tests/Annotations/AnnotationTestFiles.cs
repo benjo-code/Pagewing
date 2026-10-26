@@ -18,6 +18,9 @@ internal static class AnnotationTestFiles
     /// <summary>Drawings written by other programs (ink, square, circle, line, a reply); see tools/make-testpdfs.cs.</summary>
     public const string DrawingsForeign = "drawings-foreign.pdf";
 
+    /// <summary>Hands the shipped Geist Regular to the text boxes, as the app does on first use (the first source set stays).</summary>
+    public static void UseTextBoxFont() => TextBoxFont.Use(static () => File.ReadAllBytes(TestData.GeistRegular));
+
     public static Task<PdfDocument> OpenAsync(string path) =>
         new PdfEngine().OpenAsync(path, cancellationToken: TestContext.Current.CancellationToken);
 

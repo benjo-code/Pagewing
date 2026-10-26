@@ -55,6 +55,15 @@ internal static class PdfiumDarkDrawings
     /// <summary>The fourth byte of a pixel painted in this paint (PDFium leaves 0xFF there); reset before <see cref="Apply"/> returns.</summary>
     private const byte PaintedMark = 0xFE;
 
+    /// <summary>
+    /// The fourth byte of a pixel of a glyph's outline recoloured in this paint: the glyph's own fill still paints it, a drawing
+    /// or text box below leaves it alone; reset with <see cref="PaintedMark"/>.
+    /// </summary>
+    private const byte OutlineMark = 0xFD;
+
+    /// <summary>The sub-rows per pixel row a glyph is sampled with when it is filled.</summary>
+    private const int GlyphSamples = 4;
+
     /// <summary>The colour PDFium's generator gives a drawing without <c>/C</c>: black.</summary>
     private const uint DefaultColor = 0xFF000000;
 
@@ -105,6 +114,41 @@ internal static class PdfiumDarkDrawings
         }
 
         return new DarkDrawing(color, drawing.Width, paths);
+    }
+
+    /// <summary>
+    /// Reads a text box of Pagewing's (<see cref="PdfiumTextBox.IsOwn"/>) at <paramref name="index"/> (whose handle the caller
+    /// holds open as <paramref name="annotation"/>): its glyphs from its own appearance, in the text colour lightened to the
+    /// contrast of text (<see cref="PdfiumDarkMarkups.TextColor"/>), charging the points to <paramref name="pointBudget"/> and
+    /// the appearance read to <paramref name="appearanceBudget"/>. Another program's text box draws its text in the page
+    /// foreground as PDFium makes it and is left so (<see langword="null"/>). PDFium thread, before the render.
+    /// </summary>
+    public static DarkDrawing? ReadTextBox(
+        PdfiumPage page,
+        int index,
+        nint annotation,
+        DisplayTransform transform,
+        PdfiumPageColors colors,
+        ref long pointBudget,
+        ref char[]? scratch,
+        ref long appearanceBudget)
+    {
+        if (PdfiumTextBoxes.Read(page, index, transform) is not { IsOwn: true } box)
+        {
+            return null;
+        }
+
+        var content = PdfiumTextBoxes.ReadAppearance(annotation, ref scratch);
+
+        // Read twice: once for the marker, once here.
+        appearanceBudget -= 4L * content.Length;
+        if (content.IsEmpty || PdfiumTextBoxes.ParseGlyphs(content, transform, ref pointBudget) is not { Count: > 0 } glyphs)
+        {
+            return null;
+        }
+
+        var rgb = 0xFF000000u | ((uint)box.Color.R << 16) | ((uint)box.Color.G << 8) | box.Color.B;
+        return new DarkDrawing(PdfiumDarkMarkups.TextColor(rgb, colors.Background), 0, [], glyphs);
     }
 
     /// <summary>
@@ -178,6 +222,16 @@ internal static class PdfiumDarkDrawings
             {
                 var drawing = drawings[d];
                 painter.Begin(drawing.Color);
+                if (drawing.Glyphs is { } glyphs)
+                {
+                    if (!PaintText(ref painter, glyphs, 1 / Math.Min(scaleX, scaleY)))
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
 
                 // At least one pixel wide, as PDFium strokes (in points, so the stroke is still widened like PDFium's).
                 var half = Math.Max(drawing.Width, 1 / Math.Min(scaleX, scaleY)) / 2;
@@ -290,6 +344,40 @@ internal static class PdfiumDarkDrawings
         }
 
         return buffer.AsSpan(0, count);
+    }
+
+    /// <summary>
+    /// Paints the glyphs of a text box: first the outline PDFium drew in the foreground (with <c>FPDF_CONVERT_FILL_TO_STROKE</c>
+    /// a filled glyph becomes its outline) takes the colour in PDFium's share, one pixel to either side of each contour; then
+    /// the glyph is filled with the nonzero rule, each pixel mixed with the colour by how much of it the glyph covers
+    /// (<see cref="Painter.FillGlyph"/>), so the text is solid again.
+    /// </summary>
+    private static bool PaintText(ref Painter painter, IReadOnlyList<DarkGlyph> glyphs, double hairline)
+    {
+        foreach (var glyph in glyphs)
+        {
+            if (!painter.Charge(1))
+            {
+                return false;
+            }
+
+            painter.Mark = OutlineMark;
+            foreach (var contour in glyph.Contours)
+            {
+                if (!StrokePolyline(ref painter, contour, closed: true, hairline))
+                {
+                    return false;
+                }
+            }
+
+            painter.Mark = PaintedMark;
+            if (!painter.FillGlyph(glyph.Contours))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Paints the rectangles of the segments and the joins of a polyline of half-width <paramref name="half"/> (points).</summary>
@@ -447,6 +535,7 @@ internal static class PdfiumDarkDrawings
             groundSum = ground.B + ground.G + ground.R;
             span = Math.Max(1, foreground.B + foreground.G + foreground.R - groundSum);
             Budget = budget;
+            Mark = PaintedMark;
             markedLeft = int.MaxValue;
             markedTop = int.MaxValue;
             markedRight = int.MinValue;
@@ -538,6 +627,211 @@ internal static class PdfiumDarkDrawings
 
         /// <summary>Gets the pieces and rows looked at so far (for tests: each costs at least one of the budget).</summary>
         public long Work { get; private set; }
+
+        /// <summary>Gets or sets the fourth byte a painted pixel gets (<see cref="PaintedMark"/>, or <see cref="OutlineMark"/> for a glyph's outline).</summary>
+        public byte Mark { get; set; }
+
+        /// <summary>
+        /// Fills a glyph (closed contours, points of the displayed page) with the nonzero rule: each pixel takes the colour in
+        /// the share of it the glyph covers (<see cref="GlyphSamples"/> sub-rows, exact along them), over whatever is there; a
+        /// pixel painted by something on top is left alone, one of the glyph's own outline is painted. Afterwards the outline's
+        /// pixels around it count as painted. Every row costs one plus its edges per sub-row plus its pixels.
+        /// </summary>
+        public bool FillGlyph(IReadOnlyList<(double X, double Y)[]> contours)
+        {
+            Work++;
+            if (!Charge(1))
+            {
+                return false;
+            }
+
+            var edges = new List<(double X0, double Y0, double X1, double Y1, int Direction)>();
+            double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
+            foreach (var contour in contours)
+            {
+                for (var i = 0; i < contour.Length; i++)
+                {
+                    var (ax, ay) = ((contour[i].X * scaleX) + offsetX, (contour[i].Y * scaleY) + offsetY);
+                    var next = contour[(i + 1) % contour.Length];
+                    var (bx, by) = ((next.X * scaleX) + offsetX, (next.Y * scaleY) + offsetY);
+                    minX = Math.Min(minX, ax);
+                    maxX = Math.Max(maxX, ax);
+                    minY = Math.Min(minY, ay);
+                    maxY = Math.Max(maxY, ay);
+                    if (ay != by)
+                    {
+                        edges.Add(ay < by ? (ax, ay, bx, by, 1) : (bx, by, ax, ay, -1));
+                    }
+                }
+            }
+
+            // The outline of the glyph reaches a miter (up to the limit) beyond it; its marks become painted marks there.
+            var reach = (int)Math.Ceiling(MiterLimit) + 2;
+            if (edges.Count == 0 || !Meets(minX, minY, maxX, maxY, reach))
+            {
+                return true;
+            }
+
+            var x0 = (int)Math.Clamp(Math.Floor(minX), 0, width);
+            var x1 = (int)Math.Clamp(Math.Ceiling(maxX), 0, width);
+            var y0 = (int)Math.Clamp(Math.Floor(minY), 0, height);
+            var y1 = (int)Math.Clamp(Math.Ceiling(maxY), 0, height);
+            var span = x1 - x0;
+            var coverage = span > 0 ? ArrayPool<double>.Shared.Rent(span) : [];
+            var crossings = new List<(double X, int Direction)>();
+            try
+            {
+                for (var y = y0; y < y1 && span > 0; y++)
+                {
+                    Work++;
+                    if (!Charge(1 + ((long)edges.Count * GlyphSamples) + span))
+                    {
+                        return false;
+                    }
+
+                    Array.Clear(coverage, 0, span);
+                    for (var s = 0; s < GlyphSamples; s++)
+                    {
+                        var sampleY = y + ((s + 0.5) / GlyphSamples);
+                        crossings.Clear();
+                        foreach (var (ex0, ey0, ex1, ey1, direction) in edges)
+                        {
+                            if (sampleY >= ey0 && sampleY < ey1)
+                            {
+                                crossings.Add((ex0 + ((sampleY - ey0) * (ex1 - ex0) / (ey1 - ey0)), direction));
+                            }
+                        }
+
+                        crossings.Sort(static (a, b) => a.X.CompareTo(b.X));
+                        var winding = 0;
+                        var start = 0.0;
+                        foreach (var (x, direction) in crossings)
+                        {
+                            var before = winding;
+                            winding += direction;
+                            if (before == 0 && winding != 0)
+                            {
+                                start = x;
+                            }
+                            else if (before != 0 && winding == 0)
+                            {
+                                AddSpan(coverage, x0, x1, start, x);
+                            }
+                        }
+                    }
+
+                    PaintCoverage(y, x0, coverage.AsSpan(0, span));
+                }
+
+                return ConvertOutlineMarks(x0 - reach, y0 - reach, x1 + reach, y1 + reach);
+            }
+            finally
+            {
+                if (span > 0)
+                {
+                    ArrayPool<double>.Shared.Return(coverage);
+                }
+            }
+        }
+
+        /// <summary>Adds the share of one sub-row between <paramref name="from"/> and <paramref name="to"/> (pixels) to each pixel.</summary>
+        private static void AddSpan(double[] coverage, int x0, int x1, double from, double to)
+        {
+            from = Math.Clamp(from, x0, x1);
+            to = Math.Clamp(to, x0, x1);
+            if (to <= from)
+            {
+                return;
+            }
+
+            const double Share = 1.0 / GlyphSamples;
+            var first = (int)Math.Floor(from);
+            var last = Math.Min(x1 - 1, (int)Math.Floor(to));
+            if (first == last)
+            {
+                coverage[first - x0] += (to - from) * Share;
+                return;
+            }
+
+            coverage[first - x0] += (first + 1 - from) * Share;
+            for (var x = first + 1; x < last; x++)
+            {
+                coverage[x - x0] += Share;
+            }
+
+            if (last < x1)
+            {
+                coverage[last - x0] += (to - last) * Share;
+            }
+        }
+
+        /// <summary>Mixes each pixel of a row with the colour by its coverage (see <see cref="FillGlyph"/>).</summary>
+        private void PaintCoverage(int y, int x0, ReadOnlySpan<double> coverage)
+        {
+            var row = pixels.Slice(y * stride, width * 4);
+            var painted = false;
+            int left = int.MaxValue, right = int.MinValue;
+            for (var i = 0; i < coverage.Length; i++)
+            {
+                var share = Math.Min(1, coverage[i]);
+                if (share <= 0)
+                {
+                    continue;
+                }
+
+                var pixel = row.Slice((x0 + i) * 4, 4);
+                if (pixel[3] is not (0xFF or OutlineMark))
+                {
+                    continue;
+                }
+
+                var target = (foreground.B + delta.B, foreground.G + delta.G, foreground.R + delta.R);
+                pixel[0] = Mix(pixel[0], target.Item1, share);
+                pixel[1] = Mix(pixel[1], target.Item2, share);
+                pixel[2] = Mix(pixel[2], target.Item3, share);
+                pixel[3] = PaintedMark;
+                painted = true;
+                left = Math.Min(left, x0 + i);
+                right = Math.Max(right, x0 + i);
+            }
+
+            if (painted)
+            {
+                markedLeft = Math.Min(markedLeft, left);
+                markedRight = Math.Max(markedRight, right);
+                markedTop = Math.Min(markedTop, y);
+                markedBottom = Math.Max(markedBottom, y);
+            }
+
+            static byte Mix(byte value, int target, double share) => (byte)Math.Clamp((int)Math.Round(value + ((target - value) * share)), 0, 255);
+        }
+
+        /// <summary>Turns the outline marks of a glyph (within the pixels given) into painted marks, so nothing below paints them.</summary>
+        private bool ConvertOutlineMarks(int left, int top, int right, int bottom)
+        {
+            left = Math.Clamp(left, 0, width);
+            right = Math.Clamp(right, 0, width);
+            top = Math.Clamp(top, 0, height);
+            bottom = Math.Clamp(bottom, 0, height);
+            for (var y = top; y < bottom; y++)
+            {
+                if (!Charge(1 + Math.Max(0, right - left)))
+                {
+                    return false;
+                }
+
+                var row = pixels.Slice(y * stride, width * 4);
+                for (var x = left; x < right; x++)
+                {
+                    if (row[(x * 4) + 3] == OutlineMark)
+                    {
+                        row[(x * 4) + 3] = PaintedMark;
+                    }
+                }
+            }
+
+            return true;
+        }
 
         /// <summary>
         /// Whether a rectangle in pixels of the bitmap (widened by <paramref name="slack"/>) meets the bitmap; a coordinate that
@@ -634,7 +928,7 @@ internal static class PdfiumDarkDrawings
                 var row = pixels.Slice(y * stride, width * 4);
                 for (var x = Math.Max(0, markedLeft); x <= Math.Min(width - 1, markedRight); x++)
                 {
-                    if (row[(x * 4) + 3] == PaintedMark)
+                    if (row[(x * 4) + 3] is PaintedMark or OutlineMark)
                     {
                         row[(x * 4) + 3] = 0xFF;
                     }
@@ -665,7 +959,7 @@ internal static class PdfiumDarkDrawings
                 pixel[0] = Shift(pixel[0], delta.B, share);
                 pixel[1] = Shift(pixel[1], delta.G, share);
                 pixel[2] = Shift(pixel[2], delta.R, share);
-                pixel[3] = PaintedMark;
+                pixel[3] = Mark;
                 painted = true;
             }
 
@@ -685,7 +979,7 @@ internal static class PdfiumDarkDrawings
 }
 
 /// <summary>A drawing as the dark page paints it: its colour there (ARGB), its stroke width in points, and its paths.</summary>
-internal sealed class DarkDrawing(uint color, double width, IReadOnlyList<DarkDrawingPath> paths)
+internal sealed class DarkDrawing(uint color, double width, IReadOnlyList<DarkDrawingPath> paths, IReadOnlyList<DarkGlyph>? glyphs = null)
 {
     /// <summary>Gets the colour on the dark page (ARGB).</summary>
     public uint Color { get; } = color;
@@ -695,7 +989,14 @@ internal sealed class DarkDrawing(uint color, double width, IReadOnlyList<DarkDr
 
     /// <summary>Gets the paths that are stroked.</summary>
     public IReadOnlyList<DarkDrawingPath> Paths { get; } = paths;
+
+    /// <summary>Gets the filled glyphs of a text box, or <see langword="null"/> for a drawing (then <see cref="Paths"/> are stroked).</summary>
+    public IReadOnlyList<DarkGlyph>? Glyphs { get; } = glyphs;
 }
+
+/// <summary>A glyph of a text box: its closed contours, flattened, in points from the top left of the displayed page (filled with the nonzero rule).</summary>
+/// <param name="Contours">The contours.</param>
+internal sealed record DarkGlyph(IReadOnlyList<(double X, double Y)[]> Contours);
 
 /// <summary>
 /// A path of a drawing in points from the top left of the displayed page: a polyline, closed or not, or (when

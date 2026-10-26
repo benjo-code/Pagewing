@@ -53,6 +53,10 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.AnnotFlagPrint)] = "FPDF_ANNOT_FLAG_PRINT",
         [nameof(FpdfConstants.AnnotFlagNoView)] = "FPDF_ANNOT_FLAG_NOVIEW",
         [nameof(FpdfConstants.AnnotAppearanceNormal)] = "FPDF_ANNOT_APPEARANCEMODE_NORMAL",
+        [nameof(FpdfConstants.SegmentLineTo)] = "FPDF_SEGMENT_LINETO",
+        [nameof(FpdfConstants.SegmentBezierTo)] = "FPDF_SEGMENT_BEZIERTO",
+        [nameof(FpdfConstants.SegmentMoveTo)] = "FPDF_SEGMENT_MOVETO",
+        [nameof(FpdfConstants.FontTrueType)] = "FPDF_FONT_TRUETYPE",
     };
 
     /// <summary>
@@ -97,7 +101,7 @@ public sealed partial class NativeBindingsTests
             "include",
             "pdfium");
         var defines = new Dictionary<string, long>();
-        foreach (var header in new[] { "fpdfview.h", "fpdf_progressive.h", "fpdf_doc.h", "fpdf_save.h", "fpdf_annot.h" })
+        foreach (var header in new[] { "fpdfview.h", "fpdf_progressive.h", "fpdf_doc.h", "fpdf_save.h", "fpdf_annot.h", "fpdf_edit.h" })
         {
             foreach (Match match in DefinePattern().Matches(File.ReadAllText(Path.Combine(headerDirectory, header))))
             {
@@ -131,6 +135,38 @@ public sealed partial class NativeBindingsTests
 
         // The specification values only hold while FPDFText_GetFontInfo still reports the font descriptor flags.
         Assert.Contains("Font Descriptor Flags", File.ReadAllText(Path.Combine(headerDirectory, "fpdf_text.h")), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Guards the experimental glyph API the text boxes draw with (milestone 10): <c>FPDFFont_GetGlyphPath</c> and
+    /// <c>FPDFFont_GetGlyphWidth</c> take the Unicode value (the header only says "glyph"), the outline comes in em whatever
+    /// the size, the width in points of the size, and the metrics of Geist Regular (ascent 1005, descent 295 per 1000) come
+    /// through. If an update of PDFium fails this, check the header and the behaviour; do not loosen it.
+    /// </summary>
+    [Fact]
+    public async Task GlyphApiTakesUnicodeAndReturnsEmUnits()
+    {
+        var font = await File.ReadAllBytesAsync(TestData.GeistRegular, TestContext.Current.CancellationToken);
+        var table = await PdfiumThread.Shared.InvokeAsync(
+            () => PdfiumGlyphs.Read(PdfiumThread.Shared, font, ['H', 'ü', '€', ' ']),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1.005, table.Ascent, 3);
+        Assert.InRange(table.Descent, 0.29, 0.30);
+        Assert.True(table.TryGet('H', out var h));
+
+        // Read at size 1, so the width is in em; at 20 pt it would be twenty times as much.
+        Assert.InRange(h.Advance, 0.6, 0.8);
+        var numbers = h.Outline.Split(' ').Where(t => int.TryParse(t, out _)).Select(int.Parse).ToArray();
+        var ys = numbers.Where((_, i) => i % 2 == 1).ToArray();
+        Assert.Equal(0, ys.Min());
+        Assert.InRange(ys.Max(), 700, 720);
+        Assert.EndsWith("f", h.Outline, StringComparison.Ordinal);
+        Assert.True(table.TryGet('ü', out var u) && u.Outline.Length > 0, "ü has no outline: the glyph API no longer takes the Unicode value.");
+        Assert.True(table.TryGet('€', out var euro) && euro.Outline.Length > 0);
+        Assert.True(table.TryGet(' ', out var space));
+        Assert.Equal(string.Empty, space.Outline);
+        Assert.True(space.Advance > 0);
     }
 
     [Fact]

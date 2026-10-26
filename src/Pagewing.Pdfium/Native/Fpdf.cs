@@ -443,6 +443,77 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial CULong FPDFAnnot_GetAP(nint annotation, int appearanceMode, ushort* buffer, CULong bufferLength);
 
+    // Fonts and glyph outlines (fpdf_edit.h; partly experimental API). Used only to read the outlines of the text box font
+    // (Geist Regular) in a document that is never saved; see PdfiumGlyphs. FPDF_FONT, FPDF_GLYPHPATH and FPDF_PATHSEGMENT
+    // are opaque pointers; a glyph path and its segments belong to the font and need no closing.
+
+    /// <summary><c>FPDF_CreateNewDocument</c>: a new, empty document; closed with <see cref="FPDF_CloseDocument"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDF_CreateNewDocument();
+
+    /// <summary>
+    /// <c>FPDFText_LoadFont</c>: loads a TrueType (<c>font_type</c> 2) or Type 1 font from bytes (copied) into the document;
+    /// <c>size</c> is <c>uint32_t</c>, <c>cid</c> an <c>FPDF_BOOL</c>. Closed with <see cref="FPDFFont_Close"/>.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFText_LoadFont(nint document, byte* data, uint size, int fontType, int cid);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFFont_Close(nint font);
+
+    /// <summary>Experimental API: the ascent of a font at a size, in points.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFont_GetAscent(nint font, float fontSize, float* ascent);
+
+    /// <summary>Experimental API: the descent of a font at a size, in points (negative below the baseline).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFont_GetDescent(nint font, float fontSize, float* descent);
+
+    /// <summary>
+    /// Experimental API: the advance width of a glyph at a size, in points. <c>glyph</c> (<c>uint32_t</c>) is the Unicode
+    /// value (measured, not stated by the header; <c>NativeBindingsTests.GlyphApiTakesUnicodeAndReturnsEmUnits</c>).
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFont_GetGlyphWidth(nint font, uint glyph, float fontSize, float* width);
+
+    /// <summary>
+    /// Experimental API: the outline of a glyph, or 0. <c>glyph</c> is the Unicode value as for
+    /// <see cref="FPDFFont_GetGlyphWidth"/>; the points come in em, whatever the size (measured).
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFFont_GetGlyphPath(nint font, uint glyph, float fontSize);
+
+    /// <summary>Experimental API: the number of segments of a glyph path, or -1.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFGlyphPath_CountGlyphSegments(nint glyphPath);
+
+    /// <summary>Experimental API: a segment of a glyph path, or 0.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFGlyphPath_GetGlyphPathSegment(nint glyphPath, int index);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPathSegment_GetPoint(nint segment, float* x, float* y);
+
+    /// <summary>One of <c>FPDF_SEGMENT_*</c> (<see cref="FpdfConstants.SegmentLineTo"/> and the others), -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPathSegment_GetType(nint segment);
+
+    /// <summary>Whether the segment closes its subpath.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPathSegment_GetClose(nint segment);
+
     // Signatures (fpdf_signature.h).
 
     [LibraryImport(Library)]
