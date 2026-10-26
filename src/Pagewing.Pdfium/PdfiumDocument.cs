@@ -26,6 +26,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     private volatile bool disposed;
 
     private int darkMarkupScans;
+    private int formEnvironmentsCreated;
 
     private PdfiumDocument(DocumentHandle handle, FileReadContext source)
     {
@@ -64,6 +65,32 @@ internal sealed unsafe class PdfiumDocument : IDisposable
 
     /// <summary>Counts one read of <see cref="DarkMarkupScans"/>. PDFium thread only.</summary>
     internal void CountDarkMarkupScan() => Volatile.Write(ref darkMarkupScans, darkMarkupScans + 1);
+
+    /// <summary>
+    /// Gets how many form-fill environments were created for this document (0 without a form, else 1), for tests that check
+    /// that a document without a form never gets one. Written on the PDFium thread only.
+    /// </summary>
+    internal int FormEnvironmentsCreated => Volatile.Read(ref formEnvironmentsCreated);
+
+    /// <summary>
+    /// Gets the kind of form of the document (<c>FPDF_GetFormType</c>): <see cref="FpdfConstants.FormTypeNone"/>,
+    /// <see cref="FpdfConstants.FormTypeAcroForm"/>, or one of the XFA kinds, whose AcroForm fields stay fillable (the package
+    /// has no XFA module).
+    /// </summary>
+    public int FormType => Fpdf.FPDF_GetFormType(Access());
+
+    /// <summary>
+    /// Gets the form-fill environment created when the document was opened, or <see langword="null"/> for a document without
+    /// a form (or if PDFium could not create one). It is exited when the document closes, after its last page.
+    /// </summary>
+    public PdfiumFormEnvironment? FormEnvironment
+    {
+        get
+        {
+            Access();
+            return handle.FormEnvironment;
+        }
+    }
 
     /// <summary>Gets the number of pages.</summary>
     public int PageCount => Fpdf.FPDF_GetPageCount(Access());
@@ -165,7 +192,9 @@ internal sealed unsafe class PdfiumDocument : IDisposable
                 throw;
             }
 
-            return new PdfiumDocument(handle, context);
+            var opened = new PdfiumDocument(handle, context);
+            opened.CreateFormEnvironment();
+            return opened;
         }
         catch
         {
@@ -173,6 +202,22 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             handle.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Creates the form-fill environment in the open job, only for a document with a form, and hands it to the handle, which
+    /// exits it before the document closes.
+    /// </summary>
+    private void CreateFormEnvironment()
+    {
+        var environment = PdfiumFormEnvironment.CreateIfForm(this);
+        if (environment is null)
+        {
+            return;
+        }
+
+        handle.FormEnvironment = environment;
+        Volatile.Write(ref formEnvironmentsCreated, formEnvironmentsCreated + 1);
     }
 
     /// <summary>
@@ -271,6 +316,15 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             {
                 Fpdf.FPDF_ClosePage(value);
                 throw;
+            }
+
+            if (handle.FormEnvironment is { } environment)
+            {
+                // Set first, so the page leaves the environment when it closes even if the announcement fails. The first
+                // announcement of a document loads all its fields (72 to 91 ms at 2,000 fields in the spike); whether that
+                // belongs in the open job or the first render is measured in task 14 of milestone 11.
+                page.FormEnvironment = environment;
+                environment.PageLoaded(value);
             }
 
             return new PdfiumPage(page, Fpdf.FPDF_GetPageWidthF(value), Fpdf.FPDF_GetPageHeightF(value));

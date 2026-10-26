@@ -38,6 +38,12 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Gets how many form-fill environments PDFium created for this document when it was opened: 1 with a form, 0 without
+    /// (for tests; see <c>PdfiumDocument.FormEnvironmentsCreated</c>). Any thread.
+    /// </summary>
+    internal int FormEnvironmentsCreated => document.FormEnvironmentsCreated;
+
     /// <summary>Gets the PDF version from the file header, for example "1.7"; empty when unknown.</summary>
     public string PdfVersion
     {

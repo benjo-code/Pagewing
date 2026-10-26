@@ -111,13 +111,25 @@ internal abstract class PdfiumHandle : SafeHandleZeroOrMinusOneIsInvalid
 }
 
 /// <summary>
-/// An <c>FPDF_DOCUMENT</c>. After <c>FPDF_CloseDocument</c> it frees the native <see cref="FpdfFileAccess"/>
-/// and disposes the read context that PDFium's read callback uses.
+/// An <c>FPDF_DOCUMENT</c>. Before <c>FPDF_CloseDocument</c> it exits the form-fill environment (if the document has one);
+/// after it, it frees the native <see cref="FpdfFileAccess"/> and disposes the read context that PDFium's read callback uses.
 /// </summary>
 internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(thread, null)
 {
     private nint fileAccess;
     private IDisposable? ownedContext;
+    private PdfiumFormEnvironment? formEnvironment;
+
+    /// <summary>
+    /// Gets or sets the form-fill environment of the document, or <see langword="null"/> without a form. Set once, on the
+    /// PDFium thread, right after the document was attached. Closing the handle exits it before the document is closed, which
+    /// happens only after every page is closed (each <see cref="PageHandle"/> holds a reference on this handle).
+    /// </summary>
+    public PdfiumFormEnvironment? FormEnvironment
+    {
+        get => Volatile.Read(ref formEnvironment);
+        set => Volatile.Write(ref formEnvironment, value);
+    }
 
     /// <summary>
     /// Gets or sets the <see cref="FpdfFileAccess"/> passed to <c>FPDF_LoadCustomDocument</c>. It must be
@@ -140,7 +152,18 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         set => Volatile.Write(ref ownedContext, value);
     }
 
-    protected override void CloseNative(nint value) => Fpdf.FPDF_CloseDocument(value);
+    protected override void CloseNative(nint value)
+    {
+        try
+        {
+            // FPDFDOC_ExitFormFillEnvironment before FPDF_CloseDocument (fpdf_formfill.h).
+            Interlocked.Exchange(ref formEnvironment, null)?.Dispose();
+        }
+        finally
+        {
+            Fpdf.FPDF_CloseDocument(value);
+        }
+    }
 
     protected override void ReleaseOwnedResources()
     {
@@ -159,10 +182,36 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
     }
 }
 
-/// <summary>An <c>FPDF_PAGE</c>; keeps its document open until the page is closed.</summary>
+/// <summary>
+/// An <c>FPDF_PAGE</c>; keeps its document open until the page is closed. A page announced to the form-fill environment
+/// leaves it (<c>FORM_OnBeforeClosePage</c>) right before <c>FPDF_ClosePage</c>.
+/// </summary>
 internal sealed class PageHandle(PdfiumThread thread, DocumentHandle document) : PdfiumHandle(thread, document)
 {
-    protected override void CloseNative(nint value) => Fpdf.FPDF_ClosePage(value);
+    private PdfiumFormEnvironment? formEnvironment;
+
+    /// <summary>
+    /// Gets or sets the form-fill environment the page is announced to, or <see langword="null"/>. Set on the PDFium thread
+    /// by <see cref="PdfiumDocument.LoadPage"/> before it calls <see cref="PdfiumFormEnvironment.PageLoaded"/>.
+    /// </summary>
+    public PdfiumFormEnvironment? FormEnvironment
+    {
+        get => Volatile.Read(ref formEnvironment);
+        set => Volatile.Write(ref formEnvironment, value);
+    }
+
+    protected override void CloseNative(nint value)
+    {
+        try
+        {
+            // FORM_OnBeforeClosePage before FPDF_ClosePage (fpdf_formfill.h).
+            Interlocked.Exchange(ref formEnvironment, null)?.PageClosing(value);
+        }
+        finally
+        {
+            Fpdf.FPDF_ClosePage(value);
+        }
+    }
 }
 
 /// <summary>An <c>FPDF_TEXTPAGE</c>; keeps its page open until the text page is closed.</summary>

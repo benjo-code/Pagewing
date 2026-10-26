@@ -135,6 +135,18 @@ internal static class FpdfConstants
     /// <summary><c>FPDF_RENDER_FAILED</c>.</summary>
     public const int RenderFailed = 3;
 
+    /// <summary><c>FORMTYPE_NONE</c> (<c>fpdf_formfill.h</c>, <c>FPDF_GetFormType</c>): the document has no form.</summary>
+    public const int FormTypeNone = 0;
+
+    /// <summary><c>FORMTYPE_ACRO_FORM</c>: the form is an AcroForm.</summary>
+    public const int FormTypeAcroForm = 1;
+
+    /// <summary><c>FORMTYPE_XFA_FULL</c>: the form uses the entire XFA specification (the AcroForm fields stay fillable).</summary>
+    public const int FormTypeXfaFull = 2;
+
+    /// <summary><c>FORMTYPE_XFA_FOREGROUND</c>: the form uses the XFAF subset (the AcroForm fields stay fillable).</summary>
+    public const int FormTypeXfaForeground = 3;
+
     /// <summary><c>PDFACTION_GOTO</c> (<c>fpdf_doc.h</c>): go to a destination in the same document.</summary>
     public const int ActionGoTo = 1;
 

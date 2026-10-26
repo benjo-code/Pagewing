@@ -5,7 +5,7 @@ namespace Pagewing.Pdfium.Native;
 
 /// <summary>
 /// Raw PDFium bindings (package <c>bblanchon.PDFium.*</c> 157.0.8100, headers <c>fpdfview.h</c>,
-/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
+/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>, <c>fpdf_formfill.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
 /// <c>FS_FLOAT</c> is <c>float</c>. Only functions Pagewing needs are bound.
 /// Every call must run on the <see cref="PdfiumThread"/>. C <c>unsigned long</c> is bound as
 /// <see cref="CULong"/> because it is 32-bit on Windows and 64-bit on Linux.
@@ -528,6 +528,120 @@ internal static unsafe partial class Fpdf
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial uint FPDFSignatureObj_GetDocMDPPermission(nint signature);
+
+    // Forms (fpdf_formfill.h). FPDF_FORMHANDLE is an opaque pointer; see PdfiumFormEnvironment for the lifetime rules.
+
+    /// <summary>
+    /// Creates the form-fill environment of a document, or returns 0 on failure. <paramref name="formInfo"/> must stay valid
+    /// until <see cref="FPDFDOC_ExitFormFillEnvironment"/> has returned.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFDOC_InitFormFillEnvironment(nint document, FpdfFormFillInfo* formInfo);
+
+    /// <summary>Exits the form-fill environment; before <see cref="FPDF_CloseDocument"/> and after the last page was announced closed.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFDOC_ExitFormFillEnvironment(nint form);
+
+    /// <summary>Announces a loaded page to the environment; the first call of a document loads all its fields.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FORM_OnAfterLoadPage(nint page, nint form);
+
+    /// <summary>Announces that a page is about to close; before <see cref="FPDF_ClosePage"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FORM_OnBeforeClosePage(nint page, nint form);
+
+    /// <summary>One of <c>FORMTYPE_*</c> (<see cref="FpdfConstants.FormTypeNone"/> and the others). Experimental API.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_GetFormType(nint document);
+}
+
+/// <summary>
+/// <c>FPDF_FORMFILLINFO</c> from <c>fpdf_formfill.h</c> (280 bytes on x64). Pagewing sets only <see cref="Version"/> = 1 and
+/// leaves every pointer null: no callback is needed (Docs/DECISIONS.md, "Formulare: Formular-Engine …", point 6), and null
+/// action pointers mean PDFium never opens a URI, runs a named or go-to action, or submits a form on Pagewing's behalf. The
+/// function pointers are therefore bound as <see cref="nint"/>; <c>NativeBindingsTests.FormFillInfoMatchesTheHeader</c>
+/// checks names, order and widths against the header.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FpdfFormFillInfo
+{
+    /// <summary>Version of the interface (<c>version</c>); 1 = only the stable interfaces are called.</summary>
+    public int Version;
+
+    public nint Release;
+
+    public nint FfiInvalidate;
+
+    public nint FfiOutputSelectedRect;
+
+    public nint FfiSetCursor;
+
+    public nint FfiSetTimer;
+
+    public nint FfiKillTimer;
+
+    public nint FfiGetLocalTime;
+
+    public nint FfiOnChange;
+
+    public nint FfiGetPage;
+
+    public nint FfiGetCurrentPage;
+
+    public nint FfiGetRotation;
+
+    public nint FfiExecuteNamedAction;
+
+    public nint FfiSetTextFieldFocus;
+
+    public nint FfiDoUriAction;
+
+    public nint FfiDoGoToAction;
+
+    /// <summary><c>m_pJsPlatform</c>: unused without V8.</summary>
+    public nint JsPlatform;
+
+    /// <summary><c>xfa_disabled</c> (<c>FPDF_BOOL</c>); version 2 only.</summary>
+    public int XfaDisabled;
+
+    public nint FfiDisplayCaret;
+
+    public nint FfiGetCurrentPageIndex;
+
+    public nint FfiSetCurrentPage;
+
+    public nint FfiGotoUrl;
+
+    public nint FfiGetPageViewRect;
+
+    public nint FfiPageEvent;
+
+    public nint FfiPopupMenu;
+
+    public nint FfiOpenFile;
+
+    public nint FfiEmailTo;
+
+    public nint FfiUploadTo;
+
+    public nint FfiGetPlatform;
+
+    public nint FfiGetLanguage;
+
+    public nint FfiDownloadFromUrl;
+
+    public nint FfiPostRequestUrl;
+
+    public nint FfiPutRequestUrl;
+
+    public nint FfiOnFocusChange;
+
+    public nint FfiDoUriActionWithKeyboardModifier;
 }
 
 /// <summary><c>FPDF_FILEACCESS</c> from <c>fpdfview.h</c>: random read access to a document.</summary>
