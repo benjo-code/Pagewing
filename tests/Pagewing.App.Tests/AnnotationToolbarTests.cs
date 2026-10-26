@@ -399,7 +399,7 @@ public sealed class AnnotationToolbarTests : IDisposable
     public async Task KeyboardReachesEveryTool()
     {
         var (window, tab, toolbar, _) = await ShowInModeAsync();
-        string[] order = ["SelectTool", "InkTool", "RectangleTool", "EllipseTool", "LineTool", "ArrowTool", "HighlightTool", "UnderlineTool", "StrikeOutTool"];
+        string[] order = ["SelectTool", "InkTool", "RectangleTool", "EllipseTool", "LineTool", "ArrowTool", "TextBoxTool", "HighlightTool", "UnderlineTool", "StrikeOutTool"];
 
         // Tab goes through every tool in this order.
         Find<ActionToggleButton>(toolbar, order[0]).Focus(NavigationMethod.Tab);
@@ -693,14 +693,19 @@ public sealed class AnnotationToolbarTests : IDisposable
     public async Task ShapesMoveIntoTheOverflowAtTheNarrowestLevel()
     {
         var (window, tab, toolbar, _) = await ShowInModeAsync();
-        string[] shapes = ["RectangleTool", "EllipseTool", "LineTool", "ArrowTool"];
+        string[] shapes = ["RectangleTool", "EllipseTool", "LineTool", "ArrowTool", "TextBoxTool"];
 
-        // At the smallest width of the window without a panel every tool fits in the row.
-        window.Width = 640;
+        // In a window of 800 px without a panel every tool fits in the row; since the text box (M10) the smallest window
+        // (640 px) has the shapes and the text box in the menu already.
+        window.Width = 800;
         Settle(window);
         Settle(window);
         Assert.False(toolbar.AreShapesInMenu);
         Assert.All(shapes, name => Assert.True(Find<ActionToggleButton>(toolbar, name).IsEffectivelyVisible, name));
+        window.Width = 640;
+        Settle(window);
+        Settle(window);
+        Assert.True(toolbar.AreShapesInMenu);
 
         // In the narrowest document area the shapes go into the menu "⋯"; select, freehand, the markups and "Done" stay.
         await NarrowestAsync(window);
@@ -713,8 +718,8 @@ public sealed class AnnotationToolbarTests : IDisposable
 
         var menu = await OpenMoreAsync(window, toolbar);
         Assert.Equal(
-            [Strings.ToolRectangle, Strings.ToolEllipse, Strings.ToolLine, Strings.ToolArrow],
-            menu.Items.OfType<MenuItem>().Where(entry => entry.Name is "MoreRectangle" or "MoreEllipse" or "MoreLine" or "MoreArrow").Select(entry => (string)entry.Header!));
+            [Strings.ToolRectangle, Strings.ToolEllipse, Strings.ToolLine, Strings.ToolArrow, Strings.ToolTextBox],
+            menu.Items.OfType<MenuItem>().Where(entry => entry.Name is "MoreRectangle" or "MoreEllipse" or "MoreLine" or "MoreArrow" or "MoreTextBox").Select(entry => (string)entry.Header!));
 
         // A shape of the menu chooses its tool.
         var line = menu.Items.OfType<MenuItem>().Single(entry => entry.Name == "MoreLine");
@@ -824,6 +829,7 @@ public sealed class AnnotationToolbarTests : IDisposable
         ("EllipseTool", Strings.ToolEllipse, "Ctrl+Shift+E", "Pw.Icon.Circle", () => tab.SetToolCommand.Execute(AnnotationKind.Ellipse), () => tab.ActiveTool == AnnotationKind.Ellipse),
         ("LineTool", Strings.ToolLine, "Ctrl+Shift+L", "Pw.Icon.Line", () => tab.SetToolCommand.Execute(AnnotationKind.Line), () => tab.ActiveTool == AnnotationKind.Line),
         ("ArrowTool", Strings.ToolArrow, "Ctrl+Shift+A", "Pw.Icon.ArrowUpRight", () => tab.SetToolCommand.Execute(AnnotationKind.Arrow), () => tab.ActiveTool == AnnotationKind.Arrow),
+        ("TextBoxTool", Strings.ToolTextBox, "Ctrl+Shift+T", "Pw.Icon.Typography", () => tab.SetToolCommand.Execute(AnnotationKind.TextBox), () => tab.ActiveTool == AnnotationKind.TextBox),
         ("HighlightTool", Strings.CommandHighlight, "Ctrl+Shift+H", "Pw.Icon.Highlight", () => tab.SetToolCommand.Execute(AnnotationKind.Highlight), () => tab.ActiveTool == AnnotationKind.Highlight),
         ("UnderlineTool", Strings.CommandUnderline, "Ctrl+Shift+U", "Pw.Icon.Underline", () => tab.SetToolCommand.Execute(AnnotationKind.Underline), () => tab.ActiveTool == AnnotationKind.Underline),
         ("StrikeOutTool", Strings.CommandStrikeOut, "Ctrl+Shift+X", "Pw.Icon.Strikethrough", () => tab.SetToolCommand.Execute(AnnotationKind.StrikeOut), () => tab.ActiveTool == AnnotationKind.StrikeOut),

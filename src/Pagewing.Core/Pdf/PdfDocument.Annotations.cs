@@ -377,7 +377,7 @@ public sealed partial class PdfDocument
             annotation.Name,
             kind,
             annotation.SubtypeName,
-            annotation.Color is { } c ? new AnnotationColor(c.R, c.G, c.B) : null,
+            textBox.Spec is { } textBoxSpec ? textBoxSpec.Color : annotation.Color is { } c ? new AnnotationColor(c.R, c.G, c.B) : null,
             quads,
             rects,
             new PageRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom),

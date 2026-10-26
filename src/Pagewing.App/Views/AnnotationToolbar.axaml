@@ -15,18 +15,19 @@
     From the left: the name of the mode with its icon (message, accent.default), the tools (toggle buttons for screen
     readers; the chosen one has an accent.subtle surface, an accent.default 1 px frame and accent.default icon and label,
     so it is not marked by colour alone): select (pointer), freehand (pencil), rectangle (square), oval (circle), line and
-    arrow (arrow-up-right) as icons with a tooltip (milestone 10), then highlight, underline and strike-out with icon and
+    arrow (arrow-up-right) and the text box (typography) as icons with a tooltip (milestone 10), then highlight, underline and strike-out with icon and
     label. Then, only when there is something to show, the style: with a text markup tool (or a selected markup) its five
     colours (swatches in the colour of the markup, which is PDF content, with a 1 px border.strong edge; the chosen one
     has a 2 px text.primary ring and a check mark in search.on; name of the colour as tooltip and for screen readers);
     with a drawing tool (or a selected drawing Pagewing can redraw) the five colours of the drawing palette (the check mark
-    light on the dark colours) and the three stroke widths (a line of that thickness, the chosen one with the ring); with a
+    light on the dark colours) and the three stroke widths (a line of that thickness, the chosen one with the ring; with the
+    text box tool or a selected text box the three font sizes instead, an "A" of that size); with a
     locked drawing of another program selected a lock with the reason. Undo and Redo; on the right the hint "Esc ends" and
     the primary button "Done". Tab moves through each tool, the colour group and the width group (one stop each: the
     arrows move within them; within the tools as well), Undo, Redo and Done; Enter and Space press; Esc clears a text
     selection, then ends the mode. Too narrow: the hint goes first, then the labels of the tools (their tooltips stay),
     then the text of the mode name (its icon stays), then Undo and Redo, after them the colours and widths, then the four
-    shapes (rectangle, oval, line, arrow; never the tool that is on) move into the menu "⋯" (dots), and last the icon of
+    shapes and the text box (rectangle, oval, line, arrow, text box; never the tool that is on) move into the menu "⋯" (dots), and last the icon of
     the mode goes, so every tool stays reachable; select, freehand, the markups, the tool that is on and "Done" stay in the
     row. Made when the mode is first started (MainWindow.Annotate.cs), never in the startup path; its styles live here for
     the same reason. The DataContext is the active tab.
@@ -95,6 +96,12 @@
       <Setter Property="Brush" Value="{DynamicResource Pw.Brush.Page.DarkForeground}" />
     </Style>
     <!-- A stroke width: a line of that thickness in text.primary, the chosen one with the ring of a swatch. -->
+    <!-- A font size of the text box tool: an "A" of that size in text.primary (in place of the line). -->
+    <Style Selector="TextBlock.sizeGlyph">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style Selector="Border.widthGlyph">
       <Setter Property="Width" Value="16" />
       <Setter Property="Background" Value="{DynamicResource Pw.Brush.Text.Primary}" />
@@ -161,6 +168,11 @@
                                   Command="{Binding SetToolCommand}" CommandParameter="{x:Static ann:AnnotationKind.Arrow}"
                                   AutomationProperties.Name="{x:Static res:Strings.ToolArrow}">
             <ctl:StrokeIcon Name="ArrowToolIcon" Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.ArrowUpRight}" />
+          </ctl:ActionToggleButton>
+          <ctl:ActionToggleButton Name="TextBoxTool" Classes="icon tool"
+                                  Command="{Binding SetToolCommand}" CommandParameter="{x:Static ann:AnnotationKind.TextBox}"
+                                  AutomationProperties.Name="{x:Static res:Strings.ToolTextBox}">
+            <ctl:StrokeIcon Name="TextBoxToolIcon" Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Typography}" />
           </ctl:ActionToggleButton>
           <Border Name="ToolSeparator" Classes="toolbarSeparator" Margin="4,0" />
           <ctl:ActionToggleButton Name="HighlightTool" Classes="icon tool"

@@ -1257,4 +1257,40 @@
   <data name="SelectionHandleNameOf" xml:space="preserve">
     <value>{0}, {1}, Seite {2}</value>
   </data>
+  <data name="CommandTextBox" xml:space="preserve">
+    <value>Textfeld hinzufügen</value>
+  </data>
+  <data name="ToolTextBox" xml:space="preserve">
+    <value>Textfeld</value>
+  </data>
+  <data name="TextBoxSizeSmall" xml:space="preserve">
+    <value>Kleine Schrift (12 pt)</value>
+  </data>
+  <data name="TextBoxSizeMedium" xml:space="preserve">
+    <value>Mittlere Schrift (16 pt)</value>
+  </data>
+  <data name="TextBoxSizeLarge" xml:space="preserve">
+    <value>Große Schrift (24 pt)</value>
+  </data>
+  <data name="AnnotateSizesName" xml:space="preserve">
+    <value>Schriftgrößen</value>
+  </data>
+  <data name="TextBoxEditorName" xml:space="preserve">
+    <value>Text des Textfelds</value>
+  </data>
+  <data name="TextBoxEditorHint" xml:space="preserve">
+    <value>Strg+Eingabe übernimmt, Esc verwirft</value>
+  </data>
+  <data name="TextBoxUnsupportedCharacters" xml:space="preserve">
+    <value>Diese Zeichen kann ein Textfeld nicht darstellen: {0}. Entfernen Sie sie, um den Text zu übernehmen.</value>
+  </data>
+  <data name="TextBoxTooLong" xml:space="preserve">
+    <value>Ein Textfeld fasst höchstens {0} Zeichen.</value>
+  </data>
+  <data name="TextBoxTooManyLines" xml:space="preserve">
+    <value>Ein Textfeld fasst höchstens {0} Zeilen.</value>
+  </data>
+  <data name="SelectionLockedForeignTextBox" xml:space="preserve">
+    <value>Von einem anderen Programm angelegt oder geändert: Sie können das Textfeld löschen, aber nicht verschieben oder ändern.</value>
+  </data>
 </root>

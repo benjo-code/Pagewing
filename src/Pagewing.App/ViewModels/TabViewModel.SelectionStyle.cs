@@ -26,7 +26,10 @@ public sealed partial class TabViewModel
     public DrawColor? SelectionDrawColor => CanMoveSelection && ShownColorOf(_selectedAnnotation!) is { } color ? DrawPalette.Match(color) : null;
 
     /// <summary>Gets the stroke width of a movable selected drawing as one of the three steps, or <see langword="null"/> (another width).</summary>
-    public StrokeWidth? SelectionStrokeWidth => CanMoveSelection && SelectionGeometry is { } shape ? StepOf(shape.Width) : null;
+    public StrokeWidth? SelectionStrokeWidth =>
+        !CanMoveSelection ? null
+        : _selectedAnnotation is { TextBox: { } box } ? TextBoxSpec.StepOf(box.FontSize)
+        : SelectionGeometry is { } shape ? StepOf(shape.Width) : null;
 
     /// <summary>Gets whether the selection is a highlight, underline or strike-out Pagewing may recolour.</summary>
     public bool IsMarkupSelected => _selectedAnnotation is { Editable: true } selected && IsMarkupKind(selected.Kind);
@@ -103,8 +106,14 @@ public sealed partial class TabViewModel
         }
 
         FlushNudge();
-        if (_selectedAnnotation is not { Drawing: { } drawing } target || !CanMoveSelection || WaitsForReplaceWithoutName(target))
+        if (_selectedAnnotation is not { SelectionShape: { } drawing } target || !CanMoveSelection || WaitsForReplaceWithoutName(target))
         {
+            return;
+        }
+
+        if (target.TextBox is { } textBox)
+        {
+            RestyleTextBox(target, textBox, color, width);
             return;
         }
 
@@ -150,6 +159,43 @@ public sealed partial class TabViewModel
                     OnPropertyChanged(nameof(SelectionStrokeWidth));
                 }
 
+                ClearPendingColor(pendingColor);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Gives the selected text box another colour or font size (the width step is the size, <see cref="TextBoxSpec.FontSizeOf"/>)
+    /// in one step; its text is laid out again.
+    /// </summary>
+    private void RestyleTextBox(PdfAnnotation target, TextBoxSpec box, DrawColor? color, StrokeWidth? width)
+    {
+        var newColor = color is { } chosen && DrawPalette.ColorOf(chosen) != ShownColorOf(target) ? DrawPalette.ColorOf(chosen) : (AnnotationColor?)null;
+        var newSize = width is { } step && TextBoxSpec.FontSizeOf(step) != box.FontSize ? TextBoxSpec.FontSizeOf(step) : (double?)null;
+        if (newColor is null && newSize is null)
+        {
+            return;
+        }
+
+        var locator = new AnnotationLocator(target.Page, target.Index, target.Name);
+        var spec = box with { Color = newColor ?? box.Color, FontSize = newSize ?? box.FontSize };
+        var pendingColor = newColor is { } shownColor ? SetPendingColor(target, shownColor) : null;
+        _ = RunEditAsync(async editor =>
+        {
+            try
+            {
+                var changed = await editor.ReplaceTextBoxAsync(locator, spec);
+                if (_selectedAnnotation is { } now && SameAnnotation(now, target))
+                {
+                    SelectedAnnotation = changed;
+                }
+            }
+            catch (Exception ex) when (ex is not (ObjectDisposedException or OperationCanceledException or PdfAnnotationNotFoundException))
+            {
+                DrawingRefused?.Invoke(Strings.DrawingChangeFailed);
+            }
+            finally
+            {
                 ClearPendingColor(pendingColor);
             }
         });

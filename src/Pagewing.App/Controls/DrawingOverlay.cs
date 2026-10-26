@@ -324,6 +324,10 @@ internal sealed class DrawingOverlay : Control
                 // The box is the outer edge of the stroke, as in the annotation.
                 DrawBoxShape(context, pen, preview.Kind, new Rect(View(preview.Anchor), View(preview.End)));
                 break;
+            case AnnotationKind.TextBox:
+                // The box of a text box: a dashed 1 px frame in the colour of the text; its field opens on release.
+                context.DrawRectangle(null, new Pen(new Avalonia.Media.Immutable.ImmutableSolidColorBrush(preview.Color), 1, new DashStyle([4, 3], 0)), new Rect(View(preview.Anchor), View(preview.End)).Normalize());
+                break;
         }
     }
 

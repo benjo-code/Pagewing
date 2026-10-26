@@ -27,8 +27,11 @@ namespace Pagewing.App.Views;
 /// </summary>
 public sealed partial class AnnotationToolbar : UserControl
 {
-    /// <summary>The shapes that move into the menu "⋯" in the narrowest toolbar, in the order of the row.</summary>
-    private static readonly AnnotationKind[] Shapes = [AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Line, AnnotationKind.Arrow];
+    /// <summary>The shapes and the text box, which move into the menu "⋯" in the narrowest toolbar, in the order of the row.</summary>
+    private static readonly AnnotationKind[] Shapes = [AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Line, AnnotationKind.Arrow, AnnotationKind.TextBox];
+
+    /// <summary>The size of the "A" of each font size of the text box tool in the width buttons, in DIP.</summary>
+    private static readonly Dictionary<StrokeWidth, double> SizeGlyphSizes = new() { [StrokeWidth.Thin] = 10, [StrokeWidth.Medium] = 13, [StrokeWidth.Thick] = 17 };
 
     private static readonly StrokeWidth[] Widths = [StrokeWidth.Thin, StrokeWidth.Medium, StrokeWidth.Thick];
 
@@ -40,6 +43,7 @@ public sealed partial class AnnotationToolbar : UserControl
     private readonly Dictionary<DrawColor, ActionToggleButton> _drawSwatches = [];
     private readonly Dictionary<DrawColor, StrokeIcon> _drawChecks = [];
     private readonly Dictionary<StrokeWidth, ActionToggleButton> _widths = [];
+    private readonly Dictionary<StrokeWidth, (Border Line, TextBlock Size)> _widthGlyphs = [];
     private readonly Dictionary<AnnotationKind, KeyGesture> _gestures = [];
     private readonly System.Collections.ObjectModel.ObservableCollection<Control> _moreEntries = [];
     private readonly RelayCommand<DrawColor> _chooseDrawColor;
@@ -50,6 +54,7 @@ public sealed partial class AnnotationToolbar : UserControl
     private bool _undoInMenu;
     private bool _colorsInMenu;
     private bool _shapesInMenu;
+    private bool _sizesShown;
 
     public AnnotationToolbar()
     {
@@ -182,6 +187,7 @@ public sealed partial class AnnotationToolbar : UserControl
         Describe(EllipseTool, Strings.ToolEllipse, catalog.ById("annotate.ellipse"), AnnotationKind.Ellipse);
         Describe(LineTool, Strings.ToolLine, catalog.ById("annotate.line"), AnnotationKind.Line);
         Describe(ArrowTool, Strings.ToolArrow, catalog.ById("annotate.arrow"), AnnotationKind.Arrow);
+        Describe(TextBoxTool, Strings.ToolTextBox, catalog.ById("annotate.textbox"), AnnotationKind.TextBox);
         Describe(HighlightTool, Strings.CommandHighlight, catalog.ById("annotate.highlight"), null);
         Describe(UnderlineTool, Strings.CommandUnderline, catalog.ById("annotate.underline"), null);
         Describe(StrikeOutTool, Strings.CommandStrikeOut, catalog.ById("annotate.strikeout"), null);
@@ -282,6 +288,7 @@ public sealed partial class AnnotationToolbar : UserControl
         SetChosen(EllipseTool, tool == AnnotationKind.Ellipse);
         SetChosen(LineTool, tool == AnnotationKind.Line);
         SetChosen(ArrowTool, tool == AnnotationKind.Arrow);
+        SetChosen(TextBoxTool, tool == AnnotationKind.TextBox);
         SetChosen(HighlightTool, tool == AnnotationKind.Highlight);
         SetChosen(UnderlineTool, tool == AnnotationKind.Underline);
         SetChosen(StrikeOutTool, tool == AnnotationKind.StrikeOut);
@@ -311,6 +318,12 @@ public sealed partial class AnnotationToolbar : UserControl
             _drawChecks[each].IsVisible = chosen;
         }
 
+        ShowSizes(_style switch
+        {
+            StyleMode.Draw => tool == AnnotationKind.TextBox,
+            StyleMode.DrawSelection => tab?.SelectedAnnotation?.Kind == AnnotationKind.TextBox,
+            _ => false,
+        });
         foreach (var (each, button) in _widths)
         {
             SetChosen(button, each == width);
@@ -348,6 +361,7 @@ public sealed partial class AnnotationToolbar : UserControl
         EllipseTool.IsVisible = !_shapesInMenu || tool == AnnotationKind.Ellipse;
         LineTool.IsVisible = !_shapesInMenu || tool == AnnotationKind.Line;
         ArrowTool.IsVisible = !_shapesInMenu || tool == AnnotationKind.Arrow;
+        TextBoxTool.IsVisible = !_shapesInMenu || tool == AnnotationKind.TextBox;
     }
 
     /// <summary>A colour of the drawing tools: the style of the tool that is on, or the colour of the selected drawing.</summary>
@@ -426,7 +440,10 @@ public sealed partial class AnnotationToolbar : UserControl
         return (swatch, check);
     }
 
-    /// <summary>A stroke width: a button like a swatch with a line of that thickness.</summary>
+    /// <summary>
+    /// A stroke width: a button like a swatch with a line of that thickness; with the text box tool (or a selected text box)
+    /// the same button is a font size and shows an "A" of that size instead (<see cref="ShowSizes"/>).
+    /// </summary>
     private void AddWidth(StrokeWidth width)
     {
         var glyph = new Border
@@ -437,13 +454,38 @@ public sealed partial class AnnotationToolbar : UserControl
             VerticalAlignment = VerticalAlignment.Center,
         };
         glyph.Classes.Add("widthGlyph");
-        var button = new ActionToggleButton { Name = "Width" + width, Content = glyph, Command = _chooseWidth, CommandParameter = width };
+        var size = new TextBlock { Name = "SizeGlyph" + width, Text = "A", FontSize = SizeGlyphSizes[width], IsVisible = false };
+        size.Classes.Add("sizeGlyph");
+        var button = new ActionToggleButton
+        {
+            Name = "Width" + width,
+            Content = new Panel { Children = { glyph, size } },
+            Command = _chooseWidth,
+            CommandParameter = width,
+        };
         button.Classes.Add("swatch");
         var label = Strings.StrokeWidthName(width);
         ToolTip.SetTip(button, label);
         AutomationProperties.SetName(button, label);
         WidthGroup.Children.Add(button);
         _widths[width] = button;
+        _widthGlyphs[width] = (glyph, size);
+    }
+
+    /// <summary>Shows the three width buttons as font sizes (text box) or as stroke widths, with their names.</summary>
+    private void ShowSizes(bool sizes)
+    {
+        _sizesShown = sizes;
+        AutomationProperties.SetName(WidthGroup, sizes ? Strings.AnnotateSizesName : Strings.AnnotateWidthsName);
+        foreach (var (width, button) in _widths)
+        {
+            var (line, size) = _widthGlyphs[width];
+            line.IsVisible = !sizes;
+            size.IsVisible = sizes;
+            var label = sizes ? Strings.TextBoxSizeName(width) : Strings.StrokeWidthName(width);
+            ToolTip.SetTip(button, label);
+            AutomationProperties.SetName(button, label);
+        }
     }
 
     /// <summary>
@@ -478,7 +520,7 @@ public sealed partial class AnnotationToolbar : UserControl
     /// <summary>
     /// Too narrow for everything (design system 6, narrow window; 7.7), step by step until it fits: first the hint "Esc ends"
     /// goes, then the labels of the tools (icons with tooltips stay), then the text of the mode name (its icon stays), then
-    /// Undo and Redo, after them the colours and widths, then the four shapes (never the tool that is on) move into the menu
+    /// Undo and Redo, after them the colours and widths, then the four shapes and the text box (never the tool that is on) move into the menu
     /// "⋯", and last the icon of the mode goes. Select, freehand, the text markups, the tool that is on and "Done" always stay
     /// in the row.
     /// </summary>
@@ -611,7 +653,7 @@ public sealed partial class AnnotationToolbar : UserControl
             _moreEntries.Add(new Separator());
             foreach (var width in Widths)
             {
-                var entry = MenuEntry("MoreWidth" + width, Strings.StrokeWidthName(width), _chooseWidth, width, null);
+                var entry = MenuEntry("MoreWidth" + width, _sizesShown ? Strings.TextBoxSizeName(width) : Strings.StrokeWidthName(width), _chooseWidth, width, null);
                 entry.ToggleType = MenuItemToggleType.CheckBox;
                 entry.IsChecked = chosenWidth == width;
                 _moreEntries.Add(entry);

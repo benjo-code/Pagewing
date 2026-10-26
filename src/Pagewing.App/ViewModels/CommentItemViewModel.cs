@@ -57,7 +57,9 @@ public sealed class CommentItemViewModel : ViewModelBase
         }
 
         // A drawing of another program that Pagewing cannot redraw without loss: only its comment and deleting are offered.
-        LockReason = IsDrawingKind(annotation.Kind) && annotation.Editable && !annotation.GeometryEditable ? Strings.SelectionLockedForeign : null;
+        LockReason = IsDrawingKind(annotation.Kind) && annotation.Editable && !annotation.GeometryEditable
+            ? (annotation.Kind == AnnotationKind.TextBox ? Strings.SelectionLockedForeignTextBox : Strings.SelectionLockedForeign)
+            : null;
 
         // Only the parts that are there, in the order the entry shows them.
         var parts = new List<string>(5) { _kindText };
@@ -118,6 +120,9 @@ public sealed class CommentItemViewModel : ViewModelBase
 
     /// <summary>Gets whether the annotation is an arrow Pagewing recognises (its symbol: Tabler "arrow-up-right").</summary>
     public bool IsArrow => Kind == AnnotationKind.Arrow;
+
+    /// <summary>Gets whether the entry is a text box (its text is its comment).</summary>
+    public bool IsTextBox => Kind == AnnotationKind.TextBox;
 
     /// <summary>Gets whether the annotation is a drawing: freehand, rectangle, oval, line or arrow (the filter "Drawings").</summary>
     public bool IsDrawing => IsDrawingKind(Kind);
@@ -247,7 +252,7 @@ public sealed class CommentItemViewModel : ViewModelBase
 
     /// <summary>Whether the kind is a drawing (freehand, rectangle, oval, line, arrow).</summary>
     internal static bool IsDrawingKind(AnnotationKind kind) =>
-        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow;
+        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox;
 
     /// <summary>Creates the row of a group of strokes.</summary>
     internal static CommentItemViewModel Group(PdfAnnotation first, int count) => new(first, count);

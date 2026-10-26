@@ -57,4 +57,12 @@ public sealed record PdfAnnotation(
     bool Editable,
     DrawingGeometry? Drawing = null,
     bool GeometryEditable = false,
-    TextBoxSpec? TextBox = null);
+    TextBoxSpec? TextBox = null)
+{
+    /// <summary>
+    /// Gets the shape the select tool shows, moves and resizes: the <see cref="Drawing"/>, or for a text box its box as a
+    /// rectangle (moving or resizing it changes the box, the text is laid out again); <see langword="null"/> for a markup and
+    /// for a drawing whose shape cannot be read.
+    /// </summary>
+    public DrawingGeometry? SelectionShape => Drawing ?? (TextBox is { } box ? DrawingGeometry.Rectangle(box.Box, 1) : null);
+}

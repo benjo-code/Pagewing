@@ -66,6 +66,27 @@ public sealed record TextBoxSpec(PageRect Box, string Text, double FontSize, Ann
     /// <summary>Gets the three font sizes the text box tool offers (small, medium, large), in points.</summary>
     public static IReadOnlyList<double> ToolFontSizes { get; } = [12, 16, 24];
 
+    /// <summary>
+    /// Gets the font size of a size step of the text box tool: its style keeps the step in the place of a stroke width
+    /// (<see cref="ToolStyle.Width"/>), thin for small (12 pt), medium (16 pt) and thick for large (24 pt).
+    /// </summary>
+    /// <param name="step">The step.</param>
+    /// <returns>The font size in points.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="step"/> is not a defined step.</exception>
+    public static double FontSizeOf(StrokeWidth step) => step switch
+    {
+        StrokeWidth.Thin => ToolFontSizes[0],
+        StrokeWidth.Medium => ToolFontSizes[1],
+        StrokeWidth.Thick => ToolFontSizes[2],
+        _ => throw new ArgumentOutOfRangeException(nameof(step)),
+    };
+
+    /// <summary>Gets the size step of a font size, or <see langword="null"/> for a size the tool does not offer.</summary>
+    /// <param name="fontSize">The font size in points.</param>
+    /// <returns>The step.</returns>
+    public static StrokeWidth? StepOf(double fontSize) =>
+        fontSize == ToolFontSizes[0] ? StrokeWidth.Thin : fontSize == ToolFontSizes[1] ? StrokeWidth.Medium : fontSize == ToolFontSizes[2] ? StrokeWidth.Thick : null;
+
     /// <summary>Turns every line break (CR LF, CR, U+2028, U+2029) into a line feed.</summary>
     /// <param name="text">The text.</param>
     /// <returns>The text with line feeds only.</returns>

@@ -161,10 +161,21 @@ public sealed partial class DocumentView
         // thinning is quadratic in the worst case). The preview keeps and reuses its list, so the tab gets a copy. A shape is
         // a few numbers.
         var raw = gesture.Moved && kind == AnnotationKind.Ink ? preview.Points.ToArray() : null;
-        var shape = gesture.Moved && kind != AnnotationKind.Ink ? GeometryOf(preview) : null;
+        var shape = gesture.Moved && kind is not (AnnotationKind.Ink or AnnotationKind.TextBox) ? GeometryOf(preview) : null;
+        var anchor = preview.Anchor;
+        var end = preview.End;
         EndGesture();
         if (ReferenceEquals(gesture.Tab, _viewModel) && DrawsWith(gesture.Tab) == kind)
         {
+            if (kind == AnnotationKind.TextBox && _layout is { } layout)
+            {
+                // A text box is made from the text of its field, which opens now (DocumentView.TextBoxes.cs).
+                var size = layout.GetPageSize(page);
+                OpenNewTextBox(gesture.Tab, page, NewTextBox(anchor, end, gesture.Moved, size.Width, size.Height));
+                UpdateCursor(position);
+                return true;
+            }
+
             if (raw is not null)
             {
                 _ = gesture.Tab.ApplyFreehandAsync(page, raw);
@@ -248,6 +259,7 @@ public sealed partial class DocumentView
         DisconnectDrawing();
         _drawingTab = tab;
         tab.DrawingRefused += ShowHint;
+        tab.TextBoxEditRequested += OnTextBoxEditRequested;
     }
 
     /// <summary>The view leaves the tab: its refused drawings are no longer shown here.</summary>
@@ -256,6 +268,7 @@ public sealed partial class DocumentView
         if (_drawingTab is { } tab)
         {
             tab.DrawingRefused -= ShowHint;
+            tab.TextBoxEditRequested -= OnTextBoxEditRequested;
             _drawingTab = null;
         }
     }

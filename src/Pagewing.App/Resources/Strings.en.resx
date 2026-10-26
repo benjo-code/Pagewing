@@ -1257,4 +1257,40 @@
   <data name="SelectionHandleNameOf" xml:space="preserve">
     <value>{0}, {1}, page {2}</value>
   </data>
+  <data name="CommandTextBox" xml:space="preserve">
+    <value>Add a text box</value>
+  </data>
+  <data name="ToolTextBox" xml:space="preserve">
+    <value>Text box</value>
+  </data>
+  <data name="TextBoxSizeSmall" xml:space="preserve">
+    <value>Small text (12 pt)</value>
+  </data>
+  <data name="TextBoxSizeMedium" xml:space="preserve">
+    <value>Medium text (16 pt)</value>
+  </data>
+  <data name="TextBoxSizeLarge" xml:space="preserve">
+    <value>Large text (24 pt)</value>
+  </data>
+  <data name="AnnotateSizesName" xml:space="preserve">
+    <value>Font sizes</value>
+  </data>
+  <data name="TextBoxEditorName" xml:space="preserve">
+    <value>Text of the text box</value>
+  </data>
+  <data name="TextBoxEditorHint" xml:space="preserve">
+    <value>Ctrl+Enter applies, Esc discards</value>
+  </data>
+  <data name="TextBoxUnsupportedCharacters" xml:space="preserve">
+    <value>A text box cannot show these characters: {0}. Remove them to apply the text.</value>
+  </data>
+  <data name="TextBoxTooLong" xml:space="preserve">
+    <value>A text box holds at most {0} characters.</value>
+  </data>
+  <data name="TextBoxTooManyLines" xml:space="preserve">
+    <value>A text box holds at most {0} lines.</value>
+  </data>
+  <data name="SelectionLockedForeignTextBox" xml:space="preserve">
+    <value>Made or changed by another program: it can be deleted, but not moved or changed.</value>
+  </data>
 </root>

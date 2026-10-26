@@ -270,7 +270,8 @@ public sealed partial class DocumentView
         ListenForRefusedDrawings(tab);
         var geometry = _selectionDrag is { } drag && ReferenceEquals(drag.Tab, tab) ? drag.Geometry ?? drag.Original : tab.SelectionGeometry;
         var shown = geometry is not null ? selected with { Drawing = geometry } : selected;
-        var preview = geometry is not null && !ReferenceEquals(geometry, selected.Drawing) ? geometry : null;
+        var preview = geometry is not null && !ReferenceEquals(geometry, selected.Drawing)
+            && !(selected.Drawing is null && selected.TextBox is { } box && geometry.Box == box.Box) ? geometry : null;
         var color = selected.Color is { } rgb ? Color.FromRgb(rgb.R, rgb.G, rgb.B) : Colors.Black;
         var kindName = Strings.KindName(selected.Kind) ?? selected.Subtype;
         var name = string.Format(Strings.Culture, FrameNameFormat(), kindName, selected.Page + 1);

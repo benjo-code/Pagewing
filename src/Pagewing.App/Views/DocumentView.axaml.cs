@@ -186,6 +186,7 @@ public sealed partial class DocumentView : UserControl
     private void Disconnect()
     {
         SaveView();
+        CloseTextBoxEditor(apply: true);
         EndGesture();
         DisconnectSelection();
         DisconnectHighlights();
@@ -817,6 +818,7 @@ public sealed partial class DocumentView : UserControl
         FollowSelectionWithViewport();
         FollowGestureWithViewport();
         FollowSelectionViewWithViewport();
+        PlaceTextBoxEditor();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -869,6 +871,7 @@ public sealed partial class DocumentView : UserControl
 
         CheckGesture(e.PropertyName);
         CheckSelectionDrag(e.PropertyName);
+        CheckTextBoxEditor();
     }
 
     /// <summary>Zooms so that the content under the zoom anchor (the pointer, or the middle of the viewport) stays in place.</summary>

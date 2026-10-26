@@ -236,6 +236,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(SelectedIsViewOnly));
             OnPropertyChanged(nameof(SelectedIsDrawing));
             OnPropertyChanged(nameof(SelectedLockReason));
+            OnPropertyChanged(nameof(SelectedCommentReadOnly));
             OnPropertyChanged(nameof(SelectedCanChangeColor));
             OnPropertyChanged(nameof(SelectedColor));
             OnPropertyChanged(nameof(SelectedDrawColor));
@@ -249,6 +250,13 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// read-only and keeps what was typed; applying it, colour and "Delete" do nothing.
     /// </summary>
     public bool IsEditingFrozen => _tab.IsEditingFrozen;
+
+    /// <summary>
+    /// Gets whether the comment field is read-only: editing is locked for an update, or the entry is a text box of another
+    /// program (its comment is the text its own appearance shows, which Pagewing cannot draw anew).
+    /// </summary>
+    public bool SelectedCommentReadOnly =>
+        _tab.IsEditingFrozen || _selected is { IsGroup: false, IsTextBox: true, Annotation.GeometryEditable: false };
 
     /// <summary>Gets whether an entry is selected (the row of a group is none: it only opens and closes).</summary>
     public bool HasSelection => _selected is { IsGroup: false };
@@ -676,6 +684,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         {
             // Locked for an update: what was typed stays (read-only), nothing is applied.
             OnPropertyChanged(nameof(IsEditingFrozen));
+            OnPropertyChanged(nameof(SelectedCommentReadOnly));
             CommitCommentCommand.RaiseCanExecuteChanged();
             DeleteCommand.RaiseCanExecuteChanged();
         }
@@ -706,6 +715,13 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
         var text = _commentDraft;
         if (text == (item.Annotation.Contents ?? string.Empty))
+        {
+            return;
+        }
+
+        // The comment of a text box is its text: only Pagewing's own, and only a text it can show (the typed text stays).
+        if (item.IsTextBox && (!item.Annotation.GeometryEditable || TabViewModel.TextBoxProblemOf(text) is not null
+            || TextBoxSpec.CheckText(text).Problem == TextBoxTextProblem.Empty))
         {
             return;
         }

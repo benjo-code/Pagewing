@@ -50,7 +50,7 @@
         <TextBlock Name="CommentBoxLabel" Classes="caption editorSecondary" Text="{x:Static res:Strings.CommentEditField}" />
         <TextBox Name="CommentBox"
                  Text="{Binding CommentDraft, Mode=TwoWay}"
-                 IsReadOnly="{Binding IsEditingFrozen}"
+                 IsReadOnly="{Binding SelectedCommentReadOnly}"
                  AcceptsReturn="True" TextWrapping="Wrap"
                  AutomationProperties.Name="{x:Static res:Strings.CommentEditField}"
                  AutomationProperties.HelpText="{x:Static res:Strings.CommentEditHint}" />

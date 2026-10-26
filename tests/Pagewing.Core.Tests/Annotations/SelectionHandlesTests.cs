@@ -106,6 +106,28 @@ public sealed class SelectionHandlesTests
         Assert.Equal(box, SelectionHandles.ResizeBy(box, HandleKind.Right, new DisplayPoint(double.NaN, 0), keepAspect: false, Page));
     }
 
+    [Fact]
+    public void AnOwnTextBoxHasEightHandlesOnItsBoxAndAForeignOneNone()
+    {
+        var box = new PageRect(100, 100, 260, 160);
+        var own = SelectionHandles.For(DrawingHitTestTests.TextBox(0, box, own: true));
+
+        Assert.Equal(8, own.Count);
+        Assert.Equal(new DisplayPoint(100, 100), own[0].Position);
+        Assert.Equal(new DisplayPoint(260, 160), own[4].Position);
+        Assert.Empty(SelectionHandles.For(DrawingHitTestTests.TextBox(1, box, own: false)));
+    }
+
+    [Fact]
+    public void TheSizeStepsOfTheTextBoxToolAreSmallMediumAndLarge()
+    {
+        Assert.Equal(12, TextBoxSpec.FontSizeOf(StrokeWidth.Thin));
+        Assert.Equal(16, TextBoxSpec.FontSizeOf(StrokeWidth.Medium));
+        Assert.Equal(24, TextBoxSpec.FontSizeOf(StrokeWidth.Thick));
+        Assert.Equal(StrokeWidth.Medium, TextBoxSpec.StepOf(16));
+        Assert.Null(TextBoxSpec.StepOf(14));
+    }
+
     private static PdfAnnotation Drawing(DrawingGeometry geometry) => new(
         0, 0, "drawing", geometry.Kind, "Ink", new AnnotationColor(220, 30, 30), [], [], geometry.Box, null, null, null, Editable: true, Drawing: geometry, GeometryEditable: true);
 }

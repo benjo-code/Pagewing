@@ -74,6 +74,39 @@ public sealed class DrawingHitTestTests
         Assert.Null(DrawingHitTest.Pick([ellipse], new DisplayPoint(104, 304), 2));
     }
 
+    [Fact]
+    public void ATextBoxIsHitAnywhereInsideItsBoxAndLiesOverMarkups()
+    {
+        var box = new PageRect(100, 100, 260, 160);
+        var markup = Markup(0, new PageRect(90, 120, 300, 135), "under");
+        var textBox = TextBox(1, box, own: true);
+        var foreign = TextBox(2, new PageRect(400, 100, 500, 160), own: false);
+
+        Assert.True(DrawingHitTest.IsSelectable(textBox));
+        Assert.True(DrawingHitTest.IsSelectable(foreign));
+        Assert.Same(textBox, DrawingHitTest.Pick([markup, textBox], new DisplayPoint(180, 128), 2));
+        Assert.Same(textBox, DrawingHitTest.Pick([markup, textBox], new DisplayPoint(180, 150), 2));
+        Assert.Same(foreign, DrawingHitTest.Pick([textBox, foreign], new DisplayPoint(450, 130), 2));
+        Assert.Null(DrawingHitTest.Pick([textBox], new DisplayPoint(300, 150), 2));
+    }
+
+    internal static PdfAnnotation TextBox(int index, PageRect box, bool own) => new(
+        Page: 0,
+        Index: index,
+        Name: "tb-" + index,
+        Kind: AnnotationKind.TextBox,
+        Subtype: "FreeText",
+        Color: null,
+        Quads: [],
+        QuadRects: [],
+        Bounds: box,
+        Contents: "Text",
+        Author: null,
+        Modified: null,
+        Editable: true,
+        GeometryEditable: own,
+        TextBox: new TextBoxSpec(box, "Text", 12, new AnnotationColor(30, 80, 220)));
+
     private static PdfAnnotation Drawing(int index, DrawingGeometry geometry, string name) => new(
         Page: 0,
         Index: index,

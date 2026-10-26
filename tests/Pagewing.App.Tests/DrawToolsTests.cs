@@ -82,9 +82,9 @@ public sealed class DrawToolsTests : IDisposable
         Assert.False(tab.IsSelectTool);
         Assert.False(tab.SetStyleCommand.CanExecute(new ToolStyle(DrawColor.Blue, StrokeWidth.Thick)));
 
-        // Only the kinds that have a tool: the text box comes with its own task, and "other" never.
+        // Only the kinds that have a tool (the text box too, since its task), and "other" never.
         await BeginAsync(window, tab);
-        Assert.False(tab.SetToolCommand.CanExecute(AnnotationKind.TextBox));
+        Assert.True(tab.SetToolCommand.CanExecute(AnnotationKind.TextBox));
         Assert.False(tab.SetToolCommand.CanExecute(AnnotationKind.Other));
         Assert.All(DrawingKinds, kind => Assert.True(tab.SetToolCommand.CanExecute(kind), kind.ToString()));
         Assert.True(tab.SelectToolCommand.CanExecute(null));
@@ -417,6 +417,7 @@ public sealed class DrawToolsTests : IDisposable
             ("annotate.ellipse", "Draw an oval", "Ellipse zeichnen", "Strg+Umschalt+E"),
             ("annotate.line", "Draw a line", "Linie zeichnen", "Strg+Umschalt+L"),
             ("annotate.arrow", "Draw an arrow", "Pfeil zeichnen", "Strg+Umschalt+A"),
+            ("annotate.textbox", "Add a text box", "Textfeld hinzufügen", "Strg+Umschalt+T"),
         };
 
         foreach (var (id, english, german, gesture) in expected)
@@ -434,8 +435,6 @@ public sealed class DrawToolsTests : IDisposable
             Assert.Single(catalog.All, other => other.Gestures.Contains(command.Gesture!));
         }
 
-        // The text box comes with its own task.
-        Assert.Null(catalog.ById("annotate.textbox"));
         Assert.DoesNotContain(catalog.All, command => command.Id.StartsWith("annotate.", StringComparison.Ordinal) && command.Gestures.Any(gesture => gesture.Key == Key.Escape));
     }
 

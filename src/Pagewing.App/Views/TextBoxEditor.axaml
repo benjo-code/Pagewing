@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.TextBoxEditor"
+             HorizontalAlignment="Left"
+             VerticalAlignment="Top">
+  <!--
+    The field of a text box on the page (milestone 10, design system 7.7): a multi-line text field laid over the box, in
+    the font of the app (Geist, as the text box is drawn), the size and colour of the text box at the zoom of the view, the
+    paper white behind it (content of the PDF, set in code) and a 1 px accent.default frame. Ctrl+Enter or leaving the field
+    applies the text, Esc drops it; Ctrl+Z in the field undoes its text, not the document. Below it, only when the text has
+    something a text box cannot show, the reason in type.caption (text.primary on surface.raised with a danger.default
+    edge). Made by the document view at the first text box, never in the startup path.
+  -->
+  <StackPanel Name="TextBoxEditorFrame" Spacing="4">
+    <TextBox Name="Field"
+             AcceptsReturn="True"
+             TextWrapping="Wrap"
+             MinWidth="0"
+             MinHeight="0"
+             BorderThickness="1"
+             BorderBrush="{DynamicResource Pw.Brush.Accent.Default}"
+             FontFamily="{DynamicResource Pw.Font.Sans}"
+             AutomationProperties.Name="{x:Static res:Strings.TextBoxEditorName}"
+             AutomationProperties.HelpText="{x:Static res:Strings.TextBoxEditorHint}"
+             ToolTip.Tip="{x:Static res:Strings.TextBoxEditorHint}" />
+    <Border Name="ProblemFrame"
+            IsVisible="False"
+            MaxWidth="360"
+            HorizontalAlignment="Left"
+            Padding="8,4"
+            Background="{DynamicResource Pw.Brush.Surface.Raised}"
+            BorderBrush="{DynamicResource Pw.Brush.Danger.Default}"
+            BorderThickness="1"
+            CornerRadius="{DynamicResource Pw.Radius.Control}">
+      <TextBlock Name="ProblemText" Classes="caption" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Border>
+  </StackPanel>
+</UserControl>

@@ -100,10 +100,11 @@ public sealed class CommentsViewModelTests : IDisposable
         Assert.Equal("1 comment on page 2", comments.Summary);
         comments.Filter = CommentFilter.StrikeOut;
         Assert.Equal(["so-0001"], comments.Items.Select(item => item.Annotation.Name));
+        // Since M10 the text box of another program (ft-0001) is listed with the drawings, as a text box.
         comments.Filter = CommentFilter.Other;
-        Assert.Equal(["ft-0001", "note-0001"], comments.Items.Select(item => item.Annotation.Name));
+        Assert.Equal(["note-0001"], comments.Items.Select(item => item.Annotation.Name));
         comments.Filter = CommentFilter.Drawings;
-        Assert.Equal(["ink-0001"], comments.Items.Select(item => item.Annotation.Name));
+        Assert.Equal(["ft-0001", "ink-0001"], comments.Items.Select(item => item.Annotation.Name).Order());
         comments.Filter = CommentFilter.Other;
 
         // The choices of the list are the filters, in this order, and choosing one sets the filter.
@@ -163,7 +164,7 @@ public sealed class CommentsViewModelTests : IDisposable
 
         // One page: the page is named.
         comments.Filter = CommentFilter.Other;
-        Assert.Equal(language == "en" ? "2 comments, all on page 1" : "2 Kommentare, alle auf Seite 1", comments.Summary);
+        Assert.Equal(language == "en" ? "1 comment on page 1" : "1 Kommentar auf Seite 1", comments.Summary);
         comments.Filter = CommentFilter.Underline;
         Assert.Equal(language == "en" ? "1 comment on page 2" : "1 Kommentar auf Seite 2", comments.Summary);
     }

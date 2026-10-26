@@ -163,7 +163,7 @@ public sealed partial class TabViewModel
     internal Task ApplyDrawingAsync(int page, DrawingGeometry geometry)
     {
         ArgumentNullException.ThrowIfNull(geometry);
-        if (_disposed || !IsDrawKind(geometry.Kind) || geometry.IsEmpty || !CanDraw)
+        if (_disposed || !IsDrawKind(geometry.Kind) || geometry.Kind == AnnotationKind.TextBox || geometry.IsEmpty || !CanDraw)
         {
             return Task.CompletedTask;
         }
@@ -323,9 +323,12 @@ public sealed partial class TabViewModel
         _redoCommand?.RaiseCanExecuteChanged();
     }
 
-    /// <summary>Whether the kind is made by a drawing tool: freehand, rectangle, oval, line or arrow (the text box has its own tool later).</summary>
+    /// <summary>
+    /// Whether the kind is made by a tool with a style of colour and width: freehand, rectangle, oval, line, arrow and the text
+    /// box (whose width step is its font size, <see cref="TextBoxSpec.FontSizeOf"/>; see <c>TabViewModel.TextBoxes.cs</c>).
+    /// </summary>
     internal static bool IsDrawKind(AnnotationKind kind) =>
-        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow;
+        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox;
 
     private RelayCommand DrawCommand(AnnotationKind kind) => new(
         () =>
@@ -362,6 +365,7 @@ public sealed partial class TabViewModel
         _ellipseCommand?.RaiseCanExecuteChanged();
         _lineCommand?.RaiseCanExecuteChanged();
         _arrowCommand?.RaiseCanExecuteChanged();
+        _textBoxCommand?.RaiseCanExecuteChanged();
         RaiseSelectionCanExecuteChanged();
     }
 }

@@ -542,7 +542,7 @@ public sealed partial class DocumentView
 
         // A drawing tool owns the press (DocumentView.Drawing.cs), and so does the select tool (DocumentView.Selection.cs):
         // no text selection, no link.
-        if (PressForDrawing(e, properties) || PressForSelection(e, properties))
+        if (PressEndsTextBox() || PressForDrawing(e, properties) || PressForSelection(e, properties))
         {
             return;
         }

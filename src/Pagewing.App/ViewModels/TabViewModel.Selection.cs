@@ -92,14 +92,14 @@ public sealed partial class TabViewModel
     /// (<see cref="PdfAnnotation.GeometryEditable"/>). A markup hangs on its text, a locked drawing of another application
     /// offers only its comment and deleting.
     /// </summary>
-    public bool CanMoveSelection => _selectedAnnotation is { GeometryEditable: true, Drawing: not null } selected && IsDrawKind(selected.Kind);
+    public bool CanMoveSelection => _selectedAnnotation is { GeometryEditable: true, SelectionShape: not null } selected && IsDrawKind(selected.Kind);
 
     /// <summary>
     /// Gets why a selected drawing cannot be moved or changed (another application drew it in a way Pagewing cannot keep), or
     /// <see langword="null"/>; for the toolbar and the "Comments" panel.
     /// </summary>
     public string? SelectionLockReason => _selectedAnnotation is { } selected && IsDrawKind(selected.Kind) && !CanMoveSelection
-        ? Strings.SelectionLockedForeign
+        ? (selected.Kind == AnnotationKind.TextBox ? Strings.SelectionLockedForeignTextBox : Strings.SelectionLockedForeign)
         : null;
 
     /// <summary>Tab in the document: selects the next selectable annotation of the page in reading order; after the last one the selection goes.</summary>
@@ -127,7 +127,7 @@ public sealed partial class TabViewModel
         _selectedAnnotation is not { } selected ? null
         : _nudge is { } nudge && SameAnnotation(nudge.Target, selected) ? nudge.Geometry
         : _pendingGeometry is { } pending && SameAnnotation(pending.Target, selected) ? pending.Geometry
-        : selected.Drawing;
+        : selected.SelectionShape;
 
     /// <summary>Gets or sets the clock of the nudge timer (<see cref="NudgeDelay"/>); tests move it by hand.</summary>
     internal TimeProvider SelectionClock { get; set; } = TimeProvider.System;
@@ -196,7 +196,7 @@ public sealed partial class TabViewModel
     {
         ArgumentNullException.ThrowIfNull(geometry);
         FlushNudge();
-        if (_selectedAnnotation is not { Drawing: { } drawing } selected || !CanMoveSelection || !CanDraw || geometry.IsEmpty
+        if (_selectedAnnotation is not { SelectionShape: { } drawing } selected || !CanMoveSelection || !CanDraw || geometry.IsEmpty
             || geometry.Kind != drawing.Kind || SameShape(SelectionGeometry ?? drawing, geometry))
         {
             return Task.CompletedTask;
@@ -276,6 +276,12 @@ public sealed partial class TabViewModel
         }
 
         FlushNudge();
+        if (RequestTextBoxEdit())
+        {
+            // A text box of Pagewing's: Enter edits its text on the page, its text is its comment.
+            return;
+        }
+
         SidePanel = SidePanelKind.Comments;
         Comments.BeginEdit(selected);
     }
@@ -464,7 +470,9 @@ public sealed partial class TabViewModel
         {
             try
             {
-                var replaced = await editor.ReplaceGeometryAsync(locator, geometry);
+                var replaced = target is { Kind: AnnotationKind.TextBox, TextBox: { } box }
+                    ? await editor.ReplaceTextBoxAsync(locator, box with { Box = geometry.Box })
+                    : await editor.ReplaceGeometryAsync(locator, geometry);
                 if (_selectedAnnotation is { } now && SameAnnotation(now, target))
                 {
                     SelectedAnnotation = replaced;

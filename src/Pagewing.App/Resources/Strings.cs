@@ -394,6 +394,18 @@ public static class Strings
     public static string ToolEllipse => Get("ToolEllipse");
     public static string ToolLine => Get("ToolLine");
     public static string ToolArrow => Get("ToolArrow");
+    public static string ToolTextBox => Get("ToolTextBox");
+    public static string CommandTextBox => Get("CommandTextBox");
+    public static string TextBoxSizeSmall => Get("TextBoxSizeSmall");
+    public static string TextBoxSizeMedium => Get("TextBoxSizeMedium");
+    public static string TextBoxSizeLarge => Get("TextBoxSizeLarge");
+    public static string AnnotateSizesName => Get("AnnotateSizesName");
+    public static string TextBoxEditorName => Get("TextBoxEditorName");
+    public static string TextBoxEditorHint => Get("TextBoxEditorHint");
+    public static string TextBoxUnsupportedCharacters => Get("TextBoxUnsupportedCharacters");
+    public static string TextBoxTooLong => Get("TextBoxTooLong");
+    public static string TextBoxTooManyLines => Get("TextBoxTooManyLines");
+    public static string SelectionLockedForeignTextBox => Get("SelectionLockedForeignTextBox");
     public static string DrawColorRed => Get("DrawColorRed");
     public static string DrawColorBlack => Get("DrawColorBlack");
     public static string DrawColorBlue => Get("DrawColorBlue");
@@ -461,6 +473,7 @@ public static class Strings
         Pagewing.Core.Annotations.AnnotationKind.Ellipse => ToolEllipse,
         Pagewing.Core.Annotations.AnnotationKind.Line => ToolLine,
         Pagewing.Core.Annotations.AnnotationKind.Arrow => ToolArrow,
+        Pagewing.Core.Annotations.AnnotationKind.TextBox => ToolTextBox,
         _ => null,
     };
 
@@ -482,6 +495,15 @@ public static class Strings
         Pagewing.Core.Annotations.StrokeWidth.Medium => StrokeWidthMedium,
         Pagewing.Core.Annotations.StrokeWidth.Thick => StrokeWidthThick,
         _ => throw new ArgumentOutOfRangeException(nameof(width)),
+    };
+
+    /// <summary>Gets the name of a size step of the text box tool, for example "Small text (12 pt)".</summary>
+    public static string TextBoxSizeName(Pagewing.Core.Annotations.StrokeWidth step) => step switch
+    {
+        Pagewing.Core.Annotations.StrokeWidth.Thin => TextBoxSizeSmall,
+        Pagewing.Core.Annotations.StrokeWidth.Medium => TextBoxSizeMedium,
+        Pagewing.Core.Annotations.StrokeWidth.Thick => TextBoxSizeLarge,
+        _ => throw new ArgumentOutOfRangeException(nameof(step)),
     };
 
     private static ResourceManager Select(CultureInfo culture) =>

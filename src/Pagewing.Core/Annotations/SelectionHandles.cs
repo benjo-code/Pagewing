@@ -51,12 +51,12 @@ public sealed record Handle(HandleKind Kind, DisplayPoint Position);
 public static class SelectionHandles
 {
     /// <summary>Gets the handles of <paramref name="annotation"/>, in the order of <see cref="HandleKind"/>.</summary>
-    /// <param name="annotation">The selected annotation; its <see cref="PdfAnnotation.Drawing"/> places the handles.</param>
+    /// <param name="annotation">The selected annotation; its <see cref="PdfAnnotation.SelectionShape"/> places the handles (the box of a text box: eight).</param>
     /// <returns>Eight handles, two ends, or none.</returns>
     public static IReadOnlyList<Handle> For(PdfAnnotation annotation)
     {
         ArgumentNullException.ThrowIfNull(annotation);
-        if (!annotation.GeometryEditable || annotation.Drawing is not { } geometry)
+        if (!annotation.GeometryEditable || annotation.SelectionShape is not { } geometry)
         {
             return [];
         }

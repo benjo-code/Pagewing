@@ -86,4 +86,6 @@
   <StreamGeometry x:Key="Pw.Icon.Line">M4 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0 M16 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0 M7.5 16.5l9 -9</StreamGeometry>
   <!-- arrow-up-right (arrow tool, M10) -->
   <StreamGeometry x:Key="Pw.Icon.ArrowUpRight">M17 7l-10 10 M8 7l9 0l0 9</StreamGeometry>
+  <!-- typography (text box tool, M10) -->
+  <StreamGeometry x:Key="Pw.Icon.Typography">M4 20l3 0 M14 20l7 0 M6.9 15l6.9 0 M10.2 6.3l5.8 13.7 M5 20l6 -16l2 0l7 16</StreamGeometry>
 </ResourceDictionary>

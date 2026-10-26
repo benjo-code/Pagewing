@@ -53,6 +53,8 @@ public sealed partial class TabViewModel
         {
             if (_editor is null)
             {
+                // Only a delegate: the text box font is read when the first text box is made (Services/TextBoxFontSource).
+                Services.TextBoxFontSource.Register();
                 _editor = new AnnotationEditor(_session);
                 _editor.Changed += OnEditorChanged;
             }

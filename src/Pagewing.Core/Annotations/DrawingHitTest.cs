@@ -15,8 +15,8 @@ public static class DrawingHitTest
     private const int EllipseSegments = 64;
 
     /// <summary>
-    /// Gets whether the select tool can select an annotation: a highlight, underline or strike-out or a drawing (freehand,
-    /// rectangle, ellipse, line, arrow) that Pagewing may delete and comment on (<see cref="PdfAnnotation.Editable"/>, so no
+    /// Gets whether the select tool can select an annotation: a highlight, underline or strike-out, a drawing (freehand,
+    /// rectangle, ellipse, line, arrow) or a text box that Pagewing may delete and comment on (<see cref="PdfAnnotation.Editable"/>, so no
     /// reply points at it). A drawing of another application that cannot be redrawn without loss is selectable too; only its
     /// handles are missing (<see cref="SelectionHandles.For"/>). Links, notes, stamps and form fields are not.
     /// </summary>
@@ -79,7 +79,7 @@ public static class DrawingHitTest
     private static bool IsMarkup(AnnotationKind kind) => kind is AnnotationKind.Highlight or AnnotationKind.Underline or AnnotationKind.StrikeOut;
 
     private static bool IsDrawing(AnnotationKind kind) =>
-        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow;
+        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox;
 
     private static bool Hits(PdfAnnotation annotation, DisplayPoint point, double tolerance)
     {
@@ -95,6 +95,12 @@ public static class DrawingHitTest
             }
 
             return false;
+        }
+
+        if (annotation.Kind == AnnotationKind.TextBox)
+        {
+            // A text box is hit anywhere inside its box (it holds text, not an outline).
+            return Inside(annotation.TextBox?.Box ?? annotation.Bounds, point, tolerance);
         }
 
         if (annotation.Drawing is not { } geometry)
