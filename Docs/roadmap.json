@@ -527,16 +527,24 @@
         {
           "id": "11",
           "title": "Formulare",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-26-milestone-11-formulare.md",
+          "spec": "superpowers/specs/2026-10-26-m11-formulare-design.md",
           "prerequisites": ["9"],
           "goal": "AcroForm-Formulare lassen sich ausfüllen und speichern.",
           "tasks": [
-            { "text": "AcroForm-Felder ausfüllen (Text, Checkbox, Radio, Liste, Combo), Tab-Reihenfolge", "done": false },
-            { "text": "Speichern der Werte", "done": false },
-            { "text": "Hinweis bei berechneten Feldern (ohne V8 keine JavaScript-Berechnung)", "done": false }
+            { "text": "Spec erstellen (Brainstorming) und Spike: trägt die Hybrid-Architektur (Eingabe in Avalonia, Werte und Erscheinungsbild über PDFiums Formular-Engine)? Haltepunkt bei negativem Ergebnis", "done": false },
+            { "text": "AcroForm-Felder ausfüllen (Text, Checkbox, Radio, Liste, Combo), Tab-Reihenfolge (Reihenfolge der Annotationen, PDFium liest kein `/Tabs`), Felder hervorheben, Bedienung nur mit der Tastatur", "done": false },
+            { "text": "Rückgängig/Wiederholen für Formularwerte im gemeinsamen Verlauf mit den Annotationen", "done": false },
+            { "text": "Speichern der Werte über die Pipeline aus M9, zusammen mit Annotationen in einem Vorgang; Warnung bei leeren Pflichtfeldern", "done": false },
+            { "text": "Hinweise (ohne V8 keine JavaScript-Berechnung, Formate und Prüfungen; XFA; digitales Signaturfeld; Schaltflächen führen nie eine Aktion aus)", "done": false },
+            { "text": "Felder zeichnen (PDFium zeichnet Widgets nur mit `FPDF_FFLDraw`); dunkle Seite und Druck zeigen ausgefüllte Werte", "done": false }
           ],
           "acceptance": [
-            { "text": "Ausgefüllte Test-Formulare zeigen die Werte in einem anderen Viewer (Test + manuelle Prüfung)", "done": false }
+            { "text": "Ausgefüllte Test-Formulare zeigen die Werte in einem anderen Viewer (Test + manuelle Prüfung)", "done": false },
+            { "text": "Round-Trip-Tests je Feldart (Wert, Auswahl, Exportwerte, weiterhin ausfüllbar; gedrehte Seite, CropBox, Umlaute und „€“)", "done": false },
+            { "text": "Ein Beispielformular lässt sich nur mit der Tastatur ausfüllen, Tab fängt den Fokus nicht (Headless-Test)", "done": false },
+            { "text": "Dokumente ohne Formular legen keine Formular-Umgebung an, Messläufe und Startzeit-Check unverändert (Test, Messwerte in `Docs/DECISIONS.md`)", "done": false }
           ]
         },
         {

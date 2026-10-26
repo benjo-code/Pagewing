@@ -37,7 +37,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 8.1 | Automatische Updates | 1 – Fundament & Viewer | ✅ fertig | [Plan](superpowers/plans/2026-10-23-milestone-08-1-automatische-updates.md) | 2026-10-24 |
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-24-milestone-09-speichern-textmarkierungen.md) | 2026-10-25 |
 | 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-25-milestone-10-zeichnen-formen.md) | 2026-10-26 |
-| 11 | Formulare | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
+| 11 | Formulare | 2 – Annotieren, Ausfüllen, Unterschreiben | 🟡 geplant | [Plan](superpowers/plans/2026-10-26-milestone-11-formulare.md) | – |
 | 12 | Sichtbare Unterschrift | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | 12.1 | Öffentliches Repo und Sicherheitsprüfung | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M8.1 bis M12.1) | – | ⬜ offen | – | – |
@@ -408,17 +408,23 @@ Umgesetzt und getestet sind Freihand, Rechteck, Ellipse, Linie, Pfeil, das Werkz
 - **Gesamtprüfung (2026-10-25, Entwicklungsrechner Windows, nicht die CI, Stand ohne Textfeld):** `dotnet build Pagewing.slnx` 0 Warnungen, 0 Fehler; `dotnet test Pagewing.slnx` und `dotnet test Pagewing.slnx -c Release` je 2990 Tests, 2953 bestanden, 0 fehlgeschlagen, 37 übersprungen (Linux-, CUPS-, Drucker- und Umgebungsvariablen-Tests); `dotnet format Pagewing.slnx --verify-no-changes` Exit 0; `tools/roadmap.cs check`, `tools/make-testpdfs.cs check` (24 Test-PDFs aktuell) und `tools/licenses.cs check` grün, kein neues NuGet-Paket; Native-AOT-Publish von App und CLI (`win-x64`) ohne Warnungen; `tools/smoke-cli.cs` bestanden.
 
 ## Milestone 11 – Formulare
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M9
+**Status:** 🟡 geplant · **Plan:** [2026-10-26-milestone-11-formulare.md](superpowers/plans/2026-10-26-milestone-11-formulare.md) · **Spec:** [2026-10-26-m11-formulare-design.md](superpowers/specs/2026-10-26-m11-formulare-design.md) · **Voraussetzungen:** M9
 
 Ziel: AcroForm-Formulare lassen sich ausfüllen und speichern.
 
 **Aufgaben**
-- [ ] AcroForm-Felder ausfüllen (Text, Checkbox, Radio, Liste, Combo), Tab-Reihenfolge
-- [ ] Speichern der Werte
-- [ ] Hinweis bei berechneten Feldern (ohne V8 keine JavaScript-Berechnung)
+- [ ] Spec erstellen (Brainstorming) und Spike: trägt die Hybrid-Architektur (Eingabe in Avalonia, Werte und Erscheinungsbild über PDFiums Formular-Engine)? Haltepunkt bei negativem Ergebnis
+- [ ] AcroForm-Felder ausfüllen (Text, Checkbox, Radio, Liste, Combo), Tab-Reihenfolge (Reihenfolge der Annotationen, PDFium liest kein `/Tabs`), Felder hervorheben, Bedienung nur mit der Tastatur
+- [ ] Rückgängig/Wiederholen für Formularwerte im gemeinsamen Verlauf mit den Annotationen
+- [ ] Speichern der Werte über die Pipeline aus M9, zusammen mit Annotationen in einem Vorgang; Warnung bei leeren Pflichtfeldern
+- [ ] Hinweise (ohne V8 keine JavaScript-Berechnung, Formate und Prüfungen; XFA; digitales Signaturfeld; Schaltflächen führen nie eine Aktion aus)
+- [ ] Felder zeichnen (PDFium zeichnet Widgets nur mit `FPDF_FFLDraw`); dunkle Seite und Druck zeigen ausgefüllte Werte
 
 **Abnahmekriterien**
 - [ ] Ausgefüllte Test-Formulare zeigen die Werte in einem anderen Viewer (Test + manuelle Prüfung)
+- [ ] Round-Trip-Tests je Feldart (Wert, Auswahl, Exportwerte, weiterhin ausfüllbar; gedrehte Seite, CropBox, Umlaute und „€“)
+- [ ] Ein Beispielformular lässt sich nur mit der Tastatur ausfüllen, Tab fängt den Fokus nicht (Headless-Test)
+- [ ] Dokumente ohne Formular legen keine Formular-Umgebung an, Messläufe und Startzeit-Check unverändert (Test, Messwerte in `Docs/DECISIONS.md`)
 
 ## Milestone 12 – Sichtbare Unterschrift
 **Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M10
