@@ -38,6 +38,18 @@ public sealed partial class PdfDocument
     /// <summary>Gets or sets the most characters of field names the scan keeps in its index (tests lower it to force the fallback).</summary>
     internal int FormNameIndexLimit { get; set; } = MaxIndexedNameCharacters;
 
+    /// <summary>Gets or sets the most (name, page) pairs the scan keeps in its index (tests lower it to force the fallback).</summary>
+    internal int FormNameIndexEntryLimit { get; set; } = MaxIndexedEntries;
+
+    /// <summary>Gets or sets the clock of the time budget per page of the scan, for tests (<see langword="null"/>: the system clock).</summary>
+    internal Func<int, TimeProvider>? FormScanClock { get; set; }
+
+    /// <summary>Gets or sets the clock of the time budget per page of the name pass, for tests (<see langword="null"/>: the system clock).</summary>
+    internal Func<int, TimeProvider>? FormNamesClock { get; set; }
+
+    /// <summary>Gets whether the scan left a usable name index (within its limits). Any thread.</summary>
+    internal bool HasFormNameIndex => Volatile.Read(ref formNames)?.Pages is not null;
+
     /// <summary>What the first complete scan found (the pages with fields feed the search for all widgets of a field).</summary>
     private FormInfo? formInfo;
 
@@ -90,7 +102,12 @@ public sealed partial class PdfDocument
         }
 
         var xfa = formType is FpdfConstants.FormTypeXfaFull or FpdfConstants.FormTypeXfaForeground;
+        var scanClock = FormScanClock;
         var pages = new PdfiumFormPageInfo[pageCount];
+
+        // The names are merged as the pages arrive and dropped from the page entries, so the scan holds at most the index
+        // within its limits plus one page.
+        var names = new FormNameIndexBuilder(FormNameIndexLimit, FormNameIndexEntryLimit, MaxIncompleteNamePages);
         for (var pageIndex = 0; pageIndex < pages.Length; pageIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -102,7 +119,7 @@ public sealed partial class PdfDocument
                     {
                         // ReadPageInfo needs the page handle only for this call; no other handle of the page is open here.
                         using var page = document.LoadPage(index);
-                        return PdfiumForms.ReadPageInfo(page);
+                        return PdfiumForms.ReadPageInfo(page, scanClock?.Invoke(index));
                     }
                     catch (InvalidDataException)
                     {
@@ -112,6 +129,8 @@ public sealed partial class PdfDocument
                 },
                 PdfiumPriority.Background,
                 cancellationToken).ConfigureAwait(false);
+            names.Add(index, pages[index].FieldNames ?? [], pages[index].NamesComplete);
+            pages[index] = pages[index] with { FieldNames = null };
         }
 
         var combined = PdfiumFormDocumentInfo.Combine(xfa, pages);
@@ -122,7 +141,7 @@ public sealed partial class PdfDocument
         hints |= combined.SignatureField ? FormHint.SignatureField : FormHint.None;
         hints |= combined.Buttons ? FormHint.Buttons : FormHint.None;
         var info = new FormInfo(combined.HasFields, hints, combined.FieldCount, combined.PagesWithFields);
-        Volatile.Write(ref formNames, NameIndex(pages, FormNameIndexLimit));
+        Volatile.Write(ref formNames, names.Build());
         Volatile.Write(ref formInfo, info);
         return info;
     }
@@ -172,7 +191,7 @@ public sealed partial class PdfDocument
     /// Writes the value of a form field through PDFium's form engine, which writes <c>/V</c> and the appearance of every widget,
     /// in one short <see cref="PdfPriority.Interactive"/> job. The pages of the field come from the name index of
     /// <see cref="GetFormInfoAsync"/> (scanned first when not known yet; when the form has more names than the index keeps, the
-    /// names of every page with fields are read in short jobs first); only those pages are loaded and read, and the field is
+    /// names of every page with fields are read in short jobs first, and pages whose names the scan cut short are read again); only those pages are loaded and read, and the field is
     /// found on them by its full name (never by an annotation index). Its state before is read, the value is written (a text:
     /// focus, select all, replace, leave; a check box or radio button: a click on the widget; a combo box or list box: its
     /// options), read back and compared with what was asked for. A value the engine did not take as it was (shortened at an
@@ -209,7 +228,7 @@ public sealed partial class PdfDocument
     /// <exception cref="ArgumentOutOfRangeException">An option index is not an option of the field.</exception>
     /// <exception cref="FormFieldNotFoundException">No page has a widget of a field with that name.</exception>
     /// <exception cref="FormWriteException">The write began but the value was not kept: the engine did not take it, or reading it back failed; <see cref="FormWriteException.Restored"/> says whether the field is as before.</exception>
-    /// <exception cref="InvalidOperationException">Before anything is written: the field is locked (<see cref="FormField.Lock"/>, the reason in the message) or has widgets on more than <see cref="MaxPagesPerField"/> pages; a radio group is asked for no choice (the engine never undoes a choice), or a combo box without typed text for no option.</exception>
+    /// <exception cref="InvalidOperationException">Before anything is written: the field is locked (<see cref="FormField.Lock"/>, the reason in the message) or has widgets on more than <see cref="MaxPagesPerField"/> pages; the pages of the field cannot be determined within the time budget (fail closed: never "not found", never a write with pages missing); a radio group is asked for no choice (the engine never undoes a choice), or a combo box without typed text for no option.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the job started.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task<FormChange> SetFormValueAsync(string fieldName, FormFieldState state, CancellationToken cancellationToken = default) =>
@@ -253,50 +272,41 @@ public sealed partial class PdfDocument
         $"The field '{fieldName}' has widgets on more than {MaxPagesPerField} pages; Pagewing does not write it.";
 
     /// <summary>
-    /// The index of field names over the pages of a scan, or one without a dictionary when the names together are longer than
-    /// <paramref name="characterLimit"/> or name more than <see cref="MaxIndexedEntries"/> pages.
+    /// The pages with a widget of the field, ascending. From the index of the scan (scanned first when not known yet); the pages
+    /// whose names the scan cut short are read again by the name pass first. Without a usable index (beyond its limits) the
+    /// name pass reads every page with fields. Empty when no page has the field.
     /// </summary>
-    private static FormNameIndex NameIndex(PdfiumFormPageInfo[] pages, int characterLimit)
-    {
-        var index = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-        long characters = 0, entries = 0;
-        for (var pageIndex = 0; pageIndex < pages.Length; pageIndex++)
-        {
-            foreach (var name in pages[pageIndex].FieldNames ?? [])
-            {
-                if (!index.TryGetValue(name, out var list))
-                {
-                    characters += name.Length;
-                    list = [];
-                    index[name] = list;
-                }
-
-                list.Add(pageIndex);
-                if (characters > characterLimit || ++entries > MaxIndexedEntries)
-                {
-                    return new FormNameIndex(null);
-                }
-            }
-        }
-
-        return new FormNameIndex(index.ToDictionary(pair => pair.Key, pair => pair.Value.ToArray(), StringComparer.Ordinal));
-    }
-
-    /// <summary>
-    /// The pages with a widget of the field, ascending: from the index of the scan (scanned first when not known yet), or when
-    /// the index is incomplete by reading only the field names of every page with fields (one short job per page, stopping once
-    /// more than <see cref="MaxPagesPerField"/> pages are found). Empty when no page has the field.
-    /// </summary>
+    /// <exception cref="InvalidOperationException">The name pass could not read a page completely within its time budget and the
+    /// field was not found there: the pages of the field are not known, so nothing may be written.</exception>
     private async Task<IReadOnlyList<int>> PagesOfFieldAsync(string fieldName, CancellationToken cancellationToken)
     {
         var info = await GetFormInfoAsync(cancellationToken).ConfigureAwait(false);
-        if (Volatile.Read(ref formNames)?.Pages is { } index)
+        if (Volatile.Read(ref formNames) is { Pages: { } index } known)
         {
-            return index.TryGetValue(fieldName, out var known) ? known : [];
+            var pages = index.TryGetValue(fieldName, out var listed) ? listed : [];
+            if (known.IncompletePages.Count == 0)
+            {
+                return pages;
+            }
+
+            var more = await NamePassAsync(fieldName, known.IncompletePages, cancellationToken).ConfigureAwait(false);
+            return [.. pages.Concat(more).Distinct().Order()];
         }
 
+        return await NamePassAsync(fieldName, info.PagesWithFields, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads only the field names of <paramref name="pages"/>, one short <see cref="PdfPriority.Interactive"/> job per page, and
+    /// returns those with the field (stopping once more than <see cref="MaxPagesPerField"/> are found). Fails closed: a page
+    /// whose names were cut short by the time budget without the field among the names read ends the pass with an exception
+    /// (in fallback mode every write repeats this pass).
+    /// </summary>
+    private async Task<List<int>> NamePassAsync(string fieldName, IReadOnlyList<int> pages, CancellationToken cancellationToken)
+    {
+        var clock = FormNamesClock;
         var found = new List<int>();
-        foreach (var pageIndex in info.PagesWithFields)
+        foreach (var pageIndex in pages)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var names = await document.Thread.InvokeAsync(
@@ -305,22 +315,28 @@ public sealed partial class PdfDocument
                     try
                     {
                         using var page = document.LoadPage(pageIndex);
-                        return PdfiumForms.ReadPageFieldNames(page);
+                        return PdfiumForms.ReadPageFieldNames(page, clock?.Invoke(pageIndex));
                     }
                     catch (InvalidDataException)
                     {
-                        return [];
+                        // A damaged page has no widget to write; the scan and the write skip it as well.
+                        return new PdfiumFieldNames([], true);
                     }
                 },
                 PdfiumPriority.Interactive,
                 cancellationToken).ConfigureAwait(false);
-            if (names.Contains(fieldName, StringComparer.Ordinal))
+            if (names.Names.Contains(fieldName, StringComparer.Ordinal))
             {
                 found.Add(pageIndex);
                 if (found.Count > MaxPagesPerField)
                 {
                     break;
                 }
+            }
+            else if (!names.Complete)
+            {
+                throw new InvalidOperationException(
+                    $"Pagewing cannot determine the pages of the field '{fieldName}' in time (page {pageIndex + 1} is too slow to read); nothing was written.");
             }
         }
 
@@ -634,8 +650,12 @@ public sealed partial class PdfDocument
     /// <summary>The most (name, page) pairs the index of the scan keeps; beyond, writes read the names page by page.</summary>
     internal const int MaxIndexedEntries = 1_000_000;
 
-    /// <summary>The pages of each field name, or <see langword="null"/> when the scan found more names than the index keeps.</summary>
-    private sealed record FormNameIndex(IReadOnlyDictionary<string, int[]>? Pages);
+    /// <summary>
+    /// The most pages whose names the scan may cut short and still leave a usable index (each write reads them again);
+    /// beyond, writes read the names of every page with fields.
+    /// </summary>
+    internal const int MaxIncompleteNamePages = 100;
+
 
     /// <summary>A widget of the field being written, on a page loaded for the whole job.</summary>
     private sealed record FormWidget(PdfiumPage Page, PdfiumFormField Widget, FormField Field)

@@ -57,6 +57,94 @@ public sealed partial class FormRoundTripTests
     }
 
     [Fact]
+    public async Task WriteWithTooManyIndexEntriesFindsTheFieldByItsName()
+    {
+        await using var document = await OpenAsync(FormTestPdfs.WriteLargeForm(folder, "large.pdf", pages: 5, fieldsPerPage: 10, sharedPages: 2));
+
+        // Fewer (name, page) pairs than the form has: no index, the write reads the names first.
+        document.FormNameIndexEntryLimit = 20;
+        await document.GetFormInfoAsync(Ct);
+        Assert.False(document.HasFormNameIndex);
+        var loaded = new List<int>();
+        document.FormFaults = new FormWriteFaults { PageLoaded = loaded.Add };
+
+        var change = await document.SetFormValueAsync("Shared", FormFieldState.OfText("Zwei"), Ct);
+        Assert.Equal([0, 1], loaded);
+        Assert.Equal([0, 1], change.Pages.Order());
+    }
+
+    [Fact]
+    public async Task ScanCutShortOnAPageStillFindsTheFieldsOfThatPage()
+    {
+        await using var document = await OpenAsync(FormTestPdfs.WriteLargeForm(folder, "large.pdf", pages: 5, fieldsPerPage: 10, sharedPages: 3));
+
+        // Every form call on page 1 takes 25 ms during the scan: its names are cut short and the page is marked incomplete.
+        document.FormScanClock = page => page == 1 ? new SlowClock() : TimeProvider.System;
+        await document.GetFormInfoAsync(Ct);
+        Assert.True(document.HasFormNameIndex);
+        var loaded = new List<int>();
+        document.FormFaults = new FormWriteFaults { PageLoaded = loaded.Add };
+
+        // A field also on the cut page: the name pass of that page finds it, all its pages are loaded.
+        var shared = await document.SetFormValueAsync("Shared", FormFieldState.OfText("Drei"), Ct);
+        Assert.Equal([0, 1, 2], loaded);
+        Assert.Equal([0, 1, 2], shared.Pages.Order());
+
+        // A field only on the cut page is found as well.
+        loaded.Clear();
+        var only = await document.SetFormValueAsync("F1_3", FormFieldState.OfText("Eins"), Ct);
+        Assert.Equal([1], loaded);
+        Assert.Equal(FormFieldState.OfText("Eins"), only.After);
+
+        // An unknown name is still unknown once the cut page was read.
+        await Assert.ThrowsAsync<FormFieldNotFoundException>(() => document.SetFormValueAsync("Nirgends", FormFieldState.OfText("x"), Ct));
+    }
+
+    [Fact]
+    public async Task NamePassCutShortRefusesTheWriteBeforeAnythingIsWritten()
+    {
+        await using var document = await OpenAsync(FormTestPdfs.WriteLargeForm(folder, "large.pdf", pages: 5, fieldsPerPage: 10, sharedPages: 3));
+        document.FormScanClock = page => page == 1 ? new SlowClock() : TimeProvider.System;
+        document.FormNamesClock = page => page == 1 ? new SlowClock() : TimeProvider.System;
+        await document.GetFormInfoAsync(Ct);
+        var loaded = new List<int>();
+        document.FormFaults = new FormWriteFaults { PageLoaded = loaded.Add };
+
+        // The pass reads 10 of the 11 widgets of page 1 within its budget (25 ms each); Shared is the 11th. A name not among
+        // those read can be neither "not found" nor written with page 1 missing.
+        foreach (var name in new[] { "Shared", "Nirgends" })
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => document.SetFormValueAsync(name, FormFieldState.OfText("x"), Ct));
+            Assert.IsNotType<FormFieldNotFoundException>(error);
+            Assert.Contains("in time", error.Message, StringComparison.Ordinal);
+        }
+
+        Assert.Empty(loaded);
+
+        // A name the pass did read on page 1 is found there.
+        var read = await document.SetFormValueAsync("F1_3", FormFieldState.OfText("Eins"), Ct);
+        Assert.Equal([1], loaded);
+        Assert.Equal(FormFieldState.OfText("Eins"), read.After);
+
+        document.FormNamesClock = null;
+        document.FormFaults = null;
+        Assert.Equal(FormFieldState.OfText("Geteilt"), (await FieldAsync(document, "Shared")).State);
+    }
+
+    [Fact]
+    public async Task FastScanNeedsNoNamePass()
+    {
+        await using var document = await OpenAsync(FormTestPdfs.WriteLargeForm(folder, "large.pdf", pages: 5, fieldsPerPage: 10, sharedPages: 3));
+
+        // A name pass would read page 1 with this clock and fail; a complete scan never starts one.
+        document.FormNamesClock = page => new SlowClock();
+        await document.GetFormInfoAsync(Ct);
+
+        Assert.Equal([0, 1, 2], (await document.SetFormValueAsync("Shared", FormFieldState.OfText("Drei"), Ct)).Pages.Order());
+        await Assert.ThrowsAsync<FormFieldNotFoundException>(() => document.SetFormValueAsync("Nirgends", FormFieldState.OfText("x"), Ct));
+    }
+
+    [Fact]
     public async Task FieldOnMoreThanMaxPagesIsRefusedAndLocked()
     {
         var pages = PdfDocument.MaxPagesPerField + 1;
@@ -219,6 +307,21 @@ public sealed partial class FormRoundTripTests
         await document.SetFormValueAsync("Hider", FormFieldState.OfText("x"), Ct);
 
         Assert.Equal(FpdfConstants.AnnotFlagPrint, await WidgetFlagsAsync(document, 1, "Other"));
+    }
+
+    /// <summary>A clock that moves 25 ms each time it is read: every timed form call is slower than the first-call limit.</summary>
+    private sealed class SlowClock : TimeProvider
+    {
+        private long now;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp()
+        {
+            var timestamp = now;
+            now += TimeSpan.FromMilliseconds(25).Ticks;
+            return timestamp;
+        }
     }
 
     /// <summary>The annotation flags (<c>/F</c>) of the first widget of a field on a page.</summary>
