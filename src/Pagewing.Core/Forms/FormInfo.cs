@@ -8,7 +8,7 @@ namespace Pagewing.Core.Forms;
 public sealed record FormInfo(bool HasFields, FormHint Hints, int FieldCount, IReadOnlyList<int> PagesWithFields)
 {
     /// <summary>
-    /// The names of the required fields that have no value: fields with <see cref="FormFieldFlags.Required"/> and no lock,
+    /// The names of the required fields that have no value: fields with <see cref="FormFieldTraits.Required"/> and no lock,
     /// whose text is empty, which have no chosen option, or whose check box or radio group is not chosen. Widgets of one
     /// field count once, whatever pages they are on; the first widget in the given order decides. Buttons and signature
     /// fields never count.
@@ -22,7 +22,7 @@ public sealed record FormInfo(bool HasFields, FormHint Hints, int FieldCount, IR
         var result = new List<string>();
         foreach (var field in fieldsOfAllPages)
         {
-            if (!field.Flags.HasFlag(FormFieldFlags.Required) || field.Lock != FormLock.None || !seen.Add(field.Key.FieldName))
+            if (!field.Traits.HasFlag(FormFieldTraits.Required) || field.Lock != FormLock.None || !seen.Add(field.Key.FieldName))
             {
                 continue;
             }

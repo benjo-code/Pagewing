@@ -16,7 +16,7 @@ public static class FormValueRules
     /// <summary>
     /// Checks <paramref name="text"/> for <paramref name="field"/>. Refused are: a text longer than
     /// <see cref="MaxValueLength"/>; a control character (a tab included) and a line break in a field without
-    /// <see cref="FormFieldFlags.Multiline"/>; a character outside <see cref="FormCharacters"/> (the reason names them);
+    /// <see cref="FormFieldTraits.Multiline"/>; a character outside <see cref="FormCharacters"/> (the reason names them);
     /// more than <see cref="FormField.MaxLength"/> characters. A line break (CR, LF or CR LF) counts as one character for
     /// <see cref="FormField.MaxLength"/>, because <c>/MaxLen</c> counts characters of the value and the break is one of them
     /// however the engine writes it.
@@ -33,7 +33,7 @@ public static class FormValueRules
             return Refuse("The text is too long.");
         }
 
-        var multiline = field.Flags.HasFlag(FormFieldFlags.Multiline);
+        var multiline = field.Traits.HasFlag(FormFieldTraits.Multiline);
         var length = 0;
         for (var i = 0; i < text.Length; i++)
         {

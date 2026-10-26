@@ -40,7 +40,7 @@ public sealed class FormValueRulesTests
     {
         Assert.False(FormValueRules.CheckText(Make(), "a\tb").Accepted);
         Assert.False(FormValueRules.CheckText(Make(), "a\rb").Accepted);
-        Assert.False(FormValueRules.CheckText(Make(flags: FormFieldFlags.Multiline), "a\tb").Accepted);
+        Assert.False(FormValueRules.CheckText(Make(traits: FormFieldTraits.Multiline), "a\tb").Accepted);
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public sealed class FormValueRulesTests
     [Fact]
     public void ALineBreakCountsAsOneCharacterForMaxLength()
     {
-        var field = Make(flags: FormFieldFlags.Multiline, maxLength: 3);
+        var field = Make(traits: FormFieldTraits.Multiline, maxLength: 3);
 
         Assert.True(FormValueRules.CheckText(field, "a\r\nb").Accepted);
         Assert.True(FormValueRules.CheckText(field, "a\nb").Accepted);
@@ -85,7 +85,7 @@ public sealed class FormValueRulesTests
     [Fact]
     public void LineBreakIsAcceptedInAMultilineField()
     {
-        var field = Make(flags: FormFieldFlags.Multiline);
+        var field = Make(traits: FormFieldTraits.Multiline);
 
         Assert.True(FormValueRules.CheckText(field, "a\nb").Accepted);
         Assert.True(FormValueRules.CheckText(field, "a\r\nb").Accepted);
@@ -95,7 +95,7 @@ public sealed class FormValueRulesTests
     [Fact]
     public void ControlCharacterIsRefused()
     {
-        Assert.False(FormValueRules.CheckText(Make(flags: FormFieldFlags.Multiline), "a\u0001b").Accepted);
+        Assert.False(FormValueRules.CheckText(Make(traits: FormFieldTraits.Multiline), "a\u0001b").Accepted);
         Assert.False(FormValueRules.CheckText(Make(), "a\u007Fb").Accepted);
         Assert.False(FormValueRules.CheckText(Make(), "a\0b").Accepted);
     }
@@ -103,7 +103,7 @@ public sealed class FormValueRulesTests
     [Fact]
     public void TextAboveTheAbsoluteLimitIsRefused()
     {
-        var field = Make(flags: FormFieldFlags.Multiline);
+        var field = Make(traits: FormFieldTraits.Multiline);
 
         Assert.True(FormValueRules.CheckText(field, new string('a', FormValueRules.MaxValueLength)).Accepted);
         Assert.False(FormValueRules.CheckText(field, new string('a', FormValueRules.MaxValueLength + 1)).Accepted);

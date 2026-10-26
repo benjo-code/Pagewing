@@ -1,15 +1,12 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Pagewing.Core.Forms;
 
 /// <summary>
-/// The field flags (<c>/Ff</c>) with the bit values of PDF 32000-1, tables 221, 226, 228 and 230. The PDFium header
-/// <c>fpdf_formfill.h</c> names only ReadOnly, Required, NoExport, Multiline, Password, Combo, Edit and MultiSelect; the
-/// rest comes from the specification.
+/// The field flags (<c>/Ff</c>) with the bit values of PDF 32000-1, tables 221, 226, 228 and 230; named "Traits" because
+/// CA1711 forbids the suffix "Flags" for an enum. The PDFium header <c>fpdf_formfill.h</c> names only ReadOnly, Required,
+/// NoExport, Multiline, Password, Combo, Edit and MultiSelect; the rest comes from the specification.
 /// </summary>
 [Flags]
-[SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "The name FormFieldFlags is fixed by the M11 plan and mirrors the PDF field flags (/Ff).")]
-public enum FormFieldFlags : uint
+public enum FormFieldTraits : uint
 {
     /// <summary>No flag.</summary>
     None = 0,

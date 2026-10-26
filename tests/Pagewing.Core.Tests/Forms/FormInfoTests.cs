@@ -11,12 +11,12 @@ public sealed class FormInfoTests
     {
         FormField[] fields =
         [
-            Make("empty", flags: FormFieldFlags.Required),
-            Make("filled", flags: FormFieldFlags.Required, state: FormFieldState.OfText("x")),
-            Make("locked", flags: FormFieldFlags.Required, fieldLock: FormLock.ReadOnly),
+            Make("empty", traits: FormFieldTraits.Required),
+            Make("filled", traits: FormFieldTraits.Required, state: FormFieldState.OfText("x")),
+            Make("locked", traits: FormFieldTraits.Required, fieldLock: FormLock.ReadOnly),
             Make("optional"),
-            Make("combo", kind: FormFieldKind.ComboBox, flags: FormFieldFlags.Required, state: FormFieldState.OfSelection([2])),
-            Make("list", kind: FormFieldKind.ListBox, flags: FormFieldFlags.Required, state: FormFieldState.OfSelection([])),
+            Make("combo", kind: FormFieldKind.ComboBox, traits: FormFieldTraits.Required, state: FormFieldState.OfSelection([2])),
+            Make("list", kind: FormFieldKind.ListBox, traits: FormFieldTraits.Required, state: FormFieldState.OfSelection([])),
         ];
 
         Assert.Equal(["empty", "list"], FormInfo.EmptyRequired(fields));
@@ -27,9 +27,9 @@ public sealed class FormInfoTests
     {
         FormField[] fields =
         [
-            Make("group", widget: 0, kind: FormFieldKind.RadioButton, flags: FormFieldFlags.Required, state: FormFieldState.OfText(null), exportValue: "A"),
-            Make("group", widget: 1, kind: FormFieldKind.RadioButton, flags: FormFieldFlags.Required, state: FormFieldState.OfText(null), exportValue: "B"),
-            Make("chosen", kind: FormFieldKind.RadioButton, flags: FormFieldFlags.Required, state: FormFieldState.OfText("A"), exportValue: "A"),
+            Make("group", widget: 0, kind: FormFieldKind.RadioButton, traits: FormFieldTraits.Required, state: FormFieldState.OfText(null), exportValue: "A"),
+            Make("group", widget: 1, kind: FormFieldKind.RadioButton, traits: FormFieldTraits.Required, state: FormFieldState.OfText(null), exportValue: "B"),
+            Make("chosen", kind: FormFieldKind.RadioButton, traits: FormFieldTraits.Required, state: FormFieldState.OfText("A"), exportValue: "A"),
         ];
 
         Assert.Equal(["group"], FormInfo.EmptyRequired(fields));
@@ -40,8 +40,8 @@ public sealed class FormInfoTests
     {
         FormField[] fields =
         [
-            Make("group", page: 0, kind: FormFieldKind.RadioButton, flags: FormFieldFlags.Required, state: FormFieldState.OfText(null)),
-            Make("group", page: 1, kind: FormFieldKind.RadioButton, flags: FormFieldFlags.Required, state: FormFieldState.OfText(null)),
+            Make("group", page: 0, kind: FormFieldKind.RadioButton, traits: FormFieldTraits.Required, state: FormFieldState.OfText(null)),
+            Make("group", page: 1, kind: FormFieldKind.RadioButton, traits: FormFieldTraits.Required, state: FormFieldState.OfText(null)),
         ];
 
         Assert.Equal(["group"], FormInfo.EmptyRequired(fields));
@@ -52,8 +52,8 @@ public sealed class FormInfoTests
     {
         FormField[] fields =
         [
-            Make("off", kind: FormFieldKind.CheckBox, flags: FormFieldFlags.Required, state: FormFieldState.OfChecked(false)),
-            Make("on", kind: FormFieldKind.CheckBox, flags: FormFieldFlags.Required, state: FormFieldState.OfChecked(true)),
+            Make("off", kind: FormFieldKind.CheckBox, traits: FormFieldTraits.Required, state: FormFieldState.OfChecked(false)),
+            Make("on", kind: FormFieldKind.CheckBox, traits: FormFieldTraits.Required, state: FormFieldState.OfChecked(true)),
         ];
 
         Assert.Equal(["off"], FormInfo.EmptyRequired(fields));
@@ -64,8 +64,8 @@ public sealed class FormInfoTests
     {
         FormField[] fields =
         [
-            Make("button", kind: FormFieldKind.PushButton, flags: FormFieldFlags.Required),
-            Make("sig", kind: FormFieldKind.Signature, flags: FormFieldFlags.Required),
+            Make("button", kind: FormFieldKind.PushButton, traits: FormFieldTraits.Required),
+            Make("sig", kind: FormFieldKind.Signature, traits: FormFieldTraits.Required),
         ];
 
         Assert.Empty(FormInfo.EmptyRequired(fields));
@@ -74,7 +74,7 @@ public sealed class FormInfoTests
     [Fact]
     public void ARequiredTextFieldOfOnlyWhitespaceIsFilled()
     {
-        FormField[] fields = [Make("blank", flags: FormFieldFlags.Required, state: FormFieldState.OfText(" "))];
+        FormField[] fields = [Make("blank", traits: FormFieldTraits.Required, state: FormFieldState.OfText(" "))];
 
         Assert.Empty(FormInfo.EmptyRequired(fields));
     }

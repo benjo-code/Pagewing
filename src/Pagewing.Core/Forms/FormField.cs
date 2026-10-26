@@ -9,7 +9,7 @@ namespace Pagewing.Core.Forms;
 /// <param name="Key">The identity of the widget.</param>
 /// <param name="Index">The index of the widget's annotation on its page (moves when annotations change; never an identity).</param>
 /// <param name="Kind">The kind of the field.</param>
-/// <param name="Flags">The field flags.</param>
+/// <param name="Traits">The field flags (<c>/Ff</c>).</param>
 /// <param name="Bounds">The widget rectangle in page points, origin top left.</param>
 /// <param name="AlternateName">The tooltip name (<c>/TU</c>), or <c>null</c>.</param>
 /// <param name="ExportValue">The export value of this widget (check box and radio button), or <c>null</c>.</param>
@@ -22,7 +22,7 @@ public sealed record FormField(
     FormWidgetKey Key,
     int Index,
     FormFieldKind Kind,
-    FormFieldFlags Flags,
+    FormFieldTraits Traits,
     PageRect Bounds,
     string? AlternateName,
     string? ExportValue,
