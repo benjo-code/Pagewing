@@ -373,6 +373,15 @@ Zusätzlich zu den Punkten 1 bis 11 für `drawings-*__annotated.pdf` (Original d
 19. **Linie und Pfeil in Acrobat (offene Frage aus Spike A):** Pagewing legt beide als Freihand (`/Ink`) mit `/Subj (Line)` bzw. `/Subj (Arrow)` an. Erwartet: Acrobat führt sie im Kommentarbereich als „Freihand“. Festhalten, ob das Feld „Betreff“ (Subject) der Kommentareigenschaften „Arrow“ bzw. „Line“ zeigt und ob es nach einem Speichern der Datei **durch Acrobat** (Datei → Speichern unter, andere Datei) in der Kopie erhalten bleibt (neu in Pagewing öffnen: Pagewing erkennt den Pfeil nur mit `/Subj` und passender Form; sonst zeigt es ihn als Freihand, ohne Fehlermeldung). Bleibt das Feld nicht erhalten, ist das ein Befund für den Backlog, kein Fehler der Datei.
 20. **Auswählen in Acrobat:** Eine Zeichnung lässt sich mit dem Kommentar-Werkzeug anklicken, verschieben und löschen; Acrobat zeigt Rechteck und Ellipse als „Rechteck“ bzw. „Oval“.
 
+### Textfelder (M10)
+
+`InteropSampleTests.WritesTextBoxSamplesForOtherViewers` (dieselbe Variable `PAGEWING_INTEROP_OUT`) schreibt `textbox-plain.pdf`, `textbox-rotated.pdf`, `textbox-cropbox.pdf`, `textbox-rotated-cropbox.pdf`, `textbox-moved.pdf` und `textbox-edited.pdf` samt `README-textboxes.txt` (Text, Größe und Lage jedes Textfelds). In Chrome und Acrobat Reader:
+
+21. **Text und Zeichen:** Jede Zeile und jedes Zeichen steht da (ü ö ß – € © ½ « » µ), aufrecht (auch in `textbox-rotated*` und `textbox-cropbox`), innerhalb des in `README-textboxes.txt` genannten Rahmens, in der genannten Farbe; keine Meldung über fehlende Schriften.
+22. **Kommentarliste:** Acrobat führt jedes Textfeld mit seinem Text (und Autor „Pagewing Interop“).
+23. **Verschoben und geändert:** `textbox-moved` zeigt das Textfeld **einmal**, an der neuen Stelle; `textbox-edited` nur den neuen Text in 20 pt, zwei Zeilen.
+24. **Bearbeiten in Acrobat:** Ein Doppelklick bearbeitet den Text auf der Seite; danach zeichnet Acrobat ihn in Helvetica (erwartet), auf gedrehten Seiten mitgedreht (bekannte, hingenommene Grenze). Öffnet man die in Acrobat gespeicherte Datei in Pagewing, ist das Textfeld dort gesperrt (löschbar, nicht änderbar).
+
 ### Ergebnis festhalten
 
 Das Ergebnis ist der Nachweis der Abnahmekriterien von Milestone 9 „Gespeicherte Annotationen erscheinen in einem anderen Viewer …“ und „Digital signierte Test-PDF …“ und, für die Zeichnungen, des Milestones 10 (Aufgabe 14 des Plans) in `Docs/roadmap.json` (danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence` je Viewer: Datum, Programm und Version, Betriebssystem, für jede Datei „wie erwartet“ oder die Abweichung (welche Datei, welcher Punkt der Prüfliste, was zu sehen war). Ein Kriterium wird erst abgehakt, wenn Chrome und Acrobat Reader geprüft sind; die Acrobat-Aussage zur echt signierten Datei gehört nur dann dazu, wenn sie geprüft wurde, sonst bleibt dieser Teil ausdrücklich offen. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
