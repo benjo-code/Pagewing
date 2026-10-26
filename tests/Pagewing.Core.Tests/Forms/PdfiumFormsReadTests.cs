@@ -328,6 +328,113 @@ public sealed class PdfiumFormsReadTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// The time budget with a clock that moves 25 ms per reading: every first form call looks slower than
+    /// <see cref="PdfiumForms.MaxFirstCallTicks"/>, so each widget stops after it (no name, no flags read); after ten widgets
+    /// the 250 ms of the page are spent and the rest is skipped without any form call (no clock reading either).
+    /// </summary>
+    [Fact]
+    public async Task SlowFirstCallSkipsTheWidgetAndSpentBudgetSkipsTheRestWithoutACall()
+    {
+        var clock = new StepClock(TimeSpan.FromMilliseconds(25));
+        var (fields, reads, info) = await Pdfium.InvokeAsync(
+            () =>
+            {
+                using var document = PdfiumDocument.Open(Pdfium, TestData.Pdf(FormsBasic), null);
+                using var page = document.LoadPage(0);
+                var read = PdfiumForms.ReadPage(page, clock);
+                var readsOfThePage = clock.Reads;
+                using var signedDocument = PdfiumDocument.Open(Pdfium, TestData.Pdf(FormsSigned), null);
+                using var signedPage = signedDocument.LoadPage(0);
+                return (read, readsOfThePage, PdfiumForms.ReadPageInfo(signedPage, clock));
+            },
+            cancellationToken: Ct);
+
+        Assert.Equal(17, fields.Length);
+        Assert.All(fields, f =>
+        {
+            Assert.Equal(PdfiumForms.SlowReason, f.SkipReason);
+            Assert.Null(f.Name);
+            Assert.Equal(0u, f.Flags);
+            Assert.Empty(f.OptionLabels);
+        });
+
+        // The first call told the kind of the first ten; the rest got no call at all.
+        Assert.Equal(
+            [
+                PdfiumFormKind.Text, PdfiumFormKind.Text, PdfiumFormKind.Text, PdfiumFormKind.Text, PdfiumFormKind.Text, PdfiumFormKind.Text, PdfiumFormKind.Text,
+                PdfiumFormKind.CheckBox, PdfiumFormKind.CheckBox, PdfiumFormKind.RadioButton,
+            ],
+            fields.Take(10).Select(f => f.Kind));
+        Assert.All(fields.Skip(10), f => Assert.Equal(PdfiumFormKind.Unknown, f.Kind));
+        Assert.Equal(20, reads);
+
+        // The rectangles are still read (no form call needed), so the widgets stay where they are.
+        Assert.All(fields, f => Assert.True(f.Rect.Right > f.Rect.Left));
+
+        // The page information counts every widget but takes no hint from a slow one.
+        Assert.Equal(4, info.Widgets);
+        Assert.False(info.SignatureField || info.Buttons);
+    }
+
+    [Fact]
+    public async Task FastClockReadsEveryWidgetAsBefore()
+    {
+        var clock = new StepClock(TimeSpan.Zero);
+        var (timed, plain) = await Pdfium.InvokeAsync(
+            () =>
+            {
+                using var document = PdfiumDocument.Open(Pdfium, TestData.Pdf(FormsBasic), null);
+                using var page = document.LoadPage(0);
+                return (PdfiumForms.ReadPage(page, clock), PdfiumForms.ReadPage(page));
+            },
+            cancellationToken: Ct);
+
+        Assert.True(clock.Reads > 0);
+        Assert.All(timed, f => Assert.Null(f.SkipReason));
+        Assert.Equal(plain.Select(Describe), timed.Select(Describe));
+
+        static string Describe(PdfiumFormField f) =>
+            $"{f.Index} {f.Kind} {f.Flags} {f.Rect} {f.Name} {f.Value} {f.ExportValue} {f.MaxLength} {string.Join('|', f.OptionLabels)} {string.Join('|', f.Selected)} {f.Checked}";
+    }
+
+    /// <summary>
+    /// A widget under a <c>/Parent</c> chain of 10,000 named levels: PDFium walks the whole chain in every form call (about
+    /// 25 to 75 ms per call measured). The read returns, the widget is skipped (slow, or no field for PDFium), and the plain
+    /// field after it on the same page is read.
+    /// </summary>
+    [Fact]
+    public async Task DeepParentChainIsSkippedAndTheRestOfThePageIsRead()
+    {
+        const int depth = 10_000;
+        var objects = new List<string>
+        {
+            $"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [{5 + depth} 0 R 5 0 R] /DA (/Helv 10 Tf 0 g) >> >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Annots [4 0 R 5 0 R] >>",
+            "<< /Type /Annot /Subtype /Widget /Rect [20 240 200 262] /P 3 0 R /F 4 /Parent 6 0 R /T (leaf) >>",
+            "<< /Type /Annot /Subtype /Widget /Rect [20 200 200 222] /P 3 0 R /F 4 /FT /Tx /T (Normal) /DA (/Helv 10 Tf 0 g) >>",
+        };
+        for (var level = 0; level < depth; level++)
+        {
+            // Object 6 + level; the child is the leaf (4) for the first level, else the level below.
+            var id = 6 + level;
+            var child = level == 0 ? 4 : id - 1;
+            var parent = level == depth - 1 ? "/FT /Tx" : $"/Parent {id + 1} 0 R";
+            objects.Add($"<< /T (p{level}) {parent} /Kids [{child} 0 R] >>");
+        }
+
+        var path = WritePdf(folder, "deep-parent.pdf", objects);
+        var fields = await ReadPageAsync(path, 0);
+
+        Assert.Equal([0, 1], fields.Select(f => f.Index));
+        Assert.NotNull(fields[0].SkipReason);
+        Assert.Null(fields[0].Name);
+        Assert.Equal("Normal", fields[1].Name);
+        Assert.Equal(PdfiumFormKind.Text, fields[1].Kind);
+        Assert.Null(fields[1].SkipReason);
+    }
+
     /// <summary>Pdfium cannot reference Core, so its copy of the value limit is checked here.</summary>
     [Fact]
     public void MaxValueLengthEqualsTheCoreRule() => Assert.Equal(FormValueRules.MaxValueLength, PdfiumForms.MaxValueLength);
@@ -389,4 +496,22 @@ public sealed class PdfiumFormsReadTests : IDisposable
             "<< /FT /Tx /T (Erbe) /MaxLen 4 /DA (/Helv 10 Tf 0 g) /Kids [10 0 R] >>",
             "<< /Type /Annot /Subtype /Widget /Rect [20 50 200 72] /P 3 0 R /F 4 /Parent 9 0 R >>",
         ]);
+
+    /// <summary>A clock that moves by <paramref name="step"/> each time it is read, and counts the readings.</summary>
+    private sealed class StepClock(TimeSpan step) : TimeProvider
+    {
+        private long now;
+
+        public int Reads { get; private set; }
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp()
+        {
+            Reads++;
+            var timestamp = now;
+            now += step.Ticks;
+            return timestamp;
+        }
+    }
 }

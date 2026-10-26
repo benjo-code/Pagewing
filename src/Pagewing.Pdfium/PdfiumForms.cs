@@ -135,9 +135,16 @@ internal sealed record PdfiumFormDocumentInfo(
 /// a widget without a usable <c>/Rect</c> is left out. Long strings are measured before they are copied.
 /// </para>
 /// <para>
-/// No reference is resolved here (no <c>FPDFAnnot_GetLinkedAnnot</c>, no <c>FPDFPage_GetAnnotIndex</c>): PDFium finds the
-/// field of a widget in the map it builds once, at the first <c>FORM_OnAfterLoadPage</c> of the document, so the work per
-/// widget does not grow with the page, and <see cref="PdfiumAnnotations.MaxLinkWork"/> is not needed.
+/// Every form call (<c>FPDFAnnot_GetFormField*</c>, <c>GetOption*</c>, <c>IsChecked</c>,
+/// <c>GetFormAdditionalActionJavaScript</c>) makes PDFium resolve the widget's field through its own field table, and to
+/// find it PDFium builds the full field name by walking <c>/Parent</c> without a depth limit (only a cycle guard). A hostile
+/// chain therefore makes each call slow (measured: 50,000 levels with names about 0.5 to 1 s per call, quadratic in the
+/// name length), and no binding can measure the depth beforehand (<c>FPDFAnnot_GetLinkedAnnot</c> follows <c>/Parent</c>
+/// only to nodes with <c>/Type /Annot</c>, which field nodes lack). Pagewing therefore bounds the <b>time</b> it spends, not
+/// a single call: the first form call on each widget is timed, and one slower than <see cref="MaxFirstCallTicks"/> ends the
+/// reading of that widget (<see cref="SlowReason"/>, no further call); once <see cref="MaxFormCallTimePerPage"/> is spent in
+/// form calls on a page, the remaining widgets get the same reason without any form call. A single call still grows with the
+/// file (Docs/DECISIONS.md, "Formulare: Zeitbudget beim Lesen der Felder (M11)").
 /// </para>
 /// </remarks>
 internal static unsafe class PdfiumForms
@@ -161,10 +168,24 @@ internal static unsafe class PdfiumForms
     public const int MaxValueLength = 100_000;
 
     /// <summary>
+    /// The longest first form call on a widget, in <see cref="TimeSpan"/> ticks (20 ms); a widget whose first call takes
+    /// longer is not read further. A normal field answers in well under a millisecond.
+    /// </summary>
+    public const long MaxFirstCallTicks = 20 * TimeSpan.TicksPerMillisecond;
+
+    /// <summary>The time of form calls one read of a page may spend; then the remaining widgets are skipped without a call.</summary>
+    public static readonly TimeSpan MaxFormCallTimePerPage = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>The <see cref="PdfiumFormField.SkipReason"/> of a widget skipped by the time budget.</summary>
+    internal const string SlowReason = "The field tree is too deep or too slow to read.";
+
+    /// <summary>
     /// Reads the widgets of a page in <c>/Annots</c> order. Empty for a page of a document without a form environment.
     /// </summary>
+    /// <param name="page">The page.</param>
+    /// <param name="clock">The clock of the time budget; <see cref="TimeProvider.System"/> without one (tests pass a fake).</param>
     /// <exception cref="ObjectDisposedException">The page or the environment is closed.</exception>
-    public static PdfiumFormField[] ReadPage(PdfiumPage page)
+    public static PdfiumFormField[] ReadPage(PdfiumPage page, TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
@@ -175,10 +196,11 @@ internal static unsafe class PdfiumForms
 
         var form = environment.Handle;
         var transform = PdfiumPageText.TransformOf(page);
+        var budget = new CallBudget(clock ?? TimeProvider.System);
         var result = new List<PdfiumFormField>();
         ForEachWidget(native, (index, annotation) =>
         {
-            if (ReadOne(form, transform, index, annotation) is { } field)
+            if (ReadOne(form, transform, index, annotation, budget) is { } field)
             {
                 result.Add(field);
             }
@@ -191,8 +213,11 @@ internal static unsafe class PdfiumForms
     /// Reads what one page contributes to the document's form information; one short job per page (the caller combines
     /// the pages with <see cref="PdfiumFormDocumentInfo.Combine"/>). Nothing for a document without a form environment.
     /// </summary>
+    /// <param name="page">The page.</param>
+    /// <param name="clock">The clock of the time budget (as for <see cref="ReadPage"/>); a widget beyond the budget is counted
+    /// but contributes no hint.</param>
     /// <exception cref="ObjectDisposedException">The page or the environment is closed.</exception>
-    public static PdfiumFormPageInfo ReadPageInfo(PdfiumPage page)
+    public static PdfiumFormPageInfo ReadPageInfo(PdfiumPage page, TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
@@ -202,6 +227,7 @@ internal static unsafe class PdfiumForms
         }
 
         var form = environment.Handle;
+        var budget = new CallBudget(clock ?? TimeProvider.System);
         var widgets = 0;
         bool calculated = false, formatScripts = false, signature = false, buttons = false;
         ForEachWidget(native, (index, annotation) =>
@@ -212,7 +238,20 @@ internal static unsafe class PdfiumForms
             }
 
             widgets++;
+            if (budget.Exhausted)
+            {
+                return;
+            }
+
+            var start = budget.Now();
             var type = Fpdf.FPDFAnnot_GetFormFieldType(form, annotation);
+            var first = budget.Since(start);
+            if (first.Ticks > MaxFirstCallTicks)
+            {
+                budget.Spend(first);
+                return;
+            }
+
             buttons |= type == FpdfConstants.FormFieldPushButton;
             signature |= type == FpdfConstants.FormFieldSignature;
             calculated = calculated || HasScript(form, annotation, FpdfConstants.AnnotActionCalculate);
@@ -220,6 +259,7 @@ internal static unsafe class PdfiumForms
                 || HasScript(form, annotation, FpdfConstants.AnnotActionKeyStroke)
                 || HasScript(form, annotation, FpdfConstants.AnnotActionFormat)
                 || HasScript(form, annotation, FpdfConstants.AnnotActionValidate);
+            budget.Spend(budget.Since(start));
         });
 
         return new PdfiumFormPageInfo(widgets, calculated, formatScripts, signature, buttons);
@@ -230,7 +270,7 @@ internal static unsafe class PdfiumForms
     /// <see cref="ReadPageInfo"/> and closed). For a long document the caller should call <see cref="ReadPageInfo"/> in
     /// one job per page instead. A document without a form environment loads no page.
     /// </summary>
-    public static PdfiumFormDocumentInfo ReadDocumentInfo(PdfiumDocument document)
+    public static PdfiumFormDocumentInfo ReadDocumentInfo(PdfiumDocument document, TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         var formType = document.FormType;
@@ -244,7 +284,7 @@ internal static unsafe class PdfiumForms
         for (var index = 0; index < pages.Length; index++)
         {
             using var page = document.LoadPage(index);
-            pages[index] = ReadPageInfo(page);
+            pages[index] = ReadPageInfo(page, clock);
         }
 
         return PdfiumFormDocumentInfo.Combine(xfa, pages);
@@ -280,7 +320,11 @@ internal static unsafe class PdfiumForms
         }
     }
 
-    private static PdfiumFormField? ReadOne(nint form, PdfiumPageText.PageTransform transform, int index, nint annotation)
+    /// <summary>
+    /// Reads one widget within the time budget: nothing but the rectangle once the budget is spent, nothing more after a slow
+    /// first form call; else <see cref="ReadField"/>, whose time counts towards the budget.
+    /// </summary>
+    private static PdfiumFormField? ReadOne(nint form, PdfiumPageText.PageTransform transform, int index, nint annotation, CallBudget budget)
     {
         if (!HasUsableRect(annotation, out var rect))
         {
@@ -288,7 +332,32 @@ internal static unsafe class PdfiumForms
         }
 
         var bounds = transform.ToPage(rect.Left, rect.Top, rect.Right, rect.Bottom);
+        if (budget.Exhausted)
+        {
+            return new PdfiumFormField(index, PdfiumFormKind.Unknown, 0, bounds, null, null, null, null, null, [], [], false, SlowReason);
+        }
+
+        var start = budget.Now();
         var type = Fpdf.FPDFAnnot_GetFormFieldType(form, annotation);
+        var first = budget.Since(start);
+        if (first.Ticks > MaxFirstCallTicks)
+        {
+            budget.Spend(first);
+            return new PdfiumFormField(index, KindOf(type), 0, bounds, null, null, null, null, null, [], [], false, SlowReason);
+        }
+
+        try
+        {
+            return ReadField(form, index, annotation, bounds, type);
+        }
+        finally
+        {
+            budget.Spend(budget.Since(start));
+        }
+    }
+
+    private static PdfiumFormField ReadField(nint form, int index, nint annotation, (double Left, double Top, double Right, double Bottom) bounds, int type)
+    {
         var kind = KindOf(type);
         var flags = unchecked((uint)Fpdf.FPDFAnnot_GetFormFieldFlags(form, annotation));
         var field = new PdfiumFormField(index, kind, flags, bounds, null, null, null, null, null, [], [], false, null);
@@ -483,5 +552,23 @@ internal static unsafe class PdfiumForms
         }
 
         return written == length ? new string(buffer, 0, buffer.Length - 1) : null;
+    }
+
+    /// <summary>The time spent in form calls during one read of a page (<see cref="MaxFormCallTimePerPage"/>).</summary>
+    private sealed class CallBudget(TimeProvider clock)
+    {
+        private TimeSpan spent;
+
+        /// <summary>Gets whether the budget of the page is used up.</summary>
+        public bool Exhausted => spent >= MaxFormCallTimePerPage;
+
+        /// <summary>A timestamp of the clock.</summary>
+        public long Now() => clock.GetTimestamp();
+
+        /// <summary>The time since <paramref name="start"/>.</summary>
+        public TimeSpan Since(long start) => clock.GetElapsedTime(start);
+
+        /// <summary>Counts <paramref name="time"/> towards the budget.</summary>
+        public void Spend(TimeSpan time) => spent += time;
     }
 }
