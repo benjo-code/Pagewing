@@ -782,12 +782,34 @@ public sealed class DrawingInputTests : IDisposable
 
         Assert.Equal(DocumentView.MaxStrokePoints - 1, preview.Points.Count);
 
-        var watch = System.Diagnostics.Stopwatch.StartNew();
+        // No clock (it would flake under load): the thinning waits on a gate, so the release can only return, and the UI
+        // thread settle, while it is still running or not yet started, and it must run on a pool thread.
+        var uiThread = Environment.CurrentManagedThreadId;
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        var reducedOn = 0;
+        var onPool = false;
+        var reduced = false;
+        tab.FreehandReducer = points =>
+        {
+            reducedOn = Environment.CurrentManagedThreadId;
+            onPool = Thread.CurrentThread.IsThreadPoolThread;
+            entered.Set();
+            gate.Wait(Timeout);
+            var result = TabViewModel.ReduceFreehand(points);
+            Volatile.Write(ref reduced, true);
+            return result;
+        };
+
         window.MouseUp(Screen(DocumentView.MaxStrokePoints - 1), MouseButton.Left);
         Settle(window);
-        watch.Stop();
-        Assert.True(watch.ElapsedMilliseconds < 500, $"the release took {watch.ElapsedMilliseconds} ms on the UI thread");
         Assert.False(view.IsDrawing);
+        Assert.False(Volatile.Read(ref reduced));
+        await WaitUntilAsync(window, () => entered.IsSet);
+        Assert.NotEqual(uiThread, reducedOn);
+        Assert.True(onPool);
+        Assert.False(Volatile.Read(ref reduced));
+        gate.Set();
 
         // The stroke is made all the same, in the background.
         var ink = Assert.Single(await WaitForDrawingsAsync(window, tab, 0, count: 1));
