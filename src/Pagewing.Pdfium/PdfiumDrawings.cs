@@ -334,6 +334,10 @@ internal static unsafe class PdfiumDrawings
     /// </item>
     /// <item>no <c>/IC</c> (interior colour): PDFium's generator paints it as a fill, and Pagewing never writes one;</item>
     /// <item>
+    /// no flag in <c>/F</c> besides Print: <see cref="Create"/> writes Print only, so a replacement would show a hidden
+    /// drawing, edit a locked one and lose NoRotate and NoZoom;
+    /// </item>
+    /// <item>
     /// no <c>/RD</c> (the difference between <c>/Rect</c> and the drawn box of a square or circle): the box is read as the
     /// whole <c>/Rect</c>, so a replaced shape would grow to its edges;
     /// </item>
@@ -360,7 +364,9 @@ internal static unsafe class PdfiumDrawings
 
     /// <summary>
     /// The part of <see cref="IsGeometryEditable"/> that looks at the dictionary alone: a drawing without <c>/BS</c>,
-    /// <c>/BE</c>, <c>/IC</c>, <c>/RD</c> and <c>/CA</c> below 1, with no appearance or PDFium's own. Replies and the strokes
+    /// <c>/BE</c>, <c>/IC</c>, <c>/RD</c> and <c>/CA</c> below 1, with no flag in <c>/F</c> besides Print (Hidden, NoView,
+    /// Locked, ReadOnly, NoRotate, NoZoom and the rest; the replacement carries Print only), with no appearance or PDFium's
+    /// own. Replies and the strokes
     /// are not checked; a caller that knows them already (a read of the whole page) uses this one and saves a scan of the
     /// page per annotation.
     /// </summary>
@@ -381,6 +387,7 @@ internal static unsafe class PdfiumDrawings
                 && !PdfiumAnnotations.HasKey(annotation, "IC\0"u8)
                 && !PdfiumAnnotations.HasKey(annotation, "RD\0"u8)
                 && IsOpaque(annotation)
+                && (Fpdf.FPDFAnnot_GetFlags(annotation) & ~FpdfConstants.AnnotFlagPrint) == 0
                 && (!PdfiumAnnotations.HasKey(annotation, "AP\0"u8) || PdfiumAnnotations.HasKey(annotation, "PDFIUM_HasGeneratedAP\0"u8));
         }
         finally

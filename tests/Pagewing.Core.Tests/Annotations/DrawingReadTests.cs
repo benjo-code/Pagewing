@@ -249,6 +249,40 @@ public sealed class DrawingReadTests
     }
 
     [Fact]
+    public async Task FlagsBesidesPrintLockTheGeometry()
+    {
+        // A replacement carries Print only, so a drawing with any other flag would turn visible (Hidden, NoView), be edited
+        // (Locked, ReadOnly) or lose its behaviour on rotating and zooming (NoRotate, NoZoom).
+        int[] locking = [1, 2, 8, 16, 32, 64, 128, 256, 512, 4 | 2, 4 | 32, 4 | 128, 4 | 64, 4 | 16, 4 | 8];
+        int[] free = [0, 4];
+        using var folder = new TempFolder();
+        foreach (var kind in new[] { "Ink", "Square", "Circle" })
+        {
+            var shape = kind == "Ink"
+                ? "/Rect [28 238 92 282] /InkList [[30 240 60 280 90 240]]"
+                : "/Rect [28 158 108 218]";
+            var objects = new List<string>
+            {
+                Catalog,
+                Pages,
+                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Annots [{string.Join(' ', Enumerable.Range(4, free.Length + locking.Length).Select(n => $"{n} 0 R"))}] >>",
+            };
+            objects.AddRange(free.Concat(locking).Select(flags => $"<< /Type /Annot /Subtype /{kind} {shape} /C [1 0 0] /Border [0 0 2] /F {flags} >>"));
+            var path = WritePdf(folder, $"flags-{kind}.pdf", objects);
+
+            for (var i = 0; i < free.Length; i++)
+            {
+                Assert.True(await IsGeometryEditableAsync(path, 0, i), $"{kind} with /F {free[i]} must stay editable.");
+            }
+
+            for (var i = 0; i < locking.Length; i++)
+            {
+                Assert.False(await IsGeometryEditableAsync(path, 0, free.Length + i), $"{kind} with /F {locking[i]} must be locked.");
+            }
+        }
+    }
+
+    [Fact]
     public async Task OwnDrawingsStayEditableAfterTheAppearanceAndARecolour()
     {
         using var folder = new TempFolder();
@@ -276,6 +310,9 @@ public sealed class DrawingReadTests
                 using (var page = document.LoadPage(0))
                 {
                     result.AddRange(indices.Select(i => PdfiumDrawings.IsGeometryEditable(page, i)));
+
+                    // Pagewing's own drawings carry Print only, as a replacement of a foreign one must be able to rely on.
+                    Assert.All(indices, i => Assert.Equal(FpdfConstants.AnnotFlagPrint, FlagsOf(page, i)));
                     foreach (var index in indices)
                     {
                         PdfiumAnnotations.Update(page, index, null, (30, 80, 220), Guid.NewGuid().ToString("N"), "D:20261025130000Z");
@@ -286,6 +323,7 @@ public sealed class DrawingReadTests
                 using (var page = document.LoadPage(0))
                 {
                     result.AddRange(indices.Select(i => PdfiumDrawings.IsGeometryEditable(page, i)));
+                    Assert.All(indices, i => Assert.Equal(FpdfConstants.AnnotFlagPrint, FlagsOf(page, i)));
                 }
 
                 return result;
@@ -550,6 +588,20 @@ public sealed class DrawingReadTests
                 return PdfiumDrawings.ReadGeometry(page, index);
             },
             cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    private static int FlagsOf(PdfiumPage page, int index)
+    {
+        var annotation = Fpdf.FPDFPage_GetAnnot(page.Access(), index);
+        Assert.NotEqual(0, annotation);
+        try
+        {
+            return Fpdf.FPDFAnnot_GetFlags(annotation);
+        }
+        finally
+        {
+            Fpdf.FPDFPage_CloseAnnot(annotation);
+        }
     }
 
     private static async Task<bool> IsGeometryEditableAsync(string path, int pageIndex, int index)
