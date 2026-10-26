@@ -66,6 +66,7 @@ public sealed partial class TestDataTests
     [InlineData("signed-docmdp-none.pdf", 1)]
     [InlineData("linearized.pdf", 2)]
     [InlineData("annotations-foreign.pdf", 2)]
+    [InlineData("drawings-foreign.pdf", 2)]
     public async Task PdfiumOpensTheStructureFixtures(string name, int pages)
     {
         var ct = TestContext.Current.CancellationToken;

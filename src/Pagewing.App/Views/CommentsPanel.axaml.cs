@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Pagewing.App.Commands;
 using Pagewing.App.Resources;
@@ -108,6 +109,7 @@ public sealed partial class CommentsPanel : UserControl
 
         CommentsRoot.DataContext = comments;
         UpdateEditor();
+        FocusCommentIfRequested();
     }
 
     private void Detach()
@@ -141,12 +143,41 @@ public sealed partial class CommentsPanel : UserControl
         if (e.PropertyName == nameof(CommentsViewModel.IsEditing))
         {
             UpdateEditor();
+            FocusCommentIfRequested();
         }
         else if (e.PropertyName == nameof(CommentsViewModel.SelectedItem) && _comments?.SelectedItem is { } selected)
         {
             // A markup just made (or an edited one) is selected: the list shows it.
             CommentList.ScrollIntoView(selected);
         }
+        else if (e.PropertyName == nameof(CommentsViewModel.IsCommentFocusRequested))
+        {
+            FocusCommentIfRequested();
+        }
+    }
+
+    /// <summary>
+    /// Enter on a selection in the document asked for the comment of its entry (<see cref="CommentsViewModel.BeginEdit"/>): the
+    /// list shows the entry and the comment field gets the keys, once the edit controls are laid out.
+    /// </summary>
+    private void FocusCommentIfRequested()
+    {
+        if (_comments is not { IsCommentFocusRequested: true, SelectedItem: { } item } comments || _editor is not { } editor)
+        {
+            return;
+        }
+
+        comments.TakeCommentFocusRequest();
+        CommentList.ScrollIntoView(item);
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (ReferenceEquals(_editor, editor) && ReferenceEquals(_comments?.SelectedItem, item))
+                {
+                    editor.FocusComment();
+                }
+            },
+            DispatcherPriority.Loaded);
     }
 
     /// <summary>The edit controls exist only in the mode; leaving it drops them (the keys go to the list if they were there).</summary>

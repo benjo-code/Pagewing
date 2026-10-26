@@ -10,7 +10,8 @@ namespace Pagewing.Pdfium;
 /// like the text. After PDFium has rendered, a highlight's area takes a tint of its colour behind the text (the ground
 /// becomes the tint, the light text stays, the counterpart of the multiplication on a light page), and the line of an
 /// underline or strike-out is painted over every pixel PDFium's own appearance touched, opaque in its colour. Measurement
-/// and rules: <c>Docs/DECISIONS.md</c>, entry "Markierungen auf der dunklen Seite und im Druck (M9)".
+/// and rules: <c>Docs/DECISIONS.md</c>, entry "Markierungen auf der dunklen Seite und im Druck (M9)". The same read and
+/// paint also take the drawings of the page (<see cref="PdfiumDarkDrawings"/>, M10), between the areas and the lines.
 /// </summary>
 /// <remarks>
 /// The lines lie where PDFium's appearance generator (<c>CPDF_GenerateAP</c>, chromium/8100) draws them: on the bounding
@@ -61,7 +62,9 @@ internal static unsafe class PdfiumDarkMarkups
     /// Reads the visible highlights, underlines and strike-outs of the page (not hidden, not "no view") with the colours
     /// they get on the dark page. Must be called on the PDFium thread, before the page is rendered. Reading stops, keeping
     /// what it has, once <see cref="MaxTotalQuads"/> quadrilaterals or <see cref="MaxAppearanceBytes"/> of appearance
-    /// strings are used up (a hostile page may list the same large markup thousands of times).
+    /// strings are used up (a hostile page may list the same large markup thousands of times). The visible drawings come
+    /// along (<see cref="PdfiumDarkDrawings.Read"/>) within <see cref="PdfiumDarkDrawings.MaxTotalPoints"/>; each kind
+    /// stops at its own budget, the appearance budget stops both.
     /// </summary>
     public static DarkMarkupPaint Read(PdfiumPage page, PdfiumPageColors colors)
     {
@@ -75,13 +78,15 @@ internal static unsafe class PdfiumDarkMarkups
 
         var areas = new List<DarkMarkupArea>();
         var bands = new List<DarkMarkupBand>();
+        List<DarkDrawing>? drawings = null;
         long quadBudget = MaxTotalQuads;
+        long pointBudget = PdfiumDarkDrawings.MaxTotalPoints;
         long appearanceBudget = MaxAppearanceBytes;
         // Rented on the first appearance that is decoded, returned when the read ends (also by an exception).
         char[]? scratch = null;
         try
         {
-            for (var i = 0; i < count && quadBudget > 0 && appearanceBudget > 0; i++)
+            for (var i = 0; i < count && (quadBudget > 0 || pointBudget > 0) && appearanceBudget > 0; i++)
             {
                 var annotation = Fpdf.FPDFPage_GetAnnot(native, i);
                 if (annotation == 0)
@@ -92,9 +97,31 @@ internal static unsafe class PdfiumDarkMarkups
                 try
                 {
                     var subtype = Fpdf.FPDFAnnot_GetSubtype(annotation);
-                    if (!PdfiumAnnotations.IsMarkup(subtype)
+                    var textBox = PdfiumAnnotations.IsTextBox(subtype);
+                    var drawing = PdfiumAnnotations.IsDrawing(subtype) || textBox;
+                    if (!(drawing ? pointBudget > 0 : PdfiumAnnotations.IsMarkup(subtype) && quadBudget > 0)
                         || (Fpdf.FPDFAnnot_GetFlags(annotation) & (FpdfConstants.AnnotFlagHidden | FpdfConstants.AnnotFlagNoView)) != 0)
                     {
+                        continue;
+                    }
+
+                    if (textBox)
+                    {
+                        if (PdfiumDarkDrawings.ReadTextBox(page, i, annotation, transform, colors, ref pointBudget, ref scratch, ref appearanceBudget) is { } text)
+                        {
+                            (drawings ??= []).Add(text);
+                        }
+
+                        continue;
+                    }
+
+                    if (drawing)
+                    {
+                        if (PdfiumDarkDrawings.Read(page, i, annotation, subtype, transform, colors, ref pointBudget, ref scratch, ref appearanceBudget) is { } read)
+                        {
+                            (drawings ??= []).Add(read);
+                        }
+
                         continue;
                     }
 
@@ -146,7 +173,7 @@ internal static unsafe class PdfiumDarkMarkups
             PdfiumAnnotations.ReturnScratch(ref scratch);
         }
 
-        return areas.Count == 0 && bands.Count == 0 ? DarkMarkupPaint.Empty : new DarkMarkupPaint(areas, bands);
+        return areas.Count == 0 && bands.Count == 0 && drawings is null ? DarkMarkupPaint.Empty : new DarkMarkupPaint(areas, bands, drawings);
     }
 
     /// <summary>
@@ -243,6 +270,10 @@ internal static unsafe class PdfiumDarkMarkups
             }
         }
 
+        // The drawings over the areas (their shares are taken against the dark ground, which an area would have changed),
+        // and under the lines.
+        PdfiumDarkDrawings.Apply(paint.Drawings, colors, pixels, width, height, stride, scaleX, scaleY, offsetX, offsetY, ref budget);
+
         // The lines last: a strike-out through a highlight stays a line.
         foreach (var band in paint.Bands)
         {
@@ -257,12 +288,20 @@ internal static unsafe class PdfiumDarkMarkups
     /// The colour of a line on the dark ground (ARGB): the annotation's colour if it reaches <see cref="LineContrast"/>
     /// against <paramref name="background"/>, otherwise the first step towards white that does, so the hue stays.
     /// </summary>
-    public static uint LineColor(uint rgb, uint background)
+    public static uint LineColor(uint rgb, uint background) => Lightened(rgb, background, LineContrast);
+
+    /// <summary>
+    /// The colour of the text of a text box on the dark ground (ARGB): its colour if it reaches <see cref="TextContrast"/>
+    /// against <paramref name="background"/>, otherwise the first step towards white that does (WCAG 2.2, text).
+    /// </summary>
+    public static uint TextColor(uint rgb, uint background) => Lightened(rgb, background, TextContrast);
+
+    private static uint Lightened(uint rgb, uint background, double contrast)
     {
         for (var step = 0; step <= LightenSteps; step++)
         {
             var color = Mix(rgb, 0xFFFFFFFF, step, LightenSteps);
-            if (Contrast(color, background) >= LineContrast)
+            if (Contrast(color, background) >= contrast)
             {
                 return color;
             }
@@ -495,7 +534,7 @@ internal readonly record struct DarkMarkupArea(DarkMarkupPoint P1, DarkMarkupPoi
 internal readonly record struct DarkMarkupBand(double Left, double Top, double Right, double Bottom, uint Color);
 
 /// <summary>What <see cref="PdfiumDarkMarkups.Apply"/> paints on one dark render.</summary>
-internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IReadOnlyList<DarkMarkupBand> bands)
+internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IReadOnlyList<DarkMarkupBand> bands, IReadOnlyList<DarkDrawing>? drawings = null)
 {
     /// <summary>Gets a page without markups.</summary>
     public static DarkMarkupPaint Empty { get; } = new([], []);
@@ -506,14 +545,19 @@ internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IRead
     /// <summary>Gets the lines of the underlines and strike-outs.</summary>
     public IReadOnlyList<DarkMarkupBand> Bands { get; } = bands;
 
+    /// <summary>Gets the drawings (ink, square, circle) in <c>/Annots</c> order.</summary>
+    public IReadOnlyList<DarkDrawing> Drawings { get; } = drawings ?? [];
+
     /// <summary>Gets whether there is nothing to paint.</summary>
-    public bool IsEmpty => Areas.Count == 0 && Bands.Count == 0;
+    public bool IsEmpty => Areas.Count == 0 && Bands.Count == 0 && Drawings.Count == 0;
 }
 
 /// <summary>
-/// Converts PDF user space to points from the top left of the displayed page in double precision. The affine map comes from
-/// three corners of the page through <c>FPDF_DeviceToPage</c> (which returns doubles), inverted here; PDFium stays the only
-/// source of rotation and CropBox, and no coordinate is rounded to a grid as with <c>FPDF_PageToDevice</c>.
+/// Converts between PDF user space and points from the top left of the displayed page in double precision. The affine map
+/// comes from three corners of the page through <c>FPDF_DeviceToPage</c> (which returns doubles), inverted here for
+/// <see cref="ToDisplay"/>; PDFium stays the only source of rotation and CropBox, and no coordinate is rounded to a grid as
+/// with <c>FPDF_PageToDevice</c>. <see cref="ToUser"/> is the map itself, so a point converted there and back stays the
+/// same up to double rounding (drawings, M10).
 /// </summary>
 internal readonly struct DisplayTransform
 {
@@ -526,18 +570,28 @@ internal readonly struct DisplayTransform
     private readonly double originX;
     private readonly double originY;
 
-    private DisplayTransform(double m11, double m12, double m21, double m22, double originX, double originY)
+    // The map from display points to user space: user = origin + displayX * (ax, ay) + displayY * (bx, by).
+    private readonly double ax;
+    private readonly double ay;
+    private readonly double bx;
+    private readonly double by;
+
+    private DisplayTransform(double ax, double ay, double bx, double by, double determinant, double originX, double originY)
     {
-        this.m11 = m11;
-        this.m12 = m12;
-        this.m21 = m21;
-        this.m22 = m22;
+        m11 = by / determinant;
+        m12 = -bx / determinant;
+        m21 = -ay / determinant;
+        m22 = ax / determinant;
+        this.ax = ax;
+        this.ay = ay;
+        this.bx = bx;
+        this.by = by;
         this.originX = originX;
         this.originY = originY;
     }
 
     /// <summary>Gets the transform that keeps every point (for tests of the geometry).</summary>
-    public static DisplayTransform Identity { get; } = new(1, 0, 0, 1, 0, 0);
+    public static DisplayTransform Identity { get; } = new(1, 0, 0, 1, 1, 0, 0);
 
     /// <summary>Builds the transform of a loaded page (PDFium thread); <see langword="false"/> when PDFium cannot convert.</summary>
     public static unsafe bool TryCreate(nint page, double width, double height, out DisplayTransform transform)
@@ -565,7 +619,7 @@ internal readonly struct DisplayTransform
             return false;
         }
 
-        transform = new DisplayTransform(by / determinant, -bx / determinant, -ay / determinant, ax / determinant, x0, y0);
+        transform = new DisplayTransform(ax, ay, bx, by, determinant, x0, y0);
         return true;
     }
 
@@ -576,4 +630,14 @@ internal readonly struct DisplayTransform
         var dy = y - originY;
         return new DarkMarkupPoint((m11 * dx) + (m12 * dy), (m21 * dx) + (m22 * dy));
     }
+
+    /// <summary>Gets the step in user space of one display point to the right (the linear part of <see cref="ToUser"/>).</summary>
+    public (double X, double Y) AlongX => (ax, ay);
+
+    /// <summary>Gets the step in user space of one display point down (the linear part of <see cref="ToUser"/>).</summary>
+    public (double X, double Y) AlongY => (bx, by);
+
+    /// <summary>Converts a point in points from the top left of the displayed page to PDF user space (the inverse of <see cref="ToDisplay"/>).</summary>
+    public (double X, double Y) ToUser(double x, double y) =>
+        (originX + (ax * x) + (bx * y), originY + (ay * x) + (by * y));
 }

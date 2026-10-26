@@ -32,7 +32,12 @@ public sealed partial class TabViewModel
     /// Applies the comment typed in the "Comments" panel and not applied yet, as Ctrl+Enter would (before the update asks
     /// about unsaved changes, so a typed comment is asked about and never dropped silently when the app ends).
     /// </summary>
-    internal void ApplyCommentDraft() => _comments?.ApplyDraft();
+    internal void ApplyCommentDraft()
+    {
+        // A nudge of the selection that waits for the keys to rest is a change as well (TabViewModel.Selection.cs).
+        FlushNudge();
+        _comments?.ApplyDraft();
+    }
 
     /// <summary>
     /// Gets whether a typed comment waits and cannot be applied now because a card asks about the tab: the update asks again

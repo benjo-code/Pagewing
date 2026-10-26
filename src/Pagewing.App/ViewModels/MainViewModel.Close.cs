@@ -139,6 +139,13 @@ public sealed partial class MainViewModel
         }
 
         _resolving = true;
+
+        // The text of open text box fields is applied first, so the question sees it (TabViewModel.FlushTextBoxDraft).
+        foreach (var each in Tabs.Where(tab => only is null || ReferenceEquals(tab, only)).ToList())
+        {
+            each.FlushTextBoxDraft();
+        }
+
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _resolveEnded = ended;
         var discarded = answers ?? [];

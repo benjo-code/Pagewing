@@ -3,12 +3,13 @@ using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
 using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
+using Pagewing.Pdfium;
 
 namespace Pagewing.Core.Annotations;
 
 /// <summary>
-/// Changes the text markup of the document of a <see cref="ViewerSession"/> and keeps the undo history and the
-/// "unsaved changes" state of it; saves the document and lets the session adopt the saved file.
+/// Changes the text markup and the drawings of the document of a <see cref="ViewerSession"/> and keeps the undo history
+/// and the "unsaved changes" state of it; saves the document and lets the session adopt the saved file.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,8 +23,14 @@ namespace Pagewing.Core.Annotations;
 /// <para>
 /// Undo restores by creating anew, not byte for byte: a deleted markup is created again from its copy (kind, lines,
 /// colour, comment, author) under its old <c>/NM</c>, so the later steps of the history still find it; keys of another
-/// application that Pagewing does not read are lost then. A change is undone by applying the old colour and comment
-/// again. Saving empties the history: what is saved cannot be undone.
+/// application that Pagewing does not read are lost then. A deleted drawing is created again the same way from its
+/// <see cref="PdfAnnotation.Drawing"/> (a colour it did not have comes back black, as PDFium draws such a drawing). A
+/// change is undone by applying the old colour and comment again; a drawing also gets its old shape back (it is replaced
+/// by the old one, under the same name). A colour that the annotation did not have cannot be restored as missing: the
+/// annotation keeps the one it has. A move, a resize or a change of colour and width together is one step.
+/// A drawing of another application that is not <see cref="PdfAnnotation.GeometryEditable"/> can still be deleted; undoing
+/// that creates it again from the shape Pagewing could read, with Pagewing's own appearance (see <see cref="DeleteAsync"/>).
+/// Saving empties the history: what is saved cannot be undone.
 /// </para>
 /// <para>
 /// The history belongs to the document the editor worked on. When the session opens another document meanwhile, the
@@ -200,16 +207,128 @@ public sealed class AnnotationEditor
     }
 
     /// <summary>
-    /// Deletes a highlight, underline or strike-out (also one of another application) together with its popup. The copy
-    /// that undo creates again from is taken first: its lines are the quadrilaterals as rectangles
-    /// (<see cref="MarkupGeometry.LinesFor"/>), or the bounds of the annotation when no quadrilateral has an area. A markup
-    /// with neither could not be restored, so it is not deleted.
+    /// Creates a drawing (freehand, line, arrow, rectangle or ellipse, never filled). A drawing with nothing to draw
+    /// (<see cref="DrawingGeometry.IsEmpty"/>) creates nothing and changes nothing.
     /// </summary>
+    /// <param name="page">The 0-based page index.</param>
+    /// <param name="geometry">The shape in page points from the top left.</param>
+    /// <param name="color">The colour.</param>
+    /// <param name="contents">The comment, or <see langword="null"/>.</param>
+    /// <param name="author">The author (the setting "Author name"), or <see langword="null"/>.</param>
+    /// <returns>The new annotation, or <see langword="null"/> when the drawing is empty.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The session has no ready document, or PDFium could not create the drawing.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The page is not a page, or the width or the number of strokes or points is beyond what a drawing may have.</exception>
+    /// <exception cref="PdfAnnotationLimitException">The document lists the most annotations Pagewing reads; nothing changes.</exception>
+    public async Task<PdfAnnotation?> ApplyDrawingAsync(
+        int page,
+        DrawingGeometry geometry,
+        AnnotationColor color,
+        string? contents,
+        string? author)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+        if (geometry.IsEmpty)
+        {
+            return null;
+        }
+
+        return await RunAsync<PdfAnnotation?>(async document =>
+        {
+            var created = await document.CreateDrawingAsync(page, geometry, color, contents, author).ConfigureAwait(false);
+            Record(page, new AnnotationCommand.Create(created));
+            return created;
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Creates a text box (<see cref="PdfDocument.CreateTextBoxAsync"/>; the box grows to fit the text). A text that is empty or
+    /// only white space creates nothing and changes nothing.
+    /// </summary>
+    /// <param name="page">The 0-based page index.</param>
+    /// <param name="spec">The box, text, size and colour.</param>
+    /// <param name="author">The author (the setting "Author name"), or <see langword="null"/>.</param>
+    /// <returns>The new annotation, or <see langword="null"/> when the text is blank.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="spec"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">The text has characters a text box cannot show, is too long, or the box is too small (see <see cref="TextBoxSpec.Validate"/>).</exception>
+    /// <exception cref="InvalidOperationException">The session has no ready document, or PDFium could not create the text box.</exception>
+    /// <exception cref="PdfAnnotationLimitException">The document lists the most annotations Pagewing reads; nothing changes.</exception>
+    public async Task<PdfAnnotation?> ApplyTextBoxAsync(int page, TextBoxSpec spec, string? author)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(spec.Text, nameof(spec));
+        if (TextBoxSpec.CheckText(spec.Text).Problem == TextBoxTextProblem.Empty)
+        {
+            return null;
+        }
+
+        return await RunAsync<PdfAnnotation?>(async document =>
+        {
+            var created = await document.CreateTextBoxAsync(page, spec, author).ConfigureAwait(false);
+            Record(page, new AnnotationCommand.Create(created));
+            return created;
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Moves, resizes, retypes or recolours a text box: it is replaced by <paramref name="spec"/> under the same name (author and
+    /// creation date stay). One step of the history however much changes.
+    /// </summary>
+    /// <param name="locator">Finds the text box: by name if it has one, else by index.</param>
+    /// <param name="spec">The new text box.</param>
+    /// <returns>The replaced text box; its index may have changed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="spec"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">The new text box is refused (see <see cref="TextBoxSpec.Validate"/>; the history is unchanged).</exception>
+    /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The session has no ready document, or the annotation is no text box or not <see cref="PdfAnnotation.GeometryEditable"/>
+    /// (another program's; the history and the document are unchanged).
+    /// </exception>
+    public Task<PdfAnnotation> ReplaceTextBoxAsync(AnnotationLocator locator, TextBoxSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        return UpdateAsync(locator, new AnnotationEdit(TextBox: spec));
+    }
+
+    /// <summary>
+    /// Moves or resizes a drawing, or changes its stroke width: it is replaced by <paramref name="geometry"/> (of the same
+    /// kind) under the same name; colour, comment and author stay. It is one step of the history however it came about; a
+    /// move with the mouse calls this once, on release.
+    /// </summary>
+    /// <param name="locator">Finds the drawing: by name if it has one, else by index.</param>
+    /// <param name="geometry">The new shape.</param>
+    /// <returns>The replaced drawing; its index may have changed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is <see langword="null"/>.</exception>
+    /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The session has no ready document, or the annotation is no drawing or is not <see cref="PdfAnnotation.GeometryEditable"/>
+    /// (the history and the document are unchanged).
+    /// </exception>
+    public Task<PdfAnnotation> ReplaceGeometryAsync(AnnotationLocator locator, DrawingGeometry geometry)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+        return UpdateAsync(locator, new AnnotationEdit(Geometry: geometry));
+    }
+
+    /// <summary>
+    /// Deletes a highlight, underline or strike-out (also one of another application) or a drawing, together with its
+    /// popup. The copy that undo creates again from is taken first: for a markup its lines are the quadrilaterals as
+    /// rectangles (<see cref="MarkupGeometry.LinesFor"/>), or the bounds of the annotation when no quadrilateral has an
+    /// area; for a drawing it is the shape as read. A markup with neither and a drawing whose shape cannot be read could
+    /// not be restored, so they are not deleted.
+    /// </summary>
+    /// <remarks>
+    /// A drawing that is not <see cref="PdfAnnotation.GeometryEditable"/> (another application's appearance, border style or
+    /// cloud, fill, opacity, a box that differs from the strokes, or a stroke list the reading cut short) can be deleted all
+    /// the same. Undoing the deletion creates it again from the shape Pagewing could read, with Pagewing's own appearance and
+    /// under the same name: the foreign appearance, fill, opacity, border style, the difference between box and strokes and
+    /// every stroke that was not read are lost, the last one for good. It then is <see cref="PdfAnnotation.GeometryEditable"/>.
+    /// </remarks>
     /// <param name="locator">Finds the annotation: by name if it has one, else by index.</param>
     /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
     /// <exception cref="InvalidOperationException">
-    /// The session has no ready document, the annotation is not editable, or it has no area that undo could create again
-    /// (the document is unchanged).
+    /// The session has no ready document, the annotation is not editable, or it has no area or shape that undo could create
+    /// again (the document is unchanged).
     /// </exception>
     public Task DeleteAsync(AnnotationLocator locator) =>
         RunAsync(async document =>
@@ -217,29 +336,52 @@ public sealed class AnnotationEditor
             var removed = await FindAsync(document, locator).ConfigureAwait(false);
             if (!removed.Editable)
             {
-                throw new InvalidOperationException("Only highlights, underlines and strike-outs without replies can be deleted.");
+                throw new InvalidOperationException("Only highlights, underlines, strike-outs and drawings without replies can be deleted.");
             }
 
-            var lines = RestorableLines(removed);
-            if (lines.Count == 0)
+            if (removed.Kind is AnnotationKind.Highlight or AnnotationKind.Underline or AnnotationKind.StrikeOut)
             {
-                throw new InvalidOperationException("The markup has no area that undo could restore, so it is not deleted.");
+                var lines = RestorableLines(removed);
+                if (lines.Count == 0)
+                {
+                    throw new InvalidOperationException("The markup has no area that undo could restore, so it is not deleted.");
+                }
+
+                removed = removed with { QuadRects = lines };
+            }
+            else if (removed.Kind == AnnotationKind.TextBox)
+            {
+                if (!CanRecreateTextBox(removed))
+                {
+                    throw new InvalidOperationException("The text box has a text Pagewing cannot show, so undo could not restore it; it is not deleted.");
+                }
+            }
+            else if (!CanRecreateDrawing(removed))
+            {
+                throw new InvalidOperationException("The drawing has no shape that undo could restore, so it is not deleted.");
             }
 
             // The copy gets a name if it has none: undo creates it again under that name, so redo finds it again.
-            removed = removed with { QuadRects = lines, Name = removed.Name ?? Guid.NewGuid().ToString("N") };
+            removed = removed with { Name = removed.Name ?? Guid.NewGuid().ToString("N") };
             await document.DeleteAnnotationAsync(locator).ConfigureAwait(false);
             Record(locator.Page, new AnnotationCommand.Delete(removed));
             return true;
         });
 
-    /// <summary>Changes the colour or the comment of a highlight, underline or strike-out.</summary>
+    /// <summary>
+    /// Changes the colour or the comment of a highlight, underline or strike-out, or the colour, the comment or the shape
+    /// of a drawing. A new colour or shape of a drawing replaces it (one step, also colour and width together) and needs
+    /// <see cref="PdfAnnotation.GeometryEditable"/>; a comment alone needs only <see cref="PdfAnnotation.Editable"/>.
+    /// </summary>
     /// <param name="locator">Finds the annotation: by name if it has one, else by index.</param>
     /// <param name="edit">The change.</param>
     /// <returns>The changed annotation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="edit"/> is <see langword="null"/>.</exception>
     /// <exception cref="PdfAnnotationNotFoundException">No annotation matches the locator.</exception>
-    /// <exception cref="InvalidOperationException">The session has no ready document, or the annotation is not editable.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The session has no ready document, the annotation is not editable, or it is a drawing that is not
+    /// <see cref="PdfAnnotation.GeometryEditable"/> and gets a new colour or shape (the history is unchanged).
+    /// </exception>
     public Task<PdfAnnotation> UpdateAsync(AnnotationLocator locator, AnnotationEdit edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
@@ -353,12 +495,66 @@ public sealed class AnnotationEditor
 
     private static AnnotationLocator LocatorOf(PdfAnnotation annotation) => new(annotation.Page, annotation.Index, annotation.Name);
 
-    /// <summary>The change that turns the colour and the comment of <paramref name="from"/> into those of <paramref name="to"/>.</summary>
+    /// <summary>
+    /// The change that turns the colour, the comment and (of a drawing) the shape of <paramref name="from"/> into those of
+    /// <paramref name="to"/>.
+    /// </summary>
     private static AnnotationEdit EditTowards(PdfAnnotation from, PdfAnnotation to) => new(
         Contents: from.Contents == to.Contents ? null : to.Contents ?? string.Empty,
 
         // A missing colour cannot be restored as missing; the annotation keeps the one it has.
-        Color: from.Color == to.Color ? null : to.Color);
+        Color: from.Color == to.Color ? null : to.Color,
+        Geometry: from.Drawing is { } was && to.Drawing is { } now && !SameShape(was, now) ? now : null,
+        TextBox: from.TextBox is { } before && to.TextBox is { } after && before != after ? after : null);
+
+    private static bool SameShape(DrawingGeometry a, DrawingGeometry b)
+    {
+        if (a.Kind != b.Kind || a.Width != b.Width || a.Box != b.Box || a.Strokes.Count != b.Strokes.Count)
+        {
+            return false;
+        }
+
+        for (var s = 0; s < a.Strokes.Count; s++)
+        {
+            if (a.Strokes[s].Count != b.Strokes[s].Count)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < a.Strokes[s].Count; i++)
+            {
+                if (a.Strokes[s][i] != b.Strokes[s][i])
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Whether a text box can be created again from what was read of it (undo of a delete): its text, size and box are accepted.</summary>
+    private static bool CanRecreateTextBox(PdfAnnotation annotation)
+    {
+        if (annotation.TextBox is not { } spec)
+        {
+            return false;
+        }
+
+        try
+        {
+            (spec with { Text = TextBoxSpec.NormalizeText(spec.Text) }).Validate();
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Whether a drawing can be created again from its read shape (undo of a delete).</summary>
+    private static bool CanRecreateDrawing(PdfAnnotation annotation) =>
+        annotation.Drawing is { IsEmpty: false, Width: > 0 and <= PdfiumDrawings.MaxWidth };
 
     private static async Task<PdfAnnotation> FindAsync(PdfDocument document, AnnotationLocator locator)
     {
@@ -384,17 +580,25 @@ public sealed class AnnotationEditor
         return lines.Count > 0 ? lines : MarkupGeometry.LinesFor([annotation.Bounds]);
     }
 
-    /// <summary>Creates a markup again from its copy, under its old name.</summary>
+    /// <summary>
+    /// Creates a markup or a drawing again from its copy, under its old name. A drawing without a colour comes back black,
+    /// which is how PDFium draws it.
+    /// </summary>
     private static Task<PdfAnnotation> RecreateAsync(PdfDocument document, PdfAnnotation copy) =>
-        document.CreateMarkupAsync(
-            copy.Page,
-            copy.Kind,
-            RestorableLines(copy),
-            copy.Color ?? AnnotationPalette.ColorOf(MarkupColor.Yellow),
-            copy.Contents,
-            copy.Author,
-            copy.Name,
-            CancellationToken.None);
+        copy.TextBox is { } textBox
+            ? document.CreateTextBoxAsync(copy.Page, textBox, copy.Author, copy.Name, CancellationToken.None)
+        : copy.Drawing is { } shape
+            ? document.CreateDrawingAsync(
+                copy.Page, shape, copy.Color ?? new AnnotationColor(0, 0, 0), copy.Contents, copy.Author, copy.Name, CancellationToken.None)
+            : document.CreateMarkupAsync(
+                copy.Page,
+                copy.Kind,
+                RestorableLines(copy),
+                copy.Color ?? AnnotationPalette.ColorOf(MarkupColor.Yellow),
+                copy.Contents,
+                copy.Author,
+                copy.Name,
+                CancellationToken.None);
 
     /// <summary>Reverses (<paramref name="undo"/>) or repeats a step of the history.</summary>
     private static Task ApplyAsync(PdfDocument document, AnnotationCommand command, bool undo) => command switch

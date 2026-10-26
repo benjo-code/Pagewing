@@ -91,6 +91,9 @@ public sealed partial class MainViewModel
     internal Task<bool> SaveTabAsync(TabViewModel tab, bool saveAs)
     {
         ArgumentNullException.ThrowIfNull(tab);
+
+        // A nudge of the selection that waits for the keys to rest is saved with the rest (the editor runs it first).
+        tab.FlushNudge();
         if (_disposed || _savingTab is not null || _pendingSave is not null || Tabs.IndexOf(tab) < 0
             || !(saveAs ? tab.CanSaveAs() : tab.CanSave()) || tab.Document is not { } document || tab.FullPath is not { } path)
         {
@@ -111,6 +114,8 @@ public sealed partial class MainViewModel
         tab.SaveProgress = 0;
         try
         {
+            // A change made a moment ago (the text of a text box field applied by FlushNudge above) is saved with the rest.
+            await tab.WhenEditsSettledAsync();
             switch (await AskAboutSignaturesAsync(tab, document, path, cancellation.Token))
             {
                 case SignatureAnswer.Stop:

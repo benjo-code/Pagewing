@@ -22,8 +22,9 @@ namespace Pagewing.Pdfium;
 /// With <see cref="PdfiumPageColors"/> the page is recoloured through PDFium's colour scheme
 /// (<c>FPDF_RenderPageBitmapWithColorScheme_Start</c> with <c>FPDF_CONVERT_FILL_TO_STROKE</c>) on a bitmap filled with
 /// the background; without them the page is rendered on white exactly as before (<c>FPDF_RenderPageBitmap_Start</c>).
-/// A recoloured page with annotations also gets its highlights, underlines and strike-outs painted in their own colours
-/// once PDFium is done (<see cref="PdfiumDarkMarkups"/>; the colour scheme would make them vanish or take the foreground).
+/// A recoloured page with annotations also gets its highlights, underlines and strike-outs and its drawings (ink, square,
+/// circle) painted in their own colours once PDFium is done (<see cref="PdfiumDarkMarkups"/>, <see cref="PdfiumDarkDrawings"/>;
+/// the colour scheme would make them vanish or take the foreground).
 /// </remarks>
 internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
 {

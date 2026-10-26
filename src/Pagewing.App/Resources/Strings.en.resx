@@ -1065,6 +1065,66 @@
   <data name="CommandStrikeOut" xml:space="preserve">
     <value>Strike out</value>
   </data>
+  <data name="CommandSelectTool" xml:space="preserve">
+    <value>Select and move drawings</value>
+  </data>
+  <data name="CommandInk" xml:space="preserve">
+    <value>Draw freehand</value>
+  </data>
+  <data name="CommandRectangle" xml:space="preserve">
+    <value>Draw a rectangle</value>
+  </data>
+  <data name="CommandEllipse" xml:space="preserve">
+    <value>Draw an oval</value>
+  </data>
+  <data name="CommandLine" xml:space="preserve">
+    <value>Draw a line</value>
+  </data>
+  <data name="CommandArrow" xml:space="preserve">
+    <value>Draw an arrow</value>
+  </data>
+  <data name="ToolSelect" xml:space="preserve">
+    <value>Select</value>
+  </data>
+  <data name="ToolInk" xml:space="preserve">
+    <value>Freehand</value>
+  </data>
+  <data name="ToolRectangle" xml:space="preserve">
+    <value>Rectangle</value>
+  </data>
+  <data name="ToolEllipse" xml:space="preserve">
+    <value>Oval</value>
+  </data>
+  <data name="ToolLine" xml:space="preserve">
+    <value>Line</value>
+  </data>
+  <data name="ToolArrow" xml:space="preserve">
+    <value>Arrow</value>
+  </data>
+  <data name="DrawColorRed" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="DrawColorBlack" xml:space="preserve">
+    <value>Black</value>
+  </data>
+  <data name="DrawColorBlue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+  <data name="DrawColorGreen" xml:space="preserve">
+    <value>Green</value>
+  </data>
+  <data name="DrawColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="StrokeWidthThin" xml:space="preserve">
+    <value>Thin (1 pt)</value>
+  </data>
+  <data name="StrokeWidthMedium" xml:space="preserve">
+    <value>Medium (2 pt)</value>
+  </data>
+  <data name="StrokeWidthThick" xml:space="preserve">
+    <value>Thick (4 pt)</value>
+  </data>
   <data name="AnnotateToolbarName" xml:space="preserve">
     <value>Commenting tools</value>
   </data>
@@ -1127,5 +1187,116 @@
   </data>
   <data name="AnnotateMore" xml:space="preserve">
     <value>More tools</value>
+  </data>
+  <data name="DrawingLimitReached" xml:space="preserve">
+    <value>The drawing was not added: the document already has as many annotations as Pagewing handles ({0:N0}).</value>
+  </data>
+  <data name="DrawingFailed" xml:space="preserve">
+    <value>The drawing could not be added.</value>
+  </data>
+  <data name="SelectionFrameName" xml:space="preserve">
+    <value>Selection frame</value>
+  </data>
+  <data name="SelectionHandleTopLeft" xml:space="preserve">
+    <value>Top left handle</value>
+  </data>
+  <data name="SelectionHandleTop" xml:space="preserve">
+    <value>Top handle</value>
+  </data>
+  <data name="SelectionHandleTopRight" xml:space="preserve">
+    <value>Top right handle</value>
+  </data>
+  <data name="SelectionHandleRight" xml:space="preserve">
+    <value>Right handle</value>
+  </data>
+  <data name="SelectionHandleBottomRight" xml:space="preserve">
+    <value>Bottom right handle</value>
+  </data>
+  <data name="SelectionHandleBottom" xml:space="preserve">
+    <value>Bottom handle</value>
+  </data>
+  <data name="SelectionHandleBottomLeft" xml:space="preserve">
+    <value>Bottom left handle</value>
+  </data>
+  <data name="SelectionHandleLeft" xml:space="preserve">
+    <value>Left handle</value>
+  </data>
+  <data name="SelectionHandleStart" xml:space="preserve">
+    <value>Start point handle</value>
+  </data>
+  <data name="SelectionHandleEnd" xml:space="preserve">
+    <value>End point handle</value>
+  </data>
+  <data name="SelectionLockedForeign" xml:space="preserve">
+    <value>Drawn by another program: it can be commented on or deleted, but not moved or changed.</value>
+  </data>
+  <data name="AnnotateWidthsName" xml:space="preserve">
+    <value>Stroke widths</value>
+  </data>
+  <data name="CommentFilterDrawings" xml:space="preserve">
+    <value>Drawings</value>
+  </data>
+  <data name="CommentInkGroup" xml:space="preserve">
+    <value>Freehand, {0} strokes</value>
+  </data>
+  <data name="CommentGroupCollapsed" xml:space="preserve">
+    <value>collapsed</value>
+  </data>
+  <data name="CommentGroupExpanded" xml:space="preserve">
+    <value>expanded</value>
+  </data>
+  <data name="CommentGroupHint" xml:space="preserve">
+    <value>Enter or Space shows or hides the strokes.</value>
+  </data>
+  <data name="SelectionFrameNameOf" xml:space="preserve">
+    <value>{0} selected, page {1}</value>
+  </data>
+  <data name="DrawingChangeFailed" xml:space="preserve">
+    <value>The drawing could not be changed.</value>
+  </data>
+  <data name="SelectionHandleNameOf" xml:space="preserve">
+    <value>{0}, {1}, page {2}</value>
+  </data>
+  <data name="CommandTextBox" xml:space="preserve">
+    <value>Add a text box</value>
+  </data>
+  <data name="ToolTextBox" xml:space="preserve">
+    <value>Text box</value>
+  </data>
+  <data name="TextBoxSizeSmall" xml:space="preserve">
+    <value>Small text (12 pt)</value>
+  </data>
+  <data name="TextBoxSizeMedium" xml:space="preserve">
+    <value>Medium text (16 pt)</value>
+  </data>
+  <data name="TextBoxSizeLarge" xml:space="preserve">
+    <value>Large text (24 pt)</value>
+  </data>
+  <data name="AnnotateSizesName" xml:space="preserve">
+    <value>Font sizes</value>
+  </data>
+  <data name="TextBoxEditorName" xml:space="preserve">
+    <value>Text of the text box</value>
+  </data>
+  <data name="TextBoxEditorHint" xml:space="preserve">
+    <value>Ctrl+Enter applies, Esc discards</value>
+  </data>
+  <data name="TextBoxUnsupportedCharacters" xml:space="preserve">
+    <value>A text box cannot show these characters: {0}. Remove them to apply the text.</value>
+  </data>
+  <data name="TextBoxTooLong" xml:space="preserve">
+    <value>A text box holds at most {0} characters.</value>
+  </data>
+  <data name="TextBoxTooManyLines" xml:space="preserve">
+    <value>A text box holds at most {0} lines.</value>
+  </data>
+  <data name="SelectionLockedForeignTextBox" xml:space="preserve">
+    <value>Made or changed by another program: it can be deleted, but not moved or changed.</value>
+  </data>
+  <data name="TextBoxNotNow" xml:space="preserve">
+    <value>The text cannot be applied right now. It stays here: apply it again with Ctrl+Enter, or drop it with Esc.</value>
+  </data>
+  <data name="TextBoxEmpty" xml:space="preserve">
+    <value>A text box needs text. To remove it, delete it.</value>
   </data>
 </root>

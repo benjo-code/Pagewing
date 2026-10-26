@@ -22,7 +22,25 @@ namespace Pagewing.Core.Annotations;
 /// <param name="Contents">The comment, or <see langword="null"/> if there is none.</param>
 /// <param name="Author">The author (T entry), or <see langword="null"/>.</param>
 /// <param name="Modified">The modification date, or <see langword="null"/> if unknown.</param>
-/// <param name="Editable">Whether Pagewing may change or delete it.</param>
+/// <param name="Editable">
+/// Whether Pagewing may delete it and change its comment (and the colour of a highlight, underline or strike-out): a
+/// markup or a drawing (ink, square, circle) that no reply answers.
+/// </param>
+/// <param name="Drawing">
+/// The shape of a drawing (ink, square, circle) in page points from the top left, or <see langword="null"/> for any other
+/// kind and for a drawing whose shape cannot be read. An ink with the marker of a line or an arrow whose strokes have that
+/// shape is a <see cref="AnnotationKind.Line"/> or <see cref="AnnotationKind.Arrow"/>, any other ink is freehand.
+/// </param>
+/// <param name="GeometryEditable">
+/// Whether Pagewing may move, resize, recolour or rewiden the drawing (it does so by replacing it): only when nothing of the
+/// annotation would be lost on the way, see <see cref="Pdf.PdfDocument.ReplaceDrawingAsync"/>. For a text box: whether it
+/// is Pagewing's own and unchanged since (<see cref="Pdf.PdfDocument.ReplaceTextBoxAsync"/>), so that it may be moved,
+/// resized, retyped and recoloured; another program's text box can only be deleted.
+/// </param>
+/// <param name="TextBox">
+/// The text box (FreeText) as read: <c>/Rect</c>, the text (<c>/Contents</c> with line feeds, also in
+/// <paramref name="Contents"/>), the size and colour of <c>/DA</c>; <see langword="null"/> for any other kind.
+/// </param>
 public sealed record PdfAnnotation(
     int Page,
     int Index,
@@ -36,4 +54,15 @@ public sealed record PdfAnnotation(
     string? Contents,
     string? Author,
     DateTimeOffset? Modified,
-    bool Editable);
+    bool Editable,
+    DrawingGeometry? Drawing = null,
+    bool GeometryEditable = false,
+    TextBoxSpec? TextBox = null)
+{
+    /// <summary>
+    /// Gets the shape the select tool shows, moves and resizes: the <see cref="Drawing"/>, or for a text box its box as a
+    /// rectangle (moving or resizing it changes the box, the text is laid out again); <see langword="null"/> for a markup and
+    /// for a drawing whose shape cannot be read.
+    /// </summary>
+    public DrawingGeometry? SelectionShape => Drawing ?? (TextBox is { } box ? DrawingGeometry.Rectangle(box.Box, 1) : null);
+}

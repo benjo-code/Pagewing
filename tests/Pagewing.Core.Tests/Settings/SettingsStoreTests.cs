@@ -1,3 +1,4 @@
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Printing;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Viewing;
@@ -205,5 +206,120 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Contains("\"Theme\": \"Dark\"", text, StringComparison.Ordinal);
         Assert.Contains("\"DefaultZoomMode\": \"FitPage\"", text, StringComparison.Ordinal);
         Assert.Contains("\"DefaultLayout\": \"Continuous\"", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithToolStyleKeepsTheOtherToolsAndDoesNotAliasTheOldDictionary()
+    {
+        var first = AppSettings.Default.WithToolStyle(AnnotationKind.Ink, new ToolStyle(DrawColor.Blue, StrokeWidth.Thick));
+        var second = first.WithToolStyle(AnnotationKind.Arrow, new ToolStyle(DrawColor.Black, StrokeWidth.Thin));
+
+        // Both tools are there; the one before is untouched, and the first settings do not see the second tool.
+        Assert.Equal(new ToolStyle(DrawColor.Blue, StrokeWidth.Thick), second.StyleOf(AnnotationKind.Ink));
+        Assert.Equal(new ToolStyle(DrawColor.Black, StrokeWidth.Thin), second.StyleOf(AnnotationKind.Arrow));
+        Assert.Equal(AppSettings.DefaultToolStyle, second.StyleOf(AnnotationKind.Rectangle));
+        Assert.NotSame(first.ToolStyles, second.ToolStyles);
+        Assert.Equal([AnnotationKind.Ink], first.ToolStyles!.Keys.ToArray());
+        Assert.Equal(AppSettings.DefaultToolStyle, first.StyleOf(AnnotationKind.Arrow));
+
+        // Changing a tool again replaces its style only, again in a new dictionary.
+        var third = second.WithToolStyle(AnnotationKind.Ink, new ToolStyle(DrawColor.Green, StrokeWidth.Medium));
+        Assert.Equal(new ToolStyle(DrawColor.Green, StrokeWidth.Medium), third.StyleOf(AnnotationKind.Ink));
+        Assert.Equal(new ToolStyle(DrawColor.Blue, StrokeWidth.Thick), second.StyleOf(AnnotationKind.Ink));
+        Assert.Equal(new ToolStyle(DrawColor.Black, StrokeWidth.Thin), third.StyleOf(AnnotationKind.Arrow));
+        Assert.NotSame(second.ToolStyles, third.ToolStyles);
+
+        // The other settings come along; the source is not changed; a kind that is no drawing tool changes nothing.
+        var themed = (AppSettings.Default with { Theme = ThemeSetting.Dark }).WithToolStyle(AnnotationKind.Line, new ToolStyle(DrawColor.Orange, StrokeWidth.Thin));
+        Assert.Equal(ThemeSetting.Dark, themed.Theme);
+        Assert.Null(AppSettings.Default.ToolStyles);
+        Assert.Null(AppSettings.Default.WithToolStyle(AnnotationKind.Highlight, new ToolStyle(DrawColor.Blue, StrokeWidth.Thin)).ToolStyles);
+    }
+
+    [Fact]
+    public void ToolStylesRoundTripAndFallBackToDefaults()
+    {
+        var store = new SettingsStore(FilePath);
+        var defaults = new ToolStyle(DrawColor.Red, StrokeWidth.Medium);
+
+        // Untouched settings: every tool has the default, and nothing is written for them.
+        Assert.Null(AppSettings.Default.ToolStyles);
+        foreach (var kind in new[] { AnnotationKind.Ink, AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Line, AnnotationKind.Arrow, AnnotationKind.TextBox })
+        {
+            Assert.Equal(defaults, AppSettings.Default.StyleOf(kind));
+        }
+
+        Assert.True(store.TrySave(AppSettings.Default));
+        Assert.DoesNotContain("Rectangle", File.ReadAllText(FilePath), StringComparison.Ordinal);
+
+        // Written and read with the source generator; a tool without an entry keeps the default.
+        var changed = AppSettings.Default with
+        {
+            ToolStyles = new Dictionary<AnnotationKind, ToolStyle>
+            {
+                [AnnotationKind.Ink] = new(DrawColor.Blue, StrokeWidth.Thick),
+                [AnnotationKind.Arrow] = new(DrawColor.Black, StrokeWidth.Thin),
+            },
+        };
+        Assert.True(store.TrySave(changed));
+        Assert.Contains("\"Ink\"", File.ReadAllText(FilePath), StringComparison.Ordinal);
+        Assert.Contains("\"Blue\"", File.ReadAllText(FilePath), StringComparison.Ordinal);
+
+        var loaded = store.Load();
+        Assert.Equal(new ToolStyle(DrawColor.Blue, StrokeWidth.Thick), loaded.StyleOf(AnnotationKind.Ink));
+        Assert.Equal(new ToolStyle(DrawColor.Black, StrokeWidth.Thin), loaded.StyleOf(AnnotationKind.Arrow));
+        Assert.Equal(defaults, loaded.StyleOf(AnnotationKind.Rectangle));
+        Assert.False(File.Exists(FilePath + ".bad"));
+
+        // A number outside the enums falls back to the default for that value only (the settings are not lost).
+        File.WriteAllText(FilePath, "{ \"Theme\": \"Dark\", \"ToolStyles\": { \"Ink\": { \"Color\": 99, \"Width\": \"Thick\" }, \"Line\": { \"Color\": \"Green\", \"Width\": 42 } } }");
+        var repaired = store.Load();
+        Assert.Equal(ThemeSetting.Dark, repaired.Theme);
+        Assert.Equal(new ToolStyle(DrawColor.Red, StrokeWidth.Thick), repaired.StyleOf(AnnotationKind.Ink));
+        Assert.Equal(new ToolStyle(DrawColor.Green, StrokeWidth.Medium), repaired.StyleOf(AnnotationKind.Line));
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void ToolStylesOfKindsThatAreNoDrawingToolsAreDroppedOnLoad()
+    {
+        File.WriteAllText(FilePath, "{ \"ToolStyles\": { \"Highlight\": { \"Color\": \"Blue\", \"Width\": \"Thin\" }, \"99\": { \"Color\": \"Blue\", \"Width\": \"Thin\" }, \"Ellipse\": { \"Color\": \"Orange\", \"Width\": \"Thin\" }, \"Rectangle\": null } }");
+
+        var loaded = new SettingsStore(FilePath).Load();
+
+        Assert.NotNull(loaded.ToolStyles);
+        Assert.Equal([AnnotationKind.Ellipse], loaded.ToolStyles.Keys.ToArray());
+        Assert.Equal(new ToolStyle(DrawColor.Orange, StrokeWidth.Thin), loaded.StyleOf(AnnotationKind.Ellipse));
+        Assert.Equal(new ToolStyle(DrawColor.Red, StrokeWidth.Medium), loaded.StyleOf(AnnotationKind.Rectangle));
+    }
+
+    [Theory]
+    [InlineData(AnnotationKind.Highlight)]
+    [InlineData(AnnotationKind.Underline)]
+    [InlineData(AnnotationKind.StrikeOut)]
+    [InlineData(AnnotationKind.Other)]
+    [InlineData((AnnotationKind)99)]
+    public void StyleOfAKindThatIsNoDrawingToolIsTheDefault(AnnotationKind kind)
+    {
+        var settings = AppSettings.Default with
+        {
+            ToolStyles = new Dictionary<AnnotationKind, ToolStyle> { [kind] = new(DrawColor.Blue, StrokeWidth.Thick) },
+        };
+
+        Assert.Equal(new ToolStyle(DrawColor.Red, StrokeWidth.Medium), settings.StyleOf(kind));
+        Assert.Equal(new ToolStyle(DrawColor.Red, StrokeWidth.Medium), settings.Normalized().StyleOf(kind));
+    }
+
+    [Fact]
+    public void ToolStylesWithAnUnknownNameCountAsACorruptFile()
+    {
+        // Like every enum in the file: a name that is not an enum member is a JSON error, so the whole file is
+        // kept as .bad and the defaults apply. Nothing throws.
+        File.WriteAllText(FilePath, "{ \"ToolStyles\": { \"Ink\": { \"Color\": \"Purple\", \"Width\": \"Thick\" } } }");
+        Assert.Equal(AppSettings.Default, new SettingsStore(FilePath).Load());
+        Assert.True(File.Exists(FilePath + ".bad"));
+
+        File.WriteAllText(FilePath, "{ \"ToolStyles\": { \"Squiggle\": { \"Color\": \"Red\", \"Width\": \"Thick\" } } }");
+        Assert.Equal(AppSettings.Default, new SettingsStore(FilePath).LoadReadOnly());
     }
 }

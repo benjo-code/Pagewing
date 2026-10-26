@@ -37,7 +37,8 @@ public sealed class CommandCatalogTests : IDisposable
         "view.layout.spreadCover", "view.pageTheme.toggle", "nav.goToPage", "nav.previousPage", "nav.nextPage", "nav.back",
         "nav.forward", "panel.pages", "panel.contents", "panel.comments", "search.open", "search.next", "search.previous", "palette.show",
         "settings.show", "help.show", "app.about", "recent.clear", "app.checkForUpdates", "annotate.mode", "annotate.highlight",
-        "annotate.underline", "annotate.strikeout",
+        "annotate.underline", "annotate.strikeout", "annotate.select", "annotate.ink", "annotate.rectangle", "annotate.ellipse",
+        "annotate.line", "annotate.arrow",
     ];
 
     private readonly CultureInfo _originalCulture = Strings.Culture;
@@ -128,6 +129,12 @@ public sealed class CommandCatalogTests : IDisposable
             ("annotate.highlight", ["Ctrl+Shift+H"]),
             ("annotate.underline", ["Ctrl+Shift+U"]),
             ("annotate.strikeout", ["Ctrl+Shift+X"]),
+            ("annotate.select", ["Ctrl+Shift+M"]),
+            ("annotate.ink", ["Ctrl+Shift+I"]),
+            ("annotate.rectangle", ["Ctrl+Shift+R"]),
+            ("annotate.ellipse", ["Ctrl+Shift+E"]),
+            ("annotate.line", ["Ctrl+Shift+L"]),
+            ("annotate.arrow", ["Ctrl+Shift+A"]),
         };
 
         foreach (var (id, gestures) in expected)

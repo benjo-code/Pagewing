@@ -14,7 +14,7 @@ namespace Pagewing.App.ViewModels;
 /// The "Comments" panel of one tab (milestone 9): the annotations of the document as a list sorted by page and position,
 /// a filter by kind, the summary and the jump to an entry. Read-only outside the mode "Comment" (design system 7.7: the
 /// reading view shows no editing tools); in the mode (<see cref="IsEditing"/>) the selected entry can be edited: its
-/// comment, its colour, and deleting it (only highlights, underlines and strike-outs that are editable). Created by the tab when the panel first opens (<see cref="TabViewModel.Comments"/>), never in the startup path;
+/// comment, its colour, and deleting it (highlights, underlines, strike-outs and drawings that are editable; a drawing of another program that Pagewing cannot redraw keeps its colour and says why). Since milestone 10 the filter has "Drawings", and five or more freehand strokes without a comment on a page are one row that opens and closes (<see cref="GroupThreshold"/>). Created by the tab when the panel first opens (<see cref="TabViewModel.Comments"/>), never in the startup path;
 /// it reads nothing before the first sharp page of the document (<see cref="TabViewModel.HasShownSharpPage"/>). Then it
 /// reads every page once, one after the other in the background (<see cref="PdfDocument.GetAnnotationsAsync"/> runs with
 /// <see cref="PdfPriority.Background"/>), and the list fills page by page. A page whose content the editor changed
@@ -27,6 +27,12 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// <summary>The longest text under an annotation an entry shows, the ellipsis included.</summary>
     public const int ExcerptLength = 120;
 
+    /// <summary>
+    /// From this many freehand strokes without a comment on a page, they are one row of the list ("Freehand, 12 strokes")
+    /// that opens and closes, so hundreds of strokes do not drown the other entries.
+    /// </summary>
+    public const int GroupThreshold = 5;
+
     // The parsed summary formats, by their text: a change of the language brings other texts, which are parsed then.
     private static readonly Dictionary<string, CompositeFormat> Formats = new(StringComparer.Ordinal);
 
@@ -36,20 +42,29 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     private readonly SortedSet<int> _pending = [];
     private readonly Dictionary<int, int> _epochs = [];
 
-    // The entries of every page that has some, in the order of the list; Items is the part the filter lets through.
+    // The entries of every page that has some, in the order of the list; Items is the part the filter lets through, with
+    // the strokes of a group in its row (_shown: the rows of each page in Items; _groups: the group row of a page, kept with
+    // whether it is open while the page has enough strokes).
     private readonly SortedDictionary<int, CommentItemViewModel[]> _byPage = [];
+    private readonly Dictionary<int, CommentItemViewModel[]> _shown = [];
+    private readonly Dictionary<int, CommentItemViewModel> _groups = [];
     private ObservableCollection<CommentItemViewModel> _items = [];
     private CommentFilter _filter;
     private SettingsChoice<CommentFilter>? _filterChoice;
     private CommentItemViewModel? _current;
     private CommentItemViewModel? _selected;
     private string _commentDraft = string.Empty;
+    private string? _commentProblem;
 
     // The comment last applied for an entry: ApplyDraft does not apply the same text twice before the list shows it.
     private (CommentItemViewModel Item, string Text)? _applied;
 
     // A markup made by the tab that is to be selected once its page is read (by its name).
     private (int Page, string Name)? _selectNext;
+
+    // An annotation whose comment the document asked to edit (Enter on a selection) and that is not listed yet.
+    private PdfAnnotation? _editNext;
+    private bool _isCommentFocusRequested;
     private PdfDocument? _document;
     private CancellationTokenSource? _cancellation;
     private int _pageCount;
@@ -68,12 +83,14 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         DiscardCommentCommand = new RelayCommand(DiscardComment);
         DeleteCommand = new RelayCommand(Delete, () => SelectedIsEditable && !_tab.IsEditingFrozen);
         SetItemColorCommand = new RelayCommand<MarkupColor>(SetItemColor);
+        SetItemDrawColorCommand = new RelayCommand<DrawColor>(SetItemDrawColor);
         FilterChoices =
         [
             new(CommentFilter.All, Strings.CommentFilterAll),
             new(CommentFilter.Highlight, Strings.CommentKindHighlight),
             new(CommentFilter.Underline, Strings.CommentKindUnderline),
             new(CommentFilter.StrikeOut, Strings.CommentKindStrikeOut),
+            new(CommentFilter.Drawings, Strings.CommentFilterDrawings),
             new(CommentFilter.Other, Strings.CommentKindOther),
         ];
         _filterChoice = FilterChoices[0];
@@ -103,7 +120,16 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
             _filterChoice = FilterChoices.FirstOrDefault(choice => choice.Value == value);
             OnPropertyChanged(nameof(SelectedFilterChoice));
-            Items = new ObservableCollection<CommentItemViewModel>(_byPage.Values.SelectMany(entries => entries).Where(Matches));
+            _shown.Clear();
+            var items = new List<CommentItemViewModel>();
+            foreach (var (page, entries) in _byPage)
+            {
+                var rows = Rows(page, entries);
+                _shown[page] = rows;
+                items.AddRange(rows);
+            }
+
+            Items = new ObservableCollection<CommentItemViewModel>(items);
             OnPropertyChanged(nameof(Summary));
         }
     }
@@ -144,24 +170,26 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
                 return Strings.CommentsLoading;
             }
 
-            var count = _items.Count;
+            // The comments the filter lets through, not the rows: a group counts its strokes.
+            var count = 0;
+            var pages = 0;
+            var page = 0;
+            foreach (var (index, entries) in _byPage)
+            {
+                var matching = entries.Count(Matches);
+                if (matching > 0)
+                {
+                    page = pages == 0 ? index + 1 : page;
+                    pages++;
+                    count += matching;
+                }
+            }
+
             if (count == 0)
             {
                 return Strings.CommentsNone;
             }
 
-            var pages = 0;
-            var last = -1;
-            foreach (var item in _items)
-            {
-                if (item.PageIndex != last)
-                {
-                    pages++;
-                    last = item.PageIndex;
-                }
-            }
-
-            var page = _items[0].PageIndex + 1;
             if (count == 1)
             {
                 return string.Format(Strings.Culture, FormatOf(Strings.CommentsSummaryOne), page);
@@ -203,11 +231,17 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
                 return;
             }
 
-            CommentDraft = value?.Annotation.Contents ?? string.Empty;
+            CommentDraft = value is { IsGroup: false } entry ? entry.Annotation.Contents ?? string.Empty : string.Empty;
+            CommentProblem = null;
             OnPropertyChanged(nameof(HasSelection));
             OnPropertyChanged(nameof(SelectedIsEditable));
             OnPropertyChanged(nameof(SelectedIsViewOnly));
+            OnPropertyChanged(nameof(SelectedIsDrawing));
+            OnPropertyChanged(nameof(SelectedLockReason));
+            OnPropertyChanged(nameof(SelectedCommentReadOnly));
+            OnPropertyChanged(nameof(SelectedCanChangeColor));
             OnPropertyChanged(nameof(SelectedColor));
+            OnPropertyChanged(nameof(SelectedDrawColor));
             CommitCommentCommand.RaiseCanExecuteChanged();
             DeleteCommand.RaiseCanExecuteChanged();
         }
@@ -219,17 +253,39 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// </summary>
     public bool IsEditingFrozen => _tab.IsEditingFrozen;
 
-    /// <summary>Gets whether an entry is selected.</summary>
-    public bool HasSelection => _selected is not null;
+    /// <summary>
+    /// Gets whether the comment field is read-only: editing is locked for an update, or the entry is a text box of another
+    /// program (its comment is the text its own appearance shows, which Pagewing cannot draw anew).
+    /// </summary>
+    public bool SelectedCommentReadOnly =>
+        _tab.IsEditingFrozen || _selected is { IsGroup: false, IsTextBox: true, Annotation.GeometryEditable: false };
 
-    /// <summary>Gets whether the selected entry can be edited: a highlight, underline or strike-out without replies.</summary>
-    public bool SelectedIsEditable => _selected is { Annotation.Editable: true };
+    /// <summary>Gets whether an entry is selected (the row of a group is none: it only opens and closes).</summary>
+    public bool HasSelection => _selected is { IsGroup: false };
+
+    /// <summary>Gets whether the selected entry can be edited: a highlight, underline, strike-out or drawing without replies.</summary>
+    public bool SelectedIsEditable => _selected is { IsGroup: false, Annotation.Editable: true };
 
     /// <summary>Gets whether the selected entry is shown only ("View only"): any other annotation.</summary>
-    public bool SelectedIsViewOnly => _selected is { Annotation.Editable: false };
+    public bool SelectedIsViewOnly => _selected is { IsGroup: false, Annotation.Editable: false };
 
-    /// <summary>Gets the palette colour of the selected entry, or <see langword="null"/> (none, or a colour of another application).</summary>
-    public MarkupColor? SelectedColor => _selected?.Annotation.Color is { } color ? AnnotationPalette.Match(color) : null;
+    /// <summary>Gets whether the selected entry is a drawing (its colour comes from the palette of the drawing tools).</summary>
+    public bool SelectedIsDrawing => _selected is { IsGroup: false, IsDrawing: true };
+
+    /// <summary>Gets why the selected drawing cannot be moved or changed, or <see langword="null"/> (see <see cref="CommentItemViewModel.LockReason"/>).</summary>
+    public string? SelectedLockReason => _selected is { IsGroup: false } entry ? entry.LockReason : null;
+
+    /// <summary>
+    /// Gets whether "Change colour" is offered for the selected entry: an editable markup, or a drawing Pagewing can redraw
+    /// without loss; a locked drawing of another program offers only its comment and deleting.
+    /// </summary>
+    public bool SelectedCanChangeColor => SelectedIsEditable && (!_selected!.IsDrawing || _selected.Annotation.GeometryEditable);
+
+    /// <summary>Gets the palette colour of the selected markup, or <see langword="null"/> (none, a drawing, or a colour of another application).</summary>
+    public MarkupColor? SelectedColor => _selected is { IsGroup: false, IsDrawing: false, Annotation.Color: { } color } ? AnnotationPalette.Match(color) : null;
+
+    /// <summary>Gets the colour of the selected drawing from the palette of the drawing tools, or <see langword="null"/>.</summary>
+    public DrawColor? SelectedDrawColor => _selected is { IsGroup: false, IsDrawing: true, Annotation.Color: { } color } ? DrawPalette.Match(color) : null;
 
     /// <summary>
     /// Gets or sets the comment typed for the selected entry, not applied yet: Ctrl+Enter applies it
@@ -238,7 +294,23 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     public string CommentDraft
     {
         get => _commentDraft;
-        set => SetProperty(ref _commentDraft, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _commentDraft, value ?? string.Empty))
+            {
+                CommentProblem = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets why the typed comment of a text box was not applied (its comment is its text: a character a text box cannot show,
+    /// or no text at all), shown under the comment field; <see langword="null"/> otherwise. Typing clears it.
+    /// </summary>
+    public string? CommentProblem
+    {
+        get => _commentProblem;
+        private set => SetProperty(ref _commentProblem, value);
     }
 
     /// <summary>Ctrl+Enter in the comment field: the typed comment becomes the comment of the entry; an empty one removes it.</summary>
@@ -253,6 +325,9 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// <summary>A colour of the menu "Colour" (parameter: the <see cref="MarkupColor"/>): the selected markup gets it.</summary>
     public ICommand SetItemColorCommand { get; }
 
+    /// <summary>A colour of the menu "Colour" for a drawing (parameter: the <see cref="DrawColor"/>): the selected drawing gets it, one step.</summary>
+    public ICommand SetItemDrawColorCommand { get; }
+
     /// <summary>
     /// Selects the entry of <paramref name="created"/> once its page is read again (a markup the tab just made), so the
     /// open panel shows it; without a name nothing is selected.
@@ -265,6 +340,42 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
             _selectNext = (created.Page, name);
         }
     }
+
+    /// <summary>
+    /// Gets whether the panel is to give the keys to the comment field of the selected entry (Enter on a selection in the
+    /// document, <see cref="BeginEdit"/>); the panel takes the request when it acts on it (<see cref="TakeCommentFocusRequest"/>).
+    /// </summary>
+    internal bool IsCommentFocusRequested
+    {
+        get => _isCommentFocusRequested;
+        private set => SetProperty(ref _isCommentFocusRequested, value);
+    }
+
+    /// <summary>
+    /// Selects the entry of <paramref name="annotation"/> (by name, else by index on its page) and asks the panel to put the
+    /// keys into its comment field: Enter on a selection in the document. An annotation not listed yet is selected once its
+    /// page is read; one the filter hides shows all kinds again.
+    /// </summary>
+    internal void BeginEdit(PdfAnnotation annotation)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        if (_disposed)
+        {
+            return;
+        }
+
+        _editNext = null;
+        if (FindEntry(annotation) is not { } item)
+        {
+            _editNext = annotation;
+            return;
+        }
+
+        StartEditing(item);
+    }
+
+    /// <summary>The panel acted on <see cref="IsCommentFocusRequested"/>.</summary>
+    internal void TakeCommentFocusRequest() => IsCommentFocusRequested = false;
 
     /// <summary>
     /// Applies the typed comment of the selected entry when it differs from its comment (as Ctrl+Enter does), unless that
@@ -283,7 +394,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// not applied yet (<see cref="ApplyDraft"/> applies it once the tab takes edits).
     /// </summary>
     internal bool HasPendingDraft =>
-        !_disposed && IsEditing && _selected is { Annotation.Editable: true } item
+        !_disposed && IsEditing && _selected is { IsGroup: false, Annotation.Editable: true } item
         && _commentDraft != (item.Annotation.Contents ?? string.Empty)
         && !(_applied is { } applied && ReferenceEquals(applied.Item, item) && applied.Text == _commentDraft);
 
@@ -301,6 +412,8 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         CancelReading();
         _pending.Clear();
         _byPage.Clear();
+        _shown.Clear();
+        _groups.Clear();
         _items.Clear();
         _current = null;
         _selected = null;
@@ -431,9 +544,144 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         CommentFilter.Highlight => item.Kind == AnnotationKind.Highlight,
         CommentFilter.Underline => item.Kind == AnnotationKind.Underline,
         CommentFilter.StrikeOut => item.Kind == AnnotationKind.StrikeOut,
-        CommentFilter.Other => item.Kind == AnnotationKind.Other,
+        CommentFilter.Drawings => item.IsDrawing,
+        CommentFilter.Other => item.IsOther,
         _ => true,
     };
+
+    /// <summary>A freehand stroke without a comment: it joins the group of its page when the page has enough of them.</summary>
+    private static bool IsGroupable(CommentItemViewModel item) => !item.IsGroup && item.Kind == AnnotationKind.Ink && !item.HasComment;
+
+    /// <summary>
+    /// The rows of a page in the list: the entries the filter lets through, with the freehand strokes without a comment in
+    /// one group row at the place of the first of them when the page has <see cref="GroupThreshold"/> or more (the strokes
+    /// follow in their places while the group is open). The group row of a page is kept with whether it is open.
+    /// </summary>
+    private CommentItemViewModel[] Rows(int page, CommentItemViewModel[] entries)
+    {
+        var strokes = 0;
+        CommentItemViewModel? first = null;
+        foreach (var entry in entries)
+        {
+            if (IsGroupable(entry))
+            {
+                first ??= entry;
+                strokes++;
+            }
+        }
+
+        if (strokes < GroupThreshold || first is null)
+        {
+            _groups.Remove(page);
+            return [.. entries.Where(Matches)];
+        }
+
+        if (_groups.TryGetValue(page, out var group))
+        {
+            group.UpdateGroup(first.Annotation, strokes);
+        }
+        else
+        {
+            group = CommentItemViewModel.Group(first.Annotation, strokes);
+            _groups[page] = group;
+        }
+
+        var rows = new List<CommentItemViewModel>(group.IsExpanded ? entries.Length + 1 : entries.Length - strokes + 1);
+        foreach (var entry in entries)
+        {
+            if (!Matches(entry))
+            {
+                continue;
+            }
+
+            if (!IsGroupable(entry))
+            {
+                rows.Add(entry);
+                continue;
+            }
+
+            if (ReferenceEquals(entry, first))
+            {
+                rows.Add(group);
+            }
+
+            if (group.IsExpanded)
+            {
+                rows.Add(entry);
+            }
+        }
+
+        return [.. rows];
+    }
+
+    /// <summary>
+    /// Puts <paramref name="rows"/> in the place of the rows of <paramref name="page"/> in <see cref="Items"/>: rows that stay
+    /// stay the same objects in place (the list keeps their containers and its scroll position), the others are removed or
+    /// inserted. Should the rows that stay come in another order, the part of the page is put in anew.
+    /// </summary>
+    private void ReplaceRows(int page, CommentItemViewModel[] rows)
+    {
+        var old = _shown.GetValueOrDefault(page) ?? [];
+        if (rows.Length == 0)
+        {
+            _shown.Remove(page);
+        }
+        else
+        {
+            _shown[page] = rows;
+        }
+
+        var start = LowerBound(page);
+        var keep = new HashSet<CommentItemViewModel>(rows, ReferenceEqualityComparer.Instance);
+        var before = new HashSet<CommentItemViewModel>(old, ReferenceEqualityComparer.Instance);
+        var inOrder = old.Where(keep.Contains).SequenceEqual(rows.Where(before.Contains), ReferenceEqualityComparer.Instance);
+        for (var i = start + old.Length - 1; i >= start; i--)
+        {
+            if (!inOrder || !keep.Contains(_items[i]))
+            {
+                _items.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < rows.Length; i++)
+        {
+            var at = start + i;
+            if (at >= _items.Count || !ReferenceEquals(_items[at], rows[i]))
+            {
+                _items.Insert(at, rows[i]);
+            }
+        }
+    }
+
+    /// <summary>Opens or closes the group row <paramref name="group"/>; a selected stroke that is hidden then is no longer selected.</summary>
+    private void Toggle(CommentItemViewModel group)
+    {
+        if (!_byPage.TryGetValue(group.PageIndex, out var entries))
+        {
+            return;
+        }
+
+        group.IsExpanded = !group.IsExpanded;
+        ReplaceRows(group.PageIndex, Rows(group.PageIndex, entries));
+        if (_selected is { } selected && !ReferenceEquals(selected, group) && !_items.Contains(selected))
+        {
+            SelectedItem = null;
+        }
+    }
+
+    /// <summary>Makes an entry a row of the list: all kinds again when the filter hides it, its group opened when it is in one.</summary>
+    private void EnsureListed(CommentItemViewModel item)
+    {
+        if (!_items.Contains(item))
+        {
+            Filter = CommentFilter.All;
+        }
+
+        if (!_items.Contains(item) && _groups.TryGetValue(item.PageIndex, out var group) && !group.IsExpanded)
+        {
+            Toggle(group);
+        }
+    }
 
     private int EpochOf(int page) => _epochs.GetValueOrDefault(page);
 
@@ -454,6 +702,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         {
             // Locked for an update: what was typed stays (read-only), nothing is applied.
             OnPropertyChanged(nameof(IsEditingFrozen));
+            OnPropertyChanged(nameof(SelectedCommentReadOnly));
             CommitCommentCommand.RaiseCanExecuteChanged();
             DeleteCommand.RaiseCanExecuteChanged();
         }
@@ -466,6 +715,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
                 foreach (var item in entries)
                 {
                     item.IsViewOnlyInMode = IsEditing && !item.Annotation.Editable;
+                    item.ShowsLockReason = IsEditing && item.LockReason is not null;
                 }
             }
 
@@ -476,7 +726,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
     private void CommitComment()
     {
-        if (_selected is not { Annotation.Editable: true } item)
+        if (_selected is not { IsGroup: false, Annotation.Editable: true } item)
         {
             return;
         }
@@ -485,6 +735,20 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         if (text == (item.Annotation.Contents ?? string.Empty))
         {
             return;
+        }
+
+        // The comment of a text box is its text: only Pagewing's own, and only a text it can show (the typed text stays and
+        // the field says why).
+        if (item.IsTextBox)
+        {
+            var problem = !item.Annotation.GeometryEditable ? item.LockReason
+                : TextBoxSpec.CheckText(text).Problem == TextBoxTextProblem.Empty ? Strings.TextBoxEmpty
+                : TabViewModel.TextBoxProblemOf(text);
+            if (problem is not null)
+            {
+                CommentProblem = problem;
+                return;
+            }
         }
 
         // Only an edit the tab takes counts as applied: one refused now (a card asks about the tab) keeps the text typed and
@@ -503,7 +767,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
     private void Delete()
     {
-        if (_selected is not { Annotation.Editable: true } item)
+        if (_selected is not { IsGroup: false, Annotation.Editable: true } item)
         {
             return;
         }
@@ -514,7 +778,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
     private void SetItemColor(MarkupColor color)
     {
-        if (_selected is not { Annotation.Editable: true } item || !Enum.IsDefined(color))
+        if (_selected is not { IsGroup: false, IsDrawing: false, Annotation.Editable: true } item || !Enum.IsDefined(color))
         {
             return;
         }
@@ -527,6 +791,32 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
 
         var locator = LocatorOf(item.Annotation);
         _ = _tab.RunEditAsync(editor => editor.UpdateAsync(locator, new AnnotationEdit(Color: value)));
+    }
+
+    /// <summary>A drawing gets a colour of the drawing palette: it is redrawn (one step); a locked drawing is left alone.</summary>
+    private void SetItemDrawColor(DrawColor color)
+    {
+        if (_selected is not { IsGroup: false, IsDrawing: true, Annotation: { Editable: true, GeometryEditable: true } annotation } || !Enum.IsDefined(color))
+        {
+            return;
+        }
+
+        var value = DrawPalette.ColorOf(color);
+        if (annotation.Color == value)
+        {
+            return;
+        }
+
+        var locator = LocatorOf(annotation);
+        _ = _tab.RunEditAsync(editor => editor.UpdateAsync(locator, new AnnotationEdit(Color: value)));
+    }
+
+    /// <summary>A new entry of the list, with what it shows in the mode.</summary>
+    private CommentItemViewModel NewEntry(PdfAnnotation annotation, string? excerpt)
+    {
+        var entry = new CommentItemViewModel(annotation, excerpt) { IsViewOnlyInMode = IsEditing && !annotation.Editable };
+        entry.ShowsLockReason = IsEditing && entry.LockReason is not null;
+        return entry;
     }
 
     // Any thread (the editor's): must not wait and must never throw.
@@ -699,7 +989,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
                 next = found + 1;
             }
 
-            fresh[i] = found >= 0 ? old[found] : new CommentItemViewModel(annotation, excerpt) { IsViewOnlyInMode = IsEditing && !annotation.Editable };
+            fresh[i] = found >= 0 ? old[found] : NewEntry(annotation, excerpt);
             if (unchanged && !ReferenceEquals(fresh[i], old[i]))
             {
                 unchanged = false;
@@ -734,41 +1024,21 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         // Taken now: the list drops its selection (and tells it back here) when the old entry leaves it.
         var selectedBefore = _selected;
         CommentItemViewModel? follower = null;
-        if (selectedBefore is { } selected && selected.PageIndex == page && Array.IndexOf(fresh, selected) < 0)
+        if (selectedBefore is { IsGroup: false } selected && selected.PageIndex == page && Array.IndexOf(fresh, selected) < 0)
         {
             follower = Array.Find(fresh, item => selected.Annotation.Name is { } name
                 ? item.Annotation.Name == name
                 : item.Annotation.Index == selected.Annotation.Index && item.Kind == selected.Kind);
         }
 
-        var start = LowerBound(page);
-        var shownOld = old.Count(Matches);
-        var shown = fresh.Where(Matches).ToArray();
-        var keep = new HashSet<CommentItemViewModel>(shown, ReferenceEqualityComparer.Instance);
-        for (var i = start + shownOld - 1; i >= start; i--)
-        {
-            if (!keep.Contains(_items[i]))
-            {
-                _items.RemoveAt(i);
-            }
-        }
-
-        for (var i = 0; i < shown.Length; i++)
-        {
-            var at = start + i;
-            if (at >= _items.Count || !ReferenceEquals(_items[at], shown[i]))
-            {
-                _items.Insert(at, shown[i]);
-            }
-        }
-
+        ReplaceRows(page, Rows(page, fresh));
         if (_loaded)
         {
             OnPropertyChanged(nameof(HasNoComments));
             OnPropertyChanged(nameof(Summary));
         }
 
-        if (selectedBefore is { } stale && stale.PageIndex == page && Array.IndexOf(fresh, stale) < 0)
+        if (selectedBefore is { } stale && stale.PageIndex == page && !_items.Contains(stale))
         {
             SelectedItem = follower is not null && _items.Contains(follower) ? follower : null;
         }
@@ -776,9 +1046,29 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         SelectNew(page, fresh);
     }
 
+    /// <summary>The entry of an annotation: by name if it has one, else by index on its page.</summary>
+    private CommentItemViewModel? FindEntry(PdfAnnotation annotation) =>
+        _byPage.TryGetValue(annotation.Page, out var entries)
+            ? Array.Find(entries, item => annotation.Name is { } name ? item.Annotation.Name == name : item.Annotation.Index == annotation.Index)
+            : null;
+
+    private void StartEditing(CommentItemViewModel item)
+    {
+        EnsureListed(item);
+        SelectedItem = item;
+        IsCommentFocusRequested = true;
+    }
+
     /// <summary>Selects the markup the tab just made once it is listed (<see cref="SelectWhenListed"/>).</summary>
     private void SelectNew(int page, CommentItemViewModel[] fresh)
     {
+        if (_editNext is { } edit && edit.Page == page && FindEntry(edit) is { } editing)
+        {
+            _editNext = null;
+            StartEditing(editing);
+            return;
+        }
+
         if (_selectNext is not { } next || next.Page != page)
         {
             return;
@@ -789,6 +1079,12 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         {
             _selectNext = null;
             SelectedItem = item;
+        }
+        else if (item is not null && IsGroupable(item) && _groups.TryGetValue(page, out var group) && _items.Contains(group))
+        {
+            // A stroke just drawn into a closed group: its row shows where it went (the group stays closed).
+            _selectNext = null;
+            SelectedItem = group;
         }
     }
 
@@ -820,6 +1116,13 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        if (item.IsGroup)
+        {
+            // The row of a group opens and closes; the document stays where it is.
+            Toggle(item);
+            return;
+        }
+
         if (!ReferenceEquals(_current, item))
         {
             if (_current is not null)
@@ -832,6 +1135,9 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
         }
 
         _tab.RevealArea(item.PageIndex, item.Target, fromPanel: true);
+
+        // With the select tool the annotation is selected in the document as well (its frame, its handles, the keys).
+        _tab.SelectFromList(item.Annotation);
     }
 
     private void CancelReading()

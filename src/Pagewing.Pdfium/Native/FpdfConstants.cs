@@ -48,6 +48,12 @@ internal static class FpdfConstants
     /// <summary><c>FPDF_ANNOT_FREETEXT</c>: a free text annotation.</summary>
     public const int AnnotFreeText = 3;
 
+    /// <summary><c>FPDF_ANNOT_SQUARE</c>: a square (rectangle) annotation.</summary>
+    public const int AnnotSquare = 5;
+
+    /// <summary><c>FPDF_ANNOT_CIRCLE</c>: a circle (ellipse) annotation.</summary>
+    public const int AnnotCircle = 6;
+
     /// <summary><c>FPDF_ANNOT_HIGHLIGHT</c>: a highlight annotation.</summary>
     public const int AnnotHighlight = 9;
 
@@ -80,6 +86,18 @@ internal static class FpdfConstants
 
     /// <summary><c>FPDF_ANNOT_APPEARANCEMODE_NORMAL</c>: the normal appearance (<c>FPDFAnnot_SetAP</c>).</summary>
     public const int AnnotAppearanceNormal = 0;
+
+    /// <summary><c>FPDF_SEGMENT_LINETO</c> (<c>fpdf_edit.h</c>): a line to the point.</summary>
+    public const int SegmentLineTo = 0;
+
+    /// <summary><c>FPDF_SEGMENT_BEZIERTO</c>: a point of a cubic Bézier curve (two control points, then the end).</summary>
+    public const int SegmentBezierTo = 1;
+
+    /// <summary><c>FPDF_SEGMENT_MOVETO</c>: the start of a subpath.</summary>
+    public const int SegmentMoveTo = 2;
+
+    /// <summary><c>FPDF_FONT_TRUETYPE</c>: a TrueType font for <c>FPDFText_LoadFont</c>.</summary>
+    public const int FontTrueType = 2;
 
     /// <summary><c>FPDF_ERR_SUCCESS</c>.</summary>
     public const int ErrSuccess = 0;

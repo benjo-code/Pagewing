@@ -394,6 +394,42 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint FPDFAnnot_GetLinkedAnnot(nint annotation, byte* key);
 
+    /// <summary>
+    /// Appends a stroke to the <c>/InkList</c> of an ink annotation (created if missing); <c>point_count</c> is <c>size_t</c>.
+    /// Returns the index of the new stroke, or -1.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_AddInkStroke(nint annotation, FsPointF* points, nuint pointCount);
+
+    /// <summary>The number of strokes of the <c>/InkList</c> of an ink annotation, 0 for other subtypes (<c>unsigned long</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetInkListCount(nint annotation);
+
+    /// <summary>
+    /// Copies stroke <c>path_index</c> of the <c>/InkList</c> into <c>buffer</c> if <c>length</c> (in points) is large enough;
+    /// returns the number of points of the stroke either way (0 for other subtypes). Both are <c>unsigned long</c>.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetInkListPath(nint annotation, CULong pathIndex, FsPointF* buffer, CULong length);
+
+    /// <summary>Writes <c>/Border [h v w]</c> and removes the appearance (<c>/AP</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_SetBorder(nint annotation, float horizontalRadius, float verticalRadius, float borderWidth);
+
+    /// <summary>Reads <c>/Border</c>; fails without the array or with fewer than three entries (<c>/BS</c> is not read).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetBorder(nint annotation, float* horizontalRadius, float* verticalRadius, float* borderWidth);
+
+    /// <summary>Reads a number value of the annotation's dictionary; fails when the key is missing or no number.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetNumberValue(nint annotation, byte* key, float* value);
+
     /// <summary>The index of an annotation in the page's <c>/Annots</c> (found by its dictionary), or -1.</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -406,6 +442,77 @@ internal static unsafe partial class Fpdf
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial CULong FPDFAnnot_GetAP(nint annotation, int appearanceMode, ushort* buffer, CULong bufferLength);
+
+    // Fonts and glyph outlines (fpdf_edit.h; partly experimental API). Used only to read the outlines of the text box font
+    // (Geist Regular) in a document that is never saved; see PdfiumGlyphs. FPDF_FONT, FPDF_GLYPHPATH and FPDF_PATHSEGMENT
+    // are opaque pointers; a glyph path and its segments belong to the font and need no closing.
+
+    /// <summary><c>FPDF_CreateNewDocument</c>: a new, empty document; closed with <see cref="FPDF_CloseDocument"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDF_CreateNewDocument();
+
+    /// <summary>
+    /// <c>FPDFText_LoadFont</c>: loads a TrueType (<c>font_type</c> 2) or Type 1 font from bytes (copied) into the document;
+    /// <c>size</c> is <c>uint32_t</c>, <c>cid</c> an <c>FPDF_BOOL</c>. Closed with <see cref="FPDFFont_Close"/>.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFText_LoadFont(nint document, byte* data, uint size, int fontType, int cid);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFFont_Close(nint font);
+
+    /// <summary>Experimental API: the ascent of a font at a size, in points.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFont_GetAscent(nint font, float fontSize, float* ascent);
+
+    /// <summary>Experimental API: the descent of a font at a size, in points (negative below the baseline).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFont_GetDescent(nint font, float fontSize, float* descent);
+
+    /// <summary>
+    /// Experimental API: the advance width of a glyph at a size, in points. <c>glyph</c> (<c>uint32_t</c>) is the Unicode
+    /// value (measured, not stated by the header; <c>NativeBindingsTests.GlyphApiTakesUnicodeAndReturnsEmUnits</c>).
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFont_GetGlyphWidth(nint font, uint glyph, float fontSize, float* width);
+
+    /// <summary>
+    /// Experimental API: the outline of a glyph, or 0. <c>glyph</c> is the Unicode value as for
+    /// <see cref="FPDFFont_GetGlyphWidth"/>; the points come in em, whatever the size (measured).
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFFont_GetGlyphPath(nint font, uint glyph, float fontSize);
+
+    /// <summary>Experimental API: the number of segments of a glyph path, or -1.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFGlyphPath_CountGlyphSegments(nint glyphPath);
+
+    /// <summary>Experimental API: a segment of a glyph path, or 0.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFGlyphPath_GetGlyphPathSegment(nint glyphPath, int index);
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPathSegment_GetPoint(nint segment, float* x, float* y);
+
+    /// <summary>One of <c>FPDF_SEGMENT_*</c> (<see cref="FpdfConstants.SegmentLineTo"/> and the others), -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPathSegment_GetType(nint segment);
+
+    /// <summary>Whether the segment closes its subpath.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPathSegment_GetClose(nint segment);
 
     // Signatures (fpdf_signature.h).
 
@@ -459,6 +566,17 @@ internal struct FsSizeF
 
     /// <summary>Height in points (<c>height</c>).</summary>
     public float Height;
+}
+
+/// <summary><c>FS_POINTF</c> from <c>fpdfview.h</c>: a point; for ink strokes in PDF user space (y up).</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FsPointF
+{
+    /// <summary>The x-coordinate (<c>x</c>).</summary>
+    public float X;
+
+    /// <summary>The y-coordinate (<c>y</c>).</summary>
+    public float Y;
 }
 
 /// <summary><c>FS_RECTF</c> from <c>fpdfview.h</c>: a rectangle; for link annotations in PDF user space (y up).</summary>

@@ -382,6 +382,40 @@ public static class Strings
     public static string CommandHighlight => Get("CommandHighlight");
     public static string CommandUnderline => Get("CommandUnderline");
     public static string CommandStrikeOut => Get("CommandStrikeOut");
+    public static string CommandSelectTool => Get("CommandSelectTool");
+    public static string CommandInk => Get("CommandInk");
+    public static string CommandRectangle => Get("CommandRectangle");
+    public static string CommandEllipse => Get("CommandEllipse");
+    public static string CommandLine => Get("CommandLine");
+    public static string CommandArrow => Get("CommandArrow");
+    public static string ToolSelect => Get("ToolSelect");
+    public static string ToolInk => Get("ToolInk");
+    public static string ToolRectangle => Get("ToolRectangle");
+    public static string ToolEllipse => Get("ToolEllipse");
+    public static string ToolLine => Get("ToolLine");
+    public static string ToolArrow => Get("ToolArrow");
+    public static string ToolTextBox => Get("ToolTextBox");
+    public static string CommandTextBox => Get("CommandTextBox");
+    public static string TextBoxSizeSmall => Get("TextBoxSizeSmall");
+    public static string TextBoxSizeMedium => Get("TextBoxSizeMedium");
+    public static string TextBoxSizeLarge => Get("TextBoxSizeLarge");
+    public static string AnnotateSizesName => Get("AnnotateSizesName");
+    public static string TextBoxEditorName => Get("TextBoxEditorName");
+    public static string TextBoxEditorHint => Get("TextBoxEditorHint");
+    public static string TextBoxUnsupportedCharacters => Get("TextBoxUnsupportedCharacters");
+    public static string TextBoxTooLong => Get("TextBoxTooLong");
+    public static string TextBoxTooManyLines => Get("TextBoxTooManyLines");
+    public static string SelectionLockedForeignTextBox => Get("SelectionLockedForeignTextBox");
+    public static string TextBoxNotNow => Get("TextBoxNotNow");
+    public static string TextBoxEmpty => Get("TextBoxEmpty");
+    public static string DrawColorRed => Get("DrawColorRed");
+    public static string DrawColorBlack => Get("DrawColorBlack");
+    public static string DrawColorBlue => Get("DrawColorBlue");
+    public static string DrawColorGreen => Get("DrawColorGreen");
+    public static string DrawColorOrange => Get("DrawColorOrange");
+    public static string StrokeWidthThin => Get("StrokeWidthThin");
+    public static string StrokeWidthMedium => Get("StrokeWidthMedium");
+    public static string StrokeWidthThick => Get("StrokeWidthThick");
     public static string AnnotateToolbarName => Get("AnnotateToolbarName");
     public static string AnnotateToolsName => Get("AnnotateToolsName");
     public static string AnnotateColorsName => Get("AnnotateColorsName");
@@ -403,10 +437,76 @@ public static class Strings
     public static string CommentViewOnly => Get("CommentViewOnly");
     public static string CommentEditNone => Get("CommentEditNone");
     public static string AnnotateMore => Get("AnnotateMore");
+    public static string DrawingLimitReached => Get("DrawingLimitReached");
+    public static string DrawingFailed => Get("DrawingFailed");
+    public static string DrawingChangeFailed => Get("DrawingChangeFailed");
+    public static string SelectionFrameName => Get("SelectionFrameName");
+    public static string SelectionHandleTopLeft => Get("SelectionHandleTopLeft");
+    public static string SelectionHandleTop => Get("SelectionHandleTop");
+    public static string SelectionHandleTopRight => Get("SelectionHandleTopRight");
+    public static string SelectionHandleRight => Get("SelectionHandleRight");
+    public static string SelectionHandleBottomRight => Get("SelectionHandleBottomRight");
+    public static string SelectionHandleBottom => Get("SelectionHandleBottom");
+    public static string SelectionHandleBottomLeft => Get("SelectionHandleBottomLeft");
+    public static string SelectionHandleLeft => Get("SelectionHandleLeft");
+    public static string SelectionHandleStart => Get("SelectionHandleStart");
+    public static string SelectionHandleEnd => Get("SelectionHandleEnd");
+    public static string SelectionLockedForeign => Get("SelectionLockedForeign");
+    public static string SelectionFrameNameOf => Get("SelectionFrameNameOf");
+    public static string SelectionHandleNameOf => Get("SelectionHandleNameOf");
+    public static string AnnotateWidthsName => Get("AnnotateWidthsName");
+    public static string CommentFilterDrawings => Get("CommentFilterDrawings");
+    public static string CommentInkGroup => Get("CommentInkGroup");
+    public static string CommentGroupCollapsed => Get("CommentGroupCollapsed");
+    public static string CommentGroupExpanded => Get("CommentGroupExpanded");
+    public static string CommentGroupHint => Get("CommentGroupHint");
+
+    /// <summary>
+    /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",
+    /// "Rectangle" …; <see langword="null"/> for a kind without a word of its own (the panel names its PDF subtype then).
+    /// </summary>
+    public static string? KindName(Pagewing.Core.Annotations.AnnotationKind kind) => kind switch
+    {
+        Pagewing.Core.Annotations.AnnotationKind.Highlight => CommentKindHighlight,
+        Pagewing.Core.Annotations.AnnotationKind.Underline => CommentKindUnderline,
+        Pagewing.Core.Annotations.AnnotationKind.StrikeOut => CommentKindStrikeOut,
+        Pagewing.Core.Annotations.AnnotationKind.Ink => ToolInk,
+        Pagewing.Core.Annotations.AnnotationKind.Rectangle => ToolRectangle,
+        Pagewing.Core.Annotations.AnnotationKind.Ellipse => ToolEllipse,
+        Pagewing.Core.Annotations.AnnotationKind.Line => ToolLine,
+        Pagewing.Core.Annotations.AnnotationKind.Arrow => ToolArrow,
+        Pagewing.Core.Annotations.AnnotationKind.TextBox => ToolTextBox,
+        _ => null,
+    };
 
     /// <summary>Gets the name of a colour of the markup palette (<see cref="Pagewing.Core.Annotations.AnnotationPalette.NameKey"/>).</summary>
     public static string ColorName(Pagewing.Core.Annotations.MarkupColor color) =>
         Get(Pagewing.Core.Annotations.AnnotationPalette.NameKey(color));
+
+    /// <summary>Gets the name of a colour of the drawing palette (<see cref="Pagewing.Core.Annotations.DrawPalette.NameKey"/>).</summary>
+    public static string DrawColorName(Pagewing.Core.Annotations.DrawColor color) =>
+        Get(Pagewing.Core.Annotations.DrawPalette.NameKey(color));
+
+    /// <summary>Gets the name of a handle of a selected drawing for screen readers, for example "Top left handle".</summary>
+    public static string SelectionHandleName(Pagewing.Core.Annotations.HandleKind handle) => Get("SelectionHandle" + handle);
+
+    /// <summary>Gets the name of a stroke width with its size in points, for example "Thin (1 pt)".</summary>
+    public static string StrokeWidthName(Pagewing.Core.Annotations.StrokeWidth width) => width switch
+    {
+        Pagewing.Core.Annotations.StrokeWidth.Thin => StrokeWidthThin,
+        Pagewing.Core.Annotations.StrokeWidth.Medium => StrokeWidthMedium,
+        Pagewing.Core.Annotations.StrokeWidth.Thick => StrokeWidthThick,
+        _ => throw new ArgumentOutOfRangeException(nameof(width)),
+    };
+
+    /// <summary>Gets the name of a size step of the text box tool, for example "Small text (12 pt)".</summary>
+    public static string TextBoxSizeName(Pagewing.Core.Annotations.StrokeWidth step) => step switch
+    {
+        Pagewing.Core.Annotations.StrokeWidth.Thin => TextBoxSizeSmall,
+        Pagewing.Core.Annotations.StrokeWidth.Medium => TextBoxSizeMedium,
+        Pagewing.Core.Annotations.StrokeWidth.Thick => TextBoxSizeLarge,
+        _ => throw new ArgumentOutOfRangeException(nameof(step)),
+    };
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

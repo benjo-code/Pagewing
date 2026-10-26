@@ -33,7 +33,7 @@ public sealed class AnnotationReadTests
         AssertRectNear(new PageRect(28, 60, 190, 86), highlight.Bounds, 0.1);
         Assert.True(highlight.Editable);
 
-        Assert.Equal(AnnotationKind.Other, annotations[0].Kind);
+        Assert.Equal(AnnotationKind.Rectangle, annotations[0].Kind);
         Assert.Equal(new AnnotationColor(255, 0, 0), annotations[0].Color);
         Assert.Empty(annotations[0].Quads);
         Assert.Equal(AnnotationKind.Other, annotations[2].Kind);
@@ -54,7 +54,26 @@ public sealed class AnnotationReadTests
     }
 
     [Fact]
-    public async Task MarksOnlyPlainMarkupAsEditable()
+    public async Task DrawingsForeignFixtureListsAllEntries()
+    {
+        await using var document = await OpenFixtureAsync(DrawingsForeign);
+
+        var first = await document.GetAnnotationsAsync(0, TestContext.Current.CancellationToken);
+        var second = await document.GetAnnotationsAsync(1, TestContext.Current.CancellationToken);
+
+        // Raw order on page 1: eight drawings and, last, the reply to the eighth (a Text with /IRT, never listed).
+        Assert.Equal([0, 1, 2, 3, 4, 5, 6, 7], first.Select(a => a.Index));
+        Assert.Equal(["Ink", "Ink", "Square", "Square", "Square", "Circle", "Line", "Ink"], first.Select(a => a.Subtype));
+        Assert.DoesNotContain(first, a => a.Name == "reply-0008");
+        Assert.Equal(
+            [AnnotationKind.Ink, AnnotationKind.Ink, AnnotationKind.Rectangle, AnnotationKind.Rectangle, AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Other, AnnotationKind.Ink],
+            first.Select(a => a.Kind));
+        Assert.Equal("Ink", Assert.Single(second).Subtype);
+        Assert.Equal(1, second[0].Page);
+    }
+
+    [Fact]
+    public async Task MarksPlainMarkupAndDrawingsAsEditable()
     {
         await using var document = await OpenFixtureAsync("annotations-foreign.pdf");
 
@@ -67,11 +86,23 @@ public sealed class AnnotationReadTests
         Assert.Equal(new AnnotationColor(153, 255, 153), bare.Color);
         Assert.Equal("No name, no appearance", bare.Contents);
         Assert.True(bare.Editable);
-        Assert.All(first.Where(a => a.Subtype is "Ink" or "FreeText" or "Text" or "Link"), a =>
+        Assert.All(first.Where(a => a.Subtype is "Text" or "Link"), a =>
         {
             Assert.Equal(AnnotationKind.Other, a.Kind);
             Assert.False(a.Editable);
         });
+
+        // A text box of another program can be deleted since M10, but not changed (its text is what its own appearance shows).
+        var freeText = first.Single(a => a.Subtype == "FreeText");
+        Assert.Equal(AnnotationKind.TextBox, freeText.Kind);
+        Assert.True(freeText.Editable);
+        Assert.False(freeText.GeometryEditable);
+        Assert.NotNull(freeText.TextBox);
+
+        // An ink without a reply can be deleted and commented on since M10.
+        var ink = first.Single(a => a.Subtype == "Ink");
+        Assert.Equal(AnnotationKind.Ink, ink.Kind);
+        Assert.True(ink.Editable);
 
         Assert.Equal([AnnotationKind.Underline, AnnotationKind.StrikeOut], second.Select(a => a.Kind));
         Assert.All(second, a => Assert.True(a.Editable));

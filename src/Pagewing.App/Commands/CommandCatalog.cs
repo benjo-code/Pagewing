@@ -119,6 +119,17 @@ public sealed class CommandCatalog
         Tab("annotate.underline", () => Strings.CommandUnderline, EditGroup, CtrlShift(Key.U), tab => tab.UnderlineCommand),
         Tab("annotate.strikeout", () => Strings.CommandStrikeOut, EditGroup, CtrlShift(Key.X), tab => tab.StrikeOutCommand),
 
+        // The tools of the mode "Comment" for drawing (milestone 10): the select tool and freehand, rectangle, oval, line and
+        // arrow, and the text box. Like the markups they start the mode with their tool and run only where the mode can run. The
+        // keys are Ctrl+Shift with the letter of the tool (M move, I ink, R, E, L, A, T text), none of them a key of a text field.
+        Tab("annotate.select", () => Strings.CommandSelectTool, EditGroup, CtrlShift(Key.M), tab => tab.ChooseSelectToolCommand),
+        Tab("annotate.ink", () => Strings.CommandInk, EditGroup, CtrlShift(Key.I), tab => tab.InkCommand),
+        Tab("annotate.rectangle", () => Strings.CommandRectangle, EditGroup, CtrlShift(Key.R), tab => tab.RectangleCommand),
+        Tab("annotate.ellipse", () => Strings.CommandEllipse, EditGroup, CtrlShift(Key.E), tab => tab.EllipseCommand),
+        Tab("annotate.line", () => Strings.CommandLine, EditGroup, CtrlShift(Key.L), tab => tab.LineCommand),
+        Tab("annotate.arrow", () => Strings.CommandArrow, EditGroup, CtrlShift(Key.A), tab => tab.ArrowCommand),
+        Tab("annotate.textbox", () => Strings.CommandTextBox, EditGroup, CtrlShift(Key.T), tab => tab.TextBoxCommand),
+
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
             with { AlternativeGestures = [CtrlShift(Key.OemPlus), Ctrl(Key.Add)] },

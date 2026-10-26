@@ -113,6 +113,7 @@ static class TestPdfs
         new("signed-docmdp-3.pdf", SignedDocument(3)),
         new("linearized.pdf", Linearized()),
         new("annotations-foreign.pdf", AnnotationsForeign()),
+        new("drawings-foreign.pdf", DrawingsForeign()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -636,6 +637,55 @@ static class TestPdfs
             BT /F1 14 Tf 40 250 Td (This text is underlined.) Tj ET
             BT /F1 14 Tf 40 220 Td (This text is struck out.) Tj ET
             """);
+        return doc.Build();
+    }
+
+    // Drawings as other programs write them. Page 1 (400 x 300), eight listed entries in this order: an Ink with two strokes and its
+    // own appearance; an Ink without /AP; a Square with a dashed /BS; a Square with a cloud /BE; a Square with its own /AP and /CA 0.5;
+    // a solid Circle without /AP; a Line with /LE (arrow at the end); an Ink with a reply (a Text with /IRT on it, the ninth raw entry,
+    // never listed). Page 2: /Rotate 90 with a CropBox that is offset inside the MediaBox, one Ink with an appearance. No entry carries
+    // /PDFIUM_HasGeneratedAP: these are foreign files.
+    private static byte[] DrawingsForeign()
+    {
+        var doc = new PdfDoc("Pagewing fremde Zeichnungen");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        const string date = "/M (D:20260101120000Z) /CreationDate (D:20260101120000Z)";
+
+        var inkAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [28 238 192 282]",
+            Text("1 0 0 RG 2 w 1 J 1 j 30 240 m 60 280 l 90 240 l S 110 240 m 150 280 l 190 240 l S"));
+        var squareAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [38 38 118 98] /Resources << /ExtGState << /GS << /CA 0.5 /ca 0.5 >> >> >>",
+            Text("/GS gs 0 0.5 0 RG 4 w 40 40 76 56 re S"));
+        var replyInk = "/InkList [[250 60 270 90 290 60 310 90 330 60]] /Rect [248 58 332 92]";
+
+        var annots = new List<int>
+        {
+            doc.Add($"<< /Type /Annot /Subtype /Ink /Rect [28 238 192 282] /InkList [[30 240 60 280 90 240] [110 240 150 280 190 240]] /C [1 0 0] /BS << /W 2 >> /F 4 /NM (ink-0001) /T (Alice) {date} /AP << /N {inkAppearance} 0 R >> >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Ink /Rect [218 238 372 282] /InkList [[220 240 250 280 280 240 310 280 370 240]] /C [0 0 1] /BS << /W 3 >> /F 4 /NM (ink-0002) /T (Alice) {date} >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Square /Rect [28 158 108 218] /C [0 0.5 0] /BS << /W 2 /S /D /D [4 2] >> /F 4 /NM (square-0003) /T (Alice) {date} >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Square /Rect [128 158 208 218] /C [0.5 0 0.5] /BS << /W 2 /S /S >> /BE << /S /C /I 1 >> /F 4 /NM (square-0004) /T (Alice) {date} >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Square /Rect [38 38 118 98] /C [0 0.5 0] /BS << /W 4 >> /CA 0.5 /F 4 /NM (square-0005) /T (Alice) {date} /AP << /N {squareAppearance} 0 R >> >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Circle /Rect [228 158 308 218] /C [1 0.5 0] /BS << /W 2 /S /S >> /F 4 /NM (circle-0006) /T (Alice) {date} >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Line /Rect [128 78 208 118] /L [130 80 206 116] /LE [/None /OpenArrow] /C [0 0 0] /BS << /W 2 >> /F 4 /NM (line-0007) /T (Alice) {date} >>"),
+        };
+        var inkWithReply = doc.Reserve();
+        doc.Set(inkWithReply, $"<< /Type /Annot /Subtype /Ink {replyInk} /C [0 0.6 0.6] /BS << /W 2 >> /F 4 /NM (ink-0008) /T (Alice) {date} >>");
+        annots.Add(inkWithReply);
+        annots.Add(doc.Add($"<< /Type /Annot /Subtype /Text /Rect [336 58 354 76] /Name /Comment /F 28 /NM (reply-0008) /T (Bob) /Contents (Nice stroke) /IRT {inkWithReply} 0 R /RT /R /C [1 0.9 0] {date} >>"));
+        doc.AddPage(
+            $"/MediaBox [0 0 400 300] /Annots [{string.Join(' ', annots.Select(a => $"{a} 0 R"))}]",
+            resources,
+            "BT /F1 14 Tf 40 20 Td (Foreign drawings, page one) Tj ET");
+
+        var rotatedAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [88 118 192 182]",
+            Text("0.8 0 0.8 RG 2 w 90 120 m 120 180 l 150 120 l 190 180 l S"));
+        var rotatedInk = doc.Add($"<< /Type /Annot /Subtype /Ink /Rect [88 118 192 182] /InkList [[90 120 120 180 150 120 190 180]] /C [0.8 0 0.8] /BS << /W 2 >> /F 4 /NM (ink-0009) /T (Alice) {date} /AP << /N {rotatedAppearance} 0 R >> >>");
+        doc.AddPage(
+            $"/MediaBox [0 0 400 300] /CropBox [20 10 380 290] /Rotate 90 /Annots [{rotatedInk} 0 R]",
+            resources,
+            "BT /F1 14 Tf 40 250 Td (Foreign drawings, page two) Tj ET");
         return doc.Build();
     }
 

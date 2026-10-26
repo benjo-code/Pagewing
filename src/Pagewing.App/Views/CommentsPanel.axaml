@@ -10,7 +10,7 @@
     the DataContext (the content binds to its list itself, so a tab that does not show "Comments" never gets one created
     by the panel). At the top the filter by kind (a combo box: the arrows change it while it is closed, Alt+Down or F4
     opens it), below it the summary (type.caption, text.secondary). Then the entries in a virtualized list: the page mark
-    in type.mono (text.secondary), the kind as a 16 px Tabler symbol (highlight, underline, strikethrough, note) and in
+    in type.mono (text.secondary), the kind as a 16 px Tabler symbol (highlight, underline, strikethrough, pencil, square, circle, line, arrow-up-right, note) and in
     words, a small swatch of the annotation's colour (content of the PDF, additionally, with its name for screen readers),
     author and date (type.caption), the text under the markup (text.secondary) and the comment. The entry jumped to last
     has an accent.subtle surface and a 2 px accent.default edge on the left, so it is not marked by colour alone. Without
@@ -72,6 +72,7 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
       <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+      <Setter Property="AutomationProperties.HelpText" Value="{Binding HelpText}" />
     </Style>
     <Style Selector="ListBox.comments ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
@@ -108,6 +109,33 @@
     </Style>
     <Style Selector="ctl|StrokeIcon.kind.strikeOut">
       <Setter Property="Data" Value="{StaticResource Pw.Icon.Strikethrough}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.ink">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Pencil}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.rectangle">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Square}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.ellipse">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Circle}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.line">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Line}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.arrow">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.ArrowUpRight}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.textBox">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Typography}" />
+    </Style>
+
+    <!-- The chevron of a group of strokes: right while it is closed, down while it is open (a shape, not only a colour). -->
+    <Style Selector="ctl|StrokeIcon.groupChevron">
+      <Setter Property="Brush" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.ChevronRight}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.groupChevron.expanded">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.ChevronDown}" />
     </Style>
 
     <!-- The button "Comment": a secondary button; while the mode is on, accent.subtle with an accent.default frame and text (not by colour alone: also its toggle state). -->
@@ -187,14 +215,20 @@
                 <TextBlock Name="CommentPage" Classes="mono num commentSecondary" Text="{Binding PageText}"
                            MinWidth="24" Margin="0,1,8,0" VerticalAlignment="Top" TextAlignment="Right" />
                 <StackPanel Grid.Column="1" Spacing="2">
-                  <Grid ColumnDefinitions="Auto,*,Auto">
-                    <ctl:StrokeIcon Name="CommentKindIcon" Classes="kind"
+                  <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                    <ctl:StrokeIcon Name="CommentGroupChevron" Classes="groupChevron" Classes.expanded="{Binding IsExpanded}"
+                                    IsVisible="{Binding IsGroup}"
+                                    Width="16" Height="16" Margin="0,0,4,0" VerticalAlignment="Center" />
+                    <ctl:StrokeIcon Name="CommentKindIcon" Grid.Column="1" Classes="kind"
                                     Classes.highlight="{Binding IsHighlight}" Classes.underline="{Binding IsUnderline}"
-                                    Classes.strikeOut="{Binding IsStrikeOut}"
+                                    Classes.strikeOut="{Binding IsStrikeOut}" Classes.ink="{Binding IsInk}"
+                                    Classes.rectangle="{Binding IsRectangle}" Classes.ellipse="{Binding IsEllipse}"
+                                    Classes.line="{Binding IsLine}" Classes.arrow="{Binding IsArrow}"
+                                    Classes.textBox="{Binding IsTextBox}"
                                     Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <TextBlock Name="CommentKind" Grid.Column="1" Classes="body commentPrimary" Text="{Binding KindText}"
+                    <TextBlock Name="CommentKind" Grid.Column="2" Classes="body commentPrimary" Text="{Binding KindText}"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                    <Border Name="CommentSwatch" Grid.Column="2" Classes="swatch"
+                    <Border Name="CommentSwatch" Grid.Column="3" Classes="swatch"
                             Width="12" Height="12" Margin="8,0,0,0" CornerRadius="{DynamicResource Pw.Radius.Control}" BorderThickness="1" VerticalAlignment="Center"
                             Background="{Binding ColorBrush}"
                             IsVisible="{Binding HasColor}"
@@ -210,6 +244,8 @@
                              IsVisible="{Binding HasComment}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
                   <TextBlock Name="CommentReadOnly" Classes="caption commentSecondary" Text="{x:Static res:Strings.CommentViewOnly}"
                              IsVisible="{Binding IsViewOnlyInMode}" />
+                  <TextBlock Name="CommentLocked" Classes="caption commentSecondary" Text="{Binding LockReason}"
+                             TextWrapping="Wrap" IsVisible="{Binding ShowsLockReason}" />
                 </StackPanel>
               </Grid>
             </Border>

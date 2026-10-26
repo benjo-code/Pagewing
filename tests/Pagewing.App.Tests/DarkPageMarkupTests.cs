@@ -29,6 +29,7 @@ public sealed class DarkPageMarkupTests : PrintTestHost
     private static readonly Color DarkText = Color.FromRgb(0xE3, 0xE5, 0xE8);
     private static readonly Color Yellow = ToColor(AnnotationPalette.ColorOf(MarkupColor.Yellow));
     private static readonly Color Blue = ToColor(AnnotationPalette.ColorOf(MarkupColor.Blue));
+    private static readonly AnnotationColor DrawingRed = new(220, 30, 30);
 
     private readonly string _folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "pagewing-darkmarkup-" + Guid.NewGuid().ToString("N"))).FullName;
 
@@ -120,6 +121,52 @@ public sealed class DarkPageMarkupTests : PrintTestHost
         var band = new Rect(hit.X + 2, hit.Y - 1, hit.Width - 4, 2);
         Assert.True(CountIn(frame, band, color => Near(color, frameColor, 40)) > hit.Width / 2, "no frame on the current hit");
         Assert.True(Wcag.Contrast(frameColor, markup) >= 3, $"the frame stands out only {Wcag.Contrast(frameColor, markup):F2}:1 from the markup");
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task SearchHitOnTopOfADrawingIsStillVisible(string theme)
+    {
+        // A red line of 10 pt through "Hello, Pagewing" (milestone 10): on the dark page it is painted in its colour like a
+        // markup; the search hit and the selection the view draws on top of it stay visible, each with its own colour.
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        if (theme == "Dark")
+        {
+            tab.TogglePageThemeCommand.Execute(null);
+        }
+
+        var document = tab.Session.Document!;
+        var text = await document.GetPageTextAsync(0, TestContext.Current.CancellationToken);
+        var words = text.RectsOf(0, 15);
+        var (left, right) = (words.Min(r => r.Left), words.Max(r => r.Right));
+        var middle = (words.Min(r => r.Top) + words.Max(r => r.Bottom)) / 2;
+        await document.CreateDrawingAsync(0, DrawingGeometry.Line(new DisplayPoint(left, middle), new DisplayPoint(right, middle), 10), DrawingRed, null, null, TestContext.Current.CancellationToken);
+        tab.Session.InvalidatePages(new HashSet<int> { 0 });
+        var red = ToColor(DrawingRed);
+        var stroke = CanvasRect(view, new PageRect(left + 2, middle - 3, right - 2, middle + 3));
+        await WaitUntilAsync(window, () => (theme == "Light" || view.Canvas.PageTheme == PageTheme.Dark) && Count(window, view, stroke, color => Near(color, red, 2)) > 200);
+
+        tab.Search.Query = "Pagewing";
+        await view.SelectAsync(0, 0, 5);
+        await WaitUntilAsync(window, () => tab.Search.State == SearchState.Done
+            && view.Canvas.LastHighlightDestinations.Any(entry => entry.Highlight.Kind == HighlightKind.SearchCurrent)
+            && view.Canvas.LastHighlightDestinations.Any(entry => entry.Highlight.Kind == HighlightKind.Selection));
+
+        using var frame = FramePixels.Snapshot(view.Canvas);
+        var hit = view.Canvas.LastHighlightDestinations.First(entry => entry.Highlight.Kind == HighlightKind.SearchCurrent).Destination;
+        var selection = view.Canvas.LastHighlightDestinations.First(entry => entry.Highlight.Kind == HighlightKind.Selection).Destination;
+        Assert.True(hit.Intersects(stroke) && selection.Intersects(stroke), "the hit or the selection does not lie on the drawing");
+
+        // Neither shows the bare colour of the drawing inside: each has its own colour over it.
+        Assert.Equal(0, CountIn(frame, hit.Deflate(3), color => Near(color, red, 6)));
+        Assert.Equal(0, CountIn(frame, selection.Deflate(3), color => Near(color, red, 6)));
+
+        // The current hit keeps its frame: search.on on a light page, the page foreground on a dark one.
+        var frameColor = theme == "Dark" ? DarkText : TokenTests.Token("Search.On", ThemeVariant.Light);
+        var band = new Rect(hit.X + 2, hit.Y - 1, hit.Width - 4, 2);
+        Assert.True(CountIn(frame, band, color => Near(color, frameColor, 40)) > hit.Width / 2, "no frame on the current hit");
     }
 
     [AvaloniaFact]

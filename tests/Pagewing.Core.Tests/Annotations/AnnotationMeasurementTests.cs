@@ -19,7 +19,7 @@ namespace Pagewing.Core.Tests.Annotations;
 /// <c>annotation-measurements.txt</c> and the scroll files into that folder, all other work happens in a temp folder.
 /// Measures, never asserts a time.
 /// </summary>
-public sealed class AnnotationMeasurementTests
+public sealed partial class AnnotationMeasurementTests
 {
     /// <summary>The environment variable that names the output folder.</summary>
     public const string OutputVariable = "PAGEWING_MEASURE_OUT";

@@ -1065,6 +1065,66 @@
   <data name="CommandStrikeOut" xml:space="preserve">
     <value>Durchstreichen</value>
   </data>
+  <data name="CommandSelectTool" xml:space="preserve">
+    <value>Zeichnungen auswählen und verschieben</value>
+  </data>
+  <data name="CommandInk" xml:space="preserve">
+    <value>Freihand zeichnen</value>
+  </data>
+  <data name="CommandRectangle" xml:space="preserve">
+    <value>Rechteck zeichnen</value>
+  </data>
+  <data name="CommandEllipse" xml:space="preserve">
+    <value>Ellipse zeichnen</value>
+  </data>
+  <data name="CommandLine" xml:space="preserve">
+    <value>Linie zeichnen</value>
+  </data>
+  <data name="CommandArrow" xml:space="preserve">
+    <value>Pfeil zeichnen</value>
+  </data>
+  <data name="ToolSelect" xml:space="preserve">
+    <value>Auswählen</value>
+  </data>
+  <data name="ToolInk" xml:space="preserve">
+    <value>Freihand</value>
+  </data>
+  <data name="ToolRectangle" xml:space="preserve">
+    <value>Rechteck</value>
+  </data>
+  <data name="ToolEllipse" xml:space="preserve">
+    <value>Ellipse</value>
+  </data>
+  <data name="ToolLine" xml:space="preserve">
+    <value>Linie</value>
+  </data>
+  <data name="ToolArrow" xml:space="preserve">
+    <value>Pfeil</value>
+  </data>
+  <data name="DrawColorRed" xml:space="preserve">
+    <value>Rot</value>
+  </data>
+  <data name="DrawColorBlack" xml:space="preserve">
+    <value>Schwarz</value>
+  </data>
+  <data name="DrawColorBlue" xml:space="preserve">
+    <value>Blau</value>
+  </data>
+  <data name="DrawColorGreen" xml:space="preserve">
+    <value>Grün</value>
+  </data>
+  <data name="DrawColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="StrokeWidthThin" xml:space="preserve">
+    <value>Dünn (1 pt)</value>
+  </data>
+  <data name="StrokeWidthMedium" xml:space="preserve">
+    <value>Mittel (2 pt)</value>
+  </data>
+  <data name="StrokeWidthThick" xml:space="preserve">
+    <value>Dick (4 pt)</value>
+  </data>
   <data name="AnnotateToolbarName" xml:space="preserve">
     <value>Werkzeuge zum Kommentieren</value>
   </data>
@@ -1127,5 +1187,116 @@
   </data>
   <data name="AnnotateMore" xml:space="preserve">
     <value>Weitere Werkzeuge</value>
+  </data>
+  <data name="DrawingLimitReached" xml:space="preserve">
+    <value>Die Zeichnung wurde nicht hinzugefügt: Das Dokument hat schon so viele Annotationen, wie Pagewing verarbeitet ({0:N0}).</value>
+  </data>
+  <data name="DrawingFailed" xml:space="preserve">
+    <value>Die Zeichnung konnte nicht hinzugefügt werden.</value>
+  </data>
+  <data name="SelectionFrameName" xml:space="preserve">
+    <value>Auswahlrahmen</value>
+  </data>
+  <data name="SelectionHandleTopLeft" xml:space="preserve">
+    <value>Griff oben links</value>
+  </data>
+  <data name="SelectionHandleTop" xml:space="preserve">
+    <value>Griff oben</value>
+  </data>
+  <data name="SelectionHandleTopRight" xml:space="preserve">
+    <value>Griff oben rechts</value>
+  </data>
+  <data name="SelectionHandleRight" xml:space="preserve">
+    <value>Griff rechts</value>
+  </data>
+  <data name="SelectionHandleBottomRight" xml:space="preserve">
+    <value>Griff unten rechts</value>
+  </data>
+  <data name="SelectionHandleBottom" xml:space="preserve">
+    <value>Griff unten</value>
+  </data>
+  <data name="SelectionHandleBottomLeft" xml:space="preserve">
+    <value>Griff unten links</value>
+  </data>
+  <data name="SelectionHandleLeft" xml:space="preserve">
+    <value>Griff links</value>
+  </data>
+  <data name="SelectionHandleStart" xml:space="preserve">
+    <value>Griff Anfangspunkt</value>
+  </data>
+  <data name="SelectionHandleEnd" xml:space="preserve">
+    <value>Griff Endpunkt</value>
+  </data>
+  <data name="SelectionLockedForeign" xml:space="preserve">
+    <value>Von einem anderen Programm gezeichnet: Sie können die Zeichnung kommentieren oder löschen, aber nicht verschieben oder ändern.</value>
+  </data>
+  <data name="AnnotateWidthsName" xml:space="preserve">
+    <value>Strichstärken</value>
+  </data>
+  <data name="CommentFilterDrawings" xml:space="preserve">
+    <value>Zeichnungen</value>
+  </data>
+  <data name="CommentInkGroup" xml:space="preserve">
+    <value>Freihand, {0} Striche</value>
+  </data>
+  <data name="CommentGroupCollapsed" xml:space="preserve">
+    <value>zugeklappt</value>
+  </data>
+  <data name="CommentGroupExpanded" xml:space="preserve">
+    <value>aufgeklappt</value>
+  </data>
+  <data name="CommentGroupHint" xml:space="preserve">
+    <value>Eingabe oder Leertaste zeigt oder verbirgt die Striche.</value>
+  </data>
+  <data name="SelectionFrameNameOf" xml:space="preserve">
+    <value>{0} ausgewählt, Seite {1}</value>
+  </data>
+  <data name="DrawingChangeFailed" xml:space="preserve">
+    <value>Die Zeichnung konnte nicht geändert werden.</value>
+  </data>
+  <data name="SelectionHandleNameOf" xml:space="preserve">
+    <value>{0}, {1}, Seite {2}</value>
+  </data>
+  <data name="CommandTextBox" xml:space="preserve">
+    <value>Textfeld hinzufügen</value>
+  </data>
+  <data name="ToolTextBox" xml:space="preserve">
+    <value>Textfeld</value>
+  </data>
+  <data name="TextBoxSizeSmall" xml:space="preserve">
+    <value>Kleine Schrift (12 pt)</value>
+  </data>
+  <data name="TextBoxSizeMedium" xml:space="preserve">
+    <value>Mittlere Schrift (16 pt)</value>
+  </data>
+  <data name="TextBoxSizeLarge" xml:space="preserve">
+    <value>Große Schrift (24 pt)</value>
+  </data>
+  <data name="AnnotateSizesName" xml:space="preserve">
+    <value>Schriftgrößen</value>
+  </data>
+  <data name="TextBoxEditorName" xml:space="preserve">
+    <value>Text des Textfelds</value>
+  </data>
+  <data name="TextBoxEditorHint" xml:space="preserve">
+    <value>Strg+Eingabe übernimmt, Esc verwirft</value>
+  </data>
+  <data name="TextBoxUnsupportedCharacters" xml:space="preserve">
+    <value>Diese Zeichen kann ein Textfeld nicht darstellen: {0}. Entfernen Sie sie, um den Text zu übernehmen.</value>
+  </data>
+  <data name="TextBoxTooLong" xml:space="preserve">
+    <value>Ein Textfeld fasst höchstens {0} Zeichen.</value>
+  </data>
+  <data name="TextBoxTooManyLines" xml:space="preserve">
+    <value>Ein Textfeld fasst höchstens {0} Zeilen.</value>
+  </data>
+  <data name="SelectionLockedForeignTextBox" xml:space="preserve">
+    <value>Von einem anderen Programm angelegt oder geändert: Sie können das Textfeld löschen, aber nicht verschieben oder ändern.</value>
+  </data>
+  <data name="TextBoxNotNow" xml:space="preserve">
+    <value>Der Text kann gerade nicht übernommen werden. Er bleibt hier: mit Strg+Eingabe erneut übernehmen oder mit Esc verwerfen.</value>
+  </data>
+  <data name="TextBoxEmpty" xml:space="preserve">
+    <value>Ein Textfeld braucht Text. Zum Entfernen löschen Sie es.</value>
   </data>
 </root>

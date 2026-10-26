@@ -11,6 +11,9 @@ internal static class TestData
     /// <summary>Full path of a file in <c>testdata/pdfs</c>.</summary>
     public static string Pdf(string name) => Path.Combine(Root, "testdata", "pdfs", name);
 
+    /// <summary>Full path of the shipped Geist Regular, the font of the text boxes (<c>src/Pagewing.App/Assets/Fonts</c>).</summary>
+    public static string GeistRegular => Path.Combine(Root, "src", "Pagewing.App", "Assets", "Fonts", "Geist-Regular.ttf");
+
     /// <summary>Directory with the reference images of one test PDF (<c>testdata/references/&lt;stem&gt;</c>).</summary>
     public static string ReferenceDir(string pdfStem) => Path.Combine(Root, "testdata", "references", pdfStem);
 

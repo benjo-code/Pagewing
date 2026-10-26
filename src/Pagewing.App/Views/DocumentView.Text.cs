@@ -83,6 +83,12 @@ public sealed partial class DocumentView
         Arrow,
         Text,
         Link,
+
+        /// <summary>A drawing tool over a page (crosshair).</summary>
+        Draw,
+
+        /// <summary>The select tool over a movable selection or one of its handles (DocumentView.Selection.cs).</summary>
+        Selection,
     }
 
     private enum PressKind
@@ -533,6 +539,14 @@ public sealed partial class DocumentView
         }
 
         var properties = e.GetCurrentPoint(this).Properties;
+
+        // A drawing tool owns the press (DocumentView.Drawing.cs), and so does the select tool (DocumentView.Selection.cs):
+        // no text selection, no link.
+        if (PressEndsTextBox() || PressForDrawing(e, properties) || PressForSelection(e, properties))
+        {
+            return;
+        }
+
         if (properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed || _layout is null || _viewModel is null
             || (e.KeyModifiers & KeyModifiers.Control) != 0 || IsInScrollBar(e.Source))
         {
@@ -657,6 +671,11 @@ public sealed partial class DocumentView
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
+        if (MoveForDrawing(e) || MoveForSelection(e))
+        {
+            return;
+        }
+
         var position = e.GetPosition(PageCanvas);
         if (_press is { } press)
         {
@@ -697,6 +716,11 @@ public sealed partial class DocumentView
 
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (ReleaseForDrawing(e) || ReleaseForSelection(e))
+        {
+            return;
+        }
+
         if (e.InitialPressMouseButton != MouseButton.Left || _press is not { } press)
         {
             return;
@@ -737,6 +761,18 @@ public sealed partial class DocumentView
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
+        if (_gesture is { } gesture && ReferenceEquals(e.Pointer, gesture.Pointer))
+        {
+            // Something else took the pointer (a menu, the system): the stroke goes.
+            EndGesture();
+        }
+
+        if (_selectionDrag is { } drag && ReferenceEquals(e.Pointer, drag.Pointer))
+        {
+            // The same for a drag of the selection: nothing changes.
+            EndSelectionDrag();
+        }
+
         if (_press is { } press)
         {
             EndPress(press);
@@ -776,6 +812,29 @@ public sealed partial class DocumentView
     private void UpdateCursor(Point position)
     {
         _hoverPage = -1;
+        if (_viewModel is { } drawing && DrawsWith(drawing) is not null)
+        {
+            // A drawing tool: the crosshair over a page, whatever is on it.
+            SetCursor(PageCanvas.PagePointAt(position) is { } on && IsOnPage(on.Page, on.Position) ? CursorKind.Draw : CursorKind.Arrow);
+            return;
+        }
+
+        if (_viewModel is { } selecting && SelectsWith(selecting))
+        {
+            // The select tool: a resize arrow over a handle, the move cross inside a movable selection, else the arrow.
+            if (SelectionCursorAt(position) is { } cursor)
+            {
+                _cursorKind = CursorKind.Selection;
+                Scroller.Cursor = cursor;
+            }
+            else
+            {
+                SetCursor(CursorKind.Arrow);
+            }
+
+            return;
+        }
+
         var kind = CursorKind.Arrow;
         if (PageCanvas.PagePointAt(position) is { } hit && IsOnPage(hit.Page, hit.Position) && TextSource() is { } texts)
         {
@@ -808,6 +867,7 @@ public sealed partial class DocumentView
         {
             CursorKind.Text => TextCursor,
             CursorKind.Link => LinkCursor,
+            CursorKind.Draw => DrawCursor,
             _ => null,
         };
     }
@@ -859,19 +919,24 @@ public sealed partial class DocumentView
     /// Shows for <see cref="NoTextHintDuration"/> that the page has no text to select, at the bottom of the document
     /// area; a press while it is shown does not make it stay longer.
     /// </summary>
-    private void ShowNoTextHint()
+    private void ShowNoTextHint() => ShowHint(Strings.NoTextOnPage);
+
+    /// <summary>
+    /// Shows <paramref name="text"/> in the hint card for <see cref="NoTextHintDuration"/> (the hint on a page without text, and
+    /// why a drawing was not made); the same text while it is shown does not make it stay longer.
+    /// </summary>
+    private void ShowHint(string text)
     {
-        if (_noTextHint is { IsVisible: true })
+        var hint = _noTextHint ??= CreateNoTextHint();
+        var line = (TextBlock)hint.Child!;
+        if (hint.IsVisible && line.Text == text)
         {
             return;
         }
 
-        var hint = _noTextHint ??= CreateNoTextHint();
-
         // The text is set anew each time, so the live region announces it each time (the same value would not change).
-        var line = (TextBlock)hint.Child!;
         line.Text = string.Empty;
-        line.Text = Strings.NoTextOnPage;
+        line.Text = text;
         hint.IsVisible = true;
         if (_noTextHintTimer is null)
         {
