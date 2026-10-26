@@ -19,13 +19,15 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     private readonly PdfiumDocument document;
     private readonly int pageCount;
     private readonly string pdfVersion;
+    private readonly int formType;
     private int disposed;
 
-    internal PdfDocument(PdfiumDocument document, int pageCount, string pdfVersion)
+    internal PdfDocument(PdfiumDocument document, int pageCount, string pdfVersion, int formType)
     {
         this.document = document;
         this.pageCount = pageCount;
         this.pdfVersion = pdfVersion;
+        this.formType = formType;
     }
 
     /// <summary>Gets the number of pages.</summary>

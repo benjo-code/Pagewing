@@ -132,3 +132,25 @@ public sealed class PdfAnnotationLimitException : Exception
     {
     }
 }
+
+/// <summary>
+/// A form field could not be found: the document has no field of that name (or it has no widget on the page asked for).
+/// <see cref="Exception.Message"/> is a short English explanation that names the field.
+/// </summary>
+public sealed class FormFieldNotFoundException : Exception
+{
+    public FormFieldNotFoundException()
+        : base("The form field was not found.")
+    {
+    }
+
+    public FormFieldNotFoundException(string message)
+        : base(message)
+    {
+    }
+
+    public FormFieldNotFoundException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}

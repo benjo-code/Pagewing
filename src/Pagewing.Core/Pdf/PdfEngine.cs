@@ -30,7 +30,7 @@ public sealed class PdfEngine
         var thread = getThread();
         try
         {
-            var (document, pageCount, fileVersion, stamp) = await thread.InvokeAsync(
+            var (document, pageCount, fileVersion, stamp, formType) = await thread.InvokeAsync(
                 () =>
                 {
                     // On the PDFium thread like all file access of an open, never on the caller's (UI) thread: a stat can
@@ -39,7 +39,7 @@ public sealed class PdfEngine
                     var opened = PdfiumDocument.Open(thread, fullPath, password);
                     try
                     {
-                        return (opened, opened.PageCount, opened.FileVersion, stamp);
+                        return (opened, opened.PageCount, opened.FileVersion, stamp, opened.FormType);
                     }
                     catch
                     {
@@ -49,7 +49,7 @@ public sealed class PdfEngine
                 },
                 PdfiumPriority.Interactive,
                 cancellationToken).ConfigureAwait(false);
-            return new PdfDocument(document, pageCount, FormatVersion(fileVersion)) { PathStampAtOpen = stamp };
+            return new PdfDocument(document, pageCount, FormatVersion(fileVersion), formType) { PathStampAtOpen = stamp };
         }
         catch (PdfiumOpenException ex)
         {

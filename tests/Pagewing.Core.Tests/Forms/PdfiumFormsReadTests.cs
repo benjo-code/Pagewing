@@ -400,8 +400,10 @@ public sealed class PdfiumFormsReadTests : IDisposable
 
     /// <summary>
     /// A widget under a <c>/Parent</c> chain of 10,000 named levels: PDFium walks the whole chain in every form call (about
-    /// 25 to 75 ms per call measured). The read returns, the widget is skipped (slow, or no field for PDFium), and the plain
-    /// field after it on the same page is read.
+    /// 25 to 75 ms per call measured). The read returns, the widget is skipped, and the plain field after it on the same
+    /// page is read. The clock is fake, so the outcome does not depend on the speed of the machine: only the first form call
+    /// (on the deep widget) is charged 25 ms, more than <see cref="PdfiumForms.MaxFirstCallTicks"/> and far less than the
+    /// budget of the page; every later call costs nothing.
     /// </summary>
     [Fact]
     public async Task DeepParentChainIsSkippedAndTheRestOfThePageIsRead()
@@ -425,10 +427,18 @@ public sealed class PdfiumFormsReadTests : IDisposable
         }
 
         var path = WritePdf(folder, "deep-parent.pdf", objects);
-        var fields = await ReadPageAsync(path, 0);
+        var clock = new FirstCallClock(TimeSpan.FromMilliseconds(25));
+        var fields = await Pdfium.InvokeAsync(
+            () =>
+            {
+                using var document = PdfiumDocument.Open(Pdfium, path, null);
+                using var page = document.LoadPage(0);
+                return PdfiumForms.ReadPage(page, clock);
+            },
+            cancellationToken: Ct);
 
         Assert.Equal([0, 1], fields.Select(f => f.Index));
-        Assert.NotNull(fields[0].SkipReason);
+        Assert.Equal(PdfiumForms.SlowReason, fields[0].SkipReason);
         Assert.Null(fields[0].Name);
         Assert.Equal("Normal", fields[1].Name);
         Assert.Equal(PdfiumFormKind.Text, fields[1].Kind);
@@ -496,6 +506,27 @@ public sealed class PdfiumFormsReadTests : IDisposable
             "<< /FT /Tx /T (Erbe) /MaxLen 4 /DA (/Helv 10 Tf 0 g) /Kids [10 0 R] >>",
             "<< /Type /Annot /Subtype /Widget /Rect [20 50 200 72] /P 3 0 R /F 4 /Parent 9 0 R >>",
         ]);
+
+    /// <summary>A clock that moves by <paramref name="step"/> after its first reading only (the first timed form call), then stands still.</summary>
+    private sealed class FirstCallClock(TimeSpan step) : TimeProvider
+    {
+        private long now;
+        private bool moved;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp()
+        {
+            var timestamp = now;
+            if (!moved)
+            {
+                moved = true;
+                now += step.Ticks;
+            }
+
+            return timestamp;
+        }
+    }
 
     /// <summary>A clock that moves by <paramref name="step"/> each time it is read, and counts the readings.</summary>
     private sealed class StepClock(TimeSpan step) : TimeProvider
