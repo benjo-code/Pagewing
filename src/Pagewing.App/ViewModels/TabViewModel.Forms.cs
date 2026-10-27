@@ -35,6 +35,7 @@ public sealed partial class TabViewModel
     private static readonly IReadOnlyList<FormField> NoFields = [];
 
     private bool _isFilling;
+    private bool _formFeaturesEnabled = true;
     private bool _highlightFields = true;
 
     // What the session was last told about the highlight (ViewerSession.SetFormHighlight), so an unchanged state costs nothing.
@@ -87,6 +88,24 @@ public sealed partial class TabViewModel
     /// whose field was left meanwhile), for the window to show.
     /// </summary>
     internal event Action<string>? FormValueRefused;
+
+    /// <summary>
+    /// Gets or sets whether the tab reads the form of its document at all (the hints and the offer after the first sharp page,
+    /// the fields, the mode); on by default. Set by the window (<see cref="MainViewModel.FormFeaturesEnabled"/>): a measurement
+    /// run switches it off. Drawing the fields on the page is not affected.
+    /// </summary>
+    internal bool FormFeaturesEnabled
+    {
+        get => _formFeaturesEnabled;
+        set
+        {
+            if (_formFeaturesEnabled != value)
+            {
+                _formFeaturesEnabled = value;
+                OnFormAvailabilityChanged();
+            }
+        }
+    }
 
     /// <summary>
     /// Gets whether the open document has a form (an AcroForm, known from the open on, <see cref="PdfDocument.HasAcroForm"/>):
@@ -288,8 +307,11 @@ public sealed partial class TabViewModel
     private FormInfo? CurrentFormInfo =>
         !_disposed && _document is not null && ReferenceEquals(_formInfoDocument, _document) ? _formInfo : null;
 
-    /// <summary>Whether form data may be read now: an open document with a form, whose first sharp page was shown.</summary>
-    private bool CanReadForm => !_disposed && IsReady && _hasShownSharpPage && HasForm;
+    /// <summary>
+    /// Whether form data may be read now: the features are on (<see cref="FormFeaturesEnabled"/>), an open document with a form,
+    /// whose first sharp page was shown.
+    /// </summary>
+    private bool CanReadForm => !_disposed && _formFeaturesEnabled && IsReady && _hasShownSharpPage && HasForm;
 
     /// <summary>Whether a value can be applied now: in the mode, no card asks about the tab, no lock, no save and no print job.</summary>
     private bool CanFillNow => _isFilling && CanRunMarkup() && !_isSaving && !_isPrinting;

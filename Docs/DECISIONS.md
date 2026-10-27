@@ -15,6 +15,72 @@ Log der Architektur- und Technikentscheidungen. Neueste Einträge oben.
 **Verworfene Alternativen:** <Was noch in Frage kam und warum nicht>
 -->
 
+## 2026-10-27 – Formulare: Messwerte und Startpfad (M11)
+**Kontext:** Aufgabe 14 von Milestone 11. Der Startpfad darf nach `CLAUDE.md` nichts Neues ohne Messung bekommen, und die Budgets werden nie gelockert. Offen war, was die Formular-Umgebung im Öffnungsauftrag kostet, was ein Formular dem ersten scharfen Bild, dem Scrollen, dem Schreiben und dem Speichern aufschlägt und ob die Umgebung im Öffnungsauftrag bleiben kann oder lazy entstehen muss.
+**Rechner:** die Windows-11-VM der Messungen von M9 und M10 (6 logische Prozessoren, keine GPU). `bench/startup/startup.cs` schrieb auch hier die `Warnung:`-Zeile (Desktop-Komposition: ein Bild alle 255 ms, 3,9 Hz statt 60 Hz); Start- und Scroll-Budgets sind hier deshalb **nicht** prüfbar, siehe „Nicht gemessen“. Die Messungen unten laufen im Release-Testlauf direkt gegen `Pagewing.Core` (kein Fenster, keine Abhängigkeit vom Frame-Takt) und sind davon nicht betroffen.
+**Methode:** `FormMeasurementTests.MeasuresTheFormPaths` (`tests/Pagewing.Core.Tests/Forms`) läuft nur mit `PAGEWING_MEASURE_OUT=<Ordner>`, meldet sich sonst als übersprungen und prüft nie eine Zeit: `$env:PAGEWING_MEASURE_OUT="<Ordner>"; dotnet test tests/Pagewing.Core.Tests -c Release --filter-class "*FormMeasurementTests"` (Ergebnis `form-measurements.txt`). Die Formulare erzeugt der Test (`FormTestPdfs.WriteLargeForm`: Textfelder mit Rahmen und `/MK`, ohne `/AP`). „Ohne Formular“ ist dieselbe Datei, deren Schlüssel `/AcroForm` in `/AcroFoXm` umbenannt ist (gleiche Länge, die Xref-Tabelle stimmt weiter): PDFium meldet dann keinen Formulartyp, Pagewing legt keine Umgebung an, die Widgets bleiben Annotationen. 15 Läufe nach einem Aufwärmlauf (Kacheln: 30), Median in ms; Minimum und Maximum stehen in der Ausgabedatei. Zwei Läufe desselben Tests lagen bei den Zeilen (1) bis (6) innerhalb von rund 10 % beieinander.
+**Messwerte:**
+- **(1) Öffnungsauftrag** (`PdfEngine.OpenAsync`; für „mit Umgebung“ samt `FPDF_GetFormType` und `FPDFDOC_InitFormFillEnvironment`):
+
+  | Formular | mit Umgebung | ohne | Unterschied |
+  |---|---|---|---|
+  | 1 Feld | 0,50 | 0,46 | +0,04 |
+  | 100 Felder | 0,50 | 0,45 | +0,04 |
+  | 2.000 Felder auf 20 Seiten | 1,61 | 1,65 | –0,04 |
+  | 2.000 Felder auf 1 Seite | 1,56 | 1,59 | –0,03 |
+
+  Das Anlegen der Umgebung liegt im Rauschen (0,03 bis 1,0 ms laut Spike, Eintrag „Formulare: Formular-Engine …“, Punkt 4).
+- **(2) Erstes scharfes Bild** (frisch geöffnet, `RenderPageAsync` Seite 1, Maßstab 1, hell, als erster Auftrag; enthält das **erste `FORM_OnAfterLoadPage`**, das **alle** Felder des Dokuments lädt, und `FPDF_FFLDraw`), und dasselbe Rendern ein zweites Mal („warm“):
+
+  | Formular | erstes Bild mit Umgebung | ohne | Aufschlag | warm mit | warm ohne | Aufschlag warm |
+  |---|---|---|---|---|---|---|
+  | 1 Feld | 1,87 | 0,54 | **+1,3** | 0,52 | 0,56 | 0 |
+  | 100 Felder | 7,45 | 2,09 | **+5,4** | 2,52 | 0,48 | +2,0 |
+  | 2.000 Felder auf 20 Seiten | 69,8 | 2,02 | **+67,8** | 2,57 | 0,43 | +2,1 |
+  | 2.000 Felder auf 1 Seite | 151,9 | 34,1 | **+117,9** | 47,9 | 2,17 | +45,7 |
+
+  Der Aufschlag des ersten Bildes ist fast ganz das Laden aller Felder (Spike: 72 ms bei 2.000 Feldern auf 20 Seiten, 91 ms bei 2.000 auf einer Seite). Er fällt in das erste Rendern, nicht in den Öffnungsauftrag (Aufgabe 4: `LoadPage` ruft `FORM_OnAfterLoadPage`), und wächst mit der Zahl der Felder des **Dokuments**, nicht der Seite.
+- **(3) `FPDF_FFLDraw` je Seite und Kachel** (warm; Kachel 256 × 256 px bei x = 300, also mit 64 px Überlapp, Seite 1; der Aufschlag gegen dieselbe Datei ohne Umgebung enthält auch das Nachschlagen der Widgets der Seite):
+
+  | Formular | Seite warm | Kachel warm |
+  |---|---|---|
+  | 1 Feld | +0 | +0,01 |
+  | 100 Felder auf der Seite | +2,0 | +1,5 |
+  | 2.000 Felder auf 20 Seiten (100 je Seite) | +2,1 | +1,5 |
+  | 2.000 Felder auf einer Seite | +45,7 | +43,7 |
+
+  Die Kosten hängen an den Widgets **der Seite** (rund 0,02 ms je Widget, bei jeder Kachel von vorn), nicht an der Zahl der Felder des Dokuments. Eine Seite mit 2.000 Widgets ist ein Grenzfall; Formulare mit mehreren hundert Feldern verteilen sie über mehrere Seiten.
+- **(4) Geschriebener Wert bis zum neuen scharfen Bild** (`AnnotationEditor.SetFormValueAsync` Beginn → `PagesInvalidated` → alle scharfen Kacheln der Seite im Cache; Fenster 1280 × 800 DIP, Maßstab 1, eine Kachel; jeder Lauf danach rückgängig gemacht):
+
+  | Datei | Schreiben (kehrt zurück) | scharfes Bild der Seite |
+  |---|---|---|
+  | `forms-basic.pdf`, Feld „Name“ | 1,55 | 3,98 |
+  | 100 Felder auf der Seite | 4,18 | 10,06 |
+  | 2.000 Felder auf 20 Seiten | 4,06 | 10,04 |
+
+- **(5) Speichern eines ausgefüllten Formulars** (200 Textfelder auf 20 Seiten, jedes über `AnnotationEditor.SetFormValueAsync`, dann `AnnotationEditor.SaveAsync`, inkrementell): 200 Schreibvorgänge zusammen 157 ms (der erste 20,2 ms, er enthält das Lesen des Formulars für die Seiten des Feldes; Median 0,66 ms), Speichern 126 ms; Datei 42,0 → 183,8 KiB (PDFium schreibt beim inkrementellen Speichern alle Objekte der geladenen Seiten neu, Eintrag M9; hier rund 0,7 KiB je ausgefülltes Feld).
+- **(6) 50 aufeinanderfolgende Seiten** (`RenderPageAsync`, Maßstab 1, jede Seite zum ersten Mal, in Reihenfolge), ms:
+
+  | Datei | p50 | p99 (= Maximum) | erste Seite | Summe |
+  |---|---|---|---|---|
+  | Formular, 50 Seiten zu 30 Feldern (1.500 Felder) | 1,91 | 47,8 | 47,8 | 144 |
+  | dieselbe Datei ohne Umgebung | 0,91 | 1,63 | 0,85 | 53 |
+  | `thousand-pages.pdf`, Seiten 1 bis 50 (keine Widgets) | 0,21 | 1,48 | 1,48 | 14 |
+
+  Der Ausreißer ist die erste Seite (Punkt 2); danach kostet jede Seite mit 30 Widgets rund 1 ms mehr. `thousand-pages.pdf` hat anderen Inhalt und ist nur die Gegenprobe „Dokument ohne Formular“ (dort legt Pagewing nie eine Umgebung an, Tests unten).
+- **(7) Lesen im Hintergrund nach dem ersten scharfen Bild** (frisches Dokument, erster Aufruf): `GetFormInfoAsync` (die Suche nach Hinweisen, ein kurzer `Background`-Auftrag je Seite) 0,2 ms bei 1 Feld, 3,7 ms bei 100, **219 ms** bei 2.000 Feldern auf 20 Seiten (rund 11 ms je Seitenauftrag), 194 ms bei 2.000 auf einer Seite (**ein** Auftrag); `GetFormFieldsAsync(Seite 1)` (interaktiv, beim Betreten des Modus) 3,9 ms bei 100 Feldern der Seite, **208 ms** bei 2.000 Feldern auf einer Seite (ein Auftrag; begrenzt nur durch das Zeitbudget von 250 ms, Eintrag „Formulare: Zeitbudget beim Lesen der Felder“).
+
+**Entscheidung:**
+1. **Die Umgebung bleibt im Öffnungsauftrag** (`PdfiumDocument.Open` → `PdfiumFormEnvironment.CreateIfForm`). Sie kostet dort nichts Messbares (Punkt 1); der Aufschlag eines Formulars entsteht erst beim ersten `FORM_OnAfterLoadPage`, im ersten Rendern. Eine lazy angelegte Umgebung verschöbe nur das Anlegen (0,03 bis 1 ms), nicht das Laden der Felder; das braucht das erste Bild einer Seite mit Widgets ohnehin, weil `FPDF_RenderPageBitmap` kein Widget zeichnet (Eintrag „Formulare: Formular-Engine …“, Punkt 3): ohne Umgebung zeigte Pagewing leere Felder. **Dokumente ohne Formular bleiben unverändert:** keine Umgebung, kein Suchlauf nach Widgets, kein `FPDF_FFLDraw`, kein Formularaufruf bei Seite, Kachel und Vorschaubild (`FormRenderTests.DocumentWithoutAFormNeverTouchesTheFormEngine`, `FormStartPathTests.OpeningADocumentWithoutAFormCreatesNoEnvironmentAndNoControls`); die Budgets (die Startzeit-Fälle laden `text-basic.pdf`, `hello_world.pdf` und `thousand-pages.pdf`) sind davon nicht berührt.
+2. **Für Dokumente mit Formular steht der Preis offen da:** erstes scharfes Bild +1 ms (1 Feld), +5 ms (100 Felder), **+68 ms (2.000 Felder auf 20 Seiten)**, +118 ms (2.000 Felder auf einer Seite); danach je Seite oder Kachel rund 0,02 ms je Widget der Seite. Kein Budget wurde für Formulare gesetzt, keines gelockert.
+3. **Messläufe schalten die Formularfunktionen ab:** `MeasurementRun.Start` setzt `MainViewModel.FormFeaturesEnabled = false` (internal, Standard `true`; das Fenster gibt es an jeden Tab weiter, auch an später hinzugekommene, `TabViewModel.FormFeaturesEnabled` gehört zu `CanReadForm`). Damit gibt es in einem Messlauf kein Lesen der Hinweise, kein Angebot, keine Hinweisleiste, Werkzeugleiste, Felder-Schicht, kein Eingabeelement und keinen Modus. **Nicht abgeschaltet** sind die Umgebung (Öffnungsauftrag) und `FPDF_FFLDraw`: das Zeichnen der Felder gehört zum Anzeigen der Seite und ist, was die Budgets für ein Formular messen sollen (`FormStartPathTests.MeasurementRunsCreateNoFormObjects`). Im normalen Betrieb entstehen Hinweisleiste, Werkzeugleiste und Eingabeelemente erst nach dem ersten scharfen Bild bzw. im Modus (`NoFormControlIsCreatedBeforeTheFirstSharpPage`, `FormToolbarAndEditorsAreCreatedOnlyByTheMode`); der Editor des Tabs erst beim ersten geschriebenen Wert.
+**Befund zur Beobachtung (nicht Teil dieser Aufgabe):** Bei sehr großen Formularen belegt das Lesen den `PdfiumThread` länger, als „kurzer Auftrag“ meint: 2.000 Felder auf **einer** Seite ein Auftrag von 194 ms (Hinweise) bzw. 208 ms (Felder beim Betreten des Modus), das Zeichnen jeder Kachel dieser Seite 44 ms; bei 100 Feldern je Seite sind es 3 bis 4 ms (Lesen) und 1,5 ms je Kachel. Das Zeitbudget von 250 ms je Seite (Eintrag „Zeitbudget beim Lesen der Felder“) deckelt das Lesen, nicht das Zeichnen. **Folge-Vorschlag, nicht umgesetzt:** (a) die Umgebung lazy anlegen und `FORM_OnAfterLoadPage` erst für die erste Seite **mit Widgets** (ein Deckblatt ohne Felder zahlte dann nichts; `PageHasWidgets` weiß es heute erst mit Umgebung und bräuchte einen Suchlauf ohne sie); (b) die grobe Vorschau einer Seite ohne `FPDF_FFLDraw` rendern, damit das Laden der Felder in das scharfe Bild fällt und das erste Bild früher kommt; (c) das Lesen einer Seite mit sehr vielen Widgets in mehrere Aufträge teilen. Erst angehen, wenn ein echtes Formular mit mehreren hundert Feldern den Aufschlag spürbar macht (Handprüfung, Backlog).
+**Nicht gemessen (offen):**
+- **Startzeit-Budgets auf echter Hardware.** Ein Lauf von `bench/startup/startup.cs --case warm` mit dem Debug-Build (kein Native-AOT-Binary; `forms-basic.pdf`) bestätigt nur die Warnung der VM („Die Desktop-Komposition zeigt nur alle 255 ms ein neues Bild (3.9 Hz, erwartet um 60 Hz) …“; Median 1.995 ms, ohne Aussage). Der Abgleich der Fälle gegen `dev` steht aus; er gehört auf den Haupt-PC (`hardware-measure.yml`, Label `hardware-measure` am PR oder `workflow_dispatch`; der Projektinhaber startet den Runner) und lokal nach `dotnet publish src/Pagewing.App -c Release -r win-x64 -o out/app`: `dotnet run bench/startup/startup.cs -- --exe out/app/Pagewing.exe --pdf testdata/pdfs/text-basic.pdf --case warm --out out/startup/warm.csv --phases`. Da ein Dokument ohne Formular keinen einzigen neuen Aufruf im Start- oder Renderpfad hat (Zähler 0 in den Tests) und Messläufe die Formularfunktionen abschalten, ist keine Verschlechterung zu erwarten; belegt ist es erst dort.
+- **`--measure-scroll` auf einer Formularseite** (`Pagewing.exe --measure-scroll testdata/pdfs/forms-basic.pdf` neben `text-basic.pdf`): braucht das AOT-Binary und eine Anzeige mit gültigem Frame-Takt. Ersatz hier ist Punkt 6 (Renderzeit je Seite). Offen.
+**Begründung:** Nur ein Dokument mit Formular zahlt einen Aufschlag; er wächst mit der Feldzahl des Dokuments (68 ms bei 2.000 Feldern auf 20 Seiten) und liegt erst in einem Grenzfall (2.000 Felder auf einer Seite) über 100 ms. Schreiben bis zum neuen Bild (4 bis 10 ms) und Speichern (126 ms für 200 ausgefüllte Felder) liegen im Rahmen von M9. Eine lazy Umgebung hätte das Anlegen verschoben, nicht das Laden, und die Regel „kein Widget ohne Umgebung“ verkompliziert; sie bleibt ein Folge-Vorschlag mit klarem Auslöser.
+**Verworfene Alternativen:** Die Umgebung erst beim Betreten des Modus anlegen (die Felder erschienen leer, bis der Nutzer den Modus wählt; widerspricht dem Zeigen ausgefüllter Formulare, Eintrag „Formulare: Felder im Rendern …“); `FPDF_FFLDraw` in Messläufen abschalten (verfälschte, was die Budgets für ein Formular messen sollen: das Anzeigen der Seite); das Lesen der Hinweise in Messläufen laufen lassen (Arbeit nach dem Messpunkt, die den `PdfiumThread` für die folgenden Frames belegt); ein Budget für Formulare festlegen (ohne Messung auf echter Hardware nicht zu begründen).
+
 ## 2026-10-27 – Formulare: Druck unter Windows in Streifen (M11)
 **Kontext:** Aufgabe 9 von Milestone 11 (Teil b). Unter Windows druckt Pagewing seit M7 mit `FPDF_RenderPage` direkt auf den Drucker-HDC; dieser Weg zeichnet kein Widget (Spike, Eintrag „Formulare: Formular-Engine …“, Punkt 9), ein Formular kam also mit leeren Feldern aufs Papier, auch vorausgefüllte. `FPDF_FFLDraw` zeichnet nur in ein Bitmap. Linux druckt die gespeicherte Kopie (`SaveDecryptedCopyAsync`), die Werte und `/AP` trägt.
 **Entscheidung:**

@@ -342,6 +342,28 @@ public sealed class FormRenderTests : IDisposable
     }
 
     [Fact]
+    public async Task DocumentWithoutAFormNeverTouchesTheFormEngine()
+    {
+        // A page, a tile and a thumbnail of a document without an AcroForm: no environment, no widget scan, no FPDF_FFLDraw.
+        using var session = new ViewerSession(new PdfEngine());
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var document = session.Document!;
+        await document.RenderPageAsync(0, Scale, Light, Ct);
+        await document.RenderPageAsync(0, Scale, Dark, Ct);
+        await document.RenderTileAsync(0, Scale, new PixelRect(128, 0, 256, 256), Light, Ct);
+        var thumbnails = session.EnsureThumbnails()!;
+        var ready = new TaskCompletionSource<TileKey>(TaskCreationOptions.RunContinuationsAsynchronously);
+        thumbnails.Scheduler.TileReady += key => ready.TrySetResult(key);
+        thumbnails.Scheduler.Update(ThumbnailPlanner.Plan(session.LoadedSizes, [0], 1.0));
+        await ready.Task.WaitAsync(SchedulerWait.Due, Ct);
+
+        Assert.False(document.HasAcroForm);
+        Assert.Equal(0, document.FormEnvironmentsCreated);
+        Assert.Equal(0, document.FormWidgetScans);
+        Assert.Equal(0, document.FormDraws);
+    }
+
+    [Fact]
     public async Task ThumbnailsShowTheFields()
     {
         using var session = new ViewerSession(new PdfEngine());
