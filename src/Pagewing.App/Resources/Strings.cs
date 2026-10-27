@@ -493,6 +493,12 @@ public static class Strings
     public static string FormEditorHint => Get("FormEditorHint");
     public static string FormEditorHintMultiline => Get("FormEditorHintMultiline");
     public static string FormFieldChecked => Get("FormFieldChecked");
+    public static string RequiredFieldsTitleOne => Get("RequiredFieldsTitleOne");
+    public static string RequiredFieldsTitleMany => Get("RequiredFieldsTitleMany");
+    public static string RequiredFieldsTextOne => Get("RequiredFieldsTextOne");
+    public static string RequiredFieldsTextMany => Get("RequiredFieldsTextMany");
+    public static string SaveChoiceGoToField => Get("SaveChoiceGoToField");
+    public static string SignatureWarningFormsText => Get("SignatureWarningFormsText");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",

@@ -31,11 +31,12 @@ public sealed partial class MainViewModel
     internal bool IsPendingSaveShown => _pendingSave is { IsResolved: false } question && ReferenceEquals(question.Tab, ActiveTab);
 
     /// <summary>
-    /// Esc while a card of the save flow is shown, wherever the focus is: answers "Cancel" (every card offers it). Without a
-    /// shown card the key goes on.
+    /// Esc while a card of the save flow is shown, wherever the focus is: answers "Cancel", also on the card about empty
+    /// required fields, which has no button of that name (the save stops there, nothing else happens). Without a shown card
+    /// the key goes on.
     /// </summary>
     public ICommand CancelPendingSaveCommand => _cancelPendingSaveCommand ??=
-        new RelayCommand(() => _pendingSave?.Resolve(PendingSaveChoice.Cancel), () => IsPendingSaveShown);
+        new RelayCommand(() => _pendingSave?.Abandon(), () => IsPendingSaveShown);
 
     /// <summary>
     /// Asks about every tab of this window with unsaved changes in turn, the active one first, then the others from left to

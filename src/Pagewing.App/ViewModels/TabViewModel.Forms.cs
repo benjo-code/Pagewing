@@ -1010,6 +1010,83 @@ public sealed partial class TabViewModel
     internal bool HasEditorChanges => _editor?.IsDirty == true;
 
     /// <summary>
+    /// Gets whether the changes since the last save are form values only (<see cref="AnnotationEditor.HasOnlyFormChanges"/>): the
+    /// warning about a signature that allows form fields says so.
+    /// </summary>
+    internal bool HasOnlyFormChanges => _editor?.HasOnlyFormChanges == true;
+
+    /// <summary>
+    /// Gets or sets the version of the history (<see cref="EditVersion"/>) for which the user chose "Save anyway" on the card
+    /// about empty required fields, or <see langword="null"/>: a save of the same changes (again after a failed one) does not ask
+    /// again; any later change does.
+    /// </summary>
+    internal int? RequiredFieldsAcceptedAt { get; set; }
+
+    /// <summary>
+    /// The first widget of the field <paramref name="fieldName"/> in the tab order (the pages with fields in turn), read for the
+    /// open document; <see langword="null"/> when it is not found (or the document changed meanwhile).
+    /// </summary>
+    /// <param name="fieldName">The full name of the field.</param>
+    /// <returns>The widget, or <see langword="null"/>.</returns>
+    internal async Task<FormField?> FindFormFieldAsync(string fieldName)
+    {
+        ArgumentNullException.ThrowIfNull(fieldName);
+        var generation = _documentGeneration;
+        await EnsureFormInfoAsync();
+        foreach (var page in PagesWithFields())
+        {
+            var fields = await ReadFieldsAsync(page);
+            if (generation != _documentGeneration)
+            {
+                return null;
+            }
+
+            if (fields.FirstOrDefault(field => string.Equals(field.Key.FieldName, fieldName, StringComparison.Ordinal)) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// "Go to the first empty field" of the card about required fields: starts the mode "Fill in form" when it is off and gives
+    /// <paramref name="key"/> the focus (the view scrolls it into view and opens its input). An open value that cannot be applied
+    /// keeps the focus in its own field instead, so it is never hidden.
+    /// </summary>
+    /// <param name="key">The widget, or <see langword="null"/> when it could not be found (then only the mode starts).</param>
+    /// <returns>Whether the focus is in <paramref name="key"/> now.</returns>
+    internal async Task<bool> GoToFormFieldAsync(FormWidgetKey? key)
+    {
+        if (!_isFilling)
+        {
+            await EnterFillAsync();
+        }
+
+        if (!_isFilling || key is not { } target)
+        {
+            return false;
+        }
+
+        if (_formDraft is { } open && IsChanged(open) && !ReferenceEquals(open, _formDraftInFlight) && !SameField(open, target))
+        {
+            FocusedField = open.Key;
+            return false;
+        }
+
+        var generation = _documentGeneration;
+        await ReadFieldsAsync(target.Page);
+        if (generation != _documentGeneration || !_isFilling)
+        {
+            return false;
+        }
+
+        FocusedField = target;
+        return true;
+    }
+
+    /// <summary>
     /// Shows a short notice about a field in the hint bar of the window (<see cref="FormNotice"/>): why a field that was clicked
     /// cannot be changed (<see cref="LockTextOf"/>: read-only, a signature field, a button whose action never runs).
     /// </summary>
@@ -1336,6 +1413,7 @@ public sealed partial class TabViewModel
         ResetFormInfo();
         _dismissedHints = FormHint.None;
         _fillOfferClosed = false;
+        RequiredFieldsAcceptedAt = null;
         FormNotice = null;
         OnPropertyChanged(nameof(PendingHints));
         OnPropertyChanged(nameof(HasFormFields));

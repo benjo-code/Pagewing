@@ -208,6 +208,32 @@ public sealed class FormEditorHistoryTests : IDisposable
     }
 
     [Fact]
+    public async Task EditorTellsWhetherOnlyFormValuesChangedSinceTheLastSave()
+    {
+        var path = Copy(FormsBasic);
+        using var session = await OpenSessionAsync(path);
+        var editor = new AnnotationEditor(session);
+        Assert.False(editor.HasOnlyFormChanges);
+
+        await editor.SetFormValueAsync("Telefon", FormFieldState.OfText("0221 123"));
+        await editor.SetFormValueAsync("Agb", FormFieldState.OfChecked(true));
+        Assert.True(editor.HasOnlyFormChanges);
+
+        // A markup makes it a mixed change, also after its undo.
+        var rects = await WordRectsAsync(session.Document!, 0, "fixture");
+        Assert.NotNull(await editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, rects, Yellow, null, null));
+        Assert.False(editor.HasOnlyFormChanges);
+        await editor.UndoAsync();
+        Assert.False(editor.HasOnlyFormChanges);
+
+        // After the save the history starts afresh.
+        await editor.SaveAsync(engine, path, overwriteChangedOriginal: false, progress: null, Ct);
+        Assert.False(editor.HasOnlyFormChanges);
+        await editor.SetFormValueAsync("Ort", FormFieldState.OfText("Köln"));
+        Assert.True(editor.HasOnlyFormChanges);
+    }
+
+    [Fact]
     public async Task SaveEmptiesTheHistoryAndKeepsTheFieldsFillable()
     {
         var path = Copy(FormsBasic);

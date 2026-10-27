@@ -132,6 +132,22 @@ public sealed class AnnotationEditor
         }
     }
 
+    /// <summary>
+    /// Gets whether the changes since the last save (or since another document was bound) are form values only
+    /// (<see cref="AnnotationHistory.HasOnlyFormChanges"/>): no annotation was created, changed or deleted meanwhile, not even
+    /// one undone since. The warning before saving a signed document says it more precisely then.
+    /// </summary>
+    public bool HasOnlyFormChanges
+    {
+        get
+        {
+            lock (gate)
+            {
+                return history.HasOnlyFormChanges;
+            }
+        }
+    }
+
     /// <summary>Gets whether <see cref="UndoAsync"/> has something to undo.</summary>
     public bool CanUndo
     {

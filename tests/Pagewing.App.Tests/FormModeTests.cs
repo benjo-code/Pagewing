@@ -293,7 +293,9 @@ public sealed partial class FormModeTests : IDisposable
         tab.HasShownSharpPage = true;
         await tab.EnterFillAsync();
 
-        // Save (Ctrl+S): the open value is applied and saved with the rest.
+        // Save (Ctrl+S): the open value is applied and saved with the rest. The card about the empty required field
+        // ("Pflicht", FormSaveTests) is not the subject here.
+        viewModel.RequiredFieldsReader = static (_, _) => Task.FromResult<IReadOnlyList<string>>([]);
         Assert.True(tab.EditDraft(Key(tab, "Name"), "Gespeichert"));
         Assert.True(await viewModel.SaveTabAsync(tab, saveAs: false));
         Assert.False(tab.IsDirty);

@@ -45,6 +45,10 @@ public sealed class AnnotationHistory
     private readonly List<AnnotationCommand> _undo = [];
     private readonly List<AnnotationCommand> _redo = [];
 
+    // What was pushed since the last Clear: form values, and any other step (also one undone, dropped or forgotten since).
+    private bool _formSteps;
+    private bool _otherSteps;
+
     /// <summary>Whether <see cref="TakeUndo"/> returns a command.</summary>
     public bool CanUndo => _undo.Count > 0;
 
@@ -58,11 +62,28 @@ public sealed class AnnotationHistory
     /// </summary>
     public int Version { get; private set; }
 
+    /// <summary>
+    /// Gets whether every step pushed since the last <see cref="Clear"/> changed a form value
+    /// (<see cref="AnnotationCommand.FormValue"/>) and there was at least one. An annotation step counts for good until the next
+    /// clear, also when it was undone, dropped or forgotten since: the document was touched by it. <see cref="MarkChanged"/> is
+    /// no step of its own (it follows a failed form write).
+    /// </summary>
+    public bool HasOnlyFormChanges => _formSteps && !_otherSteps;
+
     /// <summary>Records a new change and forgets everything that could be redone.</summary>
     /// <param name="command">The change that was just made.</param>
     public void Push(AnnotationCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (command is AnnotationCommand.FormValue)
+        {
+            _formSteps = true;
+        }
+        else
+        {
+            _otherSteps = true;
+        }
+
         _redo.Clear();
         if (_undo.Count >= MaxCommands)
         {
@@ -139,6 +160,8 @@ public sealed class AnnotationHistory
     {
         _undo.Clear();
         _redo.Clear();
+        _formSteps = false;
+        _otherSteps = false;
         Version++;
     }
 }

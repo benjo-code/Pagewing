@@ -167,6 +167,10 @@ public sealed partial class MainViewModel
             tab.IsPrinting = true;
             try
             {
+                // A value applied a moment ago (the open value of a form field, the text of a text box field) is still being
+                // written: the job waits for it, so the page prints what the user typed. The tab takes no new edit meanwhile.
+                await tab.WhenEditsSettledAsync();
+
                 // With changes that are not saved (or still being made) the file on disk lacks them: no path, so a service that
                 // hands a file to the printing system (CUPS) writes one from the document in memory instead.
                 var path = tab.AsksBeforeClosing ? null : tab.FullPath;

@@ -1398,4 +1398,22 @@
   <data name="FormFieldChecked" xml:space="preserve">
     <value>Ausgewählt</value>
   </data>
+  <data name="RequiredFieldsTitleOne" xml:space="preserve">
+    <value>1 Pflichtfeld ist leer</value>
+  </data>
+  <data name="RequiredFieldsTitleMany" xml:space="preserve">
+    <value>{0} Pflichtfelder sind leer</value>
+  </data>
+  <data name="RequiredFieldsTextOne" xml:space="preserve">
+    <value>„{0}“ hat noch keinen Wert. Füllen Sie es zuerst aus, oder speichern Sie trotzdem.</value>
+  </data>
+  <data name="RequiredFieldsTextMany" xml:space="preserve">
+    <value>Das erste ist „{0}“. Füllen Sie die Felder zuerst aus, oder speichern Sie trotzdem.</value>
+  </data>
+  <data name="SaveChoiceGoToField" xml:space="preserve">
+    <value>Zum ersten leeren Feld</value>
+  </data>
+  <data name="SignatureWarningFormsText" xml:space="preserve">
+    <value>Formularfelder sind nach dieser Signatur erlaubt; Pagewing kann das nicht prüfen. Programme wie Acrobat zeigen sie nach dem Speichern womöglich trotzdem als ungültig an.</value>
+  </data>
 </root>

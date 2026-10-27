@@ -1398,4 +1398,22 @@
   <data name="FormFieldChecked" xml:space="preserve">
     <value>Checked</value>
   </data>
+  <data name="RequiredFieldsTitleOne" xml:space="preserve">
+    <value>1 required field is empty</value>
+  </data>
+  <data name="RequiredFieldsTitleMany" xml:space="preserve">
+    <value>{0} required fields are empty</value>
+  </data>
+  <data name="RequiredFieldsTextOne" xml:space="preserve">
+    <value>“{0}” has no value yet. Fill it in first, or save anyway.</value>
+  </data>
+  <data name="RequiredFieldsTextMany" xml:space="preserve">
+    <value>The first one is “{0}”. Fill them in first, or save anyway.</value>
+  </data>
+  <data name="SaveChoiceGoToField" xml:space="preserve">
+    <value>Go to the first empty field</value>
+  </data>
+  <data name="SignatureWarningFormsText" xml:space="preserve">
+    <value>Form fields are allowed after this signature; Pagewing cannot verify this. Programs such as Acrobat may still show the signature as invalid after saving.</value>
+  </data>
 </root>
