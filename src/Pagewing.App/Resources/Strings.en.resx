@@ -1377,4 +1377,16 @@
   <data name="FormValueNotNow" xml:space="preserve">
     <value>The value cannot be applied right now. It stays here: apply it again later, or drop it with Esc.</value>
   </data>
+  <data name="FormCommandHighlight" xml:space="preserve">
+    <value>Highlight form fields</value>
+  </data>
+  <data name="FormToolbarName" xml:space="preserve">
+    <value>Form filling tools</value>
+  </data>
+  <data name="FormHintOffer" xml:space="preserve">
+    <value>This document has form fields you can fill in.</value>
+  </data>
+  <data name="FormHintClose" xml:space="preserve">
+    <value>Close hint</value>
+  </data>
 </root>

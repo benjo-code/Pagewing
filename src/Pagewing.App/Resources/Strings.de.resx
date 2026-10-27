@@ -1377,4 +1377,16 @@
   <data name="FormValueNotNow" xml:space="preserve">
     <value>Der Wert kann gerade nicht übernommen werden. Er bleibt hier: später erneut übernehmen oder mit Esc verwerfen.</value>
   </data>
+  <data name="FormCommandHighlight" xml:space="preserve">
+    <value>Felder hervorheben</value>
+  </data>
+  <data name="FormToolbarName" xml:space="preserve">
+    <value>Werkzeuge zum Ausfüllen</value>
+  </data>
+  <data name="FormHintOffer" xml:space="preserve">
+    <value>Dieses Dokument enthält Formularfelder, die Sie ausfüllen können.</value>
+  </data>
+  <data name="FormHintClose" xml:space="preserve">
+    <value>Hinweis schließen</value>
+  </data>
 </root>

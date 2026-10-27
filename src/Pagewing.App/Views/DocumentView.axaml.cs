@@ -470,7 +470,9 @@ public sealed partial class DocumentView : UserControl
     /// <summary>
     /// Esc in the document: drops a stroke of a drawing tool that is being dragged first (DocumentView.Drawing.cs), then a drag
     /// of the selected annotation, then that selection (DocumentView.Selection.cs), then the text selection; without one it
-    /// ends the mode "Comment", then an active search.
+    /// ends the mode "Comment", or in the mode "Fill in form" drops the open value of a field, then takes the focus from the
+    /// field, then ends that mode (<see cref="TabViewModel.EscapeFill"/>; only one of the two modes is on at a time); then it
+    /// ends an active search.
     /// The window's own meanings of Esc (a waiting address, a card of the save flow, an overlay, the update card) come
     /// before all of them (they are key bindings of the window).
     /// </summary>
@@ -509,6 +511,12 @@ public sealed partial class DocumentView : UserControl
         }
 
         if (tab.EscapeAnnotate())
+        {
+            return true;
+        }
+
+        // The mode "Fill in form": the open value of a field, then the focus of the field, then the mode.
+        if (tab.EscapeFill())
         {
             return true;
         }

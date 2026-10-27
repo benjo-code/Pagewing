@@ -57,12 +57,20 @@ public sealed partial class TabViewModel
     private CancellationTokenSource? _formInfoCancellation;
     private FormHint _dismissedHints;
 
+    // The offer of the mode in the hint bar was closed, or the mode was started (once per tab and document).
+    private bool _fillOfferClosed;
+
+    // The reason of the last refused value that no field shows (FormValueRefused), until a value is taken or it is closed.
+    private string? _formNotice;
+
     private RelayCommand? _toggleFillCommand;
     private RelayCommand? _endFillCommand;
     private RelayCommand? _nextFieldCommand;
     private RelayCommand? _previousFieldCommand;
     private RelayCommand? _toggleHighlightCommand;
     private RelayCommand<FormHint>? _dismissHintCommand;
+    private RelayCommand? _closeFillOfferCommand;
+    private RelayCommand? _dismissFormNoticeCommand;
 
     /// <summary>
     /// Raised on the UI thread when fields of a page were read (the 0-based page), or with -1 when the history of the editor
@@ -115,7 +123,10 @@ public sealed partial class TabViewModel
         {
             if (SetProperty(ref _isFilling, value))
             {
+                // The offer of the hint bar has done its job once the mode was on.
+                _fillOfferClosed |= value;
                 OnPropertyChanged(nameof(ShowsFieldHighlight));
+                OnPropertyChanged(nameof(OffersFill));
                 RaiseFormCanExecuteChanged();
             }
         }
@@ -146,6 +157,34 @@ public sealed partial class TabViewModel
     /// that swaps the document for the written file keeps what was dismissed; another file brings its own hints.
     /// </summary>
     public FormHint PendingHints => CurrentFormInfo is { } info ? info.Hints & ~_dismissedHints : FormHint.None;
+
+    /// <summary>
+    /// Gets whether the window offers the mode in its hint bar: a document whose form has fields, after its first sharp page,
+    /// the mode not on, and the offer neither closed (<see cref="CloseFillOfferCommand"/>) nor used before for this document
+    /// in this tab (once the mode was on, it is not offered again).
+    /// </summary>
+    public bool OffersFill => CanReadForm && !_isFilling && !_fillOfferClosed && HasFormFields;
+
+    /// <summary>
+    /// Gets the reason of the last value that was refused and that no field shows (<see cref="FormValueRefused"/>), for the
+    /// window to show as a notice; <see langword="null"/> without one. It stays with the tab until the next value is taken or
+    /// it is closed (<see cref="DismissFormNoticeCommand"/>).
+    /// </summary>
+    public string? FormNotice
+    {
+        get => _formNotice;
+        private set => SetProperty(ref _formNotice, value);
+    }
+
+    /// <summary>Closes the offer of the mode in the hint bar for this document in this tab, for good.</summary>
+    public ICommand CloseFillOfferCommand => _closeFillOfferCommand ??= new RelayCommand(() =>
+    {
+        _fillOfferClosed = true;
+        OnPropertyChanged(nameof(OffersFill));
+    });
+
+    /// <summary>Closes the notice of a refused value (<see cref="FormNotice"/>).</summary>
+    public ICommand DismissFormNoticeCommand => _dismissFormNoticeCommand ??= new RelayCommand(() => FormNotice = null);
 
     /// <summary>Gets the widget that has the focus in the mode (set by the view and by <see cref="MoveToFieldAsync"/>), or <see langword="null"/>.</summary>
     public FormWidgetKey? FocusedField
@@ -655,6 +694,7 @@ public sealed partial class TabViewModel
                 SetDraft(null);
             }
 
+            FormNotice = null;
             return Task.FromResult(true);
         }
 
@@ -666,7 +706,7 @@ public sealed partial class TabViewModel
             }
             else
             {
-                FormValueRefused?.Invoke(Strings.FormValueNotNow);
+                NotifyRefused(Strings.FormValueNotNow);
             }
 
             return null;
@@ -749,6 +789,9 @@ public sealed partial class TabViewModel
                 RememberValue(fieldName, change.After, versionBefore);
             }
 
+            // A value was taken: an earlier refusal is no longer news.
+            FormNotice = null;
+
             if (draft is not null && ReferenceEquals(_formDraft, draft))
             {
                 SetDraft(null);
@@ -787,7 +830,7 @@ public sealed partial class TabViewModel
     {
         if (draft is null)
         {
-            FormValueRefused?.Invoke(reason);
+            NotifyRefused(reason);
             return;
         }
 
@@ -801,7 +844,7 @@ public sealed partial class TabViewModel
             }
             else if (!TryReenterFill(draft.Key))
             {
-                FormValueRefused?.Invoke(reason);
+                NotifyRefused(reason);
             }
 
             return;
@@ -812,7 +855,7 @@ public sealed partial class TabViewModel
             KeepRefused(refused);
         }
 
-        FormValueRefused?.Invoke(reason);
+        NotifyRefused(reason);
     }
 
     /// <summary>
@@ -827,7 +870,7 @@ public sealed partial class TabViewModel
         {
             var dropped = _keptDrafts[0];
             _keptDrafts.RemoveAt(0);
-            FormValueRefused?.Invoke(dropped.Reason ?? Strings.FormValueRefused);
+            NotifyRefused(dropped.Reason ?? Strings.FormValueRefused);
         }
 
         OnPropertyChanged(nameof(HasFormDraft));
@@ -916,11 +959,18 @@ public sealed partial class TabViewModel
             TryReenterFill(draft.Key);
         }
 
-        FormValueRefused?.Invoke(draft.Reason ?? Strings.FormValueRefused);
+        NotifyRefused(draft.Reason ?? Strings.FormValueRefused);
     }
 
     /// <summary>Gets whether the editor has changes to save (form values and annotations written into the document).</summary>
     internal bool HasEditorChanges => _editor?.IsDirty == true;
+
+    /// <summary>A value was refused that no draft shows: the tab keeps the reason as its notice, and the window is told.</summary>
+    private void NotifyRefused(string reason)
+    {
+        FormNotice = reason;
+        FormValueRefused?.Invoke(reason);
+    }
 
     private static bool IsChanged(FormDraft draft) => !string.Equals(draft.Text, draft.OriginalText, StringComparison.Ordinal);
 
@@ -932,7 +982,7 @@ public sealed partial class TabViewModel
         if (draft is null && _formDraft is { } other && other.Key != field.Key && IsChanged(other))
         {
             // Another field has an open value: it is not replaced (its text would be lost); this one is only refused.
-            FormValueRefused?.Invoke(reason);
+            NotifyRefused(reason);
             return;
         }
 
@@ -1176,6 +1226,7 @@ public sealed partial class TabViewModel
         _formInfo = info;
         OnPropertyChanged(nameof(PendingHints));
         OnPropertyChanged(nameof(HasFormFields));
+        OnPropertyChanged(nameof(OffersFill));
         _dismissHintCommand?.RaiseCanExecuteChanged();
     }
 
@@ -1211,8 +1262,11 @@ public sealed partial class TabViewModel
         _formFieldsDocument = null;
         ResetFormInfo();
         _dismissedHints = FormHint.None;
+        _fillOfferClosed = false;
+        FormNotice = null;
         OnPropertyChanged(nameof(PendingHints));
         OnPropertyChanged(nameof(HasFormFields));
+        OnPropertyChanged(nameof(OffersFill));
     }
 
     /// <summary>
@@ -1247,6 +1301,7 @@ public sealed partial class TabViewModel
     private void OnFormAvailabilityChanged()
     {
         OnPropertyChanged(nameof(HasForm));
+        OnPropertyChanged(nameof(OffersFill));
         RaiseFormCanExecuteChanged();
         if (CanReadForm)
         {

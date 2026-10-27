@@ -486,6 +486,10 @@ public static class Strings
     public static string FormValueNotTakenChanged => Get("FormValueNotTakenChanged");
     public static string FormValueRefused => Get("FormValueRefused");
     public static string FormValueNotNow => Get("FormValueNotNow");
+    public static string FormCommandHighlight => Get("FormCommandHighlight");
+    public static string FormToolbarName => Get("FormToolbarName");
+    public static string FormHintOffer => Get("FormHintOffer");
+    public static string FormHintClose => Get("FormHintClose");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",
