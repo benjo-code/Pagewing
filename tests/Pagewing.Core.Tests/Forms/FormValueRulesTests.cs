@@ -13,6 +13,8 @@ public sealed class FormValueRulesTests
 
         Assert.True(check.Accepted);
         Assert.Null(check.Reason);
+        Assert.Equal(FormValueProblem.None, check.Problem);
+        Assert.Null(check.Detail);
     }
 
     [Fact]
@@ -24,6 +26,10 @@ public sealed class FormValueRulesTests
         Assert.Contains("–", check.Reason);
         Assert.Contains("„", check.Reason);
         Assert.Contains("…", check.Reason);
+
+        // The kind of problem and the offending characters, each once in the order they come, for a localized message.
+        Assert.Equal(FormValueProblem.UnsupportedCharacters, check.Problem);
+        Assert.Equal("– „ “ …", check.Detail);
     }
 
     [Fact]
@@ -41,6 +47,10 @@ public sealed class FormValueRulesTests
         Assert.False(FormValueRules.CheckText(Make(), "a\tb").Accepted);
         Assert.False(FormValueRules.CheckText(Make(), "a\rb").Accepted);
         Assert.False(FormValueRules.CheckText(Make(traits: FormFieldTraits.Multiline), "a\tb").Accepted);
+
+        Assert.Equal(FormValueProblem.ControlCharacter, FormValueRules.CheckText(Make(), "a\tb").Problem);
+        Assert.Equal("U+0009", FormValueRules.CheckText(Make(), "a\tb").Detail);
+        Assert.Equal(FormValueProblem.LineBreakNotAllowed, FormValueRules.CheckText(Make(), "a\rb").Problem);
     }
 
     [Fact]
@@ -53,6 +63,8 @@ public sealed class FormValueRulesTests
         Assert.False(check.Accepted);
         Assert.Contains("\U0001F600", check.Reason);
         Assert.Equal("Hi \U0001F600!", Text);
+        Assert.Equal(FormValueProblem.UnsupportedCharacters, check.Problem);
+        Assert.Equal("\U0001F600", check.Detail);
     }
 
     [Fact]
@@ -62,6 +74,10 @@ public sealed class FormValueRulesTests
 
         Assert.True(FormValueRules.CheckText(field, "12345").Accepted);
         Assert.False(FormValueRules.CheckText(field, "123456").Accepted);
+
+        var check = FormValueRules.CheckText(field, "123456");
+        Assert.Equal(FormValueProblem.TooLong, check.Problem);
+        Assert.Equal("5", check.Detail);
     }
 
     [Fact]
@@ -80,6 +96,8 @@ public sealed class FormValueRulesTests
     {
         Assert.False(FormValueRules.CheckText(Make(), "a\nb").Accepted);
         Assert.False(FormValueRules.CheckText(Make(), "a\r\nb").Accepted);
+        Assert.Equal(FormValueProblem.LineBreakNotAllowed, FormValueRules.CheckText(Make(), "a\nb").Problem);
+        Assert.Null(FormValueRules.CheckText(Make(), "a\nb").Detail);
     }
 
     [Fact]
@@ -98,6 +116,8 @@ public sealed class FormValueRulesTests
         Assert.False(FormValueRules.CheckText(Make(traits: FormFieldTraits.Multiline), "a\u0001b").Accepted);
         Assert.False(FormValueRules.CheckText(Make(), "a\u007Fb").Accepted);
         Assert.False(FormValueRules.CheckText(Make(), "a\0b").Accepted);
+        Assert.Equal(FormValueProblem.ControlCharacter, FormValueRules.CheckText(Make(), "a\u007Fb").Problem);
+        Assert.Equal("U+007F", FormValueRules.CheckText(Make(), "a\u007Fb").Detail);
     }
 
     [Fact]
@@ -107,6 +127,10 @@ public sealed class FormValueRulesTests
 
         Assert.True(FormValueRules.CheckText(field, new string('a', FormValueRules.MaxValueLength)).Accepted);
         Assert.False(FormValueRules.CheckText(field, new string('a', FormValueRules.MaxValueLength + 1)).Accepted);
+
+        var check = FormValueRules.CheckText(field, new string('a', FormValueRules.MaxValueLength + 1));
+        Assert.Equal(FormValueProblem.TooLong, check.Problem);
+        Assert.Equal("100000", check.Detail);
     }
 
     [Fact]

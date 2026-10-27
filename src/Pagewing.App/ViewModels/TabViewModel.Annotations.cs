@@ -187,7 +187,7 @@ public sealed partial class TabViewModel
     /// operation the editor accepted and has not recorded yet). The question waits for those first
     /// (<see cref="WhenEditsSettledAsync"/>), so a change made a moment before closing is never dropped silently.
     /// </summary>
-    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || _editor is { IsDirty: true } or { IsBusy: true });
+    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || _editor is { IsDirty: true } or { IsBusy: true });
 
     /// <summary>
     /// Gets the version of the editor's history (<see cref="AnnotationEditor.Version"/>; 0 without an editor): a "Don't
@@ -278,7 +278,8 @@ public sealed partial class TabViewModel
     }
 
     /// <summary>
-    /// Reads the state of the editor (UI thread): dirty (also while a markup of the tab is on its way to it), undo and redo.
+    /// Reads the state of the editor (UI thread): dirty (also while a markup of the tab is on its way to it, and while a text
+    /// typed into a form field or a text box waits), undo and redo.
     /// </summary>
     internal void SyncFromEditor()
     {
@@ -288,9 +289,10 @@ public sealed partial class TabViewModel
         }
 
         var editor = _editor;
-        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText;
+        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft;
         CanUndo = editor?.CanUndo == true;
         CanRedo = editor?.CanRedo == true;
+        OnFormEditVersion();
     }
 
     /// <summary>The session swapped its document for the saved file (<see cref="Refresh"/>): what was read of it stays.</summary>
@@ -378,5 +380,6 @@ public sealed partial class TabViewModel
         }
 
         DisposeSelection();
+        DisposeForms();
     }
 }

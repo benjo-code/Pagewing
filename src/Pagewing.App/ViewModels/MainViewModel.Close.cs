@@ -140,10 +140,12 @@ public sealed partial class MainViewModel
 
         _resolving = true;
 
-        // The text of open text box fields is applied first, so the question sees it (TabViewModel.FlushTextBoxDraft).
+        // The text of open text box fields and the open values of form fields are applied first, so the question sees them
+        // (TabViewModel.FlushTextBoxDraft, TabViewModel.FlushFormDraft).
         foreach (var each in Tabs.Where(tab => only is null || ReferenceEquals(tab, only)).ToList())
         {
             each.FlushTextBoxDraft();
+            each.FlushFormDraft();
         }
 
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

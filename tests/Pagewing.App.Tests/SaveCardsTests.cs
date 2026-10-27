@@ -409,6 +409,9 @@ public sealed partial class SaveCardsTests : IDisposable
 
         var texts = questions.SelectMany(question => new[] { question.Title, question.Message })
             .Concat(Enum.GetValues<PendingSaveChoice>().Select(PendingSave.LabelOf))
+
+            // The texts of the forms (milestone 11): hints, locks, reasons, the mode.
+            .Concat(FormModeTests.FormTexts())
             .ToList();
         Assert.All(texts, text => Assert.False(string.IsNullOrWhiteSpace(text)));
         foreach (var text in texts)
