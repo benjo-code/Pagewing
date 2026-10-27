@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
+using Avalonia.VisualTree;
 using Pagewing.App.Controls;
 using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
@@ -31,6 +32,9 @@ namespace Pagewing.App.Views;
 /// </remarks>
 public sealed partial class FormFieldEditor : UserControl
 {
+    /// <summary>DIPs a notch of the wheel over a closed combo box scrolls the document (as over the cards' lists).</summary>
+    private const double WheelStep = 50;
+
     private static readonly IBrush Paper = new ImmutableSolidColorBrush(Colors.White);
     private static readonly IBrush Ink = new ImmutableSolidColorBrush(Colors.Black);
 
@@ -62,6 +66,19 @@ public sealed partial class FormFieldEditor : UserControl
             }
         };
         ListField.SelectionChanged += OnListSelectionChanged;
+
+        // The page keys are key bindings of the window, matched before any key event: the inputs that use them claim them
+        // (a text field moves its caret or pages its lines, a list pages its options without choosing one, a closed combo box
+        // keeps them), so they never turn the page under an open field. The open list of the combo box lies in the overlay
+        // layer of the window and claims them as the cards' lists do (CardLists).
+        ClaimPageKeys(TextField, PageText);
+        ClaimPageKeys(ListField, forward => PageScroller(ListField, forward));
+        ClaimPageKeys(ChoiceField, static _ => { });
+        ChoiceField.TemplateApplied += (_, e) => CardLists.OnTemplateApplied(this, ChoiceField, e);
+
+        // A focused, closed combo box would take the wheel to change its choice (one step each notch): the wheel scrolls the
+        // document instead.
+        ChoiceField.AddHandler(PointerWheelChangedEvent, OnChoiceWheel, RoutingStrategies.Tunnel);
 
         // The paper behind the text in every state of the field (Fluent paints its own surface on focus and hover).
         foreach (var key in (ReadOnlySpan<string>)["TextControlBackground", "TextControlBackgroundFocused", "TextControlBackgroundPointerOver"])
@@ -240,6 +257,7 @@ public sealed partial class FormFieldEditor : UserControl
     internal void Stop()
     {
         Field = null;
+        Tab = null;
         ShowProblem(null);
     }
 
@@ -281,7 +299,14 @@ public sealed partial class FormFieldEditor : UserControl
             return;
         }
 
-        input.Focus(selectAll ? NavigationMethod.Tab : NavigationMethod.Pointer);
+        var method = selectAll ? NavigationMethod.Tab : NavigationMethod.Pointer;
+        if (!input.Focus(method) && input == ListField
+            && ListField.ContainerFromIndex(Math.Max(0, ListField.SelectedIndex)) is { } item)
+        {
+            // The list itself takes no focus: its chosen (or first) option does, inside the list, which claims the keys.
+            item.Focus(method);
+        }
+
         if (selectAll && input == TextField)
         {
             TextField.SelectAll();
@@ -297,7 +322,57 @@ public sealed partial class FormFieldEditor : UserControl
         {
             var hint = field.Kind == FormFieldKind.Text && field.Traits.HasFlag(FormFieldTraits.Multiline) ? Strings.FormEditorHintMultiline : Strings.FormEditorHint;
             var state = FormFieldElement.HelpTextOf(field);
-            AutomationProperties.SetHelpText(input, problem ?? (state is null ? hint : state + ". " + hint));
+            // With a reason the keys still follow it, so a screen reader hears the way out (Esc) as well.
+            AutomationProperties.SetHelpText(input, problem is not null ? problem + " " + hint : state is null ? hint : state + ". " + hint);
+        }
+    }
+
+    /// <summary>Gets or sets the scroll viewer of the document, which the wheel over a closed combo box scrolls.</summary>
+    internal ScrollViewer? DocumentScroller { get; set; }
+
+    private static void ClaimPageKeys(InputElement input, Action<bool> page)
+    {
+        input.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageDown), Command = new RelayCommand(() => page(true)) });
+        input.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.PageUp), Command = new RelayCommand(() => page(false)) });
+    }
+
+    private static void PageScroller(Control input, bool forward)
+    {
+        if (input.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is { } scroller)
+        {
+            if (forward)
+            {
+                scroller.PageDown();
+            }
+            else
+            {
+                scroller.PageUp();
+            }
+        }
+    }
+
+    /// <summary>Page Up/Page Down in a text field: a multi-line field pages its lines, a one-line field goes to its start or end.</summary>
+    private void PageText(bool forward)
+    {
+        if (TextField.AcceptsReturn)
+        {
+            PageScroller(TextField, forward);
+            return;
+        }
+
+        TextField.ClearSelection();
+        TextField.CaretIndex = forward ? (TextField.Text ?? string.Empty).Length : 0;
+    }
+
+    private void OnChoiceWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (DocumentScroller is { } scroller)
+        {
+            CardLists.OnListWheel(scroller, WheelStep, sender, e);
+        }
+        else if (sender is ComboBox { IsDropDownOpen: false })
+        {
+            e.Handled = true;
         }
     }
 

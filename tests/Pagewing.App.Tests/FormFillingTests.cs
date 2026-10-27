@@ -304,7 +304,7 @@ public sealed class FormFillingTests : IDisposable
         Tab(window);
         Assert.Equal("Agb", tab.FocusedField!.Value.FieldName);
         Assert.Null(view.FormFieldEditor);
-        Assert.True(view.IsFocused);
+        Assert.True(view.FormOverlay!.ElementOf(tab.FocusedField!.Value)!.IsFocused);
         Press(window, Key.Space, PhysicalKey.Space, None);
         Tab(window);
         Assert.Equal("Zustimmung", tab.FocusedField!.Value.FieldName);
@@ -328,7 +328,12 @@ public sealed class FormFillingTests : IDisposable
         Press(window, Key.Enter, PhysicalKey.Enter, None);
         AssertFocusIn(view, "Frei");
 
+        // A list takes the keys without choosing an option.
+        Tab(window);
+        AssertFocusIn(view, "Liste");
+
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
+        Assert.Empty((await ValueAsync(tab, "Liste")).SelectedOptions);
         Assert.Equal("Ada", (await ValueAsync(tab, "Name")).Text);
         Assert.Equal("x", (await ValueAsync(tab, "Pflicht")).Text);
         Assert.True((await ValueAsync(tab, "Agb")).Checked);
@@ -578,6 +583,175 @@ public sealed class FormFillingTests : IDisposable
 
         // Every change reached the canvas only after the session renders with it.
         Assert.Equal([(true, true), (false, false), (true, true), (false, false)], seen);
+    }
+
+    [AvaloniaFact]
+    public async Task RefusedChoiceShowsTheValueTheDocumentHas()
+    {
+        var (window, _, tab, view) = await ShowAsync("forms-basic.pdf");
+        await EnterAsync(window, tab, view);
+
+        // The tab takes no edit (an update locks editing): the chosen option goes back to the one the document has.
+        ClickField(window, view, Field(tab, "Farbe"));
+        var editor = view.FormFieldEditor!;
+        tab.IsEditingFrozen = true;
+        editor.ChoiceField.SelectedIndex = 2;
+        Settle(window);
+        Assert.Equal(-1, editor.ChoiceField.SelectedIndex);
+        Assert.Equal(Strings.FormValueNotNow, tab.FormNotice);
+        Assert.Empty((await ValueAsync(tab, "Farbe")).SelectedOptions);
+
+        tab.IsEditingFrozen = false;
+        ClickField(window, view, Field(tab, "Liste"));
+        editor = view.FormFieldEditor!;
+        tab.IsEditingFrozen = true;
+        editor.ListField.SelectedIndex = 1;
+        Settle(window);
+        Assert.Equal(-1, editor.ListField.SelectedIndex);
+
+        // PDFium refuses the value: the same.
+        tab.IsEditingFrozen = false;
+        tab.FormValueWriter = (_, _, _) => throw new InvalidOperationException("Refused for the test.");
+        editor.ListField.SelectedIndex = 3;
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight && editor.ListField.SelectedIndex == -1);
+        Assert.Equal(Strings.FormValueRefused, tab.FormNotice);
+        Assert.Empty((await ValueAsync(tab, "Liste")).SelectedOptions);
+        Assert.False(tab.CanUndo);
+    }
+
+    [AvaloniaFact]
+    public async Task RefusedValueInTheLastFieldDoesNotTrapTab()
+    {
+        var (window, _, tab, view) = await ShowAsync("forms-signed.pdf");
+        await EnterAsync(window, tab, view);
+        view.Focus();
+        await WaitUntilAsync(window, () => view.IsFocused);
+
+        Tab(window);
+        AssertFocusIn(view, "Name");
+        window.KeyTextInput("漢");
+        Settle(window);
+
+        // The value cannot be applied, but after the last field Tab still leaves the document; the text stays with its reason.
+        Tab(window);
+        await WaitUntilAsync(window, () => !view.IsKeyboardFocusWithin);
+        Assert.Equal("漢", tab.CurrentDraft!.Text);
+        Assert.NotNull(tab.CurrentDraft.Reason);
+        Assert.True(tab.HasFormDraft);
+
+        // Back in the field, Shift+Tab leaves it backwards too; the reason names the way out (Esc).
+        view.Focus();
+        await WaitUntilAsync(window, () => view.IsFocused);
+        Tab(window);
+        AssertFocusIn(view, "Name");
+        Assert.Equal("漢", view.FormFieldEditor!.TextField.Text);
+        Assert.Contains("Esc", AutomationProperties.GetHelpText(view.FormFieldEditor.TextField), StringComparison.Ordinal);
+        Press(window, Key.Tab, PhysicalKey.Tab, Shift);
+        await WaitUntilAsync(window, () => !view.IsKeyboardFocusWithin);
+        Assert.Equal("漢", tab.CurrentDraft!.Text);
+    }
+
+    [AvaloniaFact]
+    public async Task PageKeysStayInTheInput()
+    {
+        var (window, _, tab, view) = await ShowAsync("forms-basic.pdf");
+        await EnterAsync(window, tab, view);
+
+        foreach (var name in (string[])["Bemerkung", "Liste", "Name"])
+        {
+            ClickField(window, view, Field(tab, name));
+            var offset = view.ScrollViewer.Offset;
+            var page = tab.CurrentPage;
+            Assert.True(view.FormFieldEditor!.IsKeyboardFocusWithin, $"{name}: focus on {window.FocusManager!.GetFocusedElement()}");
+            Press(window, Key.PageDown, PhysicalKey.PageDown, None);
+            Press(window, Key.PageUp, PhysicalKey.PageUp, None);
+            Press(window, Key.PageDown, PhysicalKey.PageDown, None);
+            Assert.Equal(name, view.FormFieldEditor?.Field?.Key.FieldName);
+            Assert.True(view.FormFieldEditor!.IsKeyboardFocusWithin, $"{name} lost the keys");
+            Assert.Equal(page, tab.CurrentPage);
+            Assert.Equal(offset, view.ScrollViewer.Offset);
+        }
+
+        Assert.False(tab.CanUndo);
+    }
+
+    [AvaloniaFact]
+    public async Task CheckBoxTakesTheKeyboardFocusAndTellsItsState()
+    {
+        var (window, _, tab, view) = await ShowAsync("forms-basic.pdf");
+        await EnterAsync(window, tab, view);
+        ClickField(window, view, Field(tab, "Passwort"));
+
+        // Tab to the check box: its element has the keyboard focus (screen readers follow it), the ring is on the layer.
+        Tab(window);
+        var agree = Field(tab, "Agb");
+        Assert.Equal(agree.Key, tab.FocusedField);
+        var element = view.FormOverlay!.ElementOf(agree.Key)!;
+        Assert.True(element.IsFocused);
+        Assert.Same(element, window.FocusManager!.GetFocusedElement());
+        Assert.False(KeyboardNavigation.GetIsTabStop(element));
+
+        var peer = ControlAutomationPeer.CreatePeerForElement(element);
+        var changes = new List<AutomationPropertyChangedEventArgs>();
+        peer.PropertyChanged += (_, e) => changes.Add(e);
+        Press(window, Key.Space, PhysicalKey.Space, None);
+        await WaitForValueAsync(window, tab, "Agb", state => state.Checked == true);
+        await WaitUntilAsync(window, () => changes.Any(change => change.Property == TogglePatternIdentifiers.ToggleStateProperty));
+        Assert.Equal(ToggleState.On, peer.GetProvider<IToggleProvider>()!.ToggleState);
+        var toggled = changes.Last(change => change.Property == TogglePatternIdentifiers.ToggleStateProperty);
+        Assert.Equal((ToggleState.Off, ToggleState.On), ((ToggleState)toggled.OldValue!, (ToggleState)toggled.NewValue!));
+        Assert.True(element.IsFocused);
+
+        // Esc takes the focus from the field: the keys go back to the document.
+        Press(window, Key.Escape, PhysicalKey.Escape, None);
+        Assert.Null(tab.FocusedField);
+        Assert.True(view.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public async Task WheelOverAFocusedComboChangesNothing()
+    {
+        var (window, _, tab, view) = await ShowAsync("forms-basic.pdf");
+        await EnterAsync(window, tab, view);
+        var colour = Field(tab, "Farbe");
+        ClickField(window, view, colour);
+        var editor = view.FormFieldEditor!;
+        Assert.True(editor.ChoiceField.IsKeyboardFocusWithin);
+        var version = tab.EditVersion;
+        var offset = view.ScrollViewer.Offset;
+
+        window.MouseWheel(Center(view, window, colour), new Vector(0, -1), None);
+        Settle(window);
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
+
+        // The wheel scrolls the document, never the choice.
+        Assert.Equal(version, tab.EditVersion);
+        Assert.Equal(-1, editor.ChoiceField.SelectedIndex);
+        Assert.Empty((await ValueAsync(tab, "Farbe")).SelectedOptions);
+        Assert.True(view.ScrollViewer.Offset.Y > offset.Y, $"{view.ScrollViewer.Offset} vs {offset}");
+    }
+
+    [AvaloniaFact]
+    public async Task HighlightSurvivesSavingTheDocument()
+    {
+        var (window, _, tab, view) = await ShowAsync("forms-basic.pdf");
+        await EnterAsync(window, tab, view);
+        ClickField(window, view, Field(tab, "Kurz"));
+        window.KeyTextInput("ab");
+        Click(window, ScreenPoint(view, window, 0, new Point(395, 5)));
+        await WaitUntilAsync(window, () => !tab.HasEditsInFlight && tab.CanUndo);
+        var old = tab.Document!;
+
+        var saved = await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken);
+        Assert.True(saved.Adopted);
+        await WaitUntilAsync(window, () => tab.Document is { } document && !ReferenceEquals(document, old) && ReferenceEquals(view.Document, document));
+
+        // The saved document renders highlighted as before, and the canvas still asks for it.
+        Assert.True(tab.ShowsFieldHighlight);
+        Assert.True(tab.Session.FormHighlight);
+        Assert.True(tab.Session.Scheduler!.FormHighlight);
+        Assert.True(view.Canvas.FormHighlight);
+        Assert.True(view.FormOverlay!.ShowsOutline);
     }
 
     [AvaloniaFact]

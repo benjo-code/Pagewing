@@ -182,9 +182,18 @@ public sealed partial class DocumentView
         if (field is null || !HasInput(field))
         {
             HideFormEditor();
-            if (focus && field is not null && !IsFocused)
+            if (field is { Kind: FormFieldKind.CheckBox or FormFieldKind.RadioButton } && _formOverlay?.ElementOf(field.Key) is { Focusable: true } element)
             {
-                // A check box or radio button: the view keeps the keys (Space switches it); its ring is on the layer.
+                // A check box or radio button: its element of the layer takes the keys (Space switches it, the view gets the
+                // rest), so screen readers follow the focus to it; its ring is on the layer.
+                if ((focus || IsFocused) && !element.IsFocused)
+                {
+                    element.Focus(NavigationMethod.Unspecified);
+                }
+            }
+            else if (_formOverlay is { IsKeyboardFocusWithin: true })
+            {
+                // The field let go of the focus: the keys go back to the view.
                 Focus(NavigationMethod.Unspecified);
             }
 
@@ -293,6 +302,13 @@ public sealed partial class DocumentView
                     ToggleField(tab, field);
                 }
             };
+            _formOverlay.FocusedElementRemoved += () =>
+            {
+                if (_layout is not null)
+                {
+                    Focus(NavigationMethod.Unspecified);
+                }
+            };
             _formOverlay.ValueRequested += (field, value) =>
             {
                 if (_viewModel is { IsFilling: true } tab && field.Kind == FormFieldKind.Text)
@@ -310,7 +326,7 @@ public sealed partial class DocumentView
     {
         if (_formEditor is null)
         {
-            _formEditor = new FormFieldEditor { Name = "FormFieldEditor", IsVisible = false };
+            _formEditor = new FormFieldEditor { Name = "FormFieldEditor", IsVisible = false, DocumentScroller = Scroller };
             _formEditor.TextEdited += OnFormTextEdited;
             _formEditor.ChoiceMade += OnFormChoiceMade;
             _formEditor.CommitRequested += OnFormCommitRequested;
@@ -377,7 +393,41 @@ public sealed partial class DocumentView
             tab.DiscardDraft();
         }
 
-        _ = tab.CommitFieldAsync(field.Key.FieldName, state);
+        _ = CommitChoiceAsync(tab, editor, field.Key, state);
+    }
+
+    /// <summary>
+    /// Applies a choice. One the tab refuses (it takes no edit now, PDFium did not take it; the tab tells why) never stays on
+    /// screen as if it were applied: the input shows the value the field has in the document again.
+    /// </summary>
+    private async Task CommitChoiceAsync(TabViewModel tab, FormFieldEditor editor, FormWidgetKey key, FormFieldState state)
+    {
+        bool taken;
+        try
+        {
+            taken = await tab.CommitFieldAsync(key.FieldName, state);
+        }
+        catch (Exception)
+        {
+            // Never fails; if it did, the field shows what the document has.
+            taken = false;
+        }
+
+        if (taken)
+        {
+            return;
+        }
+
+        // After the selection change that asked for it has ended (an input must not change its selection inside its own event).
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (ReferenceEquals(tab, _viewModel) && editor.Shows(key) && tab.FieldOf(key) is { } now)
+                {
+                    editor.ShowValue(now, DraftTextOf(tab, now));
+                }
+            },
+            DispatcherPriority.Background);
     }
 
     private void OnFormCommitRequested(FormFieldEditor editor, bool moveOn)
@@ -400,29 +450,10 @@ public sealed partial class DocumentView
         ShowDraftReason(tab, editor);
     }
 
-    /// <summary>
-    /// Tab or Shift+Tab in an input. After the last field Tab is left to the window, which moves the focus on past the view.
-    /// Before the first field Shift+Tab would land on the view itself (it comes before its inputs): the focus moves on from
-    /// the view instead, so one key leaves the document in both directions (WCAG 2.1.2).
-    /// </summary>
+    /// <summary>Tab or Shift+Tab in an input (see <see cref="MoveFormFocus"/>).</summary>
     /// <returns>Whether the key was taken.</returns>
-    private bool OnFormMoveRequested(FormFieldEditor editor, bool forward)
-    {
-        if (editor.Tab is not { } tab || !ReferenceEquals(tab, _viewModel))
-        {
-            return false;
-        }
-
-        var moved = MoveFormFocus(tab, forward);
-        if (moved || forward)
-        {
-            return moved;
-        }
-
-        Focus(NavigationMethod.Tab);
-        TopLevel.GetTopLevel(this)?.FocusManager?.TryMoveFocus(NavigationDirection.Previous);
-        return true;
-    }
+    private bool OnFormMoveRequested(FormFieldEditor editor, bool forward) =>
+        editor.Tab is { } tab && ReferenceEquals(tab, _viewModel) && MoveFormFocus(tab, forward);
 
     private void OnFormEscapeRequested(FormFieldEditor editor)
     {
@@ -454,8 +485,11 @@ public sealed partial class DocumentView
     }
 
     /// <summary>
-    /// Tab or Shift+Tab in the mode (from the view or an input): the next or previous field gets the focus. After the last field
-    /// (before the first) the key is not taken and the focus moves on out of the view; the field lets go of it then.
+    /// Tab or Shift+Tab in the mode (from the view, an input or a check box): the next or previous field gets the focus. After
+    /// the last field (before the first) the key is not taken and the focus moves on out of the view, also while the field keeps
+    /// a value it cannot apply (WCAG 2.1.2); the field lets go of the focus then. Shift+Tab from an input or a check box would
+    /// land on the view itself (it comes before them): the focus moves on from the view instead, so one key leaves the document
+    /// in both directions.
     /// </summary>
     /// <returns>Whether the key was taken.</returns>
     private bool MoveFormFocus(TabViewModel tab, bool forward)
@@ -474,6 +508,21 @@ public sealed partial class DocumentView
         }
 
         var left = tab.FocusedField;
+        if (!forward && IsKeyboardFocusWithin && !IsFocused)
+        {
+            Focus(NavigationMethod.Tab);
+            TopLevel.GetTopLevel(this)?.FocusManager?.TryMoveFocus(NavigationDirection.Previous);
+            ClearLeftField(tab, left);
+            return true;
+        }
+
+        ClearLeftField(tab, left);
+        return false;
+    }
+
+    /// <summary>After the key that left the fields: the field lets go of the focus once the keys are outside the view.</summary>
+    private void ClearLeftField(TabViewModel tab, FormWidgetKey? left)
+    {
         Dispatcher.UIThread.Post(
             () =>
             {
@@ -483,7 +532,6 @@ public sealed partial class DocumentView
                 }
             },
             DispatcherPriority.Background);
-        return false;
     }
 
     private async Task MoveFormFocusWhenReadAsync(TabViewModel tab, Task<bool> move, bool forward)
@@ -611,7 +659,16 @@ public sealed partial class DocumentView
 
         if (field.Kind is FormFieldKind.CheckBox or FormFieldKind.RadioButton)
         {
-            tab.FocusedField = field.Key;
+            if (tab.FocusedField == field.Key)
+            {
+                // The press gave the keys to the view: they go back to the field's element.
+                RefreshForms(focus: true);
+            }
+            else
+            {
+                tab.FocusedField = field.Key;
+            }
+
             _formPress = new FormPress(tab, e.Pointer, field.Key);
             e.Pointer.Capture(this);
             return true;

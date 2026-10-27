@@ -3,6 +3,7 @@ using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -84,6 +85,9 @@ internal sealed class FormOverlay : Control
 
     /// <summary>Raised when a screen reader toggles a check box or radio button (its toggle pattern).</summary>
     internal event Action<FormField>? ToggleRequested;
+
+    /// <summary>Raised when the element that had the keyboard focus went (its field is no longer shown): the view takes the keys.</summary>
+    internal event Action? FocusedElementRemoved;
 
     /// <summary>Raised when a screen reader sets the value of a text field (its value pattern).</summary>
     internal event Action<FormField, string>? ValueRequested;
@@ -304,12 +308,19 @@ internal sealed class FormOverlay : Control
             element.Field = field;
         }
 
+        var lostFocus = false;
         foreach (var key in _elements.Keys.Where(key => !shown.Contains(key)).ToList())
         {
             var element = _elements[key];
+            lostFocus |= element.IsKeyboardFocusWithin;
             _elements.Remove(key);
             LogicalChildren.Remove(element);
             VisualChildren.Remove(element);
+        }
+
+        if (lostFocus)
+        {
+            FocusedElementRemoved?.Invoke();
         }
     }
 
@@ -371,7 +382,9 @@ internal sealed class FormOverlay : Control
 /// <summary>
 /// A field of the form layer as screen readers see it (milestone 11): named after <see cref="FormField.DisplayName"/>, with
 /// the role of its kind, its state (checked, value) as a pattern of <see cref="FormFieldAutomationPeer"/> and, as help text,
-/// whether it is required, checked or locked and why. It takes no pointer and no focus.
+/// whether it is required, checked or locked and why. It takes no pointer. The element of a check box or radio button that can
+/// be changed takes the keyboard focus while its field has the focus (never by Tab itself, <see cref="KeyboardNavigation.IsTabStopProperty"/>
+/// is off; the view walks the fields), so screen readers follow the focus to it, and it tells a change of its state.
 /// </summary>
 internal sealed class FormFieldElement : Control
 {
@@ -389,6 +402,10 @@ internal sealed class FormFieldElement : Control
     {
         _overlay = overlay;
         AutomationProperties.SetAccessibilityView(this, AccessibilityView.Content);
+        KeyboardNavigation.SetIsTabStop(this, false);
+
+        // The ring is drawn by the layer around the field.
+        FocusAdorner = null;
     }
 
     /// <summary>Gets or sets the field (its name, role, state and help text follow it).</summary>
@@ -402,7 +419,19 @@ internal sealed class FormFieldElement : Control
                 return;
             }
 
+            var old = _field;
             _field = value;
+            Focusable = value is { Kind: FormFieldKind.CheckBox or FormFieldKind.RadioButton, Lock: FormLock.None };
+            if (old is not null && value is not null && IsChosenField(old) != IsChosenField(value)
+                && ControlAutomationPeer.FromElement(this) is { } peer)
+            {
+                // A screen reader that has the element hears the new state.
+                peer.RaisePropertyChangedEvent(
+                    TogglePatternIdentifiers.ToggleStateProperty,
+                    IsChosenField(old) ? ToggleState.On : ToggleState.Off,
+                    IsChosenField(value) ? ToggleState.On : ToggleState.Off);
+            }
+
             if (value is not null)
             {
                 AutomationProperties.SetName(this, value.DisplayName);

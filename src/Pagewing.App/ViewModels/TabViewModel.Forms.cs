@@ -615,13 +615,15 @@ public sealed partial class TabViewModel
 
         if (!FlushFormDraft())
         {
-            // The value stays in its field with the reason: so does the focus.
+            // The value stays in its field with the reason, and so does the focus; but after the last field (before the first)
+            // the key still goes on, so Tab never traps the focus (the value stays with the tab, nothing is lost).
+            var before = _focusedField;
             if (_formDraft is { } kept)
             {
                 FocusedField = kept.Key;
             }
 
-            return true;
+            return before != _focusedField || HasFieldBeyond(forward);
         }
 
         var generation = _documentGeneration;
@@ -652,6 +654,38 @@ public sealed partial class TabViewModel
             if (FormNavigation.Next(fields, page == start ? current : null, forward) is { } next)
             {
                 FocusedField = next;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a field that can be changed follows the focused one in the tab order (<paramref name="forward"/>) or comes before
+    /// it, as far as known now: a page with fields that is not read yet counts as one that has some.
+    /// </summary>
+    private bool HasFieldBeyond(bool forward)
+    {
+        if (_focusedField is not { } current)
+        {
+            return true;
+        }
+
+        if (_formPages.TryGetValue(current.Page, out var own) && FormNavigation.Next(own.Fields, current, forward) is not null)
+        {
+            return true;
+        }
+
+        foreach (var page in PagesWithFields())
+        {
+            if (forward ? page <= current.Page : page >= current.Page)
+            {
+                continue;
+            }
+
+            if (!_formPages.TryGetValue(page, out var entry) || entry.Version < 0 || FormNavigation.Next(entry.Fields, null, forward) is not null)
+            {
                 return true;
             }
         }
