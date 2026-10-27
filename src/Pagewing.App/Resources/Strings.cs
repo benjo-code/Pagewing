@@ -490,6 +490,9 @@ public static class Strings
     public static string FormToolbarName => Get("FormToolbarName");
     public static string FormHintOffer => Get("FormHintOffer");
     public static string FormHintClose => Get("FormHintClose");
+    public static string FormEditorHint => Get("FormEditorHint");
+    public static string FormEditorHintMultiline => Get("FormEditorHintMultiline");
+    public static string FormFieldChecked => Get("FormFieldChecked");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",

@@ -1389,4 +1389,13 @@
   <data name="FormHintClose" xml:space="preserve">
     <value>Hinweis schließen</value>
   </data>
+  <data name="FormEditorHint" xml:space="preserve">
+    <value>Eingabe übernimmt und geht zum nächsten Feld, Tab wechselt das Feld, Esc verwirft</value>
+  </data>
+  <data name="FormEditorHintMultiline" xml:space="preserve">
+    <value>Strg+Eingabe übernimmt, Tab wechselt das Feld, Esc verwirft</value>
+  </data>
+  <data name="FormFieldChecked" xml:space="preserve">
+    <value>Ausgewählt</value>
+  </data>
 </root>

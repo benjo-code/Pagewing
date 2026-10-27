@@ -182,12 +182,14 @@ public sealed partial class DocumentView : UserControl
         _session.PagesInvalidated += OnPagesInvalidated;
         Sync();
         ReopenTextBoxDraft();
+        SyncFormMode();
     }
 
     private void Disconnect()
     {
         SaveView();
         CloseTextBoxEditor(apply: true);
+        DisconnectForms();
         EndGesture();
         DisconnectSelection();
         DisconnectHighlights();
@@ -384,8 +386,10 @@ public sealed partial class DocumentView : UserControl
 
         // The session of the tab renders in the tab's page theme already (TabViewModel.EffectivePageTheme). Set between
         // Detach and Attach, so that a change plans neither the document that went nor the new one before it is laid out.
+        // The highlight of the form fields likewise: the session renders with it already (TabViewModel.ShowsFieldHighlight).
         PageCanvas.Detach();
         PageCanvas.PageTheme = tab?.EffectivePageTheme ?? PageTheme.Light;
+        PageCanvas.FormHighlight = _session?.FormHighlight ?? false;
         PageCanvas.Attach(layout, scheduler, cache);
         RefreshHighlights();
 
@@ -396,6 +400,7 @@ public sealed partial class DocumentView : UserControl
         Refit(chosen: false);
         _focusPending = true;
         FocusLater();
+        SyncFormMode();
     }
 
     /// <summary>After the bindings of the pending changes have run (the password card may be on its way out).</summary>
@@ -439,8 +444,19 @@ public sealed partial class DocumentView : UserControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (IsInFormEditor(e.Source))
+        {
+            // The input of a form field takes its own keys (Space types a space, the arrows move the caret or the choice).
+            return;
+        }
+
         if (!e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && TryEscape())
         {
+            e.Handled = true;
+        }
+        else if (!e.Handled && TryFormKey(e.Key, e.KeyModifiers))
+        {
+            // The keys of the mode "Fill in form" (DocumentView.Forms.cs): Tab through the fields, Space on a check box.
             e.Handled = true;
         }
         else if (!e.Handled && TrySelectionKey(e.Key, e.KeyModifiers))
@@ -472,7 +488,8 @@ public sealed partial class DocumentView : UserControl
     /// of the selected annotation, then that selection (DocumentView.Selection.cs), then the text selection; without one it
     /// ends the mode "Comment", or in the mode "Fill in form" drops the open value of a field, then takes the focus from the
     /// field, then ends that mode (<see cref="TabViewModel.EscapeFill"/>; only one of the two modes is on at a time); then it
-    /// ends an active search.
+    /// ends an active search. The open input of a form field (<see cref="Views.FormFieldEditor"/>) takes Esc before all of these: the
+    /// first drops its open value, the next leaves the field and gives the keys back to the view (an open drop-down closes first).
     /// The window's own meanings of Esc (a waiting address, a card of the save flow, an overlay, the update card) come
     /// before all of them (they are key bindings of the window).
     /// </summary>
@@ -577,6 +594,7 @@ public sealed partial class DocumentView : UserControl
         EndGesture();
         EndSelectionDrag();
         _drawingOverlay?.ShowSelection(null);
+        DisconnectForms();
         DropTexts();
         _document = null;
         _layout = null;
@@ -828,6 +846,10 @@ public sealed partial class DocumentView : UserControl
         FollowGestureWithViewport();
         FollowSelectionViewWithViewport();
         PlaceTextBoxEditor();
+
+        // The form layer and the input of a field follow their pages (an input scrolled out of view applies its value).
+        _formOverlay?.Refresh();
+        RefreshForms(focus: false);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -863,8 +885,27 @@ public sealed partial class DocumentView : UserControl
             // Page, zoom, scroll position and selection stay.
             PageCanvas.PageTheme = tab.EffectivePageTheme;
 
-            // The frame of a selection takes the colours of the new page ground.
+            // The frame of a selection takes the colours of the new page ground, and so do the marks of the form fields.
             _drawingOverlay?.RefreshSelection();
+            _formOverlay?.Refresh();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.ShowsFieldHighlight) && _viewModel is not null)
+        {
+            // The tab told the session first: the canvas now drops only the results of the old setting.
+            PageCanvas.FormHighlight = _session?.FormHighlight ?? false;
+            RefreshForms(focus: false);
+        }
+        else if (e.PropertyName == nameof(TabViewModel.IsFilling))
+        {
+            SyncFormMode();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.FocusedField))
+        {
+            OnFocusedFieldChanged();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.CurrentDraft))
+        {
+            OnFormDraftChanged();
         }
         else if (e.PropertyName is nameof(TabViewModel.SelectedAnnotation) or nameof(TabViewModel.SelectionGeometry) or nameof(TabViewModel.SelectionLockReason))
         {

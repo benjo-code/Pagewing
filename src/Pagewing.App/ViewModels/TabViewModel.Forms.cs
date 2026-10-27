@@ -4,6 +4,7 @@ using Pagewing.App.Resources;
 using Pagewing.Core.Annotations;
 using Pagewing.Core.Forms;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
 
@@ -35,6 +36,9 @@ public sealed partial class TabViewModel
 
     private bool _isFilling;
     private bool _highlightFields = true;
+
+    // What the session was last told about the highlight (ViewerSession.SetFormHighlight), so an unchanged state costs nothing.
+    private bool _sessionFormHighlight;
     private FormWidgetKey? _focusedField;
 
     // The open value of a text field, and the one a commit is applying now (the same object until it ended).
@@ -125,6 +129,7 @@ public sealed partial class TabViewModel
             {
                 // The offer of the hint bar has done its job once the mode was on.
                 _fillOfferClosed |= value;
+                ApplyFormHighlight();
                 OnPropertyChanged(nameof(ShowsFieldHighlight));
                 OnPropertyChanged(nameof(OffersFill));
                 RaiseFormCanExecuteChanged();
@@ -143,12 +148,17 @@ public sealed partial class TabViewModel
         {
             if (SetProperty(ref _highlightFields, value))
             {
+                ApplyFormHighlight();
                 OnPropertyChanged(nameof(ShowsFieldHighlight));
             }
         }
     }
 
-    /// <summary>Gets whether the view highlights the fields now: in the mode, with <see cref="HighlightFields"/> on.</summary>
+    /// <summary>
+    /// Gets whether the view highlights the fields now: in the mode, with <see cref="HighlightFields"/> on. The session renders
+    /// with it (<see cref="ViewerSession.SetFormHighlight"/>, told before the change is raised, so the document view sets
+    /// <c>DocumentCanvas.FormHighlight</c> only once the scheduler renders with the new setting).
+    /// </summary>
     public bool ShowsFieldHighlight => _isFilling && _highlightFields;
 
     /// <summary>
@@ -965,6 +975,30 @@ public sealed partial class TabViewModel
     /// <summary>Gets whether the editor has changes to save (form values and annotations written into the document).</summary>
     internal bool HasEditorChanges => _editor?.IsDirty == true;
 
+    /// <summary>
+    /// Shows a short notice about a field in the hint bar of the window (<see cref="FormNotice"/>): why a field that was clicked
+    /// cannot be changed (<see cref="LockTextOf"/>: read-only, a signature field, a button whose action never runs).
+    /// </summary>
+    /// <param name="text">The localized text.</param>
+    internal void ShowFormNotice(string text)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(text);
+        NotifyRefused(text);
+    }
+
+    /// <summary>Tells the session whether it highlights the fields (<see cref="ShowsFieldHighlight"/>), before the change is raised.</summary>
+    private void ApplyFormHighlight()
+    {
+        var highlight = ShowsFieldHighlight;
+        if (highlight == _sessionFormHighlight || _disposed)
+        {
+            return;
+        }
+
+        _sessionFormHighlight = highlight;
+        _session.SetFormHighlight(highlight);
+    }
+
     /// <summary>A value was refused that no draft shows: the tab keeps the reason as its notice, and the window is told.</summary>
     private void NotifyRefused(string reason)
     {
@@ -1139,6 +1173,11 @@ public sealed partial class TabViewModel
 
         return (null, false);
     }
+
+    /// <summary>The widget with this key as read for the open document (the view's editor and focus ring), or <see langword="null"/> while it is not read.</summary>
+    /// <param name="key">The widget.</param>
+    /// <returns>The widget, or <see langword="null"/>.</returns>
+    internal FormField? FieldOf(FormWidgetKey key) => CanReadForm ? FindWidget(key) : null;
 
     /// <summary>The widget with this key as read for the open document, or <see langword="null"/>.</summary>
     private FormField? FindWidget(FormWidgetKey key)

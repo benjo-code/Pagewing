@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Pagewing.App.Views.FormFieldEditor"
+             HorizontalAlignment="Left"
+             VerticalAlignment="Top">
+  <!--
+    The input of a form field on the page (milestone 11, design system 7.7): laid over the field in the mode "Fill in form",
+    exactly its rectangle at the zoom of the view (FormFieldEditor.Place). A text field (one line, several lines, password,
+    comb) is a text box on the paper white of the page with a 1 px focus.ring frame; a combo box is a combo box (editable when
+    the field takes typed text), a list box a list (several choices when the field allows them). Check boxes and radio buttons
+    have no input: a click or Space on the page switches them. Below the input, only when a value cannot be applied, the
+    reason in type.caption (text.primary on surface.raised with a danger.default edge). Made by the document view at the
+    first field that is opened, never in the startup path.
+  -->
+  <StackPanel Name="FormEditorFrame" Spacing="4">
+    <Panel Name="InputHost">
+      <TextBox Name="TextField"
+               IsVisible="False"
+               MinWidth="0"
+               MinHeight="0"
+               BorderThickness="1"
+               BorderBrush="{DynamicResource Pw.Brush.Focus.Ring}"
+               FontFamily="{DynamicResource Pw.Font.Sans}" />
+      <ComboBox Name="ChoiceField"
+                IsVisible="False"
+                MinWidth="0"
+                MinHeight="0"
+                HorizontalAlignment="Stretch" />
+      <ListBox Name="ListField"
+               IsVisible="False"
+               MinWidth="0"
+               MinHeight="0">
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem">
+            <Setter Property="MinHeight" Value="0" />
+          </Style>
+        </ListBox.Styles>
+      </ListBox>
+    </Panel>
+    <Border Name="ProblemFrame"
+            IsVisible="False"
+            MaxWidth="360"
+            HorizontalAlignment="Left"
+            Padding="8,4"
+            Background="{DynamicResource Pw.Brush.Surface.Raised}"
+            BorderBrush="{DynamicResource Pw.Brush.Danger.Default}"
+            BorderThickness="1"
+            CornerRadius="{DynamicResource Pw.Radius.Control}">
+      <TextBlock Name="ProblemText" Classes="caption" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                 AutomationProperties.LiveSetting="Assertive" />
+    </Border>
+  </StackPanel>
+</UserControl>

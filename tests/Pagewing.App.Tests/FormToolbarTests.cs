@@ -226,7 +226,9 @@ public sealed class FormToolbarTests : IDisposable
         var key = tab.FieldsOfPage(0).First(field => field.Key.FieldName == "Name").Key;
         tab.FocusedField = key;
         Assert.True(tab.EditDraft(key, "Neu"));
-        await FocusAsync(window, view);
+
+        // The field with the focus has its input open (task 12), which takes the keys.
+        await WaitUntilAsync(window, () => view.FormFieldEditor is { } editor && editor.IsKeyboardFocusWithin);
 
         // The open value first (the field keeps the focus), then the focus of the field, then the mode, then the search.
         Press(window, Key.Escape, PhysicalKey.Escape, None);
