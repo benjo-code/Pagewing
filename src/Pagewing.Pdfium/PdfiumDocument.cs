@@ -27,6 +27,13 @@ internal sealed unsafe class PdfiumDocument : IDisposable
 
     private int darkMarkupScans;
     private int formEnvironmentsCreated;
+    private int formDraws;
+    private int formWidgetScans;
+
+    // Whether a page has widgets, by page index, filled by the first render of each page (PDFium thread only). Widgets are
+    // never added to an open document (Pagewing creates markups, drawings and text boxes, never widgets), so an entry stays
+    // true for the life of the document.
+    private Dictionary<int, bool>? pagesWithWidgets;
 
     private PdfiumDocument(DocumentHandle handle, FileReadContext source)
     {
@@ -71,6 +78,45 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// that a document without a form never gets one. Written on the PDFium thread only.
     /// </summary>
     internal int FormEnvironmentsCreated => Volatile.Read(ref formEnvironmentsCreated);
+
+    /// <summary>
+    /// Gets how often a render drew the form fields of a page (<c>FPDF_FFLDraw</c>), for tests that check that a page without
+    /// widgets and a document without a form never draw them. Written on the PDFium thread only.
+    /// </summary>
+    internal int FormDraws => Volatile.Read(ref formDraws);
+
+    /// <summary>
+    /// Gets how often a render looked for the widgets of a page (once per page and document), for tests. Written on the PDFium
+    /// thread only.
+    /// </summary>
+    internal int FormWidgetScans => Volatile.Read(ref formWidgetScans);
+
+    /// <summary>Counts one <see cref="FormDraws"/>. PDFium thread only.</summary>
+    internal void CountFormDraw() => Volatile.Write(ref formDraws, formDraws + 1);
+
+    /// <summary>
+    /// Gets whether page <paramref name="index"/>, loaded as <paramref name="page"/>, has widgets that <c>FPDF_FFLDraw</c> would
+    /// draw: always <see langword="false"/> without a form environment; else looked up once per page with
+    /// <see cref="PdfiumFormDrawing.HasWidgets"/> and remembered. PDFium thread only.
+    /// </summary>
+    internal bool PageHasWidgets(int index, PdfiumPage page)
+    {
+        Access();
+        if (handle.FormEnvironment is null)
+        {
+            return false;
+        }
+
+        pagesWithWidgets ??= [];
+        if (!pagesWithWidgets.TryGetValue(index, out var has))
+        {
+            Volatile.Write(ref formWidgetScans, formWidgetScans + 1);
+            has = PdfiumFormDrawing.HasWidgets(page);
+            pagesWithWidgets[index] = has;
+        }
+
+        return has;
+    }
 
     /// <summary>
     /// Gets the kind of form of the document (<c>FPDF_GetFormType</c>): <see cref="FpdfConstants.FormTypeNone"/>,

@@ -46,6 +46,12 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     /// </summary>
     internal int FormEnvironmentsCreated => document.FormEnvironmentsCreated;
 
+    /// <summary>Gets how often a render drew the form fields of a page (for tests; see <c>PdfiumDocument.FormDraws</c>). Any thread.</summary>
+    internal int FormDraws => document.FormDraws;
+
+    /// <summary>Gets how often a render looked for the widgets of a page (for tests; see <c>PdfiumDocument.FormWidgetScans</c>). Any thread.</summary>
+    internal int FormWidgetScans => document.FormWidgetScans;
+
     /// <summary>Gets the PDF version from the file header, for example "1.7"; empty when unknown.</summary>
     public string PdfVersion
     {
@@ -547,11 +553,12 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
         var annotations = options.Annotations;
         var slice = options.TimeSlice;
         var colors = ColorsOf(options.PageTheme);
+        PdfiumFormHighlight? highlight = options.FormHighlight ? new(FormHighlightColors.Color, FormHighlightColors.Alpha) : null;
         var priority = options.Priority == PdfPriority.Background ? PdfiumPriority.Background : PdfiumPriority.Interactive;
 
         // The work is created on the PDFium thread: it loads the page and checks the tile against the page size.
         return AwaitRender(document.Thread.InvokeSteppedAsync(
-            () => new PdfiumRenderWork(document, pageIndex, scale, tile, annotations, slice, colors),
+            () => new PdfiumRenderWork(document, pageIndex, scale, tile, annotations, slice, colors, highlight),
             priority,
             cancellationToken));
     }

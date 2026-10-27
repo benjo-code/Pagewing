@@ -562,6 +562,24 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial void FPDF_FFLDraw(nint form, nint bitmap, nint page, int startX, int startY, int sizeX, int sizeY, int rotate, int flags);
 
+    /// <summary>
+    /// Sets the highlight colour of one kind of field (<c>FPDF_FORMFIELD_UNKNOWN</c>: all) for <see cref="FPDF_FFLDraw"/>.
+    /// Measured (spike): the colour is <c>0x00BBGGRR</c>, not <c>0xxxrrggbb</c> as the header says.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_SetFormFieldHighlightColor(nint form, int fieldType, CULong color);
+
+    /// <summary>Sets the opacity of the highlight (0 to 255).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_SetFormFieldHighlightAlpha(nint form, byte alpha);
+
+    /// <summary>Removes the highlight of every kind of field.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_RemoveFormFieldHighlight(nint form);
+
     // Writing a value (spike, Docs/DECISIONS.md, "Formulare: Formular-Engine …", point 1): focus the widget, select all, replace,
     // leave the focus; /V and /AP are written only when the focus leaves. Check boxes and radio buttons by a click in the middle
     // of the widget (page coordinates), combo and list boxes by FORM_SetIndexSelected on the focused widget.

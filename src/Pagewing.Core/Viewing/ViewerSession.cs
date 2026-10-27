@@ -78,7 +78,7 @@ public sealed class ViewerSession : IDisposable
     // gate, never the other way round; the cache has its own lock and calls nothing back.
     private readonly object budgetGate = new();
 
-    // Serializes SetPageTheme in the same way: taken before gate, never the other way round, and never together with
+    // Serializes SetPageTheme and SetFormHighlight in the same way: taken before gate, never the other way round, and never together with
     // budgetGate.
     private readonly object themeGate = new();
 
@@ -99,6 +99,7 @@ public sealed class ViewerSession : IDisposable
     private volatile bool disposed;
     private bool active = true;
     private PageTheme pageTheme;
+    private bool formHighlight;
 
     // The stamp at the path of the open document and the password it was opened with. The password stays in memory
     // only: no property shows it publicly, no message contains it, and Close and Dispose forget it.
@@ -423,7 +424,7 @@ public sealed class ViewerSession : IDisposable
                 {
                     document = opened;
                     cache = new RenderCache(TabBudget.For(active));
-                    scheduler = new RenderScheduler(opened, cache, pageTheme);
+                    scheduler = new RenderScheduler(opened, cache, pageTheme, formHighlight);
                     loadedSizes = new ArraySegment<PdfPageSize>(sizes!, 0, firstCount);
                     backgroundLoadFailure = null;
                     state = ViewerState.Ready;
@@ -543,6 +544,49 @@ public sealed class ViewerSession : IDisposable
             {
                 return pageTheme;
             }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether the main view of the open document and of every document opened later highlights the form fields
+    /// (<see cref="RenderOptions.FormHighlight"/>). The thumbnails never do. Default: off.
+    /// </summary>
+    public bool FormHighlight
+    {
+        get
+        {
+            lock (gate)
+            {
+                return formHighlight;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Highlights the form fields in the main view, or stops: the open document at once (its scheduler drops everything of
+    /// the old setting, see <see cref="RenderScheduler.SetFormHighlight"/>; plan again afterwards), and every document opened
+    /// or adopted later from the start. The thumbnails draw the fields but never the highlight, so they keep their images.
+    /// Waits only for an event handler of the scheduler that is running; never call it from one. Does nothing after
+    /// <see cref="Dispose"/>.
+    /// </summary>
+    public void SetFormHighlight(bool highlight)
+    {
+        lock (themeGate)
+        {
+            RenderScheduler? currentScheduler;
+            lock (gate)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                formHighlight = highlight;
+                currentScheduler = scheduler;
+            }
+
+            // Outside the lock, as in SetPageTheme: the scheduler waits for a running handler of its events.
+            currentScheduler?.SetFormHighlight(highlight);
         }
     }
 
@@ -754,7 +798,7 @@ public sealed class ViewerSession : IDisposable
                     thumbnails = null;
                     pageTexts?.Rebind(reopened);
                     document = reopened;
-                    scheduler = new RenderScheduler(reopened, cache, pageTheme);
+                    scheduler = new RenderScheduler(reopened, cache, pageTheme, formHighlight);
                     this.path = fullPath;
                     openedStamp = stamp;
 

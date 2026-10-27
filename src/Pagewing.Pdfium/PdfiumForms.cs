@@ -724,7 +724,7 @@ internal static unsafe class PdfiumForms
     private static void LeaveFocus(nint form) => _ = Fpdf.FORM_ForceToKillFocus(form);
 
     /// <summary>Calls <paramref name="read"/> for every widget of the page within the limits; the handle is closed afterwards.</summary>
-    private static void ForEachWidget(nint page, Action<int, nint> read)
+    internal static void ForEachWidget(nint page, Action<int, nint> read)
     {
         var count = Math.Clamp(Fpdf.FPDFPage_GetAnnotCount(page), 0, PdfiumAnnotations.MaxScannedPerPage);
         var widgets = 0;
@@ -922,7 +922,7 @@ internal static unsafe class PdfiumForms
     };
 
     /// <summary>Whether the widget has a <c>/Rect</c> with finite coordinates within <see cref="PdfiumAnnotations.MaxCoordinate"/>, as <see cref="PdfiumAnnotations"/> requires.</summary>
-    private static bool HasUsableRect(nint annotation, out FsRectF rect)
+    internal static bool HasUsableRect(nint annotation, out FsRectF rect)
     {
         rect = default;
         fixed (FsRectF* pointer = &rect)
