@@ -230,6 +230,19 @@ public sealed partial class MainViewModel
             case PendingSaveChoice.Save:
                 // A change made while the card was shown is saved with the others.
                 await tab.WhenEditsSettledAsync();
+                if (tab.HasFormDraft)
+                {
+                    // A text typed into a form field that PDFium refused cannot be saved: what can be is saved, then the flow
+                    // stops at that field with its reason instead of asking again after every save (TabViewModel.RevealFormDraft).
+                    if (tab.HasEditorChanges && CanSaveNow(tab))
+                    {
+                        await SaveTabAsync(tab, saveAs: false);
+                    }
+
+                    tab.RevealFormDraft();
+                    return false;
+                }
+
                 if (!CanSaveNow(tab))
                 {
                     if (!tab.AsksBeforeClosing)

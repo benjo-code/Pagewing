@@ -1,6 +1,7 @@
 using System.Text;
 using System.Windows.Input;
 using Pagewing.App.Resources;
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Forms;
 using Pagewing.Core.Pdf;
 
@@ -39,6 +40,10 @@ public sealed partial class TabViewModel
     // The open value of a text field, and the one a commit is applying now (the same object until it ended).
     private FormDraft? _formDraft;
     private FormDraft? _formDraftInFlight;
+
+    // Texts PDFium refused after the user had moved on to another field: kept per field (oldest first, at most
+    // MaxKeptFormDrafts), so they come back with their field instead of being lost (see Refuse).
+    private readonly List<FormDraft> _keptDrafts = [];
 
     // The fields read per page (0-based) of _formFieldsDocument; a page is read again when the editor's history moved on.
     private readonly Dictionary<int, FormPageFields> _formPages = [];
@@ -150,6 +155,8 @@ public sealed partial class TabViewModel
         {
             if (SetProperty(ref _focusedField, value) && value is { } key && _isFilling)
             {
+                // A text refused after the field was left comes back with the field.
+                PromoteKeptDraft(key);
                 PrefetchAround(key.Page);
             }
         }
@@ -169,9 +176,10 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets whether a text typed into a field is not in the document yet: an unsaved change (<see cref="AsksBeforeClosing"/>,
-    /// <see cref="IsDirty"/>). A field entered and left without a change is none.
+    /// <see cref="IsDirty"/>). A field entered and left without a change is none; a refused text kept for a field the user left
+    /// meanwhile is one.
     /// </summary>
-    public bool HasFormDraft => !_disposed && _formDraft is { } draft && !string.Equals(draft.Text, draft.OriginalText, StringComparison.Ordinal);
+    public bool HasFormDraft => !_disposed && ((_formDraft is { } draft && IsChanged(draft)) || _keptDrafts.Count > 0);
 
     /// <summary>The command "Fill in form": starts the mode or ends it (applying the open value first).</summary>
     public ICommand ToggleFillCommand => _toggleFillCommand ??= new RelayCommand(
@@ -212,6 +220,16 @@ public sealed partial class TabViewModel
     /// <summary>Gets or sets how the fields of a page are read: <see cref="PdfDocument.GetFormFieldsAsync"/> (replaceable for tests).</summary>
     internal Func<PdfDocument, int, CancellationToken, Task<IReadOnlyList<FormField>>> FormFieldReader { get; set; } =
         static (document, page, cancellationToken) => document.GetFormFieldsAsync(page, cancellationToken);
+
+    /// <summary>Gets or sets how many refused texts of fields left meanwhile the tab keeps (8; lower in tests).</summary>
+    internal int MaxKeptFormDrafts { get; set; } = 8;
+
+    /// <summary>
+    /// Gets or sets how a value is written: <see cref="AnnotationEditor.SetFormValueAsync"/> (replaceable for tests, to make PDFium
+    /// refuse a value at a chosen moment).
+    /// </summary>
+    internal Func<AnnotationEditor, string, FormFieldState, Task<FormChange?>> FormValueWriter { get; set; } =
+        static (editor, fieldName, state) => editor.SetFormValueAsync(fieldName, state);
 
     /// <summary>Gets or sets how the form of a document is read: <see cref="PdfDocument.GetFormInfoAsync"/> (replaceable for tests).</summary>
     internal Func<PdfDocument, CancellationToken, Task<FormInfo>> FormInfoReader { get; set; } =
@@ -371,6 +389,9 @@ public sealed partial class TabViewModel
         }
 
         IsFilling = true;
+
+        // A text that waits (refused while the mode was off, or kept for its field) is shown again, with the focus in its field.
+        FocusOpenDraft();
         var known = CurrentFormInfo?.PagesWithFields;
         var reads = VisiblePagesForForms()
             .Where(page => known is null || known.Contains(page))
@@ -451,7 +472,7 @@ public sealed partial class TabViewModel
     internal bool EditDraft(FormWidgetKey key, string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        if (!_isFilling || !CanReadForm || FindWidget(key) is not { } field || !IsEditable(field)
+        if (!_isFilling || _isEditingFrozen || !CanReadForm || FindWidget(key) is not { } field || !IsEditable(field)
             || !(field.Kind == FormFieldKind.Text || (field.Kind == FormFieldKind.ComboBox && field.Traits.HasFlag(FormFieldTraits.Edit))))
         {
             return false;
@@ -463,6 +484,14 @@ public sealed partial class TabViewModel
         }
 
         var original = _formDraft is { } same && same.Key == key ? same.OriginalText : field.State.Text ?? string.Empty;
+        var kept = _keptDrafts.FindIndex(each => SameField(each, key));
+        if (kept >= 0)
+        {
+            // Typed over a refused text of this field that was kept: the new text replaces it, against the same value.
+            original = _keptDrafts[kept].OriginalText;
+            _keptDrafts.RemoveAt(kept);
+        }
+
         SetDraft(new FormDraft(key, text, original));
         return true;
     }
@@ -500,10 +529,17 @@ public sealed partial class TabViewModel
     /// (saving, printing, the end of the mode, closing, the question before an update; with <see cref="FlushNudge"/>). The
     /// write runs as a change the tab tracks (<see cref="WhenEditsSettledAsync"/> waits for it).
     /// </summary>
-    /// <returns>Whether nothing is left that could not be started: <see langword="false"/> when the value stays with a reason.</returns>
+    /// <remarks>
+    /// Values are applied only in the mode: outside it (the mode ended or "Comment" took over before PDFium refused a value) the
+    /// open value waits and this returns <see langword="false"/>; the next start of the mode shows it and applies it.
+    /// </remarks>
+    /// <returns>
+    /// Whether the open value was applied or is being applied (or there is none): <see langword="false"/> when it stays with a
+    /// reason. Refused texts kept for other fields (<see cref="HasFormDraft"/>) are not retried: PDFium refused them already.
+    /// </returns>
     internal bool FlushFormDraft()
     {
-        if (_disposed || _formDraft is not { } draft || ReferenceEquals(draft, _formDraftInFlight) || !HasFormDraft)
+        if (_disposed || _formDraft is not { } draft || ReferenceEquals(draft, _formDraftInFlight) || !IsChanged(draft))
         {
             return true;
         }
@@ -684,7 +720,7 @@ public sealed partial class TabViewModel
             FormChange? change;
             try
             {
-                change = await Editor.SetFormValueAsync(fieldName, state);
+                change = await FormValueWriter(Editor, fieldName, state);
             }
             catch (FormWriteException ex)
             {
@@ -741,27 +777,159 @@ public sealed partial class TabViewModel
         bool isSameField(FormDraft other) => string.Equals(other.Key.FieldName, fieldName, StringComparison.Ordinal);
     }
 
-    /// <summary>A value was refused: the draft that carries it keeps it with the reason (and the focus goes back to it), else the window is told.</summary>
+    /// <summary>
+    /// A value was refused; never is a typed text lost unseen. The open value keeps it with the reason and the focus goes back to
+    /// its field: in the mode at once; when the mode ended meanwhile, the mode starts again where it can, else the window is told
+    /// and the next start of the mode shows it. When the user typed into another field meanwhile, the refused text is kept for
+    /// its field (<see cref="KeepRefused"/>) and the window is told. A text typed on in the same field replaces it.
+    /// </summary>
     private void Refuse(FormDraft? draft, string reason)
     {
-        if (draft is not null && (_formDraft is null || ReferenceEquals(_formDraft, draft)))
+        if (draft is null)
         {
-            SetDraft(draft with { Reason = reason, Waiting = false });
+            FormValueRefused?.Invoke(reason);
+            return;
+        }
+
+        var refused = draft with { Reason = reason, Waiting = false };
+        if (_formDraft is null || ReferenceEquals(_formDraft, draft))
+        {
+            SetDraft(refused);
             if (_isFilling)
             {
                 FocusedField = draft.Key;
+            }
+            else if (!TryReenterFill(draft.Key))
+            {
+                FormValueRefused?.Invoke(reason);
             }
 
             return;
         }
 
+        if (!SameField(_formDraft, draft.Key))
+        {
+            KeepRefused(refused);
+        }
+
         FormValueRefused?.Invoke(reason);
     }
+
+    /// <summary>
+    /// Keeps a refused text of a field the user left (one per field, the newest wins); beyond <see cref="MaxKeptFormDrafts"/> the
+    /// oldest goes, and the window is told its reason once more.
+    /// </summary>
+    private void KeepRefused(FormDraft refused)
+    {
+        _keptDrafts.RemoveAll(each => SameField(each, refused.Key));
+        _keptDrafts.Add(refused);
+        while (_keptDrafts.Count > Math.Max(0, MaxKeptFormDrafts))
+        {
+            var dropped = _keptDrafts[0];
+            _keptDrafts.RemoveAt(0);
+            FormValueRefused?.Invoke(dropped.Reason ?? Strings.FormValueRefused);
+        }
+
+        OnPropertyChanged(nameof(HasFormDraft));
+        SyncFromEditor();
+    }
+
+    /// <summary>
+    /// Makes the refused text kept for the field of <paramref name="key"/> the open value again, at that widget, unless the open
+    /// value has a change of its own that is not being applied.
+    /// </summary>
+    /// <returns>Whether it did.</returns>
+    private bool PromoteKeptDraft(FormWidgetKey key)
+    {
+        var index = _keptDrafts.FindIndex(each => SameField(each, key));
+        if (index < 0 || (_formDraft is { } open && !ReferenceEquals(open, _formDraftInFlight) && IsChanged(open)))
+        {
+            return false;
+        }
+
+        var kept = _keptDrafts[index];
+        _keptDrafts.RemoveAt(index);
+        SetDraft(kept with { Key = key });
+        return true;
+    }
+
+    /// <summary>The open value, or else the oldest kept refused text, gets the focus (the mode is on).</summary>
+    private void FocusOpenDraft()
+    {
+        if (_formDraft is null && _keptDrafts.Count > 0)
+        {
+            PromoteKeptDraft(_keptDrafts[0].Key);
+        }
+
+        if (_formDraft is { } open)
+        {
+            FocusedField = open.Key;
+        }
+    }
+
+    /// <summary>
+    /// Starts the mode again for a value refused after it ended, with the focus in its field: not while "Comment" is on (the
+    /// user chose it), editing is locked, or a card asks about the tab.
+    /// </summary>
+    /// <returns>Whether the mode is on now.</returns>
+    private bool TryReenterFill(FormWidgetKey key)
+    {
+        if (_isAnnotating || _isEditingFrozen || _isAskedAbout || !CanBeginFill())
+        {
+            return false;
+        }
+
+        IsFilling = true;
+        FocusedField = key;
+        return true;
+    }
+
+    /// <summary>
+    /// Shows the typed text that keeps the tab "unsaved" although a save cannot write it (PDFium refused it): the mode starts with
+    /// the focus in its field where it can, and the window is told the reason. The question before closing stops here instead of
+    /// asking again after every save (<see cref="MainViewModel"/>).
+    /// </summary>
+    internal void RevealFormDraft()
+    {
+        if (!HasFormDraft)
+        {
+            return;
+        }
+
+        if (_keptDrafts.Count > 0 && (_formDraft is null || (!IsChanged(_formDraft) && !ReferenceEquals(_formDraft, _formDraftInFlight))))
+        {
+            SetDraft(null);
+            PromoteKeptDraft(_keptDrafts[0].Key);
+        }
+
+        if (_formDraft is not { } draft)
+        {
+            return;
+        }
+
+        if (_isFilling)
+        {
+            FocusedField = draft.Key;
+        }
+        else
+        {
+            TryReenterFill(draft.Key);
+        }
+
+        FormValueRefused?.Invoke(draft.Reason ?? Strings.FormValueRefused);
+    }
+
+    /// <summary>Gets whether the editor has changes to save (form values and annotations written into the document).</summary>
+    internal bool HasEditorChanges => _editor?.IsDirty == true;
+
+    private static bool IsChanged(FormDraft draft) => !string.Equals(draft.Text, draft.OriginalText, StringComparison.Ordinal);
+
+    private static bool SameField(FormDraft draft, FormWidgetKey key) => string.Equals(draft.Key.FieldName, key.FieldName, StringComparison.Ordinal);
 
     /// <summary>Keeps a text that cannot be applied as the open value, with the reason.</summary>
     private void KeepDraft(FormDraft? draft, FormField field, string text, string reason, bool waiting)
     {
-        if (draft is null && _formDraft is { } other && other.Key != field.Key && HasFormDraft)
+        if (draft is null && _formDraft is { } other && other.Key != field.Key && IsChanged(other))
         {
             // Another field has an open value: it is not replaced (its text would be lost); this one is only refused.
             FormValueRefused?.Invoke(reason);
@@ -1035,6 +1203,7 @@ public sealed partial class TabViewModel
     private void ResetFormState()
     {
         _formDraftInFlight = null;
+        _keptDrafts.Clear();
         SetDraft(null);
         FocusedField = null;
         IsFilling = false;

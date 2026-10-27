@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Forms;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
@@ -645,6 +646,189 @@ public sealed partial class FormModeTests : IDisposable
         Assert.Equal(Strings.FormLockedOther, TabViewModel.LockTextOf(Field(FormFieldKind.Unknown, FormFieldTraits.None, "X")));
     }
 
+    [AvaloniaFact]
+    public async Task RefusalAfterTheModeEndedBringsTheModeBackWithTheText()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tab = await OpenAsync("forms-basic.pdf", configure: tab => tab.FormValueWriter = Refusing(gate.Task, "Name"));
+        var refused = new List<string>();
+        tab.FormValueRefused += refused.Add;
+        await tab.EnterFillAsync();
+        var name = Key(tab, "Name");
+
+        // "Done" while the value is on its way: the mode ends at once, PDFium refuses afterwards.
+        Assert.True(tab.EditDraft(name, "Neu"));
+        Assert.True(tab.EndFill());
+        Assert.False(tab.IsFilling);
+        gate.SetResult();
+        await tab.WhenEditsSettledAsync();
+
+        // The mode comes back with the focus in the field, the text and the reason: nothing dropped unseen.
+        Assert.True(tab.IsFilling);
+        Assert.Equal(name, tab.FocusedField);
+        Assert.Equal("Neu", tab.CurrentDraft!.Text);
+        Assert.Equal(Strings.FormValueNotTaken, tab.CurrentDraft.Reason);
+        Assert.True(tab.HasFormDraft);
+        Assert.True(tab.AsksBeforeClosing);
+        Assert.Empty(refused);
+
+        // Switched to "Comment" meanwhile: that mode stays, the window is told, the text waits for the next time the mode starts.
+        gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        tab.FormValueWriter = Refusing(gate.Task, "Name");
+        Assert.True(tab.EditDraft(name, "Zwei"));
+        tab.ToggleAnnotateCommand.Execute(null);
+        await WaitUntilAsync(() => tab.IsAnnotating);
+        gate.SetResult();
+        await tab.WhenEditsSettledAsync();
+        Assert.True(tab.IsAnnotating);
+        Assert.False(tab.IsFilling);
+        Assert.Equal([Strings.FormValueNotTaken], refused);
+        Assert.Equal("Zwei", tab.CurrentDraft!.Text);
+        Assert.True(tab.AsksBeforeClosing);
+
+        // Outside the mode it cannot be applied (the flush says so); back in the mode it can, and goes in.
+        Assert.False(tab.FlushFormDraft());
+        tab.FormValueWriter = static (editor, field, state) => editor.SetFormValueAsync(field, state);
+        await tab.EnterFillAsync();
+        Assert.False(tab.IsAnnotating);
+        Assert.Equal(name, tab.FocusedField);
+        Assert.True(tab.FlushFormDraft());
+        await tab.WhenEditsSettledAsync();
+        Assert.Equal("Zwei", await ValueAsync(tab, 0, "Name"));
+        Assert.False(tab.HasFormDraft);
+    }
+
+    [AvaloniaFact]
+    public async Task RefusedValueOfAFieldLeftMeanwhileComesBackWithTheField()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tab = await OpenAsync("forms-basic.pdf", configure: tab => tab.FormValueWriter = Refusing(gate.Task, "Name"));
+        var refused = new List<string>();
+        tab.FormValueRefused += refused.Add;
+        await tab.EnterFillAsync();
+        var name = Key(tab, "Name");
+        var remark = Key(tab, "Bemerkung");
+
+        // Tab to the next field and type there while the first value is still on its way; then PDFium refuses it.
+        tab.FocusedField = name;
+        Assert.True(tab.EditDraft(name, "Erster"));
+        Assert.True(await tab.MoveToFieldAsync(forward: true));
+        Assert.Equal(remark, tab.FocusedField);
+        Assert.True(tab.EditDraft(remark, "Zweiter"));
+        gate.SetResult();
+        await WaitUntilAsync(() => !tab.HasEditsInFlight);
+
+        // The open field keeps its text; the refused one is kept as well, counted and announced.
+        Assert.Equal(remark, tab.CurrentDraft!.Key);
+        Assert.Equal([Strings.FormValueNotTaken], refused);
+        Assert.True(tab.HasFormDraft);
+        Assert.True(tab.AsksBeforeClosing);
+
+        // Back in that field: its text and reason are there again; the other field's text went in on the way.
+        Assert.True(await tab.MoveToFieldAsync(forward: false));
+        await tab.WhenEditsSettledAsync();
+        Assert.Equal(name, tab.FocusedField);
+        Assert.Equal("Erster", tab.CurrentDraft!.Text);
+        Assert.Equal(Strings.FormValueNotTaken, tab.CurrentDraft.Reason);
+        Assert.Equal("Zweiter", await ValueAsync(tab, 0, "Bemerkung"));
+
+        // Esc drops it on purpose; then nothing is left.
+        tab.DiscardDraft();
+        Assert.Null(tab.CurrentDraft);
+        Assert.False(tab.HasFormDraft);
+
+        // At most a few refused texts are kept: the oldest goes, said aloud.
+        tab.MaxKeptFormDrafts = 1;
+        refused.Clear();
+        gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        tab.FormValueWriter = Refusing(gate.Task, "Kamm", "Kurz", "Pflicht");
+        foreach (var field in new[] { "Kamm", "Kurz", "Pflicht" })
+        {
+            Assert.True(tab.EditDraft(Key(tab, field), field + "!"));
+            Assert.True(tab.FlushFormDraft());
+        }
+
+        Assert.True(tab.EditDraft(Key(tab, "Passwort"), "offen"));
+        gate.SetResult();
+        await WaitUntilAsync(() => !tab.HasEditsInFlight);
+        // Three refusals, two of them pushed out again (each said); the newest refused text is there for its field.
+        Assert.Equal(5, refused.Count);
+        Assert.Equal("offen", tab.CurrentDraft!.Text);
+        tab.DiscardDraft();
+        Assert.True(tab.HasFormDraft);
+        tab.FocusedField = Key(tab, "Pflicht");
+        Assert.Equal("Pflicht!", tab.CurrentDraft!.Text);
+        tab.DiscardDraft();
+        tab.FocusedField = Key(tab, "Kurz");
+        Assert.Null(tab.CurrentDraft);
+        tab.FocusedField = Key(tab, "Kamm");
+        Assert.Null(tab.CurrentDraft);
+        Assert.False(tab.HasFormDraft);
+    }
+
+    [AvaloniaFact]
+    public async Task ClosingWithARefusedValueStopsAtTheFieldInsteadOfAskingAgain()
+    {
+        var viewModel = new MainViewModel(() => new ViewerSession(new PdfEngine()), new NoFilePicker(), UserSettings.Detached());
+        _cleanup.Add(viewModel);
+        await viewModel.OpenAsync(Copy("forms-basic.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(() => tab.State == ViewerState.Ready && tab.Document is not null);
+        tab.FormValueWriter = Refusing(Task.CompletedTask, "Name");
+        tab.HasShownSharpPage = true;
+        await tab.EnterFillAsync();
+        var cards = 0;
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.PendingSave) && viewModel.PendingSave is { Kind: PendingSaveKind.SaveChanges })
+            {
+                cards++;
+            }
+        };
+
+        // A value PDFium refuses: closing asks; "Save" cannot write it, so the flow stops at the field instead of asking again.
+        Assert.True(tab.EditDraft(Key(tab, "Name"), "Nein"));
+        viewModel.CloseTabCommand.Execute(tab);
+        await WaitUntilAsync(() => viewModel.PendingSave is { Kind: PendingSaveKind.SaveChanges });
+        Assert.True(tab.AsksBeforeClosing);
+        viewModel.PendingSave!.Resolve(PendingSaveChoice.Save);
+        await WaitUntilAsync(() => viewModel.PendingSave is null && !viewModel.IsResolving);
+        for (var i = 0; i < 20; i++)
+        {
+            Pump();
+            await Task.Delay(10);
+        }
+
+        Assert.Equal(1, cards);
+        Assert.Null(viewModel.PendingSave);
+        Assert.Contains(tab, viewModel.Tabs);
+        Assert.True(tab.IsFilling);
+        Assert.Equal(Key(tab, "Name"), tab.FocusedField);
+        Assert.Equal("Nein", tab.CurrentDraft!.Text);
+        Assert.Equal(Strings.FormValueNotTaken, tab.CurrentDraft.Reason);
+
+        // "Don't save" closes it, with the text.
+        viewModel.CloseTabCommand.Execute(tab);
+        await WaitUntilAsync(() => viewModel.PendingSave is { Kind: PendingSaveKind.SaveChanges });
+        viewModel.PendingSave!.Resolve(PendingSaveChoice.DontSave);
+        await WaitUntilAsync(() => viewModel.Tabs.Count == 0);
+    }
+
+    [AvaloniaFact]
+    public async Task NothingCanBeTypedWhileEditingIsFrozen()
+    {
+        var tab = await OpenAsync("forms-basic.pdf");
+        await tab.EnterFillAsync();
+        tab.IsEditingFrozen = true;
+
+        Assert.False(tab.EditDraft(Key(tab, "Name"), "Neu"));
+        Assert.Null(tab.CurrentDraft);
+        Assert.False(tab.AsksBeforeClosing);
+
+        tab.IsEditingFrozen = false;
+        Assert.True(tab.EditDraft(Key(tab, "Name"), "Neu"));
+    }
+
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("de")]
@@ -720,6 +904,19 @@ public sealed partial class FormModeTests : IDisposable
     /// <summary>The value of a field as the document of the tab has it now (read directly, not through the tab).</summary>
     private static async Task<string?> ValueAsync(TabViewModel tab, int page, string fieldName) =>
         (await tab.Document!.GetFormFieldsAsync(page, TestContext.Current.CancellationToken)).First(field => field.Key.FieldName == fieldName).State.Text;
+
+    /// <summary>A write that refuses the named fields (after <paramref name="gate"/>, as PDFium would: restored) and passes the others on.</summary>
+    private static Func<AnnotationEditor, string, FormFieldState, Task<FormChange?>> Refusing(Task gate, params string[] names) =>
+        async (editor, field, state) =>
+        {
+            if (names.Contains(field))
+            {
+                await gate;
+                throw new FormWriteException("refused", new HashSet<int> { 0 }, restored: true);
+            }
+
+            return await editor.SetFormValueAsync(field, state);
+        };
 
     private static Func<PdfDocument, int, CancellationToken, Task<IReadOnlyList<FormField>>> Recording(List<int> reads) =>
         (document, page, token) =>
