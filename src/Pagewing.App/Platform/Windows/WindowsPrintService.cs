@@ -39,7 +39,9 @@ internal sealed class WindowsPrintTicket : PrintTicket
 
 /// <summary>
 /// Prints on Windows: the common print dialog (<c>PrintDlgEx</c>), then PDFium draws every page on the device context of
-/// the printer (<c>FPDF_RenderPage</c> with <c>FPDF_PRINTING</c>). Copies and collating are done here, not by the driver.
+/// the printer (<c>FPDF_RenderPage</c> with <c>FPDF_PRINTING</c>; a page with form fields in strips of pixels, see
+/// <see cref="PdfDocument.PrintPageToDeviceAsync(int, nint, DevicePlacement, CancellationToken)"/>). Copies and collating are
+/// done here, not by the driver.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsPrintService : IPrintService

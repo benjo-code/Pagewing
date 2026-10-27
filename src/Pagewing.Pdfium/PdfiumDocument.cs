@@ -29,6 +29,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     private int formEnvironmentsCreated;
     private int formDraws;
     private int formWidgetScans;
+    private int vectorPrints;
+    private int printStrips;
 
     // Whether a page has widgets, by page index, filled by the first render of each page (PDFium thread only). Widgets are
     // never added to an open document (Pagewing creates markups, drawings and text boxes, never widgets), so an entry stays
@@ -93,6 +95,24 @@ internal sealed unsafe class PdfiumDocument : IDisposable
 
     /// <summary>Counts one <see cref="FormDraws"/>. PDFium thread only.</summary>
     internal void CountFormDraw() => Volatile.Write(ref formDraws, formDraws + 1);
+
+    /// <summary>
+    /// Gets how many pages were printed as vectors (<c>FPDF_RenderPage</c> on the device context), for tests that check the
+    /// path a page takes. Written on the PDFium thread only.
+    /// </summary>
+    internal int VectorPrints => Volatile.Read(ref vectorPrints);
+
+    /// <summary>
+    /// Gets how many strips of pages with widgets were printed (<see cref="PdfiumPrint"/>), for tests. Written on the PDFium
+    /// thread only.
+    /// </summary>
+    internal int PrintStrips => Volatile.Read(ref printStrips);
+
+    /// <summary>Counts one <see cref="VectorPrints"/>. PDFium thread only.</summary>
+    internal void CountVectorPrint() => Volatile.Write(ref vectorPrints, vectorPrints + 1);
+
+    /// <summary>Counts one <see cref="PrintStrips"/>. PDFium thread only.</summary>
+    internal void CountPrintStrip() => Volatile.Write(ref printStrips, printStrips + 1);
 
     /// <summary>
     /// Gets whether page <paramref name="index"/>, loaded as <paramref name="page"/>, has widgets that <c>FPDF_FFLDraw</c> would

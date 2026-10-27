@@ -244,6 +244,60 @@ public sealed class FormRenderTests : IDisposable
     }
 
     [Fact]
+    public async Task DarkRotatedPageWithACropBoxKeepsTheFieldInPlaceAndReadable()
+    {
+        // Page 1 of forms-rotated.pdf: /Rotate 90 and a CropBox offset. The white field ground (its /MK /BG, drawn by
+        // FPDF_FFLDraw) lies where FormField.Bounds says, and the written value reads on it.
+        await using var document = await OpenCopyAsync(FormsRotated);
+        await document.SetFormValueAsync("Text1", FormFieldState.OfText("Gedreht"), Ct);
+        var field = await FieldAsync(document, 0, "Text1");
+        var page = await document.RenderPageAsync(0, Scale, Dark, Ct);
+        AssertWhiteFieldInPlace(page, field.Bounds, "forms-rotated.pdf");
+
+        // A field without /MK on the same kind of page: only the paper-white fill (PdfiumFormDrawing.FillWhite) makes its
+        // ground white, so the fill and FPDF_FFLDraw must agree on rotation and CropBox.
+        var path = WritePdf(folder, "dark-rotated.pdf",
+        [
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R] /DA (/Helv 12 Tf 0 g) /DR << /Font << /Helv 5 0 R >> >> >> >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 10 380 290] /Rotate 90 /Annots [4 0 R] >>",
+            "<< /Type /Annot /Subtype /Widget /Rect [80 220 260 242] /P 3 0 R /F 4 /FT /Tx /T (Bare) /V (Hallo) /DA (/Helv 12 Tf 0 g) >>",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        ]);
+        await using var bare = await OpenAsync(path);
+        await bare.SetFormValueAsync("Bare", FormFieldState.OfText("Ohne Grund"), Ct);
+        var bareField = await FieldAsync(bare, 0, "Bare");
+        AssertWhiteFieldInPlace(await bare.RenderPageAsync(0, Scale, Dark, Ct), bareField.Bounds, "field without /MK");
+
+        static void AssertWhiteFieldInPlace(RenderedImage page, PageRect bounds, string what)
+        {
+            // Pure white is only the field ground: the dark page draws its text in DarkForeground.
+            var (x0, y0, x1, y1) = PixelsOf(bounds.Inflate(8));
+            int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
+            for (var y = Math.Max(0, y0); y < Math.Min(page.Height, y1); y++)
+            {
+                for (var x = Math.Max(0, x0); x < Math.Min(page.Width, x1); x++)
+                {
+                    if (Pixel(page, x, y) == 0xFFFFFFFFu)
+                    {
+                        (left, top, right, bottom) = (Math.Min(left, x), Math.Min(top, y), Math.Max(right, x + 1), Math.Max(bottom, y + 1));
+                    }
+                }
+            }
+
+            var (ex0, ey0, ex1, ey1) = PixelsOf(bounds);
+            Assert.True(
+                Math.Abs(left - ex0) <= 2 && Math.Abs(top - ey0) <= 2 && Math.Abs(right - ex1) <= 2 && Math.Abs(bottom - ey1) <= 2,
+                $"{what}: the white field is at ({left}, {top}, {right}, {bottom}), the bounds map to ({ex0}, {ey0}, {ex1}, {ey1}).");
+            var ground = Mode(page, Inner(bounds));
+            var text = Darkest(page, Inner(bounds));
+            Assert.Equal(0xFFFFFFFFu, ground);
+            Assert.True(CountDark(page, Inner(bounds)) > 20, $"{what}: the value is not drawn in the field.");
+            Assert.True(Contrast(text, ground) >= 4.5, $"{what}: the text has {Contrast(text, ground):F2}:1 against the field.");
+        }
+    }
+
+    [Fact]
     public async Task PageWithoutWidgetsRendersLikeBefore()
     {
         // The same two pages with and without a form: page 2 has content and a square annotation, but no widget.

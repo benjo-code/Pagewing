@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Pagewing.Core.Printing;
 using Pagewing.Core.Text;
 using Pagewing.Pdfium;
@@ -21,6 +22,7 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     private readonly string pdfVersion;
     private readonly int formType;
     private int disposed;
+    private int printRequests;
 
     internal PdfDocument(PdfiumDocument document, int pageCount, string pdfVersion, int formType)
     {
@@ -51,6 +53,15 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
 
     /// <summary>Gets how often a render looked for the widgets of a page (for tests; see <c>PdfiumDocument.FormWidgetScans</c>). Any thread.</summary>
     internal int FormWidgetScans => document.FormWidgetScans;
+
+    /// <summary>Gets how many pages were printed as vectors (for tests; see <c>PdfiumDocument.VectorPrints</c>). Any thread.</summary>
+    internal int VectorPrints => document.VectorPrints;
+
+    /// <summary>Gets how many strips of pages with widgets were printed (for tests; see <c>PdfiumDocument.PrintStrips</c>). Any thread.</summary>
+    internal int PrintStrips => document.PrintStrips;
+
+    /// <summary>Gets how many requests printing has run on the PDFium thread (for tests). Any thread.</summary>
+    internal int PrintRequests => Volatile.Read(ref printRequests);
 
     /// <summary>Gets the PDF version from the file header, for example "1.7"; empty when unknown.</summary>
     public string PdfVersion
@@ -384,7 +395,9 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     /// <summary>
     /// Draws one page on a printer device context (Windows <c>HDC</c> with a page started), with its annotations, always in
     /// the light colours of the page. Runs as one short request with <see cref="PdfPriority.Background"/>, so the rendering
-    /// of the tabs goes on between two pages of a job.
+    /// of the tabs goes on between two pages of a job. A page with form fields (widgets) is printed in strips of pixels, with
+    /// its current values (also unsaved ones) and without the highlight, as several short requests; every other page as
+    /// vectors (Docs/DECISIONS.md, "Formulare: Druck unter Windows in Streifen (M11)").
     /// </summary>
     /// <param name="pageIndex">The page, 0-based.</param>
     /// <param name="deviceContext">The <c>HDC</c>.</param>
@@ -394,35 +407,71 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     /// <exception cref="PlatformNotSupportedException">The OS is not Windows.</exception>
     /// <exception cref="PdfRenderException">The page could not be drawn.</exception>
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the page was drawn.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the page was drawn completely (a page in strips may then be drawn in part; the caller aborts the job).</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
-    public Task PrintPageToDeviceAsync(int pageIndex, nint deviceContext, DevicePlacement placement, CancellationToken cancellationToken = default)
+    public Task PrintPageToDeviceAsync(int pageIndex, nint deviceContext, DevicePlacement placement, CancellationToken cancellationToken = default) =>
+        PrintPageToDeviceAsync(pageIndex, deviceContext, placement, PdfiumPrint.StripRows, PdfiumPrint.Slice, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="PrintPageToDeviceAsync(int, nint, DevicePlacement, CancellationToken)"/>, with the rows of a strip and the
+    /// time one request prints strips (for tests).
+    /// </summary>
+    internal Task PrintPageToDeviceAsync(int pageIndex, nint deviceContext, DevicePlacement placement, int stripRows, TimeSpan slice, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(pageIndex, pageCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(placement.Width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(placement.Height);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(stripRows);
+        ArgumentOutOfRangeException.ThrowIfLessThan(slice, TimeSpan.Zero);
         if (!OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException("Printing to a device context needs Windows.");
         }
 
-        return document.Thread.InvokeAsync(
-            () =>
-            {
-                try
+        return PrintPageInRequestsAsync(pageIndex, deviceContext, placement, stripRows, slice, cancellationToken);
+    }
+
+    /// <summary>
+    /// Prints a page as a sequence of short requests: the first draws a page without widgets completely (vectors) or the first
+    /// strips of a page with widgets; each further request draws the next strips (<see cref="PdfiumPrint"/>).
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private async Task PrintPageInRequestsAsync(int pageIndex, nint deviceContext, DevicePlacement placement, int stripRows, TimeSpan slice, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var strips = await document.Thread.InvokeAsync(
+                () =>
                 {
+                    Interlocked.Increment(ref printRequests);
                     using var page = document.LoadPage(pageIndex);
-                    page.RenderToDevice(deviceContext, placement.X, placement.Y, placement.Width, placement.Height, placement.QuarterTurns);
-                }
-                catch (PdfiumRenderException ex)
+                    return PdfiumPrint.Begin(document, pageIndex, page, deviceContext, placement.X, placement.Y, placement.Width, placement.Height, placement.QuarterTurns, stripRows, slice);
+                },
+                PdfiumPriority.Background,
+                cancellationToken).ConfigureAwait(false);
+            while (strips is not null)
+            {
+                var done = await document.Thread.InvokeAsync(
+                    () =>
+                    {
+                        Interlocked.Increment(ref printRequests);
+                        using var page = document.LoadPage(pageIndex);
+                        return strips.Print(document, page, slice);
+                    },
+                    PdfiumPriority.Background,
+                    cancellationToken).ConfigureAwait(false);
+                if (done)
                 {
-                    throw new PdfRenderException(ex.Message, ex);
+                    strips = null;
                 }
-            },
-            PdfiumPriority.Background,
-            cancellationToken);
+            }
+        }
+        catch (PdfiumRenderException ex)
+        {
+            throw new PdfRenderException(ex.Message, ex);
+        }
     }
 
     /// <summary>

@@ -119,8 +119,9 @@ internal static unsafe class PdfiumFormDrawing
     }
 
     /// <summary>
-    /// Sets or removes the highlight (set on every call: the environment belongs to the document, and another render may have
-    /// left its own) and draws the widgets with <c>FPDF_FFLDraw</c>, rotation 0 as every render of Pagewing.
+    /// Sets or removes the highlight (set on every call: the environment belongs to the document, and another render or a print
+    /// may have left its own) and draws the widgets with <c>FPDF_FFLDraw</c>, with the area, rotation and flags of the render
+    /// (rotation 0 on screen, the quarter turns of the placement when printing).
     /// </summary>
     public static void Draw(
         PdfiumFormEnvironment environment,
@@ -130,6 +131,7 @@ internal static unsafe class PdfiumFormDrawing
         int startY,
         int sizeX,
         int sizeY,
+        int rotate,
         int flags,
         PdfiumFormHighlight? highlight)
     {
@@ -146,6 +148,6 @@ internal static unsafe class PdfiumFormDrawing
             Fpdf.FPDF_RemoveFormFieldHighlight(form);
         }
 
-        Fpdf.FPDF_FFLDraw(form, bitmap, page.Access(), startX, startY, sizeX, sizeY, 0, flags);
+        Fpdf.FPDF_FFLDraw(form, bitmap, page.Access(), startX, startY, sizeX, sizeY, rotate, flags);
     }
 }

@@ -97,6 +97,22 @@ internal static unsafe partial class Fpdf
         FpdfColorScheme* colorScheme,
         IfsdkPause* pause);
 
+    /// <summary>
+    /// <c>FPDF_RenderPageBitmap</c> (<c>fpdfview.h</c>): renders the page onto a bitmap in one call, without pausing. Used for
+    /// the strips of a printed page with widgets (<see cref="PdfiumPrint"/>).
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_RenderPageBitmap(
+        nint bitmap,
+        nint page,
+        int startX,
+        int startY,
+        int sizeX,
+        int sizeY,
+        int rotate,
+        int flags);
+
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDF_RenderPage_Continue(nint page, IfsdkPause* pause);

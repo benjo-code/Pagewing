@@ -418,7 +418,7 @@ Ziel: AcroForm-Formulare lassen sich ausfüllen und speichern.
 - [x] Rückgängig/Wiederholen für Formularwerte im gemeinsamen Verlauf mit den Annotationen
 - [ ] Speichern der Werte über die Pipeline aus M9, zusammen mit Annotationen in einem Vorgang; Warnung bei leeren Pflichtfeldern
 - [ ] Hinweise (ohne V8 keine JavaScript-Berechnung, Formate und Prüfungen; XFA; digitales Signaturfeld; Schaltflächen führen nie eine Aktion aus)
-- [ ] Felder zeichnen (PDFium zeichnet Widgets nur mit `FPDF_FFLDraw`); dunkle Seite und Druck zeigen ausgefüllte Werte
+- [x] Felder zeichnen (PDFium zeichnet Widgets nur mit `FPDF_FFLDraw`); dunkle Seite und Druck zeigen ausgefüllte Werte
 
 **Abnahmekriterien**
 - [ ] Ausgefüllte Test-Formulare zeigen die Werte in einem anderen Viewer (Test + manuelle Prüfung)

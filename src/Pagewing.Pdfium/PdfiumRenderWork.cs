@@ -426,6 +426,7 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
             startY,
             pageWidth,
             pageHeight,
+            rotate: 0,
             flags & ~FpdfConstants.RenderConvertFillToStroke,
             formHighlight);
         document.CountFormDraw();
