@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Threading.Channels;
 using Pagewing.Core.Hosting;
@@ -249,6 +252,92 @@ public sealed class SingleInstanceTests
         Assert.True(SingleInstance.TrySend(name, ["good.pdf"], Due));
 
         Assert.Equal(["good.pdf"], await NextAsync(received));
+        await AssertNothingAsync(received);
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void ThePipeIsOpenToTheCurrentUserOnly()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The access list of a named pipe exists on Windows only.");
+        var name = UniqueName();
+        using var primary = Primary(name);
+        Listen(primary);
+
+        using var client = new NamedPipeClientStream(
+            ".", SingleInstance.PipeNameFor(name), PipeAccessRights.Write | PipeAccessRights.ReadPermissions, PipeOptions.CurrentUserOnly, System.Security.Principal.TokenImpersonationLevel.None, HandleInheritability.None);
+        client.Connect((int)Due.TotalMilliseconds);
+        var rules = client.GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+            .Cast<PipeAccessRule>()
+            .ToList();
+
+        // Not Everyone, not "Users", not "Authenticated Users": one allow entry, for the account that runs the program.
+        var user = WindowsIdentity.GetCurrent().User!;
+        Assert.NotEmpty(rules);
+        Assert.All(rules, rule => Assert.Equal(AccessControlType.Allow, rule.AccessControlType));
+        Assert.All(rules, rule => Assert.Equal(user, rule.IdentityReference));
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public void TheSocketIsOpenToTheCurrentUserOnly()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix sockets exist on Linux only.");
+        var name = UniqueName();
+        using var primary = Primary(name);
+        Listen(primary);
+        var pipe = SingleInstance.PipeNameFor(name);
+
+        // With $XDG_RUNTIME_DIR the pipe name is the socket path; without it .NET puts the socket into the temp folder.
+        var socket = Path.IsPathRooted(pipe) ? pipe : Path.Combine(Path.GetTempPath(), "CoreFxPipe_" + pipe);
+        Assert.True(File.Exists(socket), socket);
+        Assert.Equal(UnixFileMode.None, File.GetUnixFileMode(socket) & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute
+            | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute));
+    }
+
+    [Fact]
+    public async Task AMessageOverTheSizeLimitIsDroppedWithoutReadingItAll()
+    {
+        var name = UniqueName();
+        using var primary = Primary(name);
+        var received = Listen(primary);
+
+        // A valid message for one path followed by far more bytes than any message may have: refused as a whole.
+        var big = new byte[Message("a.pdf").Length + (8 * 1024 * 1024)];
+        Message("a.pdf").CopyTo(big, 0);
+        try
+        {
+            SendRaw(name, big);
+        }
+        catch (IOException)
+        {
+            // The listener stops reading at its limit and closes the pipe; the sender may notice.
+        }
+
+        Assert.True(SingleInstance.TrySend(name, ["good.pdf"], Due));
+        Assert.Equal(["good.pdf"], await NextAsync(received));
+        await AssertNothingAsync(received);
+    }
+
+    [Fact]
+    public async Task AClientThatNeverFinishesIsDroppedAfterTheReadTimeout()
+    {
+        var name = UniqueName();
+        using var primary = Primary(name);
+        var received = Listen(primary);
+
+        // Connects, sends half a message and stays: the next sender must still be served, within a few seconds.
+        using var stalled = new NamedPipeClientStream(".", SingleInstance.PipeNameFor(name), PipeDirection.Out, PipeOptions.CurrentUserOnly);
+        stalled.Connect((int)Due.TotalMilliseconds);
+        var half = Message("one.pdf", "two.pdf");
+        stalled.Write(half.AsSpan(0, half.Length - 3));
+        stalled.Flush();
+
+        var watch = Stopwatch.StartNew();
+        Assert.True(SingleInstance.TrySend(name, ["good.pdf"], Due));
+        Assert.Equal(["good.pdf"], await NextAsync(received));
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(8), watch.Elapsed.ToString());
         await AssertNothingAsync(received);
     }
 
