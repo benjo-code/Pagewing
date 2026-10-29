@@ -202,6 +202,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             {
                 _print?.OnClosed();
             }
+            else if (old == OverlayKind.Signature)
+            {
+                _signatureCard = null;
+            }
 
             if (value == OverlayKind.Palette)
             {
@@ -214,6 +218,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             else if (value == OverlayKind.About)
             {
                 _about ??= new AboutViewModel(AppInfo.Version, NoticesLoader);
+            }
+            else if (value == OverlayKind.Signature)
+            {
+                _signatureCard = CreateSignatureCard();
             }
 
             OnPropertyChanged();

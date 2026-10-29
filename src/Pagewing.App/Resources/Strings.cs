@@ -499,6 +499,33 @@ public static class Strings
     public static string RequiredFieldsTextMany => Get("RequiredFieldsTextMany");
     public static string SaveChoiceGoToField => Get("SaveChoiceGoToField");
     public static string SignatureWarningFormsText => Get("SignatureWarningFormsText");
+    public static string SignatureCardTitle => Get("SignatureCardTitle");
+    public static string SignatureClose => Get("SignatureClose");
+    public static string SignatureTabDraw => Get("SignatureTabDraw");
+    public static string SignatureTabImage => Get("SignatureTabImage");
+    public static string SignatureName => Get("SignatureName");
+    public static string SignatureDefaultName => Get("SignatureDefaultName");
+    public static string SignaturePadName => Get("SignaturePadName");
+    public static string SignaturePadHint => Get("SignaturePadHint");
+    public static string SignatureClear => Get("SignatureClear");
+    public static string SignatureUndoStroke => Get("SignatureUndoStroke");
+    public static string SignatureInk => Get("SignatureInk");
+    public static string SignatureChooseImage => Get("SignatureChooseImage");
+    public static string SignatureImageNote => Get("SignatureImageNote");
+    public static string SignatureThreshold => Get("SignatureThreshold");
+    public static string SignaturePreview => Get("SignaturePreview");
+    public static string SignatureSave => Get("SignatureSave");
+    public static string SignatureCancel => Get("SignatureCancel");
+    public static string SignatureHintLegal => Get("SignatureHintLegal");
+    public static string SignatureHintDigital => Get("SignatureHintDigital");
+    public static string SignatureProblemNothingDrawn => Get("SignatureProblemNothingDrawn");
+    public static string SignatureProblemNoImage => Get("SignatureProblemNoImage");
+    public static string SignatureProblemBlank => Get("SignatureProblemBlank");
+    public static string SignatureProblemTooLarge => Get("SignatureProblemTooLarge");
+    public static string SignatureProblemTooManyPixels => Get("SignatureProblemTooManyPixels");
+    public static string SignatureProblemUnreadable => Get("SignatureProblemUnreadable");
+    public static string SignatureProblemLibraryFull => Get("SignatureProblemLibraryFull");
+    public static string SignatureProblemSaveFailed => Get("SignatureProblemSaveFailed");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",

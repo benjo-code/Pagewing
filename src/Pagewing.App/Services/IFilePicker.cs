@@ -1,5 +1,13 @@
 namespace Pagewing.App.Services;
 
+/// <summary>Lets the user choose an image file for a signature (PNG or JPG; the system file dialog).</summary>
+public interface IImagePicker
+{
+    /// <summary>Shows the dialog with the filter "Images" (<c>*.png</c>, <c>*.jpg</c>, <c>*.jpeg</c>).</summary>
+    /// <returns>The full local path of the chosen file, or <see langword="null"/> when the user cancelled.</returns>
+    Task<string?> PickImageAsync();
+}
+
 /// <summary>Lets the user choose a PDF file (the system file dialog; a fake in tests).</summary>
 public interface IFilePicker
 {
