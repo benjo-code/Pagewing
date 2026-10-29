@@ -92,6 +92,25 @@ public sealed class ImageHeaderTests
     }
 
     [Fact]
+    public void DetectsAFileThatIsCutOff()
+    {
+        // A complete PNG ends with its IEND chunk, a complete JPEG with the marker EOI (trailing zeros are allowed).
+        byte[] iend = [0, 0, 0, 0, (byte)'I', (byte)'E', (byte)'N', (byte)'D', 0xAE, 0x42, 0x60, 0x82];
+        var png = PngHead(10, 10).Concat(new byte[40]).Concat(iend).ToArray();
+        var jpeg = Jpeg(0xC0, 10, 10).Concat(new byte[20]).Concat(new byte[] { 0xFF, 0xD9 }).ToArray();
+
+        Assert.True(ImageHeader.IsComplete(png));
+        Assert.False(ImageHeader.IsComplete(png.AsSpan(0, png.Length - 1)));
+        Assert.False(ImageHeader.IsComplete(png.AsSpan(0, png.Length / 2)));
+        Assert.True(ImageHeader.IsComplete(jpeg));
+        Assert.True(ImageHeader.IsComplete([.. jpeg, 0, 0, 0]));
+        Assert.False(ImageHeader.IsComplete(jpeg.AsSpan(0, jpeg.Length - 1)));
+        Assert.False(ImageHeader.IsComplete(Jpeg(0xC0, 10, 10)));
+        Assert.False(ImageHeader.IsComplete([]));
+        Assert.False(ImageHeader.IsComplete("not an image"u8.ToArray()));
+    }
+
+    [Fact]
     public void RejectsSizesBeyondTheRangeOfAnInt()
     {
         Assert.False(ImageHeader.TryReadSize(PngHead(uint.MaxValue, 10), out _, out _));

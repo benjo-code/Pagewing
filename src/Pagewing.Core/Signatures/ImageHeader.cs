@@ -25,6 +25,26 @@ public static class ImageHeader
         return file.Length >= 4 && file[0] == 0xFF && file[1] == 0xD8 && TryReadJpeg(file, out width, out height);
     }
 
+    /// <summary>
+    /// Whether a PNG ends with its IEND chunk or a JPEG with the marker EOI (trailing zero bytes allowed): a file cut off earlier is
+    /// not complete, and a decoder may show the part it has as an image with missing rows. Any other file is not complete either.
+    /// </summary>
+    public static bool IsComplete(ReadOnlySpan<byte> file)
+    {
+        if (file.Length >= 20 && file[..8].SequenceEqual(PngSignature))
+        {
+            return file[^12..].SequenceEqual((ReadOnlySpan<byte>)[0, 0, 0, 0, (byte)'I', (byte)'E', (byte)'N', (byte)'D', 0xAE, 0x42, 0x60, 0x82]);
+        }
+
+        if (file.Length >= 4 && file[0] == 0xFF && file[1] == 0xD8)
+        {
+            var trimmed = file.TrimEnd((byte)0);
+            return trimmed.Length >= 4 && trimmed[^2] == 0xFF && trimmed[^1] == 0xD9;
+        }
+
+        return false;
+    }
+
     private static bool TryReadJpeg(ReadOnlySpan<byte> file, out int width, out int height)
     {
         width = 0;
