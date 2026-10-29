@@ -73,18 +73,22 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
     private bool DesktopFileStartsAppImage(string appImage)
     {
         var dataHome = DataHome();
-        if (dataHome is null)
-        {
-            return true;
-        }
+        return dataHome is null || DesktopFileStartsAppImage(Path.Combine(dataHome, "applications", DesktopFileName), appImage);
+    }
 
+    /// <summary>
+    /// Whether the desktop file at <paramref name="file"/> starts <paramref name="appImage"/>. Never throws: what cannot be
+    /// read or compared counts as "yes", so a damaged folder does not bring the question back every time.
+    /// </summary>
+    internal static bool DesktopFileStartsAppImage(string file, string appImage)
+    {
         try
         {
-            var file = Path.Combine(dataHome, "applications", DesktopFileName);
             return File.Exists(file) && ExecLine(File.ReadAllText(file)) == ExecLine(DesktopEntry.Render(appImage, IconName));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
+            // ArgumentException: the path of the AppImage has a control character, which no desktop entry can hold.
             return true;
         }
     }

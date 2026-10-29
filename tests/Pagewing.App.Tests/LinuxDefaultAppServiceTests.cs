@@ -110,6 +110,33 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
     }
 
     [Fact]
+    public void TheStatusCheckOfTheDesktopFileNeverThrowsForAControlCharacterInThePath()
+    {
+        // No system needed: the desktop file is a file in a temp folder. DesktopEntry.Render refuses the path, which must not
+        // end the status query with an exception (it counts as "nothing to ask again").
+        var file = Path.Combine(_root, "pagewing.desktop");
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(file, DesktopEntry.Render(Path.Combine(_root, "Pagewing.AppImage"), "pagewing"));
+
+        Assert.True(LinuxDefaultAppService.DesktopFileStartsAppImage(file, Path.Combine(_root, "line\nbreak", "Pagewing.AppImage")));
+        Assert.True(LinuxDefaultAppService.DesktopFileStartsAppImage(file, Path.Combine(_root, "Pagewing.AppImage")));
+        Assert.False(LinuxDefaultAppService.DesktopFileStartsAppImage(file, Path.Combine(_root, "elsewhere", "Pagewing.AppImage")));
+    }
+
+    [Fact]
+    public async Task AControlCharacterInTheAppImagePathNeitherBreaksTheStatusNorTheInstallation()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
+        Stub("xdg-mime", LoggingStub("xdg-mime", "pagewing.desktop"));
+        WriteUserDesktopFile(Path.Combine(_root, "Pagewing.AppImage"));
+        _env["APPIMAGE"] = Path.Combine(_root, "line\nbreak", "Pagewing.AppImage");
+
+        Assert.Equal(DefaultAppStatus.IsDefault, await Service().GetStatusAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(DefaultAppResult.Failed, await Service().MakeDefaultAsync(TestContext.Current.CancellationToken));
+        Assert.DoesNotContain("line", File.ReadAllText(Path.Combine(_root, "data", "applications", "pagewing.desktop")));
+    }
+
+    [Fact]
     public async Task MakeDefaultFromAMovedAppImageReplacesTheStaleDesktopFile()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
