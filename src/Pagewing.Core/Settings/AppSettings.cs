@@ -158,10 +158,13 @@ public sealed record AppSettings
 
     /// <summary>The kinds that have a tool style: the drawing tools (the text markups keep their colour in the three properties above).</summary>
     public static IReadOnlyList<AnnotationKind> ToolStyleKinds { get; } =
-        [AnnotationKind.Ink, AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Line, AnnotationKind.Arrow, AnnotationKind.TextBox];
+        [AnnotationKind.Ink, AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Line, AnnotationKind.Arrow, AnnotationKind.TextBox, AnnotationKind.Signature];
 
     /// <summary>The style a drawing tool starts with: red, medium.</summary>
     public static ToolStyle DefaultToolStyle { get; } = new(DrawColor.Red, StrokeWidth.Medium);
+
+    /// <summary>The style a drawn signature starts with: black, medium (ink of a signature is not red).</summary>
+    public static ToolStyle DefaultSignatureStyle { get; } = new(DrawColor.Black, StrokeWidth.Medium);
 
     /// <summary>
     /// The styles the user chose for the drawing tools (the toolbar remembers the last one chosen), or <see langword="null"/>
@@ -177,7 +180,7 @@ public sealed record AppSettings
     public ToolStyle StyleOf(AnnotationKind kind) =>
         ToolStyles is not null && ToolStyleKinds.Contains(kind) && ToolStyles.TryGetValue(kind, out var style) && IsValid(style)
             ? style
-            : DefaultToolStyle;
+            : kind == AnnotationKind.Signature ? DefaultSignatureStyle : DefaultToolStyle;
 
     /// <summary>
     /// Returns a copy in which <paramref name="kind"/> has <paramref name="style"/> and every other tool keeps its style.
@@ -224,9 +227,10 @@ public sealed record AppSettings
         {
             if (style is not null && ToolStyleKinds.Contains(kind))
             {
+                var fallback = kind == AnnotationKind.Signature ? DefaultSignatureStyle : DefaultToolStyle;
                 repaired[kind] = new ToolStyle(
-                    Enum.IsDefined(style.Color) ? style.Color : DefaultToolStyle.Color,
-                    Enum.IsDefined(style.Width) ? style.Width : DefaultToolStyle.Width);
+                    Enum.IsDefined(style.Color) ? style.Color : fallback.Color,
+                    Enum.IsDefined(style.Width) ? style.Width : fallback.Width);
             }
         }
 

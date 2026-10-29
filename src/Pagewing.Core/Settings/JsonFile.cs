@@ -46,9 +46,10 @@ internal static class JsonFile
     /// <summary>
     /// Writes the text into <c>&lt;path&gt;.tmp</c> in the target folder first, then replaces the file in one step.
     /// Returns <c>false</c> if that fails for a file system reason; the old file stays as it was. The target folder is made
-    /// first unless <paramref name="createDirectory"/> is <see langword="false"/>, which fails for a missing folder.
+    /// first unless <paramref name="createDirectory"/> is <see langword="false"/>, which fails for a missing folder. On Unix
+    /// the temporary file (and with it the result) is created with <paramref name="unixMode"/> when given.
     /// </summary>
-    internal static bool TryWrite(string path, string json, bool createDirectory = true)
+    internal static bool TryWrite(string path, string json, bool createDirectory = true, UnixFileMode? unixMode = null)
     {
         var temp = path + ".tmp";
         try
@@ -59,7 +60,13 @@ internal static class JsonFile
                 Directory.CreateDirectory(directory);
             }
 
-            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+            var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None };
+            if (unixMode is { } mode && !OperatingSystem.IsWindows())
+            {
+                options.UnixCreateMode = mode;
+            }
+
+            using (var stream = new FileStream(temp, options))
             {
                 stream.Write(new UTF8Encoding(false).GetBytes(json));
                 stream.Flush(flushToDisk: true);
