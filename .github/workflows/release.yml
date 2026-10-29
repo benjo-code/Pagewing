@@ -1,18 +1,23 @@
 name: Release
 
-# Builds the release files (Milestone 8) on the self-hosted runners and uploads them to the GitHub release.
+# Builds the release files (Milestone 8) on the owner's self-hosted runners and uploads them to the GitHub release.
 # The release itself is created by the owner (gh release create vX.Y.Z --target main ...); this workflow only
 # attaches files to it. Each job uploads its own files directly (no artifact up- or download between the jobs).
 #
+# Started by hand only (M12.1): the owner runs it after creating the release,
+#   gh workflow run release.yml --ref main -f tag=vX.Y.Z -f upload=true
+# Dispatch only, because the workflow ref of a release event is a tag, and the runner-group restriction can name
+# branch refs only (refs/heads/main, refs/heads/dev). The job that signs the update manifest runs on a GitHub-hosted
+# runner behind the environment release-signing (branches main and dev, owner approval).
+#
 # Dry run (build and all smoke tests, no upload):
-#   gh workflow run release.yml --ref release/v0.1.0 -f tag=v0.1.0 -f ref=release/v0.1.0 -f upload=false
+#   gh workflow run release.yml --ref dev -f tag=v0.1.0 -f upload=false
+#   gh workflow run release.yml --ref dev -f tag=v0.1.0 -f ref=<branch> -f upload=false
 # (ref builds that branch, because the tag does not exist before the release; with ref set nothing is uploaded, the
 # key check of the preflight job is skipped, and the job that signs the update manifest does not run at all).
-# The repository is private; fork PRs must stay approval-gated (CLAUDE.md, section CI), this workflow never runs for forks.
+# This workflow never runs for pull requests or forks (CLAUDE.md, section CI).
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -34,7 +39,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
 # Avalonia.BuildServices would send anonymous usage data while compiling (Docs/DECISIONS.md, entry
@@ -53,8 +58,8 @@ jobs:
     permissions:
       contents: read
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+      TAG: ${{ inputs.tag }}
+      UPLOAD: ${{ inputs.upload }}
     steps:
       - name: Check the tag
         run: |
@@ -72,7 +77,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.UPLOAD == 'true'
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.tag }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
@@ -94,12 +99,16 @@ jobs:
     needs: preflight
     runs-on: [self-hosted, dotnet-windows]
     timeout-minutes: 60
+    # The SHA-256 of the checksum file that this job uploaded. The manifest job compares the file it downloads with
+    # it, before anything is signed (packaging/README.md, "Release bauen").
+    outputs:
+      sums_sha256: ${{ steps.sums.outputs.sums_sha256 }}
     # Needed to attach files to the release (gh release upload).
     permissions:
       contents: write
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+      TAG: ${{ inputs.tag }}
+      UPLOAD: ${{ inputs.upload }}
     steps:
       - name: Check the tag and derive the version
         run: |
@@ -116,7 +125,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.ref || inputs.tag }}
           persist-credentials: false
 
       # See ci.yml: without git on PATH actions/checkout extracts a zip whose file times can be older than the
@@ -195,7 +204,7 @@ jobs:
       - name: Checksums
         run: dotnet run tools/package.cs -- sums "out/release/Pagewing-$env:VERSION-win-x64-portable.zip" "out/release/Pagewing-$env:VERSION-win-x64-setup.exe" --out out/release/SHA256SUMS-windows.txt
 
-      # Only for a published release or workflow_dispatch with upload=true; otherwise build and smoke tests only.
+      # Only with upload=true; otherwise build and smoke tests only.
       - name: Upload to the release
         if: env.UPLOAD == 'true'
         env:
@@ -206,17 +215,29 @@ jobs:
           gh release upload "$env:TAG" "out/release/Pagewing-$env:VERSION-win-x64-portable.zip" "out/release/Pagewing-$env:VERSION-win-x64-setup.exe" out/release/SHA256SUMS-windows.txt --clobber
           if ($LASTEXITCODE -ne 0) { throw "gh release upload ist fehlgeschlagen (Exit-Code $LASTEXITCODE); gibt es das Release $env:TAG?" }
 
+      - name: Report the SHA-256 of the checksum file
+        id: sums
+        if: env.UPLOAD == 'true'
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 -Path out/release/SHA256SUMS-windows.txt).Hash.ToLowerInvariant()
+          if ($hash -cnotmatch '^[0-9a-f]{64}$') { throw "Unerwartete SHA-256: '$hash'" }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "sums_sha256=$hash"
+          Write-Host "SHA256SUMS-windows.txt: $hash"
+
   linux:
     name: release-linux
     needs: preflight
     runs-on: [self-hosted, dotnet-linux]
     timeout-minutes: 60
+    # The SHA-256 of the checksum file that this job uploaded (see the windows job).
+    outputs:
+      sums_sha256: ${{ steps.sums.outputs.sums_sha256 }}
     # Needed to attach files to the release (gh release upload).
     permissions:
       contents: write
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+      TAG: ${{ inputs.tag }}
+      UPLOAD: ${{ inputs.upload }}
     steps:
       - name: Check the tag and derive the version
         run: |
@@ -237,7 +258,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.ref || inputs.tag }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
@@ -282,7 +303,7 @@ jobs:
           docker rm -f pagewing-release-build >/dev/null 2>&1 || true
           docker run --rm -v "$PWD:/work" ubuntu:22.04 chown -R "$(id -u):$(id -g)" /work
 
-      # Only for a published release or workflow_dispatch with upload=true; otherwise build and smoke tests only.
+      # Only with upload=true; otherwise build and smoke tests only.
       - name: Upload to the release
         if: env.UPLOAD == 'true'
         env:
@@ -297,24 +318,37 @@ jobs:
             out/release/type2-runtime-20251108.tar.gz \
             out/release/SHA256SUMS-linux.txt --clobber
 
+      - name: Report the SHA-256 of the checksum file
+        id: sums
+        if: env.UPLOAD == 'true'
+        run: |
+          set -euo pipefail
+          hash="$(sha256sum out/release/SHA256SUMS-linux.txt | cut -d' ' -f1)"
+          [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || { echo "Unerwartete SHA-256: '$hash'" >&2; exit 1; }
+          echo "sums_sha256=$hash" >> "$GITHUB_OUTPUT"
+          echo "SHA256SUMS-linux.txt: $hash"
+
   # The signed update manifest (Milestone 8.1): built from the checksums and the file sizes of the release, signed with
-  # the repository secret PAGEWING_UPDATE_SIGNING_KEY, verified with the keys compiled into the app, and uploaded. Runs
-  # only after both build jobs have uploaded their files. The secret appears in exactly one place, the env of the step
-  # "Sign the update manifest", which runs nothing but the signing command of the tool that the step before built from
-  # the tag's checkout into a fresh folder of this job (no dotnet run with its shared script cache on this runner);
-  # package.cs selftest (ManifestJobParts) keeps it so. A pre-release gets no manifest: the app reads only X.Y.Z
-  # versions, and releases/latest never names a pre-release.
+  # the secret PAGEWING_UPDATE_SIGNING_KEY, verified with the keys compiled into the app, and uploaded. Runs only after
+  # both build jobs have uploaded their files. Since M12.1 this is the only job on a GitHub-hosted, ephemeral runner,
+  # and it waits for the approval of the environment release-signing (branches main and dev, owner as reviewer); the
+  # key is a secret of that environment. It appears in exactly one place, the env of the step "Sign the update
+  # manifest", which runs nothing but the signing command of the tool that an earlier step built from the tag's
+  # checkout into a fresh folder of this job; before signing, the downloaded checksum files are compared with the
+  # SHA-256 that the build jobs reported. package.cs selftest (ManifestJobParts) keeps it so. A pre-release gets no
+  # manifest: the app reads only X.Y.Z versions, and releases/latest never names a pre-release.
   manifest:
     name: release-manifest
     needs: [windows, linux]
-    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && (github.event_name == 'release' || inputs.upload) }}
-    runs-on: [self-hosted, dotnet-linux]
+    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && inputs.upload }}
+    runs-on: ubuntu-24.04
+    environment: release-signing
     timeout-minutes: 30
     # Needed to attach the manifest to the release (gh release upload).
     permissions:
       contents: write
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ inputs.tag }}
       # The id of the signing key; it must name a key in src/Pagewing.Core/Updates/UpdateTrust.cs (packaging/README.md,
       # section "Signaturschlüssel für Updates").
       UPDATE_KEY_ID: release-1
@@ -343,12 +377,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.STABLE == 'true'
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.tag }}
           persist-credentials: false
-
-      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
-        if: env.STABLE == 'true'
-        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         if: env.STABLE == 'true'
@@ -358,7 +388,7 @@ jobs:
       - name: Check the release prerequisites (gh)
         if: env.STABLE == 'true'
         run: |
-          command -v gh >/dev/null || { echo 'gh (GitHub CLI) not found on PATH: install it and restart the runner so that it sees the new PATH' >&2; exit 1; }
+          command -v gh >/dev/null || { echo 'gh (GitHub CLI) not found on PATH (it comes with the hosted runner image)' >&2; exit 1; }
           gh --version
 
       - name: Self-test of the packaging tool
@@ -397,6 +427,19 @@ jobs:
           mkdir -p out/manifest
           gh release download "$TAG" --pattern SHA256SUMS-windows.txt --pattern SHA256SUMS-linux.txt --dir out/manifest
           gh release view "$TAG" --json assets > out/manifest/assets.json
+
+      # The build jobs reported the SHA-256 of the checksum files they uploaded; a file that was replaced on the release
+      # in the meantime does not get signed. Fails on any difference and on an empty or malformed output. The hashes
+      # reach the shell through the environment, never spliced into the command line.
+      - name: Verify the checksum files against the build jobs
+        if: env.STABLE == 'true'
+        env:
+          WINDOWS_SUMS_SHA256: ${{ needs.windows.outputs.sums_sha256 }}
+          LINUX_SUMS_SHA256: ${{ needs.linux.outputs.sums_sha256 }}
+        run: |
+          set -euo pipefail
+          dotnet "$PACKAGE_TOOL" sums-verify --file out/manifest/SHA256SUMS-windows.txt --sha256 "$WINDOWS_SUMS_SHA256"
+          dotnet "$PACKAGE_TOOL" sums-verify --file out/manifest/SHA256SUMS-linux.txt --sha256 "$LINUX_SUMS_SHA256"
 
       - name: Build the update manifest
         if: env.STABLE == 'true'

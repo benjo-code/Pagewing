@@ -5,7 +5,8 @@
 //   dotnet run tools/package.cs -- layout --rid <win-x64|linux-x64> --app <dir> --cli <dir> --out <dir> [--repo <root>]
 //   dotnet run tools/package.cs -- zip --layout <dir> --version <x.y.z> --out <file>
 //   dotnet run tools/package.cs -- sums <file>... --out <SHA256SUMS.txt>
-//   dotnet run tools/package.cs -- inno-install [--dir <dir>]                         (Windows)
+//   dotnet run tools/package.cs -- sums-verify --file <SHA256SUMS.txt> --sha256 <hex>
+//   dotnet run tools/package.cs -- inno-install [--dir <dir>]                       (Windows)
 //   dotnet run tools/package.cs -- installer --layout <dir> --version <x.y.z> --out <file> [--iscc <ISCC.exe>] [--repo <root>]   (Windows)
 //   dotnet run tools/package.cs -- installer-smoke <setup.exe> [--repo <root>]          (Windows)
 //   dotnet run tools/package.cs -- update-smoke <setup-old.exe> <setup-new.exe> --key <test-key.txt> [--key-id <id>]   (Windows, test build)
@@ -38,6 +39,7 @@ static class Cli
         "  layout --rid <rid> --app <Ordner> --cli <Ordner> --out <Ordner>   legt das Paketlayout an (App, cli/, LICENSE, THIRD-PARTY-NOTICES.txt)\n" +
         "  zip --layout <Ordner> --version <x.y.z> --out <Datei>             reproduzierbare ZIP-Datei, oberster Ordner Pagewing-<Version>/\n" +
         "  sums <Datei>... --out <Datei>                                     SHA-256-Summen (<sha256>  <Dateiname>)\n" +
+        "  sums-verify --file <Datei> --sha256 <Hex>                         prueft eine SHA256SUMS-Datei gegen die Summe des Bau-Jobs (leer oder falsch: Fehler)\n" +
         "  inno-install [--dir <Ordner>]                                     laedt Inno Setup (feste Version, SHA-256 geprueft) ins Benutzerprofil (Windows)\n" +
         "  installer --layout <Ordner> --version <x.y.z> --out <Datei> [--iscc <ISCC.exe>]   baut Pagewing-<Version>-win-x64-setup.exe (Windows)\n" +
         "  installer-smoke <Setup.exe>                                       installiert still, prueft, installiert erneut, deinstalliert (Windows)\n" +
@@ -61,6 +63,7 @@ static class Cli
         ["layout"] = Layout.Run,
         ["zip"] = ZipCommand.Run,
         ["sums"] = Sums.Run,
+        ["sums-verify"] = SumsVerify.Run,
         ["inno-install"] = InnoInstall.Run,
         ["installer"] = Installer.Run,
         ["installer-smoke"] = InstallerSmoke.Run,
@@ -543,6 +546,55 @@ static class Sums
         }
 
         File.WriteAllText(output, string.Concat(p.Positional.Select(Line)), new UTF8Encoding(false));
+        return 0;
+    }
+}
+
+// sums-verify --file <path> --sha256 <hex>: the release workflow compares each downloaded SHA256SUMS file with the hash
+// that the build job reported as a job output, before anything is signed. Fails closed: a missing, empty or malformed
+// expectation is a failure, never a pass.
+static class SumsVerify
+{
+    // null when the file has the expected SHA-256 (hex, either case); otherwise why not.
+    public static string? Problem(string file, string expected)
+    {
+        var hex = expected.Trim();
+        if (hex.Length != 64 || !hex.All(char.IsAsciiHexDigit))
+        {
+            return hex.Length == 0
+                ? "die erwartete SHA-256 ist leer (der Bau-Job hat keine geliefert)"
+                : "die erwartete SHA-256 ist keine 64-stellige Hexzahl";
+        }
+
+        if (!File.Exists(file))
+        {
+            return $"Datei nicht gefunden: {file}";
+        }
+
+        using var stream = File.OpenRead(file);
+        var actual = Convert.ToHexStringLower(SHA256.HashData(stream));
+        return string.Equals(actual, hex, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"SHA-256 von {file} ist {actual}, der Bau-Job meldete {hex.ToLowerInvariant()}";
+    }
+
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--file", "--sha256");
+        if (parsed is not { } p || p.Positional.Count != 0 ||
+            !p.Named.TryGetValue("--file", out var file) || !p.Named.TryGetValue("--sha256", out var sha256))
+        {
+            Console.Error.WriteLine("Aufruf: sums-verify --file <Datei> --sha256 <Hex>");
+            return 2;
+        }
+
+        if (Problem(file, sha256) is { } problem)
+        {
+            Console.Error.WriteLine($"sums-verify: {problem}");
+            return 1;
+        }
+
+        Console.WriteLine($"sums-verify: {file} stimmt mit der Summe des Bau-Jobs ueberein");
         return 0;
     }
 }
@@ -3763,6 +3815,20 @@ static class SelfTest
             Expect("sums: eine Zeile je Datei, LF am Ende", lines.Length, 3);
             Expect("sums: fehlende Datei liefert 1", Cli.Run(["sums", Path.Combine(dir, "nope"), "--out", sums]), 1);
             Expect("sums: ohne Datei liefert 2", Cli.Run(["sums", "--out", sums]), 2);
+
+            var sumsHash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(sums)));
+            Expect("sums-verify: passende Summe liefert 0", Cli.Run(["sums-verify", "--file", sums, "--sha256", sumsHash]), 0);
+            Expect("sums-verify: Grossbuchstaben liefern 0", Cli.Run(["sums-verify", "--file", sums, "--sha256", sumsHash.ToUpperInvariant()]), 0);
+            var manipulated = (sumsHash[0] == '0' ? "1" : "0") + sumsHash[1..];
+            Expect("sums-verify: manipulierte Summe liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", manipulated]), 1);
+            Expect("sums-verify: zu kurze Summe liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", sumsHash[..63]]), 1);
+            Expect("sums-verify: zu lange Summe liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", sumsHash + "0"]), 1);
+            Expect("sums-verify: keine Hexzahl liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", "g" + sumsHash[1..]]), 1);
+            Expect("sums-verify: leere Summe liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", string.Empty]), 1);
+            Expect("sums-verify: Leerzeichen allein liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", "  "]), 1);
+            Expect("sums-verify: fehlende Datei liefert 1", Cli.Run(["sums-verify", "--file", Path.Combine(dir, "nope"), "--sha256", sumsHash]), 1);
+            Expect("sums-verify: ohne --sha256 liefert 2", Cli.Run(["sums-verify", "--file", sums]), 2);
+            Expect("sums-verify: ohne --file liefert 2", Cli.Run(["sums-verify", "--sha256", sumsHash]), 2);
         }
         finally
         {
@@ -4785,9 +4851,18 @@ static class SelfTest
 
         var yml = File.ReadAllText(workflow).Replace("\r\n", "\n", StringComparison.Ordinal);
         var on = Regex.Match(yml, @"(?m)^on:\n(?<b>(?:[ #].*\n|\n)*)").Groups["b"].Value;
-        Expect("release.yml: Ausloeser nur release und workflow_dispatch",
-            string.Join(",", Regex.Matches(on, @"(?m)^  (?<k>[a-z_]+):").Select(m => m.Groups["k"].Value)), "release,workflow_dispatch");
+        // Dispatch only (M12.1): the workflow ref of a release event is a tag, and the runner-group restriction can name
+        // branch refs only (refs/heads/main, refs/heads/dev).
+        Expect("release.yml: Ausloeser nur workflow_dispatch",
+            string.Join(",", Regex.Matches(on, @"(?m)^  (?<k>[a-z_]+):").Select(m => m.Groups["k"].Value)), "workflow_dispatch");
         Expect("release.yml: kein Ausloeser fuer Pull Requests", yml.Contains("pull_request", StringComparison.Ordinal), false);
+        Expect("release.yml: nichts liest mehr ein Release-Ereignis (github.event.release, event_name == 'release')",
+            Regex.IsMatch(yml, @"github\.event\.release|event_name == 'release'"), false);
+        Expect("release.yml: TAG kommt in jedem Job nur aus inputs.tag", Regex.Count(yml, @"(?m)^      TAG: \$\{\{ inputs\.tag \}\}$"), Regex.Count(yml, @"(?m)^      TAG:"));
+        Expect("release.yml: TAG wird in vier Jobs gesetzt", Regex.Count(yml, @"(?m)^      TAG:"), 4);
+        Expect("release.yml: UPLOAD kommt in jedem Job nur aus inputs.upload", Regex.Count(yml, @"(?m)^      UPLOAD: \$\{\{ inputs\.upload \}\}$"), Regex.Count(yml, @"(?m)^      UPLOAD:"));
+        Expect("release.yml: UPLOAD wird in drei Jobs gesetzt", Regex.Count(yml, @"(?m)^      UPLOAD:"), 3);
+        Expect("release.yml: Nebenlaeufigkeit nur je inputs.tag", yml.Contains("  group: release-${{ inputs.tag }}\n", StringComparison.Ordinal), true);
 
         string Job(string name) => Regex.Match(yml, @"(?m)^  " + name + @":\n(?<b>(?:    .*\n|\n)*)").Groups["b"].Value;
         List<string> StepsOf(string jobText) => [.. Regex.Split(jobText, @"(?m)^(?=      - )").Skip(1)];
@@ -4813,9 +4888,17 @@ static class SelfTest
         Expect("release.yml: Job manifest vorhanden", job.Length > 0, true);
         Expect("release.yml: Job manifest wartet auf beide Jobs", job.Contains("    needs: [windows, linux]\n", StringComparison.Ordinal), true);
         Expect("release.yml: Job manifest laeuft nur nach Erfolg beider Jobs und nur beim Hochladen", job.Contains(
-            "    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && (github.event_name == 'release' || inputs.upload) }}\n",
+            "    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && inputs.upload }}\n",
             StringComparison.Ordinal), true);
-        Expect("release.yml: Job manifest auf dem Linux-Runner", job.Contains("    runs-on: [self-hosted, dotnet-linux]\n", StringComparison.Ordinal), true);
+        // The only job that sees the signing key runs on a fresh GitHub-hosted runner, behind the environment.
+        Expect("release.yml: Job manifest auf dem gehosteten Runner ubuntu-24.04", job.Contains("    runs-on: ubuntu-24.04\n", StringComparison.Ordinal), true);
+        Expect("release.yml: Job manifest nennt kein self-hosted-Label", IsSelfHosted(Regex.Match(job, @"(?m)^    runs-on:.*$").Value), false);
+        Expect("release.yml: Job manifest mit environment: release-signing", job.Contains("    environment: release-signing\n", StringComparison.Ordinal), true);
+        foreach (var buildJob in new[] { "windows", "linux" })
+        {
+            Expect($"release.yml: Job {buildJob} gibt die SHA-256 seiner Pruefsummendatei aus (outputs.sums_sha256)",
+                Job(buildJob).Contains("    outputs:\n      sums_sha256: ${{ steps.sums.outputs.sums_sha256 }}\n", StringComparison.Ordinal), true);
+        }
         Expect("release.yml: Job manifest darf hochladen (contents: write)", Regex.IsMatch(job, @"    permissions:\n      contents: write\n"), true);
 
         var steps = StepsOf(job);
@@ -4851,11 +4934,24 @@ static class SelfTest
 
         var test = Index("Check that the release key is not the placeholder");
         var download = Index("Download the checksums and the file sizes");
+        var sumsCheck = Index("Verify the checksum files against the build jobs");
         var build = Index("Build the update manifest");
         var verify = Index("Verify the signature with the keys in UpdateTrust.cs");
         var upload = Index("Upload the manifest to the release");
-        Expect("release.yml: Reihenfolge Platzhalter-Test, Download, Bau, Signatur, Pruefung, Hochladen",
-            test >= 0 && test < download && download < build && build < sign && sign < verify && verify < upload, true);
+        Expect("release.yml: Reihenfolge Platzhalter-Test, Download, Summenvergleich, Bau, Signatur, Pruefung, Hochladen",
+            test >= 0 && test < download && download < sumsCheck && sumsCheck < build && build < sign && sign < verify && verify < upload, true);
+        var sumsStep = sumsCheck >= 0 ? steps[sumsCheck] : string.Empty;
+        Expect("release.yml: Summenvergleich nach dem Werkzeug-Bau (nutzt PACKAGE_TOOL)", buildTool >= 0 && buildTool < sumsCheck, true);
+        Expect("release.yml: Summenvergleich nimmt die Hashes der Bau-Jobs ueber die Umgebung (kein ${{ }} in der Befehlszeile)",
+            Regex.IsMatch(sumsStep, @"\n        env:\n(?:          \S.*\n)*          WINDOWS_SUMS_SHA256: \$\{\{ needs\.windows\.outputs\.sums_sha256 \}\}\n") &&
+            Regex.IsMatch(sumsStep, @"\n        env:\n(?:          \S.*\n)*          LINUX_SUMS_SHA256: \$\{\{ needs\.linux\.outputs\.sums_sha256 \}\}\n") &&
+            sumsStep.Contains("\n        run: |\n", StringComparison.Ordinal) &&
+            !sumsStep[sumsStep.IndexOf("\n        run: |\n", StringComparison.Ordinal)..].Contains("${{", StringComparison.Ordinal), true);
+        Expect("release.yml: Summenvergleich prueft beide heruntergeladenen Dateien mit sums-verify und bricht bei Fehler ab",
+            sumsStep.Contains("set -euo pipefail", StringComparison.Ordinal) &&
+            sumsStep.Contains(@"sums-verify --file out/manifest/SHA256SUMS-windows.txt --sha256 ""$WINDOWS_SUMS_SHA256""", StringComparison.Ordinal) &&
+            sumsStep.Contains(@"sums-verify --file out/manifest/SHA256SUMS-linux.txt --sha256 ""$LINUX_SUMS_SHA256""", StringComparison.Ordinal), true);
+        Expect("release.yml: Summenvergleich ohne Secret und ohne Action", sumsStep.Contains("secrets.", StringComparison.Ordinal) || sumsStep.Contains("uses:", StringComparison.Ordinal), false);
         Expect("release.yml: Platzhalter-Test laeuft scharf (PAGEWING_REQUIRE_RELEASE_KEY)", test >= 0 &&
             steps[test].Contains("PAGEWING_REQUIRE_RELEASE_KEY: '1'", StringComparison.Ordinal) &&
             steps[test].Contains("ReleaseKeysAreNotThePlaceholderWhenReleasing", StringComparison.Ordinal), true);

@@ -122,20 +122,26 @@ Manuelle Abnahme (nicht automatisierbar):
 
 ## Release bauen (`.github/workflows/release.yml`)
 
-Das Release selbst legt der Projektinhaber an (`gh release create vX.Y.Z --target main …`); der Workflow hängt nur Dateien an. Auslöser sind `release: published` und `workflow_dispatch` (Eingaben `tag`, `upload`). Je Betriebssystem läuft ein Job auf dem eigenen Runner (`dotnet-windows`, `dotnet-linux`), jeder lädt seine Dateien selbst mit `gh release upload "$TAG" … --clobber` hoch (kein `upload-artifact`).
+Das Release selbst legt der Projektinhaber an (`gh release create vX.Y.Z --target main …`); der Workflow hängt nur Dateien an. Der Workflow startet **nur von Hand** (`workflow_dispatch`, Eingaben `tag`, `ref`, `upload`; seit M12.1 kein Auslöser `release: published` mehr, weil die Workflow-Referenz eines Release-Ereignisses ein Tag ist und die Workflow-Einschränkung der Runner-Gruppe nur Branch-Referenzen nennen kann). Ablauf: Release anlegen (`gh release create vX.Y.Z --target main …`), dann den Workflow vom Branch `main` starten:
+
+```sh
+gh workflow run release.yml --ref main -f tag=vX.Y.Z -f upload=true
+```
+
+Die Bau-Jobs laufen je Betriebssystem auf dem eigenen Runner (`dotnet-windows`, `dotnet-linux`); nur der Job `manifest` läuft auf einem gehosteten, kurzlebigen Runner (`ubuntu-24.04`) hinter dem Environment `release-signing` (siehe Punkt 5). Jeder Bau-Job lädt seine Dateien selbst mit `gh release upload "$TAG" … --clobber` hoch (kein `upload-artifact`).
 
 0. Vorab (Job `preflight`, ohne Secret, nur Leserechte): Beim Hochladen prüft er mit `update-verify --keys-from-source`, dass der Tag in `UpdateTrust.cs` einen echten öffentlichen Schlüssel hat. Steht dort nur der Platzhalter, laufen die Bau-Jobs nicht, und nichts wird hochgeladen (ein Release, das nur dem Platzhalter vertraut, könnte sich nie aktualisieren, und ein Tag lässt sich nicht nachbessern). Ein Trockenlauf (`upload=false`) überspringt die Prüfung.
 1. Der Tag muss `vX.Y.Z` oder `vX.Y.Z-<Vorabversion>` heißen, sonst bricht der Job ab. Die Version (Tag ohne `v`) geht als `-p:Version=<Version>` an `dotnet publish` für App und CLI; ein `-rc1` heißt im `.deb` `~rc1`.
 2. Windows: Publish (Native AOT), `licenses check`, `layout`, `zip`, `inno-install`, `installer`, `installer-smoke`, `sums` nach `SHA256SUMS-windows.txt`, Hochladen. Dateien: `Pagewing-<Version>-win-x64-portable.zip`, `Pagewing-<Version>-win-x64-setup.exe`.
 3. Linux: Der Job baut in **einem** `docker run` von `ubuntu:22.04` (`packaging/linux/container-build.sh`, weil die glibc des Runners neuer als 2.35 ist; Eintrag „Mindest-glibc 2.35 und Bauweise der Linux-Pakete: Container …“): Publish, `licenses check`, `check-binary --max-glibc 2.35` (**blockierend**: ein Binary mit neuerer glibc darf nicht ausgeliefert werden), `layout`, `deb`, `deb-smoke`, `runtime-fetch`, `appimage`, `appimage-smoke`, `runtime-sources`, `sums` nach `SHA256SUMS-linux.txt`. Hochgeladen wird danach auf dem Host (der Container sieht `GH_TOKEN` nie). Dateien: `pagewing_<Version>_amd64.deb`, `Pagewing-<Version>-x86_64.AppImage`, die zwei Quellarchive. Das Skript lässt sich auf einem Linux-Rechner mit Docker auch von Hand starten (Befehl im Kopf der Datei, dazu `VERSION` und `DEBVERSION`).
-4. Hochgeladen wird nur bei `release` oder `workflow_dispatch` mit `upload=true` (das Release muss dann existieren). Sonst baut der Lauf und führt alle Smoke-Tests aus.
-5. Manifest (Job `manifest`, Milestone 8.1): läuft erst, wenn beide Jobs erfolgreich hochgeladen haben, und nur beim Hochladen (`needs: [windows, linux]`, auf `dotnet-linux`). Er prüft mit `PAGEWING_REQUIRE_RELEASE_KEY=1` (`UpdateTrustTests.ReleaseKeysAreNotThePlaceholderWhenReleasing`), dass `UpdateTrust.cs` nicht mehr den Platzhalter enthält, baut das Werkzeug ohne Secret aus dem Checkout des Tags in einen frisch geleerten Ordner des Jobs (`dotnet project convert` und `dotnet build` nach `$RUNNER_TEMP/package-tool`, ohne Buildserver und ohne den gemeinsamen Skript-Cache, den auch die Pull-Request-CI auf diesem Runner nutzt), lädt `SHA256SUMS-windows.txt`, `SHA256SUMS-linux.txt` und die Dateigrößen (`gh release view <Tag> --json assets`), baut `update-manifest.json` (`update-manifest`), signiert es (`update-sign`, Kennung aus `UPDATE_KEY_ID` im Job; der Schritt mit dem Secret startet nur das gebaute Werkzeug, kein `dotnet run` oder `dotnet build`), prüft die Signatur mit den Schlüsseln des Programms (`update-verify --keys-from-source`) und lädt Manifest und Signatur mit `--clobber` hoch. Eine Vorabversion (`vX.Y.Z-…`) bekommt kein Manifest: Der Job überspringt dann alle Schritte, denn die App liest nur `X.Y.Z` und `releases/latest` nennt nie eine Vorabversion.
+4. Hochgeladen wird nur mit `upload=true` (das Release muss dann existieren). Sonst baut der Lauf und führt alle Smoke-Tests aus. Nach dem Hochladen berechnet jeder Bau-Job die SHA-256 seiner `SHA256SUMS-*.txt` und gibt sie als Job-Ausgabe `sums_sha256` aus (Kleinbuchstaben-Hex).
+5. Manifest (Job `manifest`, Milestone 8.1): läuft erst, wenn beide Jobs erfolgreich hochgeladen haben, und nur beim Hochladen (`needs: [windows, linux]`, auf einem gehosteten `ubuntu-24.04`-Runner mit `environment: release-signing`: der Job wartet auf die Freigabe des Projektinhabers, das Environment erlaubt nur die Branches `main` und `dev`). Er prüft mit `PAGEWING_REQUIRE_RELEASE_KEY=1` (`UpdateTrustTests.ReleaseKeysAreNotThePlaceholderWhenReleasing`), dass `UpdateTrust.cs` nicht mehr den Platzhalter enthält, baut das Werkzeug ohne Secret aus dem Checkout des Tags in einen frisch geleerten Ordner des Jobs (`dotnet project convert` und `dotnet build` nach `$RUNNER_TEMP/package-tool`, ohne Buildserver und ohne Verzeichnis-Importe), lädt `SHA256SUMS-windows.txt`, `SHA256SUMS-linux.txt` und die Dateigrößen (`gh release view <Tag> --json assets`), vergleicht die SHA-256 beider Dateien mit den Job-Ausgaben der Bau-Jobs (`sums-verify`, Schritt „Verify the checksum files against the build jobs“; ein Unterschied, eine leere oder kaputte Ausgabe bricht ab, bevor etwas signiert wird; das schützt vor einer zwischen Hochladen und Signieren ausgetauschten Prüfsummendatei, nicht vor einem Bau-Runner, der falsche Dateien meldet), baut `update-manifest.json` (`update-manifest`), signiert es (`update-sign`, Kennung aus `UPDATE_KEY_ID` im Job; der Schritt mit dem Secret startet nur das gebaute Werkzeug, kein `dotnet run` oder `dotnet build`), prüft die Signatur mit den Schlüsseln des Programms (`update-verify --keys-from-source`) und lädt Manifest und Signatur mit `--clobber` hoch. Eine Vorabversion (`vX.Y.Z-…`) bekommt kein Manifest: Der Job überspringt dann alle Schritte, denn die App liest nur `X.Y.Z` und `releases/latest` nennt nie eine Vorabversion.
 
-Trockenlauf (Bau und Smoke-Tests ohne Hochladen), vom Projektinhaber auf Wunsch zu starten; seine Runner müssen laufen. Vor `gh release create` gibt es den Tag noch nicht; `ref` baut deshalb einen Branch (die Version kommt aus `tag`), und mit `ref` wird nie hochgeladen (der Lauf bricht ab, wenn zusätzlich `upload=true` gesetzt ist):
+Trockenlauf (Bau und Smoke-Tests ohne Hochladen), vom Projektinhaber auf Wunsch zu starten; seine Runner müssen laufen. Der Workflow muss auf `main` oder `dev` liegen (`--ref`). Vor `gh release create` gibt es den Tag noch nicht; `ref` baut deshalb einen Branch (die Version kommt aus `tag`), und mit `ref` wird nie hochgeladen (der Lauf bricht ab, wenn zusätzlich `upload=true` gesetzt ist):
 
 ```sh
-git push -u origin release/v0.1.0
-gh workflow run release.yml --ref release/v0.1.0 -f tag=v0.1.0 -f ref=release/v0.1.0 -f upload=false
+gh workflow run release.yml --ref dev -f tag=v0.1.0 -f upload=false
+gh workflow run release.yml --ref dev -f tag=v0.1.0 -f ref=<Branch> -f upload=false
 ```
 
 `dotnet run tools/package.cs -- selftest` (`TagRuleParts`) prüft, dass die Tag-Regel in beiden Jobs gleich ist und genau SemVer-Tags annimmt (`v0.1.0`, `v0.1.0-rc.1`; nicht `V0.1.0`, `v0.1`, `0.1.0`).
@@ -145,9 +151,9 @@ Voraussetzungen der Runner (zusätzlich zu denen für Native AOT in `CLAUDE.md`)
 - Linux: `docker` (der Runner-Benutzer muss es nutzen dürfen, `docker info` ohne `sudo`) und `gh`. Alle Bauwerkzeuge (`clang`, `zlib1g-dev`, `dpkg`, `squashfs-tools`, `binutils`, `xvfb`, `lintian`, `desktop-file-utils` …) installiert `container-build.sh` im Container, das Image `ubuntu:22.04` und die Pakete kommen beim Lauf aus dem Netz.
 - Windows: `gh` im PATH (`winget install --id GitHub.cli`); Inno Setup holt `inno-install` selbst ins Benutzerprofil (kein Administrator).
 - `check-binary` erlaubt neben den glibc-Kernbibliotheken nur `libfontconfig.so.1` (NEEDED von `libSkiaSharp.so`). Sie ist im `.deb` über `Depends: libfontconfig1` abgedeckt; das AppImage setzt sie, wie die X11-Bibliotheken, auf dem Rechner voraus (es bringt keine Systembibliotheken mit). OpenSSL lädt .NET erst zur Laufzeit (`dlopen`, kein NEEDED, `check-binary` sieht es nicht); die Update-Prüfung braucht es für HTTPS und die Signatur, deshalb verlangt das `.deb` seit Milestone 8.1 `libssl3 | libssl3t64` (Eintrag „Linux: AppImage ersetzt sich, `.deb` nur Hinweis, `libssl` als Abhängigkeit (M8.1)“).
-- Der Lauf braucht die Rechte `contents: write` nur zum Hochladen; er läuft nie für Forks (Repo privat, siehe `CLAUDE.md`, Abschnitt „CI“).
+- Der Lauf braucht die Rechte `contents: write` nur zum Hochladen; er startet nie für Pull Requests oder Forks (nur `workflow_dispatch`, siehe `CLAUDE.md`, Abschnitt „CI“).
 - Der erste echte Lauf gehört zum Release `v0.1.0`; bis dahin ist das Hochladen ungeprüft.
-- Für den Job `manifest`: das Secret `PAGEWING_UPDATE_SIGNING_KEY` im Repo (siehe „Signaturschlüssel für Updates“) und auf dem Linux-Runner wie beim Linux-Job `gh` und .NET. Ohne echten öffentlichen Schlüssel in `UpdateTrust.cs` scheitert schon der Job `preflight`, bevor etwas gebaut oder hochgeladen wird; der Platzhalter-Test im Job `manifest` ist die zweite Sicherung.
+- Für den Job `manifest`: kein eigener Runner mehr nötig (gehosteter `ubuntu-24.04`-Runner mit `gh` im Image, .NET kommt von `setup-dotnet`). Voraussetzung ist das Environment `release-signing` (Einstellungen des Repos → Environments: Bereitstellungszweige nur `main` und `dev`, Pflichtprüfer der Projektinhaber) mit dem Environment-Secret `PAGEWING_UPDATE_SIGNING_KEY` (siehe „Signaturschlüssel für Updates“); ohne das Environment wartet der Job nicht auf eine Freigabe, ohne das Secret scheitert die Signatur. Ohne echten öffentlichen Schlüssel in `UpdateTrust.cs` scheitert schon der Job `preflight`, bevor etwas gebaut oder hochgeladen wird; der Platzhalter-Test im Job `manifest` ist die zweite Sicherung.
 
 ## Update-Manifest und Signatur
 
@@ -175,13 +181,13 @@ Den Schlüssel erzeugt nur der Projektinhaber, einmal, auf dem eigenen Rechner. 
                Convert.FromBase64String("MFkw…")),
    ```
 
-2. Secret anlegen, ohne den Wert auf die Kommandozeile zu schreiben (nie `--body`):
+2. Secret als **Environment-Secret** von `release-signing` anlegen (das Environment vorher im Repo anlegen: Bereitstellungszweige `main` und `dev`, Pflichtprüfer der Projektinhaber), ohne den Wert auf die Kommandozeile zu schreiben (nie `--body`):
 
    ```powershell
-   Get-Content -Raw "$env:USERPROFILE\pagewing-update-signing-key.txt" | gh secret set PAGEWING_UPDATE_SIGNING_KEY --repo benjo-code/Pagewing
+   Get-Content -Raw "$env:USERPROFILE\pagewing-update-signing-key.txt" | gh secret set PAGEWING_UPDATE_SIGNING_KEY --env release-signing --repo benjo-code/Pagewing
    ```
 
-   (bash: `gh secret set PAGEWING_UPDATE_SIGNING_KEY --repo benjo-code/Pagewing < ~/pagewing-update-signing-key.txt`)
+   (bash: `gh secret set PAGEWING_UPDATE_SIGNING_KEY --env release-signing --repo benjo-code/Pagewing < ~/pagewing-update-signing-key.txt`)
 
 3. Öffentlichen Schlüssel eintragen (auf einem Branch, per PR nach `dev`): in `src/Pagewing.Core/Updates/UpdateTrust.cs` den Eintrag `new UpdateKey(PlaceholderKeyId, …)` in `Keys` durch die ausgegebene Zeile ersetzen (die Konstante `PlaceholderKeyId` bleibt, die Tests nennen sie). Heißt die Kennung nicht `release-1`, auch `UPDATE_KEY_ID` im Job `manifest` von `.github/workflows/release.yml` ändern; `package.cs selftest` prüft, dass sie in `UpdateTrust.cs` steht.
 
