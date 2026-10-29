@@ -1,4 +1,5 @@
 using Pagewing.Core.Forms;
+using Pagewing.Core.Signatures;
 
 namespace Pagewing.Core.Annotations;
 
@@ -8,13 +9,15 @@ namespace Pagewing.Core.Annotations;
 /// </summary>
 public abstract record AnnotationCommand
 {
-    /// <summary>An annotation was created; undo deletes it.</summary>
+    /// <summary>An annotation was created; undo deletes it, redo creates it again.</summary>
     /// <param name="Created">The annotation as it was after creating.</param>
-    public sealed record Create(PdfAnnotation Created) : AnnotationCommand;
+    /// <param name="Image">The pixels of an image signature (packed), which redo needs; otherwise <see langword="null"/>.</param>
+    public sealed record Create(PdfAnnotation Created, PackedSignatureImage? Image = null) : AnnotationCommand;
 
     /// <summary>An annotation was deleted; undo recreates it.</summary>
     /// <param name="Removed">The annotation as it was before deleting.</param>
-    public sealed record Delete(PdfAnnotation Removed) : AnnotationCommand;
+    /// <param name="Image">The pixels of an image signature (packed, read before deleting), which undo needs; otherwise <see langword="null"/>.</param>
+    public sealed record Delete(PdfAnnotation Removed, PackedSignatureImage? Image = null) : AnnotationCommand;
 
     /// <summary>An annotation was changed; undo restores the earlier state.</summary>
     /// <param name="Before">The annotation before the change.</param>
@@ -30,6 +33,16 @@ public abstract record AnnotationCommand
     /// <param name="After">The state after the change, as read back.</param>
     /// <param name="Pages">Every page with a widget of the field.</param>
     public sealed record FormValue(string FieldName, FormFieldState Before, FormFieldState After, IReadOnlySet<int> Pages) : AnnotationCommand;
+}
+
+/// <summary>The packed images of the signatures in the history would be more than <see cref="SignatureLimits.MaxHistoryImageBytes"/>: save first.</summary>
+public sealed class AnnotationHistoryFullException : InvalidOperationException
+{
+    /// <summary>Creates the exception.</summary>
+    public AnnotationHistoryFullException()
+        : base("The history holds the images of too many signatures; save first.")
+    {
+    }
 }
 
 /// <summary>
@@ -48,6 +61,22 @@ public sealed class AnnotationHistory
     // What was pushed since the last Clear: form values, and any other step (also one undone, dropped or forgotten since).
     private bool _formSteps;
     private bool _otherSteps;
+
+    /// <summary>
+    /// Gets the bytes of the packed images in both stacks (the memory the history holds for them). Empty after <see cref="Clear"/>,
+    /// so after a save.
+    /// </summary>
+    public long ImageBytes => ImageBytesOf(_undo) + ImageBytesOf(_redo);
+
+    /// <summary>
+    /// Whether a step that adds <paramref name="bytes"/> of packed image fits into <see cref="SignatureLimits.MaxHistoryImageBytes"/>:
+    /// measured against the steps that can still be undone, because a new step forgets the redo stack and its images.
+    /// </summary>
+    /// <param name="bytes">The packed size of the image the step would keep.</param>
+    public bool Fits(long bytes) => Fits(bytes, SignatureLimits.MaxHistoryImageBytes);
+
+    /// <summary>Like <see cref="Fits(long)"/> against another budget (tests make it small).</summary>
+    internal bool Fits(long bytes, long budget) => ImageBytesOf(_undo) + bytes <= budget;
 
     /// <summary>Whether <see cref="TakeUndo"/> returns a command.</summary>
     public bool CanUndo => _undo.Count > 0;
@@ -69,6 +98,22 @@ public sealed class AnnotationHistory
     /// no step of its own (it follows a failed form write).
     /// </summary>
     public bool HasOnlyFormChanges => _formSteps && !_otherSteps;
+
+    private static long ImageBytesOf(List<AnnotationCommand> commands)
+    {
+        long bytes = 0;
+        foreach (var command in commands)
+        {
+            bytes += command switch
+            {
+                AnnotationCommand.Create create => create.Image?.Deflated.Length ?? 0,
+                AnnotationCommand.Delete delete => delete.Image?.Deflated.Length ?? 0,
+                _ => 0,
+            };
+        }
+
+        return bytes;
+    }
 
     /// <summary>Records a new change and forgets everything that could be redone.</summary>
     /// <param name="command">The change that was just made.</param>
