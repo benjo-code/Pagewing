@@ -206,6 +206,66 @@ Den Schlüssel erzeugt nur der Projektinhaber, einmal, auf dem eigenen Rechner. 
 
 Schlüsselwechsel (Verdacht auf Diebstahl, etwa ein gekaperter Runner): mit `update-keygen` einen neuen Schlüssel unter neuer Kennung (`release-2`) erzeugen und **zusätzlich** in `UpdateTrust.Keys` eintragen; dieses Release wird noch mit dem alten Schlüssel signiert, denn nur ihm vertrauen die installierten Programme. Danach Secret und `UPDATE_KEY_ID` auf den neuen Schlüssel umstellen und im folgenden Release den alten Eintrag entfernen. Geht der private Schlüssel verloren, gibt es diesen Weg nicht: Die Nutzer müssen einmal von Hand auf eine Version mit neuem Schlüssel umsteigen.
 
+## Repo öffentlich schalten (Checkliste)
+
+Milestone 12.1. Alles hier setzt der **Projektinhaber** (Einstellungen von Orga und Repo, teils fehlt `gh` die Berechtigung); Claude liest den Zustand nur (`gh api` mit GET) und stellt nie eine Einstellung um. Jeder Eintrag nennt, wer ihn setzt, wie der Zustand gelesen wird (mit Soll) und wo er gesetzt wird. Die Gründe stehen in `Docs/DECISIONS.md`, Einträge „CI auf öffentlichem Repo …“, „Signierung: Environment …“ und „CodeQL und Checkliste zum Umschalten (M12.1)“. Kosten (geprüft am 2026-10-29): Gehostete Runner, CodeQL, Secret scanning, Push protection und Dependabot sind für öffentliche Repos kostenlos; Secret scanning und CodeQL kosten im privaten Repo Geld, deshalb erst **nach** dem Umschalten einschalten. Gehostete Läufe eines PR im privaten Repo verbrauchen die enthaltenen Minuten der Orga (Windows zählt mehr).
+
+### Vor dem Umschalten (privat)
+
+1. **Orga: Zwei-Faktor-Pflicht** (Projektinhaber).
+   - Lesen: `gh api orgs/benjo-code --jq .two_factor_requirement_enabled` → `true` (Stand 2026-10-29: `false`).
+   - Setzen: Orga → Settings → Authentication security → „Require two-factor authentication for everyone in the organization“.
+2. **Neue Runner-Gruppe `pagewing-ci`** (Projektinhaber): nur das Repo `Pagewing`, öffentliche Repos erlaubt, beschränkt auf die Workflows `benjo-code/Pagewing/.github/workflows/ci.yml` und `benjo-code/Pagewing/.github/workflows/release.yml`, jeweils mit `@refs/heads/dev` und `@refs/heads/main`; die Runner mit den Labels `dotnet-linux` (zwei) und `dotnet-windows` dorthin verschieben. Grund: Der Workflow-Ref eines PR-Laufs ist `refs/pull/N/merge` und passt nie, auch ein Fork-PR, der `runs-on` ändert, bleibt also in der Warteschlange.
+   - Lesen: `gh api orgs/benjo-code/actions/runner-groups --jq '.runner_groups[] | select(.name=="pagewing-ci") | {visibility, allows_public_repositories, restricted_to_workflows, selected_workflows}'` → `allows_public_repositories: true`, `restricted_to_workflows: true`, vier Einträge in `selected_workflows`; `gh api orgs/benjo-code/actions/runner-groups/<id>/runners --jq '.runners[] | [.labels[].name]'` zeigt `dotnet-linux` zweimal und `dotnet-windows` einmal.
+   - Setzen: Orga → Settings → Actions → Runner groups → New runner group (Repository access: nur `Pagewing`, „Allow public repositories“, „Selected workflows“), danach die Runner der Gruppe zuweisen. Die REST-Felder heißen `restricted_to_workflows` und `selected_workflows` (in der Ausgabe der Gruppen vorhanden); Einträge der Form `<Orga>/<Repo>/.github/workflows/<Datei>@<Ref>`. **Format der Einträge vor dem Setzen gegen die REST-Dokumentation „Self-hosted runner groups“ prüfen** (hier nicht belegt). Ob die Beschränkung greift, zeigt die Probe 1 aus Task 8: ein Wegwerf-PR-Job, der die Labels anfordert, muss in der Warteschlange bleiben.
+3. **Gruppe des Haupt-PC-Runners** (Projektinhaber): öffentliche Repos erlaubt, beschränkt auf `benjo-code/Pagewing/.github/workflows/hardware-measure.yml@refs/heads/dev` und `…@refs/heads/main`.
+   - Lesen: wie in 2, für die Gruppe dieses Runners → `allows_public_repositories: true`, `restricted_to_workflows: true`, genau diese zwei `selected_workflows`.
+   - Setzen: Orga → Settings → Actions → Runner groups → die Gruppe öffnen (gleiche Felder wie in 2; Formatvorbehalt dort gilt auch hier).
+4. **Repo-Einstellungen** (Projektinhaber):
+   - Environment `release-signing`: Bereitstellungszweige nur `main` und `dev`, Required reviewer: Projektinhaber; das Secret `PAGEWING_UPDATE_SIGNING_KEY` **nur** als Environment-Secret (Abschnitt „Signaturschlüssel für Updates“), kein Repository-Secret gleichen Namens.
+     - Lesen: `gh api repos/benjo-code/Pagewing/environments/release-signing --jq '{rules: [.protection_rules[].type], branches: .deployment_branch_policy}'` → `required_reviewers` in `rules` und eine Zweigrichtlinie (`custom_branch_policies: true`); `gh api repos/benjo-code/Pagewing/environments/release-signing/deployment-branch-policies --jq '.branch_policies[].name'` → `main`, `dev`; `gh secret list --env release-signing --repo benjo-code/Pagewing` → enthält den Namen; `gh secret list --repo benjo-code/Pagewing` → enthält ihn **nicht**. (Stand 2026-10-29: Environment noch nicht angelegt, Antwort 404.)
+     - Setzen: Repo → Settings → Environments → New environment.
+   - Ruleset für Tags `v*`: nur der Projektinhaber darf anlegen, ändern und löschen, kein Force.
+     - Lesen: `gh api repos/benjo-code/Pagewing/rulesets --jq '.[] | {name, target, enforcement}'` → ein Ruleset mit `target: tag`, `enforcement: active`.
+     - Setzen: Repo → Settings → Rules → Rulesets → New tag ruleset (Muster `v*`, Bypass nur der Projektinhaber, Regeln: Restrict creations, updates und deletions).
+   - Wiki aus.
+     - Lesen: `gh api repos/benjo-code/Pagewing --jq .has_wiki` → `false` (Stand 2026-10-29: `true`).
+     - Setzen: Repo → Settings → General → Features → Wikis abwählen.
+   - Actions: „Require actions to be pinned to a full-length commit SHA“ an.
+     - Lesen: `gh api repos/benjo-code/Pagewing/actions/permissions --jq .sha_pinning_required` → `true` (Stand 2026-10-29: `false`).
+     - Setzen: Repo → Settings → Actions → General → Actions permissions.
+   - Workflow-Token nur lesend.
+     - Lesen: `gh api repos/benjo-code/Pagewing/actions/permissions/workflow --jq .default_workflow_permissions` → `read` (ist schon so).
+
+### Sofort nach dem Umschalten
+
+Bevor jemand einen PR öffnen kann, in dieser Reihenfolge (Projektinhaber):
+
+5. **Fork-Freigabe** auf „Require approval for all external contributors“.
+   - Lesen: `gh api repos/benjo-code/Pagewing/actions/permissions/fork-pr-contributor-approval --jq .approval_policy` → `all_external_contributors`. Solange das Repo privat ist, antwortet der Endpunkt mit 422 („Fork PR approval is not allowed for private repositories“); das ist erwartet.
+   - Setzen: Repo → Settings → Actions → General → Fork pull request workflows from outside collaborators.
+6. **Secret scanning, Push protection, Dependabot alerts.**
+   - Lesen: `gh api repos/benjo-code/Pagewing --jq .security_and_analysis` → `secret_scanning` und `secret_scanning_push_protection` jeweils `enabled` (Stand 2026-10-29: `disabled`); Dependabot alerts: `gh api repos/benjo-code/Pagewing/vulnerability-alerts` antwortet mit 204 (aus: 404).
+   - Setzen: Repo → Settings → Advanced Security (Code security).
+7. **Privates Melden von Sicherheitslücken** (private vulnerability reporting).
+   - Lesen: `gh api repos/benjo-code/Pagewing/private-vulnerability-reporting --jq .enabled` → `true`.
+   - Setzen: Repo → Settings → Advanced Security → Private vulnerability reporting.
+8. **Erster CodeQL-Lauf:** `.github/workflows/codeql.yml` läuft von selbst (der Job wartet auf `github.event.repository.private == false`).
+   - Lesen: `gh run list --workflow codeql.yml --repo benjo-code/Pagewing --limit 3` → ein erfolgreicher Lauf; Ergebnisse unter Security → Code scanning.
+9. **Aussagen prüfen:** Die Sätze in `CONTRIBUTING.md`, `CLAUDE.md` („Zusammenarbeit“) und `SECURITY.md` stimmen jetzt: Fork-CI läuft nur nach Freigabe und nur auf gehosteten Runnern; der Knopf „Report a vulnerability“ ist im Security-Tab da.
+
+### Aufräumen nur auf Anweisung
+
+10. **Zerstörend, nur auf ausdrückliche Anweisung des Projektinhabers.** Veraltete Remote-Branches (`dependabot/nuget/pdfium-5dd1e390d0`, `feature/m12-sichtbare-unterschrift`), alte Workflow-Läufe (Stand 2026-10-29: 253) und Artefakte (11). Die Logs alter Läufe werden mit dem Umschalten öffentlich; wer sie nicht zeigen will, löscht sie vorher.
+    - Lesen: `gh api repos/benjo-code/Pagewing/actions/runs --jq .total_count`; `gh api repos/benjo-code/Pagewing/actions/artifacts --jq .total_count`; `gh api repos/benjo-code/Pagewing/branches --paginate --jq '.[].name'`.
+    - Vorschlag zum Löschen: `gh run delete <id> --repo benjo-code/Pagewing` je Lauf, `gh api -X DELETE repos/benjo-code/Pagewing/actions/artifacts/<id>`, `gh api -X DELETE repos/benjo-code/Pagewing/git/refs/heads/<Branch>`.
+
+### Persönlich
+
+11. **E-Mail-Adresse schützen** (Projektinhaber; `gh` fehlt dafür der Scope `user`).
+    - Lesen: github.com → Settings → Emails (beide Haken gesetzt).
+    - Setzen: „Keep my email addresses private“ und „Block command line pushes that expose my email“ an; lokal `git config user.email` auf die noreply-Adresse von GitHub stellen. Bereits veröffentlichte Commits behalten ihre Adresse.
+
 ## Update prüfen
 
 Ende-zu-Ende-Prüfung des Updaters (Milestone 8.1) mit zwei lokal gebauten Versionen gegen einen Testserver auf dem eigenen Rechner. Sie ist **manuell** (Installer, UAC-Abfrage, Neustart der App) und läuft nie in der CI. Der echte Signaturschlüssel kommt darin nicht vor, und kein Release ist beteiligt.

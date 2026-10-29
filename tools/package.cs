@@ -4834,6 +4834,20 @@ static class SelfTest
             var manifestRunsOn = Regex.Match(manifest, @"(?m)^    runs-on:.*$").Value;
             Expect("release.yml: Job manifest auf gehostetem Runner", manifestRunsOn.Length > 0 && !IsSelfHosted(manifestRunsOn), true);
         }
+
+        // Code scanning is paid in a private repository: the job must be skipped there, and the write right to the
+        // security events belongs to the job only, never to the workflow.
+        var codeql = Read("codeql.yml");
+        if (codeql is not null)
+        {
+            var topLevel = Regex.Match(codeql, @"(?m)^permissions:\n(?<b>(?:  .*\n)*)").Groups["b"].Value;
+            Expect("codeql.yml: Rechte oben nur contents: read", topLevel.Trim(), "contents: read");
+            Expect("codeql.yml: security-events: write genau einmal, im Job", Regex.Count(codeql, @"security-events: write"), 1);
+            Expect("codeql.yml: security-events: write steht unter dem Job (vier Leerzeichen eingerueckte permissions)",
+                Regex.IsMatch(codeql, @"(?m)^    permissions:\n      contents: read\n      security-events: write\n"), true);
+            Expect("codeql.yml: Job nur im oeffentlichen Repo", Regex.IsMatch(codeql, @"(?m)^    if: github\.event\.repository\.private == false\s*$"), true);
+            Expect("codeql.yml: nur gehosteter Runner", Regex.Match(codeql, @"(?m)^    runs-on:.*$").Value.Trim(), "runs-on: ubuntu-24.04");
+        }
     }
 
     // The third job of release.yml signs the update manifest. The signing key is a secret of the environment
