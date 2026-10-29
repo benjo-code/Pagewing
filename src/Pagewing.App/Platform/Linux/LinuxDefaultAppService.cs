@@ -193,8 +193,9 @@ internal sealed class LinuxDefaultAppService : IDefaultAppService
 
             return true;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
+            // ArgumentException: the path of the AppImage has a control character, which no desktop entry can hold.
             return false;
         }
     }
