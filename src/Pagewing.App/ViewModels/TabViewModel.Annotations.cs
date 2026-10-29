@@ -135,7 +135,8 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets whether a print job of this tab runs (set by the window). The job prints the document the tab has now, which a
-    /// save would replace, so the tab cannot be saved meanwhile (<see cref="SaveBlockedReason"/>).
+    /// save would replace, so the tab cannot be saved meanwhile (<see cref="SaveBlockedReason"/>), and undo and redo wait too:
+    /// the job prints a page in several short requests, so a change in between would print it half old, half new.
     /// </summary>
     public bool IsPrinting
     {
@@ -146,6 +147,7 @@ public sealed partial class TabViewModel
             {
                 OnPropertyChanged(nameof(SaveBlockedReason));
                 RaiseSaveCanExecuteChanged();
+                RaiseStepCanExecuteChanged();
             }
         }
     }
@@ -168,10 +170,10 @@ public sealed partial class TabViewModel
     public ICommand SaveAsCommand => _saveAsCommand ??= new RelayCommand(() => SaveRequested?.Invoke(true), CanSaveAs);
 
     /// <summary>Ctrl+Z: undoes the newest change of the annotations.</summary>
-    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(UndoAfterNudge, () => IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
+    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(UndoAfterNudge, () => IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again.</summary>
-    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(RedoAfterNudge, () => IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
+    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(RedoAfterNudge, () => IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with

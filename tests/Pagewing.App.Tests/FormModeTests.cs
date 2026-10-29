@@ -297,7 +297,7 @@ public sealed partial class FormModeTests : IDisposable
         // ("Pflicht", FormSaveTests) is not the subject here.
         viewModel.RequiredFieldsReader = static (_, _) => Task.FromResult<IReadOnlyList<string>>([]);
         Assert.True(tab.EditDraft(Key(tab, "Name"), "Gespeichert"));
-        Assert.True(await viewModel.SaveTabAsync(tab, saveAs: false));
+        Assert.True(await viewModel.SaveTabAsync(tab, saveAs: false).WaitAsync(Timeout));
         Assert.False(tab.IsDirty);
         Assert.Null(tab.CurrentDraft);
         await using (var saved = await new PdfEngine().OpenAsync(path, cancellationToken: TestContext.Current.CancellationToken))
@@ -477,7 +477,7 @@ public sealed partial class FormModeTests : IDisposable
         Assert.True(tab.FlushFormDraft());
         await tab.WhenEditsSettledAsync();
         var old = tab.Document!;
-        var saved = await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken);
+        var saved = await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken).WaitAsync(Timeout);
         Assert.True(saved.Adopted);
         await WaitUntilAsync(() => tab.Document is { } document && !ReferenceEquals(document, old));
         await tab.EnsureFormInfoAsync();
@@ -505,7 +505,7 @@ public sealed partial class FormModeTests : IDisposable
         var focused = tab.FocusedField;
         var old = tab.Document!;
 
-        var saved = await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken);
+        var saved = await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken).WaitAsync(Timeout);
 
         Assert.True(saved.Adopted);
         await WaitUntilAsync(() => tab.Document is { } document && !ReferenceEquals(document, old));
@@ -698,6 +698,45 @@ public sealed partial class FormModeTests : IDisposable
         await tab.WhenEditsSettledAsync();
         Assert.Equal("Zwei", await ValueAsync(tab, 0, "Name"));
         Assert.False(tab.HasFormDraft);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ARefusalThatArrivesAfterAnotherDocumentOpenedLeavesNoDraftBehind(bool engineRefusal)
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tab = await OpenAsync("forms-basic.pdf", configure: tab => tab.FormValueWriter = async (_, _, _) =>
+        {
+            await gate.Task;
+            throw engineRefusal
+                ? new FormWriteException("refused", new HashSet<int> { 0 }, restored: true)
+                : new InvalidOperationException("refused");
+        });
+        var refused = new List<string>();
+        tab.FormValueRefused += refused.Add;
+        await tab.EnterFillAsync();
+        var name = Key(tab, "Name");
+        Assert.True(tab.EditDraft(name, "Neu"));
+        Assert.True(tab.FlushFormDraft());
+        var first = tab.Document;
+
+        // Another document replaces the first one while the value is on its way (the draft belongs to the old document).
+        await tab.OpenAsync(Copy("forms-basic.pdf"));
+        await WaitUntilAsync(() => tab.State == ViewerState.Ready && tab.Document is not null && !ReferenceEquals(tab.Document, first));
+        Assert.False(tab.IsFilling);
+        Assert.False(tab.HasFormDraft);
+
+        // The refusal of the old write arrives late: it neither brings the draft back nor starts the mode again nor tells the window.
+        gate.SetResult();
+        await tab.WhenEditsSettledAsync();
+        Pump();
+        Assert.False(tab.HasFormDraft);
+        Assert.Null(tab.CurrentDraft);
+        Assert.False(tab.IsFilling);
+        Assert.False(tab.AsksBeforeClosing);
+        Assert.Empty(refused);
+        Assert.Null(tab.FormNotice);
     }
 
     [AvaloniaFact]

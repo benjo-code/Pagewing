@@ -742,7 +742,7 @@ public sealed class FormFillingTests : IDisposable
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight && tab.CanUndo);
         var old = tab.Document!;
 
-        var saved = await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken);
+        var saved = await tab.Editor.SaveAsync(new PdfEngine(), tab.FullPath!, overwriteChangedOriginal: false, progress: null, TestContext.Current.CancellationToken).WaitAsync(Timeout);
         Assert.True(saved.Adopted);
         await WaitUntilAsync(window, () => tab.Document is { } document && !ReferenceEquals(document, old) && ReferenceEquals(view.Document, document));
 

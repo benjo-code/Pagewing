@@ -830,7 +830,12 @@ public sealed partial class TabViewModel
             }
             catch (FormWriteException ex)
             {
-                Refuse(draft, ex.Restored ? Strings.FormValueNotTaken : Strings.FormValueNotTakenChanged);
+                // Another document opened meanwhile: the draft belonged to the old one and must not come back.
+                if (!_disposed && generation == _documentGeneration)
+                {
+                    Refuse(draft, ex.Restored ? Strings.FormValueNotTaken : Strings.FormValueNotTakenChanged);
+                }
+
                 return false;
             }
             catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
@@ -840,8 +845,13 @@ public sealed partial class TabViewModel
             }
             catch (Exception)
             {
-                // Refused before anything was written (the value, a lock, the pages of the field not known).
-                Refuse(draft, Strings.FormValueRefused);
+                // Refused before anything was written (the value, a lock, the pages of the field not known); as above, only for
+                // the document the value was meant for.
+                if (!_disposed && generation == _documentGeneration)
+                {
+                    Refuse(draft, Strings.FormValueRefused);
+                }
+
                 return false;
             }
 

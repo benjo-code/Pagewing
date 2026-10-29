@@ -1366,7 +1366,7 @@
     <value>Nicht übernommen: Der Text enthält das Steuerzeichen {0}.</value>
   </data>
   <data name="FormValueNotTaken" xml:space="preserve">
-    <value>Nicht übernommen: PDFium hat den Wert nicht angenommen. Das Feld behält seinen bisherigen Wert.</value>
+    <value>Nicht übernommen: Die Formular-Engine hat den Wert nicht angenommen. Das Feld behält seinen bisherigen Wert.</value>
   </data>
   <data name="FormValueNotTakenChanged" xml:space="preserve">
     <value>Der Wert konnte nicht geschrieben werden, das Feld kann sich trotzdem geändert haben. Prüfen Sie es vor dem Speichern: Rückgängig kann es nicht wiederherstellen.</value>

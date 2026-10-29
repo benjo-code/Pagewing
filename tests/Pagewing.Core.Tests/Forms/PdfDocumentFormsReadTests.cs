@@ -231,6 +231,73 @@ public sealed class PdfDocumentFormsReadTests : IDisposable
     }
 
     [Fact]
+    public async Task ConcurrentFormInfoCallsShareOneScan()
+    {
+        await using var document = await OpenFixtureAsync(FormsBasic);
+        var scans = 0;
+        document.FormScanClock = page =>
+        {
+            if (page == 0)
+            {
+                Interlocked.Increment(ref scans);
+            }
+
+            return TimeProvider.System;
+        };
+
+        var first = document.GetFormInfoAsync(Ct);
+        var second = document.GetFormInfoAsync(Ct);
+        var required = document.GetEmptyRequiredFieldsAsync(Ct);
+        var infos = await Task.WhenAll(first, second);
+        await required;
+
+        Assert.Equal(1, Volatile.Read(ref scans));
+        Assert.Same(infos[0], infos[1]);
+        Assert.Equal(21, infos[0].FieldCount);
+    }
+
+    [Fact]
+    public async Task ACallerThatCancelsDoesNotCancelTheSharedScan()
+    {
+        await using var document = await OpenFixtureAsync(FormsBasic);
+        var scans = 0;
+        document.FormScanClock = page =>
+        {
+            if (page == 0)
+            {
+                Interlocked.Increment(ref scans);
+            }
+
+            return TimeProvider.System;
+        };
+
+        using var leaves = new CancellationTokenSource();
+        var staying = document.GetFormInfoAsync(Ct);
+        var leaving = document.GetFormInfoAsync(leaves.Token);
+        await leaves.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => leaving);
+        Assert.Equal(21, (await staying).FieldCount);
+        Assert.Equal(1, Volatile.Read(ref scans));
+        Assert.Equal([0, 1], document.CachedPagesWithFields);
+    }
+
+    [Fact]
+    public async Task AScanThatFailedIsNotKeptAndTheNextCallStartsOver()
+    {
+        await using var document = await OpenFixtureAsync(FormsBasic);
+        var fail = true;
+        document.FormScanClock = page => fail ? throw new InvalidOperationException("scan fails") : TimeProvider.System;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => document.GetFormInfoAsync(Ct));
+        Assert.Null(document.CachedPagesWithFields);
+
+        fail = false;
+        Assert.Equal(21, (await document.GetFormInfoAsync(Ct)).FieldCount);
+        Assert.Equal([0, 1], document.CachedPagesWithFields);
+    }
+
+    [Fact]
     public async Task EmptyRequiredFieldsAreListedOnceAcrossPages()
     {
         await using var document = await OpenAsync(WriteChosenRadioForm());

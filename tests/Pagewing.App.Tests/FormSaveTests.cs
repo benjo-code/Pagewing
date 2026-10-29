@@ -41,6 +41,8 @@ public sealed partial class FormSaveTests : UpdateTestHost
 
     public FormSaveTests() => Own(_files);
 
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [AvaloniaFact]
@@ -72,7 +74,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
 
         // Enter: nothing is saved; the mode starts with the focus and the input in the empty field.
         Press(window, Key.Enter, PhysicalKey.Enter, None);
-        Assert.False(await save);
+        Assert.False(await save.WaitAsync(Timeout, Ct));
         Assert.True(tab.IsDirty);
         Assert.Equal(original, await File.ReadAllBytesAsync(path, Ct));
         await WaitUntilAsync(window, () =>
@@ -114,9 +116,9 @@ public sealed partial class FormSaveTests : UpdateTestHost
         Click(window, anyway);
         await SaveCardHost.WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
         viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel);
-        Assert.False(await save);
+        Assert.False(await save.WaitAsync(Timeout, Ct));
 
-        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(TimeSpan.FromSeconds(20), Ct));
+        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
         Assert.Equal([PendingSaveKind.RequiredFields, PendingSaveKind.SaveError], asked);
         Assert.False(tab.IsDirty);
         await using (var reopened = await new PdfEngine().OpenAsync(path, cancellationToken: Ct))
@@ -134,7 +136,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         await SaveCardHost.WaitForCardAsync<RequiredFieldsCard>(window, viewModel, PendingSaveKind.RequiredFields);
         _files.PassTheLock(window);
         Assert.True(viewModel.PendingSave!.Choose(PendingSaveChoice.SaveAnyway));
-        Assert.True(await saveAs);
+        Assert.True(await saveAs.WaitAsync(Timeout, Ct));
         Assert.Equal(target, tab.FullPath);
         await using var copy = await new PdfEngine().OpenAsync(target, cancellationToken: Ct);
         Assert.Equal("xyz", (await FieldAsync(copy, "Kurz")).State.Text);
@@ -156,7 +158,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         // A document without a form: nothing of the form is read.
         var (plain, _) = await _files.OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
         await SaveCardHost.MarkAsync(window, plain);
-        Assert.True(await viewModel.SaveActiveTabAsync());
+        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
         Assert.Equal(0, reads);
 
         // A form whose required field is filled: read, no card.
@@ -164,11 +166,94 @@ public sealed partial class FormSaveTests : UpdateTestHost
         await tab.EnterFillAsync();
         Assert.True(await tab.CommitFieldAsync("Pflicht", FormFieldState.OfText("Bo")));
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight && tab.IsDirty);
-        Assert.True(await viewModel.SaveActiveTabAsync());
+        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
         Assert.Equal(1, reads);
         Assert.Empty(asked);
         await using var reopened = await new PdfEngine().OpenAsync(path, cancellationToken: Ct);
         Assert.Equal("Bo", (await FieldAsync(reopened, "Pflicht")).State.Text);
+    }
+
+    [AvaloniaFact]
+    public async Task SaveWaitsForTheRunningScanOfTheFormInsteadOfScanningAgain()
+    {
+        var (window, viewModel, view) = _files.Show();
+
+        // The tab does not read its form at first; then its hint scan is started by hand and held at a gate (a long form).
+        viewModel.FormFeaturesEnabled = false;
+        var (tab, _) = await _files.OpenCopyAsync(window, viewModel, view, "forms-basic.pdf");
+        await SaveCardHost.MarkAsync(window, tab);
+        var reads = 0;
+        var read = viewModel.RequiredFieldsReader;
+        viewModel.RequiredFieldsReader = (document, cancellationToken) =>
+        {
+            reads++;
+            return read(document, cancellationToken);
+        };
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scans = 0;
+        tab.FormInfoReader = async (document, cancellationToken) =>
+        {
+            scans++;
+            await gate.Task.WaitAsync(cancellationToken);
+            return await document.GetFormInfoAsync(cancellationToken);
+        };
+        viewModel.FormFeaturesEnabled = true;
+        await WaitUntilAsync(window, () => scans == 1);
+
+        // The save waits for that scan: the list of the empty fields is not read (it would scan the document a second time).
+        var save = viewModel.SaveActiveTabAsync();
+        for (var i = 0; i < 10; i++)
+        {
+            Settle(window);
+            await Task.Delay(20, Ct);
+        }
+
+        Assert.False(save.IsCompleted);
+        Assert.Equal(0, reads);
+        Assert.Null(viewModel.PendingSave);
+        Assert.Equal(1, scans);
+
+        // The scan ends: the empty required field is listed once and the card asks.
+        gate.SetResult();
+        await SaveCardHost.WaitForCardAsync<RequiredFieldsCard>(window, viewModel, PendingSaveKind.RequiredFields);
+        Assert.Equal(1, reads);
+        Assert.Equal(1, scans);
+        Assert.Equal(["Pflicht"], viewModel.PendingSave!.EmptyFieldNames);
+        Assert.True(viewModel.PendingSave.Resolve(PendingSaveChoice.GoToField));
+        Assert.False(await save.WaitAsync(Timeout, Ct));
+    }
+
+    [AvaloniaFact]
+    public async Task SaveReadsNoRequiredFieldsWithoutFormFeaturesOrWithoutFields()
+    {
+        var (window, viewModel, view) = _files.Show();
+        var reads = 0;
+        var read = viewModel.RequiredFieldsReader;
+        viewModel.RequiredFieldsReader = (document, cancellationToken) =>
+        {
+            reads++;
+            return read(document, cancellationToken);
+        };
+        var asked = RecordKinds(viewModel);
+
+        // An AcroForm without a single field: the form is known from the open, but there is nothing to list.
+        var emptyForm = Path.Combine(_files.Folder, "acroform-empty.pdf");
+        await File.WriteAllBytesAsync(emptyForm, MinimalPdf("/AcroForm << /Fields [] >>"), Ct);
+        var empty = await SaveCardHost.OpenAsync(window, viewModel, view, emptyForm);
+        Assert.True(empty.HasForm);
+        await SaveCardHost.MarkAsync(window, empty);
+        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
+        Assert.False(empty.HasFormFields);
+        Assert.Equal(0, reads);
+
+        // The form features off (a measurement run): a form with an empty required field saves without a look at its fields.
+        viewModel.FormFeaturesEnabled = false;
+        var (off, _) = await _files.OpenCopyAsync(window, viewModel, view, "forms-basic.pdf");
+        Assert.True(off.HasForm);
+        await SaveCardHost.MarkAsync(window, off);
+        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
+        Assert.Equal(0, reads);
+        Assert.Empty(asked);
     }
 
     [AvaloniaFact]
@@ -183,7 +268,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         Assert.True(tab.HasFormDraft);
         Assert.True(tab.IsDirty);
 
-        Assert.True(await viewModel.SaveActiveTabAsync());
+        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
         Assert.Empty(asked);
         Assert.False(tab.HasFormDraft);
         Assert.False(tab.IsDirty);
@@ -214,7 +299,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
         Assert.False(tab.Editor.HasOnlyFormChanges);
 
-        Assert.True(await viewModel.SaveActiveTabAsync());
+        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
         Assert.Equal(1, writes);
         Assert.False(tab.IsDirty);
         Assert.False(tab.CanUndo);
@@ -248,7 +333,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         Assert.True(card.ButtonOf(PendingSaveChoice.Cancel)!.IsFocused);
         AssertNeverValid(card);
         Press(window, Key.Enter, PhysicalKey.Enter, None);
-        Assert.False(await save);
+        Assert.False(await save.WaitAsync(Timeout, Ct));
         Assert.True(tab.IsDirty);
         Assert.Equal(original, await File.ReadAllBytesAsync(path, Ct));
 
@@ -258,7 +343,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         card = await SaveCardHost.WaitForCardAsync<SignatureWarningCard>(window, viewModel, PendingSaveKind.SignatureWarning);
         Assert.Equal(Strings.SignatureWarningText, Find<TextBlock>(card, "SignatureText").Text);
         viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel);
-        Assert.False(await save);
+        Assert.False(await save.WaitAsync(Timeout, Ct));
 
         // Level 1 keeps its text even for form values; the German texts say nothing is valid either.
         Assert.Equal(Strings.SignatureWarningText, PendingSave.SignatureWarning(tab, path, DocMdpLevel.NoChanges, formsOnly: true).Message);
@@ -401,7 +486,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         Assert.False(await tab.CommitFieldAsync("Kurz", FormFieldState.OfText("x")));
         Assert.False(await tab.CommitFieldAsync("Agb", FormFieldState.OfChecked(true)));
         Assert.False(tab.UndoCommand.CanExecute(null));
-        Assert.False(await viewModel.SaveActiveTabAsync());
+        Assert.False(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
         Settle(window);
         Assert.Equal(version, tab.EditVersion);
         Assert.False(tab.HasEditsInFlight);
@@ -424,7 +509,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         var old = tab.Document!;
 
         // The real save: the session adopts the written file.
-        Assert.True(await viewModel.SaveActiveTabAsync());
+        Assert.True(await viewModel.SaveActiveTabAsync().WaitAsync(Timeout, Ct));
         await WaitUntilAsync(window, () => tab.Document is { } document && !ReferenceEquals(document, old) && ReferenceEquals(view.Document, document));
         Assert.True(tab.IsFilling);
         Assert.False(tab.CanUndo);
@@ -497,8 +582,8 @@ public sealed partial class FormSaveTests : UpdateTestHost
 
         // Esc cancels the save like on every card: nothing written, no mode, the keys back in the document.
         Press(window, Key.Escape, PhysicalKey.Escape, None);
-        Assert.Equal(PendingSaveChoice.Cancel, await question.Choice.WaitAsync(TimeSpan.FromSeconds(20), Ct));
-        Assert.False(await save);
+        Assert.Equal(PendingSaveChoice.Cancel, await question.Choice.WaitAsync(Timeout, Ct));
+        Assert.False(await save.WaitAsync(Timeout, Ct));
         await WaitUntilAsync(window, () => viewModel.PendingSave is null && !card.IsVisible);
         Assert.False(tab.IsFilling);
         Assert.True(tab.IsDirty);
@@ -507,7 +592,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
     }
 
     [AvaloniaFact]
-    public async Task SavingAMarkupOfAFormDocumentAppendsOnlyWhatPdfiumWrites()
+    public async Task SavingAMarkupOfAFormDocumentAppendsEveryLoadedWidget()
     {
         var (window, viewModel, view) = _files.Show();
         var (tab, path) = await _files.OpenCopyAsync(window, viewModel, view, "forms-basic.pdf");
@@ -517,7 +602,7 @@ public sealed partial class FormSaveTests : UpdateTestHost
         // every page with fields) and a markup; no value changed.
         await tab.EnsureFormInfoAsync();
         await SaveCardHost.MarkAsync(window, tab);
-        var saved = await tab.Editor.SaveAsync(new PdfEngine(), path, overwriteChangedOriginal: false, progress: null, Ct);
+        var saved = await tab.Editor.SaveAsync(new PdfEngine(), path, overwriteChangedOriginal: false, progress: null, Ct).WaitAsync(Timeout, Ct);
         Assert.True(saved.Adopted);
 
         var bytes = await File.ReadAllBytesAsync(path, Ct);
@@ -537,6 +622,34 @@ public sealed partial class FormSaveTests : UpdateTestHost
         await using var reopened = await new PdfEngine().OpenAsync(path, cancellationToken: Ct);
         Assert.Equal("Alt", (await FieldAsync(reopened, "Name")).State.Text);
         Assert.Equal(string.Empty, (await FieldAsync(reopened, "Kurz")).State.Text ?? string.Empty);
+    }
+
+    /// <summary>A one-page PDF whose catalog has <paramref name="catalogEntries"/> as well.</summary>
+    private static byte[] MinimalPdf(string catalogEntries)
+    {
+        string[] objects =
+        [
+            $"<< /Type /Catalog /Pages 2 0 R {catalogEntries} >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] >>",
+        ];
+        var pdf = new StringBuilder("%PDF-1.7\n");
+        var offsets = new List<int>();
+        for (var i = 0; i < objects.Length; i++)
+        {
+            offsets.Add(pdf.Length);
+            pdf.Append(CultureInfo.InvariantCulture, $"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
+        }
+
+        var xref = pdf.Length;
+        pdf.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
+        foreach (var offset in offsets)
+        {
+            pdf.Append(CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
+        }
+
+        pdf.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        return Encoding.Latin1.GetBytes(pdf.ToString());
     }
 
     private static void AssertNeverValid(Control card)

@@ -497,8 +497,6 @@ public sealed class PrintSupportTests : IDisposable
 
     private static bool Dark((byte R, byte G, byte B) p) => Math.Max(p.R, Math.Max(p.G, p.B)) < 100;
 
-    private static bool IsGrey((byte R, byte G, byte B) p) => Math.Max(p.R, Math.Max(p.G, p.B)) - Math.Min(p.R, Math.Min(p.G, p.B)) <= 2;
-
     /// <summary>The device pixels of <paramref name="rect"/>, given in page points of a print at scale 2.</summary>
     private static IEnumerable<(byte R, byte G, byte B)> PixelsIn(byte[] pixels, int width, PageRect rect)
     {

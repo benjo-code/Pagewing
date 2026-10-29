@@ -1366,7 +1366,7 @@
     <value>Not accepted: the text contains the control character {0}.</value>
   </data>
   <data name="FormValueNotTaken" xml:space="preserve">
-    <value>Not accepted: PDFium did not take the value. The field keeps its previous value.</value>
+    <value>Not accepted: the form engine did not take the value. The field keeps its previous value.</value>
   </data>
   <data name="FormValueNotTakenChanged" xml:space="preserve">
     <value>The value could not be written, and the field may have changed anyway. Check it before you save: Undo cannot restore it.</value>

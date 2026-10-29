@@ -218,7 +218,8 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// The required fields of a form (milestone 11): when some are empty, the card asks before the save, with "Go to the first
-    /// empty field" as default and "Save anyway"; it never blocks saving. Read only for a document with a form, in short
+    /// empty field" as default and "Save anyway"; it never blocks saving. Read only for a document with a form that has fields
+    /// (known from the scan of the tab, awaited first, <see cref="TabViewModel.EnsureFormInfoAsync"/>), in short
     /// background jobs (the UI thread never waits), at every save; not asked again for the same changes after "Save anyway"
     /// (<see cref="TabViewModel.RequiredFieldsAcceptedAt"/>, a retry after a failed save). A read that fails asks nothing.
     /// </summary>
@@ -227,6 +228,15 @@ public sealed partial class MainViewModel
         TabViewModel tab, PdfDocument document, string path, CancellationToken cancellationToken)
     {
         if (!tab.HasForm || tab.RequiredFieldsAcceptedAt == tab.EditVersion)
+        {
+            return (RequiredFieldsAnswer.Go, null);
+        }
+
+        // The scan of the form belongs to the tab (one per document, shared with the hints and with every write): wait for it
+        // instead of letting the list below scan the whole document a second time. It reads nothing with the form features
+        // off (a measurement run), and a form without fields has nothing to list.
+        await tab.EnsureFormInfoAsync().WaitAsync(cancellationToken);
+        if (!tab.HasFormFields)
         {
             return (RequiredFieldsAnswer.Go, null);
         }

@@ -59,6 +59,11 @@ public sealed partial class PdfDocument
     /// </summary>
     private FormNameIndex? formNames;
 
+    /// <summary>The scan that runs now (single flight, see <see cref="GetFormInfoAsync"/>), guarded by <see cref="formInfoGate"/>.</summary>
+    private Task<FormInfo>? formInfoScan;
+
+    private readonly object formInfoGate = new();
+
     /// <summary>
     /// Gets whether the document has an AcroForm (<c>FPDF_GetFormType</c> was not <c>NONE</c> when it was opened; set by
     /// the open job, no extra job). An XFA form counts when it has AcroForm fields; Pagewing shows the fields and hints at
@@ -86,7 +91,13 @@ public sealed partial class PdfDocument
     /// <c>FormInfo(false, None, 0, [])</c> at once, without a job. The hint <see cref="FormHint.Xfa"/> comes from the form
     /// type, the others from the scripts and kinds of the fields.
     /// </summary>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the scan ended; nothing is kept.</exception>
+    /// <remarks>
+    /// Single flight: while a scan runs, every caller shares it (a second full scan of the pages never starts). The scan does
+    /// not belong to a caller: a caller whose <paramref name="cancellationToken"/> is canceled stops waiting and leaves the
+    /// scan to the others (it ends at the next page once the document is disposed). A scan that fails keeps nothing, so the
+    /// next call starts over; only a complete one is kept.
+    /// </remarks>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the scan ended; nothing is kept for this caller.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public async Task<FormInfo> GetFormInfoAsync(CancellationToken cancellationToken = default)
     {
@@ -101,6 +112,48 @@ public sealed partial class PdfDocument
             return known;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+        Task<FormInfo> scan;
+        lock (formInfoGate)
+        {
+            if (formInfoScan is { IsCompleted: true, IsCompletedSuccessfully: false })
+            {
+                // A scan that ended without a result and was not let go of yet: start over.
+                formInfoScan = null;
+            }
+
+            scan = formInfoScan ??= StartFormScan();
+        }
+
+        return await scan.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Starts the one scan and lets go of it again when it did not complete (a complete one is in <see cref="formInfo"/>).</summary>
+    private Task<FormInfo> StartFormScan()
+    {
+        var scan = Task.Run(ScanFormAsync);
+        _ = scan.ContinueWith(
+            finished =>
+            {
+                lock (formInfoGate)
+                {
+                    if (ReferenceEquals(formInfoScan, finished))
+                    {
+                        formInfoScan = null;
+                    }
+                }
+
+                // Nobody may be waiting any more; the failure is not unobserved then.
+                _ = finished.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.NotOnRanToCompletion,
+            TaskScheduler.Default);
+        return scan;
+    }
+
+    private async Task<FormInfo> ScanFormAsync()
+    {
         var xfa = formType is FpdfConstants.FormTypeXfaFull or FpdfConstants.FormTypeXfaForeground;
         var scanClock = FormScanClock;
         var pages = new PdfiumFormPageInfo[pageCount];
@@ -110,7 +163,7 @@ public sealed partial class PdfDocument
         var names = new FormNameIndexBuilder(FormNameIndexLimit, FormNameIndexEntryLimit, MaxIncompleteNamePages);
         for (var pageIndex = 0; pageIndex < pages.Length; pageIndex++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfDisposed();
             var index = pageIndex;
             pages[index] = await document.Thread.InvokeAsync(
                 () =>
@@ -128,7 +181,7 @@ public sealed partial class PdfDocument
                     }
                 },
                 PdfiumPriority.Background,
-                cancellationToken).ConfigureAwait(false);
+                CancellationToken.None).ConfigureAwait(false);
             names.Add(index, pages[index].FieldNames ?? [], pages[index].NamesComplete);
             pages[index] = pages[index] with { FieldNames = null };
         }
