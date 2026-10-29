@@ -38,7 +38,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 9 | Speichern & Textmarkierungen | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-24-milestone-09-speichern-textmarkierungen.md) | 2026-10-25 |
 | 10 | Zeichnen & Formen | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-25-milestone-10-zeichnen-formen.md) | 2026-10-26 |
 | 11 | Formulare | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-26-milestone-11-formulare.md) | 2026-10-29 |
-| 12 | Sichtbare Unterschrift | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
+| 12 | Sichtbare Unterschrift | 2 – Annotieren, Ausfüllen, Unterschreiben | 🟡 geplant | [Plan](superpowers/plans/2026-10-29-milestone-12-sichtbare-unterschrift.md) | – |
 | 12.1 | Öffentliches Repo und Sicherheitsprüfung | 2 – Annotieren, Ausfüllen, Unterschreiben | ⬜ offen | – | – |
 | – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M8.1 bis M12.1) | – | ⬜ offen | – | – |
 | 13 | Seiten organisieren | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
@@ -437,7 +437,7 @@ Alle Aufgaben der Liste oben sind umgesetzt und getestet (Einträge „Formulare
 - **Gesamtprüfung (2026-10-27, Entwicklungsrechner Windows, nicht die CI):** `dotnet build Pagewing.slnx` 0 Warnungen, 0 Fehler; `dotnet test Pagewing.slnx` (Debug) 3303 Tests, 3262 bestanden, 1 fehlgeschlagen, 40 übersprungen (Linux-, CUPS-, Drucker- und Umgebungsvariablen-Tests); der eine Fehlschlag ist `PanelTests.UserClosingThePanelPreventsTheAutoOpen`: Er schlug in drei vollständigen Debug-Läufen dieses Branches fehl und besteht allein, und dieselbe Prüfung schlug schon vor M11 auf `dev` fehl (Backlog „Flaky: `PanelTests.UserClosingThePanelPreventsTheAutoOpen` (M4)“); `dotnet format Pagewing.slnx --verify-no-changes` Exit 0; `tools/roadmap.cs check`, `tools/make-testpdfs.cs check` (30 Test-PDFs aktuell) und `tools/licenses.cs check` grün, kein neues NuGet-Paket.
 
 ## Milestone 12 – Sichtbare Unterschrift
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M10
+**Status:** 🟡 geplant · **Plan:** [2026-10-29-milestone-12-sichtbare-unterschrift.md](superpowers/plans/2026-10-29-milestone-12-sichtbare-unterschrift.md) · **Spec:** [2026-10-29-m12-sichtbare-unterschrift-design.md](superpowers/specs/2026-10-29-m12-sichtbare-unterschrift-design.md) · **Voraussetzungen:** M10
 
 Ziel: Eine gezeichnete oder als Bild eingefügte Unterschrift lässt sich platzieren, speichern und wiederverwenden.
 

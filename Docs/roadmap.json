@@ -562,7 +562,9 @@
         {
           "id": "12",
           "title": "Sichtbare Unterschrift",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-29-milestone-12-sichtbare-unterschrift.md",
+          "spec": "superpowers/specs/2026-10-29-m12-sichtbare-unterschrift-design.md",
           "prerequisites": ["10"],
           "goal": "Eine gezeichnete oder als Bild eingefügte Unterschrift lässt sich platzieren, speichern und wiederverwenden.",
           "tasks": [
