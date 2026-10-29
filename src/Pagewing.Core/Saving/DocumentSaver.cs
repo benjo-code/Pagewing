@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.Versioning;
+using System.Security;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Text;
 using Pagewing.Core.Pdf;
@@ -300,6 +302,7 @@ public static class DocumentSaver
     {
         FileAttributes attributes;
         UnixFileMode? mode = null;
+        byte[]? acl = null;
         try
         {
             if (!File.Exists(target))
@@ -313,6 +316,10 @@ public static class DocumentSaver
                 const UnixFileMode Permissions = (UnixFileMode)0x1FF;
                 mode = File.GetUnixFileMode(target) & Permissions;
             }
+            else
+            {
+                acl = ReadAccessList(target);
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -325,7 +332,7 @@ public static class DocumentSaver
             throw new SaveFailureException(SaveFailureReason.NotWritable, "The file is read-only.");
         }
 
-        return new TargetInfo(Exists: true, Hidden: (attributes & FileAttributes.Hidden) != 0, UnixMode: mode);
+        return new TargetInfo(Exists: true, Hidden: (attributes & FileAttributes.Hidden) != 0, UnixMode: mode, AccessList: acl);
     }
 
     private static FileStream CreateTemporary(string temporary, UnixFileMode? mode)
@@ -357,6 +364,43 @@ public static class DocumentSaver
     }
 
     /// <summary>
+    /// The access rules (DACL, with the flag that switches inheritance off) of the target as a security descriptor, or
+    /// <see langword="null"/> when they cannot be read: the replacement then gets the rules of the folder, as before.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static byte[]? ReadAccessList(string target)
+    {
+        try
+        {
+            return new FileInfo(target).GetAccessControl(AccessControlSections.Access).GetSecurityDescriptorBinaryForm();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or PlatformNotSupportedException or SecurityException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gives the temporary file the access rules of the replaced target. Without this, a file that only its owner may read
+    /// would come back with the rules of its folder, which are often much wider. A file system without access rules (FAT,
+    /// some network shares) keeps the rules it has.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static void WriteAccessList(string temporary, byte[] descriptor)
+    {
+        try
+        {
+            var security = new FileSecurity();
+            security.SetSecurityDescriptorBinaryForm(descriptor, AccessControlSections.Access);
+            new FileInfo(temporary).SetAccessControl(security);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or PlatformNotSupportedException or SecurityException)
+        {
+            // The rules of the folder stay; the save itself goes on.
+        }
+    }
+
+    /// <summary>
     /// Gives the temporary file the permissions of the target on Unix (exactly, without the umask that applied when it was
     /// created) and its Hidden attribute on Windows.
     /// </summary>
@@ -372,6 +416,11 @@ public static class DocumentSaver
             if (existing.Hidden && OperatingSystem.IsWindows())
             {
                 File.SetAttributes(temporary, File.GetAttributes(temporary) | FileAttributes.Hidden);
+            }
+
+            if (existing.AccessList is { } acl && OperatingSystem.IsWindows())
+            {
+                WriteAccessList(temporary, acl);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -636,7 +685,7 @@ public static class DocumentSaver
     }
 
     /// <summary>What an existing target passes on to the file that replaces it.</summary>
-    private readonly record struct TargetInfo(bool Exists, bool Hidden, UnixFileMode? UnixMode);
+    private readonly record struct TargetInfo(bool Exists, bool Hidden, UnixFileMode? UnixMode, byte[]? AccessList = null);
 
     /// <summary>
     /// Passes the writes of PDFium on, reports the progress and stops the writer on cancellation (PDFium only learns
