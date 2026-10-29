@@ -83,9 +83,11 @@ public sealed partial class FormModeTests : IDisposable
 
         // Asked again it costs nothing; another page is read when asked for, once.
         Assert.Same(fields, tab.FieldsOfPage(0));
-        Assert.Empty(tab.FieldsOfPage(1));
-        Assert.Empty(tab.FieldsOfPage(1));
+        // Whether the first answer is still empty depends on how fast the read ends, so only the result is asserted.
+        _ = tab.FieldsOfPage(1);
         await WaitUntilAsync(() => tab.FieldsOfPage(1).Count == 4);
+        Assert.Equal([0, 1], reads);
+        Assert.Equal(4, tab.FieldsOfPage(1).Count);
         Assert.Equal([0, 1], reads);
 
         // The view tells which pages it shows: entering again reads only what it does not have.
