@@ -237,28 +237,26 @@ Milestone 12.1. Alles hier setzt der **Projektinhaber** (Einstellungen von Orga 
    - Workflow-Token nur lesend.
      - Lesen: `gh api repos/benjo-code/Pagewing/actions/permissions/workflow --jq .default_workflow_permissions` → `read` (ist schon so).
 
+5. **Aufräumen, zerstörend, nur auf ausdrückliche Anweisung des Projektinhabers, und zwar vor dem Umschalten.** Veraltete Remote-Branches (`dependabot/nuget/pdfium-5dd1e390d0`, `feature/m12-sichtbare-unterschrift`), alte Workflow-Läufe (Stand 2026-10-29: 253) und Artefakte (11). Die Logs alter Läufe werden mit dem Umschalten öffentlich; wer sie nicht zeigen will, muss sie **vor** dem Umschalten löschen (danach sind sie schon sichtbar). Die veralteten Remote-Branches stehen aus Gründen der Übersicht hier mit, sie müssen nicht vor dem Umschalten weg.
+    - Lesen: `gh api repos/benjo-code/Pagewing/actions/runs --jq .total_count`; `gh api repos/benjo-code/Pagewing/actions/artifacts --jq .total_count`; `gh api repos/benjo-code/Pagewing/branches --paginate --jq '.[].name'`.
+    - Vorschlag zum Löschen: `gh run delete <id> --repo benjo-code/Pagewing` je Lauf, `gh api -X DELETE repos/benjo-code/Pagewing/actions/artifacts/<id>`, `gh api -X DELETE repos/benjo-code/Pagewing/git/refs/heads/<Branch>`.
+
 ### Sofort nach dem Umschalten
 
 Bevor jemand einen PR öffnen kann, in dieser Reihenfolge (Projektinhaber):
 
-5. **Fork-Freigabe** auf „Require approval for all external contributors“.
-   - Lesen: `gh api repos/benjo-code/Pagewing/actions/permissions/fork-pr-contributor-approval --jq .approval_policy` → `all_external_contributors`. Solange das Repo privat ist, antwortet der Endpunkt mit 422 („Fork PR approval is not allowed for private repositories“); das ist erwartet.
+6. **Fork-Freigabe** auf „Require approval for all external contributors“.
+   - Lesen: `gh api repos/benjo-code/Pagewing/actions/permissions/fork-pr-contributor-approval --jq .approval_policy` → `all_external_contributors` (Wert nicht gegen den Ist-Zustand geprüft: der Endpunkt antwortet erst im öffentlichen Repo; weicht die Antwort ab, gilt die Einstellung in der Oberfläche). Solange das Repo privat ist, antwortet der Endpunkt mit 422 („Fork PR approval is not allowed for private repositories“); das ist erwartet.
    - Setzen: Repo → Settings → Actions → General → Fork pull request workflows from outside collaborators.
-6. **Secret scanning, Push protection, Dependabot alerts.**
-   - Lesen: `gh api repos/benjo-code/Pagewing --jq .security_and_analysis` → `secret_scanning` und `secret_scanning_push_protection` jeweils `enabled` (Stand 2026-10-29: `disabled`); Dependabot alerts: `gh api repos/benjo-code/Pagewing/vulnerability-alerts` antwortet mit 204 (aus: 404).
+7. **Secret scanning, Push protection, Dependabot alerts.**
+   - Lesen: `gh api repos/benjo-code/Pagewing --jq .security_and_analysis` → `secret_scanning` und `secret_scanning_push_protection` jeweils `enabled` (Stand 2026-10-29: `disabled`); Dependabot alerts: `gh api repos/benjo-code/Pagewing/vulnerability-alerts` antwortet mit 204 (aus: 404). Probe am 2026-10-29 im privaten Repo: 404 (aus), das ist der „aus“-Fall; die 204 für „an“ ist aus der Dokumentation übernommen, nicht beobachtet. Weicht die Antwort ab, gilt die Einstellung in der Oberfläche.
    - Setzen: Repo → Settings → Advanced Security (Code security).
-7. **Privates Melden von Sicherheitslücken** (private vulnerability reporting).
-   - Lesen: `gh api repos/benjo-code/Pagewing/private-vulnerability-reporting --jq .enabled` → `true`.
+8. **Privates Melden von Sicherheitslücken** (private vulnerability reporting).
+   - Lesen: `gh api repos/benjo-code/Pagewing/private-vulnerability-reporting --jq .enabled` → `true` (Endpunkt und Feld `enabled` nicht gegen den Ist-Zustand geprüft: im privaten Repo antwortete er am 2026-10-29 mit 404; weicht die Antwort im öffentlichen Repo ab, gilt die Einstellung in der Oberfläche).
    - Setzen: Repo → Settings → Advanced Security → Private vulnerability reporting.
-8. **Erster CodeQL-Lauf:** `.github/workflows/codeql.yml` läuft von selbst (der Job wartet auf `github.event.repository.private == false`).
+9. **Erster CodeQL-Lauf:** `.github/workflows/codeql.yml` läuft von selbst (der Job wartet auf `github.event.repository.private == false`).
    - Lesen: `gh run list --workflow codeql.yml --repo benjo-code/Pagewing --limit 3` → ein erfolgreicher Lauf; Ergebnisse unter Security → Code scanning.
-9. **Aussagen prüfen:** Die Sätze in `CONTRIBUTING.md`, `CLAUDE.md` („Zusammenarbeit“) und `SECURITY.md` stimmen jetzt: Fork-CI läuft nur nach Freigabe und nur auf gehosteten Runnern; der Knopf „Report a vulnerability“ ist im Security-Tab da.
-
-### Aufräumen nur auf Anweisung
-
-10. **Zerstörend, nur auf ausdrückliche Anweisung des Projektinhabers.** Veraltete Remote-Branches (`dependabot/nuget/pdfium-5dd1e390d0`, `feature/m12-sichtbare-unterschrift`), alte Workflow-Läufe (Stand 2026-10-29: 253) und Artefakte (11). Die Logs alter Läufe werden mit dem Umschalten öffentlich; wer sie nicht zeigen will, löscht sie vorher.
-    - Lesen: `gh api repos/benjo-code/Pagewing/actions/runs --jq .total_count`; `gh api repos/benjo-code/Pagewing/actions/artifacts --jq .total_count`; `gh api repos/benjo-code/Pagewing/branches --paginate --jq '.[].name'`.
-    - Vorschlag zum Löschen: `gh run delete <id> --repo benjo-code/Pagewing` je Lauf, `gh api -X DELETE repos/benjo-code/Pagewing/actions/artifacts/<id>`, `gh api -X DELETE repos/benjo-code/Pagewing/git/refs/heads/<Branch>`.
+10. **Aussagen prüfen:** Die Sätze in `CONTRIBUTING.md`, `CLAUDE.md` („Zusammenarbeit“) und `SECURITY.md` stimmen jetzt: Fork-CI läuft nur nach Freigabe und nur auf gehosteten Runnern; der Knopf „Report a vulnerability“ ist im Security-Tab da.
 
 ### Persönlich
 
