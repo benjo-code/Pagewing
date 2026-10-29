@@ -114,6 +114,7 @@ static class TestPdfs
         new("linearized.pdf", Linearized()),
         new("annotations-foreign.pdf", AnnotationsForeign()),
         new("drawings-foreign.pdf", DrawingsForeign()),
+        new("stamps-foreign.pdf", StampsForeign()),
         new("forms-basic.pdf", FormsBasic()),
         new("forms-calc.pdf", FormsCalc()),
         new("forms-xfa.pdf", FormsXfa()),
@@ -692,6 +693,45 @@ static class TestPdfs
             $"/MediaBox [0 0 400 300] /CropBox [20 10 380 290] /Rotate 90 /Annots [{rotatedInk} 0 R]",
             resources,
             "BT /F1 14 Tf 40 250 Td (Foreign drawings, page two) Tj ET");
+        return doc.Build();
+    }
+
+    // Stamps and an ink written by other programs (milestone 12): a stamp with a text appearance, a stamp with an image appearance
+    // but without the Pagewing mark, a stamp without appearance, and an ink with the subject "Signature" but three strokes (not the
+    // shape of an own signature). All are listed, none is an own signature.
+    private static byte[] StampsForeign()
+    {
+        var doc = new PdfDoc("Pagewing fremde Stempel");
+        var resources = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        const string date = "/M (D:20260101120000Z) /CreationDate (D:20260101120000Z)";
+
+        var textAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [0 0 100 30] /Resources << /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>",
+            Text("1 0 0 RG 2 w 1 1 98 28 re S BT /F1 14 Tf 1 0 0 rg 12 10 Td (APPROVED) Tj ET"));
+        var pixels = new byte[4 * 4 * 3];
+        for (var i = 0; i < pixels.Length; i += 3)
+        {
+            pixels[i] = (byte)(i * 5);
+            pixels[i + 1] = 40;
+            pixels[i + 2] = 160;
+        }
+
+        var image = doc.AddStream("/Type /XObject /Subtype /Image /Width 4 /Height 4 /BitsPerComponent 8 /ColorSpace /DeviceRGB", pixels);
+        var imageAppearance = doc.AddStream(
+            "/Type /XObject /Subtype /Form /BBox [0 0 80 40] /Resources << /XObject << /Im1 " + image + " 0 R >> >>",
+            Text("q 80 0 0 40 0 0 cm /Im1 Do Q"));
+
+        var annots = new[]
+        {
+            doc.Add($"<< /Type /Annot /Subtype /Stamp /Rect [20 150 120 180] /Name /Approved /F 4 /NM (stamp-0001) /T (Alice) {date} /AP << /N {textAppearance} 0 R >> >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Stamp /Rect [20 90 100 130] /F 4 /NM (stamp-0002) /T (Alice) {date} /AP << /N {imageAppearance} 0 R >> >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Stamp /Rect [140 90 220 130] /Name /Draft /F 4 /NM (stamp-0003) /T (Alice) {date} >>"),
+            doc.Add($"<< /Type /Annot /Subtype /Ink /Rect [138 28 282 72] /InkList [[140 30 170 70 200 30] [210 30 230 70] [240 30 280 70]] /C [0 0 0] /BS << /W 2 >> /Subj (Signature) /F 4 /NM (ink-0004) /T (Alice) {date} >>"),
+        };
+        doc.AddPage(
+            $"/MediaBox [0 0 300 200] /Annots [{string.Join(' ', annots.Select(a => $"{a} 0 R"))}]",
+            resources,
+            "BT /F1 12 Tf 20 20 Td (Foreign stamps) Tj ET");
         return doc.Build();
     }
 
