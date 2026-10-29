@@ -55,23 +55,35 @@ jobs:
     name: release-preflight
     runs-on: [self-hosted, dotnet-linux]
     timeout-minutes: 15
+    # The commit id that the tag check verified (upload=true only); the build jobs check out exactly this commit.
+    outputs:
+      tag_sha: ${{ steps.ontag.outputs.sha }}
     permissions:
       contents: read
     env:
       TAG: ${{ inputs.tag }}
+      # inputs.ref reaches the shell only through the environment; the first step of the job rejects foreign refs.
+      REF_INPUT: ${{ inputs.ref }}
       UPLOAD: ${{ inputs.upload }}
     steps:
       - name: Check the tag
         run: |
           set -euo pipefail
+          # The ref input must be a branch name or a commit id: refs/pull/... would run foreign code on this runner.
+          if [[ "$REF_INPUT" == refs/* && "$REF_INPUT" != refs/heads/* ]]; then
+            echo "ref '$REF_INPUT' ist nicht erlaubt: nur ein Branch-Name, refs/heads/... oder eine Commit-ID (kein refs/pull/...)" >&2
+            exit 1
+          fi
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
           echo "Tag $TAG, Hochladen: $UPLOAD"
 
       # The environment's branch rule constrains the workflow ref only; the code that runs here is the tag's. So with
       # upload=true the commit of the tag must be on main or dev (equal to the branch head or an ancestor of it),
       # checked before anything checks out or runs tag code. The tag is resolved through refs/tags (a branch of the
-      # same name does not count) and compared by commit id.
+      # same name does not count) and compared by commit id. That id is the output "sha": whatever runs tag code checks
+      # out this id, never the tag name again (a tag can be moved after the check).
       - name: Check that the tag is on main or dev
+        id: ontag
         if: env.UPLOAD == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,6 +97,7 @@ jobs:
             # identical: the tag is the branch head; behind: the tag commit is an ancestor of the branch head.
             if [[ "$status" == identical || "$status" == behind ]]; then
               echo "Tag $TAG ($sha) liegt auf $branch ($status)"
+              echo "sha=$sha" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
@@ -101,7 +114,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.UPLOAD == 'true'
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: ${{ steps.ontag.outputs.sha }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
@@ -132,10 +145,14 @@ jobs:
       contents: write
     env:
       TAG: ${{ inputs.tag }}
+      # inputs.ref reaches the shell only through the environment; the first step of the job rejects foreign refs.
+      REF_INPUT: ${{ inputs.ref }}
       UPLOAD: ${{ inputs.upload }}
     steps:
       - name: Check the tag and derive the version
         run: |
+          # The ref input must be a branch name or a commit id: refs/pull/... would run foreign code on this runner.
+          if ($env:REF_INPUT -cmatch '^refs/(?!heads/)') { throw "ref '$env:REF_INPUT' ist nicht erlaubt: nur ein Branch-Name, refs/heads/... oder eine Commit-ID (kein refs/pull/...)" }
           if ($env:TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') { throw "Tag '$env:TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" }
           $version = $env:TAG.Substring(1)
           Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
@@ -147,9 +164,17 @@ jobs:
         run: |
           throw 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.'
 
+      # With upload=true the commit that preflight verified must be there; the checkout never falls back to the tag name.
+      - name: Require the verified commit
+        if: env.UPLOAD == 'true'
+        env:
+          TAG_SHA: ${{ needs.preflight.outputs.tag_sha }}
+        run: |
+          if ($env:TAG_SHA -cnotmatch '^[0-9a-f]{40}$') { throw "Preflight hat keinen geprueften Commit geliefert: '$env:TAG_SHA'" }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || format('refs/tags/{0}', inputs.tag) }}
+          ref: ${{ inputs.ref || needs.preflight.outputs.tag_sha || format('refs/tags/{0}', inputs.tag) }}
           persist-credentials: false
 
       # See ci.yml: without git on PATH actions/checkout extracts a zip whose file times can be older than the
@@ -261,11 +286,18 @@ jobs:
       contents: write
     env:
       TAG: ${{ inputs.tag }}
+      # inputs.ref reaches the shell only through the environment; the first step of the job rejects foreign refs.
+      REF_INPUT: ${{ inputs.ref }}
       UPLOAD: ${{ inputs.upload }}
     steps:
       - name: Check the tag and derive the version
         run: |
           set -euo pipefail
+          # The ref input must be a branch name or a commit id: refs/pull/... would run foreign code on this runner.
+          if [[ "$REF_INPUT" == refs/* && "$REF_INPUT" != refs/heads/* ]]; then
+            echo "ref '$REF_INPUT' ist nicht erlaubt: nur ein Branch-Name, refs/heads/... oder eine Commit-ID (kein refs/pull/...)" >&2
+            exit 1
+          fi
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
           version="${TAG#v}"
           # Debian: a pre-release x.y.z-rc1 is called x.y.z~rc1 in the package (tools/package.cs, Deb.DebVersion).
@@ -280,9 +312,17 @@ jobs:
           echo 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.' >&2
           exit 1
 
+      # With upload=true the commit that preflight verified must be there; the checkout never falls back to the tag name.
+      - name: Require the verified commit
+        if: env.UPLOAD == 'true'
+        env:
+          TAG_SHA: ${{ needs.preflight.outputs.tag_sha }}
+        run: |
+          [[ "$TAG_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Preflight hat keinen geprueften Commit geliefert: '$TAG_SHA'" >&2; exit 1; }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || format('refs/tags/{0}', inputs.tag) }}
+          ref: ${{ inputs.ref || needs.preflight.outputs.tag_sha || format('refs/tags/{0}', inputs.tag) }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
@@ -373,6 +413,8 @@ jobs:
       contents: write
     env:
       TAG: ${{ inputs.tag }}
+      # inputs.ref reaches the shell only through the environment; the first step of the job rejects foreign refs.
+      REF_INPUT: ${{ inputs.ref }}
       # The id of the signing key; it must name a key in src/Pagewing.Core/Updates/UpdateTrust.cs (packaging/README.md,
       # section "Signaturschlüssel für Updates").
       UPDATE_KEY_ID: release-1
@@ -380,6 +422,11 @@ jobs:
       - name: Check the tag and derive the version
         run: |
           set -euo pipefail
+          # The ref input must be a branch name or a commit id: refs/pull/... would run foreign code on this runner.
+          if [[ "$REF_INPUT" == refs/* && "$REF_INPUT" != refs/heads/* ]]; then
+            echo "ref '$REF_INPUT' ist nicht erlaubt: nur ein Branch-Name, refs/heads/... oder eine Commit-ID (kein refs/pull/...)" >&2
+            exit 1
+          fi
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
           version="${TAG#v}"
           echo "VERSION=$version" >> "$GITHUB_ENV"
@@ -394,8 +441,10 @@ jobs:
       # The environment's branch rule constrains the workflow ref only; the code that runs here is the tag's. So with
       # upload=true the commit of the tag must be on main or dev (equal to the branch head or an ancestor of it),
       # checked before anything checks out or runs tag code. The tag is resolved through refs/tags (a branch of the
-      # same name does not count) and compared by commit id.
+      # same name does not count) and compared by commit id. That id is the output "sha": whatever runs tag code checks
+      # out this id, never the tag name again (a tag can be moved after the check).
       - name: Check that the tag is on main or dev
+        id: ontag
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -408,6 +457,7 @@ jobs:
             # identical: the tag is the branch head; behind: the tag commit is an ancestor of the branch head.
             if [[ "$status" == identical || "$status" == behind ]]; then
               echo "Tag $TAG ($sha) liegt auf $branch ($status)"
+              echo "sha=$sha" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
@@ -424,7 +474,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.STABLE == 'true'
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: ${{ steps.ontag.outputs.sha }}
           persist-credentials: false
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0

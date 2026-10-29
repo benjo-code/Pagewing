@@ -4907,6 +4907,10 @@ static class SelfTest
                 step.Contains("exit 1", StringComparison.Ordinal) && step.Contains("set -euo pipefail", StringComparison.Ordinal), true);
             Expect($"release.yml: {label}: Tag-Pruefung loest den Tag ueber refs/tags auf (kein gleichnamiger Branch)",
                 step.Contains("commits/refs/tags/$TAG", StringComparison.Ordinal), true);
+            // The verified commit id leaves the step; the checkouts use it (never the tag name again: a tag can move).
+            Expect($"release.yml: {label}: Tag-Pruefung gibt die gepruefte Commit-ID aus (id ontag, sha=$sha nach GITHUB_OUTPUT, erst nach bestandener Pruefung)",
+                step.Contains("        id: ontag\n", StringComparison.Ordinal) &&
+                Regex.IsMatch(step, @"behind \]\]; then\n(?:.*\n)*?\s+echo ""sha=\$sha"" >> ""\$GITHUB_OUTPUT""\n\s+exit 0"), true);
             var runAt = step.IndexOf("\n        run: |\n", StringComparison.Ordinal);
             Expect($"release.yml: {label}: Tag-Pruefung nimmt GH_TOKEN mit GH_REPO aus dem env des Schritts, TAG nur aus der Umgebung",
                 Regex.IsMatch(step, @"\n        env:\n          GH_TOKEN: \$\{\{ github\.token \}\}\n(?:          #[^\n]*\n)?          GH_REPO: \$\{\{ github\.repository \}\}\n") &&
@@ -4922,9 +4926,39 @@ static class SelfTest
             preflightSteps[preflightOnBranch].Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal), true);
         Expect("release.yml: preflight checkt den Tag erst nach der Branch-Pruefung aus",
             preflightOnBranch >= 0 && preflightOnBranch < preflightSteps.FindIndex(x => x.Contains("actions/checkout@", StringComparison.Ordinal)), true);
-        Expect("release.yml: jeder Checkout eines Tags holt refs/tags/<Tag> (ein gleichnamiger Branch zaehlt nicht)",
-            Regex.Count(yml, @"ref: \$\{\{ inputs\.ref \|\| format\('refs/tags/\{0\}', inputs\.tag\) \}\}") + Regex.Count(yml, @"ref: refs/tags/\$\{\{ inputs\.tag \}\}"),
-            Regex.Count(yml, "uses: actions/checkout@"));
+        // No checkout by tag name on the upload path (the tag could move after the check): preflight and manifest check out
+        // the commit id of their own verifying step, the build jobs the id from preflight (the tag name only as the
+        // fallback of a dry run, where preflight does not resolve it and nothing is uploaded).
+        Expect("release.yml: preflight und manifest checken die geprueften Commit-ID aus (steps.ontag.outputs.sha)",
+            Regex.Count(yml, @"(?m)^          ref: \$\{\{ steps\.ontag\.outputs\.sha \}\}$"), 2);
+        Expect("release.yml: Bau-Jobs checken inputs.ref, sonst die Commit-ID von preflight (Tag-Name nur als Rueckfall des Trockenlaufs)",
+            Regex.Count(yml, @"(?m)^          ref: \$\{\{ inputs\.ref \|\| needs\.preflight\.outputs\.tag_sha \|\| format\('refs/tags/\{0\}', inputs\.tag\) \}\}$"), 2);
+        Expect("release.yml: kein Checkout allein ueber den Tag-Namen", Regex.IsMatch(yml, @"(?m)^          ref: (refs/tags/)?\$\{\{ inputs\.tag \}\}$"), false);
+        Expect("release.yml: preflight gibt die geprueften Commit-ID aus (outputs.tag_sha)",
+            preflight.Contains("    outputs:\n      tag_sha: ${{ steps.ontag.outputs.sha }}\n", StringComparison.Ordinal), true);
+        Expect("release.yml: jeder Checkout der Bau-Jobs steht nach 'Require the verified commit' (Hochladen ohne geprueften Commit bricht ab)",
+            new[] { "windows", "linux" }.All(j =>
+            {
+                var st = StepsOf(Job(j));
+                var guard = st.FindIndex(x => Name(x) == "Require the verified commit");
+                return guard >= 0 && guard < st.FindIndex(x => x.Contains("actions/checkout@", StringComparison.Ordinal)) &&
+                    st[guard].Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal) &&
+                    st[guard].Contains("TAG_SHA: ${{ needs.preflight.outputs.tag_sha }}", StringComparison.Ordinal) &&
+                    st[guard].Contains("[0-9a-f]{40}", StringComparison.Ordinal);
+            }), true);
+
+        // The dispatch input ref accepts any ref; refs/pull/... would run foreign code on the persistent runners with a
+        // write token. Every job that sees the input rejects refs/ prefixes other than refs/heads/ in its first step.
+        foreach (var refJob in new[] { "preflight", "windows", "linux", "manifest" })
+        {
+            var refSteps = StepsOf(Job(refJob));
+            var first = refSteps.Count > 0 ? refSteps[0] : string.Empty;
+            Expect($"release.yml: Job {refJob} nimmt inputs.ref nur ueber die Umgebung (REF_INPUT)",
+                Job(refJob).Contains("      REF_INPUT: ${{ inputs.ref }}\n", StringComparison.Ordinal), true);
+            Expect($"release.yml: Job {refJob} weist im ersten Schritt Refs ausser refs/heads/ ab (kein refs/pull/)",
+                first.Contains("REF_INPUT", StringComparison.Ordinal) && first.Contains("refs/", StringComparison.Ordinal) &&
+                first.Contains("refs/heads/", StringComparison.Ordinal) && !first.Contains("inputs.ref", StringComparison.Ordinal), true);
+        }
 
         foreach (var buildJob in new[] { "windows", "linux" })
         {
