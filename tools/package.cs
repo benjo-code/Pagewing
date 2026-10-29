@@ -4639,6 +4639,14 @@ static class SelfTest
     private static List<string> PullRequestTargetViolations(string yml) =>
         HasTrigger(yml, "pull_request_target") ? ["pull_request_target"] : [];
 
+    // The labels dotnet-linux, dotnet-windows and dotnet-windows-gpu exist only on the owner's runners.
+    private static bool IsSelfHosted(string line) =>
+        Regex.IsMatch(line, @"self-hosted|dotnet-linux|dotnet-windows");
+
+    // A runs-on line that picks a hosted runner for pull requests and the own runner only otherwise.
+    private static bool IsGuarded(string line) =>
+        line.Contains(PullRequestGuard, StringComparison.Ordinal) && line.Contains("matrix.hosted", StringComparison.Ordinal);
+
     private static List<string> SelfHostedOnPullRequestViolations(string file, string yml)
     {
         var violations = new List<string>();
@@ -4654,16 +4662,15 @@ static class SelfTest
         }
 
         var noSelfHostedAtAll = file is "roadmap.yml" or "codeql.yml";
-        foreach (var line in runsOn.Where(l => l.Contains("self-hosted", StringComparison.Ordinal)))
+        foreach (var line in runsOn.Where(IsSelfHosted))
         {
-            var guarded = line.Contains(PullRequestGuard, StringComparison.Ordinal) && line.Contains("matrix.hosted", StringComparison.Ordinal);
-            if (noSelfHostedAtAll || !guarded)
+            if (noSelfHostedAtAll || !IsGuarded(line))
             {
                 violations.Add(line.Trim());
             }
         }
 
-        if (file == "ci.yml" && !runsOn.Any(l => l.Contains(PullRequestGuard, StringComparison.Ordinal) && l.Contains("matrix.hosted", StringComparison.Ordinal)))
+        if (file == "ci.yml" && !runsOn.Any(IsGuarded))
         {
             violations.Add("kein gehostetes runs-on fuer Pull Requests");
         }
@@ -4700,7 +4707,7 @@ static class SelfTest
         const string dir = ".github/workflows";
         string? Read(string file) => File.Exists(Path.Combine(dir, file))
             ? File.ReadAllText(Path.Combine(dir, file)).Replace("\r\n", "\n", StringComparison.Ordinal) : null;
-        var files = Directory.Exists(dir) ? Directory.GetFiles(dir, "*.yml").Select(Path.GetFileName).OfType<string>().Order().ToList() : [];
+        var files = Directory.Exists(dir) ? Directory.GetFiles(dir, "*.yml").Concat(Directory.GetFiles(dir, "*.yaml")).Select(Path.GetFileName).OfType<string>().Order().ToList() : [];
         Expect("Workflows: Ordner .github/workflows hat Dateien", files.Count > 0, true);
 
         // Negative controls: the rules must bite on a deliberately bad workflow.
@@ -4711,6 +4718,12 @@ static class SelfTest
         Expect("Gegenprobe: checkout ohne persist-credentials wird erkannt", CheckoutViolations(bad).Count, 1);
         Expect("Gegenprobe: nicht angeheftete Action wird erkannt", UnpinnedActionViolations(bad).Count, 1);
         Expect("Gegenprobe: write-all wird erkannt", PermissionsViolations(bad).Count, 1);
+        const string good = "on:\n  pull_request:\njobs:\n  build:\n" +
+            "    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && format('[\"{0}\"]', matrix.hosted) || format('[\"self-hosted\",\"{0}\"]', matrix.label)) }}\n";
+        Expect("Gegenprobe: richtig geschuetztes runs-on von ci.yml ist ohne Befund", SelfHostedOnPullRequestViolations("ci.yml", good).Count, 0);
+        Expect("Gegenprobe: Label dotnet-windows allein zaehlt als self-hosted", SelfHostedOnPullRequestViolations("x.yml", "on:\n  pull_request:\njobs:\n  x:\n    runs-on: [dotnet-windows]\n").Count, 1);
+        Expect("Gegenprobe: hardware-measure.yml mit pull_request wird erkannt",
+            SelfHostedOnPullRequestViolations("hardware-measure.yml", "on:\n  pull_request:\njobs:\n  x:\n    runs-on: ubuntu-24.04\n").Count, 1);
 
         string Join(IEnumerable<string> v) => string.Join("; ", v);
         var noTarget = new List<string>();
@@ -4722,6 +4735,7 @@ static class SelfTest
         foreach (var file in files)
         {
             var yml = Read(file)!;
+            Expect($"Workflows: {file} hat einen lesbaren on:-Block", TriggersOf(yml).Trim().Length > 0, true);
             noTarget.AddRange(PullRequestTargetViolations(yml).Select(v => $"{file}: {v}"));
             selfHosted.AddRange(SelfHostedOnPullRequestViolations(file, yml).Select(v => $"{file}: {v}"));
             checkout.AddRange(CheckoutViolations(yml).Select(v => $"{file}: {v}"));
@@ -4746,12 +4760,13 @@ static class SelfTest
         {
             Expect("release.yml: kein Ausloeser release", HasTrigger(release, "release"), false);
             var manifest = Regex.Match(release, @"(?m)^  manifest:\n(?<b>(?:    .*\n|\n)*)").Groups["b"].Value;
-            var otherJobs = release.Replace(manifest, string.Empty, StringComparison.Ordinal);
+            Expect("release.yml: Job manifest gefunden", manifest.Length > 0, true);
+            var otherJobs = manifest.Length > 0 ? release.Replace(manifest, string.Empty, StringComparison.Ordinal) : release;
             Expect("release.yml: secrets. nur im Job manifest", otherJobs.Contains("secrets.", StringComparison.Ordinal), false);
             Expect("release.yml: Job manifest mit environment: release-signing",
                 Regex.IsMatch(manifest, @"(?m)^    environment: release-signing\s*$"), true);
             var manifestRunsOn = Regex.Match(manifest, @"(?m)^    runs-on:.*$").Value;
-            Expect("release.yml: Job manifest auf gehostetem Runner", manifestRunsOn.Length > 0 && !manifestRunsOn.Contains("self-hosted", StringComparison.Ordinal), true);
+            Expect("release.yml: Job manifest auf gehostetem Runner", manifestRunsOn.Length > 0 && !IsSelfHosted(manifestRunsOn), true);
         }
     }
 

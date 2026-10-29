@@ -106,7 +106,7 @@ Genauigkeit: Der Ursprung ist die Erzeugungszeit des Prozesses laut Betriebssyst
 
 ## Selbsttest
 
-`selftest` prüft Median (ungerade und gerade Anzahl), Grenze je Fall, die Grenzentscheidung (ein Median genau auf der Grenze besteht, knapp darüber nicht), das Lesen von `second-sharp <ms>` und `phase <Name> <ms>`, Median und Ausgabe der Phasen, dass `--phases` keinen Wert nimmt, die Parameter der Fälle mit festen Werten, die Schwelle der Frame-Takt-Warnung, die Warnung bei gescheiterter Messung, deren Zeitlimit und das Maskieren der GitHub-Annotation. Er läuft in der CI vor dem Check.
+`selftest` prüft Median (ungerade und gerade Anzahl), Grenze je Fall, die Grenzentscheidung (ein Median genau auf der Grenze besteht, knapp darüber nicht), das Lesen von `second-sharp <ms>` und `phase <Name> <ms>`, Median und Ausgabe der Phasen, dass `--phases` keinen Wert nimmt, die Parameter der Fälle mit festen Werten, die Schwelle der Frame-Takt-Warnung, die Warnung bei gescheiterter Messung, deren Zeitlimit und das Maskieren der GitHub-Annotation. Er läuft in der CI vor dem Check, beide nur bei `push` auf `dev` und `main` auf den eigenen Runnern, nicht in Pull-Request-Läufen (die laufen auf gehosteten Runnern; `Docs/DECISIONS.md`, Eintrag „CI auf öffentlichem Repo …“).
 
 ## Messung auf echter Hardware (Haupt-PC)
 
@@ -125,8 +125,8 @@ Unter Windows ist Software-Rendering der Standard (`Docs/DECISIONS.md`, Eintrag 
 **Auslösen:** Der Runner hat das Label `dotnet-windows-gpu` (nicht `dotnet-windows` oder `dotnet-linux`, die CI-Jobs landen deshalb nie dort) und ist ein eigener Runner des Projektinhabers. Der Workflow startet nur auf ausdrücklichen Befehl:
 
 - Im Actions-Tab über „Run workflow“ (`workflow_dispatch`), oder
-  `gh workflow run hardware-measure.yml --repo benjo-code/Pagewing --ref <branch>`; das geht erst, wenn die Datei auf dem Standardzweig (`dev`) liegt.
-- Vorher, und für Stände eines PR-Zweigs: das Label `hardware-measure` an einen PR nach `dev` oder `main` hängen (`pull_request` vom Typ `labeled`). PRs aus Forks starten den Workflow nie.
+  `gh workflow run hardware-measure.yml --repo benjo-code/Pagewing --ref <branch>`; das geht erst, wenn die Datei auf dem Standardzweig (`dev`) liegt. Dafür braucht es Schreibrechte im Repository.
+- Einen anderen Auslöser gibt es nicht, auch kein Label an einem Pull Request: Kein Pull Request, auch keiner aus einem Fork, kann den Workflow starten. Für einen Stand aus einem Zweig `--ref <branch>` wie oben.
 
 Ohne online laufenden Runner bleibt der Job in der Warteschlange; auf diesen Runner ist nie Verlass.
 

@@ -22,16 +22,20 @@ env:
 jobs:
   build:
     name: build-${{ matrix.name }}
-    runs-on: [self-hosted, '${{ matrix.label }}']
+    # Trust model of the public repository (Docs/DECISIONS.md, entry "CI auf öffentlichem Repo ..."): every pull request
+    # run, from a fork or not, goes to a GitHub-hosted runner; the owner's runners only get push runs on dev and main.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && format('["{0}"]', matrix.hosted) || format('["self-hosted","{0}"]', matrix.label)) }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, label: dotnet-linux, rid: linux-x64, binary: pagewing, app: Pagewing }
-          - { name: windows, label: dotnet-windows, rid: win-x64, binary: pagewing.exe, app: Pagewing.exe }
+          - { name: linux, label: dotnet-linux, hosted: ubuntu-24.04, rid: linux-x64, binary: pagewing, app: Pagewing }
+          - { name: windows, label: dotnet-windows, hosted: windows-2025, rid: win-x64, binary: pagewing.exe, app: Pagewing.exe }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Without git on PATH (Windows runner) actions/checkout extracts a zip from the REST API. Its file times can lie
       # before the build of a file-based script (dotnet run <file>.cs) cached in %TEMP% by an earlier job, and the
@@ -71,13 +75,24 @@ jobs:
         if: runner.os == 'Windows'
         run: Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
 
+      # Only on the GitHub-hosted image (pull requests): the image has most of this, but it is not guaranteed. The
+      # self-hosted runner is set up by hand and the check below fails when something is missing there.
+      - name: Install the Native AOT prerequisites (Linux, hosted runner)
+        if: runner.os == 'Linux' && github.event_name == 'pull_request'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang zlib1g-dev libfontconfig1
+
       - name: Check the Native AOT prerequisites (Linux)
         if: runner.os == 'Linux'
         run: |
           command -v clang >/dev/null || { echo 'clang not found: install the clang package' >&2; exit 1; }
           clang --version
           test -f /usr/include/zlib.h || { echo 'zlib.h not found: install zlib1g-dev' >&2; exit 1; }
-          command -v xvfb-run >/dev/null || { echo 'xvfb-run not found (startup check): install the xvfb package' >&2; exit 1; }
+          # The startup check runs on the owner's runner only (push); the hosted runner does not need Xvfb.
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            command -v xvfb-run >/dev/null || { echo 'xvfb-run not found (startup check): install the xvfb package' >&2; exit 1; }
+          fi
           ldconfig -p | grep -q libfontconfig.so.1 || { echo 'libfontconfig.so.1 not found (Skia in the headless UI tests and the app): install the libfontconfig1 package' >&2; exit 1; }
 
       # Packaging (Milestone 8): the Linux packages are built here and must run on glibc 2.35 (Ubuntu 22.04).
@@ -151,7 +166,7 @@ jobs:
       # GLIBC_2.38). The release files are built in ubuntu:22.04 (packaging/linux/container-build.sh), where the same
       # check is blocking; Docs/DECISIONS.md, entry "Mindest-glibc 2.35 und Bauweise der Linux-Pakete".
       - name: Check the binaries against glibc 2.35 (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && github.event_name != 'pull_request'
         continue-on-error: true
         run: |
           files=$(find out/app out/cli -maxdepth 1 -type f \( -name Pagewing -o -name pagewing -o -name '*.so' -o -name '*.so.*' \) | sort)
@@ -160,13 +175,16 @@ jobs:
           # shellcheck disable=SC2086
           dotnet run tools/package.cs -- check-binary $files --max-glibc 2.35
 
+      # The startup check and its self-test run on the owner's runners after the merge (push to dev and main), not on
+      # pull requests: the budgets are measured on the real runners; hosted images are not comparable.
       - name: Self-test of the startup check
+        if: github.event_name != 'pull_request'
         run: dotnet run bench/startup/startup.cs -- selftest
 
       # Median of 10 runs per case against the budgets, fails above budget + 25 % (bench/startup/README.md).
       # All four cases run, so that every CSV exists; the step fails afterwards if one of them failed.
       - name: Startup check
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && github.event_name != 'pull_request'
         run: |
           status=0
           check() { xvfb-run -a dotnet run bench/startup/startup.cs -- --exe "out/app/${{ matrix.app }}" "$@" || status=1; }
@@ -177,7 +195,7 @@ jobs:
           exit $status
 
       - name: Startup check
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && github.event_name != 'pull_request'
         run: |
           $failed = $false
           $cases = @(
@@ -193,7 +211,7 @@ jobs:
           if ($failed) { exit 1 }
 
       - name: Upload the startup measurements
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: startup-${{ matrix.name }}
