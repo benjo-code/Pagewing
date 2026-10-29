@@ -17,7 +17,7 @@ public sealed record DrawingGeometry
         Width = width;
     }
 
-    /// <summary>Gets the kind: <see cref="AnnotationKind.Ink"/>, <see cref="AnnotationKind.Line"/>, <see cref="AnnotationKind.Arrow"/>, <see cref="AnnotationKind.Rectangle"/> or <see cref="AnnotationKind.Ellipse"/>.</summary>
+    /// <summary>Gets the kind: <see cref="AnnotationKind.Ink"/>, <see cref="AnnotationKind.Signature"/>, <see cref="AnnotationKind.Line"/>, <see cref="AnnotationKind.Arrow"/>, <see cref="AnnotationKind.Rectangle"/> or <see cref="AnnotationKind.Ellipse"/>.</summary>
     public AnnotationKind Kind { get; }
 
     /// <summary>Gets the strokes; empty for a rectangle and an ellipse.</summary>
@@ -70,6 +70,13 @@ public sealed record DrawingGeometry
     /// <returns>The drawing.</returns>
     public static DrawingGeometry Ink(IEnumerable<IReadOnlyList<DisplayPoint>> strokes, double width) =>
         FromStrokes(AnnotationKind.Ink, strokes, width);
+
+    /// <summary>Creates a drawn signature: strokes like a freehand drawing, written to the file as an ink with the subject "Signature".</summary>
+    /// <param name="strokes">The strokes; the points are copied.</param>
+    /// <param name="width">The stroke width in points.</param>
+    /// <returns>The drawing.</returns>
+    public static DrawingGeometry Signature(IEnumerable<IReadOnlyList<DisplayPoint>> strokes, double width) =>
+        FromStrokes(AnnotationKind.Signature, strokes, width);
 
     /// <summary>Creates a straight line: one stroke of two points.</summary>
     /// <param name="start">The first end.</param>

@@ -65,7 +65,7 @@ public static class SelectionHandles
         {
             case AnnotationKind.Line or AnnotationKind.Arrow when geometry.Strokes.Count > 0 && geometry.Strokes[0].Count == 2:
                 return [new Handle(HandleKind.Start, geometry.Strokes[0][0]), new Handle(HandleKind.End, geometry.Strokes[0][1])];
-            case AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse:
+            case AnnotationKind.Ink or AnnotationKind.Signature or AnnotationKind.Rectangle or AnnotationKind.Ellipse:
                 var box = geometry.Box;
                 var middleX = (box.Left + box.Right) / 2;
                 var middleY = (box.Top + box.Bottom) / 2;

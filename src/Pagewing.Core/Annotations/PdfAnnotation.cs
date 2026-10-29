@@ -41,6 +41,12 @@ namespace Pagewing.Core.Annotations;
 /// The text box (FreeText) as read: <c>/Rect</c>, the text (<c>/Contents</c> with line feeds, also in
 /// <paramref name="Contents"/>), the size and colour of <c>/DA</c>; <see langword="null"/> for any other kind.
 /// </param>
+/// <param name="IsSignatureImage">
+/// Whether this is Pagewing's own image signature: a stamp with the mark and pixels Pagewing wrote (<see cref="Kind"/> is
+/// <see cref="AnnotationKind.Signature"/>, <see cref="Drawing"/> is <see langword="null"/>). Another program's stamp is
+/// <see cref="AnnotationKind.Other"/> and locked. A drawn signature is an ink (<see cref="Drawing"/> of the kind
+/// <see cref="AnnotationKind.Signature"/>) and has this <see langword="false"/>.
+/// </param>
 public sealed record PdfAnnotation(
     int Page,
     int Index,
@@ -57,12 +63,15 @@ public sealed record PdfAnnotation(
     bool Editable,
     DrawingGeometry? Drawing = null,
     bool GeometryEditable = false,
-    TextBoxSpec? TextBox = null)
+    TextBoxSpec? TextBox = null,
+    bool IsSignatureImage = false)
 {
     /// <summary>
     /// Gets the shape the select tool shows, moves and resizes: the <see cref="Drawing"/>, or for a text box its box as a
-    /// rectangle (moving or resizing it changes the box, the text is laid out again); <see langword="null"/> for a markup and
-    /// for a drawing whose shape cannot be read.
+    /// rectangle (moving or resizing it changes the box, the text is laid out again), for an image signature its bounds as a
+    /// rectangle (the aspect ratio is kept when it is changed); <see langword="null"/> for a markup and for a drawing whose
+    /// shape cannot be read.
     /// </summary>
-    public DrawingGeometry? SelectionShape => Drawing ?? (TextBox is { } box ? DrawingGeometry.Rectangle(box.Box, 1) : null);
+    public DrawingGeometry? SelectionShape =>
+        Drawing ?? (TextBox is { } box ? DrawingGeometry.Rectangle(box.Box, 1) : IsSignatureImage ? DrawingGeometry.Rectangle(Bounds, 1) : null);
 }
