@@ -1497,4 +1497,10 @@
   <data name="SignatureProblemSaveFailed" xml:space="preserve">
     <value>Die Unterschrift konnte nicht gespeichert werden.</value>
   </data>
+  <data name="CommandInsertSignature" xml:space="preserve">
+    <value>Unterschrift einfügen</value>
+  </data>
+  <data name="SignatureHistoryFull" xml:space="preserve">
+    <value>Der Verlauf ist voll mit Unterschriftsbildern. Speichern Sie zuerst das Dokument.</value>
+  </data>
 </root>

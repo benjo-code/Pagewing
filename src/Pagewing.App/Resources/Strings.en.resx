@@ -1497,4 +1497,10 @@
   <data name="SignatureProblemSaveFailed" xml:space="preserve">
     <value>The signature could not be saved.</value>
   </data>
+  <data name="CommandInsertSignature" xml:space="preserve">
+    <value>Insert signature</value>
+  </data>
+  <data name="SignatureHistoryFull" xml:space="preserve">
+    <value>The history is full of signature images. Save the document first.</value>
+  </data>
 </root>

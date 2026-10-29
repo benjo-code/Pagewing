@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using Pagewing.App.Services;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Signatures;
@@ -13,6 +14,7 @@ public sealed partial class MainViewModel
 {
     private SignatureCardViewModel? _signatureCard;
     private SignatureStore? _signatureStore;
+    private RelayCommand? _insertSignatureCommand;
 
     /// <summary>
     /// Gets or sets what opens the library of signatures (the folder in the user's configuration); the workspace gives all windows
@@ -32,8 +34,59 @@ public sealed partial class MainViewModel
     /// <summary>Gets the library of signatures, opening it on first use.</summary>
     internal SignatureStore SignatureLibrary => _signatureStore ??= SignatureStoreProvider();
 
+    /// <summary>
+    /// Ctrl+Shift+G, "Insert signature": starts the mode "Comment" in the active tab if it is not on, then opens the menu of the
+    /// saved signatures (<see cref="SignatureMenuRequested"/>, which the toolbar answers) or, while the library is empty, the dialog
+    /// "New signature". Executable where the mode can run: after the first sharp page, with a document that allows annotating.
+    /// </summary>
+    public ICommand InsertSignatureCommand => _insertSignatureCommand ??= new RelayCommand(() => _ = InsertSignatureAsync(), () => ActiveTab is { CanChooseSignature: true });
+
+    /// <summary>Occurs when the menu of the saved signatures should open (the toolbar of the mode shows it).</summary>
+    internal event Action? SignatureMenuRequested;
+
     /// <summary>Shows the dialog "New signature".</summary>
     public void ShowNewSignature() => ShowOverlay(OverlayKind.Signature);
+
+    /// <summary>
+    /// Reads the saved signatures: the folder of the library is read the first time (never before a menu or the dialog needs it,
+    /// and reading creates nothing).
+    /// </summary>
+    internal IReadOnlyList<SavedSignature> LoadSignatures() => SignatureLibrary.Items;
+
+    /// <summary>
+    /// Chooses a saved signature for the active tab: the placing tool with its ghost, or with <paramref name="fromKeyboard"/> placed
+    /// at once in the centre of the visible page (<see cref="TabViewModel.ChooseSignatureAsync"/>).
+    /// </summary>
+    internal Task ChooseSignatureAsync(SavedSignature signature, bool fromKeyboard)
+    {
+        ArgumentNullException.ThrowIfNull(signature);
+        return ActiveTab is not { } tab
+            ? Task.CompletedTask
+            : tab.ChooseSignatureAsync(signature, signature.Kind == SavedSignatureKind.Image ? SignatureLibrary.ReadPng(signature.Id) : null, fromKeyboard);
+    }
+
+    private async Task InsertSignatureAsync()
+    {
+        if (ActiveTab is not { } tab)
+        {
+            return;
+        }
+
+        await tab.BeginAnnotateAsync().ConfigureAwait(true);
+        if (!tab.IsAnnotating || !ReferenceEquals(tab, ActiveTab))
+        {
+            return;
+        }
+
+        if (LoadSignatures().Count == 0)
+        {
+            ShowNewSignature();
+        }
+        else
+        {
+            SignatureMenuRequested?.Invoke();
+        }
+    }
 
     private SignatureCardViewModel CreateSignatureCard()
     {

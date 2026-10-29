@@ -3,7 +3,6 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Pagewing.Core.Signatures;
 
 namespace Pagewing.App.Controls;
@@ -75,16 +74,7 @@ public sealed class SignaturePreview : Control
         _bitmap = null;
         if (Image is { } image)
         {
-            var bitmap = new WriteableBitmap(new PixelSize(image.Width, image.Height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Unpremul);
-            using (var locked = bitmap.Lock())
-            {
-                for (var y = 0; y < image.Height; y++)
-                {
-                    System.Runtime.InteropServices.Marshal.Copy(image.Bgra, y * image.Width * 4, locked.Address + (y * locked.RowBytes), image.Width * 4);
-                }
-            }
-
-            _bitmap = bitmap;
+            _bitmap = SignatureBitmaps.From(image);
         }
 
         InvalidateVisual();

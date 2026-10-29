@@ -117,6 +117,11 @@ public sealed partial class TabViewModel
         {
             if (SetProperty(ref _isSaving, value))
             {
+                if (value)
+                {
+                    DiscardPendingSignature();
+                }
+
                 RaiseSaveCanExecuteChanged();
                 _undoCommand?.RaiseCanExecuteChanged();
                 _redoCommand?.RaiseCanExecuteChanged();
@@ -145,6 +150,11 @@ public sealed partial class TabViewModel
         {
             if (SetProperty(ref _isPrinting, value))
             {
+                if (value)
+                {
+                    DiscardPendingSignature();
+                }
+
                 OnPropertyChanged(nameof(SaveBlockedReason));
                 RaiseSaveCanExecuteChanged();
                 RaiseStepCanExecuteChanged();
@@ -210,6 +220,11 @@ public sealed partial class TabViewModel
             if (_isAskedAbout != value)
             {
                 _isAskedAbout = value;
+                if (value)
+                {
+                    DiscardPendingSignature();
+                }
+
                 RaiseSaveCanExecuteChanged();
                 RaiseAnnotateCanExecuteChanged();
                 _undoCommand?.RaiseCanExecuteChanged();
@@ -233,6 +248,11 @@ public sealed partial class TabViewModel
             if (_isEditingFrozen != value)
             {
                 _isEditingFrozen = value;
+                if (value)
+                {
+                    DiscardPendingSignature();
+                }
+
                 RaiseSaveCanExecuteChanged();
                 RaiseAnnotateCanExecuteChanged();
                 _undoCommand?.RaiseCanExecuteChanged();

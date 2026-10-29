@@ -526,6 +526,8 @@ public static class Strings
     public static string SignatureProblemUnreadable => Get("SignatureProblemUnreadable");
     public static string SignatureProblemLibraryFull => Get("SignatureProblemLibraryFull");
     public static string SignatureProblemSaveFailed => Get("SignatureProblemSaveFailed");
+    public static string CommandInsertSignature => Get("CommandInsertSignature");
+    public static string SignatureHistoryFull => Get("SignatureHistoryFull");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",
