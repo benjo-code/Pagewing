@@ -3502,6 +3502,7 @@ static class SelfTest
         LinuxContainerParts();
         UpdateReleaseParts();
         ManifestJobParts();
+        PublicRepoWorkflowParts();
         UpdateTestBuildGuardParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
@@ -4622,6 +4623,136 @@ static class SelfTest
         var user = System.Security.Principal.WindowsIdentity.GetCurrent().User;
         return security.AreAccessRulesProtected && rules.Count == 1 && rules[0].IdentityReference.Equals(user) &&
             rules[0].AccessControlType == System.Security.AccessControl.AccessControlType.Allow;
+    }
+
+    // Trust model once the repository is public: code from a fork PR never reaches a persistent self-hosted runner,
+    // the checkout leaves no token behind, the signing secret lives in one hosted, environment-guarded job, and every
+    // action is pinned to a commit. A missing workflow file (codeql.yml before it exists) is no violation.
+    private const string PullRequestGuard = "github.event_name == 'pull_request'";
+
+    private static string TriggersOf(string yml) =>
+        Regex.Match(yml, @"(?m)^on:\n(?<b>(?:[ #].*\n|\n)*)").Groups["b"].Value;
+
+    private static bool HasTrigger(string yml, string trigger) =>
+        Regex.IsMatch(TriggersOf(yml), @"(?m)^  " + trigger + @":");
+
+    private static List<string> PullRequestTargetViolations(string yml) =>
+        HasTrigger(yml, "pull_request_target") ? ["pull_request_target"] : [];
+
+    private static List<string> SelfHostedOnPullRequestViolations(string file, string yml)
+    {
+        var violations = new List<string>();
+        var runsOn = Regex.Matches(yml, @"(?m)^    runs-on:.*$").Select(m => m.Value).ToList();
+        if (file == "hardware-measure.yml" && HasTrigger(yml, "pull_request"))
+        {
+            violations.Add("Ausloeser pull_request");
+        }
+
+        if (!HasTrigger(yml, "pull_request"))
+        {
+            return violations;
+        }
+
+        var noSelfHostedAtAll = file is "roadmap.yml" or "codeql.yml";
+        foreach (var line in runsOn.Where(l => l.Contains("self-hosted", StringComparison.Ordinal)))
+        {
+            var guarded = line.Contains(PullRequestGuard, StringComparison.Ordinal) && line.Contains("matrix.hosted", StringComparison.Ordinal);
+            if (noSelfHostedAtAll || !guarded)
+            {
+                violations.Add(line.Trim());
+            }
+        }
+
+        if (file == "ci.yml" && !runsOn.Any(l => l.Contains(PullRequestGuard, StringComparison.Ordinal) && l.Contains("matrix.hosted", StringComparison.Ordinal)))
+        {
+            violations.Add("kein gehostetes runs-on fuer Pull Requests");
+        }
+
+        return violations;
+    }
+
+    private static List<string> CheckoutViolations(string yml) =>
+        [.. Regex.Split(yml, @"(?m)^(?=      - )").Where(s => s.Contains("actions/checkout@", StringComparison.Ordinal))
+            .Where(s => !Regex.IsMatch(s, @"(?m)^ +persist-credentials: false\s*$")).Select(_ => "checkout ohne persist-credentials: false")];
+
+    private static List<string> UnpinnedActionViolations(string yml) =>
+        [.. Regex.Matches(yml, @"(?m)^\s*(?:- )?uses: (?<a>[^\s#]+)").Select(m => m.Groups["a"].Value)
+            .Where(a => !a.StartsWith("./", StringComparison.Ordinal) && !Regex.IsMatch(a, @"@[0-9a-f]{40}$"))];
+
+    private static List<string> PermissionsViolations(string yml)
+    {
+        var violations = new List<string>();
+        if (!Regex.IsMatch(yml, @"(?m)^permissions:"))
+        {
+            violations.Add("permissions fehlt");
+        }
+
+        if (Regex.IsMatch(yml, @"permissions:\s*write-all"))
+        {
+            violations.Add("write-all");
+        }
+
+        return violations;
+    }
+
+    private static void PublicRepoWorkflowParts()
+    {
+        const string dir = ".github/workflows";
+        string? Read(string file) => File.Exists(Path.Combine(dir, file))
+            ? File.ReadAllText(Path.Combine(dir, file)).Replace("\r\n", "\n", StringComparison.Ordinal) : null;
+        var files = Directory.Exists(dir) ? Directory.GetFiles(dir, "*.yml").Select(Path.GetFileName).OfType<string>().Order().ToList() : [];
+        Expect("Workflows: Ordner .github/workflows hat Dateien", files.Count > 0, true);
+
+        // Negative controls: the rules must bite on a deliberately bad workflow.
+        const string bad = "on:\n  pull_request_target:\n  pull_request:\npermissions: write-all\njobs:\n  x:\n    runs-on: [self-hosted, dotnet-linux]\n" +
+            "    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/cache@0123456789abcdef0123456789abcdef01234567\n";
+        Expect("Gegenprobe: pull_request_target wird erkannt", PullRequestTargetViolations(bad).Count, 1);
+        Expect("Gegenprobe: self-hosted bei Pull Requests wird erkannt", SelfHostedOnPullRequestViolations("x.yml", bad).Count, 1);
+        Expect("Gegenprobe: checkout ohne persist-credentials wird erkannt", CheckoutViolations(bad).Count, 1);
+        Expect("Gegenprobe: nicht angeheftete Action wird erkannt", UnpinnedActionViolations(bad).Count, 1);
+        Expect("Gegenprobe: write-all wird erkannt", PermissionsViolations(bad).Count, 1);
+
+        string Join(IEnumerable<string> v) => string.Join("; ", v);
+        var noTarget = new List<string>();
+        var selfHosted = new List<string>();
+        var checkout = new List<string>();
+        var unpinned = new List<string>();
+        var permissions = new List<string>();
+        var secretsOutside = new List<string>();
+        foreach (var file in files)
+        {
+            var yml = Read(file)!;
+            noTarget.AddRange(PullRequestTargetViolations(yml).Select(v => $"{file}: {v}"));
+            selfHosted.AddRange(SelfHostedOnPullRequestViolations(file, yml).Select(v => $"{file}: {v}"));
+            checkout.AddRange(CheckoutViolations(yml).Select(v => $"{file}: {v}"));
+            unpinned.AddRange(UnpinnedActionViolations(yml).Select(v => $"{file}: {v}"));
+            permissions.AddRange(PermissionsViolations(yml).Select(v => $"{file}: {v}"));
+            if (file != "release.yml" && yml.Contains("secrets.", StringComparison.Ordinal))
+            {
+                secretsOutside.Add(file);
+            }
+        }
+
+        // A workflow that is missing (codeql.yml before it exists) is simply not listed above.
+        Expect("Workflows: kein pull_request_target", Join(noTarget), "");
+        Expect("Workflows: Pull-Request-Laeufe nie auf self-hosted", Join(selfHosted), "");
+        Expect("Workflows: jeder checkout mit persist-credentials: false", Join(checkout), "");
+        Expect("Workflows: permissions oben und kein write-all", Join(permissions), "");
+        Expect("Workflows: jede Action auf einer 40-stelligen SHA", Join(unpinned), "");
+        Expect("Workflows: secrets. nur in release.yml", Join(secretsOutside), "");
+
+        var release = Read("release.yml");
+        if (release is not null)
+        {
+            Expect("release.yml: kein Ausloeser release", HasTrigger(release, "release"), false);
+            var manifest = Regex.Match(release, @"(?m)^  manifest:\n(?<b>(?:    .*\n|\n)*)").Groups["b"].Value;
+            var otherJobs = release.Replace(manifest, string.Empty, StringComparison.Ordinal);
+            Expect("release.yml: secrets. nur im Job manifest", otherJobs.Contains("secrets.", StringComparison.Ordinal), false);
+            Expect("release.yml: Job manifest mit environment: release-signing",
+                Regex.IsMatch(manifest, @"(?m)^    environment: release-signing\s*$"), true);
+            var manifestRunsOn = Regex.Match(manifest, @"(?m)^    runs-on:.*$").Value;
+            Expect("release.yml: Job manifest auf gehostetem Runner", manifestRunsOn.Length > 0 && !manifestRunsOn.Contains("self-hosted", StringComparison.Ordinal), true);
+        }
     }
 
     // The third job of release.yml signs the update manifest. The signing key is a repository secret: it may appear in
