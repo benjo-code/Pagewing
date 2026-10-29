@@ -219,15 +219,24 @@ internal static unsafe class PdfiumSignatures
 
         try
         {
-            return LooksOwn(annotation, out var fingerprint)
-                && ReadImageObject(document, page, annotation, ref pixelBudget) is { } image
-                && Fingerprint(image.Bgra) == fingerprint;
+            return ReadOwnImage(document, page, annotation, ref pixelBudget) is not null;
         }
         finally
         {
             Fpdf.FPDFPage_CloseAnnot(annotation);
         }
     }
+
+    /// <summary>
+    /// Reads the image of an annotation that is Pagewing's own image signature (the cheap checks of the mark, the image one to one
+    /// within <paramref name="pixelBudget"/>, the fingerprint of the key); <see langword="null"/> for any other.
+    /// </summary>
+    internal static (int Width, int Height, byte[] Bgra)? ReadOwnImage(PdfiumDocument document, PdfiumPage page, nint annotation, ref long pixelBudget) =>
+        LooksOwn(annotation, out var fingerprint)
+            && ReadImageObject(document, page, annotation, ref pixelBudget) is { } image
+            && Fingerprint(image.Bgra) == fingerprint
+            ? image
+            : null;
 
     /// <summary>
     /// Reads the image of the stamp at <paramref name="index"/> one to one: <see langword="null"/> unless it is a stamp

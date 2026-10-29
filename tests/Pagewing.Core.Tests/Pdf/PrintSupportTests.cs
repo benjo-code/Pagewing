@@ -232,6 +232,58 @@ public sealed class PrintSupportTests : IDisposable
     }
 
     [Fact]
+    public async Task UnsavedSignatureAppearsInThePrint()
+    {
+        // A drawn and an image signature that are not saved (in memory only) print light, in their own colours; the tab showing the
+        // page dark meanwhile changes nothing, and printing reads nothing for the dark page.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Printing to a device context needs Windows.");
+        var ct = TestContext.Current.CancellationToken;
+        await using var document = await OpenFixtureAsync("text-basic.pdf");
+        await document.CreateDrawingAsync(0, DrawingGeometry.Signature([[new DisplayPoint(20, 150), new DisplayPoint(180, 150)]], 4), new AnnotationColor(220, 30, 30), null, null, ct);
+        var bgra = new byte[100 * 40 * 4];
+        for (var i = 0; i < bgra.Length; i += 4)
+        {
+            bgra[i] = 220;
+            bgra[i + 1] = 80;
+            bgra[i + 2] = 30;
+            bgra[i + 3] = 255;
+        }
+
+        await document.CreateSignatureImageAsync(0, new PageRect(200, 100, 280, 132), new Pagewing.Core.Signatures.SignatureImage(100, 40, bgra), null, ct);
+        await document.RenderPageAsync(0, 2, new RenderOptions { PageTheme = PageTheme.Dark }, ct);
+        var scans = document.DarkMarkupScans;
+
+        const int Width = 600, Height = 400;
+        var pixels = await PrintToMemoryAsync(document, Width, Height, ct);
+
+        Assert.Equal(scans, document.DarkMarkupScans);
+        Assert.Equal(((byte)255, (byte)255, (byte)255), At(pixels, Width, 5, 5));
+        var red = 0;
+        for (var y = 296; y < 304; y++)
+        {
+            for (var x = 50; x < 350; x++)
+            {
+                var (r, g, b) = At(pixels, Width, x, y);
+                red += r > 200 && g < 60 && b < 60 ? 1 : 0;
+            }
+        }
+
+        var blue = 0;
+        for (var y = 205; y < 260; y++)
+        {
+            for (var x = 405; x < 555; x++)
+            {
+                var (r, g, b) = At(pixels, Width, x, y);
+                blue += b > 200 && r < 60 && g > 60 && g < 100 ? 1 : 0;
+            }
+        }
+
+        Assert.True(red > 1500, $"{red} red pixels in the drawn signature");
+        Assert.True(blue > 7500, $"{blue} pixels of the image signature (of 8250)");
+        Assert.DoesNotContain(Enumerable.Range(0, Width * Height), i => pixels[(i * 4) + 2] == 0x1E && pixels[(i * 4) + 1] == 0x21 && pixels[i * 4] == 0x27);
+    }
+
+    [Fact]
     public async Task PrintedPageIncludesATextBoxInItsColour()
     {
         // A text box prints light, as its own appearance draws it: solid glyphs in its colour; the dark page read nothing.

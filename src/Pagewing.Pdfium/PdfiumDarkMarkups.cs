@@ -66,7 +66,14 @@ internal static unsafe class PdfiumDarkMarkups
     /// along (<see cref="PdfiumDarkDrawings.Read"/>) within <see cref="PdfiumDarkDrawings.MaxTotalPoints"/>; each kind
     /// stops at its own budget, the appearance budget stops both.
     /// </summary>
-    public static DarkMarkupPaint Read(PdfiumPage page, PdfiumPageColors colors)
+    public static DarkMarkupPaint Read(PdfiumPage page, PdfiumPageColors colors) => Read(null, page, colors);
+
+    /// <summary>
+    /// Like <see cref="Read(PdfiumPage, PdfiumPageColors)"/>, and with a <paramref name="document"/> also the image signatures of
+    /// Pagewing whose ink is too dark for the dark ground (<see cref="PdfiumDarkSignatures.Read"/>, within
+    /// <see cref="PdfiumSignatures.PixelBudget"/>).
+    /// </summary>
+    public static DarkMarkupPaint Read(PdfiumDocument? document, PdfiumPage page, PdfiumPageColors colors)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
@@ -79,6 +86,8 @@ internal static unsafe class PdfiumDarkMarkups
         var areas = new List<DarkMarkupArea>();
         var bands = new List<DarkMarkupBand>();
         List<DarkDrawing>? drawings = null;
+        List<DarkImage>? images = null;
+        long imageBudget = PdfiumSignatures.PixelBudget;
         long quadBudget = MaxTotalQuads;
         long pointBudget = PdfiumDarkDrawings.MaxTotalPoints;
         long appearanceBudget = MaxAppearanceBytes;
@@ -97,6 +106,18 @@ internal static unsafe class PdfiumDarkMarkups
                 try
                 {
                     var subtype = Fpdf.FPDFAnnot_GetSubtype(annotation);
+                    if (subtype == FpdfConstants.AnnotStamp)
+                    {
+                        if (document is not null && imageBudget > 0
+                            && (Fpdf.FPDFAnnot_GetFlags(annotation) & (FpdfConstants.AnnotFlagHidden | FpdfConstants.AnnotFlagNoView)) == 0
+                            && PdfiumDarkSignatures.Read(document, page, annotation, transform, colors, ref imageBudget) is { } image)
+                        {
+                            (images ??= []).Add(image);
+                        }
+
+                        continue;
+                    }
+
                     var textBox = PdfiumAnnotations.IsTextBox(subtype);
                     var drawing = PdfiumAnnotations.IsDrawing(subtype) || textBox;
                     if (!(drawing ? pointBudget > 0 : PdfiumAnnotations.IsMarkup(subtype) && quadBudget > 0)
@@ -173,7 +194,7 @@ internal static unsafe class PdfiumDarkMarkups
             PdfiumAnnotations.ReturnScratch(ref scratch);
         }
 
-        return areas.Count == 0 && bands.Count == 0 && drawings is null ? DarkMarkupPaint.Empty : new DarkMarkupPaint(areas, bands, drawings);
+        return areas.Count == 0 && bands.Count == 0 && drawings is null && images is null ? DarkMarkupPaint.Empty : new DarkMarkupPaint(areas, bands, drawings, images);
     }
 
     /// <summary>
@@ -273,6 +294,9 @@ internal static unsafe class PdfiumDarkMarkups
         // The drawings over the areas (their shares are taken against the dark ground, which an area would have changed),
         // and under the lines.
         PdfiumDarkDrawings.Apply(paint.Drawings, colors, pixels, width, height, stride, scaleX, scaleY, offsetX, offsetY, ref budget);
+
+        // The image signatures with ink too dark for the ground, over the drawings and under the lines.
+        PdfiumDarkSignatures.Apply(paint.Images, pixels, width, height, stride, scaleX, scaleY, offsetX, offsetY, ref budget);
 
         // The lines last: a strike-out through a highlight stays a line.
         foreach (var band in paint.Bands)
@@ -534,7 +558,7 @@ internal readonly record struct DarkMarkupArea(DarkMarkupPoint P1, DarkMarkupPoi
 internal readonly record struct DarkMarkupBand(double Left, double Top, double Right, double Bottom, uint Color);
 
 /// <summary>What <see cref="PdfiumDarkMarkups.Apply"/> paints on one dark render.</summary>
-internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IReadOnlyList<DarkMarkupBand> bands, IReadOnlyList<DarkDrawing>? drawings = null)
+internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IReadOnlyList<DarkMarkupBand> bands, IReadOnlyList<DarkDrawing>? drawings = null, IReadOnlyList<DarkImage>? images = null)
 {
     /// <summary>Gets a page without markups.</summary>
     public static DarkMarkupPaint Empty { get; } = new([], []);
@@ -548,8 +572,11 @@ internal sealed class DarkMarkupPaint(IReadOnlyList<DarkMarkupArea> areas, IRead
     /// <summary>Gets the drawings (ink, square, circle) in <c>/Annots</c> order.</summary>
     public IReadOnlyList<DarkDrawing> Drawings { get; } = drawings ?? [];
 
+    /// <summary>Gets the image signatures whose ink is repainted (milestone 12).</summary>
+    public IReadOnlyList<DarkImage> Images { get; } = images ?? [];
+
     /// <summary>Gets whether there is nothing to paint.</summary>
-    public bool IsEmpty => Areas.Count == 0 && Bands.Count == 0 && Drawings.Count == 0;
+    public bool IsEmpty => Areas.Count == 0 && Bands.Count == 0 && Drawings.Count == 0 && Images.Count == 0;
 }
 
 /// <summary>

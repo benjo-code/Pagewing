@@ -456,7 +456,7 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
     {
         try
         {
-            return (document.DarkMarkupReader ?? PdfiumDarkMarkups.Read)(page, colors);
+            return document.DarkMarkupReader is { } reader ? reader(page, colors) : PdfiumDarkMarkups.Read(document, page, colors);
         }
         catch (Exception)
         {
