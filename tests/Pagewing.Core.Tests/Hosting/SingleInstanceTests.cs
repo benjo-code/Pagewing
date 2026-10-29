@@ -272,11 +272,50 @@ public sealed class SingleInstanceTests
             .Cast<PipeAccessRule>()
             .ToList();
 
-        // Not Everyone, not "Users", not "Authenticated Users": one allow entry, for the account that runs the program.
-        var user = WindowsIdentity.GetCurrent().User!;
+        // Allow entries for the account that runs the program only. .NET's CurrentUserOnly names the OWNER of the token: for
+        // the user it is the user, for an elevated administrator it is the group Administrators (found by the first hosted CI
+        // run, which runs elevated). That is still closed to every user who is not an administrator.
+        var identity = WindowsIdentity.GetCurrent();
         Assert.NotEmpty(rules);
         Assert.All(rules, rule => Assert.Equal(AccessControlType.Allow, rule.AccessControlType));
-        Assert.All(rules, rule => Assert.Equal(user, rule.IdentityReference));
+        Assert.All(rules, rule => Assert.True(
+            IsTheAccountOfTheProgram((SecurityIdentifier)rule.IdentityReference, identity.User!, identity.Owner),
+            $"{rule.IdentityReference.Value} may use the pipe; the user is {identity.User!.Value}, the token owner {identity.Owner?.Value}."));
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void OnlyTheUserOrTheOwnerOfTheTokenIsTheAccountOfTheProgram()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Security identifiers of Windows.");
+        var user = new SecurityIdentifier("S-1-5-21-1-2-3-1001");
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+
+        Assert.True(IsTheAccountOfTheProgram(user, user, owner: null));
+        Assert.True(IsTheAccountOfTheProgram(user, user, administrators));
+        Assert.True(IsTheAccountOfTheProgram(administrators, user, administrators));
+
+        // The elevated case without the elevated token: Administrators are not the account unless they own the token.
+        Assert.False(IsTheAccountOfTheProgram(administrators, user, owner: null));
+        Assert.False(IsTheAccountOfTheProgram(administrators, user, user));
+        foreach (var wellKnown in new[] { WellKnownSidType.WorldSid, WellKnownSidType.BuiltinUsersSid, WellKnownSidType.AuthenticatedUserSid, WellKnownSidType.InteractiveSid })
+        {
+            Assert.False(IsTheAccountOfTheProgram(new SecurityIdentifier(wellKnown, null), user, owner: null));
+            Assert.False(IsTheAccountOfTheProgram(new SecurityIdentifier(wellKnown, null), user, user));
+        }
+    }
+
+    // The user, or the owner of the token (the Administrators group when elevated); never Everyone, Users, Authenticated Users.
+    [SupportedOSPlatform("windows")]
+    private static bool IsTheAccountOfTheProgram(SecurityIdentifier rule, SecurityIdentifier user, SecurityIdentifier? owner)
+    {
+        SecurityIdentifier[] broad =
+        [
+            new(WellKnownSidType.WorldSid, null),
+            new(WellKnownSidType.BuiltinUsersSid, null),
+            new(WellKnownSidType.AuthenticatedUserSid, null),
+        ];
+        return !broad.Contains(rule) && (rule == user || (owner is not null && rule == owner));
     }
 
     [Fact]
@@ -291,9 +330,37 @@ public sealed class SingleInstanceTests
 
         // With $XDG_RUNTIME_DIR the pipe name is the socket path; without it .NET puts the socket into the temp folder.
         var socket = Path.IsPathRooted(pipe) ? pipe : Path.Combine(Path.GetTempPath(), "CoreFxPipe_" + pipe);
-        Assert.True(File.Exists(socket), socket);
-        Assert.Equal(UnixFileMode.None, File.GetUnixFileMode(socket) & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute
-            | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute));
+
+        // The listener binds on a pool thread after Listen returned, and .NET restricts the mode after the bind: wait for both.
+        const UnixFileMode Others = UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute
+            | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+        var until = Environment.TickCount64 + (long)Due.TotalMilliseconds;
+        var mode = (UnixFileMode?)null;
+        while (Environment.TickCount64 < until)
+        {
+            try
+            {
+                mode = File.Exists(socket) ? File.GetUnixFileMode(socket) : null;
+            }
+            catch (IOException)
+            {
+                mode = null;
+            }
+
+            if (mode is { } found && (found & Others) == UnixFileMode.None)
+            {
+                break;
+            }
+
+            Thread.Sleep(20);
+        }
+
+        var directory = Path.GetDirectoryName(socket)!;
+        var entries = Directory.Exists(directory)
+            ? string.Join(", ", Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName).Take(30))
+            : "(the folder does not exist)";
+        Assert.True(mode is not null, $"No socket at {socket} after {Due.TotalSeconds:0} s. Folder {directory} holds: {entries}. XDG_RUNTIME_DIR={Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")}.");
+        Assert.True((mode!.Value & Others) == UnixFileMode.None, $"The socket {socket} has the mode {mode}; group and others must have no access.");
     }
 
     [Fact]
