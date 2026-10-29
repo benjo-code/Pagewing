@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Pagewing.App.Services;
 using Pagewing.Core.Updates;
 using Xunit;
@@ -64,5 +65,30 @@ public sealed class UpdateApplierSupportTests : IDisposable
         Assert.Null(UpdateApplierSupport.AcceptedStaging(elsewhere, _directory));
         Assert.Null(UpdateApplierSupport.AcceptedStaging(Path.Combine(updates, "..", "9.9.7"), _directory));
         Assert.Null(UpdateApplierSupport.AcceptedStaging(Path.Combine(updates, "9.9.0"), _directory));
+    }
+
+    [Fact]
+    public void ANewStagingFolderIsEmptyAndAnOldOneIsGone()
+    {
+        var staging = Path.Combine(_directory, UpdateStaging.DirectoryName, "9.9.9");
+        Directory.CreateDirectory(staging);
+        File.WriteAllText(Path.Combine(staging, "left-over.txt"), "old");
+
+        UpdateCoordinator.PrepareStaging(staging);
+
+        Assert.True(Directory.Exists(staging));
+        Assert.Empty(Directory.GetFileSystemEntries(staging));
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public void TheStagingFolderIsTheOwnersAloneOnUnix()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes exist on Linux only; Windows inherits the rules of the profile.");
+        var staging = Path.Combine(_directory, "new-config", UpdateStaging.DirectoryName, "9.9.9");
+
+        UpdateCoordinator.PrepareStaging(staging);
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(staging));
     }
 }
