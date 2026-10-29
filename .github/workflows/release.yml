@@ -67,6 +67,30 @@ jobs:
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
           echo "Tag $TAG, Hochladen: $UPLOAD"
 
+      # The environment's branch rule constrains the workflow ref only; the code that runs here is the tag's. So with
+      # upload=true the commit of the tag must be on main or dev (equal to the branch head or an ancestor of it),
+      # checked before anything checks out or runs tag code. The tag is resolved through refs/tags (a branch of the
+      # same name does not count) and compared by commit id.
+      - name: Check that the tag is on main or dev
+        if: env.UPLOAD == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$GH_REPO/commits/refs/tags/$TAG" --jq .sha)" || { echo "Tag '$TAG' nicht gefunden (gibt es ihn im Repository?)" >&2; exit 1; }
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Unerwartete Commit-ID fuer Tag '$TAG': '$sha'" >&2; exit 1; }
+          for branch in main dev; do
+            status="$(gh api "repos/$GH_REPO/compare/$branch...$sha" --jq .status || true)"
+            # identical: the tag is the branch head; behind: the tag commit is an ancestor of the branch head.
+            if [[ "$status" == identical || "$status" == behind ]]; then
+              echo "Tag $TAG ($sha) liegt auf $branch ($status)"
+              exit 0
+            fi
+          done
+          echo "Tag $TAG ($sha) liegt weder auf main noch auf dev: Hochladen und Signieren nur fuer Commits dieser Branches." >&2
+          exit 1
+
       # A branch build is a dry run: what is uploaded must be built from the tag.
       - name: Refuse to upload a branch build
         if: env.UPLOAD == 'true' && inputs.ref != ''
@@ -77,7 +101,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.UPLOAD == 'true'
         with:
-          ref: ${{ inputs.tag }}
+          ref: refs/tags/${{ inputs.tag }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
@@ -125,7 +149,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || inputs.tag }}
+          ref: ${{ inputs.ref || format('refs/tags/{0}', inputs.tag) }}
           persist-credentials: false
 
       # See ci.yml: without git on PATH actions/checkout extracts a zip whose file times can be older than the
@@ -258,7 +282,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || inputs.tag }}
+          ref: ${{ inputs.ref || format('refs/tags/{0}', inputs.tag) }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
@@ -367,6 +391,29 @@ jobs:
             echo "Tag $TAG, Version $version, Schluessel $UPDATE_KEY_ID"
           fi
 
+      # The environment's branch rule constrains the workflow ref only; the code that runs here is the tag's. So with
+      # upload=true the commit of the tag must be on main or dev (equal to the branch head or an ancestor of it),
+      # checked before anything checks out or runs tag code. The tag is resolved through refs/tags (a branch of the
+      # same name does not count) and compared by commit id.
+      - name: Check that the tag is on main or dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$GH_REPO/commits/refs/tags/$TAG" --jq .sha)" || { echo "Tag '$TAG' nicht gefunden (gibt es ihn im Repository?)" >&2; exit 1; }
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Unerwartete Commit-ID fuer Tag '$TAG': '$sha'" >&2; exit 1; }
+          for branch in main dev; do
+            status="$(gh api "repos/$GH_REPO/compare/$branch...$sha" --jq .status || true)"
+            # identical: the tag is the branch head; behind: the tag commit is an ancestor of the branch head.
+            if [[ "$status" == identical || "$status" == behind ]]; then
+              echo "Tag $TAG ($sha) liegt auf $branch ($status)"
+              exit 0
+            fi
+          done
+          echo "Tag $TAG ($sha) liegt weder auf main noch auf dev: Hochladen und Signieren nur fuer Commits dieser Branches." >&2
+          exit 1
+
       # A branch build is a dry run: what is signed must belong to the files built from the tag.
       - name: Refuse to upload a branch build
         if: inputs.ref != ''
@@ -377,7 +424,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.STABLE == 'true'
         with:
-          ref: ${{ inputs.tag }}
+          ref: refs/tags/${{ inputs.tag }}
           persist-credentials: false
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0

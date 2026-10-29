@@ -4836,9 +4836,10 @@ static class SelfTest
         }
     }
 
-    // The third job of release.yml signs the update manifest. The signing key is a repository secret: it may appear in
-    // exactly one place, the env of the step that runs the signing command, and nowhere else (no job or workflow env,
-    // no other step, no action). The workflow has no trigger for pull requests, so code from a fork never sees it.
+    // The third job of release.yml signs the update manifest. The signing key is a secret of the environment
+    // release-signing: it may appear in exactly one place, the env of the step that runs the signing command, and
+    // nowhere else (no job or workflow env, no other step, no action). The workflow is dispatch-only, so neither a
+    // pull request nor a fork ever starts it; the tag whose code runs in the approved job must be on main or dev.
     private static void ManifestJobParts()
     {
         const string workflow = ".github/workflows/release.yml";
@@ -4879,6 +4880,38 @@ static class SelfTest
         Expect("release.yml: preflight prueft beim Hochladen die Schluessel des Tags (update-verify --keys-from-source)",
             trustCheck.Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal) &&
             Regex.IsMatch(trustCheck, @"\n        run: dotnet run tools/package\.cs -- update-verify --keys-from-source\n"), true);
+        // With upload=true the tag's commit must lie on main or dev (identical or an ancestor), checked before any step
+        // checks out or runs code of the tag: the environment's branch rule constrains only the workflow ref, not the tag.
+        const string onBranchName = "Check that the tag is on main or dev";
+        void ExpectOnBranchStep(string step, string label)
+        {
+            Expect($"release.yml: {label} hat den Schritt '{onBranchName}'", step.Length > 0, true);
+            Expect($"release.yml: {label}: Tag-Pruefung gegen main und dev (compare, identical/behind, sonst Abbruch)",
+                step.Contains("for branch in main dev", StringComparison.Ordinal) &&
+                step.Contains("compare/$branch...$sha", StringComparison.Ordinal) &&
+                step.Contains("identical", StringComparison.Ordinal) && step.Contains("behind", StringComparison.Ordinal) &&
+                step.Contains("exit 1", StringComparison.Ordinal) && step.Contains("set -euo pipefail", StringComparison.Ordinal), true);
+            Expect($"release.yml: {label}: Tag-Pruefung loest den Tag ueber refs/tags auf (kein gleichnamiger Branch)",
+                step.Contains("commits/refs/tags/$TAG", StringComparison.Ordinal), true);
+            var runAt = step.IndexOf("\n        run: |\n", StringComparison.Ordinal);
+            Expect($"release.yml: {label}: Tag-Pruefung nimmt GH_TOKEN mit GH_REPO aus dem env des Schritts, TAG nur aus der Umgebung",
+                Regex.IsMatch(step, @"\n        env:\n          GH_TOKEN: \$\{\{ github\.token \}\}\n(?:          #[^\n]*\n)?          GH_REPO: \$\{\{ github\.repository \}\}\n") &&
+                runAt >= 0 && !step[runAt..].Contains("${{", StringComparison.Ordinal), true);
+        }
+
+        var preflightSteps = StepsOf(preflight);
+        var preflightTagCheck = preflightSteps.FindIndex(x => Name(x) == "Check the tag");
+        var preflightOnBranch = preflightSteps.FindIndex(x => Name(x) == onBranchName);
+        ExpectOnBranchStep(preflightOnBranch >= 0 ? preflightSteps[preflightOnBranch] : string.Empty, "preflight");
+        Expect("release.yml: preflight prueft den Tag direkt nach der Tag-Regel", preflightTagCheck >= 0 && preflightOnBranch == preflightTagCheck + 1, true);
+        Expect("release.yml: preflight prueft den Tag nur beim Hochladen", preflightOnBranch >= 0 &&
+            preflightSteps[preflightOnBranch].Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal), true);
+        Expect("release.yml: preflight checkt den Tag erst nach der Branch-Pruefung aus",
+            preflightOnBranch >= 0 && preflightOnBranch < preflightSteps.FindIndex(x => x.Contains("actions/checkout@", StringComparison.Ordinal)), true);
+        Expect("release.yml: jeder Checkout eines Tags holt refs/tags/<Tag> (ein gleichnamiger Branch zaehlt nicht)",
+            Regex.Count(yml, @"ref: \$\{\{ inputs\.ref \|\| format\('refs/tags/\{0\}', inputs\.tag\) \}\}") + Regex.Count(yml, @"ref: refs/tags/\$\{\{ inputs\.tag \}\}"),
+            Regex.Count(yml, "uses: actions/checkout@"));
+
         foreach (var buildJob in new[] { "windows", "linux" })
         {
             Expect($"release.yml: Job {buildJob} wartet auf preflight", Job(buildJob).Contains("    needs: preflight\n", StringComparison.Ordinal), true);
@@ -4896,6 +4929,16 @@ static class SelfTest
         Expect("release.yml: Job manifest mit environment: release-signing", job.Contains("    environment: release-signing\n", StringComparison.Ordinal), true);
         foreach (var buildJob in new[] { "windows", "linux" })
         {
+            var buildSteps = StepsOf(Job(buildJob));
+            var uploadAt = buildSteps.FindIndex(x => Name(x) == "Upload to the release");
+            var reportAt = buildSteps.FindIndex(x => Name(x) == "Report the SHA-256 of the checksum file");
+            var report = reportAt >= 0 ? buildSteps[reportAt] : string.Empty;
+            Expect($"release.yml: Job {buildJob}: Schritt 'Report the SHA-256' direkt nach dem Hochladen", uploadAt >= 0 && reportAt == uploadAt + 1, true);
+            Expect($"release.yml: Job {buildJob}: Report-Schritt (id sums, nur beim Hochladen, hasht die hochgeladene Datei, schreibt sums_sha256 nach GITHUB_OUTPUT)",
+                report.Contains("        id: sums\n", StringComparison.Ordinal) && report.Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal) &&
+                report.Contains($"out/release/SHA256SUMS-{buildJob}.txt", StringComparison.Ordinal) &&
+                report.Contains("sums_sha256=$hash", StringComparison.Ordinal) && report.Contains("GITHUB_OUTPUT", StringComparison.Ordinal) &&
+                report.Contains("[0-9a-f]{64}", StringComparison.Ordinal), true);
             Expect($"release.yml: Job {buildJob} gibt die SHA-256 seiner Pruefsummendatei aus (outputs.sums_sha256)",
                 Job(buildJob).Contains("    outputs:\n      sums_sha256: ${{ steps.sums.outputs.sums_sha256 }}\n", StringComparison.Ordinal), true);
         }
@@ -4903,6 +4946,12 @@ static class SelfTest
 
         var steps = StepsOf(job);
         int Index(string name) => steps.FindIndex(s => Name(s) == name);
+
+        var manifestOnBranch = Index(onBranchName);
+        ExpectOnBranchStep(manifestOnBranch >= 0 ? steps[manifestOnBranch] : string.Empty, "manifest");
+        Expect("release.yml: manifest prueft den Tag direkt nach der Tag-Regel", manifestOnBranch >= 1 && Name(steps[manifestOnBranch - 1]) == "Check the tag and derive the version", true);
+        Expect("release.yml: manifest prueft den Tag vor jedem Checkout und vor jedem Schritt, der Code des Tags laeuft",
+            manifestOnBranch >= 0 && steps.Take(manifestOnBranch + 1).All(x => !x.Contains("actions/checkout@", StringComparison.Ordinal) && !Regex.IsMatch(x, @"dotnet (run|build|test|project)|package\.cs")), true);
 
         Expect("release.yml: genau eine Stelle nennt ein Secret", Regex.Count(yml, @"secrets\."), 1);
         var sign = Index("Sign the update manifest");
