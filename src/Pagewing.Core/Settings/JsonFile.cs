@@ -11,6 +11,12 @@ internal static class JsonFile
     /// <summary>Files larger than this are not read; they count as corrupt.</summary>
     internal const long MaxFileLength = 1024 * 1024;
 
+    /// <summary>The Unix mode of the files written here unless a caller asks for another: read and write for the owner.</summary>
+    internal const UnixFileMode OwnerFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
+    /// <summary>The Unix mode of a folder made here: the owner only.</summary>
+    internal const UnixFileMode OwnerFolder = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+
     /// <summary>
     /// Reads the file. Returns <c>null</c> when it is missing, empty or unreadable; a file over
     /// <paramref name="maxLength"/> (<see cref="MaxFileLength"/> unless given) is copied to <c>&lt;path&gt;.bad</c> first
@@ -47,7 +53,10 @@ internal static class JsonFile
     /// Writes the text into <c>&lt;path&gt;.tmp</c> in the target folder first, then replaces the file in one step.
     /// Returns <c>false</c> if that fails for a file system reason; the old file stays as it was. The target folder is made
     /// first unless <paramref name="createDirectory"/> is <see langword="false"/>, which fails for a missing folder. On Unix
-    /// the temporary file (and with it the result) is created with <paramref name="unixMode"/> when given.
+    /// the temporary file (and with it the result) is created with <paramref name="unixMode"/>, by default for the owner
+    /// only (<see cref="OwnerFile"/>), and a folder made here for the owner only (<see cref="OwnerFolder"/>): the files list
+    /// what the user opened and what an update brings back, which no other user of the machine needs to read. Windows
+    /// inherits the rules of the profile folder.
     /// </summary>
     internal static bool TryWrite(string path, string json, bool createDirectory = true, UnixFileMode? unixMode = null)
     {
@@ -57,13 +66,13 @@ internal static class JsonFile
             var directory = Path.GetDirectoryName(Path.GetFullPath(path));
             if (createDirectory && !string.IsNullOrEmpty(directory))
             {
-                Directory.CreateDirectory(directory);
+                CreateFolder(directory);
             }
 
             var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None };
-            if (unixMode is { } mode && !OperatingSystem.IsWindows())
+            if (!OperatingSystem.IsWindows())
             {
-                options.UnixCreateMode = mode;
+                options.UnixCreateMode = unixMode ?? OwnerFile;
             }
 
             using (var stream = new FileStream(temp, options))
@@ -79,6 +88,19 @@ internal static class JsonFile
         {
             DeleteQuietly(temp);
             return false;
+        }
+    }
+
+    // A folder that exists keeps its mode; one that is made here is the owner's alone on Unix.
+    private static void CreateFolder(string directory)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(directory);
+        }
+        else
+        {
+            Directory.CreateDirectory(directory, OwnerFolder);
         }
     }
 
