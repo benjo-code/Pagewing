@@ -231,6 +231,42 @@ public sealed class SignaturePlacementTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task DeletingAnImageWhenTheHistoryIsFullSaysSoAndKeepsTheSignature()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await viewModel.ChooseSignatureAsync(AddImage(), fromKeyboard: true);
+        var created = await WaitForAnnotationAsync(window, tab, 0);
+        var hints = new List<string>();
+        tab.DrawingRefused += hints.Add;
+        tab.Editor.ImageBudget = 1;
+
+        await tab.RunEditAsync(editor => editor.DeleteAsync(new AnnotationLocator(0, created.Index, created.Name)));
+
+        Assert.Equal([Strings.SignatureHistoryFull], hints);
+        Assert.Single(await tab.Session.Document!.GetAnnotationsAsync(0, Ct));
+    }
+
+    [AvaloniaFact]
+    public async Task ASignatureJustSavedInTheDialogIsTheOneToPlace()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await tab.BeginAnnotateAsync();
+        viewModel.ShowNewSignature();
+        Settle(window);
+        var card = viewModel.SignatureCard!;
+        card.AddStroke([new(10, 80), new(40, 20), new(70, 90), new(110, 30)]);
+
+        await card.SaveAsync();
+        Settle(window);
+
+        var saved = Assert.Single(Store.Items);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        Assert.Equal(saved.Id, tab.PendingSignature?.Signature.Id);
+    }
+
+    [AvaloniaFact]
     public async Task ColourAndWidthOfADrawnOneCanBeChanged()
     {
         var (window, viewModel, view) = Show();

@@ -96,6 +96,9 @@ public sealed partial class MainViewModel
         {
             SignatureSaved?.Invoke(saved);
             HideOverlay();
+
+            // The signature the user just made is the one they want on the page: the placing tool follows the pointer at once.
+            _ = ChooseSignatureAsync(saved, fromKeyboard: false);
         };
         return card;
     }

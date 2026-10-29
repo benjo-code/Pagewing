@@ -18,6 +18,12 @@ public sealed class SignatureStore
     /// <summary>The longest name in characters.</summary>
     public const int MaxNameLength = 60;
 
+    /// <summary>The longest index file read (and so written); ten signatures of <see cref="MaxPointsPerSignature"/> points stay far below it.</summary>
+    internal const long MaxIndexLength = 16 * 1024 * 1024;
+
+    /// <summary>The most points a saved drawn signature may have (a busy scribble is some thousand after thinning and smoothing; ten of the most take about 12 MB of index).</summary>
+    internal const int MaxPointsPerSignature = 10_000;
+
     private const string IndexName = "signatures.json";
     private const string LockName = "signatures.lock";
     private const double MinAspect = 0.05;
@@ -244,7 +250,7 @@ public sealed class SignatureStore
         {
             ArgumentNullException.ThrowIfNull(stroke);
             points += stroke.Count;
-            if (points > PdfiumDrawings.MaxInkPoints)
+            if (points > MaxPointsPerSignature)
             {
                 throw new ArgumentException("Too many points.", nameof(strokes));
             }
@@ -301,7 +307,7 @@ public sealed class SignatureStore
     private static List<SavedSignature> ReadIndex(string directory)
     {
         var path = Path.Combine(directory, IndexName);
-        var text = JsonFile.ReadText(path);
+        var text = JsonFile.ReadText(path, MaxIndexLength);
         if (text is null)
         {
             return [];
@@ -373,7 +379,7 @@ public sealed class SignatureStore
             }
 
             points += stroke.Count;
-            if (points > PdfiumDrawings.MaxInkPoints || stroke.Any(p => !(p.X is >= 0 and <= 1) || !(p.Y is >= 0 and <= 1)))
+            if (points > MaxPointsPerSignature || stroke.Any(p => !(p.X is >= 0 and <= 1) || !(p.Y is >= 0 and <= 1)))
             {
                 return false;
             }

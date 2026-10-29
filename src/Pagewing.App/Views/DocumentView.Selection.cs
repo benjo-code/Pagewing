@@ -241,8 +241,8 @@ public sealed partial class DocumentView
         var page = new PageRect(0, 0, size.Width, size.Height);
         var dx = point.X - drag.Start.X;
         var dy = point.Y - drag.Start.Y;
-        // Shift keeps the aspect ratio; an image signature keeps it always.
-        var keep = (modifiers & KeyModifiers.Shift) != 0 || drag.Target.IsSignatureImage;
+        // Shift keeps the aspect ratio; a signature (drawn or image) keeps it always.
+        var keep = SelectionHandles.KeepsAspect(drag.Target, (modifiers & KeyModifiers.Shift) != 0) || drag.Target.IsSignatureImage;
         var to = new DisplayPoint(drag.HandlePosition.X + dx, drag.HandlePosition.Y + dy);
         var original = drag.Original;
         drag.Geometry = drag.Handle switch

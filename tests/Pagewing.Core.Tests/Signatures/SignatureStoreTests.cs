@@ -165,10 +165,37 @@ public sealed class SignatureStoreTests : IDisposable
     }
 
     [Fact]
+    public void TenDenseSignaturesSurviveAReload()
+    {
+        var store = SignatureStore.Load(Directory);
+        var random = new Random(5);
+        for (var i = 0; i < SignatureLimits.MaxSignatures; i++)
+        {
+            // What a busy scribble gives after thinning and smoothing: some thousand points with full-precision coordinates.
+            IReadOnlyList<DisplayPoint> stroke = [.. Enumerable.Range(0, 2_600).Select(_ => new DisplayPoint(random.NextDouble() * 400, random.NextDouble() * 150))];
+            store.AddDrawn("Dense " + i, [stroke], DrawColor.Black);
+        }
+
+        Assert.Equal(SignatureLimits.MaxSignatures, SignatureStore.Load(Directory).Items.Count);
+    }
+
+    [Fact]
+    public void AnOverlyDenseSignatureIsRefusedInsteadOfBreakingTheLibrary()
+    {
+        var store = SignatureStore.Load(Directory);
+        var random = new Random(6);
+        IReadOnlyList<DisplayPoint> stroke = [.. Enumerable.Range(0, 20_000).Select(_ => new DisplayPoint(random.NextDouble() * 400, random.NextDouble() * 150))];
+
+        Assert.Throws<ArgumentException>(() => store.AddDrawn("Too dense", [stroke], DrawColor.Black));
+        store.AddDrawn("Fine", Strokes(), DrawColor.Black);
+        Assert.Single(SignatureStore.Load(Directory).Items);
+    }
+
+    [Fact]
     public void OversizedIndexIsIgnored()
     {
         System.IO.Directory.CreateDirectory(Directory);
-        File.WriteAllText(IndexPath, "{\"Version\":1,\"Items\":[]," + new string(' ', 1024 * 1024 + 10) + "}");
+        File.WriteAllText(IndexPath, "{\"Version\":1,\"Items\":[]," + new string(' ', (int)SignatureStore.MaxIndexLength + 10) + "}");
 
         var store = SignatureStore.Load(Directory);
 

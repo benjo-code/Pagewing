@@ -39,10 +39,62 @@ public static class ImageHeader
         if (file.Length >= 4 && file[0] == 0xFF && file[1] == 0xD8)
         {
             var trimmed = file.TrimEnd((byte)0);
-            return trimmed.Length >= 4 && trimmed[^2] == 0xFF && trimmed[^1] == 0xD9;
+            if (trimmed.Length >= 4 && trimmed[^2] == 0xFF && trimmed[^1] == 0xD9)
+            {
+                return true;
+            }
+
+            // Phones append data after the EOI (a motion photo, a vendor block): the picture is whole when its scan is closed by one.
+            var scan = FindScanStart(file);
+            return scan > 0 && file[scan..].IndexOf((ReadOnlySpan<byte>)[0xFF, 0xD9]) >= 0;
         }
 
         return false;
+    }
+
+    /// <summary>The index after the header of the first scan (SOS) of a JPEG, or -1 when the segments before it cannot be walked.</summary>
+    private static int FindScanStart(ReadOnlySpan<byte> file)
+    {
+        var position = 2;
+        while (position + 4 <= file.Length)
+        {
+            if (file[position] != 0xFF)
+            {
+                return -1;
+            }
+
+            var marker = file[position + 1];
+            if (marker == 0xFF)
+            {
+                position++;
+                continue;
+            }
+
+            if (marker is 0x00 or 0x01 or (>= 0xD0 and <= 0xD8))
+            {
+                position += 2;
+                continue;
+            }
+
+            if (marker == 0xD9)
+            {
+                return -1;
+            }
+
+            var length = BinaryPrimitives.ReadUInt16BigEndian(file[(position + 2)..]);
+            if (length < 2)
+            {
+                return -1;
+            }
+
+            position += 2 + length;
+            if (marker == 0xDA)
+            {
+                return position <= file.Length ? position : -1;
+            }
+        }
+
+        return -1;
     }
 
     private static bool TryReadJpeg(ReadOnlySpan<byte> file, out int width, out int height)

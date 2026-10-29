@@ -55,6 +55,10 @@ public sealed partial class AnnotationMeasurementTests
         report.AppendLine(CultureInfo.InvariantCulture, $"(c) Save (AnnotationEditor.SaveAsync) and render of a page with {SignaturesOnAPage} signatures (5 drawn + 5 images of 600 x 240 px): the render light and dark, median of 10 after one warm-up, ms");
         report.AppendLine(await MeasureSignaturePageAsync(engine, work, output));
 
+        report.AppendLine();
+        report.AppendLine("(d) Render of a page with one 1,200 x 480 px image signature at larger scales (the dark page reads every own image again for each render, tile or page), median of 10 after one warm-up, ms");
+        report.AppendLine(await MeasureLargeImageRenderAsync(engine, work));
+
         await File.WriteAllTextAsync(Path.Combine(output, "signature-measurements.txt"), report.ToString().Replace("\r\n", "\n", StringComparison.Ordinal), Ct);
     }
 
@@ -187,6 +191,25 @@ public sealed partial class AnnotationMeasurementTests
         }
 
         lines.AppendLine("      file for --measure-scroll next to this report: scroll-text-dense-10-signatures.pdf (with scroll-text-dense.pdf and scroll-dark.json of the drawing measurement)");
+        return lines.ToString().TrimEnd();
+    }
+
+    private static async Task<string> MeasureLargeImageRenderAsync(PdfEngine engine, TempFolder work)
+    {
+        var lines = new StringBuilder();
+        using var session = await OpenAsync(engine, Copy(work, "text-dense.pdf", "signature-large-image.pdf"));
+        var document = session.Document!;
+        var editor = new AnnotationEditor(session);
+        var size = await document.GetPageSizeAsync(0, Ct);
+        Assert.NotNull(await editor.ApplySignatureImageAsync(0, new PageRect(60, 100, 360, 220), MeasuredImage(1200, 480), "Measure"));
+        await editor.WhenIdleAsync();
+        foreach (var scale in new[] { 1.0, 2.0, 3.0 })
+        {
+            var light = await RenderMedianAsync(document, scale, PageTheme.Light);
+            var dark = await RenderMedianAsync(document, scale, PageTheme.Dark);
+            lines.AppendLine(string.Create(CultureInfo.InvariantCulture, $"    text-dense.pdf {size.Width:0} x {size.Height:0} pt, scale {scale:0.0}: light {light:0.0} | dark {dark:0.0}"));
+        }
+
         return lines.ToString().TrimEnd();
     }
 }

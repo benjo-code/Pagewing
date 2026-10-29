@@ -339,6 +339,11 @@ public sealed partial class TabViewModel
             _pendingEdits++;
             await edit(Editor);
         }
+        catch (AnnotationHistoryFullException)
+        {
+            // Deleting an image needs room in the history for undo: the signature stays, and the user hears why (never a silent no).
+            DrawingRefused?.Invoke(Strings.SignatureHistoryFull);
+        }
         catch (Exception)
         {
             // The annotation went meanwhile, or PDFium refused: the editor recorded nothing.

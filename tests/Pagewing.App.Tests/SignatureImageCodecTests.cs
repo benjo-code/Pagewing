@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Avalonia.Headless.XUnit;
 using Pagewing.App.Services;
 using Pagewing.Core.Signatures;
@@ -41,6 +42,78 @@ public sealed class SignatureImageCodecTests
     {
         var failure = await Assert.ThrowsAsync<SignatureImageException>(() => SignatureImageCodec.DecodeAsync(file, Ct, decoder));
         return failure.Reason;
+    }
+
+    /// <summary>A PNG of grey values (colour type 0), as a scanner in grey or black and white mode writes it.</summary>
+    private static byte[] GreyPng(int width, int height, int bitDepth, Func<int, int, int> value)
+    {
+        var bytesPerPixel = bitDepth / 8;
+        using var raw = new MemoryStream();
+        for (var y = 0; y < height; y++)
+        {
+            raw.WriteByte(0);
+            for (var x = 0; x < width; x++)
+            {
+                var v = value(x, y);
+                if (bytesPerPixel == 2)
+                {
+                    raw.WriteByte((byte)(v >> 8));
+                }
+
+                raw.WriteByte((byte)v);
+            }
+        }
+
+        using var compressed = new MemoryStream();
+        using (var z = new ZLibStream(compressed, CompressionLevel.Fastest, leaveOpen: true))
+        {
+            z.Write(raw.ToArray());
+        }
+
+        using var png = new MemoryStream();
+        png.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        Chunk(png, "IHDR", [(byte)(width >> 24), (byte)(width >> 16), (byte)(width >> 8), (byte)width, (byte)(height >> 24), (byte)(height >> 16), (byte)(height >> 8), (byte)height, (byte)bitDepth, 0, 0, 0, 0]);
+        Chunk(png, "IDAT", compressed.ToArray());
+        Chunk(png, "IEND", []);
+        return png.ToArray();
+    }
+
+    private static void Chunk(Stream output, string type, byte[] data)
+    {
+        byte[] length = [(byte)(data.Length >> 24), (byte)(data.Length >> 16), (byte)(data.Length >> 8), (byte)data.Length];
+        output.Write(length);
+        var body = new byte[4 + data.Length];
+        System.Text.Encoding.ASCII.GetBytes(type).CopyTo(body, 0);
+        data.CopyTo(body, 4);
+        output.Write(body);
+        var crc = 0xFFFFFFFFu;
+        foreach (var b in body)
+        {
+            crc ^= b;
+            for (var k = 0; k < 8; k++)
+            {
+                crc = (crc & 1) != 0 ? 0xEDB88320u ^ (crc >> 1) : crc >> 1;
+            }
+        }
+
+        crc ^= 0xFFFFFFFFu;
+        output.Write([(byte)(crc >> 24), (byte)(crc >> 16), (byte)(crc >> 8), (byte)crc]);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(8)]
+    [InlineData(16)]
+    public async Task GreyPngIsReadAsOpaqueGreyPixels(int bitDepth)
+    {
+        var max = bitDepth == 8 ? 255 : 65535;
+        var png = GreyPng(40, 20, bitDepth, (x, _) => x < 20 ? 0 : max);
+
+        var image = await SignatureImageCodec.DecodeAsync(png, Ct);
+
+        Assert.Equal((40, 20), (image.Width, image.Height));
+        Assert.Equal((0, 0, 0, 255), (image.Bgra[0], image.Bgra[1], image.Bgra[2], image.Bgra[3]));
+        var white = (30 * 4);
+        Assert.Equal((255, 255, 255, 255), (image.Bgra[white], image.Bgra[white + 1], image.Bgra[white + 2], image.Bgra[white + 3]));
     }
 
     [AvaloniaFact]

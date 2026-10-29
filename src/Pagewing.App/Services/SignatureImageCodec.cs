@@ -86,10 +86,14 @@ internal static class SignatureImageCodec
     internal static unsafe SignatureImage DecodeCore(byte[] file)
     {
         using var stream = new MemoryStream(file, writable: false);
-        using var bitmap = new Bitmap(stream);
+        using var decoded = new Bitmap(stream);
+
+        // Grey scans (grey PNG, grey JPEG, 16-bit files) come out of the decoder without a 32-bit format: they are drawn once into one.
+        using var converted = decoded.Format is { } f && (f == PixelFormat.Bgra8888 || f == PixelFormat.Rgba8888) ? null : Convert(decoded);
+        Bitmap bitmap = converted ?? decoded;
         var size = bitmap.PixelSize;
-        var format = bitmap.Format;
-        if (format is not { } pixelFormat || (pixelFormat != PixelFormat.Bgra8888 && pixelFormat != PixelFormat.Rgba8888))
+        var pixelFormat = bitmap.Format ?? throw new SignatureImageException(SignatureImageProblem.Unreadable);
+        if (pixelFormat != PixelFormat.Bgra8888 && pixelFormat != PixelFormat.Rgba8888)
         {
             throw new SignatureImageException(SignatureImageProblem.Unreadable);
         }
@@ -119,6 +123,18 @@ internal static class SignatureImageCodec
         }
 
         return new SignatureImage(size.Width, size.Height, bgra);
+    }
+
+    /// <summary>Draws a bitmap that has no 32-bit pixel format 1:1 into one that has.</summary>
+    private static RenderTargetBitmap Convert(Bitmap source)
+    {
+        var target = new RenderTargetBitmap(source.PixelSize, new Vector(96, 96));
+        using (var context = target.CreateDrawingContext())
+        {
+            context.DrawImage(source, new Rect(source.Size), new Rect(source.PixelSize.ToSize(1)));
+        }
+
+        return target;
     }
 
     /// <summary>Writes the image as a PNG (lossless, with alpha).</summary>

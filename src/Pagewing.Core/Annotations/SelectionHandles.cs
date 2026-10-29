@@ -50,6 +50,16 @@ public sealed record Handle(HandleKind Kind, DisplayPoint Position);
 /// </summary>
 public static class SelectionHandles
 {
+    /// <summary>Whether resizing keeps the proportions: with Shift, and always for a signature (drawn or image), which is never distorted.</summary>
+    /// <param name="annotation">The selected annotation.</param>
+    /// <param name="shift">Whether Shift is held.</param>
+    /// <returns><see langword="true"/> to keep the proportions.</returns>
+    public static bool KeepsAspect(PdfAnnotation annotation, bool shift)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        return shift || annotation.Kind == AnnotationKind.Signature;
+    }
+
     /// <summary>Gets the handles of <paramref name="annotation"/>, in the order of <see cref="HandleKind"/>.</summary>
     /// <param name="annotation">The selected annotation; its <see cref="PdfAnnotation.SelectionShape"/> places the handles (the box of a text box: eight).</param>
     /// <returns>Eight handles, two ends, or none.</returns>

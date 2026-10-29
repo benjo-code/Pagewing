@@ -92,6 +92,19 @@ public sealed class ImageHeaderTests
     }
 
     [Fact]
+    public void ADataTrailerAfterTheEndOfAJpegDoesNotMakeItIncomplete()
+    {
+        // Phones append a motion photo (an MP4) or a vendor block after the EOI; the picture itself is whole.
+        byte[] scan = [0xFF, 0xDA, 0x00, 0x08, 1, 1, 0, 0, 0x3F, 0, 0x12, 0x34, 0xFF, 0x00, 0x56];
+        var whole = Jpeg(0xC0, 10, 10).Concat(scan).Concat(new byte[] { 0xFF, 0xD9 }).ToArray();
+        byte[] trailer = [0, 0, 0, 0x18, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'m', (byte)'p', (byte)'4', (byte)'2', 7, 8, 9];
+
+        Assert.True(ImageHeader.IsComplete([.. whole, .. trailer]));
+        Assert.False(ImageHeader.IsComplete(Jpeg(0xC0, 10, 10).Concat(scan).ToArray()));
+        Assert.False(ImageHeader.IsComplete(whole.AsSpan(0, whole.Length - 5)));
+    }
+
+    [Fact]
     public void DetectsAFileThatIsCutOff()
     {
         // A complete PNG ends with its IEND chunk, a complete JPEG with the marker EOI (trailing zeros are allowed).
