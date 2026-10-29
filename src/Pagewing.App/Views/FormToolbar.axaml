@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.FormToolbar"
+             x:DataType="vm:TabViewModel"
+             Height="{DynamicResource Pw.Size.ToolbarHeight}"
+             AutomationProperties.Name="{x:Static res:Strings.FormToolbarName}"
+             AutomationProperties.AccessibilityView="Content">
+  <!--
+    Toolbar of the mode "Fill in form" (milestone 11; design system 6 point 4 and 7.7, built like the toolbar of "Comment"):
+    44 px high (density "Kompakt" 38, Pw.Size.ToolbarHeight) over the document area, surface.toolbar with a border.subtle
+    bottom edge. From the left: the name of the mode with its icon (forms, accent.default); the switch "Highlight fields"
+    (icon and label; a toggle button for screen readers; on: accent.subtle surface, accent.default 1 px frame, icon and
+    label, so it is not marked by colour alone); previous and next field (chevron-up, chevron-down); Undo and Redo (the
+    history the tab shares with "Comment"); on the right the primary button "Done". Tab moves through them in this order;
+    Enter and Space press; Esc drops the open value of a field, then the focus of the field, then ends the mode. Too narrow
+    (640 px window, German): first the label of the switch goes (its tooltip stays), then the text of the mode name (its
+    icon stays), then that icon. Made when the mode is first started (MainWindow.Forms.cs), never in the startup path; its
+    styles live here for the same reason. The DataContext is the active tab.
+  -->
+  <UserControl.Styles>
+    <Style Selector="Button.tool">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.tool.active">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button.tool.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.tool.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button.tool TextBlock">
+      <Setter Property="Margin" Value="6,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.toolbarIcon">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="Border.toolbarSeparator">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Margin" Value="8,0" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="ToolbarFrame"
+          Background="{DynamicResource Pw.Brush.Surface.Toolbar}"
+          BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
+          BorderThickness="0,0,0,1">
+    <Grid Name="ToolbarContent" Margin="12,0,8,0" ColumnDefinitions="Auto,*,Auto">
+      <StackPanel Name="ModeLabel" Grid.Column="0" Orientation="Horizontal" Spacing="6" Margin="0,0,12,0" VerticalAlignment="Center">
+        <ctl:StrokeIcon Name="ModeIcon" Width="18" Height="18" VerticalAlignment="Center"
+                        Brush="{DynamicResource Pw.Brush.Accent.Default}" Data="{StaticResource Pw.Icon.Forms}" />
+        <TextBlock Name="ModeName" Classes="strong" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   Text="{x:Static res:Strings.FormModeName}" />
+      </StackPanel>
+
+      <StackPanel Name="ToolsArea" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
+        <ctl:ActionToggleButton Name="HighlightToggle" Classes="icon tool"
+                                Command="{Binding ToggleHighlightCommand}"
+                                AutomationProperties.Name="{x:Static res:Strings.FormHighlightFields}">
+          <StackPanel Orientation="Horizontal">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Highlight}" />
+            <TextBlock Name="HighlightLabel" Classes="body" Text="{x:Static res:Strings.FormHighlightFields}" />
+          </StackPanel>
+        </ctl:ActionToggleButton>
+
+        <Border Classes="toolbarSeparator" />
+
+        <Button Name="PreviousFieldButton" Classes="icon toolbarIcon"
+                Command="{Binding PreviousFieldCommand}"
+                ToolTip.Tip="{x:Static res:Strings.FormPreviousField}"
+                AutomationProperties.Name="{x:Static res:Strings.FormPreviousField}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ChevronUp}" />
+        </Button>
+        <Button Name="NextFieldButton" Classes="icon toolbarIcon" Margin="2,0,0,0"
+                Command="{Binding NextFieldCommand}"
+                ToolTip.Tip="{x:Static res:Strings.FormNextField}"
+                AutomationProperties.Name="{x:Static res:Strings.FormNextField}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ChevronDown}" />
+        </Button>
+
+        <Border Classes="toolbarSeparator" />
+
+        <Button Name="UndoButton" Classes="icon toolbarIcon"
+                Command="{Binding UndoCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.CommandUndo}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ArrowBackUp}" />
+        </Button>
+        <Button Name="RedoButton" Classes="icon toolbarIcon" Margin="2,0,0,0"
+                Command="{Binding RedoCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.CommandRedo}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ArrowForwardUp}" />
+        </Button>
+      </StackPanel>
+
+      <Button Name="DoneButton" Grid.Column="2" Margin="12,0,0,0" Classes="primary" VerticalAlignment="Center"
+              Command="{Binding EndFillCommand}"
+              ToolTip.Tip="{x:Static res:Strings.FormDoneTooltip}"
+              AutomationProperties.Name="{x:Static res:Strings.FormDone}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Check}" />
+          <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.FormDone}" />
+        </StackPanel>
+      </Button>
+    </Grid>
+  </Border>
+</UserControl>

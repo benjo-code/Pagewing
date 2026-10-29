@@ -460,6 +460,45 @@ public static class Strings
     public static string CommentGroupCollapsed => Get("CommentGroupCollapsed");
     public static string CommentGroupExpanded => Get("CommentGroupExpanded");
     public static string CommentGroupHint => Get("CommentGroupHint");
+    public static string FormModeName => Get("FormModeName");
+    public static string FormDone => Get("FormDone");
+    public static string FormDoneTooltip => Get("FormDoneTooltip");
+    public static string FormHighlightFields => Get("FormHighlightFields");
+    public static string FormPreviousField => Get("FormPreviousField");
+    public static string FormNextField => Get("FormNextField");
+    public static string FormHintCalculated => Get("FormHintCalculated");
+    public static string FormHintFormatScripts => Get("FormHintFormatScripts");
+    public static string FormHintXfa => Get("FormHintXfa");
+    public static string FormHintSignatureField => Get("FormHintSignatureField");
+    public static string FormHintButtons => Get("FormHintButtons");
+    public static string FormRequired => Get("FormRequired");
+    public static string FormLockedReadOnly => Get("FormLockedReadOnly");
+    public static string FormLockedSignature => Get("FormLockedSignature");
+    public static string FormLockedButton => Get("FormLockedButton");
+    public static string FormLockedFile => Get("FormLockedFile");
+    public static string FormLockedNameless => Get("FormLockedNameless");
+    public static string FormLockedOther => Get("FormLockedOther");
+    public static string FormValueUnsupportedCharacters => Get("FormValueUnsupportedCharacters");
+    public static string FormValueTooLong => Get("FormValueTooLong");
+    public static string FormValueOneLine => Get("FormValueOneLine");
+    public static string FormValueControlCharacter => Get("FormValueControlCharacter");
+    public static string FormValueNotTaken => Get("FormValueNotTaken");
+    public static string FormValueNotTakenChanged => Get("FormValueNotTakenChanged");
+    public static string FormValueRefused => Get("FormValueRefused");
+    public static string FormValueNotNow => Get("FormValueNotNow");
+    public static string FormCommandHighlight => Get("FormCommandHighlight");
+    public static string FormToolbarName => Get("FormToolbarName");
+    public static string FormHintOffer => Get("FormHintOffer");
+    public static string FormHintClose => Get("FormHintClose");
+    public static string FormEditorHint => Get("FormEditorHint");
+    public static string FormEditorHintMultiline => Get("FormEditorHintMultiline");
+    public static string FormFieldChecked => Get("FormFieldChecked");
+    public static string RequiredFieldsTitleOne => Get("RequiredFieldsTitleOne");
+    public static string RequiredFieldsTitleMany => Get("RequiredFieldsTitleMany");
+    public static string RequiredFieldsTextOne => Get("RequiredFieldsTextOne");
+    public static string RequiredFieldsTextMany => Get("RequiredFieldsTextMany");
+    public static string SaveChoiceGoToField => Get("SaveChoiceGoToField");
+    public static string SignatureWarningFormsText => Get("SignatureWarningFormsText");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",

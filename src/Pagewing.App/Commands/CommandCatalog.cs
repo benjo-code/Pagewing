@@ -130,6 +130,13 @@ public sealed class CommandCatalog
         Tab("annotate.arrow", () => Strings.CommandArrow, EditGroup, CtrlShift(Key.A), tab => tab.ArrowCommand),
         Tab("annotate.textbox", () => Strings.CommandTextBox, EditGroup, CtrlShift(Key.T), tab => tab.TextBoxCommand),
 
+        // The mode "Fill in form" (milestone 11): on and off, only for a document with a form once it shows a sharp page; the
+        // highlighting of the fields while the mode is on. Ctrl+Shift+E is the oval's, so the mode takes F and the highlighting
+        // J. Next and previous field are buttons of the toolbar only (Tab and Shift+Tab belong to the field), and the Esc of
+        // the mode belongs to the document and the toolbar, as for "Comment".
+        Tab("form.fill", () => Strings.FormModeName, EditGroup, CtrlShift(Key.F), tab => tab.ToggleFillCommand, ready: true),
+        Tab("form.highlight", () => Strings.FormCommandHighlight, EditGroup, CtrlShift(Key.J), tab => tab.ToggleHighlightCommand),
+
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
             with { AlternativeGestures = [CtrlShift(Key.OemPlus), Ctrl(Key.Add)] },

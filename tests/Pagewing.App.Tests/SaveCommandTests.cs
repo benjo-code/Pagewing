@@ -75,6 +75,36 @@ public sealed class SaveCommandTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task UndoAndRedoWaitWhileTheTabPrints()
+    {
+        var (window, viewModel, view) = Show();
+        var (tab, _) = await OpenCopyAsync(window, viewModel, view, "text-basic.pdf");
+        await MarkAsync(window, tab, page: 0);
+        Assert.True(tab.UndoCommand.CanExecute(null));
+
+        // A print job prints the page in several short requests (the windows of a form page in strips), so a change between two
+        // of them would print one page half old, half new.
+        var raised = 0;
+        tab.UndoCommand.CanExecuteChanged += (_, _) => raised++;
+        tab.RedoCommand.CanExecuteChanged += (_, _) => raised++;
+        tab.IsPrinting = true;
+        Assert.False(tab.UndoCommand.CanExecute(null));
+        Assert.False(tab.RedoCommand.CanExecute(null));
+        Assert.Equal(2, raised);
+
+        tab.IsPrinting = false;
+        Assert.True(tab.UndoCommand.CanExecute(null));
+        Assert.Equal(4, raised);
+        tab.UndoCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.CanRedo && !tab.CanUndo);
+        Assert.True(tab.RedoCommand.CanExecute(null));
+        tab.IsPrinting = true;
+        Assert.False(tab.RedoCommand.CanExecute(null));
+        tab.IsPrinting = false;
+        Assert.True(tab.RedoCommand.CanExecute(null));
+    }
+
+    [AvaloniaFact]
     public async Task SaveWritesTheFileAndClearsTheDirtyMarker()
     {
         var recent = RecentFilesService.Detached();

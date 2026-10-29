@@ -31,11 +31,12 @@ public sealed partial class MainViewModel
     internal bool IsPendingSaveShown => _pendingSave is { IsResolved: false } question && ReferenceEquals(question.Tab, ActiveTab);
 
     /// <summary>
-    /// Esc while a card of the save flow is shown, wherever the focus is: answers "Cancel" (every card offers it). Without a
-    /// shown card the key goes on.
+    /// Esc while a card of the save flow is shown, wherever the focus is: answers "Cancel", also on the card about empty
+    /// required fields, which has no button of that name (the save stops there, nothing else happens). Without a shown card
+    /// the key goes on.
     /// </summary>
     public ICommand CancelPendingSaveCommand => _cancelPendingSaveCommand ??=
-        new RelayCommand(() => _pendingSave?.Resolve(PendingSaveChoice.Cancel), () => IsPendingSaveShown);
+        new RelayCommand(() => _pendingSave?.Abandon(), () => IsPendingSaveShown);
 
     /// <summary>
     /// Asks about every tab of this window with unsaved changes in turn, the active one first, then the others from left to
@@ -140,10 +141,12 @@ public sealed partial class MainViewModel
 
         _resolving = true;
 
-        // The text of open text box fields is applied first, so the question sees it (TabViewModel.FlushTextBoxDraft).
+        // The text of open text box fields and the open values of form fields are applied first, so the question sees them
+        // (TabViewModel.FlushTextBoxDraft, TabViewModel.FlushFormDraft).
         foreach (var each in Tabs.Where(tab => only is null || ReferenceEquals(tab, only)).ToList())
         {
             each.FlushTextBoxDraft();
+            each.FlushFormDraft();
         }
 
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -228,6 +231,19 @@ public sealed partial class MainViewModel
             case PendingSaveChoice.Save:
                 // A change made while the card was shown is saved with the others.
                 await tab.WhenEditsSettledAsync();
+                if (tab.HasFormDraft)
+                {
+                    // A text typed into a form field that PDFium refused cannot be saved: what can be is saved, then the flow
+                    // stops at that field with its reason instead of asking again after every save (TabViewModel.RevealFormDraft).
+                    if (tab.HasEditorChanges && CanSaveNow(tab))
+                    {
+                        await SaveTabAsync(tab, saveAs: false);
+                    }
+
+                    tab.RevealFormDraft();
+                    return false;
+                }
+
                 if (!CanSaveNow(tab))
                 {
                     if (!tab.AsksBeforeClosing)

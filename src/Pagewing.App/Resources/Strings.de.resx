@@ -1299,4 +1299,121 @@
   <data name="TextBoxEmpty" xml:space="preserve">
     <value>Ein Textfeld braucht Text. Zum Entfernen löschen Sie es.</value>
   </data>
+  <data name="FormModeName" xml:space="preserve">
+    <value>Formular ausfüllen</value>
+  </data>
+  <data name="FormDone" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="FormDoneTooltip" xml:space="preserve">
+    <value>Ausfüllen beenden (Esc)</value>
+  </data>
+  <data name="FormHighlightFields" xml:space="preserve">
+    <value>Felder hervorheben</value>
+  </data>
+  <data name="FormPreviousField" xml:space="preserve">
+    <value>Vorheriges Feld</value>
+  </data>
+  <data name="FormNextField" xml:space="preserve">
+    <value>Nächstes Feld</value>
+  </data>
+  <data name="FormHintCalculated" xml:space="preserve">
+    <value>Dieses Formular enthält berechnete Felder. Pagewing führt kein JavaScript aus, Summen und andere berechnete Werte werden nicht aktualisiert.</value>
+  </data>
+  <data name="FormHintFormatScripts" xml:space="preserve">
+    <value>Einige Felder formatieren oder prüfen ihre Werte per JavaScript. Pagewing führt es nicht aus und übernimmt Ihre Werte so, wie Sie sie eingeben.</value>
+  </data>
+  <data name="FormHintXfa" xml:space="preserve">
+    <value>Dieses Dokument enthält zusätzlich ein XFA-Formular, das Pagewing nicht unterstützt. Ausfüllen lassen sich nur seine üblichen Formularfelder.</value>
+  </data>
+  <data name="FormHintSignatureField" xml:space="preserve">
+    <value>Dieses Formular enthält ein Signaturfeld. Pagewing unterstützt keine digitalen Signaturen.</value>
+  </data>
+  <data name="FormHintButtons" xml:space="preserve">
+    <value>Dieses Formular enthält Schaltflächen. Pagewing führt ihre Aktionen nie aus, es wird also nichts von hier gesendet.</value>
+  </data>
+  <data name="FormRequired" xml:space="preserve">
+    <value>Pflichtfeld</value>
+  </data>
+  <data name="FormLockedReadOnly" xml:space="preserve">
+    <value>Schreibgeschützt: Dieses Feld kann nicht geändert werden.</value>
+  </data>
+  <data name="FormLockedSignature" xml:space="preserve">
+    <value>Signaturfeld: Pagewing unterstützt keine digitalen Signaturen.</value>
+  </data>
+  <data name="FormLockedButton" xml:space="preserve">
+    <value>Schaltfläche: Pagewing führt ihre Aktion nicht aus.</value>
+  </data>
+  <data name="FormLockedFile" xml:space="preserve">
+    <value>Dateiauswahlfeld: Pagewing kann es nicht ausfüllen.</value>
+  </data>
+  <data name="FormLockedNameless" xml:space="preserve">
+    <value>Dieses Feld hat keinen Namen, deshalb kann Pagewing es nicht ausfüllen.</value>
+  </data>
+  <data name="FormLockedOther" xml:space="preserve">
+    <value>Pagewing kann dieses Feld nicht ausfüllen.</value>
+  </data>
+  <data name="FormValueUnsupportedCharacters" xml:space="preserve">
+    <value>Nicht übernommen: Dieses Feld kann {0} nicht darstellen. Entfernen Sie diese Zeichen, um den Wert zu übernehmen.</value>
+  </data>
+  <data name="FormValueTooLong" xml:space="preserve">
+    <value>Nicht übernommen: Dieses Feld fasst höchstens {0} Zeichen.</value>
+  </data>
+  <data name="FormValueOneLine" xml:space="preserve">
+    <value>Nicht übernommen: Dieses Feld fasst nur eine Zeile.</value>
+  </data>
+  <data name="FormValueControlCharacter" xml:space="preserve">
+    <value>Nicht übernommen: Der Text enthält das Steuerzeichen {0}.</value>
+  </data>
+  <data name="FormValueNotTaken" xml:space="preserve">
+    <value>Nicht übernommen: Die Formular-Engine hat den Wert nicht angenommen. Das Feld behält seinen bisherigen Wert.</value>
+  </data>
+  <data name="FormValueNotTakenChanged" xml:space="preserve">
+    <value>Der Wert konnte nicht geschrieben werden, das Feld kann sich trotzdem geändert haben. Prüfen Sie es vor dem Speichern: Rückgängig kann es nicht wiederherstellen.</value>
+  </data>
+  <data name="FormValueRefused" xml:space="preserve">
+    <value>Nicht übernommen: Das Feld nimmt diesen Wert nicht an.</value>
+  </data>
+  <data name="FormValueNotNow" xml:space="preserve">
+    <value>Der Wert kann gerade nicht übernommen werden. Er bleibt hier: später erneut übernehmen oder mit Esc verwerfen.</value>
+  </data>
+  <data name="FormCommandHighlight" xml:space="preserve">
+    <value>Felder hervorheben</value>
+  </data>
+  <data name="FormToolbarName" xml:space="preserve">
+    <value>Werkzeuge zum Ausfüllen</value>
+  </data>
+  <data name="FormHintOffer" xml:space="preserve">
+    <value>Dieses Dokument enthält Formularfelder, die Sie ausfüllen können.</value>
+  </data>
+  <data name="FormHintClose" xml:space="preserve">
+    <value>Hinweis schließen</value>
+  </data>
+  <data name="FormEditorHint" xml:space="preserve">
+    <value>Eingabe übernimmt und geht zum nächsten Feld, Tab wechselt das Feld, Esc verwirft</value>
+  </data>
+  <data name="FormEditorHintMultiline" xml:space="preserve">
+    <value>Strg+Eingabe übernimmt, Tab wechselt das Feld, Esc verwirft</value>
+  </data>
+  <data name="FormFieldChecked" xml:space="preserve">
+    <value>Ausgewählt</value>
+  </data>
+  <data name="RequiredFieldsTitleOne" xml:space="preserve">
+    <value>1 Pflichtfeld ist leer</value>
+  </data>
+  <data name="RequiredFieldsTitleMany" xml:space="preserve">
+    <value>{0} Pflichtfelder sind leer</value>
+  </data>
+  <data name="RequiredFieldsTextOne" xml:space="preserve">
+    <value>„{0}“ hat noch keinen Wert. Füllen Sie es zuerst aus, oder speichern Sie trotzdem.</value>
+  </data>
+  <data name="RequiredFieldsTextMany" xml:space="preserve">
+    <value>Das erste ist „{0}“. Füllen Sie die Felder zuerst aus, oder speichern Sie trotzdem.</value>
+  </data>
+  <data name="SaveChoiceGoToField" xml:space="preserve">
+    <value>Zum ersten leeren Feld</value>
+  </data>
+  <data name="SignatureWarningFormsText" xml:space="preserve">
+    <value>Formularfelder sind nach dieser Signatur erlaubt; Pagewing kann das nicht prüfen. Programme wie Acrobat zeigen sie nach dem Speichern womöglich trotzdem als ungültig an.</value>
+  </data>
 </root>

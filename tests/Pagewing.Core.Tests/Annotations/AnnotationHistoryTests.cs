@@ -1,4 +1,5 @@
 using Pagewing.Core.Annotations;
+using Pagewing.Core.Forms;
 using Pagewing.Core.Text;
 using Xunit;
 
@@ -180,5 +181,76 @@ public sealed class AnnotationHistoryTests
         var version = history.Version;
         Assert.Null(history.TakeRedo());
         Assert.Equal(version, history.Version);
+    }
+
+    [Fact]
+    public void AFormValueIsAStepLikeAnyOther()
+    {
+        var history = new AnnotationHistory();
+        var annotation = Command(1);
+        var form = new AnnotationCommand.FormValue("Name", FormFieldState.OfText("Alt"), FormFieldState.OfText("Neu"), new HashSet<int> { 0, 1 });
+        history.Push(annotation);
+        var version = history.Version;
+        history.Push(form);
+
+        Assert.Equal(version + 1, history.Version);
+        Assert.Equal("Name", form.FieldName);
+        Assert.Equal([0, 1], form.Pages.Order());
+        Assert.Same(form, history.TakeUndo());
+        Assert.True(history.CanRedo);
+        Assert.Same(form, history.TakeRedo());
+        Assert.True(history.Discard(form));
+        Assert.Same(annotation, history.TakeUndo());
+    }
+
+    [Fact]
+    public void OnlyFormChangesSinceTheLastClearAreTold()
+    {
+        var history = new AnnotationHistory();
+        var form = new AnnotationCommand.FormValue("Name", FormFieldState.OfText("Alt"), FormFieldState.OfText("Neu"), new HashSet<int> { 0 });
+
+        // Nothing yet: no form change either.
+        Assert.False(history.HasOnlyFormChanges);
+        history.Push(form);
+        Assert.True(history.HasOnlyFormChanges);
+        history.Push(form with { After = FormFieldState.OfText("Neuer") });
+        Assert.True(history.HasOnlyFormChanges);
+
+        // An annotation step counts even after it was undone, dropped or forgotten: the document was touched by it.
+        history.Push(Command(1));
+        Assert.False(history.HasOnlyFormChanges);
+        Assert.NotNull(history.TakeUndo());
+        Assert.False(history.HasOnlyFormChanges);
+        history.Push(form);
+        Assert.False(history.HasOnlyFormChanges);
+
+        // Only a clear (a save, another document) starts afresh.
+        history.Clear();
+        Assert.False(history.HasOnlyFormChanges);
+        history.Push(form);
+        Assert.True(history.HasOnlyFormChanges);
+
+        // A change the history cannot undo (a failed form write) is no annotation step.
+        history.MarkChanged();
+        Assert.True(history.HasOnlyFormChanges);
+        history.Clear();
+        history.MarkChanged();
+        Assert.False(history.HasOnlyFormChanges);
+    }
+
+    [Fact]
+    public void MarkChangedMovesTheVersionWithoutAStep()
+    {
+        var history = new AnnotationHistory();
+        history.Push(Command(1));
+        var version = history.Version;
+
+        history.MarkChanged();
+
+        Assert.True(history.Version > version);
+        Assert.True(history.CanUndo);
+        Assert.False(history.CanRedo);
+        Assert.NotNull(history.TakeUndo());
+        Assert.Null(history.TakeUndo());
     }
 }

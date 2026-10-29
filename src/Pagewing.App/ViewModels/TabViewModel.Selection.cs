@@ -213,8 +213,10 @@ public sealed partial class TabViewModel
     /// </summary>
     internal void FlushNudge()
     {
-        // The text of an open text box field is a change as well: it is applied first (TabViewModel.TextBoxes.cs).
+        // The text of an open text box field and the open value of a form field are changes as well: they are applied first
+        // (TabViewModel.TextBoxes.cs, TabViewModel.Forms.cs).
         FlushTextBoxDraft();
+        FlushFormDraft();
         if (_nudge is not { } nudge)
         {
             return;

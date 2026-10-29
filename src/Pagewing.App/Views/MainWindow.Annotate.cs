@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Layout;
 using Pagewing.App.ViewModels;
 
@@ -11,7 +10,8 @@ namespace Pagewing.App.Views;
 /// The toolbar of the mode "Comment" (design system 6 point 4 and 7.7): over the document area while the active tab is in
 /// the mode, hidden otherwise. It is made when a tab of the window first starts the mode, so nothing of it is built in the
 /// startup path (and never in a measurement run, which starts no mode). The document view moves down by the height of
-/// the toolbar while it is shown. Ending the mode with the focus in the toolbar gives the keys back to the document.
+/// the toolbar while it is shown (and of a hint bar of a form below it, MainWindow.Forms.cs). Ending the mode with the
+/// focus in the toolbar gives the keys back to the document.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -76,7 +76,7 @@ public sealed partial class MainWindow
             var toolbar = _annotationToolbar ??= CreateAnnotationToolbar();
             toolbar.DataContext = tab;
             toolbar.IsVisible = true;
-            PlaceDocumentBelowToolbar(toolbar);
+            PlaceDocument();
             return;
         }
 
@@ -88,11 +88,8 @@ public sealed partial class MainWindow
         var hadFocus = shown.IsKeyboardFocusWithin;
         shown.IsVisible = false;
         shown.DataContext = null;
-        DocumentView.Margin = default;
-        if (hadFocus && DocumentView.Layout is not null)
-        {
-            DocumentView.Focus(NavigationMethod.Unspecified);
-        }
+        PlaceDocument();
+        FocusDocumentAfter(hadFocus);
     }
 
     private AnnotationToolbar CreateAnnotationToolbar()
@@ -123,21 +120,13 @@ public sealed partial class MainWindow
         {
             if (toolbar.IsVisible)
             {
-                PlaceDocumentBelowToolbar(toolbar);
+                PlaceDocument();
             }
         };
 
-        // In the document area, before the cards (password, error, link), which lie over it.
+        // In the document area right after the document view, before the hint bar of a form and the cards (password, error,
+        // link), which lie over it. The document moves below it (PlaceDocument, MainWindow.Forms.cs).
         DocumentAreaLayers.Children.Insert(DocumentAreaLayers.Children.IndexOf(DocumentView) + 1, toolbar);
         return toolbar;
-    }
-
-    /// <summary>Moves the document view below the toolbar: by its height as laid out, or as the density gives it before the first layout.</summary>
-    private void PlaceDocumentBelowToolbar(AnnotationToolbar toolbar)
-    {
-        var height = toolbar.Bounds.Height > 0 ? toolbar.Bounds.Height
-            : this.TryFindResource("Pw.Size.ToolbarHeight", ActualThemeVariant, out var value) && value is double size ? size
-            : 44;
-        DocumentView.Margin = new Thickness(0, height, 0, 0);
     }
 }

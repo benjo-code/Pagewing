@@ -135,7 +135,8 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets whether a print job of this tab runs (set by the window). The job prints the document the tab has now, which a
-    /// save would replace, so the tab cannot be saved meanwhile (<see cref="SaveBlockedReason"/>).
+    /// save would replace, so the tab cannot be saved meanwhile (<see cref="SaveBlockedReason"/>), and undo and redo wait too:
+    /// the job prints a page in several short requests, so a change in between would print it half old, half new.
     /// </summary>
     public bool IsPrinting
     {
@@ -146,6 +147,7 @@ public sealed partial class TabViewModel
             {
                 OnPropertyChanged(nameof(SaveBlockedReason));
                 RaiseSaveCanExecuteChanged();
+                RaiseStepCanExecuteChanged();
             }
         }
     }
@@ -168,10 +170,10 @@ public sealed partial class TabViewModel
     public ICommand SaveAsCommand => _saveAsCommand ??= new RelayCommand(() => SaveRequested?.Invoke(true), CanSaveAs);
 
     /// <summary>Ctrl+Z: undoes the newest change of the annotations.</summary>
-    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(UndoAfterNudge, () => IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
+    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(UndoAfterNudge, () => IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again.</summary>
-    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(RedoAfterNudge, () => IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isAskedAbout && !_isEditingFrozen);
+    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(RedoAfterNudge, () => IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with
@@ -187,7 +189,7 @@ public sealed partial class TabViewModel
     /// operation the editor accepted and has not recorded yet). The question waits for those first
     /// (<see cref="WhenEditsSettledAsync"/>), so a change made a moment before closing is never dropped silently.
     /// </summary>
-    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || _editor is { IsDirty: true } or { IsBusy: true });
+    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || _editor is { IsDirty: true } or { IsBusy: true });
 
     /// <summary>
     /// Gets the version of the editor's history (<see cref="AnnotationEditor.Version"/>; 0 without an editor): a "Don't
@@ -278,7 +280,8 @@ public sealed partial class TabViewModel
     }
 
     /// <summary>
-    /// Reads the state of the editor (UI thread): dirty (also while a markup of the tab is on its way to it), undo and redo.
+    /// Reads the state of the editor (UI thread): dirty (also while a markup of the tab is on its way to it, and while a text
+    /// typed into a form field or a text box waits), undo and redo.
     /// </summary>
     internal void SyncFromEditor()
     {
@@ -288,9 +291,10 @@ public sealed partial class TabViewModel
         }
 
         var editor = _editor;
-        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText;
+        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft;
         CanUndo = editor?.CanUndo == true;
         CanRedo = editor?.CanRedo == true;
+        OnFormEditVersion();
     }
 
     /// <summary>The session swapped its document for the saved file (<see cref="Refresh"/>): what was read of it stays.</summary>
@@ -378,5 +382,6 @@ public sealed partial class TabViewModel
         }
 
         DisposeSelection();
+        DisposeForms();
     }
 }

@@ -84,6 +84,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private double _panelWidth;
     private DensitySetting _density;
     private bool _isNarrowWindow;
+    private bool _formFeaturesEnabled = true;
 
     // The user opened or closed a panel in this window: the first sharp tile no longer opens the start panel.
     private bool _panelChosenByUser;
@@ -523,6 +524,31 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// a panel (comparable with the measurements before the panel existed).
     /// </summary>
     internal bool OpensPagesPanelAfterFirstSharpTile { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the tabs of the window read their forms (the hints, the offer of the mode "Fill in form", the
+    /// fields; <see cref="TabViewModel.FormFeaturesEnabled"/>); on by default. A measurement run switches it off, so it measures
+    /// the open and the first sharp page without the background read of the form and without any control of the form
+    /// (milestone 11, <c>Docs/DECISIONS.md</c>, "Formulare: Messwerte und Startpfad (M11)"). Drawing the fields of the page is
+    /// not part of it: it belongs to showing the page.
+    /// </summary>
+    internal bool FormFeaturesEnabled
+    {
+        get => _formFeaturesEnabled;
+        set
+        {
+            if (_formFeaturesEnabled == value)
+            {
+                return;
+            }
+
+            _formFeaturesEnabled = value;
+            foreach (var tab in Tabs)
+            {
+                tab.FormFeaturesEnabled = value;
+            }
+        }
+    }
 
     /// <summary>Gets the side panel of the active tab (<see cref="SidePanelKind.None"/> without a tab).</summary>
     public SidePanelKind ActivePanel => ActiveTab?.SidePanel ?? SidePanelKind.None;
@@ -1022,6 +1048,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // The colours of the tools and the author come from the settings of the app; a lock for an update holds for every tab.
         tab.AnnotationSettings = Settings;
         tab.IsEditingFrozen = _isEditingFrozen;
+        tab.FormFeaturesEnabled = _formFeaturesEnabled;
         var handlers = (
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
@@ -1186,8 +1213,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // The text of an open text box field is applied first: closing then asks about it like about any change.
+        // The text of an open text box field and the open value of a form field are applied first: closing then asks about
+        // them like about any change.
         tab.FlushTextBoxDraft();
+        tab.FlushFormDraft();
         if (tab.AsksBeforeClosing)
         {
             if (!_resolving && !(_pendingSave is { } question && ReferenceEquals(question.Tab, tab)))

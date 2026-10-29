@@ -71,6 +71,9 @@ internal sealed class DocumentCanvas : Control
     public static readonly StyledProperty<PageTheme> PageThemeProperty =
         AvaloniaProperty.Register<DocumentCanvas, PageTheme>(nameof(PageTheme));
 
+    public static readonly StyledProperty<bool> FormHighlightProperty =
+        AvaloniaProperty.Register<DocumentCanvas, bool>(nameof(FormHighlight));
+
     public static readonly StyledProperty<IBrush?> DarkPageBrushProperty =
         AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(DarkPageBrush));
 
@@ -131,8 +134,9 @@ internal sealed class DocumentCanvas : Control
     private WriteableBitmap? _currentFill;
     private Pen? _currentFrameOnDark;
 
-    // Counts the changes of PageTheme. Read on the pool threads of the scheduler events, so that a result posted for one
-    // theme is dropped when it arrives after a switch to another (see OnPageThemeChanged).
+    // Counts the changes of PageTheme and FormHighlight. Read on the pool threads of the scheduler events, so that a result
+    // posted for one theme or highlight is dropped when it arrives after a switch (see OnPageThemeChanged and
+    // OnFormHighlightChanged).
     private long _themeEpoch;
 
     static DocumentCanvas()
@@ -233,6 +237,18 @@ internal sealed class DocumentCanvas : Control
     {
         get => GetValue(PageThemeProperty);
         set => SetValue(PageThemeProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether the pages show the form fields highlighted (<see cref="RenderScheduler.SetFormHighlight"/>). Set it
+    /// after the scheduler renders with the new setting: a change drops every result of the old one still on its way to the UI
+    /// thread, keeps the bitmaps on screen until the new images replace them (no empty page in between) and plans the viewport
+    /// again. Default: off.
+    /// </summary>
+    public bool FormHighlight
+    {
+        get => GetValue(FormHighlightProperty);
+        set => SetValue(FormHighlightProperty, value);
     }
 
     /// <summary>Ground of a dark page and of its placeholder (<c>Pw.Brush.Page.DarkBackground</c>).</summary>
@@ -728,6 +744,10 @@ internal sealed class DocumentCanvas : Control
         {
             OnPageThemeChanged();
         }
+        else if (change.Property == FormHighlightProperty)
+        {
+            OnFormHighlightChanged();
+        }
         else if (change.Property == SearchOnBrushProperty)
         {
             _currentFrame = null;
@@ -819,6 +839,30 @@ internal sealed class DocumentCanvas : Control
         Interlocked.Increment(ref _themeEpoch);
         _bitmaps.Clear();
         _stale.Clear();
+        _failedPages.Clear();
+        if (_source is not null)
+        {
+            SetViewport(_viewport, _renderScaling);
+        }
+        else
+        {
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>
+    /// The pages render with or without the highlight of the form fields now: the new epoch drops every result posted before
+    /// the switch, as for the theme. Unlike a theme switch the bitmaps stay as stale until the image of the same key replaces
+    /// them, because the page around the fields is the same; the failures go, and the viewport is planned again.
+    /// </summary>
+    private void OnFormHighlightChanged()
+    {
+        Interlocked.Increment(ref _themeEpoch);
+        foreach (var key in _bitmaps.Keys)
+        {
+            _stale.Add(key);
+        }
+
         _failedPages.Clear();
         if (_source is not null)
         {
@@ -1003,8 +1047,8 @@ internal sealed class DocumentCanvas : Control
         public bool FirstSharpPageReported { get; set; }
 
         // Pool thread: must not block and must never throw (it would end the process). The epoch is read here, when the
-        // scheduler reports: it reports nothing of an old theme after its SetPageTheme returned, and the canvas counts the
-        // switch only after that (PageTheme is set once the scheduler renders in the new theme).
+        // scheduler reports: it reports nothing of an old theme or highlight after its setter returned, and the canvas counts
+        // the switch only after that (PageTheme and FormHighlight are set once the scheduler renders with the new setting).
         public void OnTileReady(TileKey key)
         {
             var epoch = owner.CurrentThemeEpoch;

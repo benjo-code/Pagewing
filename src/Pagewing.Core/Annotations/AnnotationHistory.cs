@@ -1,3 +1,5 @@
+using Pagewing.Core.Forms;
+
 namespace Pagewing.Core.Annotations;
 
 /// <summary>
@@ -18,6 +20,16 @@ public abstract record AnnotationCommand
     /// <param name="Before">The annotation before the change.</param>
     /// <param name="After">The annotation after the change.</param>
     public sealed record Edit(PdfAnnotation Before, PdfAnnotation After) : AnnotationCommand;
+
+    /// <summary>
+    /// The value of a form field was changed; undo writes <paramref name="Before"/> again, redo <paramref name="After"/>. The
+    /// field is found by its full name, never by an annotation index, which shifts when annotations come and go.
+    /// </summary>
+    /// <param name="FieldName">The fully qualified name of the field.</param>
+    /// <param name="Before">The state before the change.</param>
+    /// <param name="After">The state after the change, as read back.</param>
+    /// <param name="Pages">Every page with a widget of the field.</param>
+    public sealed record FormValue(string FieldName, FormFieldState Before, FormFieldState After, IReadOnlySet<int> Pages) : AnnotationCommand;
 }
 
 /// <summary>
@@ -33,6 +45,10 @@ public sealed class AnnotationHistory
     private readonly List<AnnotationCommand> _undo = [];
     private readonly List<AnnotationCommand> _redo = [];
 
+    // What was pushed since the last Clear: form values, and any other step (also one undone, dropped or forgotten since).
+    private bool _formSteps;
+    private bool _otherSteps;
+
     /// <summary>Whether <see cref="TakeUndo"/> returns a command.</summary>
     public bool CanUndo => _undo.Count > 0;
 
@@ -46,11 +62,28 @@ public sealed class AnnotationHistory
     /// </summary>
     public int Version { get; private set; }
 
+    /// <summary>
+    /// Gets whether every step pushed since the last <see cref="Clear"/> changed a form value
+    /// (<see cref="AnnotationCommand.FormValue"/>) and there was at least one. An annotation step counts for good until the next
+    /// clear, also when it was undone, dropped or forgotten since: the document was touched by it. <see cref="MarkChanged"/> is
+    /// no step of its own (it follows a failed form write).
+    /// </summary>
+    public bool HasOnlyFormChanges => _formSteps && !_otherSteps;
+
     /// <summary>Records a new change and forgets everything that could be redone.</summary>
     /// <param name="command">The change that was just made.</param>
     public void Push(AnnotationCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (command is AnnotationCommand.FormValue)
+        {
+            _formSteps = true;
+        }
+        else
+        {
+            _otherSteps = true;
+        }
+
         _redo.Clear();
         if (_undo.Count >= MaxCommands)
         {
@@ -116,11 +149,19 @@ public sealed class AnnotationHistory
         return false;
     }
 
+    /// <summary>
+    /// Moves <see cref="Version"/> without a step: something may have changed in the document that the history cannot undo (a
+    /// form write that failed and could not be taken back), so the document counts as changed since the last save.
+    /// </summary>
+    public void MarkChanged() => Version++;
+
     /// <summary>Empties both stacks, for example after the document was reloaded; <see cref="Version"/> keeps increasing.</summary>
     public void Clear()
     {
         _undo.Clear();
         _redo.Clear();
+        _formSteps = false;
+        _otherSteps = false;
         Version++;
     }
 }

@@ -93,6 +93,7 @@ public sealed partial class MainWindow : Window
         AttachDefaultApp(old, _viewModel);
         AttachUpdate(old, _viewModel);
         AttachAnnotate(old, _viewModel);
+        AttachForms(old, _viewModel);
     }
 
     /// <summary>

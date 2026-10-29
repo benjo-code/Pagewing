@@ -5,7 +5,7 @@ namespace Pagewing.Pdfium.Native;
 
 /// <summary>
 /// Raw PDFium bindings (package <c>bblanchon.PDFium.*</c> 157.0.8100, headers <c>fpdfview.h</c>,
-/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
+/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>, <c>fpdf_formfill.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
 /// <c>FS_FLOAT</c> is <c>float</c>. Only functions Pagewing needs are bound.
 /// Every call must run on the <see cref="PdfiumThread"/>. C <c>unsigned long</c> is bound as
 /// <see cref="CULong"/> because it is 32-bit on Windows and 64-bit on Linux.
@@ -96,6 +96,22 @@ internal static unsafe partial class Fpdf
         int flags,
         FpdfColorScheme* colorScheme,
         IfsdkPause* pause);
+
+    /// <summary>
+    /// <c>FPDF_RenderPageBitmap</c> (<c>fpdfview.h</c>): renders the page onto a bitmap in one call, without pausing. Used for
+    /// the strips of a printed page with widgets (<see cref="PdfiumPrint"/>).
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_RenderPageBitmap(
+        nint bitmap,
+        nint page,
+        int startX,
+        int startY,
+        int sizeX,
+        int sizeY,
+        int rotate,
+        int flags);
 
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -528,6 +544,253 @@ internal static unsafe partial class Fpdf
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial uint FPDFSignatureObj_GetDocMDPPermission(nint signature);
+
+    // Forms (fpdf_formfill.h). FPDF_FORMHANDLE is an opaque pointer; see PdfiumFormEnvironment for the lifetime rules.
+
+    /// <summary>
+    /// Creates the form-fill environment of a document, or returns 0 on failure. <paramref name="formInfo"/> must stay valid
+    /// until <see cref="FPDFDOC_ExitFormFillEnvironment"/> has returned.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFDOC_InitFormFillEnvironment(nint document, FpdfFormFillInfo* formInfo);
+
+    /// <summary>Exits the form-fill environment; before <see cref="FPDF_CloseDocument"/> and after the last page was announced closed.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFDOC_ExitFormFillEnvironment(nint form);
+
+    /// <summary>Announces a loaded page to the environment; the first call of a document loads all its fields.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FORM_OnAfterLoadPage(nint page, nint form);
+
+    /// <summary>Announces that a page is about to close; before <see cref="FPDF_ClosePage"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FORM_OnBeforeClosePage(nint page, nint form);
+
+    /// <summary>
+    /// Draws the widgets of a page onto a bitmap the page was rendered on, with the same area, rotation and flags as the render
+    /// (<c>FPDF_RenderPageBitmap*</c> draws no widget). Widgets without an appearance get one generated when their page loads.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_FFLDraw(nint form, nint bitmap, nint page, int startX, int startY, int sizeX, int sizeY, int rotate, int flags);
+
+    /// <summary>
+    /// Sets the highlight colour of one kind of field (<c>FPDF_FORMFIELD_UNKNOWN</c>: all) for <see cref="FPDF_FFLDraw"/>.
+    /// Measured (spike): the colour is <c>0x00BBGGRR</c>, not <c>0xxxrrggbb</c> as the header says.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_SetFormFieldHighlightColor(nint form, int fieldType, CULong color);
+
+    /// <summary>Sets the opacity of the highlight (0 to 255).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_SetFormFieldHighlightAlpha(nint form, byte alpha);
+
+    /// <summary>Removes the highlight of every kind of field.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDF_RemoveFormFieldHighlight(nint form);
+
+    // Writing a value (spike, Docs/DECISIONS.md, "Formulare: Formular-Engine …", point 1): focus the widget, select all, replace,
+    // leave the focus; /V and /AP are written only when the focus leaves. Check boxes and radio buttons by a click in the middle
+    // of the widget (page coordinates), combo and list boxes by FORM_SetIndexSelected on the focused widget.
+
+    /// <summary>Focuses a widget (experimental API); the annotation must belong to a page announced to the environment.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_SetFocusedAnnot(nint form, nint annotation);
+
+    /// <summary>Selects all text of the focused text field or editable combo box (experimental API).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_SelectAllText(nint form, nint page);
+
+    /// <summary>Replaces the selected text of the focused field by <paramref name="text"/> (UTF-16LE with a terminator).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FORM_ReplaceSelection(nint form, nint page, ushort* text);
+
+    /// <summary>Leaves the focus; a changed value is written (<c>/V</c> and <c>/AP</c>) now.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_ForceToKillFocus(nint form);
+
+    /// <summary>The left mouse button goes down at a point of the page, in PDF user space (<c>modifier</c>: <c>FWL_EVENTFLAG_*</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_OnLButtonDown(nint form, nint page, int modifier, double pageX, double pageY);
+
+    /// <summary>The left mouse button goes up at a point of the page, in PDF user space.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_OnLButtonUp(nint form, nint page, int modifier, double pageX, double pageY);
+
+    /// <summary>
+    /// Selects or deselects an option of the focused combo box or list box (experimental API); deselecting in a combo box is a
+    /// no-op that returns false.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FORM_SetIndexSelected(nint form, nint page, int index, int selected);
+
+    /// <summary>One of <c>FORMTYPE_*</c> (<see cref="FpdfConstants.FormTypeNone"/> and the others). Experimental API.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_GetFormType(nint document);
+
+    // Form fields of widget annotations (fpdf_annot.h; experimental API). Every function takes the FPDF_FORMHANDLE of the
+    // document's environment. Strings are UTF-16LE (FPDF_WCHAR*) with a 2-byte terminator; lengths are in bytes and
+    // unsigned long (CULong). Read only: nothing here focuses a field (focusing a combo with many options takes seconds).
+
+    /// <summary>One of <c>FPDF_FORMFIELD_*</c> (<see cref="FpdfConstants.FormFieldPushButton"/> and the others), -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetFormFieldType(nint form, nint annotation);
+
+    /// <summary>The field flags (<c>/Ff</c>, inherited), or 0 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetFormFieldFlags(nint form, nint annotation);
+
+    /// <summary>The fully qualified field name; 0 on error, 2 for an empty name.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormFieldName(nint form, nint annotation, ushort* buffer, CULong bufferLength);
+
+    /// <summary>The alternate field name (<c>/TU</c>); 0 on error, 2 for an empty name.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormFieldAlternateName(nint form, nint annotation, ushort* buffer, CULong bufferLength);
+
+    /// <summary>
+    /// The field value (<c>/V</c>): the export value of a combo box's option, the state name of a check box or radio group,
+    /// only the first entry of a list box's array. 0 on error, 2 for an empty value.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormFieldValue(nint form, nint annotation, ushort* buffer, CULong bufferLength);
+
+    /// <summary>The export value of a check box or radio button widget; 0 on error, 2 for an empty value.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormFieldExportValue(nint form, nint annotation, ushort* buffer, CULong bufferLength);
+
+    /// <summary>The number of options (<c>/Opt</c>) of a combo box or list box, -1 without one or on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetOptionCount(nint form, nint annotation);
+
+    /// <summary>The label of an option (the header gives no export value of options); 0 on error, 2 for an empty label.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetOptionLabel(nint form, nint annotation, int index, ushort* buffer, CULong bufferLength);
+
+    /// <summary>Whether an option of a combo box or list box is chosen (the only way to read a list box's selection).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_IsOptionSelected(nint form, nint annotation, int index);
+
+    /// <summary>Whether a check box or radio button widget is checked.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_IsChecked(nint form, nint annotation);
+
+    /// <summary>
+    /// The JavaScript of an additional action of the field (<c>event</c> one of <c>FPDF_ANNOT_AACTION_*</c>); 2 without a script,
+    /// 0 on error. Only its length is read: no script ever runs.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFAnnot_GetFormAdditionalActionJavaScript(nint form, nint annotation, int formEvent, ushort* buffer, CULong bufferLength);
+}
+
+/// <summary>
+/// <c>FPDF_FORMFILLINFO</c> from <c>fpdf_formfill.h</c> (280 bytes on x64). Pagewing sets only <see cref="Version"/> = 1 and
+/// leaves every pointer null: no callback is needed (Docs/DECISIONS.md, "Formulare: Formular-Engine …", point 6), and null
+/// action pointers mean PDFium never opens a URI, runs a named or go-to action, or submits a form on Pagewing's behalf. The
+/// function pointers are therefore bound as <see cref="nint"/>; <c>NativeBindingsTests.FormFillInfoMatchesTheHeader</c>
+/// checks names, order and widths against the header.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FpdfFormFillInfo
+{
+    /// <summary>Version of the interface (<c>version</c>); 1 = only the stable interfaces are called.</summary>
+    public int Version;
+
+    public nint Release;
+
+    public nint FfiInvalidate;
+
+    public nint FfiOutputSelectedRect;
+
+    public nint FfiSetCursor;
+
+    public nint FfiSetTimer;
+
+    public nint FfiKillTimer;
+
+    public nint FfiGetLocalTime;
+
+    public nint FfiOnChange;
+
+    public nint FfiGetPage;
+
+    public nint FfiGetCurrentPage;
+
+    public nint FfiGetRotation;
+
+    public nint FfiExecuteNamedAction;
+
+    public nint FfiSetTextFieldFocus;
+
+    public nint FfiDoUriAction;
+
+    public nint FfiDoGoToAction;
+
+    /// <summary><c>m_pJsPlatform</c>: unused without V8.</summary>
+    public nint JsPlatform;
+
+    /// <summary><c>xfa_disabled</c> (<c>FPDF_BOOL</c>); version 2 only.</summary>
+    public int XfaDisabled;
+
+    public nint FfiDisplayCaret;
+
+    public nint FfiGetCurrentPageIndex;
+
+    public nint FfiSetCurrentPage;
+
+    public nint FfiGotoUrl;
+
+    public nint FfiGetPageViewRect;
+
+    public nint FfiPageEvent;
+
+    public nint FfiPopupMenu;
+
+    public nint FfiOpenFile;
+
+    public nint FfiEmailTo;
+
+    public nint FfiUploadTo;
+
+    public nint FfiGetPlatform;
+
+    public nint FfiGetLanguage;
+
+    public nint FfiDownloadFromUrl;
+
+    public nint FfiPostRequestUrl;
+
+    public nint FfiPutRequestUrl;
+
+    public nint FfiOnFocusChange;
+
+    public nint FfiDoUriActionWithKeyboardModifier;
 }
 
 /// <summary><c>FPDF_FILEACCESS</c> from <c>fpdfview.h</c>: random read access to a document.</summary>

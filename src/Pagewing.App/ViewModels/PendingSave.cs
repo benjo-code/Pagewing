@@ -43,6 +43,12 @@ public enum PendingSaveKind
     /// "Close and discard changes" and "Cancel" (default); no "Save" that could not work.
     /// </summary>
     DiscardChanges,
+
+    /// <summary>
+    /// Required form fields are empty (milestone 11): "Go to the first empty field" (default; the save stops and the mode
+    /// "Fill in form" shows that field) and "Save anyway". Never blocks saving; asked before the signature card.
+    /// </summary>
+    RequiredFields,
 }
 
 /// <summary>An answer to a <see cref="PendingSave"/>.</summary>
@@ -60,7 +66,10 @@ public enum PendingSaveChoice
     /// <summary>Save under another name (the file dialog).</summary>
     SaveAs,
 
-    /// <summary>Save although the signature does not allow it (only <see cref="PendingSaveKind.SignatureWarning"/>).</summary>
+    /// <summary>
+    /// Save although the signature does not allow it (<see cref="PendingSaveKind.SignatureWarning"/>), or although required
+    /// fields are empty (<see cref="PendingSaveKind.RequiredFields"/>).
+    /// </summary>
     SaveAnyway,
 
     /// <summary>Replace the other file at the path of the original (only <see cref="PendingSaveKind.FileChanged"/>).</summary>
@@ -68,6 +77,9 @@ public enum PendingSaveChoice
 
     /// <summary>Close and discard the changes that cannot be saved (only <see cref="PendingSaveKind.DiscardChanges"/>).</summary>
     Discard,
+
+    /// <summary>Do not save now; show the first empty required field to fill it in (only <see cref="PendingSaveKind.RequiredFields"/>).</summary>
+    GoToField,
 }
 
 /// <summary>
@@ -105,7 +117,10 @@ public sealed class PendingSave
         PendingSaveChoice defaultChoice,
         SaveFailureReason? reason = null,
         DocMdpLevel level = DocMdpLevel.NotSet,
-        Func<string>? message = null)
+        Func<string>? message = null,
+        bool formsOnly = false,
+        IReadOnlyList<string>? emptyFieldNames = null,
+        string? firstFieldName = null)
     {
         _message = message;
         Kind = kind;
@@ -115,6 +130,9 @@ public sealed class PendingSave
         DefaultChoice = defaultChoice;
         Reason = reason;
         Level = level;
+        FormsOnly = formsOnly;
+        EmptyFieldNames = emptyFieldNames ?? [];
+        FirstFieldName = firstFieldName ?? (EmptyFieldNames.Count > 0 ? EmptyFieldNames[0] : string.Empty);
         ResolveCommand = new RelayCommand<PendingSaveChoice>(choice => Resolve(choice));
     }
 
@@ -135,6 +153,18 @@ public sealed class PendingSave
 
     /// <summary>Gets the DocMDP level of the signature (<see cref="PendingSaveKind.SignatureWarning"/> and <see cref="PendingSaveKind.SignatureNote"/>).</summary>
     public DocMdpLevel Level { get; }
+
+    /// <summary>
+    /// Gets whether the changes to be saved are form values only (<see cref="PendingSaveKind.SignatureWarning"/>): at DocMDP
+    /// level 2, which allows form fields, the text says so, without claiming anything about the signature.
+    /// </summary>
+    public bool FormsOnly { get; }
+
+    /// <summary>Gets the full names of the empty required fields (<see cref="PendingSaveKind.RequiredFields"/>), in the order of the pages.</summary>
+    public IReadOnlyList<string> EmptyFieldNames { get; }
+
+    /// <summary>Gets how the card names the first empty required field (its alternate name, else its name).</summary>
+    public string FirstFieldName { get; }
 
     /// <summary>Gets the answers the card offers, in the order of its buttons.</summary>
     public IReadOnlyList<PendingSaveChoice> Choices { get; }
@@ -159,6 +189,9 @@ public sealed class PendingSave
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningTitle,
         PendingSaveKind.SignatureNote => Strings.SignatureNoteTitle,
         PendingSaveKind.FileChanged => Format(Strings.FileChangedTitle, FileName),
+        PendingSaveKind.RequiredFields => EmptyFieldNames.Count == 1
+            ? Strings.RequiredFieldsTitleOne
+            : Format(Strings.RequiredFieldsTitleMany, EmptyFieldNames.Count.ToString(Strings.Culture)),
         _ => Format(Strings.SaveErrorTitle, FileName),
     };
 
@@ -166,7 +199,9 @@ public sealed class PendingSave
     public string Message => _message?.Invoke() ?? Kind switch
     {
         PendingSaveKind.SaveChanges => Strings.SaveChangesText,
+        PendingSaveKind.SignatureWarning when FormsOnly && Level == DocMdpLevel.FormsOnly => Strings.SignatureWarningFormsText,
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningText,
+        PendingSaveKind.RequiredFields => Format(EmptyFieldNames.Count == 1 ? Strings.RequiredFieldsTextOne : Strings.RequiredFieldsTextMany, FirstFieldName),
         PendingSaveKind.SignatureNote => Strings.SignatureNoteText,
         PendingSaveKind.FileChanged => Strings.FileChangedText,
         PendingSaveKind.DiscardChanges => Reason == SaveFailureReason.EncryptedNotSupported
@@ -200,6 +235,7 @@ public sealed class PendingSave
         PendingSaveChoice.SaveAnyway => Strings.SaveChoiceSaveAnyway,
         PendingSaveChoice.Overwrite => Strings.SaveChoiceOverwrite,
         PendingSaveChoice.Discard => Strings.SaveChoiceDiscard,
+        PendingSaveChoice.GoToField => Strings.SaveChoiceGoToField,
         _ => Strings.SaveChoiceCancel,
     };
 
@@ -275,8 +311,24 @@ public sealed class PendingSave
     internal static PendingSave DiscardChanges(TabViewModel tab, string path, SaveFailureReason reason) =>
         new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, reason);
 
-    internal static PendingSave SignatureWarning(TabViewModel tab, string path, DocMdpLevel level) =>
-        new(PendingSaveKind.SignatureWarning, tab, path, [PendingSaveChoice.Cancel, PendingSaveChoice.SaveAs, PendingSaveChoice.SaveAnyway], PendingSaveChoice.Cancel, level: level);
+    /// <summary>
+    /// The warning before saving a document whose signature forbids the change (DocMDP level 1 or 2). With
+    /// <paramref name="formsOnly"/> (only form values changed since the last save) the text at level 2, which allows form
+    /// fields, says so; the warning, its choices and its default stay the same.
+    /// </summary>
+    internal static PendingSave SignatureWarning(TabViewModel tab, string path, DocMdpLevel level, bool formsOnly = false) =>
+        new(PendingSaveKind.SignatureWarning, tab, path, [PendingSaveChoice.Cancel, PendingSaveChoice.SaveAs, PendingSaveChoice.SaveAnyway], PendingSaveChoice.Cancel, level: level, formsOnly: formsOnly);
+
+    /// <summary>
+    /// The question before saving a form whose required fields are empty: "Go to the first empty field" (default) or "Save
+    /// anyway". <paramref name="firstFieldName"/> is how the card names the first of them (its alternate name), else its name.
+    /// </summary>
+    internal static PendingSave RequiredFields(TabViewModel tab, string path, IReadOnlyList<string> emptyFieldNames, string? firstFieldName = null)
+    {
+        ArgumentNullException.ThrowIfNull(emptyFieldNames);
+        return new(PendingSaveKind.RequiredFields, tab, path, [PendingSaveChoice.GoToField, PendingSaveChoice.SaveAnyway], PendingSaveChoice.GoToField,
+            emptyFieldNames: [.. emptyFieldNames], firstFieldName: firstFieldName);
+    }
 
     internal static PendingSave SignatureNote(TabViewModel tab, string path, DocMdpLevel level) =>
         new(PendingSaveKind.SignatureNote, tab, path, [PendingSaveChoice.Save, PendingSaveChoice.Cancel], PendingSaveChoice.Save, level: level);

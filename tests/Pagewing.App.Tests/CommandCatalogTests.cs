@@ -38,7 +38,7 @@ public sealed class CommandCatalogTests : IDisposable
         "nav.forward", "panel.pages", "panel.contents", "panel.comments", "search.open", "search.next", "search.previous", "palette.show",
         "settings.show", "help.show", "app.about", "recent.clear", "app.checkForUpdates", "annotate.mode", "annotate.highlight",
         "annotate.underline", "annotate.strikeout", "annotate.select", "annotate.ink", "annotate.rectangle", "annotate.ellipse",
-        "annotate.line", "annotate.arrow",
+        "annotate.line", "annotate.arrow", "form.fill", "form.highlight",
     ];
 
     private readonly CultureInfo _originalCulture = Strings.Culture;
@@ -291,6 +291,48 @@ public sealed class CommandCatalogTests : IDisposable
         Assert.Equal(["Ctrl+NumPad0"], catalog.ById("view.fitPage")!.AlternativeGestures.Select(gesture => gesture.ToString()));
         Assert.Equal(["Ctrl+NumPad1"], catalog.ById("view.actualSize")!.AlternativeGestures.Select(gesture => gesture.ToString()));
         Assert.Equal(["Ctrl+NumPad2"], catalog.ById("view.fitWidth")!.AlternativeGestures.Select(gesture => gesture.ToString()));
+    }
+
+    [AvaloniaFact]
+    public void CommandGesturesAreUniqueAcrossCommands()
+    {
+        var catalog = NewViewModel(new CountingPicker()).Commands;
+
+        // Every gesture of every command, the alternatives included, has one owner in the whole catalog; only Esc is shared by
+        // the unlisted meanings of the window, which it asks in turn. (Ctrl+Shift+E belongs to annotate.ellipse, so the mode
+        // "Fill in form" takes F and its highlighting J.)
+        var owners = new Dictionary<(Key, KeyModifiers), List<string>>();
+        foreach (var command in catalog.All)
+        {
+            foreach (var gesture in command.Gestures)
+            {
+                var key = (Normalized(gesture.Key), gesture.KeyModifiers);
+                if (!owners.TryGetValue(key, out var ids))
+                {
+                    owners[key] = ids = [];
+                }
+
+                if (!ids.Contains(command.Id))
+                {
+                    ids.Add(command.Id);
+                }
+            }
+        }
+
+        foreach (var ((key, modifiers), ids) in owners)
+        {
+            if (key == Key.Escape && modifiers == KeyModifiers.None)
+            {
+                Assert.Equal(["link.cancel", "save.cancel", "overlay.hide", "update.dismiss"], ids);
+                continue;
+            }
+
+            Assert.True(ids.Count == 1, $"{modifiers}+{key} belongs to {string.Join(", ", ids)}");
+        }
+
+        Assert.Equal(["Ctrl+Shift+F"], catalog.ById("form.fill")!.Gestures.Select(gesture => gesture.ToString()));
+        Assert.Equal(["Ctrl+Shift+J"], catalog.ById("form.highlight")!.Gestures.Select(gesture => gesture.ToString()));
+        Assert.Equal("annotate.ellipse", catalog.ForGesture(new KeyGesture(Key.E, KeyModifiers.Control | KeyModifiers.Shift))?.Id);
     }
 
     [AvaloniaFact]

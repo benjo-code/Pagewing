@@ -1299,4 +1299,121 @@
   <data name="TextBoxEmpty" xml:space="preserve">
     <value>A text box needs text. To remove it, delete it.</value>
   </data>
+  <data name="FormModeName" xml:space="preserve">
+    <value>Fill in form</value>
+  </data>
+  <data name="FormDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="FormDoneTooltip" xml:space="preserve">
+    <value>End filling in (Esc)</value>
+  </data>
+  <data name="FormHighlightFields" xml:space="preserve">
+    <value>Highlight fields</value>
+  </data>
+  <data name="FormPreviousField" xml:space="preserve">
+    <value>Previous field</value>
+  </data>
+  <data name="FormNextField" xml:space="preserve">
+    <value>Next field</value>
+  </data>
+  <data name="FormHintCalculated" xml:space="preserve">
+    <value>This form has calculated fields. Pagewing does not run JavaScript, so sums and other calculated values do not update.</value>
+  </data>
+  <data name="FormHintFormatScripts" xml:space="preserve">
+    <value>Some fields format or check their values with JavaScript. Pagewing does not run it and keeps your values as you type them.</value>
+  </data>
+  <data name="FormHintXfa" xml:space="preserve">
+    <value>This document also contains an XFA form, which Pagewing does not support. Only its standard form fields can be filled in.</value>
+  </data>
+  <data name="FormHintSignatureField" xml:space="preserve">
+    <value>This form has a signature field. Pagewing does not support digital signatures.</value>
+  </data>
+  <data name="FormHintButtons" xml:space="preserve">
+    <value>This form has buttons. Pagewing never runs their actions, so nothing is sent from here.</value>
+  </data>
+  <data name="FormRequired" xml:space="preserve">
+    <value>Required field</value>
+  </data>
+  <data name="FormLockedReadOnly" xml:space="preserve">
+    <value>Read-only: this field cannot be changed.</value>
+  </data>
+  <data name="FormLockedSignature" xml:space="preserve">
+    <value>Signature field: Pagewing does not support digital signatures.</value>
+  </data>
+  <data name="FormLockedButton" xml:space="preserve">
+    <value>Button: Pagewing does not run its action.</value>
+  </data>
+  <data name="FormLockedFile" xml:space="preserve">
+    <value>File selection field: Pagewing cannot fill it in.</value>
+  </data>
+  <data name="FormLockedNameless" xml:space="preserve">
+    <value>This field has no name, so Pagewing cannot fill it in.</value>
+  </data>
+  <data name="FormLockedOther" xml:space="preserve">
+    <value>Pagewing cannot fill in this field.</value>
+  </data>
+  <data name="FormValueUnsupportedCharacters" xml:space="preserve">
+    <value>Not accepted: this field cannot show {0}. Remove these characters to apply the value.</value>
+  </data>
+  <data name="FormValueTooLong" xml:space="preserve">
+    <value>Not accepted: this field takes at most {0} characters.</value>
+  </data>
+  <data name="FormValueOneLine" xml:space="preserve">
+    <value>Not accepted: this field takes one line only.</value>
+  </data>
+  <data name="FormValueControlCharacter" xml:space="preserve">
+    <value>Not accepted: the text contains the control character {0}.</value>
+  </data>
+  <data name="FormValueNotTaken" xml:space="preserve">
+    <value>Not accepted: the form engine did not take the value. The field keeps its previous value.</value>
+  </data>
+  <data name="FormValueNotTakenChanged" xml:space="preserve">
+    <value>The value could not be written, and the field may have changed anyway. Check it before you save: Undo cannot restore it.</value>
+  </data>
+  <data name="FormValueRefused" xml:space="preserve">
+    <value>Not accepted: the field does not take this value.</value>
+  </data>
+  <data name="FormValueNotNow" xml:space="preserve">
+    <value>The value cannot be applied right now. It stays here: apply it again later, or drop it with Esc.</value>
+  </data>
+  <data name="FormCommandHighlight" xml:space="preserve">
+    <value>Highlight form fields</value>
+  </data>
+  <data name="FormToolbarName" xml:space="preserve">
+    <value>Form filling tools</value>
+  </data>
+  <data name="FormHintOffer" xml:space="preserve">
+    <value>This document has form fields you can fill in.</value>
+  </data>
+  <data name="FormHintClose" xml:space="preserve">
+    <value>Close hint</value>
+  </data>
+  <data name="FormEditorHint" xml:space="preserve">
+    <value>Enter applies and goes to the next field, Tab moves on, Esc discards</value>
+  </data>
+  <data name="FormEditorHintMultiline" xml:space="preserve">
+    <value>Ctrl+Enter applies, Tab moves on, Esc discards</value>
+  </data>
+  <data name="FormFieldChecked" xml:space="preserve">
+    <value>Checked</value>
+  </data>
+  <data name="RequiredFieldsTitleOne" xml:space="preserve">
+    <value>1 required field is empty</value>
+  </data>
+  <data name="RequiredFieldsTitleMany" xml:space="preserve">
+    <value>{0} required fields are empty</value>
+  </data>
+  <data name="RequiredFieldsTextOne" xml:space="preserve">
+    <value>“{0}” has no value yet. Fill it in first, or save anyway.</value>
+  </data>
+  <data name="RequiredFieldsTextMany" xml:space="preserve">
+    <value>The first one is “{0}”. Fill them in first, or save anyway.</value>
+  </data>
+  <data name="SaveChoiceGoToField" xml:space="preserve">
+    <value>Go to the first empty field</value>
+  </data>
+  <data name="SignatureWarningFormsText" xml:space="preserve">
+    <value>Form fields are allowed after this signature; Pagewing cannot verify this. Programs such as Acrobat may still show the signature as invalid after saving.</value>
+  </data>
 </root>

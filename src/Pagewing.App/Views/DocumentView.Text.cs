@@ -532,6 +532,12 @@ public sealed partial class DocumentView
     // After the scroll viewer and the scroll bars had the press (handledEventsToo).
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (IsInFormEditor(e.Source))
+        {
+            // The input of a form field takes its own presses (the caret, a choice); the keys stay with it.
+            return;
+        }
+
         // A click on the pages (or their scroll bars) gives the keys to the document. With the pointer, so no focus ring appears.
         if (_layout is not null && !IsFocused)
         {
@@ -540,9 +546,9 @@ public sealed partial class DocumentView
 
         var properties = e.GetCurrentPoint(this).Properties;
 
-        // A drawing tool owns the press (DocumentView.Drawing.cs), and so does the select tool (DocumentView.Selection.cs):
-        // no text selection, no link.
-        if (PressEndsTextBox() || PressForDrawing(e, properties) || PressForSelection(e, properties))
+        // A drawing tool owns the press (DocumentView.Drawing.cs), and so does the select tool (DocumentView.Selection.cs) and,
+        // in the mode "Fill in form", a field (DocumentView.Forms.cs): no text selection, no link.
+        if (PressEndsTextBox() || PressForDrawing(e, properties) || PressForSelection(e, properties) || PressForForm(e, properties))
         {
             return;
         }
@@ -671,7 +677,7 @@ public sealed partial class DocumentView
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (MoveForDrawing(e) || MoveForSelection(e))
+        if (MoveForDrawing(e) || MoveForSelection(e) || MoveForForm(e))
         {
             return;
         }
@@ -716,7 +722,7 @@ public sealed partial class DocumentView
 
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (ReleaseForDrawing(e) || ReleaseForSelection(e))
+        if (ReleaseForDrawing(e) || ReleaseForSelection(e) || ReleaseForForm(e))
         {
             return;
         }
@@ -777,6 +783,12 @@ public sealed partial class DocumentView
         {
             EndPress(press);
         }
+
+        if (_formPress is { } formPress && ReferenceEquals(e.Pointer, formPress.Pointer))
+        {
+            // A press on a check box or radio button whose pointer went elsewhere switches nothing.
+            _formPress = null;
+        }
     }
 
     private void EndPress(TextPress press)
@@ -832,6 +844,12 @@ public sealed partial class DocumentView
                 SetCursor(CursorKind.Arrow);
             }
 
+            return;
+        }
+
+        if (UpdateFormCursor(position))
+        {
+            // A field of the mode "Fill in form" (DocumentView.Forms.cs): its cursor, and the lock as tooltip.
             return;
         }
 

@@ -491,6 +491,12 @@ public sealed partial class TabViewModel
             return;
         }
 
+        // One mode at a time: filling a form ends first, its open value applied; a value it cannot apply keeps it.
+        if (!EndFill())
+        {
+            return;
+        }
+
         IsAnnotating = true;
         if (selectTool)
         {
@@ -607,6 +613,7 @@ public sealed partial class TabViewModel
     {
         _documentGeneration++;
         EndAnnotate();
+        ResetFormState();
         _permission = null;
         _permissionRead = null;
         OnAnnotateAvailabilityChanged();
@@ -619,6 +626,8 @@ public sealed partial class TabViewModel
         {
             _permission = (adopted, known.Allowed);
         }
+
+        RebindFormState(old, adopted);
     }
 
     private void OnAnnotateAvailabilityChanged()
@@ -626,6 +635,7 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(AnnotateUnavailableReason));
         OnPropertyChanged(nameof(CanAnnotate));
         RaiseAnnotateCanExecuteChanged();
+        OnFormAvailabilityChanged();
     }
 
     private void RaiseAnnotateCanExecuteChanged()
@@ -637,5 +647,6 @@ public sealed partial class TabViewModel
         _underlineCommand?.RaiseCanExecuteChanged();
         _strikeOutCommand?.RaiseCanExecuteChanged();
         RaiseDrawCanExecuteChanged();
+        RaiseFormCanExecuteChanged();
     }
 }

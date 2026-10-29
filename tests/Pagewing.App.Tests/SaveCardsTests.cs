@@ -398,6 +398,10 @@ public sealed partial class SaveCardsTests : IDisposable
             PendingSave.DiscardChanges(tab, path, SaveFailureReason.EncryptedNotSupported),
             PendingSave.SignatureWarning(tab, path, DocMdpLevel.NoChanges),
             PendingSave.SignatureWarning(tab, path, DocMdpLevel.FormsOnly),
+            PendingSave.SignatureWarning(tab, path, DocMdpLevel.FormsOnly, formsOnly: true),
+            PendingSave.SignatureWarning(tab, path, DocMdpLevel.NoChanges, formsOnly: true),
+            PendingSave.RequiredFields(tab, path, ["Pflicht"]),
+            PendingSave.RequiredFields(tab, path, ["Pflicht", "Name"], "Name of the applicant"),
             PendingSave.SignatureNote(tab, path, DocMdpLevel.FormsAndAnnotations),
             PendingSave.SignatureNote(tab, path, DocMdpLevel.NotSet),
             PendingSave.FileChanged(tab, path),
@@ -409,6 +413,9 @@ public sealed partial class SaveCardsTests : IDisposable
 
         var texts = questions.SelectMany(question => new[] { question.Title, question.Message })
             .Concat(Enum.GetValues<PendingSaveChoice>().Select(PendingSave.LabelOf))
+
+            // The texts of the forms (milestone 11): hints, locks, reasons, the mode.
+            .Concat(FormModeTests.FormTexts())
             .ToList();
         Assert.All(texts, text => Assert.False(string.IsNullOrWhiteSpace(text)));
         foreach (var text in texts)
