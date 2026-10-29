@@ -175,7 +175,7 @@ Fehlerfälle, die keine Aufgabe von selbst abdeckt; jede Zeile hat einen Test od
 - [ ] **Step 3: Checkliste schreiben.** Einträge, jeder mit Prüfbefehl und Soll:
   1. Orga: Zwei-Faktor-Pflicht (`gh api orgs/benjo-code --jq .two_factor_requirement_enabled` → `true`).
   2. Neue Runner-Gruppe `pagewing-ci`: nur Repo `Pagewing`, öffentliche Repos erlaubt, beschränkt auf die Workflows `benjo-code/Pagewing/.github/workflows/ci.yml` und `release.yml`, je mit `@refs/heads/dev` und `@refs/heads/main`; die Runner `dotnet-linux` (zwei) und `dotnet-windows` dorthin verschieben (Format der Einträge vor dem Setzen gegen die REST-Dokumentation „Self-hosted runner groups“ prüfen).
-  3. Gruppe `main-pc`: öffentliche Repos erlaubt, beschränkt auf `hardware-measure.yml@refs/heads/dev` und `@refs/heads/main`.
+  3. Runner-Gruppe des Haupt-PC-Runners: öffentliche Repos erlaubt, beschränkt auf `hardware-measure.yml@refs/heads/dev` und `@refs/heads/main`.
   4. Repo: Environment `release-signing` (Branches `main` und `dev`, Required reviewer: Projektinhaber), Ruleset für Tags `v*` (nur Projektinhaber darf anlegen, ändern, löschen), Wiki aus, Actions: „Require actions to be pinned to a full-length commit SHA“ an, Workflow-Token nur lesend (ist schon so).
   5. Direkt nach dem Umschalten: Fork-Freigabe auf „Require approval for all external contributors“, Secret scanning, Push-Schutz, Dependabot-Alerts, privates Melden von Sicherheitslücken, Code scanning (Workflow läuft von selbst).
   6. Aufräumen nur auf Anweisung: veraltete Remote-Branches (`dependabot/nuget/pdfium-5dd1e390d0`, `feature/m12-sichtbare-unterschrift`), alte Workflow-Läufe (253) und Artefakte (11) löschen.

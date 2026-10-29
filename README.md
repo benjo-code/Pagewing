@@ -54,7 +54,7 @@ Das Code-Grundgerüst steht (Milestone 0): Solution mit `Pagewing.Pdfium`, `Page
 - Windows: Visual Studio Build Tools mit „Desktopentwicklung mit C++“, und `vswhere.exe` im PATH (Ordner `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`).
 - Linux: `clang` und `zlib1g-dev` (`sudo apt-get install -y clang zlib1g-dev`).
 
-Für die self-hosted CI-Runner kommt unter Windows hinzu: die PowerShell-Ausführungsrichtlinie `RemoteSigned` für LocalMachine (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer Windows PowerShell mit Administratorrechten). Details stehen in `CLAUDE.md`, Abschnitt „CI“.
+Für selbst gehostete Windows-Runner kommt die PowerShell-Ausführungsrichtlinie `RemoteSigned` für LocalMachine hinzu (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer Windows PowerShell mit Administratorrechten). Details stehen in `CLAUDE.md`, Abschnitt „CI“.
 
 ```bash
 dotnet build Pagewing.slnx
