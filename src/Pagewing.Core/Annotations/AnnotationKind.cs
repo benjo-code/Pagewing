@@ -30,6 +30,12 @@ public enum AnnotationKind
     /// <summary>A text box (subtype FreeText).</summary>
     TextBox,
 
+    /// <summary>
+    /// A visible signature (not a digital one): in the file an Ink annotation with the subject "Signature" (drawn), or a stamp
+    /// with an image and the mark of Pagewing (imported).
+    /// </summary>
+    Signature,
+
     /// <summary>Any other annotation; it is kept untouched and listed read-only.</summary>
     Other,
 }

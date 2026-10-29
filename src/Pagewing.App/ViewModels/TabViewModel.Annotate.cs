@@ -83,6 +83,7 @@ public sealed partial class TabViewModel
                 if (value is { } tool)
                 {
                     RememberTool(tool);
+                    DiscardPendingSignature();
                     IsSelectTool = false;
                 }
 
@@ -204,6 +205,12 @@ public sealed partial class TabViewModel
         if (!_isAnnotating)
         {
             return false;
+        }
+
+        // The placing tool of a signature goes first: the next Esc ends the mode.
+        if (DiscardPendingSignature())
+        {
+            return true;
         }
 
         if (CancelDrawingGesture?.Invoke() == true)
@@ -332,6 +339,11 @@ public sealed partial class TabViewModel
             _pendingEdits++;
             await edit(Editor);
         }
+        catch (AnnotationHistoryFullException)
+        {
+            // Deleting an image needs room in the history for undo: the signature stays, and the user hears why (never a silent no).
+            DrawingRefused?.Invoke(Strings.SignatureHistoryFull);
+        }
         catch (Exception)
         {
             // The annotation went meanwhile, or PDFium refused: the editor recorded nothing.
@@ -379,7 +391,7 @@ public sealed partial class TabViewModel
         kind is AnnotationKind.Highlight or AnnotationKind.Underline or AnnotationKind.StrikeOut;
 
     /// <summary>Whether the kind has a tool in the mode: a text markup or a drawing tool.</summary>
-    private static bool IsToolKind(AnnotationKind kind) => IsMarkupKind(kind) || IsDrawKind(kind);
+    private static bool IsToolKind(AnnotationKind kind) => IsMarkupKind(kind) || (IsDrawKind(kind) && kind != AnnotationKind.Signature);
 
     private void RememberTool(AnnotationKind tool)
     {
@@ -522,6 +534,7 @@ public sealed partial class TabViewModel
 
         // The text of an open text box field is applied while the tab still takes edits (TabViewModel.TextBoxes.cs).
         FlushTextBoxDraft();
+        DiscardPendingSignature();
         ActiveTool = null;
         IsSelectTool = false;
         IsAnnotating = false;

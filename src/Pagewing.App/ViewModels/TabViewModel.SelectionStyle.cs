@@ -23,11 +23,17 @@ public sealed partial class TabViewModel
     private PendingColor? _pendingColor;
 
     /// <summary>Gets the colour of a movable selected drawing in the drawing palette, or <see langword="null"/> (none, or a colour of another program).</summary>
-    public DrawColor? SelectionDrawColor => CanMoveSelection && ShownColorOf(_selectedAnnotation!) is { } color ? DrawPalette.Match(color) : null;
+    public DrawColor? SelectionDrawColor => CanStyleSelection && ShownColorOf(_selectedAnnotation!) is { } color ? DrawPalette.Match(color) : null;
+
+    /// <summary>
+    /// Gets whether the selection has a colour and a stroke width to change: a movable drawing, but not an image signature (the
+    /// pixels have their colour, and no stroke).
+    /// </summary>
+    public bool CanStyleSelection => CanMoveSelection && _selectedAnnotation is { IsSignatureImage: false };
 
     /// <summary>Gets the stroke width of a movable selected drawing as one of the three steps, or <see langword="null"/> (another width).</summary>
     public StrokeWidth? SelectionStrokeWidth =>
-        !CanMoveSelection ? null
+        !CanStyleSelection ? null
         : _selectedAnnotation is { TextBox: { } box } ? TextBoxSpec.StepOf(box.FontSize)
         : SelectionGeometry is { } shape ? StepOf(shape.Width) : null;
 
@@ -71,6 +77,7 @@ public sealed partial class TabViewModel
         {
             AnnotationKind.Rectangle => DrawingGeometry.Rectangle(shape.Box, width),
             AnnotationKind.Ellipse => DrawingGeometry.Ellipse(shape.Box, width),
+            AnnotationKind.Signature => DrawingGeometry.Signature(shape.Strokes, width),
             AnnotationKind.Line when shape.Strokes is [[var start, var end], ..] => DrawingGeometry.Line(start, end, width),
             AnnotationKind.Arrow when shape.Strokes is [[var start, var end], ..] => DrawingGeometry.Arrow(start, end, width),
             _ => DrawingGeometry.Ink(shape.Strokes, width),
@@ -100,7 +107,7 @@ public sealed partial class TabViewModel
     /// </summary>
     private void RestyleSelection(DrawColor? color, StrokeWidth? width)
     {
-        if (!CanMoveSelection || !CanDraw || (color is { } c && !Enum.IsDefined(c)) || (width is { } w && !Enum.IsDefined(w)))
+        if (!CanStyleSelection || !CanDraw || (color is { } c && !Enum.IsDefined(c)) || (width is { } w && !Enum.IsDefined(w)))
         {
             return;
         }

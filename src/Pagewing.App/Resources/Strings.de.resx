@@ -1416,4 +1416,103 @@
   <data name="SignatureWarningFormsText" xml:space="preserve">
     <value>Formularfelder sind nach dieser Signatur erlaubt; Pagewing kann das nicht prüfen. Programme wie Acrobat zeigen sie nach dem Speichern womöglich trotzdem als ungültig an.</value>
   </data>
+  <data name="SignatureCardTitle" xml:space="preserve">
+    <value>Neue Unterschrift</value>
+  </data>
+  <data name="SignatureClose" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="SignatureTabDraw" xml:space="preserve">
+    <value>Zeichnen</value>
+  </data>
+  <data name="SignatureTabImage" xml:space="preserve">
+    <value>Bild</value>
+  </data>
+  <data name="SignatureName" xml:space="preserve">
+    <value>Bezeichnung</value>
+  </data>
+  <data name="SignatureDefaultName" xml:space="preserve">
+    <value>Unterschrift</value>
+  </data>
+  <data name="SignaturePadName" xml:space="preserve">
+    <value>Zeichenfläche für Ihre Unterschrift</value>
+  </data>
+  <data name="SignaturePadHint" xml:space="preserve">
+    <value>Zeichnen Sie Ihre Unterschrift mit Maus, Stift oder Finger. Nur mit der Tastatur: Reiter „Bild“ nutzen.</value>
+  </data>
+  <data name="SignatureClear" xml:space="preserve">
+    <value>Löschen</value>
+  </data>
+  <data name="SignatureUndoStroke" xml:space="preserve">
+    <value>Strich zurück</value>
+  </data>
+  <data name="SignatureInk" xml:space="preserve">
+    <value>Tintenfarbe</value>
+  </data>
+  <data name="SignatureChooseImage" xml:space="preserve">
+    <value>Bild wählen …</value>
+  </data>
+  <data name="SignatureImageNote" xml:space="preserve">
+    <value>PNG oder JPG, bis 10 MB. Der Hintergrund wird auf diesem Computer entfernt; es wird nichts hochgeladen.</value>
+  </data>
+  <data name="SignatureThreshold" xml:space="preserve">
+    <value>Hintergrund entfernen</value>
+  </data>
+  <data name="SignaturePreview" xml:space="preserve">
+    <value>Vorschau der Unterschrift</value>
+  </data>
+  <data name="SignatureSave" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="SignatureCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="SignatureHintLegal" xml:space="preserve">
+    <value>Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.</value>
+  </data>
+  <data name="SignatureHintDigital" xml:space="preserve">
+    <value>Das ist ein Bild Ihrer Unterschrift, keine digitale Signatur.</value>
+  </data>
+  <data name="SignatureProblemNothingDrawn" xml:space="preserve">
+    <value>Zeichnen Sie Ihre Unterschrift, um sie zu speichern.</value>
+  </data>
+  <data name="SignatureProblemNoImage" xml:space="preserve">
+    <value>Wählen Sie ein Bild Ihrer Unterschrift, um sie zu speichern.</value>
+  </data>
+  <data name="SignatureProblemBlank" xml:space="preserve">
+    <value>Nach dem Entfernen des Hintergrunds ist nichts übrig. Verschieben Sie den Regler, damit mehr von der Tinte bleibt.</value>
+  </data>
+  <data name="SignatureProblemTooLarge" xml:space="preserve">
+    <value>Die Datei ist größer als 10 MB.</value>
+  </data>
+  <data name="SignatureProblemTooManyPixels" xml:space="preserve">
+    <value>Das Bild ist größer als 6.000 × 6.000 Pixel.</value>
+  </data>
+  <data name="SignatureProblemUnreadable" xml:space="preserve">
+    <value>Diese Datei lässt sich nicht als PNG- oder JPG-Bild lesen.</value>
+  </data>
+  <data name="SignatureProblemLibraryFull" xml:space="preserve">
+    <value>Sie können bis zu 10 Unterschriften speichern. Löschen Sie zuerst eine.</value>
+  </data>
+  <data name="SignatureProblemSaveFailed" xml:space="preserve">
+    <value>Die Unterschrift konnte nicht gespeichert werden.</value>
+  </data>
+  <data name="CommandInsertSignature" xml:space="preserve">
+    <value>Unterschrift einfügen</value>
+  </data>
+  <data name="SignatureHistoryFull" xml:space="preserve">
+    <value>Der Verlauf ist voll mit Unterschriftsbildern. Speichern Sie zuerst das Dokument.</value>
+  </data>
+  <data name="ToolSignature" xml:space="preserve">
+    <value>Unterschrift</value>
+  </data>
+  <data name="SignatureMenuNew" xml:space="preserve">
+    <value>Neue Unterschrift …</value>
+  </data>
+  <data name="SignatureMenuName" xml:space="preserve">
+    <value>Gespeicherte Unterschriften</value>
+  </data>
+  <data name="SignatureDelete" xml:space="preserve">
+    <value>Unterschrift löschen</value>
+  </data>
 </root>

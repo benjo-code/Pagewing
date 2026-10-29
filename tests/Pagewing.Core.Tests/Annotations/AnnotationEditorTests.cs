@@ -1,6 +1,7 @@
 using Pagewing.Core.Annotations;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
+using Pagewing.Core.Signatures;
 using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 using Pagewing.Pdfium;
@@ -842,6 +843,184 @@ public sealed class AnnotationEditorTests : IDisposable
         }
 
         AssertRectNear(expected.Box, actual.Box, tolerance);
+    }
+
+    // ---- Signatures (milestone 12, task 7) ----
+
+    private static readonly AnnotationColor Black = new(0, 0, 0);
+
+    private static SignatureImage NoisyImage(int width = 100, int height = 50, int seed = 5)
+    {
+        var random = new Random(seed);
+        var bgra = new byte[width * height * 4];
+        for (var i = 0; i < bgra.Length; i += 4)
+        {
+            bgra[i] = (byte)random.Next(256);
+            bgra[i + 1] = (byte)random.Next(256);
+            bgra[i + 2] = (byte)random.Next(256);
+            bgra[i + 3] = (byte)random.Next(40, 256);
+        }
+
+        return new SignatureImage(width, height, bgra);
+    }
+
+    private static void AssertSamePixels(SignatureImage expected, SignatureImage actual)
+    {
+        Assert.Equal((expected.Width, expected.Height), (actual.Width, actual.Height));
+        Assert.True(expected.Bgra.AsSpan().SequenceEqual(actual.Bgra), "The pixels differ.");
+    }
+
+    [Fact]
+    public async Task EmptyImageSignatureChangesNothing()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var changes = 0;
+        editor.Changed += () => Interlocked.Increment(ref changes);
+
+        var result = await editor.ApplySignatureImageAsync(0, new PageRect(20, 20, 100, 52), new SignatureImage(10, 10, new byte[400]), "Ada");
+
+        Assert.Null(result);
+        Assert.False(editor.IsDirty);
+        Assert.False(editor.CanUndo);
+        Assert.Empty(editor.ChangedPages);
+        Assert.Equal(0, Volatile.Read(ref changes));
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+    }
+
+    [Fact]
+    public async Task UndoOfPlacingTheDrawnSignatureDeletesIt()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var geometry = DrawingGeometry.Signature([[new(30, 80), new(60, 30), new(90, 90)], [new(30, 100), new(100, 100)]], 2);
+
+        var created = (await editor.ApplyDrawingAsync(0, geometry, Black, null, "Ada"))!;
+        Assert.Equal(AnnotationKind.Signature, created.Kind);
+        Assert.True(editor.IsDirty);
+        await editor.UndoAsync();
+
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+        Assert.True(editor.CanRedo);
+        await editor.RedoAsync();
+        var back = Assert.Single(await session.Document.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(created.Name, back.Name);
+        Assert.Equal(AnnotationKind.Signature, back.Kind);
+    }
+
+    [Fact]
+    public async Task UndoOfDeletingAnImageSignatureRecreatesItUnderTheSameName()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var image = NoisyImage();
+        var created = (await editor.ApplySignatureImageAsync(0, new PageRect(30, 40, 130, 90), image, "Ada"))!;
+        await editor.UpdateAsync(new AnnotationLocator(0, created.Index, created.Name), new AnnotationEdit(Contents: "Lease"));
+
+        await editor.DeleteAsync(new AnnotationLocator(0, created.Index, created.Name));
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+        await editor.UndoAsync();
+
+        var back = Assert.Single(await session.Document.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(created.Name, back.Name);
+        Assert.True(back.IsSignatureImage);
+        Assert.Equal("Lease", back.Contents);
+        Assert.Equal("Ada", back.Author);
+        AssertRectNear(created.Bounds, back.Bounds, 1.0 / 16);
+        AssertSamePixels(image, await session.Document.ReadSignatureImageAsync(new AnnotationLocator(0, back.Index, back.Name), Ct));
+
+        // Redo deletes it again, undo once more brings it back: the images stay in the history.
+        await editor.RedoAsync();
+        Assert.Empty(await session.Document.GetAnnotationsAsync(0, Ct));
+        await editor.UndoAsync();
+        Assert.True(Assert.Single(await session.Document.GetAnnotationsAsync(0, Ct)).IsSignatureImage);
+    }
+
+    [Fact]
+    public async Task UndoAndRedoOfPlacingAnImageSignature()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var image = NoisyImage();
+        var created = (await editor.ApplySignatureImageAsync(0, new PageRect(30, 40, 130, 90), image, null))!;
+
+        await editor.UndoAsync();
+        Assert.Empty(await session.Document!.GetAnnotationsAsync(0, Ct));
+        await editor.RedoAsync();
+
+        var back = Assert.Single(await session.Document.GetAnnotationsAsync(0, Ct));
+        Assert.Equal(created.Name, back.Name);
+        Assert.True(back.IsSignatureImage);
+        AssertSamePixels(image, await session.Document.ReadSignatureImageAsync(new AnnotationLocator(0, back.Index, back.Name), Ct));
+    }
+
+    [Fact]
+    public async Task MovingAnImageSignatureIsOneUndoStep()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session);
+        var created = (await editor.ApplySignatureImageAsync(0, new PageRect(30, 40, 130, 90), NoisyImage(), null))!;
+
+        var moved = await editor.ReplaceGeometryAsync(new AnnotationLocator(0, created.Index, created.Name), DrawingGeometry.Rectangle(new PageRect(100, 100, 200, 150), 1));
+        AssertRectNear(new PageRect(100, 100, 200, 150), moved.Bounds, 1.0 / 16);
+        await editor.UndoAsync();
+
+        var back = Assert.Single(await session.Document!.GetAnnotationsAsync(0, Ct));
+        AssertRectNear(created.Bounds, back.Bounds, 1.0 / 16);
+        Assert.True(back.IsSignatureImage);
+
+        // One more undo is the placing itself.
+        await editor.UndoAsync();
+        Assert.Empty(await session.Document.GetAnnotationsAsync(0, Ct));
+        Assert.False(editor.CanUndo);
+    }
+
+    [Fact]
+    public async Task HistoryRefusesPastTheImageBudgetAndChangesNothing()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session) { ImageBudget = 45_000 };
+        var first = (await editor.ApplySignatureImageAsync(0, new PageRect(10, 10, 110, 60), NoisyImage(seed: 1), null))!;
+        var second = (await editor.ApplySignatureImageAsync(0, new PageRect(10, 70, 110, 120), NoisyImage(seed: 2), null))!;
+        var version = editor.Version;
+        var pages = editor.ChangedPages;
+
+        // The third image does not fit, nor does deleting a signature (undo would need its image): nothing is created or deleted.
+        await Assert.ThrowsAsync<AnnotationHistoryFullException>(() => editor.ApplySignatureImageAsync(0, new PageRect(10, 130, 110, 180), NoisyImage(seed: 3), null));
+        await Assert.ThrowsAsync<AnnotationHistoryFullException>(() => editor.DeleteAsync(new AnnotationLocator(0, second.Index, second.Name)));
+
+        Assert.Equal(version, editor.Version);
+        Assert.Equal(pages, editor.ChangedPages);
+        Assert.Equal([first.Name, second.Name], (await session.Document!.GetAnnotationsAsync(0, Ct)).Select(a => a.Name));
+
+        // A drawn signature and a comment need no image: they still work.
+        Assert.NotNull(await editor.ApplyDrawingAsync(0, DrawingGeometry.Signature([[new(30, 150), new(80, 190)]], 2), Black, null, null));
+        await editor.UpdateAsync(new AnnotationLocator(0, second.Index, second.Name), new AnnotationEdit(Contents: "still fine"));
+
+        // Undoing the placing of both images frees their bytes: placing one again fits.
+        await editor.UndoAsync();
+        await editor.UndoAsync();
+        await editor.UndoAsync();
+        await editor.UndoAsync();
+        Assert.NotNull(await editor.ApplySignatureImageAsync(0, new PageRect(10, 130, 110, 180), NoisyImage(seed: 3), null));
+    }
+
+    [Fact]
+    public async Task SavingClearsTheImagesFromTheHistory()
+    {
+        using var session = await OpenSessionAsync("text-basic.pdf");
+        var editor = new AnnotationEditor(session) { ImageBudget = 45_000 };
+        await editor.ApplySignatureImageAsync(0, new PageRect(10, 10, 110, 60), NoisyImage(seed: 1), null);
+        await editor.ApplySignatureImageAsync(0, new PageRect(10, 70, 110, 120), NoisyImage(seed: 2), null);
+        await Assert.ThrowsAsync<AnnotationHistoryFullException>(() => editor.ApplySignatureImageAsync(0, new PageRect(10, 130, 110, 180), NoisyImage(seed: 3), null));
+
+        var result = await editor.SaveAsync(engine, Path.Combine(folder.Path, "saved.pdf"), overwriteChangedOriginal: false, progress: null, Ct);
+
+        Assert.True(result.Adopted);
+        Assert.False(editor.CanUndo);
+        Assert.False(editor.IsDirty);
+        Assert.NotNull(await editor.ApplySignatureImageAsync(0, new PageRect(10, 130, 110, 180), NoisyImage(seed: 3), null));
+        Assert.Equal(3, (await session.Document!.GetAnnotationsAsync(0, Ct)).Count(a => a.IsSignatureImage));
     }
 
     private static RenderedImage SmallImage() => new(1, 1, 4, new byte[4]);

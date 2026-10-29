@@ -42,6 +42,9 @@ public static class UserDataPaths
             : Path.Combine(Path.GetTempPath(), "pagewing");
     }
 
+    /// <summary>The folder of the saved signatures (<c>signatures</c> in <see cref="ConfigDirectory()"/>); read only when a menu of signatures opens.</summary>
+    public static string SignaturesDirectory() => Path.Combine(ConfigDirectory(), "signatures");
+
     private static string? Read(Func<string, string?> getEnvironmentVariable, string name)
     {
         var value = getEnvironmentVariable(name);

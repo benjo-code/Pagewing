@@ -26,8 +26,8 @@ public sealed partial class PdfDocument
     internal Func<PdfiumDocument, int, int, bool> AppearanceGenerator { get; set; } = PdfiumAnnotations.GenerateAppearance;
 
     /// <summary>
-    /// Creates a drawing: an ink for <see cref="AnnotationKind.Ink"/>, <see cref="AnnotationKind.Line"/> and
-    /// <see cref="AnnotationKind.Arrow"/> (a line and an arrow carry their marker <c>/Subj</c>), a square for
+    /// Creates a drawing: an ink for <see cref="AnnotationKind.Ink"/>, <see cref="AnnotationKind.Signature"/>, <see cref="AnnotationKind.Line"/> and
+    /// <see cref="AnnotationKind.Arrow"/> (a signature, a line and an arrow carry their marker <c>/Subj</c>), a square for
     /// <see cref="AnnotationKind.Rectangle"/> and a circle for <see cref="AnnotationKind.Ellipse"/>. The points are page points
     /// from the top left of the displayed page; PDFium's conversion turns them into PDF space (rotation and CropBox) without
     /// rounding. Strokes of fewer than two points draw nothing and are left out. The annotation gets a new <c>/NM</c>,
@@ -161,11 +161,12 @@ public sealed partial class PdfDocument
         var kind = geometry.Kind switch
         {
             AnnotationKind.Ink => PdfiumDrawingKind.Ink,
+            AnnotationKind.Signature => PdfiumDrawingKind.Signature,
             AnnotationKind.Line => PdfiumDrawingKind.Line,
             AnnotationKind.Arrow => PdfiumDrawingKind.Arrow,
             AnnotationKind.Rectangle => PdfiumDrawingKind.Square,
             AnnotationKind.Ellipse => PdfiumDrawingKind.Circle,
-            _ => throw new ArgumentOutOfRangeException(nameof(geometry), geometry.Kind, "Only freehand drawings, lines, arrows, rectangles and ellipses are drawings."),
+            _ => throw new ArgumentOutOfRangeException(nameof(geometry), geometry.Kind, "Only freehand drawings, signatures, lines, arrows, rectangles and ellipses are drawings."),
         };
         if (!double.IsFinite(geometry.Width) || geometry.Width <= 0 || geometry.Width > PdfiumDrawings.MaxWidth)
         {
@@ -262,7 +263,7 @@ public sealed partial class PdfDocument
             return head ? DrawingGeometry.Arrow(start, end, drawing.Width) : DrawingGeometry.Line(start, end, drawing.Width);
         }
 
-        return DrawingGeometry.Ink(strokes, drawing.Width);
+        return drawing.Kind == PdfiumDrawingKind.Signature ? DrawingGeometry.Signature(strokes, drawing.Width) : DrawingGeometry.Ink(strokes, drawing.Width);
     }
 
     /// <summary>

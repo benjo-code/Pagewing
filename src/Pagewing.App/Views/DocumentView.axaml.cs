@@ -178,6 +178,7 @@ public sealed partial class DocumentView : UserControl
         viewModel.DocumentFocusRequested += OnDocumentFocusRequested;
         ConnectHighlights(viewModel);
         ConnectLinks(viewModel);
+        ConnectSignature(viewModel);
         _session.Changed += OnSessionChanged;
         _session.PagesInvalidated += OnPagesInvalidated;
         Sync();
@@ -190,6 +191,7 @@ public sealed partial class DocumentView : UserControl
         SaveView();
         CloseTextBoxEditor(apply: true);
         DisconnectForms();
+        DisconnectSignature();
         EndGesture();
         DisconnectSelection();
         DisconnectHighlights();
@@ -503,7 +505,13 @@ public sealed partial class DocumentView : UserControl
 
         CancelPendingMarkup();
 
-        // A stroke being drawn first: the next Esc ends the mode.
+        // A signature that waits to be placed goes first: the next Esc ends the mode.
+        if (tab.DiscardPendingSignature())
+        {
+            return true;
+        }
+
+        // A stroke being drawn: the next Esc ends the mode.
         if (EndGesture())
         {
             return true;

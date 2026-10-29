@@ -5,6 +5,7 @@ using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Distribution;
 using Pagewing.Core.Settings;
+using Pagewing.Core.Signatures;
 using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 
@@ -571,6 +572,11 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     }
 
     /// <summary>The coordinator all windows share, made by the factory the first time a window needs it.</summary>
+    private SignatureStore? _signatureStore;
+
+    /// <summary>The library of saved signatures of this process, opened on first use; every window shares it.</summary>
+    private SignatureStore GetSignatureStore() => _signatureStore ??= SignatureStore.Load(UserDataPaths.SignaturesDirectory());
+
     private UpdateCoordinator? GetUpdateCoordinator()
     {
         if (!_updateCoordinatorMade)
@@ -602,6 +608,9 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     {
         var window = _createWindow();
         var viewModel = new MainViewModel(_sessionFactory, _createPicker(window), _settings, _recentFiles) { AppTheme = _theme };
+
+        // One library of signatures for all windows (read when a menu or the dialog first needs it).
+        viewModel.SignatureStoreProvider = GetSignatureStore;
         if (_defaultAppServiceFactory is { } defaultAppFactory)
         {
             viewModel.DefaultAppServiceFactory = defaultAppFactory;

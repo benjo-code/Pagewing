@@ -79,7 +79,7 @@ public static class DrawingHitTest
     private static bool IsMarkup(AnnotationKind kind) => kind is AnnotationKind.Highlight or AnnotationKind.Underline or AnnotationKind.StrikeOut;
 
     private static bool IsDrawing(AnnotationKind kind) =>
-        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox;
+        kind is AnnotationKind.Ink or AnnotationKind.Signature or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox;
 
     private static bool Hits(PdfAnnotation annotation, DisplayPoint point, double tolerance)
     {

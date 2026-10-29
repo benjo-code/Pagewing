@@ -459,6 +459,81 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial CULong FPDFAnnot_GetAP(nint annotation, int appearanceMode, ushort* buffer, CULong bufferLength);
 
+    /// <summary>A new, empty image object of the document (<c>fpdf_edit.h</c>); ownership passes to <see cref="FPDFAnnot_AppendObject"/> or <see cref="FPDFPageObj_Destroy"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_NewImageObj(nint document);
+
+    /// <summary>Gives an image object its pixels (the bitmap is copied; <paramref name="pages"/> may be <see langword="null"/> with a count of 0).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFImageObj_SetBitmap(nint* pages, int count, nint imageObject, nint bitmap);
+
+    /// <summary>Sets the matrix of a page object (experimental API of <c>fpdf_edit.h</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_SetMatrix(nint pageObject, FsMatrix* matrix);
+
+    /// <summary>Reads the matrix of a page object (experimental API of <c>fpdf_edit.h</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_GetMatrix(nint pageObject, FsMatrix* matrix);
+
+    /// <summary>Frees a page object that no annotation or page owns.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFPageObj_Destroy(nint pageObject);
+
+    /// <summary>Adds a page object to the appearance of an ink or stamp annotation; the annotation owns it afterwards.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_AppendObject(nint annotation, nint pageObject);
+
+    /// <summary>The number of objects in the appearance of an annotation. Touches the stream dictionary (sets a missing <c>/Matrix</c>): only for own stamps.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFAnnot_GetObjectCount(nint annotation);
+
+    /// <summary>An object of the appearance of an annotation (owned by the annotation).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFAnnot_GetObject(nint annotation, int index);
+
+    /// <summary>The size of the image of an image object in pixels (0 for another object).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFImageObj_GetImagePixelSize(nint imageObject, uint* width, uint* height);
+
+    /// <summary>A bitmap of an image object with its mask and matrix applied (experimental API); the caller destroys it.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFImageObj_GetRenderedBitmap(nint document, nint page, nint imageObject);
+
+    /// <summary>The first byte of the pixels of a bitmap.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void* FPDFBitmap_GetBuffer(nint bitmap);
+
+    /// <summary>The width of a bitmap in pixels.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFBitmap_GetWidth(nint bitmap);
+
+    /// <summary>The height of a bitmap in pixels.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFBitmap_GetHeight(nint bitmap);
+
+    /// <summary>The bytes per row of a bitmap.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFBitmap_GetStride(nint bitmap);
+
+    /// <summary>The pixel format of a bitmap (<c>FPDFBitmap_*</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFBitmap_GetFormat(nint bitmap);
+
     // Fonts and glyph outlines (fpdf_edit.h; partly experimental API). Used only to read the outlines of the text box font
     // (Geist Regular) in a document that is never saved; see PdfiumGlyphs. FPDF_FONT, FPDF_GLYPHPATH and FPDF_PATHSEGMENT
     // are opaque pointers; a glyph path and its segments belong to the font and need no closing.

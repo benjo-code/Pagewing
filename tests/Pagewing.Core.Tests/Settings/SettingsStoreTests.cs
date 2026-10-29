@@ -209,6 +209,24 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void SignatureStyleDefaultsToBlack()
+    {
+        // Ink of a signature is black, medium, unlike the red of the other drawing tools; a chosen style is kept and written.
+        Assert.Equal(new ToolStyle(DrawColor.Black, StrokeWidth.Medium), AppSettings.Default.StyleOf(AnnotationKind.Signature));
+        Assert.Equal(AppSettings.DefaultSignatureStyle, AppSettings.Default.StyleOf(AnnotationKind.Signature));
+        Assert.Equal(AppSettings.DefaultToolStyle, AppSettings.Default.StyleOf(AnnotationKind.Ink));
+        Assert.Contains(AnnotationKind.Signature, AppSettings.ToolStyleKinds);
+
+        var changed = AppSettings.Default.WithToolStyle(AnnotationKind.Signature, new ToolStyle(DrawColor.Blue, StrokeWidth.Thin));
+        Assert.Equal(new ToolStyle(DrawColor.Blue, StrokeWidth.Thin), changed.StyleOf(AnnotationKind.Signature));
+        Assert.Equal(AppSettings.DefaultToolStyle, changed.StyleOf(AnnotationKind.Ink));
+
+        var store = new SettingsStore(FilePath);
+        Assert.True(store.TrySave(changed));
+        Assert.Equal(new ToolStyle(DrawColor.Blue, StrokeWidth.Thin), store.Load().StyleOf(AnnotationKind.Signature));
+    }
+
+    [Fact]
     public void WithToolStyleKeepsTheOtherToolsAndDoesNotAliasTheOldDictionary()
     {
         var first = AppSettings.Default.WithToolStyle(AnnotationKind.Ink, new ToolStyle(DrawColor.Blue, StrokeWidth.Thick));

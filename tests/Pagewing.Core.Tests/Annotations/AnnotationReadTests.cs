@@ -73,6 +73,21 @@ public sealed class AnnotationReadTests
     }
 
     [Fact]
+    public async Task StampsForeignFixtureListsAllEntries()
+    {
+        await using var document = await OpenFixtureAsync(StampsForeign);
+
+        var annotations = await document.GetAnnotationsAsync(0, TestContext.Current.CancellationToken);
+
+        // Three stamps (text appearance, image appearance without a mark, no appearance) and an ink with the subject "Signature"
+        // and three strokes: all listed; the stamps stay foreign (no image signature), the ink is a drawn signature.
+        Assert.Equal([0, 1, 2, 3], annotations.Select(a => a.Index));
+        Assert.Equal(["Stamp", "Stamp", "Stamp", "Ink"], annotations.Select(a => a.Subtype));
+        Assert.Equal([AnnotationKind.Other, AnnotationKind.Other, AnnotationKind.Other, AnnotationKind.Signature], annotations.Select(a => a.Kind));
+        Assert.DoesNotContain(annotations, a => a.IsSignatureImage);
+    }
+
+    [Fact]
     public async Task MarksPlainMarkupAndDrawingsAsEditable()
     {
         await using var document = await OpenFixtureAsync("annotations-foreign.pdf");

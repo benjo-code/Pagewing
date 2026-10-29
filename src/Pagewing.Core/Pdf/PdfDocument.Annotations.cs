@@ -57,10 +57,11 @@ public sealed partial class PdfDocument
                 listedAnnotations[pageIndex] = read.Count;
                 var drawings = new DrawingReader(loaded, MaxDrawingPointsPerPage);
                 using var textBoxes = new TextBoxReader(loaded);
+                var signatures = new SignatureReader(document, loaded);
                 var result = new PdfAnnotation[read.Count];
                 for (var i = 0; i < result.Length; i++)
                 {
-                    result[i] = ToAnnotation(pageIndex, read[i], drawings.Read(read[i], cancellationToken), textBoxes.Read(read[i]));
+                    result[i] = ToAnnotation(pageIndex, read[i], drawings.Read(read[i], cancellationToken), textBoxes.Read(read[i]), signatures.IsOwnImage(read[i]));
                 }
 
                 return result;
@@ -232,10 +233,20 @@ public sealed partial class PdfDocument
                 Exception? failure = null;
                 Replacement? replacement = null;
                 var isTextBox = false;
+                var stamp = false;
                 using (var page = document.LoadPage(locator.Page))
                 {
                     index = FindEditable(page, locator, cancellationToken);
                     var subtype = PdfiumAnnotations.SubtypeOf(page, index);
+                    if (subtype == FpdfConstants.AnnotStamp)
+                    {
+                        // FindEditable let only an own image signature through.
+                        var current = PdfiumAnnotations.ReadAt(page, index, cancellationToken)
+                            ?? throw new InvalidOperationException("The image signature cannot be read.");
+                        UpdateSignatureImage(page, index, edit, name, date, new PageRect(current.Bounds.Left, current.Bounds.Top, current.Bounds.Right, current.Bounds.Bottom));
+                        stamp = true;
+                    }
+
                     var isDrawing = PdfiumAnnotations.IsDrawing(subtype);
                     isTextBox = PdfiumAnnotations.IsTextBox(subtype);
                     if (edit.TextBox is not null && !isTextBox)
@@ -243,14 +254,14 @@ public sealed partial class PdfDocument
                         throw new InvalidOperationException("Only a text box has a text box to change.");
                     }
 
-                    if (edit.Geometry is not null && !isDrawing)
+                    if (edit.Geometry is not null && !isDrawing && !stamp)
                     {
                         throw new InvalidOperationException("Only a drawing has a geometry to change.");
                     }
 
-                    if (isTextBox)
+                    if (isTextBox || stamp)
                     {
-                        // Read and replaced below, with no handle of the page open.
+                        // A text box is read and replaced below, with no handle of the page open; an image signature is changed above.
                     }
                     else if (isDrawing && (edit.Geometry is not null || color is not null))
                     {
@@ -272,6 +283,11 @@ public sealed partial class PdfDocument
                 if (isTextBox)
                 {
                     return ReplaceTextBox(locator.Page, index, edit, name, date, cancellationToken);
+                }
+
+                if (stamp)
+                {
+                    return ReadBack(locator.Page, index);
                 }
 
                 if (replacement is not null)
@@ -351,9 +367,9 @@ public sealed partial class PdfDocument
         new PdfiumPoint(quad.BottomLeft.X, quad.BottomLeft.Y),
         new PdfiumPoint(quad.BottomRight.X, quad.BottomRight.Y));
 
-    private static PdfAnnotation ToAnnotation(int pageIndex, PdfiumAnnotation annotation, DrawingRead drawing, (TextBoxSpec? Spec, bool Own) textBox)
+    private static PdfAnnotation ToAnnotation(int pageIndex, PdfiumAnnotation annotation, DrawingRead drawing, (TextBoxSpec? Spec, bool Own) textBox, bool signatureImage)
     {
-        var kind = drawing.Geometry?.Kind ?? KindOf(annotation.Subtype);
+        var kind = drawing.Geometry?.Kind ?? (signatureImage ? AnnotationKind.Signature : KindOf(annotation.Subtype));
         var quads = new Quad[annotation.Quads.Count];
         for (var i = 0; i < quads.Length; i++)
         {
@@ -386,8 +402,9 @@ public sealed partial class PdfDocument
             PdfDate.TryParse(annotation.Modified),
             kind != AnnotationKind.Other && !annotation.HasReplies,
             drawing.Geometry,
-            (drawing.GeometryEditable || textBox.Own) && !annotation.HasReplies,
-            textBox.Spec);
+            (drawing.GeometryEditable || textBox.Own || signatureImage) && !annotation.HasReplies,
+            textBox.Spec,
+            signatureImage);
     }
 
     private static AnnotationKind KindOf(int subtype) => subtype switch
@@ -413,7 +430,7 @@ public sealed partial class PdfDocument
     private static string NewName() => Guid.NewGuid().ToString("N");
 
     /// <summary>The index of the annotation of the locator, after checking that Pagewing may change it. Runs on the PDFium thread.</summary>
-    private static int FindEditable(PdfiumPage page, AnnotationLocator locator, CancellationToken cancellationToken)
+    private int FindEditable(PdfiumPage page, AnnotationLocator locator, CancellationToken cancellationToken)
     {
         var index = PdfiumAnnotations.Find(page, locator.Name, locator.Index, cancellationToken);
         if (index < 0)
@@ -423,12 +440,20 @@ public sealed partial class PdfDocument
                 : string.Create(CultureInfo.InvariantCulture, $"Page {locator.Page + 1} has no annotation named \"{locator.Name}\"."));
         }
 
-        if (!PdfiumAnnotations.IsEditable(page, index, cancellationToken))
+        if (PdfiumAnnotations.IsEditable(page, index, cancellationToken))
         {
-            throw new InvalidOperationException("Only highlights, underlines, strike-outs and drawings without replies can be changed.");
+            return index;
         }
 
-        return index;
+        // A stamp is Pagewing's own image signature or foreign (locked).
+        if (PdfiumAnnotations.SubtypeOf(page, index) == FpdfConstants.AnnotStamp
+            && !PdfiumAnnotations.IsReplyOrAnswered(page, index, cancellationToken)
+            && PdfiumSignatures.IsOwnImage(document, page, index))
+        {
+            return index;
+        }
+
+        throw new InvalidOperationException("Only highlights, underlines, strike-outs, drawings, text boxes and signatures of Pagewing without replies can be changed.");
     }
 
     /// <summary>
@@ -521,7 +546,11 @@ public sealed partial class PdfDocument
             ?? throw new InvalidOperationException("The changed annotation could not be read back.");
         using var textBoxes = new TextBoxReader(page);
         return ToAnnotation(
-            pageIndex, annotation, new DrawingReader(page, long.MaxValue).Read(annotation, CancellationToken.None), textBoxes.Read(annotation));
+            pageIndex,
+            annotation,
+            new DrawingReader(page, long.MaxValue).Read(annotation, CancellationToken.None),
+            textBoxes.Read(annotation),
+            new SignatureReader(document, page).IsOwnImage(annotation));
     }
 
     private void ThrowIfNotAPage(int pageIndex)

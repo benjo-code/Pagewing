@@ -128,6 +128,18 @@ public sealed class SelectionHandlesTests
         Assert.Null(TextBoxSpec.StepOf(14));
     }
 
+    [Fact]
+    public void ASignatureKeepsItsProportionsWithoutShiftAndAFreehandDoesNot()
+    {
+        var strokes = new IReadOnlyList<DisplayPoint>[] { [new DisplayPoint(100, 200), new DisplayPoint(300, 260), new DisplayPoint(200, 400)] };
+        var signature = Drawing(DrawingGeometry.Signature(strokes, 2));
+        var ink = Drawing(DrawingGeometry.Ink(strokes, 2));
+
+        Assert.True(SelectionHandles.KeepsAspect(signature, shift: false));
+        Assert.False(SelectionHandles.KeepsAspect(ink, shift: false));
+        Assert.True(SelectionHandles.KeepsAspect(ink, shift: true));
+    }
+
     private static PdfAnnotation Drawing(DrawingGeometry geometry) => new(
         0, 0, "drawing", geometry.Kind, "Ink", new AnnotationColor(220, 30, 30), [], [], geometry.Box, null, null, null, Editable: true, Drawing: geometry, GeometryEditable: true);
 }

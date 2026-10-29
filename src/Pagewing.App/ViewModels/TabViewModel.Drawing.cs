@@ -45,7 +45,8 @@ public sealed partial class TabViewModel
         {
             if (value)
             {
-                // The select tool takes the place of the tool that is on.
+                // The select tool takes the place of the tool that is on (and of a signature that waits to be placed).
+                DiscardPendingSignature();
                 ActiveTool = null;
             }
 
@@ -220,9 +221,9 @@ public sealed partial class TabViewModel
     /// drawing is made after every drawing queued before it, so the order of the releases is the order of the history
     /// whatever the geometry of each takes to be ready.
     /// </summary>
-    private Task QueueDrawing(int page, AnnotationKind kind, Task<DrawingGeometry> geometry)
+    private Task QueueDrawing(int page, AnnotationKind kind, Task<DrawingGeometry> geometry, AnnotationColor? inkColor = null)
     {
-        var color = DrawColorOf(kind);
+        var color = inkColor ?? DrawColorOf(kind);
         var author = AnnotationSettings.Current.AuthorName;
         var run = Track(ApplyDrawingCoreAsync(_documentGeneration, page, geometry, _drawingTail, color, author));
         _drawingTail = run;
@@ -297,6 +298,10 @@ public sealed partial class TabViewModel
             if (created is not null)
             {
                 _comments?.SelectWhenListed(created);
+                if (created.Kind == AnnotationKind.Signature)
+                {
+                    SelectPlaced(created);
+                }
             }
         }
         finally
@@ -324,11 +329,13 @@ public sealed partial class TabViewModel
     }
 
     /// <summary>
-    /// Whether the kind is made by a tool with a style of colour and width: freehand, rectangle, oval, line, arrow and the text
-    /// box (whose width step is its font size, <see cref="TextBoxSpec.FontSizeOf"/>; see <c>TabViewModel.TextBoxes.cs</c>).
+    /// Whether the kind is a drawing with a colour and a stroke width: freehand, rectangle, oval, line and arrow (each made by a tool
+    /// with a style), the text box (whose width step is its font size, <see cref="TextBoxSpec.FontSizeOf"/>; see
+    /// <c>TabViewModel.TextBoxes.cs</c>) and the drawn signature (placed from the library, so no tool of the toolbar, see
+    /// <c>TabViewModel.Signature.cs</c>).
     /// </summary>
     internal static bool IsDrawKind(AnnotationKind kind) =>
-        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox;
+        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox or AnnotationKind.Signature;
 
     private RelayCommand DrawCommand(AnnotationKind kind) => new(
         () =>

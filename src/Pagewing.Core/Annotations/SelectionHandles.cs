@@ -50,6 +50,16 @@ public sealed record Handle(HandleKind Kind, DisplayPoint Position);
 /// </summary>
 public static class SelectionHandles
 {
+    /// <summary>Whether resizing keeps the proportions: with Shift, and always for a signature (drawn or image), which is never distorted.</summary>
+    /// <param name="annotation">The selected annotation.</param>
+    /// <param name="shift">Whether Shift is held.</param>
+    /// <returns><see langword="true"/> to keep the proportions.</returns>
+    public static bool KeepsAspect(PdfAnnotation annotation, bool shift)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        return shift || annotation.Kind == AnnotationKind.Signature;
+    }
+
     /// <summary>Gets the handles of <paramref name="annotation"/>, in the order of <see cref="HandleKind"/>.</summary>
     /// <param name="annotation">The selected annotation; its <see cref="PdfAnnotation.SelectionShape"/> places the handles (the box of a text box: eight).</param>
     /// <returns>Eight handles, two ends, or none.</returns>
@@ -65,7 +75,7 @@ public static class SelectionHandles
         {
             case AnnotationKind.Line or AnnotationKind.Arrow when geometry.Strokes.Count > 0 && geometry.Strokes[0].Count == 2:
                 return [new Handle(HandleKind.Start, geometry.Strokes[0][0]), new Handle(HandleKind.End, geometry.Strokes[0][1])];
-            case AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse:
+            case AnnotationKind.Ink or AnnotationKind.Signature or AnnotationKind.Rectangle or AnnotationKind.Ellipse:
                 var box = geometry.Box;
                 var middleX = (box.Left + box.Right) / 2;
                 var middleY = (box.Top + box.Bottom) / 2;

@@ -5,7 +5,7 @@ using Pagewing.App.Resources;
 namespace Pagewing.App.Services;
 
 /// <summary>The file dialog of the platform, through the <see cref="TopLevel.StorageProvider"/> of a window.</summary>
-public sealed class AvaloniaFilePicker : IFilePicker
+public sealed class AvaloniaFilePicker : IFilePicker, IImagePicker
 {
     private readonly TopLevel _owner;
 
@@ -25,6 +25,19 @@ public sealed class AvaloniaFilePicker : IFilePicker
         });
 
         // Only local files can be opened; a picker that returns something else counts as cancelled.
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<string?> PickImageAsync()
+    {
+        var files = await _owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = Strings.SignatureChooseImage.TrimEnd('…', ' ', '.'),
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("PNG, JPG") { Patterns = ["*.png", "*.jpg", "*.jpeg"], MimeTypes = ["image/png", "image/jpeg"] }],
+        });
+
+        // Only local files can be read; a picker that returns something else counts as cancelled.
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 

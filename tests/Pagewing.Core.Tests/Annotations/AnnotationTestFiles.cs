@@ -18,6 +18,9 @@ internal static class AnnotationTestFiles
     /// <summary>Drawings written by other programs (ink, square, circle, line, a reply); see tools/make-testpdfs.cs.</summary>
     public const string DrawingsForeign = "drawings-foreign.pdf";
 
+    /// <summary>Stamps and an ink with the subject "Signature" written by other programs (milestone 12); see tools/make-testpdfs.cs.</summary>
+    public const string StampsForeign = "stamps-foreign.pdf";
+
     /// <summary>The form fixtures of milestone 11 (fields, scripts, XFA stub, signature dummies, rotated pages, a hostile tree); see tools/make-testpdfs.cs.</summary>
     public const string FormsBasic = "forms-basic.pdf";
 

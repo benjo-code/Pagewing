@@ -2,6 +2,7 @@ using System.Runtime.ExceptionServices;
 using Pagewing.Core.Forms;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
+using Pagewing.Core.Signatures;
 using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 using Pagewing.Pdfium;
@@ -69,6 +70,12 @@ public sealed class AnnotationEditor
 
     // The operations accepted (called) and not ended yet; see IsBusy.
     private int pending;
+
+    /// <summary>
+    /// Gets or sets how many bytes of packed images the history may hold (<see cref="SignatureLimits.MaxHistoryImageBytes"/>; tests
+    /// make it small). A step that needs an image and would not fit throws <see cref="AnnotationHistoryFullException"/>.
+    /// </summary>
+    internal long ImageBudget { get; set; } = SignatureLimits.MaxHistoryImageBytes;
 
     /// <summary>Creates the editor of the document that <paramref name="session"/> has open now or opens later.</summary>
     /// <param name="session">The session; the editor does not own it.</param>
@@ -260,6 +267,40 @@ public sealed class AnnotationEditor
     }
 
     /// <summary>
+    /// Places an image signature (<see cref="PdfDocument.CreateSignatureImageAsync(int, PageRect, SignatureImage, string?, CancellationToken)"/>:
+    /// the largest box of the image's aspect ratio inside <paramref name="box"/>, moved onto the page). The packed image goes into the
+    /// history, which redo creates it again from. An image that shows nothing creates nothing and changes nothing.
+    /// </summary>
+    /// <param name="page">The 0-based page index.</param>
+    /// <param name="box">The wanted box in page points from the top left.</param>
+    /// <param name="image">The pixels.</param>
+    /// <param name="author">The author (the setting "Author name"), or <see langword="null"/>.</param>
+    /// <returns>The new annotation, or <see langword="null"/> when the image is empty.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="image"/> is <see langword="null"/>.</exception>
+    /// <exception cref="AnnotationHistoryFullException">The packed image does not fit into the history any more; nothing changes (save first).</exception>
+    /// <exception cref="InvalidOperationException">The session has no ready document, or PDFium could not create the signature.</exception>
+    /// <exception cref="ArgumentException">The box is not finite or has no width or height.</exception>
+    /// <exception cref="PdfAnnotationLimitException">The document lists the most annotations Pagewing reads; nothing changes.</exception>
+    public async Task<PdfAnnotation?> ApplySignatureImageAsync(int page, PageRect box, SignatureImage image, string? author)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (image.IsEmpty)
+        {
+            return null;
+        }
+
+        var stored = SignatureCutout.FitWithin(image, SignatureLimits.MaxStoredSide);
+        return await RunAsync<PdfAnnotation?>(async document =>
+        {
+            var packed = stored.Pack();
+            RequireRoomFor(packed);
+            var created = await document.CreateSignatureImageAsync(page, box, stored, author).ConfigureAwait(false);
+            Record(page, new AnnotationCommand.Create(created, packed));
+            return created;
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Creates a text box (<see cref="PdfDocument.CreateTextBoxAsync"/>; the box grows to fit the text). A text that is empty or
     /// only white space creates nothing and changes nothing.
     /// </summary>
@@ -352,9 +393,10 @@ public sealed class AnnotationEditor
         RunAsync(async document =>
         {
             var removed = await FindAsync(document, locator).ConfigureAwait(false);
+            PackedSignatureImage? packedImage = null;
             if (!removed.Editable)
             {
-                throw new InvalidOperationException("Only highlights, underlines, strike-outs and drawings without replies can be deleted.");
+                throw new InvalidOperationException("Only highlights, underlines, strike-outs, drawings, text boxes and signatures without replies can be deleted.");
             }
 
             if (removed.Kind is AnnotationKind.Highlight or AnnotationKind.Underline or AnnotationKind.StrikeOut)
@@ -374,6 +416,12 @@ public sealed class AnnotationEditor
                     throw new InvalidOperationException("The text box has a text Pagewing cannot show, so undo could not restore it; it is not deleted.");
                 }
             }
+            else if (removed.IsSignatureImage)
+            {
+                // Undo creates it again from its pixels: read them before it goes, and keep them within the budget.
+                packedImage = (await document.ReadSignatureImageAsync(LocatorOf(removed)).ConfigureAwait(false)).Pack();
+                RequireRoomFor(packedImage);
+            }
             else if (!CanRecreateDrawing(removed))
             {
                 throw new InvalidOperationException("The drawing has no shape that undo could restore, so it is not deleted.");
@@ -382,7 +430,7 @@ public sealed class AnnotationEditor
             // The copy gets a name if it has none: undo creates it again under that name, so redo finds it again.
             removed = removed with { Name = removed.Name ?? Guid.NewGuid().ToString("N") };
             await document.DeleteAnnotationAsync(locator).ConfigureAwait(false);
-            Record(locator.Page, new AnnotationCommand.Delete(removed));
+            Record(locator.Page, new AnnotationCommand.Delete(removed, packedImage));
             return true;
         });
 
@@ -577,7 +625,9 @@ public sealed class AnnotationEditor
 
         // A missing colour cannot be restored as missing; the annotation keeps the one it has.
         Color: from.Color == to.Color ? null : to.Color,
-        Geometry: from.Drawing is { } was && to.Drawing is { } now && !SameShape(was, now) ? now : null,
+        Geometry: from.Drawing is { } was && to.Drawing is { } now && !SameShape(was, now) ? now
+            : from.IsSignatureImage && to.IsSignatureImage && from.Bounds != to.Bounds ? DrawingGeometry.Rectangle(to.Bounds, 1)
+            : null,
         TextBox: from.TextBox is { } before && to.TextBox is { } after && before != after ? after : null);
 
     private static bool SameShape(DrawingGeometry a, DrawingGeometry b)
@@ -657,8 +707,10 @@ public sealed class AnnotationEditor
     /// Creates a markup or a drawing again from its copy, under its old name. A drawing without a colour comes back black,
     /// which is how PDFium draws it.
     /// </summary>
-    private static Task<PdfAnnotation> RecreateAsync(PdfDocument document, PdfAnnotation copy) =>
-        copy.TextBox is { } textBox
+    private static Task<PdfAnnotation> RecreateAsync(PdfDocument document, PdfAnnotation copy, PackedSignatureImage? image) =>
+        copy.IsSignatureImage
+            ? RecreateImageAsync(document, copy, image)
+        : copy.TextBox is { } textBox
             ? document.CreateTextBoxAsync(copy.Page, textBox, copy.Author, copy.Name, CancellationToken.None)
         : copy.Drawing is { } shape
             ? document.CreateDrawingAsync(
@@ -672,6 +724,33 @@ public sealed class AnnotationEditor
                 copy.Author,
                 copy.Name,
                 CancellationToken.None);
+
+    /// <summary>Creates an image signature again from its packed pixels, under its old name, with its comment.</summary>
+    private static async Task<PdfAnnotation> RecreateImageAsync(PdfDocument document, PdfAnnotation copy, PackedSignatureImage? image)
+    {
+        if (image is null)
+        {
+            throw new InvalidOperationException("The pixels of the signature are not in the history, so it cannot be created again.");
+        }
+
+        var created = await document.CreateSignatureImageAsync(copy.Page, copy.Bounds, SignatureImage.Unpack(image), copy.Author, copy.Name, CancellationToken.None).ConfigureAwait(false);
+        return copy.Contents is { } contents
+            ? await document.UpdateAnnotationAsync(LocatorOf(created), new AnnotationEdit(Contents: contents), CancellationToken.None).ConfigureAwait(false)
+            : created;
+    }
+
+    /// <summary>Refuses a step that would keep <paramref name="image"/> in a history that has no room for it (nothing has changed yet).</summary>
+    /// <exception cref="AnnotationHistoryFullException">The image does not fit.</exception>
+    private void RequireRoomFor(PackedSignatureImage image)
+    {
+        lock (gate)
+        {
+            if (!history.Fits(image.Deflated.Length, ImageBudget))
+            {
+                throw new AnnotationHistoryFullException();
+            }
+        }
+    }
 
     /// <summary>Reverses (<paramref name="undo"/>) or repeats a step of the history; gives the pages that changed.</summary>
     private static async Task<IReadOnlySet<int>> ApplyAsync(PdfDocument document, AnnotationCommand command, bool undo)
@@ -689,8 +768,8 @@ public sealed class AnnotationEditor
     private static Task ApplyAnnotationAsync(PdfDocument document, AnnotationCommand command, bool undo) => command switch
     {
         AnnotationCommand.Create create when undo => document.DeleteAnnotationAsync(LocatorOf(create.Created)),
-        AnnotationCommand.Create create => RecreateAsync(document, create.Created),
-        AnnotationCommand.Delete delete when undo => RecreateAsync(document, delete.Removed),
+        AnnotationCommand.Create create => RecreateAsync(document, create.Created, create.Image),
+        AnnotationCommand.Delete delete when undo => RecreateAsync(document, delete.Removed, delete.Image),
         AnnotationCommand.Delete delete => document.DeleteAnnotationAsync(LocatorOf(delete.Removed)),
         AnnotationCommand.Edit edit when undo => document.UpdateAnnotationAsync(LocatorOf(edit.After), EditTowards(edit.After, edit.Before)),
         AnnotationCommand.Edit edit => document.UpdateAnnotationAsync(LocatorOf(edit.After), EditTowards(edit.Before, edit.After)),

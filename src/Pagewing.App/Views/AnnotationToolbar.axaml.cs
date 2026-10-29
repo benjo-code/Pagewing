@@ -188,6 +188,7 @@ public sealed partial class AnnotationToolbar : UserControl
         Describe(LineTool, Strings.ToolLine, catalog.ById("annotate.line"), AnnotationKind.Line);
         Describe(ArrowTool, Strings.ToolArrow, catalog.ById("annotate.arrow"), AnnotationKind.Arrow);
         Describe(TextBoxTool, Strings.ToolTextBox, catalog.ById("annotate.textbox"), AnnotationKind.TextBox);
+        Describe(SignatureTool, Strings.ToolSignature, catalog.ById("annotate.signature"), null);
         Describe(HighlightTool, Strings.CommandHighlight, catalog.ById("annotate.highlight"), null);
         Describe(UnderlineTool, Strings.CommandUnderline, catalog.ById("annotate.underline"), null);
         Describe(StrikeOutTool, Strings.CommandStrikeOut, catalog.ById("annotate.strikeout"), null);
@@ -271,7 +272,7 @@ public sealed partial class AnnotationToolbar : UserControl
             return StyleMode.None;
         }
 
-        return tab.CanMoveSelection ? StyleMode.DrawSelection
+        return tab.CanStyleSelection ? StyleMode.DrawSelection
             : tab.IsMarkupSelected ? StyleMode.MarkupSelection
             : tab.SelectionLockReason is not null ? StyleMode.Locked
             : StyleMode.None;
@@ -362,6 +363,9 @@ public sealed partial class AnnotationToolbar : UserControl
         LineTool.IsVisible = !_shapesInMenu || tool == AnnotationKind.Line;
         ArrowTool.IsVisible = !_shapesInMenu || tool == AnnotationKind.Arrow;
         TextBoxTool.IsVisible = !_shapesInMenu || tool == AnnotationKind.TextBox;
+
+        // The signature leaves with the shapes, never before them.
+        SignatureTool.IsVisible = !_shapesInMenu;
     }
 
     /// <summary>A colour of the drawing tools: the style of the tool that is on, or the colour of the selected drawing.</summary>
@@ -620,6 +624,16 @@ public sealed partial class AnnotationToolbar : UserControl
                 entry.IsChecked = tab.ActiveTool == shape;
                 _moreEntries.Add(entry);
             }
+        }
+
+        if (_shapesInMenu)
+        {
+            if (shapes.Length == 0)
+            {
+                _moreEntries.Add(new Separator());
+            }
+
+            _moreEntries.Add(MakeSignatureSubmenu());
         }
 
         if (!_colorsInMenu)

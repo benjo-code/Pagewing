@@ -67,6 +67,9 @@ internal static class FpdfConstants
     /// <summary><c>FPDF_ANNOT_STRIKEOUT</c>: a strikeout annotation.</summary>
     public const int AnnotStrikeout = 12;
 
+    /// <summary><c>FPDF_ANNOT_STAMP</c>: a stamp annotation.</summary>
+    public const int AnnotStamp = 13;
+
     /// <summary><c>FPDF_ANNOT_INK</c>: an ink (freehand) annotation.</summary>
     public const int AnnotInk = 15;
 
@@ -123,6 +126,9 @@ internal static class FpdfConstants
 
     /// <summary><c>FPDFBitmap_BGRx</c>: 4 bytes per pixel, blue, green, red, unused.</summary>
     public const int BitmapBgrx = 3;
+
+    /// <summary><c>FPDFBitmap_BGRA</c>: 4 bytes per pixel, blue, green, red, alpha (not premultiplied).</summary>
+    public const int BitmapBgra = 4;
 
     /// <summary><c>FPDF_RENDER_READY</c>.</summary>
     public const int RenderReady = 0;

@@ -125,6 +125,9 @@
     <Style Selector="ctl|StrokeIcon.kind.arrow">
       <Setter Property="Data" Value="{StaticResource Pw.Icon.ArrowUpRight}" />
     </Style>
+    <Style Selector="ctl|StrokeIcon.kind.signature">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Signature}" />
+    </Style>
     <Style Selector="ctl|StrokeIcon.kind.textBox">
       <Setter Property="Data" Value="{StaticResource Pw.Icon.Typography}" />
     </Style>
@@ -224,7 +227,7 @@
                                     Classes.strikeOut="{Binding IsStrikeOut}" Classes.ink="{Binding IsInk}"
                                     Classes.rectangle="{Binding IsRectangle}" Classes.ellipse="{Binding IsEllipse}"
                                     Classes.line="{Binding IsLine}" Classes.arrow="{Binding IsArrow}"
-                                    Classes.textBox="{Binding IsTextBox}"
+                                    Classes.textBox="{Binding IsTextBox}" Classes.signature="{Binding IsSignature}"
                                     Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                     <TextBlock Name="CommentKind" Grid.Column="2" Classes="body commentPrimary" Text="{Binding KindText}"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />

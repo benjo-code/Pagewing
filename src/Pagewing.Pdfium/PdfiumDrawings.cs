@@ -16,6 +16,12 @@ internal enum PdfiumDrawingKind
     /// <summary>An ink annotation with <c>/Subj (Arrow)</c>. Read back, this only says what <c>/Subj</c> says; the caller checks the shape.</summary>
     Arrow,
 
+    /// <summary>
+    /// An ink annotation with <c>/Subj (Signature)</c>: a drawn signature. Any ink with the subject is one (a signature has no
+    /// fixed form); the strokes are those of the pad.
+    /// </summary>
+    Signature,
+
     /// <summary>A square annotation (rectangle outline).</summary>
     Square,
 
@@ -61,7 +67,7 @@ internal sealed record PdfiumDrawing(
 /// makes the generator build it. The generator widens the <c>/Rect</c> of an ink by half the width each time it builds an
 /// appearance, so <c>/Rect</c> is set by Pagewing before every generation: for an ink the hull of the points plus the room the
 /// miter joins need beyond half the width (for an arrow's head w / (2 sin 25°) - w / 2), for a square and a circle the
-/// wanted outer edge. A line and an arrow carry <c>/Subj</c> <see cref="LineSubject"/> or <see cref="ArrowSubject"/>.
+/// wanted outer edge. A line, an arrow and a drawn signature carry <c>/Subj</c> <see cref="LineSubject"/>, <see cref="ArrowSubject"/> or <see cref="SignatureSubject"/>.
 /// See <c>Docs/DECISIONS.md</c>, entry "Zeichnungen: Erscheinungsbild, Pfeil als Ink, Merkmal zur Wiedererkennung, Glättung (M10)".
 /// </para>
 /// <para>
@@ -86,6 +92,9 @@ internal static unsafe class PdfiumDrawings
 
     /// <summary>The <c>/Subj</c> of a line of Pagewing (fixed English, never translated).</summary>
     public const string LineSubject = "Line";
+
+    /// <summary>The <c>/Subj</c> of a drawn signature.</summary>
+    public const string SignatureSubject = "Signature";
 
     /// <summary>The stroke width when neither <c>/Border</c> nor the appearance tells it (the default of <c>/BS /W</c> and <c>/Border</c>).</summary>
     public const double DefaultWidth = 1;
@@ -136,7 +145,7 @@ internal static unsafe class PdfiumDrawings
             throw new InvalidOperationException("PDFium cannot convert the coordinates of the page.");
         }
 
-        var isInk = drawing.Kind is PdfiumDrawingKind.Ink or PdfiumDrawingKind.Line or PdfiumDrawingKind.Arrow;
+        var isInk = drawing.Kind is PdfiumDrawingKind.Ink or PdfiumDrawingKind.Line or PdfiumDrawingKind.Arrow or PdfiumDrawingKind.Signature;
         FsPointF[][] strokes = [];
         FsRectF rect;
         if (isInk)
@@ -188,9 +197,15 @@ internal static unsafe class PdfiumDrawings
             // Removes an appearance (there is none yet) and writes /Border [0 0 w], which the generator reads.
             PdfiumAnnotations.Check(Fpdf.FPDFAnnot_SetBorder(annotation, 0, 0, (float)width));
             PdfiumAnnotations.Check(Fpdf.FPDFAnnot_SetFlags(annotation, FpdfConstants.AnnotFlagPrint));
-            if (drawing.Kind is PdfiumDrawingKind.Arrow or PdfiumDrawingKind.Line)
+            if (drawing.Kind is PdfiumDrawingKind.Arrow or PdfiumDrawingKind.Line or PdfiumDrawingKind.Signature)
             {
-                PdfiumAnnotations.Check(PdfiumAnnotations.WriteString(annotation, "Subj\0"u8, drawing.Kind == PdfiumDrawingKind.Arrow ? ArrowSubject : LineSubject));
+                var subject = drawing.Kind switch
+                {
+                    PdfiumDrawingKind.Arrow => ArrowSubject,
+                    PdfiumDrawingKind.Line => LineSubject,
+                    _ => SignatureSubject,
+                };
+                PdfiumAnnotations.Check(PdfiumAnnotations.WriteString(annotation, "Subj\0"u8, subject));
             }
 
             if (!string.IsNullOrEmpty(contents))
@@ -307,6 +322,7 @@ internal static unsafe class PdfiumDrawings
             {
                 ArrowSubject => PdfiumDrawingKind.Arrow,
                 LineSubject => PdfiumDrawingKind.Line,
+                SignatureSubject => PdfiumDrawingKind.Signature,
                 _ => PdfiumDrawingKind.Ink,
             };
             return new PdfiumDrawing(marked, display, (left, top, right, bottom), width) { IsComplete = complete };

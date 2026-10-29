@@ -1,5 +1,6 @@
 using Pagewing.Core.Annotations;
 using Pagewing.Core.Forms;
+using Pagewing.Core.Signatures;
 using Pagewing.Core.Text;
 using Xunit;
 
@@ -11,6 +12,36 @@ public sealed class AnnotationHistoryTests
         0, index, null, AnnotationKind.Highlight, "Highlight", null, [], [], new PageRect(0, 0, 0, 0), null, null, null, true);
 
     private static AnnotationCommand.Create Command(int index) => new(Annotation(index));
+
+    [Fact]
+    public void PackedImageCountsTowardTheBudget()
+    {
+        var history = new AnnotationHistory();
+        var small = new PackedSignatureImage(10, 10, new byte[1_000]);
+        var large = new PackedSignatureImage(10, 10, new byte[2_500]);
+        Assert.Equal(0, history.ImageBytes);
+        Assert.True(history.Fits(SignatureLimits.MaxHistoryImageBytes));
+        Assert.False(history.Fits(SignatureLimits.MaxHistoryImageBytes + 1));
+
+        history.Push(new AnnotationCommand.Create(Annotation(1), small));
+        history.Push(new AnnotationCommand.Delete(Annotation(2), large));
+        history.Push(Command(3));
+
+        // Both stacks count in ImageBytes; what a new step may add is measured against the steps that can still be undone.
+        Assert.Equal(3_500, history.ImageBytes);
+        Assert.True(history.Fits(SignatureLimits.MaxHistoryImageBytes - 3_500));
+        Assert.False(history.Fits(SignatureLimits.MaxHistoryImageBytes - 3_499));
+        history.TakeUndo();
+        history.TakeUndo();
+        Assert.Equal(3_500, history.ImageBytes);
+        Assert.True(history.Fits(SignatureLimits.MaxHistoryImageBytes - 1_000));
+
+        // A new step forgets the redo stack and its images.
+        history.Push(Command(4));
+        Assert.Equal(1_000, history.ImageBytes);
+        history.Clear();
+        Assert.Equal(0, history.ImageBytes);
+    }
 
     [Fact]
     public void PushThenUndoReturnsTheCommand()

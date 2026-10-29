@@ -130,6 +130,9 @@ public sealed class CommandCatalog
         Tab("annotate.arrow", () => Strings.CommandArrow, EditGroup, CtrlShift(Key.A), tab => tab.ArrowCommand),
         Tab("annotate.textbox", () => Strings.CommandTextBox, EditGroup, CtrlShift(Key.T), tab => tab.TextBoxCommand),
 
+        // Insert signature (milestone 12): starts the mode, then the menu of the saved signatures, or the dialog when there is none.
+        Window("annotate.signature", () => Strings.CommandInsertSignature, EditGroup, CtrlShift(Key.G), _window.InsertSignatureCommand),
+
         // The mode "Fill in form" (milestone 11): on and off, only for a document with a form once it shows a sharp page; the
         // highlighting of the fields while the mode is on. Ctrl+Shift+E is the oval's, so the mode takes F and the highlighting
         // J. Next and previous field are buttons of the toolbar only (Tab and Shift+Tab belong to the field), and the Esc of

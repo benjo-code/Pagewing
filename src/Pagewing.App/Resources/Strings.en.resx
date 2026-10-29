@@ -1416,4 +1416,103 @@
   <data name="SignatureWarningFormsText" xml:space="preserve">
     <value>Form fields are allowed after this signature; Pagewing cannot verify this. Programs such as Acrobat may still show the signature as invalid after saving.</value>
   </data>
+  <data name="SignatureCardTitle" xml:space="preserve">
+    <value>New signature</value>
+  </data>
+  <data name="SignatureClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="SignatureTabDraw" xml:space="preserve">
+    <value>Draw</value>
+  </data>
+  <data name="SignatureTabImage" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="SignatureName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="SignatureDefaultName" xml:space="preserve">
+    <value>Signature</value>
+  </data>
+  <data name="SignaturePadName" xml:space="preserve">
+    <value>Drawing area for your signature</value>
+  </data>
+  <data name="SignaturePadHint" xml:space="preserve">
+    <value>Draw your signature with the mouse, a pen or your finger. With the keyboard only, use the tab Image.</value>
+  </data>
+  <data name="SignatureClear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="SignatureUndoStroke" xml:space="preserve">
+    <value>Undo stroke</value>
+  </data>
+  <data name="SignatureInk" xml:space="preserve">
+    <value>Ink colour</value>
+  </data>
+  <data name="SignatureChooseImage" xml:space="preserve">
+    <value>Choose image…</value>
+  </data>
+  <data name="SignatureImageNote" xml:space="preserve">
+    <value>PNG or JPG, up to 10 MB. The background is removed on this computer; nothing is uploaded.</value>
+  </data>
+  <data name="SignatureThreshold" xml:space="preserve">
+    <value>Remove background</value>
+  </data>
+  <data name="SignaturePreview" xml:space="preserve">
+    <value>Preview of the signature</value>
+  </data>
+  <data name="SignatureSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="SignatureCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="SignatureHintLegal" xml:space="preserve">
+    <value>Does not replace a handwritten signature where written form is required.</value>
+  </data>
+  <data name="SignatureHintDigital" xml:space="preserve">
+    <value>This is an image of your signature, not a digital signature.</value>
+  </data>
+  <data name="SignatureProblemNothingDrawn" xml:space="preserve">
+    <value>Draw your signature to save it.</value>
+  </data>
+  <data name="SignatureProblemNoImage" xml:space="preserve">
+    <value>Choose an image of your signature to save it.</value>
+  </data>
+  <data name="SignatureProblemBlank" xml:space="preserve">
+    <value>Nothing is left after removing the background. Move the slider to keep more of the ink.</value>
+  </data>
+  <data name="SignatureProblemTooLarge" xml:space="preserve">
+    <value>The file is larger than 10 MB.</value>
+  </data>
+  <data name="SignatureProblemTooManyPixels" xml:space="preserve">
+    <value>The image is larger than 6,000 × 6,000 pixels.</value>
+  </data>
+  <data name="SignatureProblemUnreadable" xml:space="preserve">
+    <value>This file cannot be read as a PNG or JPG image.</value>
+  </data>
+  <data name="SignatureProblemLibraryFull" xml:space="preserve">
+    <value>You can save up to 10 signatures. Delete one first.</value>
+  </data>
+  <data name="SignatureProblemSaveFailed" xml:space="preserve">
+    <value>The signature could not be saved.</value>
+  </data>
+  <data name="CommandInsertSignature" xml:space="preserve">
+    <value>Insert signature</value>
+  </data>
+  <data name="SignatureHistoryFull" xml:space="preserve">
+    <value>The history is full of signature images. Save the document first.</value>
+  </data>
+  <data name="ToolSignature" xml:space="preserve">
+    <value>Signature</value>
+  </data>
+  <data name="SignatureMenuNew" xml:space="preserve">
+    <value>New signature…</value>
+  </data>
+  <data name="SignatureMenuName" xml:space="preserve">
+    <value>Saved signatures</value>
+  </data>
+  <data name="SignatureDelete" xml:space="preserve">
+    <value>Delete signature</value>
+  </data>
 </root>
