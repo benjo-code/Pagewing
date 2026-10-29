@@ -406,7 +406,7 @@ PAGEWING_INTEROP_OUT=/tmp/pagewing-interop dotnet test tests/Pagewing.Core.Tests
 
 Der Befehl schreibt auch die Muster der Annotationen (oben); nur die der Formulare: `--filter-method "*WritesFormSamplesForOtherViewers"`.
 
-Die Muster: `form-text.pdf` (aus `forms-basic.pdf`: einzeilig, mehrzeilig, Kammfeld, Höchstlänge, Felder auf Seite 2, ein Feld mit zwei Widgets), `form-choices.pdf` (Checkbox, zwei Radiogruppen, Combo, editierbare Combo, Liste, Liste mit Mehrfachauswahl), `form-rotated.pdf` (aus `forms-rotated.pdf`: `/Rotate 90` mit versetzter CropBox und `/Rotate 270`), `form-umlauts.pdf` („Grüße aus Köln, 5 €“ und weitere Zeichen), `form-with-annotations.pdf` (Hervorhebung und Formularwerte in **einem** Speichervorgang) und `form-signed.pdf` (aus `forms-signed.pdf`, einer Strukturattrappe ohne Kryptografie; nur das Textfeld `Name` wird gefüllt). Der Inhalt ist bei jedem Lauf gleich.
+Die Muster: `form-text.pdf` (aus `forms-basic.pdf`: einzeilig, mehrzeilig, Kammfeld, Höchstlänge, Felder auf Seite 2, ein Feld mit zwei Widgets), `form-choices.pdf` (Checkbox, zwei Radiogruppen, Combo, editierbare Combo, Liste, Liste mit Mehrfachauswahl), `form-rotated.pdf` (aus `forms-rotated.pdf`: `/Rotate 90` mit versetzter CropBox und `/Rotate 270`), `form-umlauts.pdf` („Grüße aus Köln, 5 €“ und weitere Zeichen), `form-with-annotations.pdf` (Hervorhebung und Formularwerte in **einem** Speichervorgang) und `form-signed.pdf` (aus `forms-signed.pdf`, einer Strukturattrappe ohne Kryptografie; nur das Textfeld `Name` wird gefüllt). Die Werte sind bei jedem Lauf gleich; die Bytes der Dateien sind es nicht (`/ID` und `/NM` sind je Lauf zufällig).
 
 ### Prüfliste je Viewer
 
