@@ -125,8 +125,8 @@ Unter Windows ist Software-Rendering der Standard (`Docs/DECISIONS.md`, Eintrag 
 **Auslösen:** Der Runner hat das Label `dotnet-windows-gpu` (nicht `dotnet-windows` oder `dotnet-linux`, die CI-Jobs landen deshalb nie dort) und ist ein eigener Runner des Projektinhabers. Der Workflow startet nur auf ausdrücklichen Befehl:
 
 - Im Actions-Tab über „Run workflow“ (`workflow_dispatch`), oder
-  `gh workflow run hardware-measure.yml --repo benjo-code/Pagewing --ref <branch>`; das geht erst, wenn die Datei auf dem Standardzweig (`dev`) liegt. Dafür braucht es Schreibrechte im Repository.
-- Einen anderen Auslöser gibt es nicht, auch kein Label an einem Pull Request: Kein Pull Request, auch keiner aus einem Fork, kann den Workflow starten. Für einen Stand aus einem Zweig `--ref <branch>` wie oben.
+  `gh workflow run hardware-measure.yml --repo benjo-code/Pagewing --ref dev`; das geht erst, wenn die Datei auf dem Standardzweig (`dev`) liegt. Dafür braucht es Schreibrechte im Repository. Die Runner-Gruppe des Haupt-PC-Runners (`main-pc`) ist auf den Workflow `hardware-measure.yml` von `dev` und `main` beschränkt (Checkliste „Repo öffentlich schalten“ in `packaging/README.md`): Läufe von anderen Branches bleiben in der Warteschlange und starten nie; gemessen wird von `dev` oder `main`.
+- Einen anderen Auslöser gibt es nicht, auch kein Label an einem Pull Request: Kein Pull Request, auch keiner aus einem Fork, kann den Workflow starten. Einen Stand aus einem anderen Zweig misst der Workflow erst, wenn er in `dev` liegt.
 
 Ohne online laufenden Runner bleibt der Job in der Warteschlange; auf diesen Runner ist nie Verlass.
 
