@@ -129,11 +129,13 @@ public sealed class LinuxDefaultAppServiceTests : IDisposable
         Assert.SkipUnless(OperatingSystem.IsLinux(), "Linux only.");
         Stub("xdg-mime", LoggingStub("xdg-mime", "pagewing.desktop"));
         WriteUserDesktopFile(Path.Combine(_root, "Pagewing.AppImage"));
+        var desktopFile = Path.Combine(_root, "data", "applications", "pagewing.desktop");
+        var before = File.ReadAllText(desktopFile);
         _env["APPIMAGE"] = Path.Combine(_root, "line\nbreak", "Pagewing.AppImage");
 
         Assert.Equal(DefaultAppStatus.IsDefault, await Service().GetStatusAsync(TestContext.Current.CancellationToken));
         Assert.Equal(DefaultAppResult.Failed, await Service().MakeDefaultAsync(TestContext.Current.CancellationToken));
-        Assert.DoesNotContain("line", File.ReadAllText(Path.Combine(_root, "data", "applications", "pagewing.desktop")));
+        Assert.Equal(before, File.ReadAllText(desktopFile));
     }
 
     [Fact]
