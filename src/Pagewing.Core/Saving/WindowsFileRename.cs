@@ -55,6 +55,13 @@ internal static partial class WindowsFileRename
         return SetFileInformationByHandle(file, FileRenameInfoEx, info, (uint)info.Length) ? 0 : Marshal.GetLastPInvokeError();
     }
 
+    /// <summary>Whether <paramref name="path"/> can be opened with the access <see cref="ReplaceAtomically"/> needs (DELETE), sharing everything.</summary>
+    public static bool CanOpenForDelete(string path)
+    {
+        using var file = CreateFileW(LongPath(path), Delete | Synchronize, ShareReadWriteDelete, 0, OpenExisting, 0, 0);
+        return !file.IsInvalid;
+    }
+
     /// <summary>
     /// Builds <c>FILE_RENAME_INFO</c>: <c>DWORD Flags</c> at 0, <c>HANDLE RootDirectory</c> (null) at pointer size,
     /// <c>DWORD FileNameLength</c> (bytes, without terminator) after it, then the UTF-16 name. The buffer is larger than

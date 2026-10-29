@@ -71,6 +71,9 @@ internal sealed class SaveFaults
     /// <summary>Gets the stand-in for the atomic replace on Windows (source, target, returns a Win32 error code or 0).</summary>
     public Func<string, string, int>? AtomicReplace { get; init; }
 
+    /// <summary>Gets the stand-in for the probe whether the temporary file may be opened with DELETE, the access its rename needs (Windows).</summary>
+    public Func<string, bool>? CanDelete { get; init; }
+
     /// <summary>Gets the action run in the Windows fallback after the open target was moved aside, before the temporary file takes its name.</summary>
     public Action? AfterTargetMovedAside { get; init; }
 }
@@ -176,6 +179,7 @@ public static class DocumentSaver
         {
             await WriteAsync(document, file, sourceLength, progress, faults, cancellationToken).ConfigureAwait(false);
             CopyTargetMetadata(temporary, existing);
+            var lateAccessList = OperatingSystem.IsWindows() ? GiveAccessList(temporary, existing.AccessList, faults) : null;
             faults?.AfterWrite?.Invoke();
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -191,6 +195,12 @@ public static class DocumentSaver
             CheckSource(document);
             Replace(temporary, target, folder, faults);
             committed = true;
+            if (lateAccessList is not null && OperatingSystem.IsWindows())
+            {
+                // The rules could not be on the file while it was renamed (see GiveAccessList); the replaced file gets them now.
+                WriteAccessList(target, lateAccessList);
+            }
+
             return new SaveResult(reopened, StampOf(reopened));
         }
         finally
@@ -381,22 +391,57 @@ public static class DocumentSaver
     }
 
     /// <summary>
-    /// Gives the temporary file the access rules of the replaced target. Without this, a file that only its owner may read
-    /// would come back with the rules of its folder, which are often much wider. A file system without access rules (FAT,
-    /// some network shares) keeps the rules it has.
+    /// Gives the temporary file the access rules of the replaced target, after its content is written (it was open with
+    /// <see cref="FileShare.None"/> until now, so nobody else could read it; from its creation until here it has the rules of
+    /// the folder, as before the rules were copied). Without this, a file that only its owner may read would come back with
+    /// the rules of its folder, which are often much wider. The rename that replaces the target needs DELETE on the
+    /// temporary file: if the copied rules do not give that (probed with exactly that access), the rules of the folder are
+    /// put back and the target's rules are set on the replaced file instead, right after the rename; the save never fails
+    /// for this. A file system without access rules (FAT, some network shares) keeps the rules it has.
     /// </summary>
+    /// <returns>The rules to set after the rename, or <see langword="null"/> when there is nothing left to do.</returns>
     [SupportedOSPlatform("windows")]
-    private static void WriteAccessList(string temporary, byte[] descriptor)
+    private static byte[]? GiveAccessList(string temporary, byte[]? accessList, SaveFaults? faults)
+    {
+        if (accessList is null)
+        {
+            return null;
+        }
+
+        var inherited = ReadAccessList(temporary);
+        if (!WriteAccessList(temporary, accessList))
+        {
+            return null;
+        }
+
+        var canDelete = faults?.CanDelete is { } probe ? probe(temporary) : WindowsFileRename.CanOpenForDelete(temporary);
+        if (canDelete)
+        {
+            return null;
+        }
+
+        if (inherited is not null)
+        {
+            WriteAccessList(temporary, inherited);
+        }
+
+        return accessList;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool WriteAccessList(string file, byte[] descriptor)
     {
         try
         {
             var security = new FileSecurity();
             security.SetSecurityDescriptorBinaryForm(descriptor, AccessControlSections.Access);
-            new FileInfo(temporary).SetAccessControl(security);
+            new FileInfo(file).SetAccessControl(security);
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or PlatformNotSupportedException or SecurityException)
         {
-            // The rules of the folder stay; the save itself goes on.
+            // The rules the file has stay; the save itself goes on.
+            return false;
         }
     }
 
@@ -416,11 +461,6 @@ public static class DocumentSaver
             if (existing.Hidden && OperatingSystem.IsWindows())
             {
                 File.SetAttributes(temporary, File.GetAttributes(temporary) | FileAttributes.Hidden);
-            }
-
-            if (existing.AccessList is { } acl && OperatingSystem.IsWindows())
-            {
-                WriteAccessList(temporary, acl);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
