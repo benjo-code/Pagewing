@@ -1503,4 +1503,16 @@
   <data name="SignatureHistoryFull" xml:space="preserve">
     <value>Der Verlauf ist voll mit Unterschriftsbildern. Speichern Sie zuerst das Dokument.</value>
   </data>
+  <data name="ToolSignature" xml:space="preserve">
+    <value>Unterschrift</value>
+  </data>
+  <data name="SignatureMenuNew" xml:space="preserve">
+    <value>Neue Unterschrift …</value>
+  </data>
+  <data name="SignatureMenuName" xml:space="preserve">
+    <value>Gespeicherte Unterschriften</value>
+  </data>
+  <data name="SignatureDelete" xml:space="preserve">
+    <value>Unterschrift löschen</value>
+  </data>
 </root>

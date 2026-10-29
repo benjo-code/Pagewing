@@ -279,7 +279,7 @@ public sealed class CommentsViewModel : ViewModelBase, IDisposable
     /// Gets whether "Change colour" is offered for the selected entry: an editable markup, or a drawing Pagewing can redraw
     /// without loss; a locked drawing of another program offers only its comment and deleting.
     /// </summary>
-    public bool SelectedCanChangeColor => SelectedIsEditable && (!_selected!.IsDrawing || _selected.Annotation.GeometryEditable);
+    public bool SelectedCanChangeColor => SelectedIsEditable && (!_selected!.IsDrawing || (_selected.Annotation.GeometryEditable && !_selected.Annotation.IsSignatureImage));
 
     /// <summary>Gets the palette colour of the selected markup, or <see langword="null"/> (none, a drawing, or a colour of another application).</summary>
     public MarkupColor? SelectedColor => _selected is { IsGroup: false, IsDrawing: false, Annotation.Color: { } color } ? AnnotationPalette.Match(color) : null;

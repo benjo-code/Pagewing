@@ -228,6 +228,11 @@ public sealed class AnnotationToolbarTests : IDisposable
     public async Task NarrowToolbarDropsTheHintThenTheLabels()
     {
         var (window, _, toolbar, _) = await ShowInModeAsync();
+
+        // The entry "Signature" (milestone 12) made the row wider: everything fits from a window of about 1,100 DIP.
+        window.Width = 1100;
+        Settle(window);
+        Settle(window);
         Assert.True(Find<TextBlock>(toolbar, "EscHint").IsEffectivelyVisible);
         Assert.True(Find<TextBlock>(toolbar, "HighlightLabel").IsEffectivelyVisible);
         Assert.False(Find<Button>(toolbar, "MoreButton").IsVisible);
@@ -399,7 +404,7 @@ public sealed class AnnotationToolbarTests : IDisposable
     public async Task KeyboardReachesEveryTool()
     {
         var (window, tab, toolbar, _) = await ShowInModeAsync();
-        string[] order = ["SelectTool", "InkTool", "RectangleTool", "EllipseTool", "LineTool", "ArrowTool", "TextBoxTool", "HighlightTool", "UnderlineTool", "StrikeOutTool"];
+        string[] order = ["SelectTool", "InkTool", "RectangleTool", "EllipseTool", "LineTool", "ArrowTool", "TextBoxTool", "SignatureTool", "HighlightTool", "UnderlineTool", "StrikeOutTool"];
 
         // Tab goes through every tool in this order.
         Find<ActionToggleButton>(toolbar, order[0]).Focus(NavigationMethod.Tab);
@@ -407,7 +412,7 @@ public sealed class AnnotationToolbarTests : IDisposable
         for (var i = 1; i < order.Length; i++)
         {
             Press(window, Key.Tab, PhysicalKey.Tab);
-            Assert.True(Find<ActionToggleButton>(toolbar, order[i]).IsFocused, $"Tab reaches {order[i]}");
+            Assert.True(Find<Control>(toolbar, order[i]).IsFocused, $"Tab reaches {order[i]}");
         }
 
         // The arrows move within the tools (with wrap-around), Home and End go to the ends.

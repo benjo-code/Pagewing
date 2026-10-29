@@ -121,6 +121,9 @@ public sealed class CommentItemViewModel : ViewModelBase
     /// <summary>Gets whether the annotation is an arrow Pagewing recognises (its symbol: Tabler "arrow-up-right").</summary>
     public bool IsArrow => Kind == AnnotationKind.Arrow;
 
+    /// <summary>Gets whether the annotation is a visible signature, drawn or imported (its symbol: Tabler "signature").</summary>
+    public bool IsSignature => Kind == AnnotationKind.Signature;
+
     /// <summary>Gets whether the entry is a text box (its text is its comment).</summary>
     public bool IsTextBox => Kind == AnnotationKind.TextBox;
 
@@ -252,7 +255,7 @@ public sealed class CommentItemViewModel : ViewModelBase
 
     /// <summary>Whether the kind is a drawing (freehand, rectangle, oval, line, arrow).</summary>
     internal static bool IsDrawingKind(AnnotationKind kind) =>
-        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox;
+        kind is AnnotationKind.Ink or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Line or AnnotationKind.Arrow or AnnotationKind.TextBox or AnnotationKind.Signature;
 
     /// <summary>Creates the row of a group of strokes.</summary>
     internal static CommentItemViewModel Group(PdfAnnotation first, int count) => new(first, count);

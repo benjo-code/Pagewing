@@ -528,6 +528,10 @@ public static class Strings
     public static string SignatureProblemSaveFailed => Get("SignatureProblemSaveFailed");
     public static string CommandInsertSignature => Get("CommandInsertSignature");
     public static string SignatureHistoryFull => Get("SignatureHistoryFull");
+    public static string ToolSignature => Get("ToolSignature");
+    public static string SignatureMenuNew => Get("SignatureMenuNew");
+    public static string SignatureMenuName => Get("SignatureMenuName");
+    public static string SignatureDelete => Get("SignatureDelete");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",
@@ -544,6 +548,7 @@ public static class Strings
         Pagewing.Core.Annotations.AnnotationKind.Line => ToolLine,
         Pagewing.Core.Annotations.AnnotationKind.Arrow => ToolArrow,
         Pagewing.Core.Annotations.AnnotationKind.TextBox => ToolTextBox,
+        Pagewing.Core.Annotations.AnnotationKind.Signature => ToolSignature,
         _ => null,
     };
 

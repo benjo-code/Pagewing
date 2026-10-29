@@ -103,6 +103,7 @@ public sealed partial class MainWindow
         if (_viewModel is { } window)
         {
             toolbar.NameShortcuts(window.Commands);
+            toolbar.ConnectWindow(window);
         }
 
         // Its top left corner follows that of the document area (radius.overlay without a panel beside it).
