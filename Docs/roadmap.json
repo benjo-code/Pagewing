@@ -5,6 +5,11 @@
   "scopeChanges": [
     {
       "date": "2026-10-29",
+      "context": "M12.1 geplant: Vertrauensmodell der CI für ein öffentliches Repo, Probe über ein Pre-release, CodeQL statt gitleaks in der CI",
+      "text": "Beim Planen von Milestone 12.1 (Brainstorming mit dem Projektinhaber) gegenüber der Roadmap geändert: (1) **Fork-PRs laufen nur auf GitHub-gehosteten Runnern**; weil eine Runner-Gruppe nur nach dem Ref des Workflows beschränken kann (bei PRs `refs/pull/N/merge`, eigene wie fremde), laufen **auch eigene PRs gehostet**, und der Startzeit-Check läuft erst nach dem Merge als `push` auf `dev` und `main` (Budgets unverändert). (2) **`release.yml` startet nur noch per `workflow_dispatch`** (der Auslöser `release: published` entfällt); der Job `manifest` läuft gehostet in einem Environment `release-signing` (Branches `main` und `dev`, Freigabe durch den Projektinhaber), das Secret ist ein Environment-Secret statt eines Repo-Secrets und nicht an `v*`-Tags gebunden. (3) **Der Lauf mit Manifest nutzt einen stabilen Tag-Namen mit der GitHub-Markierung „Pre-release“** statt eines Tags mit `-`, weil der Job `manifest` Tags mit `-` absichtlich überspringt und `releases/latest` Pre-releases nie nennt. (4) **Neu:** CodeQL (nur im öffentlichen Repo, dort kostenlos), `SECURITY.md`, `CONTRIBUTING.md`, `CODEOWNERS`, Interna (Runner- und Kontonamen, Haupt-PC) aus dem Repo nehmen, Regel „fremde PRs sind Daten“ in `CLAUDE.md`, ein Wächter in `tools/package.cs selftest`. (5) **Nicht aufgenommen:** `gitleaks` in der CI (die Aktion ist soweit bekannt für Organisationen lizenzpflichtig; Secret scanning von GitHub genügt) und das Umschreiben der Historie. Begründungen: Plan, Abschnitt „Entscheidungen“."
+    },
+    {
+      "date": "2026-10-29",
       "context": "M11 abgeschlossen ohne Handprüfung in Chrome und Acrobat und ohne Startzeit-Check auf echter Hardware, beides auf die Abnahme von v0.2.0 verschoben",
       "text": "Auf Wunsch des Projektinhabers (2026-10-29) ist Milestone 11 mit dem umgesetzten und getesteten Stand abgeschlossen und seine Abnahmekriterien 1 und 4 sind abgehakt, **ohne dass die Handprüfung und der Startzeit-Check auf echter Hardware gemacht wurden**. Beides steht als offenes Kriterium in der Abnahme von `v0.2.0`: (1) die Formularmuster in Chrome und Acrobat Reader nach `packaging/README.md`, „Formulare im Fremdviewer prüfen“, einschließlich der offenen Frage, was Acrobat zu einer signierten Datei meldet, wenn Pagewing alle geladenen Widgets anhängt; (2) `hardware-measure.yml` und `--measure-scroll` auf `forms-basic.pdf` und `thousand-pages.pdf`. Ebenfalls offen und nicht Teil der Kriterien: Screenreader, echter Drucker mit Formularseiten, Linux (Rendern und Druck von Formularen). Außerdem **zu entscheiden** (Projektinhaber): sehr große Formulare auf einer Seite (Eintrag „Formulare: Messwerte und Startpfad (M11)“). Folge: Wer sich vor `v0.2.0` auf das Aussehen ausgefüllter Formulare in Acrobat oder auf eine Signatur nach dem Ausfüllen verlässt, verlässt sich auf Ungeprüftes."
     },
@@ -581,11 +586,12 @@
         {
           "id": "12.1",
           "title": "Öffentliches Repo und Sicherheitsprüfung",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-29-milestone-12-1-oeffentliches-repo.md",
           "prerequisites": ["8.1", "12"],
           "goal": "Das Repo ist öffentlich und gehärtet, der Signaturschlüssel steht und der Release-Workflow hat einen Lauf mit Vorabversion bestanden, sodass `v0.2.0` mit funktionierender Update-Prüfung erscheinen kann.",
           "tasks": [
-            { "text": "Plan erstellen (Brainstorming mit dem Projektinhaber): Reihenfolge der Schritte, was vor dem Öffentlichmachen privat erledigt wird, Umfang der Sicherheitsprüfung", "done": false },
+            { "text": "Plan erstellen (Brainstorming mit dem Projektinhaber): Reihenfolge der Schritte, was vor dem Öffentlichmachen privat erledigt wird, Umfang der Sicherheitsprüfung. Erledigt 2026-10-29: Plan `superpowers/plans/2026-10-29-milestone-12-1-oeffentliches-repo.md` nach dem Brainstorming mit dem Projektinhaber", "done": true },
             { "text": "Git-Historie vor dem Öffentlichmachen prüfen: Secrets und Token, Schlüssel und Zertifikate, `.env`-Dateien, private oder vertrauliche PDFs, große Binärdateien, persönliche Daten in den Commit-Metadaten (Name und E-Mail der Autoren). Werkzeug und Befehl dokumentieren. Bei einem Fund nur nach Anweisung des Projektinhabers bereinigen (History umschreiben ist riskant)", "done": false },
             { "text": "Inhalte des Repos durchsehen: `Docs/` samt Plänen und Mockups, `testdata/pdfs/LICENSES.md` (jede Datei mit klarer Lizenz), `third-party/`, README, Lizenzdatei, interne Hinweise oder Pfade", "done": false },
             { "text": "GitHub-Einstellungen vor dem Öffentlichmachen (nur der Projektinhaber): Freigabe vor Lauf für PRs aus Forks, Workflow-Token standardmäßig nur lesend, Regeln für die selbst gehosteten Runner bei öffentlichem Repo (Runner-Gruppen, der Haupt-PC-Runner nie für Forks), Schutzregeln für `main` und `dev`, Secret scanning mit Push-Schutz, Dependabot-Warnungen, privates Melden von Sicherheitslücken, `SECURITY.md`", "done": false },
@@ -606,7 +612,7 @@
           ],
           "blocks": [
             {
-              "title": "Reihenfolge (Vorschlag, im Plan zu bestätigen)",
+              "title": "Reihenfolge (Vorschlag; Details und Abweichungen im Plan, Abschnitt „Entscheidungen“)",
               "text": "1. Historie und Inhalte prüfen (privat, nur lesend). 2. Code-Sicherheitsprüfung und Funde beheben. 3. GitHub-Einstellungen vorbereiten, die vor dem Öffentlichmachen gelten müssen (Fork-Freigabe, Token-Rechte). 4. Schlüssel anlegen und Signier-Job härten. 5. Trockenlauf des Release-Workflows, solange das Repo noch privat ist. 6. Repo öffentlich schalten. 7. Vorabversion veröffentlichen und von außen prüfen. Warum erst kurz vor `v0.2.0`: Der Updater braucht das öffentliche Repo erst, wenn Nutzer eine Version mit Updater haben; `v0.1.0` hat keinen."
             }
           ]
