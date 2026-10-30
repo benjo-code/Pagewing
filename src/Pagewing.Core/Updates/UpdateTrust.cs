@@ -14,16 +14,16 @@ public static class UpdateTrust
     public const string PlaceholderKeyId = "placeholder";
 
     /// <summary>
-    /// The accepted public keys, any of which may have signed a manifest. The one entry is a PLACEHOLDER generated at
-    /// design time (its private half was discarded): it is a valid P-256 key but no release can be signed with it.
-    /// The owner replaces it with the real public key (<c>package.cs update-keygen</c>, packaging/README.md, section
-    /// "Signaturschlüssel für Updates"); until then the signing job of the release workflow refuses to sign.
+    /// The accepted public keys, any of which may have signed a manifest. The entry is the real public key of the
+    /// project owner (<c>package.cs update-keygen</c>, packaging/README.md, section "Signaturschlüssel für Updates"); its
+    /// private half is held by the owner and reaches the signing job only as the environment secret of
+    /// <c>release-signing</c>. A new key is added next to this one first (key rotation, same section).
     /// </summary>
     public static IReadOnlyList<UpdateKey> Keys { get; } =
     [
         new UpdateKey(
-            PlaceholderKeyId,
-            Convert.FromBase64String("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfEyCOMU4IJ14osOpBY3eFP4/fxK726BrpSdQoUOGeMJ+2DsQaDm4maWvFaZ22iI1oti6dIVOk7thJ8J5Lkp59Q==")),
+            "release-1",
+            Convert.FromBase64String("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAETdQ1ON9k3jJ5WUMMAv3TbQlQFVtd8kpm7X9Oq5PDqky9OvX7JQpBXIBIeyVH76/BYnlPsTXvIBm3lip/rHM5hw==")),
     ];
 
     /// <summary>The address of the newest stable release (GitHub lists no pre-releases or drafts there).</summary>
