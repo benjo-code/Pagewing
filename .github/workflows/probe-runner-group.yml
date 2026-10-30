@@ -1,0 +1,13 @@
+# Throwaway probe (M12.1, Probe 1): must never be merged. A pull_request job asks for a label that only the new runner of
+# the group pagewing-ci carries; if the workflow restriction of the group works, the job stays queued.
+name: probe runner group
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: [self-hosted, probe1]
+    timeout-minutes: 5
+    steps:
+      - run: echo "probe ran on a self-hosted runner for a pull request"
