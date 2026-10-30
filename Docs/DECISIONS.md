@@ -2625,3 +2625,17 @@ Wiedereinspielen eines älteren signierten Manifests (Ablaufdatum oder Mindestve
 **Abweichungen vom Plan:** Probe 1 mit einem temporären Label (sonst nicht aussagekräftig, solange beide Gruppen den Job annehmen durften); Probe 2 mit eigenem Push-Workflow; Probe 4 schon vor dem Umschalten; der Trockenlauf mit `ref`.
 
 **Offen:** Probe 3 (Fork-PR eines zweiten Kontos: der Lauf muss auf Freigabe warten und danach auf gehosteten Runnern laufen; der Projektinhaber hat kein zweites Konto); bis dahin belegt nur die Einstellung `all_external_contributors` (`gh api repos/benjo-code/Pagewing/actions/permissions/fork-pr-contributor-approval --jq .approval_policy`). **Erster CodeQL-Lauf (nach dem Umschalten, PR #38, Lauf 41088507233):** erfolgreich, 0 offene Funde in Code scanning.
+
+## 2026-10-30 – Release v0.2.0: Abnahme nur automatisiert, Handprüfungen nach v1.0.0
+
+**Kontext:** Release `v0.2.0` (Updater, Annotationen, Zeichnen, Formulare, Unterschrift, öffentliches Repo) hatte 13 offene Abnahmekriterien, fast alle Handprüfungen (Fremdviewer, Acrobat, Updater Ende zu Ende). Plan: `Docs/superpowers/plans/2026-10-30-release-v0.2.0.md`.
+
+**Entscheidung (Anweisung des Projektinhabers, 2026-10-30):** `v0.2.0` wird nur mit automatisierten Prüfungen abgenommen; alle manuellen Abnahmen wandern in `v1.0.0`. Die Messung auf dem Haupt-PC (`hardware-measure.yml`) gehört ausdrücklich zur Abnahme von `v0.2.0`.
+
+**Zuordnung:** Gemischte Kriterien sind geteilt, nichts ist gestrichen. Neu in `v0.2.0` (alle `done: false`): K1 lokale Prüfungen, K2 CI auf `dev` mit Startzeit-Check, K3 Linux-only-Tests (Container `ubuntu:24.04`), K4 Trockenlauf von `release.yml`, K5 Hardware-Messung, K6 Prüfung des veröffentlichten Releases, K7 ehrlicher Changelog. Nach `v1.0.0` gehen acht Kriterien ganz (Updater Windows, Fremdviewer Annotationen, Acrobat signierte Datei, Fremdviewer Zeichnungen, Textfeld, Formulare, Unterschrift, Tabs nach echtem Update), drei Reste (Updater Linux per Hand, „Stresstest stürzt mit dem alten Rückruf ab“, `--measure-scroll` mit `scroll-text-dense-10-signatures.pdf`) und die Fork-PR-Probe aus Milestone 12.1 (zusammen 12 Einträge). Verschobene Texte behalten ihren Wortlaut.
+
+**Verworfen:**
+- *Handprüfungen als Bedingung für `v0.2.0`:* verzögert das Release um Prüfungen, die der Projektinhaber später gebündelt machen will.
+- *Die Handprüfungen streichen:* verlöre Nachweise, die vor `v1.0.0` ohnehin nötig sind.
+
+**Risiko:** Der Updater lief noch nie Ende zu Ende gegen ein echtes Release; `v0.2.0` auf `v0.3.0` ist sein erster echter Test. Wer `v0.2.0` hat, ist darauf angewiesen, dass der Updater funktioniert. Der Changelog von `v0.2.0` nennt das und alles, was nicht von Hand geprüft wurde (K7). Nicht belegt sind außerdem die Darstellung der Muster in Chrome und Acrobat und das Verhalten von Acrobat nach eigenem Speichern (`/Subj`, `/PagewingSignature`).
