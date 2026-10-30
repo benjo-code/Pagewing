@@ -355,11 +355,16 @@ public sealed class SingleInstanceTests
             Thread.Sleep(20);
         }
 
-        var directory = Path.GetDirectoryName(socket)!;
-        var entries = Directory.Exists(directory)
-            ? string.Join(", ", Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName).Take(30))
-            : "(the folder does not exist)";
-        Assert.True(mode is not null, $"No socket at {socket} after {Due.TotalSeconds:0} s. Folder {directory} holds: {entries}. XDG_RUNTIME_DIR={Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")}.");
+        if (mode is null)
+        {
+            // The listing is built only on failure, so a problem while listing can never fail a passing run.
+            var directory = Path.GetDirectoryName(socket)!;
+            var entries = Directory.Exists(directory)
+                ? string.Join(", ", Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName).Take(30))
+                : "(the folder does not exist)";
+            Assert.Fail($"No socket at {socket} after {Due.TotalSeconds:0} s. Folder {directory} holds: {entries}. XDG_RUNTIME_DIR={Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")}.");
+        }
+
         Assert.True((mode!.Value & Others) == UnixFileMode.None, $"The socket {socket} has the mode {mode}; group and others must have no access.");
     }
 
