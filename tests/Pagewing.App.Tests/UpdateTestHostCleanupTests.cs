@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Xunit;
 
 namespace Pagewing.App.Tests;
@@ -32,6 +33,27 @@ public sealed class UpdateTestHostCleanupTests
 
         // The coordinator was disposed too: its hanging check ended.
         await check.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task PumpingFromAPoolThreadDoesNotTouchAWaitingDispatcherJob()
+    {
+        // A plain [Fact] runs on a pool thread. A job that some test posted to the UI dispatcher waits there, and
+        // Dispatcher.RunJobs on another thread would throw as soon as it meets it.
+        var host = new ProbeHost();
+
+        // Another thread makes the dispatcher and posts the job (alone, without a UI test before, the first thread to
+        // touch the dispatcher would own it; in the whole run the headless session owns it already).
+        var poster = new Thread(() => Dispatcher.UIThread.Post(() => { }, DispatcherPriority.Background));
+        poster.Start();
+        poster.Join();
+        Assert.False(Dispatcher.UIThread.CheckAccess());
+
+        var polls = 0;
+        await ProbeHost.Pump(() => ++polls >= 3);
+
+        Assert.Equal(3, polls);
+        ((IDisposable)host).Dispose();
     }
 
     [Fact]
@@ -85,6 +107,8 @@ public sealed class UpdateTestHostCleanupTests
         public string Config => ConfigDirectory;
 
         public void OwnIt(IDisposable item) => Own(item);
+
+        public static Task Pump(Func<bool> condition) => PumpUntilAsync(condition);
 
         public Pagewing.App.Services.UpdateCoordinator MakeCoordinator(Action? stagingWriteStarted = null) =>
             NewCoordinator(stagingWriteStarted: stagingWriteStarted);
