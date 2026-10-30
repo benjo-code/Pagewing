@@ -483,7 +483,14 @@ public sealed class SingleInstance : IDisposable
 
         try
         {
-            File.SetUnixFileMode(SocketPathFor(pipeName), UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            // Only a file: a folder at that path is not ours to change.
+            var path = SocketPathFor(pipeName);
+            if (Directory.Exists(path))
+            {
+                return;
+            }
+
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or PlatformNotSupportedException)
         {

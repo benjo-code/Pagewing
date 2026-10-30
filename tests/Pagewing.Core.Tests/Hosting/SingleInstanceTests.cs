@@ -332,8 +332,26 @@ public sealed class SingleInstanceTests
     {
         SingleInstance.RestrictSocket(Path.Combine(Path.GetTempPath(), "pagewing-missing-" + Guid.NewGuid().ToString("N")));
         SingleInstance.RestrictSocket("pagewing-missing-" + Guid.NewGuid().ToString("N"));
-        SingleInstance.RestrictSocket(Path.GetTempPath());
         SingleInstance.RestrictSocket("bad name");
+
+        // A folder at that path is left alone (never the temp folder itself: only what the test made).
+        var folder = Directory.CreateTempSubdirectory("pagewing-socket-");
+        try
+        {
+            var before = OperatingSystem.IsWindows() ? (UnixFileMode?)null : ModeOf(folder.FullName);
+
+            SingleInstance.RestrictSocket(folder.FullName);
+
+            Assert.True(folder.Exists);
+            Assert.Equal(before, OperatingSystem.IsWindows() ? null : ModeOf(folder.FullName));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+
+        [UnsupportedOSPlatform("windows")]
+        static UnixFileMode ModeOf(string path) => File.GetUnixFileMode(path);
     }
 
     [Fact]
