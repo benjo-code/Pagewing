@@ -40,7 +40,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 11 | Formulare | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-26-milestone-11-formulare.md) | 2026-10-29 |
 | 12 | Sichtbare Unterschrift | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-29-milestone-12-sichtbare-unterschrift.md) | 2026-10-29 |
 | 12.1 | Öffentliches Repo und Sicherheitsprüfung | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-29-milestone-12-1-oeffentliches-repo.md) | 2026-10-30 |
-| – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M8.1 bis M12.1) | – | ⬜ offen | – | – |
+| – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M8.1 bis M12.1) | – | 🟡 geplant | – | – |
 | 13 | Seiten organisieren | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
 | 14 | Schwärzen | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
 | – | **Release `v0.3.0`** – Seiten organisieren und schwärzen (M13 bis M14) | – | ⬜ offen | – | – |
@@ -500,6 +500,9 @@ Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automat
 - [ ] Aus M12, Bestätigungen auf anderer Hardware (Stand 2026-10-29, **offen**): Linux auf `dotnet-linux`: `dotnet test tests/Pagewing.Core.Tests -- --filter-class "*SignatureStoreTests"` (Dateirechte `0600`/`0700` der Bibliothek) und `--filter-class "*DarkPageSignatureTests"` laufen grün; auf dem Haupt-PC (`hardware-measure.yml`) zeigen Start, Öffnen und Scrollen keine Verschlechterung durch M12, auch `--measure-scroll` mit `scroll-text-dense-10-signatures.pdf` (erzeugen mit `PAGEWING_MEASURE_OUT=<ordner> dotnet test tests/Pagewing.Core.Tests -c Release -- --filter-method "*MeasuresSignatures"`)
 - [ ] Aus M11, Startzeit auf echter Hardware (Stand 2026-10-27, **offen**): `hardware-measure.yml` auf dem Haupt-PC (der Projektinhaber startet den Runner) zeigt für Start, Öffnen und Scrollen keine Verschlechterung gegenüber `dev`; dazu `--measure-scroll` auf `testdata/pdfs/forms-basic.pdf` und auf `thousand-pages.pdf` mit einem Native-AOT-Binary und gültigem Frame-Takt (die VM der Entwicklung zeigt nur 3,9 Hz; Befehle im Eintrag „Formulare: Messwerte und Startpfad (M11)“, „Nicht gemessen“). Die Zahlen des Eintrags stammen aus einem Release-Testlauf unter JIT, nicht aus dem AOT-Binary
 - [ ] Aus M8.1, auf Wunsch des Projektinhabers (2026-10-24) hierher verschoben: Tabs und Positionen bleiben nach einem echten Update unter Windows und mit dem AppImage erhalten (manuelle Prüfung nach `packaging/README.md`, „Update prüfen“; der Testteil ist in M8.1 belegt)
+
+**Plan**
+[Release v0.2.0 – Implementierungsplan](superpowers/plans/2026-10-30-release-v0.2.0.md): Phase 1 Roadmap und Workflow (Abnahme nur automatisiert, Handprüfungen nach `v1.0.0`), Phase 2 Nachweise (CI auf `dev`, Linux-Tests im Container, Trockenlauf, Hardware-Messung), Phase 3 Veröffentlichen (nur auf Anweisung).
 
 ---
 

@@ -796,7 +796,13 @@
     {
       "version": "0.2.0",
       "title": "annotieren, ausfüllen, unterschreiben",
-      "status": "open",
+      "status": "planned",
+      "blocks": [
+        {
+          "title": "Plan",
+          "text": "[Release v0.2.0 – Implementierungsplan](superpowers/plans/2026-10-30-release-v0.2.0.md): Phase 1 Roadmap und Workflow (Abnahme nur automatisiert, Handprüfungen nach `v1.0.0`), Phase 2 Nachweise (CI auf `dev`, Linux-Tests im Container, Trockenlauf, Hardware-Messung), Phase 3 Veröffentlichen (nur auf Anweisung)."
+        }
+      ],
       "afterMilestone": "12.1",
       "covers": ["8.1", "9", "10", "11", "12", "12.1"],
       "intro": "Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automatisch (Milestone 8.1). Setzt Milestone 12.1 voraus: Das Repo ist öffentlich und der echte Signaturschlüssel steckt im Programm.",
