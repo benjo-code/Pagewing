@@ -122,8 +122,12 @@ jobs:
       - name: Build
         run: dotnet build Pagewing.slnx -c Release --no-restore
 
+      # One test project at a time: by default `dotnet test` starts the three test projects together, and on the
+      # two cores of a hosted runner the PDFium-heavy Core tests then starve the UI timing of the App tests (every
+      # failure seen there fell into the first minute of the shared run; Docs/DECISIONS.md, entry "UI-Tests auf
+      # gehosteten Linux-Runnern"). Costs about 45 s.
       - name: Test
-        run: dotnet test Pagewing.slnx -c Release --no-build
+        run: dotnet test Pagewing.slnx -c Release --no-build --max-parallel-test-modules 1
 
       # Renderings and diff images of failed render regression tests (see tests/Pagewing.Render.Tests).
       - name: Upload the render diffs
