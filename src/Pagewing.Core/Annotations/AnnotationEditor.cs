@@ -77,6 +77,12 @@ public sealed class AnnotationEditor
     /// </summary>
     internal long ImageBudget { get; set; } = SignatureLimits.MaxHistoryImageBytes;
 
+    /// <summary>
+    /// Test seam, <see langword="null"/> in the product: awaited by every operation after the earlier ones ended and before it
+    /// touches the document, so a test can keep operations "in flight" for as long as it likes instead of racing the PDFium thread.
+    /// </summary>
+    internal Func<Task>? BeforeOperation { get; set; }
+
     /// <summary>Creates the editor of the document that <paramref name="session"/> has open now or opens later.</summary>
     /// <param name="session">The session; the editor does not own it.</param>
     /// <exception cref="ArgumentNullException"><paramref name="session"/> is <see langword="null"/>.</exception>
@@ -914,6 +920,11 @@ public sealed class AnnotationEditor
 
         try
         {
+            if (BeforeOperation is { } hold)
+            {
+                await hold().ConfigureAwait(false);
+            }
+
             // One consistent read of the session: the ready document with its path, stamp and password, or nothing.
             var snapshot = session.SnapshotForSave();
             var document = snapshot?.Document;

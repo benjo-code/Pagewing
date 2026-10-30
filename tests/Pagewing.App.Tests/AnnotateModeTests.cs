@@ -857,11 +857,30 @@ public sealed class AnnotateModeTests : IDisposable
         Assert.True(await viewModel.SaveActiveTabAsync());
         await WaitUntilAsync(window, () => !tab.IsDirty && !tab.IsSaving && comments.SelectedItem is not null);
 
-        // A colour and a delete in one turn, then closing right away: the close waits for both and asks.
-        comments.SetItemColorCommand.Execute(MarkupColor.Green);
-        comments.DeleteCommand.Execute(null);
-        Assert.True(tab.HasEditsInFlight);
-        viewModel.CloseActiveTabCommand.Execute(null);
+        // A colour and a delete in one turn, then closing right away: the close waits for both and asks. The editor holds both
+        // operations at the gate until the test lets them go, so "in flight" does not depend on how fast the PDFium thread is.
+        var editor = tab.Editor;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        editor.BeforeOperation = () => gate.Task;
+        try
+        {
+            comments.SetItemColorCommand.Execute(MarkupColor.Green);
+            comments.DeleteCommand.Execute(null);
+            Assert.True(tab.HasEditsInFlight);
+            viewModel.CloseActiveTabCommand.Execute(null);
+
+            // The close waits: no question and no closed tab while an edit is held.
+            Settle(window);
+            Assert.True(tab.HasEditsInFlight);
+            Assert.Null(viewModel.PendingSave);
+            Assert.Contains(tab, viewModel.Tabs);
+        }
+        finally
+        {
+            editor.BeforeOperation = null;
+            gate.TrySetResult();
+        }
+
         await WaitUntilAsync(window, () => viewModel.PendingSave is { Kind: PendingSaveKind.SaveChanges });
         Assert.False(tab.HasEditsInFlight);
         Assert.Empty(await MarkupsAsync(tab, 0));
