@@ -47,10 +47,19 @@ public sealed class UpdateTestHostCleanupTests
         var poster = new Thread(() => Dispatcher.UIThread.Post(() => { }, DispatcherPriority.Background));
         poster.Start();
         poster.Join();
-        Assert.False(Dispatcher.UIThread.CheckAccess());
 
+        // Pumped from a thread of its own: the test thread itself may be the one that owns the dispatcher (the first
+        // thread to touch it does when no UI test ran before, as on a runner that starts with this test).
         var polls = 0;
-        await ProbeHost.Pump(() => ++polls >= 3);
+        await Task.Factory.StartNew(
+            () =>
+            {
+                Assert.False(Dispatcher.UIThread.CheckAccess());
+                return ProbeHost.Pump(() => ++polls >= 3);
+            },
+            TestContext.Current.CancellationToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
 
         Assert.Equal(3, polls);
         ((IDisposable)host).Dispose();
