@@ -34,7 +34,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 
 - Die Werkzeugleiste zeigt Farben nur noch, wenn ein Werkzeug an ist oder eine Auswahl sie annimmt (bisher standen die Markierungsfarben auch ohne Werkzeug da).
 - Das `.deb` verlangt zusätzlich `libssl3` (bzw. `libssl3t64`) für die Update-Prüfung.
-- **Nicht von Hand geprüft:** Dieses Release ist nur mit automatisierten Tests und Messungen abgenommen. Nicht von Hand angesehen wurden das Aussehen der Annotationen, Zeichnungen, Textfelder, Formulare und Unterschriften in Chrome und im Acrobat Reader, das Verhalten von Acrobat mit signierten Dateien, das Update unter Windows und Linux gegen ein echtes Release und Screenreader. Das Update ist der größte offene Punkt: Es lief bisher nur gegen Testattrappen, `v0.2.0` auf die nächste Version ist sein erster echter Lauf. Die Handprüfungen folgen bis `v1.0.0`.
+- **Nicht von Hand geprüft:** Dieses Release ist nur mit automatisierten Tests und Messungen abgenommen. Nicht von Hand angesehen wurden das Aussehen der Annotationen, Zeichnungen, Textfelder, Formulare und Unterschriften in Chrome und im Acrobat Reader, das Verhalten von Acrobat mit signierten Dateien, das Update unter Windows und Linux gegen ein echtes Release und Screenreader (ohne Termin). Das Update ist der größte offene Punkt: Es lief bisher nur gegen Testattrappen, `v0.2.0` auf die nächste Version ist sein erster echter Lauf. Die Handprüfungen der Darstellung und des Updates folgen bis `v1.0.0`.
 
 ### Fixed
 

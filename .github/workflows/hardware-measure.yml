@@ -27,7 +27,7 @@ jobs:
     name: measure-windows-gpu
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, dotnet-windows-gpu]
-    timeout-minutes: 30
+    timeout-minutes: 45
     # On the job (not the workflow) so that a skipped run never takes the group.
     # Two runs must never overlap on the one runner; a running measurement is never cancelled.
     concurrency:

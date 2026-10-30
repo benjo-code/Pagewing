@@ -112,7 +112,7 @@ Genauigkeit: Der Ursprung ist die Erzeugungszeit des Prozesses laut Betriebssyst
 
 Unter Windows ist Software-Rendering der Standard (`Docs/DECISIONS.md`, Eintrag „Software-Rendering als Windows-Standard (M3)“): Der Startzeit-Check der CI (Runner ohne GPU) und die strikten Schritte auf dem Haupt-PC messen beide diesen Pfad. Den GPU-Pfad (`PAGEWING_RENDERING=default`) misst nur ein informativer Schritt auf dem Haupt-PC. Zahlen für Rechner mit GPU liefert der Workflow `.github/workflows/hardware-measure.yml` („Hardware measurement“) auf dem Haupt-PC des Projektinhabers. Begründung und Grenzen: `Docs/DECISIONS.md`, Eintrag „Messung auf echter Hardware: manueller Runner des Haupt-PCs (M3)“.
 
-**Was der Workflow tut** (Job `measure-windows-gpu`, höchstens 30 Minuten, Läufe nie parallel):
+**Was der Workflow tut** (Job `measure-windows-gpu`, höchstens 45 Minuten, Läufe nie parallel):
 
 1. Auschecken, .NET 10 einrichten, Voraussetzungen prüfen (`dotnet` 10, `vswhere`, C++-Build-Tools), die App als Native AOT für `win-x64` veröffentlichen.
 2. „Hardware report“: Grafikkarte(n) mit Treiber, Windows-Build, CPU, Energiesparplan, Akkustatus nach `out/startup/hardware.txt`.
