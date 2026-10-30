@@ -69,11 +69,15 @@ jobs:
       - name: Check the tag
         run: |
           set -euo pipefail
-          # The ref input must be a branch name or a commit id: refs/pull/... would run foreign code on this runner.
-          if [[ "$REF_INPUT" == refs/* && "$REF_INPUT" != refs/heads/* ]]; then
-            echo "ref '$REF_INPUT' ist nicht erlaubt: nur ein Branch-Name, refs/heads/... oder eine Commit-ID (kein refs/pull/...)" >&2
-            exit 1
+          # The ref input: empty, a commit id, or a plain branch name (a leading refs/heads/ is fine). Everything else is
+          # refused, above all pull/N/head and refs/pull/N/head, which would run foreign code on this runner.
+          ref_ok=false
+          if [[ -z "$REF_INPUT" || "$REF_INPUT" =~ ^[0-9a-f]{40}$ ]]; then
+            ref_ok=true
+          elif [[ "$REF_INPUT" =~ ^[A-Za-z0-9._/-]+$ && "$REF_INPUT" != pull/* && "$REF_INPUT" != *..* ]]; then
+            if [[ "$REF_INPUT" != refs/* || "$REF_INPUT" == refs/heads/* ]]; then ref_ok=true; fi
           fi
+          [[ "$ref_ok" == true ]] || { echo "ref '$REF_INPUT' ist nicht erlaubt: nur leer, eine Commit-ID oder ein Branch-Name (kein pull/..., kein refs/pull/...)" >&2; exit 1; }
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
           echo "Tag $TAG, Hochladen: $UPLOAD"
 
@@ -151,8 +155,11 @@ jobs:
     steps:
       - name: Check the tag and derive the version
         run: |
-          # The ref input must be a branch name or a commit id: refs/pull/... would run foreign code on this runner.
-          if ($env:REF_INPUT -cmatch '^refs/(?!heads/)') { throw "ref '$env:REF_INPUT' ist nicht erlaubt: nur ein Branch-Name, refs/heads/... oder eine Commit-ID (kein refs/pull/...)" }
+          # The ref input: empty, a commit id, or a plain branch name (a leading refs/heads/ is fine). Everything else is
+          # refused, above all pull/N/head and refs/pull/N/head, which would run foreign code on this runner.
+          $r = [string]$env:REF_INPUT
+          $refOk = ($r -eq '') -or ($r -cmatch '^[0-9a-f]{40}$') -or (($r -cmatch '^[A-Za-z0-9._/-]+$') -and -not ($r -cmatch '^pull/') -and -not ($r -cmatch '\.\.') -and (-not ($r -cmatch '^refs/') -or ($r -cmatch '^refs/heads/')))
+          if (-not $refOk) { throw "ref '$r' ist nicht erlaubt: nur leer, eine Commit-ID oder ein Branch-Name (kein pull/..., kein refs/pull/...)" }
           if ($env:TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') { throw "Tag '$env:TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" }
           $version = $env:TAG.Substring(1)
           Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
@@ -293,11 +300,15 @@ jobs:
       - name: Check the tag and derive the version
         run: |
           set -euo pipefail
-          # The ref input must be a branch name or a commit id: refs/pull/... would run foreign code on this runner.
-          if [[ "$REF_INPUT" == refs/* && "$REF_INPUT" != refs/heads/* ]]; then
-            echo "ref '$REF_INPUT' ist nicht erlaubt: nur ein Branch-Name, refs/heads/... oder eine Commit-ID (kein refs/pull/...)" >&2
-            exit 1
+          # The ref input: empty, a commit id, or a plain branch name (a leading refs/heads/ is fine). Everything else is
+          # refused, above all pull/N/head and refs/pull/N/head, which would run foreign code on this runner.
+          ref_ok=false
+          if [[ -z "$REF_INPUT" || "$REF_INPUT" =~ ^[0-9a-f]{40}$ ]]; then
+            ref_ok=true
+          elif [[ "$REF_INPUT" =~ ^[A-Za-z0-9._/-]+$ && "$REF_INPUT" != pull/* && "$REF_INPUT" != *..* ]]; then
+            if [[ "$REF_INPUT" != refs/* || "$REF_INPUT" == refs/heads/* ]]; then ref_ok=true; fi
           fi
+          [[ "$ref_ok" == true ]] || { echo "ref '$REF_INPUT' ist nicht erlaubt: nur leer, eine Commit-ID oder ein Branch-Name (kein pull/..., kein refs/pull/...)" >&2; exit 1; }
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
           version="${TAG#v}"
           # Debian: a pre-release x.y.z-rc1 is called x.y.z~rc1 in the package (tools/package.cs, Deb.DebVersion).
@@ -403,7 +414,7 @@ jobs:
   # manifest: the app reads only X.Y.Z versions, and releases/latest never names a pre-release.
   manifest:
     name: release-manifest
-    needs: [windows, linux]
+    needs: [preflight, windows, linux]
     if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && inputs.upload }}
     runs-on: ubuntu-24.04
     environment: release-signing
@@ -422,11 +433,15 @@ jobs:
       - name: Check the tag and derive the version
         run: |
           set -euo pipefail
-          # The ref input must be a branch name or a commit id: refs/pull/... would run foreign code on this runner.
-          if [[ "$REF_INPUT" == refs/* && "$REF_INPUT" != refs/heads/* ]]; then
-            echo "ref '$REF_INPUT' ist nicht erlaubt: nur ein Branch-Name, refs/heads/... oder eine Commit-ID (kein refs/pull/...)" >&2
-            exit 1
+          # The ref input: empty, a commit id, or a plain branch name (a leading refs/heads/ is fine). Everything else is
+          # refused, above all pull/N/head and refs/pull/N/head, which would run foreign code on this runner.
+          ref_ok=false
+          if [[ -z "$REF_INPUT" || "$REF_INPUT" =~ ^[0-9a-f]{40}$ ]]; then
+            ref_ok=true
+          elif [[ "$REF_INPUT" =~ ^[A-Za-z0-9._/-]+$ && "$REF_INPUT" != pull/* && "$REF_INPUT" != *..* ]]; then
+            if [[ "$REF_INPUT" != refs/* || "$REF_INPUT" == refs/heads/* ]]; then ref_ok=true; fi
           fi
+          [[ "$ref_ok" == true ]] || { echo "ref '$REF_INPUT' ist nicht erlaubt: nur leer, eine Commit-ID oder ein Branch-Name (kein pull/..., kein refs/pull/...)" >&2; exit 1; }
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
           version="${TAG#v}"
           echo "VERSION=$version" >> "$GITHUB_ENV"
@@ -463,6 +478,16 @@ jobs:
           done
           echo "Tag $TAG ($sha) liegt weder auf main noch auf dev: Hochladen und Signieren nur fuer Commits dieser Branches." >&2
           exit 1
+
+      # The commit that preflight verified and the commit verified here must be the same one: a tag moved in between
+      # stops the signing. Both values reach the shell through the environment.
+      - name: Compare the verified commit with preflight
+        env:
+          OWN_SHA: ${{ steps.ontag.outputs.sha }}
+          PREFLIGHT_SHA: ${{ needs.preflight.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$OWN_SHA" =~ ^[0-9a-f]{40}$ && "$OWN_SHA" == "$PREFLIGHT_SHA" ]] || { echo "Der Tag zeigt nicht mehr auf den Commit, den preflight geprueft hat (hier '$OWN_SHA', preflight '$PREFLIGHT_SHA')." >&2; exit 1; }
 
       # A branch build is a dry run: what is signed must belong to the files built from the tag.
       - name: Refuse to upload a branch build

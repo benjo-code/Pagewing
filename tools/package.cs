@@ -3489,6 +3489,24 @@ static class TagRules
         Regex.IsMatch(tag, pattern, RegexOptions.CultureInvariant);
 }
 
+// The rule for the dispatch input "ref" of release.yml (a dry run builds that ref): empty, a commit id, or a plain branch
+// name. Unqualified "pull/N/head" must not pass: GitHub resolves it, and a runner without git downloads that zip.
+// The first step of every job in release.yml holds the same rule in bash or PowerShell; the self-test runs those steps.
+static class RefInputRule
+{
+    public static bool Accepts(string value)
+    {
+        if (value.Length == 0 || Regex.IsMatch(value, "^[0-9a-f]{40}$"))
+        {
+            return true;
+        }
+
+        return Regex.IsMatch(value, @"^[A-Za-z0-9._/-]+$") && !value.StartsWith("pull/", StringComparison.Ordinal) &&
+            !value.Contains("..", StringComparison.Ordinal) &&
+            (!value.StartsWith("refs/", StringComparison.Ordinal) || value.StartsWith("refs/heads/", StringComparison.Ordinal));
+    }
+}
+
 static class SelfTest
 {
     private static int s_checks;
@@ -4947,17 +4965,89 @@ static class SelfTest
                     st[guard].Contains("[0-9a-f]{40}", StringComparison.Ordinal);
             }), true);
 
-        // The dispatch input ref accepts any ref; refs/pull/... would run foreign code on the persistent runners with a
-        // write token. Every job that sees the input rejects refs/ prefixes other than refs/heads/ in its first step.
+        // The dispatch input ref accepts any text; pull/N/head and refs/pull/N/head would run foreign code on the persistent
+        // runners with a write token. Every job that sees the input checks it in its first step against a positive list
+        // (empty, a commit id, a plain branch name): the rule of RefInputRule, in bash or PowerShell.
+        string[] refAccepted = ["main", "dev", "feature/x", "refs/heads/dev", new string('a', 40), string.Empty];
+        string[] refRejected = ["refs/pull/1/head", "refs/tags/v1", "pull/35/head", "pull/1/merge", "refs/heads/../x", "a b", "$(x)"];
+        foreach (var value in refAccepted)
+        {
+            Expect($"ref-Regel: '{value}' wird angenommen", RefInputRule.Accepts(value), true);
+        }
+
+        foreach (var value in refRejected)
+        {
+            Expect($"ref-Regel: '{value}' wird abgelehnt", RefInputRule.Accepts(value), false);
+        }
+
         foreach (var refJob in new[] { "preflight", "windows", "linux", "manifest" })
         {
             var refSteps = StepsOf(Job(refJob));
             var first = refSteps.Count > 0 ? refSteps[0] : string.Empty;
             Expect($"release.yml: Job {refJob} nimmt inputs.ref nur ueber die Umgebung (REF_INPUT)",
                 Job(refJob).Contains("      REF_INPUT: ${{ inputs.ref }}\n", StringComparison.Ordinal), true);
-            Expect($"release.yml: Job {refJob} weist im ersten Schritt Refs ausser refs/heads/ ab (kein refs/pull/)",
-                first.Contains("REF_INPUT", StringComparison.Ordinal) && first.Contains("refs/", StringComparison.Ordinal) &&
+            Expect($"release.yml: Job {refJob} prueft im ersten Schritt REF_INPUT gegen die Positivliste (leer, 40 Hex, Branch-Name)",
+                first.Contains("REF_INPUT", StringComparison.Ordinal) && first.Contains("[0-9a-f]{40}", StringComparison.Ordinal) &&
+                first.Contains("[A-Za-z0-9._/-]+", StringComparison.Ordinal) && first.Contains("pull/", StringComparison.Ordinal) &&
                 first.Contains("refs/heads/", StringComparison.Ordinal) && !first.Contains("inputs.ref", StringComparison.Ordinal), true);
+
+            // Run the real step with every value (bash for the Linux jobs, PowerShell for the Windows job).
+            var powerShell = refJob == "windows";
+            var runAt = first.IndexOf("\n        run: |\n", StringComparison.Ordinal);
+            if (runAt < 0)
+            {
+                Expect($"release.yml: Job {refJob}: erster Schritt hat einen Skriptblock", false, true);
+                continue;
+            }
+
+            var script = string.Join('\n', first[(runAt + "\n        run: |\n".Length)..].Split('\n')
+                .TakeWhile(l => l.Length == 0 || l.StartsWith("          ", StringComparison.Ordinal)).Select(l => l.Length >= 10 ? l[10..] : l)) + "\n";
+            var scriptDir = Path.Combine(Path.GetTempPath(), "pagewing-refstep-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(scriptDir);
+            try
+            {
+                var scriptFile = Path.Combine(scriptDir, powerShell ? "step.ps1" : "step.sh").Replace('\\', '/');
+                File.WriteAllText(scriptFile, script, new UTF8Encoding(powerShell));
+                var probeFile = Path.Combine(scriptDir, "probe.sh").Replace('\\', '/');
+                File.WriteAllText(probeFile, "echo pagewing-probe\n");
+                // On Windows "bash" is often the WSL launcher, which cannot see these paths: Git for Windows first.
+                var interpreters = powerShell ? new[] { "pwsh", "powershell" }
+                    : OperatingSystem.IsWindows() ? new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "bin", "bash.exe"), "bash" }
+                    : new[] { "bash" };
+                string? shell = null;
+                foreach (var candidate in interpreters)
+                {
+                    var (code, output) = powerShell ? RunScript(candidate, ["-NoProfile", "-NonInteractive", "-Command", "'pagewing-probe'"], []) : RunScript(candidate, [probeFile], []);
+                    if (code == 0 && output.Contains("pagewing-probe", StringComparison.Ordinal))
+                    {
+                        shell = candidate;
+                        break;
+                    }
+                }
+
+                if (shell is null)
+                {
+                    Console.WriteLine($"selftest: {(powerShell ? "PowerShell" : "bash")} fehlt, der erste Schritt von {refJob} wurde nicht ausgefuehrt.");
+                    continue;
+                }
+
+                foreach (var value in refAccepted.Concat(refRejected))
+                {
+                    var environment = new Dictionary<string, string>
+                    {
+                        ["REF_INPUT"] = value, ["TAG"] = "v0.1.0", ["UPLOAD"] = "false", ["UPDATE_KEY_ID"] = "release-1", ["GITHUB_ENV"] = Path.Combine(scriptDir, "env.txt").Replace('\\', '/'),
+                    };
+                    var (exit, _) = powerShell
+                        ? RunScript(shell, ["-NoProfile", "-NonInteractive", "-File", scriptFile], environment)
+                        : RunScript(shell, [scriptFile], environment);
+                    Expect($"release.yml: erster Schritt von {refJob} mit ref '{value}' {(RefInputRule.Accepts(value) ? "laeuft durch" : "bricht ab")}",
+                        exit == 0, RefInputRule.Accepts(value));
+                }
+            }
+            finally
+            {
+                Directory.Delete(scriptDir, true);
+            }
         }
 
         foreach (var buildJob in new[] { "windows", "linux" })
@@ -4967,7 +5057,7 @@ static class SelfTest
 
         var job = Job("manifest");
         Expect("release.yml: Job manifest vorhanden", job.Length > 0, true);
-        Expect("release.yml: Job manifest wartet auf beide Jobs", job.Contains("    needs: [windows, linux]\n", StringComparison.Ordinal), true);
+        Expect("release.yml: Job manifest wartet auf preflight und beide Bau-Jobs", job.Contains("    needs: [preflight, windows, linux]\n", StringComparison.Ordinal), true);
         Expect("release.yml: Job manifest laeuft nur nach Erfolg beider Jobs und nur beim Hochladen", job.Contains(
             "    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && inputs.upload }}\n",
             StringComparison.Ordinal), true);
@@ -4998,6 +5088,15 @@ static class SelfTest
         var manifestOnBranch = Index(onBranchName);
         ExpectOnBranchStep(manifestOnBranch >= 0 ? steps[manifestOnBranch] : string.Empty, "manifest");
         Expect("release.yml: manifest prueft den Tag direkt nach der Tag-Regel", manifestOnBranch >= 1 && Name(steps[manifestOnBranch - 1]) == "Check the tag and derive the version", true);
+        var sameSha = Index("Compare the verified commit with preflight");
+        var sameShaStep = sameSha >= 0 ? steps[sameSha] : string.Empty;
+        Expect("release.yml: manifest vergleicht seine geprueften Commit-ID mit der von preflight, direkt danach, vor dem Checkout (geschlossen im Fehlerfall, ueber die Umgebung)",
+            sameSha == manifestOnBranch + 1 && sameSha < steps.FindIndex(x => x.Contains("actions/checkout@", StringComparison.Ordinal)) &&
+            sameShaStep.Contains("OWN_SHA: ${{ steps.ontag.outputs.sha }}", StringComparison.Ordinal) &&
+            sameShaStep.Contains("PREFLIGHT_SHA: ${{ needs.preflight.outputs.tag_sha }}", StringComparison.Ordinal) &&
+            sameShaStep.Contains("[0-9a-f]{40}", StringComparison.Ordinal) && sameShaStep.Contains(@"""$OWN_SHA"" == ""$PREFLIGHT_SHA""", StringComparison.Ordinal) &&
+            sameShaStep.Contains("exit 1", StringComparison.Ordinal) &&
+            !sameShaStep[sameShaStep.IndexOf("\n        run: |\n", StringComparison.Ordinal)..].Contains("${{", StringComparison.Ordinal), true);
         Expect("release.yml: manifest prueft den Tag vor jedem Checkout und vor jedem Schritt, der Code des Tags laeuft",
             manifestOnBranch >= 0 && steps.Take(manifestOnBranch + 1).All(x => !x.Contains("actions/checkout@", StringComparison.Ordinal) && !Regex.IsMatch(x, @"dotnet (run|build|test|project)|package\.cs")), true);
 
@@ -5191,6 +5290,34 @@ static class SelfTest
         finally
         {
             Directory.Delete(dir, true);
+        }
+    }
+
+    // Runs a program with the given environment added; (-1, "") when it is not installed.
+    private static (int Code, string Output) RunScript(string file, string[] arguments, Dictionary<string, string> environment)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(file) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            foreach (var argument in arguments)
+            {
+                psi.ArgumentList.Add(argument);
+            }
+
+            foreach (var (name, value) in environment)
+            {
+                psi.Environment[name] = value;
+            }
+
+            using var process = Process.Start(psi)!;
+            var output = process.StandardOutput.ReadToEnd();
+            process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            return (process.ExitCode, output);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return (-1, string.Empty);
         }
     }
 
