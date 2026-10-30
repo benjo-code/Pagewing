@@ -596,6 +596,100 @@ public sealed class DocumentSaverTests : IDisposable
     }
 
     [Fact]
+    [SupportedOSPlatform("windows")]
+    public async Task ThePrivateAccessListOfTheTargetIsKeptOnWindows()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Access control lists of NTFS exist on Windows only.");
+        var path = Copy("text-basic.pdf");
+
+        // A file that only its owner may use, with the rules of the folder switched off: the replacement must not fall back to
+        // the (possibly much wider) rules of the folder it is saved in.
+        var user = WindowsIdentity.GetCurrent().User!;
+        var security = new FileInfo(path).GetAccessControl();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
+        new FileInfo(path).SetAccessControl(security);
+        var before = Describe(path);
+        Assert.True(before.Protected);
+
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path);
+        var result = await DocumentSaver.SaveAsync(document, engine, request, cancellationToken: Ct);
+        await result.Reopened.DisposeAsync();
+
+        var after = Describe(path);
+        Assert.Equal(before.Protected, after.Protected);
+        Assert.Equal(before.Rules, after.Rules);
+        AssertOnlyFiles(path);
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public async Task ATargetThatMayNotBeDeletedItselfStillSavesAndKeepsItsAccessList()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Access control lists of NTFS exist on Windows only.");
+        var path = Copy("text-basic.pdf");
+
+        // The user may read and write the file but not delete it (the folder still lets the user replace it). NTFS lets the
+        // rename of the temporary file through anyway when the folder allows deleting its entries, so the stand-ins below
+        // model the case where it does not (an OWNER RIGHTS entry, a share): the rename needs DELETE on the temporary file.
+        var user = WindowsIdentity.GetCurrent().User!;
+        var security = new FileInfo(path).GetAccessControl();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new FileSystemAccessRule(
+            user, FileSystemRights.ReadAndExecute | FileSystemRights.Write | FileSystemRights.Synchronize, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Delete, AccessControlType.Deny));
+        new FileInfo(path).SetAccessControl(security);
+        var before = Describe(path);
+        Assert.True(before.Protected);
+        Assert.Contains("|Delete|Deny|", before.Rules);
+
+        var probed = 0;
+        var faults = new SaveFaults
+        {
+            CanDelete = file =>
+            {
+                probed++;
+                return Deletable(file);
+            },
+            AtomicReplace = (source, target) => Deletable(source) ? WindowsFileRename.ReplaceAtomically(source, target) : WindowsFileRename.ErrorAccessDenied,
+        };
+        await using var document = await OpenAsync(path);
+        var request = await MarkAsync(document, path, path);
+        var result = await DocumentSaver.SaveAsync(document, engine, request, null, faults, Ct);
+        await result.Reopened.DisposeAsync();
+
+        Assert.True(probed > 0, "the access rules were copied, so the rename's access was probed");
+        Assert.Equal(before, Describe(path));
+        AssertOnlyFiles(path);
+
+        [SupportedOSPlatform("windows")]
+        static bool Deletable(string file) => !Describe(file).Rules.Contains("|Delete|Deny|", StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void TheProbeForDeleteAccessSeesAnOrdinaryFileAndAMissingOne()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The rename with DELETE access is a Windows API.");
+        var path = Copy("text-basic.pdf");
+
+        Assert.True(WindowsFileRename.CanOpenForDelete(path));
+        Assert.False(WindowsFileRename.CanOpenForDelete(path + ".missing"));
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static (bool Protected, string Rules) Describe(string file)
+    {
+        var acl = new FileInfo(file).GetAccessControl(AccessControlSections.Access);
+        var rules = acl.GetAccessRules(true, false, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>()
+            .Select(rule => $"{rule.IdentityReference.Value}|{rule.FileSystemRights}|{rule.AccessControlType}|{rule.IsInherited}")
+            .Order(StringComparer.Ordinal);
+        return (acl.AreAccessRulesProtected, string.Join(Environment.NewLine, rules));
+    }
+
+    [Fact]
     public async Task LockedTargetIsReportedAsInUse()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows locks a file that another program has open.");

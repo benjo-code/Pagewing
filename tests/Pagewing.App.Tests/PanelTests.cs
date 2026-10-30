@@ -403,6 +403,12 @@ public sealed class PanelTests : IDisposable
         await WaitUntilAsync(window, () => drawn);
         Settle(window);
         Assert.Equal(SidePanelKind.None, tab.SidePanel);
+
+        // The panel the user opened and closed while the file loaded may still run its close transition: wait for its
+        // end (as the tests above do), then give a late auto-open one more turn and check again.
+        await WaitUntilAsync(window, () => SidePanels(window).All(panel => !panel.IsEffectivelyVisible));
+        Settle(window);
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
         Assert.True(SidePanels(window).All(panel => !panel.IsEffectivelyVisible));
     }
 

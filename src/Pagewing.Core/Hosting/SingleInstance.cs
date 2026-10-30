@@ -444,13 +444,59 @@ public sealed class SingleInstance : IDisposable
         }
     }
 
-    private NamedPipeServerStream CreateServer() =>
-        new(
-            PipeNameFor(name),
+    private NamedPipeServerStream CreateServer()
+    {
+        var pipeName = PipeNameFor(name);
+        var server = new NamedPipeServerStream(
+            pipeName,
             PipeDirection.In,
             NamedPipeServerStream.MaxAllowedServerInstances,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+        // Every instance of the loop asks again: .NET shares one bound socket between the instances of a name and binds a
+        // new one when the last instance went away, so this keeps the mode for the socket that really accepts.
+        RestrictSocket(pipeName);
+        return server;
+    }
+
+    /// <summary>
+    /// Gets the path of the socket file .NET makes on Unix for a pipe name: the name itself when it is rooted (the runtime
+    /// folder case of <see cref="PipeNameFor"/>), otherwise <c>CoreFxPipe_&lt;name&gt;</c> in the temp folder.
+    /// </summary>
+    internal static string SocketPathFor(string pipeName) =>
+        Path.IsPathRooted(pipeName) ? pipeName : Path.Combine(Path.GetTempPath(), "CoreFxPipe_" + pipeName);
+
+    /// <summary>
+    /// On Unix sets the socket file of <paramref name="pipeName"/> to read and write for the owner (0600). .NET leaves it at
+    /// the mode of the umask (0755 on a hosted CI runner); connecting needs write access to the file and
+    /// <see cref="PipeOptions.CurrentUserOnly"/> also checks the peer, but the file should not invite anybody. Between the
+    /// bind and this call the file has the mode of the umask; in the runtime folder (<c>$XDG_RUNTIME_DIR</c>, 0700) nobody
+    /// else can reach it at all. Does nothing on Windows, for a file that is not there and for any failure.
+    /// </summary>
+    internal static void RestrictSocket(string pipeName)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            // Only a file: a folder at that path is not ours to change.
+            var path = SocketPathFor(pipeName);
+            if (Directory.Exists(path))
+            {
+                return;
+            }
+
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or PlatformNotSupportedException)
+        {
+            // Hardening only: a file that is not there (yet) or that cannot be changed must not stop the listener.
+        }
+    }
 
     private async Task RunAsync(Action<IReadOnlyList<string>> onMessage, CancellationToken token)
     {

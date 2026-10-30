@@ -26,6 +26,26 @@ public sealed class DesktopEntryTests
         Assert.Equal("\"/a b/\\\"x\\\"\\$y\\`z\"", DesktopEntry.EscapeExec("/a b/\"x\"$y`z"));
     }
 
+    [Theory]
+    [InlineData("/a/b\nExec=/tmp/evil")]
+    [InlineData("/a/b\rX-Other=1")]
+    [InlineData("/a/b\u0000c")]
+    [InlineData("/a/\u007Fb")]
+    public void ExecRefusesAPathWithAControlCharacterInsteadOfStartingAnotherLine(string path)
+    {
+        // A line break inside Exec= would end the line and let the rest of the name become another key of the entry.
+        Assert.Throws<ArgumentException>(() => DesktopEntry.EscapeExec(path));
+        Assert.Throws<ArgumentException>(() => DesktopEntry.Render(path, "pagewing"));
+    }
+
+    [Theory]
+    [InlineData("pagewing\nExec=/tmp/evil")]
+    [InlineData("pagewing\r")]
+    public void IconNameRefusesAControlCharacter(string icon)
+    {
+        Assert.Throws<ArgumentException>(() => DesktopEntry.Render("/opt/Pagewing", icon));
+    }
+
     [Fact]
     public void RenderHasMimeTypeIconAndWmClass()
     {

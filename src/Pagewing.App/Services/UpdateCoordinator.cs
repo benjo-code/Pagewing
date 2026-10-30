@@ -690,15 +690,23 @@ public sealed class UpdateCoordinator(UpdateChecker checker, UserSettings settin
         };
     }
 
-    // A staging folder left by an earlier attempt (or a crash) is ours: it goes, so nothing old is mixed in.
-    private static void PrepareStaging(string directory)
+    // A staging folder left by an earlier attempt (or a crash) is ours: it goes, so nothing old is mixed in. On Unix the
+    // folder is the owner's alone (the umask would make it 0755), like the files of the user folder (JsonFile).
+    internal static void PrepareStaging(string directory)
     {
         if (Directory.Exists(directory))
         {
             Directory.Delete(directory, recursive: true);
         }
 
-        Directory.CreateDirectory(directory);
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(directory);
+        }
+        else
+        {
+            Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     private static bool WriteStaging(string directory, UpdateDocuments documents, UpdateRequest request)

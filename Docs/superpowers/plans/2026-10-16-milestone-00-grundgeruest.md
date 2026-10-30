@@ -263,7 +263,7 @@ done
   - `Docs/DECISIONS.md`, neuer Eintrag oben (Datum des Tages): **Testframework xunit.v3 4.0.2 mit Microsoft.Testing.Platform**. Begründung: `Avalonia.Headless.XUnit` 12.1.4 hängt von `xunit.v3.extensibility.core` 3.2.2 ab, xunit v2 würde dazu nicht passen. Verworfen: xunit v2 mit VSTest. Offener Punkt: Die Verträglichkeit von `Avalonia.Headless.XUnit` mit xunit.v3 4.0.x wird in M3 geprüft. Zweiter Eintrag: **Zentrale Paketverwaltung und Build-Einstellungen im Root, `tools/` isoliert**, mit Verweis auf den NU1008-Fund.
 
 - [ ] **Step 3: Roadmap fortschreiben** in `Docs/roadmap.json` (Milestone 0):
-  - Alle erledigten Aufgaben abhaken, auch „Self-hosted Windows-Runner“ (Nachweis: Runner `vm-git-windows-dotnet` ist in der Orga online, `gh api orgs/benjo-code/actions/runners`).
+  - Alle erledigten Aufgaben abhaken, auch „Self-hosted Windows-Runner“ (Nachweis: der Windows-Runner ist in der Orga online, `gh api orgs/benjo-code/actions/runners`).
   - Abnahmekriterien mit Nachweis abhaken: (1) lokale Befehle grün; (2) AOT-Publish ohne Warnungen auf beiden OS plus `pagewing --version` (Smoke-Skript, CI-Lauf); (3) CI grün auf dem PR (PR-Nummer); (4) Branch Protection (Ausgabe aus Step 1).
   - Status `done` mit `completedOn` (Datum des Tages).
   - Run: `dotnet run tools/roadmap.cs -- generate`, dann `dotnet run tools/roadmap.cs -- check` → gültig.

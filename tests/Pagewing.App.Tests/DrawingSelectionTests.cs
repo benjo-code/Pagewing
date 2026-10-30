@@ -130,6 +130,7 @@ public sealed class DrawingSelectionTests : IDisposable
         AssertRectNear(moved.Drawing!.Box, tab.SelectedAnnotation!.Drawing!.Box, 0.01);
 
         // One undo puts it back; a second one takes the rectangle away (the move was one step).
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitForBoxAsync(window, tab, rectangle.Name, new PageRect(120, 180, 280, 300));
         tab.UndoCommand.Execute(null);
@@ -471,6 +472,7 @@ public sealed class DrawingSelectionTests : IDisposable
         await ClickAndWaitAsync(window, view, tab, new Point(200, 350), line.Name);
         Press(window, Key.Back, PhysicalKey.Backspace, RawInputModifiers.None);
         await WaitForDrawingsAsync(window, tab, 0, count: 0);
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         tab.UndoCommand.Execute(null);
         await WaitForDrawingsAsync(window, tab, 0, count: 2);
@@ -910,11 +912,13 @@ public sealed class DrawingSelectionTests : IDisposable
         Drag(window, ScreenPoint(view, window, 0, new Point(150, 200)), ScreenPoint(view, window, 0, new Point(210, 240)));
         await WaitForBoxAsync(window, tab, ellipse.Name, new PageRect(180, 220, 340, 340));
 
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitForBoxAsync(window, tab, ellipse.Name, new PageRect(120, 180, 280, 300));
         await WaitUntilAsync(window, () => tab.SelectedAnnotation?.Drawing is { } drawing && RectNear(new PageRect(120, 180, 280, 300), drawing.Box, 0.01));
         Assert.Equal(ellipse.Name, tab.SelectedAnnotation!.Name);
 
+        await WaitUntilAsync(window, () => tab.CanRedo);
         tab.RedoCommand.Execute(null);
         await WaitForBoxAsync(window, tab, ellipse.Name, new PageRect(180, 220, 340, 340));
     }

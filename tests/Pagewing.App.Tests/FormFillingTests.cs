@@ -153,6 +153,7 @@ public sealed class FormFillingTests : IDisposable
         Assert.True(tab.IsDirty);
 
         // One undo takes it back entirely.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight && !tab.CanUndo);
         Assert.Equal(string.Empty, (await ValueAsync(tab, "Kurz")).Text);

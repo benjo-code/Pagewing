@@ -34,11 +34,19 @@ public sealed class FakeUpdateApplier : IUpdateApplier
     public async Task<ApplyResult> ApplyAsync(StagedUpdate staged, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(staged);
-        Interlocked.Increment(ref _calls);
         Staged = staged;
         var file = Path.Combine(staged.Directory, staged.File.Name);
         StagedBytes = File.Exists(file) ? await File.ReadAllBytesAsync(file, ct) : null;
-        OnApply?.Invoke(staged);
+        try
+        {
+            OnApply?.Invoke(staged);
+        }
+        finally
+        {
+            // Counted after the hook, so a test that waits for the call sees what the hook recorded.
+            Interlocked.Increment(ref _calls);
+        }
+
         if (Throws is { } error)
         {
             throw error;

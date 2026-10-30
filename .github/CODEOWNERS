@@ -1,0 +1,6 @@
+# Review requests only; not enforced by branch protection.
+/.github/                      @TiefSeeTaucher69
+/tools/package.cs              @TiefSeeTaucher69
+/src/Pagewing.Core/Updates/    @TiefSeeTaucher69
+/packaging/                    @TiefSeeTaucher69
+/CLAUDE.md                     @TiefSeeTaucher69

@@ -153,13 +153,22 @@ public abstract class UpdateTestHost : PrintTestHost, IDisposable
         await WaitUntilAsync(window, () => tab.HasShownSharpPage);
     }
 
-    /// <summary>Runs the dispatcher until <paramref name="condition"/> holds (for tests without a window), at most 15 seconds.</summary>
+    /// <summary>
+    /// Runs the dispatcher until <paramref name="condition"/> holds (for tests without a window), at most 15 seconds. A
+    /// plain <c>[Fact]</c> runs on a pool thread, not on the UI thread: there the dispatcher is left alone, because
+    /// <c>RunJobs</c> on another thread throws as soon as any job waits (a job that a test running at the same time
+    /// posted), and only the condition is polled.
+    /// </summary>
     protected static async Task PumpUntilAsync(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
         while (true)
         {
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            {
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            }
+
             if (condition())
             {
                 return;

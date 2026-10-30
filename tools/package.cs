@@ -5,7 +5,8 @@
 //   dotnet run tools/package.cs -- layout --rid <win-x64|linux-x64> --app <dir> --cli <dir> --out <dir> [--repo <root>]
 //   dotnet run tools/package.cs -- zip --layout <dir> --version <x.y.z> --out <file>
 //   dotnet run tools/package.cs -- sums <file>... --out <SHA256SUMS.txt>
-//   dotnet run tools/package.cs -- inno-install [--dir <dir>]                         (Windows)
+//   dotnet run tools/package.cs -- sums-verify --file <SHA256SUMS.txt> --sha256 <hex>
+//   dotnet run tools/package.cs -- inno-install [--dir <dir>]                       (Windows)
 //   dotnet run tools/package.cs -- installer --layout <dir> --version <x.y.z> --out <file> [--iscc <ISCC.exe>] [--repo <root>]   (Windows)
 //   dotnet run tools/package.cs -- installer-smoke <setup.exe> [--repo <root>]          (Windows)
 //   dotnet run tools/package.cs -- update-smoke <setup-old.exe> <setup-new.exe> --key <test-key.txt> [--key-id <id>]   (Windows, test build)
@@ -38,6 +39,7 @@ static class Cli
         "  layout --rid <rid> --app <Ordner> --cli <Ordner> --out <Ordner>   legt das Paketlayout an (App, cli/, LICENSE, THIRD-PARTY-NOTICES.txt)\n" +
         "  zip --layout <Ordner> --version <x.y.z> --out <Datei>             reproduzierbare ZIP-Datei, oberster Ordner Pagewing-<Version>/\n" +
         "  sums <Datei>... --out <Datei>                                     SHA-256-Summen (<sha256>  <Dateiname>)\n" +
+        "  sums-verify --file <Datei> --sha256 <Hex>                         prueft eine SHA256SUMS-Datei gegen die Summe des Bau-Jobs (leer oder falsch: Fehler)\n" +
         "  inno-install [--dir <Ordner>]                                     laedt Inno Setup (feste Version, SHA-256 geprueft) ins Benutzerprofil (Windows)\n" +
         "  installer --layout <Ordner> --version <x.y.z> --out <Datei> [--iscc <ISCC.exe>]   baut Pagewing-<Version>-win-x64-setup.exe (Windows)\n" +
         "  installer-smoke <Setup.exe>                                       installiert still, prueft, installiert erneut, deinstalliert (Windows)\n" +
@@ -61,6 +63,7 @@ static class Cli
         ["layout"] = Layout.Run,
         ["zip"] = ZipCommand.Run,
         ["sums"] = Sums.Run,
+        ["sums-verify"] = SumsVerify.Run,
         ["inno-install"] = InnoInstall.Run,
         ["installer"] = Installer.Run,
         ["installer-smoke"] = InstallerSmoke.Run,
@@ -543,6 +546,55 @@ static class Sums
         }
 
         File.WriteAllText(output, string.Concat(p.Positional.Select(Line)), new UTF8Encoding(false));
+        return 0;
+    }
+}
+
+// sums-verify --file <path> --sha256 <hex>: the release workflow compares each downloaded SHA256SUMS file with the hash
+// that the build job reported as a job output, before anything is signed. Fails closed: a missing, empty or malformed
+// expectation is a failure, never a pass.
+static class SumsVerify
+{
+    // null when the file has the expected SHA-256 (hex, either case); otherwise why not.
+    public static string? Problem(string file, string expected)
+    {
+        var hex = expected.Trim();
+        if (hex.Length != 64 || !hex.All(char.IsAsciiHexDigit))
+        {
+            return hex.Length == 0
+                ? "die erwartete SHA-256 ist leer (der Bau-Job hat keine geliefert)"
+                : "die erwartete SHA-256 ist keine 64-stellige Hexzahl";
+        }
+
+        if (!File.Exists(file))
+        {
+            return $"Datei nicht gefunden: {file}";
+        }
+
+        using var stream = File.OpenRead(file);
+        var actual = Convert.ToHexStringLower(SHA256.HashData(stream));
+        return string.Equals(actual, hex, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"SHA-256 von {file} ist {actual}, der Bau-Job meldete {hex.ToLowerInvariant()}";
+    }
+
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--file", "--sha256");
+        if (parsed is not { } p || p.Positional.Count != 0 ||
+            !p.Named.TryGetValue("--file", out var file) || !p.Named.TryGetValue("--sha256", out var sha256))
+        {
+            Console.Error.WriteLine("Aufruf: sums-verify --file <Datei> --sha256 <Hex>");
+            return 2;
+        }
+
+        if (Problem(file, sha256) is { } problem)
+        {
+            Console.Error.WriteLine($"sums-verify: {problem}");
+            return 1;
+        }
+
+        Console.WriteLine($"sums-verify: {file} stimmt mit der Summe des Bau-Jobs ueberein");
         return 0;
     }
 }
@@ -3437,6 +3489,24 @@ static class TagRules
         Regex.IsMatch(tag, pattern, RegexOptions.CultureInvariant);
 }
 
+// The rule for the dispatch input "ref" of release.yml (a dry run builds that ref): empty, a commit id, or a plain branch
+// name. Unqualified "pull/N/head" must not pass: GitHub resolves it, and a runner without git downloads that zip.
+// The first step of every job in release.yml holds the same rule in bash or PowerShell; the self-test runs those steps.
+static class RefInputRule
+{
+    public static bool Accepts(string value)
+    {
+        if (value.Length == 0 || Regex.IsMatch(value, "^[0-9a-f]{40}$"))
+        {
+            return true;
+        }
+
+        return Regex.IsMatch(value, @"^[A-Za-z0-9._/-]+$") && !value.StartsWith("pull/", StringComparison.Ordinal) &&
+            !value.Contains("..", StringComparison.Ordinal) &&
+            (!value.StartsWith("refs/", StringComparison.Ordinal) || value.StartsWith("refs/heads/", StringComparison.Ordinal));
+    }
+}
+
 static class SelfTest
 {
     private static int s_checks;
@@ -3502,6 +3572,7 @@ static class SelfTest
         LinuxContainerParts();
         UpdateReleaseParts();
         ManifestJobParts();
+        PublicRepoWorkflowParts();
         UpdateTestBuildGuardParts();
         RealElf();
         Expect("unbekannter Befehl liefert 2", Cli.Run(["gibt-es-nicht"]), 2);
@@ -3762,6 +3833,20 @@ static class SelfTest
             Expect("sums: eine Zeile je Datei, LF am Ende", lines.Length, 3);
             Expect("sums: fehlende Datei liefert 1", Cli.Run(["sums", Path.Combine(dir, "nope"), "--out", sums]), 1);
             Expect("sums: ohne Datei liefert 2", Cli.Run(["sums", "--out", sums]), 2);
+
+            var sumsHash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(sums)));
+            Expect("sums-verify: passende Summe liefert 0", Cli.Run(["sums-verify", "--file", sums, "--sha256", sumsHash]), 0);
+            Expect("sums-verify: Grossbuchstaben liefern 0", Cli.Run(["sums-verify", "--file", sums, "--sha256", sumsHash.ToUpperInvariant()]), 0);
+            var manipulated = (sumsHash[0] == '0' ? "1" : "0") + sumsHash[1..];
+            Expect("sums-verify: manipulierte Summe liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", manipulated]), 1);
+            Expect("sums-verify: zu kurze Summe liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", sumsHash[..63]]), 1);
+            Expect("sums-verify: zu lange Summe liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", sumsHash + "0"]), 1);
+            Expect("sums-verify: keine Hexzahl liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", "g" + sumsHash[1..]]), 1);
+            Expect("sums-verify: leere Summe liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", string.Empty]), 1);
+            Expect("sums-verify: Leerzeichen allein liefert 1", Cli.Run(["sums-verify", "--file", sums, "--sha256", "  "]), 1);
+            Expect("sums-verify: fehlende Datei liefert 1", Cli.Run(["sums-verify", "--file", Path.Combine(dir, "nope"), "--sha256", sumsHash]), 1);
+            Expect("sums-verify: ohne --sha256 liefert 2", Cli.Run(["sums-verify", "--file", sums]), 2);
+            Expect("sums-verify: ohne --file liefert 2", Cli.Run(["sums-verify", "--sha256", sumsHash]), 2);
         }
         finally
         {
@@ -4624,9 +4709,169 @@ static class SelfTest
             rules[0].AccessControlType == System.Security.AccessControl.AccessControlType.Allow;
     }
 
-    // The third job of release.yml signs the update manifest. The signing key is a repository secret: it may appear in
-    // exactly one place, the env of the step that runs the signing command, and nowhere else (no job or workflow env,
-    // no other step, no action). The workflow has no trigger for pull requests, so code from a fork never sees it.
+    // Trust model once the repository is public: code from a fork PR never reaches a persistent self-hosted runner,
+    // the checkout leaves no token behind, the signing secret lives in one hosted, environment-guarded job, and every
+    // action is pinned to a commit. A missing workflow file (codeql.yml before it exists) is no violation.
+    private const string PullRequestGuard = "github.event_name == 'pull_request'";
+
+    private static string TriggersOf(string yml) =>
+        Regex.Match(yml, @"(?m)^on:\n(?<b>(?:[ #].*\n|\n)*)").Groups["b"].Value;
+
+    private static bool HasTrigger(string yml, string trigger) =>
+        Regex.IsMatch(TriggersOf(yml), @"(?m)^  " + trigger + @":");
+
+    private static List<string> PullRequestTargetViolations(string yml) =>
+        HasTrigger(yml, "pull_request_target") ? ["pull_request_target"] : [];
+
+    // The labels dotnet-linux, dotnet-windows and dotnet-windows-gpu exist only on the owner's runners.
+    private static bool IsSelfHosted(string line) =>
+        Regex.IsMatch(line, @"self-hosted|dotnet-linux|dotnet-windows");
+
+    // A runs-on line that picks a hosted runner for pull requests and the own runner only otherwise.
+    private static bool IsGuarded(string line) =>
+        line.Contains(PullRequestGuard, StringComparison.Ordinal) && line.Contains("matrix.hosted", StringComparison.Ordinal);
+
+    private static List<string> SelfHostedOnPullRequestViolations(string file, string yml)
+    {
+        var violations = new List<string>();
+        var runsOn = Regex.Matches(yml, @"(?m)^    runs-on:.*$").Select(m => m.Value).ToList();
+        if (file == "hardware-measure.yml" && HasTrigger(yml, "pull_request"))
+        {
+            violations.Add("Ausloeser pull_request");
+        }
+
+        if (!HasTrigger(yml, "pull_request"))
+        {
+            return violations;
+        }
+
+        var noSelfHostedAtAll = file is "roadmap.yml" or "codeql.yml";
+        foreach (var line in runsOn.Where(IsSelfHosted))
+        {
+            if (noSelfHostedAtAll || !IsGuarded(line))
+            {
+                violations.Add(line.Trim());
+            }
+        }
+
+        if (file == "ci.yml" && !runsOn.Any(IsGuarded))
+        {
+            violations.Add("kein gehostetes runs-on fuer Pull Requests");
+        }
+
+        return violations;
+    }
+
+    private static List<string> CheckoutViolations(string yml) =>
+        [.. Regex.Split(yml, @"(?m)^(?=      - )").Where(s => s.Contains("actions/checkout@", StringComparison.Ordinal))
+            .Where(s => !Regex.IsMatch(s, @"(?m)^ +persist-credentials: false\s*$")).Select(_ => "checkout ohne persist-credentials: false")];
+
+    private static List<string> UnpinnedActionViolations(string yml) =>
+        [.. Regex.Matches(yml, @"(?m)^\s*(?:- )?uses: (?<a>[^\s#]+)").Select(m => m.Groups["a"].Value)
+            .Where(a => !a.StartsWith("./", StringComparison.Ordinal) && !Regex.IsMatch(a, @"@[0-9a-f]{40}$"))];
+
+    private static List<string> PermissionsViolations(string yml)
+    {
+        var violations = new List<string>();
+        if (!Regex.IsMatch(yml, @"(?m)^permissions:"))
+        {
+            violations.Add("permissions fehlt");
+        }
+
+        if (Regex.IsMatch(yml, @"permissions:\s*write-all"))
+        {
+            violations.Add("write-all");
+        }
+
+        return violations;
+    }
+
+    private static void PublicRepoWorkflowParts()
+    {
+        const string dir = ".github/workflows";
+        string? Read(string file) => File.Exists(Path.Combine(dir, file))
+            ? File.ReadAllText(Path.Combine(dir, file)).Replace("\r\n", "\n", StringComparison.Ordinal) : null;
+        var files = Directory.Exists(dir) ? Directory.GetFiles(dir, "*.yml").Concat(Directory.GetFiles(dir, "*.yaml")).Select(Path.GetFileName).OfType<string>().Order().ToList() : [];
+        Expect("Workflows: Ordner .github/workflows hat Dateien", files.Count > 0, true);
+
+        // Negative controls: the rules must bite on a deliberately bad workflow.
+        const string bad = "on:\n  pull_request_target:\n  pull_request:\npermissions: write-all\njobs:\n  x:\n    runs-on: [self-hosted, dotnet-linux]\n" +
+            "    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/cache@0123456789abcdef0123456789abcdef01234567\n";
+        Expect("Gegenprobe: pull_request_target wird erkannt", PullRequestTargetViolations(bad).Count, 1);
+        Expect("Gegenprobe: self-hosted bei Pull Requests wird erkannt", SelfHostedOnPullRequestViolations("x.yml", bad).Count, 1);
+        Expect("Gegenprobe: checkout ohne persist-credentials wird erkannt", CheckoutViolations(bad).Count, 1);
+        Expect("Gegenprobe: nicht angeheftete Action wird erkannt", UnpinnedActionViolations(bad).Count, 1);
+        Expect("Gegenprobe: write-all wird erkannt", PermissionsViolations(bad).Count, 1);
+        const string good = "on:\n  pull_request:\njobs:\n  build:\n" +
+            "    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && format('[\"{0}\"]', matrix.hosted) || format('[\"self-hosted\",\"{0}\"]', matrix.label)) }}\n";
+        Expect("Gegenprobe: richtig geschuetztes runs-on von ci.yml ist ohne Befund", SelfHostedOnPullRequestViolations("ci.yml", good).Count, 0);
+        Expect("Gegenprobe: Label dotnet-windows allein zaehlt als self-hosted", SelfHostedOnPullRequestViolations("x.yml", "on:\n  pull_request:\njobs:\n  x:\n    runs-on: [dotnet-windows]\n").Count, 1);
+        Expect("Gegenprobe: hardware-measure.yml mit pull_request wird erkannt",
+            SelfHostedOnPullRequestViolations("hardware-measure.yml", "on:\n  pull_request:\njobs:\n  x:\n    runs-on: ubuntu-24.04\n").Count, 1);
+
+        string Join(IEnumerable<string> v) => string.Join("; ", v);
+        var noTarget = new List<string>();
+        var selfHosted = new List<string>();
+        var checkout = new List<string>();
+        var unpinned = new List<string>();
+        var permissions = new List<string>();
+        var secretsOutside = new List<string>();
+        foreach (var file in files)
+        {
+            var yml = Read(file)!;
+            Expect($"Workflows: {file} hat einen lesbaren on:-Block", TriggersOf(yml).Trim().Length > 0, true);
+            noTarget.AddRange(PullRequestTargetViolations(yml).Select(v => $"{file}: {v}"));
+            selfHosted.AddRange(SelfHostedOnPullRequestViolations(file, yml).Select(v => $"{file}: {v}"));
+            checkout.AddRange(CheckoutViolations(yml).Select(v => $"{file}: {v}"));
+            unpinned.AddRange(UnpinnedActionViolations(yml).Select(v => $"{file}: {v}"));
+            permissions.AddRange(PermissionsViolations(yml).Select(v => $"{file}: {v}"));
+            if (file != "release.yml" && yml.Contains("secrets.", StringComparison.Ordinal))
+            {
+                secretsOutside.Add(file);
+            }
+        }
+
+        // A workflow that is missing (codeql.yml before it exists) is simply not listed above.
+        Expect("Workflows: kein pull_request_target", Join(noTarget), "");
+        Expect("Workflows: Pull-Request-Laeufe nie auf self-hosted", Join(selfHosted), "");
+        Expect("Workflows: jeder checkout mit persist-credentials: false", Join(checkout), "");
+        Expect("Workflows: permissions oben und kein write-all", Join(permissions), "");
+        Expect("Workflows: jede Action auf einer 40-stelligen SHA", Join(unpinned), "");
+        Expect("Workflows: secrets. nur in release.yml", Join(secretsOutside), "");
+
+        var release = Read("release.yml");
+        if (release is not null)
+        {
+            Expect("release.yml: kein Ausloeser release", HasTrigger(release, "release"), false);
+            var manifest = Regex.Match(release, @"(?m)^  manifest:\n(?<b>(?:    .*\n|\n)*)").Groups["b"].Value;
+            Expect("release.yml: Job manifest gefunden", manifest.Length > 0, true);
+            var otherJobs = manifest.Length > 0 ? release.Replace(manifest, string.Empty, StringComparison.Ordinal) : release;
+            Expect("release.yml: secrets. nur im Job manifest", otherJobs.Contains("secrets.", StringComparison.Ordinal), false);
+            Expect("release.yml: Job manifest mit environment: release-signing",
+                Regex.IsMatch(manifest, @"(?m)^    environment: release-signing\s*$"), true);
+            var manifestRunsOn = Regex.Match(manifest, @"(?m)^    runs-on:.*$").Value;
+            Expect("release.yml: Job manifest auf gehostetem Runner", manifestRunsOn.Length > 0 && !IsSelfHosted(manifestRunsOn), true);
+        }
+
+        // Code scanning is paid in a private repository: the job must be skipped there, and the write right to the
+        // security events belongs to the job only, never to the workflow.
+        var codeql = Read("codeql.yml");
+        if (codeql is not null)
+        {
+            var topLevel = Regex.Match(codeql, @"(?m)^permissions:\n(?<b>(?:  .*\n)*)").Groups["b"].Value;
+            Expect("codeql.yml: Rechte oben nur contents: read", topLevel.Trim(), "contents: read");
+            Expect("codeql.yml: security-events: write genau einmal, im Job", Regex.Count(codeql, @"security-events: write"), 1);
+            Expect("codeql.yml: security-events: write steht unter dem Job (vier Leerzeichen eingerueckte permissions)",
+                Regex.IsMatch(codeql, @"(?m)^    permissions:\n      contents: read\n      security-events: write\n"), true);
+            Expect("codeql.yml: Job nur im oeffentlichen Repo", Regex.IsMatch(codeql, @"(?m)^    if: github\.event\.repository\.private == false\s*$"), true);
+            Expect("codeql.yml: nur gehosteter Runner", Regex.Match(codeql, @"(?m)^    runs-on:.*$").Value.Trim(), "runs-on: ubuntu-24.04");
+        }
+    }
+
+    // The third job of release.yml signs the update manifest. The signing key is a secret of the environment
+    // release-signing: it may appear in exactly one place, the env of the step that runs the signing command, and
+    // nowhere else (no job or workflow env, no other step, no action). The workflow is dispatch-only, so neither a
+    // pull request nor a fork ever starts it; the tag whose code runs in the approved job must be on main or dev.
     private static void ManifestJobParts()
     {
         const string workflow = ".github/workflows/release.yml";
@@ -4639,9 +4884,18 @@ static class SelfTest
 
         var yml = File.ReadAllText(workflow).Replace("\r\n", "\n", StringComparison.Ordinal);
         var on = Regex.Match(yml, @"(?m)^on:\n(?<b>(?:[ #].*\n|\n)*)").Groups["b"].Value;
-        Expect("release.yml: Ausloeser nur release und workflow_dispatch",
-            string.Join(",", Regex.Matches(on, @"(?m)^  (?<k>[a-z_]+):").Select(m => m.Groups["k"].Value)), "release,workflow_dispatch");
+        // Dispatch only (M12.1): the workflow ref of a release event is a tag, and the runner-group restriction can name
+        // branch refs only (refs/heads/main, refs/heads/dev).
+        Expect("release.yml: Ausloeser nur workflow_dispatch",
+            string.Join(",", Regex.Matches(on, @"(?m)^  (?<k>[a-z_]+):").Select(m => m.Groups["k"].Value)), "workflow_dispatch");
         Expect("release.yml: kein Ausloeser fuer Pull Requests", yml.Contains("pull_request", StringComparison.Ordinal), false);
+        Expect("release.yml: nichts liest mehr ein Release-Ereignis (github.event.release, event_name == 'release')",
+            Regex.IsMatch(yml, @"github\.event\.release|event_name == 'release'"), false);
+        Expect("release.yml: TAG kommt in jedem Job nur aus inputs.tag", Regex.Count(yml, @"(?m)^      TAG: \$\{\{ inputs\.tag \}\}$"), Regex.Count(yml, @"(?m)^      TAG:"));
+        Expect("release.yml: TAG wird in vier Jobs gesetzt", Regex.Count(yml, @"(?m)^      TAG:"), 4);
+        Expect("release.yml: UPLOAD kommt in jedem Job nur aus inputs.upload", Regex.Count(yml, @"(?m)^      UPLOAD: \$\{\{ inputs\.upload \}\}$"), Regex.Count(yml, @"(?m)^      UPLOAD:"));
+        Expect("release.yml: UPLOAD wird in drei Jobs gesetzt", Regex.Count(yml, @"(?m)^      UPLOAD:"), 3);
+        Expect("release.yml: Nebenlaeufigkeit nur je inputs.tag", yml.Contains("  group: release-${{ inputs.tag }}\n", StringComparison.Ordinal), true);
 
         string Job(string name) => Regex.Match(yml, @"(?m)^  " + name + @":\n(?<b>(?:    .*\n|\n)*)").Groups["b"].Value;
         List<string> StepsOf(string jobText) => [.. Regex.Split(jobText, @"(?m)^(?=      - )").Skip(1)];
@@ -4658,6 +4912,144 @@ static class SelfTest
         Expect("release.yml: preflight prueft beim Hochladen die Schluessel des Tags (update-verify --keys-from-source)",
             trustCheck.Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal) &&
             Regex.IsMatch(trustCheck, @"\n        run: dotnet run tools/package\.cs -- update-verify --keys-from-source\n"), true);
+        // With upload=true the tag's commit must lie on main or dev (identical or an ancestor), checked before any step
+        // checks out or runs code of the tag: the environment's branch rule constrains only the workflow ref, not the tag.
+        const string onBranchName = "Check that the tag is on main or dev";
+        void ExpectOnBranchStep(string step, string label)
+        {
+            Expect($"release.yml: {label} hat den Schritt '{onBranchName}'", step.Length > 0, true);
+            Expect($"release.yml: {label}: Tag-Pruefung gegen main und dev (compare, identical/behind, sonst Abbruch)",
+                step.Contains("for branch in main dev", StringComparison.Ordinal) &&
+                step.Contains("compare/$branch...$sha", StringComparison.Ordinal) &&
+                step.Contains("identical", StringComparison.Ordinal) && step.Contains("behind", StringComparison.Ordinal) &&
+                step.Contains("exit 1", StringComparison.Ordinal) && step.Contains("set -euo pipefail", StringComparison.Ordinal), true);
+            Expect($"release.yml: {label}: Tag-Pruefung loest den Tag ueber refs/tags auf (kein gleichnamiger Branch)",
+                step.Contains("commits/refs/tags/$TAG", StringComparison.Ordinal), true);
+            // The verified commit id leaves the step; the checkouts use it (never the tag name again: a tag can move).
+            Expect($"release.yml: {label}: Tag-Pruefung gibt die gepruefte Commit-ID aus (id ontag, sha=$sha nach GITHUB_OUTPUT, erst nach bestandener Pruefung)",
+                step.Contains("        id: ontag\n", StringComparison.Ordinal) &&
+                Regex.IsMatch(step, @"behind \]\]; then\n(?:.*\n)*?\s+echo ""sha=\$sha"" >> ""\$GITHUB_OUTPUT""\n\s+exit 0"), true);
+            var runAt = step.IndexOf("\n        run: |\n", StringComparison.Ordinal);
+            Expect($"release.yml: {label}: Tag-Pruefung nimmt GH_TOKEN mit GH_REPO aus dem env des Schritts, TAG nur aus der Umgebung",
+                Regex.IsMatch(step, @"\n        env:\n          GH_TOKEN: \$\{\{ github\.token \}\}\n(?:          #[^\n]*\n)?          GH_REPO: \$\{\{ github\.repository \}\}\n") &&
+                runAt >= 0 && !step[runAt..].Contains("${{", StringComparison.Ordinal), true);
+        }
+
+        var preflightSteps = StepsOf(preflight);
+        var preflightTagCheck = preflightSteps.FindIndex(x => Name(x) == "Check the tag");
+        var preflightOnBranch = preflightSteps.FindIndex(x => Name(x) == onBranchName);
+        ExpectOnBranchStep(preflightOnBranch >= 0 ? preflightSteps[preflightOnBranch] : string.Empty, "preflight");
+        Expect("release.yml: preflight prueft den Tag direkt nach der Tag-Regel", preflightTagCheck >= 0 && preflightOnBranch == preflightTagCheck + 1, true);
+        Expect("release.yml: preflight prueft den Tag nur beim Hochladen", preflightOnBranch >= 0 &&
+            preflightSteps[preflightOnBranch].Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal), true);
+        Expect("release.yml: preflight checkt den Tag erst nach der Branch-Pruefung aus",
+            preflightOnBranch >= 0 && preflightOnBranch < preflightSteps.FindIndex(x => x.Contains("actions/checkout@", StringComparison.Ordinal)), true);
+        // No checkout by tag name on the upload path (the tag could move after the check): preflight and manifest check out
+        // the commit id of their own verifying step, the build jobs the id from preflight (the tag name only as the
+        // fallback of a dry run, where preflight does not resolve it and nothing is uploaded).
+        Expect("release.yml: preflight und manifest checken die geprueften Commit-ID aus (steps.ontag.outputs.sha)",
+            Regex.Count(yml, @"(?m)^          ref: \$\{\{ steps\.ontag\.outputs\.sha \}\}$"), 2);
+        Expect("release.yml: Bau-Jobs checken inputs.ref, sonst die Commit-ID von preflight (Tag-Name nur als Rueckfall des Trockenlaufs)",
+            Regex.Count(yml, @"(?m)^          ref: \$\{\{ inputs\.ref \|\| needs\.preflight\.outputs\.tag_sha \|\| format\('refs/tags/\{0\}', inputs\.tag\) \}\}$"), 2);
+        Expect("release.yml: kein Checkout allein ueber den Tag-Namen", Regex.IsMatch(yml, @"(?m)^          ref: (refs/tags/)?\$\{\{ inputs\.tag \}\}$"), false);
+        Expect("release.yml: preflight gibt die geprueften Commit-ID aus (outputs.tag_sha)",
+            preflight.Contains("    outputs:\n      tag_sha: ${{ steps.ontag.outputs.sha }}\n", StringComparison.Ordinal), true);
+        Expect("release.yml: jeder Checkout der Bau-Jobs steht nach 'Require the verified commit' (Hochladen ohne geprueften Commit bricht ab)",
+            new[] { "windows", "linux" }.All(j =>
+            {
+                var st = StepsOf(Job(j));
+                var guard = st.FindIndex(x => Name(x) == "Require the verified commit");
+                return guard >= 0 && guard < st.FindIndex(x => x.Contains("actions/checkout@", StringComparison.Ordinal)) &&
+                    st[guard].Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal) &&
+                    st[guard].Contains("TAG_SHA: ${{ needs.preflight.outputs.tag_sha }}", StringComparison.Ordinal) &&
+                    st[guard].Contains("[0-9a-f]{40}", StringComparison.Ordinal);
+            }), true);
+
+        // The dispatch input ref accepts any text; pull/N/head and refs/pull/N/head would run foreign code on the persistent
+        // runners with a write token. Every job that sees the input checks it in its first step against a positive list
+        // (empty, a commit id, a plain branch name): the rule of RefInputRule, in bash or PowerShell.
+        string[] refAccepted = ["main", "dev", "feature/x", "refs/heads/dev", new string('a', 40), string.Empty];
+        string[] refRejected = ["refs/pull/1/head", "refs/tags/v1", "pull/35/head", "pull/1/merge", "refs/heads/../x", "a b", "$(x)"];
+        foreach (var value in refAccepted)
+        {
+            Expect($"ref-Regel: '{value}' wird angenommen", RefInputRule.Accepts(value), true);
+        }
+
+        foreach (var value in refRejected)
+        {
+            Expect($"ref-Regel: '{value}' wird abgelehnt", RefInputRule.Accepts(value), false);
+        }
+
+        foreach (var refJob in new[] { "preflight", "windows", "linux", "manifest" })
+        {
+            var refSteps = StepsOf(Job(refJob));
+            var first = refSteps.Count > 0 ? refSteps[0] : string.Empty;
+            Expect($"release.yml: Job {refJob} nimmt inputs.ref nur ueber die Umgebung (REF_INPUT)",
+                Job(refJob).Contains("      REF_INPUT: ${{ inputs.ref }}\n", StringComparison.Ordinal), true);
+            Expect($"release.yml: Job {refJob} prueft im ersten Schritt REF_INPUT gegen die Positivliste (leer, 40 Hex, Branch-Name)",
+                first.Contains("REF_INPUT", StringComparison.Ordinal) && first.Contains("[0-9a-f]{40}", StringComparison.Ordinal) &&
+                first.Contains("[A-Za-z0-9._/-]+", StringComparison.Ordinal) && first.Contains("pull/", StringComparison.Ordinal) &&
+                first.Contains("refs/heads/", StringComparison.Ordinal) && !first.Contains("inputs.ref", StringComparison.Ordinal), true);
+
+            // Run the real step with every value (bash for the Linux jobs, PowerShell for the Windows job).
+            var powerShell = refJob == "windows";
+            var runAt = first.IndexOf("\n        run: |\n", StringComparison.Ordinal);
+            if (runAt < 0)
+            {
+                Expect($"release.yml: Job {refJob}: erster Schritt hat einen Skriptblock", false, true);
+                continue;
+            }
+
+            var script = string.Join('\n', first[(runAt + "\n        run: |\n".Length)..].Split('\n')
+                .TakeWhile(l => l.Length == 0 || l.StartsWith("          ", StringComparison.Ordinal)).Select(l => l.Length >= 10 ? l[10..] : l)) + "\n";
+            var scriptDir = Path.Combine(Path.GetTempPath(), "pagewing-refstep-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(scriptDir);
+            try
+            {
+                var scriptFile = Path.Combine(scriptDir, powerShell ? "step.ps1" : "step.sh").Replace('\\', '/');
+                File.WriteAllText(scriptFile, script, new UTF8Encoding(powerShell));
+                var probeFile = Path.Combine(scriptDir, "probe.sh").Replace('\\', '/');
+                File.WriteAllText(probeFile, "echo pagewing-probe\n");
+                // On Windows "bash" is often the WSL launcher, which cannot see these paths: Git for Windows first.
+                var interpreters = powerShell ? new[] { "pwsh", "powershell" }
+                    : OperatingSystem.IsWindows() ? new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "bin", "bash.exe"), "bash" }
+                    : new[] { "bash" };
+                string? shell = null;
+                foreach (var candidate in interpreters)
+                {
+                    var (code, output) = powerShell ? RunScript(candidate, ["-NoProfile", "-NonInteractive", "-Command", "'pagewing-probe'"], []) : RunScript(candidate, [probeFile], []);
+                    if (code == 0 && output.Contains("pagewing-probe", StringComparison.Ordinal))
+                    {
+                        shell = candidate;
+                        break;
+                    }
+                }
+
+                if (shell is null)
+                {
+                    Console.WriteLine($"selftest: {(powerShell ? "PowerShell" : "bash")} fehlt, der erste Schritt von {refJob} wurde nicht ausgefuehrt.");
+                    continue;
+                }
+
+                foreach (var value in refAccepted.Concat(refRejected))
+                {
+                    var environment = new Dictionary<string, string>
+                    {
+                        ["REF_INPUT"] = value, ["TAG"] = "v0.1.0", ["UPLOAD"] = "false", ["UPDATE_KEY_ID"] = "release-1", ["GITHUB_ENV"] = Path.Combine(scriptDir, "env.txt").Replace('\\', '/'),
+                    };
+                    var (exit, _) = powerShell
+                        ? RunScript(shell, ["-NoProfile", "-NonInteractive", "-File", scriptFile], environment)
+                        : RunScript(shell, [scriptFile], environment);
+                    Expect($"release.yml: erster Schritt von {refJob} mit ref '{value}' {(RefInputRule.Accepts(value) ? "laeuft durch" : "bricht ab")}",
+                        exit == 0, RefInputRule.Accepts(value));
+                }
+            }
+            finally
+            {
+                Directory.Delete(scriptDir, true);
+            }
+        }
+
         foreach (var buildJob in new[] { "windows", "linux" })
         {
             Expect($"release.yml: Job {buildJob} wartet auf preflight", Job(buildJob).Contains("    needs: preflight\n", StringComparison.Ordinal), true);
@@ -4665,15 +5057,48 @@ static class SelfTest
 
         var job = Job("manifest");
         Expect("release.yml: Job manifest vorhanden", job.Length > 0, true);
-        Expect("release.yml: Job manifest wartet auf beide Jobs", job.Contains("    needs: [windows, linux]\n", StringComparison.Ordinal), true);
+        Expect("release.yml: Job manifest wartet auf preflight und beide Bau-Jobs", job.Contains("    needs: [preflight, windows, linux]\n", StringComparison.Ordinal), true);
         Expect("release.yml: Job manifest laeuft nur nach Erfolg beider Jobs und nur beim Hochladen", job.Contains(
-            "    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && (github.event_name == 'release' || inputs.upload) }}\n",
+            "    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && inputs.upload }}\n",
             StringComparison.Ordinal), true);
-        Expect("release.yml: Job manifest auf dem Linux-Runner", job.Contains("    runs-on: [self-hosted, dotnet-linux]\n", StringComparison.Ordinal), true);
+        // The only job that sees the signing key runs on a fresh GitHub-hosted runner, behind the environment.
+        Expect("release.yml: Job manifest auf dem gehosteten Runner ubuntu-24.04", job.Contains("    runs-on: ubuntu-24.04\n", StringComparison.Ordinal), true);
+        Expect("release.yml: Job manifest nennt kein self-hosted-Label", IsSelfHosted(Regex.Match(job, @"(?m)^    runs-on:.*$").Value), false);
+        Expect("release.yml: Job manifest mit environment: release-signing", job.Contains("    environment: release-signing\n", StringComparison.Ordinal), true);
+        foreach (var buildJob in new[] { "windows", "linux" })
+        {
+            var buildSteps = StepsOf(Job(buildJob));
+            var uploadAt = buildSteps.FindIndex(x => Name(x) == "Upload to the release");
+            var reportAt = buildSteps.FindIndex(x => Name(x) == "Report the SHA-256 of the checksum file");
+            var report = reportAt >= 0 ? buildSteps[reportAt] : string.Empty;
+            Expect($"release.yml: Job {buildJob}: Schritt 'Report the SHA-256' direkt nach dem Hochladen", uploadAt >= 0 && reportAt == uploadAt + 1, true);
+            Expect($"release.yml: Job {buildJob}: Report-Schritt (id sums, nur beim Hochladen, hasht die hochgeladene Datei, schreibt sums_sha256 nach GITHUB_OUTPUT)",
+                report.Contains("        id: sums\n", StringComparison.Ordinal) && report.Contains("        if: env.UPLOAD == 'true'\n", StringComparison.Ordinal) &&
+                report.Contains($"out/release/SHA256SUMS-{buildJob}.txt", StringComparison.Ordinal) &&
+                report.Contains("sums_sha256=$hash", StringComparison.Ordinal) && report.Contains("GITHUB_OUTPUT", StringComparison.Ordinal) &&
+                report.Contains("[0-9a-f]{64}", StringComparison.Ordinal), true);
+            Expect($"release.yml: Job {buildJob} gibt die SHA-256 seiner Pruefsummendatei aus (outputs.sums_sha256)",
+                Job(buildJob).Contains("    outputs:\n      sums_sha256: ${{ steps.sums.outputs.sums_sha256 }}\n", StringComparison.Ordinal), true);
+        }
         Expect("release.yml: Job manifest darf hochladen (contents: write)", Regex.IsMatch(job, @"    permissions:\n      contents: write\n"), true);
 
         var steps = StepsOf(job);
         int Index(string name) => steps.FindIndex(s => Name(s) == name);
+
+        var manifestOnBranch = Index(onBranchName);
+        ExpectOnBranchStep(manifestOnBranch >= 0 ? steps[manifestOnBranch] : string.Empty, "manifest");
+        Expect("release.yml: manifest prueft den Tag direkt nach der Tag-Regel", manifestOnBranch >= 1 && Name(steps[manifestOnBranch - 1]) == "Check the tag and derive the version", true);
+        var sameSha = Index("Compare the verified commit with preflight");
+        var sameShaStep = sameSha >= 0 ? steps[sameSha] : string.Empty;
+        Expect("release.yml: manifest vergleicht seine geprueften Commit-ID mit der von preflight, direkt danach, vor dem Checkout (geschlossen im Fehlerfall, ueber die Umgebung)",
+            sameSha == manifestOnBranch + 1 && sameSha < steps.FindIndex(x => x.Contains("actions/checkout@", StringComparison.Ordinal)) &&
+            sameShaStep.Contains("OWN_SHA: ${{ steps.ontag.outputs.sha }}", StringComparison.Ordinal) &&
+            sameShaStep.Contains("PREFLIGHT_SHA: ${{ needs.preflight.outputs.tag_sha }}", StringComparison.Ordinal) &&
+            sameShaStep.Contains("[0-9a-f]{40}", StringComparison.Ordinal) && sameShaStep.Contains(@"""$OWN_SHA"" == ""$PREFLIGHT_SHA""", StringComparison.Ordinal) &&
+            sameShaStep.Contains("exit 1", StringComparison.Ordinal) &&
+            !sameShaStep[sameShaStep.IndexOf("\n        run: |\n", StringComparison.Ordinal)..].Contains("${{", StringComparison.Ordinal), true);
+        Expect("release.yml: manifest prueft den Tag vor jedem Checkout und vor jedem Schritt, der Code des Tags laeuft",
+            manifestOnBranch >= 0 && steps.Take(manifestOnBranch + 1).All(x => !x.Contains("actions/checkout@", StringComparison.Ordinal) && !Regex.IsMatch(x, @"dotnet (run|build|test|project)|package\.cs")), true);
 
         Expect("release.yml: genau eine Stelle nennt ein Secret", Regex.Count(yml, @"secrets\."), 1);
         var sign = Index("Sign the update manifest");
@@ -4705,11 +5130,24 @@ static class SelfTest
 
         var test = Index("Check that the release key is not the placeholder");
         var download = Index("Download the checksums and the file sizes");
+        var sumsCheck = Index("Verify the checksum files against the build jobs");
         var build = Index("Build the update manifest");
         var verify = Index("Verify the signature with the keys in UpdateTrust.cs");
         var upload = Index("Upload the manifest to the release");
-        Expect("release.yml: Reihenfolge Platzhalter-Test, Download, Bau, Signatur, Pruefung, Hochladen",
-            test >= 0 && test < download && download < build && build < sign && sign < verify && verify < upload, true);
+        Expect("release.yml: Reihenfolge Platzhalter-Test, Download, Summenvergleich, Bau, Signatur, Pruefung, Hochladen",
+            test >= 0 && test < download && download < sumsCheck && sumsCheck < build && build < sign && sign < verify && verify < upload, true);
+        var sumsStep = sumsCheck >= 0 ? steps[sumsCheck] : string.Empty;
+        Expect("release.yml: Summenvergleich nach dem Werkzeug-Bau (nutzt PACKAGE_TOOL)", buildTool >= 0 && buildTool < sumsCheck, true);
+        Expect("release.yml: Summenvergleich nimmt die Hashes der Bau-Jobs ueber die Umgebung (kein ${{ }} in der Befehlszeile)",
+            Regex.IsMatch(sumsStep, @"\n        env:\n(?:          \S.*\n)*          WINDOWS_SUMS_SHA256: \$\{\{ needs\.windows\.outputs\.sums_sha256 \}\}\n") &&
+            Regex.IsMatch(sumsStep, @"\n        env:\n(?:          \S.*\n)*          LINUX_SUMS_SHA256: \$\{\{ needs\.linux\.outputs\.sums_sha256 \}\}\n") &&
+            sumsStep.Contains("\n        run: |\n", StringComparison.Ordinal) &&
+            !sumsStep[sumsStep.IndexOf("\n        run: |\n", StringComparison.Ordinal)..].Contains("${{", StringComparison.Ordinal), true);
+        Expect("release.yml: Summenvergleich prueft beide heruntergeladenen Dateien mit sums-verify und bricht bei Fehler ab",
+            sumsStep.Contains("set -euo pipefail", StringComparison.Ordinal) &&
+            sumsStep.Contains(@"sums-verify --file out/manifest/SHA256SUMS-windows.txt --sha256 ""$WINDOWS_SUMS_SHA256""", StringComparison.Ordinal) &&
+            sumsStep.Contains(@"sums-verify --file out/manifest/SHA256SUMS-linux.txt --sha256 ""$LINUX_SUMS_SHA256""", StringComparison.Ordinal), true);
+        Expect("release.yml: Summenvergleich ohne Secret und ohne Action", sumsStep.Contains("secrets.", StringComparison.Ordinal) || sumsStep.Contains("uses:", StringComparison.Ordinal), false);
         Expect("release.yml: Platzhalter-Test laeuft scharf (PAGEWING_REQUIRE_RELEASE_KEY)", test >= 0 &&
             steps[test].Contains("PAGEWING_REQUIRE_RELEASE_KEY: '1'", StringComparison.Ordinal) &&
             steps[test].Contains("ReleaseKeysAreNotThePlaceholderWhenReleasing", StringComparison.Ordinal), true);
@@ -4852,6 +5290,34 @@ static class SelfTest
         finally
         {
             Directory.Delete(dir, true);
+        }
+    }
+
+    // Runs a program with the given environment added; (-1, "") when it is not installed.
+    private static (int Code, string Output) RunScript(string file, string[] arguments, Dictionary<string, string> environment)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(file) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            foreach (var argument in arguments)
+            {
+                psi.ArgumentList.Add(argument);
+            }
+
+            foreach (var (name, value) in environment)
+            {
+                psi.Environment[name] = value;
+            }
+
+            using var process = Process.Start(psi)!;
+            var output = process.StandardOutput.ReadToEnd();
+            process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            return (process.ExitCode, output);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return (-1, string.Empty);
         }
     }
 

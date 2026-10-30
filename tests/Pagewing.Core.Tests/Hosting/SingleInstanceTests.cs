@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Threading.Channels;
 using Pagewing.Core.Hosting;
@@ -249,6 +252,221 @@ public sealed class SingleInstanceTests
         Assert.True(SingleInstance.TrySend(name, ["good.pdf"], Due));
 
         Assert.Equal(["good.pdf"], await NextAsync(received));
+        await AssertNothingAsync(received);
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void ThePipeIsOpenToTheCurrentUserOnly()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The access list of a named pipe exists on Windows only.");
+        var name = UniqueName();
+        using var primary = Primary(name);
+        Listen(primary);
+
+        using var client = new NamedPipeClientStream(
+            ".", SingleInstance.PipeNameFor(name), PipeAccessRights.Write | PipeAccessRights.ReadPermissions, PipeOptions.CurrentUserOnly, System.Security.Principal.TokenImpersonationLevel.None, HandleInheritability.None);
+        client.Connect((int)Due.TotalMilliseconds);
+        var rules = client.GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+            .Cast<PipeAccessRule>()
+            .ToList();
+
+        // Allow entries for the account that runs the program only. .NET's CurrentUserOnly names the OWNER of the token: for
+        // the user it is the user, for an elevated administrator it is the group Administrators (found by the first hosted CI
+        // run, which runs elevated). That is still closed to every user who is not an administrator.
+        var identity = WindowsIdentity.GetCurrent();
+        Assert.NotEmpty(rules);
+        Assert.All(rules, rule => Assert.Equal(AccessControlType.Allow, rule.AccessControlType));
+        Assert.All(rules, rule => Assert.True(
+            IsTheAccountOfTheProgram((SecurityIdentifier)rule.IdentityReference, identity.User!, identity.Owner),
+            $"{rule.IdentityReference.Value} may use the pipe; the user is {identity.User!.Value}, the token owner {identity.Owner?.Value}."));
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void OnlyTheUserOrTheOwnerOfTheTokenIsTheAccountOfTheProgram()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Security identifiers of Windows.");
+        var user = new SecurityIdentifier("S-1-5-21-1-2-3-1001");
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+
+        Assert.True(IsTheAccountOfTheProgram(user, user, owner: null));
+        Assert.True(IsTheAccountOfTheProgram(user, user, administrators));
+        Assert.True(IsTheAccountOfTheProgram(administrators, user, administrators));
+
+        // The elevated case without the elevated token: Administrators are not the account unless they own the token.
+        Assert.False(IsTheAccountOfTheProgram(administrators, user, owner: null));
+        Assert.False(IsTheAccountOfTheProgram(administrators, user, user));
+        foreach (var wellKnown in new[] { WellKnownSidType.WorldSid, WellKnownSidType.BuiltinUsersSid, WellKnownSidType.AuthenticatedUserSid, WellKnownSidType.InteractiveSid })
+        {
+            Assert.False(IsTheAccountOfTheProgram(new SecurityIdentifier(wellKnown, null), user, owner: null));
+            Assert.False(IsTheAccountOfTheProgram(new SecurityIdentifier(wellKnown, null), user, user));
+        }
+    }
+
+    // The user, or the owner of the token (the Administrators group when elevated); never Everyone, Users, Authenticated Users.
+    [SupportedOSPlatform("windows")]
+    private static bool IsTheAccountOfTheProgram(SecurityIdentifier rule, SecurityIdentifier user, SecurityIdentifier? owner)
+    {
+        SecurityIdentifier[] broad =
+        [
+            new(WellKnownSidType.WorldSid, null),
+            new(WellKnownSidType.BuiltinUsersSid, null),
+            new(WellKnownSidType.AuthenticatedUserSid, null),
+        ];
+        return !broad.Contains(rule) && (rule == user || (owner is not null && rule == owner));
+    }
+
+    [Fact]
+    public void TheSocketPathIsTheRootedNameOrTheFileOfTheTempFolder()
+    {
+        var rooted = Path.Combine(Path.GetTempPath(), "run", "pagewing-x.pipe");
+
+        Assert.Equal(rooted, SingleInstance.SocketPathFor(rooted));
+        Assert.Equal(Path.Combine(Path.GetTempPath(), "CoreFxPipe_pagewing-x"), SingleInstance.SocketPathFor("pagewing-x"));
+    }
+
+    [Fact]
+    public void RestrictingASocketThatIsNotThereOrNotAFileNeverThrows()
+    {
+        SingleInstance.RestrictSocket(Path.Combine(Path.GetTempPath(), "pagewing-missing-" + Guid.NewGuid().ToString("N")));
+        SingleInstance.RestrictSocket("pagewing-missing-" + Guid.NewGuid().ToString("N"));
+        SingleInstance.RestrictSocket("bad name");
+
+        // A folder at that path is left alone (never the temp folder itself: only what the test made).
+        var folder = Directory.CreateTempSubdirectory("pagewing-socket-");
+        try
+        {
+            var before = OperatingSystem.IsWindows() ? (UnixFileMode?)null : ModeOf(folder.FullName);
+
+            SingleInstance.RestrictSocket(folder.FullName);
+
+            Assert.True(folder.Exists);
+            Assert.Equal(before, OperatingSystem.IsWindows() ? null : ModeOf(folder.FullName));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+
+        [UnsupportedOSPlatform("windows")]
+        static UnixFileMode ModeOf(string path) => File.GetUnixFileMode(path);
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public void RestrictingASocketLeavesReadAndWriteForTheOwnerOnly()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes exist on Linux only.");
+        var file = Path.Combine(Path.GetTempPath(), "pagewing-socket-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(file, string.Empty);
+        try
+        {
+            File.SetUnixFileMode(file, (UnixFileMode)0b111_101_101);
+
+            SingleInstance.RestrictSocket(file);
+
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(file));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public void TheSocketIsOpenToTheCurrentUserOnly()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix sockets exist on Linux only.");
+        var name = UniqueName();
+        using var primary = Primary(name);
+        Listen(primary);
+        var pipe = SingleInstance.PipeNameFor(name);
+
+        // With $XDG_RUNTIME_DIR the pipe name is the socket path; without it .NET puts the socket into the temp folder.
+        var socket = Path.IsPathRooted(pipe) ? pipe : Path.Combine(Path.GetTempPath(), "CoreFxPipe_" + pipe);
+
+        // The listener binds on a pool thread after Listen returned, and .NET restricts the mode after the bind: wait for both.
+        const UnixFileMode Others = UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute
+            | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+        var until = Environment.TickCount64 + (long)Due.TotalMilliseconds;
+        var mode = (UnixFileMode?)null;
+        while (Environment.TickCount64 < until)
+        {
+            try
+            {
+                mode = File.Exists(socket) ? File.GetUnixFileMode(socket) : null;
+            }
+            catch (IOException)
+            {
+                mode = null;
+            }
+
+            if (mode is { } found && (found & Others) == UnixFileMode.None)
+            {
+                break;
+            }
+
+            Thread.Sleep(20);
+        }
+
+        if (mode is null)
+        {
+            // The listing is built only on failure, so a problem while listing can never fail a passing run.
+            var directory = Path.GetDirectoryName(socket)!;
+            var entries = Directory.Exists(directory)
+                ? string.Join(", ", Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName).Take(30))
+                : "(the folder does not exist)";
+            Assert.Fail($"No socket at {socket} after {Due.TotalSeconds:0} s. Folder {directory} holds: {entries}. XDG_RUNTIME_DIR={Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")}.");
+        }
+
+        Assert.True((mode!.Value & Others) == UnixFileMode.None, $"The socket {socket} has the mode {mode}; group and others must have no access.");
+    }
+
+    [Fact]
+    public async Task AMessageOverTheSizeLimitIsDroppedWithoutReadingItAll()
+    {
+        var name = UniqueName();
+        using var primary = Primary(name);
+        var received = Listen(primary);
+
+        // A valid message for one path followed by far more bytes than any message may have: refused as a whole.
+        var big = new byte[Message("a.pdf").Length + (8 * 1024 * 1024)];
+        Message("a.pdf").CopyTo(big, 0);
+        try
+        {
+            SendRaw(name, big);
+        }
+        catch (IOException)
+        {
+            // The listener stops reading at its limit and closes the pipe; the sender may notice.
+        }
+
+        Assert.True(SingleInstance.TrySend(name, ["good.pdf"], Due));
+        Assert.Equal(["good.pdf"], await NextAsync(received));
+        await AssertNothingAsync(received);
+    }
+
+    [Fact]
+    public async Task AClientThatNeverFinishesIsDroppedAfterTheReadTimeout()
+    {
+        var name = UniqueName();
+        using var primary = Primary(name);
+        var received = Listen(primary);
+
+        // Connects, sends half a message and stays: the next sender must still be served, within a few seconds.
+        using var stalled = new NamedPipeClientStream(".", SingleInstance.PipeNameFor(name), PipeDirection.Out, PipeOptions.CurrentUserOnly);
+        stalled.Connect((int)Due.TotalMilliseconds);
+        var half = Message("one.pdf", "two.pdf");
+        stalled.Write(half.AsSpan(0, half.Length - 3));
+        stalled.Flush();
+
+        var watch = Stopwatch.StartNew();
+        Assert.True(SingleInstance.TrySend(name, ["good.pdf"], Due));
+        Assert.Equal(["good.pdf"], await NextAsync(received));
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(8), watch.Elapsed.ToString());
         await AssertNothingAsync(received);
     }
 

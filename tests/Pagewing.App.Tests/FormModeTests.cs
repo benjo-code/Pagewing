@@ -398,6 +398,7 @@ public sealed partial class FormModeTests : IDisposable
         tab.DiscardDraft();
         tab.ToggleAnnotateCommand.Execute(null);
         await WaitUntilAsync(() => tab.IsAnnotating);
+        await WaitUntilAsync(() => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(() => !tab.CanUndo && !tab.HasEditsInFlight);
         Assert.Equal("Alt", await ValueAsync(tab, 0, "Name"));
