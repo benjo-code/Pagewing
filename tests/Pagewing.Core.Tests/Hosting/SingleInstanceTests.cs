@@ -319,6 +319,45 @@ public sealed class SingleInstanceTests
     }
 
     [Fact]
+    public void TheSocketPathIsTheRootedNameOrTheFileOfTheTempFolder()
+    {
+        var rooted = Path.Combine(Path.GetTempPath(), "run", "pagewing-x.pipe");
+
+        Assert.Equal(rooted, SingleInstance.SocketPathFor(rooted));
+        Assert.Equal(Path.Combine(Path.GetTempPath(), "CoreFxPipe_pagewing-x"), SingleInstance.SocketPathFor("pagewing-x"));
+    }
+
+    [Fact]
+    public void RestrictingASocketThatIsNotThereOrNotAFileNeverThrows()
+    {
+        SingleInstance.RestrictSocket(Path.Combine(Path.GetTempPath(), "pagewing-missing-" + Guid.NewGuid().ToString("N")));
+        SingleInstance.RestrictSocket("pagewing-missing-" + Guid.NewGuid().ToString("N"));
+        SingleInstance.RestrictSocket(Path.GetTempPath());
+        SingleInstance.RestrictSocket("bad name");
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public void RestrictingASocketLeavesReadAndWriteForTheOwnerOnly()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes exist on Linux only.");
+        var file = Path.Combine(Path.GetTempPath(), "pagewing-socket-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(file, string.Empty);
+        try
+        {
+            File.SetUnixFileMode(file, (UnixFileMode)0b111_101_101);
+
+            SingleInstance.RestrictSocket(file);
+
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(file));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
     [UnsupportedOSPlatform("windows")]
     public void TheSocketIsOpenToTheCurrentUserOnly()
     {
