@@ -559,6 +559,7 @@ public sealed class AnnotationToolbarTests : IDisposable
         Assert.Equal(new ToolStyle(DrawColor.Red, StrokeWidth.Medium), tab.StyleOf(AnnotationKind.Rectangle));
 
         // Each change is one step: undo brings back the width, then the colour.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         var undone = await WaitForAsync(window, tab, created.Name, a => a.Drawing?.Width == 2);
         Assert.Equal(DrawPalette.ColorOf(DrawColor.Blue), undone.Color);

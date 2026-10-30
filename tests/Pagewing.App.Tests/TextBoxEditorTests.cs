@@ -249,6 +249,7 @@ public sealed class TextBoxEditorTests : IDisposable
         Assert.Equal(tab.SelectedAnnotation?.Name, after.Name);
 
         // One step: undo brings the old text back.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
         Assert.Equal("Before", Assert.Single(await TextBoxesAsync(tab)).Contents);
@@ -281,6 +282,7 @@ public sealed class TextBoxEditorTests : IDisposable
         tab.SetSelectionWidthCommand.Execute(StrokeWidth.Thick);
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
         Assert.Equal(24, Assert.Single(await TextBoxesAsync(tab)).TextBox!.FontSize);
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight);
         Assert.Equal(16, Assert.Single(await TextBoxesAsync(tab)).TextBox!.FontSize);

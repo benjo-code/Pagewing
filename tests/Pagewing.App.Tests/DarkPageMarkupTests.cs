@@ -72,11 +72,13 @@ public sealed class DarkPageMarkupTests : PrintTestHost
         await WaitUntilAsync(window, () => Count(window, view, line, color => Near(color, Blue, 2)) > 50);
 
         // Undo takes it away again.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => !tab.HasEditsInFlight && Count(window, view, line, color => Near(color, Blue, 40)) == 0);
 
         // Redo on the light page: PDFium's own blue line; back to dark: still blue.
         tab.TogglePageThemeCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.CanRedo);
         tab.RedoCommand.Execute(null);
         await WaitUntilAsync(window, () => view.Canvas.PageTheme == PageTheme.Light && !tab.HasEditsInFlight
             && Count(window, view, line, color => color.B - color.R > 60 && color.B > 200) > 50);

@@ -138,6 +138,7 @@ public sealed class AnnotateModeTests : IDisposable
         Assert.Null(tab.TextSelection);
 
         // One step per page on the history: two undos remove both.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => tab.CanUndo && !tab.Editor.IsBusy);
         tab.UndoCommand.Execute(null);
@@ -200,7 +201,9 @@ public sealed class AnnotateModeTests : IDisposable
         var (window, viewModel, view) = Show();
         var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
         var text = await TextAsync(window, tab, 0);
-        view.MultiClickMarkupDelay = TimeSpan.FromMilliseconds(150);
+        // Long enough that a loaded machine cannot let the wait for a third click run out between the clicks and the
+        // checks below (the dispatcher only runs timers inside Click and the waits); the word then comes after this delay.
+        view.MultiClickMarkupDelay = TimeSpan.FromMilliseconds(1000);
         await BeginAsync(window, tab, AnnotationKind.StrikeOut);
 
         // A double click marks its word once no third click came.
@@ -211,6 +214,7 @@ public sealed class AnnotateModeTests : IDisposable
         AssertRectNear(Assert.Single(text.RectsOf(9, 17)), Assert.Single(marked.QuadRects), 0.5);
 
         // Undo it; then a triple click marks the line, not the word as well.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => !tab.CanUndo && !tab.Editor.IsBusy);
         // Elsewhere on the line (farther than a double click may move), so the clicks do not continue the double click above.
@@ -490,6 +494,7 @@ public sealed class AnnotateModeTests : IDisposable
         Assert.Empty(await MarkupsAsync(tab, 0));
         Assert.Null(comments.SelectedItem);
 
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => comments.Items.Count == 1);
         Assert.Equal(name, Assert.Single(await MarkupsAsync(tab, 0)).Name);
@@ -521,6 +526,7 @@ public sealed class AnnotateModeTests : IDisposable
         Assert.Equal(MarkupColor.Green, AnnotationPalette.Match(annotation.Color!.Value));
 
         // Undo brings the old colour back.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => comments.SelectedColor == MarkupColor.Yellow);
     }
@@ -890,6 +896,7 @@ public sealed class AnnotateModeTests : IDisposable
         Assert.Contains(tab, viewModel.Tabs);
 
         // Both steps are on the history: undo the delete (the green markup comes back), then the colour.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         await WaitUntilAsync(window, () => comments.Items.Count == 1 && !tab.HasEditsInFlight);
         Assert.Equal(MarkupColor.Green, AnnotationPalette.Match(Assert.Single(await MarkupsAsync(tab, 0)).Color!.Value));

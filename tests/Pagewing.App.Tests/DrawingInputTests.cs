@@ -889,6 +889,7 @@ public sealed class DrawingInputTests : IDisposable
         AssertRectNear(new PageRect(300, 100, 360, 130), drawings[1].Drawing!.Box, 0.5);
 
         // The history has them in the same order: undo takes the rectangle first.
+        await WaitUntilAsync(window, () => tab.CanUndo);
         tab.UndoCommand.Execute(null);
         Assert.Equal(2, (await WaitForDrawingsAsync(window, tab, 0, count: 2)).Length);
         Assert.DoesNotContain(await DrawingsAsync(tab, 0), d => d.Kind == AnnotationKind.Rectangle);
