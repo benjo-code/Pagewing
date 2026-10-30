@@ -27,7 +27,7 @@ jobs:
     name: measure-windows-gpu
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, dotnet-windows-gpu]
-    timeout-minutes: 30
+    timeout-minutes: 45
     # On the job (not the workflow) so that a skipped run never takes the group.
     # Two runs must never overlap on the one runner; a running measurement is never cancelled.
     concurrency:
@@ -145,7 +145,7 @@ jobs:
           $scrollFile = Join-Path $outDir 'scroll.txt'
           Set-Content -Path $scrollFile -Value @() -Encoding utf8
           $failed = $false
-          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf') {
+          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf', 'forms-basic.pdf') {
             $pdf = (Resolve-Path "testdata/pdfs/$file").Path
             for ($run = 1; $run -le 3; $run++) {
               $stdout = Join-Path $outDir "scroll-$file-$run.out"
@@ -192,7 +192,7 @@ jobs:
         id: scroll-compare
         if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
         continue-on-error: true
-        timeout-minutes: 8
+        timeout-minutes: 12
         run: |
           [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
           $work = (Get-Location).Path
@@ -201,7 +201,7 @@ jobs:
           $csv = Join-Path $outDir 'scroll-compare.csv'
           Set-Content -Path $csv -Value 'file,zoom,path,run,exit,frames,p99_ms,max_ms,mean_ms,over20_pct,over30_pct,range_dips' -Encoding utf8
           $failed = $false
-          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf') {
+          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf', 'forms-basic.pdf') {
             $pdf = (Resolve-Path "testdata/pdfs/$file").Path
             $stem = [System.IO.Path]::GetFileNameWithoutExtension($file)
             foreach ($zoom in 100, 400) {
