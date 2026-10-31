@@ -1,17 +1,17 @@
 # Pagewing
 
-Schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux. PDFs öffnen so schnell wie im Browser. Man kann sie lesen, durchsuchen, kommentieren, ausfüllen, unterschreiben, Seiten organisieren, schwärzen und per OCR durchsuchbar machen. Pagewing läuft als Desktop-App mit modernem Design oder als Kommandozeilen-Werkzeug `pagewing`. Komplett offline, ohne Konto, ohne Telemetrie.
+Schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux. PDFs öffnen so schnell wie im Browser. Man kann sie lesen, durchsuchen, kommentieren, ausfüllen, unterschreiben, Seiten organisieren, schwärzen und per OCR durchsuchbar machen. Pagewing läuft als Desktop-App mit modernem Design oder als Kommandozeilen-Werkzeug `pagewing`. Offline, ohne Konto, ohne Telemetrie; ins Netz gehen nur die abschaltbare Update-Prüfung und der Download eines Updates, das man selbst installieren lässt.
 
-**Status:** [v0.1.0](https://github.com/benjo-code/Pagewing/releases/tag/v0.1.0) (schneller Viewer) ist veröffentlicht, die nächsten Versionen sind in Entwicklung. Siehe [Docs/ROADMAP.md](Docs/ROADMAP.md) und [CHANGELOG.md](CHANGELOG.md).
+**Status:** [v0.1.0](https://github.com/benjo-code/Pagewing/releases/tag/v0.1.0) (schneller Viewer) ist veröffentlicht, `v0.2.0` (annotieren, ausfüllen, unterschreiben, automatische Updates) ist in Vorbereitung, weitere Versionen sind in Entwicklung. Siehe [Docs/ROADMAP.md](Docs/ROADMAP.md) und [CHANGELOG.md](CHANGELOG.md).
 
-> **English:** Pagewing is a fast, open-source alternative to Adobe Acrobat for Windows and Linux: view, search, annotate, fill, sign, organize, redact and OCR PDFs. Desktop app and CLI share one core. Fully offline, no telemetry. Built with .NET 10 (Native AOT), Avalonia and PDFium. Licensed under GPL-3.0-or-later. Project docs are in German; the app UI is English and German.
+> **English:** Pagewing is a fast, open-source alternative to Adobe Acrobat for Windows and Linux: view, search, annotate, fill, sign, organize, redact and OCR PDFs. Desktop app and CLI share one core. Offline apart from the update check (can be switched off) and the download of an update you choose to install, no telemetry. Built with .NET 10 (Native AOT), Avalonia and PDFium. Licensed under GPL-3.0-or-later. Project docs are in German; the app UI is English and German.
 
 ## Geplanter Funktionsumfang
 
 | Version | Inhalt |
 |---|---|
 | v0.1.0 | Schneller Viewer: Tabs, Seitenvorschau, Inhaltsverzeichnis, Volltextsuche, Text kopieren, Layouts und Zoom, dunkler Modus, Befehlspalette (Strg+K), Drucken, Installer |
-| v0.2.0 | Annotieren (Hervorheben, Zeichnen, Formen, Kommentare), Formulare ausfüllen, sichtbare Unterschrift |
+| v0.2.0 | Annotieren (Hervorheben, Zeichnen, Formen, Kommentare), Formulare ausfüllen, sichtbare Unterschrift, automatische Updates |
 | v0.3.0 | Seiten organisieren (umsortieren, drehen, zusammenführen, teilen), Schwärzen |
 | v1.0.0 | OCR für gescannte PDFs, Text in Grenzen bearbeiten |
 
@@ -19,7 +19,9 @@ Bewusst nicht geplant sind unter anderem Zertifikatssignaturen, XFA-Formulare, J
 
 ## Installation
 
-Die Pakete hängen am [GitHub-Release](https://github.com/benjo-code/Pagewing/releases) (Dateinamen und Bauanleitung: [packaging/README.md](packaging/README.md)); neben jedem Betriebssystem liegt eine `SHA256SUMS-<os>.txt` zum Prüfen der Downloads. Pagewing greift nie ins Netz: keine Telemetrie, keine Update-Prüfung.
+Die Pakete hängen am [GitHub-Release](https://github.com/benjo-code/Pagewing/releases) (Dateinamen und Bauanleitung: [packaging/README.md](packaging/README.md)); neben jedem Betriebssystem liegt eine `SHA256SUMS-<os>.txt` zum Prüfen der Downloads.
+
+**Updates und Netz:** Ab `v0.2.0`, dem ersten Release mit Updater (`v0.1.0` enthält ihn nicht, von dort steigt man einmal von Hand um), sucht die Desktop-App nach dem Start im Hintergrund nach einer neuen Version, höchstens einmal in 24 Stunden. Sie fragt dafür nur die öffentliche Release-Seite von Pagewing auf GitHub und sendet keine Kennung, keine Version und keine Angaben über den Rechner; GitHub sieht wie jede Website die IP-Adresse. Abschalten lässt sich das in den Einstellungen („Automatisch nach Updates suchen“); danach geht Pagewing nur noch ins Netz, wenn man in der Befehlspalette „Nach Updates suchen“ wählt. Netzzugriff gibt es damit genau zweimal: für die Update-Prüfung und für den Download eines Updates, das man mit „Installieren“ gewählt hat. Installiert wird nur nach diesem Klick und nur, wenn Signatur und Prüfsumme passen; danach sollen sich die Tabs wieder öffnen. Selbst aktualisieren sollen sich die Windows-Installation (für „alle Benutzer“ mit UAC-Abfrage) und das AppImage; das `.deb` und die portable ZIP zeigen einen Link zur Download-Seite. Neustart, Tabs und Selbstaktualisierung sind bisher nur mit Testattrappen geprüft; ein echtes Update ist erst von `v0.2.0` auf die nächste Version möglich und damit dort der erste echte Lauf.
 
 **Windows (10 und neuer, 64 Bit)**
 
@@ -52,7 +54,7 @@ Das Code-Grundgerüst steht (Milestone 0): Solution mit `Pagewing.Pdfium`, `Page
 - Windows: Visual Studio Build Tools mit „Desktopentwicklung mit C++“, und `vswhere.exe` im PATH (Ordner `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`).
 - Linux: `clang` und `zlib1g-dev` (`sudo apt-get install -y clang zlib1g-dev`).
 
-Für die self-hosted CI-Runner kommt unter Windows hinzu: die PowerShell-Ausführungsrichtlinie `RemoteSigned` für LocalMachine (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer Windows PowerShell mit Administratorrechten). Details stehen in `CLAUDE.md`, Abschnitt „CI“.
+Für selbst gehostete Windows-Runner kommt die PowerShell-Ausführungsrichtlinie `RemoteSigned` für LocalMachine hinzu (`Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned -Force` in einer Windows PowerShell mit Administratorrechten). Details stehen in `CLAUDE.md`, Abschnitt „CI“.
 
 ```bash
 dotnet build Pagewing.slnx

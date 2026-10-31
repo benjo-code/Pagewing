@@ -11,10 +11,11 @@
   <!--
     Title bar (Windows) or tab row below the system title bar (Linux), design system sections 2.2, 6 and 7.2.
     From the left: app symbol (as wide as the later action bar), the tab strip (or the app name without a tab), the
-    button "Search or command" of the command palette and, on Windows, the space of the system caption buttons. The tab
-    strip (TabStrip.axaml) holds the tabs, "All tabs (n)", "Open file" and the drag area; it gets the window width minus
-    the action bar width, the palette button with its margin and, on Windows, 140. Height and the width of the app symbol
-    follow the density (Pw.Size.*, design system 5.4).
+    button "Search or command" of the command palette, the button "Update" while an update is known (design system 7.11)
+    and, on Windows, the space of the system caption buttons. The tab strip (TabStrip.axaml) holds the tabs, "All tabs (n)",
+    "Open file" and the drag area; it gets the window width minus the action bar width, the palette button and the update
+    button with their margins and, on Windows, 140. Height and the width of the app symbol follow the density (Pw.Size.*,
+    design system 5.4).
   -->
   <UserControl.Styles>
     <!-- Linux: the tab row meets the system title bar of the same colour, so it gets a border.subtle top edge (section 5.3). -->
@@ -49,6 +50,38 @@
       <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
       <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
     </Style>
+    <!--
+      "Update" (design system 7.11, variant B of the mockups): download icon and text in accent.default on accent.subtle
+      with a 1 px accent.default edge (text 4.5:1, edge 3:1 against the title bar, UpdateCardTests); hovered or pressed it
+      turns into accent.on on accent.default like a primary button. Below 900 px only the icon (32 wide). The state is said
+      in words (text, tooltip, automation name), never only by the colour.
+    -->
+    <Style Selector="Button.update">
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="32" />
+      <Setter Property="Padding" Value="8,0,10,0" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button.update.narrow">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Width" Value="32" />
+    </Style>
+    <Style Selector="Button.update:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.On}" />
+    </Style>
+    <Style Selector="Button.update:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.On}" />
+      <Setter Property="Opacity" Value="{DynamicResource Pw.Opacity.PrimaryPressed}" />
+    </Style>
     <Style Selector="Border#PaletteKbd">
       <Setter Property="Padding" Value="5,0" />
       <Setter Property="CornerRadius" Value="4" />
@@ -60,13 +93,13 @@
   </UserControl.Styles>
 
   <Border Name="Root" Classes.linux="{Binding !IsWindowsTitleBar}">
-    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
       <!--
         The edge of the title bar against the panel and the document area, in high contrast only (Pw.Size.RegionSeparator,
         0 in light and dark): under the tabs and the buttons, from the action bar edge to the right. Below the tab strip,
         so the active tab covers it and stays open towards the document area.
       -->
-      <Border Name="TitleBarEdge" Grid.Column="1" Grid.ColumnSpan="3" Margin="-1,0,0,0" VerticalAlignment="Bottom"
+      <Border Name="TitleBarEdge" Grid.Column="1" Grid.ColumnSpan="4" Margin="-1,0,0,0" VerticalAlignment="Bottom"
               Height="{DynamicResource Pw.Size.RegionSeparator}" Background="{DynamicResource Pw.Brush.Border.Subtle}"
               IsHitTestVisible="False" IsVisible="{Binding HasTabs}" />
 
@@ -106,8 +139,28 @@
         </StackPanel>
       </Button>
 
+      <!--
+        "Update": only while the coordinator of the process knows of an update (MainViewModel.Update, null until a window
+        has made it, so the button stays hidden in the startup path). Opens and closes the card under it, which is made only
+        then (MainWindow.Update.cs). Left of the caption buttons on Windows, at the end of the Linux tab row; marked User so
+        that it takes the click.
+      -->
+      <Button Name="UpdateButton" Grid.Column="3" Classes="update" Classes.narrow="{Binding IsNarrowWindow}"
+              Margin="0,0,8,0"
+              IsVisible="{Binding Update.ShowButton, FallbackValue=False}"
+              Command="{Binding Update.ToggleCardCommand, FallbackValue={x:Null}}"
+              ToolTip.Tip="{x:Static res:Strings.UpdateButtonName}"
+              AutomationProperties.Name="{x:Static res:Strings.UpdateButtonName}"
+              chrome:WindowDecorationProperties.ElementRole="User">
+        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ctl:StrokeIcon Name="UpdateButtonIcon" Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Download}" />
+          <TextBlock Name="UpdateButtonText" VerticalAlignment="Center"
+                     Text="{x:Static res:Strings.UpdateButton}" IsVisible="{Binding !IsNarrowWindow}" />
+        </StackPanel>
+      </Button>
+
       <!-- Avalonia draws minimize, maximize and close over this space (Pw.WindowDecorations in MainWindow.axaml). -->
-      <Border Name="CaptionButtonsSpace" Grid.Column="3" Width="140" IsVisible="{Binding IsWindowsTitleBar}" />
+      <Border Name="CaptionButtonsSpace" Grid.Column="4" Width="140" IsVisible="{Binding IsWindowsTitleBar}" />
     </Grid>
   </Border>
 </UserControl>

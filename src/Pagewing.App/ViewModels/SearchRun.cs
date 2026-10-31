@@ -33,7 +33,6 @@ internal sealed class SearchRun
 
     private readonly object _gate = new();
     private readonly Action<SearchRun, List<SearchBatchItem>, (bool LimitReached, bool NoText)?> _apply;
-    private readonly PdfDocument _document;
     private readonly string _query;
     private readonly SearchOptions _options;
     private readonly int _startPage;
@@ -69,7 +68,7 @@ internal sealed class SearchRun
         Func<PdfDocument, string, SearchOptions, int, CancellationToken, IAsyncEnumerable<SearchPageResult>> searcher)
     {
         _apply = apply;
-        _document = document;
+        Document = document;
         _query = query;
         _options = options;
         _startPage = startPage;
@@ -82,6 +81,15 @@ internal sealed class SearchRun
     /// <summary>Gets the source that cancels the run; cancelled and disposed on the UI thread.</summary>
     public CancellationTokenSource Cancellation { get; } = new();
 
+    /// <summary>Gets the document the run searches.</summary>
+    public PdfDocument Document { get; }
+
+    /// <summary>
+    /// Gets whether the search stopped on a failure (the document was closed meanwhile, for example after a save swapped it
+    /// for the written file) instead of going through every page. Set before the last job is posted.
+    /// </summary>
+    public bool Failed { get; private set; }
+
     /// <summary>Searches the document; never throws. A failure ends the search with what it found.</summary>
     public async Task ExecuteAsync()
     {
@@ -89,7 +97,7 @@ internal sealed class SearchRun
         {
             var total = 0;
             var limitReached = false;
-            await foreach (var result in _searcher(_document, _query, _options, _startPage, _token).ConfigureAwait(false))
+            await foreach (var result in _searcher(Document, _query, _options, _startPage, _token).ConfigureAwait(false))
             {
                 if (_token.IsCancellationRequested)
                 {
@@ -113,6 +121,7 @@ internal sealed class SearchRun
             // The document was closed meanwhile or could not be searched: the search ends with what it found.
             if (!_token.IsCancellationRequested)
             {
+                Failed = true;
                 Finish(limitReached: false, noText: false);
             }
         }

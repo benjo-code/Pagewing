@@ -1,0 +1,88 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.CommentEditor"
+             x:DataType="vm:CommentsViewModel">
+  <!--
+    The edit controls of the "Comments" panel in the mode "Comment" (milestone 9, design system 7.3 and 7.7), below the
+    list: they act on the selected entry. Without one a hint asks to select one; an entry Pagewing does not edit says
+    "View only". For a highlight, underline or strike-out: the comment in a multi-line field (Ctrl+Enter applies it, an
+    empty field removes it, Esc drops what was typed and gives the keys back to the entry; Ctrl+Z in the field undoes its
+    text, not the document), "Change colour" (a menu of the five colours, each with its swatch and name, the colour of the
+    markup with a check mark; for a drawing the colours of the drawing tools, none for a locked drawing of another program, which says why instead) and "Delete" (trash; undo brings it back). Built by CommentsPanel only while the mode is on,
+    so the reading view has none of it. Tokens only: surface.sidebar with a border.subtle line on top, labels in
+    type.caption and text.secondary.
+  -->
+  <UserControl.Styles>
+    <Style Selector="TextBlock.editorSecondary">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="TextBlock.editorPrimary">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="TextBox#CommentBox">
+      <Setter Property="MinHeight" Value="64" />
+      <Setter Property="MaxHeight" Value="160" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="CommentEditorFrame"
+          BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}" BorderThickness="0,1,0,0"
+          Padding="14,10,14,12">
+    <StackPanel Spacing="6">
+      <TextBlock Name="CommentEditorTitle" Classes="strong editorPrimary" Text="{x:Static res:Strings.CommentEditTitle}" />
+      <TextBlock Name="CommentEditorEmpty" Classes="caption editorSecondary" TextWrapping="Wrap"
+                 IsVisible="{Binding !HasSelection}" Text="{x:Static res:Strings.CommentEditNone}" />
+      <TextBlock Name="CommentEditorViewOnly" Classes="caption editorSecondary" TextWrapping="Wrap"
+                 IsVisible="{Binding SelectedIsViewOnly}" Text="{x:Static res:Strings.CommentViewOnly}" />
+      <StackPanel Name="CommentEditorFields" Spacing="6" IsVisible="{Binding SelectedIsEditable}">
+        <!-- A drawing of another program Pagewing cannot redraw: why only the comment and deleting are offered (M10). -->
+        <!-- A grid, not a horizontal stack panel: the text gets the width of the panel and wraps inside it. -->
+        <Grid Name="CommentEditorLocked" ColumnDefinitions="Auto,*"
+              IsVisible="{Binding SelectedLockReason, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <ctl:StrokeIcon Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Top" Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Lock}" />
+          <TextBlock Name="CommentEditorLockReason" Grid.Column="1" Classes="caption editorSecondary" TextWrapping="Wrap"
+                     Text="{Binding SelectedLockReason}" />
+        </Grid>
+        <TextBlock Name="CommentBoxLabel" Classes="caption editorSecondary" Text="{x:Static res:Strings.CommentEditField}" />
+        <TextBox Name="CommentBox"
+                 Text="{Binding CommentDraft, Mode=TwoWay}"
+                 IsReadOnly="{Binding SelectedCommentReadOnly}"
+                 AcceptsReturn="True" TextWrapping="Wrap"
+                 AutomationProperties.Name="{x:Static res:Strings.CommentEditField}"
+                 AutomationProperties.HelpText="{x:Static res:Strings.CommentEditHint}" />
+        <!-- A text box whose typed text was not applied (its comment is its text): why, as in its field on the page (M10). -->
+        <Border Name="CommentProblemFrame" Padding="8,4" BorderThickness="1" CornerRadius="{DynamicResource Pw.Radius.Control}"
+                Background="{DynamicResource Pw.Brush.Surface.Raised}" BorderBrush="{DynamicResource Pw.Brush.Danger.Default}"
+                IsVisible="{Binding CommentProblem, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <TextBlock Name="CommentProblemText" Classes="caption editorPrimary" TextWrapping="Wrap" Text="{Binding CommentProblem}"
+                     AutomationProperties.Name="{Binding CommentProblem}" />
+        </Border>
+        <TextBlock Name="CommentBoxHint" Classes="caption editorSecondary" TextWrapping="Wrap" Text="{x:Static res:Strings.CommentEditHint}" />
+        <WrapPanel Orientation="Horizontal">
+          <Button Name="CommentColorButton" Margin="0,0,8,4" IsEnabled="{Binding !IsEditingFrozen}"
+                  IsVisible="{Binding SelectedCanChangeColor}"
+                  AutomationProperties.Name="{x:Static res:Strings.CommentEditColor}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Border Name="CommentColorSwatch" Width="12" Height="12" BorderThickness="1" VerticalAlignment="Center"
+                      CornerRadius="{DynamicResource Pw.Radius.Control}" BorderBrush="{DynamicResource Pw.Brush.Border.Strong}" />
+              <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.CommentEditColor}" />
+              <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.ChevronDown}" />
+            </StackPanel>
+          </Button>
+          <Button Name="CommentDeleteButton" Margin="0,0,0,4"
+                  Command="{Binding DeleteCommand}"
+                  AutomationProperties.Name="{x:Static res:Strings.CommentDelete}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Trash}" />
+              <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.CommentDelete}" />
+            </StackPanel>
+          </Button>
+        </WrapPanel>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

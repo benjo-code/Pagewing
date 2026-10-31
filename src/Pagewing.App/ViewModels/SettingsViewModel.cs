@@ -178,6 +178,17 @@ public sealed class SettingsViewModel : ViewModelBase
         set => PageAppearance = value ? PageAppearanceSetting.FollowTheme : PageAppearanceSetting.Light;
     }
 
+    /// <summary>
+    /// Gets or sets whether Pagewing checks for updates by itself (once per start, at most once in 24 hours). Off means no
+    /// network access at all; the command "Check for updates" still works on request. It takes effect at the next start:
+    /// the check of a running process has begun or not.
+    /// </summary>
+    public bool UpdateCheck
+    {
+        get => _settings.Current.UpdateCheck;
+        set => Change(current => current with { UpdateCheck = value });
+    }
+
     /// <summary>Gets or sets the page layout new tabs start with; the tabs that are open keep theirs.</summary>
     public PageLayoutMode DefaultLayout
     {
@@ -206,6 +217,17 @@ public sealed class SettingsViewModel : ViewModelBase
     {
         get => _settings.Current.PrintScaling;
         set => Change(current => current with { PrintScaling = value });
+    }
+
+    /// <summary>
+    /// Gets or sets the author name as the card's text field shows it (empty for none); it is written at once. The name
+    /// goes into the <c>/T</c> entry of every annotation created from then on, never into one that exists. An empty or
+    /// blank text is no name (<see cref="AppSettings.AuthorName"/> is then <see langword="null"/>).
+    /// </summary>
+    public string AuthorName
+    {
+        get => _settings.Current.AuthorName ?? string.Empty;
+        set => Change(current => current with { AuthorName = value });
     }
 
     /// <summary>Gets or sets the chosen entry of <see cref="PrintScalingChoices"/>.</summary>
@@ -370,6 +392,8 @@ public sealed class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(Language));
         OnPropertyChanged(nameof(Density));
         OnPropertyChanged(nameof(ReduceMotion));
+        OnPropertyChanged(nameof(UpdateCheck));
+        OnPropertyChanged(nameof(AuthorName));
         OnPropertyChanged(nameof(PageAppearance));
         OnPropertyChanged(nameof(DarkPages));
         OnPropertyChanged(nameof(DefaultLayout));

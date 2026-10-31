@@ -1,0 +1,263 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.CommentsPanel"
+             x:DataType="vm:TabViewModel">
+  <!--
+    Content of the "Comments" panel (milestone 9; design system 5.2, 5.5, 7.3, 7.4 and 7.10): the annotations of the tab in
+    the DataContext (the content binds to its list itself, so a tab that does not show "Comments" never gets one created
+    by the panel). At the top the filter by kind (a combo box: the arrows change it while it is closed, Alt+Down or F4
+    opens it), below it the summary (type.caption, text.secondary). Then the entries in a virtualized list: the page mark
+    in type.mono (text.secondary), the kind as a 16 px Tabler symbol (highlight, underline, strikethrough, pencil, square, circle, line, arrow-up-right, note) and in
+    words, a small swatch of the annotation's colour (content of the PDF, additionally, with its name for screen readers),
+    author and date (type.caption), the text under the markup (text.secondary) and the comment. The entry jumped to last
+    has an accent.subtle surface and a 2 px accent.default edge on the left, so it is not marked by colour alone. Without
+    annotations the hint "This document has no comments." stands in place of the list. Above the filter the button
+    "Comment" (message, a toggle button for screen readers: on while the mode is on) starts and ends the mode "Comment"
+    (design system 7.7); it is the way into the mode, not an editing tool. Where the mode is not possible, the reason
+    stands there instead (the document forbids annotations, or it is not shown yet). Outside the mode the panel is
+    read-only; in the mode the edit controls of the selected entry (CommentEditor) are built below the list, and entries
+    Pagewing does not edit say "View only". Built only when the panel opens (SidePanel), so nothing of it is in the startup
+    path; its styles live here for the same reason.
+  -->
+  <UserControl.Resources>
+    <!-- An entry of the filter list: its text, and in the open list a check mark at the chosen one (not only a colour, 7.10). -->
+    <DataTemplate x:Key="CommentFilterTemplate" x:DataType="vm:ISettingsChoice">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <ctl:StrokeIcon Grid.Column="1" Width="16" Height="16" Margin="8,0,0,0" VerticalAlignment="Center"
+                        Data="{StaticResource Pw.Icon.Check}"
+                        IsVisible="{Binding $parent[ComboBoxItem].IsSelected, FallbackValue=False}" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="ComboBox#FilterBox">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+    </Style>
+    <Style Selector="ComboBox#FilterBox ComboBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+    </Style>
+    <Style Selector="ComboBox#FilterBox ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="ComboBox#FilterBox ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ComboBox#FilterBox ComboBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ComboBox#FilterBox ComboBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+
+    <Style Selector="ListBox.comments">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="6,0,6,10" />
+    </Style>
+
+    <!-- An entry: no Fluent padding or selection colours. The selection is only the keyboard cursor (focus ring); hover shows surface.hover. -->
+    <Style Selector="ListBox.comments ListBoxItem" x:DataType="vm:CommentItemViewModel">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,1" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+      <Setter Property="AutomationProperties.HelpText" Value="{Binding HelpText}" />
+    </Style>
+    <Style Selector="ListBox.comments ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.comments ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.comments ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    </Style>
+
+    <Style Selector="Border.comment">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.comment.current">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="TextBlock.commentSecondary">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="TextBlock.commentPrimary">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+
+    <!-- The symbol of the kind; the kind is also written next to it. -->
+    <Style Selector="ctl|StrokeIcon.kind">
+      <Setter Property="Brush" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Note}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.highlight">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Highlight}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.underline">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Underline}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.strikeOut">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Strikethrough}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.ink">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Pencil}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.rectangle">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Square}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.ellipse">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Circle}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.line">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Line}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.arrow">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.ArrowUpRight}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.signature">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Signature}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.kind.textBox">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.Typography}" />
+    </Style>
+
+    <!-- The chevron of a group of strokes: right while it is closed, down while it is open (a shape, not only a colour). -->
+    <Style Selector="ctl|StrokeIcon.groupChevron">
+      <Setter Property="Brush" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.ChevronRight}" />
+    </Style>
+    <Style Selector="ctl|StrokeIcon.groupChevron.expanded">
+      <Setter Property="Data" Value="{StaticResource Pw.Icon.ChevronDown}" />
+    </Style>
+
+    <!-- The button "Comment": a secondary button; while the mode is on, accent.subtle with an accent.default frame and text (not by colour alone: also its toggle state). -->
+    <Style Selector="Button#AnnotateButton.active">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button#AnnotateButton.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button#AnnotateButton.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+
+    <!-- The swatch of the annotation's colour: round (radius.control on 12 px), with a 1 px border.strong edge, so a pale colour still shows on the panel. -->
+    <Style Selector="Border.swatch">
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- The DataContext of the panel is the tab: the button "Comment" and the reason why the mode is not possible bind to it. -->
+  <DockPanel>
+    <StackPanel Name="AnnotateRow" DockPanel.Dock="Top" Margin="14,0,14,8" Spacing="6">
+      <ctl:ActionToggleButton Name="AnnotateButton" HorizontalAlignment="Left"
+                              IsVisible="{Binding CanAnnotate}"
+                              Classes.active="{Binding IsAnnotating}" IsChecked="{Binding IsAnnotating, Mode=OneWay}"
+                              Command="{Binding ToggleAnnotateCommand}"
+                              AutomationProperties.Name="{x:Static res:Strings.AnnotateModeName}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Message}" />
+          <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.AnnotateModeName}" />
+        </StackPanel>
+      </ctl:ActionToggleButton>
+      <TextBlock Name="AnnotateUnavailable" Classes="caption commentSecondary" TextWrapping="Wrap"
+                 IsVisible="{Binding !CanAnnotate}"
+                 Text="{Binding AnnotateUnavailableReason}"
+                 AutomationProperties.LiveSetting="Polite" />
+    </StackPanel>
+
+    <!-- The DataContext of the content is the list of the tab, set by CommentsPanel.axaml.cs only while the tab shows "Comments". -->
+    <!-- Rows in the order of the tab: filter and summary, the hint or the list, the edit controls of the mode. -->
+    <Grid Name="CommentsRoot" x:DataType="vm:CommentsViewModel" RowDefinitions="Auto,Auto,*,Auto">
+      <StackPanel Grid.Row="0" Margin="14,0,14,6" Spacing="8">
+        <ComboBox Name="FilterBox"
+                  ItemsSource="{Binding FilterChoices}" SelectedItem="{Binding SelectedFilterChoice, Mode=TwoWay}"
+                  ItemTemplate="{StaticResource CommentFilterTemplate}"
+                  ToolTip.Tip="{x:Static res:Strings.CommentsFilter}"
+                  AutomationProperties.Name="{x:Static res:Strings.CommentsFilter}" />
+        <TextBlock Name="CommentsSummary" Classes="caption commentSecondary"
+                   Text="{Binding Summary}"
+                   AutomationProperties.LiveSetting="Polite"
+                   TextWrapping="Wrap" MinHeight="16" />
+      </StackPanel>
+
+      <TextBlock Name="CommentsEmptyHint" Grid.Row="1" Classes="body commentSecondary"
+                 Margin="14,4,14,0" TextWrapping="Wrap"
+                 IsVisible="{Binding HasNoComments}"
+                 Text="{x:Static res:Strings.CommentsEmpty}" />
+
+      <ListBox Name="CommentList" Grid.Row="2" Classes="comments"
+               ItemsSource="{Binding Items}"
+               IsVisible="{Binding !HasNoComments}"
+               SelectionMode="Single"
+               SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               AutomationProperties.Name="{x:Static res:Strings.CommentsPanelTitle}">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:CommentItemViewModel">
+            <Border Name="CommentRow" Classes="comment" Classes.current="{Binding IsCurrent}"
+                    BorderThickness="2,0,0,0" CornerRadius="{DynamicResource Pw.Radius.Control}" Padding="6,5,8,5">
+              <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Name="CommentPage" Classes="mono num commentSecondary" Text="{Binding PageText}"
+                           MinWidth="24" Margin="0,1,8,0" VerticalAlignment="Top" TextAlignment="Right" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                    <ctl:StrokeIcon Name="CommentGroupChevron" Classes="groupChevron" Classes.expanded="{Binding IsExpanded}"
+                                    IsVisible="{Binding IsGroup}"
+                                    Width="16" Height="16" Margin="0,0,4,0" VerticalAlignment="Center" />
+                    <ctl:StrokeIcon Name="CommentKindIcon" Grid.Column="1" Classes="kind"
+                                    Classes.highlight="{Binding IsHighlight}" Classes.underline="{Binding IsUnderline}"
+                                    Classes.strikeOut="{Binding IsStrikeOut}" Classes.ink="{Binding IsInk}"
+                                    Classes.rectangle="{Binding IsRectangle}" Classes.ellipse="{Binding IsEllipse}"
+                                    Classes.line="{Binding IsLine}" Classes.arrow="{Binding IsArrow}"
+                                    Classes.textBox="{Binding IsTextBox}" Classes.signature="{Binding IsSignature}"
+                                    Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBlock Name="CommentKind" Grid.Column="2" Classes="body commentPrimary" Text="{Binding KindText}"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <Border Name="CommentSwatch" Grid.Column="3" Classes="swatch"
+                            Width="12" Height="12" Margin="8,0,0,0" CornerRadius="{DynamicResource Pw.Radius.Control}" BorderThickness="1" VerticalAlignment="Center"
+                            Background="{Binding ColorBrush}"
+                            IsVisible="{Binding HasColor}"
+                            ToolTip.Tip="{Binding ColorName}"
+                            AutomationProperties.Name="{Binding ColorName}"
+                            AutomationProperties.AccessibilityView="Content" />
+                  </Grid>
+                  <TextBlock Name="CommentDetails" Classes="caption commentSecondary" Text="{Binding Details}"
+                             IsVisible="{Binding HasDetails}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Name="CommentExcerpt" Classes="body commentSecondary" Text="{Binding Excerpt}"
+                             IsVisible="{Binding HasExcerpt}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Name="CommentText" Classes="body commentPrimary" Text="{Binding Comment}"
+                             IsVisible="{Binding HasComment}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Name="CommentReadOnly" Classes="caption commentSecondary" Text="{x:Static res:Strings.CommentViewOnly}"
+                             IsVisible="{Binding IsViewOnlyInMode}" />
+                  <TextBlock Name="CommentLocked" Classes="caption commentSecondary" Text="{Binding LockReason}"
+                             TextWrapping="Wrap" IsVisible="{Binding ShowsLockReason}" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- The edit controls of the mode (CommentEditor) are put here by CommentsPanel.axaml.cs, only while the mode is on. -->
+      <ContentControl Name="CommentEditorHost" Grid.Row="3" HorizontalContentAlignment="Stretch" />
+    </Grid>
+  </DockPanel>
+</UserControl>

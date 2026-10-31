@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# Stale runs of the same ref are cancelled so the shared runners are not blocked.
+# Stale runs of the same ref are cancelled. GitHub-hosted runner: the job also runs for pull requests from forks.
 concurrency:
   group: roadmap-${{ github.ref }}
   cancel-in-progress: true
@@ -18,12 +18,14 @@ concurrency:
 jobs:
   roadmap:
     name: roadmap
-    runs-on: [self-hosted, dotnet-linux]
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Install the .NET SDK into HOME (no root on the runner)
+      - name: Install the .NET SDK into HOME
         run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0

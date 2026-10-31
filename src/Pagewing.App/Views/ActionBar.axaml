@@ -16,7 +16,7 @@
     for screen readers, on while their panel is open (Controls/ActionToggleButton: the look of an icon button, IsChecked
     bound one way to the panel, a click only runs the command); their tooltips name the shortcut of the catalog
     (ActionBar.axaml.cs). Entries: Pages (Ctrl+Shift+1), Contents (Ctrl+Shift+2), Search
-    (Ctrl+F opens it as well, with the focus in its field); at the bottom Print (Ctrl+P; runs the print
+    (Ctrl+F opens it as well, with the focus in its field), Comments (Ctrl+Shift+3, since milestone 9); at the bottom Print (Ctrl+P; runs the print
     command, which asks in the dialog of the system or shows the print card over the window, and is disabled until the document is
     open) and Settings (section 7.3; Ctrl+Comma as well), which shows the settings card over the window
     (MainWindow.Overlays.cs) and so has no panel and no active state. Part
@@ -62,6 +62,12 @@
                               ToolTip.Tip="{x:Static res:Strings.SearchTooltip}"
                               AutomationProperties.Name="{x:Static res:Strings.SearchPanelTitle}">
         <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Search}" />
+      </ctl:ActionToggleButton>
+      <ctl:ActionToggleButton Name="CommentsButton" Classes="icon action"
+                              Classes.active="{Binding IsCommentsPanelOpen}" IsChecked="{Binding IsCommentsPanelOpen, Mode=OneWay}"
+                              Command="{Binding ToggleSidePanelCommand}" CommandParameter="{x:Static vm:SidePanelKind.Comments}"
+                              AutomationProperties.Name="{x:Static res:Strings.CommentsPanelTitle}">
+        <ctl:StrokeIcon Width="20" Height="20" Data="{StaticResource Pw.Icon.Messages}" />
       </ctl:ActionToggleButton>
     </StackPanel>
     <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,4,0,8" HorizontalAlignment="Center" VerticalAlignment="Bottom">

@@ -45,8 +45,8 @@
   <data name="StartTitle" xml:space="preserve">
     <value>Dokument öffnen</value>
   </data>
-  <data name="StartOffline" xml:space="preserve">
-    <value>Pagewing arbeitet offline. Nichts verlässt diesen Rechner.</value>
+  <data name="UpdateCheckNote" xml:space="preserve">
+    <value>Pagewing sucht von selbst nach Updates. Es fragt nur die öffentliche Release-Seite von Pagewing auf GitHub nach der neuesten Version und sendet keine Kennung, keine Version und keine Daten über Sie oder Ihren Rechner. Wie jede Website sieht GitHub Ihre IP-Adresse. In den Einstellungen können Sie die Prüfung abschalten.</value>
   </data>
   <data name="StartDropHint" xml:space="preserve">
     <value>Oder ziehen Sie eine PDF-Datei in dieses Fenster.</value>
@@ -384,9 +384,6 @@
   <data name="AboutVersion" xml:space="preserve">
     <value>Programmversion {0}</value>
   </data>
-  <data name="AboutOffline" xml:space="preserve">
-    <value>Arbeitet vollständig offline: keine Telemetrie, keine Netzwerkzugriffe.</value>
-  </data>
   <data name="AboutNotices" xml:space="preserve">
     <value>Hinweise zu Drittsoftware</value>
   </data>
@@ -552,6 +549,15 @@
   <data name="StartRecentRemoveName" xml:space="preserve">
     <value>„{0}“ aus dem Verlauf entfernen</value>
   </data>
+  <data name="SettingsGroupUpdates" xml:space="preserve">
+    <value>Aktualisierungen</value>
+  </data>
+  <data name="SettingsUpdateCheck" xml:space="preserve">
+    <value>Automatisch nach Updates suchen</value>
+  </data>
+  <data name="SettingsUpdateHint" xml:space="preserve">
+    <value>Fragt nur die öffentliche Release-Seite von Pagewing auf GitHub nach der neuesten Version. Sendet keine Kennung, keine Version und keine Daten über Sie oder Ihren Rechner; GitHub sieht wie jede Website Ihre IP-Adresse.</value>
+  </data>
   <data name="SettingsGroupHistory" xml:space="preserve">
     <value>Verlauf</value>
   </data>
@@ -702,6 +708,15 @@
   <data name="SettingsPrintScaling" xml:space="preserve">
     <value>Seitengröße beim Drucken</value>
   </data>
+  <data name="SettingsGroupComments" xml:space="preserve">
+    <value>Kommentare</value>
+  </data>
+  <data name="SettingsAuthor" xml:space="preserve">
+    <value>Autor</value>
+  </data>
+  <data name="SettingsAuthorHint" xml:space="preserve">
+    <value>Der Name wird in der Datei jeder Annotation gespeichert, die Sie anlegen. Leer lassen, um keinen Namen zu speichern.</value>
+  </data>
   <data name="DefaultAppTitle" xml:space="preserve">
     <value>Pagewing als Standard für PDFs festlegen?</value>
   </data>
@@ -728,5 +743,776 @@
   </data>
   <data name="CommandSetDefaultApp" xml:space="preserve">
     <value>Pagewing als Standard für PDFs festlegen</value>
+  </data>
+  <data name="CommandCheckForUpdates" xml:space="preserve">
+    <value>Nach Updates suchen</value>
+  </data>
+  <data name="UpdateButton" xml:space="preserve">
+    <value>Aktualisieren</value>
+  </data>
+  <data name="UpdateButtonName" xml:space="preserve">
+    <value>Aktualisieren – Update verfügbar</value>
+  </data>
+  <data name="UpdateCardTitle" xml:space="preserve">
+    <value>Pagewing {0} ist verfügbar</value>
+  </data>
+  <data name="UpdateCardHave" xml:space="preserve">
+    <value>Sie haben {0}.</value>
+  </data>
+  <data name="UpdateCardInstallText" xml:space="preserve">
+    <value>Pagewing lädt das Update, installiert es und öffnet danach Ihre Tabs wieder.</value>
+  </data>
+  <data name="UpdateAwaitingAnswer" xml:space="preserve">
+    <value>Wartet auf Ihre Antwort …</value>
+  </data>
+  <data name="EditingLockedForUpdate" xml:space="preserve">
+    <value>Update wird installiert – Änderungen sind gesperrt</value>
+  </data>
+  <data name="UpdateInstall" xml:space="preserve">
+    <value>Installieren</value>
+  </data>
+  <data name="UpdateLater" xml:space="preserve">
+    <value>Später</value>
+  </data>
+  <data name="UpdateDownloadPage" xml:space="preserve">
+    <value>Download-Seite öffnen</value>
+  </data>
+  <data name="UpdateHintDeb" xml:space="preserve">
+    <value>Pagewing wurde aus dem .deb-Paket installiert und kann es nicht selbst ersetzen. Das neue Paket gibt es auf der Download-Seite.</value>
+  </data>
+  <data name="UpdateHintPortable" xml:space="preserve">
+    <value>Die portable Version aktualisiert sich nicht selbst. Das neue Archiv gibt es auf der Download-Seite.</value>
+  </data>
+  <data name="UpdateHintUnknown" xml:space="preserve">
+    <value>Pagewing kann diese Installation nicht selbst aktualisieren. Die neue Version gibt es auf der Download-Seite.</value>
+  </data>
+  <data name="UpdateNoteUpToDate" xml:space="preserve">
+    <value>Sie haben die neueste Version von Pagewing ({0}).</value>
+  </data>
+  <data name="UpdateNoteFailed" xml:space="preserve">
+    <value>Pagewing konnte gerade nicht nach Updates suchen. Prüfen Sie die Internetverbindung oder versuchen Sie es später erneut.</value>
+  </data>
+  <data name="CommandCloseUpdateCard" xml:space="preserve">
+    <value>Update-Karte schließen</value>
+  </data>
+  <data name="UpdateWindowHeader" xml:space="preserve">
+    <value>Pagewing aktualisieren</value>
+  </data>
+  <data name="UpdateWindowTitle" xml:space="preserve">
+    <value>Pagewing wird aktualisiert</value>
+  </data>
+  <data name="UpdateWindowFailedTitle" xml:space="preserve">
+    <value>Das Update ist nicht gelungen</value>
+  </data>
+  <data name="UpdateWindowSubtitle" xml:space="preserve">
+    <value>{0} → {1} · Bitte das Fenster offen lassen. Ihre Tabs kommen danach zurück.</value>
+  </data>
+  <data name="UpdateStepDownload" xml:space="preserve">
+    <value>Herunterladen</value>
+  </data>
+  <data name="UpdateStepVerify" xml:space="preserve">
+    <value>Prüfen</value>
+  </data>
+  <data name="UpdateStepInstall" xml:space="preserve">
+    <value>Installieren</value>
+  </data>
+  <data name="UpdateStepRestart" xml:space="preserve">
+    <value>Neustart</value>
+  </data>
+  <data name="UpdateStepDone" xml:space="preserve">
+    <value>erledigt</value>
+  </data>
+  <data name="UpdateStepRunning" xml:space="preserve">
+    <value>läuft</value>
+  </data>
+  <data name="UpdateStepOpen" xml:space="preserve">
+    <value>offen</value>
+  </data>
+  <data name="UpdateStepFailed" xml:space="preserve">
+    <value>fehlgeschlagen</value>
+  </data>
+  <data name="UpdateProgressName" xml:space="preserve">
+    <value>Fortschritt</value>
+  </data>
+  <data name="UpdateProgressPercent" xml:space="preserve">
+    <value>{0} %</value>
+  </data>
+  <data name="UpdateProgressSize" xml:space="preserve">
+    <value>{0} von {1} MB</value>
+  </data>
+  <data name="UpdateWindowCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="UpdateWindowRetry" xml:space="preserve">
+    <value>Erneut versuchen</value>
+  </data>
+  <data name="UpdateWindowClose" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="UpdateErrorUnreachable" xml:space="preserve">
+    <value>Pagewing konnte das Update nicht laden. Prüfen Sie die Internetverbindung und versuchen Sie es erneut.</value>
+  </data>
+  <data name="UpdateErrorWithdrawn" xml:space="preserve">
+    <value>Dieses Update wird nicht mehr angeboten. Ihre Version bleibt, wie sie ist.</value>
+  </data>
+  <data name="UpdateErrorSuperseded" xml:space="preserve">
+    <value>Pagewing {0} hat dieses Update ersetzt. Schließen Sie dieses Fenster; die Schaltfläche „Aktualisieren“ bietet dann Pagewing {0} an.</value>
+  </data>
+  <data name="UpdateErrorRejected" xml:space="preserve">
+    <value>Das Update hat die Prüfung der Signatur nicht bestanden und wurde abgelehnt. Ihre Version bleibt, wie sie ist.</value>
+  </data>
+  <data name="UpdateErrorChecksum" xml:space="preserve">
+    <value>Die geladene Datei passt nicht zum signierten Manifest und wurde gelöscht. Ihre Version bleibt, wie sie ist.</value>
+  </data>
+  <data name="UpdateErrorStorage" xml:space="preserve">
+    <value>Pagewing konnte das Update nicht speichern. Ist auf dem Laufwerk genug Platz frei?</value>
+  </data>
+  <data name="UpdateErrorNoInstaller" xml:space="preserve">
+    <value>Pagewing kann sich hier nicht selbst installieren. Die neue Version gibt es auf der Download-Seite.</value>
+  </data>
+  <data name="UpdateErrorInstallFailed" xml:space="preserve">
+    <value>Die Installation ist fehlgeschlagen. Ihre Version bleibt, wie sie ist.</value>
+  </data>
+  <data name="UpdateErrorHelperInstallFailed" xml:space="preserve">
+    <value>Das Update konnte nicht abgeschlossen werden. Pagewing startet wieder; versuchen Sie es erneut oder laden Sie die neue Version von Hand herunter.</value>
+  </data>
+  <data name="UpdateErrorVersionMismatch" xml:space="preserve">
+    <value>Das Update konnte nicht abgeschlossen werden: Windows muss neu starten, um es abzuschließen, oder Pagewing ist an einem anderen Ort installiert. Pagewing startet wieder.</value>
+  </data>
+  <data name="UpdateErrorFolderWriteProtected" xml:space="preserve">
+    <value>Der Ordner ist schreibgeschützt: {0}. Laden Sie das neue AppImage von Hand herunter.</value>
+  </data>
+  <data name="UpdateErrorNotStarted" xml:space="preserve">
+    <value>Die neue Version ist installiert, ließ sich aber nicht starten. Sie startet, wenn Sie Pagewing das nächste Mal öffnen.</value>
+  </data>
+  <data name="CommandGroupEdit" xml:space="preserve">
+    <value>Bearbeiten</value>
+  </data>
+  <data name="CommandSave" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="CommandSaveAs" xml:space="preserve">
+    <value>Speichern unter …</value>
+  </data>
+  <data name="CommandUndo" xml:space="preserve">
+    <value>Rückgängig</value>
+  </data>
+  <data name="CommandRedo" xml:space="preserve">
+    <value>Wiederholen</value>
+  </data>
+  <data name="SaveAsTitle" xml:space="preserve">
+    <value>Speichern unter</value>
+  </data>
+  <data name="Unsaved" xml:space="preserve">
+    <value>Nicht gespeichert</value>
+  </data>
+  <data name="TabUnsavedName" xml:space="preserve">
+    <value>{0}, nicht gespeichert</value>
+  </data>
+  <data name="SaveBlockedPrinting" xml:space="preserve">
+    <value>Das Dokument wird gerade gedruckt. Speichern Sie es, wenn der Druck fertig ist.</value>
+  </data>
+  <data name="SaveChangesTitle" xml:space="preserve">
+    <value>Änderungen an „{0}“ speichern?</value>
+  </data>
+  <data name="SaveChangesText" xml:space="preserve">
+    <value>Ihre Änderungen gehen verloren, wenn Sie sie nicht speichern.</value>
+  </data>
+  <data name="SignatureWarningTitle" xml:space="preserve">
+    <value>Diese Signatur erlaubt keine Kommentare</value>
+  </data>
+  <data name="SignatureWarningText" xml:space="preserve">
+    <value>Nach dem Speichern wird sie in Programmen wie Acrobat als ungültig angezeigt.</value>
+  </data>
+  <data name="SignatureNoteTitle" xml:space="preserve">
+    <value>Dieses Dokument ist signiert</value>
+  </data>
+  <data name="SignatureNoteText" xml:space="preserve">
+    <value>Pagewing hängt Ihre Änderungen nur an, die signierten Bytes bleiben unverändert.</value>
+  </data>
+  <data name="FileChangedTitle" xml:space="preserve">
+    <value>„{0}“ wurde seit dem Öffnen ersetzt</value>
+  </data>
+  <data name="FileChangedText" xml:space="preserve">
+    <value>Die Datei wurde seit dem Öffnen verändert, etwa durch Speichern in einem anderen Tab oder durch ein anderes Programm. Überschreiben verwirft diese Änderungen. Mit Ihrer Fassung überschreiben oder unter einem anderen Namen speichern?</value>
+  </data>
+  <data name="SaveErrorTitle" xml:space="preserve">
+    <value>„{0}“ konnte nicht gespeichert werden</value>
+  </data>
+  <data name="SaveErrorNotWritable" xml:space="preserve">
+    <value>Die Datei oder ihr Ordner ist schreibgeschützt. Speichern Sie unter einem anderen Namen.</value>
+  </data>
+  <data name="SaveErrorDiskFull" xml:space="preserve">
+    <value>Der Datenträger ist voll. Schaffen Sie Platz oder speichern Sie unter einem anderen Namen.</value>
+  </data>
+  <data name="SaveErrorWriteFailed" xml:space="preserve">
+    <value>Die Datei ließ sich nicht schreiben, vielleicht verwendet ein anderes Programm sie. Das Original ist unverändert.</value>
+  </data>
+  <data name="SaveErrorVerificationFailed" xml:space="preserve">
+    <value>Die gespeicherte Datei hat die Prüfung nicht bestanden und wurde nicht übernommen. Das Original ist unverändert.</value>
+  </data>
+  <data name="SaveErrorSourceModified" xml:space="preserve">
+    <value>Ein anderes Programm hat die Datei seit dem Öffnen verändert. Pagewing kann Ihre Änderungen jetzt nicht speichern, auch nicht unter einem anderen Namen, weil sich sonst beide Fassungen mischen würden. Ihre Änderungen bleiben in diesem Tab erhalten, solange er offen ist.</value>
+  </data>
+  <data name="SaveErrorEncrypted" xml:space="preserve">
+    <value>Pagewing kann dieses verschlüsselte Dokument nicht speichern, ohne die Verschlüsselung zu verlieren, und hat es deshalb nicht gespeichert.</value>
+  </data>
+  <data name="SaveErrorUnknown" xml:space="preserve">
+    <value>Das Dokument konnte nicht gespeichert werden. Das Original ist unverändert.</value>
+  </data>
+  <data name="SaveChoiceSave" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="SaveChoiceDontSave" xml:space="preserve">
+    <value>Nicht speichern</value>
+  </data>
+  <data name="SaveChoiceSaveAs" xml:space="preserve">
+    <value>Speichern unter …</value>
+  </data>
+  <data name="SaveChoiceSaveAnyway" xml:space="preserve">
+    <value>Trotzdem speichern</value>
+  </data>
+  <data name="SaveChoiceOverwrite" xml:space="preserve">
+    <value>Überschreiben</value>
+  </data>
+  <data name="SaveChoiceCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="SaveChoiceDiscard" xml:space="preserve">
+    <value>Schließen und Änderungen verwerfen</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>Die Änderungen an „{0}“ lassen sich nicht speichern</value>
+  </data>
+  <data name="DiscardChangesSourceModified" xml:space="preserve">
+    <value>Die Datei wurde von einem anderen Programm verändert. Ihre Änderungen können nicht gespeichert werden und gehen beim Schließen verloren.</value>
+  </data>
+  <data name="DiscardChangesEncrypted" xml:space="preserve">
+    <value>Pagewing kann Änderungen an diesem verschlüsselten Dokument nicht speichern. Sie gehen beim Schließen verloren.</value>
+  </data>
+  <data name="SaveNotPossiblePrinting" xml:space="preserve">
+    <value>Speichern ist gerade nicht möglich, weil gedruckt wird.</value>
+  </data>
+  <data name="SaveNotPossible" xml:space="preserve">
+    <value>Speichern ist gerade nicht möglich. Ihre Änderungen bleiben in diesem Tab erhalten.</value>
+  </data>
+  <data name="CommentsPanelTitle" xml:space="preserve">
+    <value>Kommentare</value>
+  </data>
+  <data name="CommandCommentsPanel" xml:space="preserve">
+    <value>Kommentare ein- oder ausblenden</value>
+  </data>
+  <data name="CommentsLoading" xml:space="preserve">
+    <value>Lädt …</value>
+  </data>
+  <data name="CommentsNone" xml:space="preserve">
+    <value>Keine Kommentare</value>
+  </data>
+  <data name="CommentsSummaryOne" xml:space="preserve">
+    <value>1 Kommentar auf Seite {0}</value>
+  </data>
+  <data name="CommentsSummaryOnePage" xml:space="preserve">
+    <value>{0} Kommentare, alle auf Seite {1}</value>
+  </data>
+  <data name="CommentsSummaryPages" xml:space="preserve">
+    <value>{0} Kommentare auf {1} Seiten</value>
+  </data>
+  <data name="CommentsEmpty" xml:space="preserve">
+    <value>Dieses Dokument enthält keine Kommentare.</value>
+  </data>
+  <data name="CommentsFilter" xml:space="preserve">
+    <value>Nach Art filtern</value>
+  </data>
+  <data name="CommentFilterAll" xml:space="preserve">
+    <value>Alle Arten</value>
+  </data>
+  <data name="CommentKindHighlight" xml:space="preserve">
+    <value>Hervorhebung</value>
+  </data>
+  <data name="CommentKindUnderline" xml:space="preserve">
+    <value>Unterstreichung</value>
+  </data>
+  <data name="CommentKindStrikeOut" xml:space="preserve">
+    <value>Durchstreichung</value>
+  </data>
+  <data name="CommentKindOther" xml:space="preserve">
+    <value>Sonstige</value>
+  </data>
+  <data name="CommentKindOtherNamed" xml:space="preserve">
+    <value>Sonstige: {0}</value>
+  </data>
+  <data name="CommentEntryName" xml:space="preserve">
+    <value>Seite {0}: {1}</value>
+  </data>
+  <data name="CommentColor" xml:space="preserve">
+    <value>Farbe {0}</value>
+  </data>
+  <data name="AnnotateModeName" xml:space="preserve">
+    <value>Kommentieren</value>
+  </data>
+  <data name="AnnotateButtonTooltip" xml:space="preserve">
+    <value>Kommentieren beginnen oder beenden</value>
+  </data>
+  <data name="CommandAnnotateMode" xml:space="preserve">
+    <value>Kommentieren beginnen oder beenden</value>
+  </data>
+  <data name="CommandHighlight" xml:space="preserve">
+    <value>Hervorheben</value>
+  </data>
+  <data name="CommandUnderline" xml:space="preserve">
+    <value>Unterstreichen</value>
+  </data>
+  <data name="CommandStrikeOut" xml:space="preserve">
+    <value>Durchstreichen</value>
+  </data>
+  <data name="CommandSelectTool" xml:space="preserve">
+    <value>Zeichnungen auswählen und verschieben</value>
+  </data>
+  <data name="CommandInk" xml:space="preserve">
+    <value>Freihand zeichnen</value>
+  </data>
+  <data name="CommandRectangle" xml:space="preserve">
+    <value>Rechteck zeichnen</value>
+  </data>
+  <data name="CommandEllipse" xml:space="preserve">
+    <value>Ellipse zeichnen</value>
+  </data>
+  <data name="CommandLine" xml:space="preserve">
+    <value>Linie zeichnen</value>
+  </data>
+  <data name="CommandArrow" xml:space="preserve">
+    <value>Pfeil zeichnen</value>
+  </data>
+  <data name="ToolSelect" xml:space="preserve">
+    <value>Auswählen</value>
+  </data>
+  <data name="ToolInk" xml:space="preserve">
+    <value>Freihand</value>
+  </data>
+  <data name="ToolRectangle" xml:space="preserve">
+    <value>Rechteck</value>
+  </data>
+  <data name="ToolEllipse" xml:space="preserve">
+    <value>Ellipse</value>
+  </data>
+  <data name="ToolLine" xml:space="preserve">
+    <value>Linie</value>
+  </data>
+  <data name="ToolArrow" xml:space="preserve">
+    <value>Pfeil</value>
+  </data>
+  <data name="DrawColorRed" xml:space="preserve">
+    <value>Rot</value>
+  </data>
+  <data name="DrawColorBlack" xml:space="preserve">
+    <value>Schwarz</value>
+  </data>
+  <data name="DrawColorBlue" xml:space="preserve">
+    <value>Blau</value>
+  </data>
+  <data name="DrawColorGreen" xml:space="preserve">
+    <value>Grün</value>
+  </data>
+  <data name="DrawColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="StrokeWidthThin" xml:space="preserve">
+    <value>Dünn (1 pt)</value>
+  </data>
+  <data name="StrokeWidthMedium" xml:space="preserve">
+    <value>Mittel (2 pt)</value>
+  </data>
+  <data name="StrokeWidthThick" xml:space="preserve">
+    <value>Dick (4 pt)</value>
+  </data>
+  <data name="AnnotateToolbarName" xml:space="preserve">
+    <value>Werkzeuge zum Kommentieren</value>
+  </data>
+  <data name="AnnotateToolsName" xml:space="preserve">
+    <value>Art der Markierung</value>
+  </data>
+  <data name="AnnotateColorsName" xml:space="preserve">
+    <value>Farbe</value>
+  </data>
+  <data name="AnnotateDone" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="AnnotateDoneTooltip" xml:space="preserve">
+    <value>Kommentieren beenden (Esc)</value>
+  </data>
+  <data name="AnnotateEscHint" xml:space="preserve">
+    <value>Esc beendet</value>
+  </data>
+  <data name="AnnotateForbidden" xml:space="preserve">
+    <value>Dieses Dokument erlaubt keine Kommentare: Seine Berechtigungen verbieten es, welche hinzuzufügen.</value>
+  </data>
+  <data name="AnnotateNotReady" xml:space="preserve">
+    <value>Kommentieren ist möglich, sobald das Dokument angezeigt wird.</value>
+  </data>
+  <data name="MarkupColorYellow" xml:space="preserve">
+    <value>Gelb</value>
+  </data>
+  <data name="MarkupColorGreen" xml:space="preserve">
+    <value>Grün</value>
+  </data>
+  <data name="MarkupColorBlue" xml:space="preserve">
+    <value>Blau</value>
+  </data>
+  <data name="MarkupColorPink" xml:space="preserve">
+    <value>Rosa</value>
+  </data>
+  <data name="MarkupColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="CommentEditTitle" xml:space="preserve">
+    <value>Ausgewählter Eintrag</value>
+  </data>
+  <data name="CommentEditField" xml:space="preserve">
+    <value>Kommentar</value>
+  </data>
+  <data name="CommentEditHint" xml:space="preserve">
+    <value>Strg+Enter übernimmt, Esc verwirft.</value>
+  </data>
+  <data name="CommentEditColor" xml:space="preserve">
+    <value>Farbe ändern</value>
+  </data>
+  <data name="CommentDelete" xml:space="preserve">
+    <value>Löschen</value>
+  </data>
+  <data name="CommentViewOnly" xml:space="preserve">
+    <value>Nur Anzeige</value>
+  </data>
+  <data name="CommentEditNone" xml:space="preserve">
+    <value>Wählen Sie einen Eintrag, um ihn zu bearbeiten.</value>
+  </data>
+  <data name="AnnotateMore" xml:space="preserve">
+    <value>Weitere Werkzeuge</value>
+  </data>
+  <data name="DrawingLimitReached" xml:space="preserve">
+    <value>Die Zeichnung wurde nicht hinzugefügt: Das Dokument hat schon so viele Annotationen, wie Pagewing verarbeitet ({0:N0}).</value>
+  </data>
+  <data name="DrawingFailed" xml:space="preserve">
+    <value>Die Zeichnung konnte nicht hinzugefügt werden.</value>
+  </data>
+  <data name="SelectionFrameName" xml:space="preserve">
+    <value>Auswahlrahmen</value>
+  </data>
+  <data name="SelectionHandleTopLeft" xml:space="preserve">
+    <value>Griff oben links</value>
+  </data>
+  <data name="SelectionHandleTop" xml:space="preserve">
+    <value>Griff oben</value>
+  </data>
+  <data name="SelectionHandleTopRight" xml:space="preserve">
+    <value>Griff oben rechts</value>
+  </data>
+  <data name="SelectionHandleRight" xml:space="preserve">
+    <value>Griff rechts</value>
+  </data>
+  <data name="SelectionHandleBottomRight" xml:space="preserve">
+    <value>Griff unten rechts</value>
+  </data>
+  <data name="SelectionHandleBottom" xml:space="preserve">
+    <value>Griff unten</value>
+  </data>
+  <data name="SelectionHandleBottomLeft" xml:space="preserve">
+    <value>Griff unten links</value>
+  </data>
+  <data name="SelectionHandleLeft" xml:space="preserve">
+    <value>Griff links</value>
+  </data>
+  <data name="SelectionHandleStart" xml:space="preserve">
+    <value>Griff Anfangspunkt</value>
+  </data>
+  <data name="SelectionHandleEnd" xml:space="preserve">
+    <value>Griff Endpunkt</value>
+  </data>
+  <data name="SelectionLockedForeign" xml:space="preserve">
+    <value>Von einem anderen Programm gezeichnet: Sie können die Zeichnung kommentieren oder löschen, aber nicht verschieben oder ändern.</value>
+  </data>
+  <data name="AnnotateWidthsName" xml:space="preserve">
+    <value>Strichstärken</value>
+  </data>
+  <data name="CommentFilterDrawings" xml:space="preserve">
+    <value>Zeichnungen</value>
+  </data>
+  <data name="CommentInkGroup" xml:space="preserve">
+    <value>Freihand, {0} Striche</value>
+  </data>
+  <data name="CommentGroupCollapsed" xml:space="preserve">
+    <value>zugeklappt</value>
+  </data>
+  <data name="CommentGroupExpanded" xml:space="preserve">
+    <value>aufgeklappt</value>
+  </data>
+  <data name="CommentGroupHint" xml:space="preserve">
+    <value>Eingabe oder Leertaste zeigt oder verbirgt die Striche.</value>
+  </data>
+  <data name="SelectionFrameNameOf" xml:space="preserve">
+    <value>{0} ausgewählt, Seite {1}</value>
+  </data>
+  <data name="DrawingChangeFailed" xml:space="preserve">
+    <value>Die Zeichnung konnte nicht geändert werden.</value>
+  </data>
+  <data name="SelectionHandleNameOf" xml:space="preserve">
+    <value>{0}, {1}, Seite {2}</value>
+  </data>
+  <data name="CommandTextBox" xml:space="preserve">
+    <value>Textfeld hinzufügen</value>
+  </data>
+  <data name="ToolTextBox" xml:space="preserve">
+    <value>Textfeld</value>
+  </data>
+  <data name="TextBoxSizeSmall" xml:space="preserve">
+    <value>Kleine Schrift (12 pt)</value>
+  </data>
+  <data name="TextBoxSizeMedium" xml:space="preserve">
+    <value>Mittlere Schrift (16 pt)</value>
+  </data>
+  <data name="TextBoxSizeLarge" xml:space="preserve">
+    <value>Große Schrift (24 pt)</value>
+  </data>
+  <data name="AnnotateSizesName" xml:space="preserve">
+    <value>Schriftgrößen</value>
+  </data>
+  <data name="TextBoxEditorName" xml:space="preserve">
+    <value>Text des Textfelds</value>
+  </data>
+  <data name="TextBoxEditorHint" xml:space="preserve">
+    <value>Strg+Eingabe übernimmt, Esc verwirft</value>
+  </data>
+  <data name="TextBoxUnsupportedCharacters" xml:space="preserve">
+    <value>Diese Zeichen kann ein Textfeld nicht darstellen: {0}. Entfernen Sie sie, um den Text zu übernehmen.</value>
+  </data>
+  <data name="TextBoxTooLong" xml:space="preserve">
+    <value>Ein Textfeld fasst höchstens {0} Zeichen.</value>
+  </data>
+  <data name="TextBoxTooManyLines" xml:space="preserve">
+    <value>Ein Textfeld fasst höchstens {0} Zeilen.</value>
+  </data>
+  <data name="SelectionLockedForeignTextBox" xml:space="preserve">
+    <value>Von einem anderen Programm angelegt oder geändert: Sie können das Textfeld löschen, aber nicht verschieben oder ändern.</value>
+  </data>
+  <data name="TextBoxNotNow" xml:space="preserve">
+    <value>Der Text kann gerade nicht übernommen werden. Er bleibt hier: mit Strg+Eingabe erneut übernehmen oder mit Esc verwerfen.</value>
+  </data>
+  <data name="TextBoxEmpty" xml:space="preserve">
+    <value>Ein Textfeld braucht Text. Zum Entfernen löschen Sie es.</value>
+  </data>
+  <data name="FormModeName" xml:space="preserve">
+    <value>Formular ausfüllen</value>
+  </data>
+  <data name="FormDone" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="FormDoneTooltip" xml:space="preserve">
+    <value>Ausfüllen beenden (Esc)</value>
+  </data>
+  <data name="FormHighlightFields" xml:space="preserve">
+    <value>Felder hervorheben</value>
+  </data>
+  <data name="FormPreviousField" xml:space="preserve">
+    <value>Vorheriges Feld</value>
+  </data>
+  <data name="FormNextField" xml:space="preserve">
+    <value>Nächstes Feld</value>
+  </data>
+  <data name="FormHintCalculated" xml:space="preserve">
+    <value>Dieses Formular enthält berechnete Felder. Pagewing führt kein JavaScript aus, Summen und andere berechnete Werte werden nicht aktualisiert.</value>
+  </data>
+  <data name="FormHintFormatScripts" xml:space="preserve">
+    <value>Einige Felder formatieren oder prüfen ihre Werte per JavaScript. Pagewing führt es nicht aus und übernimmt Ihre Werte so, wie Sie sie eingeben.</value>
+  </data>
+  <data name="FormHintXfa" xml:space="preserve">
+    <value>Dieses Dokument enthält zusätzlich ein XFA-Formular, das Pagewing nicht unterstützt. Ausfüllen lassen sich nur seine üblichen Formularfelder.</value>
+  </data>
+  <data name="FormHintSignatureField" xml:space="preserve">
+    <value>Dieses Formular enthält ein Signaturfeld. Pagewing unterstützt keine digitalen Signaturen.</value>
+  </data>
+  <data name="FormHintButtons" xml:space="preserve">
+    <value>Dieses Formular enthält Schaltflächen. Pagewing führt ihre Aktionen nie aus, es wird also nichts von hier gesendet.</value>
+  </data>
+  <data name="FormRequired" xml:space="preserve">
+    <value>Pflichtfeld</value>
+  </data>
+  <data name="FormLockedReadOnly" xml:space="preserve">
+    <value>Schreibgeschützt: Dieses Feld kann nicht geändert werden.</value>
+  </data>
+  <data name="FormLockedSignature" xml:space="preserve">
+    <value>Signaturfeld: Pagewing unterstützt keine digitalen Signaturen.</value>
+  </data>
+  <data name="FormLockedButton" xml:space="preserve">
+    <value>Schaltfläche: Pagewing führt ihre Aktion nicht aus.</value>
+  </data>
+  <data name="FormLockedFile" xml:space="preserve">
+    <value>Dateiauswahlfeld: Pagewing kann es nicht ausfüllen.</value>
+  </data>
+  <data name="FormLockedNameless" xml:space="preserve">
+    <value>Dieses Feld hat keinen Namen, deshalb kann Pagewing es nicht ausfüllen.</value>
+  </data>
+  <data name="FormLockedOther" xml:space="preserve">
+    <value>Pagewing kann dieses Feld nicht ausfüllen.</value>
+  </data>
+  <data name="FormValueUnsupportedCharacters" xml:space="preserve">
+    <value>Nicht übernommen: Dieses Feld kann {0} nicht darstellen. Entfernen Sie diese Zeichen, um den Wert zu übernehmen.</value>
+  </data>
+  <data name="FormValueTooLong" xml:space="preserve">
+    <value>Nicht übernommen: Dieses Feld fasst höchstens {0} Zeichen.</value>
+  </data>
+  <data name="FormValueOneLine" xml:space="preserve">
+    <value>Nicht übernommen: Dieses Feld fasst nur eine Zeile.</value>
+  </data>
+  <data name="FormValueControlCharacter" xml:space="preserve">
+    <value>Nicht übernommen: Der Text enthält das Steuerzeichen {0}.</value>
+  </data>
+  <data name="FormValueNotTaken" xml:space="preserve">
+    <value>Nicht übernommen: Die Formular-Engine hat den Wert nicht angenommen. Das Feld behält seinen bisherigen Wert.</value>
+  </data>
+  <data name="FormValueNotTakenChanged" xml:space="preserve">
+    <value>Der Wert konnte nicht geschrieben werden, das Feld kann sich trotzdem geändert haben. Prüfen Sie es vor dem Speichern: Rückgängig kann es nicht wiederherstellen.</value>
+  </data>
+  <data name="FormValueRefused" xml:space="preserve">
+    <value>Nicht übernommen: Das Feld nimmt diesen Wert nicht an.</value>
+  </data>
+  <data name="FormValueNotNow" xml:space="preserve">
+    <value>Der Wert kann gerade nicht übernommen werden. Er bleibt hier: später erneut übernehmen oder mit Esc verwerfen.</value>
+  </data>
+  <data name="FormCommandHighlight" xml:space="preserve">
+    <value>Felder hervorheben</value>
+  </data>
+  <data name="FormToolbarName" xml:space="preserve">
+    <value>Werkzeuge zum Ausfüllen</value>
+  </data>
+  <data name="FormHintOffer" xml:space="preserve">
+    <value>Dieses Dokument enthält Formularfelder, die Sie ausfüllen können.</value>
+  </data>
+  <data name="FormHintClose" xml:space="preserve">
+    <value>Hinweis schließen</value>
+  </data>
+  <data name="FormEditorHint" xml:space="preserve">
+    <value>Eingabe übernimmt und geht zum nächsten Feld, Tab wechselt das Feld, Esc verwirft</value>
+  </data>
+  <data name="FormEditorHintMultiline" xml:space="preserve">
+    <value>Strg+Eingabe übernimmt, Tab wechselt das Feld, Esc verwirft</value>
+  </data>
+  <data name="FormFieldChecked" xml:space="preserve">
+    <value>Ausgewählt</value>
+  </data>
+  <data name="RequiredFieldsTitleOne" xml:space="preserve">
+    <value>1 Pflichtfeld ist leer</value>
+  </data>
+  <data name="RequiredFieldsTitleMany" xml:space="preserve">
+    <value>{0} Pflichtfelder sind leer</value>
+  </data>
+  <data name="RequiredFieldsTextOne" xml:space="preserve">
+    <value>„{0}“ hat noch keinen Wert. Füllen Sie es zuerst aus, oder speichern Sie trotzdem.</value>
+  </data>
+  <data name="RequiredFieldsTextMany" xml:space="preserve">
+    <value>Das erste ist „{0}“. Füllen Sie die Felder zuerst aus, oder speichern Sie trotzdem.</value>
+  </data>
+  <data name="SaveChoiceGoToField" xml:space="preserve">
+    <value>Zum ersten leeren Feld</value>
+  </data>
+  <data name="SignatureWarningFormsText" xml:space="preserve">
+    <value>Formularfelder sind nach dieser Signatur erlaubt; Pagewing kann das nicht prüfen. Programme wie Acrobat zeigen sie nach dem Speichern womöglich trotzdem als ungültig an.</value>
+  </data>
+  <data name="SignatureCardTitle" xml:space="preserve">
+    <value>Neue Unterschrift</value>
+  </data>
+  <data name="SignatureClose" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="SignatureTabDraw" xml:space="preserve">
+    <value>Zeichnen</value>
+  </data>
+  <data name="SignatureTabImage" xml:space="preserve">
+    <value>Bild</value>
+  </data>
+  <data name="SignatureName" xml:space="preserve">
+    <value>Bezeichnung</value>
+  </data>
+  <data name="SignatureDefaultName" xml:space="preserve">
+    <value>Unterschrift</value>
+  </data>
+  <data name="SignaturePadName" xml:space="preserve">
+    <value>Zeichenfläche für Ihre Unterschrift</value>
+  </data>
+  <data name="SignaturePadHint" xml:space="preserve">
+    <value>Zeichnen Sie Ihre Unterschrift mit Maus, Stift oder Finger. Nur mit der Tastatur: Reiter „Bild“ nutzen.</value>
+  </data>
+  <data name="SignatureClear" xml:space="preserve">
+    <value>Löschen</value>
+  </data>
+  <data name="SignatureUndoStroke" xml:space="preserve">
+    <value>Strich zurück</value>
+  </data>
+  <data name="SignatureInk" xml:space="preserve">
+    <value>Tintenfarbe</value>
+  </data>
+  <data name="SignatureChooseImage" xml:space="preserve">
+    <value>Bild wählen …</value>
+  </data>
+  <data name="SignatureImageNote" xml:space="preserve">
+    <value>PNG oder JPG, bis 10 MB. Der Hintergrund wird auf diesem Computer entfernt; es wird nichts hochgeladen.</value>
+  </data>
+  <data name="SignatureThreshold" xml:space="preserve">
+    <value>Hintergrund entfernen</value>
+  </data>
+  <data name="SignaturePreview" xml:space="preserve">
+    <value>Vorschau der Unterschrift</value>
+  </data>
+  <data name="SignatureSave" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="SignatureCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="SignatureHintLegal" xml:space="preserve">
+    <value>Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.</value>
+  </data>
+  <data name="SignatureHintDigital" xml:space="preserve">
+    <value>Das ist ein Bild Ihrer Unterschrift, keine digitale Signatur.</value>
+  </data>
+  <data name="SignatureProblemNothingDrawn" xml:space="preserve">
+    <value>Zeichnen Sie Ihre Unterschrift, um sie zu speichern.</value>
+  </data>
+  <data name="SignatureProblemNoImage" xml:space="preserve">
+    <value>Wählen Sie ein Bild Ihrer Unterschrift, um sie zu speichern.</value>
+  </data>
+  <data name="SignatureProblemBlank" xml:space="preserve">
+    <value>Nach dem Entfernen des Hintergrunds ist nichts übrig. Verschieben Sie den Regler, damit mehr von der Tinte bleibt.</value>
+  </data>
+  <data name="SignatureProblemTooLarge" xml:space="preserve">
+    <value>Die Datei ist größer als 10 MB.</value>
+  </data>
+  <data name="SignatureProblemTooManyPixels" xml:space="preserve">
+    <value>Das Bild ist größer als 6.000 × 6.000 Pixel.</value>
+  </data>
+  <data name="SignatureProblemUnreadable" xml:space="preserve">
+    <value>Diese Datei lässt sich nicht als PNG- oder JPG-Bild lesen.</value>
+  </data>
+  <data name="SignatureProblemLibraryFull" xml:space="preserve">
+    <value>Sie können bis zu 10 Unterschriften speichern. Löschen Sie zuerst eine.</value>
+  </data>
+  <data name="SignatureProblemSaveFailed" xml:space="preserve">
+    <value>Die Unterschrift konnte nicht gespeichert werden.</value>
+  </data>
+  <data name="CommandInsertSignature" xml:space="preserve">
+    <value>Unterschrift einfügen</value>
+  </data>
+  <data name="SignatureHistoryFull" xml:space="preserve">
+    <value>Der Verlauf ist voll mit Unterschriftsbildern. Speichern Sie zuerst das Dokument.</value>
+  </data>
+  <data name="ToolSignature" xml:space="preserve">
+    <value>Unterschrift</value>
+  </data>
+  <data name="SignatureMenuNew" xml:space="preserve">
+    <value>Neue Unterschrift …</value>
+  </data>
+  <data name="SignatureMenuName" xml:space="preserve">
+    <value>Gespeicherte Unterschriften</value>
+  </data>
+  <data name="SignatureDelete" xml:space="preserve">
+    <value>Unterschrift löschen</value>
   </data>
 </root>

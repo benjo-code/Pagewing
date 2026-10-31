@@ -20,6 +20,8 @@
   <StreamGeometry x:Key="Pw.Icon.ChevronDown">M6 9l6 6l6 -6</StreamGeometry>
   <!-- chevron-up (search: previous match) -->
   <StreamGeometry x:Key="Pw.Icon.ChevronUp">M6 15l6 -6l6 6</StreamGeometry>
+  <!-- download (title bar and card: an update is available) -->
+  <StreamGeometry x:Key="Pw.Icon.Download">M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2 M7 11l5 5l5 -5 M12 4l0 12</StreamGeometry>
   <!-- search (action bar: search, search field) -->
   <StreamGeometry x:Key="Pw.Icon.Search">M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0 M21 21l-6 -6</StreamGeometry>
   <!-- minus -->
@@ -40,6 +42,26 @@
   <StreamGeometry x:Key="Pw.Icon.LayoutGrid">M4 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4 M14 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4 M4 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4 M14 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4</StreamGeometry>
   <!-- list-tree (action bar: contents) -->
   <StreamGeometry x:Key="Pw.Icon.ListTree">M9 6h11 M12 12h8 M15 18h5 M5 6v.01 M8 12v.01 M11 18v.01</StreamGeometry>
+  <!-- messages (action bar: comments) -->
+  <StreamGeometry x:Key="Pw.Icon.Messages">M21 14l-3 -3h-7a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1h9a1 1 0 0 1 1 1v10 M14 15v2a1 1 0 0 1 -1 1h-7l-3 3v-10a1 1 0 0 1 1 -1h2</StreamGeometry>
+  <!-- highlight (comments: a highlight) -->
+  <StreamGeometry x:Key="Pw.Icon.Highlight">M3 19h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4 M12.5 5.5l4 4 M4.5 13.5l4 4 M21 15v4h-8l4 -4l4 0</StreamGeometry>
+  <!-- underline (comments: an underline) -->
+  <StreamGeometry x:Key="Pw.Icon.Underline">M7 5v5a5 5 0 0 0 10 0v-5 M5 19h14</StreamGeometry>
+  <!-- strikethrough (comments: a strike-out) -->
+  <StreamGeometry x:Key="Pw.Icon.Strikethrough">M5 12l14 0 M16 6.5a4 2 0 0 0 -4 -1.5h-1a3.5 3.5 0 0 0 0 7h2a3.5 3.5 0 0 1 0 7h-1.5a4 2 0 0 1 -4 -1.5</StreamGeometry>
+  <!-- note (comments: any other annotation) -->
+  <StreamGeometry x:Key="Pw.Icon.Note">M13 20l7 -7 M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7</StreamGeometry>
+  <!-- message (mode "Comment": its name in the toolbar, the button of the "Comments" panel) -->
+  <StreamGeometry x:Key="Pw.Icon.Message">M8 9h8 M8 13h6 M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12</StreamGeometry>
+  <!-- arrow-back-up (toolbar of a mode: undo) -->
+  <StreamGeometry x:Key="Pw.Icon.ArrowBackUp">M9 14l-4 -4l4 -4 M5 10h11a4 4 0 1 1 0 8h-1</StreamGeometry>
+  <!-- arrow-forward-up (toolbar of a mode: redo) -->
+  <StreamGeometry x:Key="Pw.Icon.ArrowForwardUp">M15 14l4 -4l-4 -4 M19 10h-11a4 4 0 1 0 0 8h1</StreamGeometry>
+  <!-- dots (toolbar of a mode: the menu of what does not fit) -->
+  <StreamGeometry x:Key="Pw.Icon.Dots">M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0</StreamGeometry>
+  <!-- trash ("Comments" panel in the mode: delete) -->
+  <StreamGeometry x:Key="Pw.Icon.Trash">M4 7l16 0 M10 11l0 6 M14 11l0 6 M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12 M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3</StreamGeometry>
   <!-- settings (action bar: settings) -->
   <StreamGeometry x:Key="Pw.Icon.Settings">M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065 M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0</StreamGeometry>
   <!-- layout-sidebar-left-collapse (close the panel) -->
@@ -52,4 +74,21 @@
   <StreamGeometry x:Key="Pw.Icon.AlertTriangle">M12 9v4 M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0 M12 16h.01</StreamGeometry>
   <!-- printer (print card) -->
   <StreamGeometry x:Key="Pw.Icon.Printer">M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2 M17 9v-4a2 2 0 0 0 -2 -2h-6a2 2 0 0 0 -2 2v4 M7 15a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2l0 -4</StreamGeometry>
+  <!-- pointer (mode "Comment": the select tool, M10) -->
+  <StreamGeometry x:Key="Pw.Icon.Pointer">M7.904 17.563a1.2 1.2 0 0 0 2.228 .308l2.09 -3.093l4.907 4.907a1.067 1.067 0 0 0 1.509 0l1.047 -1.047a1.067 1.067 0 0 0 0 -1.509l-4.907 -4.907l3.113 -2.09a1.2 1.2 0 0 0 -.309 -2.228l-13.582 -3.904l3.904 13.563</StreamGeometry>
+  <!-- pencil (freehand tool and its entries in "Comments", M10) -->
+  <StreamGeometry x:Key="Pw.Icon.Pencil">M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4 M13.5 6.5l4 4</StreamGeometry>
+  <!-- square (rectangle tool, M10) -->
+  <StreamGeometry x:Key="Pw.Icon.Square">M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14</StreamGeometry>
+  <!-- circle (oval tool, M10) -->
+  <StreamGeometry x:Key="Pw.Icon.Circle">M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0</StreamGeometry>
+  <!-- line (line tool, M10) -->
+  <StreamGeometry x:Key="Pw.Icon.Line">M4 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0 M16 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0 M7.5 16.5l9 -9</StreamGeometry>
+  <!-- arrow-up-right (arrow tool, M10) -->
+  <StreamGeometry x:Key="Pw.Icon.ArrowUpRight">M17 7l-10 10 M8 7l9 0l0 9</StreamGeometry>
+  <!-- typography (text box tool, M10) -->
+  <StreamGeometry x:Key="Pw.Icon.Signature">M3 17c3.333 -3.333 5 -6 5 -8c0 -3 -1 -3 -2 -3s-2.032 1.085 -2 3c.034 2.048 1.658 4.877 2.5 6c1.5 2 2.5 2.5 3.5 1l2 -3c.333 2.667 1.333 4 3 4c.53 0 2.639 -2 3 -2c.517 0 1.517 .667 3 2</StreamGeometry>
+  <StreamGeometry x:Key="Pw.Icon.Typography">M4 20l3 0 M14 20l7 0 M6.9 15l6.9 0 M10.2 6.3l5.8 13.7 M5 20l6 -16l2 0l7 16</StreamGeometry>
+  <!-- forms (mode "Fill in form": toolbar and hint bar, M11) -->
+  <StreamGeometry x:Key="Pw.Icon.Forms">M12 3a3 3 0 0 0 -3 3v12a3 3 0 0 0 3 3 M6 3a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3 M13 7h7a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-7 M5 7h-1a1 1 0 0 0 -1 1v8a1 1 0 0 0 1 1h1 M17 12h.01 M13 12h.01</StreamGeometry>
 </ResourceDictionary>

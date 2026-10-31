@@ -203,6 +203,57 @@ public sealed class PageTextSourceTests
     }
 
     [Fact]
+    public async Task RemovePagesForgetsThosePagesAndALoadThatWasRunning()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var document = await engine.OpenAsync(TestData.Pdf("text-rich.pdf"), cancellationToken: ct);
+        var stale = await document.GetPageTextAsync(1, ct);
+
+        // The first load of page 1 is held back until the test lets it go, so the removal comes while it runs.
+        var gate = new TaskCompletionSource<PageText>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var readsOfPageOne = 0;
+        using var source = new PageTextSource(document, (page, priority) =>
+            page == 1 && Interlocked.Increment(ref readsOfPageOne) == 1 ? gate.Task : document.GetPageTextAsync(page, priority, CancellationToken.None));
+        var raised = new List<int>();
+        source.Loaded += page =>
+        {
+            lock (raised)
+            {
+                raised.Add(page);
+            }
+        };
+        await source.GetAsync(0, cancellationToken: ct);
+        var running = source.GetAsync(1, cancellationToken: ct);
+
+        source.RemovePages(new HashSet<int> { 0, 1 });
+
+        Assert.Equal(0, source.Count);
+        Assert.False(source.TryGet(0, out _));
+
+        // A call after the removal does not join the old load but reads the page again.
+        var fresh = await source.GetAsync(1, cancellationToken: ct).WaitAsync(Due, ct);
+        Assert.NotSame(stale, fresh);
+        Assert.Equal(2, Volatile.Read(ref readsOfPageOne));
+
+        // The old load still answers the caller that waited for it, but its text is not cached over the new one.
+        gate.SetResult(stale);
+        Assert.Same(stale, await running.WaitAsync(Due, ct));
+        Assert.True(source.TryGet(1, out var kept));
+        Assert.Same(fresh, kept);
+        Assert.Equal(1, source.Count);
+        lock (raised)
+        {
+            Assert.Equal([0, 1], raised);
+        }
+
+        // An empty set changes nothing; after Dispose the call does nothing either.
+        source.RemovePages(new HashSet<int>());
+        Assert.Equal(1, source.Count);
+        source.Dispose();
+        source.RemovePages(new HashSet<int> { 1 });
+    }
+
+    [Fact]
     public async Task DisposedSourceThrowsAndDoesNotCacheALoadThatWasRunning()
     {
         var ct = TestContext.Current.CancellationToken;

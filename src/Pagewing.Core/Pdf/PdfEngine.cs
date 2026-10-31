@@ -1,4 +1,5 @@
 using System.Globalization;
+using Pagewing.Core.Saving;
 using Pagewing.Pdfium;
 
 namespace Pagewing.Core.Pdf;
@@ -29,13 +30,16 @@ public sealed class PdfEngine
         var thread = getThread();
         try
         {
-            var (document, pageCount, fileVersion) = await thread.InvokeAsync(
+            var (document, pageCount, fileVersion, stamp, formType) = await thread.InvokeAsync(
                 () =>
                 {
+                    // On the PDFium thread like all file access of an open, never on the caller's (UI) thread: a stat can
+                    // block for seconds on a network drive or a disk that spins up.
+                    var stamp = FileStamp.Of(fullPath);
                     var opened = PdfiumDocument.Open(thread, fullPath, password);
                     try
                     {
-                        return (opened, opened.PageCount, opened.FileVersion);
+                        return (opened, opened.PageCount, opened.FileVersion, stamp, opened.FormType);
                     }
                     catch
                     {
@@ -45,7 +49,7 @@ public sealed class PdfEngine
                 },
                 PdfiumPriority.Interactive,
                 cancellationToken).ConfigureAwait(false);
-            return new PdfDocument(document, pageCount, FormatVersion(fileVersion));
+            return new PdfDocument(document, pageCount, FormatVersion(fileVersion), formType) { PathStampAtOpen = stamp };
         }
         catch (PdfiumOpenException ex)
         {

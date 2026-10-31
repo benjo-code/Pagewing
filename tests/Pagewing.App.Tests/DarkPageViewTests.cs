@@ -412,6 +412,43 @@ public sealed class DarkPageViewTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void AHighlightSwitchKeepsThePageUntilTheNewImagesCome()
+    {
+        // Milestone 11: the highlight of the form fields has its own epoch like the theme, but the page around the fields
+        // stays the same, so the old images stay on screen (stale) until the highlighted ones replace them.
+        var highlightedImage = Color.FromRgb(30, 160, 30);
+        var highlighted = new TaskCompletionSource();
+        using var fixture = CanvasFixture.Show(ThemeVariant.Light, async (_, options, cancellationToken) =>
+        {
+            if (options.FormHighlight)
+            {
+                await highlighted.Task.WaitAsync(cancellationToken);
+                return Solid(highlightedImage);
+            }
+
+            return Solid(LightImage);
+        });
+
+        var centre = fixture.Page.Center;
+        fixture.WaitUntil(() => Near(fixture.PixelAt(centre), LightImage, 2) && fixture.Scheduler.PendingCount == 0);
+        fixture.Refresh();
+        var shown = fixture.Canvas.Bitmaps.Count;
+        Assert.True(shown > 0);
+
+        fixture.Scheduler.SetFormHighlight(true);
+        fixture.Canvas.FormHighlight = true;
+        fixture.Refresh();
+
+        Assert.Equal(shown, fixture.Canvas.Bitmaps.Count);
+        Assert.Equal(shown, fixture.Canvas.StaleKeys.Count);
+        Assert.True(Near(fixture.PixelAt(centre), LightImage, 2), $"{fixture.PixelAt(centre)} is not the old page");
+
+        highlighted.SetResult();
+        fixture.WaitUntil(() => Near(fixture.PixelAt(centre), highlightedImage, 2) && fixture.Canvas.StaleKeys.Count == 0);
+        Assert.Equal(0, fixture.Count(color => Near(color, LightImage, 20)));
+    }
+
+    [AvaloniaFact]
     public void ALateFailureOfTheOldThemeDoesNotMarkThePage()
     {
         var dark = new TaskCompletionSource();

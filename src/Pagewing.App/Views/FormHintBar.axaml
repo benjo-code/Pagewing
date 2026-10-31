@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.FormHintBar"
+             x:DataType="vm:TabViewModel"
+             VerticalAlignment="Top"
+             AutomationProperties.AccessibilityView="Content">
+  <!--
+    The hint bar of a form (milestone 11; spec "Hinweise", built like the notes of milestones 8.1 and 9): one line over the
+    top of the document area, below the toolbar of a mode, never blocking and never taking the focus. surface.toolbar with a
+    border.subtle bottom edge, like the toolbars. It shows one message at a time, with its symbol, so its kind is never told
+    by colour alone: the notice of a refused value (alert-triangle in danger.default and the reason); else, once after the
+    first sharp page of a document whose form has fields, the offer "Fill in form" (button) with the first hint about what the
+    form contains that Pagewing does not run, or a sentence that the document has fields; else the next of those hints
+    (info-circle in text.secondary). The text is type.body in text.primary and a polite live region; the bar is named like it.
+    The close button (x) closes the message: the notice, the offer with its hint, or the hint, for this document in this tab.
+    Made when the active tab first has something to show (MainWindow.Forms.cs), never in the startup path and never for a
+    document without a form. The DataContext is the active tab.
+  -->
+  <UserControl.Styles>
+    <Style Selector="Button.toolbarIcon">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="HintFrame" Padding="12,6,8,6"
+          Background="{DynamicResource Pw.Brush.Surface.Toolbar}"
+          BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
+          BorderThickness="0,0,0,1">
+    <Grid ColumnDefinitions="Auto,*,Auto">
+      <Panel Width="16" Height="16" Margin="0,0,10,0" VerticalAlignment="Center">
+        <ctl:StrokeIcon Name="HintIcon" Width="16" Height="16"
+                        Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+        <ctl:StrokeIcon Name="NoticeIcon" Width="16" Height="16" IsVisible="False"
+                        Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+      </Panel>
+
+      <TextBlock Name="HintText" Grid.Column="1" Classes="body" TextWrapping="Wrap" VerticalAlignment="Center"
+                 Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                 AutomationProperties.LiveSetting="Polite" />
+
+      <StackPanel Grid.Column="2" Margin="12,0,0,0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <Button Name="FillButton" Command="{Binding ToggleFillCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.FormModeName}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Forms}" />
+            <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.FormModeName}" />
+          </StackPanel>
+        </Button>
+        <Button Name="CloseHintButton" Classes="icon toolbarIcon"
+                ToolTip.Tip="{x:Static res:Strings.FormHintClose}"
+                AutomationProperties.Name="{x:Static res:Strings.FormHintClose}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+        </Button>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

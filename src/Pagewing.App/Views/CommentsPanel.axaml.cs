@@ -1,0 +1,313 @@
+using System.ComponentModel;
+using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Pagewing.App.Commands;
+using Pagewing.App.Resources;
+using Pagewing.App.ViewModels;
+
+namespace Pagewing.App.Views;
+
+/// <summary>
+/// The content of the "Comments" panel: the list of the annotations of the active tab (<see cref="TabViewModel.Comments"/>).
+/// In the list Up, Down, Page Up, Page Down, Home and End move the cursor without jumping (handled here: the window binds
+/// Page Up and Page Down to the pages of the document), and a click, Enter or Space shows the entry. The open filter list
+/// claims Esc and the page keys like the lists of the cards (<see cref="CardLists"/>). Built when the panel opens, released
+/// when it closes; the list itself belongs to the tab and outlives the panel. In the mode "Comment" the edit controls of
+/// the selected entry (<see cref="CommentEditor"/>) are built below the list, and Esc in the list ends the mode; outside
+/// the mode they do not exist.
+/// </summary>
+public sealed partial class CommentsPanel : UserControl
+{
+    private static readonly Key[] MovingKeys = [Key.Up, Key.Down, Key.PageUp, Key.PageDown, Key.Home, Key.End];
+
+    private TabViewModel? _tab;
+    private CommentsViewModel? _comments;
+    private CommentEditor? _editor;
+
+    public CommentsPanel()
+    {
+        InitializeComponent();
+        CommentList.AddHandler(KeyDownEvent, OnListKeyDownTunnel, RoutingStrategies.Tunnel);
+        CommentList.AddHandler(TappedEvent, OnEntryTapped);
+        FilterBox.TemplateApplied += OnFilterTemplateApplied;
+
+        // Key bindings of the window are matched from the focused element upwards before any key event is raised, so the
+        // list claims its moving keys with bindings of its own.
+        foreach (var key in MovingKeys)
+        {
+            CommentList.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(key), Command = new RelayCommand(() => Move(key)) });
+        }
+
+        // Esc anywhere in the panel (the list, the filter, the button "Comment", the edit controls) ends the mode "Comment":
+        // a text selection first, then the mode. Outside the mode the key goes on. The comment field keeps its own Esc
+        // (drop what was typed) and the open filter list its own (close the list): their bindings are nearer the focus.
+        KeyBindings.Add(new KeyBinding
+        {
+            Gesture = new KeyGesture(Key.Escape),
+            Command = new RelayCommand(
+                () => _tab?.EscapeAnnotate(),
+                () => _tab is { IsAnnotating: true } && TopLevel.GetTopLevel(this)?.DataContext is not MainViewModel { HasWindowEscape: true }),
+        });
+    }
+
+    /// <summary>The button "Comment" names its shortcut as the catalog has it ("Start or end commenting (Ctrl+Shift+K)").</summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (TopLevel.GetTopLevel(this)?.DataContext is MainViewModel { Commands: var catalog } && catalog.ById("annotate.mode")?.Gesture is { } gesture)
+        {
+            var keys = GestureText.Of(gesture);
+            ToolTip.SetTip(AnnotateButton, $"{Strings.AnnotateButtonTooltip} ({keys})");
+            AutomationProperties.SetAcceleratorKey(AnnotateButton, keys);
+        }
+        else
+        {
+            ToolTip.SetTip(AnnotateButton, Strings.AnnotateButtonTooltip);
+        }
+    }
+
+    // The window may hand the panel another tab just before it replaces the panel (a tab that shows another panel): the
+    // list of such a tab is not created here, it is only taken from a tab that shows "Comments".
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        Detach();
+        if (DataContext is TabViewModel tab)
+        {
+            _tab = tab;
+            tab.PropertyChanged += OnTabPropertyChanged;
+            Attach();
+        }
+    }
+
+    private void Attach()
+    {
+        var comments = _tab is { SidePanel: SidePanelKind.Comments } tab ? tab.Comments : null;
+        if (ReferenceEquals(comments, _comments) && ReferenceEquals(CommentsRoot.DataContext, comments))
+        {
+            // Already shown: the list keeps its scroll position.
+            return;
+        }
+
+        CommentsRoot.DataContext = null;
+        if (_comments is not null)
+        {
+            _comments.PropertyChanged -= OnCommentsPropertyChanged;
+        }
+
+        _comments = comments;
+        if (comments is not null)
+        {
+            comments.PropertyChanged += OnCommentsPropertyChanged;
+        }
+
+        CommentsRoot.DataContext = comments;
+        UpdateEditor();
+        FocusCommentIfRequested();
+    }
+
+    private void Detach()
+    {
+        CommentsRoot.DataContext = null;
+        if (_comments is not null)
+        {
+            _comments.PropertyChanged -= OnCommentsPropertyChanged;
+        }
+
+        _comments = null;
+        UpdateEditor();
+        if (_tab is not null)
+        {
+            _tab.PropertyChanged -= OnTabPropertyChanged;
+            _tab = null;
+        }
+    }
+
+    // Another document in the tab dropped its list: show the new one.
+    private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is (nameof(TabViewModel.Comments) or nameof(TabViewModel.SidePanel)) && _tab is { SidePanel: SidePanelKind.Comments })
+        {
+            Attach();
+        }
+    }
+
+    private void OnCommentsPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CommentsViewModel.IsEditing))
+        {
+            UpdateEditor();
+            FocusCommentIfRequested();
+        }
+        else if (e.PropertyName == nameof(CommentsViewModel.SelectedItem) && _comments?.SelectedItem is { } selected)
+        {
+            // A markup just made (or an edited one) is selected: the list shows it.
+            CommentList.ScrollIntoView(selected);
+        }
+        else if (e.PropertyName == nameof(CommentsViewModel.IsCommentFocusRequested))
+        {
+            FocusCommentIfRequested();
+        }
+    }
+
+    /// <summary>
+    /// Enter on a selection in the document asked for the comment of its entry (<see cref="CommentsViewModel.BeginEdit"/>): the
+    /// list shows the entry and the comment field gets the keys, once the edit controls are laid out.
+    /// </summary>
+    private void FocusCommentIfRequested()
+    {
+        if (_comments is not { IsCommentFocusRequested: true, SelectedItem: { } item } comments || _editor is not { } editor)
+        {
+            return;
+        }
+
+        comments.TakeCommentFocusRequest();
+        CommentList.ScrollIntoView(item);
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (ReferenceEquals(_editor, editor) && ReferenceEquals(_comments?.SelectedItem, item))
+                {
+                    editor.FocusComment();
+                }
+            },
+            DispatcherPriority.Loaded);
+    }
+
+    /// <summary>The edit controls exist only in the mode; leaving it drops them (the keys go to the list if they were there).</summary>
+    private void UpdateEditor()
+    {
+        if (_comments is { IsEditing: true } comments)
+        {
+            if (_editor is null)
+            {
+                _editor = new CommentEditor { Name = "CommentEditor" };
+                _editor.FocusReturnRequested += FocusSelectedEntry;
+            }
+
+            _editor.DataContext = comments;
+            CommentEditorHost.Content = _editor;
+            return;
+        }
+
+        if (_editor is null)
+        {
+            return;
+        }
+
+        var hadFocus = _editor.IsKeyboardFocusWithin;
+        _editor.FocusReturnRequested -= FocusSelectedEntry;
+        _editor.DataContext = null;
+        _editor = null;
+        CommentEditorHost.Content = null;
+        if (hadFocus)
+        {
+            FocusSelectedEntry();
+        }
+    }
+
+    /// <summary>Gives the keys to the selected entry of the list, or to the list itself.</summary>
+    private void FocusSelectedEntry()
+    {
+        var index = CommentList.SelectedIndex;
+        if (index >= 0)
+        {
+            CommentList.ScrollIntoView(index);
+            if (CommentList.ContainerFromIndex(index) is { } container)
+            {
+                container.Focus(NavigationMethod.Directional);
+                return;
+            }
+        }
+
+        CommentList.Focus(NavigationMethod.Directional);
+    }
+
+    private void OnFilterTemplateApplied(object? sender, TemplateAppliedEventArgs e) => CardLists.OnTemplateApplied(this, FilterBox, e);
+
+    /// <summary>The position of the entry with the keyboard focus, or -1.</summary>
+    private int FocusedIndex() =>
+        TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is Visual focused
+        && focused.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { } container
+            ? CommentList.IndexFromContainer(container)
+            : -1;
+
+    /// <summary>Moves the cursor of the list for a moving key; the document stays.</summary>
+    private void Move(Key key)
+    {
+        var count = CommentList.ItemCount;
+        if (count == 0)
+        {
+            return;
+        }
+
+        var current = FocusedIndex();
+        if (current < 0)
+        {
+            current = Math.Max(CommentList.SelectedIndex, 0);
+        }
+
+        var target = key switch
+        {
+            Key.Up => current - 1,
+            Key.Down => current + 1,
+            Key.Home => 0,
+            Key.End => count - 1,
+            Key.PageUp => current - EntriesPerPage(),
+            _ => current + EntriesPerPage(),
+        };
+        target = Math.Clamp(target, 0, count - 1);
+        CommentList.SelectedIndex = target;
+        CommentList.ScrollIntoView(target);
+        CommentList.ContainerFromIndex(target)?.Focus(NavigationMethod.Directional);
+    }
+
+    /// <summary>As many entries as are wholly in view, less one, so the old entry stays in sight; at least one.</summary>
+    private int EntriesPerPage()
+    {
+        var inView = 0;
+        foreach (var realized in CommentList.GetRealizedContainers())
+        {
+            if (realized.TranslatePoint(default, CommentList) is { } origin
+                && origin.Y >= -1
+                && origin.Y + realized.Bounds.Height <= CommentList.Bounds.Height + 1)
+            {
+                inView++;
+            }
+        }
+
+        return Math.Max(1, inView - 1);
+    }
+
+    private void OnListKeyDownTunnel(object? sender, KeyEventArgs e)
+    {
+        if (e.Handled || e.KeyModifiers != KeyModifiers.None || e.Key is not (Key.Enter or Key.Space))
+        {
+            return;
+        }
+
+        var index = FocusedIndex();
+        if (index >= 0 && CommentList.Items[index] is CommentItemViewModel entry && _comments is { } comments)
+        {
+            e.Handled = true;
+            comments.JumpCommand.Execute(entry);
+        }
+    }
+
+    private void OnEntryTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Source is Visual source
+            && source.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { DataContext: CommentItemViewModel entry }
+            && _comments is { } comments)
+        {
+            e.Handled = true;
+            comments.JumpCommand.Execute(entry);
+        }
+    }
+}

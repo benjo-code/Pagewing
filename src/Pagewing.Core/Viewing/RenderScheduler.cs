@@ -21,12 +21,20 @@ namespace Pagewing.Core.Viewing;
 /// <see cref="Update"/> may be called from any thread, typically the UI thread on every scroll event. It only
 /// replaces the queue under a lock and never waits or renders on the calling thread. The events are raised on a
 /// thread-pool thread. Their handlers must be short and must not wait for the thread that calls
-/// <see cref="Dispose"/> or <see cref="SetPageTheme"/>, because both wait for a handler that is running.
+/// <see cref="Dispose"/>, <see cref="SetPageTheme"/> or <see cref="SetFormHighlight"/>, because all three wait for a handler
+/// that is running.
 /// </para>
 /// <para>
 /// Every request renders in the <see cref="PageTheme"/> that was current when it started. <see cref="SetPageTheme"/>
 /// treats everything of the old theme like a request that is no longer wanted: the running request is cancelled
-/// and leaves no trace, and the queue, the cache and the failed keys are emptied.
+/// and leaves no trace, and the queue, the cache and the failed keys are emptied. <see cref="SetFormHighlight"/> does the
+/// same for the highlight of the form fields; theme and highlight share one epoch.
+/// </para>
+/// <para>
+/// In the same way every request renders one epoch of its page. <see cref="InvalidatePages"/> starts a new epoch for
+/// the pages whose content changed (an annotation was added, changed or removed): their images and failed keys are
+/// dropped, a running request of such a page is cancelled, and a result of an older epoch of the page is never stored
+/// or reported. Unlike <see cref="SetPageTheme"/> it waits for nothing and leaves the other pages and the queue alone.
 /// </para>
 /// </remarks>
 public sealed class RenderScheduler : IDisposable
@@ -35,6 +43,10 @@ public sealed class RenderScheduler : IDisposable
     private static readonly RenderOptions BackgroundOptions = new() { Priority = PdfPriority.Background };
     private static readonly RenderOptions DarkInteractiveOptions = InteractiveOptions with { PageTheme = PageTheme.Dark };
     private static readonly RenderOptions DarkBackgroundOptions = BackgroundOptions with { PageTheme = PageTheme.Dark };
+    private static readonly RenderOptions HighlightedInteractiveOptions = InteractiveOptions with { FormHighlight = true };
+    private static readonly RenderOptions HighlightedBackgroundOptions = BackgroundOptions with { FormHighlight = true };
+    private static readonly RenderOptions HighlightedDarkInteractiveOptions = DarkInteractiveOptions with { FormHighlight = true };
+    private static readonly RenderOptions HighlightedDarkBackgroundOptions = DarkBackgroundOptions with { FormHighlight = true };
 
     private readonly Func<RenderRequest, RenderOptions, CancellationToken, Task<RenderedImage>> render;
     private readonly RenderCache cache;
@@ -51,15 +63,22 @@ public sealed class RenderScheduler : IDisposable
     private bool signalled;
     private bool disposed;
 
-    // Serializes raising the events with Dispose and SetPageTheme, so that no event starts after Dispose has returned
-    // and no event of an old theme starts after SetPageTheme has returned. Taken before gate, never the other way round.
+    // Serializes raising the events with Dispose, SetPageTheme and SetFormHighlight, so that no event starts after Dispose
+    // has returned and no event of an old theme or highlight starts after the setter has returned. Taken before gate, never
+    // the other way round.
     private readonly object eventGate = new();
     private bool silenced;
 
     // Changed only under eventGate and gate together, so either of them is enough to read them. The epoch counts the
-    // theme changes: a job of an earlier epoch belongs to an old theme, even after a switch back to its colours.
+    // changes of theme and highlight: a job of an earlier epoch belongs to old settings, even after a switch back.
     private PageTheme theme;
-    private long themeEpoch;
+    private bool highlight;
+    private long settingsEpoch;
+
+    // The epoch of each page that InvalidatePages has dropped at least once (a page without an entry is at 0). Changed
+    // and read only under gate: InvalidatePages must not wait for eventGate, so Raise takes gate to read it. A job of
+    // an earlier epoch of its page shows content the page no longer has.
+    private readonly Dictionary<int, long> pageEpochs = [];
 
     /// <summary>Creates a scheduler that renders the pages of <paramref name="document"/> into <paramref name="cache"/>.</summary>
     /// <remarks>
@@ -70,13 +89,18 @@ public sealed class RenderScheduler : IDisposable
     /// <param name="document">The document to render.</param>
     /// <param name="cache">The cache the images are stored in.</param>
     /// <param name="pageTheme">The theme the pages are rendered in until <see cref="SetPageTheme"/> changes it.</param>
-    public RenderScheduler(PdfDocument document, RenderCache cache, PageTheme pageTheme = PageTheme.Light)
-        : this(RenderWith(document), cache, pageTheme)
+    /// <param name="formHighlight">Whether the form fields are highlighted until <see cref="SetFormHighlight"/> changes it.</param>
+    public RenderScheduler(PdfDocument document, RenderCache cache, PageTheme pageTheme = PageTheme.Light, bool formHighlight = false)
+        : this(RenderWith(document), cache, pageTheme, formHighlight)
     {
     }
 
     /// <summary>Creates a scheduler with its own render function, which gets the options of each request (for tests).</summary>
-    internal RenderScheduler(Func<RenderRequest, RenderOptions, CancellationToken, Task<RenderedImage>> render, RenderCache cache, PageTheme pageTheme = PageTheme.Light)
+    internal RenderScheduler(
+        Func<RenderRequest, RenderOptions, CancellationToken, Task<RenderedImage>> render,
+        RenderCache cache,
+        PageTheme pageTheme = PageTheme.Light,
+        bool formHighlight = false)
     {
         ArgumentNullException.ThrowIfNull(render);
         ArgumentNullException.ThrowIfNull(cache);
@@ -88,6 +112,7 @@ public sealed class RenderScheduler : IDisposable
         this.render = render;
         this.cache = cache;
         theme = pageTheme;
+        highlight = formHighlight;
         _ = Task.Run(RunWorkerAsync);
     }
 
@@ -100,7 +125,8 @@ public sealed class RenderScheduler : IDisposable
     /// <summary>
     /// Occurs on a thread-pool thread when rendering a key failed, or when its image is larger than the budget of the
     /// cache (it could never be stored). Each key is reported once and not tried again until the scheduler is
-    /// disposed or <see cref="SetPageTheme"/> changes the theme.
+    /// disposed, <see cref="SetPageTheme"/> changes the theme, <see cref="SetFormHighlight"/> the highlight or
+    /// <see cref="InvalidatePages"/> drops its page.
     /// </summary>
     public event Action<TileKey, Exception>? TileFailed;
 
@@ -112,6 +138,18 @@ public sealed class RenderScheduler : IDisposable
             lock (gate)
             {
                 return theme;
+            }
+        }
+    }
+
+    /// <summary>Gets whether new requests highlight the form fields (<see cref="RenderOptions.FormHighlight"/>). Default: off.</summary>
+    public bool FormHighlight
+    {
+        get
+        {
+            lock (gate)
+            {
+                return highlight;
             }
         }
     }
@@ -203,7 +241,7 @@ public sealed class RenderScheduler : IDisposable
                 }
 
                 theme = pageTheme;
-                themeEpoch++;
+                settingsEpoch++;
                 queue = [];
                 next = 0;
                 current?.Cancel();
@@ -213,6 +251,86 @@ public sealed class RenderScheduler : IDisposable
                 // the old theme can be added after this.
                 cache.Clear();
             }
+        }
+    }
+
+    /// <summary>
+    /// Highlights the form fields from now on, or stops (<see cref="RenderOptions.FormHighlight"/>). A change works exactly
+    /// like a change of <see cref="SetPageTheme"/>: the running request is cancelled, the queue, the cache and the failed keys
+    /// are emptied, and no result of the old setting is stored or reported. Plan again with <see cref="Update"/> afterwards.
+    /// Waits only for an event handler that is running, so it must not be called from one. The same value, and any call
+    /// after <see cref="Dispose"/>, do nothing.
+    /// </summary>
+    public void SetFormHighlight(bool formHighlight)
+    {
+        lock (eventGate)
+        {
+            lock (gate)
+            {
+                if (disposed || formHighlight == highlight)
+                {
+                    return;
+                }
+
+                highlight = formHighlight;
+                settingsEpoch++;
+                queue = [];
+                next = 0;
+                current?.Cancel();
+                failed.Clear();
+                cache.Clear();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Drops what the scheduler has of <paramref name="pages"/>, because their content changed: starts a new epoch for
+    /// each of them, removes their images from the cache (<see cref="RenderCache.RemovePages"/>) and forgets their
+    /// failed keys, and cancels the running request if it belongs to one of them. A result of an older epoch of such a
+    /// page that is still on its way is neither stored nor reported (no <see cref="TileReady"/>, no
+    /// <see cref="TileFailed"/>, not marked as failed). Queued requests stay queued and render the new epoch. Plan
+    /// again with <see cref="Update"/> afterwards; the cancelled request is rendered again only if it is wanted then.
+    /// Images and requests of other pages are not touched, and the budget of the cache stays as it is. An empty set,
+    /// and any call after <see cref="Dispose"/>, do nothing.
+    /// </summary>
+    /// <remarks>
+    /// Takes only the lock of the queue, never the one that serializes the events, so it does not wait for an event
+    /// handler and may be called from any thread. Do not call it from a handler of <see cref="TileReady"/> or
+    /// <see cref="TileFailed"/>: a handler that drops the page it was told about would make the scheduler render that
+    /// page again and again. An event that has already started when this is called may still name a key of the old
+    /// epoch; its image is no longer in the cache then, as with any evicted image.
+    /// </remarks>
+    /// <param name="pages">The zero-based indices of the pages whose content changed.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="pages"/> is <see langword="null"/>.</exception>
+    public void InvalidatePages(IReadOnlySet<int> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (pages.Count == 0)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            foreach (var page in pages)
+            {
+                pageEpochs[page] = PageEpochOf(page) + 1;
+            }
+
+            if (current is { } running && pages.Contains(running.Request.Key.Page))
+            {
+                running.Cancel();
+            }
+
+            failed.RemoveWhere(key => pages.Contains(key.Page));
+
+            // Under this lock, like the images that are stored, so none of an old epoch can be added after this.
+            cache.RemovePages(pages);
         }
     }
 
@@ -244,13 +362,15 @@ public sealed class RenderScheduler : IDisposable
 
     /// <summary>
     /// The render options for a request: the priority follows <see cref="RenderRequest.Background"/>, the page theme is
-    /// <paramref name="theme"/>.
+    /// <paramref name="theme"/>, the highlight of the form fields <paramref name="formHighlight"/>.
     /// </summary>
-    internal static RenderOptions OptionsFor(RenderRequest request, PageTheme theme = PageTheme.Light) => theme switch
+    internal static RenderOptions OptionsFor(RenderRequest request, PageTheme theme = PageTheme.Light, bool formHighlight = false) => (theme, formHighlight) switch
     {
-        PageTheme.Light => request.Background ? BackgroundOptions : InteractiveOptions,
-        PageTheme.Dark => request.Background ? DarkBackgroundOptions : DarkInteractiveOptions,
-        _ => (request.Background ? BackgroundOptions : InteractiveOptions) with { PageTheme = theme },
+        (PageTheme.Light, false) => request.Background ? BackgroundOptions : InteractiveOptions,
+        (PageTheme.Dark, false) => request.Background ? DarkBackgroundOptions : DarkInteractiveOptions,
+        (PageTheme.Light, true) => request.Background ? HighlightedBackgroundOptions : HighlightedInteractiveOptions,
+        (PageTheme.Dark, true) => request.Background ? HighlightedDarkBackgroundOptions : HighlightedDarkInteractiveOptions,
+        _ => (request.Background ? BackgroundOptions : InteractiveOptions) with { PageTheme = theme, FormHighlight = formHighlight },
     };
 
     private static Func<RenderRequest, RenderOptions, CancellationToken, Task<RenderedImage>> RenderWith(PdfDocument document)
@@ -313,7 +433,7 @@ public sealed class RenderScheduler : IDisposable
                     continue;
                 }
 
-                job = new Job(request, theme, themeEpoch);
+                job = new Job(request, theme, highlight, settingsEpoch, PageEpochOf(request.Key.Page));
                 current = job;
                 return true;
             }
@@ -329,7 +449,7 @@ public sealed class RenderScheduler : IDisposable
         Task<RenderedImage> rendering;
         try
         {
-            rendering = render(job.Request, OptionsFor(job.Request, job.Theme), job.Token) ?? Task.FromResult<RenderedImage>(null!);
+            rendering = render(job.Request, OptionsFor(job.Request, job.Theme, job.FormHighlight), job.Token) ?? Task.FromResult<RenderedImage>(null!);
         }
         catch (Exception ex)
         {
@@ -362,10 +482,11 @@ public sealed class RenderScheduler : IDisposable
         {
             current = null;
 
-            // A cancelled job (no longer wanted, of an old page theme, or disposed) leaves no trace, even if an image
-            // arrived in a race. SetPageTheme cancels the running job, so the theme check only states the rule.
-            // Its token source is not disposed: the cancellation callbacks may still be running on a pool thread.
-            if (job.IsCancelled || !rendering.IsCompleted || job.ThemeEpoch != themeEpoch)
+            // A cancelled job (no longer wanted, of an old page theme, highlight or page epoch, or disposed) leaves no
+            // trace, even if an image arrived in a race. SetPageTheme, SetFormHighlight and InvalidatePages cancel the
+            // running job, so the epoch checks only state the rule. Its token source is not disposed: the cancellation callbacks may still be running on
+            // a pool thread.
+            if (job.IsCancelled || !rendering.IsCompleted || job.SettingsEpoch != settingsEpoch || IsOutdatedPage(job))
             {
                 return;
             }
@@ -395,6 +516,12 @@ public sealed class RenderScheduler : IDisposable
         Raise(job, error);
     }
 
+    // Must run under the lock.
+    private long PageEpochOf(int page) => pageEpochs.GetValueOrDefault(page);
+
+    // Must run under the lock. Whether InvalidatePages has dropped the page of the job since the job started.
+    private bool IsOutdatedPage(Job job) => job.PageEpoch != PageEpochOf(job.Request.Key.Page);
+
     private static Exception FailureOf(Task<RenderedImage> rendering)
     {
         if (rendering.IsCanceled)
@@ -416,11 +543,21 @@ public sealed class RenderScheduler : IDisposable
         var key = job.Request.Key;
         lock (eventGate)
         {
-            // The theme may have changed between storing the result and here; then the result is already gone from the
+            // The theme or the highlight may have changed between storing the result and here; then the result is already gone from the
             // cache (and from the failed keys), and it is not reported either.
-            if (silenced || job.ThemeEpoch != themeEpoch)
+            if (silenced || job.SettingsEpoch != settingsEpoch)
             {
                 return;
+            }
+
+            // The same for the epoch of the page. It is only guarded by gate, which may be taken inside eventGate (never
+            // the other way round). InvalidatePages may still come right after this check; see its remarks.
+            lock (gate)
+            {
+                if (IsOutdatedPage(job))
+                {
+                    return;
+                }
             }
 
             try
@@ -443,25 +580,32 @@ public sealed class RenderScheduler : IDisposable
         }
     }
 
-    /// <summary>The running request, its page theme and the source of its cancellation.</summary>
+    /// <summary>The running request, its page theme and highlight, the epoch of its page and the source of its cancellation.</summary>
     private sealed class Job : IDisposable
     {
         private readonly CancellationTokenSource source = new();
 
-        public Job(RenderRequest request, PageTheme theme, long themeEpoch)
+        public Job(RenderRequest request, PageTheme theme, bool formHighlight, long settingsEpoch, long pageEpoch)
         {
             Request = request;
             Theme = theme;
-            ThemeEpoch = themeEpoch;
+            FormHighlight = formHighlight;
+            SettingsEpoch = settingsEpoch;
+            PageEpoch = pageEpoch;
             Token = source.Token;
         }
 
         public RenderRequest Request { get; }
 
-        // The page theme the job renders in: the scheduler's theme when it started, and the epoch of that theme.
+        // The page theme and highlight the job renders in: the scheduler's settings when it started, and their epoch.
         public PageTheme Theme { get; }
 
-        public long ThemeEpoch { get; }
+        public bool FormHighlight { get; }
+
+        public long SettingsEpoch { get; }
+
+        // The epoch of the request's page when the job started (see InvalidatePages).
+        public long PageEpoch { get; }
 
         public CancellationToken Token { get; }
 

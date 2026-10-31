@@ -1,0 +1,129 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Pagewing.App.ViewModels"
+        xmlns:ctl="using:Pagewing.App.Controls"
+        xmlns:res="using:Pagewing.App.Resources"
+        x:Class="Pagewing.App.Views.UpdateWindow"
+        x:DataType="vm:UpdateViewModel"
+        Title="{x:Static res:Strings.UpdateWindowHeader}"
+        Width="460" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        WindowDecorations="BorderOnly"
+        Background="{DynamicResource Pw.Brush.Surface.Raised}">
+  <!--
+    The progress window of an update (design system 7.12, section 3 of the mockups): its own window, so it can stay while
+    the app ends and the window of the helper takes its place. A header row like the title bar of the app (surface.window,
+    the app symbol, "Update Pagewing"; the window is dragged by it), then on surface.raised the title, the versions with the
+    request to keep the window open, the four steps, the bar with percent and megabytes, and the buttons: "Cancel" until
+    the step "Install", after a failure the message with "Try again" and "Close" (and the download page where that is the
+    way out). A step shows its state in a mark of its own shape (check mark on accent.default, ring with a dot, empty ring
+    in border.strong, cross in danger.default), in the weight of its label and in words for screen readers. Esc cancels the
+    download or closes a failure; while installing, neither Esc nor closing the window does anything. Made on "Install",
+    never in the startup path (UpdateWindow.ShowFor).
+  -->
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding EscapeCommand}" />
+  </Window.KeyBindings>
+  <Window.Styles>
+    <!-- The label of the step that runs or failed is bold; the label of an open step is text.secondary. -->
+    <Style Selector="TextBlock.current">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.open">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <!-- The bar of the mockup: 8 high, accent.default on a surface.hover track (3:1 against each other, UpdateWindowTests). -->
+    <Style Selector="ProgressBar#UpdateProgress">
+      <Setter Property="Height" Value="8" />
+      <Setter Property="MinHeight" Value="8" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    </Style>
+  </Window.Styles>
+
+  <StackPanel>
+    <Border Name="UpdateHeader" Height="{DynamicResource Pw.Size.TitleBarHeight}" Padding="16,0"
+            Background="{DynamicResource Pw.Brush.Surface.Window}">
+      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <ctl:StrokeIcon Name="UpdateHeaderIcon" Width="18" Height="18" VerticalAlignment="Center"
+                        Data="{StaticResource Pw.Icon.FileText}" Brush="{DynamicResource Pw.Brush.Accent.Default}" />
+        <TextBlock Name="UpdateHeaderText" Classes="body" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{x:Static res:Strings.UpdateWindowHeader}" />
+      </StackPanel>
+    </Border>
+
+    <StackPanel Margin="24,24,24,20">
+      <TextBlock Name="UpdateHeading" Classes="subtitle" TextWrapping="Wrap" Text="{Binding Heading}" />
+      <TextBlock Name="UpdateSubtitle" Classes="body" Margin="0,4,0,16" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding Subtitle}" />
+
+      <ItemsControl Name="UpdateSteps" ItemsSource="{Binding Steps}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="8" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:UpdateStep">
+            <Border Name="UpdateStepRow" Background="Transparent"
+                    AutomationProperties.Name="{Binding AutomationName}" AutomationProperties.AccessibilityView="Content">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Panel Width="18" Height="18" VerticalAlignment="Center">
+                  <Border Name="UpdateStepDone" CornerRadius="9" Background="{DynamicResource Pw.Brush.Accent.Default}"
+                          IsVisible="{Binding IsDone}">
+                    <ctl:StrokeIcon Width="12" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Data="{StaticResource Pw.Icon.Check}" Brush="{DynamicResource Pw.Brush.Accent.On}" />
+                  </Border>
+                  <Border Name="UpdateStepRunning" CornerRadius="9" BorderThickness="2"
+                          BorderBrush="{DynamicResource Pw.Brush.Accent.Default}" IsVisible="{Binding IsRunning}">
+                    <Ellipse Width="6" Height="6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Fill="{DynamicResource Pw.Brush.Accent.Default}" />
+                  </Border>
+                  <Border Name="UpdateStepOpen" CornerRadius="9" BorderThickness="2"
+                          BorderBrush="{DynamicResource Pw.Brush.Border.Strong}" IsVisible="{Binding IsOpen}" />
+                  <ctl:StrokeIcon Name="UpdateStepFailed" Width="18" Height="18"
+                                  Data="{StaticResource Pw.Icon.X}" Brush="{DynamicResource Pw.Brush.Danger.Default}"
+                                  IsVisible="{Binding IsFailed}" />
+                </Panel>
+                <TextBlock Name="UpdateStepLabel" Classes="body" Classes.current="{Binding IsCurrent}" Classes.open="{Binding IsOpen}"
+                           VerticalAlignment="Center" Text="{Binding Label}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <StackPanel Name="UpdateProgressPanel" Margin="0,16,0,0" Spacing="6" IsVisible="{Binding ShowsProgress}">
+        <ProgressBar Name="UpdateProgress" Minimum="0" Maximum="100" Value="{Binding Percent}"
+                     IsIndeterminate="{Binding IsProgressIndeterminate}"
+                     AutomationProperties.Name="{x:Static res:Strings.UpdateProgressName}" />
+        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ShowsSize}">
+          <TextBlock Name="UpdatePercent" Classes="caption num" Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                     Text="{Binding PercentText}" />
+          <TextBlock Name="UpdateSize" Grid.Column="1" Classes="caption num" Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                     Text="{Binding SizeText}" />
+        </Grid>
+      </StackPanel>
+
+      <Grid Name="UpdateFailurePanel" ColumnDefinitions="Auto,*" Margin="0,16,0,0" IsVisible="{Binding IsFailed}">
+        <ctl:StrokeIcon Name="UpdateFailureIcon" Width="16" Height="16" Margin="0,1,10,0" VerticalAlignment="Top"
+                        Data="{StaticResource Pw.Icon.AlertTriangle}" Brush="{DynamicResource Pw.Brush.Danger.Default}" />
+        <TextBlock Name="UpdateFailureText" Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Danger.Default}" Text="{Binding FailureText}"
+                   AutomationProperties.LiveSetting="Assertive" />
+      </Grid>
+
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,20,0,0" IsVisible="{Binding !IsLocked}">
+        <Button Name="UpdateCancelButton" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}"
+                Content="{x:Static res:Strings.UpdateWindowCancel}" />
+        <Button Name="UpdateCloseButton" Command="{Binding CloseCommand}" IsVisible="{Binding IsFailed}"
+                Content="{x:Static res:Strings.UpdateWindowClose}" />
+        <Button Name="UpdateDownloadPageButton" Classes.primary="{Binding !CanRetry}" Command="{Binding OpenDownloadPageCommand}"
+                IsVisible="{Binding OffersDownloadPage}" Content="{x:Static res:Strings.UpdateDownloadPage}" />
+        <Button Name="UpdateRetryButton" Classes="primary" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}"
+                Content="{x:Static res:Strings.UpdateWindowRetry}" />
+      </StackPanel>
+    </StackPanel>
+  </StackPanel>
+</Window>

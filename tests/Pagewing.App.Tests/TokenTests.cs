@@ -278,6 +278,18 @@ public sealed class TokenTests
     }
 
     [AvaloniaFact]
+    public void TheFormHighlightIsTheLightAccent()
+    {
+        // PDFium tints the form fields with a constant of Pagewing.Core (RGB); the pages are light in every theme, so it is the
+        // accent of the light theme. Black text keeps the contrast of text on the tint over white.
+        var accent = Token("Accent.Default", ThemeVariant.Light);
+        Assert.Equal(FormHighlightColors.Color, accent.ToUInt32() & 0xFFFFFF);
+        var tint = ColorBlend.Over(Color.FromArgb(FormHighlightColors.Alpha, accent.R, accent.G, accent.B), Colors.White);
+        var text = ColorBlend.Over(Color.FromArgb(FormHighlightColors.Alpha, accent.R, accent.G, accent.B), Colors.Black);
+        Assert.True(Wcag.Contrast(text, tint) >= 4.5, $"text on the highlight is {Wcag.Contrast(text, tint):F2}:1");
+    }
+
+    [AvaloniaFact]
     public void ShadowTokensRepeatTheColourTokensInEveryTheme()
     {
         // Section 5.3: page "0 0 0 1 page.border, 0 2 10 0 page.shadow", card and popup

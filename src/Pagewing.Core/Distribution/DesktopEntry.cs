@@ -16,6 +16,7 @@ public static class DesktopEntry
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(execPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(iconName);
+        RejectControlCharacters(iconName, nameof(iconName));
         return new StringBuilder()
             .Append("[Desktop Entry]\n")
             .Append("Type=Application\n")
@@ -42,6 +43,7 @@ public static class DesktopEntry
     public static string EscapeExec(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
+        RejectControlCharacters(path, nameof(path));
         var text = path.Replace("%", "%%", StringComparison.Ordinal);
         if (text.AsSpan().IndexOfAny(ReservedInExec) < 0)
         {
@@ -66,5 +68,18 @@ public static class DesktopEntry
         }
 
         return quoted.Append('"').ToString();
+    }
+
+    // A desktop entry is read line by line: a line break (or any control character) in a value would end the line, and the
+    // rest of the name would become another key of the entry, which the quoting of Exec does not prevent.
+    private static void RejectControlCharacters(string value, string parameter)
+    {
+        foreach (var c in value)
+        {
+            if (char.IsControl(c))
+            {
+                throw new ArgumentException("A desktop entry value cannot contain a control character.", parameter);
+            }
+        }
     }
 }

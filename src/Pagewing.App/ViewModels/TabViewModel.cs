@@ -25,6 +25,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     private readonly RelayCommand _nextPageCommand;
     private readonly RelayCommand _focusPageFieldCommand;
     private PdfDocument? _document;
+
+    // The render cache of the session when _document was taken: the same cache with another document is the saved file
+    // that the session adopted (see Refresh).
+    private RenderCache? _documentCache;
     private ViewerState _state;
     private string? _fullPath;
     private PdfOpenError? _error;
@@ -151,6 +155,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(IsReady));
                 OnPropertyChanged(nameof(IsFailed));
                 RaiseNavigationCanExecuteChanged();
+                OnAnnotateAvailabilityChanged();
             }
 
             // Also when the state stays the same: the password check depends on more than the state.
@@ -241,6 +246,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _fullPath, value))
             {
                 OnPropertyChanged(nameof(FileName));
+                OnPropertyChanged(nameof(TabAutomationName));
                 OnPropertyChanged(nameof(PasswordPromptText));
                 OnPropertyChanged(nameof(ErrorCauseText));
                 OnPropertyChanged(nameof(ErrorDetailsText));
@@ -469,7 +475,13 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     public bool HasShownSharpPage
     {
         get => _hasShownSharpPage;
-        internal set => SetProperty(ref _hasShownSharpPage, value);
+        internal set
+        {
+            if (SetProperty(ref _hasShownSharpPage, value))
+            {
+                OnAnnotateAvailabilityChanged();
+            }
+        }
     }
 
     /// <summary>
@@ -655,9 +667,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
     /// shows it like a tab shown again), then layout, zoom mode and zoom, in this order and without the zoom setter, which
     /// would turn a fit mode into the free zoom. A view with unusable values is ignored. The fraction is limited to
     /// -1 to 1 (a negative one is the margin above the first page, which the view keeps), the zoom to the zoom steps;
-    /// the page is limited to the document once it is open (<see cref="Refresh"/>).
+    /// the page is limited to the document once it is open (<see cref="Refresh"/>). Also used for a session that is
+    /// already opening when its tab is made (<see cref="MainViewModel.AdoptSession"/>, the restart after an update).
     /// </summary>
-    private void ApplyInitialView()
+    internal void ApplyInitialView()
     {
         var remembered = InitialView;
         InitialView = null;
@@ -779,8 +792,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
 
         _disposed = true;
         _session.Changed -= OnSessionChanged;
+        DisposeAnnotations();
         ResetOutline();
         _search?.Dispose();
+        _comments?.Dispose();
         TextSelection = null;
         ClearHistory();
         _checkingPassword = false;
@@ -961,6 +976,9 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         _previousPageCommand.RaiseCanExecuteChanged();
         _nextPageCommand.RaiseCanExecuteChanged();
         _focusPageFieldCommand.RaiseCanExecuteChanged();
+        RaiseSaveCanExecuteChanged();
+        _undoCommand?.RaiseCanExecuteChanged();
+        _redoCommand?.RaiseCanExecuteChanged();
     }
 
     private void SubmitPassword()
@@ -1013,10 +1031,24 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             }
         }
 
-        var isNewDocument = document is not null && !ReferenceEquals(document, _document);
+        // A save swaps the document for the written file without leaving Ready and keeps the render cache
+        // (ViewerSession.AdoptSavedDocumentAsync); a newly opened file always comes with a cache of its own. The same content:
+        // page, zoom, position, selection, search and outline stay, and the file is not treated as new.
+        var cache = document is not null ? _session.Cache : null;
+        var oldDocument = _document;
+        var isAdoption = document is not null && oldDocument is not null && !ReferenceEquals(document, oldDocument)
+            && cache is not null && ReferenceEquals(cache, _documentCache);
+        var isNewDocument = document is not null && !ReferenceEquals(document, _document) && !isAdoption;
         var documentChanged = !ReferenceEquals(document, _document);
         var hadDocument = _document is not null;
         _document = document;
+        _documentCache = cache;
+        var readOutlineAgain = false;
+        if (isAdoption)
+        {
+            readOutlineAgain = AdoptDocument(oldDocument!, document!);
+        }
+
         if (_outlineDocument is not null && !ReferenceEquals(_outlineDocument, document))
         {
             // The outline belongs to the document that was replaced or closed.
@@ -1038,6 +1070,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             // Zoom mode, layout and panel belong to the tab and stay; a saved view brings its own zoom.
             HasShownSharpPage = false;
             _thumbnails = null;
+            ResetAnnotationState();
             CurrentPage = 1;
             CurrentPageLast = 1;
             if (SavedView is null)
@@ -1056,6 +1089,9 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             _thumbnails = null;
             CurrentPage = 0;
             CurrentPageLast = 0;
+
+            // No document, no mode.
+            ResetAnnotateMode();
         }
 
         // The password check is over once the session leaves Loading. The password stays only for another try.
@@ -1071,13 +1107,23 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         }
 
         State = state;
-        if (documentChanged)
+        if (isAdoption)
+        {
+            // The same pages: a search that was running on the closed document starts again on the new one.
+            _search?.OnDocumentAdopted(oldDocument!);
+            _comments?.OnDocumentAdopted(document!);
+            OnPropertyChanged(nameof(Document));
+        }
+        else if (documentChanged)
         {
             // The search belongs to the document that was replaced or closed; a query typed while the first document (or
             // the next one) loaded is searched once it is there.
             if (hadDocument)
             {
                 _search?.Reset();
+
+                // So does the list of its annotations; the panel asks for a new one.
+                DiscardComments();
             }
             else if (isNewDocument)
             {
@@ -1097,10 +1143,42 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             PasswordRejected?.Invoke();
         }
 
-        // "Contents" is open while a new document arrives: its outline is read now.
-        if (isNewDocument && SidePanel == SidePanelKind.Contents)
+        // "Contents" is open while a new document arrives: its outline is read now (after a save only if its read was
+        // still running on the closed document).
+        if ((isNewDocument || readOutlineAgain) && SidePanel == SidePanelKind.Contents)
         {
             _ = EnsureOutlineAsync();
         }
+    }
+
+    /// <summary>
+    /// The session adopted the saved file in place of <paramref name="old"/> (UI thread, from <see cref="Refresh"/>): the
+    /// thumbnails of the old document are gone with it, a read outline and the signatures stay with the new one, and the
+    /// history of recently opened files is not told again when the path stayed (a "Save as" tells it about the new path,
+    /// as an open would). An outline that was still being read from the old document is dropped and read again.
+    /// </summary>
+    /// <returns>Whether the outline has to be read again.</returns>
+    private bool AdoptDocument(PdfDocument old, PdfDocument adopted)
+    {
+        _thumbnails = null;
+        RebindAnnotationState(old, adopted);
+        if (ReferenceEquals(ReportedDocument, old) && string.Equals(_fullPath, _session.Path, StringComparison.Ordinal))
+        {
+            ReportedDocument = adopted;
+        }
+
+        if (!ReferenceEquals(_outlineDocument, old))
+        {
+            return false;
+        }
+
+        if (OutlineState == OutlineState.Loaded)
+        {
+            _outlineDocument = adopted;
+            return false;
+        }
+
+        // Still reading (or failed) on the closed document: ResetOutline (in Refresh) drops it.
+        return true;
     }
 }

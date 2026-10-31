@@ -1,0 +1,154 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.SignatureCard"
+             x:DataType="vm:SignatureCardViewModel"
+             KeyboardNavigation.TabNavigation="Cycle"
+             AutomationProperties.Name="{x:Static res:Strings.SignatureCardTitle}">
+  <!--
+    The dialog "New signature" (milestone 12): a card over the window below the title bar in the style of the print and settings
+    cards (design system 7.8): surface.raised, radius.overlay, the card shadow. Two tabs, "Draw" (the pad, the ink colour, clear and
+    undo stroke) and "Image" (choose a file, the slider that removes the paper, the preview on a checkerboard); the name; the
+    problem that stops "Save", named in words (never only a colour); and the two lines of the hint, which stay in sight in both
+    tabs and outside the scrolling part. Tab goes from top to bottom and stays on the card; Esc and "Cancel" close it. Not modal.
+    Made when it is first shown, never in the startup path.
+  -->
+  <UserControl.Resources>
+    <DataTemplate x:Key="SignatureChoiceTemplate" x:DataType="vm:ISettingsChoice">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <ctl:StrokeIcon Grid.Column="1" Width="16" Height="16" Margin="8,0,0,0" VerticalAlignment="Center"
+                        Data="{StaticResource Pw.Icon.Check}"
+                        IsVisible="{Binding $parent[ComboBoxItem].IsSelected, FallbackValue=False}" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="StackPanel.signatureGroup">
+      <Setter Property="Spacing" Value="8" />
+    </Style>
+    <Style Selector="TextBlock.signatureHint">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.signatureProblem">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Danger.Default}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Width" Value="160" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Raised}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Border.Strong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+      <Setter Property="ItemTemplate" Value="{StaticResource SignatureChoiceTemplate}" />
+    </Style>
+    <Style Selector="ComboBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="FontSize" Value="{DynamicResource Pw.Font.Body}" />
+    </Style>
+    <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="SignatureBox" Width="520" MaxHeight="680" Margin="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <!-- Rows in the order of the keys (Tab): title and close button, the content, the hint, the buttons. -->
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+      <Grid ColumnDefinitions="*,Auto" Margin="24,16,12,0">
+        <TextBlock Classes="subtitle" VerticalAlignment="Center" Text="{x:Static res:Strings.SignatureCardTitle}" />
+        <Button Name="SignatureCloseButton" Grid.Column="1" Classes="icon"
+                Command="{Binding CancelCommand}"
+                ToolTip.Tip="{x:Static res:Strings.SignatureClose}"
+                AutomationProperties.Name="{x:Static res:Strings.SignatureClose}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+        </Button>
+      </Grid>
+
+      <ScrollViewer Name="SignatureScroller" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,16,24,8" Spacing="16">
+          <StackPanel Orientation="Horizontal" Spacing="16">
+            <RadioButton Name="SignatureDrawTab" GroupName="SignatureTabs" IsChecked="{Binding IsDrawTab, Mode=TwoWay}"
+                         Content="{x:Static res:Strings.SignatureTabDraw}" AutomationProperties.Name="{x:Static res:Strings.SignatureTabDraw}" />
+            <RadioButton Name="SignatureImageTab" GroupName="SignatureTabs" IsChecked="{Binding IsImageTab, Mode=TwoWay}"
+                         Content="{x:Static res:Strings.SignatureTabImage}" AutomationProperties.Name="{x:Static res:Strings.SignatureTabImage}" />
+          </StackPanel>
+
+          <StackPanel Classes="signatureGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.SignatureName}" />
+            <TextBox Name="SignatureName" MinHeight="32" Text="{Binding Name, Mode=TwoWay}" MaxLength="60"
+                     AutomationProperties.Name="{x:Static res:Strings.SignatureName}" />
+          </StackPanel>
+
+          <StackPanel Name="DrawPanel" Classes="signatureGroup" IsVisible="{Binding IsDrawTab}">
+            <ctl:SignaturePad Name="SignaturePad" Height="168" HorizontalAlignment="Stretch"
+                              Strokes="{Binding Strokes}"
+                              AutomationProperties.Name="{x:Static res:Strings.SignaturePadName}"
+                              AutomationProperties.HelpText="{x:Static res:Strings.SignaturePadHint}" />
+            <TextBlock Classes="caption signatureHint" Text="{x:Static res:Strings.SignaturePadHint}" />
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+              <Button Name="SignatureClearButton" Command="{Binding ClearCommand}" Content="{x:Static res:Strings.SignatureClear}"
+                      AutomationProperties.Name="{x:Static res:Strings.SignatureClear}" />
+              <Button Name="SignatureUndoButton" Grid.Column="1" Margin="8,0,0,0" Command="{Binding UndoStrokeCommand}" Content="{x:Static res:Strings.SignatureUndoStroke}"
+                      AutomationProperties.Name="{x:Static res:Strings.SignatureUndoStroke}" />
+              <ComboBox Name="SignatureInkChoice" Grid.Column="3"
+                        ItemsSource="{Binding Colors}" SelectedItem="{Binding SelectedColor, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Static res:Strings.SignatureInk}" />
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Name="ImagePanel" Classes="signatureGroup" IsVisible="{Binding IsImageTab}">
+            <Grid ColumnDefinitions="Auto,*">
+              <Button Name="SignatureChooseButton" Command="{Binding ChooseFileCommand}" Content="{x:Static res:Strings.SignatureChooseImage}"
+                      AutomationProperties.Name="{x:Static res:Strings.SignatureChooseImage}" />
+              <TextBlock Name="SignatureFileName" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                         Text="{Binding ImageFileName}" IsVisible="{Binding ImageFileName, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </Grid>
+            <TextBlock Classes="caption signatureHint" Text="{x:Static res:Strings.SignatureImageNote}" />
+            <StackPanel Classes="signatureGroup" IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock Classes="strong" Text="{x:Static res:Strings.SignatureThreshold}" />
+              <Slider Name="SignatureThreshold" Minimum="0" Maximum="255" SmallChange="1" LargeChange="16" TickFrequency="1"
+                      AutomationProperties.Name="{x:Static res:Strings.SignatureThreshold}" />
+              <ctl:SignaturePreview Name="SignaturePreviewView" Height="120" HorizontalAlignment="Stretch"
+                                    Image="{Binding Preview}"
+                                    AutomationProperties.Name="{x:Static res:Strings.SignaturePreview}" />
+            </StackPanel>
+          </StackPanel>
+
+          <TextBlock Name="SignatureProblemText" Classes="body signatureProblem" Text="{Binding ProblemText}"
+                     IsVisible="{Binding ProblemText, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- The hint of the feature: two lines, in both tabs, outside the scrolling part, never to be closed. -->
+      <StackPanel Grid.Row="2" Margin="24,4,24,0" Spacing="2">
+        <TextBlock Name="SignatureHintLegal" Classes="caption signatureHint" Text="{x:Static res:Strings.SignatureHintLegal}" />
+        <TextBlock Name="SignatureHintDigital" Classes="caption signatureHint" Text="{x:Static res:Strings.SignatureHintDigital}" />
+      </StackPanel>
+
+      <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="24,12,24,20">
+        <Button Name="SignatureCancelButton" Command="{Binding CancelCommand}" Content="{x:Static res:Strings.SignatureCancel}"
+                AutomationProperties.Name="{x:Static res:Strings.SignatureCancel}" />
+        <Button Name="SignatureSaveButton" Classes="primary" Command="{Binding SaveCommand}" Content="{x:Static res:Strings.SignatureSave}"
+                AutomationProperties.Name="{x:Static res:Strings.SignatureSave}" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

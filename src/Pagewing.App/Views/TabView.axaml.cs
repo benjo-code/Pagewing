@@ -9,7 +9,7 @@ namespace Pagewing.App.Views;
 /// <summary>
 /// One tab of the tab strip; its <c>DataContext</c> is a <see cref="ViewModels.TabViewModel"/>. The strip keeps one
 /// active view for whichever tab is active (with the element names of the M3 tab: <c>Tab</c>, <c>TabName</c>,
-/// <c>CloseTabButton</c>, <c>TabDocumentIcon</c>, <c>TabLockIcon</c>, <c>TabErrorIcon</c>) and one inactive view per
+/// <c>CloseTabButton</c>, <c>TabDocumentIcon</c>, <c>TabLockIcon</c>, <c>TabErrorIcon</c>, since M9 <c>TabUnsavedDot</c>) and one inactive view per
 /// other tab, which drops those names so they stay unique in the window. To screen readers each view is a tab item
 /// named after its file, selected when it is the active view (<see cref="TabViewAutomationPeer"/>).
 /// </summary>
@@ -39,7 +39,7 @@ public sealed partial class TabView : Decorator
         if (!isActive)
         {
             // Not styled yet (the view is not in a tree), so the names may still change.
-            foreach (var named in new Control[] { Tab, TabName, CloseTabButton, TabDocumentIcon, TabLockIcon, TabErrorIcon })
+            foreach (var named in new Control[] { Tab, TabName, CloseTabButton, TabDocumentIcon, TabLockIcon, TabErrorIcon, TabUnsavedDot })
             {
                 named.Name = null;
             }

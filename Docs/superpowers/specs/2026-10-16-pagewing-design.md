@@ -15,7 +15,7 @@ Pagewing ist eine schnelle Open-Source-Alternative zu Adobe Acrobat für Windows
 
 **Zielgruppe:** zuerst der Projektinhaber als täglicher Nutzer, danach allgemein Nutzer, die einen schlanken, schnellen PDF-Editor wollen. Keine Enterprise-Anforderungen wie Rollout per Gruppenrichtlinien, Zertifikatssignaturen oder Server-Komponenten.
 
-**Grundsätze:** komplett offline, keine Telemetrie, keine Konten, keine automatische Update-Prüfung.
+**Grundsätze:** offline bis auf die Update-Prüfung (seit Milestone 8.1: abschaltbar, ohne Kennung, nur gegen die GitHub-Releases des Projekts), keine Telemetrie, keine Konten, keine Online-Dienste.
 
 ## 2. Erfolgskriterien
 
@@ -118,22 +118,26 @@ testdata/pdfs/             Test-PDFs mit LICENSES.md je Herkunft
 
 ### 5.5 Speichern
 
-- **Normalfall ist inkrementelles Speichern** (`FPDF_SaveAsCopy` mit `FPDF_INCREMENTAL`). Es ist schnell, und vorhandene digitale Signaturen bleiben gültig.
+- **Normalfall ist inkrementelles Speichern** (`FPDF_SaveAsCopy` mit `FPDF_INCREMENTAL`, umgesetzt seit M9 in `Pagewing.Core.Saving.DocumentSaver`). Es ist schnell, und die Bytes der Originaldatei, auch signierte Bereiche, bleiben der unveränderte Anfang der neuen Datei. Ob eine Signatur danach als gültig angezeigt wird, hängt an ihren Rechten (DocMDP): Pagewing liest sie vor dem ersten Speichern, warnt bei Stufe 1 und 2 vor jedem Speichern und gibt bei Stufe 3 oder ohne Angabe einen Hinweis; „gültig“ behauptet es nie.
 - **Vollständiger Neuschrieb** (`FPDF_NO_INCREMENTAL`) beim Schwärzen und bei Seitenoperationen. Ist das Dokument digital signiert, warnt die App vorher, dass die Signatur ungültig wird.
-- **Immer atomar:** Pagewing schreibt in eine temporäre Datei im Zielordner, prüft sie, indem es sie mit PDFium wieder öffnet, und ersetzt erst dann das Ziel. Das Original wird nie halb überschrieben.
+- **Immer atomar:** Pagewing schreibt in eine temporäre Datei im Zielordner, prüft sie und ersetzt erst dann das Ziel. Das Original wird nie halb überschrieben. Die Prüfungen (M9): Die Datei, die PDFium liest, ist seit dem Öffnen unverändert (sonst lehnt Pagewing ab, auch für „Speichern unter“); steht am Pfad des Originals eine andere Datei, fragt eine Karte; die ersten *n* Bytes der neuen Datei sind byteweise die des Originals (*n* = dessen Länge); PDFium öffnet die neue Datei wieder (Seitenzahl, Verschlüsselung, Annotationen der geänderten Seiten) und rendert die geänderten Seiten. Ersetzt wird unter Windows mit einer atomaren Umbenennung, auch während das alte Dokument die Datei offen hat; das geprüfte neue Dokument wird das Dokument des Tabs, ohne dass je ein Tab ohne Dokument entsteht.
+- **Ungespeicherte Änderungen:** Tab (Punkt) und Statusleiste zeigen sie; Schließen und die Installation eines Updates fragen vorher („Speichern“, „Nicht speichern“, „Abbrechen“). Es gibt kein automatisches Speichern und in M9 keine Wiederherstellungsdatei; Herunterfahren und Beenden von außen fragen nicht. Inkrementelles Speichern behält die alte Fassung: Gelöschte Kommentare stehen weiter in früheren Revisionen der Datei.
 - Die Konstanten der Speicher-Flags kommen aus den Headern der ausgelieferten PDFium-Version. `FPDF_REMOVE_SECURITY` wechselte ab `chromium/8100` von 3 auf 4.
+- **Zeichnungen (M10):** Freihand, Rechteck und Ellipse sind Ink-, Square- und Circle-Annotationen; **Linie und Pfeil sind Ink-Annotationen** (Pfeil = Schaft plus Spitze als zwei Striche, Merkmal `/Subj` „Line“ bzw. „Arrow“), weil PDFium keine `/Line`-Annotation schreiben kann. Das Erscheinungsbild erzeugt wie bei den Markierungen PDFiums Generator (Variante D), ohne eigenen Schreiber; eine Füllung gibt es nicht (der Generator kann Rand und Fläche nicht mit verschiedener Deckkraft malen). Verschieben, Größe und Farbe ersetzen die Annotation unter demselben `/NM`. Ein echter `/Line`-Schreiber bleibt Sache von QPDF (Teilprojekt 3). Einzelheiten: `Docs/DECISIONS.md`, Einträge „Zeichnungen: Erscheinungsbild, Pfeil als Ink …“ und „Zeichnungen: Grenzen und Backlog (M10)“.
+- **Formulare (M11):** Die Werte von AcroForm-Feldern (Text, Checkbox, Radio, Combo, Liste) schreibt PDFiums Formular-Engine samt Erscheinungsbild (`/V` und `/AP`; Hybrid-Architektur: die Eingabe läuft in Avalonia-Elementen auf dem Feld, alle Rückrufzeiger der Engine bleiben null, es läuft nie JavaScript oder eine Aktion einer Schaltfläche). Sie sind Schritte des Verlaufs der Annotationen und gehen mit diesen durch dieselbe Pipeline (inkrementell, atomar, geprüft); vor dem Speichern warnt eine Karte vor leeren Pflichtfeldern, ohne je zu blockieren. Eingaben sind auf einen Zeichenvorrat begrenzt (Latin-1 und „€ ˆ ˜ ™“), den PDFium mit der Feldschrift selbst zeichnet; anderer Text wird als Ganzes abgelehnt. Wer ein angesehenes Formular speichert, speichert die geladenen Widgets mit (die Originalbytes bleiben der Anfang der Datei). Entwurf: `2026-10-26-m11-formulare-design.md`; Einzelheiten und Grenzen: `Docs/DECISIONS.md`, Einträge „Formulare: … (M11)“.
 
 ### 5.6 Sicherheit
 
 - PDFium wird ohne V8 und ohne XFA genutzt, JavaScript in PDFs läuft also nie.
 - Launch-Aktionen und eingebettete Dateien werden nie automatisch ausgeführt oder geöffnet.
 - Externe Links öffnen erst nach Klick und einer Bestätigung, die die URL anzeigt.
-- Keine Netzwerkzugriffe durch Pagewing selbst.
+- Keine Netzwerkzugriffe durch Pagewing selbst, mit einer Ausnahme seit Milestone 8.1: die Update-Prüfung und der Download eines Updates gegen die GitHub-Releases des Projekts (nach dem Start im Hintergrund, in den Einstellungen abschaltbar; abgeschaltet kein einziger Zugriff, außer der Nutzer wählt den Befehl „Nach Updates suchen“; Anfrage ohne Kennung und ohne Angaben zum Rechner). Ein Update wird vor der Installation gegen eine eingebaute Signatur (ECDSA P-256) und die SHA-256 des signierten Manifests geprüft. Entwurf: `2026-10-23-m81-automatische-updates-design.md`.
 
 ### 5.7 Drucken
 
 - **Windows:** Druckdialog über Win32 (`PrintDlgEx`). Seiten gehen mit `FPDF_RenderPage` und dem Flag `FPDF_PRINTING` direkt auf den Drucker-HDC. Kopien, Sortieren, Seitenbereich und die automatische Drehung je Seite macht Pagewing selbst; Duplex und Ausrichtung kommen aus dem `DEVMODE` des Dialogs.
 - **Linux:** Pagewing übergibt die **Datei** mit den Wahlen des Nutzers als CUPS-Optionen (`page-ranges`, `copies`, `sides`, `orientation-requested`, `print-scaling`, `multiple-document-handling`) an CUPS (libcups, `cupsPrintFile2`); der PDF-Filter von CUPS wählt die Seiten, kopiert, sortiert und skaliert. Ein verschlüsseltes Dokument geht als entschlüsselte Kopie in einem privaten Temp-Ordner. Der Dialog für Drucker, Seitenbereich, Kopien, Sortieren, Seitengröße, Duplex und Ausrichtung ist ein eigener Avalonia-Dialog (Karte).
+- **Formularfelder (M11):** `FPDF_RenderPage` zeichnet kein Widget; unter Windows werden Seiten mit Feldern deshalb in Streifen als Bitmap gerendert (`FPDF_RenderPageBitmap` und `FPDF_FFLDraw`, immer hell, ohne Hervorhebung) und mit `StretchDIBits` auf den Drucker-HDC gelegt, Seiten ohne Felder bleiben vektoriell; Linux druckt die gespeicherte Kopie, die die Werte trägt.
 - Auf beiden Systemen: Anpassen an das Papier oder tatsächliche Größe, Duplex nur wenn der Drucker es kann, gedruckt wird immer hell (nie die dunkle Seite), Anmerkungen werden mitgedruckt. Verbietet das Dokument das Drucken, ist „Drucken“ gesperrt. Ein Auftrag läuft im Hintergrund mit Fortschritt und Abbruch.
 - Die Abstraktion `IPrintService` liegt in Core, die Implementierungen pro Plattform in der App.
 
@@ -159,6 +163,7 @@ Die Milestones mit Aufgaben und Abnahmekriterien stehen in der [Roadmap](../../R
 | 6 | Komfort: dunkler Modus, Tastenkürzel, Befehlspalette (Strg+K), zuletzt geöffnete Dateien, Einstellungen |
 | 7 | Drucken (Windows und Linux) |
 | 8 | Verteilung: Windows-Installer und portable ZIP, Linux AppImage und .deb, Registrierung als PDF-Standardprogramm, Lizenzhinweise der Drittbibliotheken |
+| 8.1 | Automatische Updates (nach dem Release v0.1.0, Scope-Änderung vom 2026-10-22): Prüfung im Hintergrund, signiertes Manifest, Installation auf Klick unter Windows (Installer) und mit dem AppImage, Hinweis für `.deb` und portable ZIP, Tabs nach dem Neustart wieder offen; Entwurf `2026-10-23-m81-automatische-updates-design.md` |
 
 **Release v0.1.0 – schneller Viewer** nach M8.
 
@@ -173,9 +178,9 @@ M9 Speichern & Textmarkierungen (Hervorheben, Unterstreichen, Durchstreichen, Ko
 - Die Unterschrift baut auf Freihand- und Stempel-Annotationen auf.
 
 **Regeln:**
-- **Linie und Pfeil:** PDFium kann keine `/Line`-Annotationen anlegen. Die Spec von Teilprojekt 2 entscheidet zwischen Stempel-Annotation mit Pfad-Objekten und QPDF.
-- **Formulare:** Ohne V8 laufen keine JavaScript-Berechnungen. Hat ein Formular berechnete Felder, weist die App darauf hin, dass sie sich nicht automatisch aktualisieren.
-- **Sichtbare Unterschrift:** Sie wird nie als „rechtsgültig“ bezeichnet. Der Dialog zeigt den Hinweis: „Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.“ Gezeichnete oder importierte Unterschriften werden lokal gespeichert und lassen sich wiederverwenden.
+- **Linie und Pfeil:** PDFium kann keine `/Line`-Annotationen anlegen. Entschieden in M10: Ink-Annotationen (Pfeil aus zwei Strichen, Merkmal `/Subj`) mit PDFiums Generator, ohne QPDF und ohne eigenen Schreiber (M9 kam ohne eigenen Schreiber aus: das Erscheinungsbild der Markierungen erzeugt PDFiums eigener Generator; Spec von Teilprojekt 2 `2026-10-24-teilprojekt2-annotieren-design.md`, `Docs/DECISIONS.md`, Eintrag „Erscheinungsbild der Annotationen: PDFium-Generator (Variante D) …“).
+- **Formulare:** Ohne V8 laufen keine JavaScript-Berechnungen. Hat ein Formular berechnete Felder, weist die App darauf hin, dass sie sich nicht automatisch aktualisieren. Entschieden in M11 (`2026-10-26-m11-formulare-design.md`): Hybrid-Architektur (Eingabe in Avalonia, Werte und Erscheinungsbild über PDFiums Formular-Engine, bestätigt durch einen Spike); kein JavaScript, kein XFA (nur die üblichen AcroForm-Felder eines XFA-Dokuments), keine digitale Signatur und keine Aktion von Schaltflächen (Hinweise sagen es); der Zeichenvorrat der Felder ist enger als Windows-1252 (deutsche Anführungen und Gedankenstrich sind in Feldern nicht möglich). Nicht in M11, im Backlog: eigene Berechnung einfacher Felder, „Meine Daten“, FDF/XFDF-Export, Formular zurücksetzen, flache Kopie.
+- **Sichtbare Unterschrift:** Sie wird nie als „rechtsgültig“ bezeichnet. Der Dialog zeigt den Hinweis: „Ersetzt keine handschriftliche Unterschrift, wo Schriftform verlangt ist.“ Gezeichnete oder importierte Unterschriften werden lokal gespeichert und lassen sich wiederverwenden. Umsetzung seit M12 (Spec `2026-10-29-m12-sichtbare-unterschrift-design.md`): gezeichnet als Ink mit dem Betreff „Signature“, importiert als Stempel mit einem Bild (Freistellen lokal), höchstens zehn gespeicherte Unterschriften im Benutzerordner.
 
 ### Teilprojekt 3 – Seiten & Schwärzen
 
@@ -201,7 +206,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 ### Querschnitt
 
 - **CLI `pagewing`:** wächst mit jedem Teilprojekt und nutzt denselben Kern, zum Beispiel `info`, `render`, `text`, später `merge`, `split`, `rotate`, `redact`, `ocr`. Sie wird ebenfalls mit Native AOT gebaut.
-- Komplett offline, keine Telemetrie.
+- Offline bis auf die Update-Prüfung (Milestone 8.1, abschaltbar), keine Telemetrie.
 
 ## 7. Tests und Qualität
 
@@ -235,7 +240,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 - Cloud, Konten, KI-Assistent
 - Druckvorstufe (Preflight), 3D- und Multimedia-Inhalte
 - macOS und Mobilgeräte (Avalonia könnte es, es wird aber weder gebaut noch getestet)
-- Automatische Online-Updates bzw. Update-Prüfung
+- Telemetrie und Online-Dienste. Netzwerk gibt es allein für die Update-Prüfung; die frühere Abgrenzung „Automatische Online-Updates bzw. Update-Prüfung“ ist seit der Scope-Änderung vom 2026-10-22 aufgehoben (Milestone 8.1)
 
 ## 10. Backlog (nicht eingeplant)
 
@@ -255,7 +260,7 @@ M15 OCR (gescannte PDFs durchsuchbar machen, unsichtbare Textebene) · M16 Text 
 - **Veröffentlichung des Repos:** Das Repo ist privat. Wann es öffentlich wird, ist noch offen, spätestens aber zu v0.1.0.
 - **Älteste unterstützte Linux-Distribution (glibc):** wird in M8 festgelegt.
 - **Auslieferung von Tesseract und Sprachdaten:** im Paket enthalten oder als optionale Komponente. Entscheidet die Spec von Teilprojekt 4.
-- **QPDF:** kommt es dazu oder nicht? Entscheidet die Spec von Teilprojekt 3, für Linie und Pfeil schon die Spec von Teilprojekt 2.
+- **QPDF:** kommt es dazu oder nicht? Entscheidet die Spec von Teilprojekt 3 (für Linie und Pfeil ist es in M10 mit Ink-Annotationen entschieden).
 
 ## 12. Quellen (geprüft 2026-10-16)
 

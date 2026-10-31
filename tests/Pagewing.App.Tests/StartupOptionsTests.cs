@@ -211,6 +211,73 @@ public sealed class StartupOptionsTests
     }
 
     [Fact]
+    public void ParsesRestoreSession()
+    {
+        var options = StartupOptions.Parse(["--restore-session"]);
+
+        Assert.True(options.RestoreSession);
+        Assert.False(options.IsMeasurement);
+        Assert.Empty(options.Paths);
+        Assert.False(StartupOptions.Parse([]).RestoreSession);
+        Assert.False(StartupOptions.Parse(["doc.pdf"]).RestoreSession);
+        Assert.True(StartupOptions.Parse(["doc.pdf", "--restore-session"]).RestoreSession);
+    }
+
+    [Fact]
+    public void IgnoresItInAMeasurement()
+    {
+        Assert.False(StartupOptions.Parse(["--measure-startup", "a.pdf", "--restore-session"]).RestoreSession);
+        Assert.False(StartupOptions.Parse(["--restore-session", "--measure-second", "a.pdf", "b.pdf"]).RestoreSession);
+        Assert.False(StartupOptions.Parse(["--measure-scroll", "a.pdf", "--restore-session"]).RestoreSession);
+    }
+
+    [Fact]
+    public void ParsesFinishUpdateWithAFolder()
+    {
+        var staging = Path.Combine(Path.GetTempPath(), "Pagewing", "updates", "0.2.0");
+
+        var options = StartupOptions.Parse(["--finish-update", staging, "--after-process", "4242", "--restore-session", "--lang", "de"]);
+
+        Assert.Equal(staging, options.FinishUpdate);
+        Assert.Equal(4242, options.AfterProcess);
+        Assert.True(options.RestoreSession);
+        Assert.Equal("de", options.Language);
+        Assert.Empty(options.Paths);
+        Assert.False(options.IsMeasurement);
+
+        // A relative folder is made absolute like a path; without the switch there is no helper mode.
+        Assert.Equal(Path.GetFullPath("0.2.0"), StartupOptions.Parse(["--finish-update", "0.2.0"]).FinishUpdate);
+        Assert.Null(StartupOptions.Parse(["doc.pdf"]).FinishUpdate);
+        Assert.Null(StartupOptions.Parse(["doc.pdf"]).AfterProcess);
+    }
+
+    [Fact]
+    public void IgnoresFinishUpdateWithoutAValue()
+    {
+        Assert.Null(StartupOptions.Parse(["--finish-update"]).FinishUpdate);
+        Assert.Null(StartupOptions.Parse(["--finish-update", ""]).FinishUpdate);
+
+        // The next switch is no folder, and the remaining switches still count.
+        var options = StartupOptions.Parse(["--finish-update", "--restore-session"]);
+        Assert.Null(options.FinishUpdate);
+        Assert.True(options.RestoreSession);
+
+        // A process number that is not one counts as not given.
+        Assert.Null(StartupOptions.Parse(["--after-process", "x"]).AfterProcess);
+        Assert.Null(StartupOptions.Parse(["--after-process", "-3"]).AfterProcess);
+        Assert.Null(StartupOptions.Parse(["--after-process"]).AfterProcess);
+    }
+
+    [Fact]
+    public void AMeasurementIsNeverAHelper()
+    {
+        var options = StartupOptions.Parse(["--measure-startup", "a.pdf", "--finish-update", "x"]);
+
+        Assert.Null(options.FinishUpdate);
+        Assert.True(options.IsMeasurement);
+    }
+
+    [Fact]
     public void RegisterSwitchIsNotAMeasurement()
     {
         var options = StartupOptions.Parse(["--register-file-types"]);

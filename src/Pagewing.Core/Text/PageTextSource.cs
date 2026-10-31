@@ -24,7 +24,9 @@ public sealed class PageTextSource : IDisposable
     /// <summary>The number of pages whose text is kept.</summary>
     public const int MaxCachedPages = 32;
 
-    private readonly Func<int, PdfPriority, Task<PageText>> read;
+    // Whether read reads a document (and Rebind may point it at another one) or is the stand-in of a test.
+    private readonly bool readsDocument;
+    private Func<int, PdfPriority, Task<PageText>> read;
 
     // Guards everything below. Never held while the document is called back into or an event is raised.
     private readonly object gate = new();
@@ -43,7 +45,8 @@ public sealed class PageTextSource : IDisposable
     internal PageTextSource(PdfDocument document, Func<int, PdfPriority, Task<PageText>>? read)
     {
         ArgumentNullException.ThrowIfNull(document);
-        this.read = read ?? ((page, priority) => document.GetPageTextAsync(page, priority, CancellationToken.None));
+        readsDocument = read is null;
+        this.read = read ?? ReaderOf(document);
     }
 
     /// <summary>
@@ -159,6 +162,66 @@ public sealed class PageTextSource : IDisposable
     }
 
     /// <summary>
+    /// Forgets the text of the given pages, because their content changed; the other pages stay cached with their
+    /// order of use. A load of such a page that is running is forgotten too: callers that already wait for it still
+    /// get its (old) text, but it is not cached, and a later call reads the page again instead of joining it. An empty
+    /// set, and any call after <see cref="Dispose"/>, do nothing.
+    /// </summary>
+    /// <param name="pages">The zero-based indices of the pages to forget.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="pages"/> is <see langword="null"/>.</exception>
+    internal void RemovePages(IReadOnlySet<int> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (pages.Count == 0)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            foreach (var page in pages)
+            {
+                if (cached.Remove(page, out var node))
+                {
+                    recent.Remove(node);
+                }
+
+                // The running load keeps its completion; it sees below that it is no longer the registered one.
+                loading.Remove(page);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads the pages from <paramref name="document"/> from now on, a document with the same content (the saved file that
+    /// replaces the open one, <see cref="Viewing.ViewerSession.AdoptSavedDocumentAsync"/>): the cached texts stay. Loads
+    /// that are running still read the old document; they are forgotten, so a later call reads the page from the new one
+    /// instead of joining them, and their result is not cached. A source made with its own way to read keeps it. Does
+    /// nothing after <see cref="Dispose"/>.
+    /// </summary>
+    /// <param name="document">The document to read from.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="document"/> is <see langword="null"/>.</exception>
+    internal void Rebind(PdfDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        lock (gate)
+        {
+            if (disposed || !readsDocument)
+            {
+                return;
+            }
+
+            read = ReaderOf(document);
+            loading.Clear();
+        }
+    }
+
+    /// <summary>
     /// Empties the cache and makes every later call throw <see cref="ObjectDisposedException"/>. Loads that are
     /// running cannot be stopped; callers that wait for them still get their result, which is not cached.
     /// Safe to call more than once.
@@ -180,13 +243,13 @@ public sealed class PageTextSource : IDisposable
         {
             // Without the token of a caller: the load is shared. The continuation runs on a pool thread because
             // the PDFium thread completes its tasks asynchronously.
-            text = await read(pageIndex, priority).ConfigureAwait(false);
+            text = await Volatile.Read(ref read)(pageIndex, priority).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             lock (gate)
             {
-                loading.Remove(pageIndex);
+                ForgetLoad(pageIndex, completion);
             }
 
             completion.SetException(ex);
@@ -196,8 +259,8 @@ public sealed class PageTextSource : IDisposable
         var keep = false;
         lock (gate)
         {
-            loading.Remove(pageIndex);
-            if (!disposed)
+            // A load that RemovePages forgot read the page before its change; its text is not cached.
+            if (ForgetLoad(pageIndex, completion) && !disposed)
             {
                 keep = true;
                 if (cached.Remove(pageIndex, out var stale))
@@ -222,6 +285,22 @@ public sealed class PageTextSource : IDisposable
         }
 
         completion.SetResult(text);
+    }
+
+    private static Func<int, PdfPriority, Task<PageText>> ReaderOf(PdfDocument document) =>
+        (page, priority) => document.GetPageTextAsync(page, priority, CancellationToken.None);
+
+    // Must run under the lock. Removes the load of the page if it is still the registered one (RemovePages may have
+    // forgotten it, and a newer load may have taken its place) and says whether it was.
+    private bool ForgetLoad(int pageIndex, TaskCompletionSource<PageText> completion)
+    {
+        if (loading.TryGetValue(pageIndex, out var registered) && registered == completion.Task)
+        {
+            loading.Remove(pageIndex);
+            return true;
+        }
+
+        return false;
     }
 
     private void RaiseLoaded(int pageIndex)

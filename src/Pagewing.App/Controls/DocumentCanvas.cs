@@ -71,6 +71,9 @@ internal sealed class DocumentCanvas : Control
     public static readonly StyledProperty<PageTheme> PageThemeProperty =
         AvaloniaProperty.Register<DocumentCanvas, PageTheme>(nameof(PageTheme));
 
+    public static readonly StyledProperty<bool> FormHighlightProperty =
+        AvaloniaProperty.Register<DocumentCanvas, bool>(nameof(FormHighlight));
+
     public static readonly StyledProperty<IBrush?> DarkPageBrushProperty =
         AvaloniaProperty.Register<DocumentCanvas, IBrush?>(nameof(DarkPageBrush));
 
@@ -118,6 +121,10 @@ internal sealed class DocumentCanvas : Control
     private HashSet<TileKey> _wanted = [];
     private HashSet<TileKey> _shown = [];
 
+    // Bitmaps of pages whose content changed (InvalidatePages): drawn until the new image of the same key replaces them,
+    // so the page does not flash empty, and never kept once that image is there.
+    private readonly HashSet<TileKey> _stale = [];
+
     // The marks on the pages, grouped by page once per SetHighlights and sorted in drawing order; Render only looks up
     // the visible pages.
     private Dictionary<int, PageHighlight[]> _highlights = [];
@@ -127,8 +134,9 @@ internal sealed class DocumentCanvas : Control
     private WriteableBitmap? _currentFill;
     private Pen? _currentFrameOnDark;
 
-    // Counts the changes of PageTheme. Read on the pool threads of the scheduler events, so that a result posted for one
-    // theme is dropped when it arrives after a switch to another (see OnPageThemeChanged).
+    // Counts the changes of PageTheme and FormHighlight. Read on the pool threads of the scheduler events, so that a result
+    // posted for one theme or highlight is dropped when it arrives after a switch (see OnPageThemeChanged and
+    // OnFormHighlightChanged).
     private long _themeEpoch;
 
     static DocumentCanvas()
@@ -231,6 +239,18 @@ internal sealed class DocumentCanvas : Control
         set => SetValue(PageThemeProperty, value);
     }
 
+    /// <summary>
+    /// Gets or sets whether the pages show the form fields highlighted (<see cref="RenderScheduler.SetFormHighlight"/>). Set it
+    /// after the scheduler renders with the new setting: a change drops every result of the old one still on its way to the UI
+    /// thread, keeps the bitmaps on screen until the new images replace them (no empty page in between) and plans the viewport
+    /// again. Default: off.
+    /// </summary>
+    public bool FormHighlight
+    {
+        get => GetValue(FormHighlightProperty);
+        set => SetValue(FormHighlightProperty, value);
+    }
+
     /// <summary>Ground of a dark page and of its placeholder (<c>Pw.Brush.Page.DarkBackground</c>).</summary>
     public IBrush? DarkPageBrush
     {
@@ -293,6 +313,12 @@ internal sealed class DocumentCanvas : Control
     /// <summary>Gets the scheduler of the attached document, or <see langword="null"/> (for tests).</summary>
     internal RenderScheduler? Scheduler => _source?.Scheduler;
 
+    /// <summary>Gets the cache of the attached document, or <see langword="null"/>.</summary>
+    internal RenderCache? Cache => _source?.Cache;
+
+    /// <summary>Gets the keys whose bitmap shows content that changed and waits for its new image (for tests).</summary>
+    internal IReadOnlySet<TileKey> StaleKeys => _stale;
+
     /// <summary>
     /// Starts drawing a document. The layout stays owned by the caller, who calls <see cref="SetViewport"/> after
     /// every change of it; the scheduler and the cache belong to the session and may be disposed on another thread.
@@ -320,6 +346,7 @@ internal sealed class DocumentCanvas : Control
         _shown = [];
         _failedPages.Clear();
         _bitmaps.Clear();
+        _stale.Clear();
 
         // The marks belong to the document that goes.
         _highlights = [];
@@ -333,6 +360,61 @@ internal sealed class DocumentCanvas : Control
             source.Scheduler.Update([]);
             InvalidateVisual();
         }
+    }
+
+    /// <summary>
+    /// The session swapped the document for the file it just saved (<see cref="ViewerSession.AdoptSavedDocumentAsync"/>):
+    /// the same pages in the same cache, rendered from now on by <paramref name="scheduler"/>. Layout, bitmaps and marks
+    /// stay; what the old scheduler still reports is dropped, and the viewport is planned again with the new one.
+    /// </summary>
+    internal void ReplaceScheduler(RenderScheduler scheduler)
+    {
+        ArgumentNullException.ThrowIfNull(scheduler);
+        if (_source is not { } old || ReferenceEquals(old.Scheduler, scheduler))
+        {
+            return;
+        }
+
+        old.Scheduler.TileReady -= old.OnTileReady;
+        old.Scheduler.TileFailed -= old.OnTileFailed;
+        var source = new Source(this, old.Layout, scheduler, old.Cache)
+        {
+            FirstSharpTileReported = old.FirstSharpTileReported,
+            FirstSharpPageReported = old.FirstSharpPageReported,
+        };
+        scheduler.TileReady += source.OnTileReady;
+        scheduler.TileFailed += source.OnTileFailed;
+        _source = source;
+
+        // A page that failed in the old document may render in the new one.
+        _failedPages.Clear();
+        SetViewport(_viewport, _renderScaling);
+    }
+
+    /// <summary>
+    /// The content of <paramref name="pages"/> changed (<see cref="ViewerSession.PagesInvalidated"/>): the session dropped
+    /// their images from the cache, so their bitmaps here show the old content. They stay until their new images arrive
+    /// (no empty page in between), and the viewport is planned again, which renders those pages anew: the preview first,
+    /// then the sharp tiles.
+    /// </summary>
+    internal void InvalidatePages(IReadOnlySet<int> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (_source is null || pages.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var key in _bitmaps.Keys)
+        {
+            if (pages.Contains(key.Page))
+            {
+                _stale.Add(key);
+            }
+        }
+
+        _failedPages.RemoveWhere(pages.Contains);
+        SetViewport(_viewport, _renderScaling);
     }
 
     /// <summary>
@@ -378,12 +460,17 @@ internal sealed class DocumentCanvas : Control
         _shown = shown;
         source.Scheduler.Update(requests);
         _bitmaps.Retain(wanted);
+        if (_stale.Count > 0)
+        {
+            _stale.RemoveWhere(key => !_bitmaps.Contains(key));
+        }
 
         // What the cache already holds (scrolling back, a preview from the background buffer) shows at once; the
-        // scheduler skips cached keys, so no TileReady would come for them.
+        // scheduler skips cached keys, so no TileReady would come for them. A stale bitmap is replaced as soon as the
+        // cache has the new image of its key.
         foreach (var request in requests)
         {
-            if (!request.Background && !_bitmaps.Contains(request.Key) && source.Cache.TryGet(request.Key, out var image))
+            if (!request.Background && NeedsBitmap(request.Key) && source.Cache.TryGet(request.Key, out var image))
             {
                 AddBitmap(request.Key, image);
             }
@@ -481,6 +568,39 @@ internal sealed class DocumentCanvas : Control
         return (page, new Point((x - rect.X) / dipsPerPoint, (y - rect.Y) / dipsPerPoint));
 
         static double DistanceAcross(double x, DipRect rect) => x < rect.X ? rect.X - x : x > rect.Right ? x - rect.Right : 0;
+    }
+
+    /// <summary>
+    /// Converts a point of the viewport (DIPs) to PDF points on <paramref name="page"/> (from the top left of the page as
+    /// shown), wherever the point lies, also beside the page; <see langword="null"/> without a document or for no page.
+    /// </summary>
+    internal Point? PointOnPage(int page, Point viewportPoint)
+    {
+        var layout = _source?.Layout;
+        if (layout is null || page < 0 || page >= layout.PageCount)
+        {
+            return null;
+        }
+
+        var rect = layout.GetPageRect(page);
+        var dipsPerPoint = DocumentLayout.DipsPerPoint * layout.Zoom;
+        return new Point((viewportPoint.X + _viewport.X - rect.X) / dipsPerPoint, (viewportPoint.Y + _viewport.Y - rect.Y) / dipsPerPoint);
+    }
+
+    /// <summary>
+    /// Gets where <paramref name="page"/> is drawn in the viewport (DIPs, its origin on whole device pixels as <see cref="Render"/>
+    /// puts it) and the DIPs per PDF point, or <see langword="null"/> without a document or for no page.
+    /// </summary>
+    internal (Rect PageRect, double DipsPerPoint)? PagePlacement(int page)
+    {
+        var layout = _source?.Layout;
+        if (layout is null || page < 0 || page >= layout.PageCount)
+        {
+            return null;
+        }
+
+        var rect = layout.GetPageRect(page);
+        return (new Rect(Snap(rect.X - _viewport.X), Snap(rect.Y - _viewport.Y), rect.Width, rect.Height), DocumentLayout.DipsPerPoint * layout.Zoom);
     }
 
     public override void Render(DrawingContext context)
@@ -624,6 +744,10 @@ internal sealed class DocumentCanvas : Control
         {
             OnPageThemeChanged();
         }
+        else if (change.Property == FormHighlightProperty)
+        {
+            OnFormHighlightChanged();
+        }
         else if (change.Property == SearchOnBrushProperty)
         {
             _currentFrame = null;
@@ -714,6 +838,31 @@ internal sealed class DocumentCanvas : Control
     {
         Interlocked.Increment(ref _themeEpoch);
         _bitmaps.Clear();
+        _stale.Clear();
+        _failedPages.Clear();
+        if (_source is not null)
+        {
+            SetViewport(_viewport, _renderScaling);
+        }
+        else
+        {
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>
+    /// The pages render with or without the highlight of the form fields now: the new epoch drops every result posted before
+    /// the switch, as for the theme. Unlike a theme switch the bitmaps stay as stale until the image of the same key replaces
+    /// them, because the page around the fields is the same; the failures go, and the viewport is planned again.
+    /// </summary>
+    private void OnFormHighlightChanged()
+    {
+        Interlocked.Increment(ref _themeEpoch);
+        foreach (var key in _bitmaps.Keys)
+        {
+            _stale.Add(key);
+        }
+
         _failedPages.Clear();
         if (_source is not null)
         {
@@ -829,11 +978,16 @@ internal sealed class DocumentCanvas : Control
         }
     }
 
+    /// <summary>Whether <paramref name="key"/> has no bitmap yet, or one of content that changed.</summary>
+    private bool NeedsBitmap(TileKey key) => !_bitmaps.Contains(key) || _stale.Contains(key);
+
     private void AddBitmap(TileKey key, RenderedImage image)
     {
         try
         {
+            // Replaces (and disposes) a stale bitmap of the same key.
             _bitmaps.Add(key, TileBitmaps.Create(image));
+            _stale.Remove(key);
         }
         catch (Exception ex) when (ex is OutOfMemoryException or ArgumentException or InvalidOperationException)
         {
@@ -854,7 +1008,7 @@ internal sealed class DocumentCanvas : Control
         }
 
         // Only what the viewport shows becomes a bitmap; a background preview stays in the cache until it is shown.
-        if (_shown.Contains(key) && !_bitmaps.Contains(key) && source.Cache.TryGet(key, out var image))
+        if (_shown.Contains(key) && NeedsBitmap(key) && source.Cache.TryGet(key, out var image))
         {
             AddBitmap(key, image);
             InvalidateVisual();
@@ -893,8 +1047,8 @@ internal sealed class DocumentCanvas : Control
         public bool FirstSharpPageReported { get; set; }
 
         // Pool thread: must not block and must never throw (it would end the process). The epoch is read here, when the
-        // scheduler reports: it reports nothing of an old theme after its SetPageTheme returned, and the canvas counts the
-        // switch only after that (PageTheme is set once the scheduler renders in the new theme).
+        // scheduler reports: it reports nothing of an old theme or highlight after its setter returned, and the canvas counts
+        // the switch only after that (PageTheme and FormHighlight are set once the scheduler renders with the new setting).
         public void OnTileReady(TileKey key)
         {
             var epoch = owner.CurrentThemeEpoch;

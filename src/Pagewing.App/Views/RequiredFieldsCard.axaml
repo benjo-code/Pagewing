@@ -1,0 +1,40 @@
+<views:SaveCard xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:vm="using:Pagewing.App.ViewModels"
+                xmlns:views="using:Pagewing.App.Views"
+                xmlns:ctl="using:Pagewing.App.Controls"
+                x:Class="Pagewing.App.Views.RequiredFieldsCard"
+                x:DataType="vm:PendingSave"
+                AutomationProperties.Name="{Binding Title}"
+                AutomationProperties.HelpText="{Binding Message}">
+  <!--
+    Before saving a form whose required fields are empty (milestone 11, PendingSaveKind.RequiredFields; design system 7.14):
+    the forms symbol in text.secondary (a question, no warning), "1 required field is empty" / "<n> required fields are
+    empty" and the first of them by name, "Go to the first empty field" (primary, focus and Enter: nothing is saved, the mode
+    "Fill in form" shows the field) and "Save anyway" (locked for the first 400 ms). Esc cancels the save. Never blocks
+    saving. Card and buttons as SaveCard; made with the first such question (MainWindow.SaveCards.cs).
+  -->
+  <Border Name="RequiredFieldsBox" MaxWidth="480" Margin="24" Padding="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Spacing="12">
+      <ctl:StrokeIcon Name="RequiredFieldsIcon" Width="24" Height="24" HorizontalAlignment="Left"
+                      Data="{StaticResource Pw.Icon.Forms}"
+                      Brush="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <StackPanel Spacing="4">
+        <TextBlock Name="RequiredFieldsTitle" Classes="subtitle" TextWrapping="Wrap" Text="{Binding Title}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <TextBlock Name="RequiredFieldsText" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{Binding Message}" AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+
+      <StackPanel Name="RequiredFieldsButtons" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Name="RequiredFieldsGoToButton" />
+        <Button Name="RequiredFieldsSaveAnywayButton" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</views:SaveCard>

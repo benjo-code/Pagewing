@@ -1,3 +1,4 @@
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Printing;
 using Pagewing.Core.Viewing;
 
@@ -134,12 +135,119 @@ public sealed record AppSettings
     /// <summary>Whether the card "Set Pagewing as default for PDFs?" may appear at the start.</summary>
     public DefaultAppPromptSetting DefaultAppPrompt { get; set; } = DefaultAppPromptSetting.Ask;
 
-    /// <summary>Returns a copy whose values are all valid: undefined enum values become the default, the width is clamped, an empty or overlong printer name is dropped.</summary>
+    /// <summary>Whether Pagewing checks for a newer version by itself (at most once in 24 hours). Off means no network access at all.</summary>
+    public bool UpdateCheck { get; set; } = true;
+
+    /// <summary>The longest author name that is kept (a longer name is dropped).</summary>
+    public const int MaxAuthorNameLength = 128;
+
+    /// <summary>
+    /// The name written to the <c>/T</c> entry of every annotation the user creates, or <see langword="null"/> for none
+    /// (the default: no name of the system user lands in a file that is shared).
+    /// </summary>
+    public string? AuthorName { get; set; }
+
+    /// <summary>The colour the text highlight starts with (the toolbar remembers the last one chosen).</summary>
+    public MarkupColor HighlightColor { get; set; } = MarkupColor.Yellow;
+
+    /// <summary>The colour the underline starts with (the toolbar remembers the last one chosen).</summary>
+    public MarkupColor UnderlineColor { get; set; } = MarkupColor.Blue;
+
+    /// <summary>The colour the strike-out starts with (the toolbar remembers the last one chosen).</summary>
+    public MarkupColor StrikeOutColor { get; set; } = MarkupColor.Pink;
+
+    /// <summary>The kinds that have a tool style: the drawing tools (the text markups keep their colour in the three properties above).</summary>
+    public static IReadOnlyList<AnnotationKind> ToolStyleKinds { get; } =
+        [AnnotationKind.Ink, AnnotationKind.Rectangle, AnnotationKind.Ellipse, AnnotationKind.Line, AnnotationKind.Arrow, AnnotationKind.TextBox, AnnotationKind.Signature];
+
+    /// <summary>The style a drawing tool starts with: red, medium.</summary>
+    public static ToolStyle DefaultToolStyle { get; } = new(DrawColor.Red, StrokeWidth.Medium);
+
+    /// <summary>The style a drawn signature starts with: black, medium (ink of a signature is not red).</summary>
+    public static ToolStyle DefaultSignatureStyle { get; } = new(DrawColor.Black, StrokeWidth.Medium);
+
+    /// <summary>
+    /// The styles the user chose for the drawing tools (the toolbar remembers the last one chosen), or <see langword="null"/>
+    /// while none was changed, so an untouched file stays small and two default settings are equal. A tool without an
+    /// entry has <see cref="DefaultToolStyle"/>; read with <see cref="StyleOf"/>. After <see cref="Normalized"/> the keys are
+    /// drawing tools only. A new dictionary is made for every change (<c>with</c>), the old one is never edited.
+    /// </summary>
+    public Dictionary<AnnotationKind, ToolStyle>? ToolStyles { get; set; }
+
+    /// <summary>Gets the style of a tool: the chosen one, or <see cref="DefaultToolStyle"/> (also for a kind that is no drawing tool).</summary>
+    /// <param name="kind">The kind of annotation the tool creates.</param>
+    /// <returns>The style.</returns>
+    public ToolStyle StyleOf(AnnotationKind kind) =>
+        ToolStyles is not null && ToolStyleKinds.Contains(kind) && ToolStyles.TryGetValue(kind, out var style) && IsValid(style)
+            ? style
+            : kind == AnnotationKind.Signature ? DefaultSignatureStyle : DefaultToolStyle;
+
+    /// <summary>
+    /// Returns a copy in which <paramref name="kind"/> has <paramref name="style"/> and every other tool keeps its style.
+    /// The copy has a new dictionary: the dictionary of this instance is never edited, so settings handed out earlier (and
+    /// the equality of two settings, which compares the dictionary by reference) stay what they were.
+    /// </summary>
+    /// <param name="kind">The kind of annotation the tool creates; a kind that is no drawing tool changes nothing.</param>
+    /// <param name="style">The style.</param>
+    /// <returns>The changed copy.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="style"/> is <see langword="null"/>.</exception>
+    public AppSettings WithToolStyle(AnnotationKind kind, ToolStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(style);
+        if (!ToolStyleKinds.Contains(kind))
+        {
+            return this;
+        }
+
+        var styles = ToolStyles is null ? new Dictionary<AnnotationKind, ToolStyle>() : new Dictionary<AnnotationKind, ToolStyle>(ToolStyles);
+        styles[kind] = style;
+        return this with { ToolStyles = styles };
+    }
+
+    private static bool IsValid(ToolStyle? style) =>
+        style is not null && Enum.IsDefined(style.Color) && Enum.IsDefined(style.Width);
+
+    // Drops entries of unknown kinds and null values, and repairs an undefined colour or width to the default of that
+    // part. Returns the same instance when nothing needs repair (so a normalized copy equals its source), null when
+    // nothing is left.
+    private static Dictionary<AnnotationKind, ToolStyle>? NormalizedToolStyles(Dictionary<AnnotationKind, ToolStyle>? styles)
+    {
+        if (styles is null)
+        {
+            return null;
+        }
+
+        if (styles.Count > 0 && styles.All(e => ToolStyleKinds.Contains(e.Key) && IsValid(e.Value)))
+        {
+            return styles;
+        }
+
+        var repaired = new Dictionary<AnnotationKind, ToolStyle>();
+        foreach (var (kind, style) in styles)
+        {
+            if (style is not null && ToolStyleKinds.Contains(kind))
+            {
+                var fallback = kind == AnnotationKind.Signature ? DefaultSignatureStyle : DefaultToolStyle;
+                repaired[kind] = new ToolStyle(
+                    Enum.IsDefined(style.Color) ? style.Color : fallback.Color,
+                    Enum.IsDefined(style.Width) ? style.Width : fallback.Width);
+            }
+        }
+
+        return repaired.Count > 0 ? repaired : null;
+    }
+
+    /// <summary>Returns a copy whose values are all valid: undefined enum values become the default, the width is clamped, an empty or overlong printer or author name is dropped.</summary>
     public AppSettings Normalized()
     {
         var defaults = Default;
         return this with
         {
+            AuthorName = string.IsNullOrWhiteSpace(AuthorName) || AuthorName.Length > MaxAuthorNameLength ? null : AuthorName,
+            HighlightColor = Enum.IsDefined(HighlightColor) ? HighlightColor : defaults.HighlightColor,
+            UnderlineColor = Enum.IsDefined(UnderlineColor) ? UnderlineColor : defaults.UnderlineColor,
+            StrikeOutColor = Enum.IsDefined(StrikeOutColor) ? StrikeOutColor : defaults.StrikeOutColor,
+            ToolStyles = NormalizedToolStyles(ToolStyles),
             Theme = Enum.IsDefined(Theme) ? Theme : defaults.Theme,
             Language = Enum.IsDefined(Language) ? Language : defaults.Language,
             Density = Enum.IsDefined(Density) ? Density : defaults.Density,

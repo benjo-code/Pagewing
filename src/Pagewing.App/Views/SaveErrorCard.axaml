@@ -1,0 +1,39 @@
+<views:SaveCard xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:vm="using:Pagewing.App.ViewModels"
+                xmlns:views="using:Pagewing.App.Views"
+                xmlns:ctl="using:Pagewing.App.Controls"
+                x:Class="Pagewing.App.Views.SaveErrorCard"
+                x:DataType="vm:PendingSave"
+                AutomationProperties.Name="{Binding Title}"
+                AutomationProperties.HelpText="{Binding Message}">
+  <!--
+    A save failed (design system 7.14, PendingSaveKind.SaveError): warning symbol in danger.default, title ""<file>" could
+    not be saved", the cause in everyday words per SaveFailureReason, "Save as" (primary, focus and Enter) and "Cancel"; where
+    another name cannot help (the file was changed by another program, an encryption that saving would lose) only "Cancel".
+    The tab keeps its document and its changes. Card and buttons as SaveCard.
+  -->
+  <Border Name="SaveErrorBox" MaxWidth="480" Margin="24" Padding="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Spacing="12">
+      <ctl:StrokeIcon Name="SaveErrorIcon" Width="24" Height="24" HorizontalAlignment="Left"
+                      Data="{StaticResource Pw.Icon.AlertTriangle}"
+                      Brush="{DynamicResource Pw.Brush.Danger.Default}" />
+      <StackPanel Spacing="4">
+        <TextBlock Name="SaveErrorTitle" Classes="subtitle" TextWrapping="Wrap" Text="{Binding Title}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <TextBlock Name="SaveErrorText" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{Binding Message}" AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+
+      <StackPanel Name="SaveErrorButtons" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Name="SaveErrorSaveAsButton" />
+        <Button Name="SaveErrorCancelButton" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</views:SaveCard>

@@ -233,6 +233,37 @@ public sealed class RenderCacheTests
         Assert.Equal(1, cache.Count);
     }
 
+    [Fact]
+    public void RemovePagesDropsOnlyThoseTiles()
+    {
+        var cache = new RenderCache(budgetBytes: 1000);
+        TileKey[] pageOne = [new(1, TileKey.PreviewScaleKey, 0, 0), new(1, 1000, 0, 0), new(1, 2000, 1, 2)];
+        TileKey[] pageTwo = [new(2, TileKey.PreviewScaleKey, 0, 0), new(2, 1000, 0, 0)];
+        TileKey[] pageThree = [new(3, 1000, 3, 0)];
+        foreach (var key in pageOne.Concat(pageTwo).Concat(pageThree))
+        {
+            cache.Add(key, Image(40));
+        }
+
+        cache.RemovePages(new HashSet<int> { 1, 3, 9 });
+
+        Assert.All(pageOne.Concat(pageThree), key => Assert.False(cache.Contains(key)));
+        Assert.All(pageTwo, key => Assert.True(cache.Contains(key)));
+        Assert.Equal(2, cache.Count);
+        Assert.Equal(80, cache.UsedBytes);
+        Assert.Equal(1000, cache.BudgetBytes);
+
+        // The order of use of the rest is intact: the least recently used of them goes first.
+        cache.SetBudget(40);
+        Assert.False(cache.Contains(pageTwo[0]));
+        Assert.True(cache.Contains(pageTwo[1]));
+
+        // An empty set changes nothing.
+        cache.RemovePages(new HashSet<int>());
+        Assert.Equal(1, cache.Count);
+        Assert.Throws<ArgumentNullException>(() => cache.RemovePages(null!));
+    }
+
     // Memory that is not exposed as an array, so CostOf has to use the pixel length.
     private sealed class NonArrayMemoryManager : MemoryManager<byte>
     {

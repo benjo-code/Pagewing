@@ -11,8 +11,10 @@
     The settings (Ctrl+Comma, the settings button at the bottom of the action bar): a card over the window below the
     title bar in the style of the help card and the link card (design system 7.8): surface.raised, radius.overlay, the
     card shadow with its 1 px border.subtle edge. Title and close button, then the groups "Appearance" (theme, density,
-    dark pages, reduced motion), "View" (default layout and zoom of new tabs), "Language" and "History" (clear the
-    recently opened files), and "Done" at the bottom.
+    dark pages, reduced motion), "View" (default layout and zoom of new tabs), "Printing", "Comments" (the author name
+    of new annotations), "Language" and "History" (clear the
+    recently opened files), "Updates" (the switch for the automatic check, with the sentence of what it asks and what it does
+    not) and "Done" at the bottom.
     Every change applies at once (SettingsViewModel); there is no "Apply". A choice of several values is a combo box
     (the arrows change it while it is closed, Alt+Down or F4 opens it), a yes or no a switch (Space). Tab goes from top to
     bottom and stays on the card; Esc, the close button and "Done" close it and the focus goes back where it was
@@ -165,6 +167,22 @@
             </Grid>
           </StackPanel>
 
+          <!--
+            The author name of new annotations: a text field (typing writes at once), the sentence underneath says that the
+            name is stored in the file. Empty by default, so no name of the system user lands in a shared file. Esc is not
+            taken by the field: the card's own Esc binding closes the card.
+          -->
+          <StackPanel Name="CommentsGroup" Classes="settingsGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupComments}" />
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsAuthor}" />
+              <TextBox Name="AuthorField" Grid.Column="1" Width="208" MinHeight="32" VerticalAlignment="Center"
+                       MaxLength="128" Text="{Binding AuthorName, Mode=TwoWay}"
+                       AutomationProperties.Name="{x:Static res:Strings.SettingsAuthor}" />
+            </Grid>
+            <TextBlock Name="AuthorHint" Classes="caption settingsHint" Text="{x:Static res:Strings.SettingsAuthorHint}" />
+          </StackPanel>
+
           <StackPanel Classes="settingsGroup">
             <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupLanguage}" />
             <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
@@ -175,6 +193,20 @@
             </Grid>
             <TextBlock Name="RestartHint" Classes="caption settingsHint" IsVisible="{Binding LanguageNeedsRestart}"
                        Text="{x:Static res:Strings.SettingsRestartHint}" />
+          </StackPanel>
+
+          <!--
+            The automatic check for updates: one switch (Space), the sentence underneath says what is asked (the public
+            release page of Pagewing on GitHub) and what is not. Outside the row, so the row keeps one label.
+          -->
+          <StackPanel Name="UpdatesGroup" Classes="settingsGroup">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.SettingsGroupUpdates}" />
+            <Grid Classes="settingsRow" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="body" Text="{x:Static res:Strings.SettingsUpdateCheck}" />
+              <ToggleSwitch Name="UpdateCheckSwitch" Grid.Column="1" IsChecked="{Binding UpdateCheck, Mode=TwoWay}"
+                            AutomationProperties.Name="{x:Static res:Strings.SettingsUpdateCheck}" />
+            </Grid>
+            <TextBlock Name="UpdateCheckHint" Classes="caption settingsHint" Text="{x:Static res:Strings.SettingsUpdateHint}" />
           </StackPanel>
 
           <!--

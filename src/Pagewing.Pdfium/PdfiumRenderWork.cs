@@ -22,6 +22,15 @@ namespace Pagewing.Pdfium;
 /// With <see cref="PdfiumPageColors"/> the page is recoloured through PDFium's colour scheme
 /// (<c>FPDF_RenderPageBitmapWithColorScheme_Start</c> with <c>FPDF_CONVERT_FILL_TO_STROKE</c>) on a bitmap filled with
 /// the background; without them the page is rendered on white exactly as before (<c>FPDF_RenderPageBitmap_Start</c>).
+/// A recoloured page with annotations also gets its highlights, underlines and strike-outs and its drawings (ink, square,
+/// circle) painted in their own colours once PDFium is done (<see cref="PdfiumDarkMarkups"/>, <see cref="PdfiumDarkDrawings"/>;
+/// the colour scheme would make them vanish or take the foreground).
+/// A page with widgets in a document with a form environment gets its form fields drawn last, with <c>FPDF_FFLDraw</c> and the
+/// mapping of the render (<see cref="PdfiumFormDrawing"/>; PDFium's page render draws no widget); on a recoloured page their
+/// rectangles are filled with paper white first, because <c>FPDF_FFLDraw</c> knows no colour scheme and a field without a
+/// background would show its black text on the dark ground. Pages without widgets render exactly as before. Every work loads its
+/// own page, so a page view never draws again after a form value was written (the environment keeps the old picture of an
+/// older view, spike point 13).
 /// </remarks>
 internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
 {
@@ -41,6 +50,7 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
     private const int BytesPerPixel = 4;
 
     private readonly PdfiumThread thread;
+    private readonly PdfiumDocument document;
     private readonly int pageIndex;
     private readonly PdfiumPage page;
     private readonly int pageWidth;
@@ -54,6 +64,11 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
     private readonly int flags;
     private readonly bool recoloured;
     private readonly long sliceTicks;
+    private DarkMarkupPaint? markups;
+    private readonly PdfiumPageColors? colors;
+    private readonly PdfiumFormHighlight? formHighlight;
+    private PdfiumFormEnvironment? formEnvironment;
+    private FsRectF[]? widgetRects;
     private BitmapHandle? bitmap;
     private byte[]? pixels;
     private PauseState* pause;
@@ -73,20 +88,32 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
     /// <param name="annotations">Whether annotations are drawn (<c>FPDF_ANNOT</c>).</param>
     /// <param name="slice">How long one step may take before PDFium yields; <see cref="TimeSpan.Zero"/> yields at every chance, <see cref="TimeSpan.MaxValue"/> never.</param>
     /// <param name="colors">The colours of a recoloured (dark) page, or <see langword="null"/> for the page as it is, on white.</param>
+    /// <param name="formHighlight">The tint of the fillable form fields, or <see langword="null"/> for none.</param>
     /// <exception cref="ArgumentOutOfRangeException">Invalid page index, scale, slice, or a tile that is empty or not within the page.</exception>
     /// <exception cref="PdfiumRenderException">The bitmap would exceed <see cref="MaxPixels"/>, or PDFium could not create it.</exception>
     /// <exception cref="InvalidDataException">The page could not be loaded.</exception>
-    public PdfiumRenderWork(PdfiumDocument document, int pageIndex, double scale, PdfiumPixelRect? tile, bool annotations, TimeSpan slice, PdfiumPageColors? colors = null)
+    public PdfiumRenderWork(
+        PdfiumDocument document,
+        int pageIndex,
+        double scale,
+        PdfiumPixelRect? tile,
+        bool annotations,
+        TimeSpan slice,
+        PdfiumPageColors? colors = null,
+        PdfiumFormHighlight? formHighlight = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         document.Thread.VerifyAccess();
         ValidateScale(scale);
         ArgumentOutOfRangeException.ThrowIfLessThan(slice, TimeSpan.Zero);
         thread = document.Thread;
+        this.document = document;
+        this.formHighlight = formHighlight;
         this.pageIndex = pageIndex;
         sliceTicks = ToStopwatchTicks(slice);
         flags = annotations ? FpdfConstants.RenderAnnot : 0;
         recoloured = colors is not null;
+        this.colors = colors;
         if (recoloured)
         {
             // With a single fill colour for all paths, adjacent fills would merge; their outlines keep them apart.
@@ -113,6 +140,20 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
 
             width = area.Width;
             height = area.Height;
+            if (colors is { } markupColors && annotations)
+            {
+                // Read before the render starts, so PDFium's render state of the page is never touched in between.
+                document.CountDarkMarkupScan();
+                markups = ReadMarkups(document, page, markupColors);
+            }
+
+            if (annotations && document.FormEnvironment is { } environment && document.PageHasWidgets(pageIndex, page))
+            {
+                // Read before the render starts, like the markups. Without widgets nothing of this runs.
+                formEnvironment = environment;
+                widgetRects = recoloured ? ReadWidgetRects(page) : null;
+            }
+
             stride = width * BytesPerPixel;
 
             // The overlap never leaves the page and never pushes the bitmap over the size limit.
@@ -240,6 +281,8 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
                 return false;
             case FpdfConstants.RenderDone:
                 finished = true;
+                PaintMarkups();
+                DrawFormFields();
                 DropOverlap();
                 return true;
             default:
@@ -321,6 +364,106 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
         }
     }
 
+    /// <summary>
+    /// Paints the markups of a dark page on the bitmap, overlap included, with the mapping PDFium rendered with: the page
+    /// spans <see cref="pageWidth"/> x <see cref="pageHeight"/> pixels from the start offset.
+    /// </summary>
+    private void PaintMarkups()
+    {
+        if (markups is not { IsEmpty: false } paint)
+        {
+            return;
+        }
+
+        markups = null;
+        var bitmapWidth = width + overlap;
+        try
+        {
+            PdfiumDarkMarkups.Apply(
+                paint,
+                colors!.Value,
+                pixels.AsSpan(0, bitmapWidth * BytesPerPixel * height),
+                bitmapWidth,
+                height,
+                bitmapWidth * BytesPerPixel,
+                pageWidth / page.Width,
+                pageHeight / page.Height,
+                startX,
+                startY);
+        }
+        catch (Exception)
+        {
+            // The markups are an addition: whatever goes wrong, the dark page itself is shown. Apply allocates nothing
+            // and writes pixel by pixel; what it painted before the failure stays.
+        }
+    }
+
+    /// <summary>
+    /// Draws the form fields over the finished render with its own mapping, overlap included: on a recoloured page the widget
+    /// rectangles become paper white first, then <c>FPDF_FFLDraw</c> draws the widgets (the colour scheme's fill-to-stroke flag
+    /// is not passed on: the fields keep their light appearance).
+    /// </summary>
+    private void DrawFormFields()
+    {
+        if (formEnvironment is not { } environment)
+        {
+            return;
+        }
+
+        formEnvironment = null;
+        if (widgetRects is { Length: > 0 } rects)
+        {
+            var bitmapWidth = width + overlap;
+            var bitmapStride = bitmapWidth * BytesPerPixel;
+            PdfiumFormDrawing.FillWhite(page, rects, pixels.AsSpan(0, bitmapStride * height), bitmapWidth, height, bitmapStride, startX, startY, pageWidth, pageHeight);
+        }
+
+        PdfiumFormDrawing.Draw(
+            environment,
+            bitmap!.DangerousGetHandle(),
+            page,
+            startX,
+            startY,
+            pageWidth,
+            pageHeight,
+            rotate: 0,
+            flags & ~FpdfConstants.RenderConvertFillToStroke,
+            formHighlight);
+        document.CountFormDraw();
+    }
+
+    /// <summary>
+    /// Reads the rectangles of the visible widgets for the paper-white fill of a dark page; a failure (also running out of
+    /// memory on a hostile page) leaves the fields as <c>FPDF_FFLDraw</c> draws them.
+    /// </summary>
+    private static FsRectF[]? ReadWidgetRects(PdfiumPage page)
+    {
+        try
+        {
+            return PdfiumFormDrawing.ReadVisibleWidgetRects(page);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the markups for the dark page; any failure (also running out of memory on a hostile page) drops them, and the
+    /// page renders dark as PDFium draws it.
+    /// </summary>
+    private static DarkMarkupPaint? ReadMarkups(PdfiumDocument document, PdfiumPage page, PdfiumPageColors colors)
+    {
+        try
+        {
+            return document.DarkMarkupReader is { } reader ? reader(page, colors) : PdfiumDarkMarkups.Read(document, page, colors);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Moves the rows together in place so the overlap columns are gone and the stride is the tile's.</summary>
     private void DropOverlap()
     {
@@ -376,10 +519,25 @@ internal sealed unsafe class PdfiumRenderWork : SteppedWork<PdfiumImage>
         return ticks >= long.MaxValue / 2 ? long.MaxValue : (long)ticks;
     }
 
-    /// <summary><c>IFSDK_PAUSE.NeedToPauseNow</c>: pause once the deadline of the current step has passed.</summary>
+    /// <summary>
+    /// <c>IFSDK_PAUSE.NeedToPauseNow</c>: pause once the deadline of the current step has passed. The clock is read in
+    /// <see cref="Now"/>, never inline: see there why.
+    /// </summary>
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int NeedToPauseNow(IfsdkPause* pause) =>
-        Stopwatch.GetTimestamp() >= ((PauseState*)pause)->Deadline ? 1 : 0;
+        Now() >= ((PauseState*)pause)->Deadline ? 1 : 0;
+
+    /// <summary>
+    /// Reads <see cref="Stopwatch.GetTimestamp"/> outside the callback. Its P/Invoke (<c>QueryPerformanceCounter</c>,
+    /// <c>SystemNative_GetTimestamp</c>) has <c>SuppressGCTransition</c>; inlined into an <c>[UnmanagedCallersOnly]</c>
+    /// method, the JIT (CoreCLR and Native AOT, .NET 10) puts the GC poll of that call after the reverse P/Invoke exit.
+    /// A collection pending there returns the thread to PDFium in cooperative mode, and PDFium's next call of the callback
+    /// ends the process ("attempted to call a UnmanagedCallersOnly method from managed code", <c>0xC0000602</c>). Here
+    /// the poll runs inside this method, while the thread is still in cooperative mode, as it must. Docs/DECISIONS.md,
+    /// entry "Absturz „UnmanagedCallersOnly aus verwaltetem Code“: Ursache und Behebung (M9)".
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static long Now() => Stopwatch.GetTimestamp();
 
     /// <summary>
     /// The pause interface followed by the deadline the callback reads (cast from its pointer), and the colour scheme

@@ -49,6 +49,13 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
 
     // The first match of this search became the current one and was revealed; that happens once per search.
     private bool _revealed;
+
+    // The document on which the last search stopped on a failure (it was closed meanwhile), or null.
+    private PdfDocument? _failedOn;
+
+    // After a save swapped the document, the search runs again; the match that was current (page, first character) is
+    // made current again when it comes in, without moving the view.
+    private (int Page, int FirstChar)? _restoreCurrent;
     private IReadOnlyList<(int Page, PageRect Rect, bool IsCurrent)>? _highlights;
     private bool _disposed;
 
@@ -235,6 +242,31 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// The session swapped <paramref name="old"/> for the file it just saved (the same pages and text): a search that was
+    /// running on <paramref name="old"/>, or stopped because it was closed, would end with what it found so far, so it starts
+    /// again on the new document. The current match stays the current one once it is found again, and a search whose first
+    /// match was already shown (or where the user chose one) does not move the view by itself. A finished search keeps its
+    /// matches: the text of the pages did not change.
+    /// </summary>
+    internal void OnDocumentAdopted(PdfDocument old)
+    {
+        ArgumentNullException.ThrowIfNull(old);
+        var stopped = _run is { } run ? ReferenceEquals(run.Document, old) : ReferenceEquals(_failedOn, old);
+        if (_disposed || !stopped || _query.Length == 0)
+        {
+            return;
+        }
+
+        var current = _current?.Hit;
+        var userChose = _userChose;
+        var revealed = _revealed;
+        Restart();
+        _userChose = userChose;
+        _revealed = revealed;
+        _restoreCurrent = current is null ? null : (current.PageIndex, current.FirstChar);
+    }
+
+    /// <summary>
     /// Takes a job of results of <paramref name="run"/> (UI thread): inserts the matches in order, makes the first one
     /// the current match unless the user chose one, and ends the search with the last job. A job of a run that was
     /// cancelled meanwhile is dropped.
@@ -264,6 +296,7 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
     {
         var hadHits = _hits.Count > 0;
         SearchHitViewModel? first = null;
+        SearchHitViewModel? restored = null;
         foreach (var item in items)
         {
             if (item.IsPageStart)
@@ -288,6 +321,11 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
             {
                 var entry = new SearchHitViewModel(hit);
                 first ??= entry;
+                if (_restoreCurrent is { } key && key == (hit.PageIndex, hit.FirstChar))
+                {
+                    restored = entry;
+                }
+
                 _hits.Insert(index++, entry);
             }
         }
@@ -301,7 +339,13 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(IsActive));
             }
 
-            if (_current is null && !_userChose && !_revealed)
+            if (restored is not null)
+            {
+                // The match that was current before the save: current again, where the view already is.
+                _restoreCurrent = null;
+                SetCurrent(restored);
+            }
+            else if (_current is null && !_userChose && !_revealed)
             {
                 // The first match from the start page on (the order of the search): the one at or after the view.
                 _revealed = true;
@@ -319,6 +363,7 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
         if (end is { } ending)
         {
             _run = null;
+            _failedOn = run.Failed ? run.Document : null;
             run.Cancellation.Dispose();
             _limitReached = ending.LimitReached;
             _noText = ending.NoText;
@@ -517,6 +562,8 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
         _noText = false;
         _userChose = false;
         _revealed = false;
+        _failedOn = null;
+        _restoreCurrent = null;
         if (hadHits)
         {
             _nextCommand.RaiseCanExecuteChanged();

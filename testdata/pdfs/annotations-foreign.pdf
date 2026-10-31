@@ -1,0 +1,128 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 2 /Kids [17 0 R 23 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing fremde Anmerkungen) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /XObject /Subtype /Form /BBox [38 246 250 264] /Resources << /ExtGState << /GS << /BM /Multiply >> >> >> /Length 36 >>
+stream
+/GS gs 1 0.9 0 rg 38 246 212 18 re f
+endstream
+endobj
+6 0 obj
+<< /Type /XObject /Subtype /Form /BBox [38 160 200 185] /Length 62 >>
+stream
+1 0 0 RG 2 w 40 165 m 80 180 l 120 165 l 160 180 l 195 165 l S
+endstream
+endobj
+7 0 obj
+<< /Type /XObject /Subtype /Form /BBox [38 110 200 140] /Length 35 >>
+stream
+0 0 1 RG 1 w 38.5 110.5 161 29 re S
+endstream
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Highlight /Rect [38 246 250 264] /QuadPoints [38 264 250 264 38 246 250 246] /C [1 0.9 0] /F 4 /NM (hl-0001) /T (Alice) /Subj (Highlight) /Contents (Check this sentence) /RC (<?xml version="1.0"?><body xmlns="http://www.w3.org/1999/xhtml"><p>Check <b>this</b> sentence</p></body>) /Popup 9 0 R /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) /AP << /N 5 0 R >> >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Popup /Rect [260 200 380 260] /Parent 8 0 R /Open false >>
+endobj
+10 0 obj
+<< /Type /Annot /Subtype /Text /Rect [280 246 298 264] /Name /Comment /F 28 /NM (reply-0001) /T (Bob) /Contents (Agreed) /IRT 8 0 R /RT /R /C [1 0.9 0] /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+11 0 obj
+<< /Type /Annot /Subtype /Highlight /Rect [38 216 230 234] /QuadPoints [38 234 230 234 38 216 230 216] /C [0.6 1 0.6] /F 4 /T (Alice) /Contents (No name, no appearance) >>
+endobj
+12 0 obj
+<< /Type /Annot /Subtype /Ink /Rect [38 160 200 185] /InkList [[40 165 80 180 120 165 160 180 195 165]] /C [1 0 0] /BS << /W 2 >> /F 4 /NM (ink-0001) /T (Alice) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) /AP << /N 6 0 R >> >>
+endobj
+13 0 obj
+<< /Type /Annot /Subtype /FreeText /Rect [38 110 200 140] /DA (/Helv 12 Tf 0 0 1 rg) /Q 0 /F 4 /NM (ft-0001) /T (Alice) /Contents (Free text note) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) /AP << /N 7 0 R >> >>
+endobj
+14 0 obj
+<< /Type /Annot /Subtype /Text /Rect [220 110 238 128] /Name /Note /F 28 /NM (note-0001) /T (Alice) /Contents (Sticky note) /C [1 1 0] /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) >>
+endobj
+15 0 obj
+<< /Type /Annot /Subtype /Link /Rect [38 60 200 80] /Border [0 0 1] /C [0 0 1] /F 4 /A << /S /URI /URI (https://example.com/pagewing) >> >>
+endobj
+16 0 obj
+<<  /Length 258 >>
+stream
+BT /F1 14 Tf 40 250 Td (Pagewing marks this sentence.) Tj ET
+BT /F1 14 Tf 40 220 Td (Second mark without a name.) Tj ET
+BT /F1 14 Tf 40 190 Td (Ink is drawn below.) Tj ET
+BT /F1 14 Tf 40 120 Td (Free text) Tj ET
+BT /F1 14 Tf 40 65 Td (Link to Pagewing) Tj ET
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Annots [8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R 15 0 R] /Resources << /Font << /F1 4 0 R >> >> /Contents 16 0 R >>
+endobj
+18 0 obj
+<< /Type /XObject /Subtype /Form /BBox [38 246 250 264] /Length 35 >>
+stream
+0 0.6 0 RG 1 w 38 247 m 250 247 l S
+endstream
+endobj
+19 0 obj
+<< /Type /XObject /Subtype /Form /BBox [38 216 250 234] /Length 33 >>
+stream
+1 0 0 RG 1 w 38 225 m 250 225 l S
+endstream
+endobj
+20 0 obj
+<< /Type /Annot /Subtype /Underline /Rect [38 246 250 264] /QuadPoints [38 264 250 264 38 246 250 246] /C [0 0.6 0] /F 4 /NM (ul-0001) /T (Alice) /Contents (Underlined) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) /AP << /N 18 0 R >> >>
+endobj
+21 0 obj
+<< /Type /Annot /Subtype /StrikeOut /Rect [38 216 250 234] /QuadPoints [38 234 250 234 38 216 250 216] /C [1 0 0] /F 4 /NM (so-0001) /T (Alice) /Contents (Struck out) /M (D:20260101120000Z) /CreationDate (D:20260101120000Z) /AP << /N 19 0 R >> >>
+endobj
+22 0 obj
+<<  /Length 111 >>
+stream
+BT /F1 14 Tf 40 250 Td (This text is underlined.) Tj ET
+BT /F1 14 Tf 40 220 Td (This text is struck out.) Tj ET
+endstream
+endobj
+23 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Annots [20 0 R 21 0 R] /Resources << /Font << /F1 4 0 R >> >> /Contents 22 0 R >>
+endobj
+xref
+0 24
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000129 00000 n 
+0000000223 00000 n 
+0000000320 00000 n 
+0000000517 00000 n 
+0000000682 00000 n 
+0000000820 00000 n 
+0000001234 00000 n 
+0000001334 00000 n 
+0000001562 00000 n 
+0000001750 00000 n 
+0000002006 00000 n 
+0000002248 00000 n 
+0000002459 00000 n 
+0000002615 00000 n 
+0000002926 00000 n 
+0000003118 00000 n 
+0000003257 00000 n 
+0000003394 00000 n 
+0000003659 00000 n 
+0000003922 00000 n 
+0000004086 00000 n 
+trailer
+<< /Size 24 /Root 1 0 R /Info 3 0 R >>
+startxref
+4238
+%%EOF

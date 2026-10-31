@@ -4,6 +4,9 @@ using Avalonia.Threading;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Distribution;
+using Pagewing.Core.Settings;
+using Pagewing.Core.Signatures;
+using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.Services;
@@ -28,6 +31,16 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     private readonly IEffectiveTheme? _theme;
     private readonly Func<IDefaultAppService?>? _defaultAppServiceFactory;
     private readonly DefaultAppPromptGate _defaultAppPromptGate = new();
+    private readonly Func<UpdateCoordinator?>? _updateFactory;
+    private readonly UpdateStartGate _updateStartGate = new();
+    private UpdateCoordinator? _updateCoordinator;
+    private bool _updateCoordinatorMade;
+
+    // The answers of the questions of the update about unsaved changes, from "Install" to the installer; the window that
+    // asks now; whether editing is locked because the installer has the update.
+    private Dictionary<TabViewModel, int>? _updateAnswers;
+    private MainViewModel? _askingWindow;
+    private bool _editingFrozen;
     private readonly List<MainViewModel> _windows = [];
     private readonly Dictionary<MainViewModel, Window> _views = [];
     private readonly List<MainViewModel> _activationOrder = [];
@@ -45,6 +58,11 @@ internal sealed class Workspace : IDisposable, ITabDragHost
     /// Makes the service behind the card "Set as the default for PDFs?" (<see cref="PlatformDefaultAppServices.FactoryFor"/>);
     /// none (a measurement run, tests) means no card. The question is asked once for all windows.
     /// </param>
+    /// <param name="updateFactory">
+    /// Makes the coordinator of the update check (<see cref="PlatformUpdate.FactoryFor"/>); none (a measurement run,
+    /// tests) means no check and no command. It is called at the first need, after the first sharp page of any window
+    /// or on the command, and once: all windows share the coordinator and its check.
+    /// </param>
     public Workspace(
         Func<ViewerSession> sessionFactory,
         Func<Window> createWindow,
@@ -52,7 +70,8 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         UserSettings? settings = null,
         IEffectiveTheme? theme = null,
         RecentFilesService? recentFiles = null,
-        Func<IDefaultAppService?>? defaultAppServiceFactory = null)
+        Func<IDefaultAppService?>? defaultAppServiceFactory = null,
+        Func<UpdateCoordinator?>? updateFactory = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         ArgumentNullException.ThrowIfNull(createWindow);
@@ -64,6 +83,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         _theme = theme;
         _recentFiles = recentFiles;
         _defaultAppServiceFactory = defaultAppServiceFactory;
+        _updateFactory = updateFactory;
     }
 
     /// <summary>Gets the view models of the open windows, the oldest first.</summary>
@@ -102,6 +122,123 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         ArgumentNullException.ThrowIfNull(firstSession);
         var source = ActiveWindow ?? (_windows.Count > 0 ? _windows[^1] : null);
         return Open(null, source is null ? null : _views[source], beforeShow, firstSession: firstSession);
+    }
+
+    /// <summary>
+    /// The windows and tabs to bring back after an update (<see cref="SessionStore"/>): for every window with a tab, the
+    /// oldest first, its tabs from left to right with their file and where it is read
+    /// (<see cref="MainViewModel.RememberedViewOf"/>; the active tab where it is shown now) and the active one. A tab
+    /// without an open document (still loading, asking for its password, failed) keeps its file without a view; a tab
+    /// without a file and a window on the start screen are left out.
+    /// </summary>
+    public SessionSnapshot CaptureSession()
+    {
+        var windows = new List<SessionWindow>();
+        foreach (var viewModel in _windows)
+        {
+            if (_views[viewModel] is MainWindow window)
+            {
+                window.DocumentView.SaveView();
+            }
+
+            var tabs = new List<SessionTab>();
+            var active = 0;
+            foreach (var tab in viewModel.Tabs)
+            {
+                if (ReferenceEquals(tab, viewModel.ActiveTab))
+                {
+                    active = tabs.Count;
+                }
+
+                if (tab.FullPath is { Length: > 0 } path)
+                {
+                    tabs.Add(new SessionTab(path, MainViewModel.RememberedViewOf(tab)?.View));
+                }
+            }
+
+            if (tabs.Count > 0)
+            {
+                windows.Add(new SessionWindow(tabs, Math.Min(active, tabs.Count - 1)));
+            }
+        }
+
+        return new SessionSnapshot(windows);
+    }
+
+    /// <summary>
+    /// Brings back the windows and tabs of <paramref name="snapshot"/> after an update, as they were, without the card
+    /// "Set as the default for PDFs?" (the files were open before). The first window opens like a start with files on the
+    /// command line: its active tab first, for <paramref name="firstSession"/> (already opening its file since
+    /// <see cref="Program.Main"/>), its other tabs at their places after its first sharp tile
+    /// (<see cref="App.AfterFirstSharpTile"/>, <see cref="MainViewModel.RestoreInBackgroundAsync"/>). Then the other
+    /// windows open the same way, without taking the focus. Every tab starts where its file was read
+    /// (<see cref="TabViewModel.InitialView"/>). A protected file asks for its password as at any other time.
+    /// </summary>
+    /// <param name="snapshot">The session, without missing files (<see cref="Program.LoadSession"/>).</param>
+    /// <param name="firstSession">
+    /// The session that opens the active file of the first window; without one the workspace starts opening it.
+    /// </param>
+    /// <param name="beforeShow">Called for the first window right before it is shown (see <see cref="OpenWindow"/>).</param>
+    /// <returns>The first window, or <see langword="null"/> for a session without windows.</returns>
+    public MainViewModel? RestoreSession(SessionSnapshot snapshot, ViewerSession? firstSession = null, Action<Window, MainViewModel>? beforeShow = null)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Windows.Count == 0)
+        {
+            return null;
+        }
+
+        // The files were open before the update: no first-open card for them.
+        _defaultAppPromptGate.Started = true;
+        return OpenRestoredWindow(
+            snapshot.Windows[0],
+            firstSession,
+            beforeShow,
+            showActivated: true,
+            afterFirstSharpTile: () =>
+            {
+                foreach (var window in snapshot.Windows.Skip(1))
+                {
+                    OpenRestoredWindow(window, null, null, showActivated: false, afterFirstSharpTile: null);
+                }
+            });
+    }
+
+    /// <summary>
+    /// Opens a window of a restored session with its active tab, and its other tabs (then <paramref name="afterFirstSharpTile"/>)
+    /// once the active one has its first sharp tile.
+    /// </summary>
+    private MainViewModel OpenRestoredWindow(
+        SessionWindow saved, ViewerSession? session, Action<Window, MainViewModel>? beforeShow, bool showActivated, Action? afterFirstSharpTile)
+    {
+        var active = saved.Active;
+        if (session is null)
+        {
+            session = _sessionFactory();
+            _ = session.OpenAsync(active.Path);
+        }
+
+        var source = ActiveWindow ?? (_windows.Count > 0 ? _windows[^1] : null);
+        var viewModel = Open(
+            null, source is null ? null : _views[source], beforeShow, showActivated: showActivated, firstSession: session, firstView: active.View);
+        var before = saved.Tabs.Take(saved.ActiveIndex).ToList();
+        var after = saved.Tabs.Skip(saved.ActiveIndex + 1).ToList();
+        void OpenTheRest()
+        {
+            _ = viewModel.RestoreInBackgroundAsync(before, after);
+            afterFirstSharpTile?.Invoke();
+        }
+
+        if (_views[viewModel] is MainWindow window && viewModel.ActiveTab is { } first)
+        {
+            App.AfterFirstSharpTile(window, viewModel, first, OpenTheRest, App.MoreFilesFallbackDelay);
+        }
+        else
+        {
+            OpenTheRest();
+        }
+
+        return viewModel;
     }
 
     /// <summary>Gets the window of an open window view model.</summary>
@@ -271,7 +408,15 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         {
             if (_views.TryGetValue(viewModel, out var window))
             {
-                window.Close();
+                // The app ends: nothing can be asked any more.
+                if (window is MainWindow main)
+                {
+                    main.CloseWithoutAsking();
+                }
+                else
+                {
+                    window.Close();
+                }
             }
         }
 
@@ -280,6 +425,176 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         {
             Forget(viewModel);
         }
+
+        _updateCoordinator?.Dispose();
+    }
+
+    /// <summary>
+    /// Gets the coordinator all windows share, or <see langword="null"/> without an updater. Reading it makes it (tests ask
+    /// for it before a window needs it) and lets the open windows follow it.
+    /// </summary>
+    internal UpdateCoordinator? UpdateCoordinator
+    {
+        get
+        {
+            var coordinator = GetUpdateCoordinator();
+            if (coordinator is not null)
+            {
+                _updateStartGate.Publish(coordinator);
+            }
+
+            return coordinator;
+        }
+    }
+
+    /// <summary>
+    /// "Install" of the update, before anything of it starts (<see cref="UpdateCoordinator.BeforeInstall"/>): asks every
+    /// window with unsaved changes in turn (<see cref="ResolveUnsavedChangesAsync"/>). The answers count for the question
+    /// before the installer of the same installation too.
+    /// </summary>
+    internal Task<bool> BeforeUpdateInstallAsync()
+    {
+        _updateAnswers = [];
+        return ResolveUnsavedChangesAsync(_updateAnswers);
+    }
+
+    /// <summary>
+    /// Right before the installer of the update takes over and ends the app (<see cref="UpdateCoordinator.BeforeApply"/>):
+    /// asks again about what changed since the answers of "Install" (a tab edited during the download). With the last
+    /// answer editing is locked in every window (<see cref="EditingFrozen"/>), in the same step as the last look at the
+    /// windows, so no change can come between the answers and the end of the app.
+    /// </summary>
+    internal Task<bool> BeforeUpdateApplyAsync() => ResolveUnsavedChangesAsync(_updateAnswers ??= [], freezeWhenAnswered: true);
+
+    /// <summary>
+    /// Gets whether editing is locked in every window (<see cref="MainViewModel.IsEditingFrozen"/>): from the last answer
+    /// before the installer until the installation ends without a restart (a failure, or no installer). The installer copies
+    /// the program (Windows) or the AppImage and checks it again before it ends the app, which takes seconds, during which
+    /// the windows would otherwise take changes that the end of the app drops without a question.
+    /// </summary>
+    internal bool EditingFrozen
+    {
+        get => _editingFrozen;
+        private set
+        {
+            if (_editingFrozen == value)
+            {
+                return;
+            }
+
+            _editingFrozen = value;
+            foreach (var window in _windows)
+            {
+                window.IsEditingFrozen = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Asks every window that has unsaved changes, one after another, with the card of closing
+    /// (<see cref="MainViewModel.ResolveUnsavedChangesAsync(Dictionary{TabViewModel, int})"/>): the window that was active
+    /// first, then the others from the oldest; each comes to the front while it asks, and a window without changes is not
+    /// asked. Then the windows are looked at again until none is left to ask about (the user may change a tab of another
+    /// window while one asks). A window closed meanwhile is skipped. A window that asks already (a tab or the window is to
+    /// close) is waited for: its question is answered first, then what is left is asked. Before each look a comment typed in
+    /// a "Comments" panel and not applied is applied (<see cref="MainViewModel.ApplyCommentDrafts"/>), so it is asked about
+    /// like any other change. Completes at once when there is nothing to ask.
+    /// </summary>
+    /// <param name="answers">The "Don't save" answers so far (tab and version of its history), extended here.</param>
+    /// <param name="freezeWhenAnswered">Locks editing (<see cref="EditingFrozen"/>) when nothing is left to ask.</param>
+    /// <returns><see langword="false"/> as soon as a window answers "Cancel" (or its save fails).</returns>
+    internal async Task<bool> ResolveUnsavedChangesAsync(Dictionary<TabViewModel, int> answers, bool freezeWhenAnswered = false)
+    {
+        ArgumentNullException.ThrowIfNull(answers);
+        var first = ActiveWindow;
+        try
+        {
+            while (true)
+            {
+                foreach (var each in _windows.ToArray())
+                {
+                    each.ApplyCommentDrafts();
+                }
+
+                if (NextWindowToAsk(first, answers) is not { } window)
+                {
+                    if (freezeWhenAnswered)
+                    {
+                        EditingFrozen = true;
+                    }
+
+                    return true;
+                }
+
+                _askingWindow = window;
+                window.BringToFront();
+                if (window.IsResolving)
+                {
+                    // The window asks before a tab or itself closes: the user answers that first. Then the window may be
+                    // gone or its tab closed; what is left is asked about here.
+                    await window.WhenResolveEndsAsync().ConfigureAwait(true);
+                    await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                    continue;
+                }
+
+                if (!await window.ResolveUnsavedChangesAsync(answers).ConfigureAwait(true) && !window.IsDisposed)
+                {
+                    return false;
+                }
+
+                // A typed comment that waited for a card is applied in the next round; the dispatcher gets its turn first.
+                if (window.HasUnansweredChanges(answers))
+                {
+                    await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                }
+            }
+        }
+        finally
+        {
+            _askingWindow = null;
+        }
+    }
+
+    // Raised on the UI thread by the coordinator; must not throw. The lock ends when the installation ends without a restart.
+    private void OnUpdateChanged()
+    {
+        if (_editingFrozen && _updateCoordinator is { State.Stage: not (UpdateStage.Ready or UpdateStage.Installing or UpdateStage.Restarting) })
+        {
+            EditingFrozen = false;
+        }
+    }
+
+    /// <summary>The next window with something to ask about: <paramref name="first"/>, then the open windows from the oldest.</summary>
+    private MainViewModel? NextWindowToAsk(MainViewModel? first, Dictionary<TabViewModel, int> answers)
+    {
+        var order = first is not null && _windows.Contains(first) ? _windows.Where(window => !ReferenceEquals(window, first)).Prepend(first) : _windows;
+        return order.FirstOrDefault(window => window.HasUnansweredChanges(answers));
+    }
+
+    /// <summary>The coordinator all windows share, made by the factory the first time a window needs it.</summary>
+    private SignatureStore? _signatureStore;
+
+    /// <summary>The library of saved signatures of this process, opened on first use; every window shares it.</summary>
+    private SignatureStore GetSignatureStore() => _signatureStore ??= SignatureStore.Load(UserDataPaths.SignaturesDirectory());
+
+    private UpdateCoordinator? GetUpdateCoordinator()
+    {
+        if (!_updateCoordinatorMade)
+        {
+            _updateCoordinator = _updateFactory?.Invoke();
+            _updateCoordinatorMade = true;
+            if (_updateCoordinator is { } coordinator)
+            {
+                // Pagewing ends after the installer took over: nothing unsaved may go without the user's answer. The button
+                // "Update" brings the window that asks to the front; the lock of editing ends with the installation.
+                coordinator.BeforeInstall = BeforeUpdateInstallAsync;
+                coordinator.BeforeApply = BeforeUpdateApplyAsync;
+                coordinator.QuestionShown = () => _askingWindow?.BringToFront();
+                coordinator.Changed += OnUpdateChanged;
+            }
+        }
+
+        return _updateCoordinator;
     }
 
     private MainViewModel Open(
@@ -288,14 +603,24 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         Action<Window, MainViewModel>? beforeShow,
         PixelPoint? position = null,
         bool showActivated = true,
-        ViewerSession? firstSession = null)
+        ViewerSession? firstSession = null,
+        RememberedView? firstView = null)
     {
         var window = _createWindow();
         var viewModel = new MainViewModel(_sessionFactory, _createPicker(window), _settings, _recentFiles) { AppTheme = _theme };
+
+        // One library of signatures for all windows (read when a menu or the dialog first needs it).
+        viewModel.SignatureStoreProvider = GetSignatureStore;
         if (_defaultAppServiceFactory is { } defaultAppFactory)
         {
             viewModel.DefaultAppServiceFactory = defaultAppFactory;
             viewModel.DefaultAppPromptGate = _defaultAppPromptGate;
+        }
+
+        if (_updateFactory is not null)
+        {
+            viewModel.UpdateCoordinatorFactory = GetUpdateCoordinator;
+            viewModel.UpdateStartGate = _updateStartGate;
         }
 
         if (source is not null)
@@ -309,6 +634,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         }
 
         viewModel.TabDragHost = this;
+        viewModel.IsEditingFrozen = _editingFrozen;
         viewModel.MoveToNewWindowRequested += tab => MoveToNewWindow(viewModel, tab);
         window.Activated += (_, _) =>
         {
@@ -333,7 +659,7 @@ internal sealed class Workspace : IDisposable, ITabDragHost
         else if (firstSession is not null)
         {
             // A new tab, so it gets the defaults of the settings (MainViewModel.NewTab); also before the DataContext.
-            viewModel.AdoptSession(firstSession);
+            viewModel.AdoptSession(firstSession, firstView);
         }
 
         window.DataContext = viewModel;

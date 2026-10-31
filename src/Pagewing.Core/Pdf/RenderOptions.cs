@@ -6,7 +6,11 @@ public sealed record RenderOptions
     /// <summary>Gets the default options.</summary>
     public static RenderOptions Default { get; } = new();
 
-    /// <summary>Gets a value indicating whether annotations (except form fields and popups) are drawn. Default: on.</summary>
+    /// <summary>
+    /// Gets a value indicating whether annotations are drawn, popups excepted. Default: on. Since milestone 11 this includes
+    /// the form fields of a document with a form: PDFium draws them only through <c>FPDF_FFLDraw</c>, which the render calls
+    /// after the page for every page with widgets.
+    /// </summary>
     public bool Annotations { get; init; } = true;
 
     /// <summary>Gets the scheduling class. Default: <see cref="PdfPriority.Interactive"/>.</summary>
@@ -20,6 +24,12 @@ public sealed record RenderOptions
 
     /// <summary>Gets how the page is coloured. Default: <see cref="PageTheme.Light"/>, the page as the document says.</summary>
     public PageTheme PageTheme { get; init; } = PageTheme.Light;
+
+    /// <summary>
+    /// Gets a value indicating whether the fillable form fields are tinted with <see cref="FormHighlightColors"/> (drawn by
+    /// PDFium; read-only fields, signatures and push buttons get no tint). Only with <see cref="Annotations"/>. Default: off.
+    /// </summary>
+    public bool FormHighlight { get; init; }
 }
 
 /// <summary>Scheduling class of a request on the PDFium thread.</summary>

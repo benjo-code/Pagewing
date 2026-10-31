@@ -1,24 +1,18 @@
 # Hardware measurement: startup time and scrolling smoothness on the project owner's main PC (real GPU).
 #
 # SECURITY: This workflow executes repository code on the owner's personal PC, with the owner's user rights.
-# - It runs only on an explicit manual trigger: `workflow_dispatch`, or a collaborator adding the label
-#   `hardware-measure` to a pull request. There is deliberately no `pull_request` opened/synchronize trigger,
-#   no `pull_request_target` and no `issue_comment` trigger.
-# - A pull request from a fork never runs it: the job requires the head repository to be this repository
-#   (and fork PRs cannot be labelled into a run by anyone without write access anyway).
+# - It runs only on an explicit manual trigger: `workflow_dispatch` (needs write access to the repository). There is
+#   deliberately no `pull_request` trigger of any kind (not even a label), no `pull_request_target` and no
+#   `issue_comment` trigger, so no pull request can ever start it.
 # - The runner is registered with the label `dotnet-windows-gpu` only, not with the labels of ci.yml
 #   (`dotnet-windows`, `dotnet-linux`), so the CI jobs can never land on it and this job never lands on the CI runners.
 # - The owner starts the runner by hand (run.cmd in the logged-in session) when asked and stops it afterwards;
 #   it is not a service. Do not rely on it being online. No secrets are used or needed.
-# Setup and procedure: bench/startup/README.md, section "Messung auf echter Hardware (Haupt-PC)".
+# Procedure and conditions: bench/startup/README.md, section "Messung auf echter Hardware (Haupt-PC)".
 name: Hardware measurement
 
 on:
   workflow_dispatch:
-  # A new workflow file cannot be dispatched before it exists on the default branch; the label lets us run it from a PR branch.
-  pull_request:
-    types: [labeled]
-    branches: [dev, main]
 
 permissions:
   contents: read
@@ -31,13 +25,10 @@ env:
 jobs:
   measure:
     name: measure-windows-gpu
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.label.name == 'hardware-measure' &&
-      github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, dotnet-windows-gpu]
-    timeout-minutes: 30
-    # On the job (not the workflow) so that runs skipped by the `if` above, e.g. for other labels, never take the group.
+    timeout-minutes: 45
+    # On the job (not the workflow) so that a skipped run never takes the group.
     # Two runs must never overlap on the one runner; a running measurement is never cancelled.
     concurrency:
       group: hardware-measure
@@ -154,7 +145,7 @@ jobs:
           $scrollFile = Join-Path $outDir 'scroll.txt'
           Set-Content -Path $scrollFile -Value @() -Encoding utf8
           $failed = $false
-          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf') {
+          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf', 'forms-basic.pdf') {
             $pdf = (Resolve-Path "testdata/pdfs/$file").Path
             for ($run = 1; $run -le 3; $run++) {
               $stdout = Join-Path $outDir "scroll-$file-$run.out"
@@ -201,7 +192,7 @@ jobs:
         id: scroll-compare
         if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
         continue-on-error: true
-        timeout-minutes: 8
+        timeout-minutes: 12
         run: |
           [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
           $work = (Get-Location).Path
@@ -210,7 +201,7 @@ jobs:
           $csv = Join-Path $outDir 'scroll-compare.csv'
           Set-Content -Path $csv -Value 'file,zoom,path,run,exit,frames,p99_ms,max_ms,mean_ms,over20_pct,over30_pct,range_dips' -Encoding utf8
           $failed = $false
-          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf') {
+          foreach ($file in 'thousand-pages.pdf', 'vector-shapes.pdf', 'forms-basic.pdf') {
             $pdf = (Resolve-Path "testdata/pdfs/$file").Path
             $stem = [System.IO.Path]::GetFileNameWithoutExtension($file)
             foreach ($zoom in 100, 400) {

@@ -6,7 +6,7 @@
              x:Class="Pagewing.App.Views.StartScreen"
              x:DataType="vm:MainViewModel">
   <!--
-    Start screen (design system section 7.1): heading, offline note, primary button "Choose file" with its
+    Start screen (design system section 7.1): heading, update note (what the check asks and what not), primary button "Choose file" with its
     shortcut, drag-and-drop hint, then "Recently opened" (RecentFilesSection), which StartScreen.axaml.cs builds into
     RecentHost only once the history has been read (after the first frame) and has entries; the first frame has an
     empty host. text.secondary on surface.canvas is checked by MainWindowTests.SecondaryTextOnTheCanvasMeetsAA.
@@ -17,7 +17,7 @@
         <TextBlock Name="StartTitle" Classes="title" Text="{x:Static res:Strings.StartTitle}" TextWrapping="Wrap" />
         <TextBlock Classes="body" TextWrapping="Wrap"
                    Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
-                   Text="{x:Static res:Strings.StartOffline}" />
+                   Text="{x:Static res:Strings.UpdateCheckNote}" />
       </StackPanel>
 
       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">

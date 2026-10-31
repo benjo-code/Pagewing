@@ -107,6 +107,9 @@ internal abstract class MeasurementRun : IDisposable
 
         // A measured window opens no panel: no extra work around first-sharp, the layout of the runs before the panel.
         ViewModel.OpensPagesPanelAfterFirstSharpTile = false;
+
+        // Nor does it read the form of a document (hints, offer of the mode): the budgets measure the open and the first sharp page.
+        ViewModel.FormFeaturesEnabled = false;
         View.FirstSharpTileDrawn += OnFirstSharpTileDrawn;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         WatchActiveTab();

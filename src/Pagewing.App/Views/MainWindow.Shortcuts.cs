@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using Avalonia.Controls;
 using Avalonia.Input;
 using Pagewing.App.Commands;
 using Pagewing.App.ViewModels;
@@ -33,7 +34,7 @@ public sealed partial class MainWindow
             CatalogCommand? bound = null;
             foreach (var gesture in command.Gestures)
             {
-                bound ??= new CatalogCommand(command);
+                bound ??= new CatalogCommand(command, IsTextInputFocused);
                 var binding = new KeyBinding { Gesture = gesture, Command = bound };
                 _commandBindings.Add(binding);
                 KeyBindings.Add(binding);
@@ -41,12 +42,16 @@ public sealed partial class MainWindow
         }
     }
 
+    /// <summary>Whether a text field has the keyboard focus (it keeps the keys of <see cref="AppCommand.YieldsToTextInput"/>).</summary>
+    private bool IsTextInputFocused() => FocusManager?.GetFocusedElement() is TextBox;
+
     /// <summary>
     /// A command of the catalog as a key binding sees it. Whether it can run is asked at the moment of the key
     /// (<c>KeyBinding.TryHandle</c> calls <see cref="ICommand.CanExecute"/> and never listens to
-    /// <see cref="ICommand.CanExecuteChanged"/>, Avalonia 12.1.4), so the command raises no change.
+    /// <see cref="ICommand.CanExecuteChanged"/>, Avalonia 12.1.4), so the command raises no change. A command that yields to
+    /// text input cannot run while a text field has the focus: the key then goes on to the field.
     /// </summary>
-    private sealed class CatalogCommand(AppCommand command) : ICommand
+    private sealed class CatalogCommand(AppCommand command, Func<bool> textInputFocused) : ICommand
     {
         public event EventHandler? CanExecuteChanged
         {
@@ -54,7 +59,7 @@ public sealed partial class MainWindow
             remove { }
         }
 
-        public bool CanExecute(object? parameter) => command.CanExecute();
+        public bool CanExecute(object? parameter) => !(command.YieldsToTextInput && textInputFocused()) && command.CanExecute();
 
         public void Execute(object? parameter) => command.Execute();
     }

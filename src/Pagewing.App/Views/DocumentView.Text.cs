@@ -83,6 +83,12 @@ public sealed partial class DocumentView
         Arrow,
         Text,
         Link,
+
+        /// <summary>A drawing tool over a page (crosshair).</summary>
+        Draw,
+
+        /// <summary>The select tool over a movable selection or one of its handles (DocumentView.Selection.cs).</summary>
+        Selection,
     }
 
     private enum PressKind
@@ -526,6 +532,12 @@ public sealed partial class DocumentView
     // After the scroll viewer and the scroll bars had the press (handledEventsToo).
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (IsInFormEditor(e.Source))
+        {
+            // The input of a form field takes its own presses (the caret, a choice); the keys stay with it.
+            return;
+        }
+
         // A click on the pages (or their scroll bars) gives the keys to the document. With the pointer, so no focus ring appears.
         if (_layout is not null && !IsFocused)
         {
@@ -533,6 +545,14 @@ public sealed partial class DocumentView
         }
 
         var properties = e.GetCurrentPoint(this).Properties;
+
+        // A drawing tool owns the press (DocumentView.Drawing.cs), and so does the select tool (DocumentView.Selection.cs) and,
+        // in the mode "Fill in form", a field (DocumentView.Forms.cs): no text selection, no link.
+        if (PressEndsTextBox() || PressForSignature(e, properties) || PressForDrawing(e, properties) || PressForSelection(e, properties) || PressForForm(e, properties))
+        {
+            return;
+        }
+
         if (properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed || _layout is null || _viewModel is null
             || (e.KeyModifiers & KeyModifiers.Control) != 0 || IsInScrollBar(e.Source))
         {
@@ -542,6 +562,9 @@ public sealed partial class DocumentView
         var position = e.GetPosition(PageCanvas);
         _pointer = position;
         _pressedLink = null;
+
+        // A word of a double click waits for this press: a third click makes it a line, any other press lets it go now.
+        OnPressForMarkup(e.ClickCount);
         var press = new TextPress(position, e.ClickCount) { Modifiers = e.KeyModifiers };
         _press = press;
         e.Pointer.Capture(this);
@@ -622,10 +645,13 @@ public sealed partial class DocumentView
 
         if (text.LinkAt(x, y) is { } link && IsClickableCached(link))
         {
-            // Followed on the release, never here (DocumentView.Links.cs).
+            // Followed on the release, never here (DocumentView.Links.cs). With a tool of the mode "Comment" a drag from
+            // the link selects text instead (and the link is not followed, it was dragged).
             press.Kind = PressKind.Link;
             press.Link = link;
             press.Text = text;
+            press.Anchor = new TextPosition(press.Page, text.CaretAt(x, y));
+            press.SelectsOnDrag = press.ClickCount <= 1 && MarksOnRelease(tab) is not null;
             _pressedLink = link;
             return;
         }
@@ -651,6 +677,12 @@ public sealed partial class DocumentView
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
+        MoveForSignature(e);
+        if (MoveForDrawing(e) || MoveForSelection(e) || MoveForForm(e))
+        {
+            return;
+        }
+
         var position = e.GetPosition(PageCanvas);
         if (_press is { } press)
         {
@@ -658,6 +690,16 @@ public sealed partial class DocumentView
             if (!press.Moved && Distance(position, press.Start) >= ClickSlop)
             {
                 press.Moved = true;
+                if (press is { Kind: PressKind.Link, SelectsOnDrag: true })
+                {
+                    // The drag starts a selection at the link (a tool of the mode is on); the link is not followed.
+                    press.Kind = PressKind.Selecting;
+                    _pressedLink = null;
+                    if (_viewModel is { } tab)
+                    {
+                        tab.TextSelection = null;
+                    }
+                }
             }
 
             if (press.Kind == PressKind.Selecting)
@@ -681,6 +723,11 @@ public sealed partial class DocumentView
 
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (ReleaseForDrawing(e) || ReleaseForSelection(e) || ReleaseForForm(e))
+        {
+            return;
+        }
+
         if (e.InitialPressMouseButton != MouseButton.Left || _press is not { } press)
         {
             return;
@@ -700,6 +747,9 @@ public sealed partial class DocumentView
         }
 
         var link = LinkToFollow(press, position, e.KeyModifiers);
+
+        // With a tool of the mode "Comment" the selection becomes a markup now (DocumentView.Annotations.cs).
+        ApplyMarkupOnRelease(press, position);
         EndPress(press);
         if (ReferenceEquals(e.Pointer.Captured, this))
         {
@@ -718,9 +768,27 @@ public sealed partial class DocumentView
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
+        if (_gesture is { } gesture && ReferenceEquals(e.Pointer, gesture.Pointer))
+        {
+            // Something else took the pointer (a menu, the system): the stroke goes.
+            EndGesture();
+        }
+
+        if (_selectionDrag is { } drag && ReferenceEquals(e.Pointer, drag.Pointer))
+        {
+            // The same for a drag of the selection: nothing changes.
+            EndSelectionDrag();
+        }
+
         if (_press is { } press)
         {
             EndPress(press);
+        }
+
+        if (_formPress is { } formPress && ReferenceEquals(e.Pointer, formPress.Pointer))
+        {
+            // A press on a check box or radio button whose pointer went elsewhere switches nothing.
+            _formPress = null;
         }
     }
 
@@ -757,6 +825,35 @@ public sealed partial class DocumentView
     private void UpdateCursor(Point position)
     {
         _hoverPage = -1;
+        if (_viewModel is { } drawing && DrawsWith(drawing) is not null)
+        {
+            // A drawing tool: the crosshair over a page, whatever is on it.
+            SetCursor(PageCanvas.PagePointAt(position) is { } on && IsOnPage(on.Page, on.Position) ? CursorKind.Draw : CursorKind.Arrow);
+            return;
+        }
+
+        if (_viewModel is { } selecting && SelectsWith(selecting))
+        {
+            // The select tool: a resize arrow over a handle, the move cross inside a movable selection, else the arrow.
+            if (SelectionCursorAt(position) is { } cursor)
+            {
+                _cursorKind = CursorKind.Selection;
+                Scroller.Cursor = cursor;
+            }
+            else
+            {
+                SetCursor(CursorKind.Arrow);
+            }
+
+            return;
+        }
+
+        if (UpdateFormCursor(position))
+        {
+            // A field of the mode "Fill in form" (DocumentView.Forms.cs): its cursor, and the lock as tooltip.
+            return;
+        }
+
         var kind = CursorKind.Arrow;
         if (PageCanvas.PagePointAt(position) is { } hit && IsOnPage(hit.Page, hit.Position) && TextSource() is { } texts)
         {
@@ -789,6 +886,7 @@ public sealed partial class DocumentView
         {
             CursorKind.Text => TextCursor,
             CursorKind.Link => LinkCursor,
+            CursorKind.Draw => DrawCursor,
             _ => null,
         };
     }
@@ -840,19 +938,24 @@ public sealed partial class DocumentView
     /// Shows for <see cref="NoTextHintDuration"/> that the page has no text to select, at the bottom of the document
     /// area; a press while it is shown does not make it stay longer.
     /// </summary>
-    private void ShowNoTextHint()
+    private void ShowNoTextHint() => ShowHint(Strings.NoTextOnPage);
+
+    /// <summary>
+    /// Shows <paramref name="text"/> in the hint card for <see cref="NoTextHintDuration"/> (the hint on a page without text, and
+    /// why a drawing was not made); the same text while it is shown does not make it stay longer.
+    /// </summary>
+    private void ShowHint(string text)
     {
-        if (_noTextHint is { IsVisible: true })
+        var hint = _noTextHint ??= CreateNoTextHint();
+        var line = (TextBlock)hint.Child!;
+        if (hint.IsVisible && line.Text == text)
         {
             return;
         }
 
-        var hint = _noTextHint ??= CreateNoTextHint();
-
         // The text is set anew each time, so the live region announces it each time (the same value would not change).
-        var line = (TextBlock)hint.Child!;
         line.Text = string.Empty;
-        line.Text = Strings.NoTextOnPage;
+        line.Text = text;
         hint.IsVisible = true;
         if (_noTextHintTimer is null)
         {
@@ -932,6 +1035,9 @@ public sealed partial class DocumentView
 
         /// <summary>Whether the pointer moved by <see cref="ClickSlop"/> or more since the press.</summary>
         public bool Moved { get; set; }
+
+        /// <summary>Whether a drag from the pressed link selects text (a tool of the mode "Comment" is on).</summary>
+        public bool SelectsOnDrag { get; set; }
 
         /// <summary>The modifier keys held when the button went down.</summary>
         public KeyModifiers Modifiers { get; init; }

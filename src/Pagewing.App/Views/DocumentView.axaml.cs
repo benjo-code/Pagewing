@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Pagewing.App.Controls;
 using Pagewing.App.ViewModels;
 using Pagewing.Core.Pdf;
@@ -16,7 +17,8 @@ namespace Pagewing.App.Views;
 /// see DocumentView.LayoutModes.cs), zoom with Ctrl+wheel (around the pointer) and through the view model
 /// (Ctrl+Plus/Minus, status bar), the zoom modes of the tab (page width, whole page, actual size; see
 /// <see cref="Refit"/>), page jumps, the current page (row) for the status bar, the marks on the pages
-/// (DocumentView.Highlights.cs) and selecting text with the mouse (DocumentView.Text.cs). Its
+/// (DocumentView.Highlights.cs), selecting text with the mouse (DocumentView.Text.cs) and drawing with a drawing tool
+/// (DocumentView.Drawing.cs). Its
 /// <c>DataContext</c> is the active <see cref="TabViewModel"/> of the window; it mirrors the document of the tab's
 /// session. A change of the <c>DataContext</c> (another tab) disconnects from the old tab and shows the new one.
 /// </summary>
@@ -176,20 +178,31 @@ public sealed partial class DocumentView : UserControl
         viewModel.DocumentFocusRequested += OnDocumentFocusRequested;
         ConnectHighlights(viewModel);
         ConnectLinks(viewModel);
+        ConnectSignature(viewModel);
         _session.Changed += OnSessionChanged;
+        _session.PagesInvalidated += OnPagesInvalidated;
         Sync();
+        ReopenTextBoxDraft();
+        SyncFormMode();
     }
 
     private void Disconnect()
     {
         SaveView();
+        CloseTextBoxEditor(apply: true);
+        DisconnectForms();
+        DisconnectSignature();
+        EndGesture();
+        DisconnectSelection();
         DisconnectHighlights();
+        CancelPendingMarkup();
         DropTexts();
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.PageRequested -= OnPageRequested;
             _viewModel.DocumentFocusRequested -= OnDocumentFocusRequested;
+            DisconnectDrawing();
             DisconnectLinks(_viewModel);
             _viewModel = null;
         }
@@ -197,6 +210,7 @@ public sealed partial class DocumentView : UserControl
         if (_session is not null)
         {
             _session.Changed -= OnSessionChanged;
+            _session.PagesInvalidated -= OnPagesInvalidated;
             _session = null;
         }
 
@@ -251,6 +265,32 @@ public sealed partial class DocumentView : UserControl
         }
     }
 
+    // Any thread (the editor's): must not wait and must never throw. The images of those pages are rendered anew, and
+    // their text (which the session dropped with them) is read again for the visible ones, so a link or the cursor works
+    // there at once after a markup.
+    private void OnPagesInvalidated(IReadOnlySet<int> pages)
+    {
+        var session = _session;
+        try
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (session is not null && ReferenceEquals(session, _session) && _layout is not null)
+                {
+                    PageCanvas.InvalidatePages(pages);
+                    PreloadText();
+
+                    // A selection on such a page follows its annotation (TabViewModel.Selection.cs).
+                    _viewModel?.OnSelectionPagesInvalidated(pages);
+                }
+            });
+        }
+        catch (Exception)
+        {
+            // The dispatcher is shutting down: nothing left to show.
+        }
+    }
+
     /// <summary>Shows what the session holds now: a new document, more page sizes, or nothing.</summary>
     private void Sync()
     {
@@ -293,6 +333,23 @@ public sealed partial class DocumentView : UserControl
                 return;
             }
 
+            if (_document is not null && _layout is { } layout && pageCount == layout.PageCount && ReferenceEquals(cache, PageCanvas.Cache))
+            {
+                // The saved file in place of the shown document (the session kept the cache): the same pages, so layout,
+                // zoom, position, marks and text stay; only the scheduler is new. A stroke being drawn goes with the old one,
+                // and so does a drag of the selection.
+                EndGesture();
+                EndSelectionDrag();
+                _document = document;
+                PageCanvas.ReplaceScheduler(scheduler);
+                if (sizes.Count > _loadedSizes)
+                {
+                    AddSizes(sizes);
+                }
+
+                return;
+            }
+
             ShowDocument(document, pageCount, scheduler, cache, sizes);
         }
         else if (sizes.Count > _loadedSizes)
@@ -321,7 +378,9 @@ public sealed partial class DocumentView : UserControl
         layout.Zoom = tab?.Zoom ?? ZoomSteps.Default;
         layout.PageMargin = ValidMargin(PageMargin);
 
-        // The text of the document shown before goes with it.
+        // The text of the document shown before goes with it, and a stroke being drawn on it.
+        EndGesture();
+        EndSelectionDrag();
         DropTexts();
         _document = document;
         _layout = layout;
@@ -329,8 +388,10 @@ public sealed partial class DocumentView : UserControl
 
         // The session of the tab renders in the tab's page theme already (TabViewModel.EffectivePageTheme). Set between
         // Detach and Attach, so that a change plans neither the document that went nor the new one before it is laid out.
+        // The highlight of the form fields likewise: the session renders with it already (TabViewModel.ShowsFieldHighlight).
         PageCanvas.Detach();
         PageCanvas.PageTheme = tab?.EffectivePageTheme ?? PageTheme.Light;
+        PageCanvas.FormHighlight = _session?.FormHighlight ?? false;
         PageCanvas.Attach(layout, scheduler, cache);
         RefreshHighlights();
 
@@ -341,6 +402,7 @@ public sealed partial class DocumentView : UserControl
         Refit(chosen: false);
         _focusPending = true;
         FocusLater();
+        SyncFormMode();
     }
 
     /// <summary>After the bindings of the pending changes have run (the password card may be on its way out).</summary>
@@ -357,7 +419,15 @@ public sealed partial class DocumentView : UserControl
             return;
         }
 
-        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox { IsEffectivelyVisible: true })
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+        if (focused is Visual visual && visual.FindAncestorOfType<SaveCard>(includeSelf: true) is { IsVisible: true })
+        {
+            // A card of the save flow asks about this tab (shown again with it): its buttons keep the keys.
+            _focusPending = false;
+            return;
+        }
+
+        if (focused is TextBox { IsEffectivelyVisible: true })
         {
             // The password field of the card that unlocked this document stays until the view model has seen the
             // document (the session may be ahead of it); the view model's change tries again. Any other field keeps
@@ -376,8 +446,24 @@ public sealed partial class DocumentView : UserControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (IsInFormEditor(e.Source))
+        {
+            // The input of a form field takes its own keys (Space types a space, the arrows move the caret or the choice).
+            return;
+        }
+
         if (!e.Handled && e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && TryEscape())
         {
+            e.Handled = true;
+        }
+        else if (!e.Handled && TryFormKey(e.Key, e.KeyModifiers))
+        {
+            // The keys of the mode "Fill in form" (DocumentView.Forms.cs): Tab through the fields, Space on a check box.
+            e.Handled = true;
+        }
+        else if (!e.Handled && TrySelectionKey(e.Key, e.KeyModifiers))
+        {
+            // The keys of the selection of the select tool (DocumentView.Selection.cs): only in the mode with a selection.
             e.Handled = true;
         }
         else if (!e.Handled && e.Key == Key.C && e.KeyModifiers is KeyModifiers.Control or (KeyModifiers.Control | KeyModifiers.Shift)
@@ -399,7 +485,16 @@ public sealed partial class DocumentView : UserControl
         }
     }
 
-    /// <summary>Esc in the document: clears the selection first; without one it ends an active search.</summary>
+    /// <summary>
+    /// Esc in the document: drops a stroke of a drawing tool that is being dragged first (DocumentView.Drawing.cs), then a drag
+    /// of the selected annotation, then that selection (DocumentView.Selection.cs), then the text selection; without one it
+    /// ends the mode "Comment", or in the mode "Fill in form" drops the open value of a field, then takes the focus from the
+    /// field, then ends that mode (<see cref="TabViewModel.EscapeFill"/>; only one of the two modes is on at a time); then it
+    /// ends an active search. The open input of a form field (<see cref="Views.FormFieldEditor"/>) takes Esc before all of these: the
+    /// first drops its open value, the next leaves the field and gives the keys back to the view (an open drop-down closes first).
+    /// The window's own meanings of Esc (a waiting address, a card of the save flow, an overlay, the update card) come
+    /// before all of them (they are key bindings of the window).
+    /// </summary>
     /// <returns>Whether Esc had something to end.</returns>
     private bool TryEscape()
     {
@@ -408,9 +503,46 @@ public sealed partial class DocumentView : UserControl
             return false;
         }
 
+        CancelPendingMarkup();
+
+        // A signature that waits to be placed goes first: the next Esc ends the mode.
+        if (tab.DiscardPendingSignature())
+        {
+            return true;
+        }
+
+        // A stroke being drawn: the next Esc ends the mode.
+        if (EndGesture())
+        {
+            return true;
+        }
+
+        // Then a drag of the selection (nothing changes), then the selection.
+        if (EndSelectionDrag())
+        {
+            return true;
+        }
+
+        if (tab.SelectedAnnotation is not null)
+        {
+            tab.ClearSelection();
+            return true;
+        }
+
         if (tab.HasTextSelection)
         {
             tab.TextSelection = null;
+            return true;
+        }
+
+        if (tab.EscapeAnnotate())
+        {
+            return true;
+        }
+
+        // The mode "Fill in form": the open value of a field, then the focus of the field, then the mode.
+        if (tab.EscapeFill())
+        {
             return true;
         }
 
@@ -467,6 +599,10 @@ public sealed partial class DocumentView : UserControl
             return;
         }
 
+        EndGesture();
+        EndSelectionDrag();
+        _drawingOverlay?.ShowSelection(null);
+        DisconnectForms();
         DropTexts();
         _document = null;
         _layout = null;
@@ -715,6 +851,13 @@ public sealed partial class DocumentView : UserControl
         // The text of what is visible now (DocumentView.Text.cs): read ahead, and the visible part of the selection.
         PreloadText();
         FollowSelectionWithViewport();
+        FollowGestureWithViewport();
+        FollowSelectionViewWithViewport();
+        PlaceTextBoxEditor();
+
+        // The form layer and the input of a field follow their pages (an input scrolled out of view applies its value).
+        _formOverlay?.Refresh();
+        RefreshForms(focus: false);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -749,7 +892,44 @@ public sealed partial class DocumentView : UserControl
             // The session renders in the new theme already: the canvas drops the tiles of the old one and plans again.
             // Page, zoom, scroll position and selection stay.
             PageCanvas.PageTheme = tab.EffectivePageTheme;
+
+            // The frame of a selection takes the colours of the new page ground, and so do the marks of the form fields.
+            _drawingOverlay?.RefreshSelection();
+            _formOverlay?.Refresh();
         }
+        else if (e.PropertyName == nameof(TabViewModel.ShowsFieldHighlight) && _viewModel is not null)
+        {
+            // The tab told the session first: the canvas now drops only the results of the old setting.
+            PageCanvas.FormHighlight = _session?.FormHighlight ?? false;
+            RefreshForms(focus: false);
+        }
+        else if (e.PropertyName == nameof(TabViewModel.IsFilling))
+        {
+            SyncFormMode();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.FocusedField))
+        {
+            OnFocusedFieldChanged();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.CurrentDraft))
+        {
+            OnFormDraftChanged();
+        }
+        else if (e.PropertyName is nameof(TabViewModel.SelectedAnnotation) or nameof(TabViewModel.SelectionGeometry) or nameof(TabViewModel.SelectionLockReason))
+        {
+            RefreshSelectionView();
+        }
+        else if (e.PropertyName is nameof(TabViewModel.ActiveTool) or nameof(TabViewModel.IsAnnotating) or nameof(TabViewModel.IsSelectTool)
+            && _press is null && _gesture is null && _selectionDrag is null
+            && Scroller.IsPointerOver)
+        {
+            // Another tool: the crosshair comes or goes where the pointer rests.
+            UpdateCursor(_pointer);
+        }
+
+        CheckGesture(e.PropertyName);
+        CheckSelectionDrag(e.PropertyName);
+        CheckTextBoxEditor();
     }
 
     /// <summary>Zooms so that the content under the zoom anchor (the pointer, or the middle of the viewport) stays in place.</summary>

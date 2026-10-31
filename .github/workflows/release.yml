@@ -1,17 +1,23 @@
 name: Release
 
-# Builds the release files (Milestone 8) on the self-hosted runners and uploads them to the GitHub release.
+# Builds the release files (Milestone 8) on the owner's self-hosted runners and uploads them to the GitHub release.
 # The release itself is created by the owner (gh release create vX.Y.Z --target main ...); this workflow only
 # attaches files to it. Each job uploads its own files directly (no artifact up- or download between the jobs).
 #
+# Started by hand only (M12.1): the owner runs it after creating the release,
+#   gh workflow run release.yml --ref main -f tag=vX.Y.Z -f upload=true
+# Dispatch only, because the workflow ref of a release event is a tag, and the runner-group restriction can name
+# branch refs only (refs/heads/main, refs/heads/dev). The job that signs the update manifest runs on a GitHub-hosted
+# runner behind the environment release-signing (branches main and dev, owner approval).
+#
 # Dry run (build and all smoke tests, no upload):
-#   gh workflow run release.yml --ref release/v0.1.0 -f tag=v0.1.0 -f ref=release/v0.1.0 -f upload=false
-# (ref builds that branch, because the tag does not exist before the release; with ref set nothing is uploaded).
-# The repository is private; fork PRs must stay approval-gated (CLAUDE.md, section CI), this workflow never runs for forks.
+#   gh workflow run release.yml --ref dev -f tag=v0.1.0 -f upload=false
+#   gh workflow run release.yml --ref dev -f tag=v0.1.0 -f ref=<branch> -f upload=false
+# (ref builds that branch, because the tag does not exist before the release; with ref set nothing is uploaded, the
+# key check of the preflight job is skipped, and the job that signs the update manifest does not run at all).
+# This workflow never runs for pull requests or forks (CLAUDE.md, section CI).
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -33,7 +39,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
 # Avalonia.BuildServices would send anonymous usage data while compiling (Docs/DECISIONS.md, entry
@@ -42,19 +48,118 @@ env:
   AVALONIA_TELEMETRY_OPTOUT: '1'
 
 jobs:
+  # Before anything is uploaded: the tag must trust a real update key. A release that ships only the placeholder of
+  # src/Pagewing.Core/Updates/UpdateTrust.cs could never update itself, and a rerun cannot fix a tag. A dry run
+  # (upload=false) skips the check, so the build can be tried before the signing key exists.
+  preflight:
+    name: release-preflight
+    runs-on: [self-hosted, dotnet-linux]
+    timeout-minutes: 15
+    # The commit id that the tag check verified (upload=true only); the build jobs check out exactly this commit.
+    outputs:
+      tag_sha: ${{ steps.ontag.outputs.sha }}
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ inputs.tag }}
+      # inputs.ref reaches the shell only through the environment; the first step of the job rejects foreign refs.
+      REF_INPUT: ${{ inputs.ref }}
+      UPLOAD: ${{ inputs.upload }}
+    steps:
+      - name: Check the tag
+        run: |
+          set -euo pipefail
+          # The ref input: empty, a commit id, or a plain branch name (a leading refs/heads/ is fine). Everything else is
+          # refused, above all pull/N/head and refs/pull/N/head, which would run foreign code on this runner.
+          ref_ok=false
+          if [[ -z "$REF_INPUT" || "$REF_INPUT" =~ ^[0-9a-f]{40}$ ]]; then
+            ref_ok=true
+          elif [[ "$REF_INPUT" =~ ^[A-Za-z0-9._/-]+$ && "$REF_INPUT" != pull/* && "$REF_INPUT" != *..* ]]; then
+            if [[ "$REF_INPUT" != refs/* || "$REF_INPUT" == refs/heads/* ]]; then ref_ok=true; fi
+          fi
+          [[ "$ref_ok" == true ]] || { echo "ref '$REF_INPUT' ist nicht erlaubt: nur leer, eine Commit-ID oder ein Branch-Name (kein pull/..., kein refs/pull/...)" >&2; exit 1; }
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
+          echo "Tag $TAG, Hochladen: $UPLOAD"
+
+      # The environment's branch rule constrains the workflow ref only; the code that runs here is the tag's. So with
+      # upload=true the commit of the tag must be on main or dev (equal to the branch head or an ancestor of it),
+      # checked before anything checks out or runs tag code. The tag is resolved through refs/tags (a branch of the
+      # same name does not count) and compared by commit id. That id is the output "sha": whatever runs tag code checks
+      # out this id, never the tag name again (a tag can be moved after the check).
+      - name: Check that the tag is on main or dev
+        id: ontag
+        if: env.UPLOAD == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$GH_REPO/commits/refs/tags/$TAG" --jq .sha)" || { echo "Tag '$TAG' nicht gefunden (gibt es ihn im Repository?)" >&2; exit 1; }
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Unerwartete Commit-ID fuer Tag '$TAG': '$sha'" >&2; exit 1; }
+          for branch in main dev; do
+            status="$(gh api "repos/$GH_REPO/compare/$branch...$sha" --jq .status || true)"
+            # identical: the tag is the branch head; behind: the tag commit is an ancestor of the branch head.
+            if [[ "$status" == identical || "$status" == behind ]]; then
+              echo "Tag $TAG ($sha) liegt auf $branch ($status)"
+              echo "sha=$sha" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "Tag $TAG ($sha) liegt weder auf main noch auf dev: Hochladen und Signieren nur fuer Commits dieser Branches." >&2
+          exit 1
+
+      # A branch build is a dry run: what is uploaded must be built from the tag.
+      - name: Refuse to upload a branch build
+        if: env.UPLOAD == 'true' && inputs.ref != ''
+        run: |
+          echo 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.' >&2
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.UPLOAD == 'true'
+        with:
+          ref: ${{ steps.ontag.outputs.sha }}
+          persist-credentials: false
+
+      - name: Set DOTNET_INSTALL_DIR (no root on the runner)
+        if: env.UPLOAD == 'true'
+        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: env.UPLOAD == 'true'
+        with:
+          dotnet-version: '10.0.x'
+
+      # Fails while UpdateTrust.cs holds only the placeholder (packaging/README.md, "Signaturschlüssel für Updates").
+      - name: Check that the tag trusts a real update key
+        if: env.UPLOAD == 'true'
+        run: dotnet run tools/package.cs -- update-verify --keys-from-source
+
   windows:
     name: release-windows
+    needs: preflight
     runs-on: [self-hosted, dotnet-windows]
     timeout-minutes: 60
+    # The SHA-256 of the checksum file that this job uploaded. The manifest job compares the file it downloads with
+    # it, before anything is signed (packaging/README.md, "Release bauen").
+    outputs:
+      sums_sha256: ${{ steps.sums.outputs.sums_sha256 }}
     # Needed to attach files to the release (gh release upload).
     permissions:
       contents: write
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+      TAG: ${{ inputs.tag }}
+      # inputs.ref reaches the shell only through the environment; the first step of the job rejects foreign refs.
+      REF_INPUT: ${{ inputs.ref }}
+      UPLOAD: ${{ inputs.upload }}
     steps:
       - name: Check the tag and derive the version
         run: |
+          # The ref input: empty, a commit id, or a plain branch name (a leading refs/heads/ is fine). Everything else is
+          # refused, above all pull/N/head and refs/pull/N/head, which would run foreign code on this runner.
+          $r = [string]$env:REF_INPUT
+          $refOk = ($r -eq '') -or ($r -cmatch '^[0-9a-f]{40}$') -or (($r -cmatch '^[A-Za-z0-9._/-]+$') -and -not ($r -cmatch '^pull/') -and -not ($r -cmatch '\.\.') -and (-not ($r -cmatch '^refs/') -or ($r -cmatch '^refs/heads/')))
+          if (-not $refOk) { throw "ref '$r' ist nicht erlaubt: nur leer, eine Commit-ID oder ein Branch-Name (kein pull/..., kein refs/pull/...)" }
           if ($env:TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') { throw "Tag '$env:TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" }
           $version = $env:TAG.Substring(1)
           Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
@@ -66,9 +171,17 @@ jobs:
         run: |
           throw 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.'
 
+      # With upload=true the commit that preflight verified must be there; the checkout never falls back to the tag name.
+      - name: Require the verified commit
+        if: env.UPLOAD == 'true'
+        env:
+          TAG_SHA: ${{ needs.preflight.outputs.tag_sha }}
+        run: |
+          if ($env:TAG_SHA -cnotmatch '^[0-9a-f]{40}$') { throw "Preflight hat keinen geprueften Commit geliefert: '$env:TAG_SHA'" }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.ref || needs.preflight.outputs.tag_sha || format('refs/tags/{0}', inputs.tag) }}
           persist-credentials: false
 
       # See ci.yml: without git on PATH actions/checkout extracts a zip whose file times can be older than the
@@ -147,7 +260,7 @@ jobs:
       - name: Checksums
         run: dotnet run tools/package.cs -- sums "out/release/Pagewing-$env:VERSION-win-x64-portable.zip" "out/release/Pagewing-$env:VERSION-win-x64-setup.exe" --out out/release/SHA256SUMS-windows.txt
 
-      # Only for a published release or workflow_dispatch with upload=true; otherwise build and smoke tests only.
+      # Only with upload=true; otherwise build and smoke tests only.
       - name: Upload to the release
         if: env.UPLOAD == 'true'
         env:
@@ -158,20 +271,44 @@ jobs:
           gh release upload "$env:TAG" "out/release/Pagewing-$env:VERSION-win-x64-portable.zip" "out/release/Pagewing-$env:VERSION-win-x64-setup.exe" out/release/SHA256SUMS-windows.txt --clobber
           if ($LASTEXITCODE -ne 0) { throw "gh release upload ist fehlgeschlagen (Exit-Code $LASTEXITCODE); gibt es das Release $env:TAG?" }
 
+      - name: Report the SHA-256 of the checksum file
+        id: sums
+        if: env.UPLOAD == 'true'
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 -Path out/release/SHA256SUMS-windows.txt).Hash.ToLowerInvariant()
+          if ($hash -cnotmatch '^[0-9a-f]{64}$') { throw "Unerwartete SHA-256: '$hash'" }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "sums_sha256=$hash"
+          Write-Host "SHA256SUMS-windows.txt: $hash"
+
   linux:
     name: release-linux
+    needs: preflight
     runs-on: [self-hosted, dotnet-linux]
     timeout-minutes: 60
+    # The SHA-256 of the checksum file that this job uploaded (see the windows job).
+    outputs:
+      sums_sha256: ${{ steps.sums.outputs.sums_sha256 }}
     # Needed to attach files to the release (gh release upload).
     permissions:
       contents: write
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      UPLOAD: ${{ github.event_name == 'release' || inputs.upload }}
+      TAG: ${{ inputs.tag }}
+      # inputs.ref reaches the shell only through the environment; the first step of the job rejects foreign refs.
+      REF_INPUT: ${{ inputs.ref }}
+      UPLOAD: ${{ inputs.upload }}
     steps:
       - name: Check the tag and derive the version
         run: |
           set -euo pipefail
+          # The ref input: empty, a commit id, or a plain branch name (a leading refs/heads/ is fine). Everything else is
+          # refused, above all pull/N/head and refs/pull/N/head, which would run foreign code on this runner.
+          ref_ok=false
+          if [[ -z "$REF_INPUT" || "$REF_INPUT" =~ ^[0-9a-f]{40}$ ]]; then
+            ref_ok=true
+          elif [[ "$REF_INPUT" =~ ^[A-Za-z0-9._/-]+$ && "$REF_INPUT" != pull/* && "$REF_INPUT" != *..* ]]; then
+            if [[ "$REF_INPUT" != refs/* || "$REF_INPUT" == refs/heads/* ]]; then ref_ok=true; fi
+          fi
+          [[ "$ref_ok" == true ]] || { echo "ref '$REF_INPUT' ist nicht erlaubt: nur leer, eine Commit-ID oder ein Branch-Name (kein pull/..., kein refs/pull/...)" >&2; exit 1; }
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
           version="${TAG#v}"
           # Debian: a pre-release x.y.z-rc1 is called x.y.z~rc1 in the package (tools/package.cs, Deb.DebVersion).
@@ -186,9 +323,17 @@ jobs:
           echo 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.' >&2
           exit 1
 
+      # With upload=true the commit that preflight verified must be there; the checkout never falls back to the tag name.
+      - name: Require the verified commit
+        if: env.UPLOAD == 'true'
+        env:
+          TAG_SHA: ${{ needs.preflight.outputs.tag_sha }}
+        run: |
+          [[ "$TAG_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Preflight hat keinen geprueften Commit geliefert: '$TAG_SHA'" >&2; exit 1; }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.ref || needs.preflight.outputs.tag_sha || format('refs/tags/{0}', inputs.tag) }}
           persist-credentials: false
 
       - name: Set DOTNET_INSTALL_DIR (no root on the runner)
@@ -233,7 +378,7 @@ jobs:
           docker rm -f pagewing-release-build >/dev/null 2>&1 || true
           docker run --rm -v "$PWD:/work" ubuntu:22.04 chown -R "$(id -u):$(id -g)" /work
 
-      # Only for a published release or workflow_dispatch with upload=true; otherwise build and smoke tests only.
+      # Only with upload=true; otherwise build and smoke tests only.
       - name: Upload to the release
         if: env.UPLOAD == 'true'
         env:
@@ -247,3 +392,198 @@ jobs:
             out/release/fuse-3.15.0.tar.xz \
             out/release/type2-runtime-20251108.tar.gz \
             out/release/SHA256SUMS-linux.txt --clobber
+
+      - name: Report the SHA-256 of the checksum file
+        id: sums
+        if: env.UPLOAD == 'true'
+        run: |
+          set -euo pipefail
+          hash="$(sha256sum out/release/SHA256SUMS-linux.txt | cut -d' ' -f1)"
+          [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || { echo "Unerwartete SHA-256: '$hash'" >&2; exit 1; }
+          echo "sums_sha256=$hash" >> "$GITHUB_OUTPUT"
+          echo "SHA256SUMS-linux.txt: $hash"
+
+  # The signed update manifest (Milestone 8.1): built from the checksums and the file sizes of the release, signed with
+  # the secret PAGEWING_UPDATE_SIGNING_KEY, verified with the keys compiled into the app, and uploaded. Runs only after
+  # both build jobs have uploaded their files. Since M12.1 this is the only job on a GitHub-hosted, ephemeral runner,
+  # and it waits for the approval of the environment release-signing (branches main and dev, owner as reviewer); the
+  # key is a secret of that environment. It appears in exactly one place, the env of the step "Sign the update
+  # manifest", which runs nothing but the signing command of the tool that an earlier step built from the tag's
+  # checkout into a fresh folder of this job; before signing, the downloaded checksum files are compared with the
+  # SHA-256 that the build jobs reported. package.cs selftest (ManifestJobParts) keeps it so. A pre-release gets no
+  # manifest: the app reads only X.Y.Z versions, and releases/latest never names a pre-release.
+  manifest:
+    name: release-manifest
+    needs: [preflight, windows, linux]
+    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' && inputs.upload }}
+    runs-on: ubuntu-24.04
+    environment: release-signing
+    timeout-minutes: 30
+    # Needed to attach the manifest to the release (gh release upload).
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+      # inputs.ref reaches the shell only through the environment; the first step of the job rejects foreign refs.
+      REF_INPUT: ${{ inputs.ref }}
+      # The id of the signing key; it must name a key in src/Pagewing.Core/Updates/UpdateTrust.cs (packaging/README.md,
+      # section "Signaturschlüssel für Updates").
+      UPDATE_KEY_ID: release-1
+    steps:
+      - name: Check the tag and derive the version
+        run: |
+          set -euo pipefail
+          # The ref input: empty, a commit id, or a plain branch name (a leading refs/heads/ is fine). Everything else is
+          # refused, above all pull/N/head and refs/pull/N/head, which would run foreign code on this runner.
+          ref_ok=false
+          if [[ -z "$REF_INPUT" || "$REF_INPUT" =~ ^[0-9a-f]{40}$ ]]; then
+            ref_ok=true
+          elif [[ "$REF_INPUT" =~ ^[A-Za-z0-9._/-]+$ && "$REF_INPUT" != pull/* && "$REF_INPUT" != *..* ]]; then
+            if [[ "$REF_INPUT" != refs/* || "$REF_INPUT" == refs/heads/* ]]; then ref_ok=true; fi
+          fi
+          [[ "$ref_ok" == true ]] || { echo "ref '$REF_INPUT' ist nicht erlaubt: nur leer, eine Commit-ID oder ein Branch-Name (kein pull/..., kein refs/pull/...)" >&2; exit 1; }
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tag '$TAG' ist kein SemVer-Tag vX.Y.Z[-Vorabversion]" >&2; exit 1; }
+          version="${TAG#v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [[ "$version" == *-* ]]; then
+            echo "STABLE=false" >> "$GITHUB_ENV"
+            echo "Tag $TAG ist eine Vorabversion: kein Update-Manifest (die App liest nur X.Y.Z)"
+          else
+            echo "STABLE=true" >> "$GITHUB_ENV"
+            echo "Tag $TAG, Version $version, Schluessel $UPDATE_KEY_ID"
+          fi
+
+      # The environment's branch rule constrains the workflow ref only; the code that runs here is the tag's. So with
+      # upload=true the commit of the tag must be on main or dev (equal to the branch head or an ancestor of it),
+      # checked before anything checks out or runs tag code. The tag is resolved through refs/tags (a branch of the
+      # same name does not count) and compared by commit id. That id is the output "sha": whatever runs tag code checks
+      # out this id, never the tag name again (a tag can be moved after the check).
+      - name: Check that the tag is on main or dev
+        id: ontag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$GH_REPO/commits/refs/tags/$TAG" --jq .sha)" || { echo "Tag '$TAG' nicht gefunden (gibt es ihn im Repository?)" >&2; exit 1; }
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Unerwartete Commit-ID fuer Tag '$TAG': '$sha'" >&2; exit 1; }
+          for branch in main dev; do
+            status="$(gh api "repos/$GH_REPO/compare/$branch...$sha" --jq .status || true)"
+            # identical: the tag is the branch head; behind: the tag commit is an ancestor of the branch head.
+            if [[ "$status" == identical || "$status" == behind ]]; then
+              echo "Tag $TAG ($sha) liegt auf $branch ($status)"
+              echo "sha=$sha" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "Tag $TAG ($sha) liegt weder auf main noch auf dev: Hochladen und Signieren nur fuer Commits dieser Branches." >&2
+          exit 1
+
+      # The commit that preflight verified and the commit verified here must be the same one: a tag moved in between
+      # stops the signing. Both values reach the shell through the environment.
+      - name: Compare the verified commit with preflight
+        env:
+          OWN_SHA: ${{ steps.ontag.outputs.sha }}
+          PREFLIGHT_SHA: ${{ needs.preflight.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$OWN_SHA" =~ ^[0-9a-f]{40}$ && "$OWN_SHA" == "$PREFLIGHT_SHA" ]] || { echo "Der Tag zeigt nicht mehr auf den Commit, den preflight geprueft hat (hier '$OWN_SHA', preflight '$PREFLIGHT_SHA')." >&2; exit 1; }
+
+      # A branch build is a dry run: what is signed must belong to the files built from the tag.
+      - name: Refuse to upload a branch build
+        if: inputs.ref != ''
+        run: |
+          echo 'Hochladen und ref schliessen sich aus: Hochgeladen wird nur, was aus dem Tag gebaut ist.' >&2
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.STABLE == 'true'
+        with:
+          ref: ${{ steps.ontag.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: env.STABLE == 'true'
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check the release prerequisites (gh)
+        if: env.STABLE == 'true'
+        run: |
+          command -v gh >/dev/null || { echo 'gh (GitHub CLI) not found on PATH (it comes with the hosted runner image)' >&2; exit 1; }
+          gh --version
+
+      - name: Self-test of the packaging tool
+        if: env.STABLE == 'true'
+        run: dotnet run tools/package.cs -- selftest
+
+      # A release must never ship the placeholder key as its only trust (UpdateTrustTests).
+      - name: Check that the release key is not the placeholder
+        if: env.STABLE == 'true'
+        env:
+          PAGEWING_REQUIRE_RELEASE_KEY: '1'
+        run: dotnet test --project tests/Pagewing.Core.Tests -c Release -- --filter-method "Pagewing.Core.Tests.Updates.UpdateTrustTests.ReleaseKeysAreNotThePlaceholderWhenReleasing"
+
+      # The tool that later sees the signing key: built from this checkout as a converted project into a folder of this
+      # job that is wiped first (own obj and bin, not the script cache that pull-request CI on this runner shares), with
+      # no build servers, no Directory.Build.* or Directory.Packages.props from above the folder and no response files.
+      - name: Build the packaging tool for signing
+        if: env.STABLE == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/package-tool"
+          mkdir -p "$RUNNER_TEMP/package-tool"
+          dotnet project convert tools/package.cs -o "$RUNNER_TEMP/package-tool/src"
+          dotnet build "$RUNNER_TEMP/package-tool/src" -c Release -o "$RUNNER_TEMP/package-tool/bin" --disable-build-servers -noAutoResponse -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false -p:ImportDirectoryPackagesProps=false
+          echo "PACKAGE_TOOL=$RUNNER_TEMP/package-tool/bin/package.dll" >> "$GITHUB_ENV"
+
+      - name: Download the checksums and the file sizes
+        if: env.STABLE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # No .git on the runner (checkout zip): name the repository explicitly.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          rm -rf out/manifest
+          mkdir -p out/manifest
+          gh release download "$TAG" --pattern SHA256SUMS-windows.txt --pattern SHA256SUMS-linux.txt --dir out/manifest
+          gh release view "$TAG" --json assets > out/manifest/assets.json
+
+      # The build jobs reported the SHA-256 of the checksum files they uploaded; a file that was replaced on the release
+      # in the meantime does not get signed. Fails on any difference and on an empty or malformed output. The hashes
+      # reach the shell through the environment, never spliced into the command line.
+      - name: Verify the checksum files against the build jobs
+        if: env.STABLE == 'true'
+        env:
+          WINDOWS_SUMS_SHA256: ${{ needs.windows.outputs.sums_sha256 }}
+          LINUX_SUMS_SHA256: ${{ needs.linux.outputs.sums_sha256 }}
+        run: |
+          set -euo pipefail
+          dotnet "$PACKAGE_TOOL" sums-verify --file out/manifest/SHA256SUMS-windows.txt --sha256 "$WINDOWS_SUMS_SHA256"
+          dotnet "$PACKAGE_TOOL" sums-verify --file out/manifest/SHA256SUMS-linux.txt --sha256 "$LINUX_SUMS_SHA256"
+
+      - name: Build the update manifest
+        if: env.STABLE == 'true'
+        run: dotnet "$PACKAGE_TOOL" update-manifest --version "$VERSION" --sums out/manifest/SHA256SUMS-windows.txt out/manifest/SHA256SUMS-linux.txt --sizes out/manifest/assets.json --out out/manifest/update-manifest.json
+
+      # The only step that sees the signing key. The tool reads it from the environment, never prints it, never writes
+      # it to disk, and verifies the signature with the public key of UpdateTrust.cs before it writes the .sig file.
+      - name: Sign the update manifest
+        if: env.STABLE == 'true'
+        env:
+          PAGEWING_UPDATE_SIGNING_KEY: ${{ secrets.PAGEWING_UPDATE_SIGNING_KEY }}
+        run: dotnet "$PACKAGE_TOOL" update-sign --manifest out/manifest/update-manifest.json --key-env PAGEWING_UPDATE_SIGNING_KEY --id "$UPDATE_KEY_ID" --out out/manifest/update-manifest.json.sig
+
+      - name: Verify the signature with the keys in UpdateTrust.cs
+        if: env.STABLE == 'true'
+        run: dotnet "$PACKAGE_TOOL" update-verify --manifest out/manifest/update-manifest.json --sig out/manifest/update-manifest.json.sig --keys-from-source
+
+      - name: Upload the manifest to the release
+        if: env.STABLE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # No .git on the runner (checkout zip): name the repository explicitly.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release upload "$TAG" out/manifest/update-manifest.json out/manifest/update-manifest.json.sig --clobber

@@ -63,10 +63,20 @@ internal static class RenderCorpus
     /// subject and whose pages are a plain grey area; and the text files of the search and the links, whose subject is
     /// the text layer, not the rendering (their pages use only standard-14 fonts: Helvetica, Helvetica-Bold and
     /// Helvetica-Oblique); and print-mixed.pdf, whose subject is how a page lands on the paper (tested with the
-    /// print placement and the print to PDF), not how PDFium draws it.
+    /// print placement and the print to PDF), not how PDFium draws it; and the structure fixtures of milestone 9
+    /// (the four signed-docmdp-*.pdf, linearized.pdf and annotations-foreign.pdf), whose subject is the file structure
+    /// (signature dummies, the linearization dictionary, annotations written by other programs), not the drawing; and
+    /// drawings-foreign.pdf of milestone 10 (drawings written by other programs, read and round-tripped, not rendered here);
+    /// and the six forms-*.pdf of milestone 11 (form fields, scripts, an XFA stub, signature dummies, rotated pages and a hostile
+    /// field tree), whose subject is reading and filling the fields, not the plain page drawing; and stamps-foreign.pdf of milestone 12 (stamps and
+    /// a signature-like ink written by other programs, read and kept locked, not rendered here).
     /// </summary>
     public static IReadOnlyList<string> Skipped { get; } =
-        ["empty.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "print-mixed.pdf", "text-dense.pdf", "text-rich.pdf"];
+    [
+        "annotations-foreign.pdf", "drawings-foreign.pdf", "empty.pdf", "forms-basic.pdf", "forms-calc.pdf", "forms-hostile.pdf", "forms-rotated.pdf", "forms-signed.pdf",
+        "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "print-mixed.pdf",
+        "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "stamps-foreign.pdf", "text-dense.pdf", "text-rich.pdf",
+    ];
 
     /// <summary>Looks up a case by its name (<see cref="RenderCase.Stem"/>).</summary>
     public static RenderCase Get(string name) => Cases.Single(c => c.Stem == name);

@@ -1,4 +1,8 @@
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Saving;
+using Pagewing.Core.Tests.Annotations;
+using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 using Pagewing.Pdfium;
 using Pagewing.TestSupport;
@@ -719,6 +723,414 @@ public sealed class ViewerSessionTests
         Assert.False(session.Cache!.Contains(key));
         Assert.Equal(0, session.Cache.Count);
     }
+
+    [Fact]
+    public async Task SessionInvalidatePagesDropsThumbnailsAndPageText()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var session = new ViewerSession(engine);
+        session.SetActive(false);
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var cache = session.Cache!;
+        var thumbnails = session.EnsureThumbnails()!;
+        var pageTexts = session.EnsurePageTexts()!;
+        for (var page = 0; page < 2; page++)
+        {
+            cache.Add(new TileKey(page, TileKey.PreviewScaleKey, 0, 0), SmallImage());
+            cache.Add(new TileKey(page, 1000, 0, 0), SmallImage());
+            thumbnails.Cache.Add(new TileKey(page, TileKey.PreviewScaleKey, 0, 0), SmallImage());
+            await pageTexts.GetAsync(page, cancellationToken: ct);
+        }
+
+        session.InvalidatePages(new HashSet<int> { 0 });
+
+        // Page 0 is gone from the view, the thumbnails and the page texts; page 1 keeps everything.
+        Assert.False(cache.Contains(new TileKey(0, TileKey.PreviewScaleKey, 0, 0)));
+        Assert.False(cache.Contains(new TileKey(0, 1000, 0, 0)));
+        Assert.True(cache.Contains(new TileKey(1, TileKey.PreviewScaleKey, 0, 0)));
+        Assert.True(cache.Contains(new TileKey(1, 1000, 0, 0)));
+        Assert.False(thumbnails.Cache.Contains(new TileKey(0, TileKey.PreviewScaleKey, 0, 0)));
+        Assert.True(thumbnails.Cache.Contains(new TileKey(1, TileKey.PreviewScaleKey, 0, 0)));
+        Assert.False(pageTexts.TryGet(0, out _));
+        Assert.True(pageTexts.TryGet(1, out _));
+
+        // The sources stay what they were, with their budgets, so a running search or the pages panel goes on with them.
+        Assert.Same(cache, session.Cache);
+        Assert.Same(thumbnails, session.EnsureThumbnails());
+        Assert.True(session.HasPageTexts);
+        Assert.Same(pageTexts, session.EnsurePageTexts());
+        Assert.False(thumbnails.IsDisposed);
+        Assert.False(pageTexts.IsDisposed);
+        Assert.Equal(TabBudget.InactiveBytes, cache.BudgetBytes);
+        Assert.Equal(ThumbnailSource.BudgetBytes, thumbnails.Cache.BudgetBytes);
+
+        // The text of page 0 is read again on the next request.
+        var again = await pageTexts.GetAsync(0, cancellationToken: ct);
+        Assert.Equal(0, again.PageIndex);
+        Assert.True(pageTexts.TryGet(0, out _));
+    }
+
+    [Fact]
+    public async Task InvalidatePagesRaisesChangedOnce()
+    {
+        var session = new ViewerSession(engine);
+        using var recorder = new Recorder(session);
+
+        // Without a document there is nothing to drop and nothing to report.
+        session.InvalidatePages(new HashSet<int> { 0 });
+        Assert.Equal(0, recorder.Count);
+
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        var before = recorder.Count;
+
+        session.InvalidatePages(new HashSet<int> { 0, 1 });
+
+        Assert.Equal(before + 1, recorder.Count);
+        Assert.Equal(new Snapshot(ViewerState.Ready, session.Path, 2), recorder.Events[^1]);
+
+        // An empty set changes nothing, a missing one is an error, and after Dispose nothing happens.
+        session.InvalidatePages(new HashSet<int>());
+        Assert.Equal(before + 1, recorder.Count);
+        Assert.Throws<ArgumentNullException>(() => session.InvalidatePages(null!));
+        session.Dispose();
+        session.InvalidatePages(new HashSet<int> { 0 });
+        Assert.Equal(before + 1, recorder.Count);
+    }
+
+    [Fact]
+    public async Task PagesInvalidatedNamesThePagesBeforeChanged()
+    {
+        var session = new ViewerSession(engine);
+        var events = new List<string>();
+        var gate = new object();
+        session.PagesInvalidated += pages =>
+        {
+            lock (gate)
+            {
+                events.Add("pages " + string.Join(",", pages.Order()));
+            }
+        };
+        session.Changed += () =>
+        {
+            lock (gate)
+            {
+                events.Add("changed");
+            }
+        };
+
+        // Without a document there is nothing to name.
+        session.InvalidatePages(new HashSet<int> { 0 });
+        Assert.Empty(events);
+
+        await session.OpenAsync(TestData.Pdf("text-basic.pdf"));
+        lock (gate)
+        {
+            events.Clear();
+        }
+
+        var pages = new HashSet<int> { 1, 0 };
+        session.InvalidatePages(pages);
+
+        // The pages first (on the calling thread), then the one Changed; the set is a copy the caller may change afterwards.
+        pages.Add(5);
+        lock (gate)
+        {
+            Assert.Equal(["pages 0,1", "changed"], events);
+            events.Clear();
+        }
+
+        // An empty set and a disposed session name nothing.
+        session.InvalidatePages(new HashSet<int>());
+        session.Dispose();
+        session.InvalidatePages(new HashSet<int> { 0 });
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public async Task OpenRemembersThePathStampAndCloseForgetsIt()
+    {
+        using var folder = new TempFolder();
+        var path = CopyTo(folder, "text-basic.pdf");
+        using var session = new ViewerSession(engine);
+
+        await session.OpenAsync(path);
+        Assert.Equal(FileStamp.Of(path), session.OpenedStamp);
+        Assert.Equal(session.OpenedStamp, session.Document!.PathStampAtOpen);
+        Assert.Null(session.OpenPassword);
+        var snapshot = session.SnapshotForSave()!;
+        Assert.Same(session.Document, snapshot.Document);
+        Assert.Equal(session.Path, snapshot.Path);
+        Assert.Equal(session.OpenedStamp, snapshot.OpenedStamp);
+
+        session.Close();
+        Assert.Null(session.OpenedStamp);
+        Assert.Null(session.SnapshotForSave());
+
+        await session.OpenAsync(TestData.Pdf("does-not-exist.pdf"));
+        Assert.Null(session.OpenedStamp);
+    }
+
+    [Fact]
+    public async Task AdoptSavedDocumentKeepsTheCacheAndNeverShowsAnEmptyState()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var folder = new TempFolder();
+        var path = CopyTo(folder, "text-basic.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        session.SetPageTheme(PageTheme.Dark);
+        var cache = session.Cache!;
+        var oldScheduler = session.Scheduler!;
+        var sizes = session.LoadedSizes;
+        var pageTexts = session.EnsurePageTexts()!;
+        await pageTexts.GetAsync(0, cancellationToken: ct);
+        var thumbnails = session.EnsureThumbnails()!;
+        cache.Add(new TileKey(0, 1000, 0, 0), SmallImage());
+        var reopened = await engine.OpenAsync(path, cancellationToken: ct);
+        using var recorder = new Recorder(session);
+
+        // Another thread reads the session all the time: it must always see a ready session with a document.
+        var stop = 0;
+        var gaps = 0;
+        var reads = 0;
+        var reader = Task.Run(
+            () =>
+            {
+                while (Volatile.Read(ref stop) == 0)
+                {
+                    var state = session.State;
+                    var document = session.Document;
+                    if (state != ViewerState.Ready || document is null || session.Cache is null || session.Scheduler is null)
+                    {
+                        Interlocked.Increment(ref gaps);
+                    }
+
+                    Interlocked.Increment(ref reads);
+                }
+            },
+            ct);
+        await WaitForAsync(() => Volatile.Read(ref reads) > 100);
+
+        await session.AdoptSavedDocumentAsync(reopened, path);
+        Volatile.Write(ref stop, 1);
+        await reader;
+
+        Assert.Equal(0, gaps);
+        Assert.Equal(ViewerState.Ready, session.State);
+        Assert.Same(reopened, session.Document);
+        Assert.Same(cache, session.Cache);
+        Assert.True(cache.Contains(new TileKey(0, 1000, 0, 0)));
+        Assert.NotSame(oldScheduler, session.Scheduler);
+        Assert.Equal(PageTheme.Dark, session.Scheduler!.PageTheme);
+        Assert.Equal(sizes, session.LoadedSizes);
+        Assert.Equal(Path.GetFullPath(path), session.Path);
+        Assert.Null(session.Error);
+
+        // Changed exactly once, with the ready state.
+        Assert.Equal([new Snapshot(ViewerState.Ready, Path.GetFullPath(path), 2)], recorder.Events);
+
+        // The texts stay (a search may be using them) and now read the new document; the thumbnails are made anew.
+        Assert.Same(pageTexts, session.EnsurePageTexts());
+        Assert.True(pageTexts.TryGet(0, out _));
+        var second = await pageTexts.GetAsync(1, cancellationToken: ct);
+        Assert.Equal(1, second.PageIndex);
+        Assert.True(thumbnails.IsDisposed);
+        var newThumbnails = session.EnsureThumbnails();
+        Assert.NotNull(newThumbnails);
+        Assert.NotSame(thumbnails, newThumbnails);
+        Assert.Equal(PageTheme.Dark, newThumbnails.PageTheme);
+    }
+
+    [Fact]
+    public async Task AdoptSavedDocumentClosesTheOldDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var folder = new TempFolder();
+        var path = CopyTo(folder, "hello_world.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var old = session.Document!;
+        var reopened = await engine.OpenAsync(path, cancellationToken: ct);
+
+        Assert.True(await session.AdoptSavedDocumentAsync(reopened, path, replacing: old));
+
+        Assert.Throws<ObjectDisposedException>(() => old.PageCount);
+        Assert.Equal(1, reopened.PageCount);
+
+        // The new scheduler renders the new document into the same cache.
+        var ready = new TaskCompletionSource<TileKey>(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.Scheduler!.TileReady += key => ready.TrySetResult(key);
+        var plan = ThumbnailPlanner.Plan(session.LoadedSizes, [0], 1.0);
+        session.Scheduler.Update(plan);
+        var key = await ready.Task.WaitAsync(Due, ct);
+        Assert.True(session.Cache!.Contains(key));
+
+        // Closing the session closes the adopted document too.
+        session.Close();
+        Assert.Throws<ObjectDisposedException>(() => reopened.PageCount);
+    }
+
+    [Fact]
+    public async Task PasswordProtectedDocumentIsAdoptedWithoutAskingAgain()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var folder = new TempFolder();
+        var path = CopyTo(folder, "encrypted_hello_world_r6.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path, UserPassword);
+        Assert.Equal(ViewerState.Ready, session.State);
+        Assert.Equal(UserPassword, session.OpenPassword);
+        Assert.Equal(UserPassword, session.SnapshotForSave()!.Password);
+        Assert.DoesNotContain(UserPassword, session.SnapshotForSave()!.ToString(), StringComparison.Ordinal);
+        var editor = new AnnotationEditor(session);
+        using var recorder = new Recorder(session);
+
+        // Two saves in a row: each reopens the file with the password the session keeps in memory.
+        for (var round = 1; round <= 2; round++)
+        {
+            await editor.ApplyMarkupAsync(0, AnnotationKind.Highlight, [new PageRect(20, 20 * round, 120, (20 * round) + 15)], new AnnotationColor(255, 230, 0), "Saved", null);
+            await editor.SaveAsync(engine, path, overwriteChangedOriginal: false, progress: null, ct);
+
+            Assert.Equal(ViewerState.Ready, session.State);
+            Assert.Equal(round, (await session.Document!.GetAnnotationsAsync(0, ct)).Count);
+            Assert.True((await session.Document.GetPrintInfoAsync(ct)).IsEncrypted);
+        }
+
+        Assert.All(recorder.Events, e => Assert.Equal(ViewerState.Ready, e.State));
+        Assert.Equal(UserPassword, session.OpenPassword);
+        Assert.Null(session.Error);
+
+        // Close forgets the password.
+        session.Close();
+        Assert.Null(session.OpenPassword);
+    }
+
+    [Fact]
+    public async Task AdoptSavedDocumentAfterDisposeClosesTheReopenedDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var folder = new TempFolder();
+        var path = CopyTo(folder, "hello_world.pdf");
+        var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var reopened = await engine.OpenAsync(path, cancellationToken: ct);
+        session.Dispose();
+
+        Assert.False(await session.AdoptSavedDocumentAsync(reopened, path));
+
+        Assert.Throws<ObjectDisposedException>(() => reopened.PageCount);
+        Assert.Null(session.Document);
+    }
+
+    [Fact]
+    public async Task AdoptSavedDocumentDuringANewerOpenClosesTheReopenedDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var folder = new TempFolder();
+        var path = CopyTo(folder, "hello_world.pdf");
+        var other = TestData.Pdf("text-basic.pdf");
+        var gates = new GatedOpen(engine);
+        var gate = gates.Gate(other);
+        using var session = new ViewerSession(gates.Open);
+        await session.OpenAsync(path);
+        var old = session.Document!;
+        var reopened = await engine.OpenAsync(path, cancellationToken: ct);
+        var newer = session.OpenAsync(other);
+
+        Assert.False(await session.AdoptSavedDocumentAsync(reopened, path));
+        Assert.Throws<ObjectDisposedException>(() => reopened.PageCount);
+        Assert.Same(old, session.Document);
+        Assert.Equal(ViewerState.Loading, session.State);
+
+        gate.SetResult();
+        await newer;
+        Assert.Equal(ViewerState.Ready, session.State);
+        Assert.Equal(Path.GetFullPath(other), session.Path);
+
+        // A document that is no longer the one that was saved is not replaced either.
+        var again = await engine.OpenAsync(path, cancellationToken: ct);
+        Assert.False(await session.AdoptSavedDocumentAsync(again, path, replacing: old));
+        Assert.Throws<ObjectDisposedException>(() => again.PageCount);
+        Assert.Equal(Path.GetFullPath(other), session.Path);
+    }
+
+    [Fact]
+    public async Task AdoptSavedDocumentWithAnotherPageCountIsRefused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var folder = new TempFolder();
+        var path = CopyTo(folder, "text-basic.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var old = session.Document!;
+        var wrong = await engine.OpenAsync(TestData.Pdf("hello_world.pdf"), cancellationToken: ct);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => session.AdoptSavedDocumentAsync(wrong, path));
+
+        Assert.Throws<ObjectDisposedException>(() => wrong.PageCount);
+        Assert.Same(old, session.Document);
+        Assert.Equal(ViewerState.Ready, session.State);
+    }
+
+    [Fact]
+    public async Task AdoptDuringBackgroundLoadingReadsTheRestFromTheNewDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var readFrom = new List<PdfDocument>();
+        using var session = new ViewerSession(
+            engine.OpenAsync,
+            async (document, firstPage, count, priority, cancellationToken) =>
+            {
+                if (firstPage > 0)
+                {
+                    lock (readFrom)
+                    {
+                        readFrom.Add(document);
+                    }
+
+                    await release.Task.WaitAsync(cancellationToken);
+                }
+
+                return await document.GetPageSizesAsync(firstPage, count, priority, cancellationToken);
+            });
+        using var recorder = new Recorder(session);
+        var path = TestData.Pdf("thousand-pages.pdf");
+        await session.OpenAsync(path);
+        var old = session.Document!;
+        await WaitForAsync(() =>
+        {
+            lock (readFrom)
+            {
+                return readFrom.Count == 1;
+            }
+        });
+        Assert.Equal(ViewerSession.FirstBatchSize, session.LoadedSizes.Count);
+        var reopened = await engine.OpenAsync(path, cancellationToken: ct);
+
+        await session.AdoptSavedDocumentAsync(reopened, path);
+        release.SetResult();
+        await recorder.WaitUntilAsync(() => session.LoadedSizes.Count == 1000);
+
+        Assert.All(session.LoadedSizes, size => Assert.Equal(new PdfPageSize(200, 100), size));
+        lock (readFrom)
+        {
+            Assert.Same(old, readFrom[0]);
+            Assert.All(readFrom.Skip(1), document => Assert.Same(reopened, document));
+            Assert.True(readFrom.Count > 1);
+        }
+
+        Assert.Null(session.BackgroundLoadFailure);
+    }
+
+    private static string CopyTo(TempFolder folder, string fixture)
+    {
+        var path = Path.Combine(folder.Path, fixture);
+        File.Copy(TestData.Pdf(fixture), path);
+        return path;
+    }
+
+    private static RenderedImage SmallImage() => new(1, 1, 4, new byte[4]);
 
     // Fills the cache with images of 8 MiB each (they are not rendered, only stored).
     private static void FillCache(RenderCache cache, int count)

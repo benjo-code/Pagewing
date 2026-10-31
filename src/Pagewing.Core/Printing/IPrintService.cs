@@ -49,7 +49,10 @@ public class PrintTicket : IDisposable
 
 /// <summary>A job to print.</summary>
 /// <param name="Document">The open document.</param>
-/// <param name="Path">The file the document was opened from, or <see langword="null"/>.</param>
+/// <param name="Path">
+/// The file the document was opened from, or <see langword="null"/> when there is none or when the document has changes
+/// that are not in it (unsaved markups): a service that prints a file then writes one from <paramref name="Document"/>.
+/// </param>
 /// <param name="DocumentName">The file name, shown to the printer as the name of the job.</param>
 /// <param name="CurrentPage">The page the user is looking at, 0-based.</param>
 /// <param name="Ticket">What the user confirmed.</param>

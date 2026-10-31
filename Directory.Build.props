@@ -10,4 +10,30 @@
     <Deterministic>true</Deterministic>
     <Version>0.0.0</Version>
   </PropertyGroup>
+  <!--
+    Test build of the updater (-p:PagewingUpdateTestBuild=true, see Pagewing.Core.csproj and packaging/README.md, section
+    "Update prüfen"; never set by a release). Only an explicit -p: on the command line switches it on: MSBuild also turns
+    environment variables into properties (names ignore case), and a release job inherits the environment of its runner.
+    A command-line property is global and ignores the assignments below; one from the environment (or anything else) is
+    overwritten here, before any project reads it, and CheckPagewingUpdateTestBuildSource then fails the build. The guard
+    also refuses the three names in the environment outright, so the only way in stays -p:.
+  -->
+  <PropertyGroup>
+    <_PagewingUpdateTestBuildSeen>$(PagewingUpdateTestBuild)</_PagewingUpdateTestBuildSeen>
+    <_PagewingUpdateTestPortSeen>$(PagewingUpdateTestPort)</_PagewingUpdateTestPortSeen>
+    <_PagewingUpdateTestKeySeen>$(PagewingUpdateTestKey)</_PagewingUpdateTestKeySeen>
+    <PagewingUpdateTestBuild />
+    <PagewingUpdateTestPort />
+    <PagewingUpdateTestKey />
+  </PropertyGroup>
+  <Target Name="CheckPagewingUpdateTestBuildSource" BeforeTargets="BeforeBuild">
+    <Error Condition="'$(_PagewingUpdateTestBuildSeen)' != '$(PagewingUpdateTestBuild)' Or '$(_PagewingUpdateTestPortSeen)' != '$(PagewingUpdateTestPort)' Or '$(_PagewingUpdateTestKeySeen)' != '$(PagewingUpdateTestKey)' Or '$([System.Environment]::GetEnvironmentVariable(`PagewingUpdateTestBuild`))' != '' Or '$([System.Environment]::GetEnvironmentVariable(`PagewingUpdateTestPort`))' != '' Or '$([System.Environment]::GetEnvironmentVariable(`PagewingUpdateTestKey`))' != ''"
+           Text="PagewingUpdateTestBuild, PagewingUpdateTestPort oder PagewingUpdateTestKey kommt nicht von der Kommandozeile (etwa als Umgebungsvariable). Der Testaufbau des Updaters gilt nur mit -p: bzw. /p: auf der Kommandozeile; die Umgebungsvariable entfernen (packaging/README.md, Abschnitt &quot;Update prüfen&quot;)." />
+  </Target>
+  <PropertyGroup Condition="'$(PagewingUpdateTestBuild)' == 'true'">
+    <BaseOutputPath>bin\update-test-build\</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj\update-test-build\</BaseIntermediateOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**</DefaultItemExcludes>
+    <DefineConstants>$(DefineConstants);PAGEWING_UPDATE_TESTBUILD</DefineConstants>
+  </PropertyGroup>
 </Project>

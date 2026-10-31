@@ -9,6 +9,7 @@ using Pagewing.Core;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Settings;
 using Pagewing.Core.Text;
+using Pagewing.Core.Updates;
 using Pagewing.Core.Viewing;
 
 namespace Pagewing.App.ViewModels;
@@ -75,7 +76,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
-    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed)> _tabHandlers = [];
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private int? _tabDropIndex;
     private bool _picking;
@@ -83,6 +84,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private double _panelWidth;
     private DensitySetting _density;
     private bool _isNarrowWindow;
+    private bool _formFeaturesEnabled = true;
 
     // The user opened or closed a panel in this window: the first sharp tile no longer opens the start panel.
     private bool _panelChosenByUser;
@@ -164,6 +166,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public CommandCatalog Commands => _commands ??= new CommandCatalog(this);
 
     /// <summary>
+    /// Gets whether Esc has a meaning of the window now (a waiting address, a card of the save flow, an overlay, the update
+    /// card: the Esc commands of <see cref="Commands"/> that can run). The Esc of the mode "Comment" in the toolbar and the
+    /// panel, whose bindings lie nearer the focus than the window's, then lets the key go on, so these come first.
+    /// </summary>
+    internal bool HasWindowEscape => Commands.All.Any(command =>
+        command.Gestures.Any(gesture => gesture is { Key: Avalonia.Input.Key.Escape, KeyModifiers: Avalonia.Input.KeyModifiers.None }) && command.CanExecute());
+
+    /// <summary>
     /// Gets what lies over the window: the command palette, the settings or the help card, or nothing. Only one at a
     /// time; the window makes each of them when it is first shown.
     /// </summary>
@@ -192,6 +202,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             {
                 _print?.OnClosed();
             }
+            else if (old == OverlayKind.Signature)
+            {
+                _signatureCard = null;
+            }
 
             if (value == OverlayKind.Palette)
             {
@@ -204,6 +218,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             else if (value == OverlayKind.About)
             {
                 _about ??= new AboutViewModel(AppInfo.Version, NoticesLoader);
+            }
+            else if (value == OverlayKind.Signature)
+            {
+                _signatureCard = CreateSignatureCard();
             }
 
             OnPropertyChanged();
@@ -298,6 +316,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         PostDefaultAppCheck();
+        PostUpdateCheck();
         if (_recent is { IsLoaded: false })
         {
             PostHistoryLoad();
@@ -514,6 +533,31 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     internal bool OpensPagesPanelAfterFirstSharpTile { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets whether the tabs of the window read their forms (the hints, the offer of the mode "Fill in form", the
+    /// fields; <see cref="TabViewModel.FormFeaturesEnabled"/>); on by default. A measurement run switches it off, so it measures
+    /// the open and the first sharp page without the background read of the form and without any control of the form
+    /// (milestone 11, <c>Docs/DECISIONS.md</c>, "Formulare: Messwerte und Startpfad (M11)"). Drawing the fields of the page is
+    /// not part of it: it belongs to showing the page.
+    /// </summary>
+    internal bool FormFeaturesEnabled
+    {
+        get => _formFeaturesEnabled;
+        set
+        {
+            if (_formFeaturesEnabled == value)
+            {
+                return;
+            }
+
+            _formFeaturesEnabled = value;
+            foreach (var tab in Tabs)
+            {
+                tab.FormFeaturesEnabled = value;
+            }
+        }
+    }
+
     /// <summary>Gets the side panel of the active tab (<see cref="SidePanelKind.None"/> without a tab).</summary>
     public SidePanelKind ActivePanel => ActiveTab?.SidePanel ?? SidePanelKind.None;
 
@@ -525,6 +569,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Gets whether the active tab shows the search ("Search" is the active entry of the action bar).</summary>
     public bool IsSearchPanelOpen => ActivePanel == SidePanelKind.Search;
+
+    /// <summary>Gets whether the active tab shows its annotations ("Comments" is the active entry of the action bar).</summary>
+    public bool IsCommentsPanelOpen => ActivePanel == SidePanelKind.Comments;
 
     /// <summary>
     /// An entry of the action bar (parameter: the <see cref="SidePanelKind"/>): opens its panel in the active tab, or
@@ -705,9 +752,63 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Adds a tab for a session that is already opening (the file of the command line, which <see cref="Program.Main"/>
     /// starts opening before the window exists; <see cref="Workspace.OpenWindowFor"/>) and activates it. Like every
-    /// new tab it starts with the default layout and zoom of the settings.
+    /// new tab it starts with the default layout and zoom of the settings, or, after an update
+    /// (<see cref="Workspace.RestoreSession"/>), where its file was read (<paramref name="view"/>).
     /// </summary>
-    public TabViewModel AdoptSession(ViewerSession session) => AddTab(NewTab(session));
+    public TabViewModel AdoptSession(ViewerSession session, RememberedView? view = null)
+    {
+        var tab = NewTab(session);
+        if (view is not null)
+        {
+            tab.InitialView = view;
+            tab.ApplyInitialView();
+        }
+
+        return AddTab(tab);
+    }
+
+    /// <summary>
+    /// The further tabs of a window after an update (<see cref="Workspace.RestoreSession"/>): like
+    /// <see cref="OpenInBackgroundAsync"/> they open without ever changing the active tab, but each at its old place
+    /// around it (<paramref name="before"/> to its left, <paramref name="after"/> to its right, in their order) and where
+    /// its file was read. A file that is already open in this window is skipped.
+    /// </summary>
+    /// <returns>Completes when every session has a result.</returns>
+    internal Task RestoreInBackgroundAsync(IReadOnlyList<SessionTab> before, IReadOnlyList<SessionTab> after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        var opens = new List<Task>();
+        var position = 0;
+        foreach (var saved in before)
+        {
+            if (AddRestoredTab(saved, opens) is { } tab)
+            {
+                // Added at the end, behind the active tab; moving it keeps the active tab.
+                Tabs.Move(tab, position++);
+            }
+        }
+
+        foreach (var saved in after)
+        {
+            AddRestoredTab(saved, opens);
+        }
+
+        return Task.WhenAll(opens);
+    }
+
+    private TabViewModel? AddRestoredTab(SessionTab saved, List<Task> opens)
+    {
+        if (string.IsNullOrEmpty(saved.Path) || FindOpenTab(saved.Path) is not null)
+        {
+            return null;
+        }
+
+        var tab = AddTab(NewTab(_sessionFactory()), background: true);
+        tab.InitialView = saved.View;
+        opens.Add(tab.OpenAsync(saved.Path));
+        return tab;
+    }
 
     /// <summary>
     /// Handles the files a later launch handed over (single instance). May be called on any thread: opens them on the
@@ -774,6 +875,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Tabs.Close(tab);
         Unhook(tab);
         CancelPrintingOf(tab);
+        CancelSavingOf(tab);
 
         // The window it goes to has not drawn it yet: its thumbnails wait for the first sharp page there, which sets the
         // flag again.
@@ -821,6 +923,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         _firstSharpPageSeen = true;
         PostDefaultAppCheck();
+        PostUpdateCheck();
         if (OpensPagesPanelAfterFirstSharpTile)
         {
             Dispatcher.UIThread.Post(OpenPagesPanelAfterFirstSharpTile, DispatcherPriority.Background);
@@ -834,7 +937,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _palette?.OnClosed();
         _settingsCard?.OnClosed();
         DisposePrinting();
+        DisposeSaving();
         DisposeDefaultApp();
+        DisposeUpdate();
         Settings.Changed -= OnSettingsChanged;
         if (_recent is not null)
         {
@@ -894,6 +999,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         UpdatePageThemes();
+
+        // The colour of a tool may come from another window.
+        foreach (var tab in Tabs)
+        {
+            tab.OnAnnotationSettingsChanged();
+        }
     }
 
     private static double DefaultFor(DensitySetting density) =>
@@ -941,13 +1052,20 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         // Before the tab is shown: a tab from another window keeps its override and takes the page theme of this one.
         tab.AppPageTheme = AppPageTheme;
+
+        // The colours of the tools and the author come from the settings of the app; a lock for an update holds for every tab.
+        tab.AnnotationSettings = Settings;
+        tab.IsEditingFrozen = _isEditingFrozen;
+        tab.FormFeaturesEnabled = _formFeaturesEnabled;
         var handlers = (
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
-            Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)));
+            Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)),
+            Save: (Action<bool>)(saveAs => _ = SaveTabAsync(tab, saveAs)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;
         tab.PropertyChanged += handlers.Changed;
+        tab.SaveRequested += handlers.Save;
         _tabHandlers[tab] = handlers;
 
         // The file of the command line may be open already when its tab comes; a tab from another window was reported there.
@@ -982,6 +1100,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             tab.CloseRequested -= handlers.Close;
             tab.OpenOtherRequested -= handlers.OpenOther;
             tab.PropertyChanged -= handlers.Changed;
+            tab.SaveRequested -= handlers.Save;
         }
     }
 
@@ -1021,9 +1140,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Where <paramref name="tab"/> shows its document, for the history: the position the document view saved
     /// (<see cref="TabViewModel.SavedView"/>), zoom, zoom mode and layout; <see langword="null"/> without an open document
-    /// or a saved position.
+    /// or a saved position. Also what the session for the restart after an update remembers (<see cref="Workspace.CaptureSession"/>).
     /// </summary>
-    private static (string Path, RememberedView View)? RememberedViewOf(TabViewModel? tab) =>
+    internal static (string Path, RememberedView View)? RememberedViewOf(TabViewModel? tab) =>
         tab is { IsReady: true, FullPath: { } path, SavedView: { } view }
             ? (path, new RememberedView(view, tab.Zoom, tab.ZoomMode, tab.LayoutMode))
             : null;
@@ -1083,9 +1202,46 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             DispatcherPriority.Background);
     }
 
+    /// <summary>
+    /// Closes <paramref name="tab"/> (its close button, Ctrl+W, the tab menu): a tab with unsaved changes asks first
+    /// (<see cref="CloseAfterAskingAsync"/>); while a card of this window asks about that tab, or the window asks before
+    /// closing, a further request for it is ignored.
+    /// </summary>
     private void CloseTab(TabViewModel? tab)
     {
         if (tab is null || Tabs.IndexOf(tab) < 0)
+        {
+            return;
+        }
+
+        // While an update is being installed every change was answered before and none can come: no question.
+        if (_isEditingFrozen)
+        {
+            CloseTabNow(tab);
+            return;
+        }
+
+        // The text of an open text box field and the open value of a form field are applied first: closing then asks about
+        // them like about any change.
+        tab.FlushTextBoxDraft();
+        tab.FlushFormDraft();
+        if (tab.AsksBeforeClosing)
+        {
+            if (!_resolving && !(_pendingSave is { } question && ReferenceEquals(question.Tab, tab)))
+            {
+                _ = CloseAfterAskingAsync(tab);
+            }
+
+            return;
+        }
+
+        CloseTabNow(tab);
+    }
+
+    /// <summary>Closes <paramref name="tab"/> without asking (its changes, if any, were saved or discarded by the user).</summary>
+    private void CloseTabNow(TabViewModel tab)
+    {
+        if (Tabs.IndexOf(tab) < 0)
         {
             return;
         }
@@ -1096,6 +1252,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Tabs.Close(tab);
         Unhook(tab);
         CancelPrintingOf(tab);
+        CancelSavingOf(tab);
         if (_recent is not null && RememberedViewOf(tab) is { } closed)
         {
             _recent.Closed([closed]);
@@ -1150,7 +1307,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             RaiseActivePanelChanged();
         }
 
-        if (e.PropertyName is nameof(TabViewModel.IsReady) or nameof(TabViewModel.Document))
+        if (e.PropertyName is nameof(TabViewModel.IsReady) or nameof(TabViewModel.Document) or nameof(TabViewModel.IsSaving))
         {
             // The print button of the action bar is enabled once the document of the active tab is open.
             _printCommand?.RaiseCanExecuteChanged();
@@ -1163,6 +1320,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsPagesPanelOpen));
         OnPropertyChanged(nameof(IsContentsPanelOpen));
         OnPropertyChanged(nameof(IsSearchPanelOpen));
+        OnPropertyChanged(nameof(IsCommentsPanelOpen));
     }
 
     // The conditions are checked again: the user may have chosen a panel, or the window may have narrowed meanwhile.
@@ -1198,7 +1356,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// The user opened or closed a panel: opening "Pages" or "Contents" makes it the start panel of the next window,
-    /// closing it makes that none. "Search" never changes it, neither by opening nor by closing.
+    /// closing it makes that none. "Search" and "Comments" never change it, neither by opening nor by closing.
     /// </summary>
     private void RememberStartPanel(SidePanelKind old, SidePanelKind next)
     {

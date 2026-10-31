@@ -22,12 +22,141 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     internal const long MaxFileLength = uint.MaxValue;
 
     private readonly DocumentHandle handle;
+    private readonly FileReadContext source;
     private volatile bool disposed;
 
-    private PdfiumDocument(DocumentHandle handle) => this.handle = handle;
+    private int darkMarkupScans;
+    private int formEnvironmentsCreated;
+    private int formDraws;
+    private int formWidgetScans;
+    private int vectorPrints;
+    private int printStrips;
+
+    // Whether a page has widgets, by page index, filled by the first render of each page (PDFium thread only). Widgets are
+    // never added to an open document (Pagewing creates markups, drawings and text boxes, never widgets), so an entry stays
+    // true for the life of the document.
+    private Dictionary<int, bool>? pagesWithWidgets;
+
+    private PdfiumDocument(DocumentHandle handle, FileReadContext source)
+    {
+        this.handle = handle;
+        this.source = source;
+    }
 
     /// <summary>Gets the PDFium thread the document belongs to.</summary>
     public PdfiumThread Thread => handle.OwningThread;
+
+    /// <summary>
+    /// Gets the handle of the file PDFium reads the document from (the file that was opened, even after its path was
+    /// renamed or replaced). It must only be read (positional reads such as <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>)
+    /// and never disposed; it is closed with the document. Unlike the other members it may be used from any thread, because
+    /// it does not touch PDFium.
+    /// </summary>
+    internal SafeFileHandle SourceFile => source.FileHandle;
+
+    /// <summary>Gets the length of the source file when the document was opened, the length PDFium reads. Any thread.</summary>
+    internal long SourceLengthAtOpen => source.Length;
+
+    /// <summary>Gets the last write time (UTC) of the source file when it was opened, read through the handle. Any thread.</summary>
+    internal DateTime SourceLastWriteUtcAtOpen => source.LastWriteUtc;
+
+    /// <summary>
+    /// Gets how often the markups of a page were read for painting them on a dark page (<see cref="PdfiumDarkMarkups"/>),
+    /// for tests that check that a light page never reads them. Written on the PDFium thread only.
+    /// </summary>
+    internal int DarkMarkupScans => Volatile.Read(ref darkMarkupScans);
+
+    /// <summary>
+    /// Gets or sets what reads the markups for a dark render instead of <see cref="PdfiumDarkMarkups.Read"/>, or
+    /// <see langword="null"/> (tests replace it to make the read fail). PDFium thread only.
+    /// </summary>
+    internal Func<PdfiumPage, PdfiumPageColors, DarkMarkupPaint>? DarkMarkupReader { get; set; }
+
+    /// <summary>Counts one read of <see cref="DarkMarkupScans"/>. PDFium thread only.</summary>
+    internal void CountDarkMarkupScan() => Volatile.Write(ref darkMarkupScans, darkMarkupScans + 1);
+
+    /// <summary>
+    /// Gets how many form-fill environments were created for this document (0 without a form, else 1), for tests that check
+    /// that a document without a form never gets one. Written on the PDFium thread only.
+    /// </summary>
+    internal int FormEnvironmentsCreated => Volatile.Read(ref formEnvironmentsCreated);
+
+    /// <summary>
+    /// Gets how often a render drew the form fields of a page (<c>FPDF_FFLDraw</c>), for tests that check that a page without
+    /// widgets and a document without a form never draw them. Written on the PDFium thread only.
+    /// </summary>
+    internal int FormDraws => Volatile.Read(ref formDraws);
+
+    /// <summary>
+    /// Gets how often a render looked for the widgets of a page (once per page and document), for tests. Written on the PDFium
+    /// thread only.
+    /// </summary>
+    internal int FormWidgetScans => Volatile.Read(ref formWidgetScans);
+
+    /// <summary>Counts one <see cref="FormDraws"/>. PDFium thread only.</summary>
+    internal void CountFormDraw() => Volatile.Write(ref formDraws, formDraws + 1);
+
+    /// <summary>
+    /// Gets how many pages were printed as vectors (<c>FPDF_RenderPage</c> on the device context), for tests that check the
+    /// path a page takes. Written on the PDFium thread only.
+    /// </summary>
+    internal int VectorPrints => Volatile.Read(ref vectorPrints);
+
+    /// <summary>
+    /// Gets how many strips of pages with widgets were printed (<see cref="PdfiumPrint"/>), for tests. Written on the PDFium
+    /// thread only.
+    /// </summary>
+    internal int PrintStrips => Volatile.Read(ref printStrips);
+
+    /// <summary>Counts one <see cref="VectorPrints"/>. PDFium thread only.</summary>
+    internal void CountVectorPrint() => Volatile.Write(ref vectorPrints, vectorPrints + 1);
+
+    /// <summary>Counts one <see cref="PrintStrips"/>. PDFium thread only.</summary>
+    internal void CountPrintStrip() => Volatile.Write(ref printStrips, printStrips + 1);
+
+    /// <summary>
+    /// Gets whether page <paramref name="index"/>, loaded as <paramref name="page"/>, has widgets that <c>FPDF_FFLDraw</c> would
+    /// draw: always <see langword="false"/> without a form environment; else looked up once per page with
+    /// <see cref="PdfiumFormDrawing.HasWidgets"/> and remembered. PDFium thread only.
+    /// </summary>
+    internal bool PageHasWidgets(int index, PdfiumPage page)
+    {
+        Access();
+        if (handle.FormEnvironment is null)
+        {
+            return false;
+        }
+
+        pagesWithWidgets ??= [];
+        if (!pagesWithWidgets.TryGetValue(index, out var has))
+        {
+            Volatile.Write(ref formWidgetScans, formWidgetScans + 1);
+            has = PdfiumFormDrawing.HasWidgets(page);
+            pagesWithWidgets[index] = has;
+        }
+
+        return has;
+    }
+
+    /// <summary>
+    /// Gets the kind of form of the document (<c>FPDF_GetFormType</c>): <see cref="FpdfConstants.FormTypeNone"/>,
+    /// <see cref="FpdfConstants.FormTypeAcroForm"/>, or one of the XFA kinds, whose AcroForm fields stay fillable (the package
+    /// has no XFA module).
+    /// </summary>
+    public int FormType => Fpdf.FPDF_GetFormType(Access());
+
+    /// <summary>
+    /// Gets the form-fill environment created when the document was opened, or <see langword="null"/> for a document without
+    /// a form (or if PDFium could not create one). It is exited when the document closes, after its last page.
+    /// </summary>
+    public PdfiumFormEnvironment? FormEnvironment
+    {
+        get
+        {
+            Access();
+            return handle.FormEnvironment;
+        }
+    }
 
     /// <summary>Gets the number of pages.</summary>
     public int PageCount => Fpdf.FPDF_GetPageCount(Access());
@@ -40,6 +169,40 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// with its owner password, allows everything. Must be called on the PDFium thread.
     /// </summary>
     public bool MayPrint => (Fpdf.FPDF_GetDocPermissions(Access()).Value & FpdfConstants.PermissionPrint) != 0;
+
+    /// <summary>
+    /// Gets whether the permissions of whoever opened the document allow changing annotations (PDF 32000-1 table 22,
+    /// bit 6); an unencrypted document, or one opened with its owner password, allows everything. Must be called on the PDFium thread.
+    /// </summary>
+    public bool MayAnnotate => AllowsAnnotating((uint)Fpdf.FPDF_GetDocPermissions(Access()).Value);
+
+    /// <summary>Gets the number of signatures and the most restrictive DocMDP level they declare. Must be called on the PDFium thread.</summary>
+    /// <returns>The signature count and the lowest DocMDP level (1 to 3), or 0 if no signature declares one.</returns>
+    public (int Count, int DocMdpLevel) GetSignatures()
+    {
+        var document = Access();
+        var count = Fpdf.FPDF_GetSignatureCount(document);
+        var level = 0;
+        for (var index = 0; index < count; index++)
+        {
+            var signature = Fpdf.FPDF_GetSignatureObject(document, index);
+            if (signature == 0)
+            {
+                continue;
+            }
+
+            var permission = Fpdf.FPDFSignatureObj_GetDocMDPPermission(signature);
+            if (permission is >= 1 and <= 3 && (level == 0 || permission < level))
+            {
+                level = (int)permission;
+            }
+        }
+
+        return (Math.Max(count, 0), level);
+    }
+
+    /// <summary>Tells whether a permission word (<c>/P</c> value as returned by PDFium) contains the "modify annotations" bit.</summary>
+    internal static bool AllowsAnnotating(uint permissions) => (permissions & FpdfConstants.PermissionAnnotate) != 0;
 
     /// <summary>Gets the PDF version from the file header (14 for 1.4), or <see langword="null"/> if unknown.</summary>
     public int? FileVersion
@@ -95,7 +258,9 @@ internal sealed unsafe class PdfiumDocument : IDisposable
                 throw;
             }
 
-            return new PdfiumDocument(handle);
+            var opened = new PdfiumDocument(handle, context);
+            opened.CreateFormEnvironment();
+            return opened;
         }
         catch
         {
@@ -103,6 +268,22 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             handle.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Creates the form-fill environment in the open job, only for a document with a form, and hands it to the handle, which
+    /// exits it before the document closes.
+    /// </summary>
+    private void CreateFormEnvironment()
+    {
+        var environment = PdfiumFormEnvironment.CreateIfForm(this);
+        if (environment is null)
+        {
+            return;
+        }
+
+        handle.FormEnvironment = environment;
+        Volatile.Write(ref formEnvironmentsCreated, formEnvironmentsCreated + 1);
     }
 
     /// <summary>
@@ -201,6 +382,15 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             {
                 Fpdf.FPDF_ClosePage(value);
                 throw;
+            }
+
+            if (handle.FormEnvironment is { } environment)
+            {
+                // Set first, so the page leaves the environment when it closes even if the announcement fails. The first
+                // announcement of a document loads all its fields (72 to 91 ms at 2,000 fields in the spike); whether that
+                // belongs in the open job or the first render is measured in task 14 of milestone 11.
+                page.FormEnvironment = environment;
+                environment.PageLoaded(value);
             }
 
             return new PdfiumPage(page, Fpdf.FPDF_GetPageWidthF(value), Fpdf.FPDF_GetPageHeightF(value));
@@ -350,7 +540,18 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// PDFium thread; the call returns when the last block is written.
     /// </summary>
     /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
-    public void SaveWithoutSecurity(Stream destination)
+    public void SaveWithoutSecurity(Stream destination) =>
+        Save(destination, FpdfConstants.SaveNoIncremental | FpdfConstants.SaveRemoveSecurity);
+
+    /// <summary>
+    /// Writes the original bytes of the document followed by the changes made since it was opened to
+    /// <paramref name="destination"/> (<c>FPDF_INCREMENTAL</c>); an existing digital signature stays valid. Must be called on
+    /// the PDFium thread; the call returns when the last block is written.
+    /// </summary>
+    /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
+    internal void SaveIncremental(Stream destination) => Save(destination, FpdfConstants.SaveIncremental);
+
+    private void Save(Stream destination, int flags)
     {
         ArgumentNullException.ThrowIfNull(destination);
         var native = Access();
@@ -363,7 +564,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             var block = stackalloc SaveBlock[1];
             block->Writer = new FpdfFileWrite { Version = 1, WriteBlock = &WriteSaveBlock };
             block->Cookie = GCHandle.ToIntPtr(self);
-            var saved = Fpdf.FPDF_SaveAsCopy(native, &block->Writer, new CULong((nuint)(FpdfConstants.SaveNoIncremental | FpdfConstants.SaveRemoveSecurity))) != 0;
+            var saved = Fpdf.FPDF_SaveAsCopy(native, &block->Writer, new CULong((nuint)flags)) != 0;
             if (!saved || context.Failed)
             {
                 throw new IOException("The document could not be saved.", context.Error);
@@ -421,6 +622,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
 
         public Exception? Error { get; private set; }
 
+        /// <summary>Called from <see cref="WriteSaveBlock"/>; never inlined into the callback (see <see cref="PdfiumRenderWork"/>, <c>Now</c>).</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public bool Write(void* data, nuint size)
         {
             try
@@ -444,14 +647,21 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         private GCHandle self;
         private int disposed;
 
-        private FileReadContext(SafeFileHandle file, long length)
+        private FileReadContext(SafeFileHandle file, long length, DateTime lastWriteUtc)
         {
             this.file = file;
             Length = length;
+            LastWriteUtc = lastWriteUtc;
             self = GCHandle.Alloc(this);
         }
 
         public long Length { get; }
+
+        /// <summary>Gets the last write time when the file was opened, read through the handle like a later check.</summary>
+        public DateTime LastWriteUtc { get; }
+
+        /// <summary>Gets the open file.</summary>
+        public SafeFileHandle FileHandle => file;
 
         /// <summary>Gets the value passed as <c>m_Param</c>.</summary>
         public nint Cookie => GCHandle.ToIntPtr(self);
@@ -467,7 +677,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
                     throw new IOException($"The file is larger than {MaxFileLength} bytes and cannot be opened.");
                 }
 
-                return new FileReadContext(file, length);
+                return new FileReadContext(file, length, File.GetLastWriteTimeUtc(file));
             }
             catch
             {
@@ -476,7 +686,8 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             }
         }
 
-        /// <summary>Reads exactly <paramref name="size"/> bytes at <paramref name="position"/>.</summary>
+        /// <summary>Reads exactly <paramref name="size"/> bytes at <paramref name="position"/>. Called from <see cref="ReadBlock"/>; never inlined into the callback (see <see cref="PdfiumRenderWork"/>, <c>Now</c>).</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public bool Read(nuint position, byte* buffer, nuint size)
         {
             if (position > (ulong)Length || size > (ulong)Length - position)
