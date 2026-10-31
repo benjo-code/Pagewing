@@ -5,7 +5,7 @@ namespace Pagewing.Pdfium.Native;
 
 /// <summary>
 /// Raw PDFium bindings (package <c>bblanchon.PDFium.*</c> 157.0.8100, headers <c>fpdfview.h</c>,
-/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>, <c>fpdf_formfill.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
+/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>, <c>fpdf_formfill.h</c>, <c>fpdf_ppo.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
 /// <c>FS_FLOAT</c> is <c>float</c>. Only functions Pagewing needs are bound.
 /// Every call must run on the <see cref="PdfiumThread"/>. C <c>unsigned long</c> is bound as
 /// <see cref="CULong"/> because it is 32-bit on Windows and 64-bit on Linux.
@@ -533,6 +533,45 @@ internal static unsafe partial class Fpdf
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFBitmap_GetFormat(nint bitmap);
+
+    // Page editing (fpdf_ppo.h, fpdf_edit.h). Used only by PdfiumPageEdit on a working copy of a document that is rewritten.
+
+    /// <summary>
+    /// <c>FPDF_ImportPagesByIndex</c> (fpdf_ppo.h): copies the pages <c>page_indices</c> (zero based, may repeat, may come from
+    /// <c>dest_doc</c> itself) of <c>src_doc</c> into <c>dest_doc</c> at <c>index</c>; <c>length</c> is an <c>unsigned long</c>.
+    /// FALSE if any page index is invalid.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_ImportPagesByIndex(nint destination, nint source, int* pageIndices, CULong length, int index);
+
+    /// <summary>
+    /// <c>FPDF_MovePages</c> (fpdf_edit.h, experimental): moves the pages <c>page_indices</c> (ordered, no duplicates) so that they
+    /// start at <c>dest_page_index</c> in the document without them; <c>page_indices_len</c> is an <c>unsigned long</c>.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_MovePages(nint document, int* pageIndices, CULong pageIndicesLength, int destinationPageIndex);
+
+    /// <summary><c>FPDFPage_Delete</c>: deletes the page at the index (no result).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFPage_Delete(nint document, int pageIndex);
+
+    /// <summary><c>FPDFPage_New</c>: a new, empty page of the size at the index; closed with <see cref="FPDF_ClosePage"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPage_New(nint document, int pageIndex, double width, double height);
+
+    /// <summary><c>FPDFPage_SetRotation</c>: 0, 1, 2 or 3 for 0, 90, 180 or 270 degrees clockwise.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFPage_SetRotation(nint page, int rotate);
+
+    /// <summary><c>FPDFPage_GetRotation</c>: 0, 1, 2 or 3 for 0, 90, 180 or 270 degrees clockwise.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_GetRotation(nint page);
 
     // Fonts and glyph outlines (fpdf_edit.h; partly experimental API). Used only to read the outlines of the text box font
     // (Geist Regular) in a document that is never saved; see PdfiumGlyphs. FPDF_FONT, FPDF_GLYPHPATH and FPDF_PATHSEGMENT

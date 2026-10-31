@@ -551,6 +551,13 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
     internal void SaveIncremental(Stream destination) => Save(destination, FpdfConstants.SaveIncremental);
 
+    /// <summary>
+    /// Writes the whole document as a new file to <paramref name="destination"/> (<c>FPDF_NO_INCREMENTAL</c>), keeping its
+    /// encryption (no <c>FPDF_REMOVE_SECURITY</c>). Must be called on the PDFium thread.
+    /// </summary>
+    /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
+    internal void SaveRewrite(Stream destination) => Save(destination, FpdfConstants.SaveNoIncremental);
+
     private void Save(Stream destination, int flags)
     {
         ArgumentNullException.ThrowIfNull(destination);

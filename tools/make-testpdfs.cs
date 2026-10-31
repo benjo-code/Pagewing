@@ -107,6 +107,7 @@ static class TestPdfs
         new("thousand-pages.pdf", ThousandPages()),
         new("outline.pdf", Outline()),
         new("outline-cycle.pdf", OutlineCycle()),
+        new("pages-marked.pdf", PagesMarked()),
         new("signed-docmdp-none.pdf", SignedDocument(null)),
         new("signed-docmdp-1.pdf", SignedDocument(1)),
         new("signed-docmdp-2.pdf", SignedDocument(2)),
@@ -538,6 +539,45 @@ static class TestPdfs
         doc.Set(second, $"<< /Title (Zwei) /Parent {root} 0 R /Prev {first} 0 R /Next {third} 0 R /Dest [{pages[1]} 0 R /Fit] >>");
         doc.Set(third, $"<< /Title (Drei) /Parent {root} 0 R /Prev {second} 0 R /Next {first} 0 R /Dest [{pages[2]} 0 R /Fit] >>");
         doc.CatalogEntries = $"/Outlines {root} 0 R /PageMode /UseOutlines";
+        return doc.Build();
+    }
+
+    // Six pages that carry their number as large text "PAGE n" in the middle (order and content can be checked with the text),
+    // page 3 in landscape (400 x 300, the others 300 x 400), page 5 with /Rotate 90. Outline: Kapitel 1 (page 1) with the child
+    // Abschnitt 1.1 (page 2), Kapitel 2 (page 3), Kapitel 3 (page 5). /PageLabels: roman for pages 1 and 2, decimal from page 3
+    // on (starting at 3). Title in the info dictionary. Subject of milestone 13 (organise pages).
+    private static byte[] PagesMarked()
+    {
+        var doc = new PdfDoc("Pagewing Seiten markiert");
+        var font = "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>";
+        var ids = new int[6];
+        for (var i = 0; i < ids.Length; i++)
+        {
+            ids[i] = doc.Reserve();
+        }
+
+        for (var i = 0; i < ids.Length; i++)
+        {
+            var landscape = i == 2;
+            var width = landscape ? 400 : 300;
+            var height = landscape ? 300 : 400;
+            var entries = $"/MediaBox [0 0 {width} {height}]" + (i == 4 ? " /Rotate 90" : string.Empty);
+            // Helvetica 48 pt: "PAGE n" is 6 characters, about 134 pt wide; start at x = width / 2 - 67, y = height / 2 - 17.
+            var content = string.Create(CultureInfo.InvariantCulture, $"BT /F1 48 Tf {width / 2 - 67} {height / 2 - 17} Td (PAGE {i + 1}) Tj ET");
+            doc.AddPage(entries, font, content, ids[i]);
+        }
+
+        var root = doc.Reserve();
+        var chapter1 = doc.Reserve();
+        var section11 = doc.Reserve();
+        var chapter2 = doc.Reserve();
+        var chapter3 = doc.Reserve();
+        doc.Set(root, $"<< /Type /Outlines /First {chapter1} 0 R /Last {chapter3} 0 R /Count 4 >>");
+        doc.Set(chapter1, $"<< /Title (Kapitel 1) /Parent {root} 0 R /Next {chapter2} 0 R /First {section11} 0 R /Last {section11} 0 R /Count 1 /Dest [{ids[0]} 0 R /Fit] >>");
+        doc.Set(section11, $"<< /Title (Abschnitt 1.1) /Parent {chapter1} 0 R /Dest [{ids[1]} 0 R /Fit] >>");
+        doc.Set(chapter2, $"<< /Title (Kapitel 2) /Parent {root} 0 R /Prev {chapter1} 0 R /Next {chapter3} 0 R /Dest [{ids[2]} 0 R /Fit] >>");
+        doc.Set(chapter3, $"<< /Title (Kapitel 3) /Parent {root} 0 R /Prev {chapter2} 0 R /Dest [{ids[4]} 0 R /Fit] >>");
+        doc.CatalogEntries = $"/Outlines {root} 0 R /PageMode /UseOutlines /PageLabels << /Nums [0 << /S /r >> 2 << /S /D /St 3 >>] >>";
         return doc.Build();
     }
 
