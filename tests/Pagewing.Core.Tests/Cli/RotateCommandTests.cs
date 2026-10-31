@@ -4,6 +4,7 @@ using Pagewing.Cli;
 using Pagewing.Cli.Commands;
 using Pagewing.Core.Pages;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Saving;
 using Pagewing.TestSupport;
 using Xunit;
 
@@ -18,7 +19,25 @@ public sealed class RotateCommandTests : IDisposable
     private readonly DirectoryInfo workDirectory = Directory.CreateTempSubdirectory("pagewing-rotate-tests-");
     private readonly PdfEngine engine = new();
 
-    public void Dispose() => workDirectory.Delete(recursive: true);
+    private readonly List<string> folderLinks = [];
+
+    public void Dispose()
+    {
+        // A folder link goes first and alone: a recursive delete must never walk through it into the folder it points to.
+        foreach (var link in folderLinks)
+        {
+            try
+            {
+                Directory.Delete(link, recursive: false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Nothing more to do; the folder is in the temp folder.
+            }
+        }
+
+        workDirectory.Delete(recursive: true);
+    }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -131,23 +150,138 @@ public sealed class RotateCommandTests : IDisposable
     {
         var input = Copy("pages-marked.pdf");
         var link = Path.Combine(workDirectory.FullName, "link.pdf");
-        try
-        {
-            File.CreateSymbolicLink(link, input);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Creating a symbolic link needs a privilege on Windows; without it there is nothing to check.
-            return;
-        }
+        var created = TryCreate(() => File.CreateSymbolicLink(link, input));
+        Assert.SkipUnless(created, "Creating a symbolic link needs a privilege (Windows without developer mode); the folder link tests run without it.");
 
-        var inputBytes = await File.ReadAllBytesAsync(input, Ct);
+        await AssertRefusedAsync(input, link);
+    }
 
-        var result = await RunAsync("rotate", input, "--pages", "1", "--angle", "90", "--output", link, "--force");
+    [Fact]
+    public async Task RotateRefusesAnOutputThroughALinkedFolder()
+    {
+        // The reported bypass: the output names the input through a junction (Windows) or a symbolic link (Linux) to its folder.
+        var real = Directory.CreateDirectory(Path.Combine(workDirectory.FullName, "real")).FullName;
+        var input = Path.Combine(real, "in.pdf");
+        File.Copy(TestData.Pdf("pages-marked.pdf"), input);
+        var linkedFolder = Path.Combine(workDirectory.FullName, "linked");
+        Assert.True(CreateFolderLink(linkedFolder, real), "A folder link could not be created.");
+        var output = Path.Combine(linkedFolder, "in.pdf");
+
+        await AssertRefusedAsync(input, output);
+
+        // And the other way round: the input named through the link.
+        await AssertRefusedAsync(output, input);
+    }
+
+    [Fact]
+    public async Task RotateRefusesAnOutputInALinkedFolderOfTheInputEvenWhenItDoesNotExistYet()
+    {
+        var real = Directory.CreateDirectory(Path.Combine(workDirectory.FullName, "real")).FullName;
+        var input = Path.Combine(real, "in.pdf");
+        File.Copy(TestData.Pdf("pages-marked.pdf"), input);
+        var linkedFolder = Path.Combine(workDirectory.FullName, "linked");
+        Assert.True(CreateFolderLink(linkedFolder, real), "A folder link could not be created.");
+
+        // A new name next to the input is fine: nothing of the input is touched.
+        var result = await RunAsync("rotate", input, "--pages", "1", "--angle", "90", "--output", Path.Combine(linkedFolder, "new.pdf"));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(File.Exists(Path.Combine(real, "new.pdf")));
+    }
+
+    [Fact]
+    public async Task RotateRefusesAHardLinkToTheInputAsTheOutput()
+    {
+        var input = Copy("pages-marked.pdf");
+        var alias = Path.Combine(workDirectory.FullName, "alias.pdf");
+        Assert.SkipUnless(TryCreate(() => CreateHardLink(alias, input)), "Hard links could not be created on this file system.");
+
+        await AssertRefusedAsync(input, alias);
+    }
+
+    [Fact]
+    public void FileIdentityTellsLinksAndHardLinksFromOtherFiles()
+    {
+        var input = Copy("pages-marked.pdf");
+        var copy = Path.Combine(workDirectory.FullName, "copy.pdf");
+        File.Copy(input, copy);
+
+        Assert.True(FileIdentity.AreSameFile(input, input));
+        Assert.False(FileIdentity.AreSameFile(input, copy));
+        Assert.False(FileIdentity.AreSameFile(input, Path.Combine(workDirectory.FullName, "missing.pdf")));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.True(FileIdentity.AreSameFile(input, input.ToUpperInvariant()));
+        }
+    }
+
+    private async Task AssertRefusedAsync(string input, string output)
+    {
+        var before = await File.ReadAllBytesAsync(input, Ct);
+        var hashBefore = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(before));
+
+        // Not even --force overrides it.
+        var result = await RunAsync("rotate", input, "--pages", "1", "--angle", "90", "--output", output, "--force");
 
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("must not be the input file", result.Error, StringComparison.Ordinal);
-        Assert.Equal(inputBytes, await File.ReadAllBytesAsync(input, Ct));
+        Assert.Equal(hashBefore, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(input, Ct))));
+        Assert.Empty(TemporaryFiles());
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(input)!, ".pw-*"));
+    }
+
+    private static bool TryCreate(Action create)
+    {
+        try
+        {
+            create();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>A directory junction on Windows (no privilege needed), a symbolic link elsewhere.</summary>
+    private bool CreateFolderLink(string link, string target)
+    {
+        folderLinks.Add(link);
+        if (!OperatingSystem.IsWindows())
+        {
+            return TryCreate(() => Directory.CreateSymbolicLink(link, target));
+        }
+
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        });
+        process!.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        return process.ExitCode == 0 && Directory.Exists(link);
+    }
+
+    private static void CreateHardLink(string link, string target)
+    {
+        var start = OperatingSystem.IsWindows()
+            ? new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /H \"{link}\" \"{target}\"")
+            : new System.Diagnostics.ProcessStartInfo("ln", ["--", target, link]);
+        start.CreateNoWindow = true;
+        start.UseShellExecute = false;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("The link tool could not be started.");
+        process.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        if (process.ExitCode != 0 || !File.Exists(link))
+        {
+            throw new IOException("The hard link could not be created.");
+        }
     }
 
     [Fact]
@@ -210,6 +344,7 @@ public sealed class RotateCommandTests : IDisposable
 
         var wrong = await RunAsync("rotate", input, "--pages", "1", "--angle", "90", "--output", output, "--password", "wrong");
         Assert.Equal(1, wrong.ExitCode);
+        Assert.Equal("pagewing: The password is incorrect.", wrong.Error.TrimEnd());
         Assert.False(File.Exists(output));
 
         var withPassword = await RunAsync(
@@ -310,20 +445,56 @@ public sealed class RotateCommandTests : IDisposable
     [Fact]
     public async Task CancelLeavesNoTemporaryFile()
     {
+        var input = Copy("pages-marked.pdf");
+        var output = Path.Combine(workDirectory.FullName, "out.pdf");
+
+        // Ctrl+C when the saver has started writing the temporary file (the first report of the writing phase).
+        using var source = new CancellationTokenSource();
+        var writing = false;
+        var progress = new CallbackProgress(value =>
+        {
+            if (value >= 0.3 && !writing)
+            {
+                writing = true;
+                source.Cancel();
+            }
+        });
+        using var stderr = new StringWriter();
+        using var stdout = new MemoryStream();
+        var exitCode = await CliApp.RunAsync(
+            ["rotate", input, "--pages", "all", "--angle", "90", "--output", output],
+            stdout,
+            stderr,
+            _ => null,
+            openDocument: null,
+            runCommand: (document, options, standardOutput, token) => RotateCommand.RunAsync(document, options, null, standardOutput, stderr, token, progress),
+            source.Token);
+
+        Assert.True(writing, "The cancel must come from inside the write, or the test proves nothing.");
+        Assert.Equal(1, exitCode);
+        Assert.Contains("pagewing: Canceled.", stderr.ToString(), StringComparison.Ordinal);
+        Assert.False(File.Exists(output));
+        Assert.Empty(TemporaryFiles());
+        Assert.Equal(await File.ReadAllBytesAsync(TestData.Pdf("pages-marked.pdf"), Ct), await File.ReadAllBytesAsync(input, Ct));
+    }
+
+    [Fact]
+    public async Task CancelBeforeTheWriteStartsLeavesNothing()
+    {
         var input = Copy("signed-docmdp-1.pdf");
         var output = Path.Combine(workDirectory.FullName, "out.pdf");
 
-        // Ctrl+C right after the warning, when the command is about to write.
+        // Ctrl+C right after the first warning, before the saver is called.
         using var source = new CancellationTokenSource();
         using var stderr = new ProbeWriter(() => source.Cancel());
-        var midway = await RunAsync(stderr, environment: null, source.Token, "rotate", input, "--pages", "1", "--angle", "90", "--output", output);
+        var afterWarning = await RunAsync(stderr, environment: null, source.Token, "rotate", input, "--pages", "1", "--angle", "90", "--output", output);
 
         using var already = new CancellationTokenSource();
         await already.CancelAsync();
         var before = await RunAsync(environment: null, already.Token, "rotate", input, "--pages", "1", "--angle", "90", "--output", output);
 
-        Assert.Equal(1, midway.ExitCode);
-        Assert.Contains("pagewing: Canceled.", midway.Error, StringComparison.Ordinal);
+        Assert.Equal(1, afterWarning.ExitCode);
+        Assert.Contains("pagewing: Canceled.", afterWarning.Error, StringComparison.Ordinal);
         Assert.Equal(1, before.ExitCode);
         Assert.Contains("pagewing: Canceled.", before.Error, StringComparison.Ordinal);
         Assert.False(File.Exists(output));
@@ -429,6 +600,11 @@ public sealed class RotateCommandTests : IDisposable
             name => environment is not null && environment.TryGetValue(name, out var value) ? value : null,
             cancellationToken);
         return new CliResult(exitCode, stdout.ToArray(), stderr.ToString());
+    }
+
+    private sealed class CallbackProgress(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
     }
 
     private sealed class ProbeWriter(Action onFirstWrite) : StringWriter

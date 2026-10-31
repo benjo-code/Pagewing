@@ -42,7 +42,7 @@ public static class CliApp
                    is never changed; an encrypted input stays encrypted.
 
         Options:
-          --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all).
+          --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all; rotate: required).
           --dpi <n>          Resolution of rendered pages (default: 144).
           --output <dir>     Directory for the PNG files, created if missing (default: .).
                              For rotate: the PDF file to write (required).

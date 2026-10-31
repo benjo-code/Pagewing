@@ -22,7 +22,8 @@ internal static class RotateCommand
         string? password,
         TextWriter output,
         TextWriter error,
-        CancellationToken ct)
+        CancellationToken ct,
+        IProgress<double>? progress = null)
     {
         var target = options.OutputFile ?? throw new UsageException("The 'rotate' command needs --output.");
         var pages = CliApp.SelectPages(options.Pages, document.PageCount);
@@ -35,19 +36,13 @@ internal static class RotateCommand
                 throw new CliException($"The page changes cannot be applied: {PageLossText.RefusalOf(report)}");
             }
 
-            var folder = Path.GetDirectoryName(Path.GetFullPath(target));
-            if (folder is null || !Directory.Exists(folder))
-            {
-                throw new CliException($"The folder of the output file does not exist: '{folder ?? target}'.");
-            }
-
             // The user is told what is lost before the first byte is written.
             PageLossText.WriteWarnings(report, error);
             await error.FlushAsync(ct).ConfigureAwait(false);
 
             // The output is never the input (OutputGuard), so there is no stamp of "the original" to compare at the target.
             var request = new PageApplyRequest(plan, Path.GetFullPath(target), NoFiles);
-            var saved = await PageEditApplier.WriteAsync(new PdfEngine(), document, Path.GetFullPath(options.File), password, openedStamp: null, request, progress: null, ct).ConfigureAwait(false);
+            var saved = await PageEditApplier.WriteAsync(new PdfEngine(), document, Path.GetFullPath(options.File), password, openedStamp: null, request, progress, ct).ConfigureAwait(false);
             await saved.Reopened.DisposeAsync().ConfigureAwait(false);
         }
         catch (PageEditException ex)
