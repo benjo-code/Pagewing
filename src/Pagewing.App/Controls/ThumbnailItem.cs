@@ -49,6 +49,7 @@ public sealed class ThumbnailItem : ViewModelBase
     private Bitmap? _bitmap;
     private bool _isCurrent;
     private bool _isSelected;
+    private bool _isCopy;
     private int _number;
     private PageSlot? _slot;
     private PageKind _kind;
@@ -104,6 +105,7 @@ public sealed class ThumbnailItem : ViewModelBase
             {
                 OnPropertyChanged(nameof(IsBlank));
                 OnPropertyChanged(nameof(IsForeign));
+                OnPropertyChanged(nameof(HasMarks));
                 OnPropertyChanged(nameof(ShowsImage));
                 OnPropertyChanged(nameof(IsDrawn));
                 OnPropertyChanged(nameof(AutomationName));
@@ -129,11 +131,32 @@ public sealed class ThumbnailItem : ViewModelBase
             if (SetProperty(ref _rotation, value))
             {
                 OnPropertyChanged(nameof(IsRotated));
+                OnPropertyChanged(nameof(HasMarks));
                 OnPropertyChanged(nameof(RotationText));
                 OnPropertyChanged(nameof(AutomationName));
             }
         }
     }
+
+    /// <summary>
+    /// Gets whether this entry is a copy: the page of the document it shows occurs earlier in the plan too (duplicating). The
+    /// later occurrence says so in a symbol and the word "Copy".
+    /// </summary>
+    public bool IsCopy
+    {
+        get => _isCopy;
+        internal set
+        {
+            if (SetProperty(ref _isCopy, value))
+            {
+                OnPropertyChanged(nameof(HasMarks));
+                OnPropertyChanged(nameof(AutomationName));
+            }
+        }
+    }
+
+    /// <summary>Gets whether the entry has a mark under its number (turned, blank, from another file or a copy); without one the row of marks takes no room.</summary>
+    public bool HasMarks => IsRotated || IsBlank || IsForeign || IsCopy;
 
     /// <summary>Gets whether the plan turns the page.</summary>
     public bool IsRotated => _rotation != 0;
@@ -234,7 +257,8 @@ public sealed class ThumbnailItem : ViewModelBase
         + (IsCurrent ? Strings.ThumbnailCurrentSuffix : string.Empty)
         + (IsRotated ? ", " + RotationText : string.Empty)
         + (IsBlank ? ", " + Strings.PageMarkerBlank : string.Empty)
-        + (IsForeign ? ", " + Strings.PageMarkerOtherFile : string.Empty);
+        + (IsForeign ? ", " + Strings.PageMarkerOtherFile : string.Empty)
+        + (IsCopy ? ", " + Strings.PageMarkerCopy : string.Empty);
 
     /// <summary>Sets the width of the column the entry lies in (another density or another width of the panel).</summary>
     internal void SetColumnWidth(double width)

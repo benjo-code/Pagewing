@@ -680,6 +680,7 @@ public sealed class PagesOrganizePanelTests : IDisposable
             () => Strings.PagesNoticeClose,
             () => Strings.PageMarkerBlank,
             () => Strings.PageMarkerOtherFile,
+            () => Strings.PageMarkerCopy,
             () => Strings.PageMarkerRotated,
             () => Strings.PageCounterSame,
             () => Strings.PageCounterSameOne,
@@ -804,6 +805,182 @@ public sealed class PagesOrganizePanelTests : IDisposable
         Assert.Null(tab.PageHistory);
     }
 
+    [AvaloniaFact]
+    public async Task PlainListEntriesKeepTheirHeight()
+    {
+        // Outside the mode (and for an entry without a mark inside it) an entry is what it was before the marks existed: the
+        // cell's padding, the ring with the frame, the 6 DIP between them and the number, and nothing else.
+        var (window, viewModel) = Show(1024, height: 1700);
+        var tab = await OpenAsync(window, viewModel, "outline.pdf");
+        var list = await WaitForListAsync(window, tab);
+        double ExpectedHeight(ListBoxItem container)
+        {
+            var cell = Find<Border>(container, "ThumbnailCell");
+            return cell.Padding.Top + cell.Padding.Bottom + Find<Border>(container, "CurrentRing").Bounds.Height + 6 + Find<TextBlock>(container, "PageNumber").Bounds.Height;
+        }
+
+        for (var index = 0; index < 3; index++)
+        {
+            var container = Container(list, index);
+            Assert.False(Find<Control>(container, "Marks").IsVisible, "no row of marks in the plain list");
+            Assert.Equal(ExpectedHeight(container), Find<Border>(container, "ThumbnailCell").Bounds.Height, 0.5);
+        }
+
+        var first = Container(list, 0);
+        var second = Container(list, 1);
+        Assert.Equal(first.Bounds.Height + 16, second.Bounds.Y - first.Bounds.Y, 0.5);
+
+        // In the mode an entry without a mark is as high; one with a mark has the row of marks besides.
+        tab.OrganizeCommand.Execute(null);
+        await WaitUntilAsync(window, () => list.Classes.Contains("organizing"));
+        var plain = Container(list, 1);
+        Assert.Equal(ExpectedHeight(plain), Find<Border>(plain, "ThumbnailCell").Bounds.Height, 0.5);
+        tab.SelectPages([0]);
+        tab.RotateSelectionCommand.Execute(90);
+        Settle(window);
+        var marked = Container(list, 0);
+        Assert.True(Find<Control>(marked, "Marks").IsVisible);
+        Assert.True(Find<Border>(marked, "ThumbnailCell").Bounds.Height > ExpectedHeight(marked), "the marks take room");
+    }
+
+    [AvaloniaFact]
+    public async Task EveryMarkIsNamedInTextAndInTheEntryName()
+    {
+        var (window, viewModel) = Show(1024, height: 1700);
+        var tab = await OpenAsync(window, viewModel, "pages-marked.pdf");
+        var list = await EnterAsync(window, tab);
+
+        // A duplicate: the later entry of the page is the copy, the first is not.
+        tab.SelectPages([0]);
+        tab.DuplicateSelectionCommand.Execute(null);
+        Settle(window);
+        Assert.False(list.Thumbnails[0].IsCopy);
+        Assert.True(list.Thumbnails[1].IsCopy);
+        var copy = Container(list, 1);
+        Assert.True(Find<Control>(copy, "CopyMark").IsEffectivelyVisible);
+        Assert.Equal("Copy", Find<TextBlock>(copy, "CopyText").Text);
+        Assert.Contains(", Copy", AutomationProperties.GetName(copy));
+        Assert.DoesNotContain("Copy", AutomationProperties.GetName(Container(list, 0)));
+        Assert.True(Find<Control>(copy, "Marks").IsVisible);
+
+        // Delete the first of the two: the one that is left is no copy any more.
+        tab.SelectPages([0]);
+        tab.DeletePagesCommand.Execute(null);
+        Settle(window);
+        Assert.False(list.Thumbnails[0].IsCopy);
+        Assert.False(Find<Control>(Container(list, 0), "Marks").IsVisible);
+
+        // Turned, blank and from another file: each has its words in the name of the entry.
+        tab.SelectPages([1]);
+        tab.RotateSelectionCommand.Execute(180);
+        tab.SelectPages([2]);
+        tab.InsertBlankPageCommand.Execute(null);
+        Settle(window);
+        Assert.Contains(", Rotated 180°", AutomationProperties.GetName(Container(list, 1)));
+        var blankIndex = list.Thumbnails.ToList().FindIndex(item => item.Kind == PageKind.Blank);
+        Assert.Contains(", Blank page", AutomationProperties.GetName(Container(list, blankIndex)));
+
+        // A page of another file (the plan is given one the way the later insert command will): a stand-in tile and its words.
+        var history = tab.PageHistory!;
+        history.Do(history.Current.InsertFrom(tab.AllocatePageSource(), [0], 1));
+        history.Undo();
+        tab.RedoPagesCommand.Execute(null);
+        Settle(window);
+        var foreign = Container(list, 1);
+        Assert.Equal(PageKind.Foreign, list.Thumbnails[1].Kind);
+        Assert.True(Find<Control>(foreign, "ForeignMark").IsEffectivelyVisible);
+        Assert.True(Find<Control>(foreign, "ForeignFace").IsEffectivelyVisible);
+        Assert.Equal("From another file", Find<TextBlock>(foreign, "ForeignText").Text);
+        Assert.Contains(", From another file", AutomationProperties.GetName(foreign));
+        Assert.False(Find<Image>(foreign, "ThumbnailImage").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task ApplyAndDiscardWorkWithoutThePanelButNotBehindACard()
+    {
+        var (window, viewModel) = Show(800);
+        var tab = await OpenAsync(window, viewModel, "pages-marked.pdf");
+        await EnterAsync(window, tab);
+        tab.SelectPages([0]);
+        tab.RotateSelectionCommand.Execute(90);
+        var applied = 0;
+        tab.PageApplyRequested += () => applied++;
+        var catalog = viewModel.Commands;
+
+        // With the panel closed the pages cannot be changed, but the mode can still be applied or discarded.
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        Settle(window);
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+        Assert.False(catalog.ById("pages.rotateLeft")!.CanExecute());
+        Assert.False(catalog.ById("pages.delete")!.CanExecute());
+        Assert.True(catalog.ById("pages.apply")!.CanExecute());
+        Assert.True(catalog.ById("pages.discard")!.CanExecute());
+        catalog.ById("pages.apply")!.Execute();
+        Assert.Equal(1, applied);
+
+        // A card over the window blocks them too.
+        viewModel.ShowSettingsCommand.Execute(null);
+        Settle(window);
+        Assert.False(catalog.ById("pages.apply")!.CanExecute());
+        Assert.False(catalog.ById("pages.discard")!.CanExecute());
+        viewModel.HideOverlayCommand.Execute(null);
+        Settle(window);
+
+        catalog.ById("pages.discard")!.Execute();
+        Assert.False(tab.IsOrganizing);
+        Assert.False(tab.HasPendingPageEdits);
+    }
+
+    [AvaloniaFact]
+    public async Task UndoAndRedoOfThePlanNeedThePanelAndNoCard()
+    {
+        var (window, viewModel) = Show(1024);
+        var tab = await OpenAsync(window, viewModel, "pages-marked.pdf");
+        await EnterAsync(window, tab);
+        tab.SelectPages([0]);
+        tab.RotateSelectionCommand.Execute(90);
+        Assert.True(tab.HasPendingPageEdits);
+        var catalog = viewModel.Commands;
+        Assert.True(catalog.ById("edit.undo")!.CanExecute());
+
+        // A card with a drop-down: Ctrl+Z reaches the card, not the plan behind it.
+        viewModel.ShowSettingsCommand.Execute(null);
+        Settle(window);
+        var combo = Find<ComboBox>(Find<SettingsCard>(window, "SettingsCard"), "ThemeChoice");
+        combo.Focus(NavigationMethod.Tab);
+        Settle(window);
+        Assert.False(catalog.ById("edit.undo")!.CanExecute());
+        Press(window, Key.Z, RawInputModifiers.Control);
+        Assert.True(tab.HasPendingPageEdits);
+        viewModel.HideOverlayCommand.Execute(null);
+        Settle(window);
+
+        // With the panel closed neither key changes the plan, nor does the tab's own command.
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        Settle(window);
+        Assert.Equal(SidePanelKind.None, tab.SidePanel);
+        Assert.False(catalog.ById("edit.undo")!.CanExecute());
+        Press(window, Key.Z, RawInputModifiers.Control);
+        tab.UndoCommand.Execute(null);
+        Assert.True(tab.HasPendingPageEdits);
+
+        // With the panel open the undo works, and so does the redo.
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        await WaitForListAsync(window, tab);
+        Press(window, Key.Z, RawInputModifiers.Control);
+        Assert.False(tab.HasPendingPageEdits);
+        Assert.True(catalog.ById("edit.redo")!.CanExecute());
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        Settle(window);
+        Assert.False(catalog.ById("edit.redo")!.CanExecute());
+        Press(window, Key.Y, RawInputModifiers.Control);
+        Assert.False(tab.HasPendingPageEdits);
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        await WaitForListAsync(window, tab);
+        Press(window, Key.Y, RawInputModifiers.Control);
+        Assert.True(tab.HasPendingPageEdits);
+    }
+
     private (MainWindow Window, MainViewModel ViewModel) Show(double width, double height = 720)
     {
         // Forced, so the layout is the same on Windows and Linux runners.
@@ -902,6 +1079,7 @@ public sealed class PagesOrganizePanelTests : IDisposable
         Key.B => PhysicalKey.B,
         Key.O => PhysicalKey.O,
         Key.Z => PhysicalKey.Z,
+        Key.Y => PhysicalKey.Y,
         _ => PhysicalKey.None,
     };
 

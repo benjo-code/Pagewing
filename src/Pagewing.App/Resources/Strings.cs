@@ -561,6 +561,7 @@ public static class Strings
     public static string PagesNoticeClose => Get("PagesNoticeClose");
     public static string PageMarkerBlank => Get("PageMarkerBlank");
     public static string PageMarkerOtherFile => Get("PageMarkerOtherFile");
+    public static string PageMarkerCopy => Get("PageMarkerCopy");
     public static string PageMarkerRotated => Get("PageMarkerRotated");
     public static string PageCounterSame => Get("PageCounterSame");
     public static string PageCounterSameOne => Get("PageCounterSameOne");

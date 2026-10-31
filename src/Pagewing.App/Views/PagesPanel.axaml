@@ -151,7 +151,7 @@
                 </Border>
                 <TextBlock Name="PageNumber" Classes="mono num thumbNumber" Text="{Binding PageText}" HorizontalAlignment="Center" />
                 <!-- What the plan did to the page, in a symbol and words (design system 7.10). -->
-                <StackPanel Spacing="2" HorizontalAlignment="Center" MaxWidth="{Binding ColumnWidth}">
+                <StackPanel Name="Marks" Spacing="2" HorizontalAlignment="Center" MaxWidth="{Binding ColumnWidth}" IsVisible="{Binding HasMarks}">
                   <Grid Name="RotatedMark" ColumnDefinitions="Auto,*" HorizontalAlignment="Center" IsVisible="{Binding IsRotated}">
                     <ctl:StrokeIcon Name="RotatedIcon" Width="14" Height="14" VerticalAlignment="Top" Margin="0,0,4,0"
                                     Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.RotateRight}" />
@@ -161,6 +161,11 @@
                     <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,0,4,0"
                                     Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.FilePlus}" />
                     <TextBlock Name="BlankText" Grid.Column="1" Classes="caption thumbMark" Text="{x:Static res:Strings.PageMarkerBlank}" />
+                  </Grid>
+                  <Grid Name="CopyMark" ColumnDefinitions="Auto,*" HorizontalAlignment="Center" IsVisible="{Binding IsCopy}">
+                    <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,0,4,0"
+                                    Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Copy}" />
+                    <TextBlock Name="CopyText" Grid.Column="1" Classes="caption thumbMark" Text="{x:Static res:Strings.PageMarkerCopy}" />
                   </Grid>
                   <Grid Name="ForeignMark" ColumnDefinitions="Auto,*" HorizontalAlignment="Center" IsVisible="{Binding IsForeign}">
                     <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,0,4,0"

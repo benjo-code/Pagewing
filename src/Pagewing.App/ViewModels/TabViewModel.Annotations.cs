@@ -196,14 +196,18 @@ public sealed partial class TabViewModel
         {
             if (_isOrganizing)
             {
-                UndoPages();
+                // Only a plan in sight is changed: with the pages panel closed the key does nothing.
+                if (_sidePanel == SidePanelKind.Pages)
+                {
+                    UndoPages();
+                }
             }
             else
             {
                 UndoAfterNudge();
             }
         },
-        () => _isOrganizing ? CanStepPages(undo: true) : IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
+        () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: true) : IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again (of the page plan in the mode "Organize pages").</summary>
     public ICommand RedoCommand => _redoCommand ??= new RelayCommand(
@@ -211,14 +215,17 @@ public sealed partial class TabViewModel
         {
             if (_isOrganizing)
             {
-                RedoPages();
+                if (_sidePanel == SidePanelKind.Pages)
+                {
+                    RedoPages();
+                }
             }
             else
             {
                 RedoAfterNudge();
             }
         },
-        () => _isOrganizing ? CanStepPages(undo: false) : IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
+        () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: false) : IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with

@@ -1629,4 +1629,7 @@
   <data name="CommandApplyPageEdits" xml:space="preserve">
     <value>Seitenänderungen anwenden</value>
   </data>
+  <data name="PageMarkerCopy" xml:space="preserve">
+    <value>Kopie</value>
+  </data>
 </root>

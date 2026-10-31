@@ -107,9 +107,9 @@ public sealed class CommandCatalog
 
         // Edit: undo and redo of the annotations, only while there is a step. A text field keeps these keys for its own text
         // (YieldsToTextInput), as it keeps Ctrl+C.
-        Tab("edit.undo", () => Strings.CommandUndo, EditGroup, Ctrl(Key.Z), tab => tab.UndoCommand) with { YieldsToTextInput = true },
-        Tab("edit.redo", () => Strings.CommandRedo, EditGroup, CtrlShift(Key.Z), tab => tab.RedoCommand)
-            with { AlternativeGestures = [Ctrl(Key.Y)], YieldsToTextInput = true },
+        PlanGuarded(Tab("edit.undo", () => Strings.CommandUndo, EditGroup, Ctrl(Key.Z), tab => tab.UndoCommand) with { YieldsToTextInput = true }),
+        PlanGuarded(Tab("edit.redo", () => Strings.CommandRedo, EditGroup, CtrlShift(Key.Z), tab => tab.RedoCommand)
+            with { AlternativeGestures = [Ctrl(Key.Y)], YieldsToTextInput = true }),
 
         // The mode "Comment" (design system 7.7): on and off, and the three markups, which start the mode and turn a text
         // selection into a markup at once. Only once the document shows a sharp page and allows annotations (the palette
@@ -153,8 +153,8 @@ public sealed class CommandCatalog
         OrganizeTab("pages.insertBlank", () => Strings.CommandInsertBlankPage, CtrlShift(Key.B), tab => tab.InsertBlankPageCommand),
         OrganizeTab("pages.moveEarlier", () => Strings.CommandMovePagesEarlier, CtrlShift(Key.Up), tab => tab.MoveSelectionEarlierCommand) with { YieldsToTextInput = true },
         OrganizeTab("pages.moveLater", () => Strings.CommandMovePagesLater, CtrlShift(Key.Down), tab => tab.MoveSelectionLaterCommand) with { YieldsToTextInput = true },
-        OrganizeTab("pages.apply", () => Strings.CommandApplyPageEdits, null, tab => tab.ApplyPageEditsCommand),
-        OrganizeTab("pages.discard", () => Strings.CommandDiscardPageEdits, null, tab => tab.DiscardPageEditsCommand),
+        OrganizeTab("pages.apply", () => Strings.CommandApplyPageEdits, null, tab => tab.ApplyPageEditsCommand, needsPanel: false),
+        OrganizeTab("pages.discard", () => Strings.CommandDiscardPageEdits, null, tab => tab.DiscardPageEditsCommand, needsPanel: false),
 
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
@@ -270,15 +270,19 @@ public sealed class CommandCatalog
     /// command is not even looked up (so nothing of the mode is made by asking the catalog). It also waits while the pages
     /// panel is closed (the pages it would change are not in sight) and while a card (settings, help, about, print, signature) lies
     /// over the window: a key such as Delete belongs to a list or drop-down of a card then, and must never reach the pages
-    /// behind. The command palette is no obstacle: it offers these commands and its field keeps the keys of text.
+    /// behind. The command palette is no obstacle: it offers these commands and its field keeps the keys of text. "Apply" and
+    /// "Discard" (<paramref name="needsPanel"/> <see langword="false"/>) work with the panel closed, because they end the mode
+    /// and change no page the user cannot see; the card rule holds for them as well.
     /// </summary>
-    private AppCommand OrganizeTab(string id, Func<string> title, KeyGesture? gesture, Func<TabViewModel, ICommand> command, object? parameter = null)
+    private AppCommand OrganizeTab(string id, Func<string> title, KeyGesture? gesture, Func<TabViewModel, ICommand> command, object? parameter = null, bool needsPanel = true)
     {
         bool CanRun(out ICommand? target)
         {
-            target = _window.ActiveTab is { IsOrganizing: true, SidePanel: SidePanelKind.Pages } tab && _window.Overlay is OverlayKind.None or OverlayKind.Palette
-                ? command(tab)
-                : null;
+            target = _window.ActiveTab is { IsOrganizing: true } tab
+                && (!needsPanel || tab.SidePanel == SidePanelKind.Pages)
+                && _window.Overlay is OverlayKind.None or OverlayKind.Palette
+                    ? command(tab)
+                    : null;
             return target?.CanExecute(parameter) == true;
         }
 
@@ -289,6 +293,17 @@ public sealed class CommandCatalog
                 target!.Execute(parameter);
             }
         });
+    }
+
+    /// <summary>
+    /// Ctrl+Z and Ctrl+Y undo and redo the page plan while the mode "Organize pages" is on (the tab decides, and does so only
+    /// with the pages panel open); a card over the window (a drop-down of the settings) must never reach the plan behind it,
+    /// so while one lies there the keys do nothing in the mode.
+    /// </summary>
+    private AppCommand PlanGuarded(AppCommand command)
+    {
+        bool Blocked() => _window.ActiveTab is { IsOrganizing: true } && _window.Overlay is not (OverlayKind.None or OverlayKind.Palette);
+        return command with { CanExecute = () => !Blocked() && command.CanExecute(), Execute = () => { if (!Blocked()) { command.Execute(); } } };
     }
 
     private AppCommand Layout(string id, Func<string> title, PageLayoutMode mode) =>

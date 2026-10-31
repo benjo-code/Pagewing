@@ -111,6 +111,7 @@ internal sealed partial class ThumbnailList
         _items = shown;
         _shownPlan = plan;
         _planMode = true;
+        UpdateCopyMarks();
         Classes.Set("organizing", true);
         SelectionMode = SelectionMode.Multiple;
         ItemsSource = shown;
@@ -224,8 +225,19 @@ internal sealed partial class ThumbnailList
         }
 
         _shownPlan = plan;
+        UpdateCopyMarks();
         ApplySelectionFromTab();
         SchedulePlan();
+    }
+
+    /// <summary>The later entries of a page of the document that occurs more than once are copies and say so (one pass over the plan).</summary>
+    private void UpdateCopyMarks()
+    {
+        var seen = new HashSet<int>();
+        foreach (var item in _planItems!)
+        {
+            item.IsCopy = item.RenderPage >= 0 && !seen.Add(item.RenderPage);
+        }
     }
 
     private ThumbnailItem NewPlanItem(int position, PageSlot slot)

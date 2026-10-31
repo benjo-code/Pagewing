@@ -147,6 +147,10 @@ public sealed class PagesOrganizeModelTests : IDisposable
     public async Task PendingPlanLocksAnnotateAndFillModes()
     {
         var tab = await OpenAsync("forms-basic.pdf");
+
+        // The offer depends on the form read, which runs in the background: wait for it, so the checks below never race it.
+        await tab.EnsureFormInfoAsync();
+        Assert.True(tab.HasFormFields);
         Assert.True(tab.BeginAnnotateCommand.CanExecute(null));
         Assert.True(tab.ToggleFillCommand.CanExecute(null));
 

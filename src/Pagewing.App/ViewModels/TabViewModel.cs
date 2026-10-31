@@ -398,6 +398,13 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 return;
             }
 
+            // In the mode "Organize pages" the keys of undo and redo work only with the pages panel open.
+            if (_isOrganizing)
+            {
+                _undoCommand?.RaiseCanExecuteChanged();
+                _redoCommand?.RaiseCanExecuteChanged();
+            }
+
             if (value == SidePanelKind.Search)
             {
                 _panelBeforeSearch = old;
