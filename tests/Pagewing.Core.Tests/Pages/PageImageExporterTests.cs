@@ -4,6 +4,7 @@ using Pagewing.Cli;
 using Pagewing.Core.Imaging;
 using Pagewing.Core.Pages;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Saving;
 using Pagewing.Core.Tests.Annotations;
 using Pagewing.TestSupport;
 using Xunit;
@@ -262,8 +263,151 @@ public sealed class PageImageExporterTests
 
         Assert.Equal(1, exit);
         Assert.StartsWith("pagewing: ", stderr.ToString(), StringComparison.Ordinal);
-        Assert.Contains("megapixel", stderr.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        // The text of the render itself (its limit is 268435456 pixels), not the export's: render behaves as it always did.
+        Assert.Contains("larger than 268435456 pixels", stderr.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("   at ", stderr.ToString(), StringComparison.Ordinal);
+
+        // The page before it was written and printed.
+        Assert.Equal([Path.Combine(output, "big-p001.png")], new UTF8Encoding(false, true).GetString(stdout.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
+    public async Task RenderStillRendersAPageBetweenTheExportLimitAndTheRenderLimit()
+    {
+        using var folder = new TempFolder();
+        var path = Path.Combine(folder.Path, "wide.pdf");
+
+        // 8400 x 8400 pt at 72 dpi is 70.56 megapixels: above the export limit (64), far below the limit of the render (268).
+        await File.WriteAllTextAsync(path, TwoPages(8400, 8400, 200, 100), Encoding.ASCII, Ct);
+        var output = Path.Combine(folder.Path, "png");
+        using var stdout = new MemoryStream();
+        using var stderr = new StringWriter();
+
+        var exit = await CliApp.RunAsync(["render", path, "--dpi", "72", "--output", output, "--pages", "1"], stdout, stderr, _ => null, Ct);
+
+        Assert.Equal(0, exit);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var file = Path.Combine(output, "wide-p001.png");
+        Assert.Equal([file], Directory.GetFileSystemEntries(output));
+        var (width, height, _) = PngDecoder.Decode(await File.ReadAllBytesAsync(file, Ct));
+        Assert.Equal((8400, 8400), (width, height));
+
+        // The export's default refuses the same page.
+        await using var document = await engine.OpenAsync(path, null, Ct);
+        var refused = await Assert.ThrowsAsync<PageExportException>(
+            () => PageImageExporter.ExportAsync(document, "wide", [0], 1, annotations: true, Directory.CreateDirectory(Path.Combine(folder.Path, "export")).FullName, overwrite: false, progress: null, Ct));
+        Assert.Equal(PageExportError.TooLarge, refused.Error);
+    }
+
+    [Fact]
+    public void TheDefaultLimitIsExactlySixtyFourMillionPixels()
+    {
+        Assert.Equal(64_000_000, PageImageExporter.MaxPixels);
+        Assert.False(PageImageExporter.Exceeds(new PdfPageSize(8000, 8000), 1, PageImageExporter.MaxPixels));
+        Assert.True(PageImageExporter.Exceeds(new PdfPageSize(64_000_001, 1), 1, PageImageExporter.MaxPixels));
+        Assert.False(PageImageExporter.Exceeds(new PdfPageSize(64_000_000, 1), 1, PageImageExporter.MaxPixels));
+        Assert.True(PageImageExporter.Exceeds(new PdfPageSize(8000, 8000.5), 1, PageImageExporter.MaxPixels));
+        Assert.True(PageImageExporter.Exceeds(new PdfPageSize(1e300, 1), 1, PageImageExporter.MaxPixels));
+        Assert.False(PageImageExporter.Exceeds(new PdfPageSize(1e300, 1), 1, PageImageExporter.RenderLimitOnly));
+    }
+
+    [Fact]
+    public async Task ExportAcceptsExactlyTheGivenPixelLimit()
+    {
+        using var folder = new TempFolder();
+        await using var document = await engine.OpenAsync(TestData.Pdf("text-basic.pdf"), null, Ct);
+
+        // text-basic.pdf pages are 300 x 200 pt: 60,000 pixels at scale 1.
+        var written = await PageImageExporter.ExportAsync(document, "t", [0], 1, annotations: true, folder.Path, overwrite: false, progress: null, Ct, maxPixels: 60_000);
+        Assert.Single(written);
+        var refused = await Assert.ThrowsAsync<PageExportException>(
+            () => PageImageExporter.ExportAsync(document, "u", [0], 1, annotations: true, folder.Path, overwrite: false, progress: null, Ct, maxPixels: 59_999));
+        Assert.Equal(PageExportError.TooLarge, refused.Error);
+        Assert.Equal([written[0]], Directory.GetFileSystemEntries(folder.Path));
+    }
+
+    [Theory]
+    [InlineData("größe 日本")]
+    [InlineData("con")]
+    [InlineData("a.")]
+    [InlineData(" a")]
+    [InlineData("a ")]
+    [InlineData("report.v2")]
+    [InlineData("report..")]
+    [InlineData("")]
+    [InlineData("200")]
+    public async Task ExportNamesRealFileNamesExactlyLikeTheOldRenderCommand(string stem)
+    {
+        if (stem == "200")
+        {
+            stem = new string('x', 200);
+        }
+
+        using var folder = new TempFolder();
+        await using var document = await engine.OpenAsync(TestData.Pdf("text-basic.pdf"), null, Ct);
+
+        var written = await PageImageExporter.ExportAsync(document, stem, [0, 1], 0.25, annotations: true, folder.Path, overwrite: false, progress: null, Ct);
+
+        // The old formula of RenderCommand: the stem as it is, "-p", the number with at least three digits, ".png".
+        Assert.Equal(
+            [Path.Combine(folder.Path, $"{stem}-p001.png"), Path.Combine(folder.Path, $"{stem}-p002.png")],
+            written);
+        Assert.All(written, file => Assert.True(File.Exists(file)));
+    }
+
+    [Fact]
+    public async Task ExportMakesAStemSafeOnlyWhenNoFileNameCanBeMadeOfIt()
+    {
+        using var folder = new TempFolder();
+        await using var document = await engine.OpenAsync(TestData.Pdf("text-basic.pdf"), null, Ct);
+
+        // 250 characters and the suffix are more than the 255 a file name may have: cut, but still a file in the folder.
+        var longStem = new string('y', 250);
+        var written = await PageImageExporter.ExportAsync(document, longStem, [0], 0.25, annotations: true, folder.Path, overwrite: false, progress: null, Ct);
+
+        var name = Path.GetFileName(Assert.Single(written));
+        Assert.True(name.Length <= 255);
+        Assert.NotEqual($"{longStem}-p001.png", name);
+        Assert.EndsWith("-p001.png", name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExportReportsTheReasonWhenAFileCannotBeWritten()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "A read-only file blocks the replace on Windows; Linux replaces it by rename.");
+        using var folder = new TempFolder();
+        await using var document = await engine.OpenAsync(TestData.Pdf("text-basic.pdf"), null, Ct);
+        var target = Path.Combine(folder.Path, "text-basic-p001.png");
+        await File.WriteAllTextAsync(target, "keep", Ct);
+        File.SetAttributes(target, FileAttributes.ReadOnly);
+        try
+        {
+            var failed = await Assert.ThrowsAsync<PageExportException>(
+                () => PageImageExporter.ExportAsync(document, "text-basic", [0], 0.25, annotations: true, folder.Path, overwrite: true, progress: null, Ct));
+
+            Assert.Equal(PageExportError.WriteFailed, failed.Error);
+            Assert.Equal(0, failed.Page);
+            Assert.Equal([target], failed.Paths);
+            Assert.NotNull(failed.InnerException);
+            Assert.Contains(target, failed.Message, StringComparison.Ordinal);
+            var reason = failed.InnerException is SaveFailureException { InnerException: { } inner } ? inner : failed.InnerException;
+            Assert.Contains(reason.Message, failed.Message, StringComparison.Ordinal);
+            Assert.Equal("keep", await File.ReadAllTextAsync(target, Ct));
+            Assert.Equal([target], Directory.GetFileSystemEntries(folder.Path));
+
+            // The command shows the same detail, with exit code 1.
+            using var stdout = new MemoryStream();
+            using var stderr = new StringWriter();
+            var exit = await CliApp.RunAsync(["render", TestData.Pdf("text-basic.pdf"), "--dpi", "18", "--output", folder.Path, "--pages", "1"], stdout, stderr, _ => null, Ct);
+            Assert.Equal(1, exit);
+            Assert.StartsWith("pagewing: An image could not be written: ", stderr.ToString(), StringComparison.Ordinal);
+            Assert.Contains(reason.Message, stderr.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.SetAttributes(target, FileAttributes.Normal);
+        }
     }
 
     // A minimal PDF without a cross reference table (PDFium rebuilds it) whose two pages have the given sizes in points.

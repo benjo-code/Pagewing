@@ -100,6 +100,13 @@ public static class PageImageExporter
     /// <summary>The most pixels one exported page may have (64 megapixels); above it the page is refused with <see cref="PageExportError.TooLarge"/>.</summary>
     public const long MaxPixels = 64_000_000;
 
+    /// <summary>
+    /// Pass as <c>maxPixels</c> to leave the size to the render itself: its own limit (<see cref="PdfRenderException"/> for more
+    /// than 256 megapixels or a side beyond the <see cref="int"/> range, with its own text) then applies alone. This is what
+    /// <c>pagewing render</c> always did.
+    /// </summary>
+    public const long RenderLimitOnly = long.MaxValue;
+
     /// <summary>The most pages one export may name (as many as a document may have pages).</summary>
     public const int MaxPages = PageEditLimits.MaxSlots;
 
@@ -108,8 +115,8 @@ public static class PageImageExporter
     // "-p" + the page number (up to six digits) + ".png" is 12 characters; the sanitizer leaves room for them.
     private const int SuffixRoom = 16;
 
-    // A stem that is kept as it is stays well below the 255 bytes of a file name component, also with the suffix.
-    private const int PlainStemBytes = 200;
+    // The longest file name component: 255 UTF-16 units on Windows, 255 bytes on Linux.
+    private const int MaxFileNameLength = 255;
 
     /// <summary>
     /// Renders <paramref name="pages"/> and writes one PNG per page into <paramref name="directory"/>, one after the other, in
@@ -118,8 +125,9 @@ public static class PageImageExporter
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The stem is used as it is when it is a plain file name component; anything else (a path separator, a control or
-    /// forbidden character, a device name of Windows, <c>..</c>, endless text) is made safe by <see cref="OutputNames.Sanitize(string, int)"/>,
+    /// The stem is used exactly as it is whenever it makes a valid file name with the suffix (so every file name
+    /// <c>pagewing render</c> could write keeps its name); anything else (a path separator, a character the system forbids,
+    /// a device name of Windows, a name beyond 255 units) is made safe by <see cref="OutputNames.Sanitize(string, int)"/>,
     /// so the files are always directly inside <paramref name="directory"/>.
     /// </para>
     /// <para>
@@ -140,6 +148,7 @@ public static class PageImageExporter
     /// <param name="cancellationToken">Cancels before and during a page.</param>
     /// <param name="written">Receives the full path of each file as soon as it is complete (also when a later page fails or the export is canceled), or <see langword="null"/>.</param>
     /// <param name="sourcePath">The file <paramref name="document"/> was opened from, which no image may replace, or <see langword="null"/> when it has none.</param>
+    /// <param name="maxPixels">The most pixels a page may have, checked for every page before anything is written (exactly this many are allowed); default <see cref="MaxPixels"/>. <see cref="RenderLimitOnly"/> leaves the check to the render.</param>
     /// <returns>The full paths of the files, in the order of <paramref name="pages"/>.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not finite and positive, or a page is not in the document.</exception>
     /// <exception cref="ArgumentException">A page is listed twice.</exception>
@@ -157,9 +166,11 @@ public static class PageImageExporter
         IProgress<double>? progress,
         CancellationToken cancellationToken,
         ICollection<string>? written = null,
-        string? sourcePath = null)
+        string? sourcePath = null,
+        long maxPixels = MaxPixels)
     {
         ArgumentNullException.ThrowIfNull(document);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxPixels, 1L);
         ArgumentNullException.ThrowIfNull(stem);
         ArgumentNullException.ThrowIfNull(pages);
         ArgumentException.ThrowIfNullOrEmpty(directory);
@@ -189,10 +200,10 @@ public static class PageImageExporter
 
         // Everything that can be refused is refused before the first file is written: the size of every page first
         // (before anything is rendered or allocated), then the files in the way.
-        for (var i = 0; i < pages.Count; i++)
+        for (var i = 0; i < pages.Count && maxPixels != RenderLimitOnly; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await CheckSizeAsync(document, pages[i], scale, cancellationToken).ConfigureAwait(false);
+            await CheckSizeAsync(document, pages[i], scale, maxPixels, cancellationToken).ConfigureAwait(false);
         }
 
         var full = sourcePath is null ? null : Path.GetFullPath(sourcePath);
@@ -259,18 +270,22 @@ public static class PageImageExporter
         return (long)width * (long)height;
     }
 
-    private static async Task CheckSizeAsync(PdfDocument document, int page, double scale, CancellationToken cancellationToken)
+    /// <summary>Whether a page of <paramref name="size"/> rendered at <paramref name="scale"/> has more than <paramref name="maxPixels"/> pixels (exactly <paramref name="maxPixels"/> is allowed).</summary>
+    internal static bool Exceeds(PdfPageSize size, double scale, long maxPixels) => PixelsOf(size, scale) > maxPixels;
+
+    private static async Task CheckSizeAsync(PdfDocument document, int page, double scale, long maxPixels, CancellationToken cancellationToken)
     {
         var sizes = await document.GetPageSizesAsync(page, 1, PdfPriority.Background, cancellationToken).ConfigureAwait(false);
-        var pixels = PixelsOf(sizes[0], scale);
-        if (pixels <= MaxPixels)
+        if (!Exceeds(sizes[0], scale, maxPixels))
         {
             return;
         }
 
+        var pixels = PixelsOf(sizes[0], scale);
+        var limit = maxPixels / 1_000_000.0;
         var text = pixels == long.MaxValue
-            ? string.Create(CultureInfo.InvariantCulture, $"Page {page + 1} would be far larger than the limit of {MaxPixels / 1_000_000} megapixels at this resolution. Use a lower resolution.")
-            : string.Create(CultureInfo.InvariantCulture, $"Page {page + 1} would have {pixels / 1_000_000.0:0.#} megapixels at this resolution; the limit is {MaxPixels / 1_000_000} megapixels. Use a lower resolution.");
+            ? string.Create(CultureInfo.InvariantCulture, $"Page {page + 1} would be far larger than the limit of {limit:0.###} megapixels at this resolution. Use a lower resolution.")
+            : string.Create(CultureInfo.InvariantCulture, $"Page {page + 1} would have {pixels / 1_000_000.0:0.#} megapixels at this resolution; the limit is {limit:0.###} megapixels. Use a lower resolution.");
         throw new PageExportException(page, text);
     }
 
@@ -293,9 +308,11 @@ public static class PageImageExporter
 
     private static string[] TargetPaths(int pageCount, IReadOnlyList<int> pages, string stem, string root)
     {
-        var name = SafeStem(stem);
         var digits = Math.Max(MinimumDigits, pageCount.ToString(CultureInfo.InvariantCulture).Length);
         var format = "D" + digits.ToString(CultureInfo.InvariantCulture);
+        var name = IsPlain(stem, digits)
+            ? stem
+            : OutputNames.Sanitize(stem, OutputNames.DefaultMaxLength - SuffixRoom, OutputNames.MaxStemBytes - SuffixRoom);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var targets = new string[pages.Count];
         for (var i = 0; i < pages.Count; i++)
@@ -305,8 +322,7 @@ public static class PageImageExporter
             // Defence in depth: whatever the stem was, the result must be a plain file directly in the folder.
             var path = Path.GetFullPath(Path.Combine(root, file));
             var parent = Path.GetDirectoryName(path);
-            if (file.AsSpan().IndexOfAny('/', '\\') >= 0
-                || parent is null
+            if (parent is null
                 || !string.Equals(Path.TrimEndingDirectorySeparator(parent), root, comparison)
                 || !string.Equals(Path.GetFileName(path), file, comparison))
             {
@@ -319,29 +335,23 @@ public static class PageImageExporter
         return targets;
     }
 
-    // A real file name stays as it is (so "pagewing render" names its files as it always did); anything else is made safe.
-    private static string SafeStem(string stem) =>
-        IsPlain(stem)
-            ? stem
-            : OutputNames.Sanitize(stem, OutputNames.DefaultMaxLength - SuffixRoom, OutputNames.MaxStemBytes - SuffixRoom);
-
-    private static bool IsPlain(string stem)
+    // A stem that makes a valid file name with the suffix stays exactly as it is: everything "pagewing render" ever wrote keeps
+    // its name (also an empty stem, a leading or trailing space or dot, a long one). Only what cannot be a file name here is
+    // made safe: a path separator, a character the system forbids in file names (platform dependent, as before), a lone
+    // surrogate, a name beyond the 255 units a file name may have, or a device name of Windows (the part before the first dot
+    // of the whole name: "con" is fine, "nul.txt" is not).
+    private static bool IsPlain(string stem, int digits)
     {
-        if (stem.Length == 0
-            || stem.Length > PlainStemBytes
-            || stem is "." or ".."
-            || stem.AsSpan().IndexOfAny('/', '\\') >= 0
+        if (stem.AsSpan().IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) >= 0
             || stem.AsSpan().IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
-            || stem.AsSpan().ContainsAnyInRange('\0', '\u001f')
-            || stem[^1] is ' ' or '.'
-            || stem[0] == ' '
-            || OutputNames.IsDeviceName(stem))
+            || !IsWellFormed(stem))
         {
             return false;
         }
 
-        // Lone surrogates cannot be encoded; the length in bytes is what the file system limits.
-        return IsWellFormed(stem) && Encoding.UTF8.GetByteCount(stem) <= PlainStemBytes;
+        var suffix = 2 + digits + ".png".Length;
+        var length = OperatingSystem.IsWindows() ? stem.Length + suffix : Encoding.UTF8.GetByteCount(stem) + suffix;
+        return length <= MaxFileNameLength && !OutputNames.IsDeviceName(stem + "-p000.png");
     }
 
     private static bool IsWellFormed(string text)
@@ -430,13 +440,16 @@ public static class PageImageExporter
         }
         catch (Exception ex) when (ex is SaveFailureException or IOException or UnauthorizedAccessException)
         {
-            throw new PageExportException(PageExportError.WriteFailed, "An image could not be written.", page, [target], ex);
+            throw new PageExportException(PageExportError.WriteFailed, $"An image could not be written: {target}: {Innermost(ex).Message}", page, [target], ex);
         }
         finally
         {
             TryDelete(temporary);
         }
     }
+
+    // The reason the system gave ("Access to the path ... is denied"), not the wrapper of the save around it.
+    private static Exception Innermost(Exception error) => error is SaveFailureException { InnerException: { } inner } ? inner : error;
 
     private static void TryDelete(string path)
     {

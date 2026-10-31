@@ -33,7 +33,8 @@ internal static class RenderCommand
                     overwrite: true,
                     progress: null,
                     ct,
-                    sourcePath: options.File).ConfigureAwait(false);
+                    sourcePath: options.File,
+                    maxPixels: PageImageExporter.RenderLimitOnly).ConfigureAwait(false);
 
                 // The path as the user wrote the folder (maybe relative), not the full path the exporter returns.
                 var path = Path.Combine(options.OutputDirectory, Path.GetFileName(written[0]));
