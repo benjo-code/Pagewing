@@ -306,6 +306,22 @@ public sealed class PageEditApplierTests
         Assert.Equal(6, again.Document!.PageCount);
     }
 
+    [Fact]
+    public void ThePasswordOfASourceFileIsNeverInItsText()
+    {
+        var file = new PageSourceFile("a.pdf", "tops3cret", new FileStamp(10, DateTime.UnixEpoch));
+        var request = new PageApplyRequest(PageEditPlan.Identity(1), "out.pdf", new Dictionary<PageSourceId, PageSourceFile> { [new PageSourceId(1)] = file });
+
+        Assert.DoesNotContain("tops3cret", file.ToString(), StringComparison.Ordinal);
+        Assert.Contains("(hidden)", file.ToString(), StringComparison.Ordinal);
+        Assert.Contains("a.pdf", file.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("tops3cret", request.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Password = null", new PageSourceFile("b.pdf", null).ToString(), StringComparison.Ordinal);
+
+        // Equality still sees the password (two files with different passwords are different sources).
+        Assert.NotEqual(file, file with { Password = "other" });
+    }
+
     private static string Copy(TempFolder folder, string fixture)
     {
         var path = Path.Combine(folder.Path, fixture);

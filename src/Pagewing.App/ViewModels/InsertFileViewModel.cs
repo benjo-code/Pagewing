@@ -33,7 +33,7 @@ public enum InsertFileState
 public sealed class InsertFileViewModel : ViewModelBase, IDisposable
 {
     private readonly string _path;
-    private readonly PdfEngine _engine;
+    private readonly Func<string, string?, CancellationToken, Task<PdfDocument>> _open;
     private readonly Func<InsertedSource, IReadOnlyList<int>, string?> _insert;
     private readonly Func<string> _position;
     private readonly CancellationTokenSource _cancellation = new();
@@ -56,14 +56,15 @@ public sealed class InsertFileViewModel : ViewModelBase, IDisposable
     /// <param name="engine">Opens the file.</param>
     /// <param name="insert">Puts the pages into the plan; returns <see langword="null"/> when it worked, else the reason it was refused. Owns the source from then on.</param>
     /// <param name="position">Tells where the pages would go, as words, read each time the selection changes.</param>
-    internal InsertFileViewModel(string path, PdfEngine engine, Func<InsertedSource, IReadOnlyList<int>, string?> insert, Func<string> position)
+    /// <param name="open">Opens the file instead of <paramref name="engine"/> (tests make it fail in ways the engine does not).</param>
+    internal InsertFileViewModel(string path, PdfEngine engine, Func<InsertedSource, IReadOnlyList<int>, string?> insert, Func<string> position, Func<string, string?, CancellationToken, Task<PdfDocument>>? open = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(insert);
         ArgumentNullException.ThrowIfNull(position);
         _path = path;
-        _engine = engine;
+        _open = open ?? engine.OpenAsync;
         _insert = insert;
         _position = position;
         _positionText = position();
@@ -219,7 +220,7 @@ public sealed class InsertFileViewModel : ViewModelBase, IDisposable
         _submitPasswordCommand.RaiseCanExecuteChanged();
         try
         {
-            var document = await _engine.OpenAsync(_path, string.IsNullOrEmpty(password) ? null : password, _cancellation.Token);
+            var document = await _open(_path, string.IsNullOrEmpty(password) ? null : password, _cancellation.Token);
             if (_disposed)
             {
                 await document.DisposeAsync();
@@ -235,6 +236,8 @@ public sealed class InsertFileViewModel : ViewModelBase, IDisposable
                 return;
             }
 
+            // The file is open: the typed password is no longer needed here (the plan keeps it for the rewrite).
+            Password = string.Empty;
             RefreshPosition();
             State = InsertFileState.Ready;
         }
@@ -256,6 +259,15 @@ public sealed class InsertFileViewModel : ViewModelBase, IDisposable
         catch (ObjectDisposedException)
         {
             // The window went meanwhile.
+        }
+        catch (Exception)
+        {
+            // Anything else (reading the file failed in a way the engine does not name): said in the dialog, never silent. The
+            // exception text (it may name a path) is not shown.
+            _source?.Dispose();
+            _source = null;
+            ErrorText = string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ErrorCause), FileName, Strings.ErrorUnknown);
+            State = InsertFileState.Failed;
         }
         finally
         {
@@ -299,6 +311,7 @@ public sealed class InsertFileViewModel : ViewModelBase, IDisposable
 
         // The tab owns the file now; the dialog lets go of it without closing it.
         _source = null;
+        Password = string.Empty;
         Inserted?.Invoke();
     }
 
@@ -311,6 +324,7 @@ public sealed class InsertFileViewModel : ViewModelBase, IDisposable
         }
 
         _disposed = true;
+        Password = string.Empty;
         _cancellation.Cancel();
         _source?.Dispose();
         _source = null;

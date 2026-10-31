@@ -38,7 +38,13 @@ public sealed partial class InsertFileCard : UserControl
     }
 
     /// <summary>Hides the card.</summary>
-    internal void Hide() => IsVisible = false;
+    internal void Hide()
+    {
+        IsVisible = false;
+
+        // A password typed here must not stay in the field of a card that is only hidden.
+        InsertFilePassword.Text = string.Empty;
+    }
 
     /// <summary>Puts the keys on the password field, the pages field, or (while opening or after a failure) the "Cancel" button.</summary>
     internal void FocusFirst()

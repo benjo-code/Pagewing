@@ -659,6 +659,68 @@ public sealed class InsertFileTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ThePasswordIsNeverPrintedAndNotKeptAfterUse()
+    {
+        var (window, viewModel, tab, _) = await OrganizedAsync();
+        var secret = _host.Copy("encrypted_hello_world_r3.pdf", "secret.pdf");
+
+        // A wrong password stays in the field for another try; closing the dialog empties the field and the view model.
+        var dialog = await ChooseAsync(window, viewModel, tab, secret, InsertFileState.NeedsPassword);
+        var card = Find<InsertFileCard>(window, "InsertFileCard");
+        var field = Find<TextBox>(card, "InsertFilePassword");
+        dialog.Password = "wrong-secret";
+        dialog.SubmitPasswordCommand.Execute(null);
+        await WaitUntilAsync(window, () => dialog.IsPasswordIncorrect);
+        Assert.Equal("wrong-secret", field.Text);
+        Press(window, Key.Escape, PhysicalKey.Escape);
+        await WaitUntilAsync(window, () => viewModel.Overlay == OverlayKind.None);
+        Assert.Equal(string.Empty, dialog.Password);
+        Assert.True(string.IsNullOrEmpty(field.Text));
+
+        // A right one is dropped from the dialog as soon as the file is open and after the pages went in.
+        dialog = await ChooseAsync(window, viewModel, tab, secret, InsertFileState.NeedsPassword);
+        dialog.Password = "hôtel";
+        dialog.SubmitPasswordCommand.Execute(null);
+        await WaitUntilAsync(window, () => dialog.State == InsertFileState.Ready);
+        Assert.Equal(string.Empty, dialog.Password);
+        Assert.True(string.IsNullOrEmpty(Find<TextBox>(Find<InsertFileCard>(window, "InsertFileCard"), "InsertFilePassword").Text));
+        dialog.InsertCommand.Execute(null);
+        await WaitUntilAsync(window, () => viewModel.Overlay == OverlayKind.None);
+
+        // The plan needs it for the rewrite and keeps it, but no text of the objects that carry it shows it.
+        var source = Assert.Single(tab.InsertedSources).Value;
+        Assert.Equal("hôtel", source.File.Password);
+        string[] texts =
+        [
+            source.File.ToString(), source.ToString()!, dialog.ToString(), tab.InsertedFiles().ToString()!,
+            new PageApplyRequest(tab.PagePlan!, "x.pdf", tab.InsertedFiles()).ToString(),
+        ];
+        Assert.All(texts, text => Assert.DoesNotContain("hôtel", text, StringComparison.Ordinal));
+        Assert.Contains("(hidden)", source.File.ToString(), StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task AFileThatFailsInAnUnforeseenWayIsReportedInTheDialog()
+    {
+        var path = _host.Copy("text-rich.pdf", "other.pdf");
+        using var dialog = new InsertFileViewModel(
+            path,
+            new PdfEngine(),
+            (_, _) => null,
+            () => string.Empty,
+            (_, _, _) => throw new InvalidOperationException("boom with /secret/path"));
+
+        await dialog.OpenAsync();
+
+        // Not stuck on "Opening": the dialog says it failed, in the words of the card of a file that cannot be opened, with no technical text.
+        Assert.Equal(InsertFileState.Failed, dialog.State);
+        Assert.Equal(Fmt(Strings.ErrorCause, "other.pdf", Strings.ErrorUnknown), dialog.ErrorText);
+        Assert.DoesNotContain("boom", dialog.ErrorText, StringComparison.Ordinal);
+        Assert.False(dialog.InsertCommand.CanExecute(null));
+        Assert.Null(dialog.Source);
+    }
+
+    [AvaloniaFact]
     public async Task TheCommandExistsOnlyWhileOrganizingAndWaitsForTheRulesOfThePageCommands()
     {
         var (window, viewModel, view) = _host.Show();
