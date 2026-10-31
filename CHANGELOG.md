@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 
 ## [Unreleased]
 
+## [0.2.0] – 2026-10-31
+
+Enthaltene Milestones: 8.1 (automatische Updates), 9 (Speichern und Annotationen), 10 (Zeichnen und Formen), 11 (Formulare), 12 (sichtbare Unterschrift) und 12.1 (Härtung für das öffentliche Repo). Dieses Release ist nur mit automatisierten Tests und Messungen abgenommen; was nicht von Hand geprüft wurde, steht unter „Changed“.
+
 ### Added
 
 - Automatische Updates (wirken ab dem ersten Release mit Updater, also für Updates **von** dieser Version aus; `v0.1.0` hat keinen Updater, von dort steigt man einmal von Hand um): Pagewing prüft nach dem Start im Hintergrund auf neue Versionen, höchstens einmal in 24 Stunden (abschaltbar in den Einstellungen unter „Aktualisierungen“; „Nach Updates suchen“ in der Befehlspalette prüft jederzeit und meldet auch „aktuell“ oder „konnte nicht prüfen“). Gibt es eine, erscheint in der Titelleiste die Schaltfläche „Aktualisieren“ (englisch „Update“); ein Klick zeigt die Karte mit „Installieren“ und „Später“. Installiert wird nur auf Klick, mit einem Fortschrittsfenster, und nur, wenn Signatur und Prüfsumme passen; danach soll Pagewing neu starten und die Tabs an ihrer Stelle zurückbringen. Selbst aktualisieren sollen sich die Windows-Installation (bei „alle Benutzer“ mit UAC-Abfrage) und das AppImage; das `.deb` und die portable ZIP zeigen einen Link zur Download-Seite. Neustart, Tabs und Selbstaktualisierung sind bisher nur mit Testattrappen geprüft; ein echtes Update wird erst zwischen zwei Releases mit Updater möglich. Die Prüfung fragt nur die öffentliche Release-Seite von Pagewing auf GitHub und sendet keine Kennung und keine Angaben zum Rechner; Startseite und „Über Pagewing“ sagen das. Ins Netz gehen nur die Prüfung und der Download eines gewählten Updates.
