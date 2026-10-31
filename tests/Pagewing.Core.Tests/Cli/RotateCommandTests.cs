@@ -174,7 +174,7 @@ public sealed class RotateCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task RotateRefusesAnOutputInALinkedFolderOfTheInputEvenWhenItDoesNotExistYet()
+    public async Task RotateAllowsANewFileNameInsideALinkedFolderOfTheInput()
     {
         var real = Directory.CreateDirectory(Path.Combine(workDirectory.FullName, "real")).FullName;
         var input = Path.Combine(real, "in.pdf");
@@ -448,14 +448,16 @@ public sealed class RotateCommandTests : IDisposable
         var input = Copy("pages-marked.pdf");
         var output = Path.Combine(workDirectory.FullName, "out.pdf");
 
-        // Ctrl+C when the saver has started writing the temporary file (the first report of the writing phase).
+        // Ctrl+C from inside the saver. The build phase reports 0 to 0.3 (its last report is exactly 0.3, and so is the first
+        // of the saver), so only a value above 0.3 comes from the saver's own stream. Whether the temporary file, which only
+        // the saver creates, exists at that moment is the proof that the cancel came from the write.
         using var source = new CancellationTokenSource();
-        var writing = false;
+        bool? temporaryExistedAtCancel = null;
         var progress = new CallbackProgress(value =>
         {
-            if (value >= 0.3 && !writing)
+            if (value > 0.3 && temporaryExistedAtCancel is null)
             {
-                writing = true;
+                temporaryExistedAtCancel = TemporaryFiles().Length > 0;
                 source.Cancel();
             }
         });
@@ -470,7 +472,7 @@ public sealed class RotateCommandTests : IDisposable
             runCommand: (document, options, standardOutput, token) => RotateCommand.RunAsync(document, options, null, standardOutput, stderr, token, progress),
             source.Token);
 
-        Assert.True(writing, "The cancel must come from inside the write, or the test proves nothing.");
+        Assert.True(temporaryExistedAtCancel, "The cancel must come from inside the saver (its temporary file exists), or the test proves nothing.");
         Assert.Equal(1, exitCode);
         Assert.Contains("pagewing: Canceled.", stderr.ToString(), StringComparison.Ordinal);
         Assert.False(File.Exists(output));
