@@ -857,6 +857,22 @@ public static class DocumentSaver
         TryDelete(aside);
     }
 
+    /// <summary>
+    /// Moves a finished temporary file over (or, without <paramref name="replaceExisting"/>, next to) <paramref name="target"/>
+    /// with the same rules as the save of a document: atomic where the file system allows it, and without
+    /// <paramref name="replaceExisting"/> never replacing a file that appears at the target meanwhile. For files other than
+    /// documents (the PNG files of an image export) that are written to a temporary file in the folder of the target first.
+    /// </summary>
+    /// <param name="temporary">The full path of the finished temporary file, in the folder of <paramref name="target"/>.</param>
+    /// <param name="target">The full path of the file to create or replace.</param>
+    /// <param name="replaceExisting">Whether an existing target may be replaced.</param>
+    /// <exception cref="SaveFailureException">The move failed; with <see cref="SaveFailureReason.TargetExists"/> a file stands at the target and was not replaced.</exception>
+    internal static void MoveIntoPlace(string temporary, string target, bool replaceExisting) =>
+        Replace(temporary, target, Path.GetDirectoryName(target) ?? string.Empty, replaceExisting, faults: null);
+
+    /// <summary>A short temporary name independent of the target's name (<c>.pw-&lt;12 hex&gt;.tmp</c>), so a long target name never makes it too long.</summary>
+    internal static string TemporaryName() => ShortName(".tmp");
+
     private static SaveFailureException TargetExists(Exception inner) =>
         new(SaveFailureReason.TargetExists, "A file already exists at the target.", inner);
 

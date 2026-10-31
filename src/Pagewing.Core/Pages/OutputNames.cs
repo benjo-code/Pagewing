@@ -234,7 +234,7 @@ public static class OutputNames
     private static string TrimDotsAndSpaces(string text) => text.Trim(' ', '.');
 
     // Windows treats the part before the first dot (without trailing spaces) as a device, whatever the extension.
-    private static bool IsDeviceName(string name)
+    internal static bool IsDeviceName(string name)
     {
         var dot = name.IndexOf('.', StringComparison.Ordinal);
         var stem = (dot < 0 ? name : name[..dot]).TrimEnd(' ');
