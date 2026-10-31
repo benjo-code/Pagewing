@@ -24,6 +24,9 @@ public enum OverlayKind
     /// <summary>The print dialog (Ctrl+P), where the system has none of its own.</summary>
     Print,
 
+    /// <summary>The dialog "Insert pages from a file" of the mode "Organize pages": the password, the pages and the position.</summary>
+    InsertFile,
+
     /// <summary>The dialog "New signature": draw one or import an image and keep it in the library.</summary>
     Signature,
 }

@@ -1746,4 +1746,58 @@
   <data name="PagesNewMany" xml:space="preserve">
     <value>Seiten {0} der neuen Datei</value>
   </data>
+  <data name="CommandInsertFile" xml:space="preserve">
+    <value>Seiten aus einer Datei einfügen …</value>
+  </data>
+  <data name="PageEditsFileLimit" xml:space="preserve">
+    <value>Seiten können höchstens aus 20 Dateien auf einmal kommen. Wenden Sie die Seitenänderungen zuerst an oder verwerfen Sie sie.</value>
+  </data>
+  <data name="InsertFileTitle" xml:space="preserve">
+    <value>Seiten aus einer Datei einfügen</value>
+  </data>
+  <data name="InsertFileOpening" xml:space="preserve">
+    <value>Datei wird geöffnet …</value>
+  </data>
+  <data name="InsertFileRangeLabel" xml:space="preserve">
+    <value>Einzufügende Seiten</value>
+  </data>
+  <data name="InsertFileRangeHint" xml:space="preserve">
+    <value>Zum Beispiel 1-3,5 oder all.</value>
+  </data>
+  <data name="InsertFileRangeInvalid" xml:space="preserve">
+    <value>Geben Sie Seiten wie 1-3,5 oder all an. Die Seiten zählen ab 1, ein Bereich geht von der niedrigeren zur höheren Seite.</value>
+  </data>
+  <data name="InsertFileRangeOutside" xml:space="preserve">
+    <value>Die Datei hat {0}; Seite {1} gibt es nicht.</value>
+  </data>
+  <data name="InsertFilePositionAfter" xml:space="preserve">
+    <value>Die Seiten werden nach Seite {0} der Liste eingefügt.</value>
+  </data>
+  <data name="InsertFilePositionEnd" xml:space="preserve">
+    <value>Die Seiten werden am Ende eingefügt.</value>
+  </data>
+  <data name="InsertFileButton" xml:space="preserve">
+    <value>Einfügen</value>
+  </data>
+  <data name="InsertFileChooseOther" xml:space="preserve">
+    <value>Andere Datei wählen …</value>
+  </data>
+  <data name="InsertFileCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="InsertFileClose" xml:space="preserve">
+    <value>Dialog schließen</value>
+  </data>
+  <data name="InsertFileFailedTitle" xml:space="preserve">
+    <value>Diese Datei lässt sich nicht einfügen</value>
+  </data>
+  <data name="InsertFilePasswordPrompt" xml:space="preserve">
+    <value>Geben Sie das Passwort ein, um Seiten aus „{0}“ einzufügen.</value>
+  </data>
+  <data name="InsertFilePickFailed" xml:space="preserve">
+    <value>Der Dateidialog konnte nicht geöffnet werden. Es wurde nichts eingefügt.</value>
+  </data>
+  <data name="ApplyErrorInsertedChanged" xml:space="preserve">
+    <value>Die eingefügte Datei „{0}“ ist nicht mehr die Datei, die eingefügt wurde: Sie wurde geändert, gelöscht oder lässt sich nicht lesen. Es wurde nichts geschrieben; die Seitenänderungen bleiben erhalten. Entfernen Sie ihre Seiten aus der Liste oder fügen Sie die Datei erneut ein.</value>
+  </data>
 </root>

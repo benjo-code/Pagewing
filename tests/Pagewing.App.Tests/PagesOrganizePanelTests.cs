@@ -85,7 +85,7 @@ public sealed class PagesOrganizePanelTests : IDisposable
 
         // The list has a context menu with the tools in the mode, and none outside it.
         var menu = Assert.IsType<ContextMenu>(list.ContextMenu);
-        Assert.Equal(7, menu.Items.OfType<MenuItem>().Count());
+        Assert.Equal(8, menu.Items.OfType<MenuItem>().Count());
         Assert.All(menu.Items.OfType<MenuItem>(), item => Assert.False(string.IsNullOrWhiteSpace(item.Header?.ToString())));
 
         // Nothing is staged yet: "Apply" waits, and the button that ends the mode is "Done" (nothing is lost by it).

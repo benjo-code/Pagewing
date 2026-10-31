@@ -35,6 +35,7 @@ public sealed partial class PagesOrganizeBar : UserControl
             (DeleteButton, Strings.CommandDeletePages, "pages.delete"),
             (DuplicateButton, Strings.CommandDuplicatePages, "pages.duplicate"),
             (BlankButton, Strings.CommandInsertBlankPage, "pages.insertBlank"),
+            (InsertFileToolButton, Strings.CommandInsertFile, "pages.insertFile"),
             (MoveEarlierButton, Strings.CommandMovePagesEarlier, "pages.moveEarlier"),
             (MoveLaterButton, Strings.CommandMovePagesLater, "pages.moveLater"),
             (UndoButton, Strings.CommandUndo, "edit.undo"),

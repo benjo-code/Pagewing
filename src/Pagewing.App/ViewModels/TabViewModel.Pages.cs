@@ -251,7 +251,7 @@ public sealed partial class TabViewModel
         _rotateSelectionCommand is not null || _deletePagesCommand is not null || _duplicateSelectionCommand is not null
         || _insertBlankPageCommand is not null || _undoPagesCommand is not null || _redoPagesCommand is not null
         || _discardPageEditsCommand is not null || _moveEarlierCommand is not null || _moveLaterCommand is not null
-        || _applyPageEditsCommand is not null;
+        || _applyPageEditsCommand is not null || _insertFileCommand is not null;
 
     /// <summary>
     /// Gets the version of the page plan for <see cref="ChangeVersion"/>: the steps of the plan's history, plus those of
@@ -413,6 +413,9 @@ public sealed partial class TabViewModel
             _pageHistory = null;
         }
 
+        // The files inserted into the plan go with it.
+        ReleaseInsertedSources();
+
         _selectedPages = NoSelection;
         PageEditNotice = null;
         OnPropertyChanged(nameof(SelectedPagePositions));
@@ -429,7 +432,7 @@ public sealed partial class TabViewModel
     /// <summary>Another document replaced the open one, or none is open: the plan described the old pages and goes.</summary>
     private void ResetPageEdits()
     {
-        if (_pageHistory is not null || _isOrganizing || _selectedPages.Count > 0 || _pageEditNotice is not null)
+        if (_pageHistory is not null || _isOrganizing || _selectedPages.Count > 0 || _pageEditNotice is not null || _insertedSources.Count > 0)
         {
             DropPlan();
         }
@@ -579,8 +582,8 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// The size of a blank page at <paramref name="gap"/>: as the page before it looks on the sheet (a page turned by 90 or 270
-    /// degrees has its sides swapped), else the page after it, else A4. A page of another file is skipped until its size is
-    /// known to the tab (a later task); so is a page of this document whose size is not loaded yet.
+    /// degrees has its sides swapped), else the page after it, else A4. A page whose size is not known yet (of this document
+    /// or of an inserted file, whose sizes are read in batches) is skipped.
     /// </summary>
     private BlankPage BlankPageAt(PageEditPlan plan, int gap)
     {
@@ -606,6 +609,12 @@ public sealed partial class TabViewModel
         else if (slot.Source.Value == 0 && slot.SourceIndex >= 0 && slot.SourceIndex < _session.LoadedSizes.Count)
         {
             var size = _session.LoadedSizes[slot.SourceIndex];
+            (width, height) = (size.Width, size.Height);
+        }
+        else if (slot.Source.Value != 0 && slot.SourceIndex >= 0 && _insertedSources.TryGetValue(slot.Source, out var inserted) && slot.SourceIndex < inserted.Sizes.Count)
+        {
+            // A page of an inserted file: the size its file reports (read in batches after the file went in).
+            var size = inserted.Sizes[slot.SourceIndex];
             (width, height) = (size.Width, size.Height);
         }
         else
@@ -657,6 +666,7 @@ public sealed partial class TabViewModel
         _moveEarlierCommand?.RaiseCanExecuteChanged();
         _moveLaterCommand?.RaiseCanExecuteChanged();
         _applyPageEditsCommand?.RaiseCanExecuteChanged();
+        _insertFileCommand?.RaiseCanExecuteChanged();
 
         // Ctrl+Z and Ctrl+Y are the plan's in the mode.
         _undoCommand?.RaiseCanExecuteChanged();

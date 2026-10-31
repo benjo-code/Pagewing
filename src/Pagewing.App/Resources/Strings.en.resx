@@ -1746,4 +1746,58 @@
   <data name="PagesNewMany" xml:space="preserve">
     <value>pages {0} of the new file</value>
   </data>
+  <data name="CommandInsertFile" xml:space="preserve">
+    <value>Insert pages from a file …</value>
+  </data>
+  <data name="PageEditsFileLimit" xml:space="preserve">
+    <value>Pages can come from 20 files at most in one go. Apply or discard the page changes first.</value>
+  </data>
+  <data name="InsertFileTitle" xml:space="preserve">
+    <value>Insert pages from a file</value>
+  </data>
+  <data name="InsertFileOpening" xml:space="preserve">
+    <value>Opening the file …</value>
+  </data>
+  <data name="InsertFileRangeLabel" xml:space="preserve">
+    <value>Pages to insert</value>
+  </data>
+  <data name="InsertFileRangeHint" xml:space="preserve">
+    <value>For example 1-3,5 or all.</value>
+  </data>
+  <data name="InsertFileRangeInvalid" xml:space="preserve">
+    <value>Enter pages such as 1-3,5 or all. Pages are numbered from 1, and a range goes from the lower to the higher page.</value>
+  </data>
+  <data name="InsertFileRangeOutside" xml:space="preserve">
+    <value>The file has {0}; page {1} does not exist.</value>
+  </data>
+  <data name="InsertFilePositionAfter" xml:space="preserve">
+    <value>The pages are inserted after page {0} of the list.</value>
+  </data>
+  <data name="InsertFilePositionEnd" xml:space="preserve">
+    <value>The pages are inserted at the end.</value>
+  </data>
+  <data name="InsertFileButton" xml:space="preserve">
+    <value>Insert</value>
+  </data>
+  <data name="InsertFileChooseOther" xml:space="preserve">
+    <value>Choose another file …</value>
+  </data>
+  <data name="InsertFileCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="InsertFileClose" xml:space="preserve">
+    <value>Close the dialog</value>
+  </data>
+  <data name="InsertFileFailedTitle" xml:space="preserve">
+    <value>This file cannot be inserted</value>
+  </data>
+  <data name="InsertFilePasswordPrompt" xml:space="preserve">
+    <value>Enter the password to insert pages from “{0}”.</value>
+  </data>
+  <data name="InsertFilePickFailed" xml:space="preserve">
+    <value>The file dialog could not be opened. Nothing was inserted.</value>
+  </data>
+  <data name="ApplyErrorInsertedChanged" xml:space="preserve">
+    <value>The inserted file “{0}” is no longer the file that was inserted: it was changed, deleted or cannot be read. Nothing was written; the page changes are kept. Delete its pages from the list or insert the file again.</value>
+  </data>
 </root>

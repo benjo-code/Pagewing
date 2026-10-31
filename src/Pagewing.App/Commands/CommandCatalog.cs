@@ -151,6 +151,7 @@ public sealed class CommandCatalog
         OrganizeTab("pages.delete", () => Strings.CommandDeletePages, new KeyGesture(Key.Delete), tab => tab.DeletePagesCommand) with { YieldsToTextInput = true },
         OrganizeTab("pages.duplicate", () => Strings.CommandDuplicatePages, CtrlShift(Key.N), tab => tab.DuplicateSelectionCommand),
         OrganizeTab("pages.insertBlank", () => Strings.CommandInsertBlankPage, CtrlShift(Key.B), tab => tab.InsertBlankPageCommand),
+        OrganizeTab("pages.insertFile", () => Strings.CommandInsertFile, CtrlShift(Key.V), tab => tab.InsertFileCommand) with { YieldsToTextInput = true },
         OrganizeTab("pages.moveEarlier", () => Strings.CommandMovePagesEarlier, CtrlShift(Key.Up), tab => tab.MoveSelectionEarlierCommand) with { YieldsToTextInput = true },
         OrganizeTab("pages.moveLater", () => Strings.CommandMovePagesLater, CtrlShift(Key.Down), tab => tab.MoveSelectionLaterCommand) with { YieldsToTextInput = true },
         OrganizeTab("pages.apply", () => Strings.CommandApplyPageEdits, null, tab => tab.ApplyPageEditsCommand, needsPanel: false),

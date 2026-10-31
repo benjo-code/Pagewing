@@ -19,7 +19,7 @@ public enum PageKind
     /// <summary>A blank page the plan adds: drawn, never rendered.</summary>
     Blank,
 
-    /// <summary>A page of another file inserted into the plan: a stand-in tile until the file has a thumbnail source of its own.</summary>
+    /// <summary>A page of another file inserted into the plan: its thumbnail is rendered by the thumbnails of that file; a stand-in tile shows until it is there.</summary>
     Foreign,
 }
 
@@ -95,6 +95,12 @@ public sealed class ThumbnailItem : ViewModelBase
     /// </summary>
     internal int RenderPage { get; private set; }
 
+    /// <summary>
+    /// Gets which page of which inserted file this entry draws (the number of the source in the plan, the 0-based page), or
+    /// <see langword="null"/> for a page of the document or a blank page. The thumbnail comes from the thumbnails of that file.
+    /// </summary>
+    internal (int Source, int Page)? ForeignKey { get; private set; }
+
     /// <summary>Gets what the entry shows.</summary>
     public PageKind Kind
     {
@@ -107,6 +113,7 @@ public sealed class ThumbnailItem : ViewModelBase
                 OnPropertyChanged(nameof(IsForeign));
                 OnPropertyChanged(nameof(HasMarks));
                 OnPropertyChanged(nameof(ShowsImage));
+                OnPropertyChanged(nameof(ShowsStandIn));
                 OnPropertyChanged(nameof(IsDrawn));
                 OnPropertyChanged(nameof(AutomationName));
             }
@@ -119,8 +126,11 @@ public sealed class ThumbnailItem : ViewModelBase
     /// <summary>Gets whether this is a page of another file.</summary>
     public bool IsForeign => _kind == PageKind.Foreign;
 
-    /// <summary>Gets whether the entry draws a rendered thumbnail (a blank page and a page of another file draw a face of their own).</summary>
-    public bool ShowsImage => _kind == PageKind.Page;
+    /// <summary>Gets whether the entry draws a rendered thumbnail (a page of the document, or a page of an inserted file once its thumbnail is there; a blank page draws a face of its own).</summary>
+    public bool ShowsImage => _kind == PageKind.Page || (_kind == PageKind.Foreign && _bitmap is not null);
+
+    /// <summary>Gets whether the entry shows the tile that stands in for a page of an inserted file until its thumbnail is rendered.</summary>
+    public bool ShowsStandIn => _kind == PageKind.Foreign && _bitmap is null;
 
     /// <summary>Gets the rotation the plan adds to the page in degrees: 0, 90, 180 or 270.</summary>
     public int Rotation
@@ -217,6 +227,8 @@ public sealed class ThumbnailItem : ViewModelBase
             if (SetProperty(ref _bitmap, value))
             {
                 OnPropertyChanged(nameof(HasBitmap));
+                OnPropertyChanged(nameof(ShowsImage));
+                OnPropertyChanged(nameof(ShowsStandIn));
                 OnPropertyChanged(nameof(IsDrawn));
             }
         }
@@ -274,6 +286,11 @@ public sealed class ThumbnailItem : ViewModelBase
     /// <summary>Sets the page format the frame follows (the real size of the page arrived).</summary>
     internal void SetFormat(PdfPageSize format)
     {
+        if (_format == format)
+        {
+            return;
+        }
+
         _format = format;
         Relayout();
     }
@@ -288,6 +305,7 @@ public sealed class ThumbnailItem : ViewModelBase
         Slot = slot;
         Kind = slot.Blank is not null ? PageKind.Blank : slot.Source.Value == 0 ? PageKind.Page : PageKind.Foreign;
         RenderPage = Kind == PageKind.Page ? slot.SourceIndex : -1;
+        ForeignKey = Kind == PageKind.Foreign ? (slot.Source.Value, slot.SourceIndex) : null;
         _format = format;
         Rotation = slot.ExtraRotation;
         ImageTransform = slot.ExtraRotation switch

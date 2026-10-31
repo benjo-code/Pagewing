@@ -13,7 +13,7 @@
     with the symbol of the mode) and, while a change waits, the note "Page changes are waiting to be applied." with a symbol
     (so the state is told in words, not by a colour); the notice of a refused change (alert-triangle in danger.default,
     text.primary, a close button); the tool buttons (28 px, icon only, name and shortcut in the tooltip and for screen
-    readers): turn left, turn right, delete, duplicate, blank page, move earlier, move later, undo, redo; then "Apply"
+    readers): turn left, turn right, delete, duplicate, blank page, insert pages from a file, move earlier, move later, undo, redo; then "Apply"
     (primary, check) and "Discard" (secondary; "Done" while nothing is staged, as nothing is lost by it). "Discard" with
     changes pending asks first (DiscardConfirm: "Keep" has the focus). The tools wrap when the panel is narrow. Made when the
     mode starts (PagesPanel), never in the startup path; its styles live here for the same reason. The DataContext is the
@@ -94,6 +94,9 @@
         </Button>
         <Button Name="BlankButton" Classes="icon pageTool" Command="{Binding InsertBlankPageCommand}">
           <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.FilePlus}" />
+        </Button>
+        <Button Name="InsertFileToolButton" Classes="icon pageTool" Command="{Binding InsertFileCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.FileImport}" />
         </Button>
         <Button Name="MoveEarlierButton" Classes="icon pageTool" Command="{Binding MoveSelectionEarlierCommand}">
           <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronUp}" />

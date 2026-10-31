@@ -142,6 +142,7 @@ internal sealed partial class ThumbnailList
 
         CancelDrag();
         StopWork();
+        DetachForeign();
         ReleaseBitmaps(keep: null);
         _stale.Clear();
         _planMode = false;
@@ -198,10 +199,11 @@ internal sealed partial class ThumbnailList
                 {
                     var item = items[position];
                     var page = item.RenderPage;
+                    var foreign = item.ForeignKey;
                     item.Assign(position, slots[position], FormatOf(slots[position]));
 
                     // A turned page keeps its picture; an entry that stands for another page gets that one from the cache.
-                    if (item.RenderPage != page)
+                    if (item.RenderPage != page || item.ForeignKey != foreign)
                     {
                         DropBitmap(position);
                     }
@@ -233,10 +235,10 @@ internal sealed partial class ThumbnailList
     /// <summary>The later entries of a page of the document that occurs more than once are copies and say so (one pass over the plan).</summary>
     private void UpdateCopyMarks()
     {
-        var seen = new HashSet<int>();
+        var seen = new HashSet<(int Source, int Page)>();
         foreach (var item in _planItems!)
         {
-            item.IsCopy = item.RenderPage >= 0 && !seen.Add(item.RenderPage);
+            item.IsCopy = item.Slot is { Blank: null, SourceIndex: >= 0 } slot && !seen.Add((slot.Source.Value, slot.SourceIndex));
         }
     }
 
@@ -260,8 +262,8 @@ internal sealed partial class ThumbnailList
 
     /// <summary>
     /// The size of the page an entry shows before it is turned: a blank page its own, a page of the document the size the
-    /// session knows (the format of the first page until it does), a page of another file the A4 stand-in until that file
-    /// has a source of its own.
+    /// session knows (the format of the first page until it does), a page of an inserted file the size that file reported
+    /// (the A4 stand-in until it has).
     /// </summary>
     private PdfPageSize FormatOf(PageSlot slot)
     {
@@ -282,7 +284,7 @@ internal sealed partial class ThumbnailList
             return sizes.Count > 0 && IsUsable(sizes[0]) ? sizes[0] : StandInSize;
         }
 
-        return StandInSize;
+        return ForeignFormat(slot);
     }
 
     /// <summary>Makes the selection of the list the tab's (a command selected pages, a change moved them). Waits for the entries first.</summary>
@@ -575,6 +577,7 @@ internal sealed partial class ThumbnailList
                 new Separator(),
                 Entry(Strings.CommandDuplicatePages, tab.DuplicateSelectionCommand, "pages.duplicate"),
                 Entry(Strings.CommandInsertBlankPage, tab.InsertBlankPageCommand, "pages.insertBlank"),
+                Entry(Strings.CommandInsertFile, tab.InsertFileCommand, "pages.insertFile"),
                 Entry(Strings.CommandDeletePages, tab.DeletePagesCommand, "pages.delete"),
             },
         };

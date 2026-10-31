@@ -144,7 +144,7 @@
                              RenderOptions.BitmapInterpolationMode="HighQuality" />
                       <ctl:BlankPageFace Name="BlankFace" IsVisible="{Binding IsBlank}" />
                       <ctl:StrokeIcon Name="ForeignFace" Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                      IsVisible="{Binding IsForeign}"
+                                      IsVisible="{Binding ShowsStandIn}"
                                       Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Files}" />
                     </Panel>
                   </Border>

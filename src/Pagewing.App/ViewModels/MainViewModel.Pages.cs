@@ -1,3 +1,4 @@
+using System.Text;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pages;
 using Pagewing.Core.Pdf;
@@ -17,10 +18,6 @@ namespace Pagewing.App.ViewModels;
 /// </summary>
 public sealed partial class MainViewModel
 {
-    // Files inserted into a plan: none until a later task adds "Insert file".
-    private static readonly IReadOnlyDictionary<PageSourceId, PageSourceFile> NoInsertedFiles = new Dictionary<PageSourceId, PageSourceFile>();
-    private static readonly IReadOnlyDictionary<PageSourceId, PdfDocument> NoInsertedDocuments = new Dictionary<PageSourceId, PdfDocument>();
-
     /// <summary>
     /// Gets or sets what writes the working copy and checks the file (<see cref="DocumentSaver"/> when <see langword="null"/>;
     /// tests make it fail in ways the saver does not, as with <see cref="DocumentWriter"/>).
@@ -29,10 +26,11 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Gets or sets how the report of what a plan loses is read before the card
-    /// (<see cref="PageEditExecutor.AnalyzeAsync"/>; tests give a report with every kind of loss).
+    /// (<see cref="PageEditExecutor.AnalyzeAsync"/> with the open documents of the files inserted into the plan; tests give a
+    /// report with every kind of loss).
     /// </summary>
-    internal Func<PageEditPlan, PdfDocument, CancellationToken, Task<PageEditReport>> PageAnalyzer { get; set; } =
-        static (plan, document, cancellationToken) => PageEditExecutor.AnalyzeAsync(plan, document, NoInsertedDocuments, cancellationToken);
+    internal Func<PageEditPlan, PdfDocument, IReadOnlyDictionary<PageSourceId, PdfDocument>, CancellationToken, Task<PageEditReport>> PageAnalyzer { get; set; } =
+        static (plan, document, inserted, cancellationToken) => PageEditExecutor.AnalyzeAsync(plan, document, inserted, cancellationToken);
 
     /// <summary>
     /// Applies the staged page changes of <paramref name="tab"/> (the button "Apply", Ctrl+S and "Save as" while a plan waits).
@@ -79,9 +77,10 @@ public sealed partial class MainViewModel
             }
 
             PageEditReport report;
+            var insertedDocuments = tab.InsertedDocuments();
             try
             {
-                report = await Task.Run(() => PageAnalyzer(plan, document, token), token);
+                report = await Task.Run(() => PageAnalyzer(plan, document, insertedDocuments, token), token);
             }
             catch (Exception ex) when (ex is PageEditException or PdfOpenException or InvalidDataException or IOException or InvalidOperationException or ObjectDisposedException)
             {
@@ -101,7 +100,7 @@ public sealed partial class MainViewModel
                 return false;
             }
 
-            var choice = await AskAsync(PendingSave.ApplyPages(tab, current, ApplyPagesInfo.Create(plan, report)), token);
+            var choice = await AskAsync(PendingSave.ApplyPages(tab, current, ApplyPagesInfo.Create(plan, report, tab.InsertedNames())), token);
             var target = choice switch
             {
                 PendingSaveChoice.SaveAs => await PickTargetAsync(tab, current),
@@ -220,7 +219,7 @@ public sealed partial class MainViewModel
         {
             // On the thread pool: it reads file stamps, and the adoption closes the old document, never on the UI thread. The
             // callback tells the tab which document is about to arrive, so it is shown as the same file in other pages.
-            var request = new PageApplyRequest(plan, target, NoInsertedFiles, OverwriteChangedOriginal: false, rewritten => tab.ExpectRewrittenDocument(rewritten, follow));
+            var request = new PageApplyRequest(plan, target, tab.InsertedFiles(), OverwriteChangedOriginal: false, rewritten => tab.ExpectRewrittenDocument(rewritten, follow));
             var result = await Task.Run(() => PageEditApplier.ApplyAsync(tab.Session, SaveEngine, request, progress, token, PageRewriter), token);
             written = true;
             if (!result.Adopted)
@@ -228,6 +227,13 @@ public sealed partial class MainViewModel
                 // The tab closed or opened another file meanwhile: nothing here is left to take the claim.
                 tab.ForgetRewrittenDocument();
             }
+        }
+        catch (SaveFailureException ex) when (ex.FilePath is { } inserted)
+        {
+            // An inserted file is not the file that was inserted (changed, replaced, deleted or unreadable since): the card
+            // names it. Nothing was written, the plan and the file stay in the tab; the user removes its pages or inserts it again.
+            var name = Path.GetFileName(inserted);
+            return (false, await AskAsync(PendingSave.PageApplyError(tab, target, () => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ApplyErrorInsertedChanged), name)), token));
         }
         catch (SaveFailureException ex) when (ex.Reason is SaveFailureReason.OriginalChanged or SaveFailureReason.SourceModified)
         {

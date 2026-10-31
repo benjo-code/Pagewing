@@ -30,31 +30,34 @@ public sealed class ApplyPagesInfo
     public bool HasLosses => Lines.Count > 0;
 
     /// <summary>Makes the text for <paramref name="plan"/> and what applying it loses (<paramref name="report"/>).</summary>
-    public static ApplyPagesInfo Create(PageEditPlan plan, PageEditReport report)
+    /// <param name="plan">The plan.</param>
+    /// <param name="report">What applying it loses.</param>
+    /// <param name="fileNames">The names of the inserted files by the number of their source, so that a sentence names the file the user chose; without a name the number stands.</param>
+    public static ApplyPagesInfo Create(PageEditPlan plan, PageEditReport report, IReadOnlyDictionary<int, string>? fileNames = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(report);
-        return new ApplyPagesInfo(SummaryOf(plan), [.. report.Losses.Select(LineOf)]);
+        return new ApplyPagesInfo(SummaryOf(plan), [.. report.Losses.Select(loss => LineOf(loss, fileNames))]);
     }
 
     /// <summary>The sentence for one loss, by its kind and detail; the pages it names are page numbers.</summary>
-    internal static string LineOf(PageLoss loss)
+    internal static string LineOf(PageLoss loss, IReadOnlyDictionary<int, string>? fileNames = null)
     {
         ArgumentNullException.ThrowIfNull(loss);
         var detail = loss.Detail ?? string.Empty;
         return loss.Kind switch
         {
-            PageLossKind.ForeignOutlineDropped => Format(Strings.ApplyLossForeignOutline, SourceOf(detail)),
+            PageLossKind.ForeignOutlineDropped => Format(Strings.ApplyLossForeignOutline, SourceOf(detail, fileNames)),
             PageLossKind.BookmarkToDeletedPage => Format(Strings.ApplyLossBookmarkToDeletedPage, PagesText(loss.Pages, original: true)),
             PageLossKind.DuplicatedFormFields when detail == PageLossDetail.Inserted => Format(Strings.ApplyLossInsertedFields, PagesText(loss.Pages)),
             PageLossKind.DuplicatedFormFields => Format(Strings.ApplyLossDuplicatedFields, PagesText(loss.Pages)),
             PageLossKind.FormFieldNameCollision when detail == PageLossDetail.Unchecked => Strings.ApplyLossFieldCollisionUnchecked,
             PageLossKind.FormFieldNameCollision => Format(Strings.ApplyLossFieldCollision, PagesText(loss.Pages)),
             PageLossKind.SignatureInvalidated => Strings.ApplyLossSignature,
-            PageLossKind.EncryptionNotPreserved => Format(Strings.ApplyLossEncryption, SourceOf(detail)),
+            PageLossKind.EncryptionNotPreserved => Format(Strings.ApplyLossEncryption, SourceOf(detail, fileNames)),
             PageLossKind.InternalLinkLost when detail == PageLossDetail.CopiedPage => Format(Strings.ApplyLossLinkCopied, PagesText(loss.Pages)),
             PageLossKind.InternalLinkLost => Format(Strings.ApplyLossLinkDeleted, PagesText(loss.Pages)),
-            PageLossKind.PageLabelsShifted when detail.StartsWith("source:", StringComparison.Ordinal) => Format(Strings.ApplyLossLabelsSource, SourceOf(detail)),
+            PageLossKind.PageLabelsShifted when detail.StartsWith("source:", StringComparison.Ordinal) => Format(Strings.ApplyLossLabelsSource, SourceOf(detail, fileNames)),
             PageLossKind.PageLabelsShifted => Strings.ApplyLossLabelsShifted,
             PageLossKind.OrphanFormFields => Format(Strings.ApplyLossOrphanFields, PagesText(loss.Pages, original: true)),
             _ => Strings.ApplyLossOther,
@@ -157,10 +160,14 @@ public sealed class ApplyPagesInfo
         return string.Join(", ", parts);
     }
 
-    private static string SourceOf(string detail)
+    // The number of the source in the detail ("source:2"), or the name of its file when the tab knows it.
+    private static string SourceOf(string detail, IReadOnlyDictionary<int, string>? fileNames)
     {
         var colon = detail.IndexOf(':', StringComparison.Ordinal);
-        return colon >= 0 ? detail[(colon + 1)..] : detail;
+        var number = colon >= 0 ? detail[(colon + 1)..] : detail;
+        return fileNames is not null && int.TryParse(number, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id) && fileNames.TryGetValue(id, out var name)
+            ? name
+            : number;
     }
 
     private static string Number(int value) => value.ToString("N0", Strings.Culture);

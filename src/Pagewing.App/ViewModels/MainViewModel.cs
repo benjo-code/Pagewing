@@ -76,7 +76,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
-    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save, Action Apply)> _tabHandlers = [];
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save, Action Apply, Action InsertFile)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private int? _tabDropIndex;
     private bool _picking;
@@ -205,6 +205,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             else if (old == OverlayKind.Signature)
             {
                 _signatureCard = null;
+            }
+            else if (old == OverlayKind.InsertFile)
+            {
+                DisposeInsertFile();
             }
 
             if (value == OverlayKind.Palette)
@@ -876,6 +880,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Unhook(tab);
         CancelPrintingOf(tab);
         CancelSavingOf(tab);
+        CancelInsertOf(tab);
 
         // The window it goes to has not drawn it yet: its thumbnails wait for the first sharp page there, which sets the
         // flag again.
@@ -936,6 +941,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _disposed = true;
         _palette?.OnClosed();
         _settingsCard?.OnClosed();
+        DisposeInsertFile();
         DisposePrinting();
         DisposeSaving();
         DisposeDefaultApp();
@@ -1062,12 +1068,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
             Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)),
             Save: (Action<bool>)(saveAs => _ = SaveTabAsync(tab, saveAs)),
-            Apply: (Action)(() => _ = ApplyPageEditsAsync(tab)));
+            Apply: (Action)(() => _ = ApplyPageEditsAsync(tab)),
+            InsertFile: (Action)(() => _ = InsertFileAsync(tab)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;
         tab.PropertyChanged += handlers.Changed;
         tab.SaveRequested += handlers.Save;
         tab.PageApplyRequested += handlers.Apply;
+        tab.InsertFileRequested += handlers.InsertFile;
         _tabHandlers[tab] = handlers;
 
         // The file of the command line may be open already when its tab comes; a tab from another window was reported there.
@@ -1104,6 +1112,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             tab.PropertyChanged -= handlers.Changed;
             tab.SaveRequested -= handlers.Save;
             tab.PageApplyRequested -= handlers.Apply;
+            tab.InsertFileRequested -= handlers.InsertFile;
         }
     }
 
@@ -1114,6 +1123,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void OnTabPropertyChanged(TabViewModel tab, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(TabViewModel.IsOrganizing) && !tab.IsOrganizing)
+        {
+            // The plan is gone: the dialog that would have put pages into it goes with it.
+            CancelInsertOf(tab);
+        }
+
         if (e.PropertyName == nameof(TabViewModel.Document))
         {
             ReportOpened(tab);
@@ -1256,6 +1271,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Unhook(tab);
         CancelPrintingOf(tab);
         CancelSavingOf(tab);
+        CancelInsertOf(tab);
         if (_recent is not null && RememberedViewOf(tab) is { } closed)
         {
             _recent.Closed([closed]);
@@ -1288,8 +1304,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             next.ExternalLinkRequested += OnExternalLinkRequested;
         }
 
-        // The address belongs to the tab the user clicked it in.
+        // The address belongs to the tab the user clicked it in; so does the dialog "Insert pages from a file".
         PendingLink = null;
+        if (Overlay == OverlayKind.InsertFile && !ReferenceEquals(_insertTab, next))
+        {
+            HideOverlay();
+        }
+
         ActiveTab = next;
         _printCommand?.RaiseCanExecuteChanged();
     }

@@ -780,6 +780,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         if (!_disposed)
         {
             _session.SetPageTheme(theme);
+            foreach (var inserted in _insertedSources.Values)
+            {
+                inserted.SetPageTheme(theme);
+            }
         }
 
         OnPropertyChanged(nameof(EffectivePageTheme));
@@ -803,6 +807,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         ResetOutline();
         _search?.Dispose();
         _comments?.Dispose();
+        ReleaseInsertedSources();
         TextSelection = null;
         ClearHistory();
         _checkingPassword = false;
@@ -875,6 +880,8 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             thumbnails.Scheduler.Update([]);
             thumbnails.Cache.Clear();
         }
+
+        ReleaseInsertedThumbnails();
     }
 
     /// <summary>Reads the outline on the PDFium thread and shows it, unless the tab moved on meanwhile (UI thread).</summary>

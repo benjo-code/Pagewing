@@ -475,6 +475,7 @@ internal sealed partial class ThumbnailList : ListBox
     private void ResetDocument()
     {
         StopWork();
+        DetachForeign();
         DetachSource();
         ReleaseBitmaps(keep: null);
         LeavePlanMode(showDocument: false);
@@ -503,6 +504,9 @@ internal sealed partial class ThumbnailList : ListBox
                 break;
             case nameof(TabViewModel.SelectedPagePositions):
                 ApplySelectionFromTab();
+                break;
+            case nameof(TabViewModel.InsertedSources):
+                OnInsertedChanged();
                 break;
             case nameof(TabViewModel.EffectivePageTheme):
                 // The session renders the thumbnails in the new theme and emptied their cache of the old one: the empty
@@ -696,6 +700,8 @@ internal sealed partial class ThumbnailList : ListBox
                 SetBitmap(index, image);
             }
         }
+
+        PlanForeign(realized);
     }
 
     /// <summary>Whether every image in the cache of <paramref name="source"/> was rendered for the current scaling (see <see cref="_clearedFor"/>).</summary>
@@ -710,6 +716,7 @@ internal sealed partial class ThumbnailList : ListBox
     private void StopWork()
     {
         _source?.Scheduler.Update([]);
+        StopForeign();
         _lastRequests = [];
         _plannedSizes = [];
     }
@@ -873,6 +880,8 @@ internal sealed partial class ThumbnailList : ListBox
             source.Cache.Clear();
         }
 
+        ClearForeignCaches();
+
         ReleaseBitmaps(keep: null);
         SchedulePlan();
     }
@@ -910,6 +919,7 @@ internal sealed partial class ThumbnailList : ListBox
             source.Cache.Clear();
         }
 
+        ClearForeignCaches();
         ReleaseBitmaps(keep: null);
         SchedulePlan();
     }

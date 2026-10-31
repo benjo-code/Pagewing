@@ -84,7 +84,7 @@ public sealed partial class ApplyPagesTests : IDisposable
         var (window, viewModel, _, tab, _) = await OrganizedAsync("pages-marked.pdf");
         Stage(tab, delete: [4, 5], rotate: [0, 1, 2]);
         var report = EveryKindOfLoss();
-        viewModel.PageAnalyzer = (_, _, _) => Task.FromResult(report);
+        viewModel.PageAnalyzer = (_, _, _, _) => Task.FromResult(report);
 
         var apply = viewModel.ApplyPageEditsAsync(tab);
         var card = await WaitForCardAsync<ApplyPagesCard>(window, viewModel, PendingSaveKind.ApplyPages);
@@ -611,7 +611,7 @@ public sealed partial class ApplyPagesTests : IDisposable
             rewrites++;
             throw new InvalidOperationException("must not be called");
         };
-        viewModel.PageAnalyzer = (_, _, _) => Task.FromResult(new PageEditReport([new PageLoss(PageLossKind.EncryptionNotPreserved, PageLossDetail.Source(1), null, Blocks: true)]));
+        viewModel.PageAnalyzer = (_, _, _, _) => Task.FromResult(new PageEditReport([new PageLoss(PageLossKind.EncryptionNotPreserved, PageLossDetail.Source(1), null, Blocks: true)]));
 
         var apply = viewModel.ApplyPageEditsAsync(tab);
         await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);

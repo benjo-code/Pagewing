@@ -204,14 +204,24 @@ internal sealed class SaveCardHost : IDisposable
             .Select(button => (string)button.Content!)
             .ToList();
 
-    /// <summary>A file picker whose open dialog is cancelled and whose save dialog returns <see cref="Result"/>.</summary>
+    /// <summary>A file picker whose open dialog returns <see cref="OpenResult"/> (cancelled by default) and whose save dialog returns <see cref="Result"/>.</summary>
     internal sealed class SavePicker : IFilePicker
     {
         public string? Result { get; set; }
 
+        /// <summary>Gets or sets the file the open dialog returns (for "Insert file"), or <see langword="null"/> for a cancelled dialog.</summary>
+        public string? OpenResult { get; set; }
+
+        /// <summary>Gets how often the open dialog was shown.</summary>
+        public int OpenCalls { get; private set; }
+
         public int Calls { get; private set; }
 
-        public Task<string?> PickPdfAsync() => Task.FromResult<string?>(null);
+        public Task<string?> PickPdfAsync()
+        {
+            OpenCalls++;
+            return Task.FromResult(OpenResult);
+        }
 
         public Task<string?> PickSavePdfAsync(string suggestedName, string? folder)
         {
