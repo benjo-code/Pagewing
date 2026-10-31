@@ -4,6 +4,11 @@
   "title": "Pagewing",
   "scopeChanges": [
     {
+      "date": "2026-10-31",
+      "context": "Milestone 13: Zuschnitt gegenüber den Roadmap-Aufgaben",
+      "text": "Mit dem Projektinhaber am 2026-10-31 abgestimmt (Spec `superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md`, Plan `superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md`). Seitenänderungen werden in der Seitenleiste vorgemerkt und mit „Anwenden“ vollständig neu geschrieben (nicht live in der Ansicht). Zusammenführen geschieht über „Datei einfügen“ und die CLI; ein eigener Dialog „Dateien zusammenführen“ ist Backlog. Bilderexport nur als PNG (der Core hat nur einen PNG-Encoder), JPEG ist Backlog. Die QPDF-Entscheidung fällt nach einem Spike in Aufgabe 1 des Plans (Halt). Hinzu kommen Extrahieren und Duplizieren als Teil des Teilens bzw. Organisierens. Stufe 1: Spike, Plan, Neuschrieb, Organisiermodus, `rotate`; Stufe 2: Datei einfügen, Teilen, Bilderexport, `merge`, `split`, `export`. Wird Stufe 1 deutlich größer, ist ein Schnitt in M13 und M13.1 möglich."
+    },
+    {
       "date": "2026-10-30",
       "context": "Release v0.2.0: Abnahme nur automatisiert, Handprüfungen nach v1.0.0",
       "text": "Auf Anweisung des Projektinhabers (2026-10-30) wird `v0.2.0` nur mit automatisierten Prüfungen abgenommen; alle Handprüfungen wandern in die Abnahme von `v1.0.0`. Die 13 bisherigen Kriterien von `v0.2.0` sind geteilt: Was ein Test, ein Workflow oder die Hardware-Messung des Haupt-PCs belegt, ist jetzt Kriterium K1 bis K6 von `v0.2.0` (K7: der Changelog nennt, was nicht von Hand geprüft wurde). Der Handprüf-Rest steht wörtlich bei `v1.0.0` (acht Kriterien ganz, drei Reste, dazu die Fork-PR-Probe aus Milestone 12.1). Nach `v1.0.0` verschoben sind auch der Beweis, dass `PauseCallbackStressTests` mit dem alten Pause-Rückruf abstürzt, und `--measure-scroll` mit `scroll-text-dense-10-signatures.pdf`. Risiko: Der Updater lief noch nie Ende zu Ende gegen ein echtes Release; `v0.2.0` auf `v0.3.0` ist der erste echte Test. Einzelheiten im Eintrag „Release v0.2.0: Abnahme nur automatisiert, Handprüfungen nach v1.0.0“ in `Docs/DECISIONS.md`."
@@ -637,16 +642,18 @@
     {
       "number": 3,
       "name": "Seiten & Schwärzen",
-      "spec": { "text": "noch nicht erstellt (wird in M13 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6" },
+      "spec": { "text": "Entwurf für M13 (Seiten organisieren); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6", "link": "superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md" },
       "milestones": [
         {
           "id": "13",
           "title": "Seiten organisieren",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md",
           "prerequisites": ["11", "12"],
           "goal": "Seiten lassen sich in App und CLI umsortieren, drehen, löschen, einfügen, zusammenführen, teilen und als Bild exportieren.",
           "tasks": [
-            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 3, inkl. Entscheidung über QPDF (Lesezeichen beim Zusammenführen, Metadaten)", "done": false },
+            { "text": "Spec erstellen (Brainstorming) für Teilprojekt 3. Erledigt 2026-10-31: `superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md` nach dem Brainstorming mit dem Projektinhaber, von ihm freigegeben", "done": true },
+            { "text": "Entscheidung über QPDF (Lesezeichen beim Zusammenführen, Metadaten): Spike mit PDFium, Entscheidungsregel in Spec Abschnitt 6, Ergebnis als Eintrag in `Docs/DECISIONS.md`", "done": false },
             { "text": "Umsortieren, drehen, löschen, einfügen in der Seitenleiste", "done": false },
             { "text": "PDFs zusammenführen und teilen", "done": false },
             { "text": "Seiten als Bild exportieren", "done": false },
@@ -968,6 +975,17 @@
     { "title": "Datenschutz-Text: UNC-Pfade und NTLM", "text": "Aus der Sicherheitsprüfung (M12.1): Pagewing öffnet jeden Pfad, den das System übergibt (Kommandozeile, Dateizuordnung, Sitzung). Bei einem UNC-Pfad (`\\\\Server\\Freigabe\\x.pdf`) sendet Windows beim Öffnen automatisch NTLM-Anmeldedaten an den Server, wie bei jedem Dateiöffner. In den Datenschutz-/Sicherheitstext des öffentlichen Repos als Hinweis aufnehmen." },
     { "title": "CLI `render`: Hinweis zum Überschreiben vorhandener Dateien in der Hilfe", "text": "Aus der Sicherheitsprüfung (M12.1): `pagewing render` schreibt `<Name>-pNNN.png` in das Ausgabeverzeichnis und überschreibt vorhandene Dateien (auch Links) ohne Rückfrage. Ein Pfadwechsel ist nicht möglich. Vorschlag: den Satz in `CliApp.Help` und im README ergänzen oder mit `FileMode.CreateNew` und einem Schalter `--force` arbeiten." },
     { "title": "Release-Workflow: drei kleine Härtungen der Eingabeprüfung", "text": "Aus dem Schlussreview von M12.1 zurückgestellt (kein Fund ist ausnutzbar, ohne das Schreibrecht zu haben, das ohnehin als Vertrauen gilt): (1) Die Prüfung der Eingabe `ref` in PowerShell akzeptiert `main` mit angehängtem Zeilenumbruch, weil `$` vor dem Zeilenende passt; `\\z` statt `$` (bash nimmt es nicht an). (2) Werte mit führendem `/` oder `./` und `PULL/…` in Großschreibung passen durch die Positivliste; ob GitHub sie auf einen Pull-Request-Ref normalisiert, ist nicht geprüft, unwahrscheinlich. (3) `package.cs selftest` überspringt den Schritt mit dem Interpreter still, wenn `bash` oder `pwsh` fehlt; besser eine hörbare Meldung." },
-    { "title": "UI-Tests: Dreifachklick bei extremer Überlast", "text": "Rest aus M12.1 (Eintrag „UI-Tests auf gehosteten Linux-Runnern …“): Die Mehrfachklick-Erkennung von Avalonia hängt in Headless an der Wanduhr; bei vierfacher Überlast der Kerne zerfiel ein Dreifachklick in 4 von 100 Läufen in Einzelklicks (`AnnotateModeTests.DoubleAndTripleClickMarkTheWordAndTheLine`, ebenso die Dreifachklicks in `TextSelectionTests`). Auf dem Runner mit nacheinander laufenden Testprojekten ist die Last viel kleiner. Zeigt die CI es doch, sind die Optionen (Entscheidung des Projektinhabers): den Schritt „Test“ in gehosteten PR-Läufen einmal wiederholen, ein größeres gehostetes Runner-Label, oder App.Tests nur bei `push`." }
+    { "title": "UI-Tests: Dreifachklick bei extremer Überlast", "text": "Rest aus M12.1 (Eintrag „UI-Tests auf gehosteten Linux-Runnern …“): Die Mehrfachklick-Erkennung von Avalonia hängt in Headless an der Wanduhr; bei vierfacher Überlast der Kerne zerfiel ein Dreifachklick in 4 von 100 Läufen in Einzelklicks (`AnnotateModeTests.DoubleAndTripleClickMarkTheWordAndTheLine`, ebenso die Dreifachklicks in `TextSelectionTests`). Auf dem Runner mit nacheinander laufenden Testprojekten ist die Last viel kleiner. Zeigt die CI es doch, sind die Optionen (Entscheidung des Projektinhabers): den Schritt „Test“ in gehosteten PR-Läufen einmal wiederholen, ein größeres gehostetes Runner-Label, oder App.Tests nur bei `push`." },
+    {"title": "Seiten zuschneiden (M13)", "text": "Crop-Box je Seite setzen, mit Vorschau (PDF Arranger kann es). Nicht in M13."},
+    {"title": "Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen (M13)", "text": "Texte oder Bilder auf alle Seiten setzen. Nicht in M13."},
+    {"title": "Seitenbeschriftungen bearbeiten (M13)", "text": "`/PageLabels` anzeigen und ändern. M13 erhält sie nur so weit, wie der Spike zeigt."},
+    {"title": "Bilder als neue Seiten einfügen (M13)", "text": "Bilddateien (PNG, JPEG) als Seiten in einen Plan aufnehmen. Nicht in M13."},
+    {"title": "JPEG-Export von Seiten (M13)", "text": "M13 exportiert nur PNG, weil der Core nur einen PNG-Encoder hat. JPEG braucht einen Encoder (neue Abhängigkeit oder Eigenbau, Eintrag in `DECISIONS`)."},
+    {"title": "Dialog „Dateien zusammenführen“ mit Dateiliste (M13)", "text": "Mehrere Dateien wählen, ordnen, Seitenbereich je Datei, Ergebnis als neue Datei. In M13 geht Zusammenführen über „Datei einfügen“ und die CLI `merge`."},
+    {"title": "Seiten zwischen Tabs und Fenstern ziehen (M13)", "text": "Seiten aus der Seitenleiste eines Tabs in einen anderen ziehen (PDF Arranger kann es zwischen Fenstern); die Infrastruktur des Tab-Ziehens ist vorhanden."},
+    {"title": "Metadaten bearbeiten (M13)", "text": "Info-Dictionary und XMP ändern; PDFium kann sie nur lesen. Hängt an der QPDF-Entscheidung und an M14."},
+    {"title": "Ungespeicherte Annotationen in die Seitenänderung einfließen lassen (M13)", "text": "M13 verlangt vor dem Anwenden das Speichern. Einfließen hieße: Verlauf auf der Arbeitskopie nachspielen und Seitenindizes umrechnen."},
+    {"title": "„Entschlüsselt speichern“ bei Seitenänderungen (M13)", "text": "M13 lehnt das Anwenden ab, wenn die Verschlüsselung nicht erhalten bleibt. Ein ausdrücklicher Weg „ohne Passwort speichern“ wäre eine eigene Entscheidung."},
+    {"title": "Formularfelder beim Duplizieren oder Zusammenführen umbenennen (M13)", "text": "M13 meldet gleiche Feldnamen nur (die Felder sind dann in der Datei ein Feld mit mehreren Erscheinungen). Umbenennen wäre ein eigener Schritt mit Vorschau."}
   ]
 }
