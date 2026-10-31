@@ -36,7 +36,11 @@ public sealed class DocumentSaverRewriteTests : IDisposable
             var written = await File.ReadAllBytesAsync(request.TargetPath, Ct);
             Assert.False(written.Length >= before.Length && written.AsSpan(0, before.Length).SequenceEqual(before), "The rewrite must not be the original plus an appendix.");
             Assert.Equal(5, result.Reopened.PageCount);
-            Assert.Equal(request.ExpectedPages, await PageEditExecutor.FingerprintsAsync(result.Reopened, Ct));
+            var actual = await PageEditExecutor.FingerprintsAsync(result.Reopened, Ct);
+
+            // Page 1 is turned (its reading order is not expected), the others are exactly what was expected.
+            Assert.Equal(request.ExpectedPages.Skip(1), actual.Skip(1));
+            Assert.Equal(request.ExpectedPages[0] with { TextHash = actual[0].TextHash, CompareTextOrder = true }, actual[0]);
             Assert.Equal(FileStamp.Of(request.TargetPath), result.NewStamp);
         }
     }
@@ -195,6 +199,7 @@ public sealed class DocumentSaverRewriteTests : IDisposable
     [InlineData("order")]
     [InlineData("rotation")]
     [InlineData("text")]
+    [InlineData("textset")]
     [InlineData("size")]
     public async Task RewriteDetectsAWrongOrderOrRotation(string wrong)
     {
@@ -214,6 +219,9 @@ public sealed class DocumentSaverRewriteTests : IDisposable
             case "text":
                 expected[3] = expected[3] with { TextHash = expected[3].TextHash + 1 };
                 break;
+            case "textset":
+                expected[3] = expected[3] with { TextSetHash = expected[3].TextSetHash + 1 };
+                break;
             default:
                 expected[4] = expected[4] with { Width = expected[4].Width + 1 };
                 break;
@@ -225,6 +233,30 @@ public sealed class DocumentSaverRewriteTests : IDisposable
         Assert.Equal(SaveFailureReason.VerificationFailed, failure.Reason);
         Assert.Equal(before, await File.ReadAllBytesAsync(original, Ct));
         AssertOnlyFiles(original);
+    }
+
+    [Fact]
+    public async Task TheReadingOrderIsComparedOnlyWhereThePlanDoesNotTurnThePage()
+    {
+        var original = Copy("pages-marked.pdf");
+        var (copy, request) = await BuildAsync(original, Path.Combine(folder.Path, "turned.pdf"), p => p.Rotate([0], 90));
+        await using var scope = copy;
+        var expected = request.ExpectedPages.ToArray();
+
+        // The turned slot: PDFium reads such a page in another order, so only which characters it has is expected.
+        Assert.False(expected[0].CompareTextOrder);
+        Assert.True(expected[1].CompareTextOrder);
+        expected[0] = expected[0] with { TextHash = expected[0].TextHash + 1 };
+        await using var written = (await DocumentSaver.RewriteAsync(copy, engine, request with { ExpectedPages = expected }, cancellationToken: Ct)).Reopened;
+
+        // An unturned page with the same characters in another order is another page: its order hash is compared.
+        var (second, other) = await BuildAsync(original, Path.Combine(folder.Path, "swapped.pdf"), p => p);
+        await using var secondScope = second;
+        var wrong = other.ExpectedPages.ToArray();
+        wrong[2] = wrong[2] with { TextHash = wrong[2].TextHash ^ 0x5555 };
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(
+            () => DocumentSaver.RewriteAsync(second, engine, other with { ExpectedPages = wrong }, cancellationToken: Ct));
+        Assert.Equal(SaveFailureReason.VerificationFailed, failure.Reason);
     }
 
     [Fact]
@@ -328,6 +360,7 @@ public sealed class DocumentSaverRewriteTests : IDisposable
             Width = swap ? page.Height : page.Width,
             Height = swap ? page.Width : page.Height,
             Rotation = (page.Rotation + extra) % 360,
+            CompareTextOrder = extra == 0,
         };
     }
 

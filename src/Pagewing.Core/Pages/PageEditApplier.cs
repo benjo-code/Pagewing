@@ -27,6 +27,50 @@ public sealed record PageApplyRequest(
 public sealed record PageApplyResult(SaveResult Saved, bool Adopted);
 
 /// <summary>
+/// The page changes were written and checked, but the session could not take the written file as its document (or something
+/// else failed after the write). The file at <see cref="TargetPath"/> is the rewritten one; the session may still show the old
+/// document, so the caller must not treat the page changes as unapplied.
+/// </summary>
+public sealed class PageApplyAdoptException : Exception
+{
+    /// <summary>Creates the exception.</summary>
+    public PageApplyAdoptException()
+        : this(string.Empty, null)
+    {
+    }
+
+    /// <summary>Creates the exception with a message.</summary>
+    /// <param name="message">The message.</param>
+    public PageApplyAdoptException(string message)
+        : this(string.Empty, null)
+    {
+        _ = message;
+    }
+
+    /// <summary>Creates the exception for a written file.</summary>
+    /// <param name="targetPath">The path of the rewritten file.</param>
+    /// <param name="inner">What failed after the write.</param>
+    public PageApplyAdoptException(string targetPath, Exception? inner)
+        : base("The page changes were written, but the document could not be taken over.", inner)
+    {
+        TargetPath = targetPath;
+    }
+
+    /// <summary>Gets the path of the file that was written.</summary>
+    public string TargetPath { get; }
+}
+
+/// <summary>Hooks into <see cref="PageEditApplier"/> for tests.</summary>
+internal sealed class PageApplyHooks
+{
+    /// <summary>Gets the executor used to build the working copy (tests give one that reports the copy it opened).</summary>
+    public PageEditExecutor? Executor { get; init; }
+
+    /// <summary>Gets the action called with every inserted file the applier opened for the fingerprints.</summary>
+    public Action<PdfDocument>? SourceOpened { get; init; }
+}
+
+/// <summary>
 /// Applies a page plan to the document a session has open (milestone 13): builds the working copy from the file (never from
 /// the shown document), works out what the result must look like from the sources and the plan, rewrites it in full through
 /// the check of <see cref="DocumentSaver.RewriteAsync(PdfDocument, PdfEngine, RewriteRequest, IProgress{double}?, CancellationToken)"/>
@@ -43,6 +87,13 @@ public static class PageEditApplier
     /// Applies <paramref name="request"/>. Call it from a pool thread, never from the UI thread: it reads file stamps and
     /// the adoption closes the old document.
     /// </summary>
+    /// <remarks>
+    /// The caller must have run <see cref="PageEditExecutor.AnalyzeAsync"/> for this plan and honoured
+    /// <see cref="PageEditReport.IsRefused"/> (a refused plan must never be written) and shown the user what the report lists;
+    /// this method does not read the report again. The working copy is built from the <em>file</em> at the path of the open
+    /// document; it must be the file the session shows, which is checked before anything is written: a file that was replaced
+    /// or rewritten since it was opened ends in <see cref="SaveFailureReason.SourceModified"/>, with no way to overwrite it.
+    /// </remarks>
     /// <param name="session">The session whose open document the plan was made for.</param>
     /// <param name="engine">Opens the working copy, the inserted files and the written file.</param>
     /// <param name="request">What to write.</param>
@@ -54,15 +105,26 @@ public static class PageEditApplier
     /// <exception cref="PageEditException">The plan does not fit the document, a limit is exceeded or a source has no file.</exception>
     /// <exception cref="PdfOpenException">A file cannot be opened.</exception>
     /// <exception cref="InvalidDataException">A page of a source is damaged.</exception>
-    /// <exception cref="SaveFailureException">The rewrite failed; the target is unchanged.</exception>
+    /// <exception cref="SaveFailureException">The rewrite failed or the file is not the one that was opened; the target is unchanged.</exception>
+    /// <exception cref="PageApplyAdoptException">The file is written, but the session could not take it over.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled; the target is unchanged.</exception>
-    public static async Task<PageApplyResult> ApplyAsync(
+    public static Task<PageApplyResult> ApplyAsync(
         ViewerSession session,
         PdfEngine engine,
         PageApplyRequest request,
         IProgress<double>? progress,
         CancellationToken cancellationToken,
-        Func<PdfDocument, PdfEngine, RewriteRequest, IProgress<double>?, CancellationToken, Task<SaveResult>>? rewriter = null)
+        Func<PdfDocument, PdfEngine, RewriteRequest, IProgress<double>?, CancellationToken, Task<SaveResult>>? rewriter = null) =>
+        ApplyAsync(session, engine, request, progress, rewriter, hooks: null, cancellationToken);
+
+    internal static async Task<PageApplyResult> ApplyAsync(
+        ViewerSession session,
+        PdfEngine engine,
+        PageApplyRequest request,
+        IProgress<double>? progress,
+        Func<PdfDocument, PdfEngine, RewriteRequest, IProgress<double>?, CancellationToken, Task<SaveResult>>? rewriter,
+        PageApplyHooks? hooks,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(engine);
@@ -88,13 +150,25 @@ public static class PageEditApplier
             foreach (var id in usage.InsertedIds)
             {
                 var file = request.InsertedFiles[new PageSourceId(id)];
-                sources[new PageSourceId(id)] = await engine.OpenAsync(file.Path, file.Password, cancellationToken).ConfigureAwait(false);
+                var source = await engine.OpenAsync(file.Path, file.Password, cancellationToken).ConfigureAwait(false);
+                sources[new PageSourceId(id)] = source;
+                hooks?.SourceOpened?.Invoke(source);
             }
 
             var expected = await PageEditExecutor.ExpectedFingerprintsAsync(request.Plan, shown, sources, cancellationToken).ConfigureAwait(false);
-            working = await new PageEditExecutor(engine)
+            working = await (hooks?.Executor ?? new PageEditExecutor(engine))
                 .BuildAsync(request.Plan, new PageSourceFile(snapshot.Path, snapshot.Password), request.InsertedFiles, new Scaled(progress, 0, BuildShare), cancellationToken)
                 .ConfigureAwait(false);
+
+            // The working copy was opened from the path just now: it must be the very file the session shows. Otherwise another
+            // program replaced or rewrote it, and the pages built here (and the fingerprints, which come from the shown
+            // document) would describe two different files. The same dead end as the saver's, with no override.
+            // TODO(task 10): an inserted source is opened once for the fingerprints here and once by the executor; compare their
+            // stamps as well, or give the plan the stamps taken when the file was inserted.
+            if (working.SourceStampAtOpen != shown.SourceStampAtOpen)
+            {
+                throw new SaveFailureException(SaveFailureReason.SourceModified, "The file is not the one that was opened.");
+            }
 
             // The shown document and the inserted files must still be the files that were read: a file changed meanwhile
             // would give pages the fingerprints do not describe.
@@ -112,19 +186,27 @@ public static class PageEditApplier
                 ? await DocumentSaver.RewriteAsync(working, engine, rewrite, writing, cancellationToken).ConfigureAwait(false)
                 : await rewriter(working, engine, rewrite, writing, cancellationToken).ConfigureAwait(false);
 
-            // From here on the file is written, whatever happens to the session.
+            // From here on the file is written, whatever happens to the session: a failure now is told apart from a failed write.
             try
             {
-                request.Rewritten?.Invoke(result.Reopened);
-            }
-            catch (Exception)
-            {
-                // The notification must not keep the checked file from being adopted; the caller promised not to throw.
-            }
+                try
+                {
+                    request.Rewritten?.Invoke(result.Reopened);
+                }
+                catch (Exception)
+                {
+                    // The notification must not keep the checked file from being adopted; the caller promised not to throw.
+                }
 
-            var adopted = await session.AdoptRewrittenDocumentAsync(result.Reopened, request.TargetPath, replacing: shown).ConfigureAwait(false);
-            progress?.Report(1);
-            return new PageApplyResult(result, adopted);
+                var adopted = await session.AdoptRewrittenDocumentAsync(result.Reopened, request.TargetPath, replacing: shown).ConfigureAwait(false);
+                progress?.Report(1);
+                return new PageApplyResult(result, adopted);
+            }
+            catch (Exception ex)
+            {
+                await CloseQuietlyAsync(result.Reopened).ConfigureAwait(false);
+                throw new PageApplyAdoptException(request.TargetPath, ex);
+            }
         }
         finally
         {

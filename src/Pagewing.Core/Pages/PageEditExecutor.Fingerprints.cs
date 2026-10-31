@@ -5,20 +5,30 @@ using Pagewing.Core.Pdf;
 namespace Pagewing.Core.Pages;
 
 /// <summary>
-/// What the check after a rewrite compares per page: the size after rotation (rounded to 0.5 pt), the absolute rotation and a
-/// hash of which characters the text has and how often (<see cref="PageEditExecutor.FingerprintsAsync(PdfDocument, CancellationToken)"/>).
-/// A wrong page order, a wrong rotation or a page that lost its content shows as a different fingerprint. The text hash does
-/// not depend on the order of the text, because PDFium reads a turned page in another order (lines and runs come out in a
-/// different sequence), so a correctly turned page has the same hash as before.
+/// What the check after a rewrite compares per page: the size after rotation (rounded to 0.5 pt), the absolute rotation and two
+/// hashes of the text (<see cref="PageEditExecutor.FingerprintsAsync(PdfDocument, CancellationToken)"/>). A wrong page order, a
+/// wrong rotation or a page that lost its content shows as a different fingerprint.
 /// </summary>
+/// <remarks>
+/// <see cref="TextHash"/> depends on the order of the text and is the strong one: it tells two pages apart that have the same
+/// characters in another sequence. PDFium reads a page that is turned in another sequence (the lines of a turned page come out
+/// in a different order, the spaces differ), so for a slot the plan turns the expected <see cref="TextHash"/> cannot be known;
+/// such an expected fingerprint has <see cref="CompareTextOrder"/> <see langword="false"/> and only <see cref="TextSetHash"/>
+/// (which characters, how often) is compared. Everywhere else, where PDFium reads the page as it did in the source, both are.
+/// </remarks>
 /// <param name="Width">The width in points after rotation, rounded to 0.5.</param>
 /// <param name="Height">The height in points after rotation, rounded to 0.5.</param>
 /// <param name="Rotation">The absolute rotation: 0, 90, 180 or 270.</param>
-/// <param name="TextHash">A stable hash (not <see cref="string.GetHashCode()"/>, which differs from run to run) of the characters of the text and their counts, without white space and control characters, in no particular order.</param>
-public sealed record PageFingerprint(double Width, double Height, int Rotation, int TextHash);
+/// <param name="TextHash">A stable hash (not <see cref="string.GetHashCode()"/>, which differs from run to run) of the first <see cref="PageEditExecutor.FingerprintTextLength"/> characters of the text, in reading order.</param>
+/// <param name="TextSetHash">A stable hash of the characters of the whole text and their counts, without white space and control characters, in no particular order.</param>
+/// <param name="CompareTextOrder">Whether the check compares <see cref="TextHash"/> (an expected fingerprint of a turned slot says <see langword="false"/>).</param>
+public sealed record PageFingerprint(double Width, double Height, int Rotation, int TextHash, int TextSetHash = 0, bool CompareTextOrder = true);
 
 public sealed partial class PageEditExecutor
 {
+    /// <summary>The number of characters of a page's text that go into its <see cref="PageFingerprint.TextHash"/>.</summary>
+    public const int FingerprintTextLength = 256;
+
     /// <summary>The most pages whose fingerprint the check after a rewrite compares; a longer document is sampled (see <see cref="SampledPages"/>).</summary>
     internal const int MaxCheckedPages = 50;
 
@@ -50,7 +60,7 @@ public sealed partial class PageEditExecutor
             var size = await document.GetPageSizeAsync(page, cancellationToken).ConfigureAwait(false);
             var rotation = await document.GetPageRotationAsync(page, cancellationToken).ConfigureAwait(false);
             var text = await document.GetTextAsync(page, cancellationToken).ConfigureAwait(false);
-            result[i] = new PageFingerprint(RoundToHalfPoint(size.Width), RoundToHalfPoint(size.Height), rotation, HashOf(text));
+            result[i] = new PageFingerprint(RoundToHalfPoint(size.Width), RoundToHalfPoint(size.Height), rotation, HashOf(text), SetHashOf(text));
         }
 
         return result;
@@ -96,7 +106,8 @@ public sealed partial class PageEditExecutor
                     RoundToHalfPoint(swap ? blank.Height : blank.Width),
                     RoundToHalfPoint(swap ? blank.Width : blank.Height),
                     slot.ExtraRotation,
-                    HashOf(string.Empty));
+                    HashOf(string.Empty),
+                    SetHashOf(string.Empty));
                 continue;
             }
 
@@ -119,6 +130,9 @@ public sealed partial class PageEditExecutor
                 Width = turned ? page.Height : page.Width,
                 Height = turned ? page.Width : page.Height,
                 Rotation = (page.Rotation + slot.ExtraRotation) % 360,
+
+                // PDFium reads a turned page in another order: only which characters it has can be known beforehand.
+                CompareTextOrder = slot.ExtraRotation == 0,
             };
         }
 
@@ -159,10 +173,22 @@ public sealed partial class PageEditExecutor
 
     private static double RoundToHalfPoint(double points) => Math.Round(points * 2, MidpointRounding.AwayFromZero) / 2;
 
-    // Which characters a page has and how often, whatever the order: PDFium reads a page that is turned in another sequence (the
-    // lines of text-rich.pdf come out in the opposite order at 90 degrees, the spaces differ), so an order-dependent hash would
-    // refuse every correctly turned page. White space and control characters are left out for the same reason.
+    // The text in reading order: the first characters, UTF-8, SHA-256 (a surrogate pair is not split).
     private static int HashOf(string text)
+    {
+        var length = Math.Min(text.Length, FingerprintTextLength);
+        if (length > 0 && length < text.Length && char.IsHighSurrogate(text[length - 1]))
+        {
+            length--;
+        }
+
+        var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text.AsSpan(0, length).ToString()));
+        return BinaryPrimitives.ReadInt32LittleEndian(hash);
+    }
+
+    // Which characters a page has and how often, whatever the order (see PageFingerprint). White space and control characters are
+    // left out: they are what differs most between two readings of the same page.
+    private static int SetHashOf(string text)
     {
         var counts = new SortedDictionary<char, int>();
         foreach (var character in text)

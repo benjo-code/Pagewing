@@ -753,7 +753,8 @@ public static class DocumentSaver
     /// <summary>Whether two fingerprints describe the same page; sizes may differ by the rounding step (0.5 pt), so a value on a rounding boundary cannot fail a correct file.</summary>
     private static bool Matches(PageFingerprint expected, PageFingerprint actual) =>
         expected.Rotation == actual.Rotation
-        && expected.TextHash == actual.TextHash
+        && expected.TextSetHash == actual.TextSetHash
+        && (!expected.CompareTextOrder || expected.TextHash == actual.TextHash)
         && Math.Abs(expected.Width - actual.Width) <= 0.5
         && Math.Abs(expected.Height - actual.Height) <= 0.5;
 

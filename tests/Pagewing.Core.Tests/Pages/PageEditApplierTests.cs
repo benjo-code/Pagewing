@@ -47,7 +47,9 @@ public sealed class PageEditApplierTests
     {
         using var folder = new TempFolder();
         var path = Copy(folder, "pages-marked.pdf");
-        await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var shown = session.Document!;
         var original = await PageEditExecutor.FingerprintsAsync(shown, Ct);
         var plan = PageEditPlan.Identity(shown.PageCount)
             .Delete(new HashSet<int> { 0 })
@@ -57,12 +59,136 @@ public sealed class PageEditApplierTests
         var expected = await PageEditExecutor.ExpectedFingerprintsAsync(plan, shown, new Dictionary<PageSourceId, PdfDocument>(), Ct);
 
         Assert.Equal(plan.Slots.Count, expected.Count);
-        Assert.Equal(original[1].Width, expected[0].Width);
+        Assert.Equal(original[1], expected[0]);
         Assert.Equal(original[2].Height, expected[1].Width);
         Assert.Equal(original[2].Width, expected[1].Height);
         Assert.Equal((original[2].Rotation + 90) % 360, expected[1].Rotation);
-        Assert.Equal(new PageFingerprint(300, 400, 0, expected[2].TextHash), expected[2]);
-        Assert.Equal(original[3].TextHash, expected[3].TextHash);
+        Assert.False(expected[1].CompareTextOrder);
+        Assert.Equal(original[2].TextSetHash, expected[1].TextSetHash);
+        Assert.Equal(original[3], expected[3]);
+
+        // What the file really has afterwards is what was expected: the blank page (its size and its empty text) and the
+        // turned page (as far as the plan can know it) included.
+        await PageEditApplier.ApplyAsync(session, engine, new PageApplyRequest(plan, Path.Combine(folder.Path, "out.pdf"), None.Files), null, Ct);
+        var actual = await PageEditExecutor.FingerprintsAsync(session.Document!, Ct);
+        Assert.Equal(expected[0], actual[0]);
+        Assert.Equal(expected[2], actual[2]);
+        Assert.Equal(new PageFingerprint(300, 400, 0, actual[2].TextHash, actual[2].TextSetHash), actual[2]);
+        Assert.Equal(expected[3], actual[3]);
+        Assert.Equal((expected[1].Width, expected[1].Height, expected[1].Rotation, expected[1].TextSetHash), (actual[1].Width, actual[1].Height, actual[1].Rotation, actual[1].TextSetHash));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APathThatNowNamesAnotherFileIsRefusedWhateverTheTarget(bool inOriginal)
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "pages-marked.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var shown = session.Document;
+
+        // Another program replaced the file at the path by a different one with the same number of pages.
+        File.Move(path, Path.Combine(folder.Path, "moved.pdf"));
+        File.Copy(TestData.Pdf("pages-marked.pdf"), path);
+        File.AppendAllText(path, "\n");
+        var foreign = await File.ReadAllBytesAsync(path, Ct);
+        var target = inOriginal ? path : Path.Combine(folder.Path, "out.pdf");
+        var plan = PageEditPlan.Identity(6).Delete(new HashSet<int> { 0 });
+        var rewrites = 0;
+
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(() => PageEditApplier.ApplyAsync(
+            session,
+            engine,
+            new PageApplyRequest(plan, target, None.Files, OverwriteChangedOriginal: true),
+            null,
+            Ct,
+            (copy, e, r, p, token) =>
+            {
+                rewrites++;
+                return DocumentSaver.RewriteAsync(copy, e, r, p, token);
+            }));
+
+        // Nothing is written, not even with the override: the pages built from the foreign file are never put on its fingerprints.
+        Assert.Equal(SaveFailureReason.SourceModified, failure.Reason);
+        Assert.Equal(0, rewrites);
+        Assert.Equal(foreign, await File.ReadAllBytesAsync(path, Ct));
+        Assert.False(File.Exists(Path.Combine(folder.Path, "out.pdf")));
+        Assert.Same(shown, session.Document);
+        Assert.Empty(Directory.GetFiles(folder.Path, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task AFailureAfterTheWriteIsToldApartFromAFailedWrite()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "pages-marked.pdf");
+        var target = Path.Combine(folder.Path, "written.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var plan = PageEditPlan.Identity(6).Delete(new HashSet<int> { 0 });
+
+        // The checked file is closed before the session can take it (an adopt that cannot work).
+        var failure = await Assert.ThrowsAsync<PageApplyAdoptException>(() => PageEditApplier.ApplyAsync(
+            session,
+            engine,
+            new PageApplyRequest(plan, target, None.Files),
+            null,
+            Ct,
+            async (copy, e, r, p, token) =>
+            {
+                var result = await DocumentSaver.RewriteAsync(copy, e, r, p, token);
+                await result.Reopened.DisposeAsync();
+                return result;
+            }));
+
+        Assert.Equal(target, failure.TargetPath);
+        Assert.NotNull(failure.InnerException);
+        await using var written = await engine.OpenAsync(target, cancellationToken: Ct);
+        Assert.Equal(5, written.PageCount);
+        Assert.Equal(6, session.Document!.PageCount);
+    }
+
+    [Fact]
+    public async Task TheWorkingCopyAndTheSourcesAreClosedOnEveryFailurePath()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "pages-marked.pdf");
+        var inserted = Copy(folder, "hello_world.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var plan = PageEditPlan.Identity(6).InsertFrom(new PageSourceId(1), [0], 6);
+        var files = new Dictionary<PageSourceId, PageSourceFile> { [new PageSourceId(1)] = new PageSourceFile(inserted, null) };
+        PdfDocument? working = null;
+        var sources = new List<PdfDocument>();
+        var hooks = new PageApplyHooks
+        {
+            Executor = new PageEditExecutor(engine) { WorkingCopyOpened = copy => working = copy },
+            SourceOpened = sources.Add,
+        };
+
+        // A failed rewrite.
+        await Assert.ThrowsAsync<SaveFailureException>(() => PageEditApplier.ApplyAsync(
+            session, engine, new PageApplyRequest(plan, Path.Combine(folder.Path, "a.pdf"), files), null,
+            static (_, _, _, _, _) => throw new SaveFailureException(SaveFailureReason.DiskFull, "full"), hooks, Ct));
+        AssertClosed(working, sources);
+
+        // A file that is not the one that was opened (checked before anything is written).
+        File.AppendAllText(path, "\n");
+        working = null;
+        sources.Clear();
+        await Assert.ThrowsAsync<SaveFailureException>(() => PageEditApplier.ApplyAsync(
+            session, engine, new PageApplyRequest(plan, Path.Combine(folder.Path, "b.pdf"), files), null, null, hooks, Ct));
+        AssertClosed(working, sources);
+    }
+
+    private static void AssertClosed(PdfDocument? working, List<PdfDocument> sources)
+    {
+        Assert.NotNull(working);
+        Assert.Throws<ObjectDisposedException>(() => working.PageCount);
+        Assert.Single(sources);
+        Assert.All(sources, source => Assert.Throws<ObjectDisposedException>(() => source.PageCount));
     }
 
     [Fact]
