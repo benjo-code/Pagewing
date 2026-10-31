@@ -51,6 +51,7 @@ public static class GestureText
         Key.PageDown => Strings.KeyPageDown,
         Key.Left => Strings.KeyLeft,
         Key.Right => Strings.KeyRight,
+        Key.Delete => Strings.KeyDelete,
         Key.Escape => "Esc",
         _ => key.ToString(),
     };

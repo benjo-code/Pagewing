@@ -1515,4 +1515,61 @@
   <data name="SignatureDelete" xml:space="preserve">
     <value>Unterschrift löschen</value>
   </data>
+  <data name="CommandOrganizePages" xml:space="preserve">
+    <value>Seiten organisieren</value>
+  </data>
+  <data name="CommandRotatePagesLeft" xml:space="preserve">
+    <value>Ausgewählte Seiten nach links drehen</value>
+  </data>
+  <data name="CommandRotatePagesRight" xml:space="preserve">
+    <value>Ausgewählte Seiten nach rechts drehen</value>
+  </data>
+  <data name="CommandDeletePages" xml:space="preserve">
+    <value>Ausgewählte Seiten löschen</value>
+  </data>
+  <data name="CommandDuplicatePages" xml:space="preserve">
+    <value>Ausgewählte Seiten duplizieren</value>
+  </data>
+  <data name="CommandInsertBlankPage" xml:space="preserve">
+    <value>Leere Seite einfügen</value>
+  </data>
+  <data name="CommandDiscardPageEdits" xml:space="preserve">
+    <value>Seitenänderungen verwerfen</value>
+  </data>
+  <data name="KeyDelete" xml:space="preserve">
+    <value>Entf</value>
+  </data>
+  <data name="PageOrganizeNotReady" xml:space="preserve">
+    <value>Seiten lassen sich organisieren, sobald das Dokument angezeigt wird.</value>
+  </data>
+  <data name="PageOrganizeTooManyPages" xml:space="preserve">
+    <value>Dieses Dokument hat mehr Seiten, als sich organisieren lassen (höchstens {0}).</value>
+  </data>
+  <data name="PageOrganizeActive" xml:space="preserve">
+    <value>Beenden Sie zuerst das Organisieren der Seiten.</value>
+  </data>
+  <data name="PageEditsPending" xml:space="preserve">
+    <value>Seitenänderungen warten auf „Anwenden“.</value>
+  </data>
+  <data name="PageOutputBlockedPlan" xml:space="preserve">
+    <value>Wenden Sie die Seitenänderungen zuerst an oder verwerfen Sie sie.</value>
+  </data>
+  <data name="PageOutputBlockedUnsaved" xml:space="preserve">
+    <value>Speichern Sie zuerst die Änderungen.</value>
+  </data>
+  <data name="PageEditsLastPage" xml:space="preserve">
+    <value>Die letzte Seite kann nicht gelöscht werden.</value>
+  </data>
+  <data name="PageEditsLimit" xml:space="preserve">
+    <value>Die Seitenliste würde zu lang.</value>
+  </data>
+  <data name="PageEditsRefused" xml:space="preserve">
+    <value>Diese Seitenänderung ist nicht möglich.</value>
+  </data>
+  <data name="DiscardPageEditsTitle" xml:space="preserve">
+    <value>Seitenänderungen an „{0}“ verwerfen?</value>
+  </data>
+  <data name="DiscardPageEditsText" xml:space="preserve">
+    <value>Die Seiten, die Sie verschoben, gedreht, hinzugefügt oder gelöscht haben, wurden nicht angewendet. Sie gehen verloren, wenn Sie jetzt schließen.</value>
+  </data>
 </root>

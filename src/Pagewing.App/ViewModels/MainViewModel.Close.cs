@@ -210,7 +210,7 @@ public sealed partial class MainViewModel
             ? Tabs.Where(tab => ReferenceEquals(tab, only))
             : Tabs.Where(tab => ReferenceEquals(tab, ActiveTab)).Concat(Tabs.Where(tab => !ReferenceEquals(tab, ActiveTab)));
         return candidates.FirstOrDefault(tab =>
-            tab.AsksBeforeClosing && !(discarded.TryGetValue(tab, out var version) && version == tab.EditVersion));
+            tab.AsksBeforeClosing && !(discarded.TryGetValue(tab, out var version) && version == tab.ChangeVersion));
     }
 
     /// <summary>
@@ -223,8 +223,8 @@ public sealed partial class MainViewModel
     {
         Tabs.Activate(tab);
         var path = tab.FullPath ?? tab.FileName ?? string.Empty;
-        var question = tab.UnsaveableReason is { } reason
-            ? PendingSave.DiscardChanges(tab, path, reason)
+        var question = tab.AsksOnlyAboutPageEdits ? PendingSave.DiscardPageEdits(tab, path)
+            : tab.UnsaveableReason is { } reason ? PendingSave.DiscardChanges(tab, path, reason)
             : PendingSave.SaveChanges(tab, path);
         switch (await AskAsync(question, CancellationToken.None))
         {
@@ -260,7 +260,7 @@ public sealed partial class MainViewModel
                 // Not saved: the save showed why (its card) or the user cancelled there.
                 return await SaveTabAsync(tab, saveAs: false);
             case PendingSaveChoice.DontSave or PendingSaveChoice.Discard:
-                discarded[tab] = tab.EditVersion;
+                discarded[tab] = tab.ChangeVersion;
                 return true;
             default:
                 return false;

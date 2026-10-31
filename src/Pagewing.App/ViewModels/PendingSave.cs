@@ -103,6 +103,9 @@ public sealed class PendingSave
     // The text of a question whose text is not given by its kind and reason (SaveNotPossible), or null.
     private readonly Func<string>? _message;
 
+    // The title of a question whose title is not given by its kind (the page changes), or null.
+    private readonly Func<string>? _title;
+
     // When the card was last laid out (Clock timestamp); none: no card shows the question now.
     private long? _shownAt;
 
@@ -120,9 +123,11 @@ public sealed class PendingSave
         Func<string>? message = null,
         bool formsOnly = false,
         IReadOnlyList<string>? emptyFieldNames = null,
-        string? firstFieldName = null)
+        string? firstFieldName = null,
+        Func<string>? title = null)
     {
         _message = message;
+        _title = title;
         Kind = kind;
         Tab = tab;
         Path = path;
@@ -182,7 +187,7 @@ public sealed class PendingSave
     public event Action? ArmedChanged;
 
     /// <summary>Gets the title of the card in the language of the interface.</summary>
-    public string Title => Kind switch
+    public string Title => _title?.Invoke() ?? Kind switch
     {
         PendingSaveKind.SaveChanges => Format(Strings.SaveChangesTitle, FileName),
         PendingSaveKind.DiscardChanges => Format(Strings.DiscardChangesTitle, FileName),
@@ -310,6 +315,16 @@ public sealed class PendingSave
     /// </summary>
     internal static PendingSave DiscardChanges(TabViewModel tab, string path, SaveFailureReason reason) =>
         new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, reason);
+
+    /// <summary>
+    /// The question before a tab closes that has page changes which are not applied (milestone 13) and nothing else unsaved:
+    /// the changes are not written by "Save", so it is a warning like <see cref="DiscardChanges"/> ("Close and discard changes"
+    /// or "Cancel", "Cancel" the default), with its own title and text.
+    /// </summary>
+    internal static PendingSave DiscardPageEdits(TabViewModel tab, string path) =>
+        new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel,
+            message: static () => Strings.DiscardPageEditsText,
+            title: () => Format(Strings.DiscardPageEditsTitle, System.IO.Path.GetFileName(path)));
 
     /// <summary>
     /// The warning before saving a document whose signature forbids the change (DocMDP level 1 or 2). With

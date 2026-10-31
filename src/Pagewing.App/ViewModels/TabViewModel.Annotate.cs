@@ -103,10 +103,12 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets why the mode cannot start now, for the "Comments" panel, or <see langword="null"/>: the document forbids
-    /// annotations (known only after the first request), or it is not shown yet.
+    /// annotations (known only after the first request), it is not shown yet, or the mode "Organize pages" is on
+    /// (<see cref="PageEditsBlockedReason"/>).
     /// </summary>
     public string? AnnotateUnavailableReason =>
-        _permission is { Allowed: false } known && ReferenceEquals(known.Document, _document) ? Strings.AnnotateForbidden
+        _isOrganizing ? PageEditsBlockedReason
+        : _permission is { Allowed: false } known && ReferenceEquals(known.Document, _document) ? Strings.AnnotateForbidden
         : !CanRequestAnnotate() ? Strings.AnnotateNotReady
         : null;
 
@@ -435,8 +437,11 @@ public sealed partial class TabViewModel
         },
         () => (_isAnnotating && CanRunMarkup()) || CanBeginAnnotate());
 
-    /// <summary>Whether the mode may be asked for now: an open document whose first sharp page was shown.</summary>
-    private bool CanRequestAnnotate() => !_disposed && IsReady && _document is not null && _hasShownSharpPage;
+    /// <summary>
+    /// Whether the mode may be asked for now: an open document whose first sharp page was shown, and the mode "Organize pages"
+    /// off (page changes and annotations, which hang on page numbers, never mix; <see cref="PageEditsBlockedReason"/>).
+    /// </summary>
+    private bool CanRequestAnnotate() => !_disposed && IsReady && _document is not null && _hasShownSharpPage && !_isOrganizing;
 
     /// <summary>Whether the mode can start now: it may be asked for, and the document is not known to forbid it.</summary>
     private bool CanBeginAnnotate() =>
@@ -649,6 +654,7 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(CanAnnotate));
         RaiseAnnotateCanExecuteChanged();
         OnFormAvailabilityChanged();
+        OnPageAvailabilityChanged();
     }
 
     private void RaiseAnnotateCanExecuteChanged()
@@ -661,5 +667,6 @@ public sealed partial class TabViewModel
         _strikeOutCommand?.RaiseCanExecuteChanged();
         RaiseDrawCanExecuteChanged();
         RaiseFormCanExecuteChanged();
+        RaisePageCanExecuteChanged();
     }
 }

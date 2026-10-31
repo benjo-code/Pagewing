@@ -532,6 +532,25 @@ public static class Strings
     public static string SignatureMenuNew => Get("SignatureMenuNew");
     public static string SignatureMenuName => Get("SignatureMenuName");
     public static string SignatureDelete => Get("SignatureDelete");
+    public static string CommandOrganizePages => Get("CommandOrganizePages");
+    public static string CommandRotatePagesLeft => Get("CommandRotatePagesLeft");
+    public static string CommandRotatePagesRight => Get("CommandRotatePagesRight");
+    public static string CommandDeletePages => Get("CommandDeletePages");
+    public static string CommandDuplicatePages => Get("CommandDuplicatePages");
+    public static string CommandInsertBlankPage => Get("CommandInsertBlankPage");
+    public static string CommandDiscardPageEdits => Get("CommandDiscardPageEdits");
+    public static string KeyDelete => Get("KeyDelete");
+    public static string PageOrganizeNotReady => Get("PageOrganizeNotReady");
+    public static string PageOrganizeTooManyPages => Get("PageOrganizeTooManyPages");
+    public static string PageOrganizeActive => Get("PageOrganizeActive");
+    public static string PageEditsPending => Get("PageEditsPending");
+    public static string PageOutputBlockedPlan => Get("PageOutputBlockedPlan");
+    public static string PageOutputBlockedUnsaved => Get("PageOutputBlockedUnsaved");
+    public static string PageEditsLastPage => Get("PageEditsLastPage");
+    public static string PageEditsLimit => Get("PageEditsLimit");
+    public static string PageEditsRefused => Get("PageEditsRefused");
+    public static string DiscardPageEditsTitle => Get("DiscardPageEditsTitle");
+    public static string DiscardPageEditsText => Get("DiscardPageEditsText");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",

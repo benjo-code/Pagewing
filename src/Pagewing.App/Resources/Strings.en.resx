@@ -1515,4 +1515,61 @@
   <data name="SignatureDelete" xml:space="preserve">
     <value>Delete signature</value>
   </data>
+  <data name="CommandOrganizePages" xml:space="preserve">
+    <value>Organize pages</value>
+  </data>
+  <data name="CommandRotatePagesLeft" xml:space="preserve">
+    <value>Rotate selected pages left</value>
+  </data>
+  <data name="CommandRotatePagesRight" xml:space="preserve">
+    <value>Rotate selected pages right</value>
+  </data>
+  <data name="CommandDeletePages" xml:space="preserve">
+    <value>Delete selected pages</value>
+  </data>
+  <data name="CommandDuplicatePages" xml:space="preserve">
+    <value>Duplicate selected pages</value>
+  </data>
+  <data name="CommandInsertBlankPage" xml:space="preserve">
+    <value>Insert blank page</value>
+  </data>
+  <data name="CommandDiscardPageEdits" xml:space="preserve">
+    <value>Discard page changes</value>
+  </data>
+  <data name="KeyDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="PageOrganizeNotReady" xml:space="preserve">
+    <value>Pages can be organized once the document is shown.</value>
+  </data>
+  <data name="PageOrganizeTooManyPages" xml:space="preserve">
+    <value>This document has more pages than can be organized (at most {0}).</value>
+  </data>
+  <data name="PageOrganizeActive" xml:space="preserve">
+    <value>Finish organizing pages first.</value>
+  </data>
+  <data name="PageEditsPending" xml:space="preserve">
+    <value>Page changes are waiting to be applied.</value>
+  </data>
+  <data name="PageOutputBlockedPlan" xml:space="preserve">
+    <value>Apply or discard the page changes first.</value>
+  </data>
+  <data name="PageOutputBlockedUnsaved" xml:space="preserve">
+    <value>Save the changes first.</value>
+  </data>
+  <data name="PageEditsLastPage" xml:space="preserve">
+    <value>The last page cannot be deleted.</value>
+  </data>
+  <data name="PageEditsLimit" xml:space="preserve">
+    <value>The page list would become too long.</value>
+  </data>
+  <data name="PageEditsRefused" xml:space="preserve">
+    <value>This page change is not possible.</value>
+  </data>
+  <data name="DiscardPageEditsTitle" xml:space="preserve">
+    <value>Discard the page changes to “{0}”?</value>
+  </data>
+  <data name="DiscardPageEditsText" xml:space="preserve">
+    <value>The pages you moved, turned, added or deleted have not been applied. They are lost if you close now.</value>
+  </data>
 </root>

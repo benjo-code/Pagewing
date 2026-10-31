@@ -140,6 +140,19 @@ public sealed class CommandCatalog
         Tab("form.fill", () => Strings.FormModeName, EditGroup, CtrlShift(Key.F), tab => tab.ToggleFillCommand, ready: true),
         Tab("form.highlight", () => Strings.FormCommandHighlight, EditGroup, CtrlShift(Key.J), tab => tab.ToggleHighlightCommand),
 
+        // The mode "Organize pages" (milestone 13): on and off (off only while no page change is pending), and what it does to
+        // the selected pages; the changes are only staged (the plan of the tab) until they are applied. Ctrl+Z and Ctrl+Y undo
+        // and redo the plan in the mode (edit.undo, edit.redo). The commands of the mode run only in it and never make the
+        // tab's commands before (OrganizeTab asks the mode first). Letters, arrows and Delete are on every layout without AltGr;
+        // the arrows and Delete leave a text field its own use (YieldsToTextInput). Discard has no key: Esc and the toolbar.
+        Tab("pages.organize", () => Strings.CommandOrganizePages, EditGroup, CtrlShift(Key.O), tab => tab.OrganizeCommand, ready: true),
+        OrganizeTab("pages.rotateLeft", () => Strings.CommandRotatePagesLeft, CtrlShift(Key.Left), tab => tab.RotateSelectionCommand, -90) with { YieldsToTextInput = true },
+        OrganizeTab("pages.rotateRight", () => Strings.CommandRotatePagesRight, CtrlShift(Key.Right), tab => tab.RotateSelectionCommand, 90) with { YieldsToTextInput = true },
+        OrganizeTab("pages.delete", () => Strings.CommandDeletePages, new KeyGesture(Key.Delete), tab => tab.DeletePagesCommand) with { YieldsToTextInput = true },
+        OrganizeTab("pages.duplicate", () => Strings.CommandDuplicatePages, CtrlShift(Key.N), tab => tab.DuplicateSelectionCommand),
+        OrganizeTab("pages.insertBlank", () => Strings.CommandInsertBlankPage, CtrlShift(Key.B), tab => tab.InsertBlankPageCommand),
+        OrganizeTab("pages.discard", () => Strings.CommandDiscardPageEdits, null, tab => tab.DiscardPageEditsCommand),
+
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
             with { AlternativeGestures = [CtrlShift(Key.OemPlus), Ctrl(Key.Add)] },
@@ -241,6 +254,27 @@ public sealed class CommandCatalog
         }
 
         return new(id, title, group, gesture, () => CanRun(out _), () =>
+        {
+            if (CanRun(out var target))
+            {
+                target!.Execute(parameter);
+            }
+        });
+    }
+
+    /// <summary>
+    /// A command of the mode "Organize pages" of the active tab: it exists only while the mode is on, and until then the tab's
+    /// command is not even looked up (so nothing of the mode is made by asking the catalog).
+    /// </summary>
+    private AppCommand OrganizeTab(string id, Func<string> title, KeyGesture? gesture, Func<TabViewModel, ICommand> command, object? parameter = null)
+    {
+        bool CanRun(out ICommand? target)
+        {
+            target = _window.ActiveTab is { IsOrganizing: true } tab ? command(tab) : null;
+            return target?.CanExecute(parameter) == true;
+        }
+
+        return new(id, title, EditGroup, gesture, () => CanRun(out _), () =>
         {
             if (CanRun(out var target))
             {
