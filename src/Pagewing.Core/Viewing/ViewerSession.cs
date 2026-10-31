@@ -850,6 +850,153 @@ public sealed class ViewerSession : IDisposable
     }
 
     /// <summary>
+    /// Replaces the open document by <paramref name="reopened"/>, the file that a full rewrite just produced from it and
+    /// that was checked (<see cref="DocumentSaver.RewriteAsync"/>), and which has other pages than the old document:
+    /// <see cref="State"/> stays <see cref="ViewerState.Ready"/> and <see cref="Document"/> goes straight from the old
+    /// document to the new one. The session takes ownership of <paramref name="reopened"/> in every case.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="AdoptSavedDocumentAsync"/> nothing of the old pages stays valid: <see cref="Cache"/> becomes a
+    /// new instance (with the budget the tab has now, see <see cref="SetActive"/>; the old one is emptied), a new
+    /// <see cref="Scheduler"/> renders into it in the current <see cref="PageTheme"/>, the source of
+    /// <see cref="EnsurePageTexts"/> and the thumbnails of <see cref="EnsureThumbnails"/> are disposed and made anew by
+    /// the next call (a search or a view that holds the old ones must let go of them when <see cref="Changed"/> comes),
+    /// and <see cref="LoadedSizes"/> starts again with the first batch of the new document (read before the swap, so the
+    /// session is never ready without sizes); the rest follows in background batches, each raising <see cref="Changed"/>.
+    /// <see cref="Path"/> becomes <paramref name="path"/>, <see cref="OpenedStamp"/> is read again from it (a path stamp,
+    /// on the calling thread: call this from a pool thread, never from the UI thread) and the password of the last open
+    /// is kept (in memory only: a rewrite keeps an encrypted file encrypted). Only after the new document is installed
+    /// is the old one closed together with its scheduler; the returned task completes when that is done. Then
+    /// <see cref="Changed"/> is raised once.
+    /// </para>
+    /// <para>
+    /// The races are those of <see cref="AdoptSavedDocumentAsync"/>: after <see cref="Dispose"/> or <see cref="Close"/>,
+    /// while a newer <see cref="OpenAsync"/> is running or has replaced the document, and when
+    /// <paramref name="replacing"/> is given but no longer the open document, <paramref name="reopened"/> is closed and
+    /// nothing changes (no event). It must not be called from a handler of <see cref="Changed"/> or of a scheduler.
+    /// </para>
+    /// </remarks>
+    /// <param name="reopened">The rewritten file, opened and checked.</param>
+    /// <param name="path">The path the document was written to.</param>
+    /// <param name="replacing">The document that was rewritten, or <see langword="null"/> to replace whatever document is open.</param>
+    /// <returns>Whether <paramref name="reopened"/> became the open document.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reopened"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="path"/> is empty or invalid, or <paramref name="reopened"/> is already closed (it is closed in any case).
+    /// </exception>
+    public async Task<bool> AdoptRewrittenDocumentAsync(PdfDocument reopened, string path, PdfDocument? replacing = null)
+    {
+        ArgumentNullException.ThrowIfNull(reopened);
+        string fullPath;
+        try
+        {
+            ArgumentException.ThrowIfNullOrEmpty(path);
+            fullPath = System.IO.Path.GetFullPath(path);
+        }
+        catch (Exception)
+        {
+            await reopened.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        int pageCount;
+        try
+        {
+            pageCount = reopened.PageCount;
+        }
+        catch (ObjectDisposedException)
+        {
+            throw new ArgumentException("The rewritten document is already closed.", nameof(reopened));
+        }
+
+        // Before any lock: both read on the calling thread / the PDFium thread, and the session keeps showing the old
+        // document meanwhile. If the session has moved on by the time they are done, the work is simply thrown away.
+        var stamp = FileStamp.Of(fullPath);
+        var sizes = new PdfPageSize[pageCount];
+        var loaded = 0;
+        try
+        {
+            var first = await loadSizes(reopened, 0, Math.Min(FirstBatchSize, pageCount), PdfPriority.Interactive, CancellationToken.None).ConfigureAwait(false);
+            loaded = first.Count;
+            for (var i = 0; i < loaded; i++)
+            {
+                sizes[i] = first[i];
+            }
+        }
+        catch (Exception)
+        {
+            await reopened.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        PdfDocument? oldDocument = null;
+        RenderScheduler? oldScheduler = null;
+        RenderCache? oldCache = null;
+        ThumbnailSource? oldThumbnails = null;
+        PageTextSource? oldPageTexts = null;
+        CancellationTokenSource? superseded = null;
+        CancellationTokenSource? source = null;
+        long mine = 0;
+
+        // themeGate first, as in SetPageTheme: a theme change must reach either the old scheduler (which is disposed
+        // below) or the new one, which is created with the theme in force.
+        lock (themeGate)
+        {
+            lock (gate)
+            {
+                if (!disposed && state == ViewerState.Ready && document is not null && cache is not null
+                    && (replacing is null || ReferenceEquals(document, replacing)))
+                {
+                    mine = Interlocked.Increment(ref generation);
+                    oldDocument = document;
+                    oldScheduler = scheduler;
+                    oldCache = cache;
+                    oldThumbnails = thumbnails;
+                    thumbnails = null;
+                    oldPageTexts = pageTexts;
+                    pageTexts = null;
+                    document = reopened;
+
+                    // Read under the lock of the session, like SetActive does: a budget change is applied either to the
+                    // old cache before this point or to the new one after it.
+                    cache = new RenderCache(TabBudget.For(active));
+                    scheduler = new RenderScheduler(reopened, cache, pageTheme, formHighlight);
+                    this.path = fullPath;
+                    openedStamp = stamp;
+
+                    // The loader of the old document goes quiet with the new generation.
+                    superseded = request;
+                    source = request = new CancellationTokenSource();
+                    loadedSizes = new ArraySegment<PdfPageSize>(sizes, 0, loaded);
+                    backgroundLoadFailure = null;
+                }
+            }
+        }
+
+        if (oldDocument is null)
+        {
+            await reopened.DisposeAsync().ConfigureAwait(false);
+            return false;
+        }
+
+        Cancel(superseded);
+        oldThumbnails?.Dispose();
+        oldPageTexts?.Dispose();
+        oldScheduler?.Dispose();
+        oldCache?.Clear();
+        await oldDocument.DisposeAsync().ConfigureAwait(false);
+        Raise(mine);
+
+        if (loaded < pageCount)
+        {
+            _ = LoadRemainingSizesAsync(reopened, mine, sizes, loaded, source!.Token);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Returns to <see cref="ViewerState.Empty"/>: supersedes a request that is still running and releases the
     /// document, the cache and the scheduler. Does nothing (and raises nothing) on an empty session.
     /// </summary>
