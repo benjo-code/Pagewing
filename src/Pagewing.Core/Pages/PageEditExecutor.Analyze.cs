@@ -1,4 +1,3 @@
-using System.Globalization;
 using Pagewing.Core.Pdf;
 
 namespace Pagewing.Core.Pages;
@@ -12,8 +11,9 @@ public sealed partial class PageEditExecutor
     /// Tells what applying <paramref name="plan"/> loses, couples or invalidates, from the facts of the spike
     /// (<c>Docs/DECISIONS.md</c>, "Seiten organisieren: Spike und QPDF-Entscheidung (M13)"). It reads the documents it is given,
     /// page by page in short jobs, and changes nothing. The nature of a loss is its <see cref="PageLossKind"/>; the list is
-    /// empty when nothing is lost. Not reported (not a loss of content): the producer of the information becomes PDFium once
-    /// pages are imported; page labels are a list by position and do not follow the pages.
+    /// empty when nothing is lost. <see cref="PageEditReport.IsRefused"/> says whether the plan must not be applied at all. Not
+    /// reported, by ruling (nothing of the content is lost): the producer of the information becomes PDFium once pages are
+    /// imported.
     /// </summary>
     /// <param name="plan">The plan.</param>
     /// <param name="primary">The open document the plan was made for.</param>
@@ -50,7 +50,7 @@ public sealed partial class PageEditExecutor
         }
 
         var losses = new List<PageLoss>();
-        await ReportFileLossesAsync(usage, documents, losses, cancellationToken).ConfigureAwait(false);
+        await ReportFileLossesAsync(plan, usage, documents, losses, cancellationToken).ConfigureAwait(false);
         await ReportBookmarksAsync(usage, primary, losses, cancellationToken).ConfigureAwait(false);
         await ReportFormsAsync(usage, documents, losses, cancellationToken).ConfigureAwait(false);
         await ReportLinksAsync(usage, documents, losses, cancellationToken).ConfigureAwait(false);
@@ -58,35 +58,69 @@ public sealed partial class PageEditExecutor
         losses.Sort(static (a, b) =>
         {
             var byKind = a.Kind.CompareTo(b.Kind);
-            return byKind != 0 ? byKind : string.CompareOrdinal(a.Detail, b.Detail);
+            return byKind != 0 ? byKind : PageLossDetail.Compare(a.Detail, b.Detail);
         });
         return new PageEditReport(losses);
     }
 
-    private static async Task ReportFileLossesAsync(PlanUsage usage, Dictionary<int, PdfDocument> documents, List<PageLoss> losses, CancellationToken cancellationToken)
+    private static async Task ReportFileLossesAsync(PageEditPlan plan, PlanUsage usage, Dictionary<int, PdfDocument> documents, List<PageLoss> losses, CancellationToken cancellationToken)
     {
-        var signatures = await documents[0].GetSignatureInfoAsync(cancellationToken).ConfigureAwait(false);
+        var primary = documents[0];
+        var signatures = await primary.GetSignatureInfoAsync(cancellationToken).ConfigureAwait(false);
         if (signatures.SignatureCount > 0)
         {
-            var detail = signatures.Permission == DocMdpLevel.NotSet ? null : string.Create(CultureInfo.InvariantCulture, $"docmdp:{(int)signatures.Permission}");
+            var detail = signatures.Permission == DocMdpLevel.NotSet ? null : PageLossDetail.DocMdp((int)signatures.Permission);
             losses.Add(new PageLoss(PageLossKind.SignatureInvalidated, detail, null));
         }
 
+        // Page labels are a list by position: they name the same positions afterwards, whatever pages stand there.
+        if (!IsPositionPreserving(plan) && await primary.HasPageLabelsAsync(cancellationToken).ConfigureAwait(false))
+        {
+            losses.Add(new PageLoss(PageLossKind.PageLabelsShifted, PageLossDetail.Shifted, null));
+        }
+
+        var primaryEncrypted = (await primary.GetPrintInfoAsync(cancellationToken).ConfigureAwait(false)).IsEncrypted;
         foreach (var id in usage.InsertedIds)
         {
             var document = documents[id];
             var print = await document.GetPrintInfoAsync(cancellationToken).ConfigureAwait(false);
             if (print.IsEncrypted)
             {
-                losses.Add(new PageLoss(PageLossKind.EncryptionNotPreserved, SourceKey(id), null));
+                // Pages of a protected file in an unprotected result would be written without their protection: refused.
+                losses.Add(new PageLoss(PageLossKind.EncryptionNotPreserved, PageLossDetail.Source(id), null, Blocks: !primaryEncrypted));
             }
 
             var outline = await document.GetOutlineAsync(cancellationToken).ConfigureAwait(false);
             if (outline.Count > 0)
             {
-                losses.Add(new PageLoss(PageLossKind.ForeignOutlineDropped, SourceKey(id), null));
+                losses.Add(new PageLoss(PageLossKind.ForeignOutlineDropped, PageLossDetail.Source(id), null));
+            }
+
+            if (await document.HasPageLabelsAsync(cancellationToken).ConfigureAwait(false))
+            {
+                losses.Add(new PageLoss(PageLossKind.PageLabelsShifted, PageLossDetail.Source(id), null));
             }
         }
+    }
+
+    /// <summary>Gets whether every page keeps its position: the same pages of the open document in the same order, only turned perhaps.</summary>
+    private static bool IsPositionPreserving(PageEditPlan plan)
+    {
+        if (plan.Slots.Count != plan.PrimaryPageCount)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < plan.Slots.Count; i++)
+        {
+            var slot = plan.Slots[i];
+            if (slot.Blank is not null || slot.Source.Value != 0 || slot.SourceIndex != i)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static async Task ReportBookmarksAsync(PlanUsage usage, PdfDocument primary, List<PageLoss> losses, CancellationToken cancellationToken)
@@ -119,12 +153,13 @@ public sealed partial class PageEditExecutor
         }
     }
 
-    /// <summary>Reports the fields of copied pages and the collisions of names.</summary>
+    /// <summary>Reports the fields of copied pages, the fields left without a page and the collisions of names.</summary>
     private static async Task ReportFormsAsync(PlanUsage usage, Dictionary<int, PdfDocument> documents, List<PageLoss> losses, CancellationToken cancellationToken)
     {
         // The pages of each source that the plan uses and that have at least one widget.
         var withFields = new Dictionary<(int Source, int Index), List<int>>();
         var sourcesWithFields = new SortedSet<int>();
+        HashSet<int>? primaryPagesWithFields = null;
         foreach (var (id, document) in documents.OrderBy(d => d.Key))
         {
             if (!document.HasAcroForm)
@@ -133,16 +168,16 @@ public sealed partial class PageEditExecutor
             }
 
             var pagesWithFields = (await document.GetFormInfoAsync(cancellationToken).ConfigureAwait(false)).PagesWithFields.ToHashSet();
+            if (id == 0)
+            {
+                primaryPagesWithFields = pagesWithFields;
+            }
+
             foreach (var key in usage.Keys.Where(k => k.Source == id && pagesWithFields.Contains(k.Index)))
             {
                 withFields[key] = usage.PositionsOf(key);
                 sourcesWithFields.Add(id);
             }
-        }
-
-        if (withFields.Count == 0)
-        {
-            return;
         }
 
         var duplicated = new SortedSet<int>();
@@ -162,34 +197,91 @@ public sealed partial class PageEditExecutor
 
         if (duplicated.Count > 0)
         {
-            losses.Add(new PageLoss(PageLossKind.DuplicatedFormFields, "duplicated", [.. duplicated]));
+            losses.Add(new PageLoss(PageLossKind.DuplicatedFormFields, PageLossDetail.Duplicated, [.. duplicated]));
         }
 
         if (insertedPages.Count > 0)
         {
-            losses.Add(new PageLoss(PageLossKind.DuplicatedFormFields, "inserted", [.. insertedPages]));
+            losses.Add(new PageLoss(PageLossKind.DuplicatedFormFields, PageLossDetail.Inserted, [.. insertedPages]));
         }
 
-        if (sourcesWithFields.Count > 1)
+        var names = new FieldNames(documents);
+        var orphanNames = new HashSet<string>(StringComparer.Ordinal);
+        if (primaryPagesWithFields is not null && usage.DeletedPrimaryPages.Count > 0)
         {
-            await ReportCollisionsAsync(documents, withFields, losses, cancellationToken).ConfigureAwait(false);
+            var orphanPages = await FindOrphansAsync(usage, primaryPagesWithFields, withFields, names, orphanNames, cancellationToken).ConfigureAwait(false);
+            if (orphanPages.Count > 0)
+            {
+                losses.Add(new PageLoss(PageLossKind.OrphanFormFields, null, [.. orphanPages]));
+            }
+        }
+
+        var contributing = sourcesWithFields.Count + (orphanNames.Count > 0 && !sourcesWithFields.Contains(0) ? 1 : 0);
+        if (contributing > 1)
+        {
+            await ReportCollisionsAsync(withFields, orphanNames, names, losses, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private static async Task ReportCollisionsAsync(
-        Dictionary<int, PdfDocument> documents,
+    /// <summary>
+    /// Finds the fields all of whose widgets are on deleted pages: their names (into <paramref name="orphanNames"/>) and the
+    /// deleted pages that carry them. They stay in the form of the file as entries without a page.
+    /// </summary>
+    private static async Task<SortedSet<int>> FindOrphansAsync(
+        PlanUsage usage,
+        HashSet<int> primaryPagesWithFields,
         Dictionary<(int Source, int Index), List<int>> withFields,
+        FieldNames names,
+        HashSet<string> orphanNames,
+        CancellationToken cancellationToken)
+    {
+        var pages = new SortedSet<int>();
+        var deletedWithFields = usage.DeletedPrimaryPages.Where(primaryPagesWithFields.Contains).Order().ToList();
+        if (deletedWithFields.Count == 0)
+        {
+            return pages;
+        }
+
+        var kept = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var key in withFields.Keys.Where(k => k.Source == 0).OrderBy(k => k.Index))
+        {
+            kept.UnionWith(await names.OfAsync(key, cancellationToken).ConfigureAwait(false));
+        }
+
+        foreach (var page in deletedWithFields)
+        {
+            var carried = false;
+            foreach (var name in await names.OfAsync((0, page), cancellationToken).ConfigureAwait(false))
+            {
+                if (!kept.Contains(name))
+                {
+                    orphanNames.Add(name);
+                    carried = true;
+                }
+            }
+
+            if (carried)
+            {
+                pages.Add(page);
+            }
+        }
+
+        return pages;
+    }
+
+    private static async Task ReportCollisionsAsync(
+        Dictionary<(int Source, int Index), List<int>> withFields,
+        HashSet<string> orphanNames,
+        FieldNames names,
         List<PageLoss> losses,
         CancellationToken cancellationToken)
     {
-        var namesOf = new Dictionary<(int Source, int Index), IReadOnlyList<string>>();
-        var firstSource = new Dictionary<string, int>(StringComparer.Ordinal);
+        // Fields left without a page still occupy their name in the form of the primary file.
+        var firstSource = orphanNames.ToDictionary(static name => name, static _ => 0, StringComparer.Ordinal);
         var colliding = new HashSet<string>(StringComparer.Ordinal);
         foreach (var key in withFields.Keys.OrderBy(k => k.Source).ThenBy(k => k.Index))
         {
-            var names = await documents[key.Source].GetFormFieldNamesAsync(key.Index, cancellationToken).ConfigureAwait(false);
-            namesOf[key] = names;
-            foreach (var name in names)
+            foreach (var name in await names.OfAsync(key, cancellationToken).ConfigureAwait(false))
             {
                 if (firstSource.TryGetValue(name, out var source))
                 {
@@ -201,7 +293,7 @@ public sealed partial class PageEditExecutor
                 else if (firstSource.Count >= MaxTrackedFieldNames)
                 {
                     // Too many names to compare: say so instead of reporting nothing.
-                    losses.Add(new PageLoss(PageLossKind.FormFieldNameCollision, "unchecked", null));
+                    losses.Add(new PageLoss(PageLossKind.FormFieldNameCollision, PageLossDetail.Unchecked, null));
                     return;
                 }
                 else
@@ -217,11 +309,11 @@ public sealed partial class PageEditExecutor
         }
 
         var pages = new SortedSet<int>();
-        foreach (var (key, names) in namesOf)
+        foreach (var (key, positions) in withFields)
         {
-            if (names.Any(colliding.Contains))
+            if ((await names.OfAsync(key, cancellationToken).ConfigureAwait(false)).Any(colliding.Contains))
             {
-                pages.UnionWith(withFields[key]);
+                pages.UnionWith(positions);
             }
         }
 
@@ -279,14 +371,29 @@ public sealed partial class PageEditExecutor
 
         if (toDeleted.Count > 0)
         {
-            losses.Add(new PageLoss(PageLossKind.InternalLinkLost, "deleted-page", [.. toDeleted]));
+            losses.Add(new PageLoss(PageLossKind.InternalLinkLost, PageLossDetail.DeletedPage, [.. toDeleted]));
         }
 
         if (copied.Count > 0)
         {
-            losses.Add(new PageLoss(PageLossKind.InternalLinkLost, "copied-page", [.. copied]));
+            losses.Add(new PageLoss(PageLossKind.InternalLinkLost, PageLossDetail.CopiedPage, [.. copied]));
         }
     }
 
-    private static string SourceKey(int id) => string.Create(CultureInfo.InvariantCulture, $"source:{id}");
+    /// <summary>The field names of the pages of the sources, read once each.</summary>
+    private sealed class FieldNames(Dictionary<int, PdfDocument> documents)
+    {
+        private readonly Dictionary<(int Source, int Index), IReadOnlyList<string>> read = [];
+
+        public async Task<IReadOnlyList<string>> OfAsync((int Source, int Index) key, CancellationToken cancellationToken)
+        {
+            if (!read.TryGetValue(key, out var list))
+            {
+                list = await documents[key.Source].GetFormFieldNamesAsync(key.Index, cancellationToken).ConfigureAwait(false);
+                read[key] = list;
+            }
+
+            return list;
+        }
+    }
 }

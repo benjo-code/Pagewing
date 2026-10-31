@@ -318,6 +318,12 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     }
 
     /// <summary>
+    /// Gets whether the document has page labels: whether the first page has a label (the number tree of <c>/PageLabels</c> must
+    /// start at page 0). An empty label counts, because the style of the range may be "none" while later ranges name pages.
+    /// </summary>
+    public bool HasPageLabels() => Fpdf.FPDF_GetPageLabel(Access(), 0, null, new CULong(0)).Value > 0;
+
+    /// <summary>
     /// Reads the document outline (bookmarks) depth first. A bookmark that was seen before ends its sibling chain
     /// (a damaged file can link a bookmark back to itself or an ancestor), and the limits cut the result
     /// silently: at most <paramref name="maxItems"/> bookmarks in total, and only the top

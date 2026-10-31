@@ -441,6 +441,77 @@ public sealed class PageEditExecutorTests
     }
 
     [Fact]
+    public async Task AMixedPlanGivesTheTextRotationAndBlankSizeOfEverySlot()
+    {
+        using var folder = new TempFolder();
+        var engine = new PdfEngine();
+        var executor = new PageEditExecutor(engine);
+        var primary = CopyOf(folder, "pages-marked.pdf");
+        var thousand = CopyOf(folder, "thousand-pages.pdf");
+        var rich = CopyOf(folder, "text-rich.pdf");
+        var marked = CopyOf(folder, "pages-marked.pdf");
+        var one = new PageSourceId(1);
+        var two = new PageSourceId(2);
+        var three = new PageSourceId(3);
+
+        // Three foreign files interleaved (one of them with 60 pages: more than one import batch), copies of primary and of
+        // foreign pages, two blank pages, deletions, a block moved, and turns on pages of every kind including the blanks.
+        var plan = PageEditPlan.Identity(6)
+            .InsertFrom(one, [.. Enumerable.Range(100, 60)], 2)
+            .InsertFrom(two, [1, 0, 1], 10)
+            .InsertFrom(three, [5, 3, 4], 0)
+            .Duplicate([0, 20, 70])
+            .InsertBlank(4, new BlankPage(200, 100))
+            .InsertBlank(30, new BlankPage(150, 250))
+            .Delete([7, 8, 9, 40])
+            .Move([1, 2, 3, 50, 51], 20);
+        var blankPositions = Enumerable.Range(0, plan.Slots.Count).Where(i => plan.Slots[i].Blank is not null).ToArray();
+        Assert.Equal(2, blankPositions.Length);
+        plan = plan.Rotate([blankPositions[0]], 90).Rotate([blankPositions[1], 3, 21, 60], 180).Rotate([5, 22, 61], 270).Rotate([21, 6], 90);
+
+        var files = new Dictionary<PageSourceId, PageSourceFile> { [one] = thousand, [two] = rich, [three] = marked };
+        using var copy = await executor.BuildAsync(plan, primary, files, null, Cancel);
+        Assert.Equal(plan.Slots.Count, copy.PageCount);
+
+        var originals = new Dictionary<int, PdfDocument>
+        {
+            [0] = await engine.OpenAsync(primary.Path, null, Cancel),
+            [1] = await engine.OpenAsync(thousand.Path, null, Cancel),
+            [2] = await engine.OpenAsync(rich.Path, null, Cancel),
+            [3] = await engine.OpenAsync(marked.Path, null, Cancel),
+        };
+        try
+        {
+            for (var i = 0; i < plan.Slots.Count; i++)
+            {
+                var slot = plan.Slots[i];
+                var text = (await copy.GetTextAsync(i, Cancel)).Trim();
+                var rotation = await copy.GetPageRotationAsync(i, Cancel);
+                var size = await copy.GetPageSizeAsync(i, Cancel);
+                if (slot.Blank is { } blank)
+                {
+                    Assert.Equal(string.Empty, text);
+                    Assert.Equal(slot.ExtraRotation, rotation);
+                    var turned = slot.ExtraRotation is 90 or 270;
+                    Assert.Equal(turned ? (blank.Height, blank.Width) : (blank.Width, blank.Height), (Math.Round(size.Width), Math.Round(size.Height)));
+                    continue;
+                }
+
+                var source = originals[slot.Source.Value];
+                Assert.Equal((await source.GetTextAsync(slot.SourceIndex, Cancel)).Trim(), text);
+                Assert.Equal(((await source.GetPageRotationAsync(slot.SourceIndex, Cancel)) + slot.ExtraRotation) % 360, rotation);
+            }
+        }
+        finally
+        {
+            foreach (var original in originals.Values)
+            {
+                original.Dispose();
+            }
+        }
+    }
+
+    [Fact]
     public async Task HugeListsAreRefusedBeforeAnythingIsRead()
     {
         using var folder = new TempFolder();

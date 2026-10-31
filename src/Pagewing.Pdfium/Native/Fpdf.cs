@@ -169,6 +169,11 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial CULong FPDF_GetMetaText(nint document, byte* tag, void* buffer, CULong bufferLength);
 
+    /// <summary><c>FPDF_GetPageLabel</c>: the label of a page as UTF-16LE; returns the length in bytes including the terminator, 0 when the page has no label.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDF_GetPageLabel(nint document, int pageIndex, void* buffer, CULong bufferLength);
+
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint FPDFBookmark_GetFirstChild(nint document, nint bookmark);

@@ -63,6 +63,8 @@ public sealed partial class PageEditExecutor
                 throw new InvalidOperationException("The working copy does not have the pages of the plan.");
             }
 
+            // The imported pages are copies: the sources go now. Inside the try, so a source that fails to close cannot leak the copy.
+            await DisposeAllAsync(sources, rethrow: true).ConfigureAwait(false);
             return working;
         }
         catch
@@ -76,10 +78,31 @@ public sealed partial class PageEditExecutor
         }
         finally
         {
-            foreach (var source in sources.Values)
+            // Failure path (the success path emptied the list): release what is still open, whatever a close throws.
+            await DisposeAllAsync(sources, rethrow: false).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Closes every document (all of them, also when one fails) and empties the list; the first failure goes on if <paramref name="rethrow"/>.</summary>
+    private static async Task DisposeAllAsync(Dictionary<int, PdfDocument> documents, bool rethrow)
+    {
+        Exception? first = null;
+        foreach (var document in documents.Values)
+        {
+            try
             {
-                await source.DisposeAsync().ConfigureAwait(false);
+                await document.DisposeAsync().ConfigureAwait(false);
             }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                first ??= ex;
+            }
+        }
+
+        documents.Clear();
+        if (rethrow && first is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 

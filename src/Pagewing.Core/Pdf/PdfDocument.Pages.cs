@@ -8,7 +8,7 @@ namespace Pagewing.Core.Pdf;
 /// for a copy that is only written (<see cref="PageEditExecutor"/> opens it from the file of the primary source) and never for
 /// a document that is shown: such a document must not be rendered or read through its page view afterwards, because the
 /// per-page caches and the form environment of PDFium hang on page indices (see <c>PdfiumPageEdit</c>). Every operation is
-/// a short job on the PDFium thread (<see cref="PdfPriority.Background"/>); a list of pages is cut into batches of
+/// a short job on the PDFium thread (<c>PdfiumPriority.Background</c>); a list of pages is cut into batches of
 /// <see cref="PageEditLimits.ImportBatch"/> and the token is checked between them. <see cref="PageCount"/> follows the changes.
 /// See <c>Docs/DECISIONS.md</c>, entry "Seiten organisieren: Spike und QPDF-Entscheidung (M13)".
 /// </summary>
@@ -260,6 +260,13 @@ public sealed partial class PdfDocument
         }
 
         return result;
+    }
+
+    /// <summary>Reads whether the document has page labels (one short job); see <c>PdfiumDocument.HasPageLabels</c>.</summary>
+    internal Task<bool> HasPageLabelsAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        return document.Thread.InvokeAsync(document.HasPageLabels, PdfiumPriority.Background, cancellationToken);
     }
 
     /// <summary>Reads the full names of the form fields that have a widget on a page, in one short job (see <see cref="GetFormFieldsAsync"/>); none without a form.</summary>
