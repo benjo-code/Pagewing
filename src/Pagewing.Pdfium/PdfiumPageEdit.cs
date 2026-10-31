@@ -5,7 +5,8 @@ namespace Pagewing.Pdfium;
 
 /// <summary>
 /// Page operations on a document that is about to be rewritten (a working copy, never a document that is shown): import,
-/// delete, move, rotate, insert a blank page, and the full rewrite. Every method must be called on the PDFium thread and
+/// delete, move, rotate, insert a blank page, and the full rewrite (and a read of the internal links of a page, which also works on
+/// a document that is shown). Every method must be called on the PDFium thread and
 /// throws <see cref="PdfiumThreadViolationException"/> otherwise; every page handle is closed before a method returns.
 /// </summary>
 /// <remarks>
@@ -24,6 +25,9 @@ namespace Pagewing.Pdfium;
 /// </remarks>
 internal static unsafe class PdfiumPageEdit
 {
+    /// <summary>The most annotations of one page <see cref="ReadInternalLinkTargets"/> looks at (the same cap as the annotation reader).</summary>
+    public const int MaxLinksScanned = PdfiumAnnotations.MaxScannedPerPage;
+
     /// <summary>
     /// Copies the pages <paramref name="indices"/> of <paramref name="source"/>, in this order (an index may repeat), into
     /// <paramref name="dest"/> so that the first one gets the index <paramref name="destination"/>. <paramref name="source"/>
@@ -184,6 +188,65 @@ internal static unsafe class PdfiumPageEdit
     {
         ArgumentNullException.ThrowIfNull(document);
         document.SaveRewrite(destination);
+    }
+
+    /// <summary>
+    /// Reads where the internal links (link annotations whose action is a go-to, or that have a destination and no action) of
+    /// the page <paramref name="index"/> lead: the 0-based target page, or -1 if PDFium cannot resolve the destination. Links
+    /// to other files, addresses and every other action are not internal and are left out. At most
+    /// <see cref="MaxLinksScanned"/> annotations of the page are looked at (the page of a hostile file cannot keep the thread).
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidOperationException">PDFium could not load the page.</exception>
+    public static int[] ReadInternalLinkTargets(PdfiumDocument document, int index)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        var native = document.Access();
+        CheckPageIndex(native, index);
+        var count = Fpdf.FPDF_GetPageCount(native);
+        var page = LoadRaw(native, index);
+        try
+        {
+            var targets = new List<int>();
+            var position = 0;
+            nint link;
+            for (var scanned = 0; scanned < MaxLinksScanned && Fpdf.FPDFLink_Enumerate(page, &position, &link) != 0; scanned++)
+            {
+                if (link == 0)
+                {
+                    continue;
+                }
+
+                nint dest;
+                var action = Fpdf.FPDFLink_GetAction(link);
+                if (action != 0)
+                {
+                    if (Fpdf.FPDFAction_GetType(action).Value != FpdfConstants.ActionGoTo)
+                    {
+                        continue;
+                    }
+
+                    dest = Fpdf.FPDFAction_GetDest(native, action);
+                }
+                else
+                {
+                    dest = Fpdf.FPDFLink_GetDest(native, link);
+                    if (dest == 0)
+                    {
+                        continue;
+                    }
+                }
+
+                var target = dest == 0 ? -1 : Fpdf.FPDFDest_GetDestPageIndex(native, dest);
+                targets.Add(target >= 0 && target < count ? target : -1);
+            }
+
+            return [.. targets];
+        }
+        finally
+        {
+            Fpdf.FPDF_ClosePage(page);
+        }
     }
 
     private static void CheckPageIndex(nint document, int index)

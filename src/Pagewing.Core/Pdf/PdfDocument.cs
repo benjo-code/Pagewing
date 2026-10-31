@@ -18,7 +18,7 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     public const int MaxOutlineDepth = 32;
 
     private readonly PdfiumDocument document;
-    private readonly int pageCount;
+    private int pageCount;
     private readonly string pdfVersion;
     private readonly int formType;
     private int disposed;
@@ -38,7 +38,7 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
         get
         {
             ThrowIfDisposed();
-            return pageCount;
+            return Volatile.Read(ref pageCount);
         }
     }
 
