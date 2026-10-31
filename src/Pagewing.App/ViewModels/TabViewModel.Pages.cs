@@ -4,6 +4,7 @@ using System.Text;
 using System.Windows.Input;
 using Pagewing.App.Resources;
 using Pagewing.Core.Pages;
+using Pagewing.Core.Pdf;
 
 namespace Pagewing.App.ViewModels;
 
@@ -33,6 +34,7 @@ public sealed partial class TabViewModel
     private int _pageVersionCarry;
     private int _lastPageSource;
     private string? _pageEditNotice;
+    private RewriteExpectation? _expectedRewrite;
 
     private RelayCommand? _organizeCommand;
     private RelayCommand<int>? _rotateSelectionCommand;
@@ -186,10 +188,34 @@ public sealed partial class TabViewModel
     /// </summary>
     public ICommand ApplyPageEditsCommand => _applyPageEditsCommand ??= new RelayCommand(
         () => PageApplyRequested?.Invoke(),
-        () => CanEditPages && HasPendingPageEdits);
+        () => CanEditPages && HasPendingPageEdits && !_isSaving && !_isPrinting);
 
     /// <summary>Raised by <see cref="ApplyPageEditsCommand"/>: the user wants the staged page changes written.</summary>
     internal event Action? PageApplyRequested;
+
+    /// <summary>
+    /// Whether the window may start applying the plan now (the flow of <see cref="MainViewModel.ApplyPageEditsAsync"/>): a plan
+    /// that changes something, an open document, and no save, no print job, no card about the tab and no update lock. The
+    /// button and Ctrl+S ask the same; <see cref="SaveBlockedReason"/> says why while a print job runs.
+    /// </summary>
+    internal bool CanApplyPages =>
+        !_disposed && IsReady && _document is not null && HasPendingPageEdits && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen;
+
+    /// <summary>
+    /// Tells the tab that the document the session is about to adopt is the rewritten file of the plan just applied
+    /// (<see cref="Core.Pages.PageEditApplier"/>): the tab then keeps zoom, layout and panel, and shows the page that follows
+    /// <paramref name="page"/>, instead of treating it as a newly opened file. Any thread; the claim holds for exactly that document.
+    /// </summary>
+    /// <param name="rewritten">The checked, reopened document.</param>
+    /// <param name="page">The 0-based page of the new document to show (<see cref="PageEditPlan.FollowPage"/>).</param>
+    internal void ExpectRewrittenDocument(PdfDocument rewritten, int page) =>
+        Volatile.Write(ref _expectedRewrite, new RewriteExpectation(rewritten, page));
+
+    /// <summary>Takes back <see cref="ExpectRewrittenDocument"/> (the apply failed after the claim was made).</summary>
+    internal void ForgetRewrittenDocument() => Volatile.Write(ref _expectedRewrite, null);
+
+    /// <summary>The claim of <see cref="ExpectRewrittenDocument"/>.</summary>
+    private sealed record RewriteExpectation(PdfDocument Document, int Page);
 
     /// <summary>
     /// Gets the count of pages as the panel shows it while the mode is on: "12 pages" while the plan has as many as the
@@ -235,9 +261,11 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets whether staged changes are taken now: the mode is on and neither a card of the save flow asks about the tab nor the
-    /// installer of an update has locked editing. A save or a print job does not matter: the plan is not the document.
+    /// installer of an update has locked editing, and nothing is being saved (applying the plan is a save: the plan it writes is
+    /// the one it started with, so a change made meanwhile would be dropped unseen). A print job does not matter: the plan is
+    /// not the document.
     /// </summary>
-    private bool CanEditPages => !_disposed && _isOrganizing && _pageHistory is not null && !_isAskedAbout && !_isEditingFrozen;
+    private bool CanEditPages => !_disposed && _isOrganizing && _pageHistory is not null && !_isAskedAbout && !_isEditingFrozen && !_isSaving;
 
     /// <summary>
     /// Gets why a document of <paramref name="pageCount"/> pages cannot be organized, or <see langword="null"/>: the plan holds
@@ -597,6 +625,9 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(CanAnnotate));
         OnPropertyChanged(nameof(OffersFill));
         OnPageAvailabilityChanged();
+
+        // Ctrl+S is "Apply" while a plan waits.
+        RaiseSaveCanExecuteChanged();
     }
 
     // From OnAnnotateAvailabilityChanged (the document, the sharp page or the state changed).

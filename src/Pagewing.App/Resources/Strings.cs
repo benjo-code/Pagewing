@@ -571,6 +571,39 @@ public static class Strings
     public static string CommandMovePagesEarlier => Get("CommandMovePagesEarlier");
     public static string CommandMovePagesLater => Get("CommandMovePagesLater");
     public static string CommandApplyPageEdits => Get("CommandApplyPageEdits");
+    public static string ApplyPagesTitle => Get("ApplyPagesTitle");
+    public static string ApplySummaryRotated => Get("ApplySummaryRotated");
+    public static string ApplySummaryBlankOne => Get("ApplySummaryBlankOne");
+    public static string ApplySummaryBlank => Get("ApplySummaryBlank");
+    public static string ApplySummaryCopies => Get("ApplySummaryCopies");
+    public static string ApplySummaryFilesOne => Get("ApplySummaryFilesOne");
+    public static string ApplySummaryFiles => Get("ApplySummaryFiles");
+    public static string ApplyPagesIrreversible => Get("ApplyPagesIrreversible");
+    public static string ApplyLossesHeading => Get("ApplyLossesHeading");
+    public static string SaveChoiceSaveInOriginal => Get("SaveChoiceSaveInOriginal");
+    public static string ApplyChoiceBack => Get("ApplyChoiceBack");
+    public static string PagesOne => Get("PagesOne");
+    public static string PagesMany => Get("PagesMany");
+    public static string ApplyLossForeignOutline => Get("ApplyLossForeignOutline");
+    public static string ApplyLossBookmarkToDeletedPage => Get("ApplyLossBookmarkToDeletedPage");
+    public static string ApplyLossDuplicatedFields => Get("ApplyLossDuplicatedFields");
+    public static string ApplyLossInsertedFields => Get("ApplyLossInsertedFields");
+    public static string ApplyLossFieldCollision => Get("ApplyLossFieldCollision");
+    public static string ApplyLossFieldCollisionUnchecked => Get("ApplyLossFieldCollisionUnchecked");
+    public static string ApplyLossSignature => Get("ApplyLossSignature");
+    public static string ApplyLossEncryption => Get("ApplyLossEncryption");
+    public static string ApplyLossLinkDeleted => Get("ApplyLossLinkDeleted");
+    public static string ApplyLossLinkCopied => Get("ApplyLossLinkCopied");
+    public static string ApplyLossLabelsShifted => Get("ApplyLossLabelsShifted");
+    public static string ApplyLossLabelsSource => Get("ApplyLossLabelsSource");
+    public static string ApplyLossOrphanFields => Get("ApplyLossOrphanFields");
+    public static string ApplyLossOther => Get("ApplyLossOther");
+    public static string ApplyErrorRefusedEncrypted => Get("ApplyErrorRefusedEncrypted");
+    public static string ApplyErrorNotPrepared => Get("ApplyErrorNotPrepared");
+    public static string ApplyErrorDraft => Get("ApplyErrorDraft");
+    public static string SaveFirstTitle => Get("SaveFirstTitle");
+    public static string SaveFirstText => Get("SaveFirstText");
+    public static string SaveChangesWithPagesText => Get("SaveChangesWithPagesText");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",

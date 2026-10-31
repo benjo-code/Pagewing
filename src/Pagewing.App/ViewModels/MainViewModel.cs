@@ -76,7 +76,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
-    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save)> _tabHandlers = [];
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save, Action Apply)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private int? _tabDropIndex;
     private bool _picking;
@@ -1061,11 +1061,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
             Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)),
-            Save: (Action<bool>)(saveAs => _ = SaveTabAsync(tab, saveAs)));
+            Save: (Action<bool>)(saveAs => _ = SaveTabAsync(tab, saveAs)),
+            Apply: (Action)(() => _ = ApplyPageEditsAsync(tab)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;
         tab.PropertyChanged += handlers.Changed;
         tab.SaveRequested += handlers.Save;
+        tab.PageApplyRequested += handlers.Apply;
         _tabHandlers[tab] = handlers;
 
         // The file of the command line may be open already when its tab comes; a tab from another window was reported there.
@@ -1101,6 +1103,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             tab.OpenOtherRequested -= handlers.OpenOther;
             tab.PropertyChanged -= handlers.Changed;
             tab.SaveRequested -= handlers.Save;
+            tab.PageApplyRequested -= handlers.Apply;
         }
     }
 

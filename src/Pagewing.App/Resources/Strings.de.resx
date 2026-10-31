@@ -1632,4 +1632,103 @@
   <data name="PageMarkerCopy" xml:space="preserve">
     <value>Kopie</value>
   </data>
+  <data name="ApplyPagesTitle" xml:space="preserve">
+    <value>Seitenänderungen an „{0}“ anwenden?</value>
+  </data>
+  <data name="ApplySummaryRotated" xml:space="preserve">
+    <value>{0} gedreht</value>
+  </data>
+  <data name="ApplySummaryBlankOne" xml:space="preserve">
+    <value>{0} leere Seite</value>
+  </data>
+  <data name="ApplySummaryBlank" xml:space="preserve">
+    <value>{0} leere Seiten</value>
+  </data>
+  <data name="ApplySummaryCopies" xml:space="preserve">
+    <value>{0} dupliziert</value>
+  </data>
+  <data name="ApplySummaryFilesOne" xml:space="preserve">
+    <value>{0} Datei eingefügt</value>
+  </data>
+  <data name="ApplySummaryFiles" xml:space="preserve">
+    <value>{0} Dateien eingefügt</value>
+  </data>
+  <data name="ApplyPagesIrreversible" xml:space="preserve">
+    <value>Der Neuschrieb lässt sich nicht rückgängig machen.</value>
+  </data>
+  <data name="ApplyLossesHeading" xml:space="preserve">
+    <value>Das ändert sich im Dokument:</value>
+  </data>
+  <data name="SaveChoiceSaveInOriginal" xml:space="preserve">
+    <value>In der Originaldatei speichern</value>
+  </data>
+  <data name="ApplyChoiceBack" xml:space="preserve">
+    <value>Zurück</value>
+  </data>
+  <data name="PagesOne" xml:space="preserve">
+    <value>Seite {0}</value>
+  </data>
+  <data name="PagesMany" xml:space="preserve">
+    <value>Seiten {0}</value>
+  </data>
+  <data name="ApplyLossForeignOutline" xml:space="preserve">
+    <value>Die Lesezeichen der eingefügten Datei {0} werden nicht übernommen.</value>
+  </data>
+  <data name="ApplyLossBookmarkToDeletedPage" xml:space="preserve">
+    <value>Lesezeichen, die auf gelöschte Seiten zeigen ({0}), bleiben in der Liste, führen aber ins Leere.</value>
+  </data>
+  <data name="ApplyLossDuplicatedFields" xml:space="preserve">
+    <value>Formularfelder auf kopierten Seiten ({0}): Ein eingegebener Wert gilt für jede Kopie des Feldes.</value>
+  </data>
+  <data name="ApplyLossInsertedFields" xml:space="preserve">
+    <value>Formularfelder auf eingefügten Seiten ({0}) lassen sich in anderen Programmen unter Umständen nicht ausfüllen.</value>
+  </data>
+  <data name="ApplyLossFieldCollision" xml:space="preserve">
+    <value>Formularfelder gleichen Namens stammen aus verschiedenen Dateien ({0}); sie wirken wie ein einziges Feld.</value>
+  </data>
+  <data name="ApplyLossFieldCollisionUnchecked" xml:space="preserve">
+    <value>Es gab zu viele Formularfelder zum Vergleichen; Felder gleichen Namens aus verschiedenen Dateien wirken wie ein einziges Feld.</value>
+  </data>
+  <data name="ApplyLossSignature" xml:space="preserve">
+    <value>Dieses Dokument ist signiert. Danach zeigen Programme wie Acrobat die Signatur als ungültig an.</value>
+  </data>
+  <data name="ApplyLossEncryption" xml:space="preserve">
+    <value>Die eingefügte Datei {0} ist passwortgeschützt; ihre Seiten sind nur noch durch das Passwort dieses Dokuments geschützt.</value>
+  </data>
+  <data name="ApplyLossLinkDeleted" xml:space="preserve">
+    <value>Links auf {0} zeigen auf gelöschte Seiten und funktionieren nicht mehr.</value>
+  </data>
+  <data name="ApplyLossLinkCopied" xml:space="preserve">
+    <value>Links auf {0} (kopiert oder eingefügt) verlieren ihr Ziel.</value>
+  </data>
+  <data name="ApplyLossLabelsShifted" xml:space="preserve">
+    <value>Die Seitenbeschriftungen (etwa „iv“ oder „A-3“) bleiben an ihren Positionen und benennen nun andere Seiten.</value>
+  </data>
+  <data name="ApplyLossLabelsSource" xml:space="preserve">
+    <value>Die Seitenbeschriftungen der eingefügten Datei {0} werden nicht übernommen.</value>
+  </data>
+  <data name="ApplyLossOrphanFields" xml:space="preserve">
+    <value>Formularfelder, die nur auf gelöschten Seiten standen ({0}), bleiben ohne Seite im Formular.</value>
+  </data>
+  <data name="ApplyLossOther" xml:space="preserve">
+    <value>Etwas anderes im Dokument ändert sich.</value>
+  </data>
+  <data name="ApplyErrorRefusedEncrypted" xml:space="preserve">
+    <value>Eine passwortgeschützte Datei kann nicht in ein ungeschütztes Dokument eingefügt werden: Ihre Seiten würden ungeschützt geschrieben. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="ApplyErrorNotPrepared" xml:space="preserve">
+    <value>Die Seitenänderungen konnten nicht vorbereitet werden. Es wurde nichts geschrieben; die Seitenänderungen bleiben erhalten.</value>
+  </data>
+  <data name="ApplyErrorDraft" xml:space="preserve">
+    <value>Ein in ein Formularfeld getippter Text wurde nicht angenommen und ginge verloren. Machen Sie die Seitenänderungen rückgängig oder verwerfen Sie sie, korrigieren Sie den Text und wenden Sie sie dann erneut an.</value>
+  </data>
+  <data name="SaveFirstTitle" xml:space="preserve">
+    <value>Änderungen an „{0}“ zuerst speichern?</value>
+  </data>
+  <data name="SaveFirstText" xml:space="preserve">
+    <value>Es gibt Kommentare oder Formulareingaben, die noch nicht gespeichert sind. Die Seitenänderungen schreiben die ganze Datei neu und enthalten sie nicht. Speichern Sie diese zuerst; danach lassen sich die Seitenänderungen anwenden.</value>
+  </data>
+  <data name="SaveChangesWithPagesText" xml:space="preserve">
+    <value>Ihre Änderungen gehen verloren, wenn Sie sie nicht speichern. Auch die nicht angewendeten Seitenänderungen gehen verloren; „Speichern“ wendet sie nicht an.</value>
+  </data>
 </root>

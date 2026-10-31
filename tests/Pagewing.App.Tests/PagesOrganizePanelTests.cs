@@ -294,6 +294,12 @@ public sealed class PagesOrganizePanelTests : IDisposable
         Press(window, Key.Space);
         Assert.Equal(1, applied);
 
+        // The window answers the request with the card of "Apply" (task 8); "Back" returns to the list.
+        await WaitUntilAsync(window, () => viewModel.PendingSave is not null);
+        Assert.Equal(PendingSaveKind.ApplyPages, viewModel.PendingSave!.Kind);
+        viewModel.PendingSave.Abandon();
+        await WaitUntilAsync(window, () => viewModel.PendingSave is null && !tab.IsSaving);
+
         var discard = Find<Button>(bar, "DiscardButton");
         discard.Focus(NavigationMethod.Tab);
         Settle(window);
@@ -788,6 +794,11 @@ public sealed class PagesOrganizePanelTests : IDisposable
         Assert.True(catalog.ById("pages.apply")!.CanExecute());
         catalog.ById("pages.apply")!.Execute();
         Assert.Equal(1, applied);
+
+        // The window answers the request with the card of "Apply" (task 8); "Back" returns to the mode.
+        await WaitUntilAsync(window, () => viewModel.PendingSave is not null);
+        viewModel.PendingSave!.Abandon();
+        await WaitUntilAsync(window, () => viewModel.PendingSave is null && !tab.IsSaving);
         tab.DiscardPageEditsCommand.Execute(null);
         Assert.False(catalog.ById("pages.apply")!.CanExecute());
         Assert.False(tab.ApplyPageEditsCommand.CanExecute(null));
@@ -917,6 +928,11 @@ public sealed class PagesOrganizePanelTests : IDisposable
         Assert.True(catalog.ById("pages.discard")!.CanExecute());
         catalog.ById("pages.apply")!.Execute();
         Assert.Equal(1, applied);
+
+        // The window answers the request with the card of "Apply" (task 8); "Back" returns to the mode.
+        await WaitUntilAsync(window, () => viewModel.PendingSave is not null);
+        viewModel.PendingSave!.Abandon();
+        await WaitUntilAsync(window, () => viewModel.PendingSave is null && !tab.IsSaving);
 
         // A card over the window blocks them too.
         viewModel.ShowSettingsCommand.Execute(null);

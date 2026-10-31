@@ -125,6 +125,9 @@ public sealed partial class TabViewModel
                 RaiseSaveCanExecuteChanged();
                 _undoCommand?.RaiseCanExecuteChanged();
                 _redoCommand?.RaiseCanExecuteChanged();
+
+                // The plan is not edited while it is being written.
+                RaisePageCanExecuteChanged();
             }
         }
     }
@@ -244,7 +247,7 @@ public sealed partial class TabViewModel
     internal bool AsksBeforeClosing => !_disposed && (AsksAboutDocumentChanges || HasPendingPageEdits);
 
     /// <summary>Gets whether the document has changes that are not saved, or on their way (annotations and form values; not the page plan).</summary>
-    private bool AsksAboutDocumentChanges =>
+    internal bool AsksAboutDocumentChanges =>
         _isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || _editor is { IsDirty: true } or { IsBusy: true };
 
     /// <summary>
@@ -328,8 +331,14 @@ public sealed partial class TabViewModel
         set => _signatureNoteShown = value;
     }
 
-    /// <summary>Whether "Save" can run: an open document with unsaved changes, no save and no print job of the tab running.</summary>
-    internal bool CanSave() => CanSaveAs() && _isDirty;
+    /// <summary>
+    /// Whether "Save" can run: an open document with unsaved changes, or with page changes that wait to be applied (Ctrl+S
+    /// then opens the card of "Apply", <see cref="MainViewModel.ApplyPageEditsAsync"/>), no save and no print job of the tab running.
+    /// </summary>
+    internal bool CanSave() => CanSaveDocument() || (CanSaveAs() && HasPendingPageEdits);
+
+    /// <summary>Whether the changes of the document itself (annotations, form values) can be saved: <see cref="CanSave"/> without the page plan.</summary>
+    internal bool CanSaveDocument() => CanSaveAs() && _isDirty;
 
     /// <summary>Whether "Save as" can run: an open document, no save and no print job of the tab running.</summary>
     internal bool CanSaveAs() => !_disposed && IsReady && _document is not null && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen;
@@ -402,6 +411,9 @@ public sealed partial class TabViewModel
     {
         _saveCommand?.RaiseCanExecuteChanged();
         _saveAsCommand?.RaiseCanExecuteChanged();
+
+        // Applying page changes is a save: it waits for the same things (a save, a print job, a card, the update lock).
+        _applyPageEditsCommand?.RaiseCanExecuteChanged();
     }
 
     /// <summary>A waiting nudge is made first, so undo undoes it (the editor runs the operations in this order).</summary>

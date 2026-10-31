@@ -1632,4 +1632,103 @@
   <data name="PageMarkerCopy" xml:space="preserve">
     <value>Copy</value>
   </data>
+  <data name="ApplyPagesTitle" xml:space="preserve">
+    <value>Apply the page changes to “{0}”?</value>
+  </data>
+  <data name="ApplySummaryRotated" xml:space="preserve">
+    <value>{0} turned</value>
+  </data>
+  <data name="ApplySummaryBlankOne" xml:space="preserve">
+    <value>{0} blank page</value>
+  </data>
+  <data name="ApplySummaryBlank" xml:space="preserve">
+    <value>{0} blank pages</value>
+  </data>
+  <data name="ApplySummaryCopies" xml:space="preserve">
+    <value>{0} duplicated</value>
+  </data>
+  <data name="ApplySummaryFilesOne" xml:space="preserve">
+    <value>{0} file inserted</value>
+  </data>
+  <data name="ApplySummaryFiles" xml:space="preserve">
+    <value>{0} files inserted</value>
+  </data>
+  <data name="ApplyPagesIrreversible" xml:space="preserve">
+    <value>The rewrite cannot be undone.</value>
+  </data>
+  <data name="ApplyLossesHeading" xml:space="preserve">
+    <value>This changes in the document:</value>
+  </data>
+  <data name="SaveChoiceSaveInOriginal" xml:space="preserve">
+    <value>Save in the original file</value>
+  </data>
+  <data name="ApplyChoiceBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="PagesOne" xml:space="preserve">
+    <value>page {0}</value>
+  </data>
+  <data name="PagesMany" xml:space="preserve">
+    <value>pages {0}</value>
+  </data>
+  <data name="ApplyLossForeignOutline" xml:space="preserve">
+    <value>The bookmarks of inserted file {0} are not taken over.</value>
+  </data>
+  <data name="ApplyLossBookmarkToDeletedPage" xml:space="preserve">
+    <value>Bookmarks that point to deleted pages ({0}) stay in the list but lead nowhere.</value>
+  </data>
+  <data name="ApplyLossDuplicatedFields" xml:space="preserve">
+    <value>Form fields on copied pages ({0}): a value entered in one applies to every copy of the field.</value>
+  </data>
+  <data name="ApplyLossInsertedFields" xml:space="preserve">
+    <value>Form fields on inserted pages ({0}) may not be fillable in other programs.</value>
+  </data>
+  <data name="ApplyLossFieldCollision" xml:space="preserve">
+    <value>Form fields with the same name come from different files ({0}); they act as one field.</value>
+  </data>
+  <data name="ApplyLossFieldCollisionUnchecked" xml:space="preserve">
+    <value>There were too many form fields to compare; fields with the same name from different files act as one field.</value>
+  </data>
+  <data name="ApplyLossSignature" xml:space="preserve">
+    <value>This document is signed. Afterwards, programs such as Acrobat show the signature as invalid.</value>
+  </data>
+  <data name="ApplyLossEncryption" xml:space="preserve">
+    <value>Inserted file {0} is password-protected; its pages are protected only by the password of this document.</value>
+  </data>
+  <data name="ApplyLossLinkDeleted" xml:space="preserve">
+    <value>Links on {0} point to deleted pages and stop working.</value>
+  </data>
+  <data name="ApplyLossLinkCopied" xml:space="preserve">
+    <value>Links on {0} (copied or inserted) lose their target.</value>
+  </data>
+  <data name="ApplyLossLabelsShifted" xml:space="preserve">
+    <value>The page labels (such as “iv” or “A-3”) stay at their positions and now name other pages.</value>
+  </data>
+  <data name="ApplyLossLabelsSource" xml:space="preserve">
+    <value>The page labels of inserted file {0} are not taken over.</value>
+  </data>
+  <data name="ApplyLossOrphanFields" xml:space="preserve">
+    <value>Form fields that were only on deleted pages ({0}) stay in the form without a page.</value>
+  </data>
+  <data name="ApplyLossOther" xml:space="preserve">
+    <value>Something else in the document changes.</value>
+  </data>
+  <data name="ApplyErrorRefusedEncrypted" xml:space="preserve">
+    <value>A password-protected file cannot be inserted into a document without protection: its pages would be written unprotected. Nothing was written.</value>
+  </data>
+  <data name="ApplyErrorNotPrepared" xml:space="preserve">
+    <value>The page changes could not be prepared. Nothing was written; the page changes are kept.</value>
+  </data>
+  <data name="ApplyErrorDraft" xml:space="preserve">
+    <value>A text typed into a form field has not been accepted and would be lost. Undo or discard the page changes, correct the text, and apply again.</value>
+  </data>
+  <data name="SaveFirstTitle" xml:space="preserve">
+    <value>Save the changes to “{0}” first?</value>
+  </data>
+  <data name="SaveFirstText" xml:space="preserve">
+    <value>There are comments or form entries that are not saved yet. The page changes rewrite the whole file and do not include them. Save them first; then the page changes can be applied.</value>
+  </data>
+  <data name="SaveChangesWithPagesText" xml:space="preserve">
+    <value>Your changes are lost if you do not save them. The page changes that have not been applied are lost as well; “Save” does not apply them.</value>
+  </data>
 </root>

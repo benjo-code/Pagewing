@@ -237,7 +237,7 @@ public sealed partial class MainViewModel
                     // stops at that field with its reason instead of asking again after every save (TabViewModel.RevealFormDraft).
                     if (tab.HasEditorChanges && CanSaveNow(tab))
                     {
-                        await SaveTabAsync(tab, saveAs: false);
+                        await SaveDocumentChangesAsync(tab, saveAs: false);
                     }
 
                     tab.RevealFormDraft();
@@ -258,7 +258,7 @@ public sealed partial class MainViewModel
 
                 // Saved (also under another name after the signature card): the next pass asks again if it changed since.
                 // Not saved: the save showed why (its card) or the user cancelled there.
-                return await SaveTabAsync(tab, saveAs: false);
+                return await SaveDocumentChangesAsync(tab, saveAs: false);
             case PendingSaveChoice.DontSave or PendingSaveChoice.Discard:
                 discarded[tab] = tab.ChangeVersion;
                 return true;
@@ -269,6 +269,6 @@ public sealed partial class MainViewModel
 
     /// <summary>Whether <see cref="SaveTabAsync"/> would start a save of <paramref name="tab"/> now (it refuses silently otherwise).</summary>
     private bool CanSaveNow(TabViewModel tab) =>
-        !_disposed && _savingTab is null && _pendingSave is null && Tabs.IndexOf(tab) >= 0 && tab.CanSave()
+        !_disposed && _savingTab is null && _pendingSave is null && Tabs.IndexOf(tab) >= 0 && tab.CanSaveDocument()
         && tab.Document is not null && tab.FullPath is not null;
 }

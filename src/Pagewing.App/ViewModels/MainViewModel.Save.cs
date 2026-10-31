@@ -102,10 +102,23 @@ public sealed partial class MainViewModel
     {
         ArgumentNullException.ThrowIfNull(tab);
 
+        // Page changes that wait are written by the rewrite of "Apply", with its card (Ctrl+S and "Save as" open it); the
+        // comments and form values go first (MainViewModel.Pages.cs).
+        return tab.HasPendingPageEdits ? ApplyPageEditsAsync(tab) : SaveDocumentChangesAsync(tab, saveAs);
+    }
+
+    /// <summary>
+    /// <see cref="SaveTabAsync"/> for the changes of the document alone (annotations, form values): the incremental save, also
+    /// when page changes wait (closing a tab asks about those on their own, <see cref="PendingSave.DiscardPageEdits"/>).
+    /// </summary>
+    internal Task<bool> SaveDocumentChangesAsync(TabViewModel tab, bool saveAs)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+
         // A nudge of the selection that waits for the keys to rest is saved with the rest (the editor runs it first).
         tab.FlushNudge();
         if (_disposed || _savingTab is not null || _pendingSave is not null || Tabs.IndexOf(tab) < 0
-            || !(saveAs ? tab.CanSaveAs() : tab.CanSave()) || tab.Document is not { } document || tab.FullPath is not { } path)
+            || !(saveAs ? tab.CanSaveAs() : tab.CanSaveDocument()) || tab.Document is not { } document || tab.FullPath is not { } path)
         {
             return Task.FromResult(false);
         }
@@ -115,13 +128,22 @@ public sealed partial class MainViewModel
         return run;
     }
 
-    private async Task<bool> SaveTabCoreAsync(TabViewModel tab, PdfDocument document, string path, bool saveAs)
+    /// <summary>
+    /// The save flow of <see cref="SaveDocumentChangesAsync"/>. With <paramref name="outer"/> it runs inside another flow of the
+    /// window that holds the save state already (the apply of page changes saves comments first): that flow's token cancels it,
+    /// and the state of the window and the tab (<c>IsSaving</c>, the progress) is left to that flow.
+    /// </summary>
+    private async Task<bool> SaveTabCoreAsync(TabViewModel tab, PdfDocument document, string path, bool saveAs, CancellationToken? outer = null)
     {
-        using var cancellation = new CancellationTokenSource();
-        _savingTab = tab;
-        _saveCancellation = cancellation;
-        tab.IsSaving = true;
-        tab.SaveProgress = 0;
+        using var own = outer is null ? new CancellationTokenSource() : null;
+        var token = outer ?? own!.Token;
+        if (outer is null)
+        {
+            _savingTab = tab;
+            _saveCancellation = own;
+            tab.IsSaving = true;
+            tab.SaveProgress = 0;
+        }
 
         // "Go to the first empty field" on the card about required fields: the field is shown once the save has ended.
         var goToField = false;
@@ -131,7 +153,7 @@ public sealed partial class MainViewModel
             // A change made a moment ago (the text of a text box field or the open value of a form field, applied by FlushNudge
             // above) is saved with the rest, and the check of the required fields sees it.
             await tab.WhenEditsSettledAsync();
-            var (required, firstEmpty) = await AskAboutRequiredFieldsAsync(tab, document, path, cancellation.Token);
+            var (required, firstEmpty) = await AskAboutRequiredFieldsAsync(tab, document, path, token);
             switch (required)
             {
                 case RequiredFieldsAnswer.GoToField:
@@ -142,7 +164,7 @@ public sealed partial class MainViewModel
                     return false;
             }
 
-            switch (await AskAboutSignaturesAsync(tab, document, path, cancellation.Token))
+            switch (await AskAboutSignaturesAsync(tab, document, path, token))
             {
                 case SignatureAnswer.Stop:
                     return false;
@@ -153,9 +175,9 @@ public sealed partial class MainViewModel
 
             var target = saveAs ? await PickTargetAsync(tab, path) : path;
             var overwrite = false;
-            while (target is not null && !cancellation.IsCancellationRequested)
+            while (target is not null && !token.IsCancellationRequested)
             {
-                var outcome = await WriteAsync(tab, target, overwrite, cancellation.Token);
+                var outcome = await WriteAsync(tab, target, overwrite, token);
                 switch (outcome.Choice)
                 {
                     case null:
@@ -192,9 +214,13 @@ public sealed partial class MainViewModel
         }
         finally
         {
-            _saveCancellation = null;
-            _savingTab = null;
-            tab.IsSaving = false;
+            if (outer is null)
+            {
+                _saveCancellation = null;
+                _savingTab = null;
+                tab.IsSaving = false;
+            }
+
             tab.SyncFromEditor();
             if (goToField && !_disposed && Tabs.IndexOf(tab) >= 0)
             {

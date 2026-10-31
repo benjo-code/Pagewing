@@ -1,0 +1,272 @@
+using Pagewing.App.Resources;
+using Pagewing.Core.Pages;
+using Pagewing.Core.Pdf;
+using Pagewing.Core.Saving;
+
+namespace Pagewing.App.ViewModels;
+
+/// <summary>
+/// Applying the page changes of a tab (milestone 13, spec 5.2 and 5.3): the staged plan is written by a full rewrite, which
+/// cannot be undone. The flow asks first whatever would otherwise be lost silently: comments and form values that are not saved
+/// go through the incremental save first (they never flow into the rewrite); the report of what the rewrite loses is read
+/// before the card (a refused plan is never written); the card shows the summary and every loss, and "Save as …" is its
+/// default. The work runs in the background, one save at a time per window like every other save; the tab keeps its document
+/// and its plan until the rewrite succeeded, and on every failure and cancellation the target is byte for byte as it was.
+/// After success the tab shows the rewritten file where the plan led its current page, with the same zoom and panel, and the
+/// mode ends (the plan has no pages left to change).
+/// </summary>
+public sealed partial class MainViewModel
+{
+    // Files inserted into a plan: none until a later task adds "Insert file".
+    private static readonly IReadOnlyDictionary<PageSourceId, PageSourceFile> NoInsertedFiles = new Dictionary<PageSourceId, PageSourceFile>();
+    private static readonly IReadOnlyDictionary<PageSourceId, PdfDocument> NoInsertedDocuments = new Dictionary<PageSourceId, PdfDocument>();
+
+    /// <summary>
+    /// Gets or sets what writes the working copy and checks the file (<see cref="DocumentSaver"/> when <see langword="null"/>;
+    /// tests make it fail in ways the saver does not, as with <see cref="DocumentWriter"/>).
+    /// </summary>
+    internal Func<PdfDocument, PdfEngine, RewriteRequest, IProgress<double>?, CancellationToken, Task<SaveResult>>? PageRewriter { get; set; }
+
+    /// <summary>
+    /// Gets or sets how the report of what a plan loses is read before the card
+    /// (<see cref="PageEditExecutor.AnalyzeAsync"/>; tests give a report with every kind of loss).
+    /// </summary>
+    internal Func<PageEditPlan, PdfDocument, CancellationToken, Task<PageEditReport>> PageAnalyzer { get; set; } =
+        static (plan, document, cancellationToken) => PageEditExecutor.AnalyzeAsync(plan, document, NoInsertedDocuments, cancellationToken);
+
+    /// <summary>
+    /// Applies the staged page changes of <paramref name="tab"/> (the button "Apply", Ctrl+S and "Save as" while a plan waits).
+    /// Nothing happens without a plan, while another save or question of the window waits, while the tab prints or is
+    /// being asked about, or while an update has locked editing.
+    /// </summary>
+    /// <returns><see langword="true"/> when the rewritten file was written; <see langword="false"/> when nothing was written (back, cancelled, failed, not possible). The plan stays in every case but success.</returns>
+    internal Task<bool> ApplyPageEditsAsync(TabViewModel tab)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+
+        // A nudge of the selection that waits for the keys to rest belongs to the comments saved first.
+        tab.FlushNudge();
+        if (_disposed || _savingTab is not null || _pendingSave is not null || Tabs.IndexOf(tab) < 0 || !tab.CanApplyPages || tab.FullPath is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        var run = ApplyPagesCoreAsync(tab);
+        _saveRun = run;
+        return run;
+    }
+
+    private async Task<bool> ApplyPagesCoreAsync(TabViewModel tab)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        _savingTab = tab;
+        _saveCancellation = cancellation;
+        tab.IsSaving = true;
+        tab.SaveProgress = 0;
+        var path = tab.FullPath!;
+        try
+        {
+            if (!await SaveDocumentChangesFirstAsync(tab, path, token))
+            {
+                return false;
+            }
+
+            // The tab may have moved on while it asked (it closed, another file opened in it).
+            if (!tab.HasPendingPageEdits || tab.PagePlan is not { } plan || tab.Document is not { } document || tab.FullPath is not { } current)
+            {
+                return false;
+            }
+
+            PageEditReport report;
+            try
+            {
+                report = await Task.Run(() => PageAnalyzer(plan, document, token), token);
+            }
+            catch (Exception ex) when (ex is PageEditException or PdfOpenException or InvalidDataException or IOException or InvalidOperationException or ObjectDisposedException)
+            {
+                // The plan does not fit what is open (the document went meanwhile), or a page cannot be read: nothing is written.
+                if (!_disposed && Tabs.IndexOf(tab) >= 0)
+                {
+                    await AskAsync(PendingSave.PageApplyError(tab, current, static () => Strings.ApplyErrorNotPrepared), CancellationToken.None);
+                }
+
+                return false;
+            }
+
+            if (report.IsRefused)
+            {
+                // Such a plan is never written (an encrypted file into a document without protection); the plan stays.
+                await AskAsync(PendingSave.PageApplyError(tab, current, static () => Strings.ApplyErrorRefusedEncrypted), token);
+                return false;
+            }
+
+            var choice = await AskAsync(PendingSave.ApplyPages(tab, current, ApplyPagesInfo.Create(plan, report)), token);
+            var target = choice switch
+            {
+                PendingSaveChoice.SaveAs => await PickTargetAsync(tab, current),
+                PendingSaveChoice.SaveInOriginal => current,
+                _ => null,
+            };
+            var overwrite = false;
+            while (target is not null && !token.IsCancellationRequested)
+            {
+                var outcome = await ApplyOnceAsync(tab, plan, target, overwrite, token);
+                switch (outcome.Choice)
+                {
+                    case null:
+                        return outcome.Done;
+                    case PendingSaveChoice.Overwrite:
+                        overwrite = true;
+                        break;
+                    case PendingSaveChoice.SaveAs:
+                        overwrite = false;
+                        target = await PickTargetAsync(tab, target);
+                        break;
+                    default:
+                        return false;
+                }
+            }
+
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            // The tab or the window went, or the user cancelled: nothing is shown.
+            return false;
+        }
+        catch (Exception)
+        {
+            // Anything else (the file dialog, a bug): never a silent failure. The card says nothing was written; the tab keeps
+            // its document and its plan. The exception text (it may name a path) is not shown.
+            if (!_disposed && Tabs.IndexOf(tab) >= 0)
+            {
+                await AskAsync(PendingSave.SaveError(tab, path, SaveFailureReason.WriteFailed), CancellationToken.None);
+            }
+
+            return false;
+        }
+        finally
+        {
+            _saveCancellation = null;
+            _savingTab = null;
+            tab.IsSaving = false;
+            tab.SyncFromEditor();
+        }
+    }
+
+    /// <summary>
+    /// Comments and form values that are not saved stay out of the rewrite, so they are saved first: the card asks ("Save" or
+    /// "Cancel", the plan stays), then the incremental save runs with its usual questions. Typed text that a form field
+    /// refused cannot be saved and would be lost: the apply stops with the reason (undoing or discarding the plan lets the user
+    /// correct the text). Nothing in the tab that is not saved is ever dropped by the apply.
+    /// </summary>
+    /// <returns>Whether the apply goes on.</returns>
+    private async Task<bool> SaveDocumentChangesFirstAsync(TabViewModel tab, string path, CancellationToken token)
+    {
+        // The text of an open text box field and the open value of a form field become changes of the editor (or stay as
+        // refused text, which counts below).
+        tab.FlushTextBoxDraft();
+        tab.FlushFormDraft();
+        await tab.WhenEditsSettledAsync();
+        if (tab.HasEditorChanges)
+        {
+            if (tab.UnsaveableReason is { } reason)
+            {
+                // Every save of this tab fails the same way: say it, and keep the plan.
+                await AskAsync(PendingSave.SaveError(tab, path, reason), token);
+                return false;
+            }
+
+            if (await AskAsync(PendingSave.SaveAnnotationsFirst(tab, path), token) != PendingSaveChoice.Save)
+            {
+                return false;
+            }
+
+            if (tab.Document is not { } document || !await SaveTabCoreAsync(tab, document, path, saveAs: false, outer: token))
+            {
+                // Not saved: the save showed why on its card, or the user cancelled there.
+                return false;
+            }
+
+            await tab.WhenEditsSettledAsync();
+        }
+
+        if (tab.HasFormDraft || tab.HasTextBoxText)
+        {
+            await AskAsync(PendingSave.PageApplyError(tab, path, static () => Strings.ApplyErrorDraft), token);
+            return false;
+        }
+
+        if (tab.AsksAboutDocumentChanges)
+        {
+            await AskAsync(PendingSave.PageApplyError(tab, path, static () => Strings.ApplyErrorNotPrepared), token);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Builds, writes, checks and adopts the rewrite to <paramref name="target"/> in the background (<see cref="PageEditApplier"/>).
+    /// A failure asks the user as the save does: another file at the path of the original (overwrite, save as, cancel), any
+    /// other reason (save as, cancel), <see cref="SaveFailureReason.SourceModified"/> and an encryption the file would lose
+    /// with "Cancel" alone. The plan and the document stay in every failure.
+    /// </summary>
+    /// <returns>Whether the file was written, or the answer of the user to a failure.</returns>
+    private async Task<(bool Done, PendingSaveChoice? Choice)> ApplyOnceAsync(TabViewModel tab, PageEditPlan plan, string target, bool overwrite, CancellationToken token)
+    {
+        var progress = new SaveProgressReport(tab);
+        var follow = plan.FollowPage(Math.Clamp(tab.CurrentPage - 1, 0, plan.PrimaryPageCount - 1));
+        var written = false;
+        try
+        {
+            // On the thread pool: it reads file stamps, and the adoption closes the old document, never on the UI thread. The
+            // callback tells the tab which document is about to arrive, so it is shown as the same file in other pages.
+            var request = new PageApplyRequest(plan, target, NoInsertedFiles, overwrite, rewritten => tab.ExpectRewrittenDocument(rewritten, follow));
+            await Task.Run(() => PageEditApplier.ApplyAsync(tab.Session, SaveEngine, request, progress, token, PageRewriter), token);
+            written = true;
+        }
+        catch (SaveFailureException ex) when (ex.Reason == SaveFailureReason.OriginalChanged)
+        {
+            return (false, await AskAsync(PendingSave.FileChanged(tab, target), token));
+        }
+        catch (SaveFailureException ex) when (ex.Reason != SaveFailureReason.Canceled)
+        {
+            return (false, await AskAsync(PendingSave.SaveError(tab, target, ex.Reason), token));
+        }
+        catch (SaveFailureException)
+        {
+            return (false, PendingSaveChoice.Cancel);
+        }
+        catch (Exception ex) when (ex is PageEditException or PdfOpenException or InvalidDataException or InvalidOperationException)
+        {
+            // The plan no longer fits, a file cannot be read: nothing was written.
+            return (false, _disposed || Tabs.IndexOf(tab) < 0 ? PendingSaveChoice.Cancel : await AskAsync(PendingSave.PageApplyError(tab, target, static () => Strings.ApplyErrorNotPrepared), token));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (_disposed || Tabs.IndexOf(tab) < 0)
+            {
+                return (false, PendingSaveChoice.Cancel);
+            }
+
+            return (false, await AskAsync(PendingSave.SaveError(tab, target, SaveFailureReason.WriteFailed), token));
+        }
+        finally
+        {
+            // After a success the claim stays until the tab has taken the document (a refresh that is posted may come after
+            // this point; the claim is for exactly that document, so a left-over one does no harm); a failure takes it back.
+            if (!written)
+            {
+                tab.ForgetRewrittenDocument();
+            }
+        }
+
+        // Back on the UI thread: the tab shows the rewritten file now, where the plan led its page, and the plan is gone.
+        tab.SyncDocumentFromSession();
+        tab.UnsaveableReason = null;
+        tab.SyncFromEditor();
+        return (true, null);
+    }
+}

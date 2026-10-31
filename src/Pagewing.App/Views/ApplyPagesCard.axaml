@@ -1,0 +1,69 @@
+<views:SaveCard xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:vm="using:Pagewing.App.ViewModels"
+                xmlns:views="using:Pagewing.App.Views"
+                xmlns:ctl="using:Pagewing.App.Controls"
+                x:Class="Pagewing.App.Views.ApplyPagesCard"
+                x:DataType="vm:PendingSave"
+                AutomationProperties.Name="{Binding Title}"
+                AutomationProperties.HelpText="{Binding Message}">
+  <!--
+    Before the page changes are written (milestone 13, PendingSaveKind.ApplyPages; design system 7.14): warning symbol in
+    danger.default, the title "Apply the page changes to "<file>"?", the summary ("12 → 10 pages, 3 turned, 1 file
+    inserted"), what the rewrite loses (one sentence per loss of the report, none left out; the signature of a signed
+    document is one of them and says "shown as invalid"), the sentence that the rewrite cannot be undone, and "Save as …"
+    (primary, focus and Enter: the original stays), "Save in the original file" (locked for the first 400 ms) and "Back". A
+    long list of losses scrolls inside the card; the buttons wrap in a narrow card. No text calls a signature valid or
+    anything legally binding. Esc answers "Back" (the page changes stay). Card and buttons as SaveCard; made with the first
+    such question (MainWindow.SaveCards.cs).
+  -->
+  <Border Name="ApplyPagesBox" MaxWidth="520" Margin="24" Padding="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Spacing="12">
+      <ctl:StrokeIcon Name="ApplyPagesIcon" Width="24" Height="24" HorizontalAlignment="Left"
+                      Data="{StaticResource Pw.Icon.AlertTriangle}"
+                      Brush="{DynamicResource Pw.Brush.Danger.Default}" />
+      <StackPanel Spacing="4">
+        <TextBlock Name="ApplyPagesTitle" Classes="subtitle" TextWrapping="Wrap" Text="{Binding Title}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <TextBlock Name="ApplyPagesSummary" Classes="body" TextWrapping="Wrap"
+                   Text="{Binding Apply.Summary}" />
+      </StackPanel>
+
+      <StackPanel Name="ApplyPagesLossBlock" Spacing="6" IsVisible="{Binding Apply.HasLosses}">
+        <TextBlock Name="ApplyPagesLossHeading" Classes="body" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <ScrollViewer Name="ApplyPagesLossScroller" MaxHeight="220"
+                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+          <ItemsControl Name="ApplyPagesLosses" ItemsSource="{Binding Apply.Lines}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="6" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <TextBlock Classes="body" Text="•" Foreground="{DynamicResource Pw.Brush.Text.Secondary}" />
+                  <TextBlock Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                             Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </StackPanel>
+
+      <TextBlock Name="ApplyPagesIrreversible" Classes="body" TextWrapping="Wrap"
+                 Text="{Binding Message}" AutomationProperties.LiveSetting="Polite" />
+
+      <WrapPanel Name="ApplyPagesButtons" Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Name="ApplySaveAsButton" Margin="8,0,0,8" />
+        <Button Name="ApplySaveInOriginalButton" Margin="8,0,0,8" />
+        <Button Name="ApplyBackButton" Margin="8,0,0,8" />
+      </WrapPanel>
+    </StackPanel>
+  </Border>
+</views:SaveCard>
