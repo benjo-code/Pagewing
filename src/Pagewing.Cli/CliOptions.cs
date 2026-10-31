@@ -37,9 +37,15 @@ internal sealed record CliOptions(
     string? Password,
     string? Query = null,
     bool MatchCase = false,
-    bool WholeWord = false)
+    bool WholeWord = false,
+    int Angle = 0,
+    string? OutputFile = null,
+    bool Force = false)
 {
     public const string DefaultDpi = "144";
+
+    /// <summary>The angles <c>rotate</c> accepts.</summary>
+    private static readonly int[] Angles = [90, 180, 270, -90];
 
     /// <summary>Gets the pixels per point of <see cref="Dpi"/> (72 dpi = 1).</summary>
     public double Scale => Dpi / 72.0;
@@ -58,18 +64,22 @@ internal sealed record CliOptions(
             "render" => ["--pages", "--dpi", "--output", "--no-annotations", "--password"],
             "text" => ["--pages", "--password"],
             "search" => ["--pages", "--match-case", "--whole-word", "--password"],
+            "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
         var isSearch = command == "search";
+        var isRotate = command == "rotate";
         string? file = null;
         string? query = null;
         var matchCase = false;
         var wholeWord = false;
+        var force = false;
         var optionsEnded = false;
         string? pages = null;
         string? dpiText = null;
-        string output = ".";
+        string? angleText = null;
+        string? output = null;
         var annotations = true;
         string? password = null;
         for (var i = 0; i < args.Length; i++)
@@ -106,7 +116,7 @@ internal sealed record CliOptions(
                     continue;
                 }
 
-                if (name is "--match-case" or "--whole-word")
+                if (name is "--match-case" or "--whole-word" or "--force")
                 {
                     if (value is not null)
                     {
@@ -116,6 +126,10 @@ internal sealed record CliOptions(
                     if (name == "--match-case")
                     {
                         matchCase = true;
+                    }
+                    else if (name == "--force")
+                    {
+                        force = true;
                     }
                     else
                     {
@@ -142,6 +156,9 @@ internal sealed record CliOptions(
                         break;
                     case "--dpi":
                         dpiText = value;
+                        break;
+                    case "--angle":
+                        angleText = value;
                         break;
                     case "--output":
                         output = value;
@@ -194,12 +211,42 @@ internal sealed record CliOptions(
         }
 
         var dpi = ParseDpi(dpiText ?? DefaultDpi);
-        if (string.IsNullOrEmpty(output))
+        if (isRotate)
+        {
+            if (pages is null)
+            {
+                throw new UsageException("The 'rotate' command needs --pages (for example --pages 1-3, or --pages all).");
+            }
+
+            if (angleText is null)
+            {
+                throw new UsageException("The 'rotate' command needs --angle (90, 180, 270 or -90).");
+            }
+
+            if (string.IsNullOrEmpty(output))
+            {
+                throw new UsageException("The 'rotate' command needs --output <out.pdf>.");
+            }
+
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, Angle: ParseAngle(angleText), OutputFile: output, Force: force);
+        }
+
+        if (output is not null && output.Length == 0)
         {
             throw new UsageException("The option '--output' needs a directory.");
         }
 
-        return new CliOptions(command, file, pages, dpi, output, annotations, password, query, matchCase, wholeWord);
+        return new CliOptions(command, file, pages, dpi, output ?? ".", annotations, password, query, matchCase, wholeWord);
+    }
+
+    private static int ParseAngle(string text)
+    {
+        if (!int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var angle) || !Angles.Contains(angle))
+        {
+            throw new UsageException($"Invalid value for --angle: '{text}' (use 90, 180, 270 or -90).");
+        }
+
+        return angle;
     }
 
     private static double ParseDpi(string text)

@@ -6,7 +6,7 @@ using Pagewing.Core.Pdf;
 namespace Pagewing.Cli;
 
 /// <summary>
-/// The command line of Pagewing: <c>info</c>, <c>render</c>, <c>text</c> and <c>search</c>. Exit codes: 0 success, 1 runtime
+/// The command line of Pagewing: <c>info</c>, <c>render</c>, <c>text</c>, <c>search</c> and <c>rotate</c>. Exit codes: 0 success, 1 runtime
 /// error (<c>pagewing: &lt;message&gt;</c> on stderr), 2 usage error (message and usage text on stderr).
 /// </summary>
 public static class CliApp
@@ -21,6 +21,7 @@ public static class CliApp
           pagewing render <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--password <pw>]
           pagewing text   <file> [--pages <range>] [--password <pw>]
           pagewing search <file> <query> [--pages <range>] [--match-case] [--whole-word] [--password <pw>]
+          pagewing rotate <file> --pages <range> --angle <90|180|270|-90> --output <out.pdf> [--force] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -35,11 +36,19 @@ public static class CliApp
           text     Print the text of the pages, each page followed by a form feed (U+000C).
           search   Print one line per hit: <page> TAB <character index> TAB <before>[<match>]<after>
                    (pages count from 1; use -- before a query that starts with a dash).
+          rotate   Turn pages by --angle and write the result to a new file. What the change
+                   loses (for example a digital signature, which is then shown as invalid) is
+                   printed on stderr as "warning:" lines before the file is written. The input
+                   is never changed; an encrypted input stays encrypted.
 
         Options:
           --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all).
           --dpi <n>          Resolution of rendered pages (default: 144).
           --output <dir>     Directory for the PNG files, created if missing (default: .).
+                             For rotate: the PDF file to write (required).
+          --angle <deg>      Rotate: turn the pages by 90, 180, 270 or -90 degrees (required).
+          --force            Commands that write a file: replace an existing output file. The
+                             output is never the input, with or without --force.
           --no-annotations   Render without annotations.
           --match-case       Search: distinguish upper and lower case (default: ignore case).
           --whole-word       Search: match only whole words.
@@ -56,6 +65,13 @@ public static class CliApp
         """;
 
     private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+
+    /// <summary>
+    /// Commands that take several files and so cannot open "the" document first (<c>merge</c>, milestone 13 task 14): they
+    /// parse their own arguments and open their own documents, and are routed before a single document is opened. Empty
+    /// until such a command exists.
+    /// </summary>
+    private static readonly Dictionary<string, MultiFileCommand> MultiFileCommands = new(StringComparer.Ordinal);
 
     /// <summary>Runs the command line.</summary>
     /// <param name="args">The arguments after the program name.</param>
@@ -94,7 +110,7 @@ public static class CliApp
         try
         {
             output = new StreamWriter(stdout, Utf8WithoutBom, bufferSize: 4096, leaveOpen: true) { NewLine = "\n" };
-            return await ExecuteAsync(args, output, getEnvironmentVariable, openDocument, runCommand, ct).ConfigureAwait(false);
+            return await ExecuteAsync(args, output, stderr, getEnvironmentVariable, openDocument, runCommand, ct).ConfigureAwait(false);
         }
         catch (UsageException ex)
         {
@@ -155,6 +171,7 @@ public static class CliApp
     private static async Task<int> ExecuteAsync(
         string[] args,
         StreamWriter output,
+        TextWriter stderr,
         Func<string, string?> getEnvironmentVariable,
         Func<string, string?, CancellationToken, Task<PdfDocument>>? openDocument,
         Func<PdfDocument, CliOptions, TextWriter, CancellationToken, Task>? runCommand,
@@ -177,12 +194,43 @@ public static class CliApp
             return 0;
         }
 
+        if (MultiFileCommands.TryGetValue(args[0], out var multiFile))
+        {
+            await multiFile(new CliContext(args[1..], output, stderr, getEnvironmentVariable), ct).ConfigureAwait(false);
+            return 0;
+        }
+
         var options = CliOptions.Parse(args[0], args.AsSpan(1));
+
+        // Before anything is opened: a command that writes a file never writes over its input or over a file it was not told to replace.
+        if (options.OutputFile is not null)
+        {
+            OutputGuard.Check(options.File, options.OutputFile, options.Force);
+        }
 
         // The document is disposed inside the try block of RunAsync, so a failure while closing it is reported, too.
         await using var document = await OpenAsync(options, getEnvironmentVariable, openDocument, ct).ConfigureAwait(false);
-        await (runCommand ?? RunCommandAsync)(document, options, output, ct).ConfigureAwait(false);
+        if (runCommand is not null)
+        {
+            await runCommand(document, options, output, ct).ConfigureAwait(false);
+        }
+        else if (options.Command == "rotate")
+        {
+            await RotateCommand.RunAsync(document, options, PasswordOf(options, getEnvironmentVariable), output, stderr, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            await RunCommandAsync(document, options, output, ct).ConfigureAwait(false);
+        }
+
         return 0;
+    }
+
+    /// <summary>The password of the file: the option wins over the environment variable; empty means none.</summary>
+    internal static string? PasswordOf(CliOptions options, Func<string, string?> getEnvironmentVariable)
+    {
+        var password = options.Password ?? getEnvironmentVariable(PasswordVariable);
+        return string.IsNullOrEmpty(password) ? null : password;
     }
 
     private static Task RunCommandAsync(PdfDocument document, CliOptions options, TextWriter output, CancellationToken ct) =>
@@ -200,12 +248,7 @@ public static class CliApp
         Func<string, string?, CancellationToken, Task<PdfDocument>>? openDocument,
         CancellationToken ct)
     {
-        var password = options.Password ?? getEnvironmentVariable(PasswordVariable);
-        if (string.IsNullOrEmpty(password))
-        {
-            password = null;
-        }
-
+        var password = PasswordOf(options, getEnvironmentVariable);
         try
         {
             return await (openDocument ?? new PdfEngine().OpenAsync)(options.File, password, ct).ConfigureAwait(false);
@@ -229,3 +272,15 @@ public static class CliApp
         }
     }
 }
+
+/// <summary>What a command that handles its own arguments (<see cref="CliApp"/> routes it before opening a document) gets.</summary>
+/// <param name="Args">The arguments after the command name.</param>
+/// <param name="Output">Standard output (UTF-8 without BOM).</param>
+/// <param name="Error">Standard error: warnings before a write, never the result.</param>
+/// <param name="GetEnvironmentVariable">Reads an environment variable, <see langword="null"/> when unset.</param>
+internal sealed record CliContext(string[] Args, TextWriter Output, TextWriter Error, Func<string, string?> GetEnvironmentVariable);
+
+/// <summary>A command that takes several files and opens them itself.</summary>
+/// <param name="context">The arguments and the streams.</param>
+/// <param name="ct">Cancels the command (Ctrl+C).</param>
+internal delegate Task MultiFileCommand(CliContext context, CancellationToken ct);
