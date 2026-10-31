@@ -1570,6 +1570,63 @@
     <value>Seitenänderungen an „{0}“ verwerfen?</value>
   </data>
   <data name="DiscardPageEditsText" xml:space="preserve">
-    <value>Die Seiten, die Sie verschoben, gedreht, hinzugefügt oder gelöscht haben, wurden nicht angewendet. Sie gehen verloren, wenn Sie jetzt schließen.</value>
+    <value>Die Seiten, die Sie verschoben, gedreht, hinzugefügt oder gelöscht haben, wurden nicht angewendet. Diese Änderungen gehen verloren.</value>
+  </data>
+  <data name="PagesOrganizeBar" xml:space="preserve">
+    <value>Werkzeuge zum Organisieren der Seiten</value>
+  </data>
+  <data name="PagesDone" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="PagesApply" xml:space="preserve">
+    <value>Anwenden</value>
+  </data>
+  <data name="PagesDiscard" xml:space="preserve">
+    <value>Verwerfen</value>
+  </data>
+  <data name="PagesDiscardAsk" xml:space="preserve">
+    <value>Alle Seitenänderungen verwerfen?</value>
+  </data>
+  <data name="PagesDiscardConfirm" xml:space="preserve">
+    <value>Änderungen verwerfen</value>
+  </data>
+  <data name="PagesKeep" xml:space="preserve">
+    <value>Behalten</value>
+  </data>
+  <data name="PagesNoticeClose" xml:space="preserve">
+    <value>Hinweis schließen</value>
+  </data>
+  <data name="PageMarkerBlank" xml:space="preserve">
+    <value>Leere Seite</value>
+  </data>
+  <data name="PageMarkerOtherFile" xml:space="preserve">
+    <value>Aus anderer Datei</value>
+  </data>
+  <data name="PageMarkerRotated" xml:space="preserve">
+    <value>Gedreht um {0}°</value>
+  </data>
+  <data name="PageCounterSame" xml:space="preserve">
+    <value>{0} Seiten</value>
+  </data>
+  <data name="PageCounterSameOne" xml:space="preserve">
+    <value>{0} Seite</value>
+  </data>
+  <data name="PageCounterChange" xml:space="preserve">
+    <value>{0} → {1} Seiten</value>
+  </data>
+  <data name="PageCounterChangeOne" xml:space="preserve">
+    <value>{0} → {1} Seite</value>
+  </data>
+  <data name="TabPageEditsSuffix" xml:space="preserve">
+    <value>, Seitenänderungen ausstehend</value>
+  </data>
+  <data name="CommandMovePagesEarlier" xml:space="preserve">
+    <value>Ausgewählte Seiten nach vorn schieben</value>
+  </data>
+  <data name="CommandMovePagesLater" xml:space="preserve">
+    <value>Ausgewählte Seiten nach hinten schieben</value>
+  </data>
+  <data name="CommandApplyPageEdits" xml:space="preserve">
+    <value>Seitenänderungen anwenden</value>
   </data>
 </root>

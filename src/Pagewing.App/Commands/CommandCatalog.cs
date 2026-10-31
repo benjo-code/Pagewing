@@ -151,6 +151,9 @@ public sealed class CommandCatalog
         OrganizeTab("pages.delete", () => Strings.CommandDeletePages, new KeyGesture(Key.Delete), tab => tab.DeletePagesCommand) with { YieldsToTextInput = true },
         OrganizeTab("pages.duplicate", () => Strings.CommandDuplicatePages, CtrlShift(Key.N), tab => tab.DuplicateSelectionCommand),
         OrganizeTab("pages.insertBlank", () => Strings.CommandInsertBlankPage, CtrlShift(Key.B), tab => tab.InsertBlankPageCommand),
+        OrganizeTab("pages.moveEarlier", () => Strings.CommandMovePagesEarlier, CtrlShift(Key.Up), tab => tab.MoveSelectionEarlierCommand) with { YieldsToTextInput = true },
+        OrganizeTab("pages.moveLater", () => Strings.CommandMovePagesLater, CtrlShift(Key.Down), tab => tab.MoveSelectionLaterCommand) with { YieldsToTextInput = true },
+        OrganizeTab("pages.apply", () => Strings.CommandApplyPageEdits, null, tab => tab.ApplyPageEditsCommand),
         OrganizeTab("pages.discard", () => Strings.CommandDiscardPageEdits, null, tab => tab.DiscardPageEditsCommand),
 
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
@@ -264,13 +267,18 @@ public sealed class CommandCatalog
 
     /// <summary>
     /// A command of the mode "Organize pages" of the active tab: it exists only while the mode is on, and until then the tab's
-    /// command is not even looked up (so nothing of the mode is made by asking the catalog).
+    /// command is not even looked up (so nothing of the mode is made by asking the catalog). It also waits while the pages
+    /// panel is closed (the pages it would change are not in sight) and while a card (settings, help, about, print, signature) lies
+    /// over the window: a key such as Delete belongs to a list or drop-down of a card then, and must never reach the pages
+    /// behind. The command palette is no obstacle: it offers these commands and its field keeps the keys of text.
     /// </summary>
     private AppCommand OrganizeTab(string id, Func<string> title, KeyGesture? gesture, Func<TabViewModel, ICommand> command, object? parameter = null)
     {
         bool CanRun(out ICommand? target)
         {
-            target = _window.ActiveTab is { IsOrganizing: true } tab ? command(tab) : null;
+            target = _window.ActiveTab is { IsOrganizing: true, SidePanel: SidePanelKind.Pages } tab && _window.Overlay is OverlayKind.None or OverlayKind.Palette
+                ? command(tab)
+                : null;
             return target?.CanExecute(parameter) == true;
         }
 

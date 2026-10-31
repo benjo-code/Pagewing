@@ -167,11 +167,19 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets the name of the tab for screen readers: the file name, with "unsaved changes" after it while
-    /// <see cref="IsDirty"/> (the dot is not the only sign of the state, design system 7.10).
+    /// <see cref="IsDirty"/> and "page changes pending" while page changes wait to be applied
+    /// (<see cref="HasPendingPageEdits"/>); the dot is not the only sign of the state (design system 7.10).
     /// </summary>
-    public string? TabAutomationName => FileName is { } name && _isDirty
-        ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.TabUnsavedName), name)
-        : FileName;
+    public string? TabAutomationName
+    {
+        get
+        {
+            var name = FileName is { } file && _isDirty
+                ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.TabUnsavedName), file)
+                : FileName;
+            return name is not null && HasPendingPageEdits ? name + Strings.TabPageEditsSuffix : name;
+        }
+    }
 
     /// <summary>Ctrl+S: saves the changes to the file of the tab; only while there are some (<see cref="IsDirty"/>).</summary>
     public ICommand SaveCommand => _saveCommand ??= new RelayCommand(() => SaveRequested?.Invoke(false), CanSave);

@@ -267,6 +267,9 @@ public sealed class CommandCatalogTests : IDisposable
             ("pages.delete", "Delete"),
             ("pages.duplicate", "Ctrl+Shift+N"),
             ("pages.insertBlank", "Ctrl+Shift+B"),
+            ("pages.moveEarlier", "Ctrl+Shift+Up"),
+            ("pages.moveLater", "Ctrl+Shift+Down"),
+            ("pages.apply", null),
             ("pages.discard", null),
         };
 
@@ -282,12 +285,12 @@ public sealed class CommandCatalogTests : IDisposable
 
                 // A German keyboard reaches it without AltGr (Ctrl+Alt): a letter, an arrow or Delete, with Ctrl and Shift at most.
                 Assert.False(gesture.KeyModifiers.HasFlag(KeyModifiers.Alt) || gesture.KeyModifiers.HasFlag(KeyModifiers.Meta));
-                Assert.True(gesture.Key is >= Key.A and <= Key.Z or Key.Left or Key.Right or Key.Delete, $"{gesture} needs a key that is not on every layout");
+                Assert.True(gesture.Key is >= Key.A and <= Key.Z or Key.Left or Key.Right or Key.Up or Key.Down or Key.Delete, $"{gesture} needs a key that is not on every layout");
             }
         }
 
         // Delete and the arrows keep a text field's own use; the commands are listed (help card, palette) in the group of the modes.
-        Assert.All(["pages.rotateLeft", "pages.rotateRight", "pages.delete"], id => Assert.True(catalog.ById(id)!.YieldsToTextInput));
+        Assert.All(["pages.rotateLeft", "pages.rotateRight", "pages.delete", "pages.moveEarlier", "pages.moveLater"], id => Assert.True(catalog.ById(id)!.YieldsToTextInput));
         Assert.All(expected, entry => Assert.True(catalog.ById(entry.Id)!.Listed));
         Assert.All(expected, entry => Assert.Equal(CommandCatalog.EditGroup, catalog.ById(entry.Id)!.Group));
         Strings.Culture = new CultureInfo("de");
@@ -304,7 +307,7 @@ public sealed class CommandCatalogTests : IDisposable
     {
         var (window, viewModel, view, _) = Show(new CountingPicker());
         var catalog = viewModel.Commands;
-        string[] inMode = ["pages.rotateLeft", "pages.rotateRight", "pages.delete", "pages.duplicate", "pages.insertBlank", "pages.discard"];
+        string[] inMode = ["pages.rotateLeft", "pages.rotateRight", "pages.delete", "pages.duplicate", "pages.insertBlank", "pages.moveEarlier", "pages.moveLater", "pages.discard"];
         bool CanRun(string id) => catalog.ById(id)!.CanExecute();
 
         // Without a tab nothing; with a document the mode is offered, and polling the rest makes nothing (no plan, no command).

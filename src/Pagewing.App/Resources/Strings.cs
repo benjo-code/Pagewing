@@ -551,6 +551,25 @@ public static class Strings
     public static string PageEditsRefused => Get("PageEditsRefused");
     public static string DiscardPageEditsTitle => Get("DiscardPageEditsTitle");
     public static string DiscardPageEditsText => Get("DiscardPageEditsText");
+    public static string PagesOrganizeBar => Get("PagesOrganizeBar");
+    public static string PagesDone => Get("PagesDone");
+    public static string PagesApply => Get("PagesApply");
+    public static string PagesDiscard => Get("PagesDiscard");
+    public static string PagesDiscardAsk => Get("PagesDiscardAsk");
+    public static string PagesDiscardConfirm => Get("PagesDiscardConfirm");
+    public static string PagesKeep => Get("PagesKeep");
+    public static string PagesNoticeClose => Get("PagesNoticeClose");
+    public static string PageMarkerBlank => Get("PageMarkerBlank");
+    public static string PageMarkerOtherFile => Get("PageMarkerOtherFile");
+    public static string PageMarkerRotated => Get("PageMarkerRotated");
+    public static string PageCounterSame => Get("PageCounterSame");
+    public static string PageCounterSameOne => Get("PageCounterSameOne");
+    public static string PageCounterChange => Get("PageCounterChange");
+    public static string PageCounterChangeOne => Get("PageCounterChangeOne");
+    public static string TabPageEditsSuffix => Get("TabPageEditsSuffix");
+    public static string CommandMovePagesEarlier => Get("CommandMovePagesEarlier");
+    public static string CommandMovePagesLater => Get("CommandMovePagesLater");
+    public static string CommandApplyPageEdits => Get("CommandApplyPageEdits");
 
     /// <summary>
     /// Gets the kind of an annotation in words as the "Comments" panel and the selection name it: "Highlight", "Freehand",

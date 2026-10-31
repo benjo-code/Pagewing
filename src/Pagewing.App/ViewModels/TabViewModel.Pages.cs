@@ -43,6 +43,9 @@ public sealed partial class TabViewModel
     private RelayCommand? _redoPagesCommand;
     private RelayCommand? _discardPageEditsCommand;
     private RelayCommand? _dismissPageEditNoticeCommand;
+    private RelayCommand? _moveEarlierCommand;
+    private RelayCommand? _moveLaterCommand;
+    private RelayCommand? _applyPageEditsCommand;
 
     private static IReadOnlySet<int> NoSelection { get; } = new ReadOnlySet<int>(new HashSet<int>());
 
@@ -166,11 +169,63 @@ public sealed partial class TabViewModel
     /// <summary>Closes the notice about a refused change (<see cref="PageEditNotice"/>).</summary>
     public ICommand DismissPageEditNoticeCommand => _dismissPageEditNoticeCommand ??= new RelayCommand(() => PageEditNotice = null);
 
+    /// <summary>Moves the selected pages one position towards the start of the list (see <see cref="MoveSelectionBy"/>).</summary>
+    public ICommand MoveSelectionEarlierCommand => _moveEarlierCommand ??= new RelayCommand(
+        () => MoveSelectionBy(-1),
+        () => CanEditPages && _selectedPages.Count > 0 && _selectedPages.Min() > 0);
+
+    /// <summary>Moves the selected pages one position towards the end of the list (see <see cref="MoveSelectionBy"/>).</summary>
+    public ICommand MoveSelectionLaterCommand => _moveLaterCommand ??= new RelayCommand(
+        () => MoveSelectionBy(1),
+        () => CanEditPages && _selectedPages.Count > 0 && _selectedPages.Max() < _pageHistory!.Current.Slots.Count - 1);
+
+    /// <summary>
+    /// The button "Apply" of the pages panel (and the catalog's <c>pages.apply</c>): asks the window to write the staged page
+    /// changes (<see cref="PageApplyRequested"/>). It runs only with a change pending. What it does is the window's: it asks
+    /// what to do about unsaved changes, shows what the rewrite loses and saves.
+    /// </summary>
+    public ICommand ApplyPageEditsCommand => _applyPageEditsCommand ??= new RelayCommand(
+        () => PageApplyRequested?.Invoke(),
+        () => CanEditPages && HasPendingPageEdits);
+
+    /// <summary>Raised by <see cref="ApplyPageEditsCommand"/>: the user wants the staged page changes written.</summary>
+    internal event Action? PageApplyRequested;
+
+    /// <summary>
+    /// Gets the count of pages as the panel shows it while the mode is on: "12 pages" while the plan has as many as the
+    /// document, "12 → 10 pages" when it has another number (the plural follows the number after the arrow); empty while the
+    /// mode is off. Read in the language of the interface each time.
+    /// </summary>
+    public string PageCounterText
+    {
+        get
+        {
+            if (_pageHistory is not { } history)
+            {
+                return string.Empty;
+            }
+
+            var now = history.Current.Slots.Count;
+            var was = history.Current.PrimaryPageCount;
+            if (now == was)
+            {
+                return string.Format(Strings.Culture, CompositeFormat.Parse(now == 1 ? Strings.PageCounterSameOne : Strings.PageCounterSame), now.ToString("N0", Strings.Culture));
+            }
+
+            return string.Format(
+                Strings.Culture,
+                CompositeFormat.Parse(now == 1 ? Strings.PageCounterChangeOne : Strings.PageCounterChange),
+                was.ToString("N0", Strings.Culture),
+                now.ToString("N0", Strings.Culture));
+        }
+    }
+
     /// <summary>Gets whether a command of the mode was made (for tests: asking the catalog makes none).</summary>
     internal bool HasPageEditCommands =>
         _rotateSelectionCommand is not null || _deletePagesCommand is not null || _duplicateSelectionCommand is not null
         || _insertBlankPageCommand is not null || _undoPagesCommand is not null || _redoPagesCommand is not null
-        || _discardPageEditsCommand is not null;
+        || _discardPageEditsCommand is not null || _moveEarlierCommand is not null || _moveLaterCommand is not null
+        || _applyPageEditsCommand is not null;
 
     /// <summary>
     /// Gets the version of the page plan for <see cref="ChangeVersion"/>: the steps of the plan's history, plus those of
@@ -236,6 +291,25 @@ public sealed partial class TabViewModel
         return Stage(plan => plan.Move(moved, gap), Enumerable.Range(start, moved.Count));
     }
 
+    /// <summary>
+    /// Moves the selected pages by one position: <paramref name="delta"/> -1 to the gap before the page that precedes the
+    /// first selected one, +1 to the gap after the page that follows the last selected one. A selection that is not in one
+    /// piece gathers there, as with a move by the mouse. At the ends of the list nothing happens.
+    /// </summary>
+    /// <param name="delta">-1 earlier, +1 later.</param>
+    /// <returns>Whether the plan changed.</returns>
+    public bool MoveSelectionBy(int delta)
+    {
+        if (!CanEditPages || _selectedPages.Count == 0 || delta == 0)
+        {
+            return false;
+        }
+
+        var count = _pageHistory!.Current.Slots.Count;
+        var gap = delta < 0 ? _selectedPages.Min() - 1 : _selectedPages.Max() + 2;
+        return gap >= 0 && gap <= count && MoveSelectionTo(gap);
+    }
+
     /// <summary>Whether the mode can start now: it may be asked for, no card asks about the tab, editing is not locked, no save runs.</summary>
     private bool CanBeginOrganize() =>
         !_disposed && !_isOrganizing && OrganizeUnavailableReason is null && !_isAskedAbout && !_isEditingFrozen && !_isSaving;
@@ -289,6 +363,10 @@ public sealed partial class TabViewModel
         PageEditNotice = null;
         _pageHistory = new PageEditHistory(start);
         IsOrganizing = true;
+
+        // The staged list lives in the pages panel, so the panel opens with the mode. Only a tab that shows a sharp page can
+        // get here, so the one chance of the start panel is over (it opens a panel only into a tab without one).
+        SidePanel = SidePanelKind.Pages;
     }
 
     /// <summary>Drops the plan and its history and leaves the mode (discard, leaving without a change).</summary>
@@ -512,6 +590,8 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(HasPendingPageEdits));
         OnPropertyChanged(nameof(PageEditsBlockedReason));
         OnPropertyChanged(nameof(PageOutputBlockedReason));
+        OnPropertyChanged(nameof(PageCounterText));
+        OnPropertyChanged(nameof(TabAutomationName));
         OnPropertyChanged(nameof(CanRunPageOutput));
         OnPropertyChanged(nameof(AnnotateUnavailableReason));
         OnPropertyChanged(nameof(CanAnnotate));
@@ -537,6 +617,9 @@ public sealed partial class TabViewModel
         _undoPagesCommand?.RaiseCanExecuteChanged();
         _redoPagesCommand?.RaiseCanExecuteChanged();
         _discardPageEditsCommand?.RaiseCanExecuteChanged();
+        _moveEarlierCommand?.RaiseCanExecuteChanged();
+        _moveLaterCommand?.RaiseCanExecuteChanged();
+        _applyPageEditsCommand?.RaiseCanExecuteChanged();
 
         // Ctrl+Z and Ctrl+Y are the plan's in the mode.
         _undoCommand?.RaiseCanExecuteChanged();
