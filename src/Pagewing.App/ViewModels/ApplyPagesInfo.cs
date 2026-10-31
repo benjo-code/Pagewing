@@ -45,7 +45,7 @@ public sealed class ApplyPagesInfo
         return loss.Kind switch
         {
             PageLossKind.ForeignOutlineDropped => Format(Strings.ApplyLossForeignOutline, SourceOf(detail)),
-            PageLossKind.BookmarkToDeletedPage => Format(Strings.ApplyLossBookmarkToDeletedPage, PagesText(loss.Pages)),
+            PageLossKind.BookmarkToDeletedPage => Format(Strings.ApplyLossBookmarkToDeletedPage, PagesText(loss.Pages, original: true)),
             PageLossKind.DuplicatedFormFields when detail == PageLossDetail.Inserted => Format(Strings.ApplyLossInsertedFields, PagesText(loss.Pages)),
             PageLossKind.DuplicatedFormFields => Format(Strings.ApplyLossDuplicatedFields, PagesText(loss.Pages)),
             PageLossKind.FormFieldNameCollision when detail == PageLossDetail.Unchecked => Strings.ApplyLossFieldCollisionUnchecked,
@@ -56,13 +56,18 @@ public sealed class ApplyPagesInfo
             PageLossKind.InternalLinkLost => Format(Strings.ApplyLossLinkDeleted, PagesText(loss.Pages)),
             PageLossKind.PageLabelsShifted when detail.StartsWith("source:", StringComparison.Ordinal) => Format(Strings.ApplyLossLabelsSource, SourceOf(detail)),
             PageLossKind.PageLabelsShifted => Strings.ApplyLossLabelsShifted,
-            PageLossKind.OrphanFormFields => Format(Strings.ApplyLossOrphanFields, PagesText(loss.Pages)),
+            PageLossKind.OrphanFormFields => Format(Strings.ApplyLossOrphanFields, PagesText(loss.Pages, original: true)),
             _ => Strings.ApplyLossOther,
         };
     }
 
-    /// <summary>"page 3" or "pages 3, 5–7" for 0-based <paramref name="pages"/> (empty when there are none).</summary>
-    internal static string PagesText(IReadOnlyList<int>? pages)
+    /// <summary>
+    /// "page 3 of the new file" or "pages 3, 5–7 of the new file" for 0-based <paramref name="pages"/> (empty when there are
+    /// none). The pages of a loss are in one of two index spaces (<see cref="PageLossKind"/>): pages of the <em>original</em>
+    /// document (a bookmark's deleted target, orphaned form fields; "originally page 3") or positions in the <em>new</em> file
+    /// (everything else); the words say which, so a deleted page is never mistaken for a page that is still there.
+    /// </summary>
+    internal static string PagesText(IReadOnlyList<int>? pages, bool original = false)
     {
         if (pages is null || pages.Count == 0)
         {
@@ -101,7 +106,10 @@ public sealed class ApplyPagesInfo
             i = end + 1;
         }
 
-        return Format(sorted.Length == 1 ? Strings.PagesOne : Strings.PagesMany, text.ToString());
+        var format = original
+            ? (sorted.Length == 1 ? Strings.PagesOriginalOne : Strings.PagesOriginalMany)
+            : (sorted.Length == 1 ? Strings.PagesNewOne : Strings.PagesNewMany);
+        return Format(format, text.ToString());
     }
 
     private static string SummaryOf(PageEditPlan plan)

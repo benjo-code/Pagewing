@@ -582,8 +582,6 @@ public static class Strings
     public static string ApplyLossesHeading => Get("ApplyLossesHeading");
     public static string SaveChoiceSaveInOriginal => Get("SaveChoiceSaveInOriginal");
     public static string ApplyChoiceBack => Get("ApplyChoiceBack");
-    public static string PagesOne => Get("PagesOne");
-    public static string PagesMany => Get("PagesMany");
     public static string ApplyLossForeignOutline => Get("ApplyLossForeignOutline");
     public static string ApplyLossBookmarkToDeletedPage => Get("ApplyLossBookmarkToDeletedPage");
     public static string ApplyLossDuplicatedFields => Get("ApplyLossDuplicatedFields");
@@ -598,6 +596,13 @@ public static class Strings
     public static string ApplyLossLabelsSource => Get("ApplyLossLabelsSource");
     public static string ApplyLossOrphanFields => Get("ApplyLossOrphanFields");
     public static string ApplyLossOther => Get("ApplyLossOther");
+    public static string ApplyErrorFileChanged => Get("ApplyErrorFileChanged");
+    public static string ApplyViewFailedTitle => Get("ApplyViewFailedTitle");
+    public static string ApplyErrorViewFailed => Get("ApplyErrorViewFailed");
+    public static string PagesOriginalOne => Get("PagesOriginalOne");
+    public static string PagesOriginalMany => Get("PagesOriginalMany");
+    public static string PagesNewOne => Get("PagesNewOne");
+    public static string PagesNewMany => Get("PagesNewMany");
     public static string ApplyErrorRefusedEncrypted => Get("ApplyErrorRefusedEncrypted");
     public static string ApplyErrorNotPrepared => Get("ApplyErrorNotPrepared");
     public static string ApplyErrorDraft => Get("ApplyErrorDraft");

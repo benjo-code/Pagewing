@@ -1665,12 +1665,6 @@
   <data name="ApplyChoiceBack" xml:space="preserve">
     <value>Zurück</value>
   </data>
-  <data name="PagesOne" xml:space="preserve">
-    <value>Seite {0}</value>
-  </data>
-  <data name="PagesMany" xml:space="preserve">
-    <value>Seiten {0}</value>
-  </data>
   <data name="ApplyLossForeignOutline" xml:space="preserve">
     <value>Die Lesezeichen der eingefügten Datei {0} werden nicht übernommen.</value>
   </data>
@@ -1730,5 +1724,26 @@
   </data>
   <data name="SaveChangesWithPagesText" xml:space="preserve">
     <value>Ihre Änderungen gehen verloren, wenn Sie sie nicht speichern. Auch die nicht angewendeten Seitenänderungen gehen verloren; „Speichern“ wendet sie nicht an.</value>
+  </data>
+  <data name="ApplyErrorFileChanged" xml:space="preserve">
+    <value>Die Datei wurde außerhalb von Pagewing geändert. Öffnen Sie sie erneut, um Seiten zu organisieren. Es wurde nichts geschrieben; die Seitenänderungen bleiben in diesem Tab, bis Sie ihn schließen.</value>
+  </data>
+  <data name="ApplyViewFailedTitle" xml:space="preserve">
+    <value>Die Seitenänderungen wurden in „{0}“ geschrieben</value>
+  </data>
+  <data name="ApplyErrorViewFailed" xml:space="preserve">
+    <value>Die Datei wurde nach {0} geschrieben, aber die Ansicht konnte nicht aktualisiert werden. Pagewing öffnet die geschriebene Datei jetzt erneut.</value>
+  </data>
+  <data name="PagesOriginalOne" xml:space="preserve">
+    <value>ursprünglich Seite {0}</value>
+  </data>
+  <data name="PagesOriginalMany" xml:space="preserve">
+    <value>ursprünglich Seiten {0}</value>
+  </data>
+  <data name="PagesNewOne" xml:space="preserve">
+    <value>Seite {0} der neuen Datei</value>
+  </data>
+  <data name="PagesNewMany" xml:space="preserve">
+    <value>Seiten {0} der neuen Datei</value>
   </data>
 </root>

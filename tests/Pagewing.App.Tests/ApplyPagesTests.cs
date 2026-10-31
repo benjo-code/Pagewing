@@ -280,6 +280,7 @@ public sealed partial class ApplyPagesTests : IDisposable
     [InlineData(SaveFailureReason.DiskFull)]
     [InlineData(SaveFailureReason.EncryptedNotSupported)]
     [InlineData(SaveFailureReason.SourceModified)]
+    [InlineData(SaveFailureReason.OriginalChanged)]
     [InlineData(SaveFailureReason.VerificationFailed)]
     [InlineData(SaveFailureReason.NotWritable)]
     public async Task ApplyFailureKeepsThePlanAndTheTarget(SaveFailureReason reason)
@@ -297,9 +298,20 @@ public sealed partial class ApplyPagesTests : IDisposable
         await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
 
         // The card says why and offers "Save as" only where another name can help; the plan and the tab are as they were.
-        Assert.Equal(reason, viewModel.PendingSave!.Reason);
+        var changedFile = reason is SaveFailureReason.SourceModified or SaveFailureReason.OriginalChanged;
+        if (changedFile)
+        {
+            // A changed file is a dead end with "Cancel" alone, and nothing can overwrite it.
+            Assert.Equal(Strings.ApplyErrorFileChanged, viewModel.PendingSave!.Message);
+            Assert.DoesNotContain(PendingSaveChoice.Overwrite, viewModel.PendingSave.Choices);
+        }
+        else
+        {
+            Assert.Equal(reason, viewModel.PendingSave!.Reason);
+        }
+
         Assert.False(string.IsNullOrWhiteSpace(viewModel.PendingSave.Message));
-        Assert.Equal(reason is SaveFailureReason.SourceModified or SaveFailureReason.EncryptedNotSupported ? 1 : 2, viewModel.PendingSave.Choices.Count);
+        Assert.Equal(changedFile || reason == SaveFailureReason.EncryptedNotSupported ? 1 : 2, viewModel.PendingSave.Choices.Count);
         Assert.True(tab.HasPendingPageEdits);
         Assert.True(tab.IsOrganizing);
         viewModel.PendingSave.Abandon();
@@ -333,7 +345,7 @@ public sealed partial class ApplyPagesTests : IDisposable
         Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveInOriginal));
         await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
 
-        Assert.Equal(SaveFailureReason.SourceModified, viewModel.PendingSave!.Reason);
+        Assert.Equal(Strings.ApplyErrorFileChanged, viewModel.PendingSave!.Message);
         Assert.Equal([PendingSaveChoice.Cancel], viewModel.PendingSave.Choices);
         viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
         Assert.False(await apply);
@@ -342,31 +354,145 @@ public sealed partial class ApplyPagesTests : IDisposable
         Assert.Empty(Directory.GetFiles(_host.Folder, "*.tmp"));
     }
 
-    [AvaloniaFact]
-    public async Task AnotherFileAtThePathAsksBeforeItIsReplaced()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AnotherFileAtThePathIsNeverRearrangedOrReplaced(bool inOriginal)
     {
         var (window, viewModel, _, tab, path) = await OrganizedAsync("pages-marked.pdf");
         Stage(tab, delete: [0]);
 
-        // The path now names another file (replaced, not rewritten): the card of the changed original comes, "Cancel" keeps it.
+        // The path now names another file with the same number of pages (replaced, not rewritten). "Save as" elsewhere must not
+        // write a rearranged copy of that foreign file, and "Save in the original file" must not replace it: both end in the
+        // card with "Cancel" alone, and nothing can overwrite.
         var other = Path.Combine(_host.Folder, "other.pdf");
         File.Copy(Pagewing.TestSupport.TestData.Pdf("pages-marked.pdf"), other);
         File.AppendAllText(other, "\n");
-        var replaced = Path.Combine(_host.Folder, "moved.pdf");
-        File.Move(path, replaced);
+        File.Move(path, Path.Combine(_host.Folder, "moved.pdf"));
         File.Move(other, path);
+        var target = Path.Combine(_host.Folder, "elsewhere.pdf");
+        _host.Picker.Result = target;
+        var rewrites = 0;
+        viewModel.PageRewriter = (copy, engine, request, progress, token) =>
+        {
+            rewrites++;
+            return DocumentSaver.RewriteAsync(copy, engine, request, progress, token);
+        };
+
         var apply = viewModel.ApplyPageEditsAsync(tab);
         await WaitUntilAsync(window, () => viewModel.PendingSave is not null);
         Assert.Equal(PendingSaveKind.ApplyPages, viewModel.PendingSave!.Kind);
         _host.PassTheLock(window);
-        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveInOriginal));
-        await WaitForCardAsync<FileChangedCard>(window, viewModel, PendingSaveKind.FileChanged);
+        Assert.True(viewModel.PendingSave!.Resolve(inOriginal ? PendingSaveChoice.SaveInOriginal : PendingSaveChoice.SaveAs));
+        await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
 
         var foreign = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
-        viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel);
+        Assert.Equal(Strings.ApplyErrorFileChanged, viewModel.PendingSave!.Message);
+        Assert.Equal([PendingSaveChoice.Cancel], viewModel.PendingSave.Choices);
+        viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
         Assert.False(await apply);
+        Assert.Equal(0, rewrites);
         Assert.Equal(foreign, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(target));
         Assert.True(tab.HasPendingPageEdits);
+        Assert.True(tab.IsOrganizing);
+        Assert.Empty(Directory.GetFiles(_host.Folder, "*.tmp"));
+    }
+
+    [AvaloniaFact]
+    public async Task AFailureAfterTheWriteSaysTheFileIsWrittenAndReopensIt()
+    {
+        var (window, viewModel, _, tab, path) = await OrganizedAsync("pages-marked.pdf");
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        Stage(tab, delete: [0, 1]);
+        var target = Path.Combine(_host.Folder, "written.pdf");
+        _host.Picker.Result = target;
+
+        // The checked file is closed before the tab can take it over: the adopt fails after the file is written.
+        viewModel.PageRewriter = async (copy, engine, request, progress, token) =>
+        {
+            var result = await DocumentSaver.RewriteAsync(copy, engine, request, progress, token);
+            await result.Reopened.DisposeAsync();
+            return result;
+        };
+        var apply = viewModel.ApplyPageEditsAsync(tab);
+        await WaitForCardAsync<ApplyPagesCard>(window, viewModel, PendingSaveKind.ApplyPages);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveAs));
+        await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
+
+        // The card says the file is written (never "not saved") and where.
+        var question = viewModel.PendingSave!;
+        Assert.Contains(Path.GetFileName(target), question.Title, StringComparison.Ordinal);
+        Assert.Contains(target, question.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("not saved", question.Title + question.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("could not be saved", question.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal([PendingSaveChoice.Cancel], question.Choices);
+        question.Resolve(PendingSaveChoice.Cancel);
+        Assert.True(await apply);
+
+        // No stale plan and no offer to apply again onto the old document; the written file is opened through the normal path.
+        Assert.False(tab.HasPendingPageEdits);
+        Assert.False(tab.IsOrganizing);
+        Assert.False(tab.IsSaving);
+        await WaitUntilAsync(window, () => tab.FullPath == Path.GetFullPath(target) && tab.IsReady && tab.PageCount == 4);
+        Assert.False(tab.ApplyPageEditsCommand.CanExecute(null));
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [AvaloniaFact]
+    public async Task TypedTextAfterTheCommentsWereSavedStopsTheApplyAndStaysInTheTab()
+    {
+        var (window, viewModel, _, tab, path) = await OrganizedAsync("pages-marked.pdf");
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        await MarkAsync(window, tab);
+        Stage(tab, delete: [0]);
+        tab.PendingTextBoxDraft = new TextBoxDraft(0, new Core.Text.PageRect(50, 50, 150, 80), null, "kept", 12, new Core.Annotations.AnnotationColor(0, 0, 0));
+
+        // The comments can be saved, the refused text cannot: the save-first branch saves what it can, then stops with the reason.
+        var apply = viewModel.ApplyPageEditsAsync(tab);
+        await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.SaveAnnotationsFirst);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.Save));
+        await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
+        Assert.Equal(Strings.ApplyErrorDraft, viewModel.PendingSave!.Message);
+        viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
+
+        Assert.False(await apply);
+        var saved = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        Assert.True(saved.Length > original.Length);
+        Assert.Equal(original, saved[..original.Length]);
+        Assert.NotNull(tab.PendingTextBoxDraft);
+        Assert.True(tab.HasPendingPageEdits);
+        Assert.Equal(6, tab.Document!.PageCount);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public void EachLossNamesTheIndexSpaceOfItsPages(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var original = language == "en" ? "originally" : "ursprünglich";
+        var fresh = language == "en" ? "of the new file" : "der neuen Datei";
+        var sources = new (PageLoss Loss, bool Original)[]
+        {
+            (new PageLoss(PageLossKind.BookmarkToDeletedPage, null, [1, 2]), true),
+            (new PageLoss(PageLossKind.OrphanFormFields, null, [4]), true),
+            (new PageLoss(PageLossKind.DuplicatedFormFields, PageLossDetail.Duplicated, [0, 3]), false),
+            (new PageLoss(PageLossKind.DuplicatedFormFields, PageLossDetail.Inserted, [5]), false),
+            (new PageLoss(PageLossKind.FormFieldNameCollision, null, [4]), false),
+            (new PageLoss(PageLossKind.InternalLinkLost, PageLossDetail.DeletedPage, [0]), false),
+            (new PageLoss(PageLossKind.InternalLinkLost, PageLossDetail.CopiedPage, [1, 2, 3]), false),
+        };
+        foreach (var (loss, isOriginal) in sources)
+        {
+            var line = ApplyPagesInfo.LineOf(loss);
+            Assert.Equal(isOriginal, line.Contains(original, StringComparison.Ordinal));
+            Assert.Equal(!isOriginal, line.Contains(fresh, StringComparison.Ordinal));
+        }
+
+        // Numbers are 1-based, in the language's own wording.
+        Assert.Contains(language == "en" ? "originally pages 2, 3" : "ursprünglich Seiten 2, 3", ApplyPagesInfo.LineOf(sources[0].Loss), StringComparison.Ordinal);
+        Assert.Contains(language == "en" ? "page 1 of the new file" : "Seite 1 der neuen Datei", ApplyPagesInfo.LineOf(sources[5].Loss), StringComparison.Ordinal);
     }
 
     [AvaloniaFact]
@@ -613,6 +739,8 @@ public sealed partial class ApplyPagesTests : IDisposable
             PendingSave.PageApplyError(tab, path, static () => Strings.ApplyErrorNotPrepared),
             PendingSave.PageApplyError(tab, path, static () => Strings.ApplyErrorRefusedEncrypted),
             PendingSave.PageApplyError(tab, path, static () => Strings.ApplyErrorDraft),
+            PendingSave.PageApplyError(tab, path, static () => Strings.ApplyErrorFileChanged),
+            PendingSave.PageApplyViewFailed(tab, path),
         })
         {
             texts.Add(question.Title);
@@ -641,7 +769,7 @@ public sealed partial class ApplyPagesTests : IDisposable
         var keys = typeof(Strings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Select(property => property.Name)
             .Where(name => name.StartsWith("Apply", StringComparison.Ordinal) || name.StartsWith("SaveFirst", StringComparison.Ordinal)
-                || name is "SaveChangesWithPagesText" or "SaveChoiceSaveInOriginal" or "PagesOne" or "PagesMany")
+                || name is "SaveChangesWithPagesText" or "SaveChoiceSaveInOriginal" or "PagesOriginalOne" or "PagesOriginalMany" or "PagesNewOne" or "PagesNewMany")
             .ToList();
         Assert.True(keys.Count >= 30);
         foreach (var language in new[] { "en", "de" })

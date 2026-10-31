@@ -260,6 +260,13 @@ public sealed partial class MainViewModel
                 // Not saved: the save showed why (its card) or the user cancelled there.
                 return await SaveDocumentChangesAsync(tab, saveAs: false);
             case PendingSaveChoice.DontSave or PendingSaveChoice.Discard:
+                if (tab.AsksOnlyAboutPageEdits)
+                {
+                    // "Discard the page changes?" is answered for good: the plan goes now, so a flow that goes on (the update)
+                    // never leaves a plan behind that was given up.
+                    tab.AbandonPageEdits();
+                }
+
                 discarded[tab] = tab.ChangeVersion;
                 return true;
             default:

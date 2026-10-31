@@ -108,19 +108,14 @@ public sealed partial class MainViewModel
                 PendingSaveChoice.SaveInOriginal => current,
                 _ => null,
             };
-            var overwrite = false;
             while (target is not null && !token.IsCancellationRequested)
             {
-                var outcome = await ApplyOnceAsync(tab, plan, target, overwrite, token);
+                var outcome = await ApplyOnceAsync(tab, plan, target, token);
                 switch (outcome.Choice)
                 {
                     case null:
                         return outcome.Done;
-                    case PendingSaveChoice.Overwrite:
-                        overwrite = true;
-                        break;
                     case PendingSaveChoice.SaveAs:
-                        overwrite = false;
                         target = await PickTargetAsync(tab, target);
                         break;
                     default:
@@ -209,12 +204,14 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Builds, writes, checks and adopts the rewrite to <paramref name="target"/> in the background (<see cref="PageEditApplier"/>).
-    /// A failure asks the user as the save does: another file at the path of the original (overwrite, save as, cancel), any
-    /// other reason (save as, cancel), <see cref="SaveFailureReason.SourceModified"/> and an encryption the file would lose
-    /// with "Cancel" alone. The plan and the document stay in every failure.
+    /// A failure asks the user as the save does (save as, cancel), with two differences: a file that is not the one that was opened
+    /// (<see cref="SaveFailureReason.OriginalChanged"/> and <see cref="SaveFailureReason.SourceModified"/>) ends in a card with
+    /// "Cancel" alone, and there is no overwriting of the changed original, because the pages are built from the file at the
+    /// path; and a failure after the write (<see cref="PageApplyAdoptException"/>) says the file is written. The plan and the
+    /// document stay in every failure before the write.
     /// </summary>
     /// <returns>Whether the file was written, or the answer of the user to a failure.</returns>
-    private async Task<(bool Done, PendingSaveChoice? Choice)> ApplyOnceAsync(TabViewModel tab, PageEditPlan plan, string target, bool overwrite, CancellationToken token)
+    private async Task<(bool Done, PendingSaveChoice? Choice)> ApplyOnceAsync(TabViewModel tab, PageEditPlan plan, string target, CancellationToken token)
     {
         var progress = new SaveProgressReport(tab);
         var follow = plan.FollowPage(Math.Clamp(tab.CurrentPage - 1, 0, plan.PrimaryPageCount - 1));
@@ -223,13 +220,20 @@ public sealed partial class MainViewModel
         {
             // On the thread pool: it reads file stamps, and the adoption closes the old document, never on the UI thread. The
             // callback tells the tab which document is about to arrive, so it is shown as the same file in other pages.
-            var request = new PageApplyRequest(plan, target, NoInsertedFiles, overwrite, rewritten => tab.ExpectRewrittenDocument(rewritten, follow));
-            await Task.Run(() => PageEditApplier.ApplyAsync(tab.Session, SaveEngine, request, progress, token, PageRewriter), token);
+            var request = new PageApplyRequest(plan, target, NoInsertedFiles, OverwriteChangedOriginal: false, rewritten => tab.ExpectRewrittenDocument(rewritten, follow));
+            var result = await Task.Run(() => PageEditApplier.ApplyAsync(tab.Session, SaveEngine, request, progress, token, PageRewriter), token);
             written = true;
+            if (!result.Adopted)
+            {
+                // The tab closed or opened another file meanwhile: nothing here is left to take the claim.
+                tab.ForgetRewrittenDocument();
+            }
         }
-        catch (SaveFailureException ex) when (ex.Reason == SaveFailureReason.OriginalChanged)
+        catch (SaveFailureException ex) when (ex.Reason is SaveFailureReason.OriginalChanged or SaveFailureReason.SourceModified)
         {
-            return (false, await AskAsync(PendingSave.FileChanged(tab, target), token));
+            // Another program changed the file since it was opened: the page changes cannot be written onto it, and nothing
+            // overwrites it. The tab keeps its plan; the user reopens the file.
+            return (false, await AskAsync(PendingSave.PageApplyError(tab, target, static () => Strings.ApplyErrorFileChanged), token));
         }
         catch (SaveFailureException ex) when (ex.Reason != SaveFailureReason.Canceled)
         {
@@ -238,6 +242,20 @@ public sealed partial class MainViewModel
         catch (SaveFailureException)
         {
             return (false, PendingSaveChoice.Cancel);
+        }
+        catch (PageApplyAdoptException ex)
+        {
+            // The file IS rewritten, the tab shows the old document: it must not keep a plan for it or offer to apply again.
+            // The card says so; then the written file is opened in the tab through the normal open path.
+            tab.ForgetRewrittenDocument();
+            if (!_disposed && Tabs.IndexOf(tab) >= 0)
+            {
+                await AskAsync(PendingSave.PageApplyViewFailed(tab, ex.TargetPath), CancellationToken.None);
+                tab.AbandonPageEdits();
+                _ = tab.OpenAsync(ex.TargetPath);
+            }
+
+            return (true, null);
         }
         catch (Exception ex) when (ex is PageEditException or PdfOpenException or InvalidDataException or InvalidOperationException)
         {

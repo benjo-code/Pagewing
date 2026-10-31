@@ -373,11 +373,22 @@ public sealed class PendingSave
     /// The page changes cannot be applied for a reason that is not a failed save (the plan is refused, a source cannot be
     /// read, typed text would be lost): the error card with <paramref name="message"/> and "Cancel" alone. The plan is kept.
     /// </summary>
-    internal static PendingSave PageApplyError(TabViewModel tab, string path, Func<string> message)
+    internal static PendingSave PageApplyError(TabViewModel tab, string path, Func<string> message, Func<string>? title = null)
     {
         ArgumentNullException.ThrowIfNull(message);
-        return new(PendingSaveKind.SaveError, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, message: message);
+        return new(PendingSaveKind.SaveError, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, message: message, title: title);
     }
+
+    /// <summary>
+    /// The page changes were written to <paramref name="path"/>, but the tab could not take the file over: the card says the file
+    /// is written (never "not saved") and that Pagewing opens it again. "Cancel" alone is its way to go on.
+    /// </summary>
+    internal static PendingSave PageApplyViewFailed(TabViewModel tab, string path) =>
+        PageApplyError(
+            tab,
+            path,
+            () => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ApplyErrorViewFailed), path),
+            () => Format(Strings.ApplyViewFailedTitle, System.IO.Path.GetFileName(path)));
 
     /// <summary>
     /// The warning before saving a document whose signature forbids the change (DocMDP level 1 or 2). With

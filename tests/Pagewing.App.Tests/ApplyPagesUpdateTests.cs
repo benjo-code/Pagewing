@@ -30,29 +30,7 @@ public sealed class ApplyPagesUpdateTests : UpdateTestHost
     [AvaloniaFact]
     public async Task UpdatePathAsksAboutAPendingPlan()
     {
-        Source.Offer("0.2.0");
-        UpdateCoordinator? made = null;
-        var workspace = new Workspace(
-            () => new ViewerSession(new PdfEngine()),
-            () => new MainWindow { Width = 1024, Height = 720, ShowActivated = false },
-            _ => _files.Picker,
-            updateFactory: () => made ??= NewCoordinator());
-        Own(workspace);
-        var coordinator = workspace.UpdateCoordinator!;
-        await coordinator.CheckNowAsync();
-        await PumpUntilAsync(() => coordinator.State == UpdateState.Offer(Offered));
-
-        var viewModel = workspace.OpenWindow();
-        viewModel.Clock = _files.Clock;
-        var window = (MainWindow)workspace.WindowOf(viewModel);
-        var view = Find<DocumentView>(window, "DocumentView");
-        var tab = await OpenAsync(window, viewModel, view, _files.Copy("pages-marked.pdf", "plan.pdf"));
-        tab.OrganizeCommand.Execute(null);
-        tab.SelectPages([0, 1]);
-        tab.DeletePagesCommand.Execute(null);
-        Assert.True(tab.HasPendingPageEdits);
-        Assert.False(tab.IsDirty);
-        await WaitUntilAsync(window, () => viewModel.Update is not null);
+        var (_, coordinator, viewModel, window, tab, _) = await PlanInAWindowAsync();
 
         // Nothing but the plan is unsaved, and the update asks about it before anything is fetched.
         var fetches = Source.FetchCalls;
@@ -73,6 +51,55 @@ public sealed class ApplyPagesUpdateTests : UpdateTestHost
         Assert.True(tab.HasPendingPageEdits);
         Assert.True(tab.IsOrganizing);
         Assert.Null(viewModel.PendingSave);
+    }
+
+    [AvaloniaFact]
+    public async Task UpdatePathDiscardingThePlanLetsTheInstallationGoOnAndDropsThePlan()
+    {
+        var (_, coordinator, viewModel, window, tab, path) = await PlanInAWindowAsync();
+        var before = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+
+        var install = coordinator.BeginInstallAsync();
+        await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.DiscardChanges);
+        viewModel.PendingSave!.Resolve(PendingSaveChoice.Discard);
+        await WaitUntilAsync(window, () => install.IsCompleted);
+
+        // The answer is final: the plan is gone (the installation never leaves a plan behind that was given up), the installer
+        // took over, and nothing was written to the file.
+        Assert.Equal(UpdateStage.Restarting, coordinator.State.Stage);
+        Assert.Equal(1, Applier.Calls);
+        Assert.False(tab.HasPendingPageEdits);
+        Assert.False(tab.IsOrganizing);
+        Assert.Equal(before, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    private async Task<(Workspace Workspace, UpdateCoordinator Coordinator, MainViewModel ViewModel, MainWindow Window, TabViewModel Tab, string Path)> PlanInAWindowAsync()
+    {
+        Source.Offer("0.2.0");
+        UpdateCoordinator? made = null;
+        var workspace = new Workspace(
+            () => new ViewerSession(new PdfEngine()),
+            () => new MainWindow { Width = 1024, Height = 720, ShowActivated = false },
+            _ => _files.Picker,
+            updateFactory: () => made ??= NewCoordinator());
+        Own(workspace);
+        var coordinator = workspace.UpdateCoordinator!;
+        await coordinator.CheckNowAsync();
+        await PumpUntilAsync(() => coordinator.State == UpdateState.Offer(Offered));
+
+        var viewModel = workspace.OpenWindow();
+        viewModel.Clock = _files.Clock;
+        var window = (MainWindow)workspace.WindowOf(viewModel);
+        var view = Find<DocumentView>(window, "DocumentView");
+        var path = _files.Copy("pages-marked.pdf", "plan.pdf");
+        var tab = await OpenAsync(window, viewModel, view, path);
+        tab.OrganizeCommand.Execute(null);
+        tab.SelectPages([0, 1]);
+        tab.DeletePagesCommand.Execute(null);
+        Assert.True(tab.HasPendingPageEdits);
+        Assert.False(tab.IsDirty);
+        await WaitUntilAsync(window, () => viewModel.Update is not null);
+        return (workspace, coordinator, viewModel, window, tab, path);
     }
 
     private static async Task<TabViewModel> OpenAsync(MainWindow window, MainViewModel viewModel, DocumentView view, string path) =>

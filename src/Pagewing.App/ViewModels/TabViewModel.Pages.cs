@@ -397,6 +397,12 @@ public sealed partial class TabViewModel
         SidePanel = SidePanelKind.Pages;
     }
 
+    /// <summary>
+    /// Drops the plan and leaves the mode on behalf of the window (the user answered "discard" to the question before an update
+    /// or closing; the written file replaced the document and the view could not follow). Nothing is written.
+    /// </summary>
+    internal void AbandonPageEdits() => DropPlan();
+
     /// <summary>Drops the plan and its history and leaves the mode (discard, leaving without a change).</summary>
     private void DropPlan()
     {

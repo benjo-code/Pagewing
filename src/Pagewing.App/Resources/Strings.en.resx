@@ -1665,12 +1665,6 @@
   <data name="ApplyChoiceBack" xml:space="preserve">
     <value>Back</value>
   </data>
-  <data name="PagesOne" xml:space="preserve">
-    <value>page {0}</value>
-  </data>
-  <data name="PagesMany" xml:space="preserve">
-    <value>pages {0}</value>
-  </data>
   <data name="ApplyLossForeignOutline" xml:space="preserve">
     <value>The bookmarks of inserted file {0} are not taken over.</value>
   </data>
@@ -1730,5 +1724,26 @@
   </data>
   <data name="SaveChangesWithPagesText" xml:space="preserve">
     <value>Your changes are lost if you do not save them. The page changes that have not been applied are lost as well; “Save” does not apply them.</value>
+  </data>
+  <data name="ApplyErrorFileChanged" xml:space="preserve">
+    <value>The file was changed outside Pagewing. Reopen it to organize pages. Nothing was written; the page changes stay in this tab until you close it.</value>
+  </data>
+  <data name="ApplyViewFailedTitle" xml:space="preserve">
+    <value>The page changes were written to “{0}”</value>
+  </data>
+  <data name="ApplyErrorViewFailed" xml:space="preserve">
+    <value>The file was written to {0}, but the view could not be updated. Pagewing opens the written file again now.</value>
+  </data>
+  <data name="PagesOriginalOne" xml:space="preserve">
+    <value>originally page {0}</value>
+  </data>
+  <data name="PagesOriginalMany" xml:space="preserve">
+    <value>originally pages {0}</value>
+  </data>
+  <data name="PagesNewOne" xml:space="preserve">
+    <value>page {0} of the new file</value>
+  </data>
+  <data name="PagesNewMany" xml:space="preserve">
+    <value>pages {0} of the new file</value>
   </data>
 </root>
