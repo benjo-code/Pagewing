@@ -198,10 +198,11 @@ public sealed class DocumentSplitterTests
     {
         using var folder = new TempFolder();
         var directory = Directory.CreateDirectory(Path.Combine(folder.Path, "out")).FullName;
-        var parts = HostileParts(12);
+        var parts = HostileParts(16);
 
         var targets = DocumentSplitter.TargetPaths(parts, directory);
 
+        Assert.Equal(16, targets.Count);
         Assert.Equal(parts.Count, targets.Count);
         AssertInside(directory, targets);
         Assert.Equal(targets.Count, targets.Distinct(StringComparer.OrdinalIgnoreCase).Count());
@@ -231,12 +232,14 @@ public sealed class DocumentSplitterTests
         var before = decoys.Select(d => (d, Hash(d))).ToArray();
         var untouched = Directory.GetFiles(folder.Path, "*", SearchOption.AllDirectories).ToHashSet(StringComparer.OrdinalIgnoreCase);
         await using var document = await engine.OpenAsync(path, null, Ct);
-        var parts = HostileParts(12);
+        var parts = HostileParts(16);
 
         var written = await DocumentSplitter.WriteAsync(engine, document, new PageSourceFile(path, null), parts, directory, overwrite: false, progress: null, Ct);
 
+        Assert.Equal(16, written.Count);
         Assert.Equal(parts.Count, written.Count);
         AssertInside(directory, written);
+        Assert.Equal(written.Count, written.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.All(written, file => Assert.True(File.Exists(file)));
 
         // Nothing else was created or touched, anywhere under the work folder, and no temporary file is left.
@@ -516,12 +519,113 @@ public sealed class DocumentSplitterTests
             }
         });
 
-        var ex = await Assert.ThrowsAsync<SaveFailureException>(() =>
+        var ex = await Assert.ThrowsAsync<DocumentSplitException>(() =>
             DocumentSplitter.WriteAsync(engine, document, new PageSourceFile(path, null), parts, directory, overwrite: false, progress, Ct, written));
 
-        Assert.Equal(SaveFailureReason.SourceModified, ex.Reason);
+        Assert.Equal(DocumentSplitError.PartFailed, ex.Error);
+        Assert.Equal(1, ex.PartIndex);
+        Assert.Equal([targets[1]], ex.Paths);
+        Assert.Equal(SaveFailureReason.SourceModified, Assert.IsType<SaveFailureException>(ex.InnerException).Reason);
         Assert.Equal([targets[0]], written);
         Assert.Equal([targets[0]], Directory.GetFiles(directory));
+    }
+
+    [Fact]
+    public async Task WriteNeverReplacesAFileThatAnotherProgramCreatesWhileAPartIsWritten()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "pages-marked.pdf");
+        var directory = Directory.CreateDirectory(Path.Combine(folder.Path, "out")).FullName;
+        await using var document = await engine.OpenAsync(path, null, Ct);
+        var parts = DocumentSplitter.Plan(6, SplitMode.Every(2), "p");
+        var targets = DocumentSplitter.TargetPaths(parts, directory);
+        var foreign = "foreign file of another program"u8.ToArray();
+        var written = new List<string>();
+
+        // The check before the part has passed; while the part is written and checked, another program creates its file.
+        var progress = new SyncProgress([], value =>
+        {
+            if (value >= ((1 + 0.3) / parts.Count) - 1e-9 && !File.Exists(targets[1]))
+            {
+                File.WriteAllBytes(targets[1], foreign);
+            }
+        });
+
+        var ex = await Assert.ThrowsAsync<DocumentSplitException>(() =>
+            DocumentSplitter.WriteAsync(engine, document, new PageSourceFile(path, null), parts, directory, overwrite: false, progress, Ct, written));
+
+        Assert.Equal(DocumentSplitError.TargetExists, ex.Error);
+        Assert.Equal(1, ex.PartIndex);
+        Assert.Equal([targets[1]], ex.Paths);
+        Assert.Equal(SaveFailureReason.TargetExists, Assert.IsType<SaveFailureException>(ex.InnerException).Reason);
+        Assert.Equal(foreign, await File.ReadAllBytesAsync(targets[1], Ct));
+        Assert.Equal([targets[0]], written);
+        Assert.Equal(targets.Take(2).Order(StringComparer.OrdinalIgnoreCase), Directory.GetFiles(directory).Order(StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task WriteWithOverwriteStillReplacesAFileThatAppearsMeanwhile()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "pages-marked.pdf");
+        var directory = Directory.CreateDirectory(Path.Combine(folder.Path, "out")).FullName;
+        await using var document = await engine.OpenAsync(path, null, Ct);
+        var parts = DocumentSplitter.Plan(6, SplitMode.Every(2), "p");
+        var targets = DocumentSplitter.TargetPaths(parts, directory);
+        var progress = new SyncProgress([], value =>
+        {
+            if (value >= ((1 + 0.3) / parts.Count) - 1e-9 && !File.Exists(targets[1]))
+            {
+                File.WriteAllText(targets[1], "foreign");
+            }
+        });
+
+        var written = await DocumentSplitter.WriteAsync(engine, document, new PageSourceFile(path, null), parts, directory, overwrite: true, progress, Ct);
+
+        Assert.Equal(targets, written);
+        await using var replaced = await engine.OpenAsync(targets[1], null, Ct);
+        Assert.Equal(2, replaced.PageCount);
+    }
+
+    [Theory]
+    [InlineData("a")]
+    [InlineData("\u6F22")]
+    [InlineData("\U0001F600")]
+    public void LongBaseNamesKeepTheirSuffixesDistinctAndUnique(string unit)
+    {
+        var baseName = string.Concat(Enumerable.Repeat(unit, 100));
+        using var folder = new TempFolder();
+        var directory = Directory.CreateDirectory(Path.Combine(folder.Path, "out")).FullName;
+        var outline = new[] { new PdfOutlineItem("A", 2, false, []), new PdfOutlineItem("A", 4, false, []) };
+
+        var every = DocumentSplitter.Plan(6, SplitMode.Every(2), baseName);
+        var ranges = DocumentSplitter.Plan(6, SplitMode.Ranges("1-3,4,5-6"), baseName);
+        var bookmarks = DocumentSplitter.Plan(6, SplitMode.Bookmarks(outline), baseName);
+        var many = DocumentSplitter.Plan(DocumentSplitter.MaxParts, SplitMode.Every(1), baseName);
+
+        AssertSuffixes(directory, every, ["-p001-002.pdf", "-p003-004.pdf", "-p005-006.pdf"]);
+        AssertSuffixes(directory, ranges, ["-p001-003.pdf", "-p004.pdf", "-p005-006.pdf"]);
+        AssertSuffixes(directory, bookmarks, ["-front.pdf", string.Empty, string.Empty]);
+
+        // The widest page numbers (five digits) and 20,000 parts: still all different, all with their page in the name.
+        var targets = DocumentSplitter.TargetPaths(many, directory);
+        Assert.Equal(many.Count, targets.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.EndsWith("-p00001.pdf", targets[0], StringComparison.Ordinal);
+        Assert.EndsWith("-p20000.pdf", targets[^1], StringComparison.Ordinal);
+        AssertInside(directory, targets.Take(50).Concat(targets.TakeLast(50)));
+    }
+
+    private static void AssertSuffixes(string directory, IReadOnlyList<SplitPart> parts, string[] suffixes)
+    {
+        var targets = DocumentSplitter.TargetPaths(parts, directory);
+        Assert.Equal(suffixes.Length, targets.Count);
+        Assert.Equal(targets.Count, targets.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        for (var i = 0; i < suffixes.Length; i++)
+        {
+            Assert.EndsWith(suffixes[i], targets[i], StringComparison.Ordinal);
+        }
+
+        AssertInside(directory, targets);
     }
 
     [Theory]
@@ -584,7 +688,7 @@ public sealed class DocumentSplitterTests
             Assert.True(string.Equals(root, Path.GetDirectoryName(file), comparison), $"'{file}' is not directly inside '{root}'.");
             var name = Path.GetFileName(file);
             Assert.True(name.IndexOfAny(['/', '\\', ':', '<', '>', '"', '|', '?', '*']) < 0, $"'{name}' has an invalid character.");
-            Assert.True(name.Length <= 255);
+            Assert.True(System.Text.Encoding.UTF8.GetByteCount(name) <= 255, $"'{name}' is longer than 255 bytes.");
         }
     }
 

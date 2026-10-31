@@ -481,6 +481,55 @@ public sealed class RotateCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task RotateNeverReplacesAFileThatAppearsWhileTheOutputIsWritten()
+    {
+        var input = Copy("pages-marked.pdf");
+        var output = Path.Combine(workDirectory.FullName, "out.pdf");
+        var foreign = "foreign file of another program"u8.ToArray();
+
+        // The guard has passed (no file at the output); another program creates it while the saver writes and checks.
+        var progress = new CallbackProgress(value =>
+        {
+            if (value > 0.3 && !File.Exists(output))
+            {
+                File.WriteAllBytes(output, foreign);
+            }
+        });
+        using var stderr = new StringWriter();
+        using var stdout = new MemoryStream();
+        var exitCode = await CliApp.RunAsync(
+            ["rotate", input, "--pages", "all", "--angle", "90", "--output", output],
+            stdout,
+            stderr,
+            _ => null,
+            openDocument: null,
+            runCommand: (document, options, standardOutput, token) => RotateCommand.RunAsync(document, options, null, standardOutput, stderr, token, progress),
+            Ct);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("already exists. Use --force to replace it.", stderr.ToString(), StringComparison.Ordinal);
+        Assert.Equal(foreign, await File.ReadAllBytesAsync(output, Ct));
+        Assert.Empty(TemporaryFiles());
+        Assert.Equal(await File.ReadAllBytesAsync(TestData.Pdf("pages-marked.pdf"), Ct), await File.ReadAllBytesAsync(input, Ct));
+
+        // With --force the same race replaces the file, as the user asked for.
+        File.Delete(output);
+        using var forcedError = new StringWriter();
+        var forced = await CliApp.RunAsync(
+            ["rotate", input, "--pages", "all", "--angle", "90", "--output", output, "--force"],
+            new MemoryStream(),
+            forcedError,
+            _ => null,
+            openDocument: null,
+            runCommand: (document, options, standardOutput, token) => RotateCommand.RunAsync(document, options, null, standardOutput, forcedError, token, progress),
+            Ct);
+        Assert.Equal(0, forced);
+        await using var written = await engine.OpenAsync(output, null, Ct);
+        Assert.Equal(6, written.PageCount);
+        Assert.Empty(TemporaryFiles());
+    }
+
+    [Fact]
     public async Task CancelBeforeTheWriteStartsLeavesNothing()
     {
         var input = Copy("signed-docmdp-1.pdf");

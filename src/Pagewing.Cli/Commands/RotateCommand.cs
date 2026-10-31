@@ -41,7 +41,7 @@ internal static class RotateCommand
             await error.FlushAsync(ct).ConfigureAwait(false);
 
             // The output is never the input (OutputGuard), so there is no stamp of "the original" to compare at the target.
-            var request = new PageApplyRequest(plan, Path.GetFullPath(target), NoFiles);
+            var request = new PageApplyRequest(plan, Path.GetFullPath(target), NoFiles, ReplaceExisting: options.Force);
             var saved = await PageEditApplier.WriteAsync(new PdfEngine(), document, Path.GetFullPath(options.File), password, openedStamp: null, request, progress, ct).ConfigureAwait(false);
             await saved.Reopened.DisposeAsync().ConfigureAwait(false);
         }
@@ -60,6 +60,7 @@ internal static class RotateCommand
 
     private static string Describe(SaveFailureException ex, string target) => ex.Reason switch
     {
+        SaveFailureReason.TargetExists => $"'{target}' already exists. Use --force to replace it. Nothing was written.",
         SaveFailureReason.NotWritable => $"Cannot write '{target}': the file or its folder is not writable. Nothing was written.",
         SaveFailureReason.DiskFull => $"Cannot write '{target}': the disk is full. Nothing was written.",
         SaveFailureReason.WriteFailed => $"Cannot write '{target}': {ex.Message} Nothing was written.",

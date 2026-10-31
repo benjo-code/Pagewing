@@ -28,6 +28,12 @@ namespace Pagewing.Core.Saving;
 /// Whether the user confirmed overwriting the path of the original although another file now stands there. It never overrides
 /// <see cref="SaveFailureReason.SourceModified"/>.
 /// </param>
+/// <param name="ReplaceExisting">
+/// Whether a file that stands at the target when the checked file is moved into place is replaced (the default; the caller
+/// has asked the user). With <see langword="false"/> the move never replaces: a file that exists at that moment, even one
+/// that was created by another program while the file was written, ends in <see cref="SaveFailureReason.TargetExists"/>, with
+/// that file untouched and the temporary file removed.
+/// </param>
 public sealed record RewriteRequest(
     string OriginalPath,
     string TargetPath,
@@ -35,14 +41,15 @@ public sealed record RewriteRequest(
     string? Password,
     IReadOnlyList<PageFingerprint> ExpectedPages,
     IReadOnlyList<PdfDocument> UnchangedSources,
-    bool OverwriteChangedOriginal)
+    bool OverwriteChangedOriginal,
+    bool ReplaceExisting = true)
 {
     /// <summary>Prints the members like a record does, with the password replaced (secrets never reach a log).</summary>
     private bool PrintMembers(StringBuilder builder)
     {
         builder.Append(
             CultureInfo.InvariantCulture,
-            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPages = {ExpectedPages?.Count ?? 0} pages, UnchangedSources = {UnchangedSources?.Count ?? 0}, OverwriteChangedOriginal = {OverwriteChangedOriginal}");
+            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPages = {ExpectedPages?.Count ?? 0} pages, UnchangedSources = {UnchangedSources?.Count ?? 0}, OverwriteChangedOriginal = {OverwriteChangedOriginal}, ReplaceExisting = {ReplaceExisting}");
         return true;
     }
 }

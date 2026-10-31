@@ -9,6 +9,11 @@ namespace Pagewing.Core.Pages;
 /// <param name="TargetPath">The file to write: the path of the open document ("save in the original file") or another one ("Save as"). An existing file is replaced.</param>
 /// <param name="InsertedFiles">The file of each inserted source the plan uses (empty for a plan of the open document alone).</param>
 /// <param name="OverwriteChangedOriginal">Whether the user confirmed overwriting another file that now stands at the path of the original.</param>
+/// <param name="ReplaceExisting">
+/// Whether a file that stands at <paramref name="TargetPath"/> when the checked file is moved into place is replaced (the
+/// default). With <see langword="false"/> nothing is ever replaced: such a file ends in <see cref="SaveFailureReason.TargetExists"/>
+/// and stays as it is (command line without <c>--force</c>, split without overwrite).
+/// </param>
 /// <param name="Rewritten">
 /// Called on the calling thread with the checked, reopened document right before the session adopts it, or
 /// <see langword="null"/>. The caller uses it to learn that the document that is about to arrive in the session is this
@@ -19,7 +24,8 @@ public sealed record PageApplyRequest(
     string TargetPath,
     IReadOnlyDictionary<PageSourceId, PageSourceFile> InsertedFiles,
     bool OverwriteChangedOriginal = false,
-    Action<PdfDocument>? Rewritten = null);
+    Action<PdfDocument>? Rewritten = null,
+    bool ReplaceExisting = true);
 
 /// <summary>The result of <see cref="PageEditApplier.ApplyAsync"/>.</summary>
 /// <param name="Saved">The result of the rewrite; its document belongs to the session when <paramref name="Adopted"/> is <see langword="true"/> and is closed otherwise.</param>
@@ -281,7 +287,8 @@ public static class PageEditApplier
                 password,
                 expected,
                 unchanged,
-                request.OverwriteChangedOriginal);
+                request.OverwriteChangedOriginal,
+                request.ReplaceExisting);
             var writing = new Scaled(progress, BuildShare, 1 - BuildShare);
             var result = rewriter is null
                 ? await DocumentSaver.RewriteAsync(working, engine, rewrite, writing, cancellationToken).ConfigureAwait(false)

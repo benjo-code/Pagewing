@@ -16,7 +16,7 @@ public static class OutputNames
 
     // Whatever the text elements are, a name stays far below the 255 bytes (UTF-8, ext4) or 255 UTF-16 units (NTFS) of a file
     // name component, also with a number and the extension added.
-    private const int MaxStemBytes = 160;
+    internal const int MaxStemBytes = 160;
 
     private const int MaxStemChars = 200;
 
@@ -44,13 +44,25 @@ public static class OutputNames
     /// <returns>A name that is safe on Windows, Linux and macOS.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxLength"/> is less than 1.</exception>
-    public static string Sanitize(string title, int maxLength = DefaultMaxLength)
+    public static string Sanitize(string title, int maxLength = DefaultMaxLength) => Sanitize(title, maxLength, MaxStemBytes);
+
+    /// <summary>
+    /// Like <see cref="Sanitize(string, int)"/> with a smaller byte limit, for a name that gets a suffix of known size after
+    /// it (a generated stem such as <c>Name-p001-003</c>): the limits leave room, so the later <see cref="Unique"/> does not cut
+    /// the suffix off again.
+    /// </summary>
+    /// <param name="title">The text.</param>
+    /// <param name="maxLength">The most text elements (at least 1).</param>
+    /// <param name="maxBytes">The most UTF-8 bytes (at least 1, at most <see cref="MaxStemBytes"/>).</param>
+    internal static string Sanitize(string title, int maxLength, int maxBytes)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxLength, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxBytes, 1);
         var limit = Math.Min(maxLength, MaxStemChars);
+        var bytes = Math.Min(maxBytes, MaxStemBytes);
         var cleaned = Clean(title);
-        var name = Truncate(cleaned, limit);
+        var name = Truncate(cleaned, limit, bytes);
         if (name.Length == 0)
         {
             return Fallback;
@@ -59,7 +71,7 @@ public static class OutputNames
         if (IsDeviceName(name))
         {
             // A prefix cannot make it longer than allowed: the name is cut again.
-            name = Truncate("_" + name, limit);
+            name = Truncate("_" + name, limit, bytes);
         }
 
         return name;
@@ -191,7 +203,7 @@ public static class OutputNames
     }
 
     // Keeps whole text elements up to the limits in elements and bytes, then trims dots and spaces the cut may have left at the end.
-    private static string Truncate(string text, int maxElements)
+    private static string Truncate(string text, int maxElements, int maxBytes)
     {
         if (text.Length == 0)
         {
@@ -206,7 +218,7 @@ public static class OutputNames
         {
             var element = (string)enumerator.Current;
             var size = Encoding.UTF8.GetByteCount(element);
-            if (elements >= maxElements || bytes + size > MaxStemBytes)
+            if (elements >= maxElements || bytes + size > maxBytes)
             {
                 break;
             }

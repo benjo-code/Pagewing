@@ -235,7 +235,8 @@ public static class DocumentSaver
             request.UnchangedSources,
             Write: workingCopy.SaveRewriteAsync,
             CheckPrefix: false,
-            Check: (reopened, wasEncrypted, token) => CheckRewriteAsync(reopened, request, wasEncrypted, token));
+            Check: (reopened, wasEncrypted, token) => CheckRewriteAsync(reopened, request, wasEncrypted, token),
+            ReplaceExisting: request.ReplaceExisting);
         return await RunAsync(workingCopy, engine, job, progress, faults, cancellationToken).ConfigureAwait(false);
     }
 
@@ -285,7 +286,7 @@ public static class DocumentSaver
             cancellationToken.ThrowIfCancellationRequested();
 
             CheckSources(document, job.ExtraSources);
-            Replace(temporary, target, folder, faults);
+            Replace(temporary, target, folder, job.ReplaceExisting, faults);
             committed = true;
             if (lateAccessList is not null && OperatingSystem.IsWindows())
             {
@@ -767,19 +768,41 @@ public static class DocumentSaver
     /// (renaming a file opened shared for deleting is allowed), the temporary file takes its name and the old file is
     /// deleted. If that second move fails, the old file is moved back.
     /// </summary>
-    private static void Replace(string temporary, string target, string folder, SaveFaults? faults)
+    private static void Replace(string temporary, string target, string folder, bool replaceExisting, SaveFaults? faults)
     {
         if (OperatingSystem.IsWindows())
         {
-            var error = faults?.AtomicReplace is { } replace ? replace(temporary, target) : WindowsFileRename.ReplaceAtomically(temporary, target);
+            var error = faults?.AtomicReplace is { } replace ? replace(temporary, target) : WindowsFileRename.ReplaceAtomically(temporary, target, replaceExisting);
             if (error == 0)
             {
                 return;
             }
 
+            if (!replaceExisting && error is WindowsFileRename.ErrorAlreadyExists or WindowsFileRename.ErrorFileExists)
+            {
+                throw TargetExists(new Win32Exception(error));
+            }
+
             if (!WindowsFileRename.IsUnsupported(error))
             {
                 throw FailureOfWin32(error);
+            }
+        }
+
+        if (!replaceExisting)
+        {
+            // Never replaces: .NET moves without overwriting by linking the new name first and then removing the old one, so a
+            // file that appears at the target at any moment before that ends here and stays as it is.
+            try
+            {
+                File.Move(temporary, target, overwrite: false);
+                return;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                throw File.Exists(target) || Directory.Exists(target)
+                    ? TargetExists(ex)
+                    : FailureOf(ex, "The file could not be written.");
             }
         }
 
@@ -834,6 +857,9 @@ public static class DocumentSaver
         TryDelete(aside);
     }
 
+    private static SaveFailureException TargetExists(Exception inner) =>
+        new(SaveFailureReason.TargetExists, "A file already exists at the target.", inner);
+
     /// <summary>Maps a write or replace error: full disk, file in use, no access, anything else.</summary>
     private static SaveFailureException FailureOf(Exception error, string message)
     {
@@ -887,7 +913,8 @@ public static class DocumentSaver
         IReadOnlyList<PdfDocument> ExtraSources,
         Func<Stream, CancellationToken, Task> Write,
         bool CheckPrefix,
-        Func<PdfDocument, bool, CancellationToken, Task> Check);
+        Func<PdfDocument, bool, CancellationToken, Task> Check,
+        bool ReplaceExisting = true);
 
     /// <summary>What an existing target passes on to the file that replaces it.</summary>
     private readonly record struct TargetInfo(bool Exists, bool Hidden, UnixFileMode? UnixMode, byte[]? AccessList = null);

@@ -327,6 +327,80 @@ public sealed class DocumentSaverRewriteTests : IDisposable
         stream.WriteByte((byte)'\n');
     }
 
+    [Fact]
+    public async Task RewriteWithoutReplacingNeverReplacesAFileThatAppearsWhileItIsWritten()
+    {
+        var original = Copy("pages-marked.pdf");
+        var target = Path.Combine(folder.Path, "out.pdf");
+        var (copy, request) = await BuildAsync(original, target, p => p.Delete([1]));
+        await using var scope = copy;
+        var foreign = "foreign file of another program"u8.ToArray();
+
+        // Another program creates the target after the check of the target, while the file is written and checked.
+        var faults = new SaveFaults { AfterWrite = () => File.WriteAllBytes(target, foreign) };
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(
+            () => DocumentSaver.RewriteAsync(copy, engine, request with { ReplaceExisting = false }, null, faults, Ct));
+
+        Assert.Equal(SaveFailureReason.TargetExists, failure.Reason);
+        Assert.Equal(foreign, await File.ReadAllBytesAsync(target, Ct));
+        AssertOnlyFiles(original, target);
+    }
+
+    [Fact]
+    public async Task RewriteWithoutReplacingRefusesAFileThatIsThereFromTheStart()
+    {
+        var original = Copy("pages-marked.pdf");
+        var target = Path.Combine(folder.Path, "out.pdf");
+        await File.WriteAllTextAsync(target, "precious", Ct);
+        var (copy, request) = await BuildAsync(original, target, p => p.Delete([1]));
+        await using var scope = copy;
+
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(
+            () => DocumentSaver.RewriteAsync(copy, engine, request with { ReplaceExisting = false }, cancellationToken: Ct));
+
+        Assert.Equal(SaveFailureReason.TargetExists, failure.Reason);
+        Assert.Equal("precious", await File.ReadAllTextAsync(target, Ct));
+        AssertOnlyFiles(original, target);
+    }
+
+    [Fact]
+    public async Task RewriteWithoutReplacingWritesANewFile()
+    {
+        var original = Copy("pages-marked.pdf");
+        var target = Path.Combine(folder.Path, "out.pdf");
+        var (copy, request) = await BuildAsync(original, target, p => p.Delete([1]));
+        await using var scope = copy;
+
+        var result = await DocumentSaver.RewriteAsync(copy, engine, request with { ReplaceExisting = false }, cancellationToken: Ct);
+
+        await using (result.Reopened)
+        {
+            Assert.Equal(5, result.Reopened.PageCount);
+        }
+
+        AssertOnlyFiles(original, target);
+    }
+
+    [Fact]
+    public async Task RewriteReplacesAFileThatAppearsWhileItIsWrittenWhenReplacingIsAllowed()
+    {
+        var original = Copy("pages-marked.pdf");
+        var target = Path.Combine(folder.Path, "out.pdf");
+        var (copy, request) = await BuildAsync(original, target, p => p.Delete([1]));
+        await using var scope = copy;
+        Assert.True(request.ReplaceExisting);
+
+        var faults = new SaveFaults { AfterWrite = () => File.WriteAllBytes(target, "foreign"u8.ToArray()) };
+        var result = await DocumentSaver.RewriteAsync(copy, engine, request, null, faults, Ct);
+
+        await using (result.Reopened)
+        {
+            Assert.Equal(5, result.Reopened.PageCount);
+        }
+
+        AssertOnlyFiles(original, target);
+    }
+
     private async Task<int> PageCountOfAsync(string path)
     {
         await using var document = await engine.OpenAsync(path, null, Ct);

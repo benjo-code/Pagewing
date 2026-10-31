@@ -138,6 +138,27 @@ public sealed class OutputNamesTests
     }
 
     [Fact]
+    public void SanitizeKeepsWideTextAtTheDefaultLimitUnder160Bytes()
+    {
+        var cjk = OutputNames.Sanitize(string.Concat(Enumerable.Repeat("\u6F22", 80)));
+        var emoji = OutputNames.Sanitize(string.Concat(Enumerable.Repeat("\U0001F600", 80)));
+
+        Assert.InRange(Encoding.UTF8.GetByteCount(cjk), 1, 160);
+        Assert.InRange(Encoding.UTF8.GetByteCount(emoji), 1, 160);
+        Assert.Equal(53, TextElements(cjk));
+        Assert.Equal(40, TextElements(emoji));
+        Assert.True(IsWellFormed(emoji));
+    }
+
+    [Fact]
+    public void SanitizeHonoursASmallerLimitForNamesWithASuffix()
+    {
+        // The base name of a generated stem leaves room for its suffix.
+        Assert.Equal(64, OutputNames.Sanitize(new string('a', 100), 64, 144).Length);
+        Assert.Equal(48, TextElements(OutputNames.Sanitize(string.Concat(Enumerable.Repeat("\u6F22", 100)), 64, 144)));
+    }
+
+    [Fact]
     public void SanitizeKeepsTheLimitEvenWhenAReservedNameNeedsAPrefix()
     {
         var name = OutputNames.Sanitize("NUL", 3);

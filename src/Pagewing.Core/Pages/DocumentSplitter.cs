@@ -65,6 +65,13 @@ public enum DocumentSplitError
 
     /// <summary>A file name would lead out of the target folder (cannot happen with <see cref="OutputNames"/>; a guard).</summary>
     UnsafeName,
+
+    /// <summary>
+    /// A part failed while the parts were written (the inner exception says why: <see cref="SaveFailureException"/>,
+    /// <see cref="PdfOpenException"/> …); <see cref="DocumentSplitException.PartIndex"/> and <see cref="DocumentSplitException.Paths"/>
+    /// name it. A file that appeared at its place meanwhile is <see cref="TargetExists"/> instead, with the same details.
+    /// </summary>
+    PartFailed,
 }
 
 /// <summary>A split that is refused before the first byte is written.</summary>
@@ -87,10 +94,8 @@ public sealed class DocumentSplitException : Exception
     /// <param name="message">The message.</param>
     /// <param name="innerException">The cause.</param>
     public DocumentSplitException(string message, Exception innerException)
-        : base(message, innerException)
+        : this(DocumentSplitError.UnsafeName, message, [], -1, innerException)
     {
-        Error = DocumentSplitError.UnsafeName;
-        Paths = [];
     }
 
     /// <summary>Creates the exception for <paramref name="error"/>.</summary>
@@ -113,14 +118,29 @@ public sealed class DocumentSplitException : Exception
     /// <param name="message">The message.</param>
     /// <param name="paths">The full paths concerned (the files in the way).</param>
     public DocumentSplitException(DocumentSplitError error, string message, IReadOnlyList<string> paths)
-        : base(message)
+        : this(error, message, paths, -1, null)
+    {
+    }
+
+    /// <summary>Creates the exception for a part that failed while the parts were written.</summary>
+    /// <param name="error">Why the split stopped.</param>
+    /// <param name="message">The message.</param>
+    /// <param name="paths">The full path of the failing part's file.</param>
+    /// <param name="partIndex">The 0-based index of the failing part.</param>
+    /// <param name="innerException">What went wrong.</param>
+    public DocumentSplitException(DocumentSplitError error, string message, IReadOnlyList<string> paths, int partIndex, Exception? innerException)
+        : base(message, innerException)
     {
         Error = error;
         Paths = paths;
+        PartIndex = partIndex;
     }
 
     /// <summary>Gets why the split was refused.</summary>
     public DocumentSplitError Error { get; }
+
+    /// <summary>Gets the 0-based index of the part that failed while the parts were written (<see cref="DocumentSplitError.PartFailed"/>, and <see cref="DocumentSplitError.TargetExists"/> at the moment of writing), or -1.</summary>
+    public int PartIndex { get; }
 
     /// <summary>Gets the full paths concerned: for <see cref="DocumentSplitError.TargetExists"/> and <see cref="DocumentSplitError.TargetIsSource"/> the files in the way.</summary>
     public IReadOnlyList<string> Paths { get; }
@@ -139,6 +159,9 @@ public static class DocumentSplitter
 
     /// <summary>The most pages all parts together may hold (overlapping ranges count each time), checked before they are listed.</summary>
     public const int MaxTotalPages = 100_000;
+
+    // The longest generated suffix: "-p" + two page numbers of up to five digits + "-" is 13 characters.
+    private const int SuffixRoom = 16;
 
     private static readonly IReadOnlyDictionary<PageSourceId, PdfDocument> NoSources = new Dictionary<PageSourceId, PdfDocument>();
 
@@ -167,7 +190,10 @@ public static class DocumentSplitter
             throw new PageEditException(PageEditError.LimitExceeded, "The document has more pages than a plan can hold.");
         }
 
-        var name = OutputNames.Sanitize(baseName);
+
+        // The generated suffix ("-p00001-00003", "-front") is added to this name and must survive the later sanitizing of the
+        // whole stem (80 elements, 160 bytes), so the name leaves room for the longest suffix.
+        var name = OutputNames.Sanitize(baseName, OutputNames.DefaultMaxLength - SuffixRoom, OutputNames.MaxStemBytes - SuffixRoom);
         return mode switch
         {
             SplitMode.EveryMode every => PlanEvery(pageCount, every.Pages, name),
@@ -298,8 +324,9 @@ public static class DocumentSplitter
     /// Parts are written one by one. If a part fails or the token is canceled, the parts before it are complete, checked files
     /// and <em>stay</em> (they are listed in <paramref name="written"/>); the failing part leaves nothing, not even a
     /// temporary file. The caller owns the decision whether to delete the written parts. Because a file could appear between the
-    /// check and the write, the target is checked again right before each part; the window that is left is the one of the
-    /// atomic replace itself. The caller ran <see cref="AnalyzeAsync"/> and showed the result.
+    /// check and the write, the target is checked again right before each part, and without <paramref name="overwrite"/> the
+    /// checked file is moved into place without replacing (<see cref="RewriteRequest.ReplaceExisting"/>), so a file created
+    /// meanwhile by another program is never replaced. The caller ran <see cref="AnalyzeAsync"/> and showed the result.
     /// </remarks>
     /// <param name="engine">Opens the working copies and the written files.</param>
     /// <param name="source">The open document, opened from <paramref name="file"/>.</param>
@@ -308,13 +335,18 @@ public static class DocumentSplitter
     /// <param name="directory">The folder to write into; it must exist.</param>
     /// <param name="overwrite">Whether an existing file at a target may be replaced. The default of every caller is <see langword="false"/>.</param>
     /// <param name="progress">Receives 0 to 1 over all parts (from the PDFium thread); never goes back.</param>
-    /// <param name="cancellationToken">Cancels before and during a part; a part that is replaced into place stays.</param>
+    /// <param name="cancellationToken">Cancels before and during a part; a part that is moved into place stays.</param>
     /// <param name="written">Receives the full path of each part as soon as it is complete (also when a later part fails), or <see langword="null"/>.</param>
     /// <returns>The full paths of the files, in the order of <paramref name="parts"/>.</returns>
     /// <exception cref="DocumentSplitException">Refused before the first byte (see above).</exception>
-    /// <exception cref="PageEditException">A part does not fit the document.</exception>
-    /// <exception cref="PdfOpenException">The file cannot be opened.</exception>
-    /// <exception cref="SaveFailureException">A part failed the rewrite or the check, or the source file was changed meanwhile; the parts before it stay.</exception>
+    /// <exception cref="PageEditException">A part does not fit the document (checked before the first byte).</exception>
+    /// <exception cref="DocumentSplitException">
+    /// Also when a part fails while the parts are written: <see cref="DocumentSplitError.PartFailed"/> with
+    /// <see cref="DocumentSplitException.PartIndex"/>, the part's path in <see cref="DocumentSplitException.Paths"/> and the cause
+    /// (<see cref="SaveFailureException"/> for a failed rewrite or check or a changed source file, <see cref="PdfOpenException"/> …)
+    /// as <see cref="Exception.InnerException"/>; a file that another program created at the place of a part meanwhile is
+    /// <see cref="DocumentSplitError.TargetExists"/> (never replaced without <paramref name="overwrite"/>). The parts before it stay.
+    /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled; the parts before it stay.</exception>
     public static async Task<IReadOnlyList<string>> WriteAsync(
         PdfEngine engine,
@@ -374,17 +406,33 @@ public static class DocumentSplitter
                     [targets[i]]);
             }
 
-            var request = new PageApplyRequest(PlanOf(source.PageCount, parts[i]), targets[i], NoFiles);
-            var saved = await PageEditApplier.WriteAsync(
-                engine,
-                source,
-                sourcePath,
-                file.Password,
-                file.Stamp,
-                request,
-                new Slice(progress, i, parts.Count),
-                cancellationToken).ConfigureAwait(false);
-            await CloseQuietlyAsync(saved.Reopened).ConfigureAwait(false);
+            try
+            {
+                // Without overwrite nothing is ever replaced, not even a file that another program creates while the part is
+                // written: the move into place then fails with TargetExists and leaves that file alone.
+                var request = new PageApplyRequest(PlanOf(source.PageCount, parts[i]), targets[i], NoFiles, ReplaceExisting: overwrite);
+                var saved = await PageEditApplier.WriteAsync(
+                    engine,
+                    source,
+                    sourcePath,
+                    file.Password,
+                    file.Stamp,
+                    request,
+                    new Slice(progress, i, parts.Count),
+                    cancellationToken).ConfigureAwait(false);
+                await CloseQuietlyAsync(saved.Reopened).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var appeared = ex is SaveFailureException { Reason: SaveFailureReason.TargetExists };
+                throw new DocumentSplitException(
+                    appeared ? DocumentSplitError.TargetExists : DocumentSplitError.PartFailed,
+                    appeared ? "A file appeared at the place of a part." : "A part could not be written.",
+                    [targets[i]],
+                    i,
+                    ex);
+            }
+
             written?.Add(targets[i]);
         }
 

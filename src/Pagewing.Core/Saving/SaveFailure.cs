@@ -47,6 +47,13 @@ public enum SaveFailureReason
     /// tell its own cancellation from a failure.
     /// </summary>
     Canceled,
+
+    /// <summary>
+    /// A file stands at the target and the save was told not to replace an existing file
+    /// (<see cref="RewriteRequest.ReplaceExisting"/> is <see langword="false"/>), for example because another program created
+    /// it while the file was written. The file at the target is untouched.
+    /// </summary>
+    TargetExists,
 }
 
 /// <summary>A save failed; <see cref="Reason"/> says why. <see cref="Exception.Message"/> is a short English explanation.</summary>
