@@ -251,7 +251,7 @@ public static class PageEditApplier
             foreach (var id in usage.InsertedIds)
             {
                 var file = request.InsertedFiles[new PageSourceId(id)];
-                var source = await engine.OpenAsync(file.Path, file.Password, cancellationToken).ConfigureAwait(false);
+                var source = await file.OpenAsync(engine, cancellationToken).ConfigureAwait(false);
                 sources[new PageSourceId(id)] = source;
                 hooks?.SourceOpened?.Invoke(source);
             }
@@ -264,8 +264,8 @@ public static class PageEditApplier
             // The working copy was opened from the path just now: it must be the very file the session shows. Otherwise another
             // program replaced or rewrote it, and the pages built here (and the fingerprints, which come from the shown
             // document) would describe two different files. The same dead end as the saver's, with no override.
-            // TODO(task 10): an inserted source is opened once for the fingerprints here and once by the executor; compare their
-            // stamps as well, or give the plan the stamps taken when the file was inserted.
+            // An inserted source is opened once for the fingerprints here and once by the executor; both check it against the
+            // stamp taken when the file was inserted (PageSourceFile.OpenAsync), so a file that changed since is refused by name.
             if (working.SourceStampAtOpen != shown.SourceStampAtOpen)
             {
                 throw new SaveFailureException(SaveFailureReason.SourceModified, "The file is not the one that was opened.");

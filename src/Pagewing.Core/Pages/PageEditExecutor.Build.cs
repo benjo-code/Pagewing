@@ -49,7 +49,7 @@ public sealed partial class PageEditExecutor
             foreach (var id in usage.InsertedIds)
             {
                 var file = inserted[new PageSourceId(id)];
-                var source = await engine.OpenAsync(file.Path, file.Password, cancellationToken).ConfigureAwait(false);
+                var source = await file.OpenAsync(engine, cancellationToken).ConfigureAwait(false);
                 sources[id] = source;
                 if (usage.HighestIndex(id) >= source.PageCount)
                 {

@@ -247,6 +247,65 @@ public sealed class PageEditApplierTests
         Assert.All(checkedPages, position => Assert.NotSame(PageEditExecutor.Unchecked, expected[position]));
     }
 
+    [Fact]
+    public async Task AnInsertedFileIsCheckedAgainstTheStampTakenWhenItWasInserted()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "pages-marked.pdf");
+        var other = Copy(folder, "text-rich.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var first = new PageSourceId(1);
+        var plan = PageEditPlan.Identity(session.Document!.PageCount).InsertFrom(first, [0, 1], 6);
+
+        // The stamp of the file as it was when it was opened for the dialog.
+        PageSourceFile inserted;
+        await using (var opened = await engine.OpenAsync(other, null, Ct))
+        {
+            inserted = PageSourceFile.Of(other, null, opened);
+        }
+
+        Assert.NotNull(inserted.Stamp);
+        var files = new Dictionary<PageSourceId, PageSourceFile> { [first] = inserted };
+
+        // The file is still that file: the plan is written (and the stamp does not depend on how the file is read).
+        var target = Path.Combine(folder.Path, "merged.pdf");
+        var done = await PageEditApplier.ApplyAsync(session, engine, new PageApplyRequest(plan, target, files), null, Ct);
+        Assert.Equal(8, done.Saved.Reopened.PageCount);
+
+        // It was touched since: refused by name before anything is written, with no way to overwrite.
+        using var again = new ViewerSession(engine);
+        await again.OpenAsync(path);
+        File.SetLastWriteTimeUtc(other, DateTime.UtcNow.AddDays(2));
+        var second = Path.Combine(folder.Path, "second.pdf");
+        var rewrites = 0;
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(() => PageEditApplier.ApplyAsync(
+            again,
+            engine,
+            new PageApplyRequest(plan, second, files, OverwriteChangedOriginal: true),
+            null,
+            Ct,
+            (_, _, _, _, _) =>
+            {
+                rewrites++;
+                throw new InvalidOperationException("must not be called");
+            }));
+        Assert.Equal(SaveFailureReason.SourceModified, failure.Reason);
+        Assert.Equal(other, failure.FilePath);
+        Assert.Equal(0, rewrites);
+        Assert.False(File.Exists(second));
+
+        // Deleted or replaced by something that is no PDF: the same, naming the file (a file without a stamp keeps the old errors).
+        File.Delete(other);
+        failure = await Assert.ThrowsAsync<SaveFailureException>(() => PageEditApplier.ApplyAsync(again, engine, new PageApplyRequest(plan, second, files), null, Ct));
+        Assert.Equal(SaveFailureReason.SourceModified, failure.Reason);
+        Assert.Equal(other, failure.FilePath);
+        var unstamped = new Dictionary<PageSourceId, PageSourceFile> { [first] = new PageSourceFile(other, null) };
+        var open = await Assert.ThrowsAsync<PdfOpenException>(() => PageEditApplier.ApplyAsync(again, engine, new PageApplyRequest(plan, second, unstamped), null, Ct));
+        Assert.Equal(PdfOpenError.FileNotFound, open.Error);
+        Assert.Equal(6, again.Document!.PageCount);
+    }
+
     private static string Copy(TempFolder folder, string fixture)
     {
         var path = Path.Combine(folder.Path, fixture);

@@ -75,4 +75,10 @@ public sealed class SaveFailureException : Exception
 
     /// <summary>Gets the reason, for example to show a localized message.</summary>
     public SaveFailureReason Reason { get; }
+
+    /// <summary>
+    /// Gets the file the failure is about when it is not the document being saved (a file inserted into the page plan that is no
+    /// longer the file that was inserted), or <see langword="null"/>.
+    /// </summary>
+    public string? FilePath { get; init; }
 }
