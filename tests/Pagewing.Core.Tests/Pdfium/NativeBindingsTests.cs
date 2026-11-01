@@ -61,6 +61,20 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.SegmentBezierTo)] = "FPDF_SEGMENT_BEZIERTO",
         [nameof(FpdfConstants.SegmentMoveTo)] = "FPDF_SEGMENT_MOVETO",
         [nameof(FpdfConstants.FontTrueType)] = "FPDF_FONT_TRUETYPE",
+        [nameof(FpdfConstants.FontType1)] = "FPDF_FONT_TYPE1",
+        [nameof(FpdfConstants.PageObjUnknown)] = "FPDF_PAGEOBJ_UNKNOWN",
+        [nameof(FpdfConstants.PageObjText)] = "FPDF_PAGEOBJ_TEXT",
+        [nameof(FpdfConstants.PageObjPath)] = "FPDF_PAGEOBJ_PATH",
+        [nameof(FpdfConstants.PageObjImage)] = "FPDF_PAGEOBJ_IMAGE",
+        [nameof(FpdfConstants.PageObjShading)] = "FPDF_PAGEOBJ_SHADING",
+        [nameof(FpdfConstants.PageObjForm)] = "FPDF_PAGEOBJ_FORM",
+        [nameof(FpdfConstants.FillModeNone)] = "FPDF_FILLMODE_NONE",
+        [nameof(FpdfConstants.FillModeAlternate)] = "FPDF_FILLMODE_ALTERNATE",
+        [nameof(FpdfConstants.FillModeWinding)] = "FPDF_FILLMODE_WINDING",
+        [nameof(FpdfConstants.ColorSpaceDeviceGray)] = "FPDF_COLORSPACE_DEVICEGRAY",
+        [nameof(FpdfConstants.ColorSpaceDeviceRgb)] = "FPDF_COLORSPACE_DEVICERGB",
+        [nameof(FpdfConstants.ColorSpaceDeviceCmyk)] = "FPDF_COLORSPACE_DEVICECMYK",
+        [nameof(FpdfConstants.ColorSpaceIndexed)] = "FPDF_COLORSPACE_INDEXED",
         [nameof(FpdfConstants.FormTypeNone)] = "FORMTYPE_NONE",
         [nameof(FpdfConstants.FormTypeAcroForm)] = "FORMTYPE_ACRO_FORM",
         [nameof(FpdfConstants.FormTypeXfaFull)] = "FORMTYPE_XFA_FULL",
@@ -96,6 +110,7 @@ public sealed partial class NativeBindingsTests
     {
         [nameof(FpdfConstants.FontFlagForceBold)] = 1L << (19 - 1),
         [nameof(FpdfConstants.FontFlagItalic)] = 1L << (7 - 1),
+        [nameof(FpdfConstants.TextRenderModeInvisible)] = 3,
         [nameof(FpdfConstants.PermissionPrint)] = 1L << (3 - 1),
         [nameof(FpdfConstants.PermissionAnnotate)] = 1L << (6 - 1),
         [nameof(FpdfConstants.FormFlagNoToggleToOff)] = 1L << (15 - 1),
@@ -163,6 +178,9 @@ public sealed partial class NativeBindingsTests
 
         // The specification values only hold while FPDFText_GetFontInfo still reports the font descriptor flags.
         Assert.Contains("Font Descriptor Flags", File.ReadAllText(Path.Combine(headerDirectory, "fpdf_text.h")), StringComparison.Ordinal);
+
+        // The rendering mode is an enum in fpdfview.h, not a define.
+        Assert.Contains("FPDF_TEXTRENDERMODE_INVISIBLE = 3", File.ReadAllText(Path.Combine(headerDirectory, "fpdfview.h")), StringComparison.Ordinal);
     }
 
     /// <summary>

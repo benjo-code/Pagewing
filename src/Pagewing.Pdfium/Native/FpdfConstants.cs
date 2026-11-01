@@ -103,6 +103,54 @@ internal static class FpdfConstants
     /// <summary><c>FPDF_FONT_TRUETYPE</c>: a TrueType font for <c>FPDFText_LoadFont</c>.</summary>
     public const int FontTrueType = 2;
 
+    /// <summary><c>FPDF_FONT_TYPE1</c>: a Type 1 font for <c>FPDFText_LoadFont</c>.</summary>
+    public const int FontType1 = 1;
+
+    /// <summary><c>FPDF_PAGEOBJ_UNKNOWN</c> (<c>fpdf_edit.h</c>).</summary>
+    public const int PageObjUnknown = 0;
+
+    /// <summary><c>FPDF_PAGEOBJ_TEXT</c>: a text object.</summary>
+    public const int PageObjText = 1;
+
+    /// <summary><c>FPDF_PAGEOBJ_PATH</c>: a path object.</summary>
+    public const int PageObjPath = 2;
+
+    /// <summary><c>FPDF_PAGEOBJ_IMAGE</c>: an image object.</summary>
+    public const int PageObjImage = 3;
+
+    /// <summary><c>FPDF_PAGEOBJ_SHADING</c>: a shading object.</summary>
+    public const int PageObjShading = 4;
+
+    /// <summary><c>FPDF_PAGEOBJ_FORM</c>: a form object (a form XObject on the page).</summary>
+    public const int PageObjForm = 5;
+
+    /// <summary><c>FPDF_FILLMODE_NONE</c>: a path is not filled.</summary>
+    public const int FillModeNone = 0;
+
+    /// <summary><c>FPDF_FILLMODE_ALTERNATE</c>: even-odd fill.</summary>
+    public const int FillModeAlternate = 1;
+
+    /// <summary><c>FPDF_FILLMODE_WINDING</c>: non-zero winding fill.</summary>
+    public const int FillModeWinding = 2;
+
+    /// <summary><c>FPDF_COLORSPACE_DEVICEGRAY</c>: the colour space reported by <c>FPDFImageObj_GetImageMetadata</c>.</summary>
+    public const int ColorSpaceDeviceGray = 1;
+
+    /// <summary><c>FPDF_COLORSPACE_DEVICERGB</c>.</summary>
+    public const int ColorSpaceDeviceRgb = 2;
+
+    /// <summary><c>FPDF_COLORSPACE_DEVICECMYK</c>.</summary>
+    public const int ColorSpaceDeviceCmyk = 3;
+
+    /// <summary><c>FPDF_COLORSPACE_INDEXED</c>.</summary>
+    public const int ColorSpaceIndexed = 10;
+
+    /// <summary>
+    /// <c>FPDF_TEXTRENDERMODE_INVISIBLE</c> (<c>fpdfview.h</c>, an enum value, not a define): text that is neither filled nor
+    /// stroked, as in the text layer of an OCR scan.
+    /// </summary>
+    public const int TextRenderModeInvisible = 3;
+
     /// <summary><c>FPDF_ERR_SUCCESS</c>.</summary>
     public const int ErrSuccess = 0;
 

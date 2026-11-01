@@ -127,6 +127,11 @@ static class TestPdfs
         new("redact-revisions.pdf", RedactRevisions()),
         new("redact-image.pdf", RedactImage()),
         new("redact-rotated.pdf", RedactRotated()),
+        new("redact-fonts.pdf", RedactFonts()),
+        new("redact-image-kinds.pdf", RedactImageKinds()),
+        new("redact-hidden.pdf", RedactHidden()),
+        new("redact-paths.pdf", RedactPaths()),
+        new("redact-structure.pdf", RedactStructure()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -1255,6 +1260,306 @@ static class TestPdfs
         return doc.Build();
     }
 
+    // ---- Redaction fixtures for the spike of milestone 14 (fonts, more image kinds, content no page object shows, paths). ----
+
+    private const string FontSentence = "Name: Zephyrstraße 17 ok";
+
+    // One page 420 x 420 whose lines all show the sentence "Name: Zephyrstraße 17 ok" (one text object per line) in other fonts. The x position
+    // is 20 for every line; the baselines are 390 - 30 * line. The font program of the TrueType and CID lines is the full Geist Regular (SIL OFL 1.1,
+    // src/Pagewing.App/Assets/Fonts), embedded as it is (no subset: the generator has no subsetter); the fonts differ in how they encode:
+    //   line 0  /F1  Helvetica, Type 1 standard font, not embedded, WinAnsi, Tj
+    //   line 1  /F2  simple TrueType, embedded Geist, WinAnsi, no ToUnicode, Tj
+    //   line 2  /F3  Type0 Identity-H, CIDFontType2, CIDToGIDMap /Identity (code = glyph id), ToUnicode, Tj with a hex string
+    //   line 3  /F4  Type0 Identity-H, CIDToGIDMap stream (code = number of the character in the sentence, as a subset renumbers), ToUnicode
+    //   line 4  /F5  as /F3 but without ToUnicode (the text is not extractable)
+    //   line 5  /F6  simple Type 1, embedded (a self-made font whose glyphs are boxes), built-in encoding, no ToUnicode, Tj
+    //   line 6  /F2  TJ array with kerning adjustments
+    //   line 7  /F2  with character spacing (Tc 1.5), word spacing (Tw 4) and horizontal scaling (Tz 80)
+    //   line 8  /F2  turned by 30 degrees with a text matrix (origin 60,60)
+    private static byte[] RedactFonts()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Schriften");
+        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.App", "Assets", "Fonts", "Geist-Regular.ttf")));
+        var helvetica = doc.Add(Helvetica);
+
+        var fontFile = doc.AddStream($"/Length1 {ttf.Data.Length}", ttf.Data);
+        string Scaled(int value) => ((value * 1000) / ttf.UnitsPerEm).ToString(CultureInfo.InvariantCulture);
+        var descriptor = doc.Add(
+            $"<< /Type /FontDescriptor /FontName /AAAAAA+Geist /Flags 32 /FontBBox [{Scaled(ttf.XMin)} {Scaled(ttf.YMin)} {Scaled(ttf.XMax)} {Scaled(ttf.YMax)}] "
+            + $"/ItalicAngle 0 /Ascent {Scaled(ttf.Ascent)} /Descent {Scaled(ttf.Descent)} /CapHeight 700 /StemV 80 /FontFile2 {fontFile} 0 R >>");
+
+        // F2: simple TrueType, WinAnsi (the codes 32 to 126 and 160 to 255 are Unicode; the rest of the range has width 0).
+        var widths = new StringBuilder();
+        for (var code = 32; code <= 255; code++)
+        {
+            var glyph = code is (>= 32 and <= 126) or (>= 160 and <= 255) ? ttf.GlyphFor(code) : 0;
+            widths.Append(CultureInfo.InvariantCulture, $"{(glyph == 0 ? 0 : Scaled(ttf.AdvanceOf(glyph)).ToString(CultureInfo.InvariantCulture))} ");
+        }
+
+        var simple = doc.Add($"<< /Type /Font /Subtype /TrueType /BaseFont /AAAAAA+Geist /FirstChar 32 /LastChar 255 /Widths [{widths}] /Encoding /WinAnsiEncoding /FontDescriptor {descriptor} 0 R >>");
+
+        // F3 and F5: Identity-H, the code is the glyph id.
+        var distinct = FontSentence.Distinct().ToArray();
+        var identityWidths = new StringBuilder();
+        foreach (var c in distinct)
+        {
+            var glyph = ttf.GlyphFor(c);
+            identityWidths.Append(CultureInfo.InvariantCulture, $"{glyph} [{Scaled(ttf.AdvanceOf(glyph))}] ");
+        }
+
+        var identityCid = doc.Add(
+            "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /AAAAAA+Geist /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+            + $"/FontDescriptor {descriptor} 0 R /CIDToGIDMap /Identity /DW 600 /W [{identityWidths}] >>");
+        var identityMap = doc.AddStream(string.Empty, ToUnicodeCMap(distinct.Select(c => ((int)ttf.GlyphFor(c), c)).ToArray()));
+        var identityToUnicode = doc.Add($"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAAA+Geist /Encoding /Identity-H /DescendantFonts [{identityCid} 0 R] /ToUnicode {identityMap} 0 R >>");
+        var identityPlain = doc.Add($"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAAA+Geist /Encoding /Identity-H /DescendantFonts [{identityCid} 0 R] >>");
+
+        // F4: the code is the one-based number of the character in the sentence's distinct characters, CIDToGIDMap renumbers it.
+        var gidMap = new byte[(distinct.Length + 1) * 2];
+        var renumberedWidths = new StringBuilder();
+        for (var i = 0; i < distinct.Length; i++)
+        {
+            var glyph = ttf.GlyphFor(distinct[i]);
+            gidMap[(i + 1) * 2] = (byte)(glyph >> 8);
+            gidMap[((i + 1) * 2) + 1] = (byte)glyph;
+            renumberedWidths.Append(CultureInfo.InvariantCulture, $"{i + 1} [{Scaled(ttf.AdvanceOf(glyph))}] ");
+        }
+
+        var cidToGid = doc.AddStream(string.Empty, gidMap);
+        var renumberedCid = doc.Add(
+            "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /AAAAAA+Geist /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+            + $"/FontDescriptor {descriptor} 0 R /CIDToGIDMap {cidToGid} 0 R /DW 600 /W [{renumberedWidths}] >>");
+        var renumberedMap = doc.AddStream(string.Empty, ToUnicodeCMap(distinct.Select((c, i) => (i + 1, c)).ToArray()));
+        var renumbered = doc.Add($"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAAA+Geist /Encoding /Identity-H /DescendantFonts [{renumberedCid} 0 R] /ToUnicode {renumberedMap} 0 R >>");
+
+        // F6: the self-made Type 1 font.
+        var type1 = Type1Font.Build(FontSentence);
+        var type1File = doc.AddStream($"/Length1 {type1.Length1} /Length2 {type1.Length2} /Length3 {type1.Length3}", type1.Data);
+        var type1Descriptor = doc.Add($"<< /Type /FontDescriptor /FontName /PwBox /Flags 4 /FontBBox [0 0 600 750] /ItalicAngle 0 /Ascent 750 /Descent 0 /CapHeight 700 /StemV 80 /FontFile {type1File} 0 R >>");
+        var type1Widths = new StringBuilder();
+        for (var code = 32; code <= 255; code++)
+        {
+            type1Widths.Append(CultureInfo.InvariantCulture, $"{(Type1Font.NameOf((char)code) is null || !FontSentence.Contains((char)code, StringComparison.Ordinal) ? 0 : code == 32 ? 300 : 600)} ");
+        }
+
+        var type1Font = doc.Add($"<< /Type /Font /Subtype /Type1 /BaseFont /PwBox /FirstChar 32 /LastChar 255 /Widths [{type1Widths}] /FontDescriptor {type1Descriptor} 0 R >>");
+
+        string Hex(string text, Func<char, int> code) => "<" + string.Concat(text.Select(c => code(c).ToString("X4", CultureInfo.InvariantCulture))) + ">";
+        var identityHex = Hex(FontSentence, c => ttf.GlyphFor(c));
+        var renumberedHex = Hex(FontSentence, c => Array.IndexOf(distinct, c) + 1);
+
+        doc.AddPage(
+            "/MediaBox [0 0 420 420]",
+            $"<< /Font << /F1 {helvetica} 0 R /F2 {simple} 0 R /F3 {identityToUnicode} 0 R /F4 {renumbered} 0 R /F5 {identityPlain} 0 R /F6 {type1Font} 0 R >> >>",
+            $"""
+            BT /F1 14 Tf 20 390 Td ({FontSentence}) Tj ET
+            BT /F2 14 Tf 20 360 Td ({FontSentence}) Tj ET
+            BT /F3 14 Tf 20 330 Td {identityHex} Tj ET
+            BT /F4 14 Tf 20 300 Td {renumberedHex} Tj ET
+            BT /F5 14 Tf 20 270 Td {identityHex} Tj ET
+            BT /F6 14 Tf 20 240 Td ({FontSentence}) Tj ET
+            BT /F2 14 Tf 20 210 Td [(Name:) -300 ( Zephyr) 120 (stra) -80 (ße 17) 50 ( ok)] TJ ET
+            BT /F2 14 Tf 1.5 Tc 4 Tw 80 Tz 20 180 Td ({FontSentence}) Tj ET
+            BT /F2 14 Tf 0.866 0.5 -0.5 0.866 60 60 Tm ({FontSentence}) Tj ET
+            """);
+        return doc.Build();
+    }
+
+    // A ToUnicode CMap for a two-byte code space: (code, character) pairs, written in blocks of at most 100 entries.
+    private static byte[] ToUnicodeCMap((int Code, char Character)[] pairs)
+    {
+        var builder = new StringBuilder();
+        builder.Append("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n");
+        builder.Append("/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
+        for (var start = 0; start < pairs.Length; start += 100)
+        {
+            var block = pairs.Skip(start).Take(100).ToArray();
+            builder.Append(CultureInfo.InvariantCulture, $"{block.Length} beginbfchar\n");
+            foreach (var (code, character) in block)
+            {
+                builder.Append(CultureInfo.InvariantCulture, $"<{code:X4}> <{(int)character:X4}>\n");
+            }
+
+            builder.Append("endbfchar\n");
+        }
+
+        builder.Append("endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+        return Text(builder.ToString());
+    }
+
+    private static string RepositoryFile(params string[] parts)
+    {
+        for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Pagewing.slnx")))
+            {
+                return Path.Combine([directory.FullName, .. parts]);
+            }
+        }
+
+        throw new DirectoryNotFoundException("Pagewing.slnx nicht gefunden.");
+    }
+
+    // One page 450 x 130 with four more image kinds, each 64 x 64 px shown at 100 x 100 pt (stripes of 8 px along x, 8 columns), at y=16:
+    //   /ImIndexed at x=10:  Indexed (DeviceRGB palette of 4 entries), 8 bit, Flate (stored); even columns index 0 = (200,30,30), odd index 1 = (30,30,200)
+    //   /ImCmyk    at x=120: DeviceCMYK, 8 bit, Flate (stored); even columns (204,0,0,0), odd (0,204,0,0)
+    //   inline     at x=230: DeviceRGB 16 x 16 px written as an inline image (BI/ID/EI, ASCIIHex); columns of 2 px, even (30,160,30), odd (240,200,30)
+    //   /ImStencil at x=340: 1 bit ImageMask (stencil), 64 x 64, painted in (0.2,0.4,0.8); even columns (bit 0 = paint), odd columns not painted
+    private static byte[] RedactImageKinds()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: weitere Bildarten");
+        const int size = 64;
+        var indexed = new byte[size * size];
+        var cmyk = new byte[size * size * 4];
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var even = (x / 8) % 2 == 0;
+                indexed[(y * size) + x] = even ? (byte)0 : (byte)1;
+                var i = ((y * size) + x) * 4;
+                (cmyk[i], cmyk[i + 1], cmyk[i + 2], cmyk[i + 3]) = even ? ((byte)204, (byte)0, (byte)0, (byte)0) : ((byte)0, (byte)204, (byte)0, (byte)0);
+            }
+        }
+
+        var stencil = new byte[size / 8 * size];
+        for (var y = 0; y < size; y++)
+        {
+            for (var b = 0; b < size / 8; b++)
+            {
+                stencil[(y * (size / 8)) + b] = b % 2 == 0 ? (byte)0x00 : (byte)0xFF;
+            }
+        }
+
+        var inline = new StringBuilder();
+        for (var y = 0; y < 16; y++)
+        {
+            for (var x = 0; x < 16; x++)
+            {
+                inline.Append((x / 2) % 2 == 0 ? "1EA01E" : "F0C81E");
+            }
+        }
+
+        const string head = "/Type /XObject /Subtype /Image /Width 64 /Height 64";
+        var indexedId = doc.AddStream($"{head} /BitsPerComponent 8 /ColorSpace [/Indexed /DeviceRGB 3 <C81E1E 1E1EC8 1EA01E F0C81E>] /Filter /FlateDecode", StoredFlate(indexed));
+        var cmykId = doc.AddStream($"{head} /BitsPerComponent 8 /ColorSpace /DeviceCMYK /Filter /FlateDecode", StoredFlate(cmyk));
+        var stencilId = doc.AddStream($"{head} /ImageMask true /BitsPerComponent 1 /Filter /FlateDecode", StoredFlate(stencil));
+        doc.AddPage(
+            "/MediaBox [0 0 450 130]",
+            $"<< /Font << /F1 {doc.Add(Helvetica)} 0 R >> /XObject << /ImIndexed {indexedId} 0 R /ImCmyk {cmykId} 0 R /ImStencil {stencilId} 0 R >> >>",
+            $"""
+            BT /F1 8 Tf 10 120 Td (Image kinds: Indexed, CMYK, inline, stencil) Tj ET
+            q 100 0 0 100 10 16 cm /ImIndexed Do Q
+            q 100 0 0 100 120 16 cm /ImCmyk Do Q
+            q 100 0 0 100 230 16 cm
+            BI /W 16 /H 16 /CS /RGB /BPC 8 /F /AHx
+            ID
+            {inline}>
+            EI
+            Q
+            0.2 0.4 0.8 rg
+            q 100 0 0 100 340 16 cm /ImStencil Do Q
+            """);
+        return doc.Build();
+    }
+
+    // One page 300 x 300 with content that no page object shows (the term "Zephyrstraße 17" only in the content of other streams):
+    //   a Type 3 font whose glyph procedure for "a" draws the term as text (Helvetica); the page shows two "a" at 20,240 (size 40);
+    //   a soft mask (ExtGState /GS1, luminosity group /G) whose group draws the term in white; used for a blue rectangle 20,150 200 x 60;
+    //   an axial shading (/Sh1, painted with sh in a clip of 20,80 200 x 40), which contains no text.
+    private static byte[] RedactHidden()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Inhalt ohne Seitenobjekt");
+        var helvetica = doc.Add(Helvetica);
+        var glyph = doc.AddStream(string.Empty, Text($"1000 0 0 0 1000 1000 d1 BT /F1 400 Tf 0 200 Td ({RedactTerm}) Tj ET"));
+        var empty = doc.AddStream(string.Empty, Text("1000 0 d0"));
+        var type3 = doc.Add(
+            "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 1000 1000] /FontMatrix [0.001 0 0 0.001 0 0] /CharProcs << /a "
+            + $"{glyph} 0 R /b {empty} 0 R >> /Encoding << /Type /Encoding /Differences [97 /a /b] >> /FirstChar 97 /LastChar 98 /Widths [1000 1000] /Resources << /Font << /F1 {helvetica} 0 R >> >> >>");
+
+        var group = doc.AddStream(
+            $"/Type /XObject /Subtype /Form /BBox [0 0 300 300] /Group << /S /Transparency /CS /DeviceGray >> /Resources << /Font << /F1 {helvetica} 0 R >> >>",
+            Text($"0 g 0 0 300 300 re f 1 g BT /F1 12 Tf 20 170 Td ({RedactTerm}) Tj ET 1 g 20 150 200 60 re f"));
+        var state = doc.Add($"<< /Type /ExtGState /SMask << /Type /Mask /S /Luminosity /G {group} 0 R >> >>");
+
+        var function = doc.Add("<< /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >>");
+        var shading = doc.Add($"<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [20 0 220 0] /Function {function} 0 R /Extend [true true] >>");
+
+        doc.AddPage(
+            "/MediaBox [0 0 300 300]",
+            $"<< /Font << /T3 {type3} 0 R /F1 {helvetica} 0 R >> /ExtGState << /GS1 {state} 0 R >> /Shading << /Sh1 {shading} 0 R >> >>",
+            """
+            BT /F1 10 Tf 20 280 Td (Hidden content fixture) Tj ET
+            BT /T3 40 Tf 20 240 Td (aa) Tj ET
+            q /GS1 gs 0 0 1 rg 20 150 200 60 re f Q
+            q 20 80 200 40 re W n /Sh1 sh Q
+            """);
+        return doc.Build();
+    }
+
+    // One page 300 x 300 for the paths: a background (the whole page, light yellow), text on it ("Zephyrstraße 17" with Helvetica 14 at 20,270),
+    // an axis-parallel rectangle (blue, 20,200 200 x 40), a rectangle turned by 45 degrees (green, centre 150,150), a triangle (red) with a
+    // curve (orange, a Bezier curve), a stroked rectangle (black, 4 pt, 20,60 100 x 30) and clipped text (the clip rectangle 150,60 60 x 30 cuts
+    // the text "Zephyrstraße 17" written at 150,70 in 14 pt).
+    private static byte[] RedactPaths()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Pfade");
+        doc.AddPage("/MediaBox [0 0 300 300]", "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>", $"""
+            1 1 0.8 rg 0 0 300 300 re f
+            0 g BT /F1 14 Tf 20 270 Td ({RedactTerm}) Tj ET
+            0 0 1 rg 20 200 200 40 re f
+            q 0 0.6 0 rg 0.7071 0.7071 -0.7071 0.7071 150 110 cm -30 -30 60 60 re f Q
+            1 0 0 rg 230 200 m 280 200 l 255 250 l h f
+            1 0.6 0 rg 230 100 m 230 150 280 150 280 100 c h f
+            0 G 4 w 20 60 100 30 re S
+            q 150 60 60 30 re W n BT /F1 14 Tf 150 70 Td ({RedactTerm}) Tj ET Q
+            """);
+        return doc.Build();
+    }
+
+    // One page 300 x 300 whose document and page structure carries the term "Zephyrstraße 17" (a literal string with the single byte 0xDF)
+    // in every place a rebuild of the document could keep it: catalog /OpenAction and /Names /JavaScript (both JavaScript), /PageLabels
+    // (prefix), /Metadata (XMP), /StructTreeRoot (/Alt of a structure element), /OCProperties (layer name; the page text in that layer is
+    // content), the info dictionary (/Title, /Keywords); the page /Thumb (a stream), /PieceInfo (private data), page /Metadata (XMP), /AA
+    // (JavaScript), a Link annotation (/Contents, a URI action) and a text field whose /V, /DV and appearance are in the PARENT field
+    // /T (Group) with a child widget that has no value of its own. The page content shows "Structure fixture" only.
+    private static byte[] RedactStructure()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Struktur") { InfoEntries = $"/Keywords ({RedactTerm}) /Subject ({RedactTerm})" };
+        var helvetica = doc.Add(Helvetica);
+        var page = doc.Reserve();
+        var thumb = doc.AddStream("/Type /XObject /Subtype /Image /Width 8 /Height 8 /BitsPerComponent 8 /ColorSpace /DeviceGray", Enumerable.Repeat((byte)0x66, 64).ToArray());
+        string XmpOf(string text) => "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+            + $"<rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:description>{text}</dc:description></rdf:Description></rdf:RDF></x:xmpmeta>\n<?xpacket end=\"w\"?>";
+        var catalogXmp = doc.AddStream("/Type /Metadata /Subtype /XML", Text(XmpOf(RedactTerm)));
+        var pageXmp = doc.AddStream("/Type /Metadata /Subtype /XML", Text(XmpOf(RedactTerm)));
+        var script = doc.Add($"<< /S /JavaScript /JS (var text = '{RedactTerm}';) >>");
+        var pageScript = doc.Add($"<< /S /JavaScript /JS (var other = '{RedactTerm}';) >>");
+        var layer = doc.Add($"<< /Type /OCG /Name ({RedactTerm} layer) >>");
+        var element = doc.Reserve();
+        var structRoot = doc.Add($"<< /Type /StructTreeRoot /K [{element} 0 R] >>");
+        doc.Set(element, $"<< /Type /StructElem /S /P /P {structRoot} 0 R /Pg {page} 0 R /Alt ({RedactTerm}) /K 0 >>");
+
+        var appearance = doc.AddStream($"/Type /XObject /Subtype /Form /BBox [0 0 200 24] /Resources << /Font << /F1 {helvetica} 0 R >> >>", Text($"BT /F1 12 Tf 2 8 Td ({RedactTerm}) Tj ET"));
+        var parent = doc.Reserve();
+        var child = doc.Add($"<< /Type /Annot /Subtype /Widget /Rect [20 100 220 124] /F 4 /P {page} 0 R /Parent {parent} 0 R /AP << /N {appearance} 0 R >> /MK << /CA ({RedactTerm}) >> >>");
+        doc.Set(parent, $"<< /FT /Tx /T (Group) /V ({RedactTerm}) /DV ({RedactTerm}) {FormDa} /Kids [{child} 0 R] >>");
+        var link = doc.Add($"<< /Type /Annot /Subtype /Link /Rect [20 150 120 170] /Border [0 0 0] /Contents ({RedactTerm}) /A << /S /URI /URI (http://example.invalid/) >> /P {page} 0 R >>");
+
+        doc.AddPage(
+            $"/MediaBox [0 0 300 300] /Thumb {thumb} 0 R /PieceInfo << /Pagewing << /Private ({RedactTerm}) >> >> /Metadata {pageXmp} 0 R /AA << /O {pageScript} 0 R >> /StructParents 0 /Annots [{link} 0 R {child} 0 R]",
+            $"<< /Font << /F1 {helvetica} 0 R >> /Properties << /oc1 {layer} 0 R >> >>",
+            $"""
+            BT /F1 12 Tf 20 270 Td (Structure fixture) Tj ET
+            /OC /oc1 BDC BT /F1 12 Tf 20 240 Td ({RedactTerm}) Tj ET EMC
+            """,
+            page);
+        doc.CatalogEntries = $"/OpenAction {script} 0 R /Names << /JavaScript << /Names [(init) {script} 0 R] >> >> /PageLabels << /Nums [0 << /P ({RedactTerm} - ) >>] >> "
+            + $"/Metadata {catalogXmp} 0 R /StructTreeRoot {structRoot} 0 R /OCProperties << /OCGs [{layer} 0 R] /D << /BaseState /ON /OFF [{layer} 0 R] >> >> "
+            + AcroFormEntry(doc, [parent]);
+        return doc.Build();
+    }
+
     // Flate data made only of stored (uncompressed) deflate blocks: valid zlib, identical on every runtime.
     private static byte[] StoredFlate(byte[] data)
     {
@@ -1405,6 +1710,284 @@ static class TestPdfs
     }
 
     private static byte[] Text(string value) => PdfDoc.Latin1(value);
+}
+
+// The few facts of a TrueType file the font fixtures need: the metrics (head, hhea, hmtx) and the Unicode cmap (format 4 or 12).
+sealed class TtfInfo
+{
+    private readonly Dictionary<string, (int Offset, int Length)> tables = [];
+    private readonly int cmapOffset;
+    private readonly int numberOfHMetrics;
+
+    public TtfInfo(byte[] data)
+    {
+        Data = data;
+        var count = U16(4);
+        for (var i = 0; i < count; i++)
+        {
+            var entry = 12 + (i * 16);
+            tables[Encoding.ASCII.GetString(data, entry, 4)] = ((int)U32(entry + 8), (int)U32(entry + 12));
+        }
+
+        var head = tables["head"].Offset;
+        UnitsPerEm = U16(head + 18);
+        XMin = S16(head + 36);
+        YMin = S16(head + 38);
+        XMax = S16(head + 40);
+        YMax = S16(head + 42);
+        var hhea = tables["hhea"].Offset;
+        Ascent = S16(hhea + 4);
+        Descent = S16(hhea + 6);
+        numberOfHMetrics = U16(hhea + 34);
+
+        var cmap = tables["cmap"].Offset;
+        var subtables = U16(cmap + 2);
+        for (var i = 0; i < subtables; i++)
+        {
+            var record = cmap + 4 + (i * 8);
+            var platform = U16(record);
+            var encoding = U16(record + 2);
+            var offset = cmap + (int)U32(record + 4);
+            var format = U16(offset);
+            if ((platform == 3 && encoding == 10 && format == 12) || (cmapOffset == 0 && ((platform == 3 && encoding == 1) || platform == 0) && format is 4 or 12))
+            {
+                cmapOffset = offset;
+            }
+        }
+
+        if (cmapOffset == 0)
+        {
+            throw new InvalidOperationException("Die Schrift hat keine Unicode-cmap (Format 4 oder 12).");
+        }
+    }
+
+    public byte[] Data { get; }
+
+    public int UnitsPerEm { get; }
+
+    public int XMin { get; }
+
+    public int YMin { get; }
+
+    public int XMax { get; }
+
+    public int YMax { get; }
+
+    public int Ascent { get; }
+
+    public int Descent { get; }
+
+    // The glyph id of a Unicode code point, 0 if the font has none.
+    public int GlyphFor(int codePoint)
+    {
+        var format = U16(cmapOffset);
+        if (format == 12)
+        {
+            var groups = (int)U32(cmapOffset + 12);
+            for (var i = 0; i < groups; i++)
+            {
+                var group = cmapOffset + 16 + (i * 12);
+                var start = U32(group);
+                var end = U32(group + 4);
+                if (codePoint >= start && codePoint <= end)
+                {
+                    return (int)(U32(group + 8) + (uint)codePoint - start);
+                }
+            }
+
+            return 0;
+        }
+
+        var segments = U16(cmapOffset + 6) / 2;
+        var endCodes = cmapOffset + 14;
+        var startCodes = endCodes + (segments * 2) + 2;
+        var deltas = startCodes + (segments * 2);
+        var rangeOffsets = deltas + (segments * 2);
+        for (var i = 0; i < segments; i++)
+        {
+            if (U16(endCodes + (i * 2)) < codePoint)
+            {
+                continue;
+            }
+
+            if (U16(startCodes + (i * 2)) > codePoint)
+            {
+                return 0;
+            }
+
+            var rangeOffset = U16(rangeOffsets + (i * 2));
+            if (rangeOffset == 0)
+            {
+                return (codePoint + U16(deltas + (i * 2))) & 0xFFFF;
+            }
+
+            var glyph = U16(rangeOffsets + (i * 2) + rangeOffset + ((codePoint - U16(startCodes + (i * 2))) * 2));
+            return glyph == 0 ? 0 : (glyph + U16(deltas + (i * 2))) & 0xFFFF;
+        }
+
+        return 0;
+    }
+
+    // The advance width of a glyph in font units.
+    public int AdvanceOf(int glyph)
+    {
+        var hmtx = tables["hmtx"].Offset;
+        return U16(hmtx + (Math.Min(glyph, numberOfHMetrics - 1) * 4));
+    }
+
+    private int U16(int offset) => (Data[offset] << 8) | Data[offset + 1];
+
+    private int S16(int offset) => (short)U16(offset);
+
+    private uint U32(int offset) => ((uint)Data[offset] << 24) | ((uint)Data[offset + 1] << 16) | ((uint)Data[offset + 2] << 8) | Data[offset + 3];
+}
+
+// A tiny embedded Type 1 font (binary eexec form) whose glyphs are boxes, so a fixture can have a Type 1 font program without a font
+// licence. The glyphs are the characters of the text; the glyph name of each is the PostScript name, the encoding is built in (code = ASCII / Latin-1).
+static class Type1Font
+{
+    private static readonly Dictionary<char, string> Names = new()
+    {
+        [' '] = "space", [':'] = "colon", ['1'] = "one", ['7'] = "seven", ['ß'] = "germandbls",
+    };
+
+    public static string? NameOf(char character) =>
+        Names.TryGetValue(character, out var name) ? name : char.IsAsciiLetter(character) ? character.ToString() : null;
+
+    public static (byte[] Data, int Length1, int Length2, int Length3) Build(string text)
+    {
+        var characters = text.Distinct().Order().ToArray();
+        var clear = new StringBuilder();
+        clear.Append("%!PS-AdobeFont-1.0: PwBox 1.0\n11 dict begin\n/FontInfo 2 dict dup begin\n/FullName (PwBox) def\n/Notice (Pagewing test font, no copyright) def\nend readonly def\n");
+        clear.Append("/FontName /PwBox def\n/PaintType 0 def\n/FontType 1 def\n/FontMatrix [0.001 0 0 0.001 0 0] readonly def\n/Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\n");
+        foreach (var c in characters)
+        {
+            clear.Append(CultureInfo.InvariantCulture, $"dup {(int)c} /{NameOf(c) ?? throw new InvalidOperationException($"Kein Glyphenname für '{c}'.")} put\n");
+        }
+
+        clear.Append("readonly def\n/FontBBox {0 0 600 750} readonly def\ncurrentdict end\ncurrentfile eexec\n");
+
+        var privatePart = new MemoryStream();
+        void Write(string value) => privatePart.Write(Encoding.Latin1.GetBytes(value));
+        void Glyph(string name, byte[] charString)
+        {
+            var encrypted = Encrypt(charString, 4330, 4);
+            Write($"/{name} {encrypted.Length} RD ");
+            privatePart.Write(encrypted);
+            Write(" ND\n");
+        }
+
+        Write("dup /Private 8 dict dup begin\n/RD {string currentfile exch readstring pop} executeonly def\n/ND {noaccess def} executeonly def\n/NP {noaccess put} executeonly def\n");
+        Write("/BlueValues [] def\n/MinFeature {16 16} def\n/password 5839 def\n");
+        Write($"2 index /CharStrings {characters.Length + 1} dict dup begin\n");
+        Glyph(".notdef", CharString(300, 0));
+        for (var i = 0; i < characters.Length; i++)
+        {
+            var c = characters[i];
+            Glyph(NameOf(c)!, c == ' ' ? CharString(300, 0) : CharString(600, 300 + (((c * 37) % 12) * 40)));
+        }
+
+        Write("end\nend\nreadonly put\nnoaccess put\ndup /FontName get exch definefont pop\nmark currentfile closefile\n");
+
+        var clearBytes = Encoding.Latin1.GetBytes(clear.ToString());
+        byte[] encryptedPrivate;
+        for (var attempt = 0; ; attempt++)
+        {
+            // Binary eexec: the first ciphertext byte must not be white space and one of the first four must not be a hex digit.
+            var plain = privatePart.ToArray();
+            encryptedPrivate = Encrypt(plain, 55665, 4, (byte)attempt);
+            if (!IsSpace(encryptedPrivate[0]) && !encryptedPrivate.Take(4).All(IsHexOrSpace))
+            {
+                break;
+            }
+        }
+
+        var trailer = new StringBuilder();
+        for (var i = 0; i < 8; i++)
+        {
+            trailer.Append('0', 64).Append('\n');
+        }
+
+        trailer.Append("cleartomark\n");
+        var trailerBytes = Encoding.Latin1.GetBytes(trailer.ToString());
+        return ([.. clearBytes, .. encryptedPrivate, .. trailerBytes], clearBytes.Length, encryptedPrivate.Length, trailerBytes.Length);
+    }
+
+    private static bool IsSpace(byte value) => value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n';
+
+    private static bool IsHexOrSpace(byte value) => IsSpace(value) || (value is >= (byte)'0' and <= (byte)'9') || (value is >= (byte)'a' and <= (byte)'f') || (value is >= (byte)'A' and <= (byte)'F');
+
+    // 0 600 hsbw, then a box of the given height: 50,0 to 550,height.
+    private static byte[] CharString(int width, int height)
+    {
+        var bytes = new List<byte>();
+        void Number(int value)
+        {
+            if (value is >= -107 and <= 107)
+            {
+                bytes.Add((byte)(value + 139));
+            }
+            else if (value is >= 108 and <= 1131)
+            {
+                value -= 108;
+                bytes.Add((byte)(247 + (value >> 8)));
+                bytes.Add((byte)(value & 0xFF));
+            }
+            else if (value is >= -1131 and <= -108)
+            {
+                value = -value - 108;
+                bytes.Add((byte)(251 + (value >> 8)));
+                bytes.Add((byte)(value & 0xFF));
+            }
+            else
+            {
+                bytes.Add(255);
+                bytes.AddRange([(byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]);
+            }
+        }
+
+        Number(0);
+        Number(width);
+        bytes.Add(13); // hsbw
+        if (height > 0)
+        {
+            Number(50);
+            Number(0);
+            bytes.Add(21); // rmoveto
+            Number(height);
+            bytes.Add(7); // vlineto
+            Number(width - 100);
+            bytes.Add(6); // hlineto
+            Number(-height);
+            bytes.Add(7); // vlineto
+            bytes.Add(9); // closepath
+        }
+
+        bytes.Add(14); // endchar
+        return [.. bytes];
+    }
+
+    // Type 1 encryption: r is the key, the first lead bytes are the (fixed) random prefix.
+    private static byte[] Encrypt(byte[] plain, int key, int lead, byte seed = 0)
+    {
+        var input = new byte[plain.Length + lead];
+        for (var i = 0; i < lead; i++)
+        {
+            input[i] = (byte)(seed + i);
+        }
+
+        Array.Copy(plain, 0, input, lead, plain.Length);
+        var output = new byte[input.Length];
+        var r = key;
+        for (var i = 0; i < input.Length; i++)
+        {
+            var cipher = (byte)(input[i] ^ (r >> 8));
+            r = (((cipher + r) * 52845) + 22719) & 0xFFFF;
+            output[i] = cipher;
+        }
+
+        return output;
+    }
 }
 
 // Minimal writer: numbered objects, classic xref table, trailer with Info. Streams are never compressed.
