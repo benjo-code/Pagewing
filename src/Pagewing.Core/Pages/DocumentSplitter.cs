@@ -1,6 +1,7 @@
 using System.Globalization;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
+using Pagewing.Core.Viewing;
 
 namespace Pagewing.Core.Pages;
 
@@ -8,6 +9,11 @@ namespace Pagewing.Core.Pages;
 /// <param name="Stem">The title the file name is made from (a bookmark title, a generated name): never used as a file name as it is, <see cref="OutputNames"/> makes it one.</param>
 /// <param name="Pages">The 0-based pages of the open document the file gets, strictly ascending (the order of the document); at least one.</param>
 public sealed record SplitPart(string Stem, IReadOnlyList<int> Pages);
+
+/// <summary>The open document of a session with the file it was opened from (<see cref="DocumentSplitter.SourceOf"/>).</summary>
+/// <param name="Document">The open document.</param>
+/// <param name="File">Its file with the password it was opened with and the stamp taken when it was opened; <see cref="object.ToString"/> does not show the password.</param>
+public sealed record SplitSource(PdfDocument Document, PageSourceFile File);
 
 /// <summary>How <see cref="DocumentSplitter.Plan"/> cuts a document.</summary>
 public abstract record SplitMode
@@ -166,6 +172,31 @@ public static class DocumentSplitter
     private static readonly IReadOnlyDictionary<PageSourceId, PdfDocument> NoSources = new Dictionary<PageSourceId, PdfDocument>();
 
     private static readonly IReadOnlyDictionary<PageSourceId, PageSourceFile> NoFiles = new Dictionary<PageSourceId, PageSourceFile>();
+
+    /// <summary>
+    /// Reads the open document of <paramref name="session"/> together with its file, password and stamp (one consistent view,
+    /// as <see cref="PageEditApplier.ApplyAsync(ViewerSession, PdfEngine, PageApplyRequest, IProgress{double}?, CancellationToken, Func{PdfDocument, PdfEngine, RewriteRequest, IProgress{double}?, CancellationToken, Task{SaveResult}}?)"/>
+    /// reads it), so that a caller outside this assembly can <see cref="AnalyzeAsync"/> and <see cref="WriteAsync"/> what the user sees.
+    /// </summary>
+    /// <param name="session">The session of the tab.</param>
+    /// <returns>The source, or <see langword="null"/> when the session has no open document (or it was closed just now).</returns>
+    public static SplitSource? SourceOf(ViewerSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (session.SnapshotForSave() is not { } snapshot)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new SplitSource(snapshot.Document, PageSourceFile.Of(snapshot.Path, snapshot.Password, snapshot.Document));
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Works out the parts of a document. Pure: reads nothing but its arguments.</summary>
     /// <param name="pageCount">The number of pages of the open document.</param>

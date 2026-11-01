@@ -3,6 +3,7 @@ using Pagewing.Core.Pages;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
 using Pagewing.Core.Tests.Annotations;
+using Pagewing.Core.Viewing;
 using Pagewing.TestSupport;
 using Xunit;
 
@@ -690,6 +691,27 @@ public sealed class DocumentSplitterTests
             Assert.True(name.IndexOfAny(['/', '\\', ':', '<', '>', '"', '|', '?', '*']) < 0, $"'{name}' has an invalid character.");
             Assert.True(System.Text.Encoding.UTF8.GetByteCount(name) <= 255, $"'{name}' is longer than 255 bytes.");
         }
+    }
+
+    [Fact]
+    public async Task TheSourceOfASessionIsItsOpenDocumentWithItsFileAndPassword()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "encrypted_hello_world_r3.pdf");
+        using var session = new ViewerSession(engine);
+
+        // Nothing open: no source.
+        Assert.Null(DocumentSplitter.SourceOf(session));
+
+        await session.OpenAsync(path, UserPassword);
+        var source = DocumentSplitter.SourceOf(session);
+
+        Assert.NotNull(source);
+        Assert.Same(session.Document, source.Document);
+        Assert.Equal(Path.GetFullPath(path), source.File.Path);
+        Assert.Equal(UserPassword, source.File.Password);
+        Assert.Equal(session.Document!.SourceStampAtOpen, source.File.Stamp);
+        Assert.DoesNotContain(UserPassword, source.ToString(), StringComparison.Ordinal);
     }
 
     private static string Hash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
