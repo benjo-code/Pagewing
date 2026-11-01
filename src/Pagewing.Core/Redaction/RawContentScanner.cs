@@ -213,6 +213,12 @@ internal sealed class RawScanEngine
 
     private void ProcessPayload(StreamInfo info, long start, long end)
     {
+        if (info.Problem is { } problem)
+        {
+            // The data may be packed in a way that is not known; it is searched as it is, and the stream is reported.
+            notes.Add(RawScanNoteKind.UnreadableStream, problem, couldHideText: true, start);
+        }
+
         if (info.IsImage)
         {
             notes.Add(RawScanNoteKind.ImageData, string.Empty, couldHideText: false, start);

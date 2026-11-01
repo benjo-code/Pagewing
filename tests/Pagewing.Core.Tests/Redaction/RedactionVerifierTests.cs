@@ -685,7 +685,8 @@ public sealed class RedactionVerifierTests
                 new RemovedText(0, "Gl�ck", Everywhere: false, OccurrencesBefore: 0),
                 new RemovedText(0, new string('x', 1500), Everywhere: false, OccurrencesBefore: 0)));
 
-        Assert.True(check.IsClean);
+        var finding = Assert.Single(check.Findings);
+        Assert.Equal(RedactionFindingKind.RemovedTextUnverifiable, finding.Kind);
         Assert.Contains(check.NotChecked, static line => line.Contains("white space", StringComparison.Ordinal));
         Assert.Contains(check.NotChecked, static line => line.Contains("U+FFFD", StringComparison.Ordinal));
         Assert.Contains(check.NotChecked, static line => line.Contains("longer than the limit", StringComparison.Ordinal));
@@ -724,4 +725,219 @@ public sealed class RedactionVerifierTests
 
         Assert.Contains(check.Findings, static f => f.Kind == RedactionFindingKind.PageChangedOutsideAreas && f.Page == 3);
     }
+
+    // ---- Fix round 1: false-negative paths ----
+
+    [Fact]
+    public async Task RemainingLegitimateCopiesAreNamedBecauseTheFileBytesCannotTellThemFromALeak()
+    {
+        // redact-fonts.pdf shows the term in nine lines, several in fonts with their own code mapping: the page text counts them, the bytes do not.
+        var path = TestData.Pdf("redact-fonts.pdf");
+        int extracted;
+        await using (var document = await engine.OpenAsync(path, cancellationToken: Ct))
+        {
+            var text = await document.GetPageTextAsync(0, Ct);
+            extracted = TextMatcher.Find(text.Chars, Term, new SearchOptions(MatchCase: true)).Count;
+        }
+
+        int raw;
+        await using (var stream = File.OpenRead(path))
+        {
+            raw = RawContentScanner.Count(stream, Term, RawScanLimits.Default, out _, Ct);
+        }
+
+        Assert.True(extracted > 0 && raw < extracted, $"The fixture must hide copies from the raw view ({raw} raw, {extracted} extracted).");
+
+        var check = await VerifyAsync(path, Expect(PlanOf(0, new PageRect(-20, -20, -10, -10), Term), new RemovedText(0, Term, Everywhere: false, OccurrencesBefore: extracted + 1)));
+
+        Assert.DoesNotContain(check.Findings, static f => f.Kind == RedactionFindingKind.RawBytesStillPresent); // the rule passes ...
+        var line = Assert.Single(check.NotChecked, static l => l.Contains("cannot tell a leaked copy", StringComparison.Ordinal)); // ... and says what it cannot see
+        Assert.Contains($" {extracted} ", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("Zephyr", line, StringComparison.Ordinal);
+
+        // With "everywhere" nothing may remain, so there is no such line.
+        var everywhere = await VerifyAsync(path, Expect(PlanOf(0, new PageRect(-20, -20, -10, -10), Term, everywhere: true), new RemovedText(0, Term, Everywhere: true, OccurrencesBefore: extracted)));
+        Assert.DoesNotContain(everywhere.NotChecked, static l => l.Contains("cannot tell a leaked copy", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ALegitimateCopyAndALeakedCopyAreCaughtByTheRuleAndTheLineStillWarns()
+    {
+        using var folder = new TempFolder();
+        var pdf = new VerifierPdf(PageWith("Name: " + Term));
+        var attachment = pdf.AddStream("/Type /EmbeddedFile", Latin1(Term));
+        pdf.CatalogEntries = $"/Names << /EmbeddedFiles << /Names [(a.txt) << /EF << /F {attachment} 0 R >> >>] >> >>";
+        var path = Write(folder, "legit-and-leak.pdf", pdf.Build());
+
+        var check = await VerifyAsync(path, Expect(PlanOf(0, EmptyArea, Term), new RemovedText(0, Term, Everywhere: false, OccurrencesBefore: 2)));
+
+        // Raw 2, extracted 1: the rule catches this one; where the legitimate copy is invisible to the raw view it would not (see above).
+        Assert.Contains(check.Findings, static f => f.Kind == RedactionFindingKind.RawBytesStillPresent);
+        Assert.Contains(check.NotChecked, static l => l.Contains("cannot tell a leaked copy", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnIndirectFilterIsReportedAsUnreadable()
+    {
+        var file = Concat(Latin1("%PDF-1.7\n"), StreamObject("/Filter 8 0 R", MiniZ()));
+        Assert.Equal(0, Count(file, Term, out var notes));
+        Assert.Contains(notes.Items, static n => n.Kind == RawScanNoteKind.UnreadableStream && n.CouldHideText);
+    }
+
+    [Fact]
+    public void AFilterArrayWithAnIndirectElementIsReportedAsUnreadable()
+    {
+        var file = Concat(Latin1("%PDF-1.7\n"), StreamObject("/Filter [/FlateDecode 8 0 R]", MiniZ()), StreamObject("/Filter [8 0 R]", MiniZ()));
+        Count(file, Term, out var notes);
+        Assert.Contains(notes.Items, static n => n.Kind == RawScanNoteKind.UnreadableStream && n.CouldHideText && n.Count == 2);
+    }
+
+    [Fact]
+    public void ADictionaryBeyondTheTokenCapIsReportedAsUnreadable()
+    {
+        var big = string.Concat(Enumerable.Repeat("1 ", 5000));
+        var file = Concat(Latin1("%PDF-1.7\n"), StreamObject($"/Big [{big}] /Filter /FlateDecode", MiniZ()));
+        Count(file, Term, out var notes);
+        Assert.Contains(notes.Items, static n => n.Kind == RawScanNoteKind.UnreadableStream && n.CouldHideText);
+    }
+
+    [Fact]
+    public void ADictionaryLargerThanTheRingIsReportedAsUnreadable()
+    {
+        var pad = new string('x', 20000);
+        var file = Concat(Latin1("%PDF-1.7\n7 0 obj\n<< /Filter /FlateDecode /Pad (" + pad + ") /Length 4 >>\nstream\n"), MiniZ(), Latin1("\nendstream\nendobj\n"));
+        Count(file, Term, out var notes);
+        Assert.Contains(notes.Items, static n => n.Kind == RawScanNoteKind.UnreadableStream && n.CouldHideText);
+    }
+
+    [Fact]
+    public void AStreamWithoutAnObjectHeaderIsReportedAsUnreadable()
+    {
+        var file = Concat(Latin1("<< /Filter /FlateDecode /Length 4 >>\nstream\n"), MiniZ(), Latin1("\nendstream\n"));
+        Count(file, Term, out var notes);
+        Assert.Contains(notes.Items, static n => n.Kind == RawScanNoteKind.UnreadableStream && n.CouldHideText);
+    }
+
+    [Fact]
+    public void EmptyFilterEntriesAndKnownFiltersAreNotReported()
+    {
+        var file = Concat(
+            Latin1("%PDF-1.7\n"),
+            StreamObject("/Filter []", Latin1("plain")),
+            StreamObject("/Filter [/FlateDecode]", MiniZ()),
+            StreamObject("/Filter /FlateDecode /DecodeParms << /Predictor 1 >>", MiniZ()));
+        Count(file, Term, out var notes);
+        Assert.DoesNotContain(notes.Items, static n => n.Kind == RawScanNoteKind.UnreadableStream);
+    }
+
+    [Fact]
+    public async Task AnUnreadableFilterInAFileFailsTheCheck()
+    {
+        using var folder = new TempFolder();
+        var pdf = new VerifierPdf(PageWith("Public line"));
+        pdf.AddStream("/Filter 8 0 R", MiniZ());
+        var path = Write(folder, "indirect.pdf", pdf.Build());
+
+        var check = await VerifyAsync(path, Expect(PlanOf(0, EmptyArea, Term, everywhere: true), new RemovedText(0, Term, Everywhere: true, OccurrencesBefore: 1)));
+
+        Assert.Contains(check.Findings, static f => f.Kind == RedactionFindingKind.UnreadableStream);
+    }
+
+    [Fact]
+    public async Task ATextWithTheReplacementCharacterIsAFindingWithPageAndCountButNeverTheText()
+    {
+        using var folder = new TempFolder();
+        var path = Write(folder, "clean.pdf", new VerifierPdf(PageWith("Public line"), PageWith("Second")).Build());
+
+        var check = await VerifyAsync(
+            path,
+            Expect(
+                PlanOf(1, EmptyArea),
+                new RemovedText(1, "Gl�ck", Everywhere: false, OccurrencesBefore: 1),
+                new RemovedText(1, "Stra�e", Everywhere: false, OccurrencesBefore: 1),
+                new RemovedText(0, "A\0B", Everywhere: false, OccurrencesBefore: 1)));
+
+        Assert.False(check.IsClean);
+        var onSecond = Assert.Single(check.Findings, static f => f.Kind == RedactionFindingKind.RemovedTextUnverifiable && f.Page == 1);
+        Assert.Contains("2 ", onSecond.Detail, StringComparison.Ordinal);
+        Assert.Single(check.Findings, static f => f.Kind == RedactionFindingKind.RemovedTextUnverifiable && f.Page == 0);
+        Assert.All(check.Findings, static f => Assert.DoesNotContain("Gl", f.Detail, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TheBuilderCountsLikeTheVerifierDocumentWide()
+    {
+        // redact-everywhere.pdf shows the term three times on page one and once on page two. Used as its own "result" with one place
+        // claimed as removed, the verifier must see exactly the built count: at most (built - 1) would be expected.
+        var path = TestData.Pdf("redact-everywhere.pdf");
+        RemovedText built;
+        await using (var original = await engine.OpenAsync(path, cancellationToken: Ct))
+        {
+            built = await RemovedText.FromOriginalAsync(original, 0, Term, everywhere: false, Ct);
+        }
+
+        Assert.Equal(4, built.OccurrencesBefore);
+        Assert.Equal(0, built.Page);
+        Assert.Equal(Term, built.Text);
+        Assert.False(built.Everywhere);
+
+        var check = await VerifyAsync(path, Expect(PlanOf(0, EmptyArea, Term), built));
+        var finding = Assert.Single(check.Findings, static f => f.Kind == RedactionFindingKind.TextStillPresent);
+        Assert.Contains("still occurs 4 time(s)", finding.Detail, StringComparison.Ordinal);
+        Assert.Contains("at most 3 would", finding.Detail, StringComparison.Ordinal);
+
+        // A text that is not in the document counts 0, and a text without content is refused.
+        await using var again = await engine.OpenAsync(path, cancellationToken: Ct);
+        var absent = await RemovedText.FromOriginalAsync(again, 0, Term + new string('q', 1200), everywhere: false, Ct);
+        Assert.Equal(0, absent.OccurrencesBefore);
+        await Assert.ThrowsAsync<ArgumentException>(() => RemovedText.FromOriginalAsync(again, 0, "  ", everywhere: false, Ct));
+    }
+
+    [Fact]
+    public async Task WrongOccurrencesBeforeAreDocumentedByTheirEffect()
+    {
+        using var folder = new TempFolder();
+
+        // Two copies in the original (pages one and five), nothing removed in the result: a leak. The honest number fails the check.
+        var leak = Write(folder, "leak.pdf", new VerifierPdf(PageWith("Name: " + Term), PageWith("b"), PageWith("c"), PageWith("d"), PageWith("Name: " + Term)).Build());
+        var plan = PlanOf(0, EmptyArea, Term);
+
+        var honest = await VerifyAsync(leak, Expect(plan, new RemovedText(0, Term, Everywhere: false, OccurrencesBefore: 2)));
+        Assert.Contains(honest.Findings, static f => f.Kind == RedactionFindingKind.TextStillPresent);
+
+        // An OVERSTATED number lets the leak pass: this is why the caller must build the number with FromOriginalAsync.
+        var overstated = await VerifyAsync(leak, Expect(plan, new RemovedText(0, Term, Everywhere: false, OccurrencesBefore: 3)));
+        Assert.DoesNotContain(overstated.Findings, static f => f.Kind == RedactionFindingKind.TextStillPresent);
+
+        // An UNDERSTATED number fails a correct result.
+        var correct = Write(folder, "correct.pdf", new VerifierPdf(PageWith("a"), PageWith("b"), PageWith("c"), PageWith("d"), PageWith("Name: " + Term)).Build());
+        var understated = await VerifyAsync(correct, Expect(plan, new RemovedText(0, Term, Everywhere: false, OccurrencesBefore: 1)));
+        Assert.Contains(understated.Findings, static f => f.Kind == RedactionFindingKind.TextStillPresent);
+    }
+
+    [Fact]
+    public async Task TheReportNamesWhatTheRawViewDoesNotCoverBeyondTheEncodings()
+    {
+        using var folder = new TempFolder();
+        var path = Write(folder, "clean.pdf", new VerifierPdf(PageWith("Public line only")).Build());
+        var check = await VerifyAsync(path, Expect(PlanOf(0, EmptyArea, Term, everywhere: true), new RemovedText(0, Term, Everywhere: true, OccurrencesBefore: 1)));
+        Assert.Contains(check.NotChecked, static l => l.Contains("different text objects", StringComparison.Ordinal) && l.Contains("entities", StringComparison.Ordinal) && l.Contains("case", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TheBatchBuilderGivesTheSameCountsAsTheSingleOne()
+    {
+        await using var original = await engine.OpenAsync(TestData.Pdf("redact-everywhere.pdf"), cancellationToken: Ct);
+        var batch = await RemovedText.FromOriginalAsync(
+            original,
+            [new RemovedText(0, Term, Everywhere: false, OccurrencesBefore: 99), new RemovedText(1, "Quellmann", Everywhere: true, OccurrencesBefore: 99)],
+            Ct);
+        var single = await RemovedText.FromOriginalAsync(original, 0, Term, everywhere: false, Ct);
+        Assert.Equal(single.OccurrencesBefore, batch[0].OccurrencesBefore);
+        Assert.Equal(1, batch[1].Page);
+        Assert.True(batch[1].Everywhere);
+        Assert.Equal(0, batch[1].OccurrencesBefore); // only in Info and XMP, not in the page text
+    }
+
+    private static byte[] MiniZ() => VerifierPdf.Zlib(Latin1("BT (Zephyrstraße 17) Tj ET"));
 }

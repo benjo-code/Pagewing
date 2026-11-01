@@ -578,13 +578,30 @@ internal sealed class StreamInfo
     /// <summary>Gets or sets the <c>/EarlyChange</c> value of LZW.</summary>
     public int EarlyChange { get; set; } = 1;
 
+    /// <summary>
+    /// Gets or sets why the dictionary could not be read completely, or <see langword="null"/>: the data may then be packed in a way
+    /// that is not known, so the stream must be reported (text could hide in it) and never be taken for plain data without a note.
+    /// </summary>
+    public string? Problem { get; set; }
+
     /// <summary>Reads the dictionary of the object that ends in the bytes (the last object before the keyword <c>stream</c>).</summary>
     /// <param name="text">The last bytes before the stream data.</param>
     public static StreamInfo Parse(ReadOnlySpan<byte> text)
     {
         var info = new StreamInfo();
         var start = StartOfObject(text);
-        var tokens = Tokens(text[start..]);
+        if (start < 0)
+        {
+            info.Problem = "the dictionary of the stream was not found (no object header within the bytes read before it)";
+            start = 0;
+        }
+
+        var tokens = Tokens(text[start..], out var capped);
+        if (capped)
+        {
+            info.Problem ??= "the dictionary of the stream has more entries than are read";
+        }
+
         for (var i = 0; i < tokens.Count; i++)
         {
             var (isName, value) = tokens[i];
@@ -654,8 +671,10 @@ internal sealed class StreamInfo
 
     private static void ReadFilters(List<(bool IsName, string Value)> tokens, int at, StreamInfo info)
     {
+        const string unreadable = "the filter of the stream is not a name or a list of names (an indirect entry?)";
         if (at >= tokens.Count)
         {
+            info.Problem ??= unreadable;
             return;
         }
 
@@ -665,17 +684,33 @@ internal sealed class StreamInfo
             return;
         }
 
-        if (tokens[at].Value != "[")
+        if (tokens[at].Value == "null")
         {
             return;
         }
 
-        for (var k = at + 1; k < tokens.Count && tokens[k].Value != "]"; k++)
+        if (tokens[at].Value != "[")
+        {
+            info.Problem ??= unreadable;
+            return;
+        }
+
+        var k = at + 1;
+        for (; k < tokens.Count && tokens[k].Value != "]"; k++)
         {
             if (tokens[k].IsName)
             {
                 info.Filters.Add(Full(tokens[k].Value));
             }
+            else
+            {
+                info.Problem ??= unreadable;
+            }
+        }
+
+        if (k >= tokens.Count)
+        {
+            info.Problem ??= unreadable;
         }
     }
 
@@ -687,7 +722,7 @@ internal sealed class StreamInfo
             var at = text[..end].LastIndexOf("obj"u8);
             if (at < 0)
             {
-                return 0;
+                return -1;
             }
 
             var isEndObj = at >= 3 && text.Slice(at - 3, 3).SequenceEqual("end"u8);
@@ -700,12 +735,13 @@ internal sealed class StreamInfo
             end = at;
         }
 
-        return 0;
+        return -1;
     }
 
-    private static List<(bool IsName, string Value)> Tokens(ReadOnlySpan<byte> text)
+    private static List<(bool IsName, string Value)> Tokens(ReadOnlySpan<byte> text, out bool capped)
     {
         const int maxTokens = 4096;
+        capped = false;
         var tokens = new List<(bool, string)>();
         var i = 0;
         while (i < text.Length && tokens.Count < maxTokens)
@@ -769,6 +805,7 @@ internal sealed class StreamInfo
             }
         }
 
+        capped = i < text.Length && tokens.Count >= maxTokens;
         return tokens;
     }
 

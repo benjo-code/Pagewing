@@ -59,7 +59,7 @@ public static class RedactionVerifier
         var findings = new List<RedactionFinding>();
         var notChecked = new List<string>();
         var plan = expectation.Plan;
-        var texts = PrepareTexts(expectation, notChecked);
+        var texts = PrepareTexts(expectation, notChecked, findings);
 
         await CheckPagesAsync(reopened, plan, texts, findings, cancellationToken).ConfigureAwait(false);
         CheckTextRule(texts, findings);
@@ -68,19 +68,33 @@ public static class RedactionVerifier
 
         notChecked.Add("Raw bytes: text in fonts with their own code mapping (subset fonts) is not readable in the streams; only the page text covers it.");
         notChecked.Add("Raw bytes: only the removed texts are searched, as given and in composed and decomposed form, in Latin-1, Windows-ANSI, PDFDocEncoding, UTF-8 and UTF-16; text in any other encoding, or split by other operators, is not found.");
+        notChecked.Add("Raw bytes: a text split across different text objects (BT blocks), text in XMP written as XML entities, and case variants that were not planned are not found.");
         notChecked.Add("Raw bytes: image data is searched as bytes only, and an attachment is not looked into (a compressed file inside an attachment is not unpacked).");
         notChecked.Add("Another program may read the file differently; open the result in a second viewer to be sure.");
         return new RedactionCheck(findings, notChecked);
     }
 
-    private static List<CheckedText> PrepareTexts(RedactionExpectation expectation, List<string> notChecked)
+    /// <summary>Cuts a text to <see cref="RedactionLimits.MaxTermLength"/> characters (not inside a surrogate pair), as the check does.</summary>
+    internal static string Truncate(string text)
+    {
+        if (text.Length <= RedactionLimits.MaxTermLength)
+        {
+            return text;
+        }
+
+        var cut = RedactionLimits.MaxTermLength;
+        return char.IsHighSurrogate(text[cut - 1]) ? text[..(cut - 1)] : text[..cut];
+    }
+
+    private static List<CheckedText> PrepareTexts(RedactionExpectation expectation, List<string> notChecked, List<RedactionFinding> findings)
     {
         var byText = new Dictionary<string, CheckedText>(StringComparer.Ordinal);
         var blank = 0;
         var unreadable = 0;
+        var unverifiable = new SortedDictionary<int, int>();
         var truncated = 0;
 
-        void Add(string? text, bool everywhere, int before, bool isPlace)
+        void Add(string? text, bool everywhere, int before, bool isPlace, int page)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -91,18 +105,13 @@ public static class RedactionVerifier
             if (text.Contains('�', StringComparison.Ordinal) || text.Contains('\0', StringComparison.Ordinal))
             {
                 unreadable++;
+                unverifiable[page] = unverifiable.GetValueOrDefault(page) + 1;
                 return;
             }
 
             if (text.Length > RedactionLimits.MaxTermLength)
             {
-                var cut = RedactionLimits.MaxTermLength;
-                if (char.IsHighSurrogate(text[cut - 1]))
-                {
-                    cut--;
-                }
-
-                text = text[..cut];
+                text = Truncate(text);
                 truncated++;
             }
 
@@ -130,14 +139,14 @@ public static class RedactionVerifier
         foreach (var removed in expectation.Removed)
         {
             ArgumentNullException.ThrowIfNull(removed);
-            Add(removed.Text, removed.Everywhere, removed.OccurrencesBefore, isPlace: true);
+            Add(removed.Text, removed.Everywhere, removed.OccurrencesBefore, isPlace: true, removed.Page);
         }
 
         foreach (var mark in expectation.Plan.Marks)
         {
             if (mark.Everywhere && mark.Term is not null)
             {
-                Add(mark.Term, everywhere: true, before: 0, isPlace: false);
+                Add(mark.Term, everywhere: true, before: 0, isPlace: false, mark.Page);
             }
         }
 
@@ -145,6 +154,14 @@ public static class RedactionVerifier
         if (blank > 0)
         {
             notChecked.Add(Count(blank, "removed text consists of white space only and was not compared", "removed texts consist of white space only and were not compared"));
+        }
+
+        foreach (var (page, number) in unverifiable)
+        {
+            findings.Add(new RedactionFinding(
+                RedactionFindingKind.RemovedTextUnverifiable,
+                page,
+                string.Create(CultureInfo.InvariantCulture, $"{number} removed text(s) of this page contain a character the engine could not read exactly (U+FFFD or NUL), so the text cannot be verified in the result; the real text must be supplied.")));
         }
 
         if (unreadable > 0)
@@ -285,6 +302,15 @@ public static class RedactionVerifier
                         CultureInfo.InvariantCulture,
                         $"Removed text #{text.Index + 1} ({text.Text.Length} characters) is still in the bytes of the file {raw} time(s) (in an old revision, metadata, an attachment, a pattern or a stream); the page text accounts for {allowed}.")));
             }
+        }
+
+        var remaining = searched.Where(static t => !t.Everywhere && t.Occurrences > 0).ToList();
+        if (remaining.Count > 0)
+        {
+            var total = remaining.Sum(static t => t.Occurrences);
+            notChecked.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"Raw bytes: {remaining.Count} removed text(s) that are not marked everywhere still occur in the page text, {total} time(s) in all; the file bytes cannot tell a leaked copy from these legitimate ones (a copy in a font with its own code mapping, split by a hyphen or a ligature, is not found in the bytes), so up to {total} leaked copies could hide in the file."));
         }
 
         foreach (var note in result.Notes.Items)
