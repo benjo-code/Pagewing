@@ -71,6 +71,25 @@ internal static class OutputGuard
         }
     }
 
+    /// <summary>Checks the folder a command that writes several files into a folder (<c>split</c>) was given, before anything is opened.</summary>
+    /// <param name="folder">The folder as the user wrote it.</param>
+    /// <exception cref="CliException">The folder does not exist (it is never created: the user names the place the files go to) or is a file.</exception>
+    public static void CheckFolder(string folder)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(folder);
+        try
+        {
+            if (!Directory.Exists(Path.GetFullPath(folder)))
+            {
+                throw new CliException($"The output folder does not exist: '{folder}'.");
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw new CliException($"Invalid output folder '{folder}': {ex.Message}", ex);
+        }
+    }
+
     /// <summary>
     /// The full path with every link in it resolved: a junction or symbolic link in any folder of the path and the file itself.
     /// Components that do not exist stay as they are.
