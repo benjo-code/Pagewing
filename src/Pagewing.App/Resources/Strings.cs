@@ -799,6 +799,105 @@ public static class Strings
     /// <param name="page">The 1-based page.</param>
     public static string RedactMarkName(int page) => string.Format(Culture, CompositeFormat.Parse(RedactMarkNameOf), page);
 
+    // The panel "Redact" (milestone 14): the marks of the plan and "find and redact".
+    public static string RedactPanelTitle => Get("RedactPanelTitle");
+    public static string CommandRedactFind => Get("CommandRedactFind");
+    public static string RedactFindTip => Get("RedactFindTip");
+    public static string RedactMarksHeader => Get("RedactMarksHeader");
+    public static string RedactQueryPlaceholder => Get("RedactQueryPlaceholder");
+    public static string RedactMatchCase => Get("RedactMatchCase");
+    public static string RedactWholeWord => Get("RedactWholeWord");
+    public static string RedactFindAction => Get("RedactFindAction");
+    public static string RedactStopAction => Get("RedactStopAction");
+    public static string RedactSearchingOf => Get("RedactSearchingOf");
+    public static string RedactNoHits => Get("RedactNoHits");
+    public static string RedactNoHitsSearched => Get("RedactNoHitsSearched");
+    public static string RedactHitsOne => Get("RedactHitsOne");
+    public static string RedactHitsMany => Get("RedactHitsMany");
+    public static string RedactStopped => Get("RedactStopped");
+    public static string RedactFailed => Get("RedactFailed");
+    public static string RedactIncompletePages => Get("RedactIncompletePages");
+    public static string RedactMorePages => Get("RedactMorePages");
+    public static string RedactLimitReached => Get("RedactLimitReached");
+    public static string RedactAcknowledge => Get("RedactAcknowledge");
+    public static string RedactNotSearchedToggle => Get("RedactNotSearchedToggle");
+    public static string RedactNotSearchedIntro => Get("RedactNotSearchedIntro");
+    public static string RedactNotSearchedReplies => Get("RedactNotSearchedReplies");
+    public static string RedactNotSearchedAuthor => Get("RedactNotSearchedAuthor");
+    public static string RedactNotSearchedTooltips => Get("RedactNotSearchedTooltips");
+    public static string RedactNotSearchedRichText => Get("RedactNotSearchedRichText");
+    public static string RedactNotSearchedAppearance => Get("RedactNotSearchedAppearance");
+    public static string RedactNotSearchedCovered => Get("RedactNotSearchedCovered");
+    public static string RedactMarkAll => Get("RedactMarkAll");
+    public static string RedactMarkAllTip => Get("RedactMarkAllTip");
+    public static string RedactMarkChecked => Get("RedactMarkChecked");
+    public static string RedactCheckAll => Get("RedactCheckAll");
+    public static string RedactUncheckAll => Get("RedactUncheckAll");
+    public static string RedactHitSourceText => Get("RedactHitSourceText");
+    public static string RedactHitSourceComment => Get("RedactHitSourceComment");
+    public static string RedactHitSourceField => Get("RedactHitSourceField");
+    public static string RedactHitInvisible => Get("RedactHitInvisible");
+    public static string RedactHitShort => Get("RedactHitShort");
+    public static string RedactHitNameOf => Get("RedactHitNameOf");
+    public static string RedactHitChecked => Get("RedactHitChecked");
+    public static string RedactHitUnchecked => Get("RedactHitUnchecked");
+    public static string RedactHitNotMarkable => Get("RedactHitNotMarkable");
+    public static string RedactReasonNoArea => Get("RedactReasonNoArea");
+    public static string RedactReasonLossy => Get("RedactReasonLossy");
+    public static string RedactReasonTooManyLines => Get("RedactReasonTooManyLines");
+    public static string RedactReasonBlank => Get("RedactReasonBlank");
+    public static string RedactReasonTooLong => Get("RedactReasonTooLong");
+    public static string RedactMarkedOf => Get("RedactMarkedOf");
+    public static string RedactSkippedOf => Get("RedactSkippedOf");
+    public static string RedactKindArea => Get("RedactKindArea");
+    public static string RedactKindText => Get("RedactKindText");
+    public static string RedactKindHit => Get("RedactKindHit");
+    public static string RedactPageHeader => Get("RedactPageHeader");
+    public static string RedactMarkRowNameOf => Get("RedactMarkRowNameOf");
+    public static string RedactMarksEmpty => Get("RedactMarksEmpty");
+    public static string RedactHitListName => Get("RedactHitListName");
+    public static string RedactHitCheckName => Get("RedactHitCheckName");
+    public static string RedactRowSelected => Get("RedactRowSelected");
+
+    /// <summary>
+    /// Gets the places the search of the mode "Redact" never looks at, one line each and in the same order as
+    /// <see cref="Pagewing.Core.Redaction.RedactionSearch.NotSearched"/> (a test keeps the two lists of equal length).
+    /// </summary>
+    public static IReadOnlyList<string> RedactNotSearchedLines =>
+    [
+        RedactNotSearchedReplies,
+        RedactNotSearchedAuthor,
+        RedactNotSearchedTooltips,
+        RedactNotSearchedRichText,
+        RedactNotSearchedAppearance,
+        RedactNotSearchedCovered,
+    ];
+
+    public static string RedactSearching(int hits) => string.Format(Culture, CompositeFormat.Parse(RedactSearchingOf), hits);
+
+    public static string RedactHitsCount(int hits) => hits == 1 ? RedactHitsOne : string.Format(Culture, CompositeFormat.Parse(RedactHitsMany), hits);
+
+    public static string RedactIncompletePagesOf(string pages) => string.Format(Culture, CompositeFormat.Parse(RedactIncompletePages), pages);
+
+    public static string RedactMorePagesOf(string pages, int more) => string.Format(Culture, CompositeFormat.Parse(RedactMorePages), pages, more);
+
+    public static string RedactLimitReachedOf(int hits) => string.Format(Culture, CompositeFormat.Parse(RedactLimitReached), hits.ToString("N0", Culture));
+
+    public static string RedactMarkedCount(int places) => string.Format(Culture, CompositeFormat.Parse(RedactMarkedOf), places);
+
+    public static string RedactSkippedCount(int hits) => string.Format(Culture, CompositeFormat.Parse(RedactSkippedOf), hits);
+
+    public static string RedactHitNotMarkableFor(string reason) => string.Format(Culture, CompositeFormat.Parse(RedactHitNotMarkable), reason);
+
+    public static string RedactHitNameFor(string page, string source, string text, string state) =>
+        string.Format(Culture, CompositeFormat.Parse(RedactHitNameOf), page, source, text, state);
+
+    public static string RedactMarkRowNameFor(string kind, string page) => string.Format(Culture, CompositeFormat.Parse(RedactMarkRowNameOf), kind, page);
+
+    /// <summary>Gets the header of a page in the list of marks, for example "Page 3".</summary>
+    /// <param name="page">The 1-based page.</param>
+    public static string RedactPageHeaderOf(int page) => string.Format(Culture, CompositeFormat.Parse(RedactPageHeader), page);
+
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;
 

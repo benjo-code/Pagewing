@@ -2121,4 +2121,178 @@
   <data name="RedactCheckFailed" xml:space="preserve">
     <value>Pagewing could not check whether this file is encrypted, so redaction did not start. Try again.</value>
   </data>
+  <data name="RedactPanelTitle" xml:space="preserve">
+    <value>Redaction</value>
+  </data>
+  <data name="CommandRedactFind" xml:space="preserve">
+    <value>Find and redact</value>
+  </data>
+  <data name="RedactFindTip" xml:space="preserve">
+    <value>Show the panel to search the text and to list the marks</value>
+  </data>
+  <data name="RedactMarksHeader" xml:space="preserve">
+    <value>Marks</value>
+  </data>
+  <data name="RedactQueryPlaceholder" xml:space="preserve">
+    <value>Text to find and redact</value>
+  </data>
+  <data name="RedactMatchCase" xml:space="preserve">
+    <value>Match case</value>
+  </data>
+  <data name="RedactWholeWord" xml:space="preserve">
+    <value>Whole words</value>
+  </data>
+  <data name="RedactFindAction" xml:space="preserve">
+    <value>Find</value>
+  </data>
+  <data name="RedactStopAction" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="RedactSearchingOf" xml:space="preserve">
+    <value>Searching … {0} hits so far</value>
+  </data>
+  <data name="RedactNoHits" xml:space="preserve">
+    <value>No hits.</value>
+  </data>
+  <data name="RedactNoHitsSearched" xml:space="preserve">
+    <value>No hits on the pages that were searched.</value>
+  </data>
+  <data name="RedactHitsOne" xml:space="preserve">
+    <value>1 hit</value>
+  </data>
+  <data name="RedactHitsMany" xml:space="preserve">
+    <value>{0} hits</value>
+  </data>
+  <data name="RedactStopped" xml:space="preserve">
+    <value>The search was stopped. No result is shown.</value>
+  </data>
+  <data name="RedactFailed" xml:space="preserve">
+    <value>The search could not be finished.</value>
+  </data>
+  <data name="RedactIncompletePages" xml:space="preserve">
+    <value>These pages were not searched completely, so the text may be on them: {0}.</value>
+  </data>
+  <data name="RedactMorePages" xml:space="preserve">
+    <value>{0} and {1} more</value>
+  </data>
+  <data name="RedactLimitReached" xml:space="preserve">
+    <value>The search stopped at {0} hits. There may be more.</value>
+  </data>
+  <data name="RedactAcknowledge" xml:space="preserve">
+    <value>I know that not everything was searched; allow marking</value>
+  </data>
+  <data name="RedactNotSearchedToggle" xml:space="preserve">
+    <value>What is not searched?</value>
+  </data>
+  <data name="RedactNotSearchedIntro" xml:space="preserve">
+    <value>Not covered by the search:</value>
+  </data>
+  <data name="RedactNotSearchedReplies" xml:space="preserve">
+    <value>Replies to annotations and popup notes.</value>
+  </data>
+  <data name="RedactNotSearchedAuthor" xml:space="preserve">
+    <value>The author and the subject of annotations.</value>
+  </data>
+  <data name="RedactNotSearchedTooltips" xml:space="preserve">
+    <value>The tooltips and the names of form fields.</value>
+  </data>
+  <data name="RedactNotSearchedRichText" xml:space="preserve">
+    <value>The rich text of annotations and the default values of form fields.</value>
+  </data>
+  <data name="RedactNotSearchedAppearance" xml:space="preserve">
+    <value>Text that exists only in the appearance of an annotation.</value>
+  </data>
+  <data name="RedactNotSearchedCovered" xml:space="preserve">
+    <value>Text that something else covers is found, but not flagged as invisible; only text with the render mode invisible is.</value>
+  </data>
+  <data name="RedactMarkAll" xml:space="preserve">
+    <value>Mark all</value>
+  </data>
+  <data name="RedactMarkAllTip" xml:space="preserve">
+    <value>Marks every hit; each text must then be gone from the whole document (not with whole words)</value>
+  </data>
+  <data name="RedactMarkChecked" xml:space="preserve">
+    <value>Mark checked</value>
+  </data>
+  <data name="RedactCheckAll" xml:space="preserve">
+    <value>Check all</value>
+  </data>
+  <data name="RedactUncheckAll" xml:space="preserve">
+    <value>Uncheck all</value>
+  </data>
+  <data name="RedactHitSourceText" xml:space="preserve">
+    <value>Page text</value>
+  </data>
+  <data name="RedactHitSourceComment" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="RedactHitSourceField" xml:space="preserve">
+    <value>Form field</value>
+  </data>
+  <data name="RedactHitInvisible" xml:space="preserve">
+    <value>Invisible text</value>
+  </data>
+  <data name="RedactHitShort" xml:space="preserve">
+    <value>Short text: the final check of the raw data of the file does not look for it.</value>
+  </data>
+  <data name="RedactHitNameOf" xml:space="preserve">
+    <value>Page {0}, {1}: {2}, {3}</value>
+  </data>
+  <data name="RedactHitChecked" xml:space="preserve">
+    <value>checked</value>
+  </data>
+  <data name="RedactHitUnchecked" xml:space="preserve">
+    <value>not checked</value>
+  </data>
+  <data name="RedactHitNotMarkable" xml:space="preserve">
+    <value>Cannot be marked: {0}</value>
+  </data>
+  <data name="RedactReasonNoArea" xml:space="preserve">
+    <value>it has no area on the page</value>
+  </data>
+  <data name="RedactReasonLossy" xml:space="preserve">
+    <value>a letter of it has no box, so the mark would leave part of the text in place</value>
+  </data>
+  <data name="RedactReasonTooManyLines" xml:space="preserve">
+    <value>it spans more lines than a mark can hold</value>
+  </data>
+  <data name="RedactReasonBlank" xml:space="preserve">
+    <value>it is only white space</value>
+  </data>
+  <data name="RedactReasonTooLong" xml:space="preserve">
+    <value>it is longer than a term can be</value>
+  </data>
+  <data name="RedactMarkedOf" xml:space="preserve">
+    <value>Marked {0} places.</value>
+  </data>
+  <data name="RedactSkippedOf" xml:space="preserve">
+    <value>{0} could not be marked.</value>
+  </data>
+  <data name="RedactKindArea" xml:space="preserve">
+    <value>Rectangle</value>
+  </data>
+  <data name="RedactKindText" xml:space="preserve">
+    <value>Selected text</value>
+  </data>
+  <data name="RedactKindHit" xml:space="preserve">
+    <value>Search hit</value>
+  </data>
+  <data name="RedactPageHeader" xml:space="preserve">
+    <value>Page {0}</value>
+  </data>
+  <data name="RedactMarkRowNameOf" xml:space="preserve">
+    <value>{0}, page {1}</value>
+  </data>
+  <data name="RedactMarksEmpty" xml:space="preserve">
+    <value>No marks yet. Drag an area on a page, select text, or search.</value>
+  </data>
+  <data name="RedactHitListName" xml:space="preserve">
+    <value>Hits</value>
+  </data>
+  <data name="RedactHitCheckName" xml:space="preserve">
+    <value>Mark this hit</value>
+  </data>
+  <data name="RedactRowSelected" xml:space="preserve">
+    <value>selected</value>
+  </data>
 </root>

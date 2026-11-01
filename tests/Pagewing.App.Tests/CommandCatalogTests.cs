@@ -40,7 +40,7 @@ public sealed class CommandCatalogTests : IDisposable
         "annotate.underline", "annotate.strikeout", "annotate.select", "annotate.ink", "annotate.rectangle", "annotate.ellipse",
         "annotate.line", "annotate.arrow", "form.fill", "form.highlight", "pages.organize", "pages.rotateLeft", "pages.rotateRight",
         "pages.delete", "pages.duplicate", "pages.insertBlank", "pages.insertFile", "pages.discard", "redact.mode",
-        "redact.deleteMarks", "redact.discard", "redact.markSelection",
+        "redact.deleteMarks", "redact.discard", "redact.markSelection", "redact.find",
     ];
 
     private readonly CultureInfo _originalCulture = Strings.Culture;
@@ -361,6 +361,7 @@ public sealed class CommandCatalogTests : IDisposable
             ("redact.deleteMarks", null),
             ("redact.discard", null),
             ("redact.markSelection", "Ctrl+Return"),
+            ("redact.find", null),
         };
 
         foreach (var (id, text) in expected)
@@ -399,7 +400,7 @@ public sealed class CommandCatalogTests : IDisposable
     {
         var (window, viewModel, view, _) = Show(new CountingPicker());
         var catalog = viewModel.Commands;
-        string[] inMode = ["redact.deleteMarks", "redact.discard", "redact.markSelection"];
+        string[] inMode = ["redact.deleteMarks", "redact.discard", "redact.markSelection", "redact.find"];
         bool CanRun(string id) => catalog.ById(id)!.CanExecute();
 
         // Without a tab nothing; with a document the mode is offered, and polling the rest makes nothing (no plan, no command).

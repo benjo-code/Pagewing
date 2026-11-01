@@ -171,7 +171,7 @@ public sealed partial class TabViewModel
     internal bool HasRedactionCommands =>
         _deleteMarksCommand is not null || _undoRedactionCommand is not null || _redoRedactionCommand is not null
         || _discardRedactionsCommand is not null || _markSelectionCommand is not null || _chooseRedactionToolCommand is not null
-        || _setRedactionFillCommand is not null;
+        || _setRedactionFillCommand is not null || _toggleRedactionPanelCommand is not null;
 
     /// <summary>
     /// Gets whether the only thing closing would lose is the plan of marks (<see cref="HasPendingRedactions"/>): "Save" cannot
@@ -364,6 +364,9 @@ public sealed partial class TabViewModel
         _selectedMarks = NoMarks;
         RedactionNotice = null;
         OnPropertyChanged(nameof(SelectedMarks));
+
+        // The panel lists the marks of the plan and the hits of a search in it: both end with the plan.
+        DiscardRedactionPanel();
         if (_isRedacting)
         {
             IsRedacting = false;
@@ -550,6 +553,7 @@ public sealed partial class TabViewModel
         _undoRedactionCommand?.RaiseCanExecuteChanged();
         _redoRedactionCommand?.RaiseCanExecuteChanged();
         _discardRedactionsCommand?.RaiseCanExecuteChanged();
+        _toggleRedactionPanelCommand?.RaiseCanExecuteChanged();
         RaiseMarkingCanExecuteChanged();
 
         // Ctrl+Z and Ctrl+Y are the plan's in the mode.

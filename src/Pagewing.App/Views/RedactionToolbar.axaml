@@ -14,7 +14,8 @@
     "Fill in form"): 44 px high (density "Kompakt" 38, Pw.Size.ToolbarHeight) over the document area, surface.toolbar with a
     border.subtle bottom edge. From the left: the name of the mode with its icon (eye-off, accent.default); the two tools of the
     pointer, "Area" and "Text" (toggle buttons for screen readers; the chosen one has an accent.subtle surface, an accent.default
-    1 px frame, icon and label, so it is not marked by colour alone); "Mark selection"; the fill, "Black" and "White", two
+    1 px frame, icon and label, so it is not marked by colour alone); "Mark selection"; "Find and redact" (a toggle that shows the
+    panel "Redact" with the search and the list of marks, with the focus in its field); the fill, "Black" and "White", two
     toggle buttons that name their colour in words; Undo and Redo; Delete mark. On the right the counter of the marks ("4 marks
     on 2 pages"), the hint that nothing is removed before the marks are applied, "Discard" and the primary button "Done", which
     leaves the mode and is possible while no mark waits (with marks they are applied or discarded; the tooltip says so). Tab
@@ -99,6 +100,16 @@
             <TextBlock Name="MarkSelectionLabel" Classes="body" Text="{x:Static res:Strings.RedactMarkSelection}" />
           </StackPanel>
         </Button>
+        <ctl:ActionToggleButton Name="FindButton" Classes="icon tool" Margin="2,0,0,0"
+                                Classes.active="{Binding IsRedactionPanelOpen}" IsChecked="{Binding IsRedactionPanelOpen, Mode=OneWay}"
+                                Command="{Binding ToggleRedactionPanelCommand}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactFindTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.CommandRedactFind}">
+          <StackPanel Orientation="Horizontal">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Search}" />
+            <TextBlock Name="FindLabel" Classes="body" Text="{x:Static res:Strings.CommandRedactFind}" />
+          </StackPanel>
+        </ctl:ActionToggleButton>
 
         <Border Classes="toolbarSeparator" />
 

@@ -12,7 +12,7 @@ namespace Pagewing.App.Views;
 
 /// <summary>
 /// The toolbar of the mode "Redact" over the document (milestone 14, design system 6 point 4 and 7.7): the tools of the pointer,
-/// "Mark selection", the fill, undo and redo, deleting marks, the counter of the marks, "Discard" and "Done". Its
+/// "Mark selection", "Find and redact" (which shows the panel), the fill, undo and redo, deleting marks, the counter of the marks, "Discard" and "Done". Its
 /// <c>DataContext</c> is the active tab. Made by the window when the mode is first started, never in the startup path. The button
 /// that applies the marks is not here: it comes with the apply flow.
 /// </summary>
@@ -75,7 +75,7 @@ public sealed partial class RedactionToolbar : UserControl
     /// <summary>
     /// Too narrow for everything (design system 6, narrow window), step by step until it fits: first the hint goes, then the
     /// labels of the tools and the fill (their tooltips and names stay), then the text of the mode name, then its icon, last the
-    /// text of the counter. The buttons always stay in the row.
+    /// text of the counter and the separators between the groups. The buttons always stay in the row.
     /// </summary>
     private void Fit()
     {
@@ -99,10 +99,16 @@ public sealed partial class RedactionToolbar : UserControl
                 AreaToolLabel.IsVisible = level < 2;
                 TextToolLabel.IsVisible = level < 2;
                 MarkSelectionLabel.IsVisible = level < 2;
+                FindLabel.IsVisible = level < 2;
                 FillLabel.IsVisible = level < 2;
                 ModeName.IsVisible = level < 3;
                 ModeLabel.IsVisible = level < 4;
                 CounterText.IsVisible = level < 5;
+                foreach (var separator in ToolsArea.Children.OfType<Border>())
+                {
+                    separator.IsVisible = level < 5;
+                }
+
                 if (level == MaxFitLevel || Needs() <= width)
                 {
                     break;

@@ -405,6 +405,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 _redoCommand?.RaiseCanExecuteChanged();
             }
 
+            OnRedactionPanelChanged(old, value);
             if (value == SidePanelKind.Search)
             {
                 _panelBeforeSearch = old;
@@ -808,6 +809,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         ResetOutline();
         _search?.Dispose();
         _comments?.Dispose();
+        DiscardRedactionPanel();
         ReleaseInsertedSources();
         TextSelection = null;
         ClearHistory();

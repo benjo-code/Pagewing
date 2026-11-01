@@ -163,9 +163,12 @@ public sealed class CommandCatalog
         // and its neighbour Ctrl+P prints). Deleting marks and discarding have no key here: Delete belongs to the marks on the page
         // and in the panel (they hold the focus when it applies), and Esc to the document. The commands of the mode run only in
         // it and never make the tab's commands before (RedactTab asks the mode first). "Mark selection" (Ctrl+Enter, a key on every
-        // layout, which a text field keeps for itself) turns the selected text into marks; "Apply" comes with the apply flow.
+        // layout, which a text field keeps for itself) turns the selected text into marks; "Find and redact" shows or hides the panel
+        // with the search and the list of marks (no key: it is a button of the toolbar, and the palette lists it); "Apply" comes with
+        // the apply flow.
         Tab("redact.mode", () => Strings.CommandRedactMode, EditGroup, CtrlShift(Key.P), tab => tab.RedactCommand, ready: true),
         RedactTab("redact.markSelection", () => Strings.CommandRedactMarkSelection, Ctrl(Key.Enter), tab => tab.MarkSelectionCommand) with { YieldsToTextInput = true },
+        RedactTab("redact.find", () => Strings.CommandRedactFind, null, tab => tab.ToggleRedactionPanelCommand),
         RedactTab("redact.deleteMarks", () => Strings.CommandRedactDeleteMarks, null, tab => tab.DeleteMarksCommand),
         RedactTab("redact.discard", () => Strings.CommandRedactDiscard, null, tab => tab.DiscardRedactionsCommand),
 

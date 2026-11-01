@@ -174,6 +174,10 @@ public sealed class RedactionStartPathTests : IDisposable
             Assert.Null(tab.RedactionNotice);
             Assert.False(tab.HasRedactionCommands);
 
+            // The panel of the mode and its search are made when it first opens, not before.
+            Assert.False(tab.IsRedactionPanelCreated);
+            Assert.False(tab.IsRedactionPanelOpen);
+
             // Nothing that costs a job of the PDF thread: the encryption is read at the first request for the mode, not before.
             Assert.False(tab.HasReadEncryption);
 
