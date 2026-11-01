@@ -608,6 +608,87 @@ public sealed partial class RedactApplyTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AFailureOfTheTabAfterTheWriteSaysTheFileIsWrittenNeverNotSaved()
+    {
+        var (window, viewModel, _, tab, path) = await MarkedAsync();
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        var target = Path.Combine(_host.Folder, "written-late.pdf");
+        _host.Picker.Result = target;
+
+        // The real pipeline writes and adopts the file; then the tab fails to show it (a seam after the write).
+        viewModel.RedactionAfterWrite = static _ => throw new InvalidOperationException("injected");
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveAs));
+        await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
+
+        Assert.Equal("The redacted file was written to “written-late.pdf”", viewModel.PendingSave!.Title);
+        Assert.Contains(Path.GetFullPath(target), viewModel.PendingSave.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("not", viewModel.PendingSave.Title, StringComparison.OrdinalIgnoreCase);
+        viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
+        Assert.True(await apply);
+
+        Assert.False(tab.HasPendingRedactions);
+        await WaitUntilAsync(window, () => tab.FullPath == Path.GetFullPath(target) && tab.HasShownSharpPage);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.True(File.Exists(target));
+    }
+
+    [AvaloniaFact]
+    public async Task SaveAsWithTheNameOfTheOriginalAsksTheLockedConfirmationFirst()
+    {
+        var (window, viewModel, view, tab, path) = await MarkedAsync(area: false);
+        var oldDocument = tab.Document!;
+        Assert.True(tab.AddAreaMark(0, await HeadlineAreaAsync(oldDocument)));
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        _host.Picker.Result = path;
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        var first = viewModel.PendingSave!;
+        Assert.True(first.Resolve(PendingSaveChoice.SaveAs));
+
+        // The file dialog named the original: the same lock as "Save in the original file" stands in front of the replacing.
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { } next && !ReferenceEquals(next, first) && next.Kind == PendingSaveKind.ApplyRedactions);
+        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        var question = viewModel.PendingSave!;
+        Assert.Equal([PendingSaveChoice.SaveInOriginal, PendingSaveChoice.Cancel], question.Choices);
+        Assert.Equal(PendingSaveChoice.Cancel, question.DefaultChoice);
+        Assert.False(card.ButtonOf(PendingSaveChoice.SaveInOriginal)!.IsEnabled);
+        Assert.False(question.Choose(PendingSaveChoice.SaveInOriginal));
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+
+        _host.PassTheLock(window);
+        Assert.True(question.Resolve(PendingSaveChoice.SaveInOriginal));
+        Assert.True(await apply);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, tab.Session.Document) && tab.HasShownSharpPage);
+        Assert.NotEqual(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.DoesNotContain("Redaction fixture", await TextOfAsync(tab.Document!, 0), StringComparison.Ordinal);
+        await WaitForCardAsync<RedactReportCard>(window, viewModel, PendingSaveKind.RedactionReport);
+        viewModel.PendingSave!.Abandon();
+    }
+
+    [AvaloniaFact]
+    public async Task BackOnTheConfirmationOfTheOriginalLeavesTheFileAndTheMarks()
+    {
+        var (window, viewModel, _, tab, path) = await MarkedAsync();
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        _host.Picker.Result = path;
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        var first = viewModel.PendingSave!;
+        Assert.True(first.Resolve(PendingSaveChoice.SaveAs));
+        await WaitUntilAsync(window, () => viewModel.PendingSave is { } next && !ReferenceEquals(next, first));
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel));
+
+        Assert.False(await apply);
+        Assert.True(tab.HasPendingRedactions);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [AvaloniaFact]
     public async Task VerificationFailureShowsFindingAndKeepsPlanAndFiles()
     {
         // The real pipeline fails its check: the engine "forgets" the place of a marked text (a test hook of the core), so the page
@@ -1043,7 +1124,12 @@ public sealed partial class RedactApplyTests : IDisposable
             Assert.Contains(Strings.RedactNotCleanedActions, section.Lines);
             Assert.Contains(Strings.RedactNotCleanedFieldValues, section.Lines);
             Assert.Contains(Strings.RedactNotCleanedSignature, section.Lines);
-            Assert.Equal(5, section.Lines.Count);
+            // The annotations that come along unchanged, and the paperclips (up to 2 files) whose files stay in the file.
+            Assert.Contains(Strings.RedactNotCleanedAnnotations, section.Lines);
+            Assert.Contains(Strings.RedactNotCleanedAnnotationFiles(2), section.Lines);
+            Assert.Equal(7, section.Lines.Count);
+            Assert.Contains("2", Strings.RedactNotCleanedAnnotationFiles(2), StringComparison.Ordinal);
+            Assert.Contains(language == "en" ? "up to 2" : "bis zu 2", Strings.RedactNotCleanedAnnotationFiles(2), StringComparison.Ordinal);
             Assert.Contains("/Metadata", Strings.RedactNotCleanedObjects, StringComparison.Ordinal);
             Assert.Contains("/PieceInfo", Strings.RedactNotCleanedObjects, StringComparison.Ordinal);
             Assert.Contains("/AA", Strings.RedactNotCleanedActions, StringComparison.Ordinal);
@@ -1185,7 +1271,8 @@ public sealed partial class RedactApplyTests : IDisposable
         [],
         PageKeysChecked: true,
         Marks: 3,
-        MarksWithoutTerm: 2);
+        MarksWithoutTerm: 2,
+        AttachmentAnnotations: 2);
 
     /// <summary>An analysis of a file with nothing to clean, optionally refused.</summary>
     private static RedactionAnalysis CleanAnalysis(IReadOnlyList<RedactionRefusal>? refusals = null) =>
@@ -1207,7 +1294,7 @@ public sealed partial class RedactApplyTests : IDisposable
             "RedactCleanBookmarks", "RedactCleanAttachments", "RedactCleanScripts", "RedactCleanLabels", "RedactCleanNone",
             "RedactCleanNoneIncomplete", "RedactCleanIncomplete", "RedactCleanSeeBelow", "RedactLossLinksOne", "RedactLossLinks",
             "RedactLossFieldsOne", "RedactLossFields", "RedactLossRgbOne", "RedactLossRgb", "RedactLossSignature",
-            "RedactNotCleanedObjects", "RedactNotCleanedActions", "RedactNotCleanedFieldValues", "RedactNotCleanedSignature",
+            "RedactNotCleanedObjects", "RedactNotCleanedActions", "RedactNotCleanedFieldValues", "RedactNotCleanedSignature", "RedactNotCleanedAnnotations", "RedactNotCleanedAnnotationFilesFormat",
             "RedactNotCheckedNoTermOne", "RedactNotCheckedNoTerm", "RedactCheckedText", "RedactCheckedBytes", "RedactCheckedAreas",
             "RedactCheckedPages", "RedactCheckedKeys", "RedactCheckedCleanup", "RedactApplyTitle", "RedactIrreversible",
             "RedactRefusedTitle", "RedactRefusedNothing", "RedactFailedTitle", "RedactFailedNothing", "RedactReportTitle",

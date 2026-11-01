@@ -35,6 +35,9 @@ public sealed partial class MainViewModel
     /// </summary>
     internal Func<RedactionPlan, PdfDocument, string, CancellationToken, Task<RedactionAnalysis>>? RedactionAnalyzer { get; set; }
 
+    /// <summary>Gets or sets the action called with the tab right after the redacted file was written and taken over, before the tab shows it (a test throws here to see what the user is told).</summary>
+    internal Action<TabViewModel>? RedactionAfterWrite { get; set; }
+
     /// <summary>
     /// Applies the marks of <paramref name="tab"/> (the button "Apply …", Ctrl+S and "Save as" while marks wait). Nothing happens
     /// without marks, while another save or question of the window waits, while the tab prints or is being asked about, or while
@@ -130,7 +133,7 @@ public sealed partial class MainViewModel
             var choice = await AskAsync(PendingSave.ApplyRedactions(tab, current, RedactionApplyInfo.Create(analysis)), token);
             var target = choice switch
             {
-                PendingSaveChoice.SaveAs => await PickTargetAsync(tab, SuggestedRedactedPath(current)),
+                PendingSaveChoice.SaveAs => await ConfirmOriginalIfChosenAsync(tab, current, await PickTargetAsync(tab, SuggestedRedactedPath(current)), analysis, token),
                 PendingSaveChoice.SaveInOriginal => current,
                 _ => null,
             };
@@ -142,7 +145,7 @@ public sealed partial class MainViewModel
                     case null:
                         return attempt.Outcome;
                     case PendingSaveChoice.SaveAs:
-                        target = await PickTargetAsync(tab, target);
+                        target = await ConfirmOriginalIfChosenAsync(tab, current, await PickTargetAsync(tab, target), analysis, token);
                         break;
                     default:
                         return RedactionOutcome.None;
@@ -225,23 +228,13 @@ public sealed partial class MainViewModel
         }
         catch (RedactionAdoptException ex)
         {
-            // The file IS redacted and checked, the tab shows the old document: it must not keep marks for it or offer to apply
-            // again. The card says so; then the written file is opened in the tab through the normal open path.
-            tab.ForgetRewrittenDocument();
-            if (!_disposed && Tabs.IndexOf(tab) >= 0)
-            {
-                await AskAsync(
-                    PendingSave.PageApplyError(
-                        tab,
-                        ex.TargetPath,
-                        () => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ApplyErrorViewFailed), ex.TargetPath),
-                        () => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.RedactViewFailedTitle), Path.GetFileName(ex.TargetPath))),
-                    CancellationToken.None);
-                tab.AbandonRedactions();
-                _ = tab.OpenAsync(ex.TargetPath);
-            }
-
-            return (new RedactionOutcome(true, null, null), null);
+            // The file IS redacted and checked, the tab shows the old document.
+            return await WrittenButNotShownAsync(tab, ex.TargetPath);
+        }
+        catch (Exception) when (written)
+        {
+            // A failure between the write and the end of the adoption (closing the reopened copy): the file is written all the same.
+            return await WrittenButNotShownAsync(tab, target);
         }
         catch (Exception ex) when (ex is RedactionException or PdfOpenException or InvalidDataException or InvalidOperationException or RedactionRefusedException)
         {
@@ -267,11 +260,59 @@ public sealed partial class MainViewModel
             }
         }
 
-        // Back on the UI thread: the tab shows the redacted file now, where the marks were, and the plan and the mode are gone.
-        tab.SyncDocumentFromSession();
-        tab.UnsaveableReason = null;
-        tab.SyncFromEditor();
+        // Back on the UI thread: the tab shows the redacted file now, where the marks were, and the plan and the mode are gone. The file
+        // IS written here, so a failure of the tab to show it is told as exactly that, never as "not saved".
+        try
+        {
+            RedactionAfterWrite?.Invoke(tab);
+            tab.SyncDocumentFromSession();
+            tab.UnsaveableReason = null;
+            tab.SyncFromEditor();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return await WrittenButNotShownAsync(tab, target);
+        }
+
         return (new RedactionOutcome(true, RedactionApplyInfo.ForReport(analysis, result.Check), target), null);
+    }
+
+    // "Save as …" with the name of the original replaces the original like "Save in the original file" does, so it goes through the same
+    // locked confirmation (the system's own question about replacing a file is no substitute for the lock). Another file is taken as is.
+    private async Task<string?> ConfirmOriginalIfChosenAsync(TabViewModel tab, string original, string? target, RedactionAnalysis analysis, CancellationToken token)
+    {
+        if (target is null || !IsTheOriginal(original, target))
+        {
+            return target;
+        }
+
+        var choice = await AskAsync(PendingSave.ApplyRedactionsInOriginal(tab, original, RedactionApplyInfo.Create(analysis)), token);
+        return choice == PendingSaveChoice.SaveInOriginal ? original : null;
+    }
+
+    private static bool IsTheOriginal(string original, string target) =>
+        string.Equals(Path.GetFullPath(original), Path.GetFullPath(target), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
+        || FileIdentity.AreSameFile(original, target) == true;
+
+    // The file is redacted and checked, the tab does not show it: it must not keep marks for it or offer to apply again. The card says
+    // so; then the written file is opened in the tab through the normal open path.
+    private async Task<(RedactionOutcome Outcome, PendingSaveChoice? Choice)> WrittenButNotShownAsync(TabViewModel tab, string targetPath)
+    {
+        tab.ForgetRewrittenDocument();
+        if (!_disposed && Tabs.IndexOf(tab) >= 0)
+        {
+            await AskAsync(
+                PendingSave.PageApplyError(
+                    tab,
+                    targetPath,
+                    () => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ApplyErrorViewFailed), targetPath),
+                    () => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.RedactViewFailedTitle), Path.GetFileName(targetPath))),
+                CancellationToken.None);
+            tab.AbandonRedactions();
+            _ = tab.OpenAsync(targetPath);
+        }
+
+        return (new RedactionOutcome(true, null, null), null);
     }
 
     /// <summary>Works out what redacting <paramref name="plan"/> does, in the background (the seam <see cref="RedactionAnalyzer"/> or the executor).</summary>

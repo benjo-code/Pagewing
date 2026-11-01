@@ -431,6 +431,16 @@ public sealed class PendingSave
         return new(PendingSaveKind.ApplyRedactions, tab, path, [PendingSaveChoice.SaveAs, PendingSaveChoice.SaveInOriginal, PendingSaveChoice.Cancel], PendingSaveChoice.SaveAs, redaction: info);
     }
 
+    /// <summary>
+    /// The confirmation after "Save as …" named the original file (milestone 14): the same card as <see cref="ApplyRedactions"/> without
+    /// the file dialog, "Save in the original file" (dangerous: locked at first, never the default) and "Back".
+    /// </summary>
+    internal static PendingSave ApplyRedactionsInOriginal(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.ApplyRedactions, tab, path, [PendingSaveChoice.SaveInOriginal, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info);
+    }
+
     /// <summary>The card of a refusal (no "Apply"): the kind, the reason and the pages, "Back" alone.</summary>
     internal static PendingSave RedactionRefused(TabViewModel tab, string path, RedactionApplyInfo info)
     {
