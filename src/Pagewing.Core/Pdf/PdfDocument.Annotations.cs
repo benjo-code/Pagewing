@@ -39,11 +39,20 @@ public sealed partial class PdfDocument
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the annotations were read.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
-    public Task<IReadOnlyList<PdfAnnotation>> GetAnnotationsAsync(int pageIndex, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PdfAnnotation>> GetAnnotationsAsync(int pageIndex, CancellationToken cancellationToken = default) =>
+        (await GetAnnotationsWithStatusAsync(pageIndex, cancellationToken).ConfigureAwait(false)).Annotations;
+
+    /// <summary>
+    /// Like <see cref="GetAnnotationsAsync"/>, and says whether the list leaves out something that is no popup and no reply:
+    /// the limit of <see cref="MaxAnnotations"/> for the document (links and widgets count towards it) cut it, an entry was
+    /// skipped as damaged (no <c>/Rect</c>, coordinates that are not finite, a markup without a complete quadrilateral), or the
+    /// page has more entries than are looked at. For a caller that must not report a page as searched when it was not.
+    /// </summary>
+    internal Task<(IReadOnlyList<PdfAnnotation> Annotations, bool Incomplete)> GetAnnotationsWithStatusAsync(int pageIndex, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         ThrowIfNotAPage(pageIndex);
-        return document.Thread.InvokeAsync<IReadOnlyList<PdfAnnotation>>(
+        return document.Thread.InvokeAsync<(IReadOnlyList<PdfAnnotation>, bool)>(
             () =>
             {
                 var others = 0;
@@ -53,7 +62,7 @@ public sealed partial class PdfDocument
                 }
 
                 using var loaded = document.LoadPage(pageIndex);
-                var read = PdfiumAnnotations.Read(loaded, Math.Max(0, MaxAnnotations - others), cancellationToken);
+                var read = PdfiumAnnotations.Read(loaded, Math.Max(0, MaxAnnotations - others), out var incomplete, cancellationToken);
                 listedAnnotations[pageIndex] = read.Count;
                 var drawings = new DrawingReader(loaded, MaxDrawingPointsPerPage);
                 using var textBoxes = new TextBoxReader(loaded);
@@ -64,7 +73,7 @@ public sealed partial class PdfDocument
                     result[i] = ToAnnotation(pageIndex, read[i], drawings.Read(read[i], cancellationToken), textBoxes.Read(read[i]), signatures.IsOwnImage(read[i]));
                 }
 
-                return result;
+                return (result, incomplete);
             },
             PdfiumPriority.Background,
             cancellationToken);

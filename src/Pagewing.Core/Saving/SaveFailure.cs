@@ -54,6 +54,14 @@ public enum SaveFailureReason
     /// it while the file was written. The file at the target is untouched.
     /// </summary>
     TargetExists,
+
+    /// <summary>
+    /// The written file passed the checks every rewrite makes, but the extra check of the caller
+    /// (<see cref="RewriteRequest.ExtraCheck"/>, the redaction check) found something or could not be completed. Nothing is
+    /// replaced. <see cref="SaveFailureException.Details"/> carries what the check attached, <see cref="Exception.InnerException"/>
+    /// the exception it threw.
+    /// </summary>
+    RedactionFailed,
 }
 
 /// <summary>A save failed; <see cref="Reason"/> says why. <see cref="Exception.Message"/> is a short English explanation.</summary>
@@ -88,4 +96,11 @@ public sealed class SaveFailureException : Exception
     /// longer the file that was inserted), or <see langword="null"/>.
     /// </summary>
     public string? FilePath { get; init; }
+
+    /// <summary>
+    /// Gets what the extra check of a rewrite (<see cref="RewriteRequest.ExtraCheck"/>) attached to its failure, for example the
+    /// findings of the redaction check, or <see langword="null"/>. The type is the contract between the check and its caller; the
+    /// saver only passes it on (<see cref="SaveFailureReason.RedactionFailed"/>), so it knows no type of the redaction.
+    /// </summary>
+    public object? Details { get; init; }
 }

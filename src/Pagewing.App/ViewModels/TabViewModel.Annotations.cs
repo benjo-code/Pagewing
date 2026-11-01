@@ -180,6 +180,11 @@ public sealed partial class TabViewModel
             var name = FileName is { } file && _isDirty
                 ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.TabUnsavedName), file)
                 : FileName;
+            if (name is not null && HasPendingRedactions)
+            {
+                return name + Strings.TabRedactionSuffix;
+            }
+
             return name is not null && HasPendingPageEdits ? name + Strings.TabPageEditsSuffix : name;
         }
     }
@@ -192,7 +197,8 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Ctrl+Z: undoes the newest change of the annotations; in the mode "Organize pages" the newest change of the page plan
-    /// instead (<see cref="UndoPagesCommand"/>), never an annotation meanwhile.
+    /// instead (<see cref="UndoPagesCommand"/>), in the mode "Redact" the newest mark (<see cref="UndoRedactionCommand"/>),
+    /// never an annotation meanwhile.
     /// </summary>
     public ICommand UndoCommand => _undoCommand ??= new RelayCommand(
         () =>
@@ -205,14 +211,20 @@ public sealed partial class TabViewModel
                     UndoPages();
                 }
             }
+            else if (_isRedacting)
+            {
+                UndoRedaction();
+            }
             else
             {
                 UndoAfterNudge();
             }
         },
-        () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: true) : IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
+        () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: true)
+            : _isRedacting ? CanStepRedactions(undo: true)
+            : IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
 
-    /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again (of the page plan in the mode "Organize pages").</summary>
+    /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again (of the page plan in the mode "Organize pages", of the marks in "Redact").</summary>
     public ICommand RedoCommand => _redoCommand ??= new RelayCommand(
         () =>
         {
@@ -223,12 +235,18 @@ public sealed partial class TabViewModel
                     RedoPages();
                 }
             }
+            else if (_isRedacting)
+            {
+                RedoRedaction();
+            }
             else
             {
                 RedoAfterNudge();
             }
         },
-        () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: false) : IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
+        () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: false)
+            : _isRedacting ? CanStepRedactions(undo: false)
+            : IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with
@@ -244,7 +262,7 @@ public sealed partial class TabViewModel
     /// operation the editor accepted and has not recorded yet). The question waits for those first
     /// (<see cref="WhenEditsSettledAsync"/>), so a change made a moment before closing is never dropped silently.
     /// </summary>
-    internal bool AsksBeforeClosing => !_disposed && (AsksAboutDocumentChanges || HasPendingPageEdits);
+    internal bool AsksBeforeClosing => !_disposed && (AsksAboutDocumentChanges || HasPendingPageEdits || HasPendingRedactions);
 
     /// <summary>Gets whether the document has changes that are not saved, or on their way (annotations and form values; not the page plan).</summary>
     internal bool AsksAboutDocumentChanges =>
@@ -267,7 +285,7 @@ public sealed partial class TabViewModel
     /// (also not when the plan is dropped, <see cref="ResetPageEdits"/>), so a "Don't save" given for an older version never
     /// covers a later change (<see cref="MainViewModel"/>, the question before closing and the update).
     /// </summary>
-    internal int ChangeVersion => EditVersion + PageEditVersion;
+    internal int ChangeVersion => EditVersion + PageEditVersion + RedactionVersion;
 
     /// <summary>
     /// Gets or sets whether a card of the save flow asks about this tab (set by the window with
@@ -335,7 +353,7 @@ public sealed partial class TabViewModel
     /// Whether "Save" can run: an open document with unsaved changes, or with page changes that wait to be applied (Ctrl+S
     /// then opens the card of "Apply", <see cref="MainViewModel.ApplyPageEditsAsync"/>), no save and no print job of the tab running.
     /// </summary>
-    internal bool CanSave() => CanSaveDocument() || (CanSaveAs() && HasPendingPageEdits);
+    internal bool CanSave() => CanSaveDocument() || (CanSaveAs() && (HasPendingPageEdits || HasPendingRedactions));
 
     /// <summary>Whether the changes of the document itself (annotations, form values) can be saved: <see cref="CanSave"/> without the page plan.</summary>
     internal bool CanSaveDocument() => CanSaveAs() && _isDirty;
@@ -397,6 +415,7 @@ public sealed partial class TabViewModel
         }
 
         RebindAnnotateMode(old, adopted);
+        RebindRedaction(old, adopted);
     }
 
     /// <summary>Another file is open in the tab: its signatures are read again at its first save, and the note may come again.</summary>
@@ -407,6 +426,7 @@ public sealed partial class TabViewModel
         UnsaveableReason = null;
         ResetAnnotateMode();
         ResetPageEdits();
+        ResetRedaction();
         SyncFromEditor();
     }
 
@@ -417,6 +437,7 @@ public sealed partial class TabViewModel
 
         // Applying page changes is a save: it waits for the same things (a save, a print job, a card, the update lock).
         _applyPageEditsCommand?.RaiseCanExecuteChanged();
+        RaiseRedactionApplyCanExecuteChanged();
     }
 
     /// <summary>A waiting nudge is made first, so undo undoes it (the editor runs the operations in this order).</summary>

@@ -405,6 +405,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 _redoCommand?.RaiseCanExecuteChanged();
             }
 
+            OnRedactionPanelChanged(old, value);
             if (value == SidePanelKind.Search)
             {
                 _panelBeforeSearch = old;
@@ -504,6 +505,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _textSelection, value is { IsEmpty: true } ? null : value))
             {
                 OnPropertyChanged(nameof(HasTextSelection));
+                RaiseMarkingCanExecuteChanged();
             }
         }
     }
@@ -807,6 +809,8 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         ResetOutline();
         _search?.Dispose();
         _comments?.Dispose();
+        DiscardRedactionPanel();
+        EndRedactionPreview();
         ReleaseInsertedSources();
         TextSelection = null;
         ClearHistory();
@@ -1136,9 +1140,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             CurrentPage = 0;
             CurrentPageLast = 0;
 
-            // No document, no mode, no page plan.
+            // No document, no mode, no page plan, no marks.
             ResetAnnotateMode();
             ResetPageEdits();
+            ResetRedaction();
         }
 
         // The password check is over once the session leaves Loading. The password stays only for another try.

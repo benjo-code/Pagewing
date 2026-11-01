@@ -193,7 +193,7 @@ public sealed partial class MainWindow
         };
 
         // After the toolbars in the tab order, before the cards (password, error, link) that lie over the document area.
-        var after = new Control?[] { DocumentView, _annotationToolbar, _formToolbar }
+        var after = new Control?[] { DocumentView, _annotationToolbar, _formToolbar, _redactionToolbar }
             .Select(control => control is null ? -1 : DocumentAreaLayers.Children.IndexOf(control))
             .Max();
         DocumentAreaLayers.Children.Insert(after + 1, bar);
@@ -215,6 +215,11 @@ public sealed partial class MainWindow
         if (_formToolbar is { IsVisible: true } form)
         {
             top += ToolbarHeightOf(form);
+        }
+
+        if (_redactionToolbar is { IsVisible: true } redaction)
+        {
+            top += ToolbarHeightOf(redaction);
         }
 
         if (_formHintBar is { IsVisible: true } bar)

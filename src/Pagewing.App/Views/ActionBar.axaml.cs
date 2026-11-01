@@ -30,6 +30,7 @@ public sealed partial class ActionBar : UserControl
         Describe(PagesButton, Strings.PagesTooltip, catalog.ById("panel.pages"));
         Describe(ContentsButton, Strings.ContentsTooltip, catalog.ById("panel.contents"));
         Describe(CommentsButton, Strings.CommentsPanelTitle, catalog.ById("panel.comments"));
+        Describe(RedactButton, Strings.CommandRedactMode, catalog.ById("redact.mode"));
         Describe(PrintButton, Strings.PrintTitle, catalog.ById("file.print"));
         if (catalog.ById("search.open")?.Gesture is { } search)
         {

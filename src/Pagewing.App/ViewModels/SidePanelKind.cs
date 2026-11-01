@@ -17,4 +17,7 @@ public enum SidePanelKind
 
     /// <summary>The annotations of the document (milestone 9), read when the panel first opens.</summary>
     Comments,
+
+    /// <summary>The marks of the mode "Redact" and "find and redact" (milestone 14); shown only while that mode is on, made when it first opens.</summary>
+    Redact,
 }

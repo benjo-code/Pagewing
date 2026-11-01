@@ -145,6 +145,8 @@ Die Werte stammen aus dem gewählten Mockup (B, Artifact-Version 4). Token-Namen
 | `color.search.hitOnDark` | `#FBE38A4D` | `#FBE38A4D` | `#FBE38A4D` | Suchtreffer auf einer dunklen Seite: über die Seite gelegt (30 %), nicht multipliziert; Seitentext darauf 5,3:1 | – |
 | `color.search.currentOnDark` | `#F5A52473` | `#F5A52473` | `#F5A52473` | Aktueller Suchtreffer auf einer dunklen Seite (45 %), immer mit Rahmen in `page.darkForeground`; Seitentext darauf 4,8:1 | – |
 | `color.selection.pageOnDark` | `#9DA7FF59` | `#9DA7FF59` | `#9DA7FF59` | Ausgewählter Text auf einer dunklen Seite (35 % Indigo); Seitentext darauf 6,2:1 | – |
+| `color.redact.edge` | `#E5484D` | `#E5484D` | `#E5484D` | Rand und Schraffur einer Markierung zum Schwärzen (M14) auf der Seite; in allen Themes gleich, weil die Markierung über die Seite gelegt wird (nie von PDFium gezeichnet); mindestens 3:1 auf der weißen und auf der dunklen Seite (`TokenTests.MarkColoursMeetAAOnLightAndDarkPage`) | – |
+| `color.redact.fill` | `#E5484D26` | `#E5484D26` | `#E5484D26` | Tönung innerhalb einer Markierung zum Schwärzen (15 % von `redact.edge`); Rand darauf mindestens 3:1, Seitentext darunter mindestens 4,5:1 (beides auf der weißen und auf der dunklen Seite geprüft) | – |
 
 Regeln:
 

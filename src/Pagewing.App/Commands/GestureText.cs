@@ -52,6 +52,7 @@ public static class GestureText
         Key.Left => Strings.KeyLeft,
         Key.Right => Strings.KeyRight,
         Key.Delete => Strings.KeyDelete,
+        Key.Enter => Strings.KeyEnter,
         Key.Escape => "Esc",
         _ => key.ToString(),
     };

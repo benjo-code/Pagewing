@@ -157,6 +157,23 @@ public sealed class CommandCatalog
         OrganizeTab("pages.apply", () => Strings.CommandApplyPageEdits, null, tab => tab.ApplyPageEditsCommand, needsPanel: false),
         OrganizeTab("pages.discard", () => Strings.CommandDiscardPageEdits, null, tab => tab.DiscardPageEditsCommand, needsPanel: false),
 
+        // The mode "Redact" (milestone 14): on and off (off only while no mark is pending), and what it does to the marks; the
+        // marks are only a plan of the tab until they are applied. Ctrl+Z and Ctrl+Y undo and redo the marks in the mode
+        // (edit.undo, edit.redo). Ctrl+Shift+R is the rectangle's, so the mode takes P (a letter on every layout without AltGr,
+        // and its neighbour Ctrl+P prints). Deleting marks and discarding have no key here: Delete belongs to the marks on the page
+        // and in the panel (they hold the focus when it applies), and Esc to the document. The commands of the mode run only in
+        // it and never make the tab's commands before (RedactTab asks the mode first). "Mark selection" (Ctrl+Enter, a key on every
+        // layout, which a text field keeps for itself) turns the selected text into marks; "Find and redact" shows or hides the panel
+        // with the search and the list of marks (no key: it is a button of the toolbar, and the palette lists it); "Preview" and "Apply"
+        // are buttons of the toolbar too (no key; Ctrl+S opens the card of "Apply" while marks wait).
+        Tab("redact.mode", () => Strings.CommandRedactMode, EditGroup, CtrlShift(Key.P), tab => tab.RedactCommand, ready: true),
+        RedactTab("redact.markSelection", () => Strings.CommandRedactMarkSelection, Ctrl(Key.Enter), tab => tab.MarkSelectionCommand) with { YieldsToTextInput = true },
+        RedactTab("redact.find", () => Strings.CommandRedactFind, null, tab => tab.ToggleRedactionPanelCommand),
+        RedactTab("redact.preview", () => Strings.CommandRedactPreview, null, tab => tab.ToggleRedactionPreviewCommand),
+        RedactTab("redact.apply", () => Strings.CommandRedactApply, null, tab => tab.ApplyRedactionsCommand),
+        RedactTab("redact.deleteMarks", () => Strings.CommandRedactDeleteMarks, null, tab => tab.DeleteMarksCommand),
+        RedactTab("redact.discard", () => Strings.CommandRedactDiscard, null, tab => tab.DiscardRedactionsCommand),
+
         // Writing new files from the open document (milestone 13): the selected pages as a new PDF, the document in several files,
         // the pages as images. They read the document without the plan and run only with no plan and no unsaved change pending (the
         // tab says so and the pages panel shows why); they have no keys, the palette and the menu of the pages panel offer them.
@@ -304,13 +321,37 @@ public sealed class CommandCatalog
     }
 
     /// <summary>
+    /// A command of the mode "Redact" of the active tab: it exists only while the mode is on, and until then the tab's command
+    /// is not even looked up (so nothing of the mode is made by asking the catalog). A card (settings, help, about, print,
+    /// signature) over the window keeps the keys for itself, as for <see cref="OrganizeTab"/>; the command palette is no obstacle.
+    /// </summary>
+    private AppCommand RedactTab(string id, Func<string> title, KeyGesture? gesture, Func<TabViewModel, ICommand> command, object? parameter = null)
+    {
+        bool CanRun(out ICommand? target)
+        {
+            target = _window.ActiveTab is { IsRedacting: true } tab && _window.Overlay is OverlayKind.None or OverlayKind.Palette
+                ? command(tab)
+                : null;
+            return target?.CanExecute(parameter) == true;
+        }
+
+        return new(id, title, EditGroup, gesture, () => CanRun(out _), () =>
+        {
+            if (CanRun(out var target))
+            {
+                target!.Execute(parameter);
+            }
+        });
+    }
+
+    /// <summary>
     /// Ctrl+Z and Ctrl+Y undo and redo the page plan while the mode "Organize pages" is on (the tab decides, and does so only
-    /// with the pages panel open); a card over the window (a drop-down of the settings) must never reach the plan behind it,
-    /// so while one lies there the keys do nothing in the mode.
+    /// with the pages panel open), and the marks while "Redact" is on; a card over the window (a drop-down of the settings)
+    /// must never reach the plan behind it, so while one lies there the keys do nothing in the modes.
     /// </summary>
     private AppCommand PlanGuarded(AppCommand command)
     {
-        bool Blocked() => _window.ActiveTab is { IsOrganizing: true } && _window.Overlay is not (OverlayKind.None or OverlayKind.Palette);
+        bool Blocked() => _window.ActiveTab is { IsOrganizing: true } or { IsRedacting: true } && _window.Overlay is not (OverlayKind.None or OverlayKind.Palette);
         return command with { CanExecute = () => !Blocked() && command.CanExecute(), Execute = () => { if (!Blocked()) { command.Execute(); } } };
     }
 

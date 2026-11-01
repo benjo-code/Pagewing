@@ -1,0 +1,313 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.RedactionPanel"
+             x:DataType="vm:TabViewModel"
+             AutomationProperties.Name="{x:Static res:Strings.RedactPanelTitle}"
+             AutomationProperties.AccessibilityView="Content">
+  <!--
+    Content of the panel "Redact" (milestone 14, design system 5.2, 5.5, 7.3, 7.4 and 7.10; built like "Search" and "Comments"): the
+    model of the tab in the DataContext (the content binds to the panel model itself, so a tab that does not show "Redact" never gets
+    one created by the view). From the top: the search field with the Tabler "search" icon, "Match case" and "Whole words", the buttons
+    "Find" (primary) and "Stop" (while a search runs); then, only once a search ran, its result: the summary (type.caption,
+    text.secondary, a live region), the notes (pages not searched completely, the limit of hits, what the last marking did; each with
+    an icon and in words, never by colour alone), the box that accepts an incomplete search, the buttons "Mark all" and "Mark checked"
+    with "Check all" and "Uncheck all", the list of what the search does not look at, and the hits in a virtualized list: a check box,
+    the page mark in type.mono, the source in words ("Page text", "Comment", "Form field"), "Invisible text" with the eye-off icon,
+    the text around the hit with the hit itself on search.hit, the note for a short text, and for a hit that cannot be marked the reason.
+    Below that "Marks": the counter, "Delete", and the marks grouped by page with their kind, term and page; the selected mark has an
+    accent.subtle surface and a 2 px accent.default edge on the left (like the current hit of the search). Built only when the panel
+    opens (SidePanel); its styles live here for the same reason.
+  -->
+  <UserControl.Styles>
+    <Style Selector="ListBox.rows">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="6,0,6,10" />
+    </Style>
+
+    <!-- An entry: no Fluent padding or selection colours. The selection is only the keyboard cursor (focus ring); hover shows surface.hover. -->
+    <Style Selector="ListBox.rows ListBoxItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,1" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+    </Style>
+    <Style Selector="ListBox.rows ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.rows ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.rows ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
+    </Style>
+
+    <Style Selector="Border.row">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.row.selected">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="TextBlock.rowPage">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="TextBlock.rowKind">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="TextBlock.rowText">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="TextBlock.note">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Border.pageHeader">
+      <Setter Property="Padding" Value="8,8,8,2" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- The DataContext of the content is the panel model of the tab, set by RedactionPanel.axaml.cs only while the tab shows "Redact". -->
+  <Grid Name="RedactRoot" x:DataType="vm:RedactionViewModel">
+    <!-- The hits row is 0 high until a search ran, then it takes the rest and the marks a strip below it (RedactionPanel.axaml.cs). -->
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+    <StackPanel Grid.Row="0" Margin="14,0,14,6" Spacing="8">
+      <TextBox Name="QueryField"
+               Text="{Binding Query}"
+               MaxLength="1000"
+               PlaceholderText="{x:Static res:Strings.RedactQueryPlaceholder}"
+               AutomationProperties.Name="{x:Static res:Strings.RedactQueryPlaceholder}">
+        <TextBox.InnerLeftContent>
+          <ctl:StrokeIcon Width="16" Height="16" Margin="8,0,0,0" VerticalAlignment="Center"
+                          Brush="{DynamicResource Pw.Brush.Text.Secondary}"
+                          Data="{StaticResource Pw.Icon.Search}" />
+        </TextBox.InnerLeftContent>
+        <!-- The window binds other keys first; the field claims Enter with a binding of its own. -->
+        <TextBox.KeyBindings>
+          <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+        </TextBox.KeyBindings>
+      </TextBox>
+      <WrapPanel Orientation="Horizontal">
+        <CheckBox Name="MatchCaseBox" Margin="0,0,16,0" IsChecked="{Binding MatchCase}" Content="{x:Static res:Strings.RedactMatchCase}" />
+        <CheckBox Name="WholeWordBox" IsChecked="{Binding WholeWord}" Content="{x:Static res:Strings.RedactWholeWord}" />
+      </WrapPanel>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Name="RunSearchButton" Classes="primary"
+                Command="{Binding SearchCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.RedactFindAction}">
+          <TextBlock Text="{x:Static res:Strings.RedactFindAction}" />
+        </Button>
+        <Button Name="StopButton"
+                IsVisible="{Binding IsRunning}"
+                Command="{Binding StopCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.RedactStopAction}">
+          <TextBlock Text="{x:Static res:Strings.RedactStopAction}" />
+        </Button>
+      </StackPanel>
+    </StackPanel>
+
+    <!-- The result of a search: notes and buttons above its list of hits in one scroll area, so many notes can never hide the hits. -->
+    <ScrollViewer Name="HitsSection" Grid.Row="1" IsVisible="{Binding HasResults}"
+                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+     <StackPanel>
+      <StackPanel Margin="14,0,14,6" Spacing="6">
+        <TextBlock Name="SearchSummary" Classes="caption note"
+                   Text="{Binding Summary}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <Grid Name="IncompleteNoteRow" ColumnDefinitions="Auto,*" IsVisible="{Binding IncompleteNote, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <ctl:StrokeIcon Width="16" Height="16" Margin="0,1,8,0" VerticalAlignment="Top"
+                          Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                          Data="{StaticResource Pw.Icon.AlertTriangle}" />
+          <TextBlock Name="IncompleteNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                     Text="{Binding IncompleteNote}" />
+        </Grid>
+        <Grid Name="LimitNoteRow" ColumnDefinitions="Auto,*" IsVisible="{Binding LimitNote, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <ctl:StrokeIcon Width="16" Height="16" Margin="0,1,8,0" VerticalAlignment="Top"
+                          Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                          Data="{StaticResource Pw.Icon.AlertTriangle}" />
+          <TextBlock Name="LimitNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                     Text="{Binding LimitNote}" />
+        </Grid>
+        <CheckBox Name="AcknowledgeBox"
+                  IsVisible="{Binding RequiresAcknowledgement}"
+                  IsChecked="{Binding IncompleteAcknowledged}"
+                  Content="{x:Static res:Strings.RedactAcknowledge}" />
+        <TextBlock Name="MarkedNote" Classes="caption note"
+                   IsVisible="{Binding HasMarkedNote}"
+                   Text="{Binding MarkedNote}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <WrapPanel Orientation="Horizontal">
+          <Button Name="MarkAllButton" Classes="primary" Margin="0,0,8,4"
+                  Command="{Binding MarkAllCommand}"
+                  ToolTip.Tip="{x:Static res:Strings.RedactMarkAllTip}"
+                  AutomationProperties.Name="{x:Static res:Strings.RedactMarkAll}">
+            <TextBlock Text="{x:Static res:Strings.RedactMarkAll}" />
+          </Button>
+          <Button Name="MarkCheckedButton" Margin="0,0,8,4"
+                  Command="{Binding MarkCheckedCommand}"
+                  AutomationProperties.Name="{x:Static res:Strings.RedactMarkChecked}">
+            <TextBlock Text="{x:Static res:Strings.RedactMarkChecked}" />
+          </Button>
+          <Button Name="CheckAllButton" Margin="0,0,8,4"
+                  Command="{Binding CheckAllCommand}"
+                  AutomationProperties.Name="{x:Static res:Strings.RedactCheckAll}">
+            <TextBlock Text="{x:Static res:Strings.RedactCheckAll}" />
+          </Button>
+          <Button Name="UncheckAllButton" Margin="0,0,8,4"
+                  Command="{Binding UncheckAllCommand}"
+                  AutomationProperties.Name="{x:Static res:Strings.RedactUncheckAll}">
+            <TextBlock Text="{x:Static res:Strings.RedactUncheckAll}" />
+          </Button>
+        </WrapPanel>
+        <ctl:ActionToggleButton Name="NotSearchedButton" HorizontalAlignment="Left"
+                                IsChecked="{Binding ShowNotSearched, Mode=OneWay}"
+                                Command="{Binding ToggleNotSearchedCommand}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactNotSearchedToggle}">
+          <TextBlock Text="{x:Static res:Strings.RedactNotSearchedToggle}" />
+        </ctl:ActionToggleButton>
+        <StackPanel Name="NotSearchedList" IsVisible="{Binding ShowNotSearched}" Spacing="2">
+          <TextBlock Classes="caption note" Text="{x:Static res:Strings.RedactNotSearchedIntro}" />
+          <ItemsControl ItemsSource="{x:Static res:Strings.RedactNotSearchedLines}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Classes="caption note" Margin="8,0,0,0" Text="{Binding StringFormat='• {0}'}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </StackPanel>
+
+      <ListBox Name="HitList" Classes="rows"
+               ItemsSource="{Binding Hits}"
+               SelectionMode="Single"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               KeyboardNavigation.TabNavigation="Once"
+               AutomationProperties.Name="{x:Static res:Strings.RedactHitListName}">
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem" x:DataType="vm:RedactionHitViewModel">
+            <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+          </Style>
+        </ListBox.Styles>
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:RedactionHitViewModel">
+            <Border Classes="row" BorderThickness="2,0,0,0" CornerRadius="{DynamicResource Pw.Radius.Control}" Padding="6,5,8,5">
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <CheckBox Name="HitCheck" Grid.Column="0" MinWidth="0" Margin="0,0,4,0" VerticalAlignment="Top"
+                          Focusable="False"
+                          IsEnabled="{Binding CanCheck}"
+                          IsChecked="{Binding IsChecked}"
+                          AutomationProperties.Name="{x:Static res:Strings.RedactHitCheckName}" />
+                <TextBlock Name="HitPage" Grid.Column="1" Classes="mono num rowPage" Text="{Binding PageText}"
+                           MinWidth="24" Margin="0,5,8,0" VerticalAlignment="Top" TextAlignment="Right" />
+                <StackPanel Grid.Column="2" Spacing="2">
+                  <WrapPanel Orientation="Horizontal">
+                    <TextBlock Classes="caption rowKind" Margin="0,0,8,0" Text="{Binding SourceLabel}" />
+                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,8,0" IsVisible="{Binding IsInvisible}">
+                      <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Center"
+                                      Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                                      Data="{StaticResource Pw.Icon.EyeOff}" />
+                      <TextBlock Name="HitInvisible" Classes="caption" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                                 Text="{x:Static res:Strings.RedactHitInvisible}" />
+                    </StackPanel>
+                    <TextBlock Classes="caption rowKind" Text="{Binding DetailLabel}"
+                               IsVisible="{Binding DetailLabel, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                  </WrapPanel>
+                  <!-- The runs stand on one line: whitespace between them would be shown as a space. -->
+                  <TextBlock Name="HitSnippet" Classes="body rowText"
+                             TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"><Run Text="{Binding Before}" /><Run Text="{Binding Match}" Background="{DynamicResource Pw.Brush.Search.Hit}" Foreground="{DynamicResource Pw.Brush.Search.On}" /><Run Text="{Binding After}" /></TextBlock>
+                  <TextBlock Name="HitShortNote" Classes="caption note"
+                             IsVisible="{Binding HasShortNote}"
+                             Text="{x:Static res:Strings.RedactHitShort}" />
+                  <TextBlock Name="HitNotMarkable" Classes="caption"
+                             Foreground="{DynamicResource Pw.Brush.Text.Primary}" TextWrapping="Wrap"
+                             IsVisible="{Binding !CanCheck}"
+                             Text="{Binding NotMarkableText}" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+     </StackPanel>
+    </ScrollViewer>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="14,8,6,4">
+      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <TextBlock Classes="strong" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactMarksHeader}" />
+        <TextBlock Name="MarksCounter" Classes="caption note" VerticalAlignment="Center"
+                   Text="{Binding MarksSummary}"
+                   AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+      <Button Name="DeleteMarksButton" Grid.Column="1" Classes="icon"
+              Width="28" Height="28" MinWidth="0" MinHeight="0"
+              Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+              Command="{Binding DeleteMarksCommand}"
+              ToolTip.Tip="{x:Static res:Strings.CommandRedactDeleteMarks}"
+              AutomationProperties.Name="{x:Static res:Strings.CommandRedactDeleteMarks}">
+        <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Trash}" />
+      </Button>
+    </Grid>
+
+    <Grid Grid.Row="3">
+      <TextBlock Name="MarksEmpty" Classes="caption note" Margin="14,4,14,0" VerticalAlignment="Top"
+                 IsVisible="{Binding HasNoMarks}"
+                 Text="{x:Static res:Strings.RedactMarksEmpty}" />
+      <ListBox Name="MarkList" Classes="rows"
+               ItemsSource="{Binding MarkRows}"
+               SelectionMode="Single"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               KeyboardNavigation.TabNavigation="Once"
+               AutomationProperties.Name="{x:Static res:Strings.RedactMarksHeader}">
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem" x:DataType="vm:RedactionMarkRowViewModel">
+            <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+            <Setter Property="Focusable" Value="{Binding !IsHeader}" />
+          </Style>
+        </ListBox.Styles>
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:RedactionMarkRowViewModel">
+            <Panel>
+              <Border Classes="pageHeader" IsVisible="{Binding IsHeader}">
+                <TextBlock Name="PageHeader" Classes="strong" Text="{Binding HeaderText}" />
+              </Border>
+              <Border Name="MarkRow" Classes="row" Classes.selected="{Binding IsSelected}"
+                      IsVisible="{Binding !IsHeader}"
+                      BorderThickness="2,0,0,0" CornerRadius="{DynamicResource Pw.Radius.Control}" Padding="6,5,8,5">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="caption rowKind" Text="{Binding KindText}" />
+                    <TextBlock Name="MarkTerm" Classes="body rowText" IsVisible="{Binding HasTerm}"
+                               TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                               Text="{Binding TermText}" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Classes="mono num rowPage" Text="{Binding PageText}"
+                             MinWidth="24" Margin="8,1,0,0" VerticalAlignment="Top" TextAlignment="Right" />
+                </Grid>
+              </Border>
+            </Panel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+  </Grid>
+</UserControl>

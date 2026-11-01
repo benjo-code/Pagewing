@@ -1,5 +1,7 @@
 using System.Globalization;
+using Pagewing.Cli.Commands;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Redaction;
 
 namespace Pagewing.Cli;
 
@@ -43,7 +45,11 @@ internal sealed record CliOptions(
     bool Force = false,
     int Every = 0,
     string? Ranges = null,
-    bool SplitBookmarks = false)
+    bool SplitBookmarks = false,
+    IReadOnlyList<string>? Texts = null,
+    IReadOnlyList<RedactRect>? Rects = null,
+    bool DryRun = false,
+    bool AllowUnsearched = false)
 {
     public const string DefaultDpi = "144";
 
@@ -70,15 +76,22 @@ internal sealed record CliOptions(
             "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
+            "redact" => ["--text", "--rect", "--pages", "--match-case", "--dry-run", "--allow-unsearched", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
         var isSearch = command == "search";
         var isRotate = command == "rotate";
         var isSplit = command == "split";
+        var isRedact = command == "redact";
 
-        // The commands of milestone 13 refuse an option given twice (the older commands keep their lenient reading).
-        var strict = command is "split" or "export";
+        // The commands of milestones 13 and 14 refuse an option given twice (the older commands keep their lenient reading);
+        // --text and --rect of redact may be given as often as needed.
+        var strict = command is "split" or "export" or "redact";
+        var texts = new List<string>();
+        var rects = new List<RedactRect>();
+        var dryRun = false;
+        var allowUnsearched = false;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         string? everyText = null;
         string? ranges = null;
@@ -118,7 +131,7 @@ internal sealed record CliOptions(
                     throw new UsageException($"Unknown option '{name}' for '{command}'.");
                 }
 
-                if (strict && !seen.Add(name))
+                if (strict && name is not ("--text" or "--rect") && !seen.Add(name))
                 {
                     throw new UsageException($"The option '{name}' is given twice.");
                 }
@@ -134,7 +147,7 @@ internal sealed record CliOptions(
                     continue;
                 }
 
-                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks")
+                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched")
                 {
                     if (value is not null)
                     {
@@ -152,6 +165,14 @@ internal sealed record CliOptions(
                     else if (name == "--bookmarks")
                     {
                         splitBookmarks = true;
+                    }
+                    else if (name == "--dry-run")
+                    {
+                        dryRun = true;
+                    }
+                    else if (name == "--allow-unsearched")
+                    {
+                        allowUnsearched = true;
                     }
                     else
                     {
@@ -190,6 +211,12 @@ internal sealed record CliOptions(
                         break;
                     case "--output":
                         output = value;
+                        break;
+                    case "--text":
+                        AddTerm(texts, value);
+                        break;
+                    case "--rect":
+                        rects.Add(RedactRect.Parse(value));
                         break;
                     default:
                         password = value;
@@ -250,6 +277,31 @@ internal sealed record CliOptions(
             return new CliOptions(command, file, null, dpi, output, annotations, password, Force: force, Every: every, Ranges: ranges, SplitBookmarks: splitBookmarks);
         }
 
+        if (isRedact)
+        {
+            if (texts.Count == 0 && rects.Count == 0)
+            {
+                throw new UsageException("The 'redact' command needs at least one --text <term> or --rect <page>:<x>,<y>,<w>,<h>.");
+            }
+
+            if (pages is not null && texts.Count == 0)
+            {
+                throw new UsageException("The option '--pages' limits --text; the command has no --text.");
+            }
+
+            if (output is not null && output.Length == 0)
+            {
+                throw new UsageException("The option '--output' needs a file name.");
+            }
+
+            if (output is null && !dryRun)
+            {
+                throw new UsageException("The 'redact' command needs --output <out.pdf> (only --dry-run works without it).");
+            }
+
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched);
+        }
+
         if (isRotate)
         {
             if (pages is null)
@@ -276,6 +328,24 @@ internal sealed record CliOptions(
         }
 
         return new CliOptions(command, file, pages, dpi, output ?? ".", annotations, password, query, matchCase, wholeWord, Force: force);
+    }
+
+    private static void AddTerm(List<string> texts, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new UsageException("The option '--text' needs a term that is not empty and not only white space.");
+        }
+
+        if (value.Length > RedactionLimits.MaxTermLength)
+        {
+            throw new UsageException($"The option '--text' takes at most {RedactionLimits.MaxTermLength.ToString(CultureInfo.InvariantCulture)} characters.");
+        }
+
+        if (!texts.Contains(value, StringComparer.Ordinal))
+        {
+            texts.Add(value);
+        }
     }
 
     /// <summary>Checks that exactly one way of cutting was chosen and that it is well formed; returns <c>--every</c> (0 when another way was chosen).</summary>

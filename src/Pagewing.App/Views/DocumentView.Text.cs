@@ -548,7 +548,7 @@ public sealed partial class DocumentView
 
         // A drawing tool owns the press (DocumentView.Drawing.cs), and so does the select tool (DocumentView.Selection.cs) and,
         // in the mode "Fill in form", a field (DocumentView.Forms.cs): no text selection, no link.
-        if (PressEndsTextBox() || PressForSignature(e, properties) || PressForDrawing(e, properties) || PressForSelection(e, properties) || PressForForm(e, properties))
+        if (PressEndsTextBox() || PressForSignature(e, properties) || PressForDrawing(e, properties) || PressForSelection(e, properties) || PressForRedaction(e, properties) || PressForForm(e, properties))
         {
             return;
         }
@@ -678,7 +678,7 @@ public sealed partial class DocumentView
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
         MoveForSignature(e);
-        if (MoveForDrawing(e) || MoveForSelection(e) || MoveForForm(e))
+        if (MoveForDrawing(e) || MoveForSelection(e) || MoveForRedaction(e) || MoveForForm(e))
         {
             return;
         }
@@ -723,7 +723,7 @@ public sealed partial class DocumentView
 
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (ReleaseForDrawing(e) || ReleaseForSelection(e) || ReleaseForForm(e))
+        if (ReleaseForDrawing(e) || ReleaseForSelection(e) || ReleaseForRedaction(e) || ReleaseForForm(e))
         {
             return;
         }
@@ -778,6 +778,12 @@ public sealed partial class DocumentView
         {
             // The same for a drag of the selection: nothing changes.
             EndSelectionDrag();
+        }
+
+        if (_redactionGesture is { } redaction && ReferenceEquals(e.Pointer, redaction.Pointer))
+        {
+            // And for a drag of the mode "Redact": no mark is made, none is changed.
+            EndRedactionGesture();
         }
 
         if (_press is { } press)
@@ -845,6 +851,12 @@ public sealed partial class DocumentView
                 SetCursor(CursorKind.Arrow);
             }
 
+            return;
+        }
+
+        if (UpdateRedactionCursor(position))
+        {
+            // The mode "Redact" (DocumentView.Redaction.cs): the crosshair with the area tool, a resize arrow over a handle.
             return;
         }
 

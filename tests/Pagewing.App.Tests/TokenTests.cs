@@ -44,6 +44,8 @@ public sealed class TokenTests
         ("Search.HitOnDark", "#FBE38A4D", "#FBE38A4D", "#FBE38A4D"),
         ("Search.CurrentOnDark", "#F5A52473", "#F5A52473", "#F5A52473"),
         ("Selection.PageOnDark", "#9DA7FF59", "#9DA7FF59", "#9DA7FF59"),
+        ("Redact.Edge", "#E5484D", "#E5484D", "#E5484D"),
+        ("Redact.Fill", "#E5484D26", "#E5484D26", "#E5484D26"),
     ];
 
     private static readonly string[] Surfaces =
@@ -275,6 +277,31 @@ public sealed class TokenTests
         var variant = Variant(theme);
         Assert.Equal(PageThemeColors.DarkBackground, Token("Page.DarkBackground", variant).ToUInt32());
         Assert.Equal(PageThemeColors.DarkForeground, Token("Page.DarkForeground", variant).ToUInt32());
+    }
+
+    [AvaloniaTheory]
+    [MemberData(nameof(AllThemes))]
+    public void MarkColoursMeetAAOnLightAndDarkPage(string theme)
+    {
+        // The marks to redact (M14) are drawn over a white page and over a dark one (page.darkBackground), the same in every
+        // theme. Their edge and hatch reach 3:1 against both pages and against their own tint on both (non-text contrast), and
+        // the page text keeps 4.5:1 under the tint: black on the light page, page.darkForeground on the dark one.
+        var variant = Variant(theme);
+        var edge = Token("Redact.Edge", variant);
+        var fill = Token("Redact.Fill", variant);
+        Assert.Equal(Color.FromRgb(0xE5, 0x48, 0x4D), edge);
+        Assert.Equal((byte)0x26, fill.A);
+        Assert.Equal((edge.R, edge.G, edge.B), (fill.R, fill.G, fill.B));
+
+        var dark = Token("Page.DarkBackground", variant);
+        var darkText = Token("Page.DarkForeground", variant);
+        foreach (var (name, ground, text) in new[] { ("light page", Colors.White, Colors.Black), ("dark page", dark, darkText) })
+        {
+            var tinted = ColorBlend.Over(fill, ground);
+            Assert.True(Wcag.Contrast(edge, ground) >= 3, $"{theme}: the edge on the {name} is {Wcag.Contrast(edge, ground):F2}:1, expected at least 3:1");
+            Assert.True(Wcag.Contrast(edge, tinted) >= 3, $"{theme}: the edge on its tint on the {name} is {Wcag.Contrast(edge, tinted):F2}:1, expected at least 3:1");
+            Assert.True(Wcag.Contrast(text, tinted) >= 4.5, $"{theme}: the page text under the tint on the {name} is {Wcag.Contrast(text, tinted):F2}:1, expected at least 4.5:1");
+        }
     }
 
     [AvaloniaFact]

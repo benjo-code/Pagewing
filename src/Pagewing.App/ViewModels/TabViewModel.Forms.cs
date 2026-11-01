@@ -192,7 +192,7 @@ public sealed partial class TabViewModel
     /// the mode not on, and the offer neither closed (<see cref="CloseFillOfferCommand"/>) nor used before for this document
     /// in this tab (once the mode was on, it is not offered again).
     /// </summary>
-    public bool OffersFill => CanReadForm && !_isFilling && !_isOrganizing && !_fillOfferClosed && HasFormFields;
+    public bool OffersFill => CanReadForm && !_isFilling && !_isOrganizing && !_isRedacting && !_fillOfferClosed && HasFormFields;
 
     /// <summary>
     /// Gets the reason of the last value that was refused and that no field shows (<see cref="FormValueRefused"/>), for the
@@ -715,8 +715,8 @@ public sealed partial class TabViewModel
         return false;
     }
 
-    /// <summary>Whether the mode can start now: a form, shown sharp, the mode not on.</summary>
-    private bool CanBeginFill() => !_isFilling && CanReadForm && !_isOrganizing;
+    /// <summary>Whether the mode can start now: a form, shown sharp, the mode not on, and neither "Organize pages" nor "Redact" on.</summary>
+    private bool CanBeginFill() => !_isFilling && CanReadForm && !_isOrganizing && !_isRedacting;
 
     /// <summary>
     /// The checks of a write and its start. <see langword="null"/>: refused at once (the reason is in the draft, or raised);

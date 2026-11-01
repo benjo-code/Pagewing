@@ -1,0 +1,73 @@
+<views:SaveCard xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:vm="using:Pagewing.App.ViewModels"
+                xmlns:views="using:Pagewing.App.Views"
+                xmlns:ctl="using:Pagewing.App.Controls"
+                x:Class="Pagewing.App.Views.RedactReportCard"
+                x:DataType="vm:PendingSave"
+                AutomationProperties.Name="{Binding Title}"
+                AutomationProperties.HelpText="{Binding Message}">
+  <!--
+    The report after a redaction that was written and passed its check (milestone 14, PendingSaveKind.RedactionReport; design
+    system 7.14): the check symbol in accent.default, the title, one part for what was removed, what was cleaned (only what the
+    read-back of the written file confirmed), what changes, what is NOT cleaned, what the check did, and what it did NOT check.
+    Nothing in it promises more than the check did; the lines of the check itself are shown as the engine gives them (English)
+    and named so. "Close" alone, with the focus and Enter; Esc closes it too. A long report scrolls inside the card. Card and
+    button as SaveCard; made with the first such report (MainWindow.SaveCards.cs).
+  -->
+  <Border Name="RedactReportBox" MaxWidth="560" Margin="24" Padding="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Spacing="12">
+      <ctl:StrokeIcon Name="RedactReportIcon" Width="24" Height="24" HorizontalAlignment="Left"
+                      Data="{StaticResource Pw.Icon.Check}"
+                      Brush="{DynamicResource Pw.Brush.Accent.Default}" />
+      <StackPanel Spacing="4">
+        <TextBlock Name="RedactReportTitle" Classes="subtitle" TextWrapping="Wrap" Text="{Binding Title}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <TextBlock Name="RedactReportMessage" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding Message}" />
+      </StackPanel>
+
+      <ScrollViewer Name="RedactReportScroller" MaxHeight="420"
+                    HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl Name="RedactReportSections" ItemsSource="{Binding Redaction.Sections}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="10" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:RedactionSection">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="body" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding Heading}" />
+                <ItemsControl ItemsSource="{Binding Lines}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Spacing="4" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <TextBlock Classes="body" Text="•" Foreground="{DynamicResource Pw.Brush.Text.Secondary}" />
+                        <TextBlock Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <WrapPanel Name="RedactReportButtons" Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Name="RedactCloseButton" Margin="8,0,0,8" />
+      </WrapPanel>
+    </StackPanel>
+  </Border>
+</views:SaveCard>

@@ -109,10 +109,12 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets why the mode cannot be entered, or <see langword="null"/> (also while it is on): no sharp page shown yet, or more
-    /// pages than a plan can hold (<see cref="PageEditLimits.MaxSlots"/>).
+    /// pages than a plan can hold (<see cref="PageEditLimits.MaxSlots"/>), or the mode "Redact" is on
+    /// (<see cref="RedactionLockReason"/>).
     /// </summary>
     public string? OrganizeUnavailableReason =>
         _isOrganizing ? null
+        : _isRedacting ? RedactionLockReason
         : _disposed || !IsReady || _document is null || !_hasShownSharpPage ? Strings.PageOrganizeNotReady
         : OrganizeUnavailableReasonFor(PageCount);
 
@@ -127,6 +129,7 @@ public sealed partial class TabViewModel
     /// </summary>
     public string? PageOutputBlockedReason =>
         HasPendingPageEdits ? Strings.PageOutputBlockedPlan
+        : HasPendingRedactions ? Strings.PageOutputBlockedMarks
         : AsksAboutDocumentChanges ? Strings.PageOutputBlockedUnsaved
         : null;
 

@@ -72,6 +72,44 @@ internal static unsafe class PdfiumPageText
     }
 
     /// <summary>
+    /// For each range of characters (first and last index, inclusive) says whether it shows nothing: it has at least one character
+    /// that is not generated, and the text object of every such character is drawn in the render mode "invisible" (3), the mode of
+    /// the text layer of an OCR scan. A range partly beyond the characters of the page is cut to them. Only the characters of the
+    /// ranges are looked at.
+    /// </summary>
+    public static bool[] ReadInvisible(PdfiumPage page, PdfiumTextPage text, IReadOnlyList<(int First, int Last)> ranges)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(ranges);
+        _ = page.Access();
+        var textPage = text.Access();
+        var total = Math.Max(0, Fpdf.FPDFText_CountChars(textPage));
+        var result = new bool[ranges.Count];
+        for (var r = 0; r < result.Length; r++)
+        {
+            var (first, last) = ranges[r];
+            var seen = false;
+            var invisible = true;
+            for (var i = Math.Max(0, first); i <= Math.Min(last, total - 1) && invisible; i++)
+            {
+                if (Fpdf.FPDFText_IsGenerated(textPage, i) == 1)
+                {
+                    continue;
+                }
+
+                seen = true;
+                var textObject = Fpdf.FPDFText_GetTextObject(textPage, i);
+                invisible = textObject != 0 && Fpdf.FPDFTextObj_GetTextRenderMode(textObject) == FpdfConstants.TextRenderModeInvisible;
+            }
+
+            result[r] = seen && invisible;
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Reads the links of the page: link annotations first, in page order, then the web addresses PDFium detects
     /// in the text. Areas of a web address that overlap a link annotation are dropped (the annotation wins); a web
     /// address without areas left is dropped.

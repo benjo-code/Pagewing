@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Resources;
+using System.Text;
 
 namespace Pagewing.App.Resources;
 
@@ -169,6 +170,7 @@ public static class Strings
     public static string KeyLeft => Get("KeyLeft");
     public static string KeyRight => Get("KeyRight");
     public static string KeyComma => Get("KeyComma");
+    public static string KeyEnter => Get("KeyEnter");
     public static string HelpTitle => Get("HelpTitle");
     public static string HelpFilter => Get("HelpFilter");
     public static string HelpClose => Get("HelpClose");
@@ -545,6 +547,7 @@ public static class Strings
     public static string PageOrganizeActive => Get("PageOrganizeActive");
     public static string PageEditsPending => Get("PageEditsPending");
     public static string PageOutputBlockedPlan => Get("PageOutputBlockedPlan");
+    public static string PageOutputBlockedMarks => Get("PageOutputBlockedMarks");
     public static string PageOutputBlockedUnsaved => Get("PageOutputBlockedUnsaved");
     public static string PageEditsLastPage => Get("PageEditsLastPage");
     public static string PageEditsLimit => Get("PageEditsLimit");
@@ -744,6 +747,327 @@ public static class Strings
         Pagewing.Core.Annotations.StrokeWidth.Thick => TextBoxSizeLarge,
         _ => throw new ArgumentOutOfRangeException(nameof(step)),
     };
+
+    public static string CommandRedactMode => Get("CommandRedactMode");
+    public static string CommandRedactDeleteMarks => Get("CommandRedactDeleteMarks");
+    public static string CommandRedactDiscard => Get("CommandRedactDiscard");
+    public static string RedactNotReady => Get("RedactNotReady");
+    public static string RedactEncrypted => Get("RedactEncrypted");
+    public static string RedactActive => Get("RedactActive");
+    public static string RedactMarksPending => Get("RedactMarksPending");
+    public static string RedactMarkRefused => Get("RedactMarkRefused");
+    public static string RedactMarksLimit => Get("RedactMarksLimit");
+    public static string DiscardRedactionsTitle => Get("DiscardRedactionsTitle");
+    public static string DiscardRedactionsText => Get("DiscardRedactionsText");
+    public static string SaveChangesWithMarksText => Get("SaveChangesWithMarksText");
+    public static string TabRedactionSuffix => Get("TabRedactionSuffix");
+    public static string CommandRedactMarkSelection => Get("CommandRedactMarkSelection");
+    public static string RedactToolbarName => Get("RedactToolbarName");
+    public static string RedactToolArea => Get("RedactToolArea");
+    public static string RedactToolAreaTip => Get("RedactToolAreaTip");
+    public static string RedactToolText => Get("RedactToolText");
+    public static string RedactToolTextTip => Get("RedactToolTextTip");
+    public static string RedactMarkSelection => Get("RedactMarkSelection");
+    public static string RedactFill => Get("RedactFill");
+    public static string RedactFillTip => Get("RedactFillTip");
+    public static string RedactFillBlack => Get("RedactFillBlack");
+    public static string RedactFillWhite => Get("RedactFillWhite");
+    public static string RedactDiscardButton => Get("RedactDiscardButton");
+    public static string RedactDone => Get("RedactDone");
+    public static string RedactDoneTooltip => Get("RedactDoneTooltip");
+    public static string RedactPlanHint => Get("RedactPlanHint");
+    public static string RedactMarkKindName => Get("RedactMarkKindName");
+    public static string RedactSelectionNotMarkable => Get("RedactSelectionNotMarkable");
+    public static string RedactCheckFailed => Get("RedactCheckFailed");
+
+    public static string RedactCountNone => Get("RedactCountNone");
+    public static string RedactCountOneMark => Get("RedactCountOneMark");
+    public static string RedactCountOnePage => Get("RedactCountOnePage");
+    public static string RedactCountPages => Get("RedactCountPages");
+    public static string RedactMarkNameOf => Get("RedactMarkNameOf");
+
+    /// <summary>Gets the counter of the marks, for example "4 marks on 2 pages" (the plural forms of both languages).</summary>
+    /// <param name="marks">The number of marks.</param>
+    /// <param name="pages">The number of pages that have at least one.</param>
+    public static string RedactCount(int marks, int pages) => marks <= 0
+        ? RedactCountNone
+        : marks == 1
+            ? RedactCountOneMark
+            : string.Format(Culture, CompositeFormat.Parse(pages == 1 ? RedactCountOnePage : RedactCountPages), marks, pages);
+
+    /// <summary>Gets the name of a mark for screen readers: its kind and page, never its text ("Redaction mark, page 3").</summary>
+    /// <param name="page">The 1-based page.</param>
+    public static string RedactMarkName(int page) => string.Format(Culture, CompositeFormat.Parse(RedactMarkNameOf), page);
+
+    // The panel "Redact" (milestone 14): the marks of the plan and "find and redact".
+    public static string RedactPanelTitle => Get("RedactPanelTitle");
+    public static string CommandRedactFind => Get("CommandRedactFind");
+    public static string RedactFindTip => Get("RedactFindTip");
+    public static string RedactMarksHeader => Get("RedactMarksHeader");
+    public static string RedactQueryPlaceholder => Get("RedactQueryPlaceholder");
+    public static string RedactMatchCase => Get("RedactMatchCase");
+    public static string RedactWholeWord => Get("RedactWholeWord");
+    public static string RedactFindAction => Get("RedactFindAction");
+    public static string RedactStopAction => Get("RedactStopAction");
+    public static string RedactSearchingOf => Get("RedactSearchingOf");
+    public static string RedactNoHits => Get("RedactNoHits");
+    public static string RedactNoHitsSearched => Get("RedactNoHitsSearched");
+    public static string RedactHitsOne => Get("RedactHitsOne");
+    public static string RedactHitsMany => Get("RedactHitsMany");
+    public static string RedactStopped => Get("RedactStopped");
+    public static string RedactFailed => Get("RedactFailed");
+    public static string RedactIncompletePages => Get("RedactIncompletePages");
+    public static string RedactMorePages => Get("RedactMorePages");
+    public static string RedactLimitReached => Get("RedactLimitReached");
+    public static string RedactAcknowledge => Get("RedactAcknowledge");
+    public static string RedactNotSearchedToggle => Get("RedactNotSearchedToggle");
+    public static string RedactNotSearchedIntro => Get("RedactNotSearchedIntro");
+    public static string RedactNotSearchedReplies => Get("RedactNotSearchedReplies");
+    public static string RedactNotSearchedAuthor => Get("RedactNotSearchedAuthor");
+    public static string RedactNotSearchedTooltips => Get("RedactNotSearchedTooltips");
+    public static string RedactNotSearchedRichText => Get("RedactNotSearchedRichText");
+    public static string RedactNotSearchedAppearance => Get("RedactNotSearchedAppearance");
+    public static string RedactNotSearchedCovered => Get("RedactNotSearchedCovered");
+    public static string RedactNotSearchedNoForm => Get("RedactNotSearchedNoForm");
+    public static string RedactMarkAll => Get("RedactMarkAll");
+    public static string RedactMarkAllTip => Get("RedactMarkAllTip");
+    public static string RedactMarkChecked => Get("RedactMarkChecked");
+    public static string RedactCheckAll => Get("RedactCheckAll");
+    public static string RedactUncheckAll => Get("RedactUncheckAll");
+    public static string RedactHitSourceText => Get("RedactHitSourceText");
+    public static string RedactHitSourceComment => Get("RedactHitSourceComment");
+    public static string RedactHitSourceField => Get("RedactHitSourceField");
+    public static string RedactHitInvisible => Get("RedactHitInvisible");
+    public static string RedactHitShort => Get("RedactHitShort");
+    public static string RedactHitNameOf => Get("RedactHitNameOf");
+    public static string RedactHitChecked => Get("RedactHitChecked");
+    public static string RedactHitUnchecked => Get("RedactHitUnchecked");
+    public static string RedactHitNotMarkable => Get("RedactHitNotMarkable");
+    public static string RedactReasonNoArea => Get("RedactReasonNoArea");
+    public static string RedactReasonLossy => Get("RedactReasonLossy");
+    public static string RedactReasonTooManyLines => Get("RedactReasonTooManyLines");
+    public static string RedactReasonBlank => Get("RedactReasonBlank");
+    public static string RedactReasonTooLong => Get("RedactReasonTooLong");
+    public static string RedactMarkedOf => Get("RedactMarkedOf");
+    public static string RedactSkippedOf => Get("RedactSkippedOf");
+    public static string RedactKindArea => Get("RedactKindArea");
+    public static string RedactKindText => Get("RedactKindText");
+    public static string RedactKindHit => Get("RedactKindHit");
+    public static string RedactPageHeader => Get("RedactPageHeader");
+    public static string RedactMarkRowNameOf => Get("RedactMarkRowNameOf");
+    public static string RedactMarksEmpty => Get("RedactMarksEmpty");
+    public static string RedactHitListName => Get("RedactHitListName");
+    public static string RedactHitCheckName => Get("RedactHitCheckName");
+    public static string RedactRowSelected => Get("RedactRowSelected");
+
+    /// <summary>
+    /// Gets the places the search of the mode "Redact" never looks at, one line each and in the same order as
+    /// <see cref="Pagewing.Core.Redaction.RedactionSearch.NotSearched"/> (a test keeps the two lists of equal length).
+    /// </summary>
+    public static IReadOnlyList<string> RedactNotSearchedLines =>
+    [
+        RedactNotSearchedReplies,
+        RedactNotSearchedAuthor,
+        RedactNotSearchedTooltips,
+        RedactNotSearchedRichText,
+        RedactNotSearchedAppearance,
+        RedactNotSearchedCovered,
+        RedactNotSearchedNoForm,
+    ];
+
+    public static string RedactSearching(int hits) => string.Format(Culture, CompositeFormat.Parse(RedactSearchingOf), hits);
+
+    public static string RedactHitsCount(int hits) => hits == 1 ? RedactHitsOne : string.Format(Culture, CompositeFormat.Parse(RedactHitsMany), hits);
+
+    public static string RedactIncompletePagesOf(string pages) => string.Format(Culture, CompositeFormat.Parse(RedactIncompletePages), pages);
+
+    public static string RedactMorePagesOf(string pages, int more) => string.Format(Culture, CompositeFormat.Parse(RedactMorePages), pages, more);
+
+    public static string RedactLimitReachedOf(int hits) => string.Format(Culture, CompositeFormat.Parse(RedactLimitReached), hits.ToString("N0", Culture));
+
+    public static string RedactMarkedCount(int places) => string.Format(Culture, CompositeFormat.Parse(RedactMarkedOf), places);
+
+    public static string RedactSkippedCount(int hits) => string.Format(Culture, CompositeFormat.Parse(RedactSkippedOf), hits);
+
+    public static string RedactHitNotMarkableFor(string reason) => string.Format(Culture, CompositeFormat.Parse(RedactHitNotMarkable), reason);
+
+    public static string RedactHitNameFor(string page, string source, string text, string state) =>
+        string.Format(Culture, CompositeFormat.Parse(RedactHitNameOf), page, source, text, state);
+
+    public static string RedactMarkRowNameFor(string kind, string page) => string.Format(Culture, CompositeFormat.Parse(RedactMarkRowNameOf), kind, page);
+
+    /// <summary>Gets the header of a page in the list of marks, for example "Page 3".</summary>
+    /// <param name="page">The 1-based page.</param>
+    public static string RedactPageHeaderOf(int page) => string.Format(Culture, CompositeFormat.Parse(RedactPageHeader), page);
+
+    // The apply flow of the mode "Redact" (milestone 14, task 13): preview, cards, report.
+    public static string CommandRedactApply => Get("CommandRedactApply");
+    public static string CommandRedactPreview => Get("CommandRedactPreview");
+    public static string RedactApplyButton => Get("RedactApplyButton");
+    public static string RedactApplyTip => Get("RedactApplyTip");
+    public static string RedactPreviewButton => Get("RedactPreviewButton");
+    public static string RedactPreviewTip => Get("RedactPreviewTip");
+    public static string RedactPreviewBarName => Get("RedactPreviewBarName");
+    public static string RedactPreviewWorking => Get("RedactPreviewWorking");
+    public static string RedactPreviewFailed => Get("RedactPreviewFailed");
+    public static string RedactPreviewRefused => Get("RedactPreviewRefused");
+    public static string RedactPreviewEmpty => Get("RedactPreviewEmpty");
+    public static string RedactPreviewNote => Get("RedactPreviewNote");
+    public static string RedactSumFormat => Get("RedactSumFormat");
+    public static string RedactSumNothing => Get("RedactSumNothing");
+    public static string RedactSumCharOne => Get("RedactSumCharOne");
+    public static string RedactSumChars => Get("RedactSumChars");
+    public static string RedactSumImageOne => Get("RedactSumImageOne");
+    public static string RedactSumImages => Get("RedactSumImages");
+    public static string RedactSumAnnotationOne => Get("RedactSumAnnotationOne");
+    public static string RedactSumAnnotations => Get("RedactSumAnnotations");
+    public static string RedactSumPathOne => Get("RedactSumPathOne");
+    public static string RedactSumPaths => Get("RedactSumPaths");
+    public static string RedactSumFormObjectOne => Get("RedactSumFormObjectOne");
+    public static string RedactSumFormObjects => Get("RedactSumFormObjects");
+    public static string RedactSumTextObjectWholeOne => Get("RedactSumTextObjectWholeOne");
+    public static string RedactSumTextObjectsWhole => Get("RedactSumTextObjectsWhole");
+    public static string RedactSecFallbacks => Get("RedactSecFallbacks");
+    public static string RedactSecCleaned => Get("RedactSecCleaned");
+    public static string RedactSecCleanedDone => Get("RedactSecCleanedDone");
+    public static string RedactSecNotCleaned => Get("RedactSecNotCleaned");
+    public static string RedactSecAfter => Get("RedactSecAfter");
+    public static string RedactSecRemoved => Get("RedactSecRemoved");
+    public static string RedactSecChecked => Get("RedactSecChecked");
+    public static string RedactSecNotChecked => Get("RedactSecNotChecked");
+    public static string RedactSecNotCheckedNote => Get("RedactSecNotCheckedNote");
+    public static string RedactSecFindings => Get("RedactSecFindings");
+    public static string RedactCheckList => Get("RedactCheckList");
+    public static string RedactCheckNothingWritten => Get("RedactCheckNothingWritten");
+    public static string RedactFallbackText => Get("RedactFallbackText");
+    public static string RedactFallbackImage => Get("RedactFallbackImage");
+    public static string RedactFallbackPath => Get("RedactFallbackPath");
+    public static string RedactFallbackForm => Get("RedactFallbackForm");
+    public static string RedactNothingUnderMarks => Get("RedactNothingUnderMarks");
+    public static string RedactPageRemoved => Get("RedactPageRemoved");
+    public static string RedactRemovedAnnotationsNote => Get("RedactRemovedAnnotationsNote");
+    public static string RedactFieldAuthor => Get("RedactFieldAuthor");
+    public static string RedactFieldTitle => Get("RedactFieldTitle");
+    public static string RedactFieldSubject => Get("RedactFieldSubject");
+    public static string RedactFieldKeywords => Get("RedactFieldKeywords");
+    public static string RedactFieldCreator => Get("RedactFieldCreator");
+    public static string RedactFieldProducer => Get("RedactFieldProducer");
+    public static string RedactCleanField => Get("RedactCleanField");
+    public static string RedactCleanXmp => Get("RedactCleanXmp");
+    public static string RedactCleanBookmarks => Get("RedactCleanBookmarks");
+    public static string RedactCleanAttachments => Get("RedactCleanAttachments");
+    public static string RedactCleanScripts => Get("RedactCleanScripts");
+    public static string RedactCleanLabels => Get("RedactCleanLabels");
+    public static string RedactCleanNone => Get("RedactCleanNone");
+    public static string RedactCleanNoneIncomplete => Get("RedactCleanNoneIncomplete");
+    public static string RedactCleanIncomplete => Get("RedactCleanIncomplete");
+    public static string RedactCleanSeeBelow => Get("RedactCleanSeeBelow");
+    public static string RedactLossLinksOne => Get("RedactLossLinksOne");
+    public static string RedactLossLinks => Get("RedactLossLinks");
+    public static string RedactLossFieldsOne => Get("RedactLossFieldsOne");
+    public static string RedactLossFields => Get("RedactLossFields");
+    public static string RedactLossRgbOne => Get("RedactLossRgbOne");
+    public static string RedactLossRgb => Get("RedactLossRgb");
+    public static string RedactLossSignature => Get("RedactLossSignature");
+    public static string RedactNotCleanedObjects => Get("RedactNotCleanedObjects");
+    public static string RedactNotCleanedActions => Get("RedactNotCleanedActions");
+    public static string RedactNotCleanedFieldValues => Get("RedactNotCleanedFieldValues");
+    public static string RedactNotCleanedSignature => Get("RedactNotCleanedSignature");
+    public static string RedactNotCleanedAnnotations => Get("RedactNotCleanedAnnotations");
+    public static string RedactNotCleanedAnnotationFilesFormat => Get("RedactNotCleanedAnnotationFilesFormat");
+
+    public static string RedactNotCleanedAnnotationFiles(int count) => string.Format(Culture, CompositeFormat.Parse(RedactNotCleanedAnnotationFilesFormat), count);
+
+    public static string RedactNotCheckedNoTermOne => Get("RedactNotCheckedNoTermOne");
+    public static string RedactNotCheckedNoTerm => Get("RedactNotCheckedNoTerm");
+    public static string RedactCheckedText => Get("RedactCheckedText");
+    public static string RedactCheckedBytes => Get("RedactCheckedBytes");
+    public static string RedactCheckedAreas => Get("RedactCheckedAreas");
+    public static string RedactCheckedPages => Get("RedactCheckedPages");
+    public static string RedactCheckedKeys => Get("RedactCheckedKeys");
+    public static string RedactCheckedCleanup => Get("RedactCheckedCleanup");
+    public static string RedactApplyTitle => Get("RedactApplyTitle");
+    public static string RedactIrreversible => Get("RedactIrreversible");
+    public static string RedactRefusedTitle => Get("RedactRefusedTitle");
+    public static string RedactRefusedNothing => Get("RedactRefusedNothing");
+    public static string RedactFailedTitle => Get("RedactFailedTitle");
+    public static string RedactFailedNothing => Get("RedactFailedNothing");
+    public static string RedactReportTitle => Get("RedactReportTitle");
+    public static string RedactReportIntro => Get("RedactReportIntro");
+    public static string RedactViewFailedTitle => Get("RedactViewFailedTitle");
+    public static string SaveChoiceClose => Get("SaveChoiceClose");
+    public static string RedactReportName => Get("RedactReportName");
+    public static string RedactRefusalHeadingEncrypted => Get("RedactRefusalHeadingEncrypted");
+    public static string RedactRefusalHeadingKeys => Get("RedactRefusalHeadingKeys");
+    public static string RedactRefusalHeadingKeysUnverified => Get("RedactRefusalHeadingKeysUnverified");
+    public static string RedactRefusalHeadingPage => Get("RedactRefusalHeadingPage");
+    public static string RedactRefusalEncrypted => Get("RedactRefusalEncrypted");
+    public static string RedactRefusalKeysUnverified => Get("RedactRefusalKeysUnverified");
+    public static string RedactRefusalKeys => Get("RedactRefusalKeys");
+    public static string RedactRefusalKeyNames => Get("RedactRefusalKeyNames");
+    public static string RedactRefusalPage => Get("RedactRefusalPage");
+    public static string RedactRefusalPageReason => Get("RedactRefusalPageReason");
+    public static string RedactRefusalPageHint => Get("RedactRefusalPageHint");
+    public static string RedactRefusalOther => Get("RedactRefusalOther");
+    public static string RedactPageOne => Get("RedactPageOne");
+    public static string RedactPageMany => Get("RedactPageMany");
+    public static string RedactPageFile => Get("RedactPageFile");
+    public static string RedactFailureNotCompleted => Get("RedactFailureNotCompleted");
+    public static string RedactFailureUnremovable => Get("RedactFailureUnremovable");
+    public static string RedactFailureText => Get("RedactFailureText");
+    public static string RedactFailureChar => Get("RedactFailureChar");
+    public static string RedactFailureImage => Get("RedactFailureImage");
+    public static string RedactFailureUnreadable => Get("RedactFailureUnreadable");
+    public static string RedactFailureKeys => Get("RedactFailureKeys");
+    public static string RedactFailurePage => Get("RedactFailurePage");
+    public static string RedactFailureUnverifiable => Get("RedactFailureUnverifiable");
+    public static string RedactFailureCleanup => Get("RedactFailureCleanup");
+    public static string RedactErrorNotPrepared => Get("RedactErrorNotPrepared");
+    public static string RedactErrorDraft => Get("RedactErrorDraft");
+    public static string RedactErrorFileChanged => Get("RedactErrorFileChanged");
+    public static string RedactSaveFirstText => Get("RedactSaveFirstText");
+    public static string RedactApplyBlocked => Get("RedactApplyBlocked");
+
+    public static string RedactNcBlankOne => Get("RedactNcBlankOne");
+    public static string RedactNcBlank => Get("RedactNcBlank");
+    public static string RedactNcUnreadableOne => Get("RedactNcUnreadableOne");
+    public static string RedactNcUnreadable => Get("RedactNcUnreadable");
+    public static string RedactNcTruncatedOne => Get("RedactNcTruncatedOne");
+    public static string RedactNcTruncated => Get("RedactNcTruncated");
+    public static string RedactNcFurther => Get("RedactNcFurther");
+    public static string RedactNcRawShort => Get("RedactNcRawShort");
+    public static string RedactNcRawNothing => Get("RedactNcRawNothing");
+    public static string RedactNcRawStillOccur => Get("RedactNcRawStillOccur");
+    public static string RedactNcWhereMany => Get("RedactNcWhereMany");
+    public static string RedactNcWhereOne => Get("RedactNcWhereOne");
+    public static string RedactNcWhereFile => Get("RedactNcWhereFile");
+    public static string RedactNcRawFilter => Get("RedactNcRawFilter");
+    public static string RedactNcRawImageStreams => Get("RedactNcRawImageStreams");
+    public static string RedactNcRawUnreadable => Get("RedactNcRawUnreadable");
+    public static string RedactNcRawTooLarge => Get("RedactNcRawTooLarge");
+    public static string RedactNcRawTotal => Get("RedactNcRawTotal");
+    public static string RedactNcRawPredictor => Get("RedactNcRawPredictor");
+    public static string RedactNcRawEncrypted => Get("RedactNcRawEncrypted");
+    public static string RedactNcRawFont => Get("RedactNcRawFont");
+    public static string RedactNcRawEncodings => Get("RedactNcRawEncodings");
+    public static string RedactNcRawSplit => Get("RedactNcRawSplit");
+    public static string RedactNcRawImageAttach => Get("RedactNcRawImageAttach");
+    public static string RedactNcPixelsBeyond => Get("RedactNcPixelsBeyond");
+    public static string RedactNcPixelsOnly => Get("RedactNcPixelsOnly");
+    public static string RedactNcOtherViewer => Get("RedactNcOtherViewer");
+    public static string RedactNcApplyRender => Get("RedactNcApplyRender");
+    public static string RedactNcApplyKeys => Get("RedactNcApplyKeys");
+    public static string RedactNcApplyXmp => Get("RedactNcApplyXmp");
+    public static string RedactCauseChangesOutsideAreas => Get("RedactCauseChangesOutsideAreas");
+    public static string RedactCauseSizeChanged => Get("RedactCauseSizeChanged");
+    public static string RedactCauseRenderFailed => Get("RedactCauseRenderFailed");
+    public static string RedactCauseReopenFailed => Get("RedactCauseReopenFailed");
+    public static string RedactCauseTooLarge => Get("RedactCauseTooLarge");
+    public static string RedactCauseUnreadable => Get("RedactCauseUnreadable");
+    public static string RedactCauseRewriteUnreliable => Get("RedactCauseRewriteUnreliable");
+    public static string RedactCauseBigShape => Get("RedactCauseBigShape");
+    public static string RedactCauseAnnotations => Get("RedactCauseAnnotations");
+    public static string RedactRefusalPageUnknown => Get("RedactRefusalPageUnknown");
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

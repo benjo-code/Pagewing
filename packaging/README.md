@@ -584,3 +584,67 @@ Erwartet: überall „No syntax or stream encoding errors found“ (Warnungen zu
 ### Ergebnis festhalten
 
 Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 13 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 13“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung (welcher Punkt, was zu sehen war); Punkt 13 immer mit der ausdrücklichen Antwort „Felder eingefügter Seiten ausfüllbar: ja/nein/teilweise (Programm, Version)“. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
+
+## Schwärzen prüfen (M14)
+
+Handprüfung des Projektinhabers zu Milestone 14 (Schwärzen in der App und `pagewing redact`). Alles Rechnerische, die Prüfung der Ergebnisdatei (Text, Rohbytes, Pixel, Seitenschlüssel, Bereinigtes, Seitenbilder außerhalb der Markierungen), die Ablehnungen und die Texte beider Sprachen sind automatisch getestet (`RedactTextTests`, `RedactImagePathFormTests`, `RedactionVerifierTests`, `PageKeyScannerTests`, `CleanRebuildTests`, `RedactionApplierTests`, `RedactionSearchTests`, `RedactCommandTests`, in der App `RedactModelTests`, `RedactMarkingTests`, `RedactPanelTests`, `RedactApplyTests`, `RedactionStartPathTests`). Was ein Test nicht sagen kann: ob **andere Programme** die Datei genauso lesen wie Pagewing und wie sich die Oberfläche am echten Bildschirm anfühlt. Pagewing verspricht nie, dass ein anderes Programm die Datei genauso liest; diese Liste soll es belegen.
+
+### Muster erzeugen
+
+Aus den Dateien in `testdata/pdfs` mit der veröffentlichten CLI (oder `dotnet run --project src/Pagewing.Cli -- …`); die App-Fassungen entstehen von Hand (Datei öffnen, Strg+Umschalt+P, markieren, „Anwenden …“ → „Speichern unter …“ in denselben Ordner).
+
+```powershell
+$T = "$env:TEMP\pagewing-redact"; New-Item -ItemType Directory -Force $T | Out-Null
+$P = "testdata\pdfs"
+# Begriff an allen Stellen (sichtbarer Text, Form-XObject auf beiden Seiten, unsichtbarer Text über dem Scan, Notiz und Antwort, Formularfeld, Lesezeichen, Info, XMP, Anhang)
+pagewing redact $P\redact-everywhere-nopattern.pdf --output $T\everywhere.pdf --text "Zephyrstraße 17" --rect 1:248,40,42,22 --rect 1:20,275,180,25
+pagewing redact $P\redact-attachments.pdf --output $T\attachments.pdf --rect 1:15,62,265,28
+pagewing redact $P\redact-image.pdf --output $T\image.pdf --rect 1:10,26,128,128
+pagewing redact $P\redact-rotated.pdf --output $T\rotated.pdf --text "Zephyrstraße 17"
+pagewing redact $P\redact-fonts.pdf --output $T\fonts.pdf --text "Zephyrstraße 17"
+pagewing redact $P\redact-revisions.pdf --output $T\revisions.pdf --rect 1:15,60,200,30
+pagewing redact $P\text-dense.pdf --output $T\dense.pdf --text Needle
+pagewing redact $P\signed-docmdp-2.pdf --output $T\signed.pdf --rect 1:20,20,60,20
+```
+
+Aus der App (Dateinamen frei): `redact-everywhere-nopattern.pdf` mit einer Suche nach `Zephyrstraße 17` und „Alle markieren“, dazu je ein Bereich über der Notiz, ihrer Antwort und dem Formularfeld (`app-everywhere.pdf`); `text-rich.pdf` mit einer Textauswahl über zwei Zeilen und über den Trennstrich (`app-text.pdf`); `redact-image.pdf` mit einem Bereich über dem JPEG-Bild (`app-image.pdf`). Dazu die Ablehnungen, jede erwartet mit Karte (Grund und Seiten) und nichts Geschriebenem: `encrypted_hello_world_r6.pdf` (verschlüsselt), `redact-everywhere.pdf` mit einem Bereich über dem Tiling-Muster (Seite lässt sich nicht schwärzen oder die Prüfung findet den Begriff im Musterstrom), eine Datei mit `/Thumb` an einer Seite (aus `RedactionApplierTests`, `ThumbFile`, nicht eingecheckt: eine PDF mit `/Thumb` auf Seite 2 selbst bauen).
+
+### Prüfliste
+
+**Ergebnisdateien in anderen Programmen** (Pflicht unter Windows: **Chrome** und **Adobe Acrobat Reader**; optional Edge, Firefox, Okular, Evince). Jede Datei öffnen; nichts darf eine Meldung „beschädigt“ oder „repariert“ auslösen, und Acrobat fragt beim Schließen nichts:
+
+1. **Aussehen wie die Vorschau:** `everywhere.pdf`, `app-everywhere.pdf`, `image.pdf`, `rotated.pdf`, `fonts.pdf`, `dense.pdf`: die Flächen liegen genau dort, wo markiert wurde (bei `rotated.pdf` nicht gespiegelt), der Rest der Seite sieht aus wie im Original (Schriften, Abstände, Bilder, Hintergründe; Seite mit Muster oder Schattierung ist abgelehnt, nicht ungenau).
+2. **Kein Text unter den Flächen:** in jedem Programm **Alles auswählen und kopieren** (Strg+A, Strg+C) und in einen Editor einfügen; mit **Suchen** (Strg+F) nach dem geschwärzten Begriff, auch in Teilen (`Zephyr`, `17`). Erwartet: kein Treffer, nichts Kopierbares unter den Flächen; das Nachbarwort bleibt kopierbar.
+3. **Kein Bild unter den Flächen:** `image.pdf` und `app-image.pdf` in Acrobat: das Bild herausziehen oder mit dem Objekt-Werkzeug anklicken zeigt nur die überschriebenen Pixel; kein Pixel der Fläche ist durch Vergrößern wiederherstellbar.
+4. **Bereinigt:** Eigenschaften (Titel, Autor, Betreff, Stichwörter leer), Seitenbereich Lesezeichen leer, Anhänge des Dokuments leer (die Dateien von Büroklammer-Annotationen bleiben und stehen im Bericht unter „Nicht bereinigt“: `redact-attachments.pdf` zeigt `catalog.txt` nicht mehr, `paperclip.txt` noch), Dokument-JavaScript keins (Acrobat: Eigenschaften, Anhänge, Lesezeichen, Seitenbeschriftungen unverändert dezimal ab 1); Strings-Suche in den Rohbytes (`strings everywhere.pdf | grep -i zephyr`, oder PowerShell `Select-String`) findet nichts, auch nicht in älteren Revisionen: `revisions.pdf` hat genau ein `%%EOF` und kein `/Prev`.
+5. **Außerhalb unverändert:** `dense.pdf` und `text-rich`-Ergebnis seitenweise neben dem Original legen (Seitenbild bei 100 %); außerhalb der Flächen gleich, Text bleibt auswählbar.
+6. **Formulare:** In `app-everywhere.pdf` zeigen Acrobat und Chrome die Felder als Widgets; sie sind laut Karte nicht mehr zuverlässig ausfüllbar (erwartet, kein Fehler). Die ausdrückliche Antwort festhalten: „Felder ausfüllbar: ja/nein/teilweise (Programm, Version)“.
+7. **Signatur:** `signed.pdf` (Strukturattrappe, DocMDP-Stufe 2, keine gültige Signatur): Pagewing hat vor dem Schreiben gewarnt („wird als ungültig angezeigt“, nie „gültig“); Acrobat zeigt die Signatur als ungültig oder nicht prüfbar. Eine **echte**, selbst signierte Datei (nie einchecken) zeigt nach dem Schwärzen in Acrobat eine ungültige Signatur; erwartet.
+8. **`qpdf --check`** auf alle Ergebnisdateien (Rezept wie bei M13: qpdf 11.9.0 im Container `ubuntu:24.04`, `$T` der Ordner der Muster): überall „No syntax or stream encoding errors found“.
+
+```sh
+docker run --rm -v "$T":/data ubuntu:24.04 bash -c 'apt-get update -qq && apt-get install -y -qq qpdf >/dev/null && cd /data && for f in $(find . -name "*.pdf"); do echo "== $f"; qpdf --check "$f" || echo "EXIT $?"; done'
+```
+
+**Bedienung im echten Fenster** (Windows und, soweit möglich, Linux; hell, dunkel, Hochkontrast, „Kompakt“; Deutsch und Englisch):
+
+9. **Markieren:** Bereich ziehen, verschieben, in der Größe ändern (Griffe), löschen (Entf), Text auswählen und mit Strg+Enter markieren, mit Maus **und Stift**; die Markierung ist auf der hellen und der dunklen Seite deutlich sichtbar (Fläche, Schraffur, Rahmen, nie nur Farbe); Tab verlässt die Markierungen und hält den Fokus nie fest; Esc-Reihenfolge (Zug, Auswahl, Modus). Kürzel Strg+Umschalt+P und Strg+Enter auf einer **deutschen Tastatur** und gegen Systemkürzel.
+10. **150 % und 200 % Skalierung** und die englische Fassung bei 640 px Fensterbreite: Werkzeugleiste (Überlauf, „Anwenden …“ nicht abgeschnitten), Panel „Schwärzen“, Karten.
+11. **Bildschirmleser** (Narrator, NVDA; Orca unter Linux): Marken (Rahmen und Griffe), Treffer mit Quelle und „Unsichtbarer Text“, Zähler, Hinweise (abgelehnte Markierung, Sperre der anderen Modi), Anwenden-Karte mit Abschnitten, Ablehnungskarten und Prüfbericht in sinnvoller Reihenfolge.
+12. **Hochkontrast** (Windows): Markierung, Vorschau, Karten, Schaltflächen sind erkennbar; der Stern, das Schloss und die Symbole tragen Text.
+13. **Suche mit sehr vielen Treffern** (echte Hardware): `dense.pdf` und eine Datei mit mehr als 10.000 Treffern (zum Beispiel ein einzelner Buchstabe in `text-dense.pdf`): Die Suche bricht an der Grenze von 10.000 Treffern mit Hinweis ab, die Oberfläche bleibt bedienbar, „Alle markieren“ verlangt das Wort des Nutzers. Dazu das Anwenden auf `dense.pdf` mit 200 Markierungen: Rendern und Scrollen bleiben währenddessen bedienbar.
+14. **Anwenden-Karte:** Standard „Speichern unter …“ mit Fokus (Vorschlag `<Name>-redacted.pdf`); „In der Originaldatei speichern“ ist gefährlich gekennzeichnet und 400 ms gesperrt; die Listen („Wird entfernt“, „Rückfälle“, „Wird bereinigt“, „Geht verloren“, „Nicht bereinigt“) lesen sich verständlich und scrollen; nach dem Anwenden zeigt der Tab die geschwärzte Datei, der Bericht („Bereinigt“, „Geprüft“, „Nicht geprüft“) erscheint als eigene Frage, das Original auf der Platte ist unverändert (Byte-Vergleich).
+15. **Zustandswechsel mit offenen Markierungen:** Tab schließen, Tab in ein neues Fenster ziehen (der Plan wandert mit), Update-Weg, Drucken (die Markierungen erscheinen nicht im Ausdruck), Modus wechseln, die Quelldatei zwischen Markieren und Anwenden von außen ändern (Karte mit „Abbrechen“, nichts geschrieben).
+
+**Linux-Läufe** (die Tests laufen nur dort; unter Windows nicht ausgeführt):
+
+16. `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Redaction" --filter-namespace "*Saving" --filter-namespace "*Pages" --filter-namespace "*Cli"` (der `statx`-Zweig von `FileIdentity`, `File.Move(…, overwrite: false)`, Unix-Rechte `0600` der temporären Datei und der Kopie des Prüfrenderns (`TheDryRunCopyIsPrivateWhileItExistsAndGoneAfterwards` in `RedactImagePathFormTests`, prüft den Modus nur dort), die CLI-Tests von `redact`) und `dotnet test tests/Pagewing.App.Tests --filter-class "*Redact*"`.
+17. App unter Linux (X11 und Wayland): Markieren mit Maus und Stift, Speichern-Portal mit Überschreiben, Tastenkürzel, Karten.
+
+**Messung auf echter Hardware:**
+
+18. Startzeit-Check (Workflow `hardware-measure.yml`, Runner `dotnet-windows-gpu`, nur auf Anweisung): die Budgets bleiben; das ist der einzige belastbare Beleg für die Kosten des Eintrags „Schwärzen“ in der Aktionsleiste (`RedactButton`) und seiner Icon-Geometrien im Startpfad. Dazu `PAGEWING_MEASURE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests -c Release --filter-class "*RedactMeasurementTests"` (Seiten je Sekunde beim Anwenden, Dauer von Prüfung und Rohbytes-Scan, Spitzenspeicher; Vergleichswerte in `Docs/DECISIONS.md`, „Schwärzen: Messwerte (M14, Aufgabe 14)“).
+
+### Ergebnis festhalten
+
+Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 14 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 14“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung (welcher Punkt, was zu sehen war); Punkt 2 immer mit der ausdrücklichen Antwort „Text unter den Flächen kopierbar oder suchbar: ja/nein (Programm, Version)“ und Punkt 6 mit „Felder ausfüllbar“. Ein **Fund unter Punkt 2 oder 4** (der Begriff ist in einem Programm doch zu finden) ist ein Fehler im Schwärzen und wird sofort gemeldet, nicht gesammelt. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.

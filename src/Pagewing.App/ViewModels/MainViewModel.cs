@@ -76,7 +76,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
-    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save, Action Apply, Action InsertFile, Action<PageOutputKind> PageOutput)> _tabHandlers = [];
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save, Action Apply, Action Redact, Action InsertFile, Action<PageOutputKind> PageOutput)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private int? _tabDropIndex;
     private bool _picking;
@@ -1081,6 +1081,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             Changed: (PropertyChangedEventHandler)((_, e) => OnTabPropertyChanged(tab, e)),
             Save: (Action<bool>)(saveAs => _ = SaveTabAsync(tab, saveAs)),
             Apply: (Action)(() => _ = ApplyPageEditsAsync(tab)),
+            Redact: (Action)(() => _ = ApplyRedactionsAsync(tab)),
             InsertFile: (Action)(() => _ = InsertFileAsync(tab)),
             PageOutput: (Action<PageOutputKind>)(kind => ShowPageOutput(tab, kind)));
         tab.CloseRequested += handlers.Close;
@@ -1088,6 +1089,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         tab.PropertyChanged += handlers.Changed;
         tab.SaveRequested += handlers.Save;
         tab.PageApplyRequested += handlers.Apply;
+        tab.RedactionApplyRequested += handlers.Redact;
+        tab.RedactionPreviewAnalyzer = (plan, token) => AnalyzeRedactionsOfAsync(tab, plan, token);
         tab.InsertFileRequested += handlers.InsertFile;
         tab.PageOutputRequested += handlers.PageOutput;
         _tabHandlers[tab] = handlers;
@@ -1126,6 +1129,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             tab.PropertyChanged -= handlers.Changed;
             tab.SaveRequested -= handlers.Save;
             tab.PageApplyRequested -= handlers.Apply;
+            tab.RedactionApplyRequested -= handlers.Redact;
+            tab.RedactionPreviewAnalyzer = null;
             tab.InsertFileRequested -= handlers.InsertFile;
             tab.PageOutputRequested -= handlers.PageOutput;
         }
