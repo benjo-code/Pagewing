@@ -97,12 +97,21 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets why the last mark was refused (the plan is full, the rectangle is not a rectangle), or <see langword="null"/>:
-    /// cleared by the next change that works and by <see cref="DismissRedactionNoticeCommand"/>.
+    /// cleared by the next change that works and by <see cref="DismissRedactionNoticeCommand"/>. Every refusal is also told as a
+    /// <see cref="RedactionHint"/>, each time it happens: the string is the same for the same kind of refusal, so a change of the
+    /// property could not tell the second one.
     /// </summary>
     public string? RedactionNotice
     {
         get => _redactionNotice;
-        private set => SetProperty(ref _redactionNotice, value);
+        private set
+        {
+            SetProperty(ref _redactionNotice, value);
+            if (value is not null)
+            {
+                RedactionHint?.Invoke(value);
+            }
+        }
     }
 
     /// <summary>

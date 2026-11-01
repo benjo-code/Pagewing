@@ -978,6 +978,55 @@ public sealed class RedactMarkingTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task EveryRefusalIsShownAgainEvenWithTheSameText()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        var hints = new List<string>();
+        tab.RedactionHint += hints.Add;
+
+        // A refused rectangle, twice in a row: the notice string does not change, the hint comes both times.
+        Assert.False(tab.AddAreaMark(0, new PageRect(double.NaN, 10, 20, 20)));
+        Assert.False(tab.AddAreaMark(0, new PageRect(double.NaN, 10, 20, 20)));
+        Assert.Equal([Strings.RedactMarkRefused, Strings.RedactMarkRefused], hints);
+
+        // The hint card shows it again after it expired.
+        var hint = FindOrNull<Border>(window, "NoTextHint")!;
+        await WaitUntilAsync(window, () => hint.IsVisible);
+        hint.IsVisible = false;
+        Assert.False(tab.AddAreaMark(0, new PageRect(10, 10, double.PositiveInfinity, 20)));
+        await WaitUntilAsync(window, () => hint.IsVisible);
+        Assert.Equal(3, hints.Count);
+
+        // A selection of only blanks, twice: the notice is the same, the hint comes both times.
+        hints.Clear();
+        var text = await tab.PageTexts!.GetAsync(0, PdfPriority.Interactive);
+        var space = text.GetText(0, text.Chars.Count).IndexOf(' ', StringComparison.Ordinal);
+        for (var i = 0; i < 2; i++)
+        {
+            tab.TextSelection = new TextSelection(new TextPosition(0, space), new TextPosition(0, space + 1));
+            await tab.MarkSelectionAsync();
+        }
+
+        Assert.Equal([Strings.RedactSelectionNotMarkable, Strings.RedactSelectionNotMarkable], hints);
+
+        // A full plan, twice: the marks-limit refusal comes both times.
+        hints.Clear();
+        var full = RedactionPlan.Empty.WithRange(Enumerable.Range(0, RedactionLimits.MaxMarks)
+            .Select(_ => new RedactionMark(Guid.NewGuid(), RedactionKind.Area, 0, [new PageRect(1, 1, 5, 5)], null, false)));
+        tab.RedactionHistory!.Do(full);
+        Assert.False(tab.AddAreaMark(0, new PageRect(10, 10, 20, 20)));
+        Assert.False(tab.AddAreaMark(0, new PageRect(10, 10, 20, 20)));
+        Assert.Equal([Strings.RedactMarksLimit, Strings.RedactMarksLimit], hints);
+
+        // Clearing the notice says nothing.
+        hints.Clear();
+        tab.DismissRedactionNoticeCommand.Execute(null);
+        Assert.Empty(hints);
+    }
+
+    [AvaloniaFact]
     public async Task TheModeButtonOfTheActionBarFollowsTheMode()
     {
         var (window, viewModel, view) = Show();

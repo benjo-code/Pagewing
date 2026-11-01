@@ -962,14 +962,11 @@ public sealed partial class DocumentView : UserControl
             UpdateCursor(_pointer);
         }
 
-        // The mode "Redact": its plan and selection on the layer, a refused mark as a hint (DocumentView.Redaction.cs).
+        // The mode "Redact": its plan and selection on the layer (DocumentView.Redaction.cs). A refused mark comes as a
+        // RedactionHint of the tab, each time (a change of RedactionNotice would not tell a repeated refusal).
         if (e.PropertyName is nameof(TabViewModel.IsRedacting) or nameof(TabViewModel.RedactionPlan) or nameof(TabViewModel.SelectedMarks))
         {
             SyncRedaction();
-        }
-        else if (e.PropertyName == nameof(TabViewModel.RedactionNotice) && _viewModel?.RedactionNotice is { } notice)
-        {
-            ShowHint(notice);
         }
 
         CheckGesture(e.PropertyName);
