@@ -70,7 +70,7 @@ internal static unsafe class PdfiumAnnotations
     internal const int CancellationInterval = 64;
 
     /// <summary>What <see cref="LinkedIndex"/> returns when the link budget is used up.</summary>
-    private const int LinkUnresolved = -2;
+    internal const int LinkUnresolved = -2;
 
     /// <summary>The most quadrilaterals of one markup; a markup with more is treated as damaged and skipped.</summary>
     public const int MaxQuads = 4_096;
@@ -979,7 +979,7 @@ internal static unsafe class PdfiumAnnotations
     /// <see cref="LinkUnresolved"/> if <paramref name="budget"/> cannot pay the <paramref name="count"/> entries the
     /// search may compare (the raw <c>FPDFPage_GetAnnotCount</c>, because the search walks the whole <c>/Annots</c>).
     /// </summary>
-    private static int LinkedIndex(nint page, nint annotation, ReadOnlySpan<byte> key, int count, ref long budget)
+    internal static int LinkedIndex(nint page, nint annotation, ReadOnlySpan<byte> key, int count, ref long budget)
     {
         if (!HasKey(annotation, key))
         {

@@ -17,23 +17,51 @@ namespace Pagewing.Pdfium;
 /// </remarks>
 internal static unsafe class PdfiumRedaction
 {
-    /// <summary>The most page objects <see cref="RawPage.Describe"/> reads from one page or form object.</summary>
+    /// <summary>
+    /// The most page objects of one page that redaction handles (and that any loop over the objects of a page or of its form
+    /// objects visits); a page with more is refused, never cut off. PDFium keeps the objects in a linked list, so reading the
+    /// object at index <c>i</c> costs <c>i</c> steps and a full pass over a page costs the square of this number.
+    /// </summary>
     public const int MaxObjects = 100_000;
+
+    /// <summary>The most characters of one page that redaction reads (a page with more is refused).</summary>
+    public const int MaxChars = 500_000;
+
+    /// <summary>The most child objects of one form object whose children are looked at (<see cref="RawPage.CountFormObjects"/> reports the real number; a form with more is removed as a whole when it touches a rectangle).</summary>
+    public const int MaxFormChildren = 20_000;
+
+    /// <summary>The deepest nesting of form objects inside form objects that is searched (a form that nests deeper is removed as a whole when it touches a rectangle).</summary>
+    public const int MaxFormDepth = 16;
+
+    /// <summary>The longest text, in UTF-16 code units, that <see cref="RawPage.ReadText"/> returns for one text object.</summary>
+    public const int MaxTextLength = 100_000;
+
+    /// <summary>The most rectangles of one page that redaction handles.</summary>
+    public const int MaxAreas = 10_000;
 
     /// <summary>The page of a document opened for object-level edits.</summary>
     public sealed class RawPage : IDisposable
     {
         private readonly PdfiumDocument document;
+        private readonly nint nativeDocument;
         private nint page;
 
-        internal RawPage(PdfiumDocument document, nint page)
+        internal RawPage(PdfiumDocument document, nint page, nint nativeDocument = 0)
         {
             this.document = document;
             this.page = page;
+            this.nativeDocument = nativeDocument;
         }
 
-        /// <summary>The native document the page belongs to (checks the thread).</summary>
-        public nint NativeDocument => document.Access();
+        /// <summary>The native document the page belongs to (checks the thread); a scratch document for a page of a scratch copy.</summary>
+        public nint NativeDocument
+        {
+            get
+            {
+                var native = document.Access();
+                return nativeDocument != 0 ? nativeDocument : native;
+            }
+        }
 
         /// <summary>The number of page objects of the page.</summary>
         public int CountObjects() => Fpdf.FPDFPage_CountObjects(Access());
@@ -84,14 +112,22 @@ internal static unsafe class PdfiumRedaction
             return (Fpdf.FPDFPageObj_GetType(pageObject), left, bottom, right, top);
         }
 
-        /// <summary>The text of a text object as <see cref="Fpdf.FPDFTextObj_GetText"/> returns it, with the text page of its page.</summary>
-        public string ReadText(nint textObject, nint textPage)
+        /// <summary>
+        /// The text of a text object as <see cref="Fpdf.FPDFTextObj_GetText"/> returns it, with the text page of its page; <see langword="null"/>
+        /// if it is longer than <see cref="MaxTextLength"/>.
+        /// </summary>
+        public string? ReadText(nint textObject, nint textPage)
         {
             _ = Access();
             var bytes = Fpdf.FPDFTextObj_GetText(textObject, textPage, null, new CULong(0)).Value;
             if (bytes < 2)
             {
                 return string.Empty;
+            }
+
+            if (bytes / 2 > MaxTextLength + 1)
+            {
+                return null;
             }
 
             var buffer = new ushort[(int)(bytes / 2)];
