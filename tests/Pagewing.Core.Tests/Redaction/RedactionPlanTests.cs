@@ -59,6 +59,53 @@ public sealed class RedactionPlanTests
     }
 
     [Fact]
+    public void WithRangeAddsManyMarksAtOnceAndRespectsTheLimit()
+    {
+        var first = Area(0);
+        var plan = RedactionPlan.Empty.With(first);
+        var many = Enumerable.Range(0, RedactionLimits.MaxMarks - 1).Select(i => Text("term", i % 7)).ToList();
+
+        var full = plan.WithRange(many);
+
+        Assert.Equal(RedactionLimits.MaxMarks, full.Marks.Count);
+        Assert.Equal(first.Id, full.Marks[0].Id);
+        Assert.Equal(many.Select(static m => m.Id), full.Marks.Skip(1).Select(static m => m.Id));
+        Assert.Single(plan.Marks);
+        Assert.Equal(Enumerable.Range(0, 7), full.Pages.Order());
+        Assert.Equal(full.Fill, plan.Fill);
+        Assert.Same(plan, plan.WithRange([]));
+        Assert.Equal(RedactionFill.White, plan.WithFill(RedactionFill.White).WithRange([Area(1)]).Fill);
+
+        // One too many: nothing is added.
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => plan.WithRange([.. many, Text("more")])));
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => full.WithRange([Area()])));
+        Assert.Single(plan.Marks);
+
+        // A sequence that never ends is refused at the limit, not read to its end.
+        var read = 0;
+        IEnumerable<RedactionMark> Endless()
+        {
+            while (true)
+            {
+                read++;
+                yield return Text("x");
+            }
+        }
+
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => RedactionPlan.Empty.WithRange(Endless())));
+        Assert.True(read <= RedactionLimits.MaxMarks + 1);
+
+        // One refused mark, or a repeated id, leaves the plan as it was.
+        var bad = new RedactionMark(Guid.NewGuid(), RedactionKind.Area, 0, [new PageRect(1, 1, 1, 1)], null, false);
+        Assert.Equal(RedactionError.InvalidArea, ErrorOf(() => plan.WithRange([Area(2), bad])));
+        Assert.Throws<ArgumentException>(() => plan.WithRange([first]));
+        var twice = Area(3);
+        Assert.Throws<ArgumentException>(() => plan.WithRange([twice, twice]));
+        Assert.Single(plan.Marks);
+        Assert.Throws<ArgumentNullException>(() => plan.WithRange(null!));
+    }
+
+    [Fact]
     public void AreaWithNaNInfinityOrNoSizeIsRefused()
     {
         PageRect[] bad =

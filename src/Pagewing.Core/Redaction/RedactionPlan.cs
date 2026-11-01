@@ -66,6 +66,57 @@ public sealed class RedactionPlan
         return new RedactionPlan(marks, Fill);
     }
 
+    /// <summary>
+    /// Adds many marks at the end in one step (the plan is copied once, not once per mark, which matters for "mark all hits"). All or
+    /// nothing: if one mark is refused, or the plan would hold more than <see cref="RedactionLimits.MaxMarks"/> marks, the plan is as it
+    /// was. The limit is checked while the marks are read, so a sequence that never ends is refused without being read to its end.
+    /// </summary>
+    /// <param name="marks">The marks, in the order they are added.</param>
+    /// <returns>The new plan; this plan if there is no mark.</returns>
+    /// <exception cref="RedactionException">A mark is refused, or the plan would hold more marks than allowed.</exception>
+    /// <exception cref="ArgumentException">An id is in the plan already, or twice in <paramref name="marks"/>.</exception>
+    public RedactionPlan WithRange(IEnumerable<RedactionMark> marks)
+    {
+        ArgumentNullException.ThrowIfNull(marks);
+        var added = new List<RedactionMark>();
+        HashSet<Guid>? ids = null;
+        foreach (var mark in marks)
+        {
+            ArgumentNullException.ThrowIfNull(mark);
+            if (_marks.Length + added.Count >= RedactionLimits.MaxMarks)
+            {
+                throw new RedactionException(RedactionError.LimitExceeded, "The plan would hold more marks than allowed.");
+            }
+
+            if (ids is null)
+            {
+                ids = new HashSet<Guid>(_marks.Length + 16);
+                foreach (var existing in _marks)
+                {
+                    ids.Add(existing.Id);
+                }
+            }
+
+            var normalized = Normalize(mark);
+            if (!ids.Add(normalized.Id))
+            {
+                throw new ArgumentException("A mark with this id is already in the plan or in the range.", nameof(marks));
+            }
+
+            added.Add(normalized);
+        }
+
+        if (added.Count == 0)
+        {
+            return this;
+        }
+
+        var all = new RedactionMark[_marks.Length + added.Count];
+        _marks.CopyTo(all, 0);
+        added.CopyTo(all, _marks.Length);
+        return new RedactionPlan(all, Fill);
+    }
+
     /// <summary>Removes marks; ids that are not in the plan are ignored.</summary>
     /// <param name="ids">The ids of the marks.</param>
     public RedactionPlan Without(IReadOnlyCollection<Guid> ids)

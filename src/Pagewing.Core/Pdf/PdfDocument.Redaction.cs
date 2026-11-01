@@ -66,6 +66,37 @@ public sealed partial class PdfDocument
     public Task<PageRedactionImpact> RedactPageAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, CancellationToken cancellationToken = default) =>
         RunRedactionAsync(page, areas, fill, apply: true, cancellationToken);
 
+    /// <summary>
+    /// For each range of characters of a page (indexes as <see cref="GetPageTextAsync(int, CancellationToken)"/> reports them, last
+    /// inclusive) says whether it shows nothing: the characters that are not generated are all drawn in the render mode "invisible"
+    /// (the text layer of an OCR scan). One short <see cref="PdfPriority.Background"/> job that looks at the characters of the ranges only.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    internal Task<bool[]> GetInvisibleTextAsync(int pageIndex, IReadOnlyList<(int First, int Last)> ranges, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ThrowIfNotAPage(pageIndex);
+        ArgumentNullException.ThrowIfNull(ranges);
+        if (ranges.Count == 0)
+        {
+            return Task.FromResult(Array.Empty<bool>());
+        }
+
+        var copy = ranges.ToArray();
+        return document.Thread.InvokeAsync(
+            () =>
+            {
+                using var page = document.LoadPage(pageIndex);
+                using var textPage = page.LoadTextPage();
+                return PdfiumPageText.ReadInvisible(page, textPage, copy);
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
     /// <summary>Hooks for tests of the redaction engine; <see langword="null"/> in production.</summary>
     internal PdfiumRedactionSeam? RedactionSeam { get; set; }
 
