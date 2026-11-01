@@ -683,6 +683,7 @@ public static class Strings
     public static string InsertFilePasswordPrompt => Get("InsertFilePasswordPrompt");
     public static string InsertFilePickFailed => Get("InsertFilePickFailed");
     public static string ApplyErrorInsertedChanged => Get("ApplyErrorInsertedChanged");
+    public static string ApplyErrorEncryptedInserted => Get("ApplyErrorEncryptedInserted");
     public static string ApplyViewFailedTitle => Get("ApplyViewFailedTitle");
     public static string ApplyErrorViewFailed => Get("ApplyErrorViewFailed");
     public static string PagesOriginalOne => Get("PagesOriginalOne");

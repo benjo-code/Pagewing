@@ -1728,6 +1728,9 @@
   <data name="ApplyErrorFileChanged" xml:space="preserve">
     <value>The file was changed outside Pagewing. Reopen it to organize pages. Nothing was written; the page changes stay in this tab until you close it.</value>
   </data>
+  <data name="ApplyErrorEncryptedInserted" xml:space="preserve">
+    <value>The inserted file “{0}” is password-protected, but this document is not. Its pages would be written without protection, so nothing was written; the page changes are kept. Delete its pages from the list.</value>
+  </data>
   <data name="ApplyViewFailedTitle" xml:space="preserve">
     <value>The page changes were written to “{0}”</value>
   </data>

@@ -254,12 +254,23 @@ public static class PageEditApplier
         {
             // What the result must look like comes from the sources, opened for reading only (their page caches are the
             // truth about the files), never from the working copy that is changed.
+            // Pages of an encrypted source in an unencrypted result would be written without their protection. The analysis
+            // refuses that first (PageLoss.Blocks); this is the same refusal for a caller that did not consult the report.
+            var primaryEncrypted = usage.InsertedIds.Count == 0
+                || (await shown.GetPrintInfoAsync(cancellationToken).ConfigureAwait(false)).IsEncrypted;
             foreach (var id in usage.InsertedIds)
             {
                 var file = request.InsertedFiles[new PageSourceId(id)];
                 var source = await file.OpenAsync(engine, cancellationToken).ConfigureAwait(false);
                 sources[new PageSourceId(id)] = source;
                 hooks?.SourceOpened?.Invoke(source);
+                if (!primaryEncrypted && (await source.GetPrintInfoAsync(cancellationToken).ConfigureAwait(false)).IsEncrypted)
+                {
+                    throw new SaveFailureException(SaveFailureReason.EncryptedNotSupported, "An encrypted file cannot be inserted into a document that is not encrypted.")
+                    {
+                        FilePath = file.Path,
+                    };
+                }
             }
 
             var expected = await PageEditExecutor.ExpectedFingerprintsAsync(request.Plan, shown, sources, cancellationToken).ConfigureAwait(false);

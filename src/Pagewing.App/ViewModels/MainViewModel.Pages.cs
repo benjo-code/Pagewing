@@ -228,6 +228,12 @@ public sealed partial class MainViewModel
                 tab.ForgetRewrittenDocument();
             }
         }
+        catch (SaveFailureException ex) when (ex.Reason == SaveFailureReason.EncryptedNotSupported && ex.FilePath is { } locked)
+        {
+            // The analysis refuses this first; this is the applier's own refusal of an encrypted inserted file in a plain document.
+            var lockedName = Path.GetFileName(locked);
+            return (false, await AskAsync(PendingSave.PageApplyError(tab, target, () => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ApplyErrorEncryptedInserted), lockedName)), token));
+        }
         catch (SaveFailureException ex) when (ex.FilePath is { } inserted)
         {
             // An inserted file is not the file that was inserted (changed, replaced, deleted or unreadable since): the card

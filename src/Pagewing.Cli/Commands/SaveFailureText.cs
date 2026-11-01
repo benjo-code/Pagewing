@@ -28,6 +28,8 @@ internal static class SaveFailureText
             SaveFailureReason.VerificationFailed => $"The written file failed the check, so it was not kept: {ex.Message}",
             SaveFailureReason.SourceModified or SaveFailureReason.OriginalChanged =>
                 $"{(ex.FilePath is { Length: > 0 } path ? $"The input file '{path}'" : "The input file")} was changed by another program while the command ran.{(nothingWritten ? " Nothing was written; run the command again." : " Run the command again.")}",
+            SaveFailureReason.EncryptedNotSupported when ex.FilePath is { Length: > 0 } locked =>
+                $"The input file '{locked}' is encrypted, but the document it is inserted into is not, so {(nothingWritten ? "nothing" : "it")} was not written.",
             SaveFailureReason.EncryptedNotSupported =>
                 $"The input file is encrypted and the result would not stay encrypted, so {(nothingWritten ? "nothing" : "it")} was not written.",
             _ => $"Cannot write '{target}': {ex.Message}{none}",

@@ -1728,6 +1728,9 @@
   <data name="ApplyErrorFileChanged" xml:space="preserve">
     <value>Die Datei wurde außerhalb von Pagewing geändert. Öffnen Sie sie erneut, um Seiten zu organisieren. Es wurde nichts geschrieben; die Seitenänderungen bleiben in diesem Tab, bis Sie ihn schließen.</value>
   </data>
+  <data name="ApplyErrorEncryptedInserted" xml:space="preserve">
+    <value>Die eingefügte Datei „{0}“ ist passwortgeschützt, dieses Dokument aber nicht. Ihre Seiten würden ohne Schutz geschrieben, deshalb wurde nichts geschrieben; die Seitenänderungen bleiben erhalten. Entfernen Sie ihre Seiten aus der Liste.</value>
+  </data>
   <data name="ApplyViewFailedTitle" xml:space="preserve">
     <value>Die Seitenänderungen wurden in „{0}“ geschrieben</value>
   </data>

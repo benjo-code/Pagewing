@@ -15,6 +15,8 @@ namespace Pagewing.Core.Tests.Pages;
 /// </summary>
 public sealed class PageEditApplierTests
 {
+    private const string UserPassword = "hôtel";
+
     private static readonly NoInserted None = new();
 
     private readonly PdfEngine engine = new();
@@ -304,6 +306,101 @@ public sealed class PageEditApplierTests
         var open = await Assert.ThrowsAsync<PdfOpenException>(() => PageEditApplier.ApplyAsync(again, engine, new PageApplyRequest(plan, second, unstamped), null, Ct));
         Assert.Equal(PdfOpenError.FileNotFound, open.Error);
         Assert.Equal(6, again.Document!.PageCount);
+    }
+
+    [Theory]
+    [InlineData("encrypted_hello_world_r3.pdf")]
+    [InlineData("encrypted_hello_world_r6.pdf")]
+    public async Task AnEncryptedInsertedFileInAPlainDocumentIsRefusedByTheApplierItself(string fixture)
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "hello_world.pdf");
+        var locked = Copy(folder, fixture);
+        var target = Path.Combine(folder.Path, "out.pdf");
+        var before = await File.ReadAllBytesAsync(path, Ct);
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var shown = session.Document;
+        var first = new PageSourceId(1);
+        var plan = PageEditPlan.Identity(shown!.PageCount).InsertFrom(first, [0], shown.PageCount);
+        var files = new Dictionary<PageSourceId, PageSourceFile> { [first] = new PageSourceFile(locked, UserPassword) };
+        var sources = new List<PdfDocument>();
+        var rewrites = 0;
+        var hooks = new PageApplyHooks { SourceOpened = sources.Add };
+
+        // Called directly, without consulting the report.
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(() => PageEditApplier.ApplyAsync(
+            session,
+            engine,
+            new PageApplyRequest(plan, target, files),
+            null,
+            (_, _, _, _, _) =>
+            {
+                rewrites++;
+                throw new InvalidOperationException("must not be called");
+            },
+            hooks,
+            Ct));
+
+        Assert.Equal(SaveFailureReason.EncryptedNotSupported, failure.Reason);
+        Assert.Equal(locked, failure.FilePath);
+        Assert.Equal(0, rewrites);
+        Assert.False(File.Exists(target));
+        Assert.Equal(before, await File.ReadAllBytesAsync(path, Ct));
+        Assert.Empty(Directory.GetFiles(folder.Path, "*.tmp"));
+        Assert.Empty(Directory.GetFiles(folder.Path, ".pw-*"));
+        Assert.Same(shown, session.Document);
+        var source = Assert.Single(sources);
+        Assert.Throws<ObjectDisposedException>(() => source.PageCount);
+
+        // The command-line entry point refuses the same way.
+        var viaWrite = await Assert.ThrowsAsync<SaveFailureException>(() => PageEditApplier.WriteAsync(
+            engine, shown, path, null, session.OpenedStamp, new PageApplyRequest(plan, target, files), null, Ct));
+        Assert.Equal(SaveFailureReason.EncryptedNotSupported, viaWrite.Reason);
+        Assert.False(File.Exists(target));
+    }
+
+    [Theory]
+    [InlineData("encrypted_hello_world_r3.pdf")]
+    [InlineData("encrypted_hello_world_r6.pdf")]
+    public async Task AnEncryptedInsertedFileInAnEncryptedDocumentIsWrittenAndStaysEncrypted(string fixture)
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, fixture);
+        var locked = Path.Combine(folder.Path, "inserted.pdf");
+        File.Copy(TestData.Pdf(fixture == "encrypted_hello_world_r3.pdf" ? "encrypted_hello_world_r6.pdf" : "encrypted_hello_world_r3.pdf"), locked);
+        var target = Path.Combine(folder.Path, "out.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path, UserPassword);
+        var first = new PageSourceId(1);
+        var plan = PageEditPlan.Identity(session.Document!.PageCount).InsertFrom(first, [0], session.Document.PageCount);
+        var files = new Dictionary<PageSourceId, PageSourceFile> { [first] = new PageSourceFile(locked, UserPassword) };
+
+        var result = await PageEditApplier.ApplyAsync(session, engine, new PageApplyRequest(plan, target, files), null, Ct);
+
+        Assert.True(result.Adopted);
+        Assert.Equal(2, session.Document!.PageCount);
+        var closed = await Assert.ThrowsAsync<PdfOpenException>(() => engine.OpenAsync(target, cancellationToken: Ct));
+        Assert.Equal(PdfOpenError.PasswordRequired, closed.Error);
+    }
+
+    [Fact]
+    public async Task APlainInsertedFileInAPlainDocumentIsStillWritten()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "hello_world.pdf");
+        var other = Copy(folder, "text-rich.pdf");
+        var target = Path.Combine(folder.Path, "out.pdf");
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var first = new PageSourceId(1);
+        var plan = PageEditPlan.Identity(session.Document!.PageCount).InsertFrom(first, [0, 1], session.Document.PageCount);
+        var files = new Dictionary<PageSourceId, PageSourceFile> { [first] = new PageSourceFile(other, null) };
+
+        var result = await PageEditApplier.ApplyAsync(session, engine, new PageApplyRequest(plan, target, files), null, Ct);
+
+        Assert.True(result.Adopted);
+        Assert.Equal(3, session.Document!.PageCount);
     }
 
     [Fact]
