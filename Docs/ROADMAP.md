@@ -43,7 +43,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M8.1 bis M12.1) | – | ✅ fertig | – | 2026-10-31 |
 | 13 | Seiten organisieren | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md) | 2026-11-01 |
 | 14 | Schwärzen | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-11-01-milestone-14-schwaerzen.md) | 2026-11-01 |
-| 14.1 | Schwärzen: Muster, Füllungen, Seite als Bild | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
+| 14.1 | Schwärzen: Muster, Füllungen, Seite als Bild | 3 – Seiten & Schwärzen | 🟡 geplant | [Plan](superpowers/plans/2026-11-01-milestone-14-1-schwaerzen-muster-fuellungen.md) | – |
 | 15 | OCR | 4 – OCR & Text bearbeiten | ⬜ offen | – | – |
 | 16 | Text bearbeiten | 4 – OCR & Text bearbeiten | ⬜ offen | – | – |
 | – | **Release `v1.0.0`** – Seiten organisieren, Schwärzen, OCR und Textbearbeitung (M13 bis M16) | – | ⬜ offen | – | – |
@@ -547,7 +547,7 @@ Ziel: Bereiche, Textstellen und Suchtreffer lassen sich so schwärzen, dass der 
 - [x] Tests: Text und Darstellung außerhalb der Markierungen bleiben unverändert – Erledigt 2026-11-01: `RedactionApplierTests.NothingOutsideTheMarksChanges` (Zeichen je Seite = vorher minus Begriff in gleicher Reihenfolge, Seitenbild außerhalb der Bereiche gleich bei Faktor 2), `OnlyMarkedPagesAreComparedWithoutTextAndTheOthersKeepTheirText`, `RedactTextTests.CharsUnderTheAreaAreGoneAndTheRestStaysInPlace`, `RedactImagePathFormTests.SharedFormObjectDoesNotChangeTheOtherPage`, `PageThatPassesTheRenderCheckIsNotRefused`; das Prüfrendern lehnt Seiten ab, die sich außerhalb verändern (`PageWithPatternShadingType3OrCidToGidMapIsRefusedWithPageAndReason`). Suite wie beim ersten Kriterium. Offen (Handprüfung): Aussehen der Ergebnisdateien in Acrobat und Chrome, `packaging/README.md`, „Schwärzen prüfen (M14)“, Punkte 1 und 5
 
 ## Milestone 14.1 – Schwärzen: Muster, Füllungen, Seite als Bild
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M14
+**Status:** 🟡 geplant · **Plan:** [2026-11-01-milestone-14-1-schwaerzen-muster-fuellungen.md](superpowers/plans/2026-11-01-milestone-14-1-schwaerzen-muster-fuellungen.md) · **Voraussetzungen:** M14
 
 Ziel: Schwärzen findet Muster (E-Mail, IBAN, Telefon, Kreditkarte), bietet weitere Füllungen und eine Notlösung für nicht zerlegbare Seiten.
 
