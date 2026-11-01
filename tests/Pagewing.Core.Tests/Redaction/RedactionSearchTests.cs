@@ -1,8 +1,10 @@
 using System.Text;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Redaction;
+using Pagewing.Core.Saving;
 using Pagewing.Core.Tests.Annotations;
 using Pagewing.Core.Text;
+using Pagewing.Core.Viewing;
 using Pagewing.TestSupport;
 using Xunit;
 
@@ -15,10 +17,10 @@ public sealed class RedactionSearchTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static async Task<List<RedactionHit>> FindAsync(PdfDocument document, string term, SearchOptions options = default, PageTextSource? texts = null, ICollection<int>? incomplete = null)
+    private static async Task<List<RedactionHit>> FindAsync(PdfDocument document, string term, SearchOptions options = default, PageTextSource? texts = null, RedactionSearchReport? report = null)
     {
         var hits = new List<RedactionHit>();
-        await foreach (var hit in RedactionSearch.FindAsync(document, term, options, texts, incomplete, Ct))
+        await foreach (var hit in RedactionSearch.FindAsync(document, term, options, report, texts, Ct))
         {
             hits.Add(hit);
         }
@@ -206,10 +208,10 @@ public sealed class RedactionSearchTests
     public async Task NoMatchReturnsNothing()
     {
         await using var document = await OpenAsync("text-rich.pdf");
-        var incomplete = new List<int>();
+        var report = new RedactionSearchReport();
 
-        Assert.Empty(await FindAsync(document, "Zebrastreifen", incomplete: incomplete));
-        Assert.Empty(incomplete);
+        Assert.Empty(await FindAsync(document, "Zebrastreifen", report: report));
+        Assert.True(report.IsComplete);
     }
 
     [Fact]
@@ -241,7 +243,7 @@ public sealed class RedactionSearchTests
         var seen = 0;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
         {
-            await foreach (var hit in RedactionSearch.FindAsync(document, "Needle", default, source, null, cancel.Token))
+            await foreach (var hit in RedactionSearch.FindAsync(document, "Needle", default, null, source, cancel.Token))
             {
                 seen++;
                 cancel.Cancel();
@@ -260,15 +262,15 @@ public sealed class RedactionSearchTests
         using var source = new PageTextSource(document);
         var loaded = 0;
         source.Loaded += _ => Interlocked.Increment(ref loaded);
-        var incomplete = new List<int>();
+        var report = new RedactionSearchReport();
 
-        var hits = await FindAsync(document, "Needle", texts: source, incomplete: incomplete);
+        var hits = await FindAsync(document, "Needle", texts: source, report: report);
 
         Assert.Equal(20, hits.Count);
         Assert.All(hits, static h => Assert.Equal(RedactionHitSource.PageText, h.Source));
         Assert.Equal(200, Volatile.Read(ref loaded));
         Assert.Equal(PageTextSource.MaxCachedPages, source.Count);
-        Assert.Empty(incomplete);
+        Assert.True(report.IsComplete);
 
         // The cache holds the most recent pages only (the last ones of the sweep), not all 200.
         Assert.True(source.TryGet(199, out _));
@@ -284,7 +286,7 @@ public sealed class RedactionSearchTests
         var hits = await FindAsync(document, "müller");
         var upper = hits.Single(static h => h.Text == "MÜLLER");
 
-        var mark = RedactionSearch.ToMark(upper, "müller", everywhere: true);
+        var mark = RedactionSearch.ToMark(upper, "müller", everywhere: true, default);
 
         Assert.Equal("MÜLLER", mark.Term);
         Assert.Equal(RedactionKind.Hit, mark.Kind);
@@ -294,13 +296,13 @@ public sealed class RedactionSearchTests
         Assert.NotEqual(Guid.Empty, mark.Id);
 
         // Every spelling that was found is its own mark with its own text: nothing of the other case is left unchecked.
-        var marks = RedactionSearch.ToMarks(hits, "müller", everywhere: true, out var skipped);
+        var marks = RedactionSearch.ToMarks(hits, "müller", everywhere: true, default, out var skipped);
         Assert.Equal(0, skipped);
         Assert.Equal(["MÜLLER", "Müller"], marks.Select(static m => m.Term).Order(StringComparer.Ordinal));
         Assert.Equal(2, RedactionPlan.Empty.WithRange(marks).Marks.Count);
 
         // The query is only checked: an empty one is refused.
-        Assert.Equal(RedactionError.EmptyTerm, Assert.Throws<RedactionException>(() => RedactionSearch.ToMark(upper, " ", false)).Error);
+        Assert.Equal(RedactionError.EmptyTerm, Assert.Throws<RedactionException>(() => RedactionSearch.ToMark(upper, " ", false, default)).Error);
     }
 
     [Fact]
@@ -315,22 +317,24 @@ public sealed class RedactionSearchTests
         {
             Char('a', good1),
             Char('‍', new PageRect(110, 50, 110, 62)),
-            Char('b', default),
-            Char('c', new PageRect(double.NaN, 50, 120, 62)),
+            Char('́', default),
             Char('d', good2),
         };
 
-        var areas = RedactionSearch.AreasOf(chars, 0, 4);
+        var areas = RedactionSearch.AreasOf(chars, 0, 3, out var lossy);
 
         Assert.Equal([good1.Union(good2)], areas);
+        Assert.False(lossy);
 
         // Every box degenerate: no rectangle, and the hit says it cannot be marked instead of throwing.
-        var none = RedactionSearch.AreasOf([Char('‍', default), Char('́', new PageRect(5, 5, 5, 5))], 0, 1);
+        var none = RedactionSearch.AreasOf([Char('‍', default), Char('́', new PageRect(5, 5, 5, 5))], 0, 1, out var noneLossy);
         Assert.Empty(none);
+        Assert.False(noneLossy);
         var hit = RedactionSearch.Make(RedactionHitSource.PageText, 0, none, new SearchSnippet(string.Empty, "x", string.Empty), null, invisible: false);
         Assert.False(hit.Markable);
-        Assert.Equal(RedactionError.InvalidArea, Assert.Throws<RedactionException>(() => RedactionSearch.ToMark(hit, "x", false)).Error);
-        Assert.Empty(RedactionSearch.ToMarks([hit], "x", false, out var skipped));
+        Assert.NotNull(hit.NotMarkableReason);
+        Assert.Equal(RedactionError.InvalidArea, Assert.Throws<RedactionException>(() => RedactionSearch.ToMark(hit, "x", false, default)).Error);
+        Assert.Empty(RedactionSearch.ToMarks([hit], "x", false, default, out var skipped));
         Assert.Equal(1, skipped);
 
         // Too many lines, white space only and a text longer than a term are not markable either.
@@ -356,17 +360,267 @@ public sealed class RedactionSearchTests
     }
 
     [Fact]
+    public void ALetterWithoutABoxMakesTheHitNotMarkableInsteadOfPartlyMarked()
+    {
+        // "Müller" where the M has no box: the rectangle would cover "üller" and leave the M on the page.
+        static TextChar Char(char c, PageRect box) => new(c, box, TextCharTraits.None, 12);
+        var chars = "Müller".Select((c, i) => Char(c, c == 'M' ? default : new PageRect(100 + (10 * i), 50, 110 + (10 * i), 62))).ToList();
+
+        var areas = RedactionSearch.AreasOf(chars, 0, 5, out var lossy);
+
+        Assert.True(lossy);
+        Assert.Single(areas);
+        var hit = RedactionSearch.Make(RedactionHitSource.PageText, 0, areas, new SearchSnippet(string.Empty, "Müller", string.Empty), null, false, lossy);
+        Assert.False(hit.Markable);
+        Assert.Contains("letter or digit", hit.NotMarkableReason, StringComparison.Ordinal);
+        Assert.Equal(RedactionError.InvalidArea, Assert.Throws<RedactionException>(() => RedactionSearch.ToMark(hit, "Müller", false, default)).Error);
+
+        // A digit, a sign and a letter are all more than ignorable; white space, a joiner and a combining mark are not.
+        foreach (var c in new[] { '7', '-', 'x' })
+        {
+            RedactionSearch.AreasOf([Char('a', new PageRect(0, 0, 5, 5)), Char(c, default)], 0, 1, out var one);
+            Assert.True(one, c.ToString());
+        }
+
+        foreach (var c in new[] { ' ', '‍', '́', '­' })
+        {
+            RedactionSearch.AreasOf([Char('a', new PageRect(0, 0, 5, 5)), Char(c, default)], 0, 1, out var one);
+            Assert.False(one, $"U+{(int)c:X4}");
+        }
+    }
+
+    [Fact]
     public async Task TheSearchEndsAtTheMarkLimit()
     {
         using var folder = new TempFolder();
         var content = string.Join(' ', Enumerable.Repeat("x", 60));
         var pages = Enumerable.Range(0, 200).Select(_ => $"BT /F1 6 Tf 5 190 Td ({content}) Tj ET").ToArray();
         await using var document = await OpenBytesAsync(folder, new VerifierPdf(pages).Build());
+        var report = new RedactionSearchReport();
 
-        var hits = await FindAsync(document, "x");
+        var hits = await FindAsync(document, "x", report: report);
 
-        // 200 pages with 60 hits each are 12,000 places; the search stops at the number of marks a plan can hold.
+        // 200 pages with 60 hits each are 12,000 places; the search stops at the number of marks a plan can hold and says so.
         Assert.Equal(RedactionSearch.MaxHits, hits.Count);
-        Assert.Equal(RedactionLimits.MaxMarks, RedactionPlan.Empty.WithRange(RedactionSearch.ToMarks(hits, "x", false, out _)).Marks.Count);
+        Assert.True(report.LimitReached);
+        Assert.False(report.IsComplete);
+        Assert.Equal(RedactionLimits.MaxMarks, RedactionPlan.Empty.WithRange(RedactionSearch.ToMarks(hits, "x", false, default, out _)).Marks.Count);
+    }
+
+    [Fact]
+    public async Task ACompleteSearchSaysSoAndTheListOfWhatIsNeverSearchedIsStable()
+    {
+        await using var document = await OpenAsync("text-rich.pdf");
+        var report = new RedactionSearchReport();
+
+        _ = await FindAsync(document, "Pagewing", report: report);
+
+        Assert.True(report.IsComplete);
+        Assert.False(report.LimitReached);
+        Assert.Empty(report.IncompletePages);
+        Assert.Equal(6, RedactionSearch.NotSearched.Count);
+        Assert.All(RedactionSearch.NotSearched, static line => Assert.EndsWith(".", line, StringComparison.Ordinal));
+        foreach (var key in new[] { "/IRT", "popup", "/T)", "/Subj", "/TU", "field", "/RV", "/DV", "/AP", "render mode 3" })
+        {
+            Assert.Contains(RedactionSearch.NotSearched, line => line.Contains(key, StringComparison.Ordinal));
+        }
+    }
+
+    // ---- what was not searched is reported ----
+
+    [Fact]
+    public async Task APageThatCannotBeReadIsReportedAndTheOthersAreStillSearched()
+    {
+        using var folder = new TempFolder();
+        var pdf = new VerifierPdf(PageWith("Zephyr one"), PageWith("Zephyr two"), PageWith("Zephyr three"));
+        await using var document = await OpenBytesAsync(folder, pdf.Build());
+        using var source = new PageTextSource(
+            document,
+            (page, priority) => page == 1 ? Task.FromException<PageText>(new InvalidDataException("damaged")) : document.GetPageTextAsync(page, priority, Ct));
+        var report = new RedactionSearchReport();
+
+        var hits = await FindAsync(document, "Zephyr", texts: source, report: report);
+
+        Assert.Equal([0, 2], hits.Select(static h => h.Page));
+        Assert.Equal([1], report.IncompletePages);
+        Assert.False(report.IsComplete);
+    }
+
+    [Fact]
+    public async Task AnAnnotationTextBeyondTheSearchedLengthIsReportedAndItsStartIsSearched()
+    {
+        using var folder = new TempFolder();
+        var pdf = new VerifierPdf(PageWith("Plain"), PageWith("Plain"));
+        var big = pdf.Add($"<< /Type /Annot /Subtype /Text /Rect [10 20 30 40] /Contents (Zephyr {new string('a', RedactionSearch.MaxSourceTextLength)}) /F 4 >>");
+        pdf.PageEntriesByPage = [$"/Annots [{big} 0 R]", string.Empty];
+        await using var document = await OpenBytesAsync(folder, pdf.Build());
+        var report = new RedactionSearchReport();
+
+        var hits = await FindAsync(document, "Zephyr", report: report);
+
+        Assert.Equal(RedactionHitSource.Annotation, Assert.Single(hits).Source);
+        Assert.Equal([0], report.IncompletePages);
+    }
+
+    [Fact]
+    public async Task TheSharedAnnotationLimitReportsEveryLaterPageThatHasAnnotations()
+    {
+        // 10,000 links on page one use up the limit for the whole document; the comment on page two is never listed.
+        using var folder = new TempFolder();
+        var pdf = new VerifierPdf(PageWith("one"), PageWith("two"), PageWith("three"));
+        var links = Enumerable.Range(0, PdfDocument.MaxAnnotations).Select(static i => $"<< /Type /Annot /Subtype /Link /Rect [{i % 200} 5 {(i % 200) + 5} 10] /Border [0 0 0] >>").Select(pdf.Add).ToList();
+        var note = pdf.Add($"<< /Type /Annot /Subtype /Text /Rect [10 20 30 40] /Contents {Utf16("Zephyr hides here")} /F 4 >>");
+        pdf.PageEntriesByPage = [$"/Annots [{string.Join(' ', links.Select(static n => $"{n} 0 R"))}]", $"/Annots [{note} 0 R]", string.Empty];
+        await using var document = await OpenBytesAsync(folder, pdf.Build());
+        var report = new RedactionSearchReport();
+
+        var hits = await FindAsync(document, "Zephyr", report: report);
+
+        Assert.Empty(hits);
+        Assert.Equal([1], report.IncompletePages);
+    }
+
+    [Fact]
+    public async Task AnAnnotationWithoutARectIsReportedAsNotSearched()
+    {
+        using var folder = new TempFolder();
+        var pdf = new VerifierPdf(PageWith("Plain"), PageWith("Plain"));
+        var damaged = pdf.Add($"<< /Type /Annot /Subtype /Text /Contents {Utf16("Zephyr without a rect")} /F 4 >>");
+        pdf.PageEntriesByPage = [string.Empty, $"/Annots [{damaged} 0 R]"];
+        await using var document = await OpenBytesAsync(folder, pdf.Build());
+        var report = new RedactionSearchReport();
+
+        var hits = await FindAsync(document, "Zephyr", report: report);
+
+        Assert.Empty(hits);
+        Assert.Equal([1], report.IncompletePages);
+    }
+
+    [Fact]
+    public async Task AFormFieldThatCouldNotBeReadAndAWidgetWithoutARectAreReported()
+    {
+        using var folder = new TempFolder();
+
+        // A value longer than the limit: the widget is listed as unsupported with no value.
+        var pdf = new VerifierPdf(PageWith("Plain"), PageWith("Plain"));
+        var field = pdf.Add($"<< /Type /Annot /Subtype /Widget /FT /Tx /T (Long) /V ({new string('x', 100_001)}) /Rect [10 20 100 40] /F 4 >>");
+        pdf.CatalogEntries = $"/AcroForm << /Fields [{field} 0 R] >>";
+        pdf.PageEntriesByPage = [string.Empty, $"/Annots [{field} 0 R]"];
+        await using (var document = await OpenBytesAsync(folder, pdf.Build()))
+        {
+            var report = new RedactionSearchReport();
+            Assert.Empty(await FindAsync(document, "Zephyr", report: report));
+            Assert.Equal([1], report.IncompletePages);
+        }
+
+        // A widget without a /Rect is not listed by the reader at all.
+        var flat = new VerifierPdf(PageWith("Plain"));
+        var widget = flat.Add("<< /Type /Annot /Subtype /Widget /FT /Tx /T (NoRect) /V (Zephyr) /F 4 >>");
+        flat.CatalogEntries = $"/AcroForm << /Fields [{widget} 0 R] >>";
+        flat.PageEntries = $"/Annots [{widget} 0 R]";
+        await using (var document = await OpenBytesAsync(folder, flat.Build()))
+        {
+            var report = new RedactionSearchReport();
+            Assert.Empty(await FindAsync(document, "Zephyr", report: report));
+            Assert.Equal([0], report.IncompletePages);
+        }
+
+        // The hostile form has both (a field with too many options and a widget without a rect).
+        await using var hostile = await OpenAsync("forms-hostile.pdf");
+        var hostileReport = new RedactionSearchReport();
+        _ = await FindAsync(hostile, "Zephyr", report: hostileReport);
+        Assert.Equal([0], hostileReport.IncompletePages);
+
+        // A readable form is complete, a signature or a push button alone does not make the page incomplete.
+        await using var basic = await OpenAsync("forms-basic.pdf");
+        var basicReport = new RedactionSearchReport();
+        _ = await FindAsync(basic, "Fest", report: basicReport);
+        Assert.True(basicReport.IsComplete);
+        await using var signed = await OpenAsync("forms-signed.pdf");
+        var signedReport = new RedactionSearchReport();
+        _ = await FindAsync(signed, "Zephyr", report: signedReport);
+        Assert.True(signedReport.IsComplete);
+    }
+
+    [Fact]
+    public async Task TheSearchReadsTheFormsInTheBackgroundWithTheSameFieldsAsTheViewerDoes()
+    {
+        foreach (var name in new[] { "forms-basic.pdf", "forms-rotated.pdf", "forms-calc.pdf", "forms-hostile.pdf" })
+        {
+            await using var document = await OpenAsync(name);
+            for (var page = 0; page < document.PageCount; page++)
+            {
+                var interactive = await document.GetFormFieldsAsync(page, Ct);
+                var (background, leftOut) = await document.GetFormFieldsForSearchAsync(page, Ct);
+
+                Assert.Equal(interactive.Select(static f => (f.Key, f.Bounds, f.State, f.Lock)), background.Select(static f => (f.Key, f.Bounds, f.State, f.Lock)));
+                Assert.Equal(name == "forms-hostile.pdf", leftOut);
+            }
+        }
+
+        // The listing of annotations says nothing more and nothing less than the public one.
+        await using var annotated = await OpenAsync("annotations-foreign.pdf");
+        for (var page = 0; page < annotated.PageCount; page++)
+        {
+            var (listed, incomplete) = await annotated.GetAnnotationsWithStatusAsync(page, Ct);
+            Assert.Equal((await annotated.GetAnnotationsAsync(page, Ct)).Select(static a => (a.Index, a.Name, a.Contents)), listed.Select(static a => (a.Index, a.Name, a.Contents)));
+            Assert.False(incomplete);
+        }
+    }
+
+    // ---- whole words and "everywhere" ----
+
+    [Fact]
+    public async Task WholeWordNeverMakesAMarkEverywhere()
+    {
+        using var folder = new TempFolder();
+        await using var document = await OpenBytesAsync(folder, new VerifierPdf(PageWith("Die Liste ist lang, es ist gut")).Build());
+        var whole = new SearchOptions(WholeWord: true);
+
+        var hits = await FindAsync(document, "ist", whole);
+        Assert.Equal(2, hits.Count);
+
+        var marks = RedactionSearch.ToMarks(hits, "ist", everywhere: true, whole, out _);
+        Assert.Equal(2, marks.Count);
+        Assert.All(marks, static m => Assert.False(m.Everywhere));
+        Assert.False(RedactionSearch.ToMark(hits[0], "ist", everywhere: true, whole).Everywhere);
+
+        // Without whole words the wish is kept.
+        var plain = await FindAsync(document, "ist");
+        Assert.True(RedactionSearch.ToMark(plain[0], "ist", everywhere: true, default).Everywhere);
+        Assert.False(RedactionSearch.ToMark(plain[0], "ist", everywhere: false, default).Everywhere);
+    }
+
+    [Fact]
+    public async Task TheCheckAcceptsAWholeWordRedactionOfATextWithListeButRefusesTheEverywhereWish()
+    {
+        using var folder = new TempFolder();
+        var path = Path.Combine(folder.Path, "liste.pdf");
+        File.WriteAllBytes(path, new VerifierPdf(PageWith("Die Liste ist lang, es ist gut")).Build());
+        var whole = new SearchOptions(WholeWord: true);
+
+        // As the search makes it: every whole-word hit is marked, nothing demands that "Liste" loses its letters.
+        using (var session = new ViewerSession(engine))
+        {
+            await session.OpenAsync(path);
+            var hits = await FindAsync(session.Document!, "ist", whole);
+            var plan = RedactionPlan.Empty.WithRange(RedactionSearch.ToMarks(hits, "ist", everywhere: true, whole, out _));
+
+            var result = await RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, Path.Combine(folder.Path, "out.pdf")), null, Ct);
+
+            Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+            var text = string.Concat((await session.Document!.GetPageTextAsync(0, Ct)).Chars.Select(static c => c.Text));
+            Assert.Contains("Liste", text, StringComparison.Ordinal);
+            Assert.Contains("lang", text, StringComparison.Ordinal);
+        }
+
+        // The same hits made "everywhere" by hand would demand 0 occurrences of "ist" in "Liste" as well.
+        using var other = new ViewerSession(engine);
+        await other.OpenAsync(path);
+        var found = await FindAsync(other.Document!, "ist", whole);
+        var forced = RedactionPlan.Empty.WithRange(found.Select(static h => new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, h.Page, [.. h.Areas], h.Text, Everywhere: true)));
+        var refused = await Assert.ThrowsAsync<SaveFailureException>(() => RedactionApplier.ApplyAsync(other, engine, new RedactionApplyRequest(forced, Path.Combine(folder.Path, "forced.pdf")), null, Ct));
+        Assert.Equal(SaveFailureReason.RedactionFailed, refused.Reason);
+        Assert.False(File.Exists(Path.Combine(folder.Path, "forced.pdf")));
     }
 }

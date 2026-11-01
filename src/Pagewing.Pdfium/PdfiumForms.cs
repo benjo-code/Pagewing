@@ -207,10 +207,20 @@ internal static unsafe class PdfiumForms
     /// <param name="page">The page.</param>
     /// <param name="clock">The clock of the time budget; <see cref="TimeProvider.System"/> without one (tests pass a fake).</param>
     /// <exception cref="ObjectDisposedException">The page or the environment is closed.</exception>
-    public static PdfiumFormField[] ReadPage(PdfiumPage page, TimeProvider? clock = null)
+    public static PdfiumFormField[] ReadPage(PdfiumPage page, TimeProvider? clock = null) =>
+        ReadPage(page, out _, clock);
+
+    /// <summary>
+    /// Like <see cref="ReadPage(PdfiumPage, TimeProvider?)"/>, and says whether a widget is missing from the result:
+    /// <paramref name="widgetsLeftOut"/> is set when a widget has no usable <c>/Rect</c> (it is dropped), or when the page has
+    /// more entries than are looked at or more widgets than <see cref="MaxFieldsPerPage"/> (the rest is not read). A widget that is
+    /// in the result with a <see cref="PdfiumFormField.SkipReason"/> is not counted here; the caller sees it.
+    /// </summary>
+    internal static PdfiumFormField[] ReadPage(PdfiumPage page, out bool widgetsLeftOut, TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
+        widgetsLeftOut = false;
         if (page.Handle.FormEnvironment is not { } environment)
         {
             return [];
@@ -220,14 +230,20 @@ internal static unsafe class PdfiumForms
         var transform = PdfiumPageText.TransformOf(page);
         var budget = new CallBudget(clock ?? TimeProvider.System);
         var result = new List<PdfiumFormField>();
+        var dropped = false;
         ForEachWidget(native, (index, annotation) =>
         {
             if (ReadOne(form, transform, index, annotation, budget) is { } field)
             {
                 result.Add(field);
             }
-        });
+            else
+            {
+                dropped = true;
+            }
+        }, out var truncated);
 
+        widgetsLeftOut = dropped || truncated;
         return [.. result];
     }
 
@@ -724,11 +740,21 @@ internal static unsafe class PdfiumForms
     private static void LeaveFocus(nint form) => _ = Fpdf.FORM_ForceToKillFocus(form);
 
     /// <summary>Calls <paramref name="read"/> for every widget of the page within the limits; the handle is closed afterwards.</summary>
-    internal static void ForEachWidget(nint page, Action<int, nint> read)
+    internal static void ForEachWidget(nint page, Action<int, nint> read) => ForEachWidget(page, read, out _);
+
+    /// <summary>
+    /// Like <see cref="ForEachWidget(nint, Action{int, nint})"/>; <paramref name="truncated"/> is set when entries were not looked
+    /// at: the page has more than <see cref="PdfiumAnnotations.MaxScannedPerPage"/> entries, or the widget limit stopped the walk
+    /// with entries left (a conservative answer: the rest may hold no widget).
+    /// </summary>
+    internal static void ForEachWidget(nint page, Action<int, nint> read, out bool truncated)
     {
-        var count = Math.Clamp(Fpdf.FPDFPage_GetAnnotCount(page), 0, PdfiumAnnotations.MaxScannedPerPage);
+        var entries = Fpdf.FPDFPage_GetAnnotCount(page);
+        var count = Math.Clamp(entries, 0, PdfiumAnnotations.MaxScannedPerPage);
+        truncated = entries > count;
         var widgets = 0;
-        for (var index = 0; index < count && widgets < MaxFieldsPerPage; index++)
+        var index = 0;
+        for (; index < count && widgets < MaxFieldsPerPage; index++)
         {
             var annotation = Fpdf.FPDFPage_GetAnnot(page, index);
             if (annotation == 0)
@@ -751,6 +777,8 @@ internal static unsafe class PdfiumForms
                 Fpdf.FPDFPage_CloseAnnot(annotation);
             }
         }
+
+        truncated |= index < count;
     }
 
     /// <summary>

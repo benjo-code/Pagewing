@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Pagewing.Core.Annotations;
 using Pagewing.Core.Forms;
 using Pagewing.Core.Pdf;
@@ -42,6 +44,34 @@ public sealed record RedactionHit(RedactionHitSource Source, int Page, IReadOnly
 
     /// <summary>Gets what holds the match besides the page: the PDF subtype of an annotation, the name of a form field; <see langword="null"/> for page text.</summary>
     public string? Detail { get; init; }
+
+    /// <summary>Gets why <see cref="Markable"/> is <see langword="false"/> (English, for the list of hits); <see langword="null"/> for a hit that can be marked.</summary>
+    public string? NotMarkableReason { get; init; }
+}
+
+/// <summary>
+/// What a search could not do, filled in while the hits are enumerated and complete when the enumeration has ended. A search that
+/// ends without a hit and with <see cref="IsComplete"/> <see langword="false"/> has not shown that the term is absent.
+/// </summary>
+public sealed class RedactionSearchReport
+{
+    private readonly SortedSet<int> pages = [];
+
+    /// <summary>
+    /// Gets the 0-based pages where something was not searched: the text, the annotations or the form fields could not be read, an
+    /// annotation or field was left out by a limit or because it is damaged, or a text was too long
+    /// (<see cref="RedactionSearch.MaxSourceTextLength"/>). Such a page may hold the term anyway. For the limit on annotations
+    /// that the whole document shares (links and form widgets count towards it) every later page that has annotations is listed.
+    /// </summary>
+    public IReadOnlyCollection<int> IncompletePages => pages;
+
+    /// <summary>Gets whether the search stopped at <see cref="RedactionSearch.MaxHits"/> hits; more may exist.</summary>
+    public bool LimitReached { get; internal set; }
+
+    /// <summary>Gets whether every page was searched completely and the limit was not reached. Does not cover <see cref="RedactionSearch.NotSearched"/>.</summary>
+    public bool IsComplete => pages.Count == 0 && !LimitReached;
+
+    internal void MarkIncomplete(int page) => pages.Add(page);
 }
 
 /// <summary>
@@ -51,15 +81,35 @@ public sealed record RedactionHit(RedactionHitSource Source, int Page, IReadOnly
 /// </summary>
 public static class RedactionSearch
 {
-    /// <summary>The most hits one search yields (equal to the most marks a plan holds); the search ends after the hit that reaches it.</summary>
+    /// <summary>
+    /// The most hits one search yields (equal to the most marks a plan holds); the search ends after the hit that reaches it.
+    /// A search that yields exactly this many hits has reached the limit: more may exist
+    /// (<see cref="RedactionSearchReport.LimitReached"/>).
+    /// </summary>
     public const int MaxHits = RedactionLimits.MaxMarks;
 
     /// <summary>The most UTF-16 units of the text of one annotation or form field that are searched; the rest is not looked at and the page counts as incomplete.</summary>
     public const int MaxSourceTextLength = 2_000_000;
 
     /// <summary>
+    /// What the search never looks at, as stable English lines for a card or the output of a command: a term that occurs only
+    /// there is not found, and the check of the result does not know of it unless a mark names the text.
+    /// </summary>
+    public static IReadOnlyList<string> NotSearched { get; } =
+    [
+        "Replies to annotations (/IRT) and popup notes are not searched.",
+        "The author (/T) and the subject (/Subj) of annotations are not searched.",
+        "The tooltips (/TU) and the names of form fields are not searched.",
+        "The rich text (/RV) of annotations and the default values (/DV) of form fields are not searched.",
+        "Text that exists only in the appearance (/AP) of an annotation is not searched.",
+        "Invisible text is flagged only for the render mode 3 (invisible); text that is covered by something else is found but not flagged.",
+    ];
+
+    /// <summary>
     /// Finds the term on all pages, page by page, in the page text (invisible text too), the texts of the annotations and the values of
-    /// the form fields, each as its own source. A page that cannot be read is skipped (see the overload that reports such pages).
+    /// the form fields, each as its own source. This overload cannot say what it did not search: a page that cannot be read, an
+    /// annotation or field that is left out by a limit, and the end at <see cref="MaxHits"/> are silent. Use the overload with a
+    /// <see cref="RedactionSearchReport"/> wherever the result is shown or acted on.
     /// </summary>
     /// <param name="document">The document to search.</param>
     /// <param name="term">The text to find; not empty, not white space only, at most <see cref="RedactionLimits.MaxTermLength"/> units.</param>
@@ -73,14 +123,15 @@ public static class RedactionSearch
         FindAsync(document, term, options, null, null, cancellationToken);
 
     /// <summary>
-    /// Like <see cref="FindAsync(PdfDocument, string, SearchOptions, CancellationToken)"/>, with the page texts taken from
-    /// <paramref name="texts"/> (the cache of the session, 32 pages) and a list of the pages where something could not be searched.
+    /// The search to use: like <see cref="FindAsync(PdfDocument, string, SearchOptions, CancellationToken)"/>, with the page texts
+    /// taken from <paramref name="texts"/> and a report of what could not be searched. Read the report when the enumeration has
+    /// ended; show <see cref="RedactionSearchReport.IncompletePages"/> and <see cref="NotSearched"/> with the result.
     /// </summary>
     /// <param name="document">The document to search.</param>
     /// <param name="term">The text to find.</param>
     /// <param name="options">Letter case and whole words.</param>
-    /// <param name="texts">The cache of page texts, which must belong to <paramref name="document"/>; <see langword="null"/> reads every page from the document.</param>
-    /// <param name="incompletePages">Receives the 0-based pages where the text, the annotations or the fields could not be read, or a text was too long (<see cref="MaxSourceTextLength"/>); such a page was searched only as far as it could be. May be <see langword="null"/>.</param>
+    /// <param name="report">Receives the pages that were not searched completely and whether the limit was reached; may be <see langword="null"/>.</param>
+    /// <param name="texts">The cache of page texts (32 pages), which must belong to <paramref name="document"/>; <see langword="null"/> reads every page from the document.</param>
     /// <param name="cancellationToken">Stops the search before the next page.</param>
     /// <returns>The hits, at most <see cref="MaxHits"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="term"/> is <see langword="null"/>.</exception>
@@ -90,8 +141,8 @@ public static class RedactionSearch
         PdfDocument document,
         string term,
         SearchOptions options,
+        RedactionSearchReport? report,
         PageTextSource? texts,
-        ICollection<int>? incompletePages,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -106,7 +157,7 @@ public static class RedactionSearch
             throw new RedactionException(RedactionError.LimitExceeded, "The term is longer than allowed.");
         }
 
-        return FindCoreAsync(document, term, options, texts, incompletePages, cancellationToken);
+        return FindCoreAsync(document, term, options, report, texts, cancellationToken);
     }
 
     /// <summary>
@@ -116,13 +167,19 @@ public static class RedactionSearch
     /// spelling the search found is checked to be gone from the whole document. <paramref name="term"/> only has to be a query
     /// (not empty); it is not stored.
     /// </summary>
+    /// <remarks>
+    /// With <see cref="SearchOptions.WholeWord"/> <paramref name="everywhere"/> is ignored (the mark is made without it): the check
+    /// counts substrings, so "gone from the whole document" would also demand that "Liste" loses its "ist", and the result would be
+    /// refused. Every whole-word hit is still marked.
+    /// </remarks>
     /// <param name="hit">The hit.</param>
     /// <param name="term">The query the hit came from.</param>
-    /// <param name="everywhere">Whether the text must be gone from the whole document.</param>
+    /// <param name="everywhere">Whether the text must be gone from the whole document (never with whole words).</param>
+    /// <param name="options">The options the search ran with.</param>
     /// <returns>A mark of the kind <see cref="RedactionKind.Hit"/> with a new id.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="RedactionException">The hit is not <see cref="RedactionHit.Markable"/> (<see cref="RedactionError.InvalidArea"/>), or the query is empty.</exception>
-    public static RedactionMark ToMark(RedactionHit hit, string term, bool everywhere)
+    public static RedactionMark ToMark(RedactionHit hit, string term, bool everywhere, SearchOptions options)
     {
         ArgumentNullException.ThrowIfNull(hit);
         ArgumentNullException.ThrowIfNull(term);
@@ -133,22 +190,25 @@ public static class RedactionSearch
 
         if (!hit.Markable)
         {
-            throw new RedactionException(RedactionError.InvalidArea, "The hit has no area that can be marked.");
+            throw new RedactionException(RedactionError.InvalidArea, hit.NotMarkableReason ?? "The hit cannot be marked.");
         }
 
-        return new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, hit.Page, [.. hit.Areas], hit.Text, everywhere);
+        return new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, hit.Page, [.. hit.Areas], hit.Text, everywhere && !options.WholeWord);
     }
 
     /// <summary>
-    /// Makes marks of all hits that can become one, for <see cref="RedactionPlan.WithRange"/>; the others are counted, not made.
-    /// Enumerates the hits once.
+    /// Makes marks of all hits that can become one, for <see cref="RedactionPlan.WithRange"/>; the others are counted, not made
+    /// (<see cref="FindAsync(PdfDocument, string, SearchOptions, CancellationToken)"/> yields them with
+    /// <see cref="RedactionHit.Markable"/> <see langword="false"/> and a reason, so a list can show them). Enumerates the hits once.
+    /// See <see cref="ToMark"/> for <paramref name="options"/>.
     /// </summary>
     /// <param name="hits">The hits.</param>
     /// <param name="term">The query the hits came from.</param>
-    /// <param name="everywhere">Whether each text must be gone from the whole document.</param>
+    /// <param name="everywhere">Whether each text must be gone from the whole document (never with whole words).</param>
+    /// <param name="options">The options the search ran with.</param>
     /// <param name="notMarkable">How many hits were left out because they are not <see cref="RedactionHit.Markable"/>.</param>
     /// <returns>The marks in the order of the hits.</returns>
-    public static IReadOnlyList<RedactionMark> ToMarks(IEnumerable<RedactionHit> hits, string term, bool everywhere, out int notMarkable)
+    public static IReadOnlyList<RedactionMark> ToMarks(IEnumerable<RedactionHit> hits, string term, bool everywhere, SearchOptions options, out int notMarkable)
     {
         ArgumentNullException.ThrowIfNull(hits);
         var marks = new List<RedactionMark>();
@@ -157,7 +217,7 @@ public static class RedactionSearch
         {
             if (hit.Markable)
             {
-                marks.Add(ToMark(hit, term, everywhere));
+                marks.Add(ToMark(hit, term, everywhere, options));
             }
             else
             {
@@ -172,8 +232,8 @@ public static class RedactionSearch
         PdfDocument document,
         string term,
         SearchOptions options,
+        RedactionSearchReport? report,
         PageTextSource? texts,
-        ICollection<int>? incompletePages,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var total = 0;
@@ -181,7 +241,6 @@ public static class RedactionSearch
         for (var page = 0; page < pageCount; page++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var incomplete = false;
 
             PageText? pageText = null;
             try
@@ -192,7 +251,7 @@ public static class RedactionSearch
             }
             catch (InvalidDataException)
             {
-                incomplete = true;
+                report?.MarkIncomplete(page);
             }
 
             if (pageText is not null)
@@ -210,6 +269,7 @@ public static class RedactionSearch
 
                     if (total >= MaxHits)
                     {
+                        EndAtLimit(report);
                         yield break;
                     }
                 }
@@ -219,11 +279,16 @@ public static class RedactionSearch
             IReadOnlyList<PdfAnnotation> annotations = [];
             try
             {
-                annotations = await document.GetAnnotationsAsync(page, cancellationToken).ConfigureAwait(false);
+                var read = await document.GetAnnotationsWithStatusAsync(page, cancellationToken).ConfigureAwait(false);
+                annotations = read.Annotations;
+                if (read.Incomplete)
+                {
+                    report?.MarkIncomplete(page);
+                }
             }
             catch (InvalidDataException)
             {
-                incomplete = true;
+                report?.MarkIncomplete(page);
             }
 
             foreach (var annotation in annotations)
@@ -233,12 +298,13 @@ public static class RedactionSearch
                     continue;
                 }
 
-                foreach (var hit in TextHits(RedactionHitSource.Annotation, page, annotation.Contents, annotation.Bounds, annotation.Subtype, term, options, ref incomplete))
+                foreach (var hit in TextHits(RedactionHitSource.Annotation, page, annotation.Contents, annotation.Bounds, annotation.Subtype, term, options, report))
                 {
                     total++;
                     yield return hit;
                     if (total >= MaxHits)
                     {
+                        EndAtLimit(report);
                         yield break;
                     }
                 }
@@ -248,33 +314,49 @@ public static class RedactionSearch
             IReadOnlyList<FormField> fields = [];
             try
             {
-                fields = await document.GetFormFieldsAsync(page, cancellationToken).ConfigureAwait(false);
+                var read = await document.GetFormFieldsForSearchAsync(page, cancellationToken).ConfigureAwait(false);
+                fields = read.Fields;
+                if (read.WidgetsLeftOut)
+                {
+                    report?.MarkIncomplete(page);
+                }
             }
             catch (InvalidDataException)
             {
-                incomplete = true;
+                report?.MarkIncomplete(page);
             }
 
             foreach (var field in fields)
             {
+                // A widget Pagewing could not read (value too long, too slow, too many options, no name) comes with no value at all.
+                // A signature and a push button hold no text to look for.
+                if (field.Lock == FormLock.Unsupported && field.Kind is not (FormFieldKind.Signature or FormFieldKind.PushButton))
+                {
+                    report?.MarkIncomplete(page);
+                }
+
                 foreach (var value in ValuesOf(field))
                 {
-                    foreach (var hit in TextHits(RedactionHitSource.FormField, page, value, field.Bounds, field.Key.FieldName, term, options, ref incomplete))
+                    foreach (var hit in TextHits(RedactionHitSource.FormField, page, value, field.Bounds, field.Key.FieldName, term, options, report))
                     {
                         total++;
                         yield return hit;
                         if (total >= MaxHits)
                         {
+                            EndAtLimit(report);
                             yield break;
                         }
                     }
                 }
             }
+        }
+    }
 
-            if (incomplete)
-            {
-                incompletePages?.Add(page);
-            }
+    private static void EndAtLimit(RedactionSearchReport? report)
+    {
+        if (report is not null)
+        {
+            report.LimitReached = true;
         }
     }
 
@@ -302,7 +384,8 @@ public static class RedactionSearch
         {
             var (first, last) = matches[i];
             var snippet = TextMatcher.SnippetOf(chars, first, last);
-            hits.Add(Make(RedactionHitSource.PageText, page, AreasOf(chars, first, last), snippet, null, invisible[i]));
+            var areas = AreasOf(chars, first, last, out var lossy);
+            hits.Add(Make(RedactionHitSource.PageText, page, areas, snippet, null, invisible[i], lossy));
         }
 
         return hits;
@@ -316,12 +399,12 @@ public static class RedactionSearch
         string detail,
         string term,
         SearchOptions options,
-        ref bool incomplete)
+        RedactionSearchReport? report)
     {
         if (text.Length > MaxSourceTextLength)
         {
             text = text[..MaxSourceTextLength];
-            incomplete = true;
+            report?.MarkIncomplete(page);
         }
 
         var chars = new List<TextChar>(text.Length);
@@ -333,30 +416,51 @@ public static class RedactionSearch
         var hits = new List<RedactionHit>();
         foreach (var (first, last) in TextMatcher.Find(chars, term, options))
         {
-            hits.Add(Make(source, page, IsUsable(area) ? [area] : [], TextMatcher.SnippetOf(chars, first, last), detail, false));
+            hits.Add(Make(source, page, IsUsable(area) ? [area] : [], TextMatcher.SnippetOf(chars, first, last), detail, false, lossy: false));
         }
 
         return hits;
     }
 
-    internal static RedactionHit Make(RedactionHitSource source, int page, List<PageRect> areas, SearchSnippet snippet, string? detail, bool invisible)
+    internal static RedactionHit Make(RedactionHitSource source, int page, List<PageRect> areas, SearchSnippet snippet, string? detail, bool invisible, bool lossy = false)
     {
         var text = snippet.Match;
-        var markable = areas.Count is > 0 and <= RedactionLimits.MaxAreasPerMark
-            && !string.IsNullOrWhiteSpace(text)
-            && text.Length <= RedactionLimits.MaxTermLength;
-        return new RedactionHit(source, page, areas, text, invisible) { Markable = markable, Snippet = snippet, Detail = detail };
+        string? reason = null;
+        if (areas.Count == 0)
+        {
+            reason = "No character of the hit has a box with an area, so there is nothing to mark.";
+        }
+        else if (lossy)
+        {
+            reason = "A letter or digit of the hit has no box with an area; marking the rest would leave part of the text in place.";
+        }
+        else if (areas.Count > RedactionLimits.MaxAreasPerMark)
+        {
+            reason = "The hit has more lines than a mark can hold.";
+        }
+        else if (string.IsNullOrWhiteSpace(text))
+        {
+            reason = "The matched text is only white space.";
+        }
+        else if (text.Length > RedactionLimits.MaxTermLength)
+        {
+            reason = "The matched text is longer than a term can be.";
+        }
+
+        return new RedactionHit(source, page, areas, text, invisible) { Markable = reason is null, Snippet = snippet, Detail = detail, NotMarkableReason = reason };
     }
 
     /// <summary>
     /// The rectangles of the characters first to last, one per line, like <see cref="PageText.RectsOf"/>, but a character whose box has no
     /// area or is not finite (a zero-width joiner, a combining mark, a box the engine could not read) is left out: it would not
     /// be a valid rectangle, and in a union it would stretch the rectangle to the corner of the page. A line with no usable box gives
-    /// no rectangle.
+    /// no rectangle. <paramref name="lossy"/> is set when a character that was left out is more than white space, a format character or a
+    /// combining mark (a letter, digit or sign): the rectangles then do not cover the whole hit, and the hit must not be marked.
     /// </summary>
-    internal static List<PageRect> AreasOf(IReadOnlyList<TextChar> chars, int first, int last)
+    internal static List<PageRect> AreasOf(IReadOnlyList<TextChar> chars, int first, int last, out bool lossy)
     {
         var rects = new List<PageRect>();
+        lossy = false;
         var end = last + 1;
         var i = first;
         while (i < end)
@@ -366,10 +470,19 @@ public static class RedactionSearch
             var to = -1;
             for (var k = i; k < segmentEnd; k++)
             {
-                if (!chars[k].IsGenerated && IsUsable(chars[k].Box))
+                if (chars[k].IsGenerated)
+                {
+                    continue;
+                }
+
+                if (IsUsable(chars[k].Box))
                 {
                     from = from < 0 ? k : from;
                     to = k;
+                }
+                else if (!IsIgnorable(chars[k]))
+                {
+                    lossy = true;
                 }
             }
 
@@ -397,10 +510,22 @@ public static class RedactionSearch
         return rects;
     }
 
+    /// <summary>Whether a character with no area leaves nothing visible out: white space, a format character (such as a zero-width joiner) or a combining mark.</summary>
+    private static bool IsIgnorable(TextChar c)
+    {
+        if (!Rune.IsValid(c.CodePoint))
+        {
+            return false;
+        }
+
+        var rune = new Rune(c.CodePoint);
+        return Rune.IsWhiteSpace(rune)
+            || Rune.GetUnicodeCategory(rune) is UnicodeCategory.Format or UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
+    }
+
     private static bool IsUsable(PageRect box) =>
         double.IsFinite(box.Left) && double.IsFinite(box.Top) && double.IsFinite(box.Right) && double.IsFinite(box.Bottom)
         && box.Right > box.Left && box.Bottom > box.Top;
-
     /// <summary>The strings of a field that a reader of the file can see: the text value, the labels of the chosen options.</summary>
     private static IEnumerable<string> ValuesOf(FormField field)
     {

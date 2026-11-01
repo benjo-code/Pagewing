@@ -741,6 +741,33 @@ public sealed partial class PdfDocument
         public Action? Refuse { get; init; }
     }
 
+    /// <summary>
+    /// Reads the widgets of a page like <see cref="GetFormFieldsAsync"/> (same list), but as a short
+    /// <see cref="PdfPriority.Background"/> job, and says whether a widget is missing from it: it has no usable <c>/Rect</c>, or the
+    /// page has more entries or widgets than are read. A widget in the list that Pagewing could not read (<see cref="FormLock.Unsupported"/>
+    /// with an empty value) is not counted here; the caller sees it. For the search, which is batch work.
+    /// </summary>
+    internal Task<(IReadOnlyList<FormField> Fields, bool WidgetsLeftOut)> GetFormFieldsForSearchAsync(int pageIndex, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ThrowIfNotAPage(pageIndex);
+        if (formType == FpdfConstants.FormTypeNone)
+        {
+            return Task.FromResult((NoFields, false));
+        }
+
+        var index = Volatile.Read(ref formNames)?.Pages;
+        return document.Thread.InvokeAsync<(IReadOnlyList<FormField>, bool)>(
+            () =>
+            {
+                using var page = document.LoadPage(pageIndex);
+                var widgets = PdfiumForms.ReadPage(page, out var leftOut);
+                return (LockSpread(ToFormFields(pageIndex, widgets), index), leftOut);
+            },
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
     private Task<IReadOnlyList<FormField>> ReadFormFieldsAsync(int pageIndex, PdfiumPriority priority, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
