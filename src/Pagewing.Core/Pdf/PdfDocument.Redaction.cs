@@ -47,12 +47,14 @@ public sealed partial class PdfDocument
     /// <param name="cancellationToken">Cancels between two steps; a canceled call may leave the document changed, which must then be discarded.</param>
     /// <returns>What was done. When <see cref="PageRedactionImpact.Refusal"/> is set, the document may have changed and must be discarded.</returns>
     /// <remarks>
-    /// The call marks the document as tainted (<see cref="IsRedactionTainted"/>) right before it makes its first change and clears the mark only
-    /// when it ends without a refusal. A refusal after the first change, an exception and a cancellation therefore leave the mark: the
-    /// document holds content that is only partly redacted, and <see cref="SaveRewriteAsync"/> and further calls of this method throw
-    /// <see cref="RedactionTaintedException"/> whatever the caller did with the result. Redact one page at a time on a document.
+    /// The document counts as not writable (<see cref="IsRedactionTainted"/>, the contract is stated there) while this call is between its
+    /// first change and its end, and for good when it ends in a refusal, an exception or a cancellation after it changed the page or after
+    /// another page was redacted. The saving methods and further calls of this method then throw <see cref="RedactionTaintedException"/>
+    /// whatever the caller did with the result. Only one call may run on a document at a time: a second one that overlaps throws
+    /// <see cref="InvalidOperationException"/> (it is not queued) and changes nothing.
     /// </remarks>
     /// <exception cref="RedactionTaintedException">An earlier call left the document tainted.</exception>
+    /// <exception cref="InvalidOperationException">Another call of this method on the document is still running.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The page does not exist.</exception>
     /// <exception cref="RedactionException">A rectangle is not finite or has no size, or there are more than <see cref="MaxRedactionAreasPerPage"/>.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
@@ -64,10 +66,16 @@ public sealed partial class PdfDocument
     internal PdfiumRedactionSeam? RedactionSeam { get; set; }
 
     /// <summary>
-    /// Gets whether a redaction changed the document and did not finish cleanly (a refusal after the first change, an exception, a
-    /// cancellation); such a document is only partly redacted and is never written. See <see cref="RedactPageAsync"/>.
+    /// Gets whether the document must not be written: a redaction is changing it right now, or an earlier one left it only partly redacted.
+    /// The contract: the flag is set while a <see cref="RedactPageAsync"/> call is between its first change to the page and its end, and
+    /// it is set for good (never cleared) by any call that ends in a refusal, an exception or a cancellation after it changed the page, or
+    /// after another call had redacted a page successfully, and by a successful call after an earlier call ended without a change but
+    /// also without redacting its page. A document where every call ended cleanly stays writable; a document where a page was refused
+    /// before anything was redacted is still the original and stays writable too. While the flag is set, <see cref="SaveRewriteAsync"/>,
+    /// <see cref="SaveIncrementalAsync"/>, <see cref="SaveDecryptedCopyAsync"/> and <see cref="RedactPageAsync"/> throw
+    /// <see cref="RedactionTaintedException"/>.
     /// </summary>
-    public bool IsRedactionTainted => Volatile.Read(ref redactionTainted) != 0;
+    public bool IsRedactionTainted => Volatile.Read(ref redactionFailed) != 0 || Volatile.Read(ref redactionInFlight) != 0;
 
     private void ThrowIfRedactionTainted()
     {
@@ -77,7 +85,36 @@ public sealed partial class PdfDocument
         }
     }
 
-    private void MarkRedactionTainted() => Volatile.Write(ref redactionTainted, 1);
+    /// <summary>Settles the books of one <see cref="RedactPageAsync"/> call (see <see cref="IsRedactionTainted"/>).</summary>
+    private void EndApply(bool clean, bool modified)
+    {
+        if (clean)
+        {
+            Interlocked.Increment(ref redactionApplied);
+
+            // An earlier page was refused without being touched: it is the one left readable now.
+            if (Volatile.Read(ref redactionSkipped) != 0)
+            {
+                Volatile.Write(ref redactionFailed, 1);
+            }
+        }
+        else if (modified || Volatile.Read(ref redactionApplied) > 0)
+        {
+            Volatile.Write(ref redactionFailed, 1);
+        }
+        else
+        {
+            Volatile.Write(ref redactionSkipped, 1);
+        }
+
+        // Only after the failure is recorded, so that the document is never seen as clean in between.
+        if (modified)
+        {
+            Interlocked.Decrement(ref redactionInFlight);
+        }
+
+        Volatile.Write(ref redactionRunning, 0);
+    }
 
     private async Task<PageRedactionImpact> RunRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, bool apply, CancellationToken cancellationToken)
     {
@@ -107,18 +144,55 @@ public sealed partial class PdfDocument
         }
 
         var pdfiumFill = fill == RedactionFill.White ? PdfiumRedactionFill.White : PdfiumRedactionFill.Black;
-        var impact = await document.Thread.InvokeSteppedAsync(
-            () => PdfiumRedactionRun.Start(document, page, copy, pdfiumFill, apply, apply ? MarkRedactionTainted : null, RedactionSeam),
-            PdfiumPriority.Background,
-            cancellationToken).ConfigureAwait(false);
-
-        // Only a redaction that ended without a refusal makes the document clean again (it was clean before: a tainted one is not redacted).
-        if (apply && impact.RefusalReason is null)
+        if (!apply)
         {
-            Volatile.Write(ref redactionTainted, 0);
+            var dry = await document.Thread.InvokeSteppedAsync(
+                () => PdfiumRedactionRun.Start(document, page, copy, pdfiumFill, apply: false, onModified: null, RedactionSeam),
+                PdfiumPriority.Background,
+                cancellationToken).ConfigureAwait(false);
+            return ToImpact(page, dry);
         }
 
-        return ToImpact(page, impact);
+        // One redaction at a time on a document: two overlapping ones could not tell whose change an unfinished page belongs to.
+        if (Interlocked.CompareExchange(ref redactionRunning, 1, 0) != 0)
+        {
+            throw new InvalidOperationException("Another redaction of this document is still running; redact one page at a time.");
+        }
+
+        var modified = new ModifiedFlag();
+        var clean = false;
+        try
+        {
+            var impact = await document.Thread.InvokeSteppedAsync(
+                () => PdfiumRedactionRun.Start(
+                    document,
+                    page,
+                    copy,
+                    pdfiumFill,
+                    apply: true,
+                    onModified: () =>
+                    {
+                        // Counted before the first change, on the PDFium thread: from here on the document must not be written.
+                        if (Interlocked.Exchange(ref modified.Value, 1) == 0)
+                        {
+                            Interlocked.Increment(ref redactionInFlight);
+                        }
+                    },
+                    RedactionSeam),
+                PdfiumPriority.Background,
+                cancellationToken).ConfigureAwait(false);
+            clean = impact.RefusalReason is null;
+            return ToImpact(page, impact);
+        }
+        finally
+        {
+            EndApply(clean, Volatile.Read(ref modified.Value) != 0);
+        }
+    }
+
+    private sealed class ModifiedFlag
+    {
+        public int Value;
     }
 
     private static PageRedactionImpact ToImpact(int page, PdfiumRedactionImpact impact) => new(

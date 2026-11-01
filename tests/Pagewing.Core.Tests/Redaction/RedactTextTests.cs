@@ -967,6 +967,131 @@ public sealed class RedactTextTests
         Assert.DoesNotContain(await ReadExactAsync(await SaveAsync(second, folder, "out2.pdf"), 0), c => c.Unicode == 2 && Math.Abs(c.OriginX - hyphen.OriginX) < 0.02 && Math.Abs(c.OriginY - hyphen.OriginY) < 0.02);
     }
 
+    private static PdfiumRedactionSeam RefusalBeforeTheFirstEdit() => new() { CharsRead = static (table, _) => table.Left[FirstLetter(table)] = double.NaN };
+
+    [Fact]
+    public async Task PageOneOkPageTwoRefusedBeforeTheEditThenSaveRewriteThrows()
+    {
+        using var folder = new TempFolder();
+        await using var document = await engine.OpenAsync(Copy(folder, "redact-everywhere.pdf"), cancellationToken: Ct);
+        var one = await document.RedactPageAsync(1, [new PageRect(100, 200, 180, 260)], RedactionFill.Black, Ct);
+        Assert.Null(one.Refusal);
+        Assert.False(document.IsRedactionTainted);
+
+        // Page 2 is refused before it is touched: the document holds one redacted and one untouched page, and must not be written.
+        document.RedactionSeam = RefusalBeforeTheFirstEdit();
+        var two = await document.RedactPageAsync(0, [new PageRect(0, 0, 300, 100)], RedactionFill.Black, Ct);
+        Assert.NotNull(two.Refusal);
+        Assert.True(document.IsRedactionTainted);
+        await using var stream = new MemoryStream();
+        await Assert.ThrowsAsync<RedactionTaintedException>(() => document.SaveRewriteAsync(stream, Ct));
+        await Assert.ThrowsAsync<RedactionTaintedException>(() => document.SaveIncrementalAsync(stream, Ct));
+    }
+
+    [Fact]
+    public async Task ARefusedPageFollowedByACleanPageLeavesTheDocumentTainted()
+    {
+        using var folder = new TempFolder();
+        await using var document = await engine.OpenAsync(Copy(folder, "redact-everywhere.pdf"), cancellationToken: Ct);
+
+        // Nothing was redacted yet and the refused page was not touched: the document is still the original and can be written.
+        document.RedactionSeam = RefusalBeforeTheFirstEdit();
+        Assert.NotNull((await document.RedactPageAsync(0, [new PageRect(0, 0, 300, 100)], RedactionFill.Black, Ct)).Refusal);
+        Assert.False(document.IsRedactionTainted);
+        _ = await SaveAsync(document, folder, "original.pdf");
+
+        // But once another page is redacted, the refused one is the one left readable.
+        document.RedactionSeam = null;
+        Assert.Null((await document.RedactPageAsync(1, [new PageRect(100, 200, 180, 260)], RedactionFill.Black, Ct)).Refusal);
+        Assert.True(document.IsRedactionTainted);
+        await using var stream = new MemoryStream();
+        await Assert.ThrowsAsync<RedactionTaintedException>(() => document.SaveRewriteAsync(stream, Ct));
+    }
+
+    [Fact]
+    public async Task AnEarlierFailureIsNeverErasedByALaterCall()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-everywhere.pdf");
+        var letters = (await ReadExactAsync(path, 0)).Where(static c => !White(c)).ToList();
+        var area = Display(Union(letters.Skip(Find(letters, Term)[0]).Take(Term.Count(static c => c > ' '))), 400);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        document.RedactionSeam = ReadBackThatLosesTheFirstLetterOfTheRealPage();
+        Assert.NotNull((await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct)).Refusal);
+        Assert.True(document.IsRedactionTainted);
+
+        document.RedactionSeam = null;
+        await Assert.ThrowsAsync<RedactionTaintedException>(() => document.RedactPageAsync(1, [new PageRect(100, 200, 180, 260)], RedactionFill.Black, Ct));
+        _ = await document.AnalyzeRedactionAsync(1, [new PageRect(100, 200, 180, 260)], Ct);
+        Assert.True(document.IsRedactionTainted);
+    }
+
+    [Fact]
+    public async Task AnOverlappingApplyOnTheSameDocumentIsRejectedAndTheFirstOneIsNotHarmed()
+    {
+        using var folder = new TempFolder();
+        var path = Path.Combine(folder.Path, "many-text.pdf");
+        await File.WriteAllBytesAsync(path, HostilePdf.Build(GridOfTextObjects()), Ct);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+
+        var first = document.RedactPageAsync(0, [new PageRect(0, 0, 306, 792)], RedactionFill.Black, Ct);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => document.RedactPageAsync(0, [new PageRect(0, 0, 10, 10)], RedactionFill.Black, Ct));
+        Assert.Null((await first).Refusal);
+        Assert.False(document.IsRedactionTainted);
+        _ = await SaveAsync(document, folder, "out.pdf");
+
+        // The slot is free again.
+        Assert.Null((await document.RedactPageAsync(0, [new PageRect(400, 0, 600, 100)], RedactionFill.Black, Ct)).Refusal);
+    }
+
+    [Fact]
+    public async Task SaveWhileARedactionIsInFlightIsRefused()
+    {
+        using var folder = new TempFolder();
+        await using var document = await engine.OpenAsync(Copy(folder, "redact-everywhere.pdf"), cancellationToken: Ct);
+        RedactionTaintedException? refused = null;
+        var taintedInside = false;
+        document.RedactionSeam = new PdfiumRedactionSeam
+        {
+            AfterEdits = scratch =>
+            {
+                if (!scratch)
+                {
+                    taintedInside = document.IsRedactionTainted;
+                    try
+                    {
+                        _ = document.SaveRewriteAsync(Stream.Null, Ct);
+                    }
+                    catch (RedactionTaintedException ex)
+                    {
+                        refused = ex;
+                    }
+                }
+            },
+        };
+        var impact = await document.RedactPageAsync(1, [new PageRect(100, 200, 180, 260)], RedactionFill.Black, Ct);
+
+        // While the page is half edited the document is not writable; when the call ends cleanly it is again.
+        Assert.Null(impact.Refusal);
+        Assert.True(taintedInside);
+        Assert.NotNull(refused);
+        Assert.False(document.IsRedactionTainted);
+    }
+
+    [Fact]
+    public async Task SaveDecryptedCopyIsRefusedWhenTainted()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-everywhere.pdf");
+        var letters = (await ReadExactAsync(path, 0)).Where(static c => !White(c)).ToList();
+        var area = Display(Union(letters.Skip(Find(letters, Term)[0]).Take(Term.Count(static c => c > ' '))), 400);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        document.RedactionSeam = ReadBackThatLosesTheFirstLetterOfTheRealPage();
+        Assert.NotNull((await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct)).Refusal);
+        await Assert.ThrowsAsync<RedactionTaintedException>(() => document.SaveDecryptedCopyAsync(Path.Combine(folder.Path, "copy.pdf"), Ct));
+        Assert.False(File.Exists(Path.Combine(folder.Path, "copy.pdf")));
+    }
+
     [Fact]
     public async Task PageWithMoreObjectsThanTheCapIsRefusedWithReason()
     {

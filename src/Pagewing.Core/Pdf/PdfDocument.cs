@@ -23,7 +23,11 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     private readonly int formType;
     private int disposed;
     private int printRequests;
-    private int redactionTainted;
+    private int redactionFailed;
+    private int redactionApplied;
+    private int redactionSkipped;
+    private int redactionInFlight;
+    private int redactionRunning;
 
     internal PdfDocument(PdfiumDocument document, int pageCount, string pdfVersion, int formType)
     {
@@ -491,12 +495,14 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     /// </summary>
     /// <exception cref="IOException">The file could not be written.</exception>
     /// <exception cref="UnauthorizedAccessException">Access to the folder was denied.</exception>
+    /// <exception cref="Pagewing.Core.Redaction.RedactionTaintedException">A redaction left the document partly redacted (<see cref="IsRedactionTainted"/>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the save started.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task SaveDecryptedCopyAsync(string path, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
+        ThrowIfRedactionTainted();
         var fullPath = Path.GetFullPath(path);
         return document.Thread.InvokeAsync(
             () =>
