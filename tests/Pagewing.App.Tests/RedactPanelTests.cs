@@ -264,6 +264,50 @@ public sealed class RedactPanelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AMovedOrResizedMarkIsShownAtItsCurrentPlaceFromTheList()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        Assert.True(tab.AddAreaMark(0, new PageRect(100, 300, 220, 360)));
+        var id = tab.RedactionPlan!.Marks[0].Id;
+        await OpenPanelAsync(window, tab);
+        var panel = tab.RedactionPanel;
+        var revealed = new List<(int Page, PageRect Rect)>();
+        tab.RevealRequested += (page, rect) => revealed.Add((page, rect));
+
+        void JumpAndExpect(PageRect expected)
+        {
+            revealed.Clear();
+            var row = panel.MarkRows.Single(candidate => candidate.Mark?.Id == id);
+            Assert.Equal(expected, Assert.Single(row.Mark!.Areas));
+            panel.ChooseMark(row);
+            var shown = Assert.Single(revealed);
+            Assert.Equal(expected, shown.Rect);
+        }
+
+        JumpAndExpect(new PageRect(100, 300, 220, 360));
+
+        // Moved and resized: the row holds the new rectangle, and the jump goes there.
+        var moved = new PageRect(120, 310, 240, 370);
+        Assert.True(tab.SetMarkAreas([(id, moved)]));
+        JumpAndExpect(moved);
+        var resized = new PageRect(120, 310, 300, 400);
+        Assert.True(tab.SetMarkAreas([(id, resized)]));
+        JumpAndExpect(resized);
+
+        // Undo and redo bring the rectangles back, and the list follows.
+        tab.UndoCommand.Execute(null);
+        JumpAndExpect(moved);
+        tab.UndoCommand.Execute(null);
+        JumpAndExpect(new PageRect(100, 300, 220, 360));
+        tab.RedoCommand.Execute(null);
+        JumpAndExpect(moved);
+        tab.RedoCommand.Execute(null);
+        JumpAndExpect(resized);
+    }
+
+    [AvaloniaFact]
     public async Task AutomationNamesExistForEveryButton()
     {
         foreach (var language in new[] { "en", "de" })

@@ -321,8 +321,15 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        _tab.SelectMarks([mark.Id]);
-        _tab.RevealArea(mark.Page, Union(mark.Areas), fromPanel: true);
+        // The mark of the plan as it is now, by id: the row may hold an older state.
+        var current = _tab.RedactionPlan?.Marks.FirstOrDefault(candidate => candidate.Id == mark.Id);
+        if (current is null)
+        {
+            return;
+        }
+
+        _tab.SelectMarks([current.Id]);
+        _tab.RevealArea(current.Page, Union(current.Areas), fromPanel: true);
     }
 
     /// <summary>A click or Enter on a row of the list of hits: shows the hit on its page; the check stays as it is.</summary>
@@ -675,6 +682,8 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         }
     }
 
+    // A row holds the mark it shows; a mark that was changed (moved, resized, undone) is another object of the plan, so its row is made
+    // again and never shows or jumps to an old rectangle.
     // Brings the rows in line with the plan: the marks grouped by page, the pages ascending, the marks of a page in the order they were
     // made. Rows are kept for the marks that stay (their position in the list and its scroll offset stay with them), so a delete or an
     // added mark touches a few rows; many changes at once are a reset.
@@ -706,7 +715,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
             wanted.Add(header);
             foreach (var mark in list)
             {
-                if (!_markRows.TryGetValue(mark.Id, out var row) || !ReferenceEquals(row.Mark?.Term, mark.Term) || row.Mark?.Kind != mark.Kind)
+                if (!_markRows.TryGetValue(mark.Id, out var row) || !ReferenceEquals(row.Mark, mark))
                 {
                     row = RedactionMarkRowViewModel.Of(mark);
                 }
