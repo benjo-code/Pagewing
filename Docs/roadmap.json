@@ -4,6 +4,11 @@
   "title": "Pagewing",
   "scopeChanges": [
     {
+      "date": "2026-11-01",
+      "context": "Release v0.3.0 entfällt, das nächste Release ist v1.0.0",
+      "text": "Auf Anweisung des Projektinhabers (2026-11-01) gibt es kein Release `v0.3.0`. Auf `v0.2.0` folgt `v1.0.0`; es umfasst die Milestones 13 und 14 (Seiten organisieren, Schwärzen, vorher `v0.3.0`) sowie 15 und 16 (OCR, Textbearbeitung) und trägt alle verschobenen Handprüfungen. Der Versionssprung ändert keinen Milestone und keine Abnahmekriterien. Folge: Das erste echte Update des Updaters ist `v0.2.0` auf `v1.0.0`. Die Versionsnummern in den Tests des Updaters (`0.3.0` als erfundene neuere Version) bleiben, sie sind kein Release."
+    },
+    {
       "date": "2026-10-31",
       "context": "Milestone 13: Zuschnitt gegenüber den Roadmap-Aufgaben",
       "text": "Mit dem Projektinhaber am 2026-10-31 abgestimmt (Spec `superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md`, Plan `superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md`). Seitenänderungen werden in der Seitenleiste vorgemerkt und mit „Anwenden“ vollständig neu geschrieben (nicht live in der Ansicht). Zusammenführen geschieht über „Datei einfügen“ und die CLI; ein eigener Dialog „Dateien zusammenführen“ ist Backlog. Bilderexport nur als PNG (der Core hat nur einen PNG-Encoder), JPEG ist Backlog. Die QPDF-Entscheidung fällt nach einem Spike in Aufgabe 1 des Plans (Halt). Hinzu kommen Extrahieren und Duplizieren als Teil des Teilens bzw. Organisierens. Stufe 1: Spike, Plan, Neuschrieb, Organisiermodus, `rotate`; Stufe 2: Datei einfügen, Teilen, Bilderexport, `merge`, `split`, `export`. Wird Stufe 1 deutlich größer, ist ein Schnitt in M13 und M13.1 möglich. Umsetzung (2026-11-01), Abweichungen vom Zuschnitt: (1) Kein Schnitt in M13 und M13.1, beide Stufen sind in M13 umgesetzt. (2) Kein QPDF; der Spike (Aufgabe 1) zeigte keine Lücke nach der Regel aus Spec 6. (3) Der optionale CLI-Befehl `pages` wurde nicht gebaut (Backlog); Extrahieren geht in der App über die Mehrfachauswahl im Modus „Organisieren“ und in der CLI mit `split --ranges`. (4) Die Verlustliste kennt drei Arten mehr als vorgesehen (`InternalLinkLost`, `PageLabelsShifted`, `OrphanFormFields`), und eine eingefügte verschlüsselte Datei in einer unverschlüsselten Hauptdatei wird abgelehnt. (5) Nach dem Anwenden endet der Modus. (6) Formulare eingefügter Seiten sind in anderen Programmen nicht zuverlässig ausfüllbar (PDFium trägt die Widgets nicht in das Formular der Datei ein); die App und die CLI sagen es vorher, die Abnahme in Acrobat und Chrome ist eine Handprüfung nach `v1.0.0`. (7) Ein Absturz beim Schreiben mit importierten Formularseiten wurde gefunden und behoben (Quellen bleiben am Ziel offen, Eintrag „Arbeitskopie statt Neuaufbau, primäre Datei (M13)“). (8) Die Hand- und Linux-Prüfungen von M13 stehen im Block von `v1.0.0`, wie die der früheren Milestones."
@@ -11,7 +16,7 @@
     {
       "date": "2026-10-30",
       "context": "Release v0.2.0: Abnahme nur automatisiert, Handprüfungen nach v1.0.0",
-      "text": "Auf Anweisung des Projektinhabers (2026-10-30) wird `v0.2.0` nur mit automatisierten Prüfungen abgenommen; alle Handprüfungen wandern in die Abnahme von `v1.0.0`. Die 13 bisherigen Kriterien von `v0.2.0` sind geteilt: Was ein Test, ein Workflow oder die Hardware-Messung des Haupt-PCs belegt, ist jetzt Kriterium K1 bis K6 von `v0.2.0` (K7: der Changelog nennt, was nicht von Hand geprüft wurde). Der Handprüf-Rest steht wörtlich bei `v1.0.0` (acht Kriterien ganz, drei Reste, dazu die Fork-PR-Probe aus Milestone 12.1). Nach `v1.0.0` verschoben sind auch der Beweis, dass `PauseCallbackStressTests` mit dem alten Pause-Rückruf abstürzt, und `--measure-scroll` mit `scroll-text-dense-10-signatures.pdf`. Risiko: Der Updater lief noch nie Ende zu Ende gegen ein echtes Release; `v0.2.0` auf `v0.3.0` ist der erste echte Test. Einzelheiten im Eintrag „Release v0.2.0: Abnahme nur automatisiert, Handprüfungen nach v1.0.0“ in `Docs/DECISIONS.md`."
+      "text": "Auf Anweisung des Projektinhabers (2026-10-30) wird `v0.2.0` nur mit automatisierten Prüfungen abgenommen; alle Handprüfungen wandern in die Abnahme von `v1.0.0`. Die 13 bisherigen Kriterien von `v0.2.0` sind geteilt: Was ein Test, ein Workflow oder die Hardware-Messung des Haupt-PCs belegt, ist jetzt Kriterium K1 bis K6 von `v0.2.0` (K7: der Changelog nennt, was nicht von Hand geprüft wurde). Der Handprüf-Rest steht wörtlich bei `v1.0.0` (acht Kriterien ganz, drei Reste, dazu die Fork-PR-Probe aus Milestone 12.1). Nach `v1.0.0` verschoben sind auch der Beweis, dass `PauseCallbackStressTests` mit dem alten Pause-Rückruf abstürzt, und `--measure-scroll` mit `scroll-text-dense-10-signatures.pdf`. Risiko: Der Updater lief noch nie Ende zu Ende gegen ein echtes Release; `v0.2.0` auf `v1.0.0` ist der erste echte Test. Einzelheiten im Eintrag „Release v0.2.0: Abnahme nur automatisiert, Handprüfungen nach v1.0.0“ in `Docs/DECISIONS.md`."
     },
     {
       "date": "2026-10-30",
@@ -819,7 +824,7 @@
       ],
       "afterMilestone": "12.1",
       "covers": ["8.1", "9", "10", "11", "12", "12.1"],
-      "intro": "Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automatisch (Milestone 8.1). Setzt Milestone 12.1 voraus: Das Repo ist öffentlich und der echte Signaturschlüssel steckt im Programm. Abnahme nur mit automatisierten Prüfungen; Handprüfungen stehen in `v1.0.0` (Anweisung des Projektinhabers, 2026-10-30).",
+      "intro": "Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v1.0.0` automatisch (Milestone 8.1). Setzt Milestone 12.1 voraus: Das Repo ist öffentlich und der echte Signaturschlüssel steckt im Programm. Abnahme nur mit automatisierten Prüfungen; Handprüfungen stehen in `v1.0.0` (Anweisung des Projektinhabers, 2026-10-30).",
       "acceptance": [
         { "text": "K1 – Lokale Prüfungen: `dotnet build Pagewing.slnx`, `dotnet test Pagewing.slnx`, `dotnet format Pagewing.slnx --verify-no-changes`, `dotnet run tools/roadmap.cs -- check`, `dotnet run tools/package.cs -- selftest` und `dotnet run tools/licenses.cs -- check` sind auf dem Stand des Releases grün (Befehl und Ergebnis im Nachweis)", "done": true, "evidence": "Task 3 des Plans auf dem Stand von `cd61fad`: Build 0 Warnungen/0 Fehler, `dotnet test Pagewing.slnx` 3470 bestanden/0 fehlgeschlagen/48 übersprungen, `dotnet format --verify-no-changes`, `package.cs selftest` (582 Prüfungen), `licenses check`, `roadmap check` je Exit 0 (2026-10-30)" },
         { "text": "K2 – CI auf `dev`: Der Lauf von `ci.yml` auf `dev` (push, eigene Runner `dotnet-linux` und `dotnet-windows`) für den Stand des Releases ist grün, einschließlich Startzeit-Check mit den Budgets cold 400, warm 200, thousand 300 und second 100 ms (Fehlschlag ab Budget + 25 %); `CodeQL` und `Roadmap` sind ebenfalls grün", "done": true, "evidence": "CI-Lauf 41103477665 auf `dev` (`cd61fad`) grün, ebenso CodeQL und Roadmap; Startzeit-Mediane Linux/Windows: cold 174,5/163,0, warm 171,3/147,3, thousand 164,9/162,8, second 35,4/47,4 ms, keine `Warnung:` (2026-10-30)" },
@@ -831,19 +836,12 @@
       ]
     },
     {
-      "version": "0.3.0",
-      "title": "Seiten organisieren und schwärzen",
-      "status": "open",
-      "afterMilestone": "14",
-      "covers": ["13", "14"]
-    },
-    {
       "version": "1.0.0",
-      "title": "OCR und Textbearbeitung",
+      "title": "Seiten organisieren, Schwärzen, OCR und Textbearbeitung",
       "status": "open",
       "afterMilestone": "16",
-      "covers": ["15", "16"],
-      "intro": "Enthält alle Handprüfungen, die aus `v0.2.0` hierher verschoben wurden (Anweisung des Projektinhabers, 2026-10-30).",
+      "covers": ["13", "14", "15", "16"],
+      "intro": "Nächstes Release nach `v0.2.0`; `v0.3.0` entfällt (Anweisung des Projektinhabers, 2026-11-01), die Milestones 13 und 14 gehen in dieses Release ein. Enthält alle Handprüfungen, die aus `v0.2.0` hierher verschoben wurden (Anweisung des Projektinhabers, 2026-10-30).",
       "acceptance": [
         { "text": "Verschoben aus `v0.2.0` (2026-10-30): Aus M8.1, auf Wunsch des Projektinhabers (2026-10-24) hierher verschoben: Windows, Ende zu Ende: Eine ältere Testversion aktualisiert sich gegen ein echtes Test-Release auf die neue, für „nur für mich“ und für „alle Benutzer“; Einstellungen und Verlauf bleiben erhalten, die Standardprogramm-Zuordnung bleibt gesetzt (manuelle Prüfung, `installer-smoke` für den stillen Pfad). Stand 2026-10-24 **offen**: „echtes Test-Release“ ist nach dem Entwurf der Testaufbau gegen den lokalen Testserver (kein öffentliches Testrelease). Prüfen auf einem Windows-Rechner ohne installiertes Pagewing nach `packaging/README.md`, „Update prüfen“ → „Windows“ (Durchlauf A „nur für mich“, Durchlauf B „alle Benutzer“, Fehlerpfade Server aus, `--tamper signature`, `--tamper checksum`, UAC abgelehnt); stiller Pfad „nur für mich“ auch mit `dotnet run tools/package.cs -- update-smoke Pagewing-0.0.1-win-x64-setup.exe Pagewing-0.0.2-win-x64-setup.exe --key <Testschlüssel>`. Nicht auf dem Entwicklungsrechner ausgeführt (installiert Pagewing und schreibt in die echte Registry)", "done": false },
         { "text": "Verschoben aus `v0.2.0` (2026-10-30): Aus M8.1, auf Wunsch des Projektinhabers (2026-10-24) hierher verschoben: Linux, Ende zu Ende: AppImage aktualisiert sich auf die neue Version; `.deb` verhält sich wie im Plan festgelegt (manuelle Prüfung). Stand 2026-10-24 **offen**: Prüfen nach `packaging/README.md`, „Update prüfen“ → „Linux, AppImage“ (auch schreibgeschützter Ordner und `.deb`-Hinweis). Der automatisierte Teil (`AppImageUpdaterTests`, `deb-smoke`) ist Kriterium K3 bzw. K4 von `v0.2.0`", "done": false },

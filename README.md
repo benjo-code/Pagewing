@@ -12,8 +12,7 @@ Schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux. PDFs �
 |---|---|
 | v0.1.0 | Schneller Viewer: Tabs, Seitenvorschau, Inhaltsverzeichnis, Volltextsuche, Text kopieren, Layouts und Zoom, dunkler Modus, Befehlspalette (Strg+K), Drucken, Installer |
 | v0.2.0 | Annotieren (Hervorheben, Zeichnen, Formen, Kommentare), Formulare ausfüllen, sichtbare Unterschrift, automatische Updates |
-| v0.3.0 | Seiten organisieren (umsortieren, drehen, zusammenführen, teilen), Schwärzen |
-| v1.0.0 | OCR für gescannte PDFs, Text in Grenzen bearbeiten |
+| v1.0.0 | Seiten organisieren (umsortieren, drehen, zusammenführen, teilen), Schwärzen, OCR für gescannte PDFs, Text in Grenzen bearbeiten |
 
 Bewusst nicht geplant sind unter anderem Zertifikatssignaturen, XFA-Formulare, JavaScript in PDFs, PDF-nach-Word und Cloud-Funktionen (Details in der Roadmap unter „Out of Scope“).
 
