@@ -134,6 +134,7 @@ static class TestPdfs
         new("redact-hidden.pdf", RedactHidden()),
         new("redact-paths.pdf", RedactPaths()),
         new("redact-structure.pdf", RedactStructure()),
+        new("redact-objstm.pdf", RedactObjectStreams()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -1657,6 +1658,85 @@ static class TestPdfs
             + $"/Metadata {catalogXmp} 0 R /StructTreeRoot {structRoot} 0 R /OCProperties << /OCGs [{layer} 0 R] /D << /BaseState /ON /OFF [{layer} 0 R] >> >> "
             + AcroFormEntry(doc, [parent]);
         return doc.Build();
+    }
+
+    // The page tree in object streams, as a writer with "compressed object streams" produces it: the catalog, the page tree and both
+    // page dictionaries are objects inside one /ObjStm, the file ends in a cross-reference STREAM (no classic xref section, no trailer
+    // keyword). Page 2 carries /Thumb and /PieceInfo. The streams are written unfiltered (valid; no compressor whose output would
+    // differ between runtimes). Milestone 14: the page-key scan of the redaction reads only what PDFium writes, where nothing is
+    // compressed; this file shows it what it must refuse to read.
+    private static byte[] RedactObjectStreams()
+    {
+        const string page = "/Type /Page /Parent 7 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 1 0 R >> >>";
+        var inner = new (int Number, string Body)[]
+        {
+            (6, "<< /Type /Catalog /Pages 7 0 R >>"),
+            (7, "<< /Type /Pages /Count 2 /Kids [8 0 R 9 0 R] >>"),
+            (8, $"<< {page} /Contents 2 0 R >>"),
+            (9, $"<< {page} /Contents 3 0 R /Thumb 4 0 R /PieceInfo << /Pagewing << /Private (objstm) >> >> >>"),
+        };
+        var header = new StringBuilder();
+        var body = new StringBuilder();
+        foreach (var (number, text) in inner)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{number} {body.Length} ");
+            body.Append(text).Append('\n');
+        }
+
+        var objectStream = PdfDoc.StreamBody($"/Type /ObjStm /N {inner.Length} /First {header.Length}", PdfDoc.Latin1(header.ToString() + body));
+
+        var output = new MemoryStream();
+        output.Write(PdfDoc.Latin1("%PDF-1.7\n"));
+        output.Write([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]);
+        var offsets = new Dictionary<int, long>();
+        void Write(int number, byte[] data)
+        {
+            offsets[number] = output.Position;
+            output.Write(PdfDoc.Latin1($"{number} 0 obj\n"));
+            output.Write(data);
+            output.Write(PdfDoc.Latin1("\nendobj\n"));
+        }
+
+        Write(1, PdfDoc.Latin1(Helvetica));
+        Write(2, PdfDoc.StreamBody(string.Empty, PdfDoc.Latin1("BT /F1 14 Tf 20 260 Td (Object stream fixture, page one) Tj ET")));
+        Write(3, PdfDoc.StreamBody(string.Empty, PdfDoc.Latin1("BT /F1 14 Tf 20 260 Td (Object stream fixture, page two) Tj ET")));
+        Write(4, PdfDoc.StreamBody("/Type /XObject /Subtype /Image /Width 8 /Height 8 /BitsPerComponent 8 /ColorSpace /DeviceGray", Enumerable.Repeat((byte)0x66, 64).ToArray()));
+        Write(5, objectStream);
+
+        // The cross-reference stream: entries of /W [1 4 2] for the objects 0 to 10: free, plain objects with their offset, compressed
+        // objects with their object stream and index.
+        const int size = 11;
+        var xrefOffset = output.Position;
+        var table = new List<byte>();
+        void Entry(int type, long second, int third)
+        {
+            table.Add((byte)type);
+            table.AddRange([(byte)(second >> 24), (byte)(second >> 16), (byte)(second >> 8), (byte)second]);
+            table.AddRange([(byte)(third >> 8), (byte)third]);
+        }
+
+        Entry(0, 0, 65535);
+        for (var number = 1; number < size; number++)
+        {
+            var index = Array.FindIndex(inner, i => i.Number == number);
+            if (index >= 0)
+            {
+                Entry(2, 5, index);
+            }
+            else if (offsets.TryGetValue(number, out var offset))
+            {
+                Entry(1, offset, 0);
+            }
+            else
+            {
+                Entry(1, xrefOffset, 0); // object 10: the cross-reference stream itself
+            }
+        }
+
+        output.Write(PdfDoc.Latin1("10 0 obj\n"));
+        output.Write(PdfDoc.StreamBody($"/Type /XRef /Size {size} /W [1 4 2] /Root 6 0 R", [.. table]));
+        output.Write(PdfDoc.Latin1(string.Create(CultureInfo.InvariantCulture, $"\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n")));
+        return output.ToArray();
     }
 
     // Flate data made only of stored (uncompressed) deflate blocks: valid zlib, identical on every runtime.

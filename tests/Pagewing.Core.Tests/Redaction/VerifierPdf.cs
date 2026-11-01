@@ -33,6 +33,9 @@ internal sealed class VerifierPdf
     /// <summary>Gets or sets text added to the dictionary of every page.</summary>
     public string PageEntries { get; set; } = string.Empty;
 
+    /// <summary>Gets or sets text added to the dictionary of the page with the same index (after <see cref="PageEntries"/>).</summary>
+    public IReadOnlyList<string> PageEntriesByPage { get; set; } = [];
+
     public static byte[] Latin1(string text) => Encoding.Latin1.GetBytes(text);
 
     public static byte[] Zlib(ReadOnlySpan<byte> data, CompressionLevel level = CompressionLevel.Optimal)
@@ -116,7 +119,7 @@ internal sealed class VerifierPdf
         Set(2, $"<< /Type /Pages /Kids [{kids}] /Count {pageCount} >>");
         for (var i = 0; i < pageCount; i++)
         {
-            Set(4 + (2 * i), $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 3 0 R >> >> /Contents {5 + (2 * i)} 0 R {PageEntries} >>");
+            Set(4 + (2 * i), $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 3 0 R >> >> /Contents {5 + (2 * i)} 0 R {PageEntries} {(i < PageEntriesByPage.Count ? PageEntriesByPage[i] : string.Empty)} >>");
         }
 
         using var file = new MemoryStream();

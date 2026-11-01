@@ -65,6 +65,63 @@ public sealed class PdfEngine
         }
     }
 
+    /// <summary>
+    /// The smallest PDF file that has a catalog and an empty page tree and nothing else: no information dictionary, no pages. Pages
+    /// imported into a document opened from it bring none of the document-level data of their source with them, which is what a
+    /// cleaning rebuild relies on (Docs/DECISIONS.md, "Schwärzen: Spike und QPDF-Entscheidung (M14)", question 4).
+    /// </summary>
+    private const string EmptyDocumentText =
+        "%PDF-1.7\n"
+        + "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        + "2 0 obj\n<< /Type /Pages /Count 0 /Kids [] >>\nendobj\n"
+        + "xref\n0 3\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n"
+        + "trailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n110\n%%EOF\n";
+
+    /// <summary>
+    /// Creates a document without pages from a fixed minimal file in the temporary folder (opened like any file, because that is
+    /// how the spike checked the cleaning: <c>FPDF_CreateNewDocument</c> was not used). The file is deleted again as soon as the
+    /// document is open (it stays readable through PDFium's handle); if it cannot be deleted it stays, a few hundred bytes
+    /// under a random name. Meant to receive pages with <see cref="PdfDocument.ImportPagesAsync(PdfDocument, IReadOnlyList{int}, int, CancellationToken)"/>
+    /// and to be written with <see cref="PdfDocument.SaveRewriteAsync"/>; it must not be shown or rendered.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the open if it has not started yet.</param>
+    /// <returns>The document with <see cref="PdfDocument.PageCount"/> 0.</returns>
+    /// <exception cref="PdfOpenException">The file could not be written or opened.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    public async Task<PdfDocument> CreateEmptyAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = Path.Combine(Path.GetTempPath(), $"pagewing-empty-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            // CreateNew: never an existing file or a link planted under the name; the content is a constant.
+            await using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+            {
+                await file.WriteAsync(System.Text.Encoding.ASCII.GetBytes(EmptyDocumentText), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            throw new PdfOpenException(PdfOpenError.CannotRead, ex);
+        }
+
+        try
+        {
+            return await OpenAsync(path, null, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                // Stays in the temporary folder; nothing depends on it.
+            }
+        }
+    }
+
     private static PdfOpenError ToOpenError(PdfiumError error, string? password) => error switch
     {
         PdfiumError.Password => string.IsNullOrEmpty(password) ? PdfOpenError.PasswordRequired : PdfOpenError.PasswordIncorrect,

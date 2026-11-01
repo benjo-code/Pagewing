@@ -74,3 +74,72 @@ public sealed record PageRedactionImpact(
     IReadOnlyList<string> RemovedText,
     RedactionRefusal? Refusal,
     IReadOnlyList<Pagewing.Core.Text.PageRect>? RemovedAreas = null);
+
+/// <summary>What the cleanup of a redaction removes from the file in every case ("cleaning is not a switch"): the document-level data that a rebuild into a new document leaves behind.</summary>
+public enum CleanupKind
+{
+    /// <summary>The author of the information dictionary.</summary>
+    Author,
+
+    /// <summary>The title of the information dictionary.</summary>
+    Title,
+
+    /// <summary>The subject of the information dictionary.</summary>
+    Subject,
+
+    /// <summary>The keywords of the information dictionary.</summary>
+    Keywords,
+
+    /// <summary>The creator of the information dictionary.</summary>
+    Creator,
+
+    /// <summary>The producer of the information dictionary.</summary>
+    Producer,
+
+    /// <summary>XMP metadata (the document's own; the count can include XMP of objects inside the pages, which stays).</summary>
+    Xmp,
+
+    /// <summary>Bookmarks (the outline).</summary>
+    Bookmarks,
+
+    /// <summary>Attached files.</summary>
+    Attachments,
+
+    /// <summary>JavaScript (document actions and named scripts; the count can include actions of annotations, which stay).</summary>
+    JavaScript,
+
+    /// <summary>Page labels.</summary>
+    PageLabels,
+}
+
+/// <summary>One thing the cleanup removes, as it is present in this file.</summary>
+/// <param name="Kind">What it is.</param>
+/// <param name="Detail">For a field of the information dictionary its text (at most 200 characters); for the others how many entries the scan found, as a number.</param>
+public sealed record CleanupItem(CleanupKind Kind, string Detail);
+
+/// <summary>What the rebuild into a new document loses (the cleanup is separate: <see cref="CleanupItem"/>). An encrypted file is a refusal, not a loss.</summary>
+public enum RedactionLossKind
+{
+    /// <summary>Internal links (to a page of the document) lose their target: PDFium copies the link, not where it leads.</summary>
+    InternalLinksLoseTheirTarget,
+
+    /// <summary>Form fields are not reliably fillable afterwards: the widgets come along as annotations, the form does not.</summary>
+    FormFieldsNotFillable,
+
+    /// <summary>Images that are overwritten under a mark are written again as RGB (Flate), whatever colour space they had; CMYK may look different in other viewers. The impact of the pages states it, not the inventory.</summary>
+    ColorSpaceBecomesRgb,
+
+    /// <summary>The document has digital signatures; any change makes them show as invalid (whatever the permission level).</summary>
+    SignatureInvalidated,
+}
+
+/// <summary>One loss of the rebuild with how many things it concerns.</summary>
+/// <param name="Kind">What is lost.</param>
+/// <param name="Count">How many links, fields, images or signatures.</param>
+public sealed record RedactionLoss(RedactionLossKind Kind, int Count);
+
+/// <summary>What the cleanup removes and what the rebuild loses, read from a document and its file.</summary>
+/// <param name="Cleanup">What the cleanup removes, in the order of <see cref="CleanupKind"/>.</param>
+/// <param name="Losses">What the rebuild loses, in the order of <see cref="RedactionLossKind"/>; only losses that apply.</param>
+/// <param name="Complete">Whether the scan of the file could read every stream; <see langword="false"/> means the cleanup list may miss entries (the card must not say "nothing else").</param>
+public sealed record RedactionInventory(IReadOnlyList<CleanupItem> Cleanup, IReadOnlyList<RedactionLoss> Losses, bool Complete);
