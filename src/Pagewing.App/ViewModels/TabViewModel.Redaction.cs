@@ -88,10 +88,7 @@ public sealed partial class TabViewModel
         get => _redactionHistory?.Current.Fill ?? RedactionFill.Black;
         set
         {
-            if (Enum.IsDefined(value))
-            {
-                StageRedaction(plan => plan.WithFill(value), null);
-            }
+            StageRedaction(plan => plan.WithFill(value), null);
         }
     }
 

@@ -51,8 +51,8 @@ public sealed class RedactionVerifierTests
         return path;
     }
 
-    private static RedactionPlan PlanOf(int page, PageRect area, string? term = null, bool everywhere = false, RedactionFill fill = RedactionFill.Black) =>
-        RedactionPlan.Empty.WithFill(fill).With(new RedactionMark(Guid.NewGuid(), term is null ? RedactionKind.Area : RedactionKind.Text, page, [area], term, everywhere));
+    private static RedactionPlan PlanOf(int page, PageRect area, string? term = null, bool everywhere = false, RedactionFill? fill = null) =>
+        RedactionPlan.Empty.WithFill(fill ?? RedactionFill.Black).With(new RedactionMark(Guid.NewGuid(), term is null ? RedactionKind.Area : RedactionKind.Text, page, [area], term, everywhere));
 
     private static RedactionExpectation Expect(RedactionPlan plan, params RemovedText[] removed) => new(plan, removed, plan.Fill);
 
