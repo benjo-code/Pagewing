@@ -267,10 +267,11 @@ public static class RedactionApplier
         }
 
         extra.AddRange(await RenderFindingsAsync(shown, reopened, build, cancellationToken).ConfigureAwait(false));
+        var rasterPages = build.Expectation.RasterPages?.Count ?? 0;
         var check = new RedactionCheck(
             [.. verified.Findings, .. extra],
-            [.. verified.NotChecked, .. RedactionReportText.ApplyNotChecked],
-            [.. verified.Items, .. RedactionReportText.ApplyNotCheckedItems]);
+            [.. verified.NotChecked, .. RedactionReportText.ApplyNotCheckedFor(rasterPages)],
+            [.. verified.Items, .. RedactionReportText.ApplyNotCheckedItemsFor(rasterPages)]);
         if (!check.IsClean)
         {
             throw new SaveFailureException(SaveFailureReason.VerificationFailed, "The check of the redacted file found a problem.") { Details = check };

@@ -2526,6 +2526,12 @@
   <data name="RedactNotCheckedNoTerm" xml:space="preserve">
     <value>{0} marks have no term (rectangles dragged on the page): the text under them is removed, but the file bytes are not searched for it; only the characters inside the areas are looked for.</value>
   </data>
+  <data name="RedactCheckListRaster" xml:space="preserve">
+    <value>The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the document-level data, and a render of every page redacted in place against the original. Pages turned into images are checked for their structure instead (exactly one image, nothing else); they are not rendered against the original.</value>
+  </data>
+  <data name="RedactCheckListRasterOnly" xml:space="preserve">
+    <value>The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the document-level data. Pages turned into images are checked for their structure (exactly one image, nothing else); they are not rendered against the original.</value>
+  </data>
   <data name="RedactCheckedText" xml:space="preserve">
     <value>Page text: every removed text occurs in the page text of the written file at most as often as before minus the places removed (never, for a text marked everywhere).</value>
   </data>
@@ -2537,6 +2543,12 @@
   </data>
   <data name="RedactCheckedPages" xml:space="preserve">
     <value>Pages: every redacted page was rendered from the written file and looks like the original outside the marked areas.</value>
+  </data>
+  <data name="RedactCheckedPagesInPlace" xml:space="preserve">
+    <value>Pages: every page redacted in place was rendered from the written file and looks like the original outside the marked areas.</value>
+  </data>
+  <data name="RedactCheckedRaster" xml:space="preserve">
+    <value>Pages turned into images ({0}): in the written file each has exactly one image and no text, path, other object, annotation, link or form field (links and form fields are annotations), and the pixels under the marks are the colour of the area. These pages are not rendered against the original.</value>
   </data>
   <data name="RedactCheckedKeys" xml:space="preserve">
     <value>Page keys: no page of the written file carries /Thumb, /PieceInfo, /Metadata or /AA.</value>
@@ -2753,6 +2765,9 @@
   </data>
   <data name="RedactNcApplyRender" xml:space="preserve">
     <value>Render comparison: only the redacted pages are compared with the original, outside the marked areas and the places where content was removed; pages without a mark are not compared, and for a document with a form the annotations (form fields included) are left out of both renders.</value>
+  </data>
+  <data name="RedactNcApplyRenderRaster" xml:space="preserve">
+    <value>Render comparison: only the pages redacted in place are compared with the original, outside the marked areas and the places where content was removed; pages without a mark and pages turned into images are not compared, and for a document with a form the annotations (form fields included) are left out of both renders.</value>
   </data>
   <data name="RedactNcApplyKeys" xml:space="preserve">
     <value>Page keys: only /Thumb, /PieceInfo, /Metadata and /AA in the page dictionaries are looked for; the same keys of form objects, image objects and annotations are not.</value>

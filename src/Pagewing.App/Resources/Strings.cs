@@ -938,6 +938,8 @@ public static class Strings
     public static string RedactSecNotCheckedNote => Get("RedactSecNotCheckedNote");
     public static string RedactSecFindings => Get("RedactSecFindings");
     public static string RedactCheckList => Get("RedactCheckList");
+    public static string RedactCheckListRaster => Get("RedactCheckListRaster");
+    public static string RedactCheckListRasterOnly => Get("RedactCheckListRasterOnly");
     public static string RedactCheckNothingWritten => Get("RedactCheckNothingWritten");
     public static string RedactFallbackText => Get("RedactFallbackText");
     public static string RedactFallbackImage => Get("RedactFallbackImage");
@@ -984,6 +986,8 @@ public static class Strings
     public static string RedactCheckedBytes => Get("RedactCheckedBytes");
     public static string RedactCheckedAreas => Get("RedactCheckedAreas");
     public static string RedactCheckedPages => Get("RedactCheckedPages");
+    public static string RedactCheckedPagesInPlace => Get("RedactCheckedPagesInPlace");
+    public static string RedactCheckedRaster => Get("RedactCheckedRaster");
     public static string RedactCheckedKeys => Get("RedactCheckedKeys");
     public static string RedactCheckedCleanup => Get("RedactCheckedCleanup");
     public static string RedactApplyTitle => Get("RedactApplyTitle");
@@ -1057,6 +1061,7 @@ public static class Strings
     public static string RedactNcPixelsOnly => Get("RedactNcPixelsOnly");
     public static string RedactNcOtherViewer => Get("RedactNcOtherViewer");
     public static string RedactNcApplyRender => Get("RedactNcApplyRender");
+    public static string RedactNcApplyRenderRaster => Get("RedactNcApplyRenderRaster");
     public static string RedactNcApplyKeys => Get("RedactNcApplyKeys");
     public static string RedactNcApplyXmp => Get("RedactNcApplyXmp");
     public static string RedactNcRasterOutside => Get("RedactNcRasterOutside");

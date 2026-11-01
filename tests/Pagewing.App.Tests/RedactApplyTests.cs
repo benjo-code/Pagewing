@@ -1032,6 +1032,63 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.Contains(failing.Sections, section => section.Heading == Strings.RedactSecNotChecked);
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task NoLineSaysThatPagesTurnedIntoImagesWereComparedWithTheOriginal(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        var rasterPrefix = language == "en" ? "Pages turned into images (" : "In Bilder umgewandelte Seiten (";
+        var inPlace = new PageRedactionImpact(0, 30, 2, 1, 1, 0, 0, 0, 0, 2, [], ["a"], null);
+        var plain = FakeAnalysis() with { Raster = null };
+        var rasterOnly = FakeAnalysis() with { Pages = [], Raster = [new RasterPageInfo(1, 200, 100, 100, false, 1000)] };
+        var mixed = FakeAnalysis() with { Pages = [inPlace], Raster = [new RasterPageInfo(2, 200, 100, 100, false, 1000)] };
+        var rasterMarked = FakeAnalysis() with { Pages = [inPlace with { Page = 2 }], Raster = [new RasterPageInfo(2, 200, 100, 100, false, 1000)] };
+
+        // (c) Without pages turned into images nothing changes: the old lines, the old preview.
+        var plainReport = Lines(RedactionApplyInfo.ForReport(plain, RenderCheck(0)), Strings.RedactSecChecked);
+        Assert.Contains(Strings.RedactCheckedPages, plainReport);
+        Assert.DoesNotContain(plainReport, line => line.StartsWith(rasterPrefix, StringComparison.Ordinal));
+        Assert.Contains(Strings.RedactNcApplyRender, Lines(RedactionApplyInfo.ForReport(plain, RenderCheck(0)), Strings.RedactSecNotChecked));
+        Assert.Contains(Strings.RedactCheckList, Lines(RedactionApplyInfo.Create(plain), Strings.RedactSecAfter));
+
+        // (a) Only pages turned into images: no line says that a page was rendered and looks like the original.
+        var onlyReport = RedactionApplyInfo.ForReport(rasterOnly, RenderCheck(1));
+        var onlyChecked = Lines(onlyReport, Strings.RedactSecChecked);
+        Assert.DoesNotContain(Strings.RedactCheckedPages, onlyChecked);
+        Assert.DoesNotContain(Strings.RedactCheckedPagesInPlace, onlyChecked);
+        Assert.Contains(onlyChecked, line => line.StartsWith(rasterPrefix, StringComparison.Ordinal));
+        Assert.Contains(Strings.RedactNcApplyRenderRaster, Lines(onlyReport, Strings.RedactSecNotChecked));
+        Assert.DoesNotContain(Strings.RedactNcApplyRender, Lines(onlyReport, Strings.RedactSecNotChecked));
+        var onlyAfter = Lines(RedactionApplyInfo.Create(rasterOnly), Strings.RedactSecAfter);
+        Assert.Contains(Strings.RedactCheckListRasterOnly, onlyAfter);
+        Assert.DoesNotContain(Strings.RedactCheckList, onlyAfter);
+
+        // (b) Both kinds: the render claim is for the page redacted in place only, and the raster pages have their own line.
+        // A page that is in the list of pages and turned into an image (a mark on it) does not count as redacted in place.
+        foreach (var analysis in new[] { mixed })
+        {
+            var report = RedactionApplyInfo.ForReport(analysis, RenderCheck(1));
+            var checkedLines = Lines(report, Strings.RedactSecChecked);
+            Assert.DoesNotContain(Strings.RedactCheckedPages, checkedLines);
+            Assert.Contains(Strings.RedactCheckedPagesInPlace, checkedLines);
+            Assert.Contains(checkedLines, line => line.StartsWith(rasterPrefix, StringComparison.Ordinal));
+            Assert.Contains(Strings.RedactNcApplyRenderRaster, Lines(report, Strings.RedactSecNotChecked));
+            Assert.Contains(Strings.RedactCheckListRaster, Lines(RedactionApplyInfo.Create(analysis), Strings.RedactSecAfter));
+        }
+
+        var markedReport = Lines(RedactionApplyInfo.ForReport(rasterMarked, RenderCheck(1)), Strings.RedactSecChecked);
+        Assert.DoesNotContain(Strings.RedactCheckedPagesInPlace, markedReport);
+        Assert.DoesNotContain(Strings.RedactCheckedPages, markedReport);
+
+        static RedactionCheck RenderCheck(int rasterPages) =>
+            new([], ["x"], [new RedactionNotChecked(RedactionNotCheckedKind.ApplyRender, "x", rasterPages)]);
+
+        static IReadOnlyList<string> Lines(RedactionApplyInfo info, string heading) =>
+            Assert.Single(info.Sections, section => section.Heading == heading).Lines;
+    }
+
     [AvaloniaFact]
     public async Task EveryKindOfWhatWasNotCheckedHasASentenceInBothLanguages()
     {
@@ -1304,7 +1361,9 @@ public sealed partial class RedactApplyTests : IDisposable
             "RedactRefusalPageHint", "RedactRefusalOther", "RedactPageOne", "RedactPageMany", "RedactPageFile",
             "RedactFailureNotCompleted", "RedactFailureUnremovable", "RedactFailureText", "RedactFailureChar", "RedactFailureImage",
             "RedactFailureUnreadable", "RedactFailureKeys", "RedactFailurePage", "RedactFailureUnverifiable", "RedactFailureCleanup",
-            "RedactErrorNotPrepared", "RedactErrorDraft", "RedactErrorFileChanged", "RedactSaveFirstText", "RedactApplyBlocked"
+            "RedactErrorNotPrepared", "RedactErrorDraft", "RedactErrorFileChanged", "RedactSaveFirstText", "RedactApplyBlocked",
+            "RedactFailureRaster", "RedactNcRasterOutside", "RedactNcApplyRenderRaster", "RedactCheckListRaster", "RedactCheckListRasterOnly",
+            "RedactCheckedPagesInPlace", "RedactCheckedRaster"
     ];
 
     // Every text of the apply flow that the interface shows, in the language that is set.

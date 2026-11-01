@@ -2526,6 +2526,12 @@
   <data name="RedactNotCheckedNoTerm" xml:space="preserve">
     <value>{0} Markierungen haben keinen Begriff (auf der Seite aufgezogene Rechtecke): Der Text darunter wird entfernt, in den Dateibytes wird aber nicht nach ihm gesucht; geprüft werden nur die Zeichen in den Bereichen.</value>
   </data>
+  <data name="RedactCheckListRaster" xml:space="preserve">
+    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel, die Daten auf Dokumentebene und ein Rendern jeder an Ort und Stelle geschwärzten Seite im Vergleich zum Original. In Bilder umgewandelte Seiten werden stattdessen auf ihren Aufbau geprüft (genau ein Bild, sonst nichts); sie werden nicht mit dem Original verglichen.</value>
+  </data>
+  <data name="RedactCheckListRasterOnly" xml:space="preserve">
+    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel und die Daten auf Dokumentebene. In Bilder umgewandelte Seiten werden auf ihren Aufbau geprüft (genau ein Bild, sonst nichts); sie werden nicht mit dem Original verglichen.</value>
+  </data>
   <data name="RedactCheckedText" xml:space="preserve">
     <value>Seitentext: Jeder entfernte Text kommt im Seitentext der geschriebenen Datei höchstens so oft vor wie vorher minus die entfernten Stellen (nie, bei einem Text, der überall markiert wurde).</value>
   </data>
@@ -2537,6 +2543,12 @@
   </data>
   <data name="RedactCheckedPages" xml:space="preserve">
     <value>Seiten: Jede geschwärzte Seite wurde aus der geschriebenen Datei gerendert und sieht außerhalb der markierten Bereiche aus wie das Original.</value>
+  </data>
+  <data name="RedactCheckedPagesInPlace" xml:space="preserve">
+    <value>Seiten: Jede an Ort und Stelle geschwärzte Seite wurde aus der geschriebenen Datei gerendert und sieht außerhalb der markierten Bereiche aus wie das Original.</value>
+  </data>
+  <data name="RedactCheckedRaster" xml:space="preserve">
+    <value>In Bilder umgewandelte Seiten ({0}): In der geschriebenen Datei hat jede genau ein Bild und keinen Text, keinen Pfad, kein anderes Objekt, keine Annotation, keinen Link und kein Formularfeld (Links und Formularfelder sind Annotationen), und die Pixel unter den Markierungen haben die Farbe des Bereichs. Diese Seiten werden nicht mit dem Original verglichen.</value>
   </data>
   <data name="RedactCheckedKeys" xml:space="preserve">
     <value>Seitenschlüssel: Keine Seite der geschriebenen Datei trägt /Thumb, /PieceInfo, /Metadata oder /AA.</value>
@@ -2753,6 +2765,9 @@
   </data>
   <data name="RedactNcApplyRender" xml:space="preserve">
     <value>Render-Vergleich: Nur die geschwärzten Seiten werden mit dem Original verglichen, und zwar außerhalb der markierten Bereiche und der Stellen, an denen Inhalt entfernt wurde; Seiten ohne Markierung werden nicht verglichen, und bei einem Dokument mit Formular bleiben die Annotationen (Formularfelder eingeschlossen) in beiden Darstellungen weg.</value>
+  </data>
+  <data name="RedactNcApplyRenderRaster" xml:space="preserve">
+    <value>Render-Vergleich: Nur die an Ort und Stelle geschwärzten Seiten werden mit dem Original verglichen, und zwar außerhalb der markierten Bereiche und der Stellen, an denen Inhalt entfernt wurde; Seiten ohne Markierung und in Bilder umgewandelte Seiten werden nicht verglichen, und bei einem Dokument mit Formular bleiben die Annotationen (Formularfelder eingeschlossen) in beiden Darstellungen weg.</value>
   </data>
   <data name="RedactNcApplyKeys" xml:space="preserve">
     <value>Seitenschlüssel: Gesucht wird nur nach /Thumb, /PieceInfo, /Metadata und /AA in den Seitenwörterbüchern; dieselben Schlüssel von Formularobjekten, Bildobjekten und Annotationen werden nicht gesucht.</value>

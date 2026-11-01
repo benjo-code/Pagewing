@@ -1154,6 +1154,50 @@ public sealed class RedactionVerifierTests
         Assert.Contains("Pages turned into images: page 1", report, StringComparison.Ordinal);
         Assert.Contains("links and form fields", report, StringComparison.Ordinal);
         Assert.Contains("outside the marked areas", report, StringComparison.Ordinal);
+
+        // (a) The only marked page became an image: nothing was rendered against the original, so no line says that, anywhere.
+        Assert.Empty(analysis.Pages);
+        Assert.DoesNotContain("looks like the original", report, StringComparison.Ordinal);
+        Assert.DoesNotContain("looks like the original", RedactionReportText.Of(analysis), StringComparison.Ordinal);
+        Assert.DoesNotContain("a render of every redacted page", RedactionReportText.Of(analysis), StringComparison.Ordinal);
+        Assert.Contains("not rendered against the original", RedactionReportText.Of(analysis), StringComparison.Ordinal);
+        var render = Assert.Single(result.Check.Items, static i => i.Kind == RedactionNotCheckedKind.ApplyRender);
+        Assert.Equal(1, render.Count);
+        Assert.Contains("pages turned into images are not compared", render.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReportScopesTheRenderClaimToThePagesRedactedInPlace()
+    {
+        using var folder = new TempFolder();
+        var path = Write(folder, "three.pdf", new VerifierPdf(PageWith("one"), PageWith("two"), PageWith("three")).Build());
+        await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
+        var executor = new RedactionExecutor(engine);
+
+        // (b) Page 1 is redacted in place, page 2 becomes an image: the claim is for page 1, and page 2 has its own line.
+        var mixed = PlanOf(0, RasterArea).WithRasterPage(1, on: true);
+        var analysis = await executor.AnalyzeAsync(mixed, shown, path, null, Ct);
+        var result = await RedactionApplier.WriteAsync(engine, shown, path, null, FileStamp.Of(path), new RedactionApplyRequest(mixed, Path.Combine(folder.Path, "mixed.pdf")), null, Ct);
+        await using var reopened = result.Saved.Reopened;
+        Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+        Assert.Equal([0], analysis.Pages.Select(static p => p.Page));
+        var report = RedactionReportText.Of(analysis, result.Check);
+        Assert.Contains("Pages: every page redacted in place was rendered", report, StringComparison.Ordinal);
+        Assert.DoesNotContain("Pages: every redacted page was rendered", report, StringComparison.Ordinal);
+        Assert.Contains("Pages turned into images: page 2: in the written file it has exactly one image", report, StringComparison.Ordinal);
+        Assert.Contains("a render of every page redacted in place", RedactionReportText.Of(analysis), StringComparison.Ordinal);
+        Assert.Contains("pages turned into images are not compared", result.Check.NotChecked.Single(static l => l.StartsWith("Render comparison", StringComparison.Ordinal)), StringComparison.Ordinal);
+
+        // (c) Without a page turned into an image the report keeps its old words.
+        var plain = PlanOf(0, RasterArea);
+        var plainAnalysis = await executor.AnalyzeAsync(plain, shown, path, null, Ct);
+        var plainResult = await RedactionApplier.WriteAsync(engine, shown, path, null, FileStamp.Of(path), new RedactionApplyRequest(plain, Path.Combine(folder.Path, "plain.pdf")), null, Ct);
+        await using var plainReopened = plainResult.Saved.Reopened;
+        var plainReport = RedactionReportText.Of(plainAnalysis, plainResult.Check);
+        Assert.Contains("Pages: every redacted page was rendered from the written file and looks like the original outside the marked areas.", plainReport, StringComparison.Ordinal);
+        Assert.DoesNotContain("turned into images", plainReport, StringComparison.Ordinal);
+        Assert.Contains("a render of every redacted page against the original.", RedactionReportText.Of(plainAnalysis), StringComparison.Ordinal);
+        Assert.Equal(RedactionReportText.ApplyNotChecked[0], plainResult.Check.NotChecked.Single(static l => l.StartsWith("Render comparison", StringComparison.Ordinal)));
     }
 
     [Fact]

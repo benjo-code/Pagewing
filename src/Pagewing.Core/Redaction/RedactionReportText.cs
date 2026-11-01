@@ -28,6 +28,24 @@ public static class RedactionReportText
         new(RedactionNotCheckedKind.ApplyXmp, ApplyNotChecked[2]),
     ];
 
+    /// <summary>
+    /// The lines the apply step adds, for a plan with <paramref name="rasterPages"/> pages turned into images: the render comparison
+    /// covers the pages redacted in place only (a page turned into an image is checked for its structure, never rendered against the
+    /// original), and the line says so. Without such pages these are <see cref="ApplyNotChecked"/>.
+    /// </summary>
+    /// <param name="rasterPages">How many pages of the plan become images.</param>
+    public static IReadOnlyList<string> ApplyNotCheckedFor(int rasterPages) =>
+        rasterPages <= 0 ? ApplyNotChecked : [ApplyRenderWithRaster, ApplyNotChecked[1], ApplyNotChecked[2]];
+
+    /// <summary>The lines of <see cref="ApplyNotCheckedFor"/> as data; the render line carries the number of raster pages in <c>Count</c>.</summary>
+    /// <param name="rasterPages">How many pages of the plan become images.</param>
+    public static IReadOnlyList<RedactionNotChecked> ApplyNotCheckedItemsFor(int rasterPages) =>
+        rasterPages <= 0
+            ? ApplyNotCheckedItems
+            : [new(RedactionNotCheckedKind.ApplyRender, ApplyRenderWithRaster, rasterPages), ApplyNotCheckedItems[1], ApplyNotCheckedItems[2]];
+
+    private const string ApplyRenderWithRaster = "Render comparison: only the pages redacted in place are compared with the original, outside the marked areas and the places where content was removed; pages without a mark and pages turned into images are not compared, and for a document with a form the annotations (form fields included) are left out of both renders.";
+
     /// <summary>The line under "Not cleaned" that says the annotations outside the marks are kept as they are (always shown).</summary>
     public const string AnnotationsAlongText = "Annotations outside the marked areas (comment texts, authors, replies, popups, notes) come along unchanged; only an annotation under a mark is removed.";
 
@@ -46,7 +64,7 @@ public static class RedactionReportText
             text,
             "Will be checked after writing",
             [
-                "The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the information dictionary, bookmarks, attached files and page labels, and a render of every redacted page against the original.",
+                WillBeChecked(analysis),
                 "Nothing is written to the target if the check finds anything.",
             ]);
         return text.ToString().TrimEnd();
@@ -83,13 +101,23 @@ public static class RedactionReportText
             }
 
             checkedLines.Add("Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are the colour of the area.");
-            if (analysis.Raster is { Count: > 0 } raster)
+            // The render comparison covers the pages redacted in place only: a page turned into an image is checked for its structure.
+            if (analysis.Raster is not { Count: > 0 })
             {
+                checkedLines.Add("Pages: every redacted page was rendered from the written file and looks like the original outside the marked areas.");
+            }
+            else
+            {
+                if (InPlacePages(analysis) > 0)
+                {
+                    checkedLines.Add("Pages: every page redacted in place was rendered from the written file and looks like the original outside the marked areas.");
+                }
+
+                var raster = analysis.Raster;
                 var pages = string.Join(", ", raster.Select(static r => (r.Page + 1).ToString(CultureInfo.InvariantCulture)));
-                checkedLines.Add($"Pages turned into images: {(raster.Count == 1 ? "page" : "pages")} {pages} of the written file each have exactly one image and no text, path, other object, annotation, link or form field (links and form fields are annotations), and the pixels under the marks are the colour of the area.");
+                checkedLines.Add($"Pages turned into images: {(raster.Count == 1 ? "page" : "pages")} {pages}: in the written file {(raster.Count == 1 ? "it has" : "each has")} exactly one image and no text, path, other object, annotation, link or form field (links and form fields are annotations), and the pixels under the marks are the colour of the area. These pages are not rendered against the original.");
             }
 
-            checkedLines.Add("Pages: every redacted page was rendered from the written file and looks like the original outside the marked areas.");
             checkedLines.Add("Page keys: no page of the written file carries /Thumb, /PieceInfo, /Metadata or /AA.");
             checkedLines.Add("Cleanup: the information dictionary, bookmarks, the names tree (attached files, scripts), page labels, the document's open action, actions, form and permissions were read back from the written file; none is left.");
             Section(text, "Checked", checkedLines);
@@ -108,6 +136,23 @@ public static class RedactionReportText
 
         Section(text, "Not checked", notChecked);
         return text.ToString().TrimEnd();
+    }
+
+    // Pages with marks that stay vectors and text: only these are rendered against the original.
+    private static int InPlacePages(RedactionAnalysis analysis) =>
+        analysis.Pages.Count(page => analysis.Raster is not { } raster || !raster.Any(r => r.Page == page.Page));
+
+    private static string WillBeChecked(RedactionAnalysis analysis)
+    {
+        const string Head = "The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the information dictionary, bookmarks, attached files and page labels";
+        if (analysis.Raster is not { Count: > 0 })
+        {
+            return Head + ", and a render of every redacted page against the original.";
+        }
+
+        return InPlacePages(analysis) > 0
+            ? Head + ", and a render of every page redacted in place against the original. Pages turned into images are checked for their structure instead (exactly one image, nothing else); they are not rendered against the original."
+            : Head + ". Pages turned into images are checked for their structure (exactly one image, nothing else); they are not rendered against the original.";
     }
 
     private static void Removed(StringBuilder text, RedactionAnalysis analysis)

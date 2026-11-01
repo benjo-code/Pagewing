@@ -56,7 +56,7 @@ public sealed class RedactionApplyInfo
         }
 
         sections.Add(new RedactionSection(Strings.RedactSecNotCleaned, NotCleanedLines(analysis)));
-        sections.Add(new RedactionSection(Strings.RedactSecAfter, [Strings.RedactCheckList, Strings.RedactCheckNothingWritten]));
+        sections.Add(new RedactionSection(Strings.RedactSecAfter, [CheckListOf(analysis), Strings.RedactCheckNothingWritten]));
         return new RedactionApplyInfo(SummaryOf(analysis), sections);
     }
 
@@ -125,7 +125,21 @@ public sealed class RedactionApplyInfo
             }
 
             checkedLines.Add(Strings.RedactCheckedAreas);
-            checkedLines.Add(Strings.RedactCheckedPages);
+            if (analysis.Raster is not { Count: > 0 })
+            {
+                checkedLines.Add(Strings.RedactCheckedPages);
+            }
+            else
+            {
+                // The render comparison covers the pages redacted in place only; a page turned into an image is checked for its structure.
+                if (InPlacePages(analysis) > 0)
+                {
+                    checkedLines.Add(Strings.RedactCheckedPagesInPlace);
+                }
+
+                checkedLines.Add(Format(Strings.RedactCheckedRaster, PagesOf([.. analysis.Raster.Select(static r => r.Page)])));
+            }
+
             checkedLines.Add(Strings.RedactCheckedKeys);
             checkedLines.Add(Strings.RedactCheckedCleanup);
             sections.Add(new RedactionSection(Strings.RedactSecChecked, checkedLines));
@@ -276,7 +290,7 @@ public sealed class RedactionApplyInfo
             RedactionNotCheckedKind.PixelsBeyond => Format(Strings.RedactNcPixelsBeyond, Number(item.Count), Number(item.Second)),
             RedactionNotCheckedKind.PixelsOnlyImages => Strings.RedactNcPixelsOnly,
             RedactionNotCheckedKind.OtherViewer => Strings.RedactNcOtherViewer,
-            RedactionNotCheckedKind.ApplyRender => Strings.RedactNcApplyRender,
+            RedactionNotCheckedKind.ApplyRender => item.Count > 0 ? Strings.RedactNcApplyRenderRaster : Strings.RedactNcApplyRender,
             RedactionNotCheckedKind.ApplyPageKeys => Strings.RedactNcApplyKeys,
             RedactionNotCheckedKind.ApplyXmp => Strings.RedactNcApplyXmp,
             RedactionNotCheckedKind.RasterOutsideAreas => Format(Strings.RedactNcRasterOutside, Number(item.Count)),
@@ -498,6 +512,15 @@ public sealed class RedactionApplyInfo
 
         return lines;
     }
+
+    // Pages with marks that stay vectors and text: only these are rendered against the original.
+    private static int InPlacePages(RedactionAnalysis analysis) =>
+        analysis.Pages.Count(page => analysis.Raster is not { } raster || !raster.Any(r => r.Page == page.Page));
+
+    private static string CheckListOf(RedactionAnalysis analysis) =>
+        analysis.Raster is not { Count: > 0 }
+            ? Strings.RedactCheckList
+            : InPlacePages(analysis) > 0 ? Strings.RedactCheckListRaster : Strings.RedactCheckListRasterOnly;
 
     private static string Number(long value) => value.ToString("N0", Strings.Culture);
 
