@@ -42,13 +42,15 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 12.1 | Öffentliches Repo und Sicherheitsprüfung | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-29-milestone-12-1-oeffentliches-repo.md) | 2026-10-30 |
 | – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M8.1 bis M12.1) | – | ✅ fertig | – | 2026-10-31 |
 | 13 | Seiten organisieren | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md) | 2026-11-01 |
-| 14 | Schwärzen | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
+| 14 | Schwärzen | 3 – Seiten & Schwärzen | 🟡 geplant | [Plan](superpowers/plans/2026-11-01-milestone-14-schwaerzen.md) | – |
+| 14.1 | Schwärzen: Muster, Füllungen, Seite als Bild | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
 | 15 | OCR | 4 – OCR & Text bearbeiten | ⬜ offen | – | – |
 | 16 | Text bearbeiten | 4 – OCR & Text bearbeiten | ⬜ offen | – | – |
 | – | **Release `v1.0.0`** – Seiten organisieren, Schwärzen, OCR und Textbearbeitung (M13 bis M16) | – | ⬜ offen | – | – |
 
 ## Scope-Änderungen
 
+- **2026-11-01 (Milestone 14 geteilt: M14 Schwärzen mit Prüfung, M14.1 Muster, Füllungen, Seite als Bild):** Mit dem Projektinhaber am 2026-11-01 abgestimmt (Spec `superpowers/specs/2026-11-01-m14-schwaerzen-design.md`, Plan `superpowers/plans/2026-11-01-milestone-14-schwaerzen.md`). M14 liefert Engine, Prüfung des Ergebnisses durch Pagewing selbst, CLI `redact` und die Bedienung in der App mit Bereich, Textstelle und Suchen und Schwärzen (nur Text). Neu in M14 gegenüber der Roadmap: Bereinigen ist immer an (kein Schalter), die Prüfung mit Prüfbericht, Suchen und Schwärzen über Seitentext, Kommentare und Formularwerte. **M14.1** (neu) bekommt Muster, Weichzeichnen, Verpixeln, Überlagerungstext und „Seite in Bild umwandeln“. Entschieden: PDFium allein, kein QPDF (das Gate nach dem Spike kann es zurückholen); das Bereinigen baut die Datei aus den Seiten in einem neuen Dokument auf, dabei entfallen Lesezeichen, Seitenbeschriftungen, Anhänge und Skripte, interne Links verlieren ihr Ziel, Formularfelder sind danach nicht mehr zuverlässig ausfüllbar (die Karte nennt es vorher); **verschlüsselte Dateien werden in M14 abgelehnt** (entschlüsselt schwärzen auf ausdrücklichen Wunsch ist Backlog). Markierungen leben nur in der Sitzung. Beide Milestones gehören zu `v1.0.0`.
 - **2026-11-01 (Release v0.3.0 entfällt, das nächste Release ist v1.0.0):** Auf Anweisung des Projektinhabers (2026-11-01) gibt es kein Release `v0.3.0`. Auf `v0.2.0` folgt `v1.0.0`; es umfasst die Milestones 13 und 14 (Seiten organisieren, Schwärzen, vorher `v0.3.0`) sowie 15 und 16 (OCR, Textbearbeitung) und trägt alle verschobenen Handprüfungen. Der Versionssprung ändert keinen Milestone und keine Abnahmekriterien. Folge: Das erste echte Update des Updaters ist `v0.2.0` auf `v1.0.0`. Die Versionsnummern in den Tests des Updaters (`0.3.0` als erfundene neuere Version) bleiben, sie sind kein Release.
 - **2026-10-31 (Milestone 13: Zuschnitt gegenüber den Roadmap-Aufgaben):** Mit dem Projektinhaber am 2026-10-31 abgestimmt (Spec `superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md`, Plan `superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md`). Seitenänderungen werden in der Seitenleiste vorgemerkt und mit „Anwenden“ vollständig neu geschrieben (nicht live in der Ansicht). Zusammenführen geschieht über „Datei einfügen“ und die CLI; ein eigener Dialog „Dateien zusammenführen“ ist Backlog. Bilderexport nur als PNG (der Core hat nur einen PNG-Encoder), JPEG ist Backlog. Die QPDF-Entscheidung fällt nach einem Spike in Aufgabe 1 des Plans (Halt). Hinzu kommen Extrahieren und Duplizieren als Teil des Teilens bzw. Organisierens. Stufe 1: Spike, Plan, Neuschrieb, Organisiermodus, `rotate`; Stufe 2: Datei einfügen, Teilen, Bilderexport, `merge`, `split`, `export`. Wird Stufe 1 deutlich größer, ist ein Schnitt in M13 und M13.1 möglich. Umsetzung (2026-11-01), Abweichungen vom Zuschnitt: (1) Kein Schnitt in M13 und M13.1, beide Stufen sind in M13 umgesetzt. (2) Kein QPDF; der Spike (Aufgabe 1) zeigte keine Lücke nach der Regel aus Spec 6. (3) Der optionale CLI-Befehl `pages` wurde nicht gebaut (Backlog); Extrahieren geht in der App über die Mehrfachauswahl im Modus „Organisieren“ und in der CLI mit `split --ranges`. (4) Die Verlustliste kennt drei Arten mehr als vorgesehen (`InternalLinkLost`, `PageLabelsShifted`, `OrphanFormFields`), und eine eingefügte verschlüsselte Datei in einer unverschlüsselten Hauptdatei wird abgelehnt. (5) Nach dem Anwenden endet der Modus. (6) Formulare eingefügter Seiten sind in anderen Programmen nicht zuverlässig ausfüllbar (PDFium trägt die Widgets nicht in das Formular der Datei ein); die App und die CLI sagen es vorher, die Abnahme in Acrobat und Chrome ist eine Handprüfung nach `v1.0.0`. (7) Ein Absturz beim Schreiben mit importierten Formularseiten wurde gefunden und behoben (Quellen bleiben am Ziel offen, Eintrag „Arbeitskopie statt Neuaufbau, primäre Datei (M13)“). (8) Die Hand- und Linux-Prüfungen von M13 stehen im Block von `v1.0.0`, wie die der früheren Milestones.
 - **2026-10-30 (Release v0.2.0: Abnahme nur automatisiert, Handprüfungen nach v1.0.0):** Auf Anweisung des Projektinhabers (2026-10-30) wird `v0.2.0` nur mit automatisierten Prüfungen abgenommen; alle Handprüfungen wandern in die Abnahme von `v1.0.0`. Die 13 bisherigen Kriterien von `v0.2.0` sind geteilt: Was ein Test, ein Workflow oder die Hardware-Messung des Haupt-PCs belegt, ist jetzt Kriterium K1 bis K6 von `v0.2.0` (K7: der Changelog nennt, was nicht von Hand geprüft wurde). Der Handprüf-Rest steht wörtlich bei `v1.0.0` (acht Kriterien ganz, drei Reste, dazu die Fork-PR-Probe aus Milestone 12.1). Nach `v1.0.0` verschoben sind auch der Beweis, dass `PauseCallbackStressTests` mit dem alten Pause-Rückruf abstürzt, und `--measure-scroll` mit `scroll-text-dense-10-signatures.pdf`. Risiko: Der Updater lief noch nie Ende zu Ende gegen ein echtes Release; `v0.2.0` auf `v1.0.0` ist der erste echte Test. Einzelheiten im Eintrag „Release v0.2.0: Abnahme nur automatisiert, Handprüfungen nach v1.0.0“ in `Docs/DECISIONS.md`.
@@ -504,7 +506,7 @@ Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v1.0.0` automat
 
 # Teilprojekt 3 – Seiten & Schwärzen
 
-**Spec:** [2026-10-31-teilprojekt3-seiten-design.md](superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md) Entwurf für M13 (Seiten organisieren); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
+**Spec:** [2026-10-31-teilprojekt3-seiten-design.md](superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md) M13 (Seiten organisieren) und M14 (Schwärzen, [Spec](superpowers/specs/2026-11-01-m14-schwaerzen-design.md)); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
 
 ## Milestone 13 – Seiten organisieren
 **Status:** ✅ fertig (2026-11-01) · **Plan:** [2026-10-31-milestone-13-seiten-organisieren.md](superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md) · **Voraussetzungen:** M11, M12
@@ -523,20 +525,37 @@ Ziel: Seiten lassen sich in App und CLI umsortieren, drehen, löschen, einfügen
 - [x] Tests für alle Seitenoperationen (Seitenzahl, Reihenfolge, Drehung, Inhalt) grün – Erledigt 2026-11-01: `dotnet test Pagewing.slnx` (Debug) und `dotnet test Pagewing.slnx -c Release`: je 4060 gesamt, 4011 erfolgreich, 49 übersprungen (Umgebungs- und Linux-Tests), 0 fehlgeschlagen; die Seitenoperationen decken `PageEditPlanTests` (Plan, Verlauf, Grenzen), `PageEditExecutorTests` (Seitenzahl, Reihenfolge über den Text je Seite, Drehung, leere Seiten, Duplikate, Fremdseiten, Lesezeichen/Beschriftungen/Formular der primären Datei), `DocumentSaverRewriteTests` (Fingerabdrücke, Original bei jedem Fehler unverändert, Verschlüsselung), `PageEditApplierTests`, `DocumentSplitterTests`, `PageImageExporterTests`, `PageEditFormImportTests`, `MergeCommandTests`, `SplitCommandTests`, `ExportCommandTests`, `RotateCommandTests` und die App-Tests `ApplyPagesTests`, `InsertFileTests`, `SplitAndExportCardTests`, `PagesOrganizeModelTests`, `PagesOrganizePanelTests`, `PagesStartPathTests`. Dazu `dotnet build Pagewing.slnx` (0 Warnungen, 0 Fehler), `dotnet format Pagewing.slnx --verify-no-changes` (Exit 0), `make-testpdfs.cs -- check`, `licenses.cs -- check`, `package.cs -- selftest` (582 Prüfungen), Native-AOT-Publish von App und CLI ohne Warnungen und `smoke-cli.cs` am AOT-Binary (bestanden). Offen (Handprüfung, `packaging/README.md`, „Seiten organisieren prüfen (M13)“): Acrobat/Chrome, echtes Fenster, Linux, Startzeit-Check auf echter Hardware
 
 ## Milestone 14 – Schwärzen
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M13
+**Status:** 🟡 geplant · **Plan:** [2026-11-01-milestone-14-schwaerzen.md](superpowers/plans/2026-11-01-milestone-14-schwaerzen.md) · **Voraussetzungen:** M13
 
-Ziel: Bereiche und Textstellen lassen sich so schwärzen, dass der Inhalt nachweislich aus der Datei verschwindet.
+Ziel: Bereiche, Textstellen und Suchtreffer lassen sich so schwärzen, dass der Inhalt nachweislich aus der Datei verschwindet und Pagewing das Ergebnis selbst prüft.
 
 **Aufgaben**
-- [ ] Bereich oder Textstelle schwärzen (Markieren, Vorschau, Anwenden)
-- [ ] Textobjekte aufteilen bzw. entfernen, Bildpixel überschreiben, Vektorpfade und Form-XObjects rekursiv behandeln, Annotationen im Bereich löschen
-- [ ] Metadaten entfernen (Info-Dictionary, XMP)
-- [ ] Immer vollständiger Neuschrieb, Warnung bei digital signierten Dokumenten
+- [x] Spec erstellen (Brainstorming). Erledigt 2026-11-01: `superpowers/specs/2026-11-01-m14-schwaerzen-design.md` nach Recherche zu Acrobat, PDF-XChange, Okular, MuPDF-Werkzeugen, Stirling-PDF und PDFium-Komponenten und dem Brainstorming mit dem Projektinhaber, von ihm freigegeben; die Prüfung durch einen unabhängigen Leser ist eingearbeitet
+- [ ] Spike und Gate: Form-XObjects, Textzerlegung, Bilder, Bereinigen durch Neuaufbau (QPDF-Entscheidung), Neuschrieb ohne alte Revision, nicht als Seitenobjekt sichtbarer Inhalt
+- [ ] Bereich, Textstelle oder Suchtreffer markieren (Modus „Schwärzen“, Panel, Suchen und Schwärzen), Vorschau, Anwenden
+- [ ] Textobjekte zeichenweise aufteilen bzw. entfernen, Bildpixel überschreiben, Vektorpfade und Form-XObjects rekursiv behandeln, Annotationen im Bereich löschen; Rückfall auf ganze Objekte immer vorher genannt
+- [ ] Bereinigen immer (Info-Dictionary, XMP, Lesezeichen, Anhänge, Skripte) durch Neuaufbau; vollständiger Neuschrieb; Warnung bei digital signierten Dokumenten; verschlüsselte Dateien abgelehnt
+- [ ] Prüfung des Ergebnisses durch Pagewing selbst (Text, Lage, Rohbytes, Bildpixel) mit Prüfbericht; bei einem Fund keine Ausgabedatei
 - [ ] CLI `pagewing redact`
 
 **Abnahmekriterien**
 - [ ] Tests: nach dem Schwärzen enthält weder die Textextraktion noch der dekomprimierte Rohinhalt der Datei den geschwärzten Text (Fälle: Form-XObject, Annotation, Metadaten, ältere inkrementelle Revision)
 - [ ] Tests: Bildpixel im geschwärzten Bereich sind im gespeicherten Bild überschrieben
+- [ ] Tests: Die Prüfung lässt eine nur zugedeckte (undichte) Datei durchfallen; bei einem Fund entsteht keine Ausgabedatei und das Original bleibt unverändert
+- [ ] Tests: Text und Darstellung außerhalb der Markierungen bleiben unverändert
+
+## Milestone 14.1 – Schwärzen: Muster, Füllungen, Seite als Bild
+**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M14
+
+Ziel: Schwärzen findet Muster (E-Mail, IBAN, Telefon, Kreditkarte), bietet weitere Füllungen und eine Notlösung für nicht zerlegbare Seiten.
+
+**Aufgaben**
+- [ ] Muster in Suchen und Schwärzen: E-Mail, IBAN (Prüfsumme), Telefon, Kreditkarte (Prüfsumme); CLI `--pattern`
+- [ ] Füllung Weichzeichnen und Verpixeln, Überlagerungstext je Markierung
+- [ ] „Seite in Bild umwandeln“ nur auf ausdrückliche Wahl (der Text dieser Seiten geht verloren, die Karte sagt es)
+
+**Abnahmekriterien**
+- [ ] Tests: Mustertreffer decken die Fälle ab (auch falsche Prüfsummen und Grenzfälle); Weichzeichnen und Verpixeln lassen keine Rückrechnung zu (Pixel im Bereich werden ersetzt, nicht überlagert); umgewandelte Seiten enthalten keinen Text mehr
 
 ---
 

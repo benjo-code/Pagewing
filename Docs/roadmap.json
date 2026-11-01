@@ -5,6 +5,11 @@
   "scopeChanges": [
     {
       "date": "2026-11-01",
+      "context": "Milestone 14 geteilt: M14 Schwärzen mit Prüfung, M14.1 Muster, Füllungen, Seite als Bild",
+      "text": "Mit dem Projektinhaber am 2026-11-01 abgestimmt (Spec `superpowers/specs/2026-11-01-m14-schwaerzen-design.md`, Plan `superpowers/plans/2026-11-01-milestone-14-schwaerzen.md`). M14 liefert Engine, Prüfung des Ergebnisses durch Pagewing selbst, CLI `redact` und die Bedienung in der App mit Bereich, Textstelle und Suchen und Schwärzen (nur Text). Neu in M14 gegenüber der Roadmap: Bereinigen ist immer an (kein Schalter), die Prüfung mit Prüfbericht, Suchen und Schwärzen über Seitentext, Kommentare und Formularwerte. **M14.1** (neu) bekommt Muster, Weichzeichnen, Verpixeln, Überlagerungstext und „Seite in Bild umwandeln“. Entschieden: PDFium allein, kein QPDF (das Gate nach dem Spike kann es zurückholen); das Bereinigen baut die Datei aus den Seiten in einem neuen Dokument auf, dabei entfallen Lesezeichen, Seitenbeschriftungen, Anhänge und Skripte, interne Links verlieren ihr Ziel, Formularfelder sind danach nicht mehr zuverlässig ausfüllbar (die Karte nennt es vorher); **verschlüsselte Dateien werden in M14 abgelehnt** (entschlüsselt schwärzen auf ausdrücklichen Wunsch ist Backlog). Markierungen leben nur in der Sitzung. Beide Milestones gehören zu `v1.0.0`."
+    },
+    {
+      "date": "2026-11-01",
       "context": "Release v0.3.0 entfällt, das nächste Release ist v1.0.0",
       "text": "Auf Anweisung des Projektinhabers (2026-11-01) gibt es kein Release `v0.3.0`. Auf `v0.2.0` folgt `v1.0.0`; es umfasst die Milestones 13 und 14 (Seiten organisieren, Schwärzen, vorher `v0.3.0`) sowie 15 und 16 (OCR, Textbearbeitung) und trägt alle verschobenen Handprüfungen. Der Versionssprung ändert keinen Milestone und keine Abnahmekriterien. Folge: Das erste echte Update des Updaters ist `v0.2.0` auf `v1.0.0`. Die Versionsnummern in den Tests des Updaters (`0.3.0` als erfundene neuere Version) bleiben, sie sind kein Release."
     },
@@ -647,7 +652,7 @@
     {
       "number": 3,
       "name": "Seiten & Schwärzen",
-      "spec": { "text": "Entwurf für M13 (Seiten organisieren); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6", "link": "superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md" },
+      "spec": { "text": "M13 (Seiten organisieren) und M14 (Schwärzen, [Spec](superpowers/specs/2026-11-01-m14-schwaerzen-design.md)); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6", "link": "superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md" },
       "milestones": [
         {
           "id": "13",
@@ -672,19 +677,39 @@
         {
           "id": "14",
           "title": "Schwärzen",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-11-01-milestone-14-schwaerzen.md",
           "prerequisites": ["13"],
-          "goal": "Bereiche und Textstellen lassen sich so schwärzen, dass der Inhalt nachweislich aus der Datei verschwindet.",
+          "goal": "Bereiche, Textstellen und Suchtreffer lassen sich so schwärzen, dass der Inhalt nachweislich aus der Datei verschwindet und Pagewing das Ergebnis selbst prüft.",
           "tasks": [
-            { "text": "Bereich oder Textstelle schwärzen (Markieren, Vorschau, Anwenden)", "done": false },
-            { "text": "Textobjekte aufteilen bzw. entfernen, Bildpixel überschreiben, Vektorpfade und Form-XObjects rekursiv behandeln, Annotationen im Bereich löschen", "done": false },
-            { "text": "Metadaten entfernen (Info-Dictionary, XMP)", "done": false },
-            { "text": "Immer vollständiger Neuschrieb, Warnung bei digital signierten Dokumenten", "done": false },
+            { "text": "Spec erstellen (Brainstorming). Erledigt 2026-11-01: `superpowers/specs/2026-11-01-m14-schwaerzen-design.md` nach Recherche zu Acrobat, PDF-XChange, Okular, MuPDF-Werkzeugen, Stirling-PDF und PDFium-Komponenten und dem Brainstorming mit dem Projektinhaber, von ihm freigegeben; die Prüfung durch einen unabhängigen Leser ist eingearbeitet", "done": true },
+            { "text": "Spike und Gate: Form-XObjects, Textzerlegung, Bilder, Bereinigen durch Neuaufbau (QPDF-Entscheidung), Neuschrieb ohne alte Revision, nicht als Seitenobjekt sichtbarer Inhalt", "done": false },
+            { "text": "Bereich, Textstelle oder Suchtreffer markieren (Modus „Schwärzen“, Panel, Suchen und Schwärzen), Vorschau, Anwenden", "done": false },
+            { "text": "Textobjekte zeichenweise aufteilen bzw. entfernen, Bildpixel überschreiben, Vektorpfade und Form-XObjects rekursiv behandeln, Annotationen im Bereich löschen; Rückfall auf ganze Objekte immer vorher genannt", "done": false },
+            { "text": "Bereinigen immer (Info-Dictionary, XMP, Lesezeichen, Anhänge, Skripte) durch Neuaufbau; vollständiger Neuschrieb; Warnung bei digital signierten Dokumenten; verschlüsselte Dateien abgelehnt", "done": false },
+            { "text": "Prüfung des Ergebnisses durch Pagewing selbst (Text, Lage, Rohbytes, Bildpixel) mit Prüfbericht; bei einem Fund keine Ausgabedatei", "done": false },
             { "text": "CLI `pagewing redact`", "done": false }
           ],
           "acceptance": [
             { "text": "Tests: nach dem Schwärzen enthält weder die Textextraktion noch der dekomprimierte Rohinhalt der Datei den geschwärzten Text (Fälle: Form-XObject, Annotation, Metadaten, ältere inkrementelle Revision)", "done": false },
-            { "text": "Tests: Bildpixel im geschwärzten Bereich sind im gespeicherten Bild überschrieben", "done": false }
+            { "text": "Tests: Bildpixel im geschwärzten Bereich sind im gespeicherten Bild überschrieben", "done": false },
+            { "text": "Tests: Die Prüfung lässt eine nur zugedeckte (undichte) Datei durchfallen; bei einem Fund entsteht keine Ausgabedatei und das Original bleibt unverändert", "done": false },
+            { "text": "Tests: Text und Darstellung außerhalb der Markierungen bleiben unverändert", "done": false }
+          ]
+        },
+        {
+          "id": "14.1",
+          "title": "Schwärzen: Muster, Füllungen, Seite als Bild",
+          "status": "open",
+          "prerequisites": ["14"],
+          "goal": "Schwärzen findet Muster (E-Mail, IBAN, Telefon, Kreditkarte), bietet weitere Füllungen und eine Notlösung für nicht zerlegbare Seiten.",
+          "tasks": [
+            { "text": "Muster in Suchen und Schwärzen: E-Mail, IBAN (Prüfsumme), Telefon, Kreditkarte (Prüfsumme); CLI `--pattern`", "done": false },
+            { "text": "Füllung Weichzeichnen und Verpixeln, Überlagerungstext je Markierung", "done": false },
+            { "text": "„Seite in Bild umwandeln“ nur auf ausdrückliche Wahl (der Text dieser Seiten geht verloren, die Karte sagt es)", "done": false }
+          ],
+          "acceptance": [
+            { "text": "Tests: Mustertreffer decken die Fälle ab (auch falsche Prüfsummen und Grenzfälle); Weichzeichnen und Verpixeln lassen keine Rückrechnung zu (Pixel im Bereich werden ersetzt, nicht überlagert); umgewandelte Seiten enthalten keinen Text mehr", "done": false }
           ]
         }
       ]
@@ -840,7 +865,7 @@
       "title": "Seiten organisieren, Schwärzen, OCR und Textbearbeitung",
       "status": "open",
       "afterMilestone": "16",
-      "covers": ["13", "14", "15", "16"],
+      "covers": ["13", "14", "14.1", "15", "16"],
       "intro": "Nächstes Release nach `v0.2.0`; `v0.3.0` entfällt (Anweisung des Projektinhabers, 2026-11-01), die Milestones 13 und 14 gehen in dieses Release ein. Enthält alle Handprüfungen, die aus `v0.2.0` hierher verschoben wurden (Anweisung des Projektinhabers, 2026-10-30).",
       "acceptance": [
         { "text": "Verschoben aus `v0.2.0` (2026-10-30): Aus M8.1, auf Wunsch des Projektinhabers (2026-10-24) hierher verschoben: Windows, Ende zu Ende: Eine ältere Testversion aktualisiert sich gegen ein echtes Test-Release auf die neue, für „nur für mich“ und für „alle Benutzer“; Einstellungen und Verlauf bleiben erhalten, die Standardprogramm-Zuordnung bleibt gesetzt (manuelle Prüfung, `installer-smoke` für den stillen Pfad). Stand 2026-10-24 **offen**: „echtes Test-Release“ ist nach dem Entwurf der Testaufbau gegen den lokalen Testserver (kein öffentliches Testrelease). Prüfen auf einem Windows-Rechner ohne installiertes Pagewing nach `packaging/README.md`, „Update prüfen“ → „Windows“ (Durchlauf A „nur für mich“, Durchlauf B „alle Benutzer“, Fehlerpfade Server aus, `--tamper signature`, `--tamper checksum`, UAC abgelehnt); stiller Pfad „nur für mich“ auch mit `dotnet run tools/package.cs -- update-smoke Pagewing-0.0.1-win-x64-setup.exe Pagewing-0.0.2-win-x64-setup.exe --key <Testschlüssel>`. Nicht auf dem Entwicklungsrechner ausgeführt (installiert Pagewing und schreibt in die echte Registry)", "done": false },
