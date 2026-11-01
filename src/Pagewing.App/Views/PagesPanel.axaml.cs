@@ -17,6 +17,7 @@ public sealed partial class PagesPanel : UserControl
 {
     private TabViewModel? _tab;
     private PagesOrganizeBar? _bar;
+    private PageOutputMenu? _outputMenu;
 
     public PagesPanel() => InitializeComponent();
 
@@ -35,6 +36,7 @@ public sealed partial class PagesPanel : UserControl
         }
 
         SyncBar();
+        (_outputMenu ??= new PageOutputMenu(PageOutputButton)).Attach(_tab);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -45,6 +47,8 @@ public sealed partial class PagesPanel : UserControl
             _tab.PropertyChanged -= OnTabPropertyChanged;
             _tab = null;
         }
+
+        _outputMenu?.Detach();
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -55,6 +59,7 @@ public sealed partial class PagesPanel : UserControl
             _tab = tab;
             _tab.PropertyChanged += OnTabPropertyChanged;
             SyncBar();
+            (_outputMenu ??= new PageOutputMenu(PageOutputButton)).Attach(_tab);
         }
     }
 

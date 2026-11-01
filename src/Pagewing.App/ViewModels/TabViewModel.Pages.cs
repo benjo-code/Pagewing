@@ -632,10 +632,8 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(PagePlan));
         OnPropertyChanged(nameof(HasPendingPageEdits));
         OnPropertyChanged(nameof(PageEditsBlockedReason));
-        OnPropertyChanged(nameof(PageOutputBlockedReason));
         OnPropertyChanged(nameof(PageCounterText));
         OnPropertyChanged(nameof(TabAutomationName));
-        OnPropertyChanged(nameof(CanRunPageOutput));
         OnPropertyChanged(nameof(AnnotateUnavailableReason));
         OnPropertyChanged(nameof(CanAnnotate));
         OnPropertyChanged(nameof(OffersFill));
@@ -667,6 +665,9 @@ public sealed partial class TabViewModel
         _moveLaterCommand?.RaiseCanExecuteChanged();
         _applyPageEditsCommand?.RaiseCanExecuteChanged();
         _insertFileCommand?.RaiseCanExecuteChanged();
+
+        // Extracting, splitting and exporting depend on the plan, the selection and the document being ready.
+        RaisePageOutputChanged();
 
         // Ctrl+Z and Ctrl+Y are the plan's in the mode.
         _undoCommand?.RaiseCanExecuteChanged();

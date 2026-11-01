@@ -383,6 +383,9 @@ public sealed partial class TabViewModel
         CanUndo = editor?.CanUndo == true;
         CanRedo = editor?.CanRedo == true;
         OnFormEditVersion();
+
+        // Unsaved changes lock extracting, splitting and exporting (PageOutputBlockedReason).
+        RaisePageOutputChanged();
     }
 
     /// <summary>The session swapped its document for the saved file (<see cref="Refresh"/>): what was read of it stays.</summary>

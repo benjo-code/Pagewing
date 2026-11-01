@@ -1,0 +1,238 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.SplitCard"
+             x:DataType="vm:SplitViewModel"
+             KeyboardNavigation.TabNavigation="Cycle"
+             AutomationProperties.Name="{Binding Title}">
+  <!--
+    The cards "Split document" and "Extract selected pages" (milestone 13, spec 5.3), one view for both: a card over the window
+    below the title bar in the style of the insert and print cards (design system 7.8): surface.raised, radius.overlay, the card
+    shadow. From the top: title and close button; the document (files symbol, name); then what the state asks for. Setup (split):
+    the three ways as radio buttons (every N pages, page ranges, bookmarks of the top level; the last is off, with its reason
+    beside it, while the document has none), the field of the chosen way, the complaint about it with a symbol, the target folder
+    with "Choose folder …", and "Replace existing files" (off). Checking: a polite live text. Review: for an extract the sentence
+    of what happens; for a split the files that will be created; then what the new files lose (one sentence each, with a symbol),
+    and the files that are in the way (warning symbol, the names, the hint; "Create files" does not run while they are, unless
+    "Replace existing files" is on). Running: the bar, the percentage and "Cancel". Finished: the result (danger symbol and colour
+    only with the words, never colour alone) and which files were written. Buttons at the bottom: Cancel and Continue, or Back,
+    Cancel and the primary button; Close when done. Tab goes from top to bottom and stays on the card; Enter does what the card
+    waits for, Esc cancels a run or closes the card. Not modal. Made when it is first shown, never in the startup path.
+  -->
+  <Border Name="SplitBox" Width="480" Margin="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Margin="24,16,24,20" Spacing="14">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Name="SplitTitleText" Classes="subtitle" VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding Title}" />
+        <Button Name="SplitCloseButton" Grid.Column="1" Classes="icon"
+                Command="{Binding CancelCommand}"
+                ToolTip.Tip="{x:Static res:Strings.PageOutputClose}"
+                AutomationProperties.Name="{x:Static res:Strings.PageOutputClose}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+        </Button>
+      </Grid>
+
+      <!-- The document. -->
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+        <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center"
+                        Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Files}" />
+        <TextBlock Name="SplitFileName" Grid.Column="1" Classes="strong" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" Text="{Binding FileName}" ToolTip.Tip="{Binding FileName}" />
+      </Grid>
+
+      <!-- Setup of a split. -->
+      <StackPanel Name="SplitSetupPanel" Spacing="10" IsVisible="{Binding IsSetup}">
+        <RadioButton Name="SplitEveryChoice" GroupName="SplitWay" IsChecked="{Binding IsEvery, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.SplitEveryChoice}"
+                     AutomationProperties.Name="{x:Static res:Strings.SplitEveryChoice}" />
+        <StackPanel Margin="28,0,0,0" Spacing="4" IsVisible="{Binding IsEvery}">
+          <TextBlock Classes="caption" Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{x:Static res:Strings.SplitEveryLabel}" />
+          <TextBox Name="SplitEveryField" MinHeight="32" Width="120" HorizontalAlignment="Left"
+                   Text="{Binding EveryText, Mode=TwoWay}"
+                   AutomationProperties.Name="{x:Static res:Strings.SplitEveryLabel}" />
+        </StackPanel>
+
+        <RadioButton Name="SplitRangesChoice" GroupName="SplitWay" IsChecked="{Binding IsRanges, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.SplitRangesChoice}"
+                     AutomationProperties.Name="{x:Static res:Strings.SplitRangesChoice}" />
+        <StackPanel Margin="28,0,0,0" Spacing="4" IsVisible="{Binding IsRanges}">
+          <TextBlock Classes="caption" Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{x:Static res:Strings.SplitRangesLabel}" />
+          <TextBox Name="SplitRangesField" MinHeight="32"
+                   Text="{Binding RangesText, Mode=TwoWay}"
+                   AutomationProperties.Name="{x:Static res:Strings.SplitRangesLabel}"
+                   AutomationProperties.HelpText="{x:Static res:Strings.SplitRangesHint}" />
+          <TextBlock Name="SplitRangesHint" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                     Text="{x:Static res:Strings.SplitRangesHint}" />
+        </StackPanel>
+
+        <RadioButton Name="SplitBookmarksChoice" GroupName="SplitWay" IsChecked="{Binding IsBookmarks, Mode=TwoWay}"
+                     IsEnabled="{Binding BookmarksAvailable}"
+                     Content="{x:Static res:Strings.SplitBookmarksChoice}"
+                     AutomationProperties.Name="{x:Static res:Strings.SplitBookmarksChoice}"
+                     AutomationProperties.HelpText="{Binding BookmarksReason}" />
+        <Grid Margin="28,0,0,0" ColumnDefinitions="Auto,*" ColumnSpacing="6"
+              IsVisible="{Binding BookmarksReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,1,0,0"
+                          Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+          <TextBlock Name="SplitBookmarksReason" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                     Text="{Binding BookmarksReason}" />
+        </Grid>
+
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6"
+              IsVisible="{Binding InputError, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                          Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+          <TextBlock Name="SplitInputError" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Danger.Default}"
+                     AutomationProperties.LiveSetting="Assertive"
+                     Text="{Binding InputError}" />
+        </Grid>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="strong" Text="{x:Static res:Strings.PageOutputFolderLabel}" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Name="SplitFolderField" MinHeight="32"
+                     Text="{Binding Folder, Mode=TwoWay}"
+                     AutomationProperties.Name="{x:Static res:Strings.PageOutputFolderLabel}" />
+            <Button Name="SplitChooseFolderButton" Grid.Column="1" Command="{Binding ChooseFolderCommand}"
+                    Content="{x:Static res:Strings.PageOutputChooseFolder}"
+                    AutomationProperties.Name="{x:Static res:Strings.PageOutputChooseFolder}" />
+          </Grid>
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6"
+                IsVisible="{Binding FolderError, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                            Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+            <TextBlock Name="SplitFolderError" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Pw.Brush.Danger.Default}"
+                       AutomationProperties.LiveSetting="Assertive"
+                       Text="{Binding FolderError}" />
+          </Grid>
+        </StackPanel>
+        <CheckBox Name="SplitReplaceChoice" IsChecked="{Binding ReplaceExisting, Mode=TwoWay}"
+                  Content="{x:Static res:Strings.PageOutputReplace}" />
+      </StackPanel>
+
+      <!-- Checking. -->
+      <TextBlock Name="SplitChecking" Classes="body" IsVisible="{Binding IsChecking}"
+                 Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                 AutomationProperties.LiveSetting="Polite"
+                 Text="{x:Static res:Strings.PageOutputChecking}" />
+
+      <!-- Review: the files, what they lose, what is in the way. -->
+      <ScrollViewer Name="SplitReviewScroll" MaxHeight="300" Focusable="True" IsTabStop="True"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                    IsVisible="{Binding IsReview}"
+                    AutomationProperties.Name="{Binding Title}">
+        <StackPanel Name="SplitReviewPanel" Spacing="10">
+          <TextBlock Name="SplitSummary" Classes="body" TextWrapping="Wrap" Text="{Binding Summary}"
+                     IsVisible="{Binding IsExtract}" />
+
+          <StackPanel Spacing="4" IsVisible="{Binding !IsExtract}">
+            <TextBlock Name="SplitFilesHeading" Classes="strong" Text="{Binding FilesHeading}" />
+            <ItemsControl Name="SplitFiles" ItemsSource="{Binding FileNames}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Classes="body" TextTrimming="CharacterEllipsis" Text="{Binding}" ToolTip.Tip="{Binding}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Name="SplitMoreFiles" Classes="caption" Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                       IsVisible="{Binding MoreFilesText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Text="{Binding MoreFilesText}" />
+          </StackPanel>
+
+          <StackPanel Name="SplitNotesPanel" Spacing="4" IsVisible="{Binding HasNotes}">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.PageOutputNotesHeading}" />
+            <ItemsControl Name="SplitNotes" ItemsSource="{Binding Notes}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,2">
+                    <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,2,0,0"
+                                    Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+                    <TextBlock Grid.Column="1" Classes="body" TextWrapping="Wrap" Text="{Binding}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <StackPanel Name="SplitConflictsPanel" Spacing="6" IsVisible="{Binding HasConflicts}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+              <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+              <StackPanel Grid.Column="1" Spacing="2">
+                <TextBlock Classes="strong" TextWrapping="Wrap" Text="{x:Static res:Strings.PageOutputConflicts}" />
+                <TextBlock Name="SplitConflictNames" Classes="body" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite" Text="{Binding ConflictsText}" />
+                <TextBlock Classes="caption" TextWrapping="Wrap" Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                           Text="{x:Static res:Strings.PageOutputConflictsHint}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+
+          <CheckBox Name="SplitReviewReplaceChoice" IsChecked="{Binding ReplaceExisting, Mode=TwoWay}"
+                    IsVisible="{Binding !IsExtract}"
+                    Content="{x:Static res:Strings.PageOutputReplace}" />
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- Running. -->
+      <StackPanel Name="SplitRunningPanel" Spacing="6" IsVisible="{Binding IsRunning}">
+        <TextBlock Name="SplitRunningText" Classes="body" AutomationProperties.LiveSetting="Polite"
+                   Text="{x:Static res:Strings.PageOutputRunning}" />
+        <ProgressBar Name="SplitProgress" Minimum="0" Maximum="1" Value="{Binding Progress}" />
+        <TextBlock Name="SplitProgressText" Classes="caption num" Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{Binding ProgressText}" />
+      </StackPanel>
+
+      <!-- Finished: how it ended, and what was written. -->
+      <StackPanel Name="SplitFinishedPanel" Spacing="8" IsVisible="{Binding IsFinished}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                          Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}"
+                          IsVisible="{Binding IsError}" />
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                          Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Check}"
+                          IsVisible="{Binding !IsError}" />
+          <TextBlock Name="SplitResult" Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                     AutomationProperties.LiveSetting="Assertive"
+                     Text="{Binding ResultText}" />
+        </Grid>
+        <TextBlock Name="SplitWritten" Classes="caption" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   IsVisible="{Binding WrittenText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Text="{Binding WrittenText}" />
+      </StackPanel>
+
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+        <Button Name="SplitBackButton" Command="{Binding BackCommand}"
+                IsVisible="{Binding ShowsBack}"
+                Content="{x:Static res:Strings.SplitBack}"
+                AutomationProperties.Name="{x:Static res:Strings.SplitBack}" />
+        <Button Name="SplitCancelButton" Grid.Column="2" Command="{Binding CancelCommand}"
+                IsVisible="{Binding !IsFinished}"
+                Content="{x:Static res:Strings.PageOutputCancel}"
+                AutomationProperties.Name="{x:Static res:Strings.PageOutputCancel}" />
+        <Button Name="SplitContinueButton" Grid.Column="3" Classes="primary" Command="{Binding ReviewCommand}"
+                IsVisible="{Binding IsSetup}"
+                Content="{x:Static res:Strings.SplitContinue}"
+                AutomationProperties.Name="{x:Static res:Strings.SplitContinue}" />
+        <Button Name="SplitStartButton" Grid.Column="3" Classes="primary" Command="{Binding StartCommand}"
+                IsVisible="{Binding IsReview}"
+                Content="{Binding StartText}"
+                AutomationProperties.Name="{Binding StartText}" />
+        <Button Name="SplitDoneButton" Grid.Column="3" Classes="primary" Command="{Binding CloseCommand}"
+                IsVisible="{Binding IsFinished}"
+                Content="{x:Static res:Strings.PageOutputDone}"
+                AutomationProperties.Name="{x:Static res:Strings.PageOutputDone}" />
+      </Grid>
+    </StackPanel>
+  </Border>
+</UserControl>

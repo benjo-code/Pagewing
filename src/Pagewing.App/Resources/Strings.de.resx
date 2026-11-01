@@ -1800,4 +1800,205 @@
   <data name="ApplyErrorInsertedChanged" xml:space="preserve">
     <value>Die eingefügte Datei „{0}“ ist nicht mehr die Datei, die eingefügt wurde: Sie wurde geändert, gelöscht oder lässt sich nicht lesen. Es wurde nichts geschrieben; die Seitenänderungen bleiben erhalten. Entfernen Sie ihre Seiten aus der Liste oder fügen Sie die Datei erneut ein.</value>
   </data>
+  <data name="CommandExtractPages" xml:space="preserve">
+    <value>Auswahl als neue PDF extrahieren …</value>
+  </data>
+  <data name="CommandSplitDocument" xml:space="preserve">
+    <value>Dokument in Dateien teilen …</value>
+  </data>
+  <data name="CommandExportImages" xml:space="preserve">
+    <value>Seiten als Bilder exportieren …</value>
+  </data>
+  <data name="PageOutputMenu" xml:space="preserve">
+    <value>Extrahieren, teilen, exportieren</value>
+  </data>
+  <data name="ExtractNeedsSelection" xml:space="preserve">
+    <value>Wählen Sie zuerst Seiten aus: „Seiten organisieren“ einschalten und Seiten mit Strg oder Umschalt wählen.</value>
+  </data>
+  <data name="PageOutputClose" xml:space="preserve">
+    <value>Dialog schließen</value>
+  </data>
+  <data name="PageOutputCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="PageOutputDone" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="PageOutputFolderLabel" xml:space="preserve">
+    <value>Zielordner</value>
+  </data>
+  <data name="PageOutputChooseFolder" xml:space="preserve">
+    <value>Ordner wählen …</value>
+  </data>
+  <data name="PageOutputReplace" xml:space="preserve">
+    <value>Vorhandene Dateien ersetzen</value>
+  </data>
+  <data name="PageOutputRunning" xml:space="preserve">
+    <value>Die Dateien werden geschrieben …</value>
+  </data>
+  <data name="PageOutputCanceled" xml:space="preserve">
+    <value>Abgebrochen.</value>
+  </data>
+  <data name="PageOutputWritten" xml:space="preserve">
+    <value>Bereits geschriebene Dateien ({0}): {1}</value>
+  </data>
+  <data name="PageOutputNothingWritten" xml:space="preserve">
+    <value>Es wurde keine Datei geschrieben.</value>
+  </data>
+  <data name="PageOutputChecking" xml:space="preserve">
+    <value>Es wird geprüft, was die neuen Dateien verlieren …</value>
+  </data>
+  <data name="PageOutputNotesHeading" xml:space="preserve">
+    <value>Das ändert sich in den neuen Dateien:</value>
+  </data>
+  <data name="PageOutputConflicts" xml:space="preserve">
+    <value>Diese Dateien gibt es schon, sie werden nicht ersetzt:</value>
+  </data>
+  <data name="PageOutputConflictsHint" xml:space="preserve">
+    <value>Schalten Sie „Vorhandene Dateien ersetzen“ ein oder wählen Sie einen anderen Ordner.</value>
+  </data>
+  <data name="PageOutputErrorRefused" xml:space="preserve">
+    <value>Diese Seiten lassen sich nicht als neue Datei schreiben. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="PageOutputErrorFolderMissing" xml:space="preserve">
+    <value>Der Zielordner existiert nicht. Wählen Sie einen anderen Ordner. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="PageOutputErrorTargetExists" xml:space="preserve">
+    <value>Schon vorhanden und nicht ersetzt: {0}. Wählen Sie einen anderen Ordner oder schalten Sie „Vorhandene Dateien ersetzen“ ein.</value>
+  </data>
+  <data name="PageOutputErrorTargetIsSource" xml:space="preserve">
+    <value>Eine neue Datei würde das geöffnete Dokument ersetzen. Wählen Sie einen anderen Ordner oder Namen. Es wurde nichts ersetzt.</value>
+  </data>
+  <data name="PageOutputErrorUnsafeName" xml:space="preserve">
+    <value>Ein Dateiname lässt sich nicht verwenden. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="PageOutputErrorSourceChanged" xml:space="preserve">
+    <value>Die Datei wurde nach dem Öffnen außerhalb von Pagewing geändert. Schließen und öffnen Sie sie erneut und versuchen Sie es noch einmal.</value>
+  </data>
+  <data name="PageOutputErrorPart" xml:space="preserve">
+    <value>Datei {0} konnte nicht geschrieben werden: {1}</value>
+  </data>
+  <data name="PageOutputErrorGone" xml:space="preserve">
+    <value>Das Dokument wurde geschlossen oder ersetzt. Es wurde nichts mehr geschrieben.</value>
+  </data>
+  <data name="PageOutputErrorUnknown" xml:space="preserve">
+    <value>Die Dateien konnten nicht geschrieben werden.</value>
+  </data>
+  <data name="PageOutputErrorNotPossible" xml:space="preserve">
+    <value>Das ist für dieses Dokument nicht möglich. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="PageOutputPickFailed" xml:space="preserve">
+    <value>Der Dateidialog ließ sich nicht öffnen. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="SplitTitle" xml:space="preserve">
+    <value>Dokument teilen</value>
+  </data>
+  <data name="ExtractTitle" xml:space="preserve">
+    <value>Auswahl als neue PDF</value>
+  </data>
+  <data name="SplitEveryChoice" xml:space="preserve">
+    <value>Alle N Seiten</value>
+  </data>
+  <data name="SplitRangesChoice" xml:space="preserve">
+    <value>Nach Seitenbereichen</value>
+  </data>
+  <data name="SplitBookmarksChoice" xml:space="preserve">
+    <value>Nach Lesezeichen (oberste Ebene)</value>
+  </data>
+  <data name="SplitEveryLabel" xml:space="preserve">
+    <value>Seiten je Datei</value>
+  </data>
+  <data name="SplitEveryInvalid" xml:space="preserve">
+    <value>Geben Sie eine ganze Zahl von Seiten ein, mindestens 1.</value>
+  </data>
+  <data name="SplitRangesLabel" xml:space="preserve">
+    <value>Eine Datei je Bereich</value>
+  </data>
+  <data name="SplitRangesHint" xml:space="preserve">
+    <value>Zum Beispiel 1-3, 4-6, 7. Trennen Sie die Bereiche mit Kommas.</value>
+  </data>
+  <data name="SplitRangesInvalid" xml:space="preserve">
+    <value>Geben Sie Bereiche wie 1-3, 4-6 ein. Seiten werden ab 1 gezählt, und ein Bereich geht von der niedrigeren zur höheren Seite.</value>
+  </data>
+  <data name="SplitNoBookmarks" xml:space="preserve">
+    <value>Dieses Dokument hat keine Lesezeichen, die auf eine Seite zeigen.</value>
+  </data>
+  <data name="SplitBookmarksReading" xml:space="preserve">
+    <value>Die Lesezeichen werden gelesen …</value>
+  </data>
+  <data name="SplitContinue" xml:space="preserve">
+    <value>Weiter</value>
+  </data>
+  <data name="SplitBack" xml:space="preserve">
+    <value>Zurück</value>
+  </data>
+  <data name="SplitStart" xml:space="preserve">
+    <value>Dateien anlegen</value>
+  </data>
+  <data name="SplitFilesHeading" xml:space="preserve">
+    <value>Anzulegende Dateien ({0}):</value>
+  </data>
+  <data name="SplitMoreFiles" xml:space="preserve">
+    <value>… und {0} weitere</value>
+  </data>
+  <data name="SplitDoneOne" xml:space="preserve">
+    <value>Fertig. Die Datei wurde geschrieben: {0}</value>
+  </data>
+  <data name="SplitDoneMany" xml:space="preserve">
+    <value>Fertig. {0} Dateien wurden nach {1} geschrieben.</value>
+  </data>
+  <data name="ExtractSummaryOne" xml:space="preserve">
+    <value>Seite {0} wird eine neue PDF.</value>
+  </data>
+  <data name="ExtractSummaryMany" xml:space="preserve">
+    <value>Die Seiten {0} ({1}) werden eine neue PDF.</value>
+  </data>
+  <data name="ExtractSaveAs" xml:space="preserve">
+    <value>Speichern unter …</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>Seiten als Bilder exportieren</value>
+  </data>
+  <data name="ExportDpiLabel" xml:space="preserve">
+    <value>Auflösung (dpi)</value>
+  </data>
+  <data name="ExportDpiHint" xml:space="preserve">
+    <value>144 dpi ist die doppelte Größe der Seite bei 72 dpi. Seiten über 64 Megapixel werden abgelehnt.</value>
+  </data>
+  <data name="ExportDpiInvalid" xml:space="preserve">
+    <value>Geben Sie eine ganze Zahl von {0} bis {1} dpi ein.</value>
+  </data>
+  <data name="ExportScopeLabel" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="ExportSelected" xml:space="preserve">
+    <value>Ausgewählte Seiten ({0})</value>
+  </data>
+  <data name="ExportAll" xml:space="preserve">
+    <value>Alle Seiten ({0})</value>
+  </data>
+  <data name="ExportFormat" xml:space="preserve">
+    <value>PNG-Bilder, mit Kommentaren und Formularfeldern wie angezeigt.</value>
+  </data>
+  <data name="ExportStart" xml:space="preserve">
+    <value>Exportieren</value>
+  </data>
+  <data name="PageOutputExportDoneOne" xml:space="preserve">
+    <value>Fertig. Ein Bild wurde nach {0} geschrieben.</value>
+  </data>
+  <data name="PageOutputExportDoneMany" xml:space="preserve">
+    <value>Fertig. {0} Bilder wurden nach {1} geschrieben.</value>
+  </data>
+  <data name="PageOutputExportTooLarge" xml:space="preserve">
+    <value>Seite {0} ist bei {1} dpi zu groß (mehr als 64 Megapixel). Wählen Sie eine niedrigere Auflösung. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="PageOutputExportWriteFailed" xml:space="preserve">
+    <value>Seite {0} konnte nicht geschrieben werden: {1}</value>
+  </data>
+  <data name="PageOutputExportRenderFailed" xml:space="preserve">
+    <value>Eine Seite ließ sich nicht zeichnen. Es wurde nichts mehr geschrieben.</value>
+  </data>
+  <data name="PageOutputMoreNotes" xml:space="preserve">
+    <value>… und {0} weitere Hinweise</value>
+  </data>
 </root>

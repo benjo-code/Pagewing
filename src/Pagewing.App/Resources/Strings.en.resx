@@ -1800,4 +1800,205 @@
   <data name="ApplyErrorInsertedChanged" xml:space="preserve">
     <value>The inserted file “{0}” is no longer the file that was inserted: it was changed, deleted or cannot be read. Nothing was written; the page changes are kept. Delete its pages from the list or insert the file again.</value>
   </data>
+  <data name="CommandExtractPages" xml:space="preserve">
+    <value>Extract selected pages as a new PDF …</value>
+  </data>
+  <data name="CommandSplitDocument" xml:space="preserve">
+    <value>Split document into files …</value>
+  </data>
+  <data name="CommandExportImages" xml:space="preserve">
+    <value>Export pages as images …</value>
+  </data>
+  <data name="PageOutputMenu" xml:space="preserve">
+    <value>Extract, split, export</value>
+  </data>
+  <data name="ExtractNeedsSelection" xml:space="preserve">
+    <value>Select pages first: turn on “Organize pages” and select pages with Ctrl or Shift.</value>
+  </data>
+  <data name="PageOutputClose" xml:space="preserve">
+    <value>Close the dialog</value>
+  </data>
+  <data name="PageOutputCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="PageOutputDone" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="PageOutputFolderLabel" xml:space="preserve">
+    <value>Target folder</value>
+  </data>
+  <data name="PageOutputChooseFolder" xml:space="preserve">
+    <value>Choose folder …</value>
+  </data>
+  <data name="PageOutputReplace" xml:space="preserve">
+    <value>Replace existing files</value>
+  </data>
+  <data name="PageOutputRunning" xml:space="preserve">
+    <value>Writing the files …</value>
+  </data>
+  <data name="PageOutputCanceled" xml:space="preserve">
+    <value>Canceled.</value>
+  </data>
+  <data name="PageOutputWritten" xml:space="preserve">
+    <value>Files already written ({0}): {1}</value>
+  </data>
+  <data name="PageOutputNothingWritten" xml:space="preserve">
+    <value>No file was written.</value>
+  </data>
+  <data name="PageOutputChecking" xml:space="preserve">
+    <value>Checking what the new files lose …</value>
+  </data>
+  <data name="PageOutputNotesHeading" xml:space="preserve">
+    <value>This changes in the new files:</value>
+  </data>
+  <data name="PageOutputConflicts" xml:space="preserve">
+    <value>These files already exist and are not replaced:</value>
+  </data>
+  <data name="PageOutputConflictsHint" xml:space="preserve">
+    <value>Turn on “Replace existing files” or choose another folder.</value>
+  </data>
+  <data name="PageOutputErrorRefused" xml:space="preserve">
+    <value>These pages cannot be written as a new file. Nothing was written.</value>
+  </data>
+  <data name="PageOutputErrorFolderMissing" xml:space="preserve">
+    <value>The target folder does not exist. Choose another folder. Nothing was written.</value>
+  </data>
+  <data name="PageOutputErrorTargetExists" xml:space="preserve">
+    <value>Already there and not replaced: {0}. Choose another folder or turn on “Replace existing files”.</value>
+  </data>
+  <data name="PageOutputErrorTargetIsSource" xml:space="preserve">
+    <value>A new file would replace the open document. Choose another folder or name. Nothing was replaced.</value>
+  </data>
+  <data name="PageOutputErrorUnsafeName" xml:space="preserve">
+    <value>A file name cannot be used. Nothing was written.</value>
+  </data>
+  <data name="PageOutputErrorSourceChanged" xml:space="preserve">
+    <value>The file was changed outside Pagewing after it was opened. Close it and open it again, then try again.</value>
+  </data>
+  <data name="PageOutputErrorPart" xml:space="preserve">
+    <value>File {0} could not be written: {1}</value>
+  </data>
+  <data name="PageOutputErrorGone" xml:space="preserve">
+    <value>The document was closed or replaced. Nothing more was written.</value>
+  </data>
+  <data name="PageOutputErrorUnknown" xml:space="preserve">
+    <value>The files could not be written.</value>
+  </data>
+  <data name="PageOutputErrorNotPossible" xml:space="preserve">
+    <value>This is not possible for this document. Nothing was written.</value>
+  </data>
+  <data name="PageOutputPickFailed" xml:space="preserve">
+    <value>The file dialog could not be opened. Nothing was written.</value>
+  </data>
+  <data name="SplitTitle" xml:space="preserve">
+    <value>Split document</value>
+  </data>
+  <data name="ExtractTitle" xml:space="preserve">
+    <value>Extract selected pages</value>
+  </data>
+  <data name="SplitEveryChoice" xml:space="preserve">
+    <value>Every N pages</value>
+  </data>
+  <data name="SplitRangesChoice" xml:space="preserve">
+    <value>By page ranges</value>
+  </data>
+  <data name="SplitBookmarksChoice" xml:space="preserve">
+    <value>By bookmarks (top level)</value>
+  </data>
+  <data name="SplitEveryLabel" xml:space="preserve">
+    <value>Pages per file</value>
+  </data>
+  <data name="SplitEveryInvalid" xml:space="preserve">
+    <value>Enter a whole number of pages, 1 or more.</value>
+  </data>
+  <data name="SplitRangesLabel" xml:space="preserve">
+    <value>One file per range</value>
+  </data>
+  <data name="SplitRangesHint" xml:space="preserve">
+    <value>For example 1-3, 4-6, 7. Separate the ranges with commas.</value>
+  </data>
+  <data name="SplitRangesInvalid" xml:space="preserve">
+    <value>Enter ranges such as 1-3, 4-6. Pages are numbered from 1, and a range goes from the lower to the higher page.</value>
+  </data>
+  <data name="SplitNoBookmarks" xml:space="preserve">
+    <value>This document has no bookmarks that point to a page.</value>
+  </data>
+  <data name="SplitBookmarksReading" xml:space="preserve">
+    <value>Reading the bookmarks …</value>
+  </data>
+  <data name="SplitContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="SplitBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="SplitStart" xml:space="preserve">
+    <value>Create files</value>
+  </data>
+  <data name="SplitFilesHeading" xml:space="preserve">
+    <value>Files to create ({0}):</value>
+  </data>
+  <data name="SplitMoreFiles" xml:space="preserve">
+    <value>… and {0} more</value>
+  </data>
+  <data name="SplitDoneOne" xml:space="preserve">
+    <value>Done. The file was written: {0}</value>
+  </data>
+  <data name="SplitDoneMany" xml:space="preserve">
+    <value>Done. {0} files were written to {1}.</value>
+  </data>
+  <data name="ExtractSummaryOne" xml:space="preserve">
+    <value>Page {0} becomes a new PDF.</value>
+  </data>
+  <data name="ExtractSummaryMany" xml:space="preserve">
+    <value>Pages {0} ({1}) become a new PDF.</value>
+  </data>
+  <data name="ExtractSaveAs" xml:space="preserve">
+    <value>Save as …</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>Export pages as images</value>
+  </data>
+  <data name="ExportDpiLabel" xml:space="preserve">
+    <value>Resolution (dpi)</value>
+  </data>
+  <data name="ExportDpiHint" xml:space="preserve">
+    <value>144 dpi is twice the size of the page at 72 dpi. Pages above 64 megapixels are refused.</value>
+  </data>
+  <data name="ExportDpiInvalid" xml:space="preserve">
+    <value>Enter a whole number from {0} to {1} dpi.</value>
+  </data>
+  <data name="ExportScopeLabel" xml:space="preserve">
+    <value>Pages</value>
+  </data>
+  <data name="ExportSelected" xml:space="preserve">
+    <value>Selected pages ({0})</value>
+  </data>
+  <data name="ExportAll" xml:space="preserve">
+    <value>All pages ({0})</value>
+  </data>
+  <data name="ExportFormat" xml:space="preserve">
+    <value>PNG images, with comments and form fields as shown.</value>
+  </data>
+  <data name="ExportStart" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="PageOutputExportDoneOne" xml:space="preserve">
+    <value>Done. One image was written to {0}.</value>
+  </data>
+  <data name="PageOutputExportDoneMany" xml:space="preserve">
+    <value>Done. {0} images were written to {1}.</value>
+  </data>
+  <data name="PageOutputExportTooLarge" xml:space="preserve">
+    <value>Page {0} is too large at {1} dpi (more than 64 megapixels). Choose a lower resolution. Nothing was written.</value>
+  </data>
+  <data name="PageOutputExportWriteFailed" xml:space="preserve">
+    <value>Page {0} could not be written: {1}</value>
+  </data>
+  <data name="PageOutputExportRenderFailed" xml:space="preserve">
+    <value>A page could not be drawn. Nothing more was written.</value>
+  </data>
+  <data name="PageOutputMoreNotes" xml:space="preserve">
+    <value>… and {0} more notes</value>
+  </data>
 </root>

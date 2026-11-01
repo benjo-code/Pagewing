@@ -579,6 +579,10 @@ internal sealed partial class ThumbnailList
                 Entry(Strings.CommandInsertBlankPage, tab.InsertBlankPageCommand, "pages.insertBlank"),
                 Entry(Strings.CommandInsertFile, tab.InsertFileCommand, "pages.insertFile"),
                 Entry(Strings.CommandDeletePages, tab.DeletePagesCommand, "pages.delete"),
+                new Separator(),
+                Entry(Strings.CommandExtractPages, tab.ExtractSelectionCommand, "pages.extract"),
+                Entry(Strings.CommandSplitDocument, tab.SplitCommand, "pages.split"),
+                Entry(Strings.CommandExportImages, tab.ExportImagesCommand, "pages.exportImages"),
             },
         };
     }

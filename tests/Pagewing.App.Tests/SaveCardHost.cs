@@ -205,9 +205,24 @@ internal sealed class SaveCardHost : IDisposable
             .ToList();
 
     /// <summary>A file picker whose open dialog returns <see cref="OpenResult"/> (cancelled by default) and whose save dialog returns <see cref="Result"/>.</summary>
-    internal sealed class SavePicker : IFilePicker
+    internal sealed class SavePicker : IFilePicker, IFolderPicker
     {
         public string? Result { get; set; }
+
+        /// <summary>Gets or sets the folder the folder dialog returns (for the cards of extracting, splitting and exporting), or <see langword="null"/> for a cancelled dialog.</summary>
+        public string? FolderResult { get; set; }
+
+        /// <summary>Gets how often the folder dialog was shown.</summary>
+        public int FolderCalls { get; private set; }
+
+        /// <summary>Gets the file name the save dialog was last asked to suggest.</summary>
+        public string? LastSuggestedName { get; private set; }
+
+        public Task<string?> PickFolderAsync(string? startFolder)
+        {
+            FolderCalls++;
+            return Task.FromResult(FolderResult);
+        }
 
         /// <summary>Gets or sets the file the open dialog returns (for "Insert file"), or <see langword="null"/> for a cancelled dialog.</summary>
         public string? OpenResult { get; set; }
@@ -226,6 +241,7 @@ internal sealed class SaveCardHost : IDisposable
         public Task<string?> PickSavePdfAsync(string suggestedName, string? folder)
         {
             Calls++;
+            LastSuggestedName = suggestedName;
             return Task.FromResult(Result);
         }
     }

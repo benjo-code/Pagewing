@@ -99,21 +99,52 @@
       The way in (outside the mode): one button above the list, named like the command; Ctrl+Shift+O does the same. The
       reason it cannot run (no sharp page yet, too many pages) is its help text.
     -->
-    <Button Name="OrganizeButton" DockPanel.Dock="Top" Margin="14,2,14,8" HorizontalAlignment="Stretch"
-            HorizontalContentAlignment="Left"
-            IsVisible="{Binding !IsOrganizing}"
-            Command="{Binding OrganizeCommand}"
-            ToolTip.Tip="{x:Static res:Strings.CommandOrganizePages}"
-            AutomationProperties.Name="{x:Static res:Strings.CommandOrganizePages}"
-            AutomationProperties.HelpText="{Binding OrganizeUnavailableReason}">
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.ArrowsSort}" />
-        <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.CommandOrganizePages}" />
-      </StackPanel>
-    </Button>
+    <Grid Name="EntryRow" DockPanel.Dock="Top" Margin="14,2,14,8" ColumnDefinitions="*,Auto" ColumnSpacing="6"
+          IsVisible="{Binding !IsOrganizing}">
+      <Button Name="OrganizeButton" HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left"
+              IsVisible="{Binding !IsOrganizing}"
+              Command="{Binding OrganizeCommand}"
+              ToolTip.Tip="{x:Static res:Strings.CommandOrganizePages}"
+              AutomationProperties.Name="{x:Static res:Strings.CommandOrganizePages}"
+              AutomationProperties.HelpText="{Binding OrganizeUnavailableReason}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.ArrowsSort}" />
+          <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.CommandOrganizePages}" />
+        </StackPanel>
+      </Button>
+      <!--
+        Writing new files from the open document (milestone 13, spec 5.3): the menu "Extract, split, export" with "Extract selected
+        pages as a new PDF …", "Split document into files …" and "Export pages as images …" (the entries are the tab's commands,
+        made when the panel is; they have no keys and are in the command palette too). In the mode the same menu is the last of
+        the tools. While a page plan waits or the document has unsaved changes they are locked; the reason is the help text and
+        the tooltip, and stands in words under the buttons (PageOutputReasonRow).
+      -->
+      <Button Name="PageOutputButton" Grid.Column="1" Classes="icon" Width="32"
+              AutomationProperties.Name="{x:Static res:Strings.PageOutputMenu}">
+        <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Dots}" />
+        <Button.Flyout>
+          <MenuFlyout Placement="BottomEdgeAlignedRight" />
+        </Button.Flyout>
+      </Button>
+    </Grid>
 
     <!-- The tools of the mode: PagesOrganizeBar, put here when the mode starts and taken away when it ends. -->
     <ContentControl Name="OrganizeHost" DockPanel.Dock="Top" HorizontalContentAlignment="Stretch" />
+
+    <!--
+      Why extracting, splitting and exporting cannot run, in words under the buttons (a plan that waits tells itself in the
+      note of the tools, so this line is for the other reason: unsaved changes). Only while there is a reason.
+    -->
+    <Grid Name="PageOutputReasonRow" DockPanel.Dock="Top" Margin="14,0,14,8" ColumnDefinitions="Auto,*"
+          IsVisible="{Binding PageOutputReasonText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,1,6,0"
+                      Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+      <TextBlock Name="PageOutputReason" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                 AutomationProperties.LiveSetting="Polite"
+                 Text="{Binding PageOutputReasonText}" />
+    </Grid>
 
     <ctl:ThumbnailList Name="ThumbnailList" Classes="thumbnails" Classes.darkPage="{Binding IsPageDark}"
                        Columns="{DynamicResource Pw.Size.ThumbnailColumns}"

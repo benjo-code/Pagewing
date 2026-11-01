@@ -24,6 +24,7 @@ public sealed partial class PagesOrganizeBar : UserControl
     private readonly (Button Button, string Name, string CommandId)[] _tools;
 
     private TabViewModel? _tab;
+    private PageOutputMenu? _outputMenu;
 
     public PagesOrganizeBar()
     {
@@ -86,6 +87,7 @@ public sealed partial class PagesOrganizeBar : UserControl
         }
 
         UpdateDiscard();
+        (_outputMenu ??= new PageOutputMenu(PageOutputToolButton)).Attach(_tab);
     }
 
     /// <summary>The tooltips of the tools name their shortcuts as the catalog has them ("Rotate selected pages left (Ctrl+Shift+Left)"), and screen readers get them as accelerator keys.</summary>

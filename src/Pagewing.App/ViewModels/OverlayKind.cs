@@ -27,6 +27,9 @@ public enum OverlayKind
     /// <summary>The dialog "Insert pages from a file" of the mode "Organize pages": the password, the pages and the position.</summary>
     InsertFile,
 
+    /// <summary>The card of extracting the selection, splitting the document or exporting pages as images (the pages panel).</summary>
+    PageOutput,
+
     /// <summary>The dialog "New signature": draw one or import an image and keep it in the library.</summary>
     Signature,
 }

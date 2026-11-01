@@ -110,6 +110,14 @@
         <Button Name="RedoButton" Classes="icon pageTool" Command="{Binding RedoPagesCommand}">
           <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ArrowForwardUp}" />
         </Button>
+        <!-- Extract the selection, split, export as images (the menu of PageOutputMenu): new files, the document stays as it is. -->
+        <Button Name="PageOutputToolButton" Classes="icon pageTool"
+                AutomationProperties.Name="{x:Static res:Strings.PageOutputMenu}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Dots}" />
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight" />
+          </Button.Flyout>
+        </Button>
       </WrapPanel>
 
       <!-- Apply and discard (done). -->

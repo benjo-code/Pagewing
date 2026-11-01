@@ -157,6 +157,13 @@ public sealed class CommandCatalog
         OrganizeTab("pages.apply", () => Strings.CommandApplyPageEdits, null, tab => tab.ApplyPageEditsCommand, needsPanel: false),
         OrganizeTab("pages.discard", () => Strings.CommandDiscardPageEdits, null, tab => tab.DiscardPageEditsCommand, needsPanel: false),
 
+        // Writing new files from the open document (milestone 13): the selected pages as a new PDF, the document in several files,
+        // the pages as images. They read the document without the plan and run only with no plan and no unsaved change pending (the
+        // tab says so and the pages panel shows why); they have no keys, the palette and the menu of the pages panel offer them.
+        Tab("pages.extract", () => Strings.CommandExtractPages, FileGroup, null, tab => tab.ExtractSelectionCommand, ready: true),
+        Tab("pages.split", () => Strings.CommandSplitDocument, FileGroup, null, tab => tab.SplitCommand, ready: true),
+        Tab("pages.exportImages", () => Strings.CommandExportImages, FileGroup, null, tab => tab.ExportImagesCommand, ready: true),
+
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
             with { AlternativeGestures = [CtrlShift(Key.OemPlus), Ctrl(Key.Add)] },
