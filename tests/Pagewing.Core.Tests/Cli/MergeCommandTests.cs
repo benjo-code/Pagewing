@@ -96,19 +96,39 @@ public sealed class MergeCommandTests : CliTestBase
         var first = Copy("forms-basic.pdf", "one.pdf");
         var second = Copy("forms-basic.pdf", "two.pdf");
 
-        // The command is stopped right after the warnings, so the test does not write pages with form fields: PDFium crashes now
-        // and then (an access violation in FPDF_SaveAsCopy) when it saves a document into which pages with widgets were imported;
-        // see the report of task 14. The warning is what is asserted here, and it comes before the write.
-        using var source = new CancellationTokenSource();
-        using var stderr = new ProbeWriter(() => source.Cancel());
+        var firstTexts = await PageTextsAsync(first);
+        var firstFields = await FieldNamesAsync(first);
 
-        var result = await RunAsync(stderr, environment: null, source.Token, "merge", "--output", Output, first, second);
+        var result = await RunAsync("merge", "--output", Output, first, second);
 
-        Assert.Equal(1, result.ExitCode);
-        Assert.Contains("pagewing: Canceled.", result.Error, StringComparison.Ordinal);
+        // The merge is written all the same: the warning only says what the user may not expect of the fields.
+        Assert.Equal(0, result.ExitCode);
         Assert.Contains("warning: Form fields of the same name come from different files.", result.Error, StringComparison.Ordinal);
-        Assert.False(File.Exists(Output));
+        Assert.Equal([Output], result.OutputLines);
         Assert.Empty(TemporaryFiles());
+
+        // The file opens on its own: four pages with the text of each of its files, the form of the first file, and on the pages of
+        // the second file the widgets as annotations, which PDFium reads as the fields of the same names (Docs/DECISIONS.md,
+        // "Seiten organisieren: Spike und QPDF-Entscheidung (M13)").
+        var texts = await PageTextsAsync(Output);
+        Assert.Equal(4, texts.Length);
+        Assert.Equal(firstTexts, texts[..2]);
+        Assert.Equal(firstTexts, texts[2..]);
+        var fields = await FieldNamesAsync(Output);
+        Assert.NotEmpty(firstFields);
+        Assert.Equal([.. firstFields, .. firstFields], fields);
+    }
+
+    private async Task<string[]> FieldNamesAsync(string path)
+    {
+        await using var document = await Engine.OpenAsync(path, null, Ct);
+        var names = new List<string>();
+        for (var page = 0; page < document.PageCount; page++)
+        {
+            names.AddRange((await document.GetFormFieldsAsync(page, Ct)).Select(field => field.Key.FieldName));
+        }
+
+        return [.. names];
     }
 
     [Theory]

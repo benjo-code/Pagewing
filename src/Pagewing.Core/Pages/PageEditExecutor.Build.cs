@@ -63,7 +63,9 @@ public sealed partial class PageEditExecutor
                 throw new InvalidOperationException("The working copy does not have the pages of the plan.");
             }
 
-            // The imported pages are copies: the sources go now. Inside the try, so a source that fails to close cannot leak the copy.
+            // The sources are closed for us now (inside the try, so a source that fails to close cannot leak the copy). PDFium still
+            // has them open: the working copy keeps each one that pages were imported from until it closes itself, because imported
+            // form pages point into their source and the full rewrite of the copy reads them (PdfiumDocument.KeepOpenFor).
             await DisposeAllAsync(sources, rethrow: true).ConfigureAwait(false);
             return working;
         }

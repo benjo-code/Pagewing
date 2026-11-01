@@ -16,6 +16,12 @@ namespace Pagewing.Pdfium;
 /// follow the changes. The result is written with <see cref="SaveRewrite"/> and reopened.
 /// </para>
 /// <para>
+/// <see cref="Import"/> makes the destination keep the source open until the destination itself is closed
+/// (<see cref="PdfiumDocument.KeepOpenFor"/>): pages with widgets keep objects that point into the source, and the rewrite
+/// reads them (<c>FPDF_SaveAsCopy</c> crashed with an access violation when the source was closed before). Closing the
+/// source early only closes it for the caller.
+/// </para>
+/// <para>
 /// PDFium reports a failure of the import, the move and the creation of a page as <c>FALSE</c> or a null handle, which these
 /// methods turn into <see cref="InvalidOperationException"/>; deleting a page and setting a rotation have no result, so the
 /// index is checked here first (<see cref="ArgumentOutOfRangeException"/>). What the operations keep of the outline, the page
@@ -55,6 +61,14 @@ internal static unsafe class PdfiumPageEdit
         }
 
         CheckInsertPosition(destinationDocument, destination);
+
+        // The imported pages of a form point into the source until the destination is closed (see DocumentHandle.KeepOpenUntilClosed).
+        // Before the call, whatever it does: a refused import may have copied part of the pages.
+        if (!ReferenceEquals(dest, source))
+        {
+            dest.KeepOpenFor(source);
+        }
+
         fixed (int* pointer = indices)
         {
             if (Fpdf.FPDF_ImportPagesByIndex(destinationDocument, sourceDocument, pointer, new CULong((nuint)indices.Length), destination) == 0)

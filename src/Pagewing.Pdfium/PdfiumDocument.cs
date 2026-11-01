@@ -409,6 +409,24 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     }
 
     /// <summary>
+    /// Makes this document keep <paramref name="importedFrom"/> open until this one is closed (also when the caller disposes
+    /// <paramref name="importedFrom"/> first), because pages imported from it still point into it. Called by
+    /// <see cref="PdfiumPageEdit.Import"/> before every import. PDFium thread only.
+    /// </summary>
+    internal void KeepOpenFor(PdfiumDocument importedFrom)
+    {
+        Access();
+        importedFrom.Access();
+        handle.KeepOpenUntilClosed(importedFrom.handle);
+    }
+
+    /// <summary>Gets how many source documents this one keeps open (<see cref="KeepOpenFor"/>), for tests. Any thread.</summary>
+    internal int KeptOpenCount => handle.KeptOpenCount;
+
+    /// <summary>Gets whether the native document is still open (not closed by <c>FPDF_CloseDocument</c> yet), for tests. Any thread.</summary>
+    internal bool IsNativeOpen => !handle.IsClosed;
+
+    /// <summary>
     /// Closes the document once all its pages are closed. On another thread the close is queued to the
     /// PDFium thread instead of throwing.
     /// </summary>

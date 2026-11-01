@@ -48,6 +48,15 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     /// </summary>
     internal int FormEnvironmentsCreated => document.FormEnvironmentsCreated;
 
+    /// <summary>
+    /// Gets how many source documents this one keeps open because pages were imported from them (they stay open until this one
+    /// closes, also when they are disposed before; for tests; see <c>PdfiumDocument.KeepOpenFor</c>). Any thread.
+    /// </summary>
+    internal int KeptOpenCount => document.KeptOpenCount;
+
+    /// <summary>Gets whether PDFium still has the document open, which a disposed document does while another one keeps it open (for tests). Any thread.</summary>
+    internal bool IsNativeOpen => document.IsNativeOpen;
+
     /// <summary>Gets how often a render drew the form fields of a page (for tests; see <c>PdfiumDocument.FormDraws</c>). Any thread.</summary>
     internal int FormDraws => document.FormDraws;
 
