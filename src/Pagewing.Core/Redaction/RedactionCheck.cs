@@ -125,6 +125,9 @@ public enum RedactionFindingKind
 
     /// <summary>Something the cleanup is meant to remove at the document level (a field of the information dictionary, bookmarks, the names tree, page labels, the XMP of the document ...) is still in the written file (set by the apply step; the detail names the item, never its content).</summary>
     CleanupItemStillPresent,
+
+    /// <summary>A page that was turned into an image is not just one image (more or no image, text, paths, other objects, annotations, links or form fields), or could not be counted; the detail names the counts, never content.</summary>
+    RasterPageInvalid,
 }
 
 /// <summary>One thing the check found. The detail names the kind of the problem and the place, never the text itself.</summary>
@@ -219,6 +222,9 @@ public enum RedactionNotCheckedKind
 
     /// <summary>XMP and JavaScript were removed from the document level only; the entries inside page-level objects are not read back.</summary>
     ApplyXmp,
+
+    /// <summary>Pages turned into images (<c>Count</c> pages): a visible occurrence of a removed text outside the marked areas stays in the image and cannot be found without OCR.</summary>
+    RasterOutsideAreas,
 }
 
 /// <summary>One line of what the check did not check, with the data the interface needs to say it in its own language.</summary>

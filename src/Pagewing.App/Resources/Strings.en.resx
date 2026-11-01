@@ -2652,6 +2652,9 @@
   <data name="RedactFailureCleanup" xml:space="preserve">
     <value>Something that the cleanup should have removed is still in the written file{0}, so the file was not written. Detail (technical, in English): {1}</value>
   </data>
+  <data name="RedactFailureRaster" xml:space="preserve">
+    <value>A page that was turned into an image is not only one image, or could not be checked{0}, so the file was not written.</value>
+  </data>
   <data name="RedactErrorNotPrepared" xml:space="preserve">
     <value>The marks could not be prepared. Nothing was written; the marks are kept.</value>
   </data>
@@ -2756,6 +2759,9 @@
   </data>
   <data name="RedactNcApplyXmp" xml:space="preserve">
     <value>XMP metadata and JavaScript: removed from the document level by building the file anew; the entries inside page-level objects (form objects, image objects, annotations) are not read back.</value>
+  </data>
+  <data name="RedactNcRasterOutside" xml:space="preserve">
+    <value>Pages turned into images ({0}): a visible occurrence of a removed text outside the marked areas stays in the image and cannot be found without OCR; only the structure of the page (one image, no text, path, annotation, link or form field) and the marked areas are checked.</value>
   </data>
   <data name="RedactCauseChangesOutsideAreas" xml:space="preserve">
     <value>redacting it would change content outside the marked areas (PDFium cannot write this page again without changing it)</value>

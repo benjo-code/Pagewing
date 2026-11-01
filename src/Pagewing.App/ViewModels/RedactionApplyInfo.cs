@@ -279,6 +279,7 @@ public sealed class RedactionApplyInfo
             RedactionNotCheckedKind.ApplyRender => Strings.RedactNcApplyRender,
             RedactionNotCheckedKind.ApplyPageKeys => Strings.RedactNcApplyKeys,
             RedactionNotCheckedKind.ApplyXmp => Strings.RedactNcApplyXmp,
+            RedactionNotCheckedKind.RasterOutsideAreas => Format(Strings.RedactNcRasterOutside, Number(item.Count)),
             _ => null,
         };
     }
@@ -323,6 +324,7 @@ public sealed class RedactionApplyInfo
             RedactionFailureKind.PageKeysStillPresent => Format(Strings.RedactFailureKeys, where),
             RedactionFailureKind.PageChangedOutsideAreas => Format(Strings.RedactFailurePage, where),
             RedactionFailureKind.CleanupItemStillPresent => Format(Strings.RedactFailureCleanup, where, finding.Detail),
+            RedactionFailureKind.RasterPageInvalid => Format(Strings.RedactFailureRaster, where),
             _ => Format(Strings.RedactFailureUnverifiable, where),
         };
     }

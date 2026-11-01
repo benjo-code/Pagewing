@@ -2652,6 +2652,9 @@
   <data name="RedactFailureCleanup" xml:space="preserve">
     <value>Etwas, das die Bereinigung hätte entfernen sollen, steht noch in der geschriebenen Datei{0}; deshalb wurde die Datei nicht geschrieben. Angabe (technisch, auf Englisch): {1}</value>
   </data>
+  <data name="RedactFailureRaster" xml:space="preserve">
+    <value>Eine in ein Bild umgewandelte Seite besteht nicht nur aus einem Bild oder ließ sich nicht prüfen{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
   <data name="RedactErrorNotPrepared" xml:space="preserve">
     <value>Die Markierungen ließen sich nicht vorbereiten. Es wurde nichts geschrieben; die Markierungen bleiben.</value>
   </data>
@@ -2756,6 +2759,9 @@
   </data>
   <data name="RedactNcApplyXmp" xml:space="preserve">
     <value>XMP-Metadaten und JavaScript: Auf Dokumentebene durch den Neuaufbau der Datei entfernt; die Einträge in Objekten der Seiten (Formularobjekte, Bildobjekte, Annotationen) werden nicht zurückgelesen.</value>
+  </data>
+  <data name="RedactNcRasterOutside" xml:space="preserve">
+    <value>In Bilder umgewandelte Seiten ({0}): Ein sichtbares Vorkommen eines entfernten Textes außerhalb der markierten Bereiche bleibt im Bild stehen und lässt sich ohne OCR nicht finden; geprüft werden nur der Aufbau der Seite (ein Bild, kein Text, kein Pfad, keine Annotation, kein Link, kein Formularfeld) und die markierten Bereiche.</value>
   </data>
   <data name="RedactCauseChangesOutsideAreas" xml:space="preserve">
     <value>das Schwärzen Inhalt außerhalb der markierten Bereiche verändern würde (PDFium kann diese Seite nicht erneut schreiben, ohne sie zu verändern)</value>

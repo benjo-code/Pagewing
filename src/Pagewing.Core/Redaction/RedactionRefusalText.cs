@@ -37,6 +37,9 @@ public enum RedactionFailureKind
 
     /// <summary>Something the cleanup should have removed at the document level is still in the written file.</summary>
     CleanupItemStillPresent,
+
+    /// <summary>A page that became an image is not only one image, or could not be counted.</summary>
+    RasterPageInvalid,
 }
 
 /// <summary>
@@ -95,6 +98,7 @@ public static class RedactionRefusalText
             RedactionFindingKind.PageKeysStillPresent => RedactionFailureKind.PageKeysStillPresent,
             RedactionFindingKind.PageChangedOutsideAreas => RedactionFailureKind.PageChangedOutsideAreas,
             RedactionFindingKind.CleanupItemStillPresent => RedactionFailureKind.CleanupItemStillPresent,
+            RedactionFindingKind.RasterPageInvalid => RedactionFailureKind.RasterPageInvalid,
             _ => RedactionFailureKind.RemovedTextUnverifiable,
         };
     }
@@ -131,6 +135,8 @@ public static class RedactionRefusalText
                 $"A page still carries a thumbnail, private data, metadata or actions that Pagewing cannot remove, or the keys could not be checked{where}, so the file was not written.",
             RedactionFailureKind.PageChangedOutsideAreas =>
                 $"A page looks different outside the marked areas{where}, so the file was not written.",
+            RedactionFailureKind.RasterPageInvalid =>
+                $"A page that was turned into an image is not only one image, or could not be checked{where}, so the file was not written.",
             _ =>
                 $"A removed text could not be searched for{where}, so the result cannot be checked and the file was not written.",
         };

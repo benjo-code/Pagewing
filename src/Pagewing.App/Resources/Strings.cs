@@ -1022,6 +1022,7 @@ public static class Strings
     public static string RedactFailurePage => Get("RedactFailurePage");
     public static string RedactFailureUnverifiable => Get("RedactFailureUnverifiable");
     public static string RedactFailureCleanup => Get("RedactFailureCleanup");
+    public static string RedactFailureRaster => Get("RedactFailureRaster");
     public static string RedactErrorNotPrepared => Get("RedactErrorNotPrepared");
     public static string RedactErrorDraft => Get("RedactErrorDraft");
     public static string RedactErrorFileChanged => Get("RedactErrorFileChanged");
@@ -1058,6 +1059,7 @@ public static class Strings
     public static string RedactNcApplyRender => Get("RedactNcApplyRender");
     public static string RedactNcApplyKeys => Get("RedactNcApplyKeys");
     public static string RedactNcApplyXmp => Get("RedactNcApplyXmp");
+    public static string RedactNcRasterOutside => Get("RedactNcRasterOutside");
     public static string RedactCauseChangesOutsideAreas => Get("RedactCauseChangesOutsideAreas");
     public static string RedactCauseSizeChanged => Get("RedactCauseSizeChanged");
     public static string RedactCauseRenderFailed => Get("RedactCauseRenderFailed");

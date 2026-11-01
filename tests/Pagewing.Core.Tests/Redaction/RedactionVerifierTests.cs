@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Redaction;
+using Pagewing.Core.Saving;
 using Pagewing.Core.Tests.Annotations;
 using Pagewing.Core.Text;
 using Pagewing.TestSupport;
@@ -952,6 +953,224 @@ public sealed class RedactionVerifierTests
         Assert.Equal(1, batch[1].Page);
         Assert.True(batch[1].Everywhere);
         Assert.Equal(0, batch[1].OccurrencesBefore); // only in Info and XMP, not in the page text
+    }
+
+    // ---- Pages that became images (milestone 14.1, task 4) ----
+
+    private static readonly PageRect RasterArea = new(50, 50, 150, 100);
+
+    /// <summary>
+    /// A one-page file whose page is a full-page image of the given gray value (30 x 20 pixels, RGB) and whatever else the test adds
+    /// to the content, to the page dictionary and to the resources: a crafted "result" that the check must tell from a real one.
+    /// </summary>
+    private static byte[] RasterPdf(byte gray, string extraContent = "", string pageEntries = "", Func<VerifierPdf, string>? extraResources = null)
+    {
+        var pdf = new VerifierPdf("q 300 0 0 200 0 0 cm /Im1 Do Q " + extraContent) { PageEntries = pageEntries };
+        var image = pdf.AddStream("/Type /XObject /Subtype /Image /Width 30 /Height 20 /ColorSpace /DeviceRGB /BitsPerComponent 8", Enumerable.Repeat(gray, 30 * 20 * 3).ToArray());
+        pdf.ResourceEntries = $"/XObject << /Im1 {image} 0 R {extraResources?.Invoke(pdf)} >>";
+        return pdf.Build();
+    }
+
+    private static RedactionExpectation RasterExpect(params int[] rasterPages)
+    {
+        var plan = PlanOf(0, RasterArea);
+        foreach (var page in rasterPages)
+        {
+            plan = plan.WithRasterPage(page, on: true);
+        }
+
+        return new RedactionExpectation(plan, [], plan.Fill, rasterPages);
+    }
+
+    private static RedactionFinding SingleRasterFinding(RedactionCheck check)
+    {
+        Assert.False(check.IsClean);
+        return Assert.Single(check.Findings, static f => f.Kind == RedactionFindingKind.RasterPageInvalid);
+    }
+
+    [Fact]
+    public async Task CraftedRasterPageThatIsOnlyAFilledImagePassesTheChecks()
+    {
+        using var folder = new TempFolder();
+
+        // The baseline of the mutation tests below: a black image under a black area is a valid raster page.
+        var check = await VerifyAsync(Write(folder, "good.pdf", RasterPdf(gray: 0)), RasterExpect(0));
+
+        Assert.True(check.IsClean, string.Join('\n', check.Findings.Select(static f => f.Detail)));
+    }
+
+    [Fact]
+    public async Task RasterPageWithLeftoverTextFailsTheCheck()
+    {
+        using var folder = new TempFolder();
+
+        // Text OUTSIDE the area: no other check looks at it (no term was removed, no character lies in the area).
+        var outside = await VerifyAsync(Write(folder, "outside.pdf", RasterPdf(0, extraContent: "BT /F1 12 Tf 20 20 Td (leftover) Tj ET")), RasterExpect(0));
+        var finding = SingleRasterFinding(outside);
+        Assert.Equal(0, finding.Page);
+        Assert.Contains("text object", finding.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("leftover", finding.Detail, StringComparison.Ordinal);
+
+        // Text INSIDE the area is a raster-page finding, not the position check of a page that has text (a raster page has none).
+        var inside = await VerifyAsync(Write(folder, "inside.pdf", RasterPdf(0, extraContent: "BT /F1 12 Tf 60 120 Td (leftover) Tj ET")), RasterExpect(0));
+        SingleRasterFinding(inside);
+        Assert.DoesNotContain(inside.Findings, static f => f.Kind == RedactionFindingKind.CharInsideArea);
+
+        // The same file is clean when its page is not a raster page: the new branch alone makes the difference.
+        var notRaster = await VerifyAsync(Write(folder, "notraster.pdf", RasterPdf(0, extraContent: "BT /F1 12 Tf 20 20 Td (leftover) Tj ET")), new RedactionExpectation(PlanOf(0, RasterArea), [], RedactionFill.Black));
+        Assert.True(notRaster.IsClean);
+    }
+
+    [Fact]
+    public async Task RasterPageWithAnnotationOrLinkFails()
+    {
+        using var folder = new TempFolder();
+        var annotations = new Dictionary<string, string>
+        {
+            ["comment"] = "<< /Type /Annot /Subtype /Square /Rect [10 10 40 40] /C [1 0 0] >>",
+            ["link"] = "<< /Type /Annot /Subtype /Link /Rect [10 10 40 40] /Border [0 0 0] /A << /S /URI /URI (http://example.org/) >> >>",
+            ["field"] = "<< /Type /Annot /Subtype /Widget /FT /Tx /T (field) /Rect [10 10 80 30] >>",
+        };
+
+        foreach (var (name, annotation) in annotations)
+        {
+            var path = Write(folder, name + ".pdf", RasterPdf(0, pageEntries: $"/Annots [{annotation}]"));
+            var finding = SingleRasterFinding(await VerifyAsync(path, RasterExpect(0)));
+            Assert.Equal(0, finding.Page);
+            Assert.Contains("annotation", finding.Detail, StringComparison.Ordinal);
+            Assert.Contains("links and form fields", finding.Detail, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task RasterPageWithTwoImagesFails()
+    {
+        using var folder = new TempFolder();
+
+        // The second image lies away from the area and is as black as the first, so the pixel check has nothing to say.
+        var two = RasterPdf(0, extraContent: "q 80 0 0 80 200 10 cm /Im2 Do Q", extraResources: pdf => $"/Im2 {pdf.AddStream("/Type /XObject /Subtype /Image /Width 4 /Height 4 /ColorSpace /DeviceGray /BitsPerComponent 8", new byte[16])} 0 R");
+        var finding = SingleRasterFinding(await VerifyAsync(Write(folder, "two.pdf", two), RasterExpect(0)));
+        Assert.Contains("2 image", finding.Detail, StringComparison.Ordinal);
+
+        // No image at all is as wrong as two.
+        var none = new VerifierPdf("0 g").Build();
+        var missing = SingleRasterFinding(await VerifyAsync(Write(folder, "none.pdf", none), RasterExpect(0)));
+        Assert.Contains("0 image", missing.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RasterPageWithUnfilledAreaFails()
+    {
+        using var folder = new TempFolder();
+
+        // A white image under a black area: the structure is right, the pixel check of the areas is what fails.
+        var check = await VerifyAsync(Write(folder, "unfilled.pdf", RasterPdf(gray: 255)), RasterExpect(0));
+
+        Assert.False(check.IsClean);
+        Assert.Contains(check.Findings, static f => f.Kind == RedactionFindingKind.ImagePixelNotOverwritten && f.Page == 0);
+        Assert.DoesNotContain(check.Findings, static f => f.Kind == RedactionFindingKind.RasterPageInvalid);
+
+        // The same image is right for a white fill.
+        var white = PlanOf(0, RasterArea, fill: RedactionFill.White).WithRasterPage(0, on: true);
+        var ok = await VerifyAsync(Write(folder, "white.pdf", RasterPdf(gray: 255)), new RedactionExpectation(white, [], white.Fill, [0]));
+        Assert.True(ok.IsClean);
+    }
+
+    [Fact]
+    public async Task RasterPageWithPathOutsideAreasFails()
+    {
+        using var folder = new TempFolder();
+
+        // Until the overlay text exists (task 15 lets paths inside the mark rectangles through) a raster page has no path at all,
+        // so a path outside the areas fails; task 15 adapts the second case to a path inside an area.
+        var outside = SingleRasterFinding(await VerifyAsync(Write(folder, "outside.pdf", RasterPdf(0, extraContent: "0 0 1 rg 5 5 20 20 re f")), RasterExpect(0)));
+        Assert.Contains("path object", outside.Detail, StringComparison.Ordinal);
+
+        var inside = SingleRasterFinding(await VerifyAsync(Write(folder, "inside.pdf", RasterPdf(0, extraContent: "0 0 1 rg 60 110 20 20 re f")), RasterExpect(0)));
+        Assert.Contains("path object", inside.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RasterPageWithAFormObjectFails()
+    {
+        using var folder = new TempFolder();
+        var withForm = RasterPdf(0, extraContent: "q 1 0 0 1 200 10 cm /Fm1 Do Q", extraResources: pdf => $"/Fm1 {pdf.AddStream("/Type /XObject /Subtype /Form /BBox [0 0 10 10]", VerifierPdf.Latin1("0 0 1 1 re f"))} 0 R");
+
+        var finding = SingleRasterFinding(await VerifyAsync(Write(folder, "form.pdf", withForm), RasterExpect(0)));
+
+        Assert.Contains("other object", finding.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RasterPageThatCannotBeCountedFailsTheCheck()
+    {
+        using var folder = new TempFolder();
+
+        // More objects than the reader counts: the check must not read "could not count" as "nothing wrong".
+        var hostile = RasterPdf(0, extraContent: string.Concat(Enumerable.Repeat("0 0 1 1 re f\n", 100_001)));
+        var finding = SingleRasterFinding(await VerifyAsync(Write(folder, "hostile.pdf", hostile), RasterExpect(0)));
+
+        Assert.Equal(0, finding.Page);
+        Assert.Contains("could not be counted", finding.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RasterPageMissingFromTheResultFails()
+    {
+        using var folder = new TempFolder();
+
+        var check = await VerifyAsync(Write(folder, "short.pdf", RasterPdf(0)), RasterExpect(0, 3));
+
+        var finding = SingleRasterFinding(check);
+        Assert.Equal(3, finding.Page);
+        Assert.Contains("fewer pages", finding.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RealRasterPagePassesTheChecks()
+    {
+        using var folder = new TempFolder();
+        var path = Write(folder, "two.pdf", new VerifierPdf("BT /F1 12 Tf 20 150 Td (secret value) Tj ET BT /F1 12 Tf 20 100 Td (public line) Tj ET", "BT /F1 12 Tf 20 150 Td (second page) Tj ET").Build());
+        var plan = PlanOf(0, RasterArea).WithRasterPage(0, on: true);
+        await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
+        var analysis = await new RedactionExecutor(engine).AnalyzeAsync(plan, shown, path, null, Ct);
+        Assert.False(analysis.IsRefused, RedactionRefusalText.Of(analysis.Refusals));
+        var target = Path.Combine(folder.Path, "result.pdf");
+
+        var result = await RedactionApplier.WriteAsync(engine, shown, path, null, FileStamp.Of(path), new RedactionApplyRequest(plan, target), null, Ct);
+
+        // The check the applier ran, and the verifier run again on the written file: both are clean.
+        await using var reopened = result.Saved.Reopened;
+        Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+        Assert.Equal(new PageObjectSummary(Images: 1, Paths: 0, Texts: 0, Others: 0, Annotations: 0), await reopened.GetPageObjectSummaryAsync(0, Ct));
+        Assert.True((await VerifyAsync(target, new RedactionExpectation(plan, [], plan.Fill, [0]))).IsClean);
+
+        // The same file fails when it is judged as a result in which page 2 (which kept its text) must have become an image.
+        var wrong = SingleRasterFinding(await VerifyAsync(target, new RedactionExpectation(plan.WithRasterPage(1, on: true), [], plan.Fill, [0, 1])));
+        Assert.Equal(1, wrong.Page);
+
+        // The report names the pages under "Checked" and what stays unchecked.
+        var report = RedactionReportText.Of(analysis, result.Check);
+        Assert.Contains("Pages turned into images: page 1", report, StringComparison.Ordinal);
+        Assert.Contains("links and form fields", report, StringComparison.Ordinal);
+        Assert.Contains("outside the marked areas", report, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReportNamesWhatIsNotCheckedOnRasterPages()
+    {
+        using var folder = new TempFolder();
+
+        var raster = await VerifyAsync(Write(folder, "good.pdf", RasterPdf(0)), RasterExpect(0));
+        var item = Assert.Single(raster.Items, static i => i.Kind == RedactionNotCheckedKind.RasterOutsideAreas);
+        Assert.Equal(1, item.Count);
+        Assert.Contains("without OCR", item.Text, StringComparison.Ordinal);
+        Assert.Contains(item.Text, raster.NotChecked);
+
+        // The row belongs to raster pages only: a check without any does not claim it.
+        var plain = await VerifyAsync(Copy(folder, "text-basic.pdf"), Expect(PlanOf(0, new PageRect(200, 150, 290, 190))));
+        Assert.DoesNotContain(plain.Items, static i => i.Kind == RedactionNotCheckedKind.RasterOutsideAreas);
+        Assert.DoesNotContain(plain.NotChecked, static l => l.Contains("OCR", StringComparison.Ordinal));
     }
 
     private static byte[] MiniZ() => VerifierPdf.Zlib(Latin1("BT (Zephyrstraße 17) Tj ET"));

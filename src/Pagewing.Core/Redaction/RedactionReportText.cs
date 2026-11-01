@@ -83,6 +83,12 @@ public static class RedactionReportText
             }
 
             checkedLines.Add("Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are the colour of the area.");
+            if (analysis.Raster is { Count: > 0 } raster)
+            {
+                var pages = string.Join(", ", raster.Select(static r => (r.Page + 1).ToString(CultureInfo.InvariantCulture)));
+                checkedLines.Add($"Pages turned into images: {(raster.Count == 1 ? "page" : "pages")} {pages} of the written file each have exactly one image and no text, path, other object, annotation, link or form field (links and form fields are annotations), and the pixels under the marks are the colour of the area.");
+            }
+
             checkedLines.Add("Pages: every redacted page was rendered from the written file and looks like the original outside the marked areas.");
             checkedLines.Add("Page keys: no page of the written file carries /Thumb, /PieceInfo, /Metadata or /AA.");
             checkedLines.Add("Cleanup: the information dictionary, bookmarks, the names tree (attached files, scripts), page labels, the document's open action, actions, form and permissions were read back from the written file; none is left.");

@@ -16,6 +16,10 @@ namespace Pagewing.Core.Redaction;
 /// <see cref="RemovedText.Everywhere"/>: never), so a legitimate occurrence that was not marked does not fail the check, and a copy
 /// in an attachment, in metadata or in an old revision does.</item>
 /// <item>Pixels: the image pixels under every marked area are the colour of the area.</item>
+/// <item>Pages turned into images (<see cref="RedactionExpectation.RasterPages"/>): the page of the result has exactly one image object and
+/// nothing else (no text, path, other object or annotation; links and form fields are annotations), or the check fails. A page the
+/// reader cannot count fails as well. What stays in the image outside the marked areas is not checked
+/// (<see cref="RedactionNotCheckedKind.RasterOutsideAreas"/>).</item>
 /// </list>
 /// The report never promises more than this: <see cref="RedactionCheck.NotChecked"/> always says what stays outside it.
 /// </summary>
@@ -61,7 +65,9 @@ public static class RedactionVerifier
         var plan = expectation.Plan;
         var texts = PrepareTexts(expectation, notChecked, findings);
 
-        await CheckPagesAsync(reopened, plan, texts, findings, cancellationToken).ConfigureAwait(false);
+        var rasterPages = expectation.RasterPages is { Count: > 0 } raster ? raster.Distinct().Order().ToArray() : [];
+        await CheckPagesAsync(reopened, plan, rasterPages, texts, findings, cancellationToken).ConfigureAwait(false);
+        await CheckRasterPagesAsync(reopened, rasterPages, findings, notChecked, cancellationToken).ConfigureAwait(false);
         CheckTextRule(texts, findings);
         await CheckRawAsync(file, texts, limits, findings, notChecked, cancellationToken).ConfigureAwait(false);
         await CheckPixelsAsync(reopened, plan, expectation.Fill, findings, notChecked, cancellationToken).ConfigureAwait(false);
@@ -196,7 +202,7 @@ public static class RedactionVerifier
     private static string Count(int number, string one, string many) =>
         string.Create(CultureInfo.InvariantCulture, $"{number} {(number == 1 ? one : many)}.");
 
-    private static async Task CheckPagesAsync(PdfDocument reopened, RedactionPlan plan, List<CheckedText> texts, List<RedactionFinding> findings, CancellationToken cancellationToken)
+    private static async Task CheckPagesAsync(PdfDocument reopened, RedactionPlan plan, int[] rasterPages, List<CheckedText> texts, List<RedactionFinding> findings, CancellationToken cancellationToken)
     {
         var pageCount = reopened.PageCount;
         foreach (var page in plan.Pages.Where(p => p >= pageCount).Order())
@@ -207,7 +213,9 @@ public static class RedactionVerifier
         var needles = texts.Select(static t => t.Needle).ToArray();
         for (var page = 0; page < pageCount; page++)
         {
-            var marked = plan.Pages.Contains(page);
+            // A page turned into an image has no text, so the position check of characters does not apply to it: a character on it is a
+            // finding of CheckRasterPagesAsync (a text object), not "a character inside an area".
+            var marked = plan.Pages.Contains(page) && Array.BinarySearch(rasterPages, page) < 0;
             if (!marked && texts.Count == 0)
             {
                 continue;
@@ -251,6 +259,79 @@ public static class RedactionVerifier
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// A page that became an image must be exactly that in the written file: one image object, no text, no path (until the overlay text
+    /// of task 15 allows paths inside the mark rectangles), no other object, no annotation (links and form fields are annotations). The
+    /// objects are counted in the result, never taken from the plan. A page that cannot be counted (too many objects, unreadable) fails:
+    /// a check that could not look never passes.
+    /// </summary>
+    private static async Task CheckRasterPagesAsync(PdfDocument reopened, int[] rasterPages, List<RedactionFinding> findings, NotCheckedLog notChecked, CancellationToken cancellationToken)
+    {
+        if (rasterPages.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var page in rasterPages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (page < 0 || page >= reopened.PageCount)
+            {
+                findings.Add(new RedactionFinding(RedactionFindingKind.RasterPageInvalid, page, "The result has fewer pages than the plan expects, so a page that should be an image is missing."));
+                continue;
+            }
+
+            PageObjectSummary summary;
+            try
+            {
+                summary = await reopened.GetPageObjectSummaryAsync(page, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException)
+            {
+                findings.Add(new RedactionFinding(RedactionFindingKind.RasterPageInvalid, page, "The objects of this page could not be counted (the page could not be read, or it has more objects than the check reads), so it cannot be shown that it is only an image."));
+                continue;
+            }
+
+            var problems = new List<string>();
+            if (summary.Images != 1)
+            {
+                problems.Add(string.Create(CultureInfo.InvariantCulture, $"{summary.Images} image object(s), exactly 1 is expected"));
+            }
+
+            if (summary.Texts != 0)
+            {
+                problems.Add(string.Create(CultureInfo.InvariantCulture, $"{summary.Texts} text object(s)"));
+            }
+
+            if (summary.Paths != 0)
+            {
+                problems.Add(string.Create(CultureInfo.InvariantCulture, $"{summary.Paths} path object(s)"));
+            }
+
+            if (summary.Others != 0)
+            {
+                problems.Add(string.Create(CultureInfo.InvariantCulture, $"{summary.Others} other object(s) (forms, shadings)"));
+            }
+
+            if (summary.Annotations != 0)
+            {
+                problems.Add(string.Create(CultureInfo.InvariantCulture, $"{summary.Annotations} annotation(s) (links and form fields count as annotations)"));
+            }
+
+            if (problems.Count > 0)
+            {
+                findings.Add(new RedactionFinding(RedactionFindingKind.RasterPageInvalid, page, "The page that became an image is not only one image: " + string.Join("; ", problems) + "."));
+            }
+        }
+
+        notChecked.Add(
+            RedactionNotCheckedKind.RasterOutsideAreas,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Pages turned into images ({rasterPages.Length} page(s)): a visible occurrence of a removed text outside the marked areas stays in the image and cannot be found without OCR; only the structure of the page (one image, no text, path, annotation, link or form field) and the marked areas are checked."),
+            rasterPages.Length);
     }
 
     private static void CheckTextRule(List<CheckedText> texts, List<RedactionFinding> findings)
