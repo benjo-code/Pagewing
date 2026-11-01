@@ -536,7 +536,9 @@ internal sealed partial class PdfiumRedactionRun
                 yield break;
             }
 
-            any |= leaf.Edit is not null;
+            // A path whose matrix cannot be used is never planned (PlanPath needs a placed path), yet it may lie under a mark: it counts as
+            // touched, so that the form object goes as a whole (movable is already false) instead of leaving the path under the mark.
+            any |= leaf.Edit is not null || (leaf.Type == FpdfConstants.PageObjPath && leaf.Composed is null && c.Areas.Hit(leaf.Bounds));
             if ((j & (SliceObjects - 1)) == SliceObjects - 1)
             {
                 yield return true;

@@ -785,6 +785,21 @@ public sealed class RedactionVerifierTests
     }
 
     [Fact]
+    public void AnObjKeywordInsideTheDictionaryMakesTheStreamUnreadableInsteadOfHidingTheFilter()
+    {
+        // "(x obj)" after the /Filter looks like an object header; the last header wins, so /Filter used to fall out of the dictionary and the
+        // packed stream was taken for plain data without a word. Two headers since the last endobj mean the dictionary is not known.
+        var hostile = Concat(Latin1("%PDF-1.7\n"), StreamObject("/Filter /FlateDecode /Note (x obj) /Other (y 9 obj)", MiniZ()));
+        Count(hostile, Term, out var notes);
+        Assert.Contains(notes.Items, static n => n.Kind == RawScanNoteKind.UnreadableStream && n.CouldHideText);
+
+        // An earlier, finished object in the same bytes is no ambiguity.
+        var plain = Concat(Latin1("%PDF-1.7\n3 0 obj\n<< /A 1 >>\nendobj\n"), StreamObject("/Filter /FlateDecode", MiniZ()));
+        Count(plain, Term, out var plainNotes);
+        Assert.DoesNotContain(plainNotes.Items, static n => n.Kind == RawScanNoteKind.UnreadableStream);
+    }
+
+    [Fact]
     public void AFilterArrayWithAnIndirectElementIsReportedAsUnreadable()
     {
         var file = Concat(Latin1("%PDF-1.7\n"), StreamObject("/Filter [/FlateDecode 8 0 R]", MiniZ()), StreamObject("/Filter [8 0 R]", MiniZ()));

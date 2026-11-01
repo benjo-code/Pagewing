@@ -169,7 +169,15 @@ public sealed partial class PdfDocument
         var path = Path.Combine(Path.GetTempPath(), $"pagewing-check-{Guid.NewGuid():N}.pdf");
         try
         {
-            await using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81_920, useAsync: false))
+            // The copy holds everything of the working copy, the information dictionary and the XMP included: only its owner may read it
+            // on Unix (the mode applies at creation; Windows keeps the access rules of the per-user temp folder).
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, BufferSize = 81_920 };
+            if (!OperatingSystem.IsWindows())
+            {
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            }
+
+            await using (var stream = new FileStream(path, options))
             {
                 await SaveRewriteAsync(stream, cancellationToken).ConfigureAwait(false);
             }

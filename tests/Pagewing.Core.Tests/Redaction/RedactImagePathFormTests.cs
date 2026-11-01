@@ -790,6 +790,33 @@ public sealed class RedactImagePathFormTests
         }
     }
 
+    [Fact]
+    public async Task APathInAFormObjectWithAnUnusableMatrixUnderTheAreaMakesTheFormGoWholeAndIsListed()
+    {
+        // A singular cm gives the path a matrix PDFium reports but nothing can undo: the path cannot be placed on the page, so it
+        // cannot be cropped. It must not stay under the mark; the form object goes as a whole and the list says why.
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        var form = pdf.AddStream("/Type /XObject /Subtype /Form /BBox [0 0 200 200]", "1 0 0 rg q 0 0 0 0 100 50 cm 0 0 40 40 re f Q 0 0 1 rg 10 150 30 30 re f\n"u8.ToArray());
+        pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /XObject << /Fm1 {form} 0 R >> >>", "q /Fm1 Do Q\n");
+        var path = Path.Combine(folder.Path, "unusable-matrix-path.pdf");
+        await File.WriteAllBytesAsync(path, pdf.Build(), Ct);
+
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var before = await CountObjectsAsync(path, 0, FpdfConstants.PageObjForm);
+        Assert.Equal(1, before);
+        var impact = await document.RedactPageAsync(0, [FromUser(95, 45, 105, 55, 200)], RedactionFill.Black, Ct);
+
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.FormObjectsTouched);
+        var fallback = Assert.Single(impact.Fallbacks);
+        Assert.Equal(RedactionFallbackKind.FormObjectRemovedWhole, fallback.Kind);
+        Assert.Contains("matrix", fallback.Reason, StringComparison.Ordinal);
+        var saved = await SaveAsync(document, folder, "unusable-matrix-out.pdf");
+        Assert.Equal(1, await CountObjectsAsync(saved, 0, FpdfConstants.PageObjPath)); // only the cover of the mark is left
+        Assert.Equal(0, await CountObjectsAsync(saved, 0, FpdfConstants.PageObjForm));
+    }
+
     private static async Task<string> WriteNestedAsync(TempFolder folder, int levels)
     {
         // Form k holds form k+1 (k = 1 is placed on the page); the last one shows "Deep text" at 10,200 (page 20,200 after the shifts).
@@ -1212,6 +1239,43 @@ public sealed class RedactImagePathFormTests
         // One write for the three pages; three pages rendered twice each.
         Assert.Equal(1, copy.RedactionDryRunWrites);
         Assert.Equal(6, rendered);
+    }
+
+    [Fact]
+    public async Task TheDryRunCopyIsPrivateWhileItExistsAndGoneAfterwards()
+    {
+        // The copy of the whole working copy holds the not yet redacted rest of the document (information dictionary and XMP included): on
+        // Unix only its owner may read it. The mode is checked on Linux only (unverified on the development machine, which runs Windows).
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /Font << /F1 {pdf.Font} 0 R >> >>", "BT /F1 12 Tf 20 150 Td (Secret) Tj ET\n");
+        var original = Path.Combine(folder.Path, "original.pdf");
+        await File.WriteAllBytesAsync(original, pdf.Build(), Ct);
+        var work = Path.Combine(folder.Path, "work.pdf");
+        File.Copy(original, work);
+        await using var reference = await engine.OpenAsync(original, cancellationToken: Ct);
+        await using var copy = await engine.OpenAsync(work, cancellationToken: Ct);
+        var area = FromUser(15, 145, 100, 165, 200);
+        var impact = await copy.RedactPageAsync(0, [area], RedactionFill.Black, Ct);
+
+        string? seenPath = null;
+        UnixFileMode? seenMode = null;
+        copy.VerifySeam = new RedactionVerifySeam
+        {
+            WrittenCopy = path =>
+            {
+                seenPath = path;
+                seenMode = OperatingSystem.IsWindows() ? null : File.GetUnixFileMode(path);
+            },
+        };
+        Assert.Empty(await copy.VerifyRedactionRenderAsync(reference, [RedactionPageAreas.For([area], impact)], Ct));
+
+        Assert.NotNull(seenPath);
+        Assert.False(File.Exists(seenPath));
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, seenMode);
+        }
     }
 
     [Fact]

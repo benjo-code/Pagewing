@@ -589,11 +589,15 @@ internal sealed class StreamInfo
     public static StreamInfo Parse(ReadOnlySpan<byte> text)
     {
         var info = new StreamInfo();
-        var start = StartOfObject(text);
+        var start = StartOfObject(text, out var ambiguous);
         if (start < 0)
         {
             info.Problem = "the dictionary of the stream was not found (no object header within the bytes read before it)";
             start = 0;
+        }
+        else if (ambiguous)
+        {
+            info.Problem = "the dictionary of the stream holds a second object header, so where it starts is not known";
         }
 
         var tokens = Tokens(text[start..], out var capped);
@@ -714,8 +718,9 @@ internal sealed class StreamInfo
         }
     }
 
-    private static int StartOfObject(ReadOnlySpan<byte> text)
+    private static int StartOfObject(ReadOnlySpan<byte> text, out bool ambiguous)
     {
+        ambiguous = false;
         var end = text.Length;
         while (end > 0)
         {
@@ -725,10 +730,25 @@ internal sealed class StreamInfo
                 return -1;
             }
 
-            var isEndObj = at >= 3 && text.Slice(at - 3, 3).SequenceEqual("end"u8);
-            var tokenStart = at == 0 || text[at - 1] <= ' ' || char.IsAsciiDigit((char)text[at - 1]);
-            if (!isEndObj && tokenStart)
+            if (IsObjectHeader(text, at))
             {
+                // A second header since the last finished object: the text between them (a string, a comment) can fake the one that
+                // counts, and then entries before it (/Filter) would fall out of the dictionary. Say so instead of guessing.
+                var finished = text[..at].LastIndexOf("endobj"u8);
+                var from = finished < 0 ? 0 : finished + 6;
+                var earlier = from < at ? text[from..at] : default;
+                for (var i = earlier.IndexOf("obj"u8); i >= 0 && !earlier.IsEmpty;)
+                {
+                    if (IsObjectHeader(earlier, i))
+                    {
+                        ambiguous = true;
+                        break;
+                    }
+
+                    var next = earlier[(i + 3)..].IndexOf("obj"u8);
+                    i = next < 0 ? -1 : i + 3 + next;
+                }
+
                 return at + 3;
             }
 
@@ -736,6 +756,13 @@ internal sealed class StreamInfo
         }
 
         return -1;
+    }
+
+    private static bool IsObjectHeader(ReadOnlySpan<byte> text, int at)
+    {
+        var isEndObj = at >= 3 && text.Slice(at - 3, 3).SequenceEqual("end"u8);
+        var tokenStart = at == 0 || text[at - 1] <= ' ' || char.IsAsciiDigit((char)text[at - 1]);
+        return !isEndObj && tokenStart;
     }
 
     private static List<(bool IsName, string Value)> Tokens(ReadOnlySpan<byte> text, out bool capped)
