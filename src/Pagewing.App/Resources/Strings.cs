@@ -1021,6 +1021,47 @@ public static class Strings
     public static string RedactSaveFirstText => Get("RedactSaveFirstText");
     public static string RedactApplyBlocked => Get("RedactApplyBlocked");
 
+    public static string RedactNcBlankOne => Get("RedactNcBlankOne");
+    public static string RedactNcBlank => Get("RedactNcBlank");
+    public static string RedactNcUnreadableOne => Get("RedactNcUnreadableOne");
+    public static string RedactNcUnreadable => Get("RedactNcUnreadable");
+    public static string RedactNcTruncatedOne => Get("RedactNcTruncatedOne");
+    public static string RedactNcTruncated => Get("RedactNcTruncated");
+    public static string RedactNcFurther => Get("RedactNcFurther");
+    public static string RedactNcRawShort => Get("RedactNcRawShort");
+    public static string RedactNcRawNothing => Get("RedactNcRawNothing");
+    public static string RedactNcRawStillOccur => Get("RedactNcRawStillOccur");
+    public static string RedactNcWhereMany => Get("RedactNcWhereMany");
+    public static string RedactNcWhereOne => Get("RedactNcWhereOne");
+    public static string RedactNcWhereFile => Get("RedactNcWhereFile");
+    public static string RedactNcRawFilter => Get("RedactNcRawFilter");
+    public static string RedactNcRawImageStreams => Get("RedactNcRawImageStreams");
+    public static string RedactNcRawUnreadable => Get("RedactNcRawUnreadable");
+    public static string RedactNcRawTooLarge => Get("RedactNcRawTooLarge");
+    public static string RedactNcRawTotal => Get("RedactNcRawTotal");
+    public static string RedactNcRawPredictor => Get("RedactNcRawPredictor");
+    public static string RedactNcRawEncrypted => Get("RedactNcRawEncrypted");
+    public static string RedactNcRawFont => Get("RedactNcRawFont");
+    public static string RedactNcRawEncodings => Get("RedactNcRawEncodings");
+    public static string RedactNcRawSplit => Get("RedactNcRawSplit");
+    public static string RedactNcRawImageAttach => Get("RedactNcRawImageAttach");
+    public static string RedactNcPixelsBeyond => Get("RedactNcPixelsBeyond");
+    public static string RedactNcPixelsOnly => Get("RedactNcPixelsOnly");
+    public static string RedactNcOtherViewer => Get("RedactNcOtherViewer");
+    public static string RedactNcApplyRender => Get("RedactNcApplyRender");
+    public static string RedactNcApplyKeys => Get("RedactNcApplyKeys");
+    public static string RedactNcApplyXmp => Get("RedactNcApplyXmp");
+    public static string RedactCauseChangesOutsideAreas => Get("RedactCauseChangesOutsideAreas");
+    public static string RedactCauseSizeChanged => Get("RedactCauseSizeChanged");
+    public static string RedactCauseRenderFailed => Get("RedactCauseRenderFailed");
+    public static string RedactCauseReopenFailed => Get("RedactCauseReopenFailed");
+    public static string RedactCauseTooLarge => Get("RedactCauseTooLarge");
+    public static string RedactCauseUnreadable => Get("RedactCauseUnreadable");
+    public static string RedactCauseRewriteUnreliable => Get("RedactCauseRewriteUnreliable");
+    public static string RedactCauseBigShape => Get("RedactCauseBigShape");
+    public static string RedactCauseAnnotations => Get("RedactCauseAnnotations");
+    public static string RedactRefusalPageUnknown => Get("RedactRefusalPageUnknown");
+
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;
 

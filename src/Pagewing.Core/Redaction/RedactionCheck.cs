@@ -119,11 +119,124 @@ public enum RedactionFindingKind
 /// </param>
 public sealed record RedactionFinding(RedactionFindingKind Kind, int? Page, string Detail, IReadOnlyList<int>? RelatedPages = null);
 
+/// <summary>
+/// What a line of <see cref="RedactionCheck.NotChecked"/> is about. The English line stays the text of the command line; the interface
+/// builds its own sentence from the kind and the numbers (<see cref="RedactionNotChecked"/>), so a new line needs a new kind, and a test
+/// fails for a kind the interface cannot say.
+/// </summary>
+public enum RedactionNotCheckedKind
+{
+    /// <summary>A line that has no kind of its own (the detail of a note); the interface shows the English text.</summary>
+    Other,
+
+    /// <summary>Removed texts that consist of white space only (<c>Count</c>).</summary>
+    BlankTexts,
+
+    /// <summary>Removed texts with a character the engine could not read exactly (<c>Count</c>).</summary>
+    UnreadableChars,
+
+    /// <summary>Removed texts longer than the limit (<c>Count</c>).</summary>
+    TruncatedTexts,
+
+    /// <summary>Distinct removed texts beyond the limit (<c>Count</c>, the limit in <c>Second</c>).</summary>
+    FurtherTexts,
+
+    /// <summary>Removed texts too short for the search in the file bytes (<c>Count</c>, the shortest length in <c>Second</c>).</summary>
+    RawShortTexts,
+
+    /// <summary>No text was removed, so the file bytes were not searched.</summary>
+    RawNothingRemoved,
+
+    /// <summary>Removed texts that still occur in the page text, so a leaked copy cannot be told from them (<c>Count</c> texts, <c>Second</c> occurrences).</summary>
+    RawStillOccur,
+
+    /// <summary>Streams with a filter that is not unpacked (<c>Count</c>, <c>Offset</c> of the first, the filter in <c>Detail</c>).</summary>
+    RawFilter,
+
+    /// <summary>Streams with image data, searched as bytes only (<c>Count</c>, <c>Offset</c>).</summary>
+    RawImageStreams,
+
+    /// <summary>Streams that could not be unpacked completely (<c>Count</c>, <c>Offset</c>, the reason in <c>Detail</c>).</summary>
+    RawUnreadableStream,
+
+    /// <summary>Streams that unpack to more than the limit of one stream (<c>Count</c>, <c>Offset</c>).</summary>
+    RawStreamTooLarge,
+
+    /// <summary>Streams not unpacked because the streams of the file reached the total limit (<c>Count</c>, <c>Offset</c>).</summary>
+    RawTotalLimit,
+
+    /// <summary>Streams with a predictor that is not undone (<c>Count</c>, <c>Offset</c>).</summary>
+    RawPredictor,
+
+    /// <summary>The file has an encryption entry, so its streams cannot be read.</summary>
+    RawEncrypted,
+
+    /// <summary>Fonts with their own code mapping: the text is not readable in the streams.</summary>
+    RawFontMapping,
+
+    /// <summary>The encodings that are searched; others are not found.</summary>
+    RawEncodings,
+
+    /// <summary>A text split across text objects, XML entities and unplanned case variants are not found.</summary>
+    RawSplitText,
+
+    /// <summary>Image data is searched as bytes only and attachments are not looked into.</summary>
+    RawImageAttachments,
+
+    /// <summary>Marked areas beyond the limit that were not read back (<c>Count</c>, the limit in <c>Second</c>).</summary>
+    PixelsBeyond,
+
+    /// <summary>Only images that touch a marked area are read back.</summary>
+    PixelsOnlyImages,
+
+    /// <summary>Another program may read the file differently.</summary>
+    OtherViewer,
+
+    /// <summary>The apply step compares only the redacted pages with the original, outside the marked areas (forms: annotations left out).</summary>
+    ApplyRender,
+
+    /// <summary>The apply step looks for page keys in the page dictionaries only.</summary>
+    ApplyPageKeys,
+
+    /// <summary>XMP and JavaScript were removed from the document level only; the entries inside page-level objects are not read back.</summary>
+    ApplyXmp,
+}
+
+/// <summary>One line of what the check did not check, with the data the interface needs to say it in its own language.</summary>
+/// <param name="Kind">What it is about.</param>
+/// <param name="Text">The English line (the same as the entry of <see cref="RedactionCheck.NotChecked"/>).</param>
+/// <param name="Count">The main number (see the kind), or 0.</param>
+/// <param name="Second">The second number (see the kind), or 0.</param>
+/// <param name="Detail">A technical detail the engine gives in English only (a filter name, the reason a stream could not be unpacked), or empty.</param>
+/// <param name="Offset">The file offset of the first stream concerned, or -1.</param>
+public sealed record RedactionNotChecked(RedactionNotCheckedKind Kind, string Text, int Count = 0, int Second = 0, string Detail = "", long Offset = -1);
+
+/// <summary>The lines of what was not checked, as English text and as data, always added together (a line without a kind cannot be added).</summary>
+internal sealed class NotCheckedLog
+{
+    private readonly List<string> lines = [];
+    private readonly List<RedactionNotChecked> items = [];
+
+    public IReadOnlyList<string> Lines => lines;
+
+    public IReadOnlyList<RedactionNotChecked> Items => items;
+
+    public void Add(RedactionNotCheckedKind kind, string text, int count = 0, int second = 0, string detail = "", long offset = -1)
+    {
+        lines.Add(text);
+        items.Add(new RedactionNotChecked(kind, text, count, second, detail, offset));
+    }
+}
+
 /// <summary>The result of the check: what it found and, always, what it did not check.</summary>
 /// <param name="Findings">The findings; none means the check passed.</param>
 /// <param name="NotChecked">What could not be checked, one line each; never empty by omission: the report never promises more than the check does.</param>
-public sealed record RedactionCheck(IReadOnlyList<RedactionFinding> Findings, IReadOnlyList<string> NotChecked)
+/// <param name="NotCheckedItems">The same lines as data, in the same order (<see cref="RedactionNotChecked"/>), or <see langword="null"/> for a check made of text alone.</param>
+public sealed record RedactionCheck(IReadOnlyList<RedactionFinding> Findings, IReadOnlyList<string> NotChecked, IReadOnlyList<RedactionNotChecked>? NotCheckedItems = null)
 {
     /// <summary>Gets whether the check found nothing.</summary>
     public bool IsClean => Findings.Count == 0;
+
+    /// <summary>Gets the lines of <see cref="NotChecked"/> as data, in the same order; empty for a check made of text alone.</summary>
+    public IReadOnlyList<RedactionNotChecked> Items => NotCheckedItems ?? [];
 }

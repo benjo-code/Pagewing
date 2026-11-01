@@ -142,9 +142,24 @@ public sealed class RedactionApplyInfo
             notChecked.Add(Strings.RedactCleanIncomplete);
         }
 
-        // The lines of the check itself come from the engine in English; they are shown as they are, and the card says so.
-        notChecked.AddRange(check.NotChecked);
-        if (!string.Equals(Strings.Culture.TwoLetterISOLanguageName, "en", StringComparison.Ordinal))
+        // The lines of the check come as data (a kind and numbers) and are said in the language of the interface; only a line that
+        // has no kind of its own, or a check made of text alone, is shown in English, and the card says so.
+        var untranslated = false;
+        var items = check.Items.Count == check.NotChecked.Count && check.Items.Count > 0
+            ? check.Items
+            : [.. check.NotChecked.Select(static line => new RedactionNotChecked(RedactionNotCheckedKind.Other, line))];
+        foreach (var item in items)
+        {
+            var said = SayNotChecked(item);
+            if (said is null)
+            {
+                untranslated = true;
+            }
+
+            notChecked.Add(said ?? item.Text);
+        }
+
+        if (untranslated && !string.Equals(Strings.Culture.TwoLetterISOLanguageName, "en", StringComparison.Ordinal))
         {
             notChecked.Add(Strings.RedactSecNotCheckedNote);
         }
@@ -178,7 +193,7 @@ public sealed class RedactionApplyInfo
             RedactionRefusalKind.Encrypted => Strings.RedactRefusalEncrypted,
             RedactionRefusalKind.UnremovablePageKeys when refusal.PageKeysUnverified => Strings.RedactRefusalKeysUnverified,
             RedactionRefusalKind.UnremovablePageKeys => Format(Strings.RedactRefusalKeys, PagesOf(refusal.Pages)),
-            RedactionRefusalKind.PageNotRedactable => Capitalize(Format(Strings.RedactRefusalPage, PagesOf(refusal.Pages))),
+            RedactionRefusalKind.PageNotRedactable => PageLine(refusal),
             _ => Strings.RedactRefusalOther,
         };
     }
@@ -208,12 +223,19 @@ public sealed class RedactionApplyInfo
                 break;
             case RedactionRefusalKind.PageNotRedactable:
                 heading = Strings.RedactRefusalHeadingPage;
-                if (!string.IsNullOrWhiteSpace(refusal.Reason))
+                var cause = RedactionPageCauses.Classify(refusal.Reason);
+
+                // A reason that is in no known group is shown as the engine gave it (English) and named so; the hint belongs to the
+                // one cause it is true for, never to a page whose cause is not known.
+                if (cause == RedactionPageCause.Unknown && !string.IsNullOrWhiteSpace(refusal.Reason))
                 {
                     lines.Add(Format(Strings.RedactRefusalPageReason, refusal.Reason.Trim()));
                 }
+                else if (cause == RedactionPageCause.AnnotationsTooComplex)
+                {
+                    lines.Add(Strings.RedactRefusalPageHint);
+                }
 
-                lines.Add(Strings.RedactRefusalPageHint);
                 break;
             default:
                 heading = Strings.RedactRefusalOther;
@@ -221,6 +243,70 @@ public sealed class RedactionApplyInfo
         }
 
         return new RedactionSection(heading, lines);
+    }
+
+    /// <summary>
+    /// Says one line of what the check did not check in the language of the interface, from its kind and numbers; <see langword="null"/>
+    /// for a line without a kind of its own (the caller shows the English text). A test keeps every kind of
+    /// <see cref="RedactionNotCheckedKind"/> but <see cref="RedactionNotCheckedKind.Other"/> mapped.
+    /// </summary>
+    internal static string? SayNotChecked(RedactionNotChecked item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return item.Kind switch
+        {
+            RedactionNotCheckedKind.BlankTexts => CountText(item.Count, Strings.RedactNcBlankOne, Strings.RedactNcBlank),
+            RedactionNotCheckedKind.UnreadableChars => CountText(item.Count, Strings.RedactNcUnreadableOne, Strings.RedactNcUnreadable),
+            RedactionNotCheckedKind.TruncatedTexts => CountText(item.Count, Strings.RedactNcTruncatedOne, Strings.RedactNcTruncated),
+            RedactionNotCheckedKind.FurtherTexts => Format(Strings.RedactNcFurther, Number(item.Count), Number(item.Second)),
+            RedactionNotCheckedKind.RawShortTexts => Format(Strings.RedactNcRawShort, Number(item.Count), Number(item.Second)),
+            RedactionNotCheckedKind.RawNothingRemoved => Strings.RedactNcRawNothing,
+            RedactionNotCheckedKind.RawStillOccur => Format(Strings.RedactNcRawStillOccur, Number(item.Count), Number(item.Second)),
+            RedactionNotCheckedKind.RawFilter => Format(Strings.RedactNcRawFilter, WhereOf(item), item.Detail),
+            RedactionNotCheckedKind.RawImageStreams => Format(Strings.RedactNcRawImageStreams, WhereOf(item)),
+            RedactionNotCheckedKind.RawUnreadableStream => Format(Strings.RedactNcRawUnreadable, WhereOf(item), item.Detail),
+            RedactionNotCheckedKind.RawStreamTooLarge => Format(Strings.RedactNcRawTooLarge, WhereOf(item)),
+            RedactionNotCheckedKind.RawTotalLimit => Format(Strings.RedactNcRawTotal, WhereOf(item)),
+            RedactionNotCheckedKind.RawPredictor => Format(Strings.RedactNcRawPredictor, WhereOf(item)),
+            RedactionNotCheckedKind.RawEncrypted => Strings.RedactNcRawEncrypted,
+            RedactionNotCheckedKind.RawFontMapping => Strings.RedactNcRawFont,
+            RedactionNotCheckedKind.RawEncodings => Strings.RedactNcRawEncodings,
+            RedactionNotCheckedKind.RawSplitText => Strings.RedactNcRawSplit,
+            RedactionNotCheckedKind.RawImageAttachments => Strings.RedactNcRawImageAttach,
+            RedactionNotCheckedKind.PixelsBeyond => Format(Strings.RedactNcPixelsBeyond, Number(item.Count), Number(item.Second)),
+            RedactionNotCheckedKind.PixelsOnlyImages => Strings.RedactNcPixelsOnly,
+            RedactionNotCheckedKind.OtherViewer => Strings.RedactNcOtherViewer,
+            RedactionNotCheckedKind.ApplyRender => Strings.RedactNcApplyRender,
+            RedactionNotCheckedKind.ApplyPageKeys => Strings.RedactNcApplyKeys,
+            RedactionNotCheckedKind.ApplyXmp => Strings.RedactNcApplyXmp,
+            _ => null,
+        };
+    }
+
+    // Where the streams of a note of the raw scan are: "3 streams, the first at byte 120", "stream at byte 120" or "file".
+    private static string WhereOf(RedactionNotChecked item) =>
+        item.Count > 1
+            ? Format(Strings.RedactNcWhereMany, Number(item.Count), Number(item.Offset))
+            : item.Offset >= 0 ? Format(Strings.RedactNcWhereOne, Number(item.Offset)) : Strings.RedactNcWhereFile;
+
+    // "Page 3 cannot be redacted, because ...": the clause is the cause the engine named, in the language of the interface.
+    private static string PageLine(RedactionRefusal refusal)
+    {
+        var pages = PagesOf(refusal.Pages);
+        var clause = RedactionPageCauses.Classify(refusal.Reason) switch
+        {
+            RedactionPageCause.ChangesOutsideAreas => Strings.RedactCauseChangesOutsideAreas,
+            RedactionPageCause.SizeChanged => Strings.RedactCauseSizeChanged,
+            RedactionPageCause.RenderFailed => Strings.RedactCauseRenderFailed,
+            RedactionPageCause.ReopenFailed => Strings.RedactCauseReopenFailed,
+            RedactionPageCause.TooLarge => Strings.RedactCauseTooLarge,
+            RedactionPageCause.Unreadable => Strings.RedactCauseUnreadable,
+            RedactionPageCause.RewriteUnreliable => Strings.RedactCauseRewriteUnreliable,
+            RedactionPageCause.BigShape => Strings.RedactCauseBigShape,
+            RedactionPageCause.AnnotationsTooComplex => Strings.RedactCauseAnnotations,
+            _ => null,
+        };
+        return Capitalize(clause is null ? Format(Strings.RedactRefusalPageUnknown, pages) : Format(Strings.RedactRefusalPage, pages, clause));
     }
 
     private static string FailureLine(RedactionFinding finding)
@@ -405,6 +491,8 @@ public sealed class RedactionApplyInfo
 
         return lines;
     }
+
+    private static string Number(long value) => value.ToString("N0", Strings.Culture);
 
     private static string PagesOf(IReadOnlyList<int> pages)
     {

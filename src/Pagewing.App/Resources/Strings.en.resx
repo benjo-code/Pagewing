@@ -2398,7 +2398,7 @@
     <value>Not checked:</value>
   </data>
   <data name="RedactSecNotCheckedNote" xml:space="preserve">
-    <value>The lines of the check itself are in English.</value>
+    <value>Lines that the interface cannot say in its own language are shown in English.</value>
   </data>
   <data name="RedactSecFindings" xml:space="preserve">
     <value>What the check found:</value>
@@ -2593,13 +2593,13 @@
     <value>Keys: {0}</value>
   </data>
   <data name="RedactRefusalPage" xml:space="preserve">
-    <value>{0} cannot be redacted, because redacting it would change content outside the marked areas. The file is not redacted.</value>
+    <value>{0} cannot be redacted, because {1}. The file is not redacted.</value>
   </data>
   <data name="RedactRefusalPageReason" xml:space="preserve">
     <value>Reason given by the check (technical, in English): {0}</value>
   </data>
   <data name="RedactRefusalPageHint" xml:space="preserve">
-    <value>If the marks on this page lie on comments or form fields, mark the area on the page instead of the text, or delete the comments first.</value>
+    <value>The page has many comments or deeply nested replies. If you do not need them, delete them first, outside the mode “Redact”, and then mark again.</value>
   </data>
   <data name="RedactRefusalOther" xml:space="preserve">
     <value>The file is not redacted.</value>
@@ -2657,5 +2657,125 @@
   </data>
   <data name="RedactApplyBlocked" xml:space="preserve">
     <value>Redacting waits until the print job has ended.</value>
+  </data>
+  <data name="RedactNcBlankOne" xml:space="preserve">
+    <value>{0} removed text consists of white space only and was not compared.</value>
+  </data>
+  <data name="RedactNcBlank" xml:space="preserve">
+    <value>{0} removed texts consist of white space only and were not compared.</value>
+  </data>
+  <data name="RedactNcUnreadableOne" xml:space="preserve">
+    <value>{0} removed text contains a character the engine could not read exactly (U+FFFD or NUL) and was not compared.</value>
+  </data>
+  <data name="RedactNcUnreadable" xml:space="preserve">
+    <value>{0} removed texts contain a character the engine could not read exactly (U+FFFD or NUL) and were not compared.</value>
+  </data>
+  <data name="RedactNcTruncatedOne" xml:space="preserve">
+    <value>{0} removed text is longer than the limit and was compared by its first characters only.</value>
+  </data>
+  <data name="RedactNcTruncated" xml:space="preserve">
+    <value>{0} removed texts are longer than the limit and were compared by their first characters only.</value>
+  </data>
+  <data name="RedactNcFurther" xml:space="preserve">
+    <value>{0} further removed texts were not compared (limit {1} distinct texts).</value>
+  </data>
+  <data name="RedactNcRawShort" xml:space="preserve">
+    <value>Raw bytes: {0} removed text(s) are shorter than {1} characters and were not searched in the file bytes (they would match by chance); only the page text covers them.</value>
+  </data>
+  <data name="RedactNcRawNothing" xml:space="preserve">
+    <value>Raw bytes: no text was removed, so there was nothing to search for in the file bytes.</value>
+  </data>
+  <data name="RedactNcRawStillOccur" xml:space="preserve">
+    <value>Raw bytes: {0} removed text(s) that are not marked everywhere still occur in the page text, {1} time(s) in all; the file bytes cannot tell a leaked copy from these legitimate ones (a copy in a font with its own code mapping, split by a hyphen or a ligature, is not found in the bytes), so up to {1} leaked copies could hide in the file.</value>
+  </data>
+  <data name="RedactNcWhereMany" xml:space="preserve">
+    <value>{0} streams, the first at byte {1}</value>
+  </data>
+  <data name="RedactNcWhereOne" xml:space="preserve">
+    <value>stream at byte {0}</value>
+  </data>
+  <data name="RedactNcWhereFile" xml:space="preserve">
+    <value>file</value>
+  </data>
+  <data name="RedactNcRawFilter" xml:space="preserve">
+    <value>Raw bytes ({0}): the filter {1} is not unpacked; the bytes were searched as they are.</value>
+  </data>
+  <data name="RedactNcRawImageStreams" xml:space="preserve">
+    <value>Raw bytes ({0}): image data, which is searched as bytes only.</value>
+  </data>
+  <data name="RedactNcRawUnreadable" xml:space="preserve">
+    <value>Raw bytes ({0}): could not be unpacked completely ({1}); only what unpacked was searched.</value>
+  </data>
+  <data name="RedactNcRawTooLarge" xml:space="preserve">
+    <value>Raw bytes ({0}): unpack to more than the limit of one stream; only the first part was searched.</value>
+  </data>
+  <data name="RedactNcRawTotal" xml:space="preserve">
+    <value>Raw bytes ({0}): were not unpacked because the streams of the file already unpack to more than the limit of all streams.</value>
+  </data>
+  <data name="RedactNcRawPredictor" xml:space="preserve">
+    <value>Raw bytes ({0}): use a predictor, which is not undone; the unpacked bytes were searched as they are.</value>
+  </data>
+  <data name="RedactNcRawEncrypted" xml:space="preserve">
+    <value>Raw bytes: the file has an encryption entry, so its streams cannot be read.</value>
+  </data>
+  <data name="RedactNcRawFont" xml:space="preserve">
+    <value>Raw bytes: text in fonts with their own code mapping (subset fonts) is not readable in the streams; only the page text covers it.</value>
+  </data>
+  <data name="RedactNcRawEncodings" xml:space="preserve">
+    <value>Raw bytes: only the removed texts are searched, as given and in composed and decomposed form, in Latin-1, Windows-ANSI, PDFDocEncoding, UTF-8 and UTF-16; text in any other encoding, or split by other operators, is not found.</value>
+  </data>
+  <data name="RedactNcRawSplit" xml:space="preserve">
+    <value>Raw bytes: a text split across different text objects (BT blocks), text in XMP written as XML entities, and case variants that were not planned are not found.</value>
+  </data>
+  <data name="RedactNcRawImageAttach" xml:space="preserve">
+    <value>Raw bytes: image data is searched as bytes only, and an attachment is not looked into (a compressed file inside an attachment is not unpacked).</value>
+  </data>
+  <data name="RedactNcPixelsBeyond" xml:space="preserve">
+    <value>Pixels: {0} marked area(s) beyond the first {1} were not read back.</value>
+  </data>
+  <data name="RedactNcPixelsOnly" xml:space="preserve">
+    <value>Pixels: only images that touch a marked area are read back; a color or shading that is not an image is covered by the render check of the apply step, not here.</value>
+  </data>
+  <data name="RedactNcOtherViewer" xml:space="preserve">
+    <value>Another program may read the file differently; open the result in a second viewer to be sure.</value>
+  </data>
+  <data name="RedactNcApplyRender" xml:space="preserve">
+    <value>Render comparison: only the redacted pages are compared with the original, outside the marked areas and the places where content was removed; pages without a mark are not compared, and for a document with a form the annotations (form fields included) are left out of both renders.</value>
+  </data>
+  <data name="RedactNcApplyKeys" xml:space="preserve">
+    <value>Page keys: only /Thumb, /PieceInfo, /Metadata and /AA in the page dictionaries are looked for; the same keys of form objects, image objects and annotations are not.</value>
+  </data>
+  <data name="RedactNcApplyXmp" xml:space="preserve">
+    <value>XMP metadata and JavaScript: removed from the document level by building the file anew; the entries inside page-level objects (form objects, image objects, annotations) are not read back.</value>
+  </data>
+  <data name="RedactCauseChangesOutsideAreas" xml:space="preserve">
+    <value>redacting it would change content outside the marked areas (PDFium cannot write this page again without changing it)</value>
+  </data>
+  <data name="RedactCauseSizeChanged" xml:space="preserve">
+    <value>it changed its size when it was written again</value>
+  </data>
+  <data name="RedactCauseRenderFailed" xml:space="preserve">
+    <value>it could not be rendered for the check, so it cannot be shown that nothing outside the marked areas changed</value>
+  </data>
+  <data name="RedactCauseReopenFailed" xml:space="preserve">
+    <value>the rewritten document could not be opened again for the check</value>
+  </data>
+  <data name="RedactCauseTooLarge" xml:space="preserve">
+    <value>it holds more than the check can handle (objects, characters or image pixels; a limit against hostile pages)</value>
+  </data>
+  <data name="RedactCauseUnreadable" xml:space="preserve">
+    <value>a part of it (bounds, geometry, text or the box of a character) could not be read reliably, so it cannot be told what lies under a mark</value>
+  </data>
+  <data name="RedactCauseRewriteUnreliable" xml:space="preserve">
+    <value>PDFium could not write its content again reliably, or the page did not pass the read-back after it was rewritten</value>
+  </data>
+  <data name="RedactCauseBigShape" xml:space="preserve">
+    <value>a shape that covers more than half of the page lies under a mark and can be neither cut nor removed as a whole</value>
+  </data>
+  <data name="RedactCauseAnnotations" xml:space="preserve">
+    <value>its annotations (replies, popups) are too many or nested too deeply to follow completely</value>
+  </data>
+  <data name="RedactRefusalPageUnknown" xml:space="preserve">
+    <value>{0} cannot be redacted. The file is not redacted.</value>
   </data>
 </root>

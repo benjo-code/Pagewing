@@ -266,7 +266,8 @@ public static class RedactionApplier
         extra.AddRange(await RenderFindingsAsync(shown, reopened, build, cancellationToken).ConfigureAwait(false));
         var check = new RedactionCheck(
             [.. verified.Findings, .. extra],
-            [.. verified.NotChecked, .. RedactionReportText.ApplyNotChecked]);
+            [.. verified.NotChecked, .. RedactionReportText.ApplyNotChecked],
+            [.. verified.Items, .. RedactionReportText.ApplyNotCheckedItems]);
         if (!check.IsClean)
         {
             throw new SaveFailureException(SaveFailureReason.VerificationFailed, "The check of the redacted file found a problem.") { Details = check };

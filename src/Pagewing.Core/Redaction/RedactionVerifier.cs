@@ -57,7 +57,7 @@ public static class RedactionVerifier
         }
 
         var findings = new List<RedactionFinding>();
-        var notChecked = new List<string>();
+        var notChecked = new NotCheckedLog();
         var plan = expectation.Plan;
         var texts = PrepareTexts(expectation, notChecked, findings);
 
@@ -66,12 +66,12 @@ public static class RedactionVerifier
         await CheckRawAsync(file, texts, limits, findings, notChecked, cancellationToken).ConfigureAwait(false);
         await CheckPixelsAsync(reopened, plan, expectation.Fill, findings, notChecked, cancellationToken).ConfigureAwait(false);
 
-        notChecked.Add("Raw bytes: text in fonts with their own code mapping (subset fonts) is not readable in the streams; only the page text covers it.");
-        notChecked.Add("Raw bytes: only the removed texts are searched, as given and in composed and decomposed form, in Latin-1, Windows-ANSI, PDFDocEncoding, UTF-8 and UTF-16; text in any other encoding, or split by other operators, is not found.");
-        notChecked.Add("Raw bytes: a text split across different text objects (BT blocks), text in XMP written as XML entities, and case variants that were not planned are not found.");
-        notChecked.Add("Raw bytes: image data is searched as bytes only, and an attachment is not looked into (a compressed file inside an attachment is not unpacked).");
-        notChecked.Add("Another program may read the file differently; open the result in a second viewer to be sure.");
-        return new RedactionCheck(findings, notChecked);
+        notChecked.Add(RedactionNotCheckedKind.RawFontMapping, "Raw bytes: text in fonts with their own code mapping (subset fonts) is not readable in the streams; only the page text covers it.");
+        notChecked.Add(RedactionNotCheckedKind.RawEncodings, "Raw bytes: only the removed texts are searched, as given and in composed and decomposed form, in Latin-1, Windows-ANSI, PDFDocEncoding, UTF-8 and UTF-16; text in any other encoding, or split by other operators, is not found.");
+        notChecked.Add(RedactionNotCheckedKind.RawSplitText, "Raw bytes: a text split across different text objects (BT blocks), text in XMP written as XML entities, and case variants that were not planned are not found.");
+        notChecked.Add(RedactionNotCheckedKind.RawImageAttachments, "Raw bytes: image data is searched as bytes only, and an attachment is not looked into (a compressed file inside an attachment is not unpacked).");
+        notChecked.Add(RedactionNotCheckedKind.OtherViewer, "Another program may read the file differently; open the result in a second viewer to be sure.");
+        return new RedactionCheck(findings, notChecked.Lines, notChecked.Items);
     }
 
     /// <summary>Cuts a text to <see cref="RedactionLimits.MaxTermLength"/> characters (not inside a surrogate pair), as the check does.</summary>
@@ -86,7 +86,7 @@ public static class RedactionVerifier
         return char.IsHighSurrogate(text[cut - 1]) ? text[..(cut - 1)] : text[..cut];
     }
 
-    private static List<CheckedText> PrepareTexts(RedactionExpectation expectation, List<string> notChecked, List<RedactionFinding> findings)
+    private static List<CheckedText> PrepareTexts(RedactionExpectation expectation, NotCheckedLog notChecked, List<RedactionFinding> findings)
     {
         var byText = new Dictionary<string, CheckedText>(StringComparer.Ordinal);
         var blank = 0;
@@ -154,7 +154,7 @@ public static class RedactionVerifier
         var texts = byText.Values.OrderByDescending(static t => t.Everywhere).ToList();
         if (blank > 0)
         {
-            notChecked.Add(Count(blank, "removed text consists of white space only and was not compared", "removed texts consist of white space only and were not compared"));
+            notChecked.Add(RedactionNotCheckedKind.BlankTexts, Count(blank, "removed text consists of white space only and was not compared", "removed texts consist of white space only and were not compared"), blank);
         }
 
         foreach (var (page, number) in unverifiable)
@@ -167,17 +167,17 @@ public static class RedactionVerifier
 
         if (unreadable > 0)
         {
-            notChecked.Add(Count(unreadable, "removed text contains a character the engine could not read exactly (U+FFFD or NUL) and was not compared", "removed texts contain a character the engine could not read exactly (U+FFFD or NUL) and were not compared"));
+            notChecked.Add(RedactionNotCheckedKind.UnreadableChars, Count(unreadable, "removed text contains a character the engine could not read exactly (U+FFFD or NUL) and was not compared", "removed texts contain a character the engine could not read exactly (U+FFFD or NUL) and were not compared"), unreadable);
         }
 
         if (truncated > 0)
         {
-            notChecked.Add(Count(truncated, "removed text is longer than the limit and was compared by its first characters only", "removed texts are longer than the limit and were compared by their first characters only"));
+            notChecked.Add(RedactionNotCheckedKind.TruncatedTexts, Count(truncated, "removed text is longer than the limit and was compared by its first characters only", "removed texts are longer than the limit and were compared by their first characters only"), truncated);
         }
 
         if (texts.Count > MaxCheckedTexts)
         {
-            notChecked.Add(string.Create(CultureInfo.InvariantCulture, $"{texts.Count - MaxCheckedTexts} further removed texts were not compared (limit {MaxCheckedTexts} distinct texts)."));
+            notChecked.Add(RedactionNotCheckedKind.FurtherTexts, string.Create(CultureInfo.InvariantCulture, $"{texts.Count - MaxCheckedTexts} further removed texts were not compared (limit {MaxCheckedTexts} distinct texts)."), texts.Count - MaxCheckedTexts, MaxCheckedTexts);
             texts.RemoveRange(MaxCheckedTexts, texts.Count - MaxCheckedTexts);
         }
 
@@ -266,22 +266,26 @@ public static class RedactionVerifier
         }
     }
 
-    private static async Task CheckRawAsync(Stream file, List<CheckedText> texts, RawScanLimits limits, List<RedactionFinding> findings, List<string> notChecked, CancellationToken cancellationToken)
+    private static async Task CheckRawAsync(Stream file, List<CheckedText> texts, RawScanLimits limits, List<RedactionFinding> findings, NotCheckedLog notChecked, CancellationToken cancellationToken)
     {
         var searched = texts.Where(static t => t.Text.Length >= RedactionLimits.MinRawCheckLength).ToList();
         var short1 = texts.Count - searched.Count;
         if (short1 > 0)
         {
-            notChecked.Add(string.Create(
-                CultureInfo.InvariantCulture,
-                $"Raw bytes: {short1} removed text(s) are shorter than {RedactionLimits.MinRawCheckLength} characters and were not searched in the file bytes (they would match by chance); only the page text covers them."));
+            notChecked.Add(
+                RedactionNotCheckedKind.RawShortTexts,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Raw bytes: {short1} removed text(s) are shorter than {RedactionLimits.MinRawCheckLength} characters and were not searched in the file bytes (they would match by chance); only the page text covers them."),
+                short1,
+                RedactionLimits.MinRawCheckLength);
         }
 
         if (searched.Count == 0)
         {
             if (texts.Count == 0)
             {
-                notChecked.Add("Raw bytes: no text was removed, so there was nothing to search for in the file bytes.");
+                notChecked.Add(RedactionNotCheckedKind.RawNothingRemoved, "Raw bytes: no text was removed, so there was nothing to search for in the file bytes.");
             }
 
             return;
@@ -310,9 +314,13 @@ public static class RedactionVerifier
         if (remaining.Count > 0)
         {
             var total = remaining.Sum(static t => t.Occurrences);
-            notChecked.Add(string.Create(
-                CultureInfo.InvariantCulture,
-                $"Raw bytes: {remaining.Count} removed text(s) that are not marked everywhere still occur in the page text, {total} time(s) in all; the file bytes cannot tell a leaked copy from these legitimate ones (a copy in a font with its own code mapping, split by a hyphen or a ligature, is not found in the bytes), so up to {total} leaked copies could hide in the file."));
+            notChecked.Add(
+                RedactionNotCheckedKind.RawStillOccur,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Raw bytes: {remaining.Count} removed text(s) that are not marked everywhere still occur in the page text, {total} time(s) in all; the file bytes cannot tell a leaked copy from these legitimate ones (a copy in a font with its own code mapping, split by a hyphen or a ligature, is not found in the bytes), so up to {total} leaked copies could hide in the file."),
+                remaining.Count,
+                total);
         }
 
         foreach (var note in result.Notes.Items)
@@ -326,12 +334,27 @@ public static class RedactionVerifier
             }
         }
 
-        notChecked.AddRange(result.Notes.Lines());
+        foreach (var note in result.Notes.Items)
+        {
+            notChecked.Add(NoteKind(note.Kind), RawScanNotes.Describe(note), note.Count, 0, note.Detail, note.FirstOffset);
+        }
     }
+
+    private static RedactionNotCheckedKind NoteKind(RawScanNoteKind kind) => kind switch
+    {
+        RawScanNoteKind.UnsupportedFilter => RedactionNotCheckedKind.RawFilter,
+        RawScanNoteKind.ImageData => RedactionNotCheckedKind.RawImageStreams,
+        RawScanNoteKind.UnreadableStream => RedactionNotCheckedKind.RawUnreadableStream,
+        RawScanNoteKind.StreamTooLarge => RedactionNotCheckedKind.RawStreamTooLarge,
+        RawScanNoteKind.TotalLimitReached => RedactionNotCheckedKind.RawTotalLimit,
+        RawScanNoteKind.Predictor => RedactionNotCheckedKind.RawPredictor,
+        RawScanNoteKind.Encrypted => RedactionNotCheckedKind.RawEncrypted,
+        _ => RedactionNotCheckedKind.Other,
+    };
 
     private static string DetailOf(RawScanNote note) => note.Detail.Length == 0 ? "no detail" : note.Detail;
 
-    private static async Task CheckPixelsAsync(PdfDocument reopened, RedactionPlan plan, RedactionFill fill, List<RedactionFinding> findings, List<string> notChecked, CancellationToken cancellationToken)
+    private static async Task CheckPixelsAsync(PdfDocument reopened, RedactionPlan plan, RedactionFill fill, List<RedactionFinding> findings, NotCheckedLog notChecked, CancellationToken cancellationToken)
     {
         var expected = fill == RedactionFill.White ? (byte)255 : (byte)0;
         var seen = new HashSet<(int, PageRect)>();
@@ -379,10 +402,10 @@ public static class RedactionVerifier
 
         if (skipped > 0)
         {
-            notChecked.Add(string.Create(CultureInfo.InvariantCulture, $"Pixels: {skipped} marked area(s) beyond the first {MaxPixelAreas} were not read back."));
+            notChecked.Add(RedactionNotCheckedKind.PixelsBeyond, string.Create(CultureInfo.InvariantCulture, $"Pixels: {skipped} marked area(s) beyond the first {MaxPixelAreas} were not read back."), skipped, MaxPixelAreas);
         }
 
-        notChecked.Add("Pixels: only images that touch a marked area are read back; a color or shading that is not an image is covered by the render check of the apply step, not here.");
+        notChecked.Add(RedactionNotCheckedKind.PixelsOnlyImages, "Pixels: only images that touch a marked area are read back; a color or shading that is not an image is covered by the render check of the apply step, not here.");
     }
 
     private static void CheckImage(int page, ImageAreaPixels image, byte expected, List<RedactionFinding> findings)

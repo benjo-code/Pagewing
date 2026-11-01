@@ -366,7 +366,7 @@ public sealed partial class RedactApplyTests : IDisposable
         var (window, viewModel, _, tab, _) = await MarkedAsync();
         viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(CleanAnalysis(
         [
-            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [2], "The page looks different outside the marked areas (12 pixels)."),
+            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [2], RenderCheckReason),
         ]));
 
         var apply = viewModel.ApplyRedactionsAsync(tab);
@@ -375,9 +375,9 @@ public sealed partial class RedactApplyTests : IDisposable
         // "This page cannot be redacted, because ...": the page and the reason of the check; no greyed offer.
         var section = Assert.Single(viewModel.PendingSave!.Redaction!.Sections);
         Assert.Equal(Strings.RedactRefusalHeadingPage, section.Heading);
-        Assert.StartsWith("Page 3 cannot be redacted, because", section.Lines[0], StringComparison.Ordinal);
-        Assert.Contains(section.Lines, line => line.Contains("The page looks different outside the marked areas (12 pixels).", StringComparison.Ordinal));
-        Assert.Contains(Strings.RedactRefusalPageHint, section.Lines);
+        Assert.Equal(
+            "Page 3 cannot be redacted, because redacting it would change content outside the marked areas (PDFium cannot write this page again without changing it). The file is not redacted.",
+            Assert.Single(section.Lines));
         Assert.Equal(["Back"], ShownChoices(card));
         Assert.All(card.GetVisualDescendants().OfType<Button>(), button => Assert.True(button.IsEnabled || !button.IsVisible));
 
@@ -398,6 +398,60 @@ public sealed partial class RedactApplyTests : IDisposable
         viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
         Assert.False(await apply);
         Assert.True(tab.HasPendingRedactions);
+    }
+
+    // The reason the render check of the rewritten document gives (PdfDocument.Redaction.cs).
+    private const string RenderCheckReason = "The page looks different outside the marked areas after it is written again (12 pixels, around x 1 to 2 pt and y 3 to 4 pt from the top left): PDFium cannot write this page without changing it.";
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task ThePageReasonIsSaidPerCauseInTheLanguageOfTheInterface(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        (RedactionPageCause Cause, string Reason)[] reasons =
+        [
+            (RedactionPageCause.ChangesOutsideAreas, RenderCheckReason),
+            (RedactionPageCause.SizeChanged, "The page changed its size when it was written again."),
+            (RedactionPageCause.RenderFailed, "The page could not be rendered for the check, so it cannot be shown that nothing outside the marked areas changed."),
+            (RedactionPageCause.ReopenFailed, "The rewritten document could not be opened again for the check (NotAPdf)."),
+            (RedactionPageCause.TooLarge, "The page has 90000 objects; at most 50000 are handled."),
+            (RedactionPageCause.Unreadable, "The geometry of the page could not be read."),
+            (RedactionPageCause.RewriteUnreliable, "PDFium could not write the content of the page."),
+            (RedactionPageCause.BigShape, "A shape that covers more than half of the page and is not a plain filled rectangle is under a rectangle; it cannot be cut and is never removed as a whole."),
+            (RedactionPageCause.AnnotationsTooComplex, "The page has 30000 annotations; at most 20000 are handled."),
+        ];
+        Assert.Equal(Enum.GetValues<RedactionPageCause>().Where(static cause => cause != RedactionPageCause.Unknown).Order(), reasons.Select(static r => r.Cause).Order());
+
+        var lines = new Dictionary<RedactionPageCause, IReadOnlyList<string>>();
+        foreach (var (cause, reason) in reasons)
+        {
+            Assert.Equal(cause, RedactionPageCauses.Classify(reason));
+            var section = Assert.Single(RedactionApplyInfo.ForRefusals([new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [4], reason)]).Sections);
+            lines[cause] = section.Lines;
+
+            // The sentence is the interface's own: the page, the cause in its language, none of the English of the engine.
+            var first = section.Lines[0];
+            Assert.StartsWith(language == "en" ? "Page 5 cannot be redacted, because " : "Seite 5 lässt sich nicht schwärzen, weil ", first, StringComparison.Ordinal);
+            Assert.DoesNotContain(reason, string.Join(' ', section.Lines), StringComparison.Ordinal);
+
+            // The hint belongs to the one cause it is true for.
+            Assert.Equal(cause == RedactionPageCause.AnnotationsTooComplex, section.Lines.Contains(Strings.RedactRefusalPageHint));
+            Assert.Equal(cause == RedactionPageCause.AnnotationsTooComplex ? 2 : 1, section.Lines.Count);
+        }
+
+        // Each cause says its own thing: a reopen that failed is not "would change content outside the marked areas".
+        Assert.Equal(reasons.Length, lines.Values.Select(static l => l[0]).Distinct().Count());
+        Assert.DoesNotContain(language == "en" ? "outside the marked areas" : "außerhalb der markierten Bereiche", lines[RedactionPageCause.ReopenFailed][0], StringComparison.Ordinal);
+
+        // A reason in no group stays English, is named so, and gets no hint and no guess.
+        var unknown = Assert.Single(RedactionApplyInfo.ForRefusals([new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [4], "Something new happened.")]).Sections);
+        Assert.Equal(language == "en" ? "Page 5 cannot be redacted. The file is not redacted." : "Seite 5 lässt sich nicht schwärzen. Die Datei wird nicht geschwärzt.", unknown.Lines[0]);
+        Assert.Contains(string.Format(Strings.Culture, System.Text.CompositeFormat.Parse(Strings.RedactRefusalPageReason), "Something new happened."), unknown.Lines);
+        Assert.DoesNotContain(Strings.RedactRefusalPageHint, unknown.Lines);
+        Assert.DoesNotContain(unknown.Lines.Concat(lines.Values.SelectMany(static l => l)), line => FutureWords().IsMatch(line));
+        Strings.Culture = new CultureInfo("en");
     }
 
     [AvaloniaTheory]
@@ -556,9 +610,53 @@ public sealed partial class RedactApplyTests : IDisposable
     [AvaloniaFact]
     public async Task VerificationFailureShowsFindingAndKeepsPlanAndFiles()
     {
-        var (window, viewModel, _, tab, path) = await MarkedAsync();
+        // The real pipeline fails its check: the engine "forgets" the place of a marked text (a test hook of the core), so the page
+        // text of the written file still holds it. The saver, not a stand-in, refuses to replace anything.
+        var (window, viewModel, _, tab, path) = await MarkedAsync(area: false);
+        var headline = await HeadlineAreaAsync(tab.Document!);
+        Assert.True(tab.AddRedactionMarks([new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, 0, [headline], "Redaction fixture", Everywhere: false)]));
         var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
         var document = tab.Document;
+        var hooks = new RedactionApplyHooks { AreasToRedact = static (_, _) => [] };
+        viewModel.RedactionRewriter = (session, engine, request, progress, token) => RedactionApplier.ApplyAsync(session, engine, request, progress, hooks, token);
+        var target = Path.Combine(_host.Folder, "redacted.pdf");
+        _host.Picker.Result = target;
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveAs));
+        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionFailed);
+
+        // The finding names its kind and page, never the text; "Back" alone; the real saver wrote nothing.
+        var section = Assert.Single(viewModel.PendingSave!.Redaction!.Sections);
+        Assert.Equal(Strings.RedactSecFindings, section.Heading);
+        Assert.Contains(section.Lines, line => line.Contains("page text of the result (page 1)", StringComparison.Ordinal));
+        Assert.All(section.Lines, line => Assert.DoesNotContain("Redaction fixture", line, StringComparison.Ordinal));
+        Assert.Equal(["Back"], ShownChoices(card));
+        viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
+        Assert.False(await apply);
+
+        Assert.True(tab.HasPendingRedactions);
+        Assert.True(tab.IsRedacting);
+        Assert.Same(document, tab.Document);
+        Assert.Equal(path, tab.FullPath);
+        Assert.False(tab.IsSaving);
+        Assert.False(File.Exists(target));
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.Empty(Directory.GetFiles(_host.Folder, "*.tmp"));
+        Assert.Single(Directory.GetFiles(_host.Folder, "*.pdf"));
+
+        // A check that could not be completed has no details: the card says so instead of "found nothing".
+        Assert.Equal([Strings.RedactFailureNotCompleted], RedactionApplyInfo.ForFailure(null).Sections[0].Lines);
+    }
+
+    // Only the mapping of a failure of the writer to its card: the writer is a stand-in that throws, so what it says about files is
+    // not evidence (VerificationFailureShowsFindingAndKeepsPlanAndFiles runs the real pipeline). The core pins "nothing is written"
+    // with RedactionApplierTests.ALeakMakesTheApplyFailAndWritesNothing.
+    [AvaloniaFact]
+    public async Task AFailedCheckIsMappedToACardWithKindAndPage()
+    {
+        var (window, viewModel, _, tab, _) = await MarkedAsync();
         viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(CleanAnalysis());
         viewModel.RedactionRewriter = (_, _, _, _, _) => throw new SaveFailureException(SaveFailureReason.RedactionFailed, "injected")
         {
@@ -572,7 +670,7 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveAs));
         var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionFailed);
 
-        // The kind and the page of the finding, never the text itself; "Back" alone; nothing was written.
+        // The kind and the page of the finding, never the text itself; "Back" alone.
         var section = Assert.Single(viewModel.PendingSave!.Redaction!.Sections);
         Assert.Equal(Strings.RedactSecFindings, section.Heading);
         var line = Assert.Single(section.Lines);
@@ -582,18 +680,8 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.Equal(["Back"], ShownChoices(card));
         viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
         Assert.False(await apply);
-
         Assert.True(tab.HasPendingRedactions);
         Assert.True(tab.IsRedacting);
-        Assert.Same(document, tab.Document);
-        Assert.Equal(path, tab.FullPath);
-        Assert.False(tab.IsSaving);
-        Assert.False(File.Exists(target));
-        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
-        Assert.Empty(Directory.GetFiles(_host.Folder, "*.tmp"));
-
-        // A check that could not be completed has no details: the card says so instead of "found nothing".
-        Assert.Equal([Strings.RedactFailureNotCompleted], RedactionApplyInfo.ForFailure(null).Sections[0].Lines);
     }
 
     [AvaloniaTheory]
@@ -604,27 +692,31 @@ public sealed partial class RedactApplyTests : IDisposable
         var (window, viewModel, _, tab, path) = await MarkedAsync();
         var target = Path.Combine(_host.Folder, "redacted.pdf");
         _host.Picker.Result = target;
+        void ChangeTheFile()
+        {
+            using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+            stream.WriteByte((byte)'\n');
+        }
+
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
         if (duringTheWrite)
         {
-            viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(CleanAnalysis());
-            viewModel.RedactionRewriter = (_, _, _, _, _) => throw new SaveFailureException(SaveFailureReason.OriginalChanged, "injected");
+            // The real pipeline: another program appends to the opened file while the checked copy is being written (a test hook of the
+            // saver runs after the temporary file is written). The saver itself finds the source changed and replaces nothing.
+            var hooks = new RedactionApplyHooks { Faults = new SaveFaults { AfterWrite = ChangeTheFile } };
+            viewModel.RedactionRewriter = (session, engine, request, progress, token) => RedactionApplier.ApplyAsync(session, engine, request, progress, hooks, token);
         }
         else
         {
             // Another program rewrote the opened file in place: the analysis refuses before anything is built.
-            await using (var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
-            {
-                stream.WriteByte((byte)'\n');
-            }
+            ChangeTheFile();
         }
 
-        var changed = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
         var apply = viewModel.ApplyRedactionsAsync(tab);
         if (duringTheWrite)
         {
             await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
-            _host.PassTheLock(window);
-            Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveInOriginal));
+            Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveAs));
         }
 
         await WaitForCardAsync<SaveErrorCard>(window, viewModel, PendingSaveKind.SaveError);
@@ -636,9 +728,13 @@ public sealed partial class RedactApplyTests : IDisposable
         viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
         Assert.False(await apply);
         Assert.True(tab.HasPendingRedactions);
-        Assert.Equal(changed, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+
+        // The file is the one the other program left (the original and its one byte); the target does not exist; nothing is left over.
+        var left = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(original.Append((byte)'\n').ToArray(), left);
         Assert.False(File.Exists(target));
         Assert.Empty(Directory.GetFiles(_host.Folder, "*.tmp"));
+        Assert.Single(Directory.GetFiles(_host.Folder, "*.pdf"));
     }
 
     // ------------------------------------------------------------------ keys, locks and the way out
@@ -855,6 +951,80 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.Contains(failing.Sections, section => section.Heading == Strings.RedactSecNotChecked);
     }
 
+    [AvaloniaFact]
+    public async Task EveryKindOfWhatWasNotCheckedHasASentenceInBothLanguages()
+    {
+        await Task.CompletedTask;
+        var english = new Dictionary<RedactionNotCheckedKind, string>();
+        foreach (var kind in Enum.GetValues<RedactionNotCheckedKind>().Where(static kind => kind != RedactionNotCheckedKind.Other))
+        {
+            var item = new RedactionNotChecked(kind, "English line", 2, 3, "detail", 40);
+            Strings.Culture = new CultureInfo("en");
+            var en = RedactionApplyInfo.SayNotChecked(item);
+            Strings.Culture = new CultureInfo("de");
+            var de = RedactionApplyInfo.SayNotChecked(item);
+
+            // A kind without a sentence fails here: add it to RedactionApplyInfo.SayNotChecked and to both resx files.
+            Assert.False(string.IsNullOrWhiteSpace(en), $"{kind} has no English sentence");
+            Assert.False(string.IsNullOrWhiteSpace(de), $"{kind} has no German sentence");
+            Assert.NotEqual(en, de);
+            Assert.DoesNotContain("{0}", de, StringComparison.Ordinal);
+            Assert.DoesNotMatch(ValidWord(), de!);
+            english[kind] = en!;
+        }
+
+        // The ones with numbers say them, singular and plural.
+        Strings.Culture = new CultureInfo("de");
+        Assert.StartsWith("1 entfernter Text", RedactionApplyInfo.SayNotChecked(new RedactionNotChecked(RedactionNotCheckedKind.BlankTexts, "x", 1))!, StringComparison.Ordinal);
+        Assert.StartsWith("2 entfernte Texte", RedactionApplyInfo.SayNotChecked(new RedactionNotChecked(RedactionNotCheckedKind.BlankTexts, "x", 2))!, StringComparison.Ordinal);
+        Assert.Contains("3 Streams, der erste bei Byte 40", RedactionApplyInfo.SayNotChecked(new RedactionNotChecked(RedactionNotCheckedKind.RawPredictor, "x", 3, 0, "", 40))!, StringComparison.Ordinal);
+        Assert.Contains("Stream bei Byte 40", RedactionApplyInfo.SayNotChecked(new RedactionNotChecked(RedactionNotCheckedKind.RawPredictor, "x", 1, 0, "", 40))!, StringComparison.Ordinal);
+        Strings.Culture = new CultureInfo("en");
+
+        // A line with no kind of its own has no sentence: the report shows the English text and says so.
+        Assert.Null(RedactionApplyInfo.SayNotChecked(new RedactionNotChecked(RedactionNotCheckedKind.Other, "Raw bytes: a detail.")));
+        Assert.Equal(Enum.GetValues<RedactionNotCheckedKind>().Length - 1, english.Count);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task TheReportOfARealRedactionIsSaidInTheLanguageOfTheInterface(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var (window, viewModel, view, tab, _) = await MarkedAsync(area: false);
+        Assert.True(tab.AddAreaMark(0, await HeadlineAreaAsync(tab.Document!)));
+        _host.Picker.Result = Path.Combine(_host.Folder, "redacted.pdf");
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveAs));
+        Assert.True(await apply);
+        await WaitForCardAsync<RedactReportCard>(window, viewModel, PendingSaveKind.RedactionReport);
+
+        // The lines of the real check (the verifier's and the apply step's) are the interface's own sentences, none English in the
+        // German report, and the note about English lines does not appear because there are none.
+        var notChecked = Assert.Single(viewModel.PendingSave!.Redaction!.Sections, section => section.Heading == Strings.RedactSecNotChecked).Lines;
+        Assert.Contains(Strings.RedactNcRawFont, notChecked);
+        Assert.Contains(Strings.RedactNcOtherViewer, notChecked);
+        Assert.Contains(Strings.RedactNcApplyRender, notChecked);
+        Assert.Contains(Strings.RedactNcApplyKeys, notChecked);
+        Assert.Contains(Strings.RedactNcApplyXmp, notChecked);
+        Assert.DoesNotContain(Strings.RedactSecNotCheckedNote, notChecked);
+        if (language == "de")
+        {
+            Assert.All(notChecked, line => Assert.DoesNotMatch(EnglishStart(), line));
+        }
+        else
+        {
+            // English stays what the engine says.
+            Assert.Contains("Another program may read the file differently; open the result in a second viewer to be sure.", notChecked);
+        }
+
+        viewModel.PendingSave.Abandon();
+        Assert.NotNull(view);
+    }
+
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("de")]
@@ -1053,6 +1223,10 @@ public sealed partial class RedactApplyTests : IDisposable
     // Every text of the apply flow that the interface shows, in the language that is set.
     private static IEnumerable<string> AllRedactionTexts() =>
         AllRedactionKeys().Select(static key => (string)typeof(Strings).GetProperty(key)!.GetValue(null)!);
+
+    // A line of the check that starts with an English word of the engine.
+    [GeneratedRegex(@"^(Raw bytes|Pixels:|Another program|Render comparison|Page keys:|XMP metadata|\d+ removed|\d+ further)")]
+    private static partial Regex EnglishStart();
 
     // Words that promise another way or a later version of the program.
     [GeneratedRegex(@"later version|future|coming|rescue|as an image|as image|spätere|späteren|künftig|zukünftig|demnächst|Rettung|als Bild|M14\.1", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

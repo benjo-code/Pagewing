@@ -177,6 +177,11 @@ public sealed class RedactionApplierTests : IDisposable
 
         Assert.True(result.Adopted);
         Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+
+        // Every line of what was not checked comes with its kind (the interface says it in its own language from the kind): the
+        // lines and the data are the same list, and none is left without a kind of its own.
+        Assert.Equal(result.Check.NotChecked, result.Check.Items.Select(static item => item.Text));
+        Assert.DoesNotContain(result.Check.Items, static item => item.Kind == RedactionNotCheckedKind.Other);
         var bytes = await File.ReadAllBytesAsync(target, Ct);
         Assert.False(RawPdf.ContainsAnywhere(bytes, Term));
         Assert.False(RawPdf.ContainsAnywhere(bytes, "Quellmann"));

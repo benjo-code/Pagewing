@@ -72,7 +72,7 @@ public sealed class RawScanNotes
     /// <summary>Describes every note in one English line.</summary>
     public IReadOnlyList<string> Lines() => [.. Items.Select(Describe)];
 
-    private static string Describe(RawScanNote note)
+    internal static string Describe(RawScanNote note)
     {
         var where = note.Count > 1
             ? string.Create(CultureInfo.InvariantCulture, $"{note.Count} streams, the first at byte {note.FirstOffset}")

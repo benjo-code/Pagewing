@@ -20,6 +20,14 @@ public static class RedactionReportText
         "XMP metadata and JavaScript: removed from the document level by building the file anew; the entries inside page-level objects (form objects, image objects, annotations) are not read back.",
     ];
 
+    /// <summary>The lines of <see cref="ApplyNotChecked"/> as data, in the same order (the interface says them in its own language).</summary>
+    public static IReadOnlyList<RedactionNotChecked> ApplyNotCheckedItems { get; } =
+    [
+        new(RedactionNotCheckedKind.ApplyRender, ApplyNotChecked[0]),
+        new(RedactionNotCheckedKind.ApplyPageKeys, ApplyNotChecked[1]),
+        new(RedactionNotCheckedKind.ApplyXmp, ApplyNotChecked[2]),
+    ];
+
     /// <summary>Gets the report before anything is applied: removed, cleaned, lost, not cleaned, and what will be checked.</summary>
     /// <param name="analysis">The analysis.</param>
     /// <param name="showValues">Whether the fields of the information dictionary are listed with their text (the card); <see langword="false"/> lists only that they were there (the command line, whose output ends up in logs).</param>
