@@ -41,11 +41,15 @@ namespace Pagewing.Core.Saving;
 /// <see cref="OperationCanceledException"/> ends the save with <see cref="SaveFailureReason.RedactionFailed"/>, with the target
 /// untouched and the temporary file removed. It must not keep the file open or use <see cref="RewriteCheckContext.Reopened"/> after it returns.
 /// </param>
-/// <param name="WorkingCopyIsScratch">
-/// Whether the working copy was built from an empty document (<see cref="PdfEngine.CreateEmptyAsync"/>) and so has no source file of
-/// its own that could be checked (its scratch file is gone). The check of the working copy's file is then skipped, and
-/// <see cref="UnchangedSources"/> must list at least one document, the real source(s), which are checked handle against handle as
-/// always. Without a listed source the save is refused (<see cref="ArgumentException"/>), so the check is never skipped silently.
+/// <param name="RequiresListedSources">
+/// Whether the working copy was built from an empty document (<see cref="PdfEngine.CreateEmptyAsync"/>), whose own file guards nothing,
+/// and whose pages read lazily from the documents they were imported from. The rule: <b>list every document the rebuilt document reads
+/// from</b> in <see cref="UnchangedSources"/>, the document that is shown and the working copy that is the real import source (a
+/// different handle on the same path); each is checked handle against handle before the write, after it and just before the replace,
+/// because a rewrite in place of any of them while PDFium writes would corrupt the output. With this flag at least one
+/// source must be listed, otherwise the save is refused (<see cref="ArgumentException"/>) before the temporary file is created; the
+/// saver cannot know which documents the working copy reads from, so completeness of the list is the caller's. The check of the
+/// working copy's own file always runs. The flag also lets the progress use the length of the listed sources.
 /// </param>
 public sealed record RewriteRequest(
     string OriginalPath,
@@ -57,14 +61,14 @@ public sealed record RewriteRequest(
     bool OverwriteChangedOriginal,
     bool ReplaceExisting = true,
     Func<RewriteCheckContext, CancellationToken, Task>? ExtraCheck = null,
-    bool WorkingCopyIsScratch = false)
+    bool RequiresListedSources = false)
 {
     /// <summary>Prints the members like a record does, with the password replaced (secrets never reach a log).</summary>
     private bool PrintMembers(StringBuilder builder)
     {
         builder.Append(
             CultureInfo.InvariantCulture,
-            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPages = {ExpectedPages?.Count ?? 0} pages, UnchangedSources = {UnchangedSources?.Count ?? 0}, OverwriteChangedOriginal = {OverwriteChangedOriginal}, ReplaceExisting = {ReplaceExisting}, ExtraCheck = {(ExtraCheck is null ? "none" : "set")}, WorkingCopyIsScratch = {WorkingCopyIsScratch}");
+            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPages = {ExpectedPages?.Count ?? 0} pages, UnchangedSources = {UnchangedSources?.Count ?? 0}, OverwriteChangedOriginal = {OverwriteChangedOriginal}, ReplaceExisting = {ReplaceExisting}, ExtraCheck = {(ExtraCheck is null ? "none" : "set")}, RequiresListedSources = {RequiresListedSources}");
         return true;
     }
 }

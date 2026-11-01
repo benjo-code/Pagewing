@@ -186,8 +186,8 @@ public static class DocumentSaver
     /// <see cref="RewriteRequest.ExpectedPages"/> (<see cref="SaveFailureReason.VerificationFailed"/>); the checked pages are
     /// rendered; then <see cref="RewriteRequest.ExtraCheck"/> runs, if there is one, on the reopened file (a failure of it is
     /// <see cref="SaveFailureReason.RedactionFailed"/>); the sources are checked once more and the target is replaced. A working copy
-    /// built from an empty document (<see cref="RewriteRequest.WorkingCopyIsScratch"/>) has no file of its own to check; the listed
-    /// sources are checked instead. Every failure and cancellation before the replace
+    /// built from an empty document has no file worth watching, but it reads lazily from the documents its pages were imported from:
+    /// <see cref="RewriteRequest.RequiresListedSources"/> makes the request refuse unless those documents are listed. Every failure and cancellation before the replace
     /// leaves the target byte for byte as it was and removes the temporary file. The checked document is returned and stays
     /// open; the working copy stays with the caller.
     /// </summary>
@@ -230,10 +230,10 @@ public static class DocumentSaver
             throw new ArgumentException("A source document is missing.", nameof(request));
         }
 
-        if (request.WorkingCopyIsScratch && request.UnchangedSources.Count == 0)
+        if (request.RequiresListedSources && request.UnchangedSources.Count == 0)
         {
-            // The working copy has no file to watch: without a listed source nothing would be checked, and that is never allowed silently.
-            throw new ArgumentException("A working copy without a source file needs its real sources in UnchangedSources.", nameof(request));
+            // A rebuilt working copy reads from the documents its pages were imported from; with none listed nothing guards them.
+            throw new ArgumentException("A rebuilt working copy needs every document it reads from in UnchangedSources.", nameof(request));
         }
 
         var job = new Job(
@@ -254,7 +254,7 @@ public static class DocumentSaver
                 }
             },
             ReplaceExisting: request.ReplaceExisting,
-            WorkingCopyIsScratch: request.WorkingCopyIsScratch);
+            RequiresListedSources: request.RequiresListedSources);
         return await RunAsync(workingCopy, engine, job, progress, faults, cancellationToken).ConfigureAwait(false);
     }
 
@@ -403,31 +403,27 @@ public static class DocumentSaver
     }
 
     /// <summary>
-    /// Checks the document and every extra source (<see cref="CheckSource"/>); returns the length of the document's file. A scratch
-    /// working copy (<see cref="Job.WorkingCopyIsScratch"/>) has no file of its own worth checking: only the listed sources are
-    /// checked, each one (never none), and the length returned is the sum of theirs, the best guess of the size of the result for
-    /// the progress.
+    /// Checks the document and every extra source (<see cref="CheckSource"/>), always all of them; returns the length of the
+    /// document's file, or, for a rebuilt working copy (<see cref="Job.RequiresListedSources"/>), whose own file is a few hundred
+    /// bytes, the sum of the lengths of the listed sources, the best guess of the size of the result for the progress.
     /// </summary>
     private static long CheckSources(PdfDocument document, Job job)
     {
-        var length = job.WorkingCopyIsScratch ? 0 : CheckSource(document);
+        var length = CheckSource(document);
+        var listed = 0L;
         foreach (var source in job.ExtraSources)
         {
-            var sourceLength = CheckSource(source);
-            if (job.WorkingCopyIsScratch)
-            {
-                length += sourceLength;
-            }
+            listed += CheckSource(source);
         }
 
-        return length;
+        return job.RequiresListedSources ? listed : length;
     }
 
     /// <summary>
     /// Runs the extra check of a rewrite. A cancellation of the caller passes through; a <see cref="SaveFailureException"/> of the check
-    /// becomes <see cref="SaveFailureReason.RedactionFailed"/> with its message and <see cref="SaveFailureException.Details"/>; any other
+    /// becomes <see cref="SaveFailureReason.RedactionFailed"/> with its <see cref="SaveFailureException.Details"/>; any other
     /// exception (a file that cannot be read, a bug) fails the save too, because a check that could not be completed has not passed.
-    /// The original exception is the inner exception.
+    /// The message is fixed: the exception of the check is the inner exception, and its message may quote what was redacted.
     /// </summary>
     private static async Task RunExtraCheckAsync(Func<RewriteCheckContext, CancellationToken, Task> extra, PdfDocument reopened, string temporaryPath, CancellationToken cancellationToken)
     {
@@ -441,11 +437,11 @@ public static class DocumentSaver
         }
         catch (SaveFailureException ex)
         {
-            throw new SaveFailureException(SaveFailureReason.RedactionFailed, ex.Message, ex) { Details = ex.Details, FilePath = ex.FilePath };
+            throw new SaveFailureException(SaveFailureReason.RedactionFailed, "The check of the written file found a problem.", ex) { Details = ex.Details, FilePath = ex.FilePath };
         }
         catch (Exception ex)
         {
-            throw new SaveFailureException(SaveFailureReason.RedactionFailed, "The check of the written file could not be completed: " + ex.Message, ex);
+            throw new SaveFailureException(SaveFailureReason.RedactionFailed, "The check of the written file could not be completed.", ex);
         }
     }
 
@@ -983,7 +979,7 @@ public static class DocumentSaver
         bool CheckPrefix,
         Func<PdfDocument, bool, string, CancellationToken, Task> Check,
         bool ReplaceExisting = true,
-        bool WorkingCopyIsScratch = false);
+        bool RequiresListedSources = false);
 
     /// <summary>What an existing target passes on to the file that replaces it.</summary>
     private readonly record struct TargetInfo(bool Exists, bool Hidden, UnixFileMode? UnixMode, byte[]? AccessList = null);
