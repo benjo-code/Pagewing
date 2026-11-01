@@ -48,7 +48,8 @@ internal sealed record CliOptions(
     bool SplitBookmarks = false,
     IReadOnlyList<string>? Texts = null,
     IReadOnlyList<RedactRect>? Rects = null,
-    bool DryRun = false)
+    bool DryRun = false,
+    bool AllowUnsearched = false)
 {
     public const string DefaultDpi = "144";
 
@@ -75,7 +76,7 @@ internal sealed record CliOptions(
             "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
-            "redact" => ["--text", "--rect", "--pages", "--match-case", "--dry-run", "--output", "--force", "--password"],
+            "redact" => ["--text", "--rect", "--pages", "--match-case", "--dry-run", "--allow-unsearched", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -90,6 +91,7 @@ internal sealed record CliOptions(
         var texts = new List<string>();
         var rects = new List<RedactRect>();
         var dryRun = false;
+        var allowUnsearched = false;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         string? everyText = null;
         string? ranges = null;
@@ -145,7 +147,7 @@ internal sealed record CliOptions(
                     continue;
                 }
 
-                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run")
+                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched")
                 {
                     if (value is not null)
                     {
@@ -167,6 +169,10 @@ internal sealed record CliOptions(
                     else if (name == "--dry-run")
                     {
                         dryRun = true;
+                    }
+                    else if (name == "--allow-unsearched")
+                    {
+                        allowUnsearched = true;
                     }
                     else
                     {
@@ -293,7 +299,7 @@ internal sealed record CliOptions(
                 throw new UsageException("The 'redact' command needs --output <out.pdf> (only --dry-run works without it).");
             }
 
-            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun);
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched);
         }
 
         if (isRotate)

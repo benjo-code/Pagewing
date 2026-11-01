@@ -25,7 +25,7 @@ public static class CliApp
           pagewing merge  --output <out.pdf> <file> [--pages <range>] [--password <pw>] <file> [--pages <range>] [--password <pw>] ... [--force]
           pagewing split  <file> --output <dir> (--every <n> | --ranges <ranges> | --bookmarks) [--force] [--password <pw>]
           pagewing export <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--force] [--password <pw>]
-          pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--match-case] [--dry-run] [--force] [--password <pw>]
+          pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -95,6 +95,10 @@ public static class CliApp
           --dry-run          Redact: only search and analyse; print the number of matches per page and the
                              report, write nothing (exit 0 if the file would be written, the final check
                              of the written file excepted).
+          --allow-unsearched Redact: go on although some pages could not be searched completely (a page that cannot be
+                             read, an annotation or form field left out by a limit or damage). Without it the command
+                             stops (exit 1, nothing written, also with --dry-run) and names the pages, because the
+                             text may still be there. With it the report lists these pages as "Not searched (accepted)".
           --match-case       Search and redact: distinguish upper and lower case (default: ignore case; with
                              redact every spelling found is removed).
           --whole-word       Search: match only whole words.

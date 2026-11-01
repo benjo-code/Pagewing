@@ -173,7 +173,7 @@ internal static class RedactCommand
         }
 
         await result.Saved.Reopened.DisposeAsync().ConfigureAwait(false);
-        await error.WriteLineAsync(RedactionReportText.Of(analysis, result.Check, showValues: false).AsMemory(), ct).ConfigureAwait(false);
+        await error.WriteLineAsync((RedactionReportText.Of(analysis, result.Check, showValues: false) + AcceptedSection(found)).AsMemory(), ct).ConfigureAwait(false);
         await output.WriteLineAsync(target.AsMemory(), ct).ConfigureAwait(false);
         await output.FlushAsync(ct).ConfigureAwait(false);
     }
@@ -241,15 +241,10 @@ internal static class RedactCommand
 
         if (terms.Count == 0)
         {
-            return new Found(found);
+            return new Found(found, []);
         }
 
         var incomplete = report.IncompletePages.Where(selected.Contains).ToArray();
-        if (incomplete.Length > 0)
-        {
-            await error.WriteLineAsync($"warning: {PageWord(incomplete)} could not be searched completely; the text may still be there.".AsMemory(), ct).ConfigureAwait(false);
-        }
-
         await error.WriteLineAsync("Not searched:".AsMemory(), ct).ConfigureAwait(false);
         foreach (var line in RedactionSearch.NotSearched)
         {
@@ -261,6 +256,19 @@ internal static class RedactCommand
         if (report.LimitReached)
         {
             throw new CliException($"The search stopped at {Number(RedactionSearch.MaxHits)} matches and more may exist, so the text cannot be removed everywhere. Nothing was written.");
+        }
+
+        // A page that was not searched completely may still hold the text, and the check of the result has the same blind spots (the
+        // file bytes are searched only for texts of at least 4 characters, and with --pages "no more than before" is all there is), so
+        // the command stops, also as a dry run, unless the user accepts exactly that.
+        if (incomplete.Length > 0)
+        {
+            if (!options.AllowUnsearched)
+            {
+                throw new CliException($"{Capitalize(PageWord(incomplete))} could not be searched completely, so the text may still be there. Nothing was written. Use --allow-unsearched to accept that these pages were not fully searched.");
+            }
+
+            await error.WriteLineAsync($"warning: {PageWord(incomplete)} could not be searched completely; the text may still be there (accepted with --allow-unsearched).".AsMemory(), ct).ConfigureAwait(false);
         }
 
         var missing = found.Where(static t => t.Hits.Count == 0).ToArray();
@@ -288,7 +296,7 @@ internal static class RedactCommand
             throw new CliException(text.ToString());
         }
 
-        return new Found(found);
+        return new Found(found, options.AllowUnsearched ? incomplete : []);
     }
 
     /// <summary>The preview: how many matches on which page (never the matched text), then what the redaction would do. Writes nothing to disk.</summary>
@@ -321,7 +329,7 @@ internal static class RedactCommand
             text.Append(Count(rects.Count, "rectangle", "rectangles")).Append(" on ").Append(PageWord(rects.Select(static r => r.Page).Distinct().Order().ToArray())).Append('\n');
         }
 
-        text.Append('\n').Append(RedactionReportText.Of(analysis, showValues: false)).Append("\n\nThe check of the written file runs only when the file is written; it can still end the command.");
+        text.Append('\n').Append(RedactionReportText.Of(analysis, showValues: false)).Append('\n').Append(AcceptedSection(found)).Append("\nThe check of the written file runs only when the file is written; it can still end the command.");
         await error.WriteLineAsync(text.ToString().AsMemory(), ct).ConfigureAwait(false);
     }
 
@@ -346,6 +354,26 @@ internal static class RedactCommand
             }
         });
 
+    private static string Capitalize(string text) => char.ToUpperInvariant(text[0]) + text[1..];
+
+    /// <summary>The section that tells which pages the user accepted as not searched completely, and what is never searched.</summary>
+    private static string AcceptedSection(Found found)
+    {
+        if (found.AcceptedUnsearched.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var text = new StringBuilder("\nNot searched (accepted):\n");
+        text.Append("- ").Append(PageWord(found.AcceptedUnsearched)).Append(" could not be searched completely; the text may still be there. Accepted with --allow-unsearched.\n");
+        foreach (var line in RedactionSearch.NotSearched)
+        {
+            text.Append("- ").Append(line).Append('\n');
+        }
+
+        return text.ToString();
+    }
+
     private static string Count(int count, string one, string many) => $"{Number(count)} {(count == 1 ? one : many)}";
 
     private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);
@@ -356,5 +384,5 @@ internal static class RedactCommand
 
     private sealed record TermHits(string Text, List<RedactionHit> Hits);
 
-    private sealed record Found(List<TermHits> Terms);
+    private sealed record Found(List<TermHits> Terms, int[] AcceptedUnsearched);
 }

@@ -478,13 +478,141 @@ public sealed class RedactCommandTests : CliTestBase
         Assert.Empty(TemporaryFiles());
     }
 
+    private static string Utf16(string text) => "<FEFF" + Convert.ToHexString(System.Text.Encoding.BigEndianUnicode.GetBytes(text)) + ">";
+
+    /// <summary>Page one holds the term; page two has a note without a /Rect that holds it too, which the search cannot read (it is reported as not searched).</summary>
+    private string UnsearchedPage()
+    {
+        var pdf = new VerifierPdf("BT /F1 12 Tf 20 150 Td (Zep here) Tj ET", "BT /F1 12 Tf 20 150 Td (Plain) Tj ET");
+        var damaged = pdf.Add($"<< /Type /Annot /Subtype /Text /Contents {Utf16("Zep without a rect")} /F 4 >>");
+        pdf.PageEntriesByPage = [string.Empty, $"/Annots [{damaged} 0 R]"];
+        var path = Path.Combine(WorkDirectory.FullName, "unsearched.pdf");
+        File.WriteAllBytes(path, pdf.Build());
+        return path;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APageThatWasNotSearchedCompletelyStopsTheCommandWithoutTheFlag(bool dryRun)
+    {
+        var input = UnsearchedPage();
+        var before = await File.ReadAllBytesAsync(input, Ct);
+        var args = new List<string> { "redact", input, "--output", Output, "--text", "Zep" };
+        if (dryRun)
+        {
+            args.Add("--dry-run");
+        }
+
+        var result = await RunAsync([.. args]);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("pagewing: Page 2 could not be searched completely, so the text may still be there. Nothing was written.", result.Error, StringComparison.Ordinal);
+        Assert.Contains("--allow-unsearched", result.Error, StringComparison.Ordinal);
+        Assert.Empty(result.OutputBytes);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+        Assert.Equal(before, await File.ReadAllBytesAsync(input, Ct));
+    }
+
+    [Fact]
+    public async Task AllowUnsearchedGoesOnAndTheReportListsThePagesAsAccepted()
+    {
+        var input = UnsearchedPage();
+
+        var result = await RunAsync("redact", input, "--output", Output, "--text", "Zep", "--allow-unsearched");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.True(File.Exists(Output));
+        Assert.Contains("warning: page 2 could not be searched completely", result.Error, StringComparison.Ordinal);
+        var section = result.Error[result.Error.IndexOf("Not searched (accepted):", StringComparison.Ordinal)..];
+        Assert.Contains("- page 2 could not be searched completely; the text may still be there. Accepted with --allow-unsearched.", section, StringComparison.Ordinal);
+        foreach (var line in Pagewing.Core.Redaction.RedactionSearch.NotSearched)
+        {
+            Assert.Contains(line, section, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("Zep", (await PageTextsAsync(Output))[0], StringComparison.Ordinal);
+
+        // The dry run with the flag says the same and writes nothing.
+        File.Delete(Output);
+        var dry = await RunAsync("redact", input, "--output", Output, "--text", "Zep", "--allow-unsearched", "--dry-run");
+        Assert.True(dry.ExitCode == 0, dry.Error);
+        Assert.Contains("Not searched (accepted):", dry.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+
+        // Without anything unsearched the flag adds no section.
+        var complete = await RunAsync("redact", TwoPages(), "--output", Path.Combine(WorkDirectory.FullName, "plain.pdf"), "--text", "secret value", "--allow-unsearched");
+        Assert.True(complete.ExitCode == 0, complete.Error);
+        Assert.DoesNotContain("accepted", complete.Error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AMatchThatCannotBeMarkedStopsTheCommand(bool dryRun)
+    {
+        // A note whose /Rect has no area: the text is found, but there is nothing to mark.
+        var pdf = new VerifierPdf("BT /F1 12 Tf 20 150 Td (Plain) Tj ET");
+        var flat = pdf.Add($"<< /Type /Annot /Subtype /Text /Rect [50 50 50 50] /Contents {Utf16("Zephyr flat")} /F 4 >>");
+        pdf.PageEntries = $"/Annots [{flat} 0 R]";
+        var input = Path.Combine(WorkDirectory.FullName, "flat.pdf");
+        await File.WriteAllBytesAsync(input, pdf.Build(), Ct);
+        var args = new List<string> { "redact", input, "--output", Output, "--text", "Zephyr" };
+        if (dryRun)
+        {
+            args.Add("--dry-run");
+        }
+
+        var result = await RunAsync([.. args]);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("A match cannot be marked, so the text cannot be removed there and nothing was written:", result.Error, StringComparison.Ordinal);
+        Assert.Contains("- page 1 (annotation):", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+    }
+
+    [Fact]
+    public async Task AReachedSearchLimitStopsTheCommand()
+    {
+        // 200 pages with 60 matches each are 12,000 places; the search stops at 10,000 and the text cannot be removed everywhere.
+        var content = string.Join(' ', Enumerable.Repeat("x", 60));
+        var pdf = new VerifierPdf([.. Enumerable.Range(0, 200).Select(_ => $"BT /F1 6 Tf 5 190 Td ({content}) Tj ET")]);
+        var input = Path.Combine(WorkDirectory.FullName, "many.pdf");
+        await File.WriteAllBytesAsync(input, pdf.Build(), Ct);
+
+        var result = await RunAsync("redact", input, "--output", Output, "--text", "x");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("pagewing: The search stopped at 10000 matches and more may exist", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Nothing was written.", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+    }
+
+    [Fact]
+    public async Task DryRunNeverPrintsTheTextOfTheInformationDictionary()
+    {
+        // The fixture's title and author hold the term; the report of the dry run says they will be cleaned, not what they hold.
+        var input = Copy("redact-everywhere-nopattern.pdf");
+
+        var result = await RunAsync("redact", input, "--output", Output, "--text", Term, "--rect", NoteAndReply, "--dry-run");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.Contains("Title in the information dictionary (present; its text is not repeated here).", result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Zephyr", result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Quellmann", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
     [Fact]
     public async Task HelpAndUsageListRedact()
     {
         var result = await RunAsync("--help");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--match-case] [--dry-run] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
         Assert.Contains("--dry-run", result.Output, StringComparison.Ordinal);
         Assert.Contains("NOT checked", result.Output, StringComparison.Ordinal);
     }
