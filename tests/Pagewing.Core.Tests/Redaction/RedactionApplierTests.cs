@@ -31,9 +31,9 @@ public sealed class RedactionApplierTests : IDisposable
 
     // ------------------------------------------------------------------ helpers
 
-    private string Copy(string name)
+    private string Copy(string name, string? asName = null)
     {
-        var path = Path.Combine(folder.Path, name);
+        var path = Path.Combine(folder.Path, asName ?? name);
         File.Copy(TestData.Pdf(name), path);
         return path;
     }
@@ -48,23 +48,21 @@ public sealed class RedactionApplierTests : IDisposable
     private string Target(string name = "redacted.pdf") => Path.Combine(folder.Path, name);
 
     /// <summary>
-    /// The fixture without the one thing PDFium cannot redact around: the tiling pattern fill of page one and the copy of the term inside
-    /// the pattern. Same-length byte patches, so the cross-reference table stays valid; everything else (form object, note, reply, form
-    /// field, invisible text, bookmark, XMP, attachment, information dictionary) stays as it is.
+    /// A copy of <c>redact-everywhere-nopattern.pdf</c>: <c>redact-everywhere.pdf</c> without the one thing PDFium cannot redact around (the
+    /// tiling pattern fill of page one and the copy of the term inside the pattern). Everything else hides the term as before: form object,
+    /// note, reply, form field, invisible text, bookmark, information dictionary, XMP, attachment.
     /// </summary>
-    private static byte[] EverywhereWithoutThePattern()
+    private string NoPatternCopy(string name = "everywhere.pdf")
     {
-        var text = Encoding.Latin1.GetString(File.ReadAllBytes(TestData.Pdf("redact-everywhere.pdf")));
-        var paint = "q /Pattern cs /P1 scn 20 250 200 30 re f Q";
-        var at = text.IndexOf(paint, StringComparison.Ordinal);
-        Assert.True(at >= 0);
-        text = string.Concat(text.AsSpan(0, at), new string(' ', paint.Length), text.AsSpan(at + paint.Length));
-        var inPattern = "BT /F1 8 Tf 2 6 Td (" + Term + ") Tj ET";
-        at = text.IndexOf(inPattern, StringComparison.Ordinal);
-        Assert.True(at >= 0);
-        var replaced = "BT /F1 8 Tf 2 6 Td (" + new string('x', Term.Length) + ") Tj ET";
-        text = string.Concat(text.AsSpan(0, at), replaced, text.AsSpan(at + inPattern.Length));
-        return Encoding.Latin1.GetBytes(text);
+        var path = Write(name, File.ReadAllBytes(TestData.Pdf("redact-everywhere-nopattern.pdf")));
+        var bytes = File.ReadAllBytes(path);
+        Assert.True(RawPdf.ContainsAnywhere(bytes, Term));
+        Assert.True(RawPdf.ContainsAnywhere(bytes, "Quellmann"));
+        var text = Encoding.Latin1.GetString(bytes);
+        Assert.DoesNotContain("/Pattern", text, StringComparison.Ordinal);
+        Assert.Contains("/Outlines", text, StringComparison.Ordinal);
+        Assert.Contains("/EmbeddedFile", text, StringComparison.Ordinal);
+        return path;
     }
 
     private static PageRect Union(IEnumerable<PageRect> boxes) =>
@@ -154,8 +152,8 @@ public sealed class RedactionApplierTests : IDisposable
         // redact-everywhere.pdf hides the term in the page text, a form object, invisible text over a scan, a note, its reply, a form
         // field, a bookmark, the information dictionary, the XMP, an attachment and a tiling pattern. PDFium keeps a tiling pattern as an
         // unused resource and cannot paint around one (UnremovableContentFailsTheApplyViaTheRawCheck and the render check refuse that
-        // file); this is the fixture with that one place patched out, redacted at every other place it hides.
-        var original = Write("everywhere.pdf", EverywhereWithoutThePattern());
+        // file); redact-everywhere-nopattern.pdf is the same file without that one place, redacted at every other place it hides.
+        var original = NoPatternCopy();
         var before = await File.ReadAllBytesAsync(original, Ct);
         Assert.True(RawPdf.ContainsAnywhere(before, Term));
         Assert.True(RawPdf.ContainsAnywhere(before, "Quellmann"));
@@ -459,7 +457,7 @@ public sealed class RedactionApplierTests : IDisposable
     [Fact]
     public async Task NothingOutsideTheMarksChanges()
     {
-        var original = Write("everywhere.pdf", EverywhereWithoutThePattern());
+        var original = NoPatternCopy();
         using var session = new ViewerSession(engine);
         await session.OpenAsync(original);
         var shown = session.Document!;
@@ -504,7 +502,7 @@ public sealed class RedactionApplierTests : IDisposable
     {
         // The scan is 32 x 32 pixels shown at 200 x 80 pt: a pixel is 6.25 x 2.5 pt. A mark over a word of the invisible text over it
         // overwrites the whole cells it touches, which reach out of the mark by up to a cell; the page differs there on purpose.
-        var path = Write("everywhere.pdf", EverywhereWithoutThePattern());
+        var path = NoPatternCopy();
         await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
         var mark = new PageRect(30.25, 211.25, 117.5, 222.5);
         var plan = WithArea(RedactionPlan.Empty, 0, mark);
@@ -540,6 +538,137 @@ public sealed class RedactionApplierTests : IDisposable
         Assert.Equal(before, await File.ReadAllBytesAsync(path, Ct));
         Assert.False(File.Exists(Target()));
         Assert.Empty(LeftOver(folder.Path, "secret.pdf"));
+    }
+
+    /// <summary>A one-page file that still has one document-level item the cleaning rebuild is meant to remove.</summary>
+    private string LeftoverFile(string item)
+    {
+        var file = new VerifierPdf("BT /F1 12 Tf 20 150 Td (left over) Tj ET");
+        switch (item)
+        {
+            case "info":
+                file.TrailerEntries = $"/Info {file.Add("<< /Author (zzauthorzz) >>")} 0 R";
+                break;
+            case "bookmark":
+                var bookmark = file.Add("<< /Title (zzbookmarkzz) /Parent 7 0 R >>");
+                var outlines = file.Add($"<< /Type /Outlines /First {bookmark} 0 R /Last {bookmark} 0 R /Count 1 >>");
+                file.CatalogEntries = $"/Outlines {outlines} 0 R";
+                break;
+            case "attachment":
+                var spec = file.Add("<< /Type /Filespec /F (zzattachmentzz.txt) >>");
+                file.CatalogEntries = $"/Names << /EmbeddedFiles << /Names [(zzattachmentzz.txt) {spec} 0 R] >> >>";
+                break;
+            default:
+                file.CatalogEntries = "/PageLabels << /Nums [0 << /S /D >>] >>";
+                break;
+        }
+
+        return Write($"leftover-{item}.pdf", file.Build());
+    }
+
+    private async Task<IReadOnlyList<RedactionFinding>> ReadBackAsync(string path)
+    {
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        await using var stream = File.OpenRead(path);
+        var scan = PageKeyScanner.Scan(stream, document.PageCount, allowCrossReferenceStream: false, cancellationToken: Ct);
+        Assert.True(scan.WasChecked, scan.NotChecked);
+        return await CleanupReadBack.ReadAsync(document, scan, Ct);
+    }
+
+    [Theory]
+    [InlineData("info", "Author entry in the information dictionary", "/Info")]
+    [InlineData("bookmark", "still has bookmarks", "/Outlines")]
+    [InlineData("attachment", "/Names at the document level", "attached files")]
+    [InlineData("labels", "still has page labels", "/PageLabels")]
+    public async Task TheReadBackFindsEveryItemTheRebuildShouldHaveRemovedAndNamesNeverItsContent(string item, string expected, string alsoExpected)
+    {
+        var findings = await ReadBackAsync(LeftoverFile(item));
+
+        Assert.NotEmpty(findings);
+        Assert.All(findings, static f => Assert.Equal(RedactionFindingKind.CleanupItemStillPresent, f.Kind));
+        Assert.Contains(findings, f => f.Detail.Contains(expected, StringComparison.Ordinal));
+        Assert.Contains(findings, f => f.Detail.Contains(alsoExpected, StringComparison.Ordinal));
+        Assert.DoesNotContain(findings, static f => f.Detail.Contains("zz", StringComparison.Ordinal));
+        Assert.All(findings, static f => Assert.Equal(RedactionFailureKind.CleanupItemStillPresent, RedactionRefusalText.KindOf(f)));
+    }
+
+    [Fact]
+    public async Task TheReadBackOfARebuiltFileFindsNothingForAnyFixtureAndTheOriginalHasEverything()
+    {
+        // The rebuilt result of the files with an outline, attachments, a form and annotations has none of it any more.
+        foreach (var name in new[] { "redact-everywhere.pdf", "outline.pdf", "forms-basic.pdf", "text-rich.pdf", "annotations-foreign.pdf" })
+        {
+            var source = Copy(name);
+            await using var original = await engine.OpenAsync(source, cancellationToken: Ct);
+            var executor = new RedactionExecutor(engine);
+            await using var build = await executor.BuildAsync(WithArea(RedactionPlan.Empty, 0, new PageRect(1, 1, 3, 3)), original, source, null, null, Ct);
+            var target = Target("out-" + name);
+            await using (var output = File.Create(target))
+            {
+                await build.Clean.SaveRewriteAsync(output, Ct);
+            }
+
+            Assert.Empty(await ReadBackAsync(target));
+        }
+
+        // And the original of the fixture is full of it, so the read is not blind.
+        var everything = await ReadBackAsync(Copy("redact-everywhere.pdf", "again.pdf"));
+        var details = string.Join('\n', everything.Select(static f => f.Detail));
+        foreach (var part in new[] { "Author entry", "Subject entry", "bookmarks", "/Names", "/Outlines", "/Metadata", "/AcroForm", "/Info" })
+        {
+            Assert.Contains(part, details, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("info")]
+    [InlineData("bookmark")]
+    [InlineData("attachment")]
+    [InlineData("labels")]
+    public async Task AnItemTheCleanupShouldHaveRemovedFailsTheApplyAndWritesNothing(string item)
+    {
+        // The read-back is made to see a file that still has the item (as if a PDFium update carried it through the import).
+        var path = SecretFile();
+        var before = await File.ReadAllBytesAsync(path, Ct);
+        var leftover = LeftoverFile(item);
+        await using var leftoverDocument = await engine.OpenAsync(leftover, cancellationToken: Ct);
+        await using var leftoverStream = File.OpenRead(leftover);
+        var leftoverScan = PageKeyScanner.Scan(leftoverStream, leftoverDocument.PageCount, allowCrossReferenceStream: false, cancellationToken: Ct);
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var plan = await SecretPlanAsync(session.Document!, everywhere: true);
+        var hooks = new RedactionApplyHooks { CleanupReadBack = (_, _, token) => CleanupReadBack.ReadAsync(leftoverDocument, leftoverScan, token) };
+
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(() => RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, Target()), null, hooks, Ct));
+
+        Assert.Equal(SaveFailureReason.RedactionFailed, failure.Reason);
+        var check = Assert.IsType<RedactionCheck>(failure.Details);
+        Assert.NotEmpty(check.Findings);
+        Assert.All(check.Findings, static f => Assert.Equal(RedactionFindingKind.CleanupItemStillPresent, f.Kind));
+        var text = RedactionRefusalText.OfFailure(failure);
+        Assert.Contains("The cleanup should have removed it", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("zz", text, StringComparison.Ordinal);
+        Assert.Equal(before, await File.ReadAllBytesAsync(path, Ct));
+        Assert.False(File.Exists(Target()));
+        Assert.Empty(LeftOver(folder.Path, "secret.pdf", Path.GetFileName(leftover)));
+    }
+
+    [Fact]
+    public async Task ACleanResultHasNoCleanupFindingForFilesWithAnOutlineAndAnnotations()
+    {
+        foreach (var name in new[] { "outline.pdf", "text-rich.pdf" })
+        {
+            var path = Copy(name);
+            using var session = new ViewerSession(engine);
+            await session.OpenAsync(path);
+            var plan = WithArea(RedactionPlan.Empty, 0, new PageRect(1, 1, 4, 4));
+
+            var result = await RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, Target("out-" + name)), null, Ct);
+
+            Assert.True(result.Check.IsClean, name);
+            Assert.DoesNotContain(result.Check.Findings, static f => f.Kind == RedactionFindingKind.CleanupItemStillPresent);
+            Assert.Empty(await session.Document!.GetOutlineAsync(Ct));
+        }
     }
 
     [Fact]
@@ -721,7 +850,7 @@ public sealed class RedactionApplierTests : IDisposable
     {
         foreach (var kind in Enum.GetValues<RedactionFindingKind>())
         {
-            var finding = new RedactionFinding(kind, kind == RedactionFindingKind.RawBytesStillPresent ? null : 3, "Removed text #1 (6 characters)", kind == RedactionFindingKind.RawBytesStillPresent ? [0, 2] : null);
+            var finding = new RedactionFinding(kind, kind == RedactionFindingKind.RawBytesStillPresent ? null : 3, kind == RedactionFindingKind.CleanupItemStillPresent ? "The written file still has bookmarks." : "Removed text #1 (6 characters)", kind == RedactionFindingKind.RawBytesStillPresent ? [0, 2] : null);
             var text = RedactionRefusalText.Of(finding);
             Assert.False(string.IsNullOrWhiteSpace(text), kind.ToString());
             Assert.DoesNotContain("#1", text, StringComparison.Ordinal);
@@ -731,7 +860,8 @@ public sealed class RedactionApplierTests : IDisposable
         var raw = new RedactionFinding(RedactionFindingKind.RawBytesStillPresent, null, "d", [0, 2]);
         Assert.Equal(RedactionFailureKind.UnremovableContent, RedactionRefusalText.KindOf(raw));
         Assert.Equal([0, 2], RedactionRefusalText.PagesOf(raw));
-        Assert.Contains("pages 1, 3", RedactionRefusalText.Of(raw), StringComparison.Ordinal);
+        Assert.Contains("removed from pages 1, 3", RedactionRefusalText.Of(raw), StringComparison.Ordinal);
+        Assert.DoesNotContain("(page", RedactionRefusalText.Of(raw), StringComparison.Ordinal);
         Assert.Equal(RedactionRefusalText.CheckNotCompleted, RedactionRefusalText.Of((RedactionCheck?)null));
         Assert.Equal(RedactionRefusalText.CheckNotCompleted, RedactionRefusalText.Of(new RedactionCheck([], [])));
     }
@@ -739,7 +869,7 @@ public sealed class RedactionApplierTests : IDisposable
     [Fact]
     public async Task ReportListsRemovedCleanedLostAndNotChecked()
     {
-        var original = Write("everywhere.pdf", EverywhereWithoutThePattern());
+        var original = NoPatternCopy();
         using var session = new ViewerSession(engine);
         await session.OpenAsync(original);
         var shown = session.Document!;
@@ -751,7 +881,7 @@ public sealed class RedactionApplierTests : IDisposable
 
         // Before applying: removed, cleaned, lost, not cleaned, and what will be checked.
         var before = RedactionReportText.Of(analysis);
-        foreach (var heading in new[] { "Removed:", "Cleaned (always, with every redaction):", "Lost:", "Not cleaned:", "Will be checked after writing:" })
+        foreach (var heading in new[] { "Removed:", "Will be cleaned (always, with every redaction):", "Lost:", "Not cleaned:", "Will be checked after writing:" })
         {
             Assert.Contains(heading, before, StringComparison.Ordinal);
         }
@@ -767,7 +897,7 @@ public sealed class RedactionApplierTests : IDisposable
         var result = await RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, Target()), null, Ct);
         var report = RedactionReportText.Of(analysis, result.Check);
 
-        foreach (var heading in new[] { "Removed:", "Cleaned (always, with every redaction):", "Lost:", "Not cleaned:", "Checked:", "Not checked:" })
+        foreach (var heading in new[] { "Removed:", "Cleaned (read back from the written file):", "Lost:", "Not cleaned:", "Checked:", "Not checked:" })
         {
             Assert.Contains(heading, report, StringComparison.Ordinal);
         }
@@ -780,6 +910,16 @@ public sealed class RedactionApplierTests : IDisposable
 
         Assert.Contains("Render comparison", report, StringComparison.Ordinal);
 
+        // Under "Cleaned" only what the read-back of the written file confirmed; XMP and scripts (page-level copies stay) are told
+        // under "Not checked", and the "Checked" lines name the read-back.
+        var cleaned = report[report.IndexOf("Cleaned (read back", StringComparison.Ordinal)..report.IndexOf("Lost:", StringComparison.Ordinal)];
+        Assert.Contains("Author in the information dictionary", cleaned, StringComparison.Ordinal);
+        Assert.DoesNotContain("XMP metadata", cleaned, StringComparison.Ordinal);
+        Assert.DoesNotContain("JavaScript", cleaned, StringComparison.Ordinal);
+        var notChecked = report[report.IndexOf("Not checked:", StringComparison.Ordinal)..];
+        Assert.Contains("XMP metadata and JavaScript: removed from the document level by building the file anew; the entries inside page-level objects", notChecked, StringComparison.Ordinal);
+        Assert.Contains("Cleanup: the information dictionary, bookmarks", report[report.IndexOf("Checked:", StringComparison.Ordinal)..], StringComparison.Ordinal);
+
         // The cleaned list says what was in the file (that is its point); nothing after it quotes a removed text.
         Assert.DoesNotContain("Zephyr", report[report.IndexOf("Lost:", StringComparison.Ordinal)..], StringComparison.Ordinal);
 
@@ -787,6 +927,7 @@ public sealed class RedactionApplierTests : IDisposable
         var failed = new RedactionCheck([new RedactionFinding(RedactionFindingKind.TextStillPresent, 0, "d")], ["x"]);
         var failedReport = RedactionReportText.Of(analysis, failed);
         Assert.DoesNotContain("\nChecked:", "\n" + failedReport, StringComparison.Ordinal);
+        Assert.DoesNotContain("Cleaned", failedReport, StringComparison.Ordinal);
         Assert.Contains("Not checked:", failedReport, StringComparison.Ordinal);
     }
 

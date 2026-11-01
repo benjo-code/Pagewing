@@ -103,6 +103,9 @@ public enum RedactionFindingKind
 
     /// <summary>A removed text cannot be verified because it is not real text (it contains U+FFFD or NUL); the caller must supply the real text.</summary>
     RemovedTextUnverifiable,
+
+    /// <summary>Something the cleanup is meant to remove at the document level (a field of the information dictionary, bookmarks, the names tree, page labels, the XMP of the document ...) is still in the written file (set by the apply step; the detail names the item, never its content).</summary>
+    CleanupItemStillPresent,
 }
 
 /// <summary>One thing the check found. The detail names the kind of the problem and the place, never the text itself.</summary>

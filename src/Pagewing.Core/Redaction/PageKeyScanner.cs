@@ -14,11 +14,19 @@ public sealed record PageKeyFinding(int Page, IReadOnlyList<string> Keys);
 /// </summary>
 public sealed record PageKeyScan
 {
-    internal PageKeyScan(IReadOnlyList<PageKeyFinding> findings, string? notChecked)
+    internal PageKeyScan(IReadOnlyList<PageKeyFinding> findings, string? notChecked, IReadOnlyList<string>? documentKeys = null)
     {
         Findings = findings;
         NotChecked = notChecked;
+        DocumentKeys = documentKeys ?? [];
     }
+
+    /// <summary>
+    /// Gets the keys of the catalog and the trailer that the cleaning rebuild must have left behind (<see cref="PageKeyScanner.DocumentKeys"/>: the
+    /// information dictionary, bookmarks, the names tree with attached files and scripts, page labels, the XMP of the document, open
+    /// and document actions, the form and the permissions), in a fixed order; empty when none is there or the file was not checked.
+    /// </summary>
+    public IReadOnlyList<string> DocumentKeys { get; }
 
     /// <summary>Gets the pages with such keys, in page order; empty when the file was not checked.</summary>
     public IReadOnlyList<PageKeyFinding> Findings { get; }
@@ -29,7 +37,7 @@ public sealed record PageKeyScan
     /// <summary>Gets whether the scan could check the file at all.</summary>
     public bool WasChecked => NotChecked is null;
 
-    /// <summary>Gets whether the file was checked and no page has such a key.</summary>
+    /// <summary>Gets whether the file was checked and no page has such a key (the document-level keys are told apart by <see cref="DocumentKeys"/>).</summary>
     public bool IsClean => WasChecked && Findings.Count == 0;
 
     /// <summary>
@@ -86,6 +94,12 @@ public static class PageKeyScanner
 
     /// <summary>Gets the keys that are looked for, in the order a finding lists them.</summary>
     public static IReadOnlyList<string> Keys { get; } = ["/Thumb", "/PieceInfo", "/Metadata", "/AA"];
+
+    /// <summary>
+    /// Gets the keys of the catalog (and, for <c>/Info</c>, the trailer) that hold what the cleaning rebuild removes; a scan of the rebuilt
+    /// file reports every one that is there (<see cref="PageKeyScan.DocumentKeys"/>), in this order.
+    /// </summary>
+    public static IReadOnlyList<string> DocumentKeys { get; } = ["/Info", "/Metadata", "/Outlines", "/Names", "/PageLabels", "/OpenAction", "/AA", "/AcroForm", "/Perms"];
 
     /// <summary>Scans the bytes of a file that PDFium wrote; a cross-reference stream is read as the trailer.</summary>
     /// <param name="written">The file; it must be readable and seekable and is read from its start, never changed.</param>
@@ -197,7 +211,7 @@ public static class PageKeyScanner
     /// <summary>What the scan keeps of the top-level dictionary of an object.</summary>
     private sealed class DictInfo
     {
-        public byte Mask { get; set; }
+        public ushort Mask { get; set; }
 
         public Value? Type { get; set; }
 
@@ -210,7 +224,7 @@ public static class PageKeyScanner
         public Value? Root { get; set; }
     }
 
-    private readonly record struct ObjectInfo(ObjectType Type, byte Mask, int PagesReference, int[]? Kids);
+    private readonly record struct ObjectInfo(ObjectType Type, ushort Mask, int PagesReference, int[]? Kids);
 
     private sealed class PageKeyReader
     {
@@ -231,6 +245,7 @@ public static class PageKeyScanner
         private int length;
         private long bufferStart;
         private int rootReference = -1;
+        private ushort trailerMask;
         private int pageTypedObjects;
 
         public PageKeyReader(Stream stream, bool allowCrossReferenceStream, CancellationToken cancellation)
@@ -252,16 +267,27 @@ public static class PageKeyScanner
 
         private static Unverifiable Fail(string reason) => new(reason);
 
-        private static byte MaskOf(string name) => name switch
+        private const ushort PageKeyBits = 15;
+
+        private static ushort MaskOf(string name) => name switch
         {
             "Thumb" => 1,
             "PieceInfo" => 2,
             "Metadata" => 4,
             "AA" => 8,
+            "Outlines" => 16,
+            "Names" => 32,
+            "PageLabels" => 64,
+            "OpenAction" => 128,
+            "AcroForm" => 256,
+            "Perms" => 512,
+            "Info" => 1024,
             _ => 0,
         };
 
-        private static string[] KeysOf(byte mask)
+        private static readonly ushort[] DocumentKeyBits = [1024, 4, 16, 32, 64, 128, 8, 256, 512];
+
+        private static string[] KeysOf(ushort mask)
         {
             var keys = new List<string>(4);
             for (var i = 0; i < Keys.Count; i++)
@@ -337,6 +363,7 @@ public static class PageKeyScanner
         /// <summary>Takes the catalog from a trailer, or from the dictionary of a cross-reference stream, which is the trailer then.</summary>
         private void TakeRoot(DictInfo dictionary)
         {
+            trailerMask |= dictionary.Mask;
             if (dictionary.Root is { Kind: ValueKind.Ref } root)
             {
                 var reference = (int)root.Number;
@@ -540,14 +567,25 @@ public static class PageKeyScanner
             var findings = new List<PageKeyFinding>();
             for (var page = 0; page < leaves.Count; page++)
             {
-                var mask = objects[leaves[page]].Mask;
+                var mask = (ushort)(objects[leaves[page]].Mask & PageKeyBits);
                 if (mask != 0)
                 {
                     findings.Add(new PageKeyFinding(page, KeysOf(mask)));
                 }
             }
 
-            return new PageKeyScan(findings, null);
+            // What the rebuild must have left behind: the keys of the catalog and the information dictionary of the trailer.
+            var documentMask = (ushort)(catalog.Mask | (trailerMask & 1024));
+            var documentKeys = new List<string>();
+            for (var i = 0; i < DocumentKeyBits.Length; i++)
+            {
+                if ((documentMask & DocumentKeyBits[i]) != 0)
+                {
+                    documentKeys.Add(DocumentKeys[i]);
+                }
+            }
+
+            return new PageKeyScan(findings, null, documentKeys);
         }
 
         // ------------------------------------------------------------------ values

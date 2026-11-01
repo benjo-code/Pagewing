@@ -123,6 +123,7 @@ static class TestPdfs
         new("forms-rotated.pdf", FormsRotated()),
         new("forms-hostile.pdf", FormsHostile()),
         new("redact-everywhere.pdf", RedactEverywhere()),
+        new("redact-everywhere-nopattern.pdf", RedactEverywhere(withPattern: false)),
         new("redact-covered.pdf", RedactCovered()),
         new("redact-revisions.pdf", RedactRevisions()),
         new("redact-image.pdf", RedactImage()),
@@ -1092,7 +1093,7 @@ static class TestPdfs
     //   page 2: visible text "Seite zwei" and the same form XObject /Fm1 at 20,300.
     //   Document level: bookmark title, info dictionary (/Author Quellmann, /Subject with the term), XMP metadata stream (UTF-8, both
     //   terms), an embedded file notes.txt whose content carries the term. Nothing is compressed.
-    private static byte[] RedactEverywhere()
+    private static byte[] RedactEverywhere(bool withPattern = true)
     {
         var doc = new PdfDoc("Pagewing Schwärzen: Begriff überall");
         var helvetica = doc.Add(Helvetica);
@@ -1103,9 +1104,11 @@ static class TestPdfs
         var form = doc.AddStream(
             $"/Type /XObject /Subtype /Form /BBox [0 0 150 30] /Resources {fonts}",
             Text($"BT /F1 12 Tf 2 10 Td ({RedactTerm}) Tj ET"));
-        var pattern = doc.AddStream(
-            $"/Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 100 20] /XStep 100 /YStep 20 /Resources {fonts}",
-            Text($"BT /F1 8 Tf 2 6 Td ({RedactTerm}) Tj ET"));
+        var pattern = withPattern
+            ? doc.AddStream(
+                $"/Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 100 20] /XStep 100 /YStep 20 /Resources {fonts}",
+                Text($"BT /F1 8 Tf 2 6 Td ({RedactTerm}) Tj ET"))
+            : 0;
 
         const int scanSize = 32;
         var scan = new byte[scanSize * scanSize];
@@ -1125,12 +1128,12 @@ static class TestPdfs
 
         doc.AddPage(
             $"/MediaBox [0 0 300 400] /Annots [{AnnotRefs([note, reply, widget])}]",
-            $"<< /Font << /F1 {helvetica} 0 R >> /XObject << /Fm1 {form} 0 R /Scan {scanId} 0 R >> /Pattern << /P1 {pattern} 0 R >> >>",
+            $"<< /Font << /F1 {helvetica} 0 R >> /XObject << /Fm1 {form} 0 R /Scan {scanId} 0 R >>{(withPattern ? $" /Pattern << /P1 {pattern} 0 R >>" : string.Empty)} >>",
             $"""
             BT /F1 12 Tf 20 372 Td (Redaction fixture, page one) Tj ET
             BT /F1 14 Tf 20 340 Td (Adresse: {RedactTerm}) Tj ET
             q 1 0 0 1 20 300 cm /Fm1 Do Q
-            q /Pattern cs /P1 scn 20 250 200 30 re f Q
+            {(withPattern ? "q /Pattern cs /P1 scn 20 250 200 30 re f Q" : "% (no pattern fill in this variant)")}
             q 200 0 0 80 20 150 cm /Scan Do Q
             q BT 3 Tr /F1 12 Tf 30 180 Td ({RedactTerm}) Tj ET Q
             BT /F1 10 Tf 20 135 Td (Scan above carries invisible text.) Tj ET

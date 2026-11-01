@@ -20,6 +20,9 @@ internal sealed class RedactionApplyHooks
     /// <summary>Gets the action that changes the rebuilt document before it is written (a test changes a page outside the marks).</summary>
     public Func<PdfDocument, Task>? CleanBuilt { get; init; }
 
+    /// <summary>Gets the stand-in for the read-back of the cleaned document-level data (a test lets it report items that are still there).</summary>
+    public Func<PdfDocument, PageKeyScan, CancellationToken, Task<IReadOnlyList<RedactionFinding>>>? CleanupReadBack { get; init; }
+
     /// <summary>Gets the hooks of the saver.</summary>
     public SaveFaults? Faults { get; init; }
 

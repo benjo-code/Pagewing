@@ -179,6 +179,44 @@ public sealed class PageKeyScannerTests
     }
 
     [Fact]
+    public void TheScanReportsTheDocumentLevelKeysOfTheCatalogAndTheTrailer()
+    {
+        var file = Tiny(
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R /Outlines 7 0 R /Names << >> /PageLabels << >> /OpenAction 7 0 R /Metadata 7 0 R /AA << >> /AcroForm << >> /Perms << >> >>\nendobj\n"
+            + "2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n"
+            + "3 0 obj\n<< /Type /Page /Parent 2 0 R /Names << >> /Outlines 1 0 R >>\nendobj\n",
+            trailer: "/Root 1 0 R /Info 9 0 R");
+
+        var scan = Scan(file, 1);
+
+        Assert.True(scan.WasChecked, scan.NotChecked);
+        Assert.Equal(["/Info", "/Metadata", "/Outlines", "/Names", "/PageLabels", "/OpenAction", "/AA", "/AcroForm", "/Perms"], scan.DocumentKeys);
+
+        // The keys of a page are no document keys, and a catalog without them has none; the page keys are told apart as before.
+        var plain = Scan(TwoPages(firstPage: "/Names << >> /Outlines 1 0 R /Thumb 1 0 R"), 2);
+        Assert.Empty(plain.DocumentKeys);
+        Assert.Equal(["/Thumb"], plain.Findings.Single().Keys);
+    }
+
+    [Fact]
+    public async Task TheRebuiltFileHasNoDocumentLevelKeysAndPdfiumsRewriteOfTheOriginalHasThem()
+    {
+        var (original, pages) = await RewriteAsync(TestData.Pdf("redact-everywhere.pdf"));
+        var kept = Scan(original, pages).DocumentKeys;
+        foreach (var key in new[] { "/Info", "/Metadata", "/Outlines", "/Names", "/AcroForm" })
+        {
+            Assert.Contains(key, kept);
+        }
+
+        foreach (var name in new[] { "redact-everywhere.pdf", "outline.pdf", "forms-basic.pdf", "forms-signed.pdf", "text-rich.pdf", "annotations-foreign.pdf" })
+        {
+            var scan = Scan(await RebuildAsync(TestData.Pdf(name)), (await RewriteAsync(TestData.Pdf(name))).Pages);
+            Assert.True(scan.WasChecked, name);
+            Assert.Empty(scan.DocumentKeys);
+        }
+    }
+
+    [Fact]
     public void StrictModeFailsClosedOnACrossReferenceStreamAndTheDefaultReadsIt()
     {
         // R9: the check of the final output refuses what it cannot be sure of; the early scan of the working copy reads the stream.

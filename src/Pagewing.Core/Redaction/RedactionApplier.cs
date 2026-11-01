@@ -201,7 +201,7 @@ public static class RedactionApplier
             [shown, build.WorkingCopy],
             request.OverwriteChangedOriginal,
             request.ReplaceExisting,
-            async (context, token) => passed = await CheckAsync(shown, build, context, token).ConfigureAwait(false),
+            async (context, token) => passed = await CheckAsync(shown, build, context, hooks, token).ConfigureAwait(false),
             RequiresListedSources: true);
         hooks?.RewriteStarting?.Invoke(rewrite, build.Clean, build.WorkingCopy);
         var saved = await DocumentSaver.RewriteAsync(build.Clean, engine, rewrite, new RedactionExecutor.Scaled(progress, BuildShare, 1 - BuildShare), hooks?.Faults, cancellationToken).ConfigureAwait(false);
@@ -241,7 +241,7 @@ public static class RedactionApplier
     /// <see cref="SaveFailureException"/> with the whole <see cref="RedactionCheck"/> as <see cref="SaveFailureException.Details"/> when
     /// anything is found; returns the check, which is clean, otherwise.
     /// </summary>
-    private static async Task<RedactionCheck> CheckAsync(PdfDocument shown, RedactionBuild build, RewriteCheckContext context, CancellationToken cancellationToken)
+    private static async Task<RedactionCheck> CheckAsync(PdfDocument shown, RedactionBuild build, RewriteCheckContext context, RedactionApplyHooks? hooks, CancellationToken cancellationToken)
     {
         var reopened = context.Reopened;
         RedactionCheck verified;
@@ -252,6 +252,15 @@ public static class RedactionApplier
             file.Position = 0;
             var keys = PageKeyScanner.Scan(file, reopened.PageCount, allowCrossReferenceStream: false, cancellationToken: cancellationToken);
             extra.AddRange(KeyFindings(keys));
+
+            // What the cleaning rebuild removed at the document level is read back from the written file: "cleaned" in the report
+            // means this read found nothing, never that the rebuild was meant to.
+            if (keys.WasChecked)
+            {
+                extra.AddRange(hooks?.CleanupReadBack is { } replaced
+                    ? await replaced(reopened, keys, cancellationToken).ConfigureAwait(false)
+                    : await CleanupReadBack.ReadAsync(reopened, keys, cancellationToken).ConfigureAwait(false));
+            }
         }
 
         extra.AddRange(await RenderFindingsAsync(shown, reopened, build, cancellationToken).ConfigureAwait(false));

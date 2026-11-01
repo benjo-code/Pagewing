@@ -17,6 +17,7 @@ public static class RedactionReportText
     [
         "Render comparison: only the redacted pages are compared with the original, outside the marked areas and the places where content was removed; pages without a mark are not compared, and for a document with a form the annotations (form fields included) are left out of both renders.",
         "Page keys: only /Thumb, /PieceInfo, /Metadata and /AA in the page dictionaries are looked for; the same keys of form objects, image objects and annotations are not.",
+        "XMP metadata and JavaScript: removed from the document level by building the file anew; the entries inside page-level objects (form objects, image objects, annotations) are not read back.",
     ];
 
     /// <summary>Gets the report before anything is applied: removed, cleaned, lost, not cleaned, and what will be checked.</summary>
@@ -26,14 +27,14 @@ public static class RedactionReportText
         ArgumentNullException.ThrowIfNull(analysis);
         var text = new StringBuilder();
         Removed(text, analysis);
-        Cleaned(text, analysis);
+        Cleaned(text, analysis, confirmed: false);
         Lost(text, analysis);
         NotCleaned(text, analysis);
         Section(
             text,
             "Will be checked after writing",
             [
-                "The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys and a render of every redacted page against the original.",
+                "The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the information dictionary, bookmarks, attached files and page labels, and a render of every redacted page against the original.",
                 "Nothing is written to the target if the check finds anything.",
             ]);
         return text.ToString().TrimEnd();
@@ -48,7 +49,13 @@ public static class RedactionReportText
         ArgumentNullException.ThrowIfNull(check);
         var text = new StringBuilder();
         Removed(text, analysis);
-        Cleaned(text, analysis);
+
+        // Only what the read-back of the written file confirmed is called cleaned.
+        if (check.IsClean)
+        {
+            Cleaned(text, analysis, confirmed: true);
+        }
+
         Lost(text, analysis);
         NotCleaned(text, analysis);
 
@@ -65,6 +72,7 @@ public static class RedactionReportText
             checkedLines.Add("Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are the colour of the area.");
             checkedLines.Add("Pages: every redacted page was rendered from the written file and looks like the original outside the marked areas.");
             checkedLines.Add("Page keys: no page of the written file carries /Thumb, /PieceInfo, /Metadata or /AA.");
+            checkedLines.Add("Cleanup: the information dictionary, bookmarks, the names tree (attached files, scripts), page labels, the document's open action, actions, form and permissions were read back from the written file; none is left.");
             Section(text, "Checked", checkedLines);
         }
 
@@ -110,11 +118,18 @@ public static class RedactionReportText
         Section(text, "Removed", lines);
     }
 
-    private static void Cleaned(StringBuilder text, RedactionAnalysis analysis)
+    private static void Cleaned(StringBuilder text, RedactionAnalysis analysis, bool confirmed)
     {
         var lines = new List<string>();
         foreach (var item in analysis.Cleanup)
         {
+            // XMP and scripts are counted all over the file, page-level objects included, and cannot be read back as gone: after writing
+            // they are told under "not checked", not called cleaned.
+            if (confirmed && item.Kind is CleanupKind.Xmp or CleanupKind.JavaScript)
+            {
+                continue;
+            }
+
             lines.Add(item.Kind switch
             {
                 CleanupKind.Author => $"Author in the information dictionary: {item.Detail}",
@@ -140,7 +155,7 @@ public static class RedactionReportText
             lines.Add("The scan could not read every stream, so there may be more.");
         }
 
-        Section(text, "Cleaned (always, with every redaction)", lines);
+        Section(text, confirmed ? "Cleaned (read back from the written file)" : "Will be cleaned (always, with every redaction)", lines);
     }
 
     private static void Lost(StringBuilder text, RedactionAnalysis analysis)

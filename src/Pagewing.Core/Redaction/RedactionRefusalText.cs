@@ -34,6 +34,9 @@ public enum RedactionFailureKind
 
     /// <summary>A removed text is not real text and could not be searched for.</summary>
     RemovedTextUnverifiable,
+
+    /// <summary>Something the cleanup should have removed at the document level is still in the written file.</summary>
+    CleanupItemStillPresent,
 }
 
 /// <summary>
@@ -91,6 +94,7 @@ public static class RedactionRefusalText
             RedactionFindingKind.UnreadableStream => RedactionFailureKind.UnreadableStream,
             RedactionFindingKind.PageKeysStillPresent => RedactionFailureKind.PageKeysStillPresent,
             RedactionFindingKind.PageChangedOutsideAreas => RedactionFailureKind.PageChangedOutsideAreas,
+            RedactionFindingKind.CleanupItemStillPresent => RedactionFailureKind.CleanupItemStillPresent,
             _ => RedactionFailureKind.RemovedTextUnverifiable,
         };
     }
@@ -112,7 +116,9 @@ public static class RedactionRefusalText
         return KindOf(finding) switch
         {
             RedactionFailureKind.UnremovableContent =>
-                $"Text that was removed is still in the file in a place that is not a page object (for example a Type 3 font, a pattern or a stream of a form){where}, and Pagewing cannot remove it, so the file was not written.",
+                $"Text that was removed{(pages.Count == 0 ? string.Empty : $" from {PageList(pages)}")} is still in the file in a place that is not a page object (for example a Type 3 font, a pattern or a stream of a form), and Pagewing cannot remove it, so the file was not written.",
+            RedactionFailureKind.CleanupItemStillPresent =>
+                $"{finding.Detail} The cleanup should have removed it, so the file was not written.",
             RedactionFailureKind.TextStillPresent =>
                 $"A removed text is still in the page text of the result{where}, so the file was not written.",
             RedactionFailureKind.CharInsideArea =>
