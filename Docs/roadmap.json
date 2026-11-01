@@ -647,7 +647,8 @@
         {
           "id": "13",
           "title": "Seiten organisieren",
-          "status": "in-progress",
+          "status": "done",
+          "completedOn": "2026-11-01",
           "plan": "superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md",
           "prerequisites": ["11", "12"],
           "goal": "Seiten lassen sich in App und CLI umsortieren, drehen, löschen, einfügen, zusammenführen, teilen und als Bild exportieren.",

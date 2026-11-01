@@ -41,7 +41,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 12 | Sichtbare Unterschrift | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-29-milestone-12-sichtbare-unterschrift.md) | 2026-10-29 |
 | 12.1 | Öffentliches Repo und Sicherheitsprüfung | 2 – Annotieren, Ausfüllen, Unterschreiben | ✅ fertig | [Plan](superpowers/plans/2026-10-29-milestone-12-1-oeffentliches-repo.md) | 2026-10-30 |
 | – | **Release `v0.2.0`** – annotieren, ausfüllen, unterschreiben (M8.1 bis M12.1) | – | ✅ fertig | – | 2026-10-31 |
-| 13 | Seiten organisieren | 3 – Seiten & Schwärzen | 🔵 in Arbeit | [Plan](superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md) | – |
+| 13 | Seiten organisieren | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md) | 2026-11-01 |
 | 14 | Schwärzen | 3 – Seiten & Schwärzen | ⬜ offen | – | – |
 | – | **Release `v0.3.0`** – Seiten organisieren und schwärzen (M13 bis M14) | – | ⬜ offen | – | – |
 | 15 | OCR | 4 – OCR & Text bearbeiten | ⬜ offen | – | – |
@@ -507,7 +507,7 @@ Erste Version mit eingebautem Update: Wer `v0.2.0` hat, bekommt `v0.3.0` automat
 **Spec:** [2026-10-31-teilprojekt3-seiten-design.md](superpowers/specs/2026-10-31-teilprojekt3-seiten-design.md) Entwurf für M13 (Seiten organisieren); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
 
 ## Milestone 13 – Seiten organisieren
-**Status:** 🔵 in Arbeit · **Plan:** [2026-10-31-milestone-13-seiten-organisieren.md](superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md) · **Voraussetzungen:** M11, M12
+**Status:** ✅ fertig (2026-11-01) · **Plan:** [2026-10-31-milestone-13-seiten-organisieren.md](superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md) · **Voraussetzungen:** M11, M12
 
 Ziel: Seiten lassen sich in App und CLI umsortieren, drehen, löschen, einfügen, zusammenführen, teilen und als Bild exportieren.
 
