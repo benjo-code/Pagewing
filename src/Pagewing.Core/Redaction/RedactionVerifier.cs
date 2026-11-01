@@ -94,6 +94,10 @@ public static class RedactionVerifier
         var unverifiable = new SortedDictionary<int, int>();
         var truncated = 0;
 
+        // A mark on a page that became an image removes no text from the result: that page has none (its occurrences are not in
+        // OccurrencesBefore either, see RemovedText.FromOriginalAsync), so the mark is no place that the count may subtract.
+        var imagePages = expectation.RasterPages is { Count: > 0 } raster ? raster.ToHashSet() : [];
+
         void Add(string? text, bool everywhere, int before, bool isPlace, int page)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -140,7 +144,7 @@ public static class RedactionVerifier
         foreach (var removed in expectation.Removed)
         {
             ArgumentNullException.ThrowIfNull(removed);
-            Add(removed.Text, removed.Everywhere, removed.OccurrencesBefore, isPlace: true, removed.Page);
+            Add(removed.Text, removed.Everywhere, removed.OccurrencesBefore, isPlace: !imagePages.Contains(removed.Page), removed.Page);
         }
 
         foreach (var mark in expectation.Plan.Marks)

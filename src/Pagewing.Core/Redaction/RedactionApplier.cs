@@ -8,7 +8,7 @@ using Pagewing.Core.Viewing;
 namespace Pagewing.Core.Redaction;
 
 /// <summary>What <see cref="RedactionApplier"/> writes.</summary>
-/// <param name="Plan">The marks, made for the document the session has open; not empty.</param>
+/// <param name="Plan">The marks and the pages to turn into images, made for the document the session has open; not empty.</param>
 /// <param name="TargetPath">The file to write: the path of the open document ("save in the original file") or another one ("Save as"). An existing file is replaced.</param>
 /// <param name="OverwriteChangedOriginal">Whether the user confirmed overwriting another file that now stands at the path of the original. The app never sets it.</param>
 /// <param name="Rewritten">
@@ -66,7 +66,7 @@ public static class RedactionApplier
     /// <param name="cancellationToken">Cancels until the target is replaced; afterwards it has no effect.</param>
     /// <returns>The result and whether the session adopted the written file.</returns>
     /// <exception cref="InvalidOperationException">The session has no open document.</exception>
-    /// <exception cref="ArgumentException">The plan has no mark.</exception>
+    /// <exception cref="ArgumentException">The plan is empty: no mark and no page to turn into an image.</exception>
     /// <exception cref="RedactionException">A mark is on a page the document does not have.</exception>
     /// <exception cref="RedactionRefusedException">The file is refused (nothing was written).</exception>
     /// <exception cref="SaveFailureException">The check found something (<see cref="SaveFailureReason.RedactionFailed"/>, <see cref="SaveFailureException.Details"/> is the <see cref="RedactionCheck"/>) or the rewrite failed; the target is unchanged.</exception>
@@ -143,7 +143,7 @@ public static class RedactionApplier
     /// <param name="progress">Receives 0 to 1; never goes back.</param>
     /// <param name="cancellationToken">Cancels until the target is replaced; afterwards it has no effect.</param>
     /// <returns>The result; its document is open and belongs to the caller; <see cref="RedactionApplyResult.Adopted"/> is <see langword="false"/>.</returns>
-    /// <exception cref="ArgumentException">The plan has no mark.</exception>
+    /// <exception cref="ArgumentException">The plan is empty: no mark and no page to turn into an image.</exception>
     /// <exception cref="RedactionException">A mark is on a page the document does not have.</exception>
     /// <exception cref="RedactionRefusedException">The file is refused (nothing was written).</exception>
     /// <exception cref="SaveFailureException">The check found something or the rewrite failed; the target is unchanged.</exception>
@@ -218,7 +218,8 @@ public static class RedactionApplier
     /// <summary>
     /// The fingerprints the standard check compares: every page as the shown document has it (size and rotation always, the text of the
     /// pages the standard check reads), except the pages that are redacted on purpose, where only size and rotation are compared. The
-    /// text of a redacted page is covered by the check of the redaction itself.
+    /// text of a redacted page is covered by the check of the redaction itself. A page that becomes an image has the size the user sees
+    /// (after rotation and crop box, which the original reports) and no rotation: it is a new page of that size, drawn upright.
     /// </summary>
     private static async Task<IReadOnlyList<PageFingerprint>> ExpectedFingerprintsAsync(PdfDocument shown, RedactionPlan plan, CancellationToken cancellationToken)
     {
@@ -229,7 +230,9 @@ public static class RedactionApplier
         var read = await PageEditExecutor.FingerprintsAsync(shown, sampled, cancellationToken).ConfigureAwait(false);
         for (var i = 0; i < sampled.Count; i++)
         {
-            expected[sampled[i]] = plan.Pages.Contains(sampled[i]) ? read[i] with { CompareText = false } : read[i];
+            expected[sampled[i]] = plan.RasterPages.Contains(sampled[i])
+                ? read[i] with { Rotation = 0, CompareText = false }
+                : plan.Pages.Contains(sampled[i]) ? read[i] with { CompareText = false } : read[i];
         }
 
         return expected;

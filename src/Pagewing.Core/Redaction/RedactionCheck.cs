@@ -43,7 +43,20 @@ public sealed record RemovedText(int Page, string Text, bool Everywhere, int Occ
     /// <param name="candidates">The removed texts without a trustworthy count.</param>
     /// <param name="cancellationToken">Cancels between pages.</param>
     /// <exception cref="ArgumentException">A text is empty or only white space.</exception>
-    public static async Task<IReadOnlyList<RemovedText>> FromOriginalAsync(PdfDocument original, IReadOnlyList<RemovedText> candidates, CancellationToken cancellationToken = default)
+    public static Task<IReadOnlyList<RemovedText>> FromOriginalAsync(PdfDocument original, IReadOnlyList<RemovedText> candidates, CancellationToken cancellationToken = default) =>
+        FromOriginalAsync(original, candidates, excludedPages: null, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="FromOriginalAsync(PdfDocument, IReadOnlyList{RemovedText}, CancellationToken)"/>, without counting the text of
+    /// <paramref name="excludedPages"/>: the pages that become images have no text in the result, so the occurrences on them are gone
+    /// anyway and must not count as a place that stays (the rule of the check is "at most the occurrences before, minus the removed places").
+    /// </summary>
+    /// <param name="original">The original document.</param>
+    /// <param name="candidates">The removed texts without a trustworthy count.</param>
+    /// <param name="excludedPages">The 0-based pages whose text is not counted, or <see langword="null"/> for none.</param>
+    /// <param name="cancellationToken">Cancels between pages.</param>
+    /// <exception cref="ArgumentException">A text is empty or only white space.</exception>
+    public static async Task<IReadOnlyList<RemovedText>> FromOriginalAsync(PdfDocument original, IReadOnlyList<RemovedText> candidates, IReadOnlySet<int>? excludedPages, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(original);
         ArgumentNullException.ThrowIfNull(candidates);
@@ -63,6 +76,11 @@ public sealed record RemovedText(int Page, string Text, bool Everywhere, int Occ
         for (var page = 0; page < original.PageCount; page++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (excludedPages is not null && excludedPages.Contains(page))
+            {
+                continue;
+            }
+
             var text = await original.GetPageTextAsync(page, PdfPriority.Background, cancellationToken).ConfigureAwait(false);
             TextMatcher.CountNormalized(text.Chars, matchCase: true, needles, counts);
         }
@@ -75,7 +93,8 @@ public sealed record RemovedText(int Page, string Text, bool Everywhere, int Occ
 /// <param name="Plan">The marks that were applied.</param>
 /// <param name="Removed">The texts that were removed, one entry per removed place.</param>
 /// <param name="Fill">The colour the areas were filled with.</param>
-public sealed record RedactionExpectation(RedactionPlan Plan, IReadOnlyList<RemovedText> Removed, RedactionFill Fill);
+/// <param name="RasterPages">The 0-based pages that were turned into images (the pages of <see cref="RedactionPlan.RasterPages"/>), ascending; <see langword="null"/> for none. Their text is gone, so the places of marks on them do not count in the occurrence rule.</param>
+public sealed record RedactionExpectation(RedactionPlan Plan, IReadOnlyList<RemovedText> Removed, RedactionFill Fill, IReadOnlyList<int>? RasterPages = null);
 
 /// <summary>The kinds of finding of the check.</summary>
 public enum RedactionFindingKind

@@ -154,6 +154,7 @@ public sealed record RedactionLoss(RedactionLossKind Kind, int Count);
 /// <param name="Marks">The number of marks of the plan.</param>
 /// <param name="MarksWithoutTerm">The number of marks without a term (a rectangle dragged on the page): the text under them is removed, but the check has no text to search for.</param>
 /// <param name="AttachmentAnnotations">How many paperclip annotations (<c>/FileAttachment</c>) the file has: up to that many embedded files come with the pages and stay in the file (not cleaned).</param>
+/// <param name="Raster">What turning the pages of <see cref="RedactionPlan.RasterPages"/> into images costs, one entry per page in page order; <see langword="null"/> when the plan has none.</param>
 public sealed record RedactionAnalysis(
     IReadOnlyList<PageRedactionImpact> Pages,
     IReadOnlyList<CleanupItem> Cleanup,
@@ -163,7 +164,8 @@ public sealed record RedactionAnalysis(
     bool PageKeysChecked,
     int Marks,
     int MarksWithoutTerm,
-    int AttachmentAnnotations = 0)
+    int AttachmentAnnotations = 0,
+    IReadOnlyList<RasterPageInfo>? Raster = null)
 {
     /// <summary>Gets whether the file must not be redacted (any refusal).</summary>
     public bool IsRefused => Refusals.Count > 0;
@@ -171,6 +173,32 @@ public sealed record RedactionAnalysis(
     /// <summary>Gets everything that is removed as a whole instead of precisely, with the reason, in page order.</summary>
     public IReadOnlyList<RedactionFallback> Fallbacks => [.. Pages.SelectMany(static p => p.Fallbacks)];
 }
+
+/// <summary>
+/// What turning one page into an image does (milestone 14.1), told before anything is applied: the resolution that is really used, the
+/// size, and what the page loses besides its text. The counts are read from the ORIGINAL page.
+/// </summary>
+/// <param name="Page">The 0-based page.</param>
+/// <param name="Dpi">The resolution, in dots per inch, the page is rendered at.</param>
+/// <param name="WidthPx">The width of the image in pixels.</param>
+/// <param name="HeightPx">The height of the image in pixels.</param>
+/// <param name="Lowered">Whether <paramref name="Dpi"/> is lower than the one the plan asks for because the page would exceed <see cref="RedactionLimits.MaxRasterPixels"/> (never silent: the card names it).</param>
+/// <param name="EstimatedBytes">An upper estimate of the size the image adds to the file: the uncompressed RGB size (Flate rarely does worse; most pages are far smaller).</param>
+/// <param name="Annotations">How many annotation objects the page has (links and form field widgets included): all of them are gone from the page.</param>
+/// <param name="FormFields">How many form field widgets the page has: they are not fillable afterwards.</param>
+/// <param name="Links">How many links the page has: they stop working.</param>
+/// <param name="HasText">Whether the page has text: all of it is gone from the page.</param>
+public sealed record RasterPageInfo(
+    int Page,
+    int Dpi,
+    int WidthPx,
+    int HeightPx,
+    bool Lowered,
+    long EstimatedBytes,
+    int Annotations = 0,
+    int FormFields = 0,
+    int Links = 0,
+    bool HasText = false);
 
 /// <summary>What the cleanup removes and what the rebuild loses, read from a document and its file.</summary>
 /// <param name="Cleanup">What the cleanup removes, in the order of <see cref="CleanupKind"/>.</param>

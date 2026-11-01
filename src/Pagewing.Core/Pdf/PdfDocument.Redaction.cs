@@ -131,7 +131,21 @@ public sealed partial class PdfDocument
     /// <exception cref="RedactionException">A rectangle is not finite or has no size.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     /// <exception cref="ObjectDisposedException">A document is disposed.</exception>
-    public async Task<IReadOnlyList<RedactionRefusal>> VerifyRedactionRenderAsync(PdfDocument original, IReadOnlyList<RedactionPageAreas> pages, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<RedactionRefusal>> VerifyRedactionRenderAsync(PdfDocument original, IReadOnlyList<RedactionPageAreas> pages, CancellationToken cancellationToken = default) =>
+        VerifyRedactionRenderAsync(original, pages, writeWithoutPages: false, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="VerifyRedactionRenderAsync(PdfDocument, IReadOnlyList{RedactionPageAreas}, CancellationToken)"/>. With
+    /// <paramref name="writeWithoutPages"/> the document is written once for <see cref="RedactionVerifySeam.WrittenCopy"/> even when there
+    /// is no page to compare (a plan whose pages all become images redacts nothing on the working copy, but the bytes of the whole
+    /// file are still checked for page keys PDFium cannot remove); nothing is rendered then.
+    /// </summary>
+    /// <param name="original">A document with the same pages that was not redacted.</param>
+    /// <param name="pages">The pages that were redacted, each with its rectangles; may be empty with <paramref name="writeWithoutPages"/>.</param>
+    /// <param name="writeWithoutPages">Whether the document is written (and the seam called) when <paramref name="pages"/> is empty.</param>
+    /// <param name="cancellationToken">Cancels between two steps.</param>
+    /// <returns>One refusal per page that fails; empty when all pass.</returns>
+    internal async Task<IReadOnlyList<RedactionRefusal>> VerifyRedactionRenderAsync(PdfDocument original, IReadOnlyList<RedactionPageAreas> pages, bool writeWithoutPages, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(original);
@@ -161,7 +175,7 @@ public sealed partial class PdfDocument
         }
 
         var refusals = new List<RedactionRefusal>();
-        if (pages.Count == 0)
+        if (pages.Count == 0 && !writeWithoutPages)
         {
             return refusals;
         }
@@ -184,6 +198,11 @@ public sealed partial class PdfDocument
 
             Interlocked.Increment(ref redactionDryRunWrites);
             VerifySeam?.WrittenCopy?.Invoke(path);
+            if (pages.Count == 0)
+            {
+                return refusals;
+            }
+
             PdfDocument written;
             try
             {

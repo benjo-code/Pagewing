@@ -139,7 +139,7 @@ public sealed partial class RedactionExecutor
         }
 
         var inventory = await ReadInventoryAsync(original, path, cancellationToken).ConfigureAwait(false);
-        PassResult pass = new([], [], KeysChecked: false);
+        PassResult pass = new([], [], KeysChecked: false, []);
         if (!plan.IsEmpty)
         {
             var working = await OpenWorkingCopyAsync(original, path, password, cancellationToken).ConfigureAwait(false);
@@ -169,7 +169,8 @@ public sealed partial class RedactionExecutor
             pass.KeysChecked,
             plan.Marks.Count,
             withoutTerm,
-            inventory.AttachmentAnnotations);
+            inventory.AttachmentAnnotations,
+            plan.RasterPages.Count > 0 ? pass.Raster : null);
     }
 
     /// <summary>
@@ -179,7 +180,7 @@ public sealed partial class RedactionExecutor
     /// <see cref="RedactionRefusedException"/> (page keys, a page that fails the render check) and before anything is changed
     /// (an encrypted file), so a caller that skipped the analysis still never writes a refused file.
     /// </summary>
-    /// <param name="plan">The marks; not empty.</param>
+    /// <param name="plan">The marks and raster pages; not empty.</param>
     /// <param name="path">The path of the file.</param>
     /// <param name="password">The password of the file, or <see langword="null"/>.</param>
     /// <param name="progress">Receives 0 to 1; never goes back.</param>
@@ -213,7 +214,7 @@ public sealed partial class RedactionExecutor
         ArgumentException.ThrowIfNullOrEmpty(path);
         if (plan.IsEmpty)
         {
-            throw new ArgumentException("There is nothing to redact: the plan has no mark.", nameof(plan));
+            throw new ArgumentException("There is nothing to redact: the plan has neither a mark nor a page to turn into an image.", nameof(plan));
         }
 
         EnsureMarksFit(plan, original);
@@ -241,8 +242,7 @@ public sealed partial class RedactionExecutor
             }
 
             var expectation = await ExpectationAsync(plan, original, cancellationToken).ConfigureAwait(false);
-            clean = await engine.CreateEmptyAsync(cancellationToken).ConfigureAwait(false);
-            await clean.ImportPagesAsync(working, [.. Enumerable.Range(0, working.PageCount)], 0, cancellationToken).ConfigureAwait(false);
+            clean = await BuildCleanAsync(plan, original, working, value => progress?.Report(PassShare + ((1 - PassShare) / 2 * value)), cancellationToken).ConfigureAwait(false);
             if (Hooks?.CleanBuilt is { } built)
             {
                 await built(clean).ConfigureAwait(false);
@@ -287,14 +287,16 @@ public sealed partial class RedactionExecutor
             }
         }
 
+        IReadOnlyList<int>? rasterPages = plan.RasterPages.Count > 0 ? [.. plan.RasterPages.Order()] : null;
         if (candidates.Count == 0)
         {
-            return new RedactionExpectation(plan, [], plan.Fill);
+            return new RedactionExpectation(plan, [], plan.Fill, rasterPages);
         }
 
         try
         {
-            return new RedactionExpectation(plan, await RemovedText.FromOriginalAsync(original, candidates, cancellationToken).ConfigureAwait(false), plan.Fill);
+            // The text of a page that becomes an image is gone in the result: its occurrences are not counted as ones that stay.
+            return new RedactionExpectation(plan, await RemovedText.FromOriginalAsync(original, candidates, plan.RasterPages, cancellationToken).ConfigureAwait(false), plan.Fill, rasterPages);
         }
         catch (InvalidDataException ex)
         {
@@ -313,11 +315,11 @@ public sealed partial class RedactionExecutor
 
     private static void EnsureMarksFit(RedactionPlan plan, PdfDocument original)
     {
-        foreach (var page in plan.Pages.Order())
+        foreach (var page in plan.Pages.Concat(plan.RasterPages).Order())
         {
             if (page >= original.PageCount)
             {
-                throw new RedactionException(RedactionError.InvalidArea, "A mark is on a page the document does not have.");
+                throw new RedactionException(RedactionError.InvalidArea, "A mark or a page to turn into an image is on a page the document does not have.");
             }
         }
     }
@@ -351,9 +353,13 @@ public sealed partial class RedactionExecutor
     /// </summary>
     private async Task<PassResult> RunPassAsync(RedactionPlan plan, PdfDocument original, PdfDocument working, Scaled? progress, CancellationToken cancellationToken)
     {
-        var pages = plan.Pages.Order().ToArray();
+        // A page that becomes an image is never redacted here (and so never refused as not redactable): it is rendered from the original
+        // when the document is built. Its marks only give the rectangles that are painted into the bitmap.
+        var pages = plan.Pages.Where(p => !plan.RasterPages.Contains(p)).Order().ToArray();
         var impacts = new List<PageRedactionImpact>(pages.Length);
         var refusals = new List<RedactionRefusal>();
+        var (raster, rasterRefusals) = await RasterInfosAsync(plan, original, working, cancellationToken).ConfigureAwait(false);
+        refusals.AddRange(rasterRefusals);
         for (var i = 0; i < pages.Length; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -373,7 +379,7 @@ public sealed partial class RedactionExecutor
 
         if (refusals.Count > 0)
         {
-            return new PassResult(impacts, refusals, KeysChecked: false);
+            return new PassResult(impacts, refusals, KeysChecked: false, raster);
         }
 
         // One write of the working copy for the render check of all pages; the same bytes give the early page key answer.
@@ -395,7 +401,8 @@ public sealed partial class RedactionExecutor
         try
         {
             var areas = impacts.Select(i => RedactionPageAreas.For(plan.AreasOn(i.Page), i)).ToList();
-            refusals.AddRange(await working.VerifyRedactionRenderAsync(original, areas, cancellationToken).ConfigureAwait(false));
+            // With raster pages the copy is written even when no page is compared: the keys of a page that becomes an image are checked too.
+            refusals.AddRange(await working.VerifyRedactionRenderAsync(original, areas, writeWithoutPages: plan.RasterPages.Count > 0, cancellationToken).ConfigureAwait(false));
         }
         finally
         {
@@ -404,7 +411,7 @@ public sealed partial class RedactionExecutor
 
         if (refusals.Count > 0)
         {
-            return new PassResult(impacts, [.. refusals.OrderBy(static r => r.Pages.Count > 0 ? r.Pages[0] : -1)], KeysChecked: false);
+            return new PassResult(impacts, [.. refusals.OrderBy(static r => r.Pages.Count > 0 ? r.Pages[0] : -1)], KeysChecked: false, raster);
         }
 
         if (keys is not null && keys.ToRefusal() is { } keyRefusal)
@@ -413,10 +420,10 @@ public sealed partial class RedactionExecutor
         }
 
         progress?.Report(1);
-        return new PassResult(impacts, refusals, KeysChecked: keys is { WasChecked: true });
+        return new PassResult(impacts, refusals, KeysChecked: keys is { WasChecked: true }, raster);
     }
 
-    private sealed record PassResult(IReadOnlyList<PageRedactionImpact> Impacts, IReadOnlyList<RedactionRefusal> Refusals, bool KeysChecked);
+    private sealed record PassResult(IReadOnlyList<PageRedactionImpact> Impacts, IReadOnlyList<RedactionRefusal> Refusals, bool KeysChecked, IReadOnlyList<RasterPageInfo> Raster);
 
     /// <summary>Takes a part of the progress bar: 0 to 1 of the step becomes <c>start</c> to <c>start + share</c> of the whole.</summary>
     internal sealed class Scaled(IProgress<double>? target, double start, double share) : IProgress<double>
