@@ -22,12 +22,13 @@ public static class RedactionReportText
 
     /// <summary>Gets the report before anything is applied: removed, cleaned, lost, not cleaned, and what will be checked.</summary>
     /// <param name="analysis">The analysis.</param>
-    public static string Of(RedactionAnalysis analysis)
+    /// <param name="showValues">Whether the fields of the information dictionary are listed with their text (the card); <see langword="false"/> lists only that they were there (the command line, whose output ends up in logs).</param>
+    public static string Of(RedactionAnalysis analysis, bool showValues = true)
     {
         ArgumentNullException.ThrowIfNull(analysis);
         var text = new StringBuilder();
         Removed(text, analysis);
-        Cleaned(text, analysis, confirmed: false);
+        Cleaned(text, analysis, confirmed: false, showValues);
         Lost(text, analysis);
         NotCleaned(text, analysis);
         Section(
@@ -43,7 +44,8 @@ public static class RedactionReportText
     /// <summary>Gets the report of a redaction that was written and passed its check: removed, cleaned, lost, not cleaned, checked, not checked.</summary>
     /// <param name="analysis">The analysis made before applying.</param>
     /// <param name="check">The check the written file passed.</param>
-    public static string Of(RedactionAnalysis analysis, RedactionCheck check)
+    /// <param name="showValues">As in <see cref="Of(RedactionAnalysis, bool)"/>.</param>
+    public static string Of(RedactionAnalysis analysis, RedactionCheck check, bool showValues = true)
     {
         ArgumentNullException.ThrowIfNull(analysis);
         ArgumentNullException.ThrowIfNull(check);
@@ -53,7 +55,7 @@ public static class RedactionReportText
         // Only what the read-back of the written file confirmed is called cleaned.
         if (check.IsClean)
         {
-            Cleaned(text, analysis, confirmed: true);
+            Cleaned(text, analysis, confirmed: true, showValues);
         }
 
         Lost(text, analysis);
@@ -118,7 +120,7 @@ public static class RedactionReportText
         Section(text, "Removed", lines);
     }
 
-    private static void Cleaned(StringBuilder text, RedactionAnalysis analysis, bool confirmed)
+    private static void Cleaned(StringBuilder text, RedactionAnalysis analysis, bool confirmed, bool showValues)
     {
         var lines = new List<string>();
         foreach (var item in analysis.Cleanup)
@@ -132,12 +134,12 @@ public static class RedactionReportText
 
             lines.Add(item.Kind switch
             {
-                CleanupKind.Author => $"Author in the information dictionary: {item.Detail}",
-                CleanupKind.Title => $"Title in the information dictionary: {item.Detail}",
-                CleanupKind.Subject => $"Subject in the information dictionary: {item.Detail}",
-                CleanupKind.Keywords => $"Keywords in the information dictionary: {item.Detail}",
-                CleanupKind.Creator => $"Creator in the information dictionary: {item.Detail}",
-                CleanupKind.Producer => $"Producer in the information dictionary: {item.Detail}",
+                CleanupKind.Author => Field("Author", item, showValues),
+                CleanupKind.Title => Field("Title", item, showValues),
+                CleanupKind.Subject => Field("Subject", item, showValues),
+                CleanupKind.Keywords => Field("Keywords", item, showValues),
+                CleanupKind.Creator => Field("Creator", item, showValues),
+                CleanupKind.Producer => Field("Producer", item, showValues),
                 CleanupKind.Xmp => $"XMP metadata: up to {item.Detail} (the count can include metadata of objects inside the pages, which stays; see below).",
                 CleanupKind.Bookmarks => $"Bookmarks: up to {item.Detail}.",
                 CleanupKind.Attachments => $"Attached files: {item.Detail}.",
@@ -157,6 +159,11 @@ public static class RedactionReportText
 
         Section(text, confirmed ? "Cleaned (read back from the written file)" : "Will be cleaned (always, with every redaction)", lines);
     }
+
+    // A field of the information dictionary with its text (a card shows what was in the file), or only that it was there (a log of the
+    // command line must not print what was just redacted).
+    private static string Field(string name, CleanupItem item, bool showValues) =>
+        showValues ? $"{name} in the information dictionary: {item.Detail}" : $"{name} in the information dictionary (present; its text is not repeated here).";
 
     private static void Lost(StringBuilder text, RedactionAnalysis analysis)
     {

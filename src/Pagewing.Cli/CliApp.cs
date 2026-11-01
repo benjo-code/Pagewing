@@ -6,7 +6,7 @@ using Pagewing.Core.Pdf;
 namespace Pagewing.Cli;
 
 /// <summary>
-/// The command line of Pagewing: <c>info</c>, <c>render</c>, <c>text</c>, <c>search</c>, <c>rotate</c>, <c>merge</c>, <c>split</c> and <c>export</c>. Exit codes: 0 success, 1 runtime
+/// The command line of Pagewing: <c>info</c>, <c>render</c>, <c>text</c>, <c>search</c>, <c>rotate</c>, <c>merge</c>, <c>split</c>, <c>export</c> and <c>redact</c>. Exit codes: 0 success, 1 runtime
 /// error (<c>pagewing: &lt;message&gt;</c> on stderr), 2 usage error (message and usage text on stderr).
 /// </summary>
 public static class CliApp
@@ -25,6 +25,7 @@ public static class CliApp
           pagewing merge  --output <out.pdf> <file> [--pages <range>] [--password <pw>] <file> [--pages <range>] [--password <pw>] ... [--force]
           pagewing split  <file> --output <dir> (--every <n> | --ranges <ranges> | --bookmarks) [--force] [--password <pw>]
           pagewing export <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--force] [--password <pw>]
+          pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--match-case] [--dry-run] [--force] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -54,25 +55,48 @@ public static class CliApp
                    without --force.
           export   Write pages as PNG images like render (same names, same options), but images
                    are only replaced with --force, and a page above 64 megapixels is refused.
+          redact   Remove text and areas for good and write the result to a new file. --text finds every
+                   match of a term (page text, text of annotations, values of form fields) and removes
+                   it; --rect removes whatever lies under a rectangle. The file is built anew (bookmarks,
+                   information, XMP, attachments and scripts of the document are always left out), and the
+                   written file is read back and checked: if the check finds anything, the command fails
+                   (exit 1) and no output file exists. The report on stderr says what was removed, cleaned,
+                   lost, not searched, checked and NOT checked, and never contains a removed text. A file
+                   that cannot be redacted safely (encrypted, a page with /Thumb, /PieceInfo, /Metadata or
+                   /AA, a page that cannot be written again unchanged outside the marks) is refused with
+                   the reason and the pages. A digitally signed input is announced with a warning; the
+                   signature is shown as invalid afterwards. The input is never changed.
 
         Options:
           --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all; rotate: required).
+                             For redact: only the matches of --text on these pages are removed.
                              Pages are taken in ascending order, each once: --pages 3,1 gives pages 1 and 3,
                              so --pages cannot reorder pages.
                              For merge: after a file, the pages taken from that file.
           --dpi <n>          Resolution of rendered pages (default: 144).
           --output <dir>     Directory for the PNG files, created if missing (default: .).
-                             For rotate and merge: the PDF file to write (required).
+                             For rotate, merge and redact: the PDF file to write (required; redact: not with --dry-run).
                              For split: the folder for the new files (required, must exist).
           --angle <deg>      Rotate: turn the pages by 90, 180, 270 or -90 degrees (required).
           --every <n>        Split: a new file after every n pages.
           --ranges <list>    Split: a new file per range, for example "1-3,4-9" (ranges may overlap).
           --bookmarks        Split: a new file per top-level bookmark; the pages before the first
                              one form a file of their own. A file without such a bookmark is an error.
-          --force            Commands that write files (rotate, merge, split, export): replace an existing
+          --force            Commands that write files (rotate, merge, split, export, redact): replace an existing
                              output file. The output is never the input, with or without --force.
           --no-annotations   Render and export without annotations.
-          --match-case       Search: distinguish upper and lower case (default: ignore case).
+          --text <term>      Redact: remove every match of the term. May be given several times. Without --pages
+                             the term must be gone from the whole document afterwards; a term that is not found
+                             is an error. The term is plain text (no pattern); white space and line breaks
+                             count as one space.
+          --rect <spec>      Redact: remove what lies under a rectangle, <page>:<x>,<y>,<w>,<h> (page from 1,
+                             points, origin top left, dot as decimal separator). May be given several times;
+                             a part beyond the page is clipped and reported.
+          --dry-run          Redact: only search and analyse; print the number of matches per page and the
+                             report, write nothing (exit 0 if the file would be written, the final check
+                             of the written file excepted).
+          --match-case       Search and redact: distinguish upper and lower case (default: ignore case; with
+                             redact every spelling found is removed).
           --whole-word       Search: match only whole words.
           --password <pw>    Password of an encrypted PDF (merge: of the file before it).
 
@@ -85,6 +109,8 @@ public static class CliApp
           pagewing split report.pdf --output parts --every 10
           pagewing split report.pdf --output chapters --bookmarks
           pagewing export report.pdf --pages 1-3 --dpi 200 --output images
+          pagewing redact contract.pdf --output contract-redacted.pdf --text "Jane Doe" --rect 2:72,100,200,24
+          pagewing redact contract.pdf --output out.pdf --text 4711 --dry-run
 
         A file whose name starts with a dash is written ./-name.pdf (or after --, which ends
         the options; --pages and --password then cannot follow). Options and --help are
@@ -267,6 +293,10 @@ public static class CliApp
         else if (options.Command == "split")
         {
             await SplitCommand.RunAsync(document, options, PasswordOf(options, getEnvironmentVariable), output, stderr, ct, progress).ConfigureAwait(false);
+        }
+        else if (options.Command == "redact")
+        {
+            await RedactCommand.RunAsync(document, options, PasswordOf(options, getEnvironmentVariable), output, stderr, ct, progress).ConfigureAwait(false);
         }
         else if (options.Command == "export")
         {
