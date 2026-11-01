@@ -22,7 +22,12 @@ namespace Pagewing.Core.Pages;
 /// <param name="TextHash">A stable hash (not <see cref="string.GetHashCode()"/>, which differs from run to run) of the first <see cref="PageEditExecutor.FingerprintTextLength"/> characters of the text, in reading order.</param>
 /// <param name="TextSetHash">A stable hash of the characters of the whole text and their counts, without white space and control characters, in no particular order.</param>
 /// <param name="CompareTextOrder">Whether the check compares <see cref="TextHash"/> (an expected fingerprint of a turned slot says <see langword="false"/>).</param>
-public sealed record PageFingerprint(double Width, double Height, int Rotation, int TextHash, int TextSetHash = 0, bool CompareTextOrder = true);
+/// <param name="CompareText">
+/// Whether the check compares the text at all. <see langword="false"/> for a page whose text is changed on purpose (a redacted page):
+/// only the size and the rotation are compared and both text hashes are ignored. The default keeps the comparison of every
+/// rewrite that does not change text.
+/// </param>
+public sealed record PageFingerprint(double Width, double Height, int Rotation, int TextHash, int TextSetHash = 0, bool CompareTextOrder = true, bool CompareText = true);
 
 public sealed partial class PageEditExecutor
 {
