@@ -598,6 +598,7 @@ $T = "$env:TEMP\pagewing-redact"; New-Item -ItemType Directory -Force $T | Out-N
 $P = "testdata\pdfs"
 # Begriff an allen Stellen (sichtbarer Text, Form-XObject auf beiden Seiten, unsichtbarer Text über dem Scan, Notiz und Antwort, Formularfeld, Lesezeichen, Info, XMP, Anhang)
 pagewing redact $P\redact-everywhere-nopattern.pdf --output $T\everywhere.pdf --text "Zephyrstraße 17" --rect 1:248,40,42,22 --rect 1:20,275,180,25
+pagewing redact $P\redact-attachments.pdf --output $T\attachments.pdf --rect 1:15,62,265,28
 pagewing redact $P\redact-image.pdf --output $T\image.pdf --rect 1:10,26,128,128
 pagewing redact $P\redact-rotated.pdf --output $T\rotated.pdf --text "Zephyrstraße 17"
 pagewing redact $P\redact-fonts.pdf --output $T\fonts.pdf --text "Zephyrstraße 17"
@@ -615,7 +616,7 @@ Aus der App (Dateinamen frei): `redact-everywhere-nopattern.pdf` mit einer Suche
 1. **Aussehen wie die Vorschau:** `everywhere.pdf`, `app-everywhere.pdf`, `image.pdf`, `rotated.pdf`, `fonts.pdf`, `dense.pdf`: die Flächen liegen genau dort, wo markiert wurde (bei `rotated.pdf` nicht gespiegelt), der Rest der Seite sieht aus wie im Original (Schriften, Abstände, Bilder, Hintergründe; Seite mit Muster oder Schattierung ist abgelehnt, nicht ungenau).
 2. **Kein Text unter den Flächen:** in jedem Programm **Alles auswählen und kopieren** (Strg+A, Strg+C) und in einen Editor einfügen; mit **Suchen** (Strg+F) nach dem geschwärzten Begriff, auch in Teilen (`Zephyr`, `17`). Erwartet: kein Treffer, nichts Kopierbares unter den Flächen; das Nachbarwort bleibt kopierbar.
 3. **Kein Bild unter den Flächen:** `image.pdf` und `app-image.pdf` in Acrobat: das Bild herausziehen oder mit dem Objekt-Werkzeug anklicken zeigt nur die überschriebenen Pixel; kein Pixel der Fläche ist durch Vergrößern wiederherstellbar.
-4. **Bereinigt:** Eigenschaften (Titel, Autor, Betreff, Stichwörter leer), Seitenbereich Lesezeichen leer, Anhänge leer, Dokument-JavaScript keins (Acrobat: Eigenschaften, Anhänge, Lesezeichen, Seitenbeschriftungen unverändert dezimal ab 1); Strings-Suche in den Rohbytes (`strings everywhere.pdf | grep -i zephyr`, oder PowerShell `Select-String`) findet nichts, auch nicht in älteren Revisionen: `revisions.pdf` hat genau ein `%%EOF` und kein `/Prev`.
+4. **Bereinigt:** Eigenschaften (Titel, Autor, Betreff, Stichwörter leer), Seitenbereich Lesezeichen leer, Anhänge des Dokuments leer (die Dateien von Büroklammer-Annotationen bleiben und stehen im Bericht unter „Nicht bereinigt“: `redact-attachments.pdf` zeigt `catalog.txt` nicht mehr, `paperclip.txt` noch), Dokument-JavaScript keins (Acrobat: Eigenschaften, Anhänge, Lesezeichen, Seitenbeschriftungen unverändert dezimal ab 1); Strings-Suche in den Rohbytes (`strings everywhere.pdf | grep -i zephyr`, oder PowerShell `Select-String`) findet nichts, auch nicht in älteren Revisionen: `revisions.pdf` hat genau ein `%%EOF` und kein `/Prev`.
 5. **Außerhalb unverändert:** `dense.pdf` und `text-rich`-Ergebnis seitenweise neben dem Original legen (Seitenbild bei 100 %); außerhalb der Flächen gleich, Text bleibt auswählbar.
 6. **Formulare:** In `app-everywhere.pdf` zeigen Acrobat und Chrome die Felder als Widgets; sie sind laut Karte nicht mehr zuverlässig ausfüllbar (erwartet, kein Fehler). Die ausdrückliche Antwort festhalten: „Felder ausfüllbar: ja/nein/teilweise (Programm, Version)“.
 7. **Signatur:** `signed.pdf` (Strukturattrappe, DocMDP-Stufe 2, keine gültige Signatur): Pagewing hat vor dem Schreiben gewarnt („wird als ungültig angezeigt“, nie „gültig“); Acrobat zeigt die Signatur als ungültig oder nicht prüfbar. Eine **echte**, selbst signierte Datei (nie einchecken) zeigt nach dem Schwärzen in Acrobat eine ungültige Signatur; erwartet.
@@ -637,7 +638,7 @@ docker run --rm -v "$T":/data ubuntu:24.04 bash -c 'apt-get update -qq && apt-ge
 
 **Linux-Läufe** (die Tests laufen nur dort; unter Windows nicht ausgeführt):
 
-16. `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Redaction" --filter-namespace "*Saving" --filter-namespace "*Pages" --filter-namespace "*Cli"` (der `statx`-Zweig von `FileIdentity`, `File.Move(…, overwrite: false)`, Unix-Rechte `0600` der temporären Datei, die CLI-Tests von `redact`) und `dotnet test tests/Pagewing.App.Tests --filter-class "*Redact*"`.
+16. `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Redaction" --filter-namespace "*Saving" --filter-namespace "*Pages" --filter-namespace "*Cli"` (der `statx`-Zweig von `FileIdentity`, `File.Move(…, overwrite: false)`, Unix-Rechte `0600` der temporären Datei und der Kopie des Prüfrenderns (`TheDryRunCopyIsPrivateWhileItExistsAndGoneAfterwards` in `RedactImagePathFormTests`, prüft den Modus nur dort), die CLI-Tests von `redact`) und `dotnet test tests/Pagewing.App.Tests --filter-class "*Redact*"`.
 17. App unter Linux (X11 und Wayland): Markieren mit Maus und Stift, Speichern-Portal mit Überschreiben, Tastenkürzel, Karten.
 
 **Messung auf echter Hardware:**
