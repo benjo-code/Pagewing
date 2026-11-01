@@ -561,6 +561,142 @@ public sealed class RedactImagePathFormTests
         Assert.Single(Find(now, "First survivor"));
     }
 
+    [Theory]
+    [InlineData("q 1 0 0 1 50 0 cm 0 0 40 40 re f Q", "q 1 0 0 1 0 100 cm /Fm1 Do Q", 60, 110, 80, 130)]
+    [InlineData("q 2 0 0 2 20 20 cm 0 0 20 20 re f Q", "q 1 0 0 1 100 100 cm /Fm1 Do Q", 130, 130, 150, 150)]
+    public async Task APathInsideAFormObjectIsCroppedAtItsPlaceOnThePage(string formContent, string pageContent, double left, double bottom, double right, double top)
+    {
+        // The rectangle is drawn after a cm inside the form, so its own matrix is not the identity; the form is placed with a second
+        // matrix. The strips have to lie around the mark on the page, and the page has to look the same outside the mark.
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        var form = pdf.AddStream("/Type /XObject /Subtype /Form /BBox [0 0 200 200]", Encoding.ASCII.GetBytes("1 0 0 rg " + formContent + "\n"));
+        pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /XObject << /Fm1 {form} 0 R >> >>", pageContent + "\n");
+        var path = Path.Combine(folder.Path, "form-path.pdf");
+        await File.WriteAllBytesAsync(path, pdf.Build(), Ct);
+        var area = FromUser(left, bottom, right, top, 200);
+        var before = await RedactionRender.RenderAsync(engine, path, 2);
+
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.PathsCropped);
+        Assert.Equal(0, impact.PathsRemovedWhole);
+        Assert.Equal(1, impact.FormObjectsTouched);
+        var saved = await SaveAsync(document, folder, "out.pdf");
+
+        // Four strips and the area, all on the page now.
+        Assert.Equal(5, await CountObjectsAsync(saved, 0, FpdfConstants.PageObjPath));
+        var after = await RedactionRender.RenderAsync(engine, saved, 2);
+        var (different, compared, _) = CompareOutside(before, after, 200, [area]);
+        Assert.True(compared > 10_000);
+        Assert.Equal(0, different);
+
+        // Inside the mark the page is black; the red of the rectangle is gone there (no red pixel in the mark).
+        var red = 0;
+        for (var y = (int)(2 * (200 - top)) + 1; y < (int)(2 * (200 - bottom)) - 1; y++)
+        {
+            for (var x = (int)(2 * left) + 1; x < (int)(2 * right) - 1; x++)
+            {
+                var at = (y * after.Stride) + (x * 4);
+                if (after.Pixels.Span[at + 2] > 100 || after.Pixels.Span[at] > 100)
+                {
+                    red++;
+                }
+            }
+        }
+
+        Assert.Equal(0, red);
+    }
+
+    [Fact]
+    public async Task ATurnedPathInsideAFormObjectIsRemovedWhole()
+    {
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        var form = pdf.AddStream("/Type /XObject /Subtype /Form /BBox [0 0 200 200]", "1 0 0 rg q 0.7071 0.7071 -0.7071 0.7071 100 50 cm 0 0 40 40 re f Q\n"u8.ToArray());
+        pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /XObject << /Fm1 {form} 0 R >> >>", "q /Fm1 Do Q\n");
+        var path = Path.Combine(folder.Path, "turned-form-path.pdf");
+        await File.WriteAllBytesAsync(path, pdf.Build(), Ct);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(0, [FromUser(95, 73, 105, 83, 200)], RedactionFill.Black, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Equal(0, impact.PathsCropped);
+        Assert.Equal(1, impact.PathsRemovedWhole);
+        Assert.Equal(1, impact.FormObjectsTouched);
+    }
+
+    [Fact]
+    public async Task APathInsideANestedFormObjectIsCroppedAtItsPlaceOnThePage()
+    {
+        // Inner form: a rectangle after a cm. The outer form has its own /Matrix and places the inner one with a cm; the page places the outer.
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        var inner = pdf.AddStream("/Type /XObject /Subtype /Form /BBox [0 0 200 200]", "1 0 0 rg q 1 0 0 1 30 0 cm 0 0 20 20 re f Q\n"u8.ToArray());
+        var outer = pdf.AddStream($"/Type /XObject /Subtype /Form /BBox [0 0 200 200] /Matrix [1 0 0 1 10 0] /Resources << /XObject << /In {inner} 0 R >> >>", "q 1 0 0 1 0 20 cm /In Do Q\n"u8.ToArray());
+        pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /XObject << /Fm1 {outer} 0 R >> >>", "q 1 0 0 1 0 100 cm /Fm1 Do Q\n");
+        var path = Path.Combine(folder.Path, "nested-form-path.pdf");
+        await File.WriteAllBytesAsync(path, pdf.Build(), Ct);
+
+        // The rectangle lies at x 40 to 60, y 120 to 140 on the page.
+        var area = FromUser(45, 125, 55, 135, 200);
+        var before = await RedactionRender.RenderAsync(engine, path, 2);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.PathsCropped);
+        var saved = await SaveAsync(document, folder, "out.pdf");
+        Assert.Equal(5, await CountObjectsAsync(saved, 0, FpdfConstants.PageObjPath));
+        var after = await RedactionRender.RenderAsync(engine, saved, 2);
+        var (different, compared, _) = CompareOutside(before, after, 200, [area]);
+        Assert.True(compared > 10_000);
+        Assert.Equal(0, different);
+    }
+
+    [Fact]
+    public async Task AnImageInsideAFormObjectWithItsOwnMatrixIsOverwrittenAtTheRightPixels()
+    {
+        // An 8 x 8 image drawn after a cm (40 pt square at 50,10) inside a form that the page places at 0,100: 5 pt per pixel.
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        var pixels = new byte[8 * 8];
+        for (var i = 0; i < pixels.Length; i++)
+        {
+            pixels[i] = (byte)(60 + (i * 3));
+        }
+
+        var image = pdf.AddStream("/Type /XObject /Subtype /Image /Width 8 /Height 8 /BitsPerComponent 8 /ColorSpace /DeviceGray", pixels);
+        var form = pdf.AddStream($"/Type /XObject /Subtype /Form /BBox [0 0 200 200] /Resources << /XObject << /Im {image} 0 R >> >>", "q 40 0 0 40 50 10 cm /Im Do Q\n"u8.ToArray());
+        pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /XObject << /Fm1 {form} 0 R >> >>", "q 1 0 0 1 0 100 cm /Fm1 Do Q\n");
+        var path = Path.Combine(folder.Path, "form-image.pdf");
+        await File.WriteAllBytesAsync(path, pdf.Build(), Ct);
+
+        // The image lies at x 50 to 90, y 110 to 150 on the page: the mark x 60 to 75, y 120 to 135 covers the columns 2 to 4 and the rows 3 to 5.
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(0, [FromUser(60, 120, 75, 135, 200)], RedactionFill.Black, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.ImagesOverwritten);
+        var after = await ReadImagesAsync(await SaveAsync(document, folder, "out.pdf"), 0);
+        var image2 = Assert.Single(after);
+        for (var y = 0; y < 8; y++)
+        {
+            for (var x = 0; x < 8; x++)
+            {
+                var at = ((y * 8) + x) * 4;
+                var under = x is >= 2 and <= 4 && y is >= 3 and <= 5;
+                if (under)
+                {
+                    Assert.Equal([0, 0, 0, 255], image2.Bgra[at..(at + 4)]);
+                }
+                else
+                {
+                    var g = (byte)(60 + (((y * 8) + x) * 3));
+                    Assert.Equal([g, g, g, 255], image2.Bgra[at..(at + 4)]);
+                }
+            }
+        }
+    }
+
     private static bool Touches(ProbeRect a, ProbeRect b) =>
         a.Left <= b.Right + 1e-6 && b.Left <= a.Right + 1e-6 && a.Bottom <= b.Top + 1e-6 && b.Bottom <= a.Top + 1e-6;
 

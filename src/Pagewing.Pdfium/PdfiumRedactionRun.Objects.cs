@@ -77,7 +77,7 @@ internal sealed partial class PdfiumRedactionRun
     }
 
     /// <summary>A child of a form object that is taken apart.</summary>
-    private sealed class Leaf(nint handle, nint parent, int type, Affine? composed, UserRect bounds)
+    private sealed class Leaf(nint handle, nint parent, int type, Affine? composed, Affine accum, UserRect bounds)
     {
         public nint Handle { get; } = handle;
 
@@ -88,6 +88,9 @@ internal sealed partial class PdfiumRedactionRun
 
         /// <summary>The matrix <c>child × form</c> through all levels, or <see langword="null"/> when a matrix could not be read.</summary>
         public Affine? Composed { get; } = composed;
+
+        /// <summary>The matrix of the parent form objects up to the page (without the matrix of the child itself).</summary>
+        public Affine Accum { get; } = accum;
 
         /// <summary>The bounds in page space.</summary>
         public UserRect Bounds { get; } = bounds;
@@ -461,7 +464,7 @@ internal sealed partial class PdfiumRedactionRun
                     break;
                 }
 
-                var leaf = new Leaf(child, frame.Form, type, own?.Then(frame.Accum), frame.Accum.Bounds(local));
+                var leaf = new Leaf(child, frame.Form, type, own?.Then(frame.Accum), frame.Accum, frame.Accum.Bounds(local));
                 tree.Leaves.Add(leaf);
                 if (type == FpdfConstants.PageObjText)
                 {
@@ -520,7 +523,8 @@ internal sealed partial class PdfiumRedactionRun
                     leaf.Edit = PlanImage(c, leafKey, index, leaf.Handle, leaf.Bounds, leaf.Composed, expected);
                     break;
                 case FpdfConstants.PageObjPath:
-                    leaf.Edit = leaf.Composed is { } composed ? PlanPath(c, leafKey, index, leaf.Handle, leaf.Bounds, composed) : null;
+                    // The path reads its own matrix itself: it gets the matrix of its parents only.
+                    leaf.Edit = leaf.Composed is not null ? PlanPath(c, leafKey, index, leaf.Handle, leaf.Bounds, leaf.Accum) : null;
                     break;
                 default:
                     movable &= leaf.Composed is not null;
