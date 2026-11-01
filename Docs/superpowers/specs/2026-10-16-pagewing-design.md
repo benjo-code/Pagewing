@@ -184,7 +184,7 @@ M9 Speichern & Textmarkierungen (Hervorheben, Unterstreichen, Durchstreichen, Ko
 
 ### Teilprojekt 3 – Seiten & Schwärzen
 
-M13 Seiten organisieren (umsortieren, drehen, löschen, einfügen, zusammenführen, teilen, als Bild exportieren; in App und CLI; Entscheidung über QPDF für Lesezeichen und Metadaten) · M14 Schwärzen. **Release v0.3.0.**
+M13 Seiten organisieren (umsortieren, drehen, löschen, einfügen, zusammenführen, teilen, als Bild exportieren; in App und CLI; Entscheidung über QPDF für Lesezeichen und Metadaten) · M14 Schwärzen. (Ein Release v0.3.0 entfällt, M13 und M14 gehören zu v1.0.0, Roadmap vom 2026-11-01.)
 
 **Regeln fürs Schwärzen:** Der Inhalt wird **wirklich entfernt**. Ein schwarzes Rechteck darüber reicht nicht.
 - Textobjekte im Bereich werden aufgeteilt; die betroffenen Zeichen werden entfernt, der Rest bleibt an seiner Position.
