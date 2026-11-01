@@ -504,6 +504,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _textSelection, value is { IsEmpty: true } ? null : value))
             {
                 OnPropertyChanged(nameof(HasTextSelection));
+                RaiseMarkingCanExecuteChanged();
             }
         }
     }

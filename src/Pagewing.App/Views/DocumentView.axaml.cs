@@ -179,11 +179,13 @@ public sealed partial class DocumentView : UserControl
         ConnectHighlights(viewModel);
         ConnectLinks(viewModel);
         ConnectSignature(viewModel);
+        ConnectRedaction(viewModel);
         _session.Changed += OnSessionChanged;
         _session.PagesInvalidated += OnPagesInvalidated;
         Sync();
         ReopenTextBoxDraft();
         SyncFormMode();
+        SyncRedaction();
     }
 
     private void Disconnect()
@@ -192,6 +194,7 @@ public sealed partial class DocumentView : UserControl
         CloseTextBoxEditor(apply: true);
         DisconnectForms();
         DisconnectSignature();
+        DisconnectRedaction();
         EndGesture();
         DisconnectSelection();
         DisconnectHighlights();
@@ -381,6 +384,7 @@ public sealed partial class DocumentView : UserControl
         // The text of the document shown before goes with it, and a stroke being drawn on it.
         EndGesture();
         EndSelectionDrag();
+        EndRedactionGesture();
         DropTexts();
         _document = document;
         _layout = layout;
@@ -403,6 +407,7 @@ public sealed partial class DocumentView : UserControl
         _focusPending = true;
         FocusLater();
         SyncFormMode();
+        SyncRedaction();
     }
 
     /// <summary>After the bindings of the pending changes have run (the password card may be on its way out).</summary>
@@ -466,6 +471,11 @@ public sealed partial class DocumentView : UserControl
             // The keys of the selection of the select tool (DocumentView.Selection.cs): only in the mode with a selection.
             e.Handled = true;
         }
+        else if (!e.Handled && TryRedactionKey(e.Key, e.KeyModifiers))
+        {
+            // The keys of the marks of the mode "Redact" (DocumentView.Redaction.cs): Tab through the marks, the arrows, Delete.
+            e.Handled = true;
+        }
         else if (!e.Handled && e.Key == Key.C && e.KeyModifiers is KeyModifiers.Control or (KeyModifiers.Control | KeyModifiers.Shift)
             && HasCopyableSelection)
         {
@@ -489,8 +499,10 @@ public sealed partial class DocumentView : UserControl
     /// Esc in the document: drops a stroke of a drawing tool that is being dragged first (DocumentView.Drawing.cs), then a drag
     /// of the selected annotation, then that selection (DocumentView.Selection.cs), then the text selection; without one it
     /// ends the mode "Comment", or in the mode "Fill in form" drops the open value of a field, then takes the focus from the
-    /// field, then ends that mode (<see cref="TabViewModel.EscapeFill"/>; only one of the two modes is on at a time); then it
-    /// ends an active search. The open input of a form field (<see cref="Views.FormFieldEditor"/>) takes Esc before all of these: the
+    /// field, then ends that mode (<see cref="TabViewModel.EscapeFill"/>; only one of the modes is on at a time). In the mode
+    /// "Redact" it drops a rectangle being dragged out or a mark or handle being dragged (DocumentView.Redaction.cs), then clears
+    /// the selected marks, then the text selection, then ends the mode while no mark waits (<see cref="TabViewModel.EscapeRedact"/>);
+    /// then it ends an active search. The open input of a form field (<see cref="Views.FormFieldEditor"/>) takes Esc before all of these: the
     /// first drops its open value, the next leaves the field and gives the keys back to the view (an open drop-down closes first).
     /// The window's own meanings of Esc (a waiting address, a card of the save flow, an overlay, the update card) come
     /// before all of them (they are key bindings of the window).
@@ -529,6 +541,19 @@ public sealed partial class DocumentView : UserControl
             return true;
         }
 
+        // The mode "Redact": a rectangle being dragged out, or a mark or handle being dragged (nothing changes), then the
+        // selected marks; the text selection and the mode follow below, in that order.
+        if (EndRedactionGesture())
+        {
+            return true;
+        }
+
+        if (tab.SelectedMarks.Count > 0)
+        {
+            tab.ClearMarkSelection();
+            return true;
+        }
+
         if (tab.HasTextSelection)
         {
             tab.TextSelection = null;
@@ -542,6 +567,12 @@ public sealed partial class DocumentView : UserControl
 
         // The mode "Fill in form": the open value of a field, then the focus of the field, then the mode.
         if (tab.EscapeFill())
+        {
+            return true;
+        }
+
+        // The mode "Redact" ends only while no mark waits (a plan is applied or discarded, never lost by a key).
+        if (tab.EscapeRedact())
         {
             return true;
         }
@@ -601,6 +632,8 @@ public sealed partial class DocumentView : UserControl
 
         EndGesture();
         EndSelectionDrag();
+        EndRedactionGesture();
+        _redactionOverlay?.SetPlan(null);
         _drawingOverlay?.ShowSelection(null);
         DisconnectForms();
         DropTexts();
@@ -853,6 +886,7 @@ public sealed partial class DocumentView : UserControl
         FollowSelectionWithViewport();
         FollowGestureWithViewport();
         FollowSelectionViewWithViewport();
+        FollowRedactionWithViewport();
         PlaceTextBoxEditor();
 
         // The form layer and the input of a field follow their pages (an input scrolled out of view applies its value).
@@ -896,6 +930,7 @@ public sealed partial class DocumentView : UserControl
             // The frame of a selection takes the colours of the new page ground, and so do the marks of the form fields.
             _drawingOverlay?.RefreshSelection();
             _formOverlay?.Refresh();
+            _redactionOverlay?.Refresh();
         }
         else if (e.PropertyName == nameof(TabViewModel.ShowsFieldHighlight) && _viewModel is not null)
         {
@@ -927,8 +962,19 @@ public sealed partial class DocumentView : UserControl
             UpdateCursor(_pointer);
         }
 
+        // The mode "Redact": its plan and selection on the layer, a refused mark as a hint (DocumentView.Redaction.cs).
+        if (e.PropertyName is nameof(TabViewModel.IsRedacting) or nameof(TabViewModel.RedactionPlan) or nameof(TabViewModel.SelectedMarks))
+        {
+            SyncRedaction();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.RedactionNotice) && _viewModel?.RedactionNotice is { } notice)
+        {
+            ShowHint(notice);
+        }
+
         CheckGesture(e.PropertyName);
         CheckSelectionDrag(e.PropertyName);
+        CheckRedactionGesture(e.PropertyName);
         CheckTextBoxEditor();
     }
 

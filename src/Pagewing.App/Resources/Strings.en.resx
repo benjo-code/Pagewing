@@ -426,6 +426,9 @@
   <data name="KeyComma" xml:space="preserve">
     <value>Comma</value>
   </data>
+  <data name="KeyEnter" xml:space="preserve">
+    <value>Enter</value>
+  </data>
   <data name="HelpTitle" xml:space="preserve">
     <value>Keyboard shortcuts</value>
   </data>
@@ -2048,5 +2051,74 @@
   </data>
   <data name="TabRedactionSuffix" xml:space="preserve">
     <value>, redaction marks pending</value>
+  </data>
+  <data name="CommandRedactMarkSelection" xml:space="preserve">
+    <value>Mark selection for redaction</value>
+  </data>
+  <data name="RedactToolbarName" xml:space="preserve">
+    <value>Redaction toolbar</value>
+  </data>
+  <data name="RedactToolArea" xml:space="preserve">
+    <value>Area</value>
+  </data>
+  <data name="RedactToolAreaTip" xml:space="preserve">
+    <value>Drag an area on the page to mark it</value>
+  </data>
+  <data name="RedactToolText" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="RedactToolTextTip" xml:space="preserve">
+    <value>Select text on the page, then mark it</value>
+  </data>
+  <data name="RedactMarkSelection" xml:space="preserve">
+    <value>Mark selection</value>
+  </data>
+  <data name="RedactFill" xml:space="preserve">
+    <value>Fill</value>
+  </data>
+  <data name="RedactFillTip" xml:space="preserve">
+    <value>Colour of the areas that replace the removed content</value>
+  </data>
+  <data name="RedactFillBlack" xml:space="preserve">
+    <value>Black</value>
+  </data>
+  <data name="RedactFillWhite" xml:space="preserve">
+    <value>White</value>
+  </data>
+  <data name="RedactDiscardButton" xml:space="preserve">
+    <value>Discard</value>
+  </data>
+  <data name="RedactDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="RedactDoneTooltip" xml:space="preserve">
+    <value>Leave redaction. Marks that wait have to be applied or discarded first.</value>
+  </data>
+  <data name="RedactCountNone" xml:space="preserve">
+    <value>No marks</value>
+  </data>
+  <data name="RedactCountOneMark" xml:space="preserve">
+    <value>1 mark on 1 page</value>
+  </data>
+  <data name="RedactCountOnePage" xml:space="preserve">
+    <value>{0} marks on 1 page</value>
+  </data>
+  <data name="RedactCountPages" xml:space="preserve">
+    <value>{0} marks on {1} pages</value>
+  </data>
+  <data name="RedactPlanHint" xml:space="preserve">
+    <value>Nothing is removed until you apply the marks.</value>
+  </data>
+  <data name="RedactMarkKindName" xml:space="preserve">
+    <value>Redaction mark</value>
+  </data>
+  <data name="RedactMarkNameOf" xml:space="preserve">
+    <value>Redaction mark, page {0}</value>
+  </data>
+  <data name="RedactSelectionNotMarkable" xml:space="preserve">
+    <value>This text cannot be marked: no area was found for it.</value>
+  </data>
+  <data name="RedactCheckFailed" xml:space="preserve">
+    <value>Pagewing could not check whether this file is encrypted, so redaction did not start. Try again.</value>
   </data>
 </root>

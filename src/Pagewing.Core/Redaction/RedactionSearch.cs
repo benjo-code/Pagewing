@@ -228,6 +228,48 @@ public static class RedactionSearch
         return marks;
     }
 
+    /// <summary>
+    /// Makes the hit of a stretch of the characters of a page, the way the search makes one of a match: the text as the search
+    /// has it (a line end is one space, a dropped line-end hyphen is left out), one rectangle per line, and
+    /// <see cref="RedactionHit.Markable"/> telling whether it can become a mark. Blanks and line ends at the two ends of the
+    /// stretch are left out (a selection that was dragged over the end of a line would otherwise carry a space as its text). The
+    /// stretch is clamped to the page. This is how a text selection on the page becomes a mark.
+    /// </summary>
+    /// <param name="pageText">The text of the page.</param>
+    /// <param name="page">The 0-based page.</param>
+    /// <param name="start">The first character of the stretch (inclusive).</param>
+    /// <param name="end">The end of the stretch (exclusive), as a caret position.</param>
+    /// <returns>The hit, or <see langword="null"/> when nothing but blanks is in the stretch.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="pageText"/> is <see langword="null"/>.</exception>
+    public static RedactionHit? HitOfRange(PageText pageText, int page, int start, int end)
+    {
+        ArgumentNullException.ThrowIfNull(pageText);
+        var chars = pageText.Chars;
+        start = Math.Max(0, start);
+        end = Math.Min(end, chars.Count);
+        while (start < end && IsBlank(chars[start]))
+        {
+            start++;
+        }
+
+        while (end > start && IsBlank(chars[end - 1]))
+        {
+            end--;
+        }
+
+        if (start >= end)
+        {
+            return null;
+        }
+
+        var snippet = TextMatcher.SnippetOf(chars, start, end - 1);
+        var areas = AreasOf(chars, start, end - 1, out var lossy);
+        return Make(RedactionHitSource.PageText, page, areas, snippet, null, false, lossy);
+    }
+
+    private static bool IsBlank(TextChar c) =>
+        c.IsLineBreak || c.CodePoint is '\r' or '\n' || (Rune.IsValid(c.CodePoint) && Rune.IsWhiteSpace(new Rune(c.CodePoint)));
+
     private static async IAsyncEnumerable<RedactionHit> FindCoreAsync(
         PdfDocument document,
         string term,

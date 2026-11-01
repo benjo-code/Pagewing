@@ -40,7 +40,7 @@ public sealed class CommandCatalogTests : IDisposable
         "annotate.underline", "annotate.strikeout", "annotate.select", "annotate.ink", "annotate.rectangle", "annotate.ellipse",
         "annotate.line", "annotate.arrow", "form.fill", "form.highlight", "pages.organize", "pages.rotateLeft", "pages.rotateRight",
         "pages.delete", "pages.duplicate", "pages.insertBlank", "pages.insertFile", "pages.discard", "redact.mode",
-        "redact.deleteMarks", "redact.discard",
+        "redact.deleteMarks", "redact.discard", "redact.markSelection",
     ];
 
     private readonly CultureInfo _originalCulture = Strings.Culture;
@@ -360,6 +360,7 @@ public sealed class CommandCatalogTests : IDisposable
             ("redact.mode", "Ctrl+Shift+P"),
             ("redact.deleteMarks", null),
             ("redact.discard", null),
+            ("redact.markSelection", "Ctrl+Return"),
         };
 
         foreach (var (id, text) in expected)
@@ -372,9 +373,9 @@ public sealed class CommandCatalogTests : IDisposable
                 Assert.Same(command, catalog.ForGesture(gesture));
                 Assert.Single(catalog.All, other => other.Gestures.Contains(gesture));
 
-                // A German keyboard reaches it without AltGr (Ctrl+Alt): a letter with Ctrl and Shift at most.
+                // A German keyboard reaches it without AltGr (Ctrl+Alt): a letter, or Enter (on every layout), with Ctrl and Shift at most.
                 Assert.False(gesture.KeyModifiers.HasFlag(KeyModifiers.Alt) || gesture.KeyModifiers.HasFlag(KeyModifiers.Meta));
-                Assert.True(gesture.Key is >= Key.A and <= Key.Z, $"{gesture} needs a key that is not on every layout");
+                Assert.True(gesture.Key is (>= Key.A and <= Key.Z) or Key.Enter, $"{gesture} needs a key that is not on every layout");
             }
         }
 
@@ -386,8 +387,10 @@ public sealed class CommandCatalogTests : IDisposable
         Assert.All(expected, entry => Assert.Equal(CommandCatalog.EditGroup, catalog.ById(entry.Id)!.Group));
         Strings.Culture = new CultureInfo("de");
         Assert.Equal("Strg+Umschalt+P", GestureText.Of(catalog.ById("redact.mode")!.Gesture!));
+        Assert.Equal("Strg+Eingabe", GestureText.Of(catalog.ById("redact.markSelection")!.Gesture!));
         Assert.Equal("Schwärzen", catalog.ById("redact.mode")!.Title());
         Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Ctrl+Enter", GestureText.Of(catalog.ById("redact.markSelection")!.Gesture!));
         Assert.Equal("Redact", catalog.ById("redact.mode")!.Title());
     }
 
@@ -396,7 +399,7 @@ public sealed class CommandCatalogTests : IDisposable
     {
         var (window, viewModel, view, _) = Show(new CountingPicker());
         var catalog = viewModel.Commands;
-        string[] inMode = ["redact.deleteMarks", "redact.discard"];
+        string[] inMode = ["redact.deleteMarks", "redact.discard", "redact.markSelection"];
         bool CanRun(string id) => catalog.ById(id)!.CanExecute();
 
         // Without a tab nothing; with a document the mode is offered, and polling the rest makes nothing (no plan, no command).
@@ -411,6 +414,7 @@ public sealed class CommandCatalogTests : IDisposable
         catalog.ById("redact.mode")!.Execute();
         await WaitUntilAsync(window, () => tab.IsRedacting);
         Assert.False(CanRun("redact.deleteMarks"));
+        Assert.False(CanRun("redact.markSelection"));
         Assert.True(CanRun("redact.discard"));
         Assert.False(CanRun("edit.undo"));
         Assert.True(tab.AddAreaMark(1, new PageRect(10, 10, 90, 40)));

@@ -48,6 +48,27 @@ public sealed class RedactionHistory
         Version++;
     }
 
+    /// <summary>
+    /// Replaces the current plan by <paramref name="plan"/> without a step of its own: a change that belongs to the last step (a
+    /// run of arrow keys that moves a mark again and again is one step). Whoever calls it knows that the last step is the one the
+    /// change belongs to (the <see cref="Version"/> is what it was after that step). With no earlier step it is <see cref="Do"/>.
+    /// The version still rises, and what could be redone is forgotten.
+    /// </summary>
+    /// <param name="plan">The plan after the change.</param>
+    public void Amend(RedactionPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (_undo.Count == 0)
+        {
+            Do(plan);
+            return;
+        }
+
+        _redo.Clear();
+        Current = plan;
+        Version++;
+    }
+
     /// <summary>Goes back one step; does nothing if there is none.</summary>
     public void Undo()
     {

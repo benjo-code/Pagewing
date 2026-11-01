@@ -1,0 +1,169 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             xmlns:red="using:Pagewing.Core.Redaction"
+             x:Class="Pagewing.App.Views.RedactionToolbar"
+             x:DataType="vm:TabViewModel"
+             Height="{DynamicResource Pw.Size.ToolbarHeight}"
+             AutomationProperties.Name="{x:Static res:Strings.RedactToolbarName}"
+             AutomationProperties.AccessibilityView="Content">
+  <!--
+    Toolbar of the mode "Redact" (milestone 14; design system 6 point 4 and 7.7, built like the toolbars of "Comment" and
+    "Fill in form"): 44 px high (density "Kompakt" 38, Pw.Size.ToolbarHeight) over the document area, surface.toolbar with a
+    border.subtle bottom edge. From the left: the name of the mode with its icon (eye-off, accent.default); the two tools of the
+    pointer, "Area" and "Text" (toggle buttons for screen readers; the chosen one has an accent.subtle surface, an accent.default
+    1 px frame, icon and label, so it is not marked by colour alone); "Mark selection"; the fill, "Black" and "White", two
+    toggle buttons that name their colour in words; Undo and Redo; Delete mark. On the right the counter of the marks ("4 marks
+    on 2 pages"), the hint that nothing is removed before the marks are applied, "Discard" and the primary button "Done", which
+    leaves the mode and is possible while no mark waits (with marks they are applied or discarded; the tooltip says so). Tab
+    moves through them in this order; Enter and Space press; Esc drops a drag, then the selected marks, then the text
+    selection, then ends the mode. Too narrow (640 px window, German): first the hint goes, then the labels of the tools and the
+    fill, then the text of the mode name, then its icon, last the counter text (the counter stays the name of the toolbar for
+    screen readers). Made when the mode is first started (MainWindow.Redaction.cs), never in the startup path; its styles live
+    here for the same reason. The DataContext is the active tab. "Apply" is not here yet: it comes with the apply flow.
+  -->
+  <UserControl.Styles>
+    <Style Selector="Button.tool">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.tool.active">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button.tool.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.tool.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+    </Style>
+    <Style Selector="Button.tool TextBlock">
+      <Setter Property="Margin" Value="6,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.toolbarIcon">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="Border.toolbarSeparator">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Margin" Value="8,0" />
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Border.Subtle}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="ToolbarFrame"
+          Background="{DynamicResource Pw.Brush.Surface.Toolbar}"
+          BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
+          BorderThickness="0,0,0,1">
+    <Grid Name="ToolbarContent" Margin="12,0,8,0" ColumnDefinitions="Auto,*,Auto">
+      <StackPanel Name="ModeLabel" Grid.Column="0" Orientation="Horizontal" Spacing="6" Margin="0,0,12,0" VerticalAlignment="Center">
+        <ctl:StrokeIcon Name="ModeIcon" Width="18" Height="18" VerticalAlignment="Center"
+                        Brush="{DynamicResource Pw.Brush.Accent.Default}" Data="{StaticResource Pw.Icon.EyeOff}" />
+        <TextBlock Name="ModeName" Classes="strong" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   Text="{x:Static res:Strings.CommandRedactMode}" />
+      </StackPanel>
+
+      <StackPanel Name="ToolsArea" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
+        <ctl:ActionToggleButton Name="AreaToolButton" Classes="icon tool"
+                                Classes.active="{Binding RedactionToolIsArea}" IsChecked="{Binding RedactionToolIsArea, Mode=OneWay}"
+                                Command="{Binding ChooseRedactionToolCommand}" CommandParameter="{x:Static vm:RedactionTool.Area}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactToolAreaTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactToolArea}">
+          <StackPanel Orientation="Horizontal">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Square}" />
+            <TextBlock Name="AreaToolLabel" Classes="body" Text="{x:Static res:Strings.RedactToolArea}" />
+          </StackPanel>
+        </ctl:ActionToggleButton>
+        <ctl:ActionToggleButton Name="TextToolButton" Classes="icon tool" Margin="2,0,0,0"
+                                Classes.active="{Binding RedactionToolIsText}" IsChecked="{Binding RedactionToolIsText, Mode=OneWay}"
+                                Command="{Binding ChooseRedactionToolCommand}" CommandParameter="{x:Static vm:RedactionTool.Text}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactToolTextTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactToolText}">
+          <StackPanel Orientation="Horizontal">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Typography}" />
+            <TextBlock Name="TextToolLabel" Classes="body" Text="{x:Static res:Strings.RedactToolText}" />
+          </StackPanel>
+        </ctl:ActionToggleButton>
+        <Button Name="MarkSelectionButton" Classes="icon tool" Margin="2,0,0,0"
+                Command="{Binding MarkSelectionCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.RedactMarkSelection}">
+          <StackPanel Orientation="Horizontal">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Highlight}" />
+            <TextBlock Name="MarkSelectionLabel" Classes="body" Text="{x:Static res:Strings.RedactMarkSelection}" />
+          </StackPanel>
+        </Button>
+
+        <Border Classes="toolbarSeparator" />
+
+        <TextBlock Name="FillLabel" Classes="body" VerticalAlignment="Center" Margin="0,0,6,0"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.RedactFill}" />
+        <ctl:ActionToggleButton Name="FillBlackButton" Classes="icon tool"
+                                Classes.active="{Binding IsRedactionFillBlack}" IsChecked="{Binding IsRedactionFillBlack, Mode=OneWay}"
+                                Command="{Binding SetRedactionFillCommand}" CommandParameter="{x:Static red:RedactionFill.Black}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactFillTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactFillBlack}">
+          <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactFillBlack}" />
+        </ctl:ActionToggleButton>
+        <ctl:ActionToggleButton Name="FillWhiteButton" Classes="icon tool" Margin="2,0,0,0"
+                                Classes.active="{Binding IsRedactionFillWhite}" IsChecked="{Binding IsRedactionFillWhite, Mode=OneWay}"
+                                Command="{Binding SetRedactionFillCommand}" CommandParameter="{x:Static red:RedactionFill.White}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactFillTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactFillWhite}">
+          <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactFillWhite}" />
+        </ctl:ActionToggleButton>
+
+        <Border Classes="toolbarSeparator" />
+
+        <Button Name="UndoButton" Classes="icon toolbarIcon"
+                Command="{Binding UndoCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.CommandUndo}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ArrowBackUp}" />
+        </Button>
+        <Button Name="RedoButton" Classes="icon toolbarIcon" Margin="2,0,0,0"
+                Command="{Binding RedoCommand}"
+                AutomationProperties.Name="{x:Static res:Strings.CommandRedo}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.ArrowForwardUp}" />
+        </Button>
+        <Button Name="DeleteMarksButton" Classes="icon toolbarIcon" Margin="2,0,0,0"
+                Command="{Binding DeleteMarksCommand}"
+                ToolTip.Tip="{x:Static res:Strings.CommandRedactDeleteMarks}"
+                AutomationProperties.Name="{x:Static res:Strings.CommandRedactDeleteMarks}">
+          <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.Trash}" />
+        </Button>
+      </StackPanel>
+
+      <StackPanel Name="EndArea" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8" Margin="12,0,0,0">
+        <TextBlock Name="PlanHint" Classes="body" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.RedactPlanHint}" />
+        <TextBlock Name="CounterText" Classes="strong" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   Text="{Binding RedactionCounterText}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <Button Name="DiscardButton" Classes="tool"
+                Command="{Binding DiscardRedactionsCommand}"
+                ToolTip.Tip="{x:Static res:Strings.CommandRedactDiscard}"
+                AutomationProperties.Name="{x:Static res:Strings.CommandRedactDiscard}">
+          <TextBlock Text="{x:Static res:Strings.RedactDiscardButton}" Margin="0" />
+        </Button>
+        <Button Name="DoneButton" Classes="primary" VerticalAlignment="Center"
+                Command="{Binding RedactEntryCommand}"
+                ToolTip.Tip="{x:Static res:Strings.RedactDoneTooltip}"
+                AutomationProperties.Name="{x:Static res:Strings.RedactDone}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Check}" />
+            <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.RedactDone}" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

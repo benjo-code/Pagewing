@@ -426,6 +426,9 @@
   <data name="KeyComma" xml:space="preserve">
     <value>Komma</value>
   </data>
+  <data name="KeyEnter" xml:space="preserve">
+    <value>Eingabe</value>
+  </data>
   <data name="HelpTitle" xml:space="preserve">
     <value>Tastenkürzel</value>
   </data>
@@ -2048,5 +2051,74 @@
   </data>
   <data name="TabRedactionSuffix" xml:space="preserve">
     <value>, Markierungen zum Schwärzen offen</value>
+  </data>
+  <data name="CommandRedactMarkSelection" xml:space="preserve">
+    <value>Auswahl zum Schwärzen markieren</value>
+  </data>
+  <data name="RedactToolbarName" xml:space="preserve">
+    <value>Werkzeugleiste Schwärzen</value>
+  </data>
+  <data name="RedactToolArea" xml:space="preserve">
+    <value>Bereich</value>
+  </data>
+  <data name="RedactToolAreaTip" xml:space="preserve">
+    <value>Bereich auf der Seite aufziehen, um ihn zu markieren</value>
+  </data>
+  <data name="RedactToolText" xml:space="preserve">
+    <value>Textstelle</value>
+  </data>
+  <data name="RedactToolTextTip" xml:space="preserve">
+    <value>Text auf der Seite auswählen und dann markieren</value>
+  </data>
+  <data name="RedactMarkSelection" xml:space="preserve">
+    <value>Auswahl markieren</value>
+  </data>
+  <data name="RedactFill" xml:space="preserve">
+    <value>Füllung</value>
+  </data>
+  <data name="RedactFillTip" xml:space="preserve">
+    <value>Farbe der Flächen, die den entfernten Inhalt ersetzen</value>
+  </data>
+  <data name="RedactFillBlack" xml:space="preserve">
+    <value>Schwarz</value>
+  </data>
+  <data name="RedactFillWhite" xml:space="preserve">
+    <value>Weiß</value>
+  </data>
+  <data name="RedactDiscardButton" xml:space="preserve">
+    <value>Verwerfen</value>
+  </data>
+  <data name="RedactDone" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="RedactDoneTooltip" xml:space="preserve">
+    <value>Schwärzen beenden. Wartende Markierungen müssen vorher angewendet oder verworfen werden.</value>
+  </data>
+  <data name="RedactCountNone" xml:space="preserve">
+    <value>Keine Markierungen</value>
+  </data>
+  <data name="RedactCountOneMark" xml:space="preserve">
+    <value>1 Markierung auf 1 Seite</value>
+  </data>
+  <data name="RedactCountOnePage" xml:space="preserve">
+    <value>{0} Markierungen auf 1 Seite</value>
+  </data>
+  <data name="RedactCountPages" xml:space="preserve">
+    <value>{0} Markierungen auf {1} Seiten</value>
+  </data>
+  <data name="RedactPlanHint" xml:space="preserve">
+    <value>Es wird erst etwas entfernt, wenn Sie die Markierungen anwenden.</value>
+  </data>
+  <data name="RedactMarkKindName" xml:space="preserve">
+    <value>Markierung zum Schwärzen</value>
+  </data>
+  <data name="RedactMarkNameOf" xml:space="preserve">
+    <value>Markierung zum Schwärzen, Seite {0}</value>
+  </data>
+  <data name="RedactSelectionNotMarkable" xml:space="preserve">
+    <value>Dieser Text lässt sich nicht markieren: Pagewing hat dafür keine Fläche gefunden.</value>
+  </data>
+  <data name="RedactCheckFailed" xml:space="preserve">
+    <value>Pagewing konnte nicht prüfen, ob diese Datei verschlüsselt ist, und hat das Schwärzen nicht gestartet. Versuchen Sie es noch einmal.</value>
   </data>
 </root>

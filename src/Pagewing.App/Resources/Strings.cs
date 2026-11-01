@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Resources;
+using System.Text;
 
 namespace Pagewing.App.Resources;
 
@@ -169,6 +170,7 @@ public static class Strings
     public static string KeyLeft => Get("KeyLeft");
     public static string KeyRight => Get("KeyRight");
     public static string KeyComma => Get("KeyComma");
+    public static string KeyEnter => Get("KeyEnter");
     public static string HelpTitle => Get("HelpTitle");
     public static string HelpFilter => Get("HelpFilter");
     public static string HelpClose => Get("HelpClose");
@@ -759,6 +761,43 @@ public static class Strings
     public static string DiscardRedactionsText => Get("DiscardRedactionsText");
     public static string SaveChangesWithMarksText => Get("SaveChangesWithMarksText");
     public static string TabRedactionSuffix => Get("TabRedactionSuffix");
+    public static string CommandRedactMarkSelection => Get("CommandRedactMarkSelection");
+    public static string RedactToolbarName => Get("RedactToolbarName");
+    public static string RedactToolArea => Get("RedactToolArea");
+    public static string RedactToolAreaTip => Get("RedactToolAreaTip");
+    public static string RedactToolText => Get("RedactToolText");
+    public static string RedactToolTextTip => Get("RedactToolTextTip");
+    public static string RedactMarkSelection => Get("RedactMarkSelection");
+    public static string RedactFill => Get("RedactFill");
+    public static string RedactFillTip => Get("RedactFillTip");
+    public static string RedactFillBlack => Get("RedactFillBlack");
+    public static string RedactFillWhite => Get("RedactFillWhite");
+    public static string RedactDiscardButton => Get("RedactDiscardButton");
+    public static string RedactDone => Get("RedactDone");
+    public static string RedactDoneTooltip => Get("RedactDoneTooltip");
+    public static string RedactPlanHint => Get("RedactPlanHint");
+    public static string RedactMarkKindName => Get("RedactMarkKindName");
+    public static string RedactSelectionNotMarkable => Get("RedactSelectionNotMarkable");
+    public static string RedactCheckFailed => Get("RedactCheckFailed");
+
+    public static string RedactCountNone => Get("RedactCountNone");
+    public static string RedactCountOneMark => Get("RedactCountOneMark");
+    public static string RedactCountOnePage => Get("RedactCountOnePage");
+    public static string RedactCountPages => Get("RedactCountPages");
+    public static string RedactMarkNameOf => Get("RedactMarkNameOf");
+
+    /// <summary>Gets the counter of the marks, for example "4 marks on 2 pages" (the plural forms of both languages).</summary>
+    /// <param name="marks">The number of marks.</param>
+    /// <param name="pages">The number of pages that have at least one.</param>
+    public static string RedactCount(int marks, int pages) => marks <= 0
+        ? RedactCountNone
+        : marks == 1
+            ? RedactCountOneMark
+            : string.Format(Culture, CompositeFormat.Parse(pages == 1 ? RedactCountOnePage : RedactCountPages), marks, pages);
+
+    /// <summary>Gets the name of a mark for screen readers: its kind and page, never its text ("Redaction mark, page 3").</summary>
+    /// <param name="page">The 1-based page.</param>
+    public static string RedactMarkName(int page) => string.Format(Culture, CompositeFormat.Parse(RedactMarkNameOf), page);
 
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;

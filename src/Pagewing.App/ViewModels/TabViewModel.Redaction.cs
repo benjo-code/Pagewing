@@ -161,7 +161,8 @@ public sealed partial class TabViewModel
     /// <summary>Gets whether a command of the mode was made (for tests: asking the catalog makes none; the mode command itself is no obstacle).</summary>
     internal bool HasRedactionCommands =>
         _deleteMarksCommand is not null || _undoRedactionCommand is not null || _redoRedactionCommand is not null
-        || _discardRedactionsCommand is not null;
+        || _discardRedactionsCommand is not null || _markSelectionCommand is not null || _chooseRedactionToolCommand is not null
+        || _setRedactionFillCommand is not null;
 
     /// <summary>
     /// Gets whether the only thing closing would lose is the plan of marks (<see cref="HasPendingRedactions"/>): "Save" cannot
@@ -285,8 +286,14 @@ public sealed partial class TabViewModel
             }
             catch (Exception)
             {
-                // The document went meanwhile, or PDFium could not tell: a later request reads again (never "not encrypted" from not knowing).
+                // The document went meanwhile, or PDFium could not tell: a later request reads again (never "not encrypted" from not
+                // knowing). The user asked and gets told that nothing started, unless the document is gone.
                 _encryptionRead = null;
+                if (!_disposed && ReferenceEquals(document, _document))
+                {
+                    RedactionHint?.Invoke(Strings.RedactCheckFailed);
+                }
+
                 return;
             }
 
@@ -304,6 +311,12 @@ public sealed partial class TabViewModel
         if (!encrypted)
         {
             EnterRedact();
+        }
+        else if (RedactionBlockedReason is { } reason)
+        {
+            // The first request for an encrypted file: the mode is not offered from now on, and the user is told why right here
+            // (later the command is not executable, and its reason is shown where it is offered).
+            RedactionHint?.Invoke(reason);
         }
     }
 
@@ -325,6 +338,7 @@ public sealed partial class TabViewModel
         EndAnnotate();
         RedactionNotice = null;
         _redactionHistory = new RedactionHistory(RedactionPlan.Empty);
+        ResetRedactionMarking();
         IsRedacting = true;
     }
 
@@ -388,8 +402,9 @@ public sealed partial class TabViewModel
     /// </summary>
     /// <param name="edit">The change; may throw <see cref="RedactionException"/>.</param>
     /// <param name="selectionAfter">The selection after the change, or <see langword="null"/> to keep it.</param>
+    /// <param name="amend">Whether the change belongs to the last step (a run of arrow keys) and is merged into it.</param>
     /// <returns>Whether the plan changed.</returns>
-    private bool StageRedaction(Func<RedactionPlan, RedactionPlan> edit, IEnumerable<Guid>? selectionAfter)
+    private bool StageRedaction(Func<RedactionPlan, RedactionPlan> edit, IEnumerable<Guid>? selectionAfter, bool amend = false)
     {
         if (!CanEditRedactions)
         {
@@ -414,7 +429,15 @@ public sealed partial class TabViewModel
             return false;
         }
 
-        history.Do(next);
+        if (amend)
+        {
+            history.Amend(next);
+        }
+        else
+        {
+            history.Do(next);
+        }
+
         if (selectionAfter is not null)
         {
             SetMarkSelection(selectionAfter);
@@ -490,6 +513,11 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(RedactionHistory));
         OnPropertyChanged(nameof(RedactionPlan));
         OnPropertyChanged(nameof(RedactionFill));
+        OnPropertyChanged(nameof(IsRedactionFillBlack));
+        OnPropertyChanged(nameof(IsRedactionFillWhite));
+        OnPropertyChanged(nameof(RedactionCounterText));
+        OnPropertyChanged(nameof(RedactionToolIsArea));
+        OnPropertyChanged(nameof(RedactionToolIsText));
         OnPropertyChanged(nameof(HasPendingRedactions));
         OnPropertyChanged(nameof(RedactionLockReason));
         OnPropertyChanged(nameof(RedactionBlockedReason));
@@ -513,6 +541,7 @@ public sealed partial class TabViewModel
         _undoRedactionCommand?.RaiseCanExecuteChanged();
         _redoRedactionCommand?.RaiseCanExecuteChanged();
         _discardRedactionsCommand?.RaiseCanExecuteChanged();
+        RaiseMarkingCanExecuteChanged();
 
         // Ctrl+Z and Ctrl+Y are the plan's in the mode.
         _undoCommand?.RaiseCanExecuteChanged();
