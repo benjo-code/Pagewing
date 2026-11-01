@@ -12,26 +12,32 @@ namespace Pagewing.Cli.Commands;
 internal static class PageLossText
 {
     /// <summary>Writes every loss of <paramref name="report"/> as a <c>warning:</c> line.</summary>
-    public static void WriteWarnings(PageEditReport report, TextWriter error)
+    /// <param name="report">The report.</param>
+    /// <param name="error">Where the lines go.</param>
+    /// <param name="fileName">Names an inserted file by its number (<c>merge</c>), or <see langword="null"/> to say the number.</param>
+    /// <param name="prefix">Text after <c>warning: </c> and before the sentence, such as the name of a part (<c>split</c>), or <see langword="null"/>.</param>
+    public static void WriteWarnings(PageEditReport report, TextWriter error, Func<int, string>? fileName = null, string? prefix = null)
     {
         foreach (var loss in report.Losses)
         {
-            error.WriteLine($"warning: {Describe(loss)}");
+            error.WriteLine($"warning: {prefix}{Describe(loss, fileName)}");
         }
     }
 
     /// <summary>Gets the reason a report that <see cref="PageEditReport.IsRefused"/> is refused.</summary>
-    public static string RefusalOf(PageEditReport report) =>
-        string.Join(" ", report.Losses.Where(static loss => loss.Blocks).Select(Describe));
+    public static string RefusalOf(PageEditReport report, Func<int, string>? fileName = null) =>
+        string.Join(" ", report.Losses.Where(static loss => loss.Blocks).Select(loss => Describe(loss, fileName)));
 
     /// <summary>Words one loss as a single line.</summary>
-    public static string Describe(PageLoss loss)
+    /// <param name="loss">The loss.</param>
+    /// <param name="fileName">Names an inserted file by its number (<c>merge</c>), or <see langword="null"/> to say the number.</param>
+    public static string Describe(PageLoss loss, Func<int, string>? fileName = null)
     {
         ArgumentNullException.ThrowIfNull(loss);
         var pages = loss.Pages is { Count: > 0 } list ? list : null;
         var inResult = pages is null ? string.Empty : $" ({PagesOf(pages, "page", "pages")} of the output file)";
         var original = pages is null ? string.Empty : $" ({PagesOf(pages, "original page", "original pages")})";
-        var source = SourceNumber(loss.Detail);
+        var source = SourceLabel(loss.Detail, fileName);
         return loss.Kind switch
         {
             PageLossKind.SignatureInvalidated =>
@@ -100,6 +106,17 @@ internal static class PageLossText
     private static string PagesOf(IReadOnlyList<int> pages, string one, string many) =>
         $"{(pages.Distinct().Count() == 1 ? one : many)} {FormatPages(pages)}";
 
-    private static string? SourceNumber(string? detail) =>
-        detail is not null && detail.StartsWith("source:", StringComparison.Ordinal) ? detail["source:".Length..] : null;
+    // The number of an inserted file, or its name in quotes when the command can tell it.
+    private static string? SourceLabel(string? detail, Func<int, string>? fileName)
+    {
+        if (detail is null || !detail.StartsWith("source:", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var number = detail["source:".Length..];
+        return fileName is not null && int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out var index)
+            ? $"'{fileName(index)}'"
+            : number;
+    }
 }

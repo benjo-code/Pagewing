@@ -51,24 +51,10 @@ internal static class RotateCommand
         }
         catch (SaveFailureException ex)
         {
-            throw new CliException(Describe(ex, target), ex);
+            throw new CliException(SaveFailureText.Describe(ex, target), ex);
         }
 
         await output.WriteLineAsync(target.AsMemory(), ct).ConfigureAwait(false);
         await output.FlushAsync(ct).ConfigureAwait(false);
     }
-
-    private static string Describe(SaveFailureException ex, string target) => ex.Reason switch
-    {
-        SaveFailureReason.TargetExists => $"'{target}' already exists. Use --force to replace it. Nothing was written.",
-        SaveFailureReason.NotWritable => $"Cannot write '{target}': the file or its folder is not writable. Nothing was written.",
-        SaveFailureReason.DiskFull => $"Cannot write '{target}': the disk is full. Nothing was written.",
-        SaveFailureReason.WriteFailed => $"Cannot write '{target}': {ex.Message} Nothing was written.",
-        SaveFailureReason.VerificationFailed => $"The written file failed the check, so it was not kept: {ex.Message}",
-        SaveFailureReason.SourceModified or SaveFailureReason.OriginalChanged =>
-            "The input file was changed by another program while the command ran. Nothing was written; run the command again.",
-        SaveFailureReason.EncryptedNotSupported =>
-            "The input file is encrypted and the result would not stay encrypted, so nothing was written.",
-        _ => $"Cannot write '{target}': {ex.Message} Nothing was written.",
-    };
 }
