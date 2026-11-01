@@ -512,3 +512,75 @@ Pflicht unter Windows: **Chrome** (eingebauter PDF-Viewer) und **Adobe Acrobat R
 ### Ergebnis festhalten
 
 Das Ergebnis ist der Nachweis des Abnahmekriteriums von Milestone 11 „Ausgefüllte Test-Formulare zeigen die Werte in einem anderen Viewer (Test + manuelle Prüfung)“ und der Handprüfung im Release `v0.2.0` in `Docs/roadmap.json` (danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence` je Viewer: Datum, Programm und Version, Betriebssystem, für jede Datei „wie erwartet“ oder die Abweichung (welche Datei, welcher Punkt der Prüfliste, was zu sehen war). Ein Kriterium wird erst abgehakt, wenn Chrome und Acrobat Reader geprüft sind; die Acrobat-Aussage zur echt signierten Datei gehört nur dann dazu, wenn sie geprüft wurde, sonst bleibt dieser Teil ausdrücklich offen. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
+
+## Seiten organisieren prüfen (M13)
+
+Handprüfung des Projektinhabers zu Milestone 13 (Seiten organisieren, zusammenführen, teilen, als Bild exportieren, CLI `rotate`/`merge`/`split`/`export`). Alles Rechnerische und der PDFium-Round-Trip (Seitenzahl, Reihenfolge, Drehung, Text, Lesezeichen, Formulare, Verschlüsselung) ist automatisch getestet (`PageEditSpikeTests`, `PageEditExecutorTests`, `PageEditFormImportTests`, `DocumentSaverRewriteTests`, die `*Cli`-Tests, `ApplyPagesTests`, `InsertFileTests`, `SplitAndExportCardTests`, `PagesOrganize*Tests`); geprüft hat das alles bisher nur **PDFium selbst** (und `qpdf --check`, siehe Punkt 20). Nur ein Mensch am echten Fenster und mit anderen Programmen kann prüfen, was hier steht. Die Prüfung läuft nie in der CI und gehört zur Abnahme von `v1.0.0` (Anweisung des Projektinhabers vom 2026-10-30: Handprüfungen wandern dorthin). Die Nummerierung beginnt wie bei den Formularen neu bei 1.
+
+### Muster erzeugen
+
+Die Ergebnisdateien entstehen mit der veröffentlichten CLI (oder `dotnet run --project src/Pagewing.Cli -- …`) aus den Dateien in `testdata/pdfs`; die App-Fassungen entstehen von Hand (Datei öffnen, Strg+Umschalt+O, ändern, „Anwenden“ → „Speichern unter …“ in denselben Ordner).
+
+```powershell
+$T = "$env:TEMP\pagewing-pages"; New-Item -ItemType Directory -Force $T, "$T\split-bookmarks", "$T\split-every", "$T\export" | Out-Null
+$P = "testdata\pdfs"
+pagewing rotate $P\pages-marked.pdf --pages 2,5 --angle 90 --output $T\rotated.pdf
+pagewing merge --output $T\merged.pdf $P\pages-marked.pdf $P\text-rich.pdf --pages 1
+pagewing merge --output $T\merged-forms.pdf $P\forms-basic.pdf $P\forms-basic.pdf
+pagewing merge --output $T\merged-form-and-plain.pdf $P\hello_world.pdf $P\forms-basic.pdf
+pagewing split $P\pages-marked.pdf --bookmarks --output $T\split-bookmarks
+pagewing split $P\pages-marked.pdf --every 2 --output $T\split-every
+pagewing export $P\pages-marked.pdf --dpi 100 --output $T\export
+$env:PAGEWING_PASSWORD = "hôtel"; pagewing rotate $P\encrypted_hello_world_r6.pdf --pages all --angle 180 --output $T\encrypted-rotated.pdf; Remove-Item Env:PAGEWING_PASSWORD
+pagewing rotate $P\signed-docmdp-2.pdf --pages 1 --angle 90 --output $T\signed-rotated.pdf
+```
+
+Aus der App (Dateinamen frei): `pages-marked.pdf` mit Seite 3 gelöscht, Seiten 1 und 2 vertauscht, Seite 4 dupliziert und einer leeren Seite hinter Seite 1 (`app-organized.pdf`); `forms-basic.pdf` mit eingefügtem `forms-basic.pdf` (`app-merged-forms.pdf`). Dazu die Ablehnung: `text-basic.pdf` mit eingefügtem `encrypted_hello_world_r6.pdf` (Hauptdatei unverschlüsselt); erwartet ist eine Karte mit Grund und nichts Geschriebenes.
+
+### Prüfliste
+
+**Bedienung im echten Fenster** (Windows und, soweit möglich, Linux; hell, dunkel, Hochkontrast, „Kompakt“; Deutsch und Englisch):
+
+1. **Panel und Leiste:** Strg+Umschalt+O öffnet den Modus und das Panel „Seiten“. Zähler „6 → 4 Seiten“, Hinweis „Seitenänderungen warten auf Anwenden“, alle Knöpfe mit Beschriftung und Kürzel im Tooltip, bei schmalem Panel umbrechend und nichts abgeschnitten. Gedrehte, leere, kopierte und eingefügte Seiten tragen Symbol **und** Text; die Auswahl ist am Rahmen, am Häkchen und an der fetten Nummer zu erkennen, nie nur an der Farbe. Die Liste außerhalb des Modus sieht aus wie vorher.
+2. **Ziehen:** Eine Seite und eine Mehrfachauswahl (Strg/Umschalt) ziehen; die Einfügemarke sitzt zwischen den Seiten (eine und zwei Spalten in „Kompakt“); Loslassen verschiebt, Esc während des Zugs verwirft; am Rand der Liste scrollt es mit (bekannt: nur solange sich der Zeiger bewegt, Backlog „Auto-Scroll per Timer“); ein Finger auf einem Touchscreen scrollt statt zu ziehen. Wie fühlt es sich bei 1.000 Seiten (`thousand-pages.pdf`) an?
+3. **Tastatur ohne Maus:** Auswahl mit Pfeilen, Strg+A, Entf, Strg+Umschalt+Links/Rechts, Strg+Umschalt+N/B/V/Hoch/Runter, Strg+Z/Strg+Y (wirken im Modus auf den Plan), Anwenden und Verwerfen; Tab verlässt die Liste und den Modus und hält den Fokus nie fest; Entf in einer fokussierten Auswahlliste einer Karte (Einstellungen) löscht **keine** Seite. Die Kürzel auf einer **deutschen Tastatur** (AltGr, Umlaute) und Strg+Umschalt+V gegen Systemkürzel.
+4. **Menü „Extrahieren, teilen, exportieren“ und Kontextmenü:** Einträge, Kürzel, die Zeile mit dem Grund bei gesperrten Einträgen; die Reihenfolge des Fokus im Flyout mit der Grundzeile.
+5. **Bildschirmleser** (Narrator, NVDA; Orca unter Linux): Einträge der Liste melden Nummer und Markierungen („Gedreht um 90°“, „Kopie“, „Leere Seite“, „Aus anderer Datei“), der Tab meldet „Seitenänderungen ausstehend“, abgelehnte Änderungen werden als Hinweis vorgelesen, Karten (Anwenden, Datei einfügen, Teilen, Bilder) haben sinnvolle Namen und Reihenfolge.
+6. **Anwenden-Karte:** Standard „Speichern unter …“ mit Fokus; „In der Originaldatei speichern“ ist gefährlich gekennzeichnet und 400 ms gesperrt; die Verlustliste liest sich verständlich und scrollt; hell, dunkel, Hochkontrast. Nach dem Anwenden endet der Modus, die Ansicht bleibt an der richtigen Seite (Zoom, Panel, Layout unverändert), die Miniaturen zeigen die neue Datei.
+7. **Datei einfügen:** Dateidialog, verschlüsselte Datei (Passwortfeld, falsches Passwort), keine PDF, Seitenbereich mit Fehlern (`5-3`, `0`), Einfügeposition; eine Datei, die vor dem Anwenden außerhalb geändert wird, bricht das Anwenden mit Nennung der Datei ab.
+8. **Ordner- und Speichern-Dialog** auf beiden Systemen (Linux: Portal): Zielordner für Teilen und Bilder, „Speichern unter“ beim Extrahieren inklusive der Überschreiben-Rückfrage des Systems.
+9. **Das letzte Fenster mitten im Export schließen:** keine `.pw-*`-Reste im Zielordner, keine halben Dateien (das Aufräumen läuft nach dem Abbruch asynchron).
+10. **Große Datei:** Anwenden auf einer Datei von mehreren hundert MiB; Rendern und Scrollen bleiben währenddessen bedienbar, nur der Schreibschritt blockiert den `PdfiumThread` (rund 7 s bei 378 MiB gemessen).
+
+**Ergebnisdateien in anderen Programmen** (Pflicht unter Windows: **Chrome** und **Adobe Acrobat Reader**; optional Edge, Firefox, Okular, Evince). Jede Datei öffnen; nichts darf eine Meldung „beschädigt“ oder „repariert“ auslösen, und Acrobat fragt beim Schließen nichts:
+
+11. `rotated.pdf`: Seiten 2 und 5 sind gedreht (Seite 5 hatte schon `/Rotate 90`, ist jetzt 180°), Reihenfolge und Text unverändert, Lesezeichen führen auf die richtigen Seiten, Seitenbeschriftungen unverändert.
+12. `merged.pdf`: Seiten von `pages-marked.pdf`, gefolgt von Seite 1 von `text-rich.pdf`; Lesezeichen **nur** die der ersten Datei; Seitenbeschriftungen (römisch/dezimal) an ihren alten Positionen.
+13. **Formulare, die offene Frage:** `merged-forms.pdf`, `merged-form-and-plain.pdf` (die Hauptdatei hat hier kein Formular) und `app-merged-forms.pdf`: Lassen sich die Felder der **eingefügten** Seiten in Acrobat und Chrome ausfüllen? Erwartet (nicht belegt) ist: nicht zuverlässig, weil die Widgets nicht im Formular der Datei stehen. Zeigen gleich benannte Felder denselben Wert? Das Ergebnis gehört zum Backlog-Eintrag „Formularfelder beim Duplizieren oder Zusammenführen umbenennen“. Die Anwenden-Karte und die CLI müssen es vorher genannt haben.
+14. `split-bookmarks\*.pdf` (Teile 1 bis 2, 3 bis 4, 5 bis 6, Namen aus den Lesezeichen) und `split-every\*.pdf`: Seitenzahl und Text je Teil, Inhaltsverzeichnis im Teil (der Eintrag der gelöschten Seiten ohne Ziel), Seitenbeschriftungen bleiben an den Positionen.
+15. `export\*.png`: gleiche Ansicht wie `pagewing render` (Größe, Drehung, Annotationen), Dateinamen `<Name>-p001.png`.
+16. `encrypted-rotated.pdf` fragt nach dem Passwort `hôtel` und zeigt die Seite gedreht; die Berechtigungen sind unverändert (Eigenschaften, Sicherheit).
+17. `signed-rotated.pdf` (Strukturattrappe, DocMDP-Stufe 2, keine gültige Signatur): Acrobat zeigt die Signatur als ungültig oder nicht prüfbar; Pagewing hat vor dem Schreiben gewarnt („wird als ungültig angezeigt“, nie „gültig“). Eine **echte**, selbst signierte Datei (nie einchecken) zeigt in Acrobat nach dem Neuschrieb eine ungültige Signatur; das ist erwartet.
+18. `app-organized.pdf`: Reihenfolge, Kopie und leere Seite wie vorgemerkt; die duplizierte Seite zeigt denselben Inhalt; die leere Seite hat die Größe der Nachbarin.
+19. **Pagewing selbst:** Alle diese Dateien in Pagewing öffnen (hell und dunkel), drucken (Vorschau) und erneut organisieren; kein Absturz beim Speichern von Dateien mit eingefügten Formularseiten (Regressionswächter `PageEditFormImportTests`).
+20. **`qpdf --check`** auf alle Ergebnisdateien (Rezept des Spikes: qpdf 11.9.0 im Container `ubuntu:24.04`; Docker vorausgesetzt, `$T` ist der Ordner der Muster):
+
+```sh
+docker run --rm -v "$T":/data ubuntu:24.04 bash -c 'apt-get update -qq && apt-get install -y -qq qpdf >/dev/null && cd /data && for f in $(find . -name "*.pdf" ! -name "encrypted-*"); do echo "== $f"; qpdf --check "$f" || echo "EXIT $?"; done; qpdf --check --password="hôtel" encrypted-rotated.pdf'
+```
+
+Erwartet: überall „No syntax or stream encoding errors found“ (Warnungen zu nicht erreichbaren Widgets gibt es erst bei `--json-key=acroform`, nicht bei `--check`). Die Rohdateien des Spikes (`PAGEWING_SPIKE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-class "*PageEditSpikeTests"`) prüft man genauso.
+
+**Linux-Läufe** (die Tests laufen nur dort; unter Windows nicht ausgeführt):
+
+21. `dotnet test tests/Pagewing.Core.Tests --filter-class "*RotateCommandTests"` (der `statx`-Zweig von `FileIdentity`: Symlink-Ordner, Hardlink, gleiche Datei) und `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Cli"`.
+22. `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Saving" --filter-namespace "*Pages"` (der Zweig `File.Move(…, overwrite: false)` des nicht ersetzenden Verschiebens, Unix-Rechte des Ziels, Platte voll) und `--filter-class "*PageEditFormImportTests"` (Lebensdauer importierter Formularseiten).
+23. App unter Linux (X11 und Wayland): Ziehen in der Liste, Auto-Scroll, Ordner-Portal, Speichern-Portal mit Überschreiben, Tastenkürzel.
+
+**Messung auf echter Hardware:**
+
+24. Startzeit-Check (Workflow `hardware-measure.yml`, Runner `dotnet-windows-gpu`, nur auf Anweisung): die Budgets bleiben; das ist auch der einzige belastbare Beleg für die Kosten der sieben neuen Icon-Geometrien im Startpfad. Dazu `PAGEWING_MEASURE_OUT=<Ordner> dotnet test tests/Pagewing.App.Tests -c Release --filter-class "*PagesOrganizeMeasurementTests"` (Eintritt in den Modus auf 1.000 Seiten, Planoperationen, Anwenden auf 20.000 Seiten) und ein Gefühlstest: `thousand-pages.pdf` im Modus scrollen.
+
+### Ergebnis festhalten
+
+Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 13 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 13“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung (welcher Punkt, was zu sehen war); Punkt 13 immer mit der ausdrücklichen Antwort „Felder eingefügter Seiten ausfüllbar: ja/nein/teilweise (Programm, Version)“. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.

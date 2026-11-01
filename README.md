@@ -78,17 +78,33 @@ Die Roadmap wird aus `Docs/roadmap.json` erzeugt: `dotnet run tools/roadmap.cs -
 
 ## CLI
 
-`pagewing` zeigt Informationen an, rendert Seiten als PNG und gibt den Text aus. Die Ausgaben sind englisch und stabil, damit Skripte sie auswerten können. Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf.
+`pagewing` zeigt Informationen an, rendert Seiten als PNG, gibt den Text aus und organisiert Seiten (drehen, zusammenführen, teilen, als Bilder exportieren). Die Ausgaben sind englisch und stabil, damit Skripte sie auswerten können. Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf.
 
 ```bash
 pagewing info dokument.pdf                       # Seitenzahl, PDF-Version, Metadaten, Seitengrößen
 pagewing render dokument.pdf --pages 1-3 --dpi 200 --output bilder
 pagewing render dokument.pdf --no-annotations    # ohne Annotationen, Dateien dokument-p001.png, …
 pagewing text dokument.pdf --pages 2 > seite2.txt
+pagewing rotate dokument.pdf --pages 2-4 --angle 90 --output gedreht.pdf
+pagewing merge --output alles.pdf a.pdf b.pdf --pages 1-3 c.pdf
+pagewing split dokument.pdf --every 10 --output teile
+pagewing split dokument.pdf --bookmarks --output kapitel
+pagewing export dokument.pdf --pages 1,3 --dpi 150 --output bilder
 pagewing --help
 ```
 
-`--pages` nimmt `3`, `2-5`, `1,3,5-7` oder `all`. `text` gibt UTF-8 ohne BOM aus und hängt nach jeder Seite ein Form-Feed an. Das Passwort einer verschlüsselten Datei kommt mit `--password` oder besser aus der Umgebungsvariable `PAGEWING_PASSWORD`, denn Kommandozeilenargumente sind für andere Prozesse sichtbar.
+`--pages` nimmt `3`, `2-5`, `1,3,5-7` oder `all`; die Seiten kommen aufsteigend und ohne Doppelte (`--pages 3,1` ergibt die Seiten 1 und 3, ein Umsortieren geht damit nicht). `text` gibt UTF-8 ohne BOM aus und hängt nach jeder Seite ein Form-Feed an. Das Passwort einer verschlüsselten Datei kommt mit `--password` oder besser aus der Umgebungsvariable `PAGEWING_PASSWORD`, denn Kommandozeilenargumente sind für andere Prozesse sichtbar.
+
+Die schreibenden Befehle (seit Milestone 13) schreiben in eine temporäre Datei im Zielordner, öffnen und prüfen sie und ersetzen erst dann. Sie ersetzen eine vorhandene Ausgabedatei nur mit `--force` und **nie eine Eingabedatei** (auch nicht über Verknüpfungen). Was sie verlieren oder verändern (etwa die Lesezeichen eingefügter Dateien, Formularfelder gleichen Namens), steht als `warning: …` auf stderr, bevor etwas geschrieben wird.
+
+| Befehl | Aufruf | stdout bei Erfolg | Exit 1 (Auswahl) | Exit 2 (Auswahl) |
+|---|---|---|---|---|
+| `rotate` | `rotate <Datei> --pages <Bereich> --angle <90\|180\|270\|-90> --output <aus.pdf> [--force]` | Pfad der Ausgabe | Ausgabe vorhanden ohne `--force` oder gleich der Eingabe, Ordner fehlt, Passwort, Seite hinter dem Ende, Schreib- oder Prüffehler | `--pages`, `--angle` oder `--output` fehlt, ungültiger Winkel oder Bereich |
+| `merge` | `merge --output <aus.pdf> <Datei> [--pages <Bereich>] [--password <pw>] <Datei> [--pages …] … [--force]` | Pfad der Ausgabe | wie `rotate`, Ausgabe gleich einer beliebigen Eingabe, mehr als 20 weitere Dateien, eine eingefügte verschlüsselte Datei in einer unverschlüsselten Hauptdatei (die Meldung nennt die Datei) | weniger als zwei Dateien, `--output` fehlt, `--pages`/`--password` vor der ersten Datei |
+| `split` | `split <Datei> --output <Ordner> (--every <n> \| --ranges <Bereiche> \| --bookmarks) [--force]` | ein Pfad je Zeile, auch die fertigen bei Fehler oder Abbruch | Ordner fehlt (wird nie angelegt), Zieldateien vorhanden ohne `--force` (alle genannt, nichts geschrieben), `--bookmarks` ohne Lesezeichen der obersten Ebene, Teil scheitert (`N of M files were written`) | kein oder mehr als ein Modus, `--every` keine ganze Zahl ab 1, ungültige `--ranges` |
+| `export` | `export <Datei> [--pages <Bereich>] [--dpi <n>] [--output <Ordner>] [--no-annotations] [--force]` | ein Pfad je Zeile (`<Name>-p<NNN>.png`) | Zieldatei vorhanden ohne `--force`, Seite über 64 Megapixel (nennt die Seite), Passwort | `--dpi` nicht positiv, ungültiger Bereich |
+
+`--pages` und `--password` hinter einer Datei gelten für diese Datei (wie bei `qpdf --pages`); die erste Datei von `merge` ist die primäre (ihre Lesezeichen, Formulare und Seitenbeschriftungen bleiben, die der anderen Dateien nicht). `split --bookmarks` teilt an den Lesezeichen der obersten Ebene. `export` legt einen fehlenden Ausgabeordner an (wie `render`), `split` nicht. Eine Datei, die wie eine Option heißt oder mit `-` beginnt, geht als `./-name.pdf`. Seiten umsortieren oder duplizieren geht bisher nur in der App (Modus „Seiten organisieren“, Strg+Umschalt+O).
 
 ## Lizenz
 
