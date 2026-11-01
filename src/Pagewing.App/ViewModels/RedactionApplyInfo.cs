@@ -473,7 +473,12 @@ public sealed class RedactionApplyInfo
     // What Pagewing neither cleans nor checks: always the objects and actions that come with the pages, and what depends on the file.
     private static List<string> NotCleanedLines(RedactionAnalysis analysis)
     {
-        var lines = new List<string> { Strings.RedactNotCleanedObjects, Strings.RedactNotCleanedActions };
+        var lines = new List<string> { Strings.RedactNotCleanedObjects, Strings.RedactNotCleanedActions, Strings.RedactNotCleanedAnnotations };
+        if (analysis.AttachmentAnnotations > 0)
+        {
+            lines.Add(Strings.RedactNotCleanedAnnotationFiles(analysis.AttachmentAnnotations));
+        }
+
         if (analysis.Losses.Any(static loss => loss.Kind == RedactionLossKind.FormFieldsNotFillable))
         {
             lines.Add(Strings.RedactNotCleanedFieldValues);

@@ -2205,6 +2205,9 @@
   <data name="RedactNotSearchedCovered" xml:space="preserve">
     <value>Text, den etwas anderes verdeckt, wird gefunden, aber nicht als unsichtbar gekennzeichnet; nur Text im Darstellungsmodus „unsichtbar“ ist es.</value>
   </data>
+  <data name="RedactNotSearchedNoForm" xml:space="preserve">
+    <value>Die Werte von Formularfeldern in einer Datei ohne Formular (Widgets ohne /AcroForm) werden nicht durchsucht.</value>
+  </data>
   <data name="RedactMarkAll" xml:space="preserve">
     <value>Alle markieren</value>
   </data>
@@ -2504,6 +2507,12 @@
   </data>
   <data name="RedactNotCleanedActions" xml:space="preserve">
     <value>Aktionen von Annotationen (/AA, Links und andere Aktionen), die mit den Seiten kommen.</value>
+  </data>
+  <data name="RedactNotCleanedAnnotations" xml:space="preserve">
+    <value>Annotationen außerhalb der markierten Bereiche (Kommentartexte, Autoren, Antworten, Popups, Notizen) bleiben unverändert erhalten; nur eine Annotation unter einer Markierung wird entfernt.</value>
+  </data>
+  <data name="RedactNotCleanedAnnotationFilesFormat" xml:space="preserve">
+    <value>Dateianhänge von Annotationen (Büroklammern): bis zu {0}. Ihre eingebetteten Dateien kommen mit den Seiten und bleiben in der Datei.</value>
   </data>
   <data name="RedactNotCleanedFieldValues" xml:space="preserve">
     <value>Die Werte (/V, /DV) von Formularfeldern bleiben an ihren Widgets in der Datei; ein markierter Text darin wird von der Prüfung der Dateibytes noch gefunden, und dann wird nichts geschrieben.</value>

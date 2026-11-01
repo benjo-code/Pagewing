@@ -168,7 +168,8 @@ public sealed partial class RedactionExecutor
             pass.Refusals,
             pass.KeysChecked,
             plan.Marks.Count,
-            withoutTerm);
+            withoutTerm,
+            inventory.AttachmentAnnotations);
     }
 
     /// <summary>

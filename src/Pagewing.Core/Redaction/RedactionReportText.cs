@@ -28,6 +28,9 @@ public static class RedactionReportText
         new(RedactionNotCheckedKind.ApplyXmp, ApplyNotChecked[2]),
     ];
 
+    /// <summary>The line under "Not cleaned" that says the annotations outside the marks are kept as they are (always shown).</summary>
+    public const string AnnotationsAlongText = "Annotations outside the marked areas (comment texts, authors, replies, popups, notes) come along unchanged; only an annotation under a mark is removed.";
+
     /// <summary>Gets the report before anything is applied: removed, cleaned, lost, not cleaned, and what will be checked.</summary>
     /// <param name="analysis">The analysis.</param>
     /// <param name="showValues">Whether the fields of the information dictionary are listed with their text (the card); <see langword="false"/> lists only that they were there (the command line, whose output ends up in logs).</param>
@@ -200,7 +203,13 @@ public static class RedactionReportText
         {
             "Metadata and private data (/Metadata, /PieceInfo) of form objects and image objects that come with the pages.",
             "Actions of annotations (/AA, links and other actions) that come with the pages.",
+            AnnotationsAlongText,
         };
+        if (analysis.AttachmentAnnotations > 0)
+        {
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"File attachments of annotations (paperclip notes): up to {analysis.AttachmentAnnotations}. Their embedded files come with the pages and stay in the file."));
+        }
+
         if (analysis.Losses.Any(static l => l.Kind == RedactionLossKind.FormFieldsNotFillable))
         {
             lines.Add("The values (/V, /DV) of form fields stay on their widgets in the file; a marked text inside them is still found by the check of the file bytes, and then nothing is written.");

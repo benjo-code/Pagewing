@@ -153,6 +153,7 @@ public sealed record RedactionLoss(RedactionLossKind Kind, int Count);
 /// <param name="PageKeysChecked">Whether the early scan of the written working copy for page keys PDFium cannot remove ran and could check the file (the final output is checked again when applying).</param>
 /// <param name="Marks">The number of marks of the plan.</param>
 /// <param name="MarksWithoutTerm">The number of marks without a term (a rectangle dragged on the page): the text under them is removed, but the check has no text to search for.</param>
+/// <param name="AttachmentAnnotations">How many paperclip annotations (<c>/FileAttachment</c>) the file has: up to that many embedded files come with the pages and stay in the file (not cleaned).</param>
 public sealed record RedactionAnalysis(
     IReadOnlyList<PageRedactionImpact> Pages,
     IReadOnlyList<CleanupItem> Cleanup,
@@ -161,7 +162,8 @@ public sealed record RedactionAnalysis(
     IReadOnlyList<RedactionRefusal> Refusals,
     bool PageKeysChecked,
     int Marks,
-    int MarksWithoutTerm)
+    int MarksWithoutTerm,
+    int AttachmentAnnotations = 0)
 {
     /// <summary>Gets whether the file must not be redacted (any refusal).</summary>
     public bool IsRefused => Refusals.Count > 0;
@@ -174,4 +176,5 @@ public sealed record RedactionAnalysis(
 /// <param name="Cleanup">What the cleanup removes, in the order of <see cref="CleanupKind"/>.</param>
 /// <param name="Losses">What the rebuild loses, in the order of <see cref="RedactionLossKind"/>; only losses that apply.</param>
 /// <param name="Complete">Whether the scan of the file could read every stream; <see langword="false"/> means the cleanup list may miss entries (the card must not say "nothing else").</param>
-public sealed record RedactionInventory(IReadOnlyList<CleanupItem> Cleanup, IReadOnlyList<RedactionLoss> Losses, bool Complete);
+/// <param name="AttachmentAnnotations">How many paperclip annotations (<c>/FileAttachment</c>) the file has: up to that many embedded files come with the pages and are not cleaned.</param>
+public sealed record RedactionInventory(IReadOnlyList<CleanupItem> Cleanup, IReadOnlyList<RedactionLoss> Losses, bool Complete, int AttachmentAnnotations = 0);

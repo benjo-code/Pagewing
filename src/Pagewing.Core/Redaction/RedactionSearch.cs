@@ -103,6 +103,7 @@ public static class RedactionSearch
         "The rich text (/RV) of annotations and the default values (/DV) of form fields are not searched.",
         "Text that exists only in the appearance (/AP) of an annotation is not searched.",
         "Invisible text is flagged only for the render mode 3 (invisible); text that is covered by something else is found but not flagged.",
+        "The values of form fields in a file without a form (widgets without /AcroForm) are not searched.",
     ];
 
     /// <summary>

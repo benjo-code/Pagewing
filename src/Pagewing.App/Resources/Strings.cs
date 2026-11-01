@@ -828,6 +828,7 @@ public static class Strings
     public static string RedactNotSearchedRichText => Get("RedactNotSearchedRichText");
     public static string RedactNotSearchedAppearance => Get("RedactNotSearchedAppearance");
     public static string RedactNotSearchedCovered => Get("RedactNotSearchedCovered");
+    public static string RedactNotSearchedNoForm => Get("RedactNotSearchedNoForm");
     public static string RedactMarkAll => Get("RedactMarkAll");
     public static string RedactMarkAllTip => Get("RedactMarkAllTip");
     public static string RedactMarkChecked => Get("RedactMarkChecked");
@@ -871,6 +872,7 @@ public static class Strings
         RedactNotSearchedRichText,
         RedactNotSearchedAppearance,
         RedactNotSearchedCovered,
+        RedactNotSearchedNoForm,
     ];
 
     public static string RedactSearching(int hits) => string.Format(Culture, CompositeFormat.Parse(RedactSearchingOf), hits);
@@ -971,6 +973,11 @@ public static class Strings
     public static string RedactNotCleanedActions => Get("RedactNotCleanedActions");
     public static string RedactNotCleanedFieldValues => Get("RedactNotCleanedFieldValues");
     public static string RedactNotCleanedSignature => Get("RedactNotCleanedSignature");
+    public static string RedactNotCleanedAnnotations => Get("RedactNotCleanedAnnotations");
+    public static string RedactNotCleanedAnnotationFilesFormat => Get("RedactNotCleanedAnnotationFilesFormat");
+
+    public static string RedactNotCleanedAnnotationFiles(int count) => string.Format(Culture, CompositeFormat.Parse(RedactNotCleanedAnnotationFilesFormat), count);
+
     public static string RedactNotCheckedNoTermOne => Get("RedactNotCheckedNoTermOne");
     public static string RedactNotCheckedNoTerm => Get("RedactNotCheckedNoTerm");
     public static string RedactCheckedText => Get("RedactCheckedText");

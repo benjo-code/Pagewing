@@ -189,6 +189,8 @@ internal sealed class NameTally
 
     public int EmbeddedFiles { get; private set; }
 
+    public int AttachmentAnnotations { get; private set; }
+
     public int OutlineItems { get; private set; }
 
     public int PageLabelKeys { get; private set; }
@@ -216,6 +218,10 @@ internal sealed class NameTally
                 break;
             case 12 when valueOfType && name.SequenceEqual("EmbeddedFile"u8):
                 EmbeddedFiles++;
+                break;
+            case 14 when name.SequenceEqual("FileAttachment"u8):
+                // /Subtype /FileAttachment: a paperclip annotation; its file comes with the page and is not cleaned.
+                AttachmentAnnotations++;
                 break;
             default:
                 break;

@@ -83,7 +83,8 @@ public sealed partial class RedactionExecutor(PdfEngine engine)
         AddField(cleanup, CleanupKind.Producer, metadata.Producer);
         AddCount(cleanup, CleanupKind.Xmp, scan.MetadataKeys);
         AddCount(cleanup, CleanupKind.Bookmarks, scan.OutlineItems);
-        AddCount(cleanup, CleanupKind.Attachments, scan.EmbeddedFiles);
+        // The files of paperclip annotations come with the pages and stay; only the rest is the names tree the rebuild drops.
+        AddCount(cleanup, CleanupKind.Attachments, Math.Max(0, scan.EmbeddedFiles - scan.AttachmentAnnotations));
         AddCount(cleanup, CleanupKind.JavaScript, scan.JavaScriptActions);
         AddCount(cleanup, CleanupKind.PageLabels, scan.PageLabelKeys);
 
@@ -107,7 +108,7 @@ public sealed partial class RedactionExecutor(PdfEngine engine)
             losses.Add(new RedactionLoss(RedactionLossKind.SignatureInvalidated, signatures.SignatureCount));
         }
 
-        return new RedactionInventory(cleanup, losses, scan.Complete);
+        return new RedactionInventory(cleanup, losses, scan.Complete, scan.AttachmentAnnotations);
     }
 
     /// <summary>

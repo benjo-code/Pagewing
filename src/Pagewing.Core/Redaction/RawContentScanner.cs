@@ -39,7 +39,7 @@ public static class RawContentScanner
         ArgumentNullException.ThrowIfNull(file);
         var result = Scan(file, [], RawScanLimits.Default, cancellationToken);
         var names = result.Names;
-        return new CleanupInventory(names.MetadataKeys, names.JavaScriptActions, names.EmbeddedFiles, names.OutlineItems, names.PageLabelKeys, !result.Notes.CouldHideText);
+        return new CleanupInventory(names.MetadataKeys, names.JavaScriptActions, names.EmbeddedFiles, names.OutlineItems, names.PageLabelKeys, !result.Notes.CouldHideText, names.AttachmentAnnotations);
     }
 
     /// <summary>Counts several texts in one pass.</summary>

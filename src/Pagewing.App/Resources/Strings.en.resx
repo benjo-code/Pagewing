@@ -2205,6 +2205,9 @@
   <data name="RedactNotSearchedCovered" xml:space="preserve">
     <value>Text that something else covers is found, but not flagged as invisible; only text with the render mode invisible is.</value>
   </data>
+  <data name="RedactNotSearchedNoForm" xml:space="preserve">
+    <value>The values of form fields in a file without a form (widgets without /AcroForm) are not searched.</value>
+  </data>
   <data name="RedactMarkAll" xml:space="preserve">
     <value>Mark all</value>
   </data>
@@ -2504,6 +2507,12 @@
   </data>
   <data name="RedactNotCleanedActions" xml:space="preserve">
     <value>Actions of annotations (/AA, links and other actions) that come with the pages.</value>
+  </data>
+  <data name="RedactNotCleanedAnnotations" xml:space="preserve">
+    <value>Annotations outside the marked areas (comment texts, authors, replies, popups, notes) come along unchanged; only an annotation under a mark is removed.</value>
+  </data>
+  <data name="RedactNotCleanedAnnotationFilesFormat" xml:space="preserve">
+    <value>File attachments of annotations (paperclip notes): up to {0}. Their embedded files come with the pages and stay in the file.</value>
   </data>
   <data name="RedactNotCleanedFieldValues" xml:space="preserve">
     <value>The values (/V, /DV) of form fields stay on their widgets in the file; a marked text inside them is still found by the check of the file bytes, and then nothing is written.</value>

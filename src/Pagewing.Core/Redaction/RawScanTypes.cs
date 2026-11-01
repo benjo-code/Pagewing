@@ -100,8 +100,9 @@ public sealed class RawScanNotes
 /// </summary>
 /// <param name="MetadataKeys">The <c>/Metadata</c> entries (the XMP of the document or of a page).</param>
 /// <param name="JavaScriptActions">The <c>/JS</c> entries.</param>
-/// <param name="EmbeddedFiles">The streams with <c>/Type /EmbeddedFile</c>.</param>
+/// <param name="EmbeddedFiles">The streams with <c>/Type /EmbeddedFile</c> (the attachments of the names tree and the files of paperclip annotations together).</param>
 /// <param name="OutlineItems">The dictionaries with <c>/Title</c> and <c>/Parent</c> (bookmarks).</param>
 /// <param name="PageLabelKeys">The <c>/PageLabels</c> entries.</param>
 /// <param name="Complete">Whether every stream could be read; <see langword="false"/> means the counts may be too low.</param>
-public sealed record CleanupInventory(int MetadataKeys, int JavaScriptActions, int EmbeddedFiles, int OutlineItems, int PageLabelKeys, bool Complete);
+/// <param name="AttachmentAnnotations">The <c>/FileAttachment</c> names (paperclip annotations): their files come with the pages and are not cleaned, so only the rest of <paramref name="EmbeddedFiles"/> counts as cleaned.</param>
+public sealed record CleanupInventory(int MetadataKeys, int JavaScriptActions, int EmbeddedFiles, int OutlineItems, int PageLabelKeys, bool Complete, int AttachmentAnnotations = 0);

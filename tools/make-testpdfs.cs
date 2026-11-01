@@ -124,6 +124,7 @@ static class TestPdfs
         new("forms-hostile.pdf", FormsHostile()),
         new("redact-everywhere.pdf", RedactEverywhere()),
         new("redact-everywhere-nopattern.pdf", RedactEverywhere(withPattern: false)),
+        new("redact-attachments.pdf", RedactAttachments()),
         new("redact-covered.pdf", RedactCovered()),
         new("redact-revisions.pdf", RedactRevisions()),
         new("redact-image.pdf", RedactImage()),
@@ -1169,6 +1170,26 @@ static class TestPdfs
         doc.InfoEntries = $"/Author ({RedactSecondTerm}) /Subject ({RedactTerm})";
         doc.CatalogEntries = $"/Outlines {outline} 0 R /PageMode /UseOutlines /Metadata {xmp} 0 R /Names << /EmbeddedFiles << /Names [(notes.txt) {fileSpec} 0 R] >> >> "
             + AcroFormEntry(doc, [widget]);
+        return doc.Build();
+    }
+
+    // Attachments in two places. One page 300 x 200: "Public line stays visible" (Helvetica 14 at 20,160) and "Adresse: Zephyrstraße 17" (20,120),
+    // a FileAttachment annotation (paperclip) at 250,20 to 270,40 whose embedded file says "ANNOTFILE-9183", and an attachment in the
+    // names tree of the catalog that says "CATALOGFILE-7421". A redaction removes the names tree (document level); the paperclip is an
+    // annotation that comes with the page and keeps its file. Neither file holds the term.
+    private static byte[] RedactAttachments()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Anhänge");
+        var catalogFile = doc.AddStream("/Type /EmbeddedFile /Subtype /text#2Fplain", Text("Catalog attachment CATALOGFILE-7421\n"));
+        var catalogSpec = doc.Add($"<< /Type /Filespec /F (catalog.txt) /UF (catalog.txt) /EF << /F {catalogFile} 0 R >> >>");
+        var annotFile = doc.AddStream("/Type /EmbeddedFile /Subtype /text#2Fplain", Text("Annotation attachment ANNOTFILE-9183\n"));
+        var annotSpec = doc.Add($"<< /Type /Filespec /F (paperclip.txt) /UF (paperclip.txt) /EF << /F {annotFile} 0 R >> >>");
+        var clip = doc.Add($"<< /Type /Annot /Subtype /FileAttachment /Rect [250 20 270 40] /Name /Paperclip /Contents (A paperclip) /FS {annotSpec} 0 R /F 4 >>");
+        doc.AddPage($"/MediaBox [0 0 300 200] /Annots [{clip} 0 R]", "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>", $"""
+            BT /F1 14 Tf 20 160 Td (Public line stays visible) Tj ET
+            BT /F1 14 Tf 20 120 Td (Adresse: {RedactTerm}) Tj ET
+            """);
+        doc.CatalogEntries = $"/Names << /EmbeddedFiles << /Names [(catalog.txt) {catalogSpec} 0 R] >> >> ";
         return doc.Build();
     }
 

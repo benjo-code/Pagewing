@@ -226,6 +226,72 @@ public sealed class RedactionApplierTests : IDisposable
         Assert.Equal(before, await File.ReadAllBytesAsync(original, Ct));
     }
 
+    [Fact]
+    public async Task AFileAttachedToAnAnnotationStaysInTheFileAndTheReportSaysSoWhileTheCatalogAttachmentGoes()
+    {
+        // The names tree of the catalog is document-level data the rebuild drops; a paperclip is an annotation that comes with its page,
+        // and PDFium copies its file with it. The report must not call that file cleaned.
+        var original = Copy("redact-attachments.pdf");
+        var before = await File.ReadAllBytesAsync(original, Ct);
+        Assert.True(RawPdf.ContainsAnywhere(before, "CATALOGFILE-7421"));
+        Assert.True(RawPdf.ContainsAnywhere(before, "ANNOTFILE-9183"));
+        using (var stream = new MemoryStream(before))
+        {
+            var inventory = RawContentScanner.Inventory(stream, Ct);
+            Assert.Equal(2, inventory.EmbeddedFiles);
+            Assert.Equal(1, inventory.AttachmentAnnotations);
+        }
+
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(original);
+        var shown = session.Document!;
+        var plan = WithArea(RedactionPlan.Empty, 0, new PageRect(15, 62, 280, 90));
+        var analysis = await new RedactionExecutor(engine).AnalyzeAsync(plan, shown, original, null, Ct);
+        Assert.False(analysis.IsRefused, RedactionRefusalText.Of(analysis.Refusals));
+        Assert.Equal(1, analysis.AttachmentAnnotations);
+        var attachments = Assert.Single(analysis.Cleanup, static item => item.Kind == CleanupKind.Attachments);
+        Assert.Equal("1", attachments.Detail);
+
+        var target = Target();
+        var result = await RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, target), null, Ct);
+
+        Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+        var bytes = await File.ReadAllBytesAsync(target, Ct);
+        Assert.False(RawPdf.ContainsAnywhere(bytes, "CATALOGFILE-7421"));
+        Assert.True(RawPdf.ContainsAnywhere(bytes, "ANNOTFILE-9183"));
+
+        foreach (var report in new[] { RedactionReportText.Of(analysis), RedactionReportText.Of(analysis, result.Check) })
+        {
+            Assert.Contains("Attached files: 1.", report, StringComparison.Ordinal);
+            var notCleaned = report[report.IndexOf("Not cleaned:", StringComparison.Ordinal)..];
+            notCleaned = notCleaned[..notCleaned.IndexOf("\n\n", StringComparison.Ordinal)];
+            Assert.Contains("up to 1", notCleaned, StringComparison.Ordinal);
+            Assert.Contains("File attachments of annotations", notCleaned, StringComparison.Ordinal);
+            Assert.Contains("stay in the file", notCleaned, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task TheReportAlwaysSaysThatAnnotationsOutsideTheMarksComeAlongUnchanged()
+    {
+        var path = SecretFile();
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var plan = await SecretPlanAsync(session.Document!);
+        var analysis = await new RedactionExecutor(engine).AnalyzeAsync(plan, session.Document!, path, null, Ct);
+
+        var report = RedactionReportText.Of(analysis);
+        var notCleaned = report[report.IndexOf("Not cleaned:", StringComparison.Ordinal)..];
+        notCleaned = notCleaned[..notCleaned.IndexOf("\n\n", StringComparison.Ordinal)];
+        Assert.Contains("Annotations outside the marked areas", notCleaned, StringComparison.Ordinal);
+        Assert.Contains("unchanged", notCleaned, StringComparison.Ordinal);
+        Assert.DoesNotContain("File attachments of annotations", notCleaned, StringComparison.Ordinal);
+        foreach (var word in new[] { "valid", "legally", "guarantee", "safe" })
+        {
+            Assert.DoesNotContain(word, notCleaned, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     // ------------------------------------------------------------------ refusals
 
     [Fact]

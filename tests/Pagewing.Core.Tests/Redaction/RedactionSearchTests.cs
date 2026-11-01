@@ -418,9 +418,9 @@ public sealed class RedactionSearchTests
         Assert.True(report.IsComplete);
         Assert.False(report.LimitReached);
         Assert.Empty(report.IncompletePages);
-        Assert.Equal(6, RedactionSearch.NotSearched.Count);
+        Assert.Equal(7, RedactionSearch.NotSearched.Count);
         Assert.All(RedactionSearch.NotSearched, static line => Assert.EndsWith(".", line, StringComparison.Ordinal));
-        foreach (var key in new[] { "/IRT", "popup", "/T)", "/Subj", "/TU", "field", "/RV", "/DV", "/AP", "render mode 3" })
+        foreach (var key in new[] { "/IRT", "popup", "/T)", "/Subj", "/TU", "field", "/RV", "/DV", "/AP", "render mode 3", "/AcroForm" })
         {
             Assert.Contains(RedactionSearch.NotSearched, line => line.Contains(key, StringComparison.Ordinal));
         }
