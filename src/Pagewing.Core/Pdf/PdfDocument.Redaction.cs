@@ -20,8 +20,9 @@ public sealed partial class PdfDocument
     /// <summary>
     /// The dry run: what <see cref="RedactPageAsync"/> would do to the page for these rectangles, with the same decisions (the page
     /// is rewritten on a scratch copy and read back there, so the text that cannot be rewritten is known). Changes nothing: the
-    /// document stays as it is, and the page can be redacted afterwards. Only text and annotations are handled so far; images,
-    /// paths and form objects are not touched (their counts are 0).
+    /// document stays as it is, and the page can be redacted afterwards. It does not run the render check
+    /// (<see cref="VerifyRedactionRenderAsync"/>): that one writes the whole document once, after all pages are redacted, so the analysis
+    /// of a whole job redacts every page on a throwaway working copy and checks once.
     /// </summary>
     /// <param name="page">The 0-based page.</param>
     /// <param name="areas">The rectangles in points from the top left of the displayed page.</param>
@@ -39,7 +40,10 @@ public sealed partial class PdfDocument
     /// characters that are hit (a character counts as soon as its box touches a rectangle; invisible, covered and clipped text too),
     /// the annotations in a rectangle with their popups and replies. Text objects are split so that the characters outside stay
     /// exactly where they were; a text object whose rest cannot be rewritten is removed as a whole and listed. Every surviving
-    /// character is read back from the rewritten page. Only text and annotations are handled so far (see <see cref="AnalyzeRedactionAsync"/>).
+    /// character is read back from the rewritten page. Images under a rectangle get their pixels overwritten (images that are turned or
+    /// sheared go as a whole), filled rectangle paths are cut around the rectangle, other paths go as a whole, and form objects with
+    /// something under a rectangle are taken apart on the page first (their children become objects of the page); everything removed as a
+    /// whole is listed. The page is checked with <see cref="VerifyRedactionRenderAsync"/> once all pages are done.
     /// </summary>
     /// <param name="page">The 0-based page.</param>
     /// <param name="areas">The rectangles in points from the top left of the displayed page; parts outside the page are clipped.</param>
@@ -64,6 +68,189 @@ public sealed partial class PdfDocument
 
     /// <summary>Hooks for tests of the redaction engine; <see langword="null"/> in production.</summary>
     internal PdfiumRedactionSeam? RedactionSeam { get; set; }
+
+    /// <summary>Hooks for tests of the render check; <see langword="null"/> in production.</summary>
+    internal RedactionVerifySeam? VerifySeam { get; set; }
+
+    /// <summary>Gets how many times <see cref="VerifyRedactionRenderAsync"/> wrote this document for its check (one per call, not one per page).</summary>
+    internal int RedactionDryRunWrites => Volatile.Read(ref redactionDryRunWrites);
+
+    /// <summary>
+    /// The render check of a redacted working copy (milestone 14, spec 5.5): PDFium writes a page again from its objects after any change
+    /// and does not write everything it reads, so every page that was redacted is compared with the original outside the redacted
+    /// rectangles. The document is written <b>once</b> for all the pages (<see cref="SaveRewriteAsync"/> into a temporary file that is
+    /// deleted again), the copy is opened, and only the given pages are rendered from it (never from this working copy, whose pages hold
+    /// raw edits) and from <paramref name="original"/> at <see cref="RedactionRenderCheck.Scale"/>; pixels outside the rectangles plus
+    /// <see cref="RedactionRenderCheck.MarginPoints"/> may not differ by more than <see cref="RedactionRenderCheck.ChannelTolerance"/> in a
+    /// channel (<see cref="RedactionRenderCheck.MaxDifferentPixels"/> pixels are allowed to).
+    /// </summary>
+    /// <remarks>
+    /// Analysis and applying share it, each calls it once: after <see cref="RedactPageAsync"/> was run for all pages of the job on a working
+    /// copy (the analysis on a throwaway copy, the application on the copy that is written), with the pages that changed. A page that fails
+    /// gets <see cref="RedactionRefusalKind.PageNotRedactable"/>; the caller puts the refusal into <see cref="PageRedactionImpact.Refusal"/> of that
+    /// page. A page that cannot be rendered or written fails the check, never passes it. After any refusal the caller discards the copy.
+    /// </remarks>
+    /// <param name="original">A document with the same pages that was not redacted (the file as it was before the working copy was made).</param>
+    /// <param name="pages">The pages that were redacted, each with its rectangles; repeated pages are not allowed.</param>
+    /// <param name="cancellationToken">Cancels between two steps.</param>
+    /// <returns>One refusal per page that fails; empty when all pass.</returns>
+    /// <exception cref="RedactionTaintedException">A redaction left this document partly redacted (it cannot be written).</exception>
+    /// <exception cref="ArgumentException">The documents have a different number of pages, or a page appears twice.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A page does not exist.</exception>
+    /// <exception cref="RedactionException">A rectangle is not finite or has no size.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="ObjectDisposedException">A document is disposed.</exception>
+    public async Task<IReadOnlyList<RedactionRefusal>> VerifyRedactionRenderAsync(PdfDocument original, IReadOnlyList<RedactionPageAreas> pages, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(pages);
+        original.ThrowIfDisposed();
+        if (original.PageCount != PageCount)
+        {
+            throw new ArgumentException("The original has another number of pages than the working copy.", nameof(original));
+        }
+
+        var seen = new HashSet<int>();
+        foreach (var entry in pages)
+        {
+            ThrowIfNotAPage(entry.Page);
+            if (!seen.Add(entry.Page))
+            {
+                throw new ArgumentException($"Page {entry.Page} appears twice.", nameof(pages));
+            }
+
+            foreach (var area in entry.Areas)
+            {
+                if (!double.IsFinite(area.Left) || !double.IsFinite(area.Top) || !double.IsFinite(area.Right) || !double.IsFinite(area.Bottom) || !(area.Right > area.Left) || !(area.Bottom > area.Top))
+                {
+                    throw new RedactionException(RedactionError.InvalidArea, "A rectangle needs finite edges and a positive size.");
+                }
+            }
+        }
+
+        var refusals = new List<RedactionRefusal>();
+        if (pages.Count == 0)
+        {
+            return refusals;
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"pagewing-check-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            await using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81_920, useAsync: false))
+            {
+                await SaveRewriteAsync(stream, cancellationToken).ConfigureAwait(false);
+            }
+
+            Interlocked.Increment(ref redactionDryRunWrites);
+            VerifySeam?.WrittenCopy?.Invoke(path);
+            PdfDocument written;
+            try
+            {
+                written = await new PdfEngine().OpenAsync(path, password: null, cancellationToken).ConfigureAwait(false);
+            }
+            catch (PdfOpenException ex)
+            {
+                return [.. pages.Select(p => new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [p.Page], $"The rewritten document could not be opened again for the check ({ex.Error})."))];
+            }
+
+            await using (written)
+            {
+                foreach (var entry in pages)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var reason = await CheckPageAsync(original, written, entry, cancellationToken).ConfigureAwait(false);
+                    if (reason is not null)
+                    {
+                        refusals.Add(new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [entry.Page], reason));
+                    }
+                }
+            }
+
+            return refusals;
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+                // A temporary file that cannot be deleted right now is the system's to clean up.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // The same.
+            }
+        }
+    }
+
+    private async Task<string?> CheckPageAsync(PdfDocument original, PdfDocument written, RedactionPageAreas entry, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var size = await original.GetPageSizeAsync(entry.Page, cancellationToken).ConfigureAwait(false);
+            var scale = RedactionRenderCheck.ScaleFor(size);
+            var options = new RenderOptions { Priority = PdfPriority.Background };
+            VerifySeam?.Rendering?.Invoke(original);
+            var before = await original.RenderPageAsync(entry.Page, scale, options, cancellationToken).ConfigureAwait(false);
+            VerifySeam?.Rendering?.Invoke(written);
+            var after = await written.RenderPageAsync(entry.Page, scale, options, cancellationToken).ConfigureAwait(false);
+            var result = RedactionRenderCheck.Compare(before, after, scale, entry.Areas);
+            if (result.SizeDiffers)
+            {
+                return "The page changed its size when it was written again.";
+            }
+
+            if (result.Passes)
+            {
+                return null;
+            }
+
+            var box = result.Box!.Value;
+            return string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"The page looks different outside the marked areas after it is written again ({result.Different} pixels, around x {box.Left:0.#} to {box.Right:0.#} pt and y {box.Top:0.#} to {box.Bottom:0.#} pt from the top left): PDFium cannot write this page without changing it.");
+        }
+        catch (Exception ex) when (ex is PdfRenderException or InvalidDataException)
+        {
+            return "The page could not be rendered for the check, so it cannot be shown that nothing outside the marked areas changed.";
+        }
+    }
+
+    /// <summary>
+    /// The pixels of the images on a page that lie under a rectangle (read with <c>FPDFImageObj_GetRenderedBitmap</c> at the pixel size of
+    /// each image), for the check of a redacted document: after redaction every one must be the colour of the area. Images inside form
+    /// objects are read too. An image that is turned or sheared is returned whole (it is never cut at the rectangle), one that cannot be
+    /// read as an entry of size 0. Call it on the document that was written and opened again, not on a working copy.
+    /// </summary>
+    /// <param name="page">The 0-based page.</param>
+    /// <param name="area">The rectangle in points from the top left of the displayed page.</param>
+    /// <param name="cancellationToken">Cancels before the read starts.</param>
+    /// <returns>One entry per image whose bounds touch the rectangle and that has pixels under it.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The page does not exist.</exception>
+    /// <exception cref="RedactionException">The rectangle is not finite or has no size.</exception>
+    /// <exception cref="InvalidOperationException">The page has more objects than redaction handles.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public async Task<IReadOnlyList<ImageAreaPixels>> GetImageAreaPixelsAsync(int page, PageRect area, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ThrowIfNotAPage(page);
+        if (!double.IsFinite(area.Left) || !double.IsFinite(area.Top) || !double.IsFinite(area.Right) || !double.IsFinite(area.Bottom) || !(area.Right > area.Left) || !(area.Bottom > area.Top))
+        {
+            throw new RedactionException(RedactionError.InvalidArea, "A rectangle needs finite edges and a positive size.");
+        }
+
+        var rectangle = new PdfiumRedactionArea(area.Left, area.Top, area.Right, area.Bottom);
+        var read = await document.Thread.InvokeAsync(
+            () => PdfiumRedactionRead.ReadImageAreaPixels(document, page, rectangle),
+            PdfiumPriority.Background,
+            cancellationToken).ConfigureAwait(false);
+        return [.. read.Select(r => new ImageAreaPixels(r.Width, r.Height, r.Bgra))];
+    }
 
     /// <summary>
     /// Gets whether the document must not be written: a redaction is changing it right now, or an earlier one left it only partly redacted.
@@ -200,16 +387,23 @@ public sealed partial class PdfDocument
         impact.CharsRemoved,
         impact.TextObjectsSplit,
         impact.TextObjectsRemovedWhole,
-        ImagesOverwritten: 0,
-        ImagesRemovedWhole: 0,
-        PathsCropped: 0,
-        PathsRemovedWhole: 0,
+        impact.ImagesOverwritten,
+        impact.ImagesRemovedWhole,
+        impact.PathsCropped,
+        impact.PathsRemovedWhole,
         impact.FormObjectsTouched,
         impact.AnnotationsRemoved,
         [.. impact.Fallbacks.Select(f => new RedactionFallback(
-            f.Kind == PdfiumFallbackKind.FormObjectRemovedWhole ? RedactionFallbackKind.FormObjectRemovedWhole : RedactionFallbackKind.TextObjectRemovedWhole,
+            f.Kind switch
+            {
+                PdfiumFallbackKind.FormObjectRemovedWhole => RedactionFallbackKind.FormObjectRemovedWhole,
+                PdfiumFallbackKind.ImageRemovedWhole => RedactionFallbackKind.ImageRemovedWhole,
+                PdfiumFallbackKind.PathRemovedWhole => RedactionFallbackKind.PathRemovedWhole,
+                _ => RedactionFallbackKind.TextObjectRemovedWhole,
+            },
             page,
             f.Reason))],
         [.. impact.RemovedText],
-        impact.RefusalReason is null ? null : new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [page], impact.RefusalReason));
+        impact.RefusalReason is null ? null : new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [page], impact.RefusalReason),
+        [.. (impact.RemovedAreas ?? []).Select(static a => new PageRect(a.Left, a.Top, a.Right, a.Bottom))]);
 }

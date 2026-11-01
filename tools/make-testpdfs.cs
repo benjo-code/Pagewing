@@ -130,6 +130,7 @@ static class TestPdfs
         new("redact-fonts.pdf", RedactFonts()),
         new("redact-image-kinds.pdf", RedactImageKinds()),
         new("redact-control.pdf", RedactControl()),
+        new("redact-ligature.pdf", RedactLigature()),
         new("redact-hidden.pdf", RedactHidden()),
         new("redact-paths.pdf", RedactPaths()),
         new("redact-structure.pdf", RedactStructure()),
@@ -1390,6 +1391,75 @@ static class TestPdfs
             """
             BT /F1 14 Tf 20 70 Td (Public line stays) Tj ET
             BT /F2 24 Tf 20 30 Td (AB) Tj ET
+            """);
+        return doc.Build();
+    }
+
+    // One page 300 x 100 with a ligature-like glyph, the way LaTeX writes one for "fi": the line "Zephyr æsthetics" (Geist Regular, Type0 Identity-H,
+    // code = glyph id, size 20 at 20,50) in which the glyph of U+00E6 stands for the TWO characters "ae" (its ToUnicode entry; Geist has no
+    // ligature glyphs, so a letter that exists plays the part), so PDFium reports two characters at one place. Above it the Helvetica line
+    // "Ligature fixture" (size 10 at 20,80). A text that is split around "Zephyr" has to write the glyph again from two characters, which draws
+    // two glyphs instead of one: the render check has to see that.
+    private static byte[] RedactLigature()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Ligatur");
+        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.App", "Assets", "Fonts", "Geist-Regular.ttf")));
+        var helvetica = doc.Add(Helvetica);
+        var fontFile = doc.AddStream($"/Length1 {ttf.Data.Length}", ttf.Data);
+        string Scaled(int value) => ((value * 1000) / ttf.UnitsPerEm).ToString(CultureInfo.InvariantCulture);
+        var descriptor = doc.Add(
+            $"<< /Type /FontDescriptor /FontName /AAAAAA+Geist /Flags 32 /FontBBox [{Scaled(ttf.XMin)} {Scaled(ttf.YMin)} {Scaled(ttf.XMax)} {Scaled(ttf.YMax)}] "
+            + $"/ItalicAngle 0 /Ascent {Scaled(ttf.Ascent)} /Descent {Scaled(ttf.Descent)} /CapHeight 700 /StemV 80 /FontFile2 {fontFile} 0 R >>");
+
+        // The glyphs of the line: the characters of "Zephyr sthetics" and the ligature-like glyph.
+        var ligature = ttf.GlyphFor(0xE6);
+        if (ligature == 0)
+        {
+            throw new InvalidOperationException("Die Schrift hat kein Glyph fuer U+00E6.");
+        }
+
+        var glyphs = new List<int>();
+        foreach (var c in "Zephyr ")
+        {
+            glyphs.Add(ttf.GlyphFor(c));
+        }
+
+        glyphs.Add(ligature);
+        foreach (var c in "sthetics")
+        {
+            glyphs.Add(ttf.GlyphFor(c));
+        }
+
+        var distinct = glyphs.Distinct().ToArray();
+        var widths = new StringBuilder();
+        foreach (var glyph in distinct)
+        {
+            widths.Append(CultureInfo.InvariantCulture, $"{glyph} [{Scaled(ttf.AdvanceOf(glyph))}] ");
+        }
+
+        var cid = doc.Add(
+            "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /AAAAAA+Geist /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+            + $"/FontDescriptor {descriptor} 0 R /CIDToGIDMap /Identity /DW 600 /W [{widths}] >>");
+        var map = new StringBuilder();
+        map.Append("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n");
+        map.Append("/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
+        map.Append(CultureInfo.InvariantCulture, $"{distinct.Length} beginbfchar\n");
+        foreach (var glyph in distinct)
+        {
+            var text = glyph == ligature ? "ae" : "Zephyr sthetics".First(c => ttf.GlyphFor(c) == glyph).ToString();
+            map.Append(CultureInfo.InvariantCulture, $"<{glyph:X4}> <{string.Concat(text.Select(c => ((int)c).ToString("X4", CultureInfo.InvariantCulture)))}>\n");
+        }
+
+        map.Append("endbfchar\nendcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+        var toUnicode = doc.AddStream(string.Empty, Text(map.ToString()));
+        var font = doc.Add($"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAAA+Geist /Encoding /Identity-H /DescendantFonts [{cid} 0 R] /ToUnicode {toUnicode} 0 R >>");
+        var hex = "<" + string.Concat(glyphs.Select(g => g.ToString("X4", CultureInfo.InvariantCulture))) + ">";
+        doc.AddPage(
+            "/MediaBox [0 0 300 100]",
+            $"<< /Font << /F1 {helvetica} 0 R /F2 {font} 0 R >> >>",
+            $"""
+            BT /F1 10 Tf 20 80 Td (Ligature fixture) Tj ET
+            BT /F2 20 Tf 20 50 Td {hex} Tj ET
             """);
         return doc.Build();
     }

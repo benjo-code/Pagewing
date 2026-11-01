@@ -39,6 +39,18 @@ internal static unsafe class PdfiumRedaction
     /// <summary>The most rectangles of one page that redaction handles.</summary>
     public const int MaxAreas = 10_000;
 
+    /// <summary>
+    /// The most pixels of an image that redaction reads (an image under a rectangle with more is refused, never loaded): a BGRA copy takes
+    /// four bytes per pixel, and the bitmap PDFium renders for it as many again. An A4 page scanned at 600 dpi has 35 million.
+    /// </summary>
+    public const long MaxImagePixels = 64_000_000;
+
+    /// <summary>The most pieces that a filled rectangle path is cut into around the rectangles (more: removed as a whole, or the page is refused when it is a large shape).</summary>
+    public const int MaxPathPieces = 4_096;
+
+    /// <summary>The share of the page that a shape may cover before it is never removed as a whole (it is cut around the rectangles or the page is refused).</summary>
+    public const double LargeShapeShare = 0.5;
+
     /// <summary>The page of a document opened for object-level edits.</summary>
     public sealed class RawPage : IDisposable
     {

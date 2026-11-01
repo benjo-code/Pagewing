@@ -28,6 +28,7 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     private int redactionSkipped;
     private int redactionInFlight;
     private int redactionRunning;
+    private int redactionDryRunWrites;
 
     internal PdfDocument(PdfiumDocument document, int pageCount, string pdfVersion, int formType)
     {

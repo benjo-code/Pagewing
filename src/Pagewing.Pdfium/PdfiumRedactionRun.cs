@@ -37,6 +37,8 @@ internal enum PdfiumFallbackKind
 {
     TextObjectRemovedWhole,
     FormObjectRemovedWhole,
+    ImageRemovedWhole,
+    PathRemovedWhole,
 }
 
 /// <summary>One piece of content removed as a whole, and why.</summary>
@@ -51,10 +53,15 @@ internal sealed record PdfiumRedactionImpact(
     int AnnotationsRemoved,
     IReadOnlyList<PdfiumFallback> Fallbacks,
     IReadOnlyList<string> RemovedText,
-    string? RefusalReason);
+    string? RefusalReason,
+    int ImagesOverwritten = 0,
+    int ImagesRemovedWhole = 0,
+    int PathsCropped = 0,
+    int PathsRemovedWhole = 0,
+    IReadOnlyList<PdfiumRedactionArea>? RemovedAreas = null);
 
 /// <summary>
-/// Redacts text and annotations of one page, as steps on the PDFium thread (<see cref="PdfiumThread.InvokeSteppedAsync{T}"/>): a
+/// Redacts one page (text, images, paths, form objects and annotations), as steps on the PDFium thread (<see cref="PdfiumThread.InvokeSteppedAsync{T}"/>): a
 /// page with 20,000 text objects takes a while, and PDFium keeps page objects in a linked list, so even finding the object at an
 /// index costs time; between steps the thread renders for the viewer.
 /// </summary>
@@ -70,12 +77,15 @@ internal sealed record PdfiumRedactionImpact(
 /// </para>
 /// <para>
 /// Page objects are told apart by their index in the page (the scratch copy has the same order); the edits run from the highest
-/// index down so that the indices still to edit stay valid. Content that is not text or an annotation (images, paths, shadings)
-/// is not touched here. Text inside a form object cannot be edited in place (PDFium does not write changes of a form object
-/// back), so the form object is removed as a whole until forms are taken apart.
+/// index down so that the indices still to edit stay valid. Images, paths and form objects are planned and applied in
+/// <c>PdfiumRedactionRun.Objects.cs</c>: a form object with something under a rectangle is taken apart on the page (PDFium does not
+/// write changes of a form object back to its XObject), so its children are edited like objects of the page. The pass also finds the
+/// images that PDFium would drop when it writes the page (inline images) from the read-back and replaces them in the next pass.
+/// The render check of the written page is not part of the run: it needs the whole document written once and is
+/// <c>PdfDocument.VerifyRedactionRenderAsync</c>.
 /// </para>
 /// </remarks>
-internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
+internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
 {
     /// <summary>The work of one step, in <see cref="Stopwatch"/> ticks (about 20 ms).</summary>
     private static readonly long StepTicks = Stopwatch.Frequency / 50;
@@ -233,7 +243,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
 
     private IEnumerable<bool> Run()
     {
-        var forced = new Dictionary<int, string>();
+        var forced = new Dictionary<long, string>();
         PassState pass;
         var probes = 0;
         while (true)
@@ -245,7 +255,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             }
 
             CloseHandles();
-            if (pass.Refusal is not null || pass.Unreadable.Count == 0)
+            if (pass.Refusal is not null || (pass.Unreadable.Count == 0 && pass.LostImages.Count == 0))
             {
                 break;
             }
@@ -257,6 +267,11 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             }
 
             foreach (var entry in pass.Unreadable)
+            {
+                forced[entry.Key] = entry.Value;
+            }
+
+            foreach (var entry in pass.LostImages)
             {
                 forced[entry.Key] = entry.Value;
             }
@@ -282,7 +297,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
                     throw new InvalidOperationException($"Page {pageIndex + 1} could not be loaded.");
                 }
 
-                var ok = TryUserAreas(pageHandle, userAreas);
+                var ok = TryUserAreas(pageHandle, areas, userAreas);
                 if (ok && userAreas.Count > 0)
                 {
                     foreach (var step in PlanAnnotations(pageHandle, new AreaIndex(userAreas), plan))
@@ -325,6 +340,11 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             real.Refusal = "The characters that stay could not be read back after the page was rewritten.";
         }
 
+        if (real.Refusal is null && real.LostImages.Count > 0)
+        {
+            real.Refusal = "An image was lost when the page was written again.";
+        }
+
         result = Build(real);
     }
 
@@ -336,14 +356,56 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         pass.AnnotationsRemoved,
         pass.Fallbacks,
         pass.RemovedText,
-        pass.Refusal);
+        pass.Refusal,
+        pass.ImagesOverwritten,
+        pass.ImagesRemovedWhole,
+        pass.PathsCropped,
+        pass.PathsRemovedWhole,
+        RemovedAreasOf(pass));
+
+    /// <summary>The removed regions as rectangles in points from the top left of the displayed page (what the render check has to leave out besides the rectangles).</summary>
+    private static List<PdfiumRedactionArea> RemovedAreasOf(PassState pass)
+    {
+        var result = new List<PdfiumRedactionArea>(pass.Removed.Count);
+        if (pass.Transform is not { } transform)
+        {
+            return result;
+        }
+
+        foreach (var region in pass.Removed)
+        {
+            // Something that spans most of the page (a long diagonal line) must not exempt the whole page from the check: the page is refused instead.
+            if ((region.Right - region.Left) * (region.Top - region.Bottom) > PdfiumRedaction.LargeShapeShare * pass.PageArea)
+            {
+                continue;
+            }
+
+            var a = transform.ToDisplay(region.Left, region.Bottom);
+            var b = transform.ToDisplay(region.Right, region.Bottom);
+            var c = transform.ToDisplay(region.Left, region.Top);
+            var d = transform.ToDisplay(region.Right, region.Top);
+            var left = Math.Min(Math.Min(a.X, b.X), Math.Min(c.X, d.X));
+            var right = Math.Max(Math.Max(a.X, b.X), Math.Max(c.X, d.X));
+            var top = Math.Min(Math.Min(a.Y, b.Y), Math.Min(c.Y, d.Y));
+            var bottom = Math.Max(Math.Max(a.Y, b.Y), Math.Max(c.Y, d.Y));
+            if (double.IsFinite(left) && double.IsFinite(right) && double.IsFinite(top) && double.IsFinite(bottom) && right > left && bottom > top)
+            {
+                result.Add(new PdfiumRedactionArea(left, top, right, bottom));
+            }
+        }
+
+        return result;
+    }
 
     /// <summary>Converts the rectangles to user space of the loaded page, clipped to the page; rectangles outside the page are dropped.</summary>
-    private bool TryUserAreas(nint pageHandle, List<UserRect> userAreas)
+    internal static bool TryUserAreas(nint pageHandle, PdfiumRedactionArea[] areas, List<UserRect> userAreas) => TryUserAreas(pageHandle, areas, userAreas, out _);
+
+    internal static bool TryUserAreas(nint pageHandle, PdfiumRedactionArea[] areas, List<UserRect> userAreas, out DisplayTransform transform)
     {
+        transform = default;
         double width = Fpdf.FPDF_GetPageWidthF(pageHandle);
         double height = Fpdf.FPDF_GetPageHeightF(pageHandle);
-        if (!(width > 0) || !(height > 0) || !DisplayTransform.TryCreate(pageHandle, width, height, out var transform))
+        if (!(width > 0) || !(height > 0) || !DisplayTransform.TryCreate(pageHandle, width, height, out transform))
         {
             return false;
         }
@@ -371,7 +433,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
     /// One pass: plan, edit, write the content, load the page again and read back. On the scratch copy it only edits text; on
     /// the real page it also removes the annotations and draws the areas.
     /// </summary>
-    private IEnumerable<bool> Pass(bool scratch, IReadOnlyDictionary<int, string> forced, string? expectedSignature, PassState pass)
+    private IEnumerable<bool> Pass(bool scratch, IReadOnlyDictionary<long, string> forced, string? expectedSignature, PassState pass)
     {
         nint nativeDocument;
         int index;
@@ -414,7 +476,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         }
 
         var userAreas = new List<UserRect>();
-        if (!TryUserAreas(handle, userAreas))
+        if (!TryUserAreas(handle, areas, userAreas, out var displayTransform))
         {
             pass.Refusal = "The geometry of the page could not be read.";
             yield break;
@@ -425,6 +487,8 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             yield break;
         }
 
+        pass.Transform = displayTransform;
+        pass.PageArea = (double)Fpdf.FPDF_GetPageWidthF(handle) * Fpdf.FPDF_GetPageHeightF(handle);
         var areaIndex = new AreaIndex(userAreas);
 
         // ---- Read the text page and the objects of the page. ----
@@ -538,7 +602,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
 
             if (objectIndex.TryGetValue(obj, out var at) && types[at] == FpdfConstants.PageObjText)
             {
-                edits.Add(new Edit(at, obj, EditKind.Text) { Chars = [.. chars] });
+                edits.Add(new Edit(KeyOf(at, -1), at, obj, EditKind.Text) { Chars = [.. chars] });
             }
             else
             {
@@ -546,137 +610,46 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             }
         }
 
-        // Text objects the text page knows no character of: removed as a whole when they touch a rectangle.
-        for (var i = 0; i < objectCount; i++)
+        // Everything that is not a hit text object of the page: text objects the text page knows no character of, images, paths and form objects
+        // (taken apart where they are touched).
+        var plan = new PlanContext
         {
-            if (types[i] == FpdfConstants.PageObjText && !byObject.ContainsKey(handles[i]))
-            {
-                if (!PdfiumRedactionNative.TryGetBounds(handles[i], out var bounds) || seam?.BoundsUnreadable?.Invoke(i, scratch) == true)
-                {
-                    pass.Refusal = "The bounds of a text object could not be read, so it cannot be told whether it is under a rectangle.";
-                    yield break;
-                }
-
-                if (areaIndex.Hit(bounds))
-                {
-                    edits.Add(new Edit(i, handles[i], EditKind.TextWithoutChars) { Chars = [] });
-                }
-            }
-
-            if ((i + 1) % (SliceObjects * 8) == 0)
-            {
-                yield return true;
-            }
+            Raw = raw,
+            NativeDocument = nativeDocument,
+            Handles = handles,
+            Types = types,
+            Count = objectCount,
+            Table = table,
+            Hit = hit,
+            ByObject = byObject,
+            Areas = areaIndex,
+            UserAreas = userAreas,
+            Forced = forced,
+            Edits = edits,
+            Unknown = unknown,
+            Pass = pass,
+            Scratch = scratch,
+            PageArea = (double)Fpdf.FPDF_GetPageWidthF(handle) * Fpdf.FPDF_GetPageHeightF(handle),
+        };
+        foreach (var step in PlanObjects(plan))
+        {
+            yield return step;
         }
 
-        // Hit text inside form objects: find the form object of the page that holds it.
-        if (unknown.Count > 0)
+        if (pass.Refusal is not null)
         {
-            var formMap = new FormMap();
-            for (var i = 0; i < objectCount && pass.Refusal is null; i++)
-            {
-                if (types[i] != FpdfConstants.PageObjForm)
-                {
-                    continue;
-                }
-
-                foreach (var step in MapForm(raw, i, handles[i], formMap, pass))
-                {
-                    yield return step;
-                }
-            }
-
-            if (pass.Refusal is not null)
-            {
-                yield break;
-            }
-
-            var forms = new Dictionary<int, Edit>();
-            foreach (var obj in unknown)
-            {
-                var holders = new List<int>();
-                if (formMap.Children.TryGetValue(obj, out var top))
-                {
-                    holders.Add(top);
-                }
-                else
-                {
-                    foreach (var skipped in formMap.Skipped.Keys)
-                    {
-                        // A form object whose bounds cannot be read may hold the text.
-                        if (!PdfiumRedactionNative.TryGetBounds(handles[skipped], out var bounds) || byObject[obj].Any(c => hit[c] && table.Box(c).Touches(bounds)))
-                        {
-                            holders.Add(skipped);
-                        }
-                    }
-                }
-
-                if (holders.Count == 0)
-                {
-                    pass.Refusal = "A text object under a rectangle could not be located on the page.";
-                    yield break;
-                }
-
-                foreach (var holder in holders)
-                {
-                    if (!forms.ContainsKey(holder))
-                    {
-                        forms[holder] = new Edit(holder, handles[holder], EditKind.Form)
-                        {
-                            Chars = [],
-                            Reason = formMap.Skipped.TryGetValue(holder, out var why)
-                                ? $"text under a rectangle in a form object that is too large to take apart ({why})"
-                                : "text under a rectangle in a form object (form objects cannot be edited in place)",
-                            Texts = formMap.Texts.TryGetValue(holder, out var texts) ? texts : [],
-                        };
-                    }
-                }
-            }
-
-            edits.AddRange(forms.Values);
+            yield break;
         }
 
         // ---- The text of what is removed as a whole, while the text page is open. ----
-        foreach (var edit in edits)
+        foreach (var edit in AllEdits(edits))
         {
-            if (edit.Kind == EditKind.TextWithoutChars)
-            {
-                var text = raw.ReadText(edit.Handle, textPage);
-                edit.Reason = "the text object has no characters PDFium can read";
-                edit.WholeText = text;
-                edit.WholeLength = text?.Length ?? 0;
-
-                // A text object that shows nothing (no text, or only white space) has nothing to remove.
-                edit.Skip = text is not null && text.Trim().Length == 0;
-            }
-            else if (edit.Kind == EditKind.Form)
-            {
-                var length = 0;
-                var parts = new List<string>();
-                foreach (var text in edit.Texts)
-                {
-                    var value = raw.ReadText(text, textPage);
-                    if (value is null)
-                    {
-                        edit.Reason += "; a text in it is longer than the limit and is not listed";
-                        continue;
-                    }
-
-                    length += value.Length;
-                    if (value.Trim().Length > 0)
-                    {
-                        parts.Add(value);
-                    }
-                }
-
-                edit.WholeText = string.Join(' ', parts);
-                edit.WholeLength = length;
-            }
+            ReadWholeText(raw, textPage, edit);
         }
 
         Fpdf.FPDFText_ClosePage(textPage);
         textPage = 0;
-        edits.RemoveAll(static e => e.Skip);
+        edits.RemoveAll(static e => e.Skip || (e.Kind == EditKind.Flatten && e.Leaves.All(static l => l.Edit is null || l.Edit.Skip)));
         edits.Sort(static (a, b) => b.Index.CompareTo(a.Index));
 
         // The real page must be the page the scratch copy was made from: the same objects at the same places with the same text.
@@ -710,39 +683,11 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         }
 
         // ---- Edit the page, from the highest index down. ----
-        var splitChecks = new List<(int Index, int[] Survivors)>();
+        var splitChecks = new List<(long Key, int[] Survivors)>();
         var editsDone = 0;
         foreach (var edit in edits)
         {
-            switch (edit.Kind)
-            {
-                case EditKind.Form:
-                    RemoveWhole(raw, edit);
-                    pass.FormsTouched++;
-                    pass.CharsRemoved += edit.WholeLength;
-                    pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.FormObjectRemovedWhole, edit.Reason ?? "removed as a whole"));
-                    if (!string.IsNullOrWhiteSpace(edit.WholeText))
-                    {
-                        pass.RemovedText.Add(edit.WholeText);
-                    }
-
-                    break;
-                case EditKind.TextWithoutChars:
-                    RemoveWhole(raw, edit);
-                    pass.RemovedWhole++;
-                    pass.CharsRemoved += edit.WholeLength;
-                    pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.TextObjectRemovedWhole, edit.Reason ?? "removed as a whole"));
-                    if (!string.IsNullOrWhiteSpace(edit.WholeText))
-                    {
-                        pass.RemovedText.Add(edit.WholeText);
-                    }
-
-                    break;
-                default:
-                    EditText(raw, nativeDocument, edit, table, hit, forced, pass, splitChecks);
-                    break;
-            }
-
+            ApplyEdit(raw, nativeDocument, edit, table, hit, forced, pass, splitChecks);
             if (++editsDone % 16 == 0)
             {
                 yield return true;
@@ -880,6 +825,18 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             }
         }
 
+        // PDFium does not write every image object again (an inline image is dropped): find the ones that are gone, so that the next
+        // pass replaces them by image objects it can write.
+        if (plan.Expected.Count > 0)
+        {
+            foreach (var lostKey in PdfiumRedactionObjects.FindLostImages(reloadedPage, plan.Expected))
+            {
+                pass.LostImages[lostKey] = "the image is not written again with the page (an inline image)";
+            }
+
+            yield return true;
+        }
+
         // The scratch copy only looks for leaks when its survivors are all there (otherwise it is run again anyway); the real page always does.
         if (!scratch || pass.Unreadable.Count == 0)
         {
@@ -908,8 +865,11 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
     {
         var hash = new HashCode();
         hash.Add(objectCount);
-        foreach (var edit in edits)
+        var count = 0;
+        foreach (var edit in AllEdits(edits))
         {
+            count++;
+            hash.Add(edit.Key);
             hash.Add(edit.Index);
             hash.Add(edit.Kind);
             hash.Add(edit.Chars.Length);
@@ -920,7 +880,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             }
         }
 
-        return $"{edits.Count}:{hash.ToHashCode()}";
+        return $"{count}:{hash.ToHashCode()}";
     }
 
     private static long Cell(double value) => (long)Math.Floor(value / 0.1);
@@ -970,9 +930,9 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         Edit edit,
         CharTable table,
         bool[] hit,
-        IReadOnlyDictionary<int, string> forced,
+        IReadOnlyDictionary<long, string> forced,
         PassState pass,
-        List<(int Index, int[] Survivors)> splitChecks)
+        List<(long Key, int[] Survivors)> splitChecks)
     {
         var chars = edit.Chars;
         var runs = new List<int[]>();
@@ -1020,6 +980,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         if (controlHit >= 0)
         {
             RemoveWhole(raw, edit);
+            NoteChars(pass, table, chars);
             pass.RemovedWhole++;
             pass.CharsRemoved += chars.Length;
             pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.TextObjectRemovedWhole, $"a character under a rectangle has no Unicode value (character code {controlHit}), so the rest of the object cannot be checked"));
@@ -1030,13 +991,14 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         if (visibleKept == 0)
         {
             RemoveWhole(raw, edit);
+            NoteChars(pass, table, chars.Where(c => hit[c]));
             pass.RemovedWhole++;
             pass.CharsRemoved += hitCount;
             pass.RemovedText.AddRange(removedRuns);
             return;
         }
 
-        var reason = forced.TryGetValue(edit.Index, out var forcedReason) ? forcedReason : null;
+        var reason = forced.TryGetValue(edit.Key, out var forcedReason) ? forcedReason : null;
         TextFacts? facts = null;
         if (reason is null)
         {
@@ -1067,13 +1029,14 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             }
 
             RemoveWhole(raw, edit);
+            NoteChars(pass, table, chars);
             pass.RemovedWhole++;
             pass.CharsRemoved += chars.Length;
             pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.TextObjectRemovedWhole, reason));
             pass.RemovedText.Add(string.Concat(chars.Select(c => ToText(table.Unicode[c]))));
-            if (!forced.ContainsKey(edit.Index))
+            if (!forced.ContainsKey(edit.Key))
             {
-                pass.CreationFailed[edit.Index] = reason;
+                pass.CreationFailed[edit.Key] = reason;
             }
 
             return;
@@ -1095,10 +1058,11 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             pendingCreated.Remove(created[k]);
         }
 
+        NoteChars(pass, table, chars.Where(c => hit[c]));
         pass.Split++;
         pass.CharsRemoved += hitCount;
         pass.RemovedText.AddRange(removedRuns);
-        splitChecks.Add((edit.Index, [.. chars.Where(c => !hit[c] && !IsWhite(table.Unicode[c]))]));
+        splitChecks.Add((edit.Key, [.. chars.Where(c => !hit[c] && !IsWhite(table.Unicode[c]))]));
     }
 
     private static string ToText(uint unicode) => unicode > 0xFFFF || IsControlCode(unicode) ? "\ufffd" : ((char)unicode).ToString();
@@ -1157,71 +1121,6 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         }
 
         return null;
-    }
-
-    private static IEnumerable<bool> MapForm(PdfiumRedaction.RawPage raw, int top, nint form, FormMap map, PassState pass)
-    {
-        var stack = new Stack<(nint Form, int Depth)>();
-        stack.Push((form, 0));
-        while (stack.Count > 0)
-        {
-            var (current, depth) = stack.Pop();
-            var count = raw.CountFormObjects(current);
-            if (count < 0)
-            {
-                map.Skipped[top] = "its objects could not be read";
-                continue;
-            }
-
-            if (count > PdfiumRedaction.MaxFormChildren)
-            {
-                map.Skipped[top] = $"it holds {count} objects, at most {PdfiumRedaction.MaxFormChildren} are searched";
-                continue;
-            }
-
-            for (var k = 0; k < count; k++)
-            {
-                if (++map.Visits > PdfiumRedaction.MaxObjects)
-                {
-                    pass.Refusal = $"The form objects of the page hold more than {PdfiumRedaction.MaxObjects} objects.";
-                    yield break;
-                }
-
-                var child = raw.GetFormObject(current, k);
-                if (child == 0)
-                {
-                    continue;
-                }
-
-                map.Children[child] = top;
-                var type = Fpdf.FPDFPageObj_GetType(child);
-                if (type == FpdfConstants.PageObjText)
-                {
-                    if (!map.Texts.TryGetValue(top, out var texts))
-                    {
-                        map.Texts[top] = texts = [];
-                    }
-
-                    texts.Add(child);
-                }
-                else if (type == FpdfConstants.PageObjForm)
-                {
-                    if (depth + 1 >= PdfiumRedaction.MaxFormDepth)
-                    {
-                        map.Skipped[top] = $"it nests form objects deeper than {PdfiumRedaction.MaxFormDepth} levels";
-                    }
-                    else
-                    {
-                        stack.Push((child, depth + 1));
-                    }
-                }
-
-                if ((map.Visits & (SliceObjects - 1)) == 0)
-                {
-                    yield return true;
-                }
-            }
-        }
     }
 
     /// <summary>
@@ -1310,45 +1209,6 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         }
     }
 
-    private enum EditKind
-    {
-        Text,
-        TextWithoutChars,
-        Form,
-    }
-
-    private sealed class Edit(int index, nint handle, EditKind kind)
-    {
-        public int Index { get; } = index;
-
-        public nint Handle { get; } = handle;
-
-        public EditKind Kind { get; } = kind;
-
-        public int[] Chars { get; init; } = [];
-
-        public string? Reason { get; set; }
-
-        public string? WholeText { get; set; }
-
-        public bool Skip { get; set; }
-
-        public int WholeLength { get; set; }
-
-        public List<nint> Texts { get; init; } = [];
-    }
-
-    private sealed class FormMap
-    {
-        public Dictionary<nint, int> Children { get; } = [];
-
-        public Dictionary<int, string> Skipped { get; } = [];
-
-        public Dictionary<int, List<nint>> Texts { get; } = [];
-
-        public int Visits { get; set; }
-    }
-
     private sealed class AnnotationPlan
     {
         public List<int> Remove { get; } = [];
@@ -1368,6 +1228,22 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
 
         public int AnnotationsRemoved { get; set; }
 
+        public int ImagesOverwritten { get; set; }
+
+        public int ImagesRemovedWhole { get; set; }
+
+        public int PathsCropped { get; set; }
+
+        public int PathsRemovedWhole { get; set; }
+
+        /// <summary>What the pass removed as a whole or character by character, in user space: the page may differ there (the check leaves it out).</summary>
+        public List<UserRect> Removed { get; } = [];
+
+        public DisplayTransform? Transform { get; set; }
+
+        /// <summary>The area of the page in square points (a region larger than <see cref="PdfiumRedaction.LargeShapeShare"/> of it is not left out of the check).</summary>
+        public double PageArea { get; set; }
+
         public List<PdfiumFallback> Fallbacks { get; } = [];
 
         public List<string> RemovedText { get; } = [];
@@ -1377,10 +1253,13 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         /// <summary>A fingerprint of what the pass found to edit (same page, same objects, same text), to tell that the real page is the page the scratch copy was made from.</summary>
         public string? Signature { get; set; }
 
-        /// <summary>Objects (by page index) whose survivors could not be read back: the next pass removes them as a whole.</summary>
-        public Dictionary<int, string> Unreadable { get; } = [];
+        /// <summary>Objects (by key) whose survivors could not be read back: the next pass removes them as a whole.</summary>
+        public Dictionary<long, string> Unreadable { get; } = [];
 
-        /// <summary>Objects (by page index) whose survivors could not be created: the real pass removes them as a whole without trying.</summary>
-        public Dictionary<int, string> CreationFailed { get; } = [];
+        /// <summary>Images (by key) that PDFium dropped when it wrote the page: the next pass replaces them by new image objects.</summary>
+        public Dictionary<long, string> LostImages { get; } = [];
+
+        /// <summary>Objects (by key) whose survivors could not be created: the real pass removes them as a whole without trying.</summary>
+        public Dictionary<long, string> CreationFailed { get; } = [];
     }
 }

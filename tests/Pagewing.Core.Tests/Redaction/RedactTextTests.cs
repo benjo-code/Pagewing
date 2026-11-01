@@ -338,31 +338,6 @@ public sealed class RedactTextTests
     }
 
     [Fact]
-    public async Task TextInsideAFormObjectRemovesTheFormObjectWholeUntilFormsAreTakenApart()
-    {
-        using var folder = new TempFolder();
-        var path = Copy(folder, "redact-everywhere.pdf");
-        var original = await ReadExactAsync(path, 0);
-        var letters = original.Where(static c => !White(c)).ToList();
-        var occurrences = Find(letters, Term);
-        var inForm = Union(letters.Skip(occurrences[1]).Take(Term.Count(static c => c > ' ')));
-
-        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
-        var impact = await document.RedactPageAsync(0, [Display(inForm, 400)], RedactionFill.Black, Ct);
-        Assert.Null(impact.Refusal);
-        Assert.Equal(1, impact.FormObjectsTouched);
-        Assert.Single(impact.Fallbacks, f => f.Kind == RedactionFallbackKind.FormObjectRemovedWhole);
-        Assert.Contains(Term, impact.RemovedText);
-        var saved = await SaveAsync(document, folder, "out.pdf");
-
-        // The form's text is gone from page 1 (nothing else of the page changed) and page 2, which uses the same XObject, still shows it.
-        var after = await ReadExactAsync(saved, 0);
-        Assert.Equal(2, Find(after.Where(static c => !White(c)).ToList(), Term).Count);
-        var pageTwo = await ReadExactAsync(saved, 1);
-        Assert.Single(Find(pageTwo.Where(static c => !White(c)).ToList(), Term));
-    }
-
-    [Fact]
     public async Task AnnotationsInTheAreaAreDeletedWithPopupAndReplies()
     {
         using var folder = new TempFolder();
@@ -1147,7 +1122,8 @@ public sealed class RedactTextTests
             Assert.Contains(PdfiumRedaction.MaxFormChildren.ToString(CultureInfo.InvariantCulture), fallback.Reason, StringComparison.Ordinal);
         }
 
-        // A text object longer than the limit inside a form: removed with the form, and the reason says that its text is not listed.
+        // A text object longer than the limit inside a form: the form is taken apart and the text object is handled like one of the page
+        // (it cannot be rewritten, so it goes as a whole and is listed).
         var longPath = Path.Combine(folder.Path, "long-text-form.pdf");
         // (PDFium cuts one string operand at 32,767 characters, so the text is an array of strings in one text object.)
         var piece = new string('A', 30_000);
@@ -1156,10 +1132,9 @@ public sealed class RedactTextTests
         {
             var impact = await document.RedactPageAsync(0, [new PageRect(15, 792 - 715, 25, 792 - 695)], RedactionFill.Black, Ct);
             Assert.Null(impact.Refusal);
+            Assert.Equal(1, impact.FormObjectsTouched);
             var fallback = Assert.Single(impact.Fallbacks);
-            Assert.Equal(RedactionFallbackKind.FormObjectRemovedWhole, fallback.Kind);
-            Assert.True(fallback.Reason.Contains("longer than the limit", StringComparison.Ordinal), $"{fallback.Reason} / removed texts: {string.Join(",", impact.RemovedText.Select(t => t.Length))} chars {impact.CharsRemoved}");
-            Assert.DoesNotContain(impact.RemovedText, text => text.Length > PdfiumRedaction.MaxTextLength);
+            Assert.Equal(RedactionFallbackKind.TextObjectRemovedWhole, fallback.Kind);
         }
     }
 

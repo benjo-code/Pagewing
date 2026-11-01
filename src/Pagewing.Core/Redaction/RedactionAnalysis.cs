@@ -58,6 +58,7 @@ public sealed record RedactionRefusal(RedactionRefusalKind Kind, IReadOnlyList<i
 /// <param name="Fallbacks">Everything removed as a whole instead of precisely, with the reason.</param>
 /// <param name="RemovedText">The text that goes, one entry per run of removed characters (the whole text for an object removed as a whole); the check of the result uses it.</param>
 /// <param name="Refusal">Why the page cannot be redacted, or <see langword="null"/>. A refused page was not changed by the analysis; after a refusal from <c>RedactPageAsync</c> the document may have changed and must be discarded.</param>
+/// <param name="RemovedAreas">Where content went besides the rectangles, in points from the top left of the displayed page: the boxes of the characters that were removed (a character counts as soon as its box touches a rectangle, so its box can reach out of the rectangle) and the bounds of what was removed as a whole. The render check leaves these out too (<see cref="RedactionPageAreas.For"/>).</param>
 public sealed record PageRedactionImpact(
     int Page,
     int CharsRemoved,
@@ -71,4 +72,5 @@ public sealed record PageRedactionImpact(
     int AnnotationsRemoved,
     IReadOnlyList<RedactionFallback> Fallbacks,
     IReadOnlyList<string> RemovedText,
-    RedactionRefusal? Refusal);
+    RedactionRefusal? Refusal,
+    IReadOnlyList<Pagewing.Core.Text.PageRect>? RemovedAreas = null);
