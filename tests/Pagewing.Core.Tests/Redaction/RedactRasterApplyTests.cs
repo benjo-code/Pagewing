@@ -547,4 +547,159 @@ public sealed class RedactRasterApplyTests : IDisposable
         await Assert.ThrowsAsync<RedactionRefusedException>(() => RedactionApplier.WriteAsync(engine, shown, path, null, FileStamp.Of(path), new RedactionApplyRequest(plan, Target()), null, Ct));
         Assert.False(File.Exists(Target()));
     }
+
+    // ------------------------------------------------------------------ hostile and unreadable pages
+
+    [Fact]
+    public async Task APageAboveTheObjectLimitIsRescuedByTheChoice()
+    {
+        // 100,001 paths: more objects than redaction walks (PdfiumRedaction.MaxObjects), so the page is refused as it is; the choice
+        // rescues it, and the analysis must not walk the objects to count its annotations.
+        var content = new System.Text.StringBuilder("BT /F1 12 Tf 20 150 Td (hostile page) Tj ET\n");
+        for (var i = 0; i < 100_001; i++)
+        {
+            content.Append("0 0 1 1 re f\n");
+        }
+
+        var file = new VerifierPdf(content.ToString(), "BT /F1 12 Tf 20 150 Td (calm page) Tj ET");
+        var path = Write("hostile.pdf", file.Build());
+        await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => shown.GetPageObjectSummaryAsync(0, Ct));
+        var marked = WithArea(RedactionPlan.Empty, 0, new PageRect(15, 35, 100, 60));
+
+        // Without the choice: a defined refusal naming the page.
+        var refused = await new RedactionExecutor(engine).AnalyzeAsync(marked, shown, path, null, Ct);
+        Assert.True(refused.IsRefused);
+        var refusal = Assert.Single(refused.Refusals);
+        Assert.Equal(RedactionRefusalKind.PageNotRedactable, refusal.Kind);
+        Assert.Equal([0], refusal.Pages);
+
+        // With the choice: rescued, no raw exception.
+        var plan = marked.WithRasterPage(0, on: true);
+        var analysis = await new RedactionExecutor(engine).AnalyzeAsync(plan, shown, path, null, Ct);
+        Assert.False(analysis.IsRefused, RedactionRefusalText.Of(analysis.Refusals));
+        var info = Assert.Single(analysis.Raster!);
+        Assert.Equal(0, info.Page);
+        Assert.Equal(0, info.Annotations);
+        Assert.True(info.HasText);
+
+        var result = await RedactionApplier.WriteAsync(engine, shown, path, null, FileStamp.Of(path), new RedactionApplyRequest(plan, Target()), null, Ct);
+        await using var reopened = result.Saved.Reopened;
+        Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+        Assert.Equal(new PageObjectSummary(Images: 1, Paths: 0, Texts: 0, Others: 0, Annotations: 0), await reopened.GetPageObjectSummaryAsync(0, Ct));
+        Assert.Contains("calm page", await TextOf(reopened, 1), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task APageThatCannotBeRenderedEndsInAFailureAndLeavesTheOriginalAlone()
+    {
+        var path = FivePageFile();
+        var before = await File.ReadAllBytesAsync(path, Ct);
+        var plan = RedactionPlan.Empty.WithRasterPage(0, on: true).WithRasterPage(3, on: true);
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var shown = session.Document;
+        var rendered = new List<int>();
+        var hooks = new RedactionApplyHooks
+        {
+            RasterPageRendering = page =>
+            {
+                rendered.Add(page);
+                if (page == 3)
+                {
+                    throw new InvalidDataException("the page is damaged");
+                }
+            },
+        };
+
+        // Writing over the original itself: the first image was made, the second page fails, nothing is written.
+        var failure = await Assert.ThrowsAsync<SaveFailureException>(() => RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, path), null, hooks, Ct));
+
+        Assert.Equal(SaveFailureReason.RedactionFailed, failure.Reason);
+        Assert.Equal([0, 3], rendered);
+        var check = Assert.IsType<RedactionCheck>(failure.Details);
+        var finding = Assert.Single(check.Findings);
+        Assert.Equal(RedactionFindingKind.UnreadableStream, finding.Kind);
+        Assert.Equal(3, finding.Page);
+        Assert.Equal(before, await File.ReadAllBytesAsync(path, Ct));
+        Assert.Same(shown, session.Document);
+        Assert.Empty(LeftOver(folder.Path, "five.pdf"));
+    }
+
+    // ------------------------------------------------------------------ the order of the pages
+
+    private static string Marker(int page) => $"marker-{(char)('a' + page)}-{page * 7919}";
+
+    /// <summary>Five pages of different widths (200, 220, ...), each with its own marker text.</summary>
+    private string FivePageFile()
+    {
+        var file = new VerifierPdf([.. Enumerable.Range(0, 5).Select(static i => $"BT /F1 14 Tf 10 100 Td ({Marker(i)}) Tj ET 0.{i + 2} 0.3 0.6 rg 10 10 {20 + (i * 15)} 30 re f")]);
+        file.PageEntriesByPage = [.. Enumerable.Range(0, 5).Select(static i => $"/MediaBox [0 0 {200 + (20 * i)} 150]")];
+        return Write("five.pdf", file.Build());
+    }
+
+    [Theory]
+    [InlineData("2")]
+    [InlineData("1,2")]
+    [InlineData("0,1,2,3,4")]
+    [InlineData("0,3")]
+    [InlineData("4")]
+    public async Task PagesKeepTheirPlaceWhateverBecomesAnImage(string rasterList)
+    {
+        var path = FivePageFile();
+        var raster = rasterList.Split(',').Select(int.Parse).ToHashSet();
+        var plan = raster.Aggregate(RedactionPlan.Empty, static (p, page) => p.WithRasterPage(page, on: true));
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+        var shown = session.Document!;
+        var originals = new RenderedImage[5];
+        for (var page = 0; page < 5; page++)
+        {
+            originals[page] = await shown.RenderPageAsync(page, Scale, new RenderOptions { Priority = PdfPriority.Background }, Ct);
+        }
+
+        var result = await RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, Target()), null, Ct);
+
+        Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+        var after = session.Document!;
+        Assert.Equal(5, after.PageCount);
+        for (var page = 0; page < 5; page++)
+        {
+            // The width tells the page; the marker (text on a normal page, pixels on an image) tells the content.
+            var size = await after.GetPageSizeAsync(page, Ct);
+            Assert.Equal(200 + (20 * page), size.Width, 0.01);
+            Assert.Equal(150, size.Height, 0.01);
+            var summary = await after.GetPageObjectSummaryAsync(page, Ct);
+            if (raster.Contains(page))
+            {
+                Assert.Equal(1, summary.Images);
+                Assert.Equal(0, summary.Texts);
+                Assert.Equal(string.Empty, (await TextOf(after, page)).Trim());
+                var pixels = Assert.Single(await after.GetImageAreaPixelsAsync(page, new PageRect(0, 0, size.Width, size.Height), Ct));
+                var expected = originals[page];
+                Assert.Equal(expected.Width, pixels.Width);
+                Assert.Equal(expected.Height, pixels.Height);
+                var different = 0;
+                for (var y = 0; y < expected.Height; y++)
+                {
+                    for (var x = 0; x < expected.Width; x++)
+                    {
+                        var at = ((y * pixels.Width) + x) * 4;
+                        var source = (y * expected.Stride) + (x * 4);
+                        if (Math.Abs(pixels.Bgra[at] - expected.Pixels.Span[source]) > 1 || Math.Abs(pixels.Bgra[at + 1] - expected.Pixels.Span[source + 1]) > 1 || Math.Abs(pixels.Bgra[at + 2] - expected.Pixels.Span[source + 2]) > 1)
+                        {
+                            different++;
+                        }
+                    }
+                }
+
+                Assert.Equal(0, different);
+            }
+            else
+            {
+                Assert.Equal(0, summary.Images);
+                Assert.Contains(Marker(page), await TextOf(after, page), StringComparison.Ordinal);
+            }
+        }
+    }
 }

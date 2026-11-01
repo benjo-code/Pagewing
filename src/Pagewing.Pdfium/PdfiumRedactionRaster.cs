@@ -102,6 +102,18 @@ internal static unsafe class PdfiumRedactionRaster
         }
     }
 
+    /// <summary>
+    /// Counts the annotations of the page without looking at its objects (a page with a hostile number of objects costs nothing more
+    /// than loading it).
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
+    /// <exception cref="InvalidOperationException">PDFium could not load the page.</exception>
+    public static int CountAnnotations(PdfiumDocument document, int pageIndex)
+    {
+        using var page = PdfiumRedaction.OpenPage(document, pageIndex);
+        return Fpdf.FPDFPage_GetAnnotCount(page.Access());
+    }
+
     /// <summary>Counts the page objects of the page by kind, and its annotations.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
     /// <exception cref="InvalidOperationException">PDFium could not load the page, or it has more than <see cref="PdfiumRedaction.MaxObjects"/> objects.</exception>

@@ -56,6 +56,27 @@ public sealed partial class PdfDocument
     }
 
     /// <summary>
+    /// Counts the annotations of a page (links and form field widgets included) without reading its page objects, so a page with a
+    /// hostile number of objects can be counted too.
+    /// </summary>
+    /// <param name="page">The 0-based page.</param>
+    /// <param name="cancellationToken">Cancels before the job starts.</param>
+    /// <returns>The number of annotations.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The page does not exist.</exception>
+    /// <exception cref="InvalidOperationException">The page cannot be loaded.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the job started.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<int> GetPageAnnotationCountAsync(int page, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ThrowIfNotAPage(page);
+        return document.Thread.InvokeAsync(
+            () => PdfiumRedactionRaster.CountAnnotations(document, page),
+            PdfiumPriority.Background,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Counts the page objects of a page by kind, and its annotations. Reads the objects of the page as they are in the document (a
     /// document that was just written and opened again, or a working copy).
     /// </summary>

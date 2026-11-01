@@ -26,6 +26,9 @@ internal sealed class RedactionApplyHooks
     /// <summary>Gets the hooks of the saver.</summary>
     public SaveFaults? Faults { get; init; }
 
+    /// <summary>Gets the action called with the page right before it is rendered to become an image (a test throws to make the page unreadable).</summary>
+    public Action<int>? RasterPageRendering { get; init; }
+
     /// <summary>Gets the action called with the request, the rebuilt document and the working copy just before the saver runs.</summary>
     public Action<RewriteRequest, PdfDocument, PdfDocument>? RewriteStarting { get; init; }
 }

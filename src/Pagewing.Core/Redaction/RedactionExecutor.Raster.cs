@@ -29,32 +29,37 @@ public sealed partial class RedactionExecutor
         foreach (var page in plan.RasterPages.Order())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var size = await original.GetPageSizeAsync(page, cancellationToken).ConfigureAwait(false);
-            RasterSize resolved;
             try
             {
-                resolved = RasterGeometry.Resolve(size.Width, size.Height, plan.RasterDpi);
+                var size = await original.GetPageSizeAsync(page, cancellationToken).ConfigureAwait(false);
+                var resolved = RasterGeometry.Resolve(size.Width, size.Height, plan.RasterDpi);
+
+                // The annotation count does not walk the objects: a page with more objects than redaction handles is exactly the kind of
+                // page the choice is meant to rescue.
+                var annotations = await working.GetPageAnnotationCountAsync(page, cancellationToken).ConfigureAwait(false);
+                var text = await original.GetPageTextAsync(page, PdfPriority.Background, cancellationToken).ConfigureAwait(false);
+                var fields = await original.GetFormFieldsAsync(page, cancellationToken).ConfigureAwait(false);
+                infos.Add(new RasterPageInfo(
+                    page,
+                    resolved.Dpi,
+                    resolved.WidthPx,
+                    resolved.HeightPx,
+                    resolved.Lowered,
+                    (long)resolved.WidthPx * resolved.HeightPx * 3,
+                    annotations,
+                    fields.Count,
+                    text.Links.Count,
+                    text.HasText));
             }
             catch (RedactionException ex)
             {
                 refusals.Add(new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [page], ex.Message));
-                continue;
             }
-
-            var summary = await working.GetPageObjectSummaryAsync(page, cancellationToken).ConfigureAwait(false);
-            var text = await original.GetPageTextAsync(page, PdfPriority.Background, cancellationToken).ConfigureAwait(false);
-            var fields = await original.GetFormFieldsAsync(page, cancellationToken).ConfigureAwait(false);
-            infos.Add(new RasterPageInfo(
-                page,
-                resolved.Dpi,
-                resolved.WidthPx,
-                resolved.HeightPx,
-                resolved.Lowered,
-                (long)resolved.WidthPx * resolved.HeightPx * 3,
-                summary.Annotations,
-                fields.Count,
-                text.Links.Count,
-                text.HasText));
+            catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException)
+            {
+                // A page that cannot be read cannot be shown to the user, or turned into an image, or checked afterwards: refused by name.
+                refusals.Add(new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [page], "The page could not be read, so it cannot be turned into an image."));
+            }
         }
 
         return (infos, refusals);
@@ -81,8 +86,17 @@ public sealed partial class RedactionExecutor
                 }
 
                 destination = await ImportRunAsync(clean, working, run, destination, cancellationToken).ConfigureAwait(false);
-                var raster = await RenderRasterPageAsync(plan, original, page, cancellationToken).ConfigureAwait(false);
-                await clean.AddRasterPageAsync(destination++, raster, cancellationToken).ConfigureAwait(false);
+                var raster = await RenderRasterPageAsync(plan, original, page, Hooks, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await clean.AddRasterPageAsync(destination, raster, cancellationToken).ConfigureAwait(false);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    throw Unreadable(page, "The image of the page could not be written.", ex);
+                }
+
+                destination++;
                 rasterDone++;
                 progress?.Invoke(rasterDone / (double)plan.RasterPages.Count);
             }
@@ -96,6 +110,13 @@ public sealed partial class RedactionExecutor
             throw;
         }
     }
+
+    /// <summary>The fail-closed end of a build in which a raster page cannot be made (nothing is written; the finding names the page, never content).</summary>
+    private static SaveFailureException Unreadable(int page, string detail, Exception inner) =>
+        new(SaveFailureReason.RedactionFailed, "A page could not be turned into an image.", inner)
+        {
+            Details = new RedactionCheck([new RedactionFinding(RedactionFindingKind.UnreadableStream, page, detail)], []),
+        };
 
     private static async Task<int> ImportRunAsync(PdfDocument clean, PdfDocument working, List<int> run, int destination, CancellationToken cancellationToken)
     {
@@ -114,30 +135,27 @@ public sealed partial class RedactionExecutor
     /// Renders a page of the unchanged original as the user sees it (after rotation and crop box) and paints the rectangles of its marks
     /// into the pixels. The page of the result has this displayed size and no rotation.
     /// </summary>
-    private static async Task<RasterPage> RenderRasterPageAsync(RedactionPlan plan, PdfDocument original, int page, CancellationToken cancellationToken)
+    private static async Task<RasterPage> RenderRasterPageAsync(RedactionPlan plan, PdfDocument original, int page, RedactionApplyHooks? hooks, CancellationToken cancellationToken)
     {
-        var size = await original.GetPageSizeAsync(page, cancellationToken).ConfigureAwait(false);
-        var resolved = RasterGeometry.Resolve(size.Width, size.Height, plan.RasterDpi);
         var options = new RenderOptions { Annotations = true, Priority = PdfPriority.Background };
+        PdfPageSize size;
         byte[] pixels;
         int width;
         int height;
         try
         {
+            hooks?.RasterPageRendering?.Invoke(page);
+            size = await original.GetPageSizeAsync(page, cancellationToken).ConfigureAwait(false);
+            var resolved = RasterGeometry.Resolve(size.Width, size.Height, plan.RasterDpi);
             var image = await original.RenderPageAsync(page, resolved.Dpi / 72.0, options, cancellationToken).ConfigureAwait(false);
             width = image.Width;
             height = image.Height;
             pixels = RasterPainter.Tighten(image);
         }
-        catch (Exception ex) when (ex is PdfRenderException or InvalidDataException)
+        catch (Exception ex) when (ex is PdfRenderException or InvalidDataException or InvalidOperationException)
         {
             // A page that cannot be rendered cannot become an image, and a result without it cannot be checked: never "fine".
-            throw new SaveFailureException(SaveFailureReason.RedactionFailed, "A page could not be turned into an image.", ex)
-            {
-                Details = new RedactionCheck(
-                    [new RedactionFinding(RedactionFindingKind.UnreadableStream, page, "The page could not be rendered, so it cannot be turned into an image.")],
-                    []),
-            };
+            throw Unreadable(page, "The page could not be rendered, so it cannot be turned into an image.", ex);
         }
 
         RasterPainter.Fill(pixels, width, height, width / size.Width, height / size.Height, plan.AreasOn(page), plan.Fill);
