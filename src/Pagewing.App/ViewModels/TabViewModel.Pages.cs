@@ -129,6 +129,7 @@ public sealed partial class TabViewModel
     /// </summary>
     public string? PageOutputBlockedReason =>
         HasPendingPageEdits ? Strings.PageOutputBlockedPlan
+        : HasPendingRedactions ? Strings.PageOutputBlockedMarks
         : AsksAboutDocumentChanges ? Strings.PageOutputBlockedUnsaved
         : null;
 

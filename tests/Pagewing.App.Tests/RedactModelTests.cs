@@ -483,6 +483,49 @@ public sealed class RedactModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ExtractSplitAndExportImagesAreLockedWhileMarksArePending()
+    {
+        var tab = await OpenAsync("pages-marked.pdf");
+        var raised = new List<string?>();
+        tab.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        // Without marks they run, in the mode as well (a mode without a mark changes nothing in what they read).
+        Assert.True(tab.SplitCommand.CanExecute(null));
+        Assert.True(tab.ExportImagesCommand.CanExecute(null));
+        await EnterAsync(tab);
+        Assert.Null(tab.PageOutputBlockedReason);
+        Assert.True(tab.SplitCommand.CanExecute(null));
+        Assert.True(tab.ExportImagesCommand.CanExecute(null));
+
+        // The first mark locks all three: they read the document without the marks, so the files would show what the view hides.
+        raised.Clear();
+        Assert.True(tab.AddAreaMark(0, new PageRect(72, 100, 200, 130)));
+        Assert.Equal(Strings.PageOutputBlockedMarks, tab.PageOutputBlockedReason);
+        Assert.Equal(Strings.PageOutputBlockedMarks, tab.PageOutputReasonText);
+        Assert.Equal(Strings.PageOutputBlockedMarks, tab.ExtractUnavailableReason);
+        Assert.False(tab.CanRunPageOutput);
+        Assert.False(tab.SplitCommand.CanExecute(null));
+        Assert.False(tab.ExportImagesCommand.CanExecute(null));
+        Assert.False(tab.ExtractSelectionCommand.CanExecute(null));
+        Assert.Contains(nameof(TabViewModel.CanRunPageOutput), raised);
+        Assert.Contains(nameof(TabViewModel.PageOutputBlockedReason), raised);
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Wenden Sie die Markierungen zum Schwärzen zuerst an oder verwerfen Sie sie.", tab.PageOutputBlockedReason);
+        Strings.Culture = new CultureInfo("en");
+
+        // Undone: possible again; with a mark and then discarded: possible again.
+        tab.UndoRedactionCommand.Execute(null);
+        Assert.Null(tab.PageOutputBlockedReason);
+        Assert.True(tab.SplitCommand.CanExecute(null));
+        Assert.True(tab.AddAreaMark(0, new PageRect(72, 100, 200, 130)));
+        Assert.False(tab.SplitCommand.CanExecute(null));
+        tab.DiscardRedactionsCommand.Execute(null);
+        Assert.Null(tab.PageOutputBlockedReason);
+        Assert.True(tab.SplitCommand.CanExecute(null));
+        Assert.True(tab.ExportImagesCommand.CanExecute(null));
+    }
+
+    [AvaloniaFact]
     public async Task MarksAreRefusedWhileACardAsksOrAnUpdateLocks()
     {
         var tab = await OpenAsync("pages-marked.pdf");

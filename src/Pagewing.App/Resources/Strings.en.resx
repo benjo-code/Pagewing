@@ -1554,6 +1554,9 @@
   <data name="PageOutputBlockedPlan" xml:space="preserve">
     <value>Apply or discard the page changes first.</value>
   </data>
+  <data name="PageOutputBlockedMarks" xml:space="preserve">
+    <value>Apply or discard the redaction marks first.</value>
+  </data>
   <data name="PageOutputBlockedUnsaved" xml:space="preserve">
     <value>Save the changes first.</value>
   </data>

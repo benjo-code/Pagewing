@@ -545,6 +545,7 @@ public static class Strings
     public static string PageOrganizeActive => Get("PageOrganizeActive");
     public static string PageEditsPending => Get("PageEditsPending");
     public static string PageOutputBlockedPlan => Get("PageOutputBlockedPlan");
+    public static string PageOutputBlockedMarks => Get("PageOutputBlockedMarks");
     public static string PageOutputBlockedUnsaved => Get("PageOutputBlockedUnsaved");
     public static string PageEditsLastPage => Get("PageEditsLastPage");
     public static string PageEditsLimit => Get("PageEditsLimit");

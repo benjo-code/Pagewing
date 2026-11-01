@@ -500,6 +500,9 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(OffersFill));
         OnPropertyChanged(nameof(OrganizeUnavailableReason));
         OnPropertyChanged(nameof(CanOrganize));
+
+        // Splitting and exporting images read the document without the marks, so pending marks lock them.
+        RaisePageOutputChanged();
         RaiseRedactionCanExecuteChanged();
     }
 

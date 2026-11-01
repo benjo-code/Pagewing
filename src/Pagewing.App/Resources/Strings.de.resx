@@ -1554,6 +1554,9 @@
   <data name="PageOutputBlockedPlan" xml:space="preserve">
     <value>Wenden Sie die Seitenänderungen zuerst an oder verwerfen Sie sie.</value>
   </data>
+  <data name="PageOutputBlockedMarks" xml:space="preserve">
+    <value>Wenden Sie die Markierungen zum Schwärzen zuerst an oder verwerfen Sie sie.</value>
+  </data>
   <data name="PageOutputBlockedUnsaved" xml:space="preserve">
     <value>Speichern Sie zuerst die Änderungen.</value>
   </data>

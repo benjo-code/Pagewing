@@ -12,6 +12,7 @@ using Pagewing.Core.Annotations;
 using Pagewing.Core.Pages;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
+using Pagewing.Core.Text;
 using Pagewing.Core.Viewing;
 using Xunit;
 using static Pagewing.App.Tests.SaveCardHost;
@@ -453,6 +454,26 @@ public sealed class SplitAndExportCardTests : IDisposable
         var written = Directory.GetFiles(output).Single();
 
         viewModel.Dispose();
+        Assert.True(card.IsDisposed);
+        gate.Release();
+        await card.LastRun!.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
+        Assert.Equal([written], Directory.GetFiles(output));
+    }
+
+    [AvaloniaFact]
+    public async Task TheFirstRedactionMarkCancelsARunningJob()
+    {
+        // The files would be written from the document without the marks: a mark made while the job runs ends it.
+        using var gate = new JobGate();
+        var (window, viewModel, tab, card, output) = await StartBlockedExportAsync(gate);
+        var written = Directory.GetFiles(output).Single();
+        tab.RedactCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.IsRedacting);
+        Assert.Equal(PageOutputState.Running, card.State);
+
+        Assert.True(tab.AddAreaMark(0, new PageRect(72, 100, 200, 130)));
+        await WaitUntilAsync(window, () => viewModel.PageOutput is null);
+        Assert.Equal(OverlayKind.None, viewModel.Overlay);
         Assert.True(card.IsDisposed);
         gate.Release();
         await card.LastRun!.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
