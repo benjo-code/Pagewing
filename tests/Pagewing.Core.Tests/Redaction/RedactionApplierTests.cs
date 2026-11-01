@@ -199,6 +199,33 @@ public sealed class RedactionApplierTests : IDisposable
         Assert.Empty(LeftOver(folder.Path, "everywhere.pdf", "redacted.pdf"));
     }
 
+    [Fact]
+    public async Task AnOlderRevisionOfTheFileIsNotPartOfTheResult()
+    {
+        // redact-revisions.pdf shows "Address removed", but its first revision still holds the term; PDFium sees only the second one. A
+        // redaction writes the file anew, so that revision is gone from the result (an incremental save would have kept it).
+        var original = Copy("redact-revisions.pdf");
+        var before = await File.ReadAllBytesAsync(original, Ct);
+        Assert.True(RawPdf.ContainsAnywhere(before, Term));
+        Assert.Equal(2, Regex.Count(Encoding.Latin1.GetString(before), "%%EOF", RegexOptions.None, TimeSpan.FromSeconds(5)));
+
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(original);
+        var plan = WithArea(RedactionPlan.Empty, 0, new PageRect(15, 60, 215, 90));
+        var target = Target();
+
+        var result = await RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, target), null, Ct);
+
+        Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+        var bytes = await File.ReadAllBytesAsync(target, Ct);
+        var text = Encoding.Latin1.GetString(bytes);
+        Assert.False(RawPdf.ContainsAnywhere(bytes, Term));
+        Assert.Equal(1, Regex.Count(text, "%%EOF", RegexOptions.None, TimeSpan.FromSeconds(5)));
+        Assert.DoesNotContain("/Prev", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Address", await TextOf(session.Document!, 0), StringComparison.Ordinal);
+        Assert.Equal(before, await File.ReadAllBytesAsync(original, Ct));
+    }
+
     // ------------------------------------------------------------------ refusals
 
     [Fact]
