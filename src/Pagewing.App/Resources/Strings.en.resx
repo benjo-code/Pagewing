@@ -2007,4 +2007,43 @@
   <data name="PageOutputErrorExtractTargetExists" xml:space="preserve">
     <value>A file with this name already exists and was not replaced. Choose another name.</value>
   </data>
+  <data name="CommandRedactMode" xml:space="preserve">
+    <value>Redact</value>
+  </data>
+  <data name="CommandRedactDeleteMarks" xml:space="preserve">
+    <value>Delete redaction marks</value>
+  </data>
+  <data name="CommandRedactDiscard" xml:space="preserve">
+    <value>Discard redaction marks</value>
+  </data>
+  <data name="RedactNotReady" xml:space="preserve">
+    <value>Redaction is available once the document is shown.</value>
+  </data>
+  <data name="RedactEncrypted" xml:space="preserve">
+    <value>This file is encrypted. Pagewing does not redact encrypted files: the result would not be encrypted, and Pagewing never removes a password without being asked.</value>
+  </data>
+  <data name="RedactActive" xml:space="preserve">
+    <value>Finish redacting first.</value>
+  </data>
+  <data name="RedactMarksPending" xml:space="preserve">
+    <value>Redaction marks are waiting to be applied.</value>
+  </data>
+  <data name="RedactMarkRefused" xml:space="preserve">
+    <value>This mark is not possible.</value>
+  </data>
+  <data name="RedactMarksLimit" xml:space="preserve">
+    <value>There are as many marks as a document can hold.</value>
+  </data>
+  <data name="DiscardRedactionsTitle" xml:space="preserve">
+    <value>Discard the redaction marks on “{0}”?</value>
+  </data>
+  <data name="DiscardRedactionsText" xml:space="preserve">
+    <value>The marks you made have not been applied, so nothing has been removed from the file. These marks will be lost.</value>
+  </data>
+  <data name="SaveChangesWithMarksText" xml:space="preserve">
+    <value>Your changes are lost if you do not save them. The redaction marks that have not been applied are lost as well; “Save” does not apply them.</value>
+  </data>
+  <data name="TabRedactionSuffix" xml:space="preserve">
+    <value>, redaction marks pending</value>
+  </data>
 </root>

@@ -39,7 +39,8 @@ public sealed class CommandCatalogTests : IDisposable
         "settings.show", "help.show", "app.about", "recent.clear", "app.checkForUpdates", "annotate.mode", "annotate.highlight",
         "annotate.underline", "annotate.strikeout", "annotate.select", "annotate.ink", "annotate.rectangle", "annotate.ellipse",
         "annotate.line", "annotate.arrow", "form.fill", "form.highlight", "pages.organize", "pages.rotateLeft", "pages.rotateRight",
-        "pages.delete", "pages.duplicate", "pages.insertBlank", "pages.insertFile", "pages.discard",
+        "pages.delete", "pages.duplicate", "pages.insertBlank", "pages.insertFile", "pages.discard", "redact.mode",
+        "redact.deleteMarks", "redact.discard",
     ];
 
     private readonly CultureInfo _originalCulture = Strings.Culture;
@@ -347,6 +348,91 @@ public sealed class CommandCatalogTests : IDisposable
         catalog.ById("pages.discard")!.Execute();
         Assert.False(tab.IsOrganizing);
         Assert.True(CanRun("pages.organize"));
+        Assert.All(inMode, id => Assert.False(CanRun(id)));
+    }
+
+    [AvaloniaFact]
+    public void ShortcutsDoNotCollide()
+    {
+        var catalog = NewViewModel(new CountingPicker()).Commands;
+        var expected = new (string Id, string? Gesture)[]
+        {
+            ("redact.mode", "Ctrl+Shift+P"),
+            ("redact.deleteMarks", null),
+            ("redact.discard", null),
+        };
+
+        foreach (var (id, text) in expected)
+        {
+            var command = catalog.ById(id)!;
+            Assert.Equal(text, command.Gesture?.ToString());
+            foreach (var gesture in command.Gestures)
+            {
+                // The only owner of the key in the whole catalog (Ctrl+Shift+R is the rectangle's, M10).
+                Assert.Same(command, catalog.ForGesture(gesture));
+                Assert.Single(catalog.All, other => other.Gestures.Contains(gesture));
+
+                // A German keyboard reaches it without AltGr (Ctrl+Alt): a letter with Ctrl and Shift at most.
+                Assert.False(gesture.KeyModifiers.HasFlag(KeyModifiers.Alt) || gesture.KeyModifiers.HasFlag(KeyModifiers.Meta));
+                Assert.True(gesture.Key is >= Key.A and <= Key.Z, $"{gesture} needs a key that is not on every layout");
+            }
+        }
+
+        Assert.Equal("annotate.rectangle", catalog.ForGesture(new KeyGesture(Key.R, KeyModifiers.Control | KeyModifiers.Shift))?.Id);
+        Assert.Equal("redact.mode", catalog.ForGesture(new KeyGesture(Key.P, KeyModifiers.Control | KeyModifiers.Shift))?.Id);
+
+        // The commands are listed (help card, palette) in the group of the modes; the mode is a command of the tab with a document.
+        Assert.All(expected, entry => Assert.True(catalog.ById(entry.Id)!.Listed));
+        Assert.All(expected, entry => Assert.Equal(CommandCatalog.EditGroup, catalog.ById(entry.Id)!.Group));
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Strg+Umschalt+P", GestureText.Of(catalog.ById("redact.mode")!.Gesture!));
+        Assert.Equal("Schwärzen", catalog.ById("redact.mode")!.Title());
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Redact", catalog.ById("redact.mode")!.Title());
+    }
+
+    [AvaloniaFact]
+    public async Task RedactCommandsRunOnlyInTheModeAndAreNotMadeEarlier()
+    {
+        var (window, viewModel, view, _) = Show(new CountingPicker());
+        var catalog = viewModel.Commands;
+        string[] inMode = ["redact.deleteMarks", "redact.discard"];
+        bool CanRun(string id) => catalog.ById(id)!.CanExecute();
+
+        // Without a tab nothing; with a document the mode is offered, and polling the rest makes nothing (no plan, no command).
+        Assert.False(CanRun("redact.mode"));
+        var tab = await OpenAsync(window, viewModel, view, "pages-marked.pdf");
+        Assert.True(CanRun("redact.mode"));
+        Assert.All(inMode, id => Assert.False(CanRun(id)));
+        Assert.False(tab.HasRedactionCommands);
+        Assert.Null(tab.RedactionHistory);
+
+        // In the mode: deleting waits for a selection, leaving does not; Ctrl+Z is the undo of the marks.
+        catalog.ById("redact.mode")!.Execute();
+        await WaitUntilAsync(window, () => tab.IsRedacting);
+        Assert.False(CanRun("redact.deleteMarks"));
+        Assert.True(CanRun("redact.discard"));
+        Assert.False(CanRun("edit.undo"));
+        Assert.True(tab.AddAreaMark(1, new PageRect(10, 10, 90, 40)));
+        Assert.True(CanRun("redact.deleteMarks"));
+        Assert.True(CanRun("edit.undo"));
+        catalog.ById("redact.deleteMarks")!.Execute();
+        Assert.True(tab.RedactionPlan!.IsEmpty);
+        catalog.ById("edit.undo")!.Execute();
+        Assert.Single(tab.RedactionPlan.Marks);
+
+        // A card over the window keeps the keys; the palette is no obstacle.
+        viewModel.ShowSettingsCommand.Execute(null);
+        Assert.False(CanRun("redact.discard"));
+        Assert.False(CanRun("edit.undo"));
+        viewModel.HideOverlay();
+        Assert.True(CanRun("edit.undo"));
+
+        // With marks pending the toggle waits (apply or discard); "discard" leaves the mode.
+        Assert.False(CanRun("redact.mode"));
+        catalog.ById("redact.discard")!.Execute();
+        Assert.False(tab.IsRedacting);
+        Assert.True(CanRun("redact.mode"));
         Assert.All(inMode, id => Assert.False(CanRun(id)));
     }
 

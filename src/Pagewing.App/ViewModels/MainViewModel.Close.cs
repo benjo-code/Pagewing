@@ -224,6 +224,7 @@ public sealed partial class MainViewModel
         Tabs.Activate(tab);
         var path = tab.FullPath ?? tab.FileName ?? string.Empty;
         var question = tab.AsksOnlyAboutPageEdits ? PendingSave.DiscardPageEdits(tab, path)
+            : tab.AsksOnlyAboutRedactions ? PendingSave.DiscardRedactions(tab, path)
             : tab.UnsaveableReason is { } reason ? PendingSave.DiscardChanges(tab, path, reason)
             : PendingSave.SaveChanges(tab, path);
         switch (await AskAsync(question, CancellationToken.None))
@@ -265,6 +266,11 @@ public sealed partial class MainViewModel
                     // "Discard the page changes?" is answered for good: the plan goes now, so a flow that goes on (the update)
                     // never leaves a plan behind that was given up.
                     tab.AbandonPageEdits();
+                }
+                else if (tab.AsksOnlyAboutRedactions)
+                {
+                    // The same for "Discard the marks?": the plan goes now, so the update never leaves marks behind that were given up.
+                    tab.AbandonRedactions();
                 }
 
                 discarded[tab] = tab.ChangeVersion;

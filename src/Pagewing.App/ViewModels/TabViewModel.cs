@@ -1136,9 +1136,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             CurrentPage = 0;
             CurrentPageLast = 0;
 
-            // No document, no mode, no page plan.
+            // No document, no mode, no page plan, no marks.
             ResetAnnotateMode();
             ResetPageEdits();
+            ResetRedaction();
         }
 
         // The password check is over once the session leaves Loading. The password stays only for another try.

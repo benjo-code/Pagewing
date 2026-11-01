@@ -2007,4 +2007,43 @@
   <data name="PageOutputErrorExtractTargetExists" xml:space="preserve">
     <value>Eine Datei mit diesem Namen gibt es schon, sie wurde nicht ersetzt. Wählen Sie einen anderen Namen.</value>
   </data>
+  <data name="CommandRedactMode" xml:space="preserve">
+    <value>Schwärzen</value>
+  </data>
+  <data name="CommandRedactDeleteMarks" xml:space="preserve">
+    <value>Markierungen zum Schwärzen löschen</value>
+  </data>
+  <data name="CommandRedactDiscard" xml:space="preserve">
+    <value>Markierungen zum Schwärzen verwerfen</value>
+  </data>
+  <data name="RedactNotReady" xml:space="preserve">
+    <value>Schwärzen ist möglich, sobald das Dokument angezeigt wird.</value>
+  </data>
+  <data name="RedactEncrypted" xml:space="preserve">
+    <value>Diese Datei ist verschlüsselt. Pagewing schwärzt keine verschlüsselten Dateien: Das Ergebnis wäre nicht verschlüsselt, und Pagewing entfernt nie ungefragt ein Passwort.</value>
+  </data>
+  <data name="RedactActive" xml:space="preserve">
+    <value>Beenden Sie zuerst das Schwärzen.</value>
+  </data>
+  <data name="RedactMarksPending" xml:space="preserve">
+    <value>Markierungen zum Schwärzen warten darauf, angewendet zu werden.</value>
+  </data>
+  <data name="RedactMarkRefused" xml:space="preserve">
+    <value>Diese Markierung ist nicht möglich.</value>
+  </data>
+  <data name="RedactMarksLimit" xml:space="preserve">
+    <value>Es sind so viele Markierungen gesetzt, wie ein Dokument aufnehmen kann.</value>
+  </data>
+  <data name="DiscardRedactionsTitle" xml:space="preserve">
+    <value>Markierungen in „{0}“ verwerfen?</value>
+  </data>
+  <data name="DiscardRedactionsText" xml:space="preserve">
+    <value>Die Markierungen wurden nicht angewendet, aus der Datei wurde also nichts entfernt. Diese Markierungen gehen verloren.</value>
+  </data>
+  <data name="SaveChangesWithMarksText" xml:space="preserve">
+    <value>Ihre Änderungen gehen verloren, wenn Sie sie nicht speichern. Die Markierungen zum Schwärzen, die nicht angewendet wurden, gehen ebenfalls verloren; „Speichern“ wendet sie nicht an.</value>
+  </data>
+  <data name="TabRedactionSuffix" xml:space="preserve">
+    <value>, Markierungen zum Schwärzen offen</value>
+  </data>
 </root>

@@ -228,7 +228,9 @@ public sealed class PendingSave
     public string Message => _message?.Invoke() ?? Kind switch
     {
         // Saving does not apply the page changes: the text says they are lost as well (nothing is dropped unnamed).
-        PendingSaveKind.SaveChanges => Tab.HasPendingPageEdits ? Strings.SaveChangesWithPagesText : Strings.SaveChangesText,
+        PendingSaveKind.SaveChanges => Tab.HasPendingPageEdits ? Strings.SaveChangesWithPagesText
+            : Tab.HasPendingRedactions ? Strings.SaveChangesWithMarksText
+            : Strings.SaveChangesText,
         PendingSaveKind.ApplyPages => Strings.ApplyPagesIrreversible,
         PendingSaveKind.SaveAnnotationsFirst => Strings.SaveFirstText,
         PendingSaveKind.SignatureWarning when FormsOnly && Level == DocMdpLevel.FormsOnly => Strings.SignatureWarningFormsText,
@@ -354,6 +356,16 @@ public sealed class PendingSave
         new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel,
             message: static () => Strings.DiscardPageEditsText,
             title: () => Format(Strings.DiscardPageEditsTitle, System.IO.Path.GetFileName(path)));
+
+    /// <summary>
+    /// The question before a tab closes that has redaction marks which are not applied (milestone 14) and nothing else unsaved:
+    /// nothing was removed from the file and "Save" does not apply the marks, so it is a warning like
+    /// <see cref="DiscardPageEdits"/> ("Close and discard changes" or "Cancel", "Cancel" the default).
+    /// </summary>
+    internal static PendingSave DiscardRedactions(TabViewModel tab, string path) =>
+        new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel,
+            message: static () => Strings.DiscardRedactionsText,
+            title: () => Format(Strings.DiscardRedactionsTitle, System.IO.Path.GetFileName(path)));
 
     /// <summary>
     /// The card of "Apply" (milestone 13): the summary and the losses of <paramref name="info"/>, "Save as …" the default (the

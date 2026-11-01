@@ -745,6 +745,20 @@ public static class Strings
         _ => throw new ArgumentOutOfRangeException(nameof(step)),
     };
 
+    public static string CommandRedactMode => Get("CommandRedactMode");
+    public static string CommandRedactDeleteMarks => Get("CommandRedactDeleteMarks");
+    public static string CommandRedactDiscard => Get("CommandRedactDiscard");
+    public static string RedactNotReady => Get("RedactNotReady");
+    public static string RedactEncrypted => Get("RedactEncrypted");
+    public static string RedactActive => Get("RedactActive");
+    public static string RedactMarksPending => Get("RedactMarksPending");
+    public static string RedactMarkRefused => Get("RedactMarkRefused");
+    public static string RedactMarksLimit => Get("RedactMarksLimit");
+    public static string DiscardRedactionsTitle => Get("DiscardRedactionsTitle");
+    public static string DiscardRedactionsText => Get("DiscardRedactionsText");
+    public static string SaveChangesWithMarksText => Get("SaveChangesWithMarksText");
+    public static string TabRedactionSuffix => Get("TabRedactionSuffix");
+
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;
 
