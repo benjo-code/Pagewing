@@ -677,6 +677,296 @@ public sealed class RedactTextTests
         Assert.Equal(20_000, impact.TextObjectsRemovedWhole);
     }
 
+    private static ProbeRect CharBox(List<ProbeChar> group, int index) => group[index].Box;
+
+    [Fact]
+    public async Task AGlyphWithACharacterCodeBelowThirtyTwoIsNotBlank()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-control.pdf");
+        var original = await ReadExactAsync(path, 0);
+        var groups = ByObject(original);
+        Assert.Equal([5u, 6u, 7u], groups[1].Skip(1).Take(3).Select(static c => c.Unicode).ToArray());
+
+        // The rectangle lies over one box glyph (code 5) only: PDFium reports the code as the character, and it is not white space.
+        var area = Display(CharBox(groups[1], 1), 100);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var dry = await document.AnalyzeRedactionAsync(0, [area], Ct);
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct);
+        Assert.Equal(dry, impact, new ImpactComparer());
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.TextObjectsRemovedWhole);
+        var fallback = Assert.Single(impact.Fallbacks);
+        Assert.Equal(RedactionFallbackKind.TextObjectRemovedWhole, fallback.Kind);
+        Assert.Contains("no Unicode value", fallback.Reason, StringComparison.Ordinal);
+
+        // The glyph is gone from the file: the whole line is, and the other line stays.
+        var after = await ReadExactAsync(await SaveAsync(document, folder, "out.pdf"), 0);
+        Assert.Equal(15, after.Count(static c => !White(c)));
+        Assert.Single(ByObject(after));
+    }
+
+    [Fact]
+    public async Task AControlRangeGlyphThatWouldStayMakesTheObjectGoWhole()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-control.pdf");
+        var groups = ByObject(await ReadExactAsync(path, 0));
+
+        // The rectangle lies over the "A": the three glyphs behind it cannot be written again (no Unicode value), so the line goes.
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(0, [Display(CharBox(groups[1], 0), 100)], RedactionFill.Black, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.TextObjectsRemovedWhole);
+        Assert.Contains("no Unicode value", Assert.Single(impact.Fallbacks).Reason, StringComparison.Ordinal);
+        Assert.Equal(15, (await ReadExactAsync(await SaveAsync(document, folder, "out.pdf"), 0)).Count(static c => !White(c)));
+    }
+
+    private static readonly Action<CharTable>[] BadBoxes =
+    [
+        static t => t.Left[FirstLetter(t)] = double.NaN,
+        static t => t.Top[FirstLetter(t)] = double.PositiveInfinity,
+        static t => t.Right[FirstLetter(t)] = double.NegativeInfinity,
+        static t => t.BoxRead[FirstLetter(t)] = false,
+    ];
+
+    private static int FirstLetter(CharTable table) => Enumerable.Range(0, table.Count).First(i => !table.Generated[i] && table.Unicode[i] == 'Z');
+
+    [Fact]
+    public async Task ACharacterBoxThatIsNotANumberOrUnreadableRefusesThePageAndTouchesNothing()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-everywhere.pdf");
+        var letters = (await ReadExactAsync(path, 0)).Where(static c => !White(c)).ToList();
+        var area = Display(Union(letters.Skip(Find(letters, Term)[0]).Take(Term.Count(static c => c > ' '))), 400);
+
+        foreach (var damage in BadBoxes)
+        {
+            await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+            document.RedactionSeam = new PdfiumRedactionSeam { CharsRead = (table, _) => damage(table) };
+            foreach (var impact in new[] { await document.AnalyzeRedactionAsync(0, [area], Ct), await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct) })
+            {
+                Assert.NotNull(impact.Refusal);
+                Assert.Equal(RedactionRefusalKind.PageNotRedactable, impact.Refusal.Kind);
+                Assert.Contains("box of a character", impact.Refusal.Reason, StringComparison.Ordinal);
+            }
+
+            // Refused before the first edit: the document is as it was and can be saved.
+            Assert.False(document.IsRedactionTainted);
+            _ = await SaveAsync(document, folder, "out.pdf");
+        }
+    }
+
+    [Fact]
+    public async Task ATextObjectWhoseBoundsCannotBeReadIsNeverSkippedSilently()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-covered.pdf");
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+
+        // The text page knows no character of the second line any more, and its bounds are not readable: it cannot be told whether it is under the rectangle.
+        document.RedactionSeam = new PdfiumRedactionSeam
+        {
+            CharsRead = (table, _) =>
+            {
+                var last = table.TextObject[Enumerable.Range(0, table.Count).Last(i => !table.Generated[i])];
+                for (var i = 0; i < table.Count; i++)
+                {
+                    table.Generated[i] |= table.TextObject[i] == last;
+                }
+            },
+            BoundsUnreadable = (_, _) => true,
+        };
+        var impact = await document.AnalyzeRedactionAsync(0, [new PageRect(0, 0, 300, 200)], Ct);
+        Assert.NotNull(impact.Refusal);
+        Assert.Contains("bounds of a text object", impact.Refusal.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task APageThatDiffersFromItsScratchCopyIsRefusedBeforeTheFirstEdit()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-everywhere.pdf");
+        var letters = (await ReadExactAsync(path, 0)).Where(static c => !White(c)).ToList();
+        var area = Display(Union(letters.Skip(Find(letters, Term)[0]).Take(Term.Count(static c => c > ' '))), 400);
+
+        // On the scratch copy the "7" of the term lies elsewhere: the same object is edited, but with another set of hit characters.
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        document.RedactionSeam = new PdfiumRedactionSeam
+        {
+            CharsRead = (table, scratch) =>
+            {
+                if (scratch)
+                {
+                    var seven = Enumerable.Range(0, table.Count).First(i => !table.Generated[i] && table.Unicode[i] == '7');
+                    table.Left[seven] += 100;
+                    table.Right[seven] += 100;
+                }
+            },
+        };
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct);
+        Assert.NotNull(impact.Refusal);
+        Assert.Contains("scratch copy", impact.Refusal.Reason, StringComparison.Ordinal);
+        Assert.False(document.IsRedactionTainted);
+        _ = await SaveAsync(document, folder, "out.pdf");
+    }
+
+    private static PdfiumRedactionSeam ReadBackThatLosesTheFirstLetterOfTheRealPage() => new()
+    {
+        ReadBack = (after, scratch) =>
+        {
+            if (!scratch)
+            {
+                var a = Enumerable.Range(0, after.Count).First(i => !after.Generated[i] && after.Unicode[i] == 'A');
+                after.OriginX[a] += 1;
+            }
+        },
+    };
+
+    [Fact]
+    public async Task ARealPassThatCannotReadItsSurvivorsBackEndsInARefusal()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-everywhere.pdf");
+        var letters = (await ReadExactAsync(path, 0)).Where(static c => !White(c)).ToList();
+        var area = Display(Union(letters.Skip(Find(letters, Term)[0]).Take(Term.Count(static c => c > ' '))), 400);
+
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        document.RedactionSeam = ReadBackThatLosesTheFirstLetterOfTheRealPage();
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct);
+        Assert.NotNull(impact.Refusal);
+        Assert.Equal(RedactionRefusalKind.PageNotRedactable, impact.Refusal.Kind);
+    }
+
+    [Fact]
+    public async Task TheLeakCheckOfTheRealPassRunsEvenWhenSurvivorsCouldNotBeReadBack()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-everywhere.pdf");
+        var letters = (await ReadExactAsync(path, 0)).Where(static c => !White(c)).ToList();
+        var termBox = Union(letters.Skip(Find(letters, Term)[0]).Take(Term.Count(static c => c > ' ')));
+
+        // The read-back of the real page shows a character of an untouched line inside the rectangle (and loses a survivor).
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        document.RedactionSeam = new PdfiumRedactionSeam
+        {
+            ReadBack = (after, scratch) =>
+            {
+                if (!scratch)
+                {
+                    var first = Enumerable.Range(0, after.Count).First(i => !after.Generated[i]);
+                    after.Left[first] = termBox.Left;
+                    after.Right[first] = termBox.Right;
+                    after.Bottom[first] = termBox.Bottom;
+                    after.Top[first] = termBox.Top;
+                    var a = Enumerable.Range(0, after.Count).First(i => !after.Generated[i] && after.Unicode[i] == 'A');
+                    after.OriginX[a] += 1;
+                }
+            },
+        };
+        var impact = await document.RedactPageAsync(0, [Display(termBox, 400)], RedactionFill.Black, Ct);
+        Assert.NotNull(impact.Refusal);
+        Assert.Contains("still readable", impact.Refusal.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ADocumentThatWasChangedByARefusedRedactionCannotBeSavedOrRedactedAgain()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-everywhere.pdf");
+        var letters = (await ReadExactAsync(path, 0)).Where(static c => !White(c)).ToList();
+        var area = Display(Union(letters.Skip(Find(letters, Term)[0]).Take(Term.Count(static c => c > ' '))), 400);
+
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        Assert.False(document.IsRedactionTainted);
+        document.RedactionSeam = ReadBackThatLosesTheFirstLetterOfTheRealPage();
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, Ct);
+        Assert.NotNull(impact.Refusal);
+
+        // The page was edited before the refusal: the caller may not write it, whether or not it looked at the refusal.
+        Assert.True(document.IsRedactionTainted);
+        await using (var stream = new MemoryStream())
+        {
+            await Assert.ThrowsAsync<RedactionTaintedException>(() => document.SaveRewriteAsync(stream, Ct));
+            Assert.Equal(0, stream.Length);
+        }
+
+        await Assert.ThrowsAsync<RedactionTaintedException>(() => document.RedactPageAsync(1, [new PageRect(0, 0, 10, 10)], RedactionFill.Black, Ct));
+        Assert.True(document.IsRedactionTainted);
+    }
+
+    [Fact]
+    public async Task ACleanRedactionLeavesTheDocumentSavable()
+    {
+        using var folder = new TempFolder();
+        await using var document = await engine.OpenAsync(Copy(folder, "redact-everywhere.pdf"), cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(1, [new PageRect(100, 200, 180, 260)], RedactionFill.Black, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.False(document.IsRedactionTainted);
+        _ = await SaveAsync(document, folder, "out.pdf");
+        var second = await document.RedactPageAsync(0, [new PageRect(100, 200, 180, 260)], RedactionFill.Black, Ct);
+        Assert.Null(second.Refusal);
+    }
+
+    [Fact]
+    public async Task ACanceledRedactionAfterTheFirstEditLeavesTheDocumentTainted()
+    {
+        using var folder = new TempFolder();
+        var path = Path.Combine(folder.Path, "many-text.pdf");
+        await File.WriteAllBytesAsync(path, HostilePdf.Build(GridOfTextObjects()), Ct);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        // The edits are done, the content is not written yet: the token is canceled, and the step lasts longer than its budget so that the next one notices.
+        document.RedactionSeam = new PdfiumRedactionSeam
+        {
+            AfterEdits = scratch =>
+            {
+                if (!scratch)
+                {
+                    source.Cancel();
+                    Thread.Sleep(100);
+                }
+            },
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => document.RedactPageAsync(0, [new PageRect(0, 0, 612, 792)], RedactionFill.Black, source.Token));
+        Assert.True(document.IsRedactionTainted);
+        await using var stream = new MemoryStream();
+        await Assert.ThrowsAsync<RedactionTaintedException>(() => document.SaveRewriteAsync(stream, Ct));
+    }
+
+    [Fact]
+    public async Task AHyphenAtTheEndOfALineIsAnOrdinaryCharacterAndStaysInPlace()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "text-rich.pdf");
+        var original = await ReadExactAsync(path, 0);
+        var groups = ByObject(original);
+
+        // PDFium reports the hyphen at the end of a line as the marker U+0002: not a glyph without a Unicode value.
+        var group = groups.First(g => g.Any(static c => c.Unicode == 2));
+        var hyphen = group.First(static c => c.Unicode == 2);
+        Assert.True(group.Count > 8);
+        var first = Union(group.Take(2));
+
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var pageHeight = (await document.GetPageSizeAsync(0, Ct)).Height;
+        var impact = await document.RedactPageAsync(0, [Display(first, pageHeight)], RedactionFill.Black, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Empty(impact.Fallbacks);
+        Assert.Equal(1, impact.TextObjectsSplit);
+        var after = await ReadExactAsync(await SaveAsync(document, folder, "out.pdf"), 0);
+        var kept = after.Where(c => c.Unicode == 2 && Math.Abs(c.OriginX - hyphen.OriginX) < 0.02 && Math.Abs(c.OriginY - hyphen.OriginY) < 0.02).ToList();
+        Assert.Single(kept);
+
+        // A rectangle over the hyphen itself takes it away.
+        await using var second = await engine.OpenAsync(path, cancellationToken: Ct);
+        var hit = await second.RedactPageAsync(0, [Display(hyphen.Box, pageHeight)], RedactionFill.Black, Ct);
+        Assert.Null(hit.Refusal);
+        Assert.Empty(hit.Fallbacks);
+        Assert.DoesNotContain(await ReadExactAsync(await SaveAsync(second, folder, "out2.pdf"), 0), c => c.Unicode == 2 && Math.Abs(c.OriginX - hyphen.OriginX) < 0.02 && Math.Abs(c.OriginY - hyphen.OriginY) < 0.02);
+    }
+
     [Fact]
     public async Task PageWithMoreObjectsThanTheCapIsRefusedWithReason()
     {

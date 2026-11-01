@@ -35,10 +35,17 @@ internal sealed class CharTable(int count)
 
     public double[] OriginY { get; } = new double[count];
 
+    /// <summary>Whether PDFium answered the request for the box of the character.</summary>
+    public bool[] BoxRead { get; } = new bool[count];
+
     public nint[] TextObject { get; } = new nint[count];
 
     /// <summary>The box of a character.</summary>
     public UserRect Box(int index) => new(Left[index], Bottom[index], Right[index], Top[index]);
+
+    /// <summary>Whether PDFium gave a box for the character and all four edges are finite numbers; only then can it be compared with a rectangle.</summary>
+    public bool BoxUsable(int index) =>
+        BoxRead[index] && double.IsFinite(Left[index]) && double.IsFinite(Right[index]) && double.IsFinite(Bottom[index]) && double.IsFinite(Top[index]);
 }
 
 /// <summary>What a text object looks like: everything a new text object needs to look the same.</summary>
@@ -111,14 +118,15 @@ internal static unsafe class PdfiumRedactionNative
     {
         for (var i = from; i < to; i++)
         {
-            table.Unicode[i] = Fpdf.FPDFText_GetUnicode(textPage, i);
+            // A hyphen at the end of a line comes as the marker U+0002; it is a hyphen glyph, written and read back as one.
+            table.Unicode[i] = Fpdf.FPDFText_IsHyphen(textPage, i) == 1 ? 0x2D : Fpdf.FPDFText_GetUnicode(textPage, i);
             var generated = Fpdf.FPDFText_IsGenerated(textPage, i) != 0;
             table.Generated[i] = generated;
             double left = 0;
             double right = 0;
             double bottom = 0;
             double top = 0;
-            _ = Fpdf.FPDFText_GetCharBox(textPage, i, &left, &right, &bottom, &top);
+            table.BoxRead[i] = Fpdf.FPDFText_GetCharBox(textPage, i, &left, &right, &bottom, &top) != 0;
             table.Left[i] = left;
             table.Right[i] = right;
             table.Bottom[i] = bottom;

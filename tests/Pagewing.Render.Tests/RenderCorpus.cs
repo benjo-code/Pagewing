@@ -79,7 +79,7 @@ internal static class RenderCorpus
         "annotations-foreign.pdf", "drawings-foreign.pdf", "empty.pdf", "forms-basic.pdf", "forms-calc.pdf", "forms-hostile.pdf", "forms-rotated.pdf", "forms-signed.pdf",
         "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "pages-marked.pdf", "print-mixed.pdf",
         "redact-covered.pdf", "redact-everywhere.pdf", "redact-image.pdf", "redact-revisions.pdf", "redact-rotated.pdf",
-        "redact-fonts.pdf", "redact-image-kinds.pdf", "redact-hidden.pdf", "redact-paths.pdf", "redact-structure.pdf",
+        "redact-fonts.pdf", "redact-image-kinds.pdf", "redact-control.pdf", "redact-hidden.pdf", "redact-paths.pdf", "redact-structure.pdf",
         "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "stamps-foreign.pdf", "text-dense.pdf", "text-rich.pdf",
     ];
 

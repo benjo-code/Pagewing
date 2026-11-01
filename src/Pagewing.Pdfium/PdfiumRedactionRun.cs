@@ -13,6 +13,25 @@ internal enum PdfiumRedactionFill
     White,
 }
 
+/// <summary>
+/// Hooks for tests that make a run see what PDFium would not show it (a box that is not a number, a page that differs from its scratch
+/// copy, a failing read-back, a cancellation at a chosen moment). Production code never sets them. Every hook runs on the PDFium thread.
+/// </summary>
+internal sealed class PdfiumRedactionSeam
+{
+    /// <summary>Called with the characters read from the page (and whether it is the scratch copy) before anything is planned from them.</summary>
+    public Action<CharTable, bool>? CharsRead { get; set; }
+
+    /// <summary>Called with the characters read back from the rewritten page (and whether it is the scratch copy) before they are checked.</summary>
+    public Action<CharTable, bool>? ReadBack { get; set; }
+
+    /// <summary>Called when the edits of a pass are done, before the content is written (the argument tells whether it is the scratch copy).</summary>
+    public Action<bool>? AfterEdits { get; set; }
+
+    /// <summary>Asked for the page object index (and whether it is the scratch copy) whether its bounds count as unreadable.</summary>
+    public Func<int, bool, bool>? BoundsUnreadable { get; set; }
+}
+
 /// <summary>What was removed as a whole instead of precisely.</summary>
 internal enum PdfiumFallbackKind
 {
@@ -75,6 +94,8 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
     private readonly PdfiumRedactionArea[] areas;
     private readonly PdfiumRedactionFill fill;
     private readonly bool apply;
+    private readonly Action? onModified;
+    private readonly PdfiumRedactionSeam? seam;
     private readonly IEnumerator<bool> steps;
     private readonly List<nint> pendingCreated = [];
 
@@ -84,8 +105,10 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
     private nint textPage;
     private nint reloadedPage;
 
-    private PdfiumRedactionRun(PdfiumDocument document, int pageIndex, PdfiumRedactionArea[] areas, PdfiumRedactionFill fill, bool apply)
+    private PdfiumRedactionRun(PdfiumDocument document, int pageIndex, PdfiumRedactionArea[] areas, PdfiumRedactionFill fill, bool apply, Action? onModified, PdfiumRedactionSeam? seam)
     {
+        this.onModified = onModified;
+        this.seam = seam;
         this.document = document;
         this.pageIndex = pageIndex;
         this.areas = areas;
@@ -102,7 +125,16 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
     /// <param name="apply"><see langword="false"/> for the dry run, which changes nothing.</param>
     /// <exception cref="ArgumentOutOfRangeException">The page does not exist, or there are more than <see cref="PdfiumRedaction.MaxAreas"/> rectangles.</exception>
     /// <exception cref="ArgumentException">A rectangle is not finite or has no size.</exception>
-    public static PdfiumRedactionRun Start(PdfiumDocument document, int pageIndex, IReadOnlyList<PdfiumRedactionArea> areas, PdfiumRedactionFill fill, bool apply)
+    /// <param name="onModified">Called on the PDFium thread right before the first change to the page (never in a dry run or a scratch copy).</param>
+    /// <param name="seam">Hooks for tests, or <see langword="null"/>.</param>
+    public static PdfiumRedactionRun Start(
+        PdfiumDocument document,
+        int pageIndex,
+        IReadOnlyList<PdfiumRedactionArea> areas,
+        PdfiumRedactionFill fill,
+        bool apply,
+        Action? onModified = null,
+        PdfiumRedactionSeam? seam = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(areas);
@@ -122,7 +154,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             copy[i] = a;
         }
 
-        return new PdfiumRedactionRun(document, pageIndex, copy, fill, apply);
+        return new PdfiumRedactionRun(document, pageIndex, copy, fill, apply, onModified, seam);
     }
 
     /// <inheritdoc />
@@ -185,7 +217,15 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         }
     }
 
-    private static bool IsWhite(uint unicode) => unicode <= 0x20;
+    /// <summary>
+    /// Whether a character is white space: space, tab, form feed, line feed, carriage return, no-break space. Nothing else counts as blank,
+    /// not even the codes below 32: for a glyph without a Unicode value (a subset font without ToUnicode) PDFium reports the character code,
+    /// and the glyph is drawn.
+    /// </summary>
+    private static bool IsWhite(uint unicode) => unicode is 0x20 or 0x09 or 0x0A or 0x0C or 0x0D or 0xA0;
+
+    /// <summary>Whether a character has no Unicode value but a code in the control range (see <see cref="IsWhite"/>).</summary>
+    private static bool IsControlCode(uint unicode) => unicode < 0x20 && !IsWhite(unicode);
 
     private static bool UsesFill(int mode) => mode is 0 or 2 or 4 or 6;
 
@@ -280,6 +320,11 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         }
 
         CloseHandles();
+        if (real.Refusal is null && real.Unreadable.Count > 0)
+        {
+            real.Refusal = "The characters that stay could not be read back after the page was rewritten.";
+        }
+
         result = Build(real);
     }
 
@@ -404,6 +449,8 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             yield return true;
         }
 
+        seam?.CharsRead?.Invoke(table, scratch);
+
         var handles = new nint[objectCount];
         var types = new int[objectCount];
         var objectIndex = new Dictionary<nint, int>();
@@ -440,8 +487,14 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
                 continue;
             }
 
+            if (!IsWhite(table.Unicode[i]) && !table.BoxUsable(i))
+            {
+                pass.Refusal = "The box of a character could not be read (it is not a finite number), so it cannot be told where the character is.";
+                yield break;
+            }
+
             var obj = table.TextObject[i];
-            var isHit = areaIndex.Hit(table.Box(i));
+            var isHit = table.BoxUsable(i) && areaIndex.Hit(table.Box(i));
             if (obj == 0)
             {
                 if (isHit && !IsWhite(table.Unicode[i]))
@@ -496,10 +549,18 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         // Text objects the text page knows no character of: removed as a whole when they touch a rectangle.
         for (var i = 0; i < objectCount; i++)
         {
-            if (types[i] == FpdfConstants.PageObjText && !byObject.ContainsKey(handles[i])
-                && PdfiumRedactionNative.TryGetBounds(handles[i], out var bounds) && areaIndex.Hit(bounds))
+            if (types[i] == FpdfConstants.PageObjText && !byObject.ContainsKey(handles[i]))
             {
-                edits.Add(new Edit(i, handles[i], EditKind.TextWithoutChars) { Chars = [] });
+                if (!PdfiumRedactionNative.TryGetBounds(handles[i], out var bounds) || seam?.BoundsUnreadable?.Invoke(i, scratch) == true)
+                {
+                    pass.Refusal = "The bounds of a text object could not be read, so it cannot be told whether it is under a rectangle.";
+                    yield break;
+                }
+
+                if (areaIndex.Hit(bounds))
+                {
+                    edits.Add(new Edit(i, handles[i], EditKind.TextWithoutChars) { Chars = [] });
+                }
             }
 
             if ((i + 1) % (SliceObjects * 8) == 0)
@@ -542,7 +603,8 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
                 {
                     foreach (var skipped in formMap.Skipped.Keys)
                     {
-                        if (PdfiumRedactionNative.TryGetBounds(handles[skipped], out var bounds) && byObject[obj].Any(c => hit[c] && table.Box(c).Touches(bounds)))
+                        // A form object whose bounds cannot be read may hold the text.
+                        if (!PdfiumRedactionNative.TryGetBounds(handles[skipped], out var bounds) || byObject[obj].Any(c => hit[c] && table.Box(c).Touches(bounds)))
                         {
                             holders.Add(skipped);
                         }
@@ -618,7 +680,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         edits.Sort(static (a, b) => b.Index.CompareTo(a.Index));
 
         // The real page must be the page the scratch copy was made from: the same objects at the same places with the same text.
-        pass.Signature = Signature(objectCount, edits, table);
+        pass.Signature = Signature(objectCount, edits, table, hit);
         if (expectedSignature is not null && expectedSignature != pass.Signature)
         {
             pass.Refusal = "The page does not match its scratch copy.";
@@ -639,6 +701,12 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
                 pass.Refusal = annotations.Refusal;
                 yield break;
             }
+        }
+
+        // From here the real page changes: whoever tells the document about it must know before the first change, not after.
+        if (!scratch)
+        {
+            onModified?.Invoke();
         }
 
         // ---- Edit the page, from the highest index down. ----
@@ -720,6 +788,8 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             yield break;
         }
 
+        seam?.AfterEdits?.Invoke(scratch);
+
         if (!raw.GenerateContent())
         {
             pass.Refusal = "PDFium could not write the content of the page.";
@@ -756,6 +826,8 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             PdfiumRedactionNative.ReadChars(textPage, after, from, Math.Min(count2, from + SliceChars));
             yield return true;
         }
+
+        seam?.ReadBack?.Invoke(after, scratch);
 
         var lookup = new Dictionary<(uint, long, long), List<int>>();
         for (var j = 0; j < count2; j++)
@@ -808,7 +880,8 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             }
         }
 
-        if (pass.Unreadable.Count == 0)
+        // The scratch copy only looks for leaks when its survivors are all there (otherwise it is run again anyway); the real page always does.
+        if (!scratch || pass.Unreadable.Count == 0)
         {
             for (var j = 0; j < count2; j++)
             {
@@ -817,16 +890,21 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
                     yield return true;
                 }
 
-                if (!after.Generated[j] && !matched[j] && !IsWhite(after.Unicode[j]) && areaIndex.Hit(after.Box(j)))
+                if (!after.Generated[j] && !matched[j] && !IsWhite(after.Unicode[j]) && (!after.BoxUsable(j) || areaIndex.Hit(after.Box(j))))
                 {
                     pass.Refusal = "Text under a rectangle is still readable after the page was rewritten.";
                     yield break;
                 }
             }
         }
+
+        if (!scratch && pass.Unreadable.Count > 0)
+        {
+            pass.Refusal = "The characters that stay could not be read back after the page was rewritten.";
+        }
     }
 
-    private static string Signature(int objectCount, List<Edit> edits, CharTable table)
+    private static string Signature(int objectCount, List<Edit> edits, CharTable table, bool[] hit)
     {
         var hash = new HashCode();
         hash.Add(objectCount);
@@ -838,6 +916,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             foreach (var c in edit.Chars)
             {
                 hash.Add(table.Unicode[c]);
+                hash.Add(hit[c]);
             }
         }
 
@@ -936,6 +1015,18 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         // Runs of white space only draw nothing and are not recreated.
         runs.RemoveAll(run => run.All(c => IsWhite(table.Unicode[c])));
 
+        // A glyph without a Unicode value (PDFium then reports its character code, below 32) cannot be checked afterwards: the whole object goes.
+        var controlHit = chars.Where(c => hit[c] && IsControlCode(table.Unicode[c])).Select(c => (int)table.Unicode[c]).DefaultIfEmpty(-1).First();
+        if (controlHit >= 0)
+        {
+            RemoveWhole(raw, edit);
+            pass.RemovedWhole++;
+            pass.CharsRemoved += chars.Length;
+            pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.TextObjectRemovedWhole, $"a character under a rectangle has no Unicode value (character code {controlHit}), so the rest of the object cannot be checked"));
+            pass.RemovedText.Add(string.Concat(chars.Select(c => ToText(table.Unicode[c]))));
+            return;
+        }
+
         if (visibleKept == 0)
         {
             RemoveWhole(raw, edit);
@@ -1010,7 +1101,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
         splitChecks.Add((edit.Index, [.. chars.Where(c => !hit[c] && !IsWhite(table.Unicode[c]))]));
     }
 
-    private static string ToText(uint unicode) => unicode is 0 or > 0xFFFF ? "�" : ((char)unicode).ToString();
+    private static string ToText(uint unicode) => unicode > 0xFFFF || IsControlCode(unicode) ? "\ufffd" : ((char)unicode).ToString();
 
     private static void FlushRemoved(System.Text.StringBuilder builder, List<string> into)
     {
@@ -1038,7 +1129,7 @@ internal sealed class PdfiumRedactionRun : SteppedWork<PdfiumRedactionImpact>
             }
 
             var u = table.Unicode[c];
-            if (u is 0 or 0xFFFD or >= 0xD800)
+            if (u is 0 or 0xFFFD or >= 0xD800 || IsControlCode(u))
             {
                 return "a character that stays has no Unicode value PDFium can write";
             }

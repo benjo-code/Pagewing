@@ -213,12 +213,14 @@ public sealed partial class PdfDocument
     /// A document that was changed by the page operations is written as it is.
     /// </summary>
     /// <exception cref="IOException">The document or the stream could not be written.</exception>
+    /// <exception cref="Pagewing.Core.Redaction.RedactionTaintedException">A redaction left the document partly redacted (<see cref="IsRedactionTainted"/>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the save started.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task SaveRewriteAsync(Stream destination, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(destination);
+        ThrowIfRedactionTainted();
         return document.Thread.InvokeAsync(() => PdfiumPageEdit.SaveRewrite(document, destination), PdfiumPriority.Background, cancellationToken);
     }
 

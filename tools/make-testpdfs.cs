@@ -129,6 +129,7 @@ static class TestPdfs
         new("redact-rotated.pdf", RedactRotated()),
         new("redact-fonts.pdf", RedactFonts()),
         new("redact-image-kinds.pdf", RedactImageKinds()),
+        new("redact-control.pdf", RedactControl()),
         new("redact-hidden.pdf", RedactHidden()),
         new("redact-paths.pdf", RedactPaths()),
         new("redact-structure.pdf", RedactStructure()),
@@ -1365,6 +1366,34 @@ static class TestPdfs
         return doc.Build();
     }
 
+    // One page 300 x 100 for glyphs whose character code is below 32. The self-made Type 1 font /F2 (no ToUnicode, built-in encoding) has
+    // the glyphs A, B, and three more at the codes 5, 6 and 7 whose names no Unicode list knows (pwctl5 to pwctl7), so PDFium can only report
+    // the code as the character. Helvetica /F1 line "Public line stays" at 20,70 (size 14); /F2 line (size 24) at 20,30: A, code 5, code 6, B.
+    private static byte[] RedactControl()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Zeichencodes unter 32");
+        var helvetica = doc.Add(Helvetica);
+        const string sentence = "AB";
+        var type1 = Type1Font.Build(sentence);
+        var type1File = doc.AddStream($"/Length1 {type1.Length1} /Length2 {type1.Length2} /Length3 {type1.Length3}", type1.Data);
+        var descriptor = doc.Add($"<< /Type /FontDescriptor /FontName /PwBoxControl /Flags 4 /FontBBox [0 0 600 750] /ItalicAngle 0 /Ascent 750 /Descent 0 /CapHeight 700 /StemV 80 /FontFile {type1File} 0 R >>");
+        var widths = new StringBuilder();
+        for (var code = 0; code <= 255; code++)
+        {
+            widths.Append(CultureInfo.InvariantCulture, $"{(sentence.Contains((char)code, StringComparison.Ordinal) ? 600 : 0)} ");
+        }
+
+        var font = doc.Add($"<< /Type /Font /Subtype /Type1 /BaseFont /PwBoxControl /FirstChar 0 /LastChar 255 /Widths [{widths}] /FontDescriptor {descriptor} 0 R >>");
+        doc.AddPage(
+            "/MediaBox [0 0 300 100]",
+            $"<< /Font << /F1 {helvetica} 0 R /F2 {font} 0 R >> >>",
+            """
+            BT /F1 14 Tf 20 70 Td (Public line stays) Tj ET
+            BT /F2 24 Tf 20 30 Td (AB) Tj ET
+            """);
+        return doc.Build();
+    }
+
     // A ToUnicode CMap for a two-byte code space: (code, character) pairs, written in blocks of at most 100 entries.
     private static byte[] ToUnicodeCMap((int Code, char Character)[] pairs)
     {
@@ -1851,8 +1880,9 @@ static class Type1Font
         [' '] = "space", [':'] = "colon", ['1'] = "one", ['7'] = "seven", ['ß'] = "germandbls",
     };
 
+    // The codes 1 to 31 have glyphs with names no Unicode list knows ("pwctl5"): PDFium can only report the code as the character.
     public static string? NameOf(char character) =>
-        Names.TryGetValue(character, out var name) ? name : char.IsAsciiLetter(character) ? character.ToString() : null;
+        Names.TryGetValue(character, out var name) ? name : char.IsAsciiLetter(character) ? character.ToString() : character is > (char)0 and < (char)32 ? "pwctl" + (int)character : null;
 
     public static (byte[] Data, int Length1, int Length2, int Length3) Build(string text)
     {

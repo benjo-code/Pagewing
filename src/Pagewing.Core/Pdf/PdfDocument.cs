@@ -23,6 +23,7 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     private readonly int formType;
     private int disposed;
     private int printRequests;
+    private int redactionTainted;
 
     internal PdfDocument(PdfiumDocument document, int pageCount, string pdfVersion, int formType)
     {
@@ -533,6 +534,7 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(destination);
+        ThrowIfRedactionTainted();
         return document.Thread.InvokeAsync(
             () => document.SaveIncremental(destination),
             PdfiumPriority.Background,

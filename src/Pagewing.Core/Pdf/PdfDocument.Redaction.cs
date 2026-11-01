@@ -46,6 +46,13 @@ public sealed partial class PdfDocument
     /// <param name="fill">The colour of the area.</param>
     /// <param name="cancellationToken">Cancels between two steps; a canceled call may leave the document changed, which must then be discarded.</param>
     /// <returns>What was done. When <see cref="PageRedactionImpact.Refusal"/> is set, the document may have changed and must be discarded.</returns>
+    /// <remarks>
+    /// The call marks the document as tainted (<see cref="IsRedactionTainted"/>) right before it makes its first change and clears the mark only
+    /// when it ends without a refusal. A refusal after the first change, an exception and a cancellation therefore leave the mark: the
+    /// document holds content that is only partly redacted, and <see cref="SaveRewriteAsync"/> and further calls of this method throw
+    /// <see cref="RedactionTaintedException"/> whatever the caller did with the result. Redact one page at a time on a document.
+    /// </remarks>
+    /// <exception cref="RedactionTaintedException">An earlier call left the document tainted.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The page does not exist.</exception>
     /// <exception cref="RedactionException">A rectangle is not finite or has no size, or there are more than <see cref="MaxRedactionAreasPerPage"/>.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
@@ -53,11 +60,35 @@ public sealed partial class PdfDocument
     public Task<PageRedactionImpact> RedactPageAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, CancellationToken cancellationToken = default) =>
         RunRedactionAsync(page, areas, fill, apply: true, cancellationToken);
 
+    /// <summary>Hooks for tests of the redaction engine; <see langword="null"/> in production.</summary>
+    internal PdfiumRedactionSeam? RedactionSeam { get; set; }
+
+    /// <summary>
+    /// Gets whether a redaction changed the document and did not finish cleanly (a refusal after the first change, an exception, a
+    /// cancellation); such a document is only partly redacted and is never written. See <see cref="RedactPageAsync"/>.
+    /// </summary>
+    public bool IsRedactionTainted => Volatile.Read(ref redactionTainted) != 0;
+
+    private void ThrowIfRedactionTainted()
+    {
+        if (IsRedactionTainted)
+        {
+            throw new RedactionTaintedException();
+        }
+    }
+
+    private void MarkRedactionTainted() => Volatile.Write(ref redactionTainted, 1);
+
     private async Task<PageRedactionImpact> RunRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, bool apply, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(areas);
         ThrowIfNotAPage(page);
+        if (apply && IsRedactionTainted)
+        {
+            throw new RedactionTaintedException("An earlier redaction of this document did not finish cleanly; the document must be discarded.");
+        }
+
         if (areas.Count > MaxRedactionAreasPerPage)
         {
             throw new RedactionException(RedactionError.LimitExceeded, "More rectangles on one page than allowed.");
@@ -77,9 +108,16 @@ public sealed partial class PdfDocument
 
         var pdfiumFill = fill == RedactionFill.White ? PdfiumRedactionFill.White : PdfiumRedactionFill.Black;
         var impact = await document.Thread.InvokeSteppedAsync(
-            () => PdfiumRedactionRun.Start(document, page, copy, pdfiumFill, apply),
+            () => PdfiumRedactionRun.Start(document, page, copy, pdfiumFill, apply, apply ? MarkRedactionTainted : null, RedactionSeam),
             PdfiumPriority.Background,
             cancellationToken).ConfigureAwait(false);
+
+        // Only a redaction that ended without a refusal makes the document clean again (it was clean before: a tainted one is not redacted).
+        if (apply && impact.RefusalReason is null)
+        {
+            Volatile.Write(ref redactionTainted, 0);
+        }
+
         return ToImpact(page, impact);
     }
 
