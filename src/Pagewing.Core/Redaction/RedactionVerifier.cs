@@ -129,6 +129,7 @@ public static class RedactionVerifier
             }
 
             entry.Everywhere |= everywhere;
+            entry.Pages.Add(page);
             entry.Before = Math.Max(entry.Before, before);
             if (isPlace)
             {
@@ -300,7 +301,8 @@ public static class RedactionVerifier
                     null,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"Removed text #{text.Index + 1} ({text.Text.Length} characters) is still in the bytes of the file {raw} time(s) (in an old revision, metadata, an attachment, a pattern or a stream); the page text accounts for {allowed}.")));
+                        $"Removed text #{text.Index + 1} ({text.Text.Length} characters) is still in the bytes of the file {raw} time(s) (in an old revision, metadata, an attachment, a pattern or a stream); the page text accounts for {allowed}."),
+                    [.. text.Pages]));
             }
         }
 
@@ -468,6 +470,8 @@ public static class RedactionVerifier
         public int Index { get; set; }
 
         public bool Everywhere { get; set; }
+
+        public SortedSet<int> Pages { get; } = [];
 
         public int Places { get; set; }
 

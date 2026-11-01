@@ -109,7 +109,12 @@ public enum RedactionFindingKind
 /// <param name="Kind">The kind.</param>
 /// <param name="Page">The 0-based page, or <see langword="null"/> when the finding concerns the file.</param>
 /// <param name="Detail">A short English explanation.</param>
-public sealed record RedactionFinding(RedactionFindingKind Kind, int? Page, string Detail);
+/// <param name="RelatedPages">
+/// For a finding about a removed text that no single page shows (<see cref="RedactionFindingKind.RawBytesStillPresent"/>): the 0-based
+/// pages the text was removed from or marked on, ascending; <see langword="null"/> otherwise. The page the content hides on is not
+/// known, only where it was meant to go.
+/// </param>
+public sealed record RedactionFinding(RedactionFindingKind Kind, int? Page, string Detail, IReadOnlyList<int>? RelatedPages = null);
 
 /// <summary>The result of the check: what it found and, always, what it did not check.</summary>
 /// <param name="Findings">The findings; none means the check passed.</param>

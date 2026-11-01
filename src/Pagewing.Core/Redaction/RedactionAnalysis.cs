@@ -39,7 +39,8 @@ public enum RedactionRefusalKind
 /// <param name="Kind">The kind of refusal.</param>
 /// <param name="Pages">The 0-based pages it concerns; empty when it concerns the file.</param>
 /// <param name="Reason">A short English explanation.</param>
-public sealed record RedactionRefusal(RedactionRefusalKind Kind, IReadOnlyList<int> Pages, string Reason);
+/// <param name="PageKeysUnverified">Whether the page keys could not be checked (only with <see cref="RedactionRefusalKind.UnremovablePageKeys"/>): the file may or may not carry such keys. Interfaces read this flag, never the pages or the text.</param>
+public sealed record RedactionRefusal(RedactionRefusalKind Kind, IReadOnlyList<int> Pages, string Reason, bool PageKeysUnverified = false);
 
 /// <summary>
 /// What redacting a page does (or did): the counts, the content that is removed as a whole, the text that goes, and a refusal
@@ -137,6 +138,37 @@ public enum RedactionLossKind
 /// <param name="Kind">What is lost.</param>
 /// <param name="Count">How many links, fields, images or signatures.</param>
 public sealed record RedactionLoss(RedactionLossKind Kind, int Count);
+
+/// <summary>
+/// What redacting a plan will do, worked out on a throwaway working copy before anything is applied (<see cref="RedactionExecutor.AnalyzeAsync(RedactionPlan, string, string?, CancellationToken)"/>):
+/// the effect on every marked page, what the cleanup removes, what the rebuild loses and every reason the file is refused. It is
+/// the content of the card before "Apply" and of the report of the command line. <b>Every caller honours <see cref="IsRefused"/></b>:
+/// building and applying do not read the analysis again.
+/// </summary>
+/// <param name="Pages">What redacting each marked page does, in page order. After a refusal the counts of the pages behind it come from a dry run.</param>
+/// <param name="Cleanup">What the cleanup removes, as it is present in this file (always removed, never a switch).</param>
+/// <param name="CleanupComplete">Whether the scan of the file could read every stream; <see langword="false"/> means the cleanup list may miss entries.</param>
+/// <param name="Losses">What the rebuild loses, in the order of <see cref="RedactionLossKind"/>; only losses that apply.</param>
+/// <param name="Refusals">Why the file cannot be redacted, one entry per reason; empty when it can. <c>UnremovableContent</c> is not one of them: the content check finds it only after writing.</param>
+/// <param name="PageKeysChecked">Whether the early scan of the written working copy for page keys PDFium cannot remove ran and could check the file (the final output is checked again when applying).</param>
+/// <param name="Marks">The number of marks of the plan.</param>
+/// <param name="MarksWithoutTerm">The number of marks without a term (a rectangle dragged on the page): the text under them is removed, but the check has no text to search for.</param>
+public sealed record RedactionAnalysis(
+    IReadOnlyList<PageRedactionImpact> Pages,
+    IReadOnlyList<CleanupItem> Cleanup,
+    bool CleanupComplete,
+    IReadOnlyList<RedactionLoss> Losses,
+    IReadOnlyList<RedactionRefusal> Refusals,
+    bool PageKeysChecked,
+    int Marks,
+    int MarksWithoutTerm)
+{
+    /// <summary>Gets whether the file must not be redacted (any refusal).</summary>
+    public bool IsRefused => Refusals.Count > 0;
+
+    /// <summary>Gets everything that is removed as a whole instead of precisely, with the reason, in page order.</summary>
+    public IReadOnlyList<RedactionFallback> Fallbacks => [.. Pages.SelectMany(static p => p.Fallbacks)];
+}
 
 /// <summary>What the cleanup removes and what the rebuild loses, read from a document and its file.</summary>
 /// <param name="Cleanup">What the cleanup removes, in the order of <see cref="CleanupKind"/>.</param>

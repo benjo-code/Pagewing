@@ -878,6 +878,17 @@ internal sealed partial class PdfiumRedactionRun
         if (edit.Boxes.Count > 0)
         {
             pass.ImagesOverwritten++;
+
+            // Whole pixels are overwritten: where an image has big pixels (a scan at low resolution) the overwritten cells reach out of
+            // the rectangle by up to one pixel. The page differs there on purpose, so the render check has to leave those cells out too.
+            foreach (var box in edit.Boxes)
+            {
+                pass.Removed.Add(matrix.Bounds(new UserRect(
+                    (double)box.X0 / width,
+                    1.0 - ((double)box.Y1 / height),
+                    (double)box.X1 / width,
+                    1.0 - ((double)box.Y0 / height))));
+            }
         }
     }
 

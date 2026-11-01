@@ -3,15 +3,20 @@ using Pagewing.Core.Pdf;
 namespace Pagewing.Core.Redaction;
 
 /// <summary>
-/// Redacts a document (milestone 14): the parts that clean the file. A redaction always ends in a rebuild of the pages into a new
+/// Redacts a document (milestone 14): <see cref="AnalyzeAsync(RedactionPlan, string, string?, CancellationToken)"/> works out what a plan does
+/// and whether the file may be redacted at all, <see cref="BuildAsync(RedactionPlan, string, string?, IProgress{double}?, CancellationToken)"/>
+/// redacts a working copy and rebuilds it for <see cref="RedactionApplier"/>; the rest of this class are the parts that clean the file. A redaction always ends in a rebuild of the pages into a new
 /// document without pages (<see cref="PdfEngine.CreateEmptyAsync"/>), which leaves the document-level data of the source behind;
 /// what that removes and what it costs is told before anything is applied (<see cref="InventoryAsync"/>), and a file in which the
 /// rebuild would leave data behind that PDFium cannot remove is refused (<see cref="PageKeyRefusal"/>, <see cref="FileRefusalAsync"/>).
 /// </summary>
 /// <param name="engine">The engine that opens the empty document of a rebuild.</param>
-public sealed class RedactionExecutor(PdfEngine engine)
+public sealed partial class RedactionExecutor(PdfEngine engine)
 {
     private const int MaxCleanupDetail = 200;
+
+    /// <summary>Gets the hooks of tests; <see langword="null"/> in production.</summary>
+    internal RedactionApplyHooks? Hooks { get; init; }
 
     /// <summary>
     /// Tells why the file as a whole cannot be redacted: <see cref="RedactionRefusalKind.Encrypted"/> for an encrypted file (milestone

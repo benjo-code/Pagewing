@@ -40,7 +40,7 @@ public sealed record PageKeyScan
     {
         if (!WasChecked)
         {
-            return new RedactionRefusal(RedactionRefusalKind.UnremovablePageKeys, [], PageKeyScanner.UnverifiedReason);
+            return new RedactionRefusal(RedactionRefusalKind.UnremovablePageKeys, [], PageKeyScanner.UnverifiedReason, PageKeysUnverified: true);
         }
 
         if (Findings.Count == 0)
@@ -78,20 +78,38 @@ public sealed record PageKeyScan
 /// </summary>
 public static class PageKeyScanner
 {
-    /// <summary>The reason a refusal carries when the keys could not be checked (fixed text; the interface translates by kind).</summary>
-    public const string UnverifiedReason = "Seitenschlüssel konnten nicht geprüft werden";
+    /// <summary>
+    /// The reason a refusal carries when the keys could not be checked (fixed English text). The interface does not compare it: it
+    /// reads <see cref="RedactionRefusal.PageKeysUnverified"/> and translates.
+    /// </summary>
+    public const string UnverifiedReason = "The page keys could not be checked.";
 
     /// <summary>Gets the keys that are looked for, in the order a finding lists them.</summary>
     public static IReadOnlyList<string> Keys { get; } = ["/Thumb", "/PieceInfo", "/Metadata", "/AA"];
 
-    /// <summary>Scans the bytes of a file that PDFium wrote.</summary>
+    /// <summary>Scans the bytes of a file that PDFium wrote; a cross-reference stream is read as the trailer.</summary>
     /// <param name="written">The file; it must be readable and seekable and is read from its start, never changed.</param>
     /// <param name="pdfiumPageCount">The number of pages PDFium reports for this file; the scan must find exactly as many pages.</param>
     /// <param name="cancellationToken">Cancels the scan.</param>
     /// <returns>The pages with such keys, or the statement that the file could not be checked.</returns>
     /// <exception cref="ArgumentException">The stream is not readable and seekable.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
-    public static PageKeyScan Scan(Stream written, int pdfiumPageCount, CancellationToken cancellationToken = default)
+    public static PageKeyScan Scan(Stream written, int pdfiumPageCount, CancellationToken cancellationToken = default) =>
+        Scan(written, pdfiumPageCount, allowCrossReferenceStream: true, cancellationToken);
+
+    /// <summary>Scans the bytes of a file that PDFium wrote.</summary>
+    /// <param name="written">The file; it must be readable and seekable and is read from its start, never changed.</param>
+    /// <param name="pdfiumPageCount">The number of pages PDFium reports for this file; the scan must find exactly as many pages.</param>
+    /// <param name="allowCrossReferenceStream">
+    /// Whether a cross-reference stream (<c>/Type /XRef</c>) is read as the trailer (PDFium writes one for a source that had one). With
+    /// <see langword="false"/> it makes the file "could not be checked", like an object stream: the check of the final output uses this,
+    /// because the rebuilt file has a classic table and anything else there is unexpected.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the scan.</param>
+    /// <returns>The pages with such keys, or the statement that the file could not be checked.</returns>
+    /// <exception cref="ArgumentException">The stream is not readable and seekable.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    public static PageKeyScan Scan(Stream written, int pdfiumPageCount, bool allowCrossReferenceStream, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(written);
         if (!written.CanRead || !written.CanSeek)
@@ -102,7 +120,7 @@ public static class PageKeyScanner
         try
         {
             written.Position = 0;
-            return new PageKeyReader(written, cancellationToken).Run(pdfiumPageCount);
+            return new PageKeyReader(written, allowCrossReferenceStream, cancellationToken).Run(pdfiumPageCount);
         }
         catch (Unverifiable ex)
         {
@@ -202,6 +220,7 @@ public static class PageKeyScanner
         private const int MaxKids = 10_000_000;
 
         private readonly Stream stream;
+        private readonly bool allowCrossReferenceStream;
         private readonly CancellationToken cancellation;
         private readonly byte[] buffer = new byte[BufferSize];
         private readonly Token[] lookahead = new Token[2];
@@ -214,9 +233,10 @@ public static class PageKeyScanner
         private int rootReference = -1;
         private int pageTypedObjects;
 
-        public PageKeyReader(Stream stream, CancellationToken cancellation)
+        public PageKeyReader(Stream stream, bool allowCrossReferenceStream, CancellationToken cancellation)
         {
             this.stream = stream;
+            this.allowCrossReferenceStream = allowCrossReferenceStream;
             this.cancellation = cancellation;
         }
 
@@ -359,6 +379,12 @@ public static class PageKeyScanner
 
             if (Peek(0) is { Kind: TokenKind.Keyword, Text: "stream" })
             {
+                if (type == "XRef" && !allowCrossReferenceStream)
+                {
+                    // The rebuilt file has a classic table; a cross-reference stream there is not what the scan was made for.
+                    throw Fail("The file has a cross-reference stream.");
+                }
+
                 SkipStream(dictionary);
                 if (type == "XRef")
                 {

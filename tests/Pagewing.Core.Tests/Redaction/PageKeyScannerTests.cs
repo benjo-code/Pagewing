@@ -157,8 +157,49 @@ public sealed class PageKeyScannerTests
         var refusal = scan.ToRefusal();
         Assert.NotNull(refusal);
         Assert.Equal(RedactionRefusalKind.UnremovablePageKeys, refusal.Kind);
-        Assert.Equal("Seitenschlüssel konnten nicht geprüft werden", refusal.Reason);
+        Assert.Equal("The page keys could not be checked.", refusal.Reason);
+        Assert.Equal(PageKeyScanner.UnverifiedReason, refusal.Reason);
+        Assert.True(refusal.PageKeysUnverified);
         Assert.Empty(refusal.Pages);
+    }
+
+    [Fact]
+    public void ARefusalToldApartByItsFlagNeverByItsPagesOrText()
+    {
+        // The discriminator (R10): "could not be checked" has no pages, but so would a file-wide refusal of another kind; a finding has pages.
+        var found = Scan(TwoPages(secondPage: "/Thumb 1 0 R"), 2).ToRefusal();
+        Assert.NotNull(found);
+        Assert.False(found.PageKeysUnverified);
+        Assert.Equal([1], found.Pages);
+
+        var unverified = Scan(TwoPages(), 3).ToRefusal();
+        Assert.NotNull(unverified);
+        Assert.True(unverified.PageKeysUnverified);
+        Assert.Equal(RedactionRefusalKind.UnremovablePageKeys, unverified.Kind);
+    }
+
+    [Fact]
+    public void StrictModeFailsClosedOnACrossReferenceStreamAndTheDefaultReadsIt()
+    {
+        // R9: the check of the final output refuses what it cannot be sure of; the early scan of the working copy reads the stream.
+        var file = Latin1(
+            "%PDF-1.7\n" + Catalog
+            + "2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n"
+            + "3 0 obj\n<< /Type /Page /Parent 2 0 R >>\nendobj\n"
+            + "4 0 obj\n<< /Type /XRef /Size 5 /Root 1 0 R /W [1 1 1] /Length 3 >>\nstream\nabc\nendstream\nendobj\nstartxref\n0\n%%EOF\n");
+        using var lenient = new MemoryStream(file);
+        Assert.True(PageKeyScanner.Scan(lenient, 1, Ct).IsClean);
+
+        using var strict = new MemoryStream(file);
+        var scan = PageKeyScanner.Scan(strict, 1, allowCrossReferenceStream: false, cancellationToken: Ct);
+        Assert.False(scan.WasChecked);
+        Assert.False(scan.IsClean);
+        Assert.Contains("cross-reference stream", scan.NotChecked, StringComparison.Ordinal);
+        Assert.True(scan.ToRefusal()?.PageKeysUnverified);
+
+        // A classic table is read in both modes.
+        using var classic = new MemoryStream(TwoPages());
+        Assert.True(PageKeyScanner.Scan(classic, 2, allowCrossReferenceStream: false, cancellationToken: Ct).IsClean);
     }
 
     [Fact]
