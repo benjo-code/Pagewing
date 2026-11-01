@@ -14,4 +14,10 @@ public static class RedactionLimits
 
     /// <summary>The shortest removed text, in characters, that the raw-bytes check uses; shorter text would match streams by chance.</summary>
     public const int MinRawCheckLength = 4;
+
+    /// <summary>The most bytes one stream may unpack to in the raw-bytes check (a larger stream is a decompression bomb and is reported).</summary>
+    public const long MaxInflatedStream = 128L * 1024 * 1024;
+
+    /// <summary>The most bytes all streams of one file may unpack to in the raw-bytes check.</summary>
+    public const long MaxInflatedTotal = 1024L * 1024 * 1024;
 }

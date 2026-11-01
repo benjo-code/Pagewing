@@ -88,6 +88,49 @@ public static class TextMatcher
         return new SearchSnippet(Plain(chars, beforeStart, first), Joined(chars, first, last + 1), Plain(chars, last + 1, afterEnd));
     }
 
+    /// <summary>
+    /// Normalizes a query exactly like <see cref="Find"/> does (empty for an empty or whitespace-only query), so that
+    /// <see cref="CountNormalized"/> can compare many queries with one page.
+    /// </summary>
+    internal static string Normalize(string query, bool matchCase) =>
+        string.IsNullOrWhiteSpace(query) ? string.Empty : NormalizeQuery(query, matchCase);
+
+    /// <summary>
+    /// Counts the matches of several normalized queries (see <see cref="Normalize"/>) in the characters of one page with the same
+    /// rules as <see cref="Find"/> (non-overlapping), building the search text of the page once.
+    /// </summary>
+    /// <param name="chars">The characters of the page.</param>
+    /// <param name="matchCase">Whether upper and lower case must match.</param>
+    /// <param name="needles">The normalized queries; an empty one counts nothing.</param>
+    /// <param name="counts">The matches are added to the count at the index of the query.</param>
+    internal static void CountNormalized(IReadOnlyList<TextChar> chars, bool matchCase, IReadOnlyList<string> needles, int[] counts)
+    {
+        if (chars.Count == 0 || needles.Count == 0)
+        {
+            return;
+        }
+
+        using var text = new SearchText(chars.Count);
+        Build(chars, matchCase, text);
+        var haystack = text.Text;
+        for (var i = 0; i < needles.Count; i++)
+        {
+            var needle = needles[i];
+            if (needle.Length == 0)
+            {
+                continue;
+            }
+
+            var rest = haystack;
+            int found;
+            while ((found = rest.IndexOf(needle, StringComparison.Ordinal)) >= 0)
+            {
+                counts[i]++;
+                rest = rest[(found + needle.Length)..];
+            }
+        }
+    }
+
     /// <summary>Normalizes the query like the text of a page; leading and trailing whitespace drop out.</summary>
     private static string NormalizeQuery(string query, bool matchCase)
     {
