@@ -37,9 +37,18 @@ internal sealed record CliOptions(
     string? Password,
     string? Query = null,
     bool MatchCase = false,
-    bool WholeWord = false)
+    bool WholeWord = false,
+    int Angle = 0,
+    string? OutputFile = null,
+    bool Force = false,
+    int Every = 0,
+    string? Ranges = null,
+    bool SplitBookmarks = false)
 {
     public const string DefaultDpi = "144";
+
+    /// <summary>The angles <c>rotate</c> accepts.</summary>
+    private static readonly int[] Angles = [90, 180, 270, -90];
 
     /// <summary>Gets the pixels per point of <see cref="Dpi"/> (72 dpi = 1).</summary>
     public double Scale => Dpi / 72.0;
@@ -58,18 +67,32 @@ internal sealed record CliOptions(
             "render" => ["--pages", "--dpi", "--output", "--no-annotations", "--password"],
             "text" => ["--pages", "--password"],
             "search" => ["--pages", "--match-case", "--whole-word", "--password"],
+            "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
+            "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
+            "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
         var isSearch = command == "search";
+        var isRotate = command == "rotate";
+        var isSplit = command == "split";
+
+        // The commands of milestone 13 refuse an option given twice (the older commands keep their lenient reading).
+        var strict = command is "split" or "export";
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        string? everyText = null;
+        string? ranges = null;
+        var splitBookmarks = false;
         string? file = null;
         string? query = null;
         var matchCase = false;
         var wholeWord = false;
+        var force = false;
         var optionsEnded = false;
         string? pages = null;
         string? dpiText = null;
-        string output = ".";
+        string? angleText = null;
+        string? output = null;
         var annotations = true;
         string? password = null;
         for (var i = 0; i < args.Length; i++)
@@ -95,6 +118,11 @@ internal sealed record CliOptions(
                     throw new UsageException($"Unknown option '{name}' for '{command}'.");
                 }
 
+                if (strict && !seen.Add(name))
+                {
+                    throw new UsageException($"The option '{name}' is given twice.");
+                }
+
                 if (name == "--no-annotations")
                 {
                     if (value is not null)
@@ -106,7 +134,7 @@ internal sealed record CliOptions(
                     continue;
                 }
 
-                if (name is "--match-case" or "--whole-word")
+                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks")
                 {
                     if (value is not null)
                     {
@@ -116,6 +144,14 @@ internal sealed record CliOptions(
                     if (name == "--match-case")
                     {
                         matchCase = true;
+                    }
+                    else if (name == "--force")
+                    {
+                        force = true;
+                    }
+                    else if (name == "--bookmarks")
+                    {
+                        splitBookmarks = true;
                     }
                     else
                     {
@@ -142,6 +178,15 @@ internal sealed record CliOptions(
                         break;
                     case "--dpi":
                         dpiText = value;
+                        break;
+                    case "--angle":
+                        angleText = value;
+                        break;
+                    case "--every":
+                        everyText = value;
+                        break;
+                    case "--ranges":
+                        ranges = value;
                         break;
                     case "--output":
                         output = value;
@@ -194,12 +239,93 @@ internal sealed record CliOptions(
         }
 
         var dpi = ParseDpi(dpiText ?? DefaultDpi);
-        if (string.IsNullOrEmpty(output))
+        if (isSplit)
+        {
+            if (string.IsNullOrEmpty(output))
+            {
+                throw new UsageException("The 'split' command needs --output <dir>.");
+            }
+
+            var every = ParseSplitMode(everyText, ranges, splitBookmarks);
+            return new CliOptions(command, file, null, dpi, output, annotations, password, Force: force, Every: every, Ranges: ranges, SplitBookmarks: splitBookmarks);
+        }
+
+        if (isRotate)
+        {
+            if (pages is null)
+            {
+                throw new UsageException("The 'rotate' command needs --pages (for example --pages 1-3, or --pages all).");
+            }
+
+            if (angleText is null)
+            {
+                throw new UsageException("The 'rotate' command needs --angle (90, 180, 270 or -90).");
+            }
+
+            if (string.IsNullOrEmpty(output))
+            {
+                throw new UsageException("The 'rotate' command needs --output <out.pdf>.");
+            }
+
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, Angle: ParseAngle(angleText), OutputFile: output, Force: force);
+        }
+
+        if (output is not null && output.Length == 0)
         {
             throw new UsageException("The option '--output' needs a directory.");
         }
 
-        return new CliOptions(command, file, pages, dpi, output, annotations, password, query, matchCase, wholeWord);
+        return new CliOptions(command, file, pages, dpi, output ?? ".", annotations, password, query, matchCase, wholeWord, Force: force);
+    }
+
+    /// <summary>Checks that exactly one way of cutting was chosen and that it is well formed; returns <c>--every</c> (0 when another way was chosen).</summary>
+    private static int ParseSplitMode(string? everyText, string? ranges, bool bookmarks)
+    {
+        var chosen = (everyText is not null ? 1 : 0) + (ranges is not null ? 1 : 0) + (bookmarks ? 1 : 0);
+        if (chosen != 1)
+        {
+            throw new UsageException("The 'split' command needs exactly one of --every <n>, --ranges <list> or --bookmarks.");
+        }
+
+        if (ranges is not null)
+        {
+            try
+            {
+                // One part per comma separated range; each is a selection in the syntax of --pages.
+                foreach (var segment in ranges.Split(','))
+                {
+                    PageRange.Validate(segment);
+                }
+            }
+            catch (FormatException ex)
+            {
+                throw new UsageException($"Invalid value for --ranges: {ex.Message}");
+            }
+
+            return 0;
+        }
+
+        if (everyText is null)
+        {
+            return 0;
+        }
+
+        if (!int.TryParse(everyText, NumberStyles.None, CultureInfo.InvariantCulture, out var every) || every < 1)
+        {
+            throw new UsageException($"Invalid value for --every: '{everyText}' is not a whole number of pages of at least 1.");
+        }
+
+        return every;
+    }
+
+    private static int ParseAngle(string text)
+    {
+        if (!int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var angle) || !Angles.Contains(angle))
+        {
+            throw new UsageException($"Invalid value for --angle: '{text}' (use 90, 180, 270 or -90).");
+        }
+
+        return angle;
     }
 
     private static double ParseDpi(string text)

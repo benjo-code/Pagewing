@@ -25,6 +25,12 @@ internal static partial class WindowsFileRename
     /// <summary><c>ERROR_NOT_SUPPORTED</c>: the file system has no POSIX rename (FAT, exFAT, some SMB servers).</summary>
     internal const int ErrorNotSupported = 50;
 
+    /// <summary><c>ERROR_FILE_EXISTS</c>: the target exists and was not to be replaced.</summary>
+    internal const int ErrorFileExists = 80;
+
+    /// <summary><c>ERROR_ALREADY_EXISTS</c>: the target exists and was not to be replaced.</summary>
+    internal const int ErrorAlreadyExists = 183;
+
     /// <summary><c>ERROR_INVALID_PARAMETER</c>: Windows before 10 1709, or a file system that rejects the flags.</summary>
     internal const int ErrorInvalidParameter = 87;
 
@@ -42,8 +48,9 @@ internal static partial class WindowsFileRename
     /// <summary>Renames <paramref name="source"/> to <paramref name="target"/>, replacing it even while it is open.</summary>
     /// <param name="source">The full path of the file to rename; opened with delete access, sharing everything.</param>
     /// <param name="target">The full path of the file to replace, in the same volume.</param>
+    /// <param name="replace">Whether an existing target is replaced; without it an existing target ends in <see cref="ErrorAlreadyExists"/> or <see cref="ErrorFileExists"/> and stays as it is.</param>
     /// <returns>0 on success, otherwise the Win32 error code.</returns>
-    public static int ReplaceAtomically(string source, string target)
+    public static int ReplaceAtomically(string source, string target, bool replace = true)
     {
         using var file = CreateFileW(LongPath(source), Delete | Synchronize, ShareReadWriteDelete, 0, OpenExisting, 0, 0);
         if (file.IsInvalid)
@@ -51,7 +58,7 @@ internal static partial class WindowsFileRename
             return Marshal.GetLastPInvokeError();
         }
 
-        var info = RenameInfo(LongPath(target));
+        var info = RenameInfo(LongPath(target), replace);
         return SetFileInformationByHandle(file, FileRenameInfoEx, info, (uint)info.Length) ? 0 : Marshal.GetLastPInvokeError();
     }
 
@@ -67,13 +74,13 @@ internal static partial class WindowsFileRename
     /// <c>DWORD FileNameLength</c> (bytes, without terminator) after it, then the UTF-16 name. The buffer is larger than
     /// <c>sizeof(FILE_RENAME_INFO)</c> plus the name, as the API requires, and ends with a zero terminator.
     /// </summary>
-    internal static byte[] RenameInfo(string target)
+    internal static byte[] RenameInfo(string target, bool replace = true)
     {
         var lengthOffset = 2 * nint.Size;
         var nameOffset = lengthOffset + sizeof(uint);
         var nameBytes = checked(target.Length * sizeof(char));
         var info = new byte[nameOffset + nameBytes + 8];
-        BinaryPrimitives.WriteUInt32LittleEndian(info, ReplaceIfExists | PosixSemantics);
+        BinaryPrimitives.WriteUInt32LittleEndian(info, (replace ? ReplaceIfExists : 0) | PosixSemantics);
         BinaryPrimitives.WriteUInt32LittleEndian(info.AsSpan(lengthOffset), (uint)nameBytes);
         MemoryMarshal.AsBytes(target.AsSpan()).CopyTo(info.AsSpan(nameOffset));
         return info;

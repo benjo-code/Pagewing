@@ -24,3 +24,12 @@ public interface IFilePicker
     /// <returns>The full local path to save to, or <see langword="null"/> when the user cancelled.</returns>
     Task<string?> PickSavePdfAsync(string suggestedName, string? folder);
 }
+
+/// <summary>Lets the user choose a folder to write new files into (the system folder dialog; a fake in tests).</summary>
+public interface IFolderPicker
+{
+    /// <summary>Shows the folder dialog, starting in <paramref name="startFolder"/> when it is given and reachable.</summary>
+    /// <param name="startFolder">The folder the dialog starts in (that of the open file), or <see langword="null"/>.</param>
+    /// <returns>The full local path of the chosen folder, or <see langword="null"/> when the user cancelled.</returns>
+    Task<string?> PickFolderAsync(string? startFolder);
+}

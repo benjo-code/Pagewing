@@ -18,7 +18,7 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     public const int MaxOutlineDepth = 32;
 
     private readonly PdfiumDocument document;
-    private readonly int pageCount;
+    private int pageCount;
     private readonly string pdfVersion;
     private readonly int formType;
     private int disposed;
@@ -38,7 +38,7 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
         get
         {
             ThrowIfDisposed();
-            return pageCount;
+            return Volatile.Read(ref pageCount);
         }
     }
 
@@ -47,6 +47,15 @@ public sealed partial class PdfDocument : IDisposable, IAsyncDisposable
     /// (for tests; see <c>PdfiumDocument.FormEnvironmentsCreated</c>). Any thread.
     /// </summary>
     internal int FormEnvironmentsCreated => document.FormEnvironmentsCreated;
+
+    /// <summary>
+    /// Gets how many source documents this one keeps open because pages were imported from them (they stay open until this one
+    /// closes, also when they are disposed before; for tests; see <c>PdfiumDocument.KeepOpenFor</c>). Any thread.
+    /// </summary>
+    internal int KeptOpenCount => document.KeptOpenCount;
+
+    /// <summary>Gets whether PDFium still has the document open, which a disposed document does while another one keeps it open (for tests). Any thread.</summary>
+    internal bool IsNativeOpen => document.IsNativeOpen;
 
     /// <summary>Gets how often a render drew the form fields of a page (for tests; see <c>PdfiumDocument.FormDraws</c>). Any thread.</summary>
     internal int FormDraws => document.FormDraws;

@@ -69,12 +69,13 @@ internal static class RenderCorpus
     /// drawings-foreign.pdf of milestone 10 (drawings written by other programs, read and round-tripped, not rendered here);
     /// and the six forms-*.pdf of milestone 11 (form fields, scripts, an XFA stub, signature dummies, rotated pages and a hostile
     /// field tree), whose subject is reading and filling the fields, not the plain page drawing; and stamps-foreign.pdf of milestone 12 (stamps and
-    /// a signature-like ink written by other programs, read and kept locked, not rendered here).
+    /// a signature-like ink written by other programs, read and kept locked, not rendered here); and pages-marked.pdf of milestone 13
+    /// (page order, rotation, outline and page labels of the page operations, whose subject is the structure, not the drawing).
     /// </summary>
     public static IReadOnlyList<string> Skipped { get; } =
     [
         "annotations-foreign.pdf", "drawings-foreign.pdf", "empty.pdf", "forms-basic.pdf", "forms-calc.pdf", "forms-hostile.pdf", "forms-rotated.pdf", "forms-signed.pdf",
-        "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "print-mixed.pdf",
+        "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "pages-marked.pdf", "print-mixed.pdf",
         "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "stamps-foreign.pdf", "text-dense.pdf", "text-rich.pdf",
     ];
 

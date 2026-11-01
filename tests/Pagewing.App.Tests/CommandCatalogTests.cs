@@ -38,7 +38,8 @@ public sealed class CommandCatalogTests : IDisposable
         "nav.forward", "panel.pages", "panel.contents", "panel.comments", "search.open", "search.next", "search.previous", "palette.show",
         "settings.show", "help.show", "app.about", "recent.clear", "app.checkForUpdates", "annotate.mode", "annotate.highlight",
         "annotate.underline", "annotate.strikeout", "annotate.select", "annotate.ink", "annotate.rectangle", "annotate.ellipse",
-        "annotate.line", "annotate.arrow", "form.fill", "form.highlight",
+        "annotate.line", "annotate.arrow", "form.fill", "form.highlight", "pages.organize", "pages.rotateLeft", "pages.rotateRight",
+        "pages.delete", "pages.duplicate", "pages.insertBlank", "pages.insertFile", "pages.discard",
     ];
 
     private readonly CultureInfo _originalCulture = Strings.Culture;
@@ -252,6 +253,101 @@ public sealed class CommandCatalogTests : IDisposable
         Assert.True(Pressed(Key.Z, PhysicalKey.Z, Ctrl));
         await WaitUntilAsync(window, () => !tab.CanUndo);
         Assert.Equal(marked - 1, (await tab.Document!.GetAnnotationsAsync(0, TestContext.Current.CancellationToken)).Count);
+    }
+
+    [AvaloniaFact]
+    public void OrganizeShortcutsDoNotCollideAndNeedNoAltGr()
+    {
+        var catalog = NewViewModel(new CountingPicker()).Commands;
+        var expected = new (string Id, string? Gesture)[]
+        {
+            ("pages.organize", "Ctrl+Shift+O"),
+            ("pages.rotateLeft", "Ctrl+Shift+Left"),
+            ("pages.rotateRight", "Ctrl+Shift+Right"),
+            ("pages.delete", "Delete"),
+            ("pages.duplicate", "Ctrl+Shift+N"),
+            ("pages.insertBlank", "Ctrl+Shift+B"),
+            ("pages.insertFile", "Ctrl+Shift+V"),
+            ("pages.moveEarlier", "Ctrl+Shift+Up"),
+            ("pages.moveLater", "Ctrl+Shift+Down"),
+            ("pages.apply", null),
+            ("pages.discard", null),
+        };
+
+        foreach (var (id, text) in expected)
+        {
+            var command = catalog.ById(id)!;
+            Assert.Equal(text, command.Gesture?.ToString());
+            foreach (var gesture in command.Gestures)
+            {
+                // The only owner of the key in the whole catalog.
+                Assert.Same(command, catalog.ForGesture(gesture));
+                Assert.Single(catalog.All, other => other.Gestures.Contains(gesture));
+
+                // A German keyboard reaches it without AltGr (Ctrl+Alt): a letter, an arrow or Delete, with Ctrl and Shift at most.
+                Assert.False(gesture.KeyModifiers.HasFlag(KeyModifiers.Alt) || gesture.KeyModifiers.HasFlag(KeyModifiers.Meta));
+                Assert.True(gesture.Key is >= Key.A and <= Key.Z or Key.Left or Key.Right or Key.Up or Key.Down or Key.Delete, $"{gesture} needs a key that is not on every layout");
+            }
+        }
+
+        // Delete and the arrows keep a text field's own use; the commands are listed (help card, palette) in the group of the modes.
+        Assert.All(["pages.rotateLeft", "pages.rotateRight", "pages.delete", "pages.insertFile", "pages.moveEarlier", "pages.moveLater"], id => Assert.True(catalog.ById(id)!.YieldsToTextInput));
+        Assert.All(expected, entry => Assert.True(catalog.ById(entry.Id)!.Listed));
+        Assert.All(expected, entry => Assert.Equal(CommandCatalog.EditGroup, catalog.ById(entry.Id)!.Group));
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Strg+Umschalt+O", GestureText.Of(catalog.ById("pages.organize")!.Gesture!));
+        Assert.Equal("Entf", GestureText.Of(catalog.ById("pages.delete")!.Gesture!));
+        Assert.Equal("Seiten organisieren", catalog.ById("pages.organize")!.Title());
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("Delete", GestureText.Of(catalog.ById("pages.delete")!.Gesture!));
+        Assert.Equal("Organize pages", catalog.ById("pages.organize")!.Title());
+    }
+
+    [AvaloniaFact]
+    public async Task OrganizeCommandsRunOnlyInTheModeAndAreNotMadeEarlier()
+    {
+        var (window, viewModel, view, _) = Show(new CountingPicker());
+        var catalog = viewModel.Commands;
+        string[] inMode = ["pages.rotateLeft", "pages.rotateRight", "pages.delete", "pages.duplicate", "pages.insertBlank", "pages.insertFile", "pages.moveEarlier", "pages.moveLater", "pages.discard"];
+        bool CanRun(string id) => catalog.ById(id)!.CanExecute();
+
+        // Without a tab nothing; with a document the mode is offered, and polling the rest makes nothing (no plan, no command).
+        Assert.False(CanRun("pages.organize"));
+        var tab = await OpenAsync(window, viewModel, view, "pages-marked.pdf");
+        Assert.True(CanRun("pages.organize"));
+        Assert.All(inMode, id => Assert.False(CanRun(id)));
+        Assert.False(tab.HasPageEditCommands);
+        Assert.Null(tab.PageHistory);
+
+        // In the mode: what needs a selection waits for one, a blank page and leaving do not.
+        catalog.ById("pages.organize")!.Execute();
+        Assert.True(tab.IsOrganizing);
+        Assert.False(CanRun("pages.delete"));
+        Assert.False(CanRun("pages.rotateLeft"));
+        Assert.True(CanRun("pages.insertBlank"));
+        Assert.True(CanRun("pages.discard"));
+        tab.SelectPages([1, 2]);
+        Assert.All(inMode, id => Assert.True(CanRun(id)));
+
+        catalog.ById("pages.rotateLeft")!.Execute();
+        Assert.Equal([270, 270], tab.PageHistory!.Current.Slots.Skip(1).Take(2).Select(slot => slot.ExtraRotation));
+        catalog.ById("pages.rotateRight")!.Execute();
+        Assert.False(tab.HasPendingPageEdits);
+        catalog.ById("pages.duplicate")!.Execute();
+        Assert.Equal(8, tab.PageHistory.Current.Slots.Count);
+        catalog.ById("pages.delete")!.Execute();
+        Assert.Equal(6, tab.PageHistory.Current.Slots.Count);
+
+        // Ctrl+Z of the edit group is the undo of the plan in the mode.
+        catalog.ById("edit.undo")!.Execute();
+        Assert.Equal(8, tab.PageHistory.Current.Slots.Count);
+
+        // With a change pending the toggle waits (apply or discard); "discard" leaves the mode.
+        Assert.False(CanRun("pages.organize"));
+        catalog.ById("pages.discard")!.Execute();
+        Assert.False(tab.IsOrganizing);
+        Assert.True(CanRun("pages.organize"));
+        Assert.All(inMode, id => Assert.False(CanRun(id)));
     }
 
     [AvaloniaFact]

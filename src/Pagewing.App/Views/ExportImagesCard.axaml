@@ -1,0 +1,148 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.ExportImagesCard"
+             x:DataType="vm:ExportImagesViewModel"
+             KeyboardNavigation.TabNavigation="Cycle"
+             AutomationProperties.Name="{x:Static res:Strings.ExportTitle}">
+  <!--
+    The card "Export pages as images" (milestone 13, spec 5.3 and 5.4), in the style of the split card (design system 7.8):
+    surface.raised, radius.overlay, the card shadow. From the top: title and close button; the document; then what the state
+    asks for. Setup: the format (PNG, in words), the resolution with its hint and the complaint about a wrong number (symbol and
+    words), the pages (selected, all; the first is off without a selection), the target folder with "Choose folder …" and
+    "Replace existing files" (off). Running: the bar, the percentage and "Cancel". Finished: the result (a symbol with the
+    words, never colour alone) and which files were written. Tab goes from top to bottom and stays on the card; Enter exports,
+    Esc cancels a run or closes the card. Not modal. Made when it is first shown, never in the startup path.
+  -->
+  <Border Name="ExportBox" Width="480" Margin="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Margin="24,16,24,20" Spacing="14">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Name="ExportTitleText" Classes="subtitle" VerticalAlignment="Center" TextWrapping="Wrap" Text="{x:Static res:Strings.ExportTitle}" />
+        <Button Name="ExportCloseButton" Grid.Column="1" Classes="icon"
+                Command="{Binding CancelCommand}"
+                ToolTip.Tip="{x:Static res:Strings.PageOutputClose}"
+                AutomationProperties.Name="{x:Static res:Strings.PageOutputClose}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+        </Button>
+      </Grid>
+
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+        <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center"
+                        Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Files}" />
+        <TextBlock Name="ExportFileName" Grid.Column="1" Classes="strong" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" Text="{Binding FileName}" ToolTip.Tip="{Binding FileName}" />
+      </Grid>
+
+      <!-- Setup. -->
+      <StackPanel Name="ExportSetupPanel" Spacing="12" IsVisible="{Binding IsSetup}">
+        <TextBlock Name="ExportFormatText" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.ExportFormat}" />
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="strong" Text="{x:Static res:Strings.ExportDpiLabel}" />
+          <TextBox Name="ExportDpiField" MinHeight="32" Width="120" HorizontalAlignment="Left"
+                   Text="{Binding DpiText, Mode=TwoWay}"
+                   Classes.invalid="{Binding DpiError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   AutomationProperties.Name="{x:Static res:Strings.ExportDpiLabel}"
+                   AutomationProperties.HelpText="{x:Static res:Strings.ExportDpiHint}" />
+          <TextBlock Name="ExportDpiHint" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                     Text="{x:Static res:Strings.ExportDpiHint}" />
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6"
+                IsVisible="{Binding DpiError, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                            Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+            <TextBlock Name="ExportDpiError" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Pw.Brush.Danger.Default}"
+                       AutomationProperties.LiveSetting="Assertive"
+                       Text="{Binding DpiError}" />
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Classes="strong" Text="{x:Static res:Strings.ExportScopeLabel}" />
+          <RadioButton Name="ExportSelectedChoice" GroupName="ExportScope" IsChecked="{Binding ExportSelection, Mode=TwoWay}"
+                       IsEnabled="{Binding HasSelection}"
+                       Content="{Binding SelectedText}"
+                       AutomationProperties.Name="{Binding SelectedText}" />
+          <RadioButton Name="ExportAllChoice" GroupName="ExportScope" IsChecked="{Binding ExportAll, Mode=TwoWay}"
+                       Content="{Binding AllText}"
+                       AutomationProperties.Name="{Binding AllText}" />
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="strong" Text="{x:Static res:Strings.PageOutputFolderLabel}" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Name="ExportFolderField" MinHeight="32"
+                     Text="{Binding Folder, Mode=TwoWay}"
+                     AutomationProperties.Name="{x:Static res:Strings.PageOutputFolderLabel}" />
+            <Button Name="ExportChooseFolderButton" Grid.Column="1" Command="{Binding ChooseFolderCommand}"
+                    Content="{x:Static res:Strings.PageOutputChooseFolder}"
+                    AutomationProperties.Name="{x:Static res:Strings.PageOutputChooseFolder}" />
+          </Grid>
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6"
+                IsVisible="{Binding FolderError, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                            Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+            <TextBlock Name="ExportFolderError" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Pw.Brush.Danger.Default}"
+                       AutomationProperties.LiveSetting="Assertive"
+                       Text="{Binding FolderError}" />
+          </Grid>
+        </StackPanel>
+        <CheckBox Name="ExportReplaceChoice" IsChecked="{Binding ReplaceExisting, Mode=TwoWay}"
+                  Content="{x:Static res:Strings.PageOutputReplace}" />
+      </StackPanel>
+
+      <!-- Running. -->
+      <StackPanel Name="ExportRunningPanel" Spacing="6" IsVisible="{Binding IsRunning}">
+        <TextBlock Name="ExportRunningText" Classes="body" AutomationProperties.LiveSetting="Polite"
+                   Text="{x:Static res:Strings.PageOutputRunning}" />
+        <ProgressBar Name="ExportProgress" Minimum="0" Maximum="1" Value="{Binding Progress}" />
+        <TextBlock Name="ExportProgressText" Classes="caption num" Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{Binding ProgressText}" />
+      </StackPanel>
+
+      <!-- Finished. -->
+      <StackPanel Name="ExportFinishedPanel" Spacing="8" IsVisible="{Binding IsFinished}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                          Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}"
+                          IsVisible="{Binding IsError}" />
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                          Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Check}"
+                          IsVisible="{Binding !IsError}" />
+          <TextBlock Name="ExportResult" Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                     AutomationProperties.LiveSetting="Assertive"
+                     Text="{Binding ResultText}" />
+        </Grid>
+        <TextBlock Name="ExportWritten" Classes="caption" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   IsVisible="{Binding WrittenText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Text="{Binding WrittenText}" />
+      </StackPanel>
+
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+        <Button Name="ExportCancelButton" Grid.Column="1" Command="{Binding CancelCommand}"
+                IsVisible="{Binding !IsFinished}"
+                Content="{x:Static res:Strings.PageOutputCancel}"
+                AutomationProperties.Name="{x:Static res:Strings.PageOutputCancel}" />
+        <Button Name="ExportStartButton" Grid.Column="2" Classes="primary" Command="{Binding StartCommand}"
+                IsVisible="{Binding IsSetup}"
+                Content="{x:Static res:Strings.ExportStart}"
+                AutomationProperties.Name="{x:Static res:Strings.ExportStart}" />
+        <Button Name="ExportDoneButton" Grid.Column="2" Classes="primary" Command="{Binding CloseCommand}"
+                IsVisible="{Binding IsFinished}"
+                Content="{x:Static res:Strings.PageOutputDone}"
+                AutomationProperties.Name="{x:Static res:Strings.PageOutputDone}" />
+      </Grid>
+    </StackPanel>
+  </Border>
+</UserControl>

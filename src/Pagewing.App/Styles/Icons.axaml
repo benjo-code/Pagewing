@@ -91,4 +91,12 @@
   <StreamGeometry x:Key="Pw.Icon.Typography">M4 20l3 0 M14 20l7 0 M6.9 15l6.9 0 M10.2 6.3l5.8 13.7 M5 20l6 -16l2 0l7 16</StreamGeometry>
   <!-- forms (mode "Fill in form": toolbar and hint bar, M11) -->
   <StreamGeometry x:Key="Pw.Icon.Forms">M12 3a3 3 0 0 0 -3 3v12a3 3 0 0 0 3 3 M6 3a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3 M13 7h7a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-7 M5 7h-1a1 1 0 0 0 -1 1v8a1 1 0 0 0 1 1h1 M17 12h.01 M13 12h.01</StreamGeometry>
+  <!-- Mode "Organize pages" (M13): rotate-2 and rotate-clockwise-2 (turn left and right), copy (duplicate), file-plus (blank page), files (page of another file), arrows-sort (the mode) -->
+  <StreamGeometry x:Key="Pw.Icon.RotateLeft">M15 4.55a8 8 0 0 0 -6 14.9m0 -4.45v5h-5 M18.37 7.16l0 .01 M13 19.94l0 .01 M16.84 18.37l0 .01 M19.37 15.1l0 .01 M19.94 11l0 .01</StreamGeometry>
+  <StreamGeometry x:Key="Pw.Icon.RotateRight">M9 4.55a8 8 0 0 1 6 14.9m0 -4.45v5h5 M5.63 7.16l0 .01 M4.06 11l0 .01 M4.63 15.1l0 .01 M7.16 18.37l0 .01 M11 19.94l0 .01</StreamGeometry>
+  <StreamGeometry x:Key="Pw.Icon.Copy">M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666 M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1</StreamGeometry>
+  <StreamGeometry x:Key="Pw.Icon.FilePlus">M14 3v4a1 1 0 0 0 1 1h4 M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2 M12 11l0 6 M9 14l6 0</StreamGeometry>
+  <StreamGeometry x:Key="Pw.Icon.FileImport">M14 3v4a1 1 0 0 0 1 1h4 M5 13v-8a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2h-5.5 M5 18h7 M9 15l3 3l-3 3</StreamGeometry>
+  <StreamGeometry x:Key="Pw.Icon.Files">M15 3v4a1 1 0 0 0 1 1h4 M18 17h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h4l5 5v7a2 2 0 0 1 -2 2 M16 17v2a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h2</StreamGeometry>
+  <StreamGeometry x:Key="Pw.Icon.ArrowsSort">M3 9l4 -4l4 4m-4 -4v14 M21 15l-4 4l-4 -4m4 4v-14</StreamGeometry>
 </ResourceDictionary>

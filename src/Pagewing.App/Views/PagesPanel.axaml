@@ -13,6 +13,14 @@
     a dark page, as the page placeholder of the document. The pages of the current row have an accent.subtle surface, a 2 px
     accent.default frame and a bold number (7.10). Built only when the panel opens (SidePanel), so nothing of it is in the
     startup path; its styles live here for the same reason.
+
+    Mode "Organize pages" (milestone 13, design spec 5.3): outside it one button above the list ("Organize pages", the
+    list as before); in it the tools (PagesOrganizeBar, made when the mode starts) and the list shows the plan. Its
+    entries are selected with Ctrl and Shift (accent.subtle surface, the 2 px accent.default frame, a check mark and a bold
+    number, so a selection is never told by colour alone), and say in symbol and words what the plan did to a page: turned
+    (rotate-clockwise-2 and "Rotated 90°"), blank (file-plus and "Blank page") or from another file (files and "From
+    another file"). The blank page is drawn by BlankPageFace, a page of another file shows its stand-in tile, a turned page
+    its picture turned about the centre.
   -->
   <UserControl.Styles>
     <Style Selector="ListBox.thumbnails">
@@ -39,13 +47,13 @@
       <Setter Property="Background" Value="{DynamicResource Pw.Brush.Surface.Hover}" />
     </Style>
 
-    <Style Selector="Border.thumb.current">
+    <Style Selector="Border.thumb.current, Border.thumb.selected">
       <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Subtle}" />
     </Style>
     <Style Selector="Border.thumbRing">
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
-    <Style Selector="Border.thumb.current Border.thumbRing">
+    <Style Selector="Border.thumb.current Border.thumbRing, Border.thumb.selected Border.thumbRing">
       <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Accent.Default}" />
     </Style>
     <Style Selector="Border.thumbFrame">
@@ -55,6 +63,20 @@
     <Style Selector="ListBox.darkPage Border.thumbFrame">
       <Setter Property="Background" Value="{DynamicResource Pw.Brush.Page.DarkBackground}" />
     </Style>
+    <Style Selector="ListBox.darkPage ctl|BlankPageFace">
+      <Setter Property="IsDark" Value="True" />
+    </Style>
+    <!-- The marks under the number (caption type, text.secondary; a text block and a symbol each). -->
+    <Style Selector="TextBlock.thumbMark">
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="TextAlignment" Value="Center" />
+    </Style>
+    <!-- The check mark of a selected entry: accent.on on accent.default. -->
+    <Style Selector="Border.selectedMark">
+      <Setter Property="Background" Value="{DynamicResource Pw.Brush.Accent.Default}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Pw.Radius.Control}" />
+    </Style>
     <Style Selector="Border.thumbFrame.loaded">
       <Setter Property="BorderBrush" Value="{DynamicResource Pw.Brush.Page.Border}" />
     </Style>
@@ -62,7 +84,7 @@
       <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Secondary}" />
       <Setter Property="FontWeight" Value="Normal" />
     </Style>
-    <Style Selector="Border.thumb.current TextBlock.thumbNumber">
+    <Style Selector="Border.thumb.current TextBlock.thumbNumber, Border.thumb.selected TextBlock.thumbNumber">
       <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
@@ -72,31 +94,127 @@
     Density (design system 5.4): one column of 136 wide entries, in "Kompakt" two columns as wide as the list allows (Pw.Size.ThumbnailColumns
     and Pw.Size.ThumbnailWidth); the list chooses its items panel itself (ThumbnailList.Columns).
   -->
-  <ctl:ThumbnailList Name="ThumbnailList" Classes="thumbnails" Classes.darkPage="{Binding IsPageDark}"
-                     Columns="{DynamicResource Pw.Size.ThumbnailColumns}"
-                     ThumbnailWidth="{DynamicResource Pw.Size.ThumbnailWidth}"
-                     SelectionMode="Single"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     AutomationProperties.Name="{x:Static res:Strings.ThumbnailList}">
-    <ctl:ThumbnailList.ItemTemplate>
-      <DataTemplate x:DataType="ctl:ThumbnailItem">
-        <Border Name="ThumbnailCell" Classes="thumb" Classes.current="{Binding IsCurrent}"
-                Padding="6" CornerRadius="{DynamicResource Pw.Radius.Control}">
-          <StackPanel Spacing="6">
-            <!-- The 2 px frame of the current page, outside the edge of the thumbnail; transparent on the other pages. -->
-            <Border Name="CurrentRing" Classes="thumbRing" BorderThickness="2" HorizontalAlignment="Center">
-              <Border Name="Placeholder" Classes="thumbFrame" Classes.loaded="{Binding HasBitmap}" BorderThickness="1">
-                <!-- 136 DIP wide (Kompakt: the column width, ThumbnailList.FrameWidth): the thumbnail is rendered at that width times the render scaling, one image pixel per device pixel. -->
-                <Panel Name="ThumbnailFrame" Width="{Binding FrameWidth}" Height="{Binding FrameHeight}">
-                  <Image Name="ThumbnailImage" Source="{Binding Bitmap}" Stretch="Fill"
-                         RenderOptions.BitmapInterpolationMode="HighQuality" />
-                </Panel>
+  <DockPanel>
+    <!--
+      The way in (outside the mode): one button above the list, named like the command; Ctrl+Shift+O does the same. The
+      reason it cannot run (no sharp page yet, too many pages) is its help text.
+    -->
+    <Grid Name="EntryRow" DockPanel.Dock="Top" Margin="14,2,14,8" ColumnDefinitions="*,Auto" ColumnSpacing="6"
+          IsVisible="{Binding !IsOrganizing}">
+      <Button Name="OrganizeButton" HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left"
+              IsVisible="{Binding !IsOrganizing}"
+              Command="{Binding OrganizeCommand}"
+              ToolTip.Tip="{x:Static res:Strings.CommandOrganizePages}"
+              AutomationProperties.Name="{x:Static res:Strings.CommandOrganizePages}"
+              AutomationProperties.HelpText="{Binding OrganizeUnavailableReason}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.ArrowsSort}" />
+          <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.CommandOrganizePages}" />
+        </StackPanel>
+      </Button>
+      <!--
+        Writing new files from the open document (milestone 13, spec 5.3): the menu "Extract, split, export" with "Extract selected
+        pages as a new PDF …", "Split document into files …" and "Export pages as images …" (the entries are the tab's commands,
+        made when the panel is; they have no keys and are in the command palette too). In the mode the same menu is the last of
+        the tools. While a page plan waits or the document has unsaved changes they are locked; the reason is the help text and
+        the tooltip, and stands in words under the buttons (PageOutputReasonRow).
+      -->
+      <Button Name="PageOutputButton" Grid.Column="1" Classes="icon" Width="32"
+              AutomationProperties.Name="{x:Static res:Strings.PageOutputMenu}">
+        <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Dots}" />
+        <Button.Flyout>
+          <MenuFlyout Placement="BottomEdgeAlignedRight" />
+        </Button.Flyout>
+      </Button>
+    </Grid>
+
+    <!-- The tools of the mode: PagesOrganizeBar, put here when the mode starts and taken away when it ends. -->
+    <ContentControl Name="OrganizeHost" DockPanel.Dock="Top" HorizontalContentAlignment="Stretch" />
+
+    <!--
+      Why extracting, splitting and exporting cannot run, in words under the buttons (a plan that waits tells itself in the
+      note of the tools, so this line is for the other reason: unsaved changes). Only while there is a reason.
+    -->
+    <Grid Name="PageOutputReasonRow" DockPanel.Dock="Top" Margin="14,0,14,8" ColumnDefinitions="Auto,*"
+          IsVisible="{Binding PageOutputReasonText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,1,6,0"
+                      Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+      <TextBlock Name="PageOutputReason" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                 AutomationProperties.LiveSetting="Polite"
+                 Text="{Binding PageOutputReasonText}" />
+    </Grid>
+
+    <ctl:ThumbnailList Name="ThumbnailList" Classes="thumbnails" Classes.darkPage="{Binding IsPageDark}"
+                       Columns="{DynamicResource Pw.Size.ThumbnailColumns}"
+                       ThumbnailWidth="{DynamicResource Pw.Size.ThumbnailWidth}"
+                       SelectionMode="Single"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       AutomationProperties.Name="{x:Static res:Strings.ThumbnailList}">
+      <ctl:ThumbnailList.ItemTemplate>
+        <DataTemplate x:DataType="ctl:ThumbnailItem">
+          <Border Name="ThumbnailCell" Classes="thumb" Classes.current="{Binding IsCurrent}" Classes.selected="{Binding IsSelected}"
+                  Padding="6" CornerRadius="{DynamicResource Pw.Radius.Control}">
+            <Grid>
+              <StackPanel Spacing="6">
+                <!-- The 2 px frame of the current or selected page, outside the edge of the thumbnail; transparent on the other pages. -->
+                <Border Name="CurrentRing" Classes="thumbRing" BorderThickness="2" HorizontalAlignment="Center">
+                  <Border Name="Placeholder" Classes="thumbFrame" Classes.loaded="{Binding IsDrawn}" BorderThickness="1">
+                    <!--
+                      136 DIP wide (Kompakt: the column width, ThumbnailList.FrameWidth): the thumbnail is rendered at that width
+                      times the render scaling, one image pixel per device pixel. A turned page (mode "Organize pages") draws the
+                      same picture turned about the centre in a frame as large as the turned page.
+                    -->
+                    <Panel Name="ThumbnailFrame" Width="{Binding FrameWidth}" Height="{Binding FrameHeight}">
+                      <Image Name="ThumbnailImage" Source="{Binding Bitmap}" Stretch="Fill"
+                             Width="{Binding ImageWidth}" Height="{Binding ImageHeight}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             IsVisible="{Binding ShowsImage}"
+                             RenderTransform="{Binding ImageTransform}"
+                             RenderOptions.BitmapInterpolationMode="HighQuality" />
+                      <ctl:BlankPageFace Name="BlankFace" IsVisible="{Binding IsBlank}" />
+                      <ctl:StrokeIcon Name="ForeignFace" Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      IsVisible="{Binding ShowsStandIn}"
+                                      Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Files}" />
+                    </Panel>
+                  </Border>
+                </Border>
+                <TextBlock Name="PageNumber" Classes="mono num thumbNumber" Text="{Binding PageText}" HorizontalAlignment="Center" />
+                <!-- What the plan did to the page, in a symbol and words (design system 7.10). -->
+                <StackPanel Name="Marks" Spacing="2" HorizontalAlignment="Center" MaxWidth="{Binding ColumnWidth}" IsVisible="{Binding HasMarks}">
+                  <Grid Name="RotatedMark" ColumnDefinitions="Auto,*" HorizontalAlignment="Center" IsVisible="{Binding IsRotated}">
+                    <ctl:StrokeIcon Name="RotatedIcon" Width="14" Height="14" VerticalAlignment="Top" Margin="0,0,4,0"
+                                    Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.RotateRight}" />
+                    <TextBlock Name="RotationText" Grid.Column="1" Classes="caption thumbMark" Text="{Binding RotationText}" />
+                  </Grid>
+                  <Grid Name="BlankMark" ColumnDefinitions="Auto,*" HorizontalAlignment="Center" IsVisible="{Binding IsBlank}">
+                    <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,0,4,0"
+                                    Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.FilePlus}" />
+                    <TextBlock Name="BlankText" Grid.Column="1" Classes="caption thumbMark" Text="{x:Static res:Strings.PageMarkerBlank}" />
+                  </Grid>
+                  <Grid Name="CopyMark" ColumnDefinitions="Auto,*" HorizontalAlignment="Center" IsVisible="{Binding IsCopy}">
+                    <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,0,4,0"
+                                    Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Copy}" />
+                    <TextBlock Name="CopyText" Grid.Column="1" Classes="caption thumbMark" Text="{x:Static res:Strings.PageMarkerCopy}" />
+                  </Grid>
+                  <Grid Name="ForeignMark" ColumnDefinitions="Auto,*" HorizontalAlignment="Center" IsVisible="{Binding IsForeign}">
+                    <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,0,4,0"
+                                    Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Files}" />
+                    <TextBlock Name="ForeignText" Grid.Column="1" Classes="caption thumbMark" Text="{x:Static res:Strings.PageMarkerOtherFile}" />
+                  </Grid>
+                </StackPanel>
+              </StackPanel>
+              <!-- The check mark of a selected entry. -->
+              <Border Name="SelectedMark" Classes="selectedMark" Width="18" Height="18"
+                      HorizontalAlignment="Left" VerticalAlignment="Top" IsVisible="{Binding IsSelected}">
+                <ctl:StrokeIcon Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Brush="{DynamicResource Pw.Brush.Accent.On}" Data="{StaticResource Pw.Icon.Check}" />
               </Border>
-            </Border>
-            <TextBlock Name="PageNumber" Classes="mono num thumbNumber" Text="{Binding PageText}" HorizontalAlignment="Center" />
-          </StackPanel>
-        </Border>
-      </DataTemplate>
-    </ctl:ThumbnailList.ItemTemplate>
-  </ctl:ThumbnailList>
+            </Grid>
+          </Border>
+        </DataTemplate>
+      </ctl:ThumbnailList.ItemTemplate>
+    </ctl:ThumbnailList>
+  </DockPanel>
 </UserControl>

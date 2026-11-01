@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -119,6 +120,9 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
     private nint fileAccess;
     private IDisposable? ownedContext;
     private PdfiumFormEnvironment? formEnvironment;
+    private readonly object dependenciesLock = new();
+    private List<DocumentHandle>? dependencies;
+    private bool dependenciesReleased;
 
     /// <summary>
     /// Gets or sets the form-fill environment of the document, or <see langword="null"/> without a form. Set once, on the
@@ -165,6 +169,62 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         }
     }
 
+    /// <summary>
+    /// Keeps <paramref name="source"/> open (its native document and its file) until this document is closed, even when the
+    /// source is disposed before. Called before pages of <paramref name="source"/> are imported into this document:
+    /// <c>FPDF_ImportPagesByIndex</c> leaves objects of the imported widget pages that still point into the source document,
+    /// and <c>FPDF_SaveAsCopy</c> of this document reads them (an access violation once the source is gone). The source is
+    /// released right after this document is closed, never before. Does nothing for the document itself and for a source
+    /// that is already kept. Any thread; the source must still be open.
+    /// </summary>
+    /// <remarks>Two documents that import from each other would keep each other open forever; page edits never do that (only a working copy imports).</remarks>
+    public void KeepOpenUntilClosed(DocumentHandle source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (ReferenceEquals(source, this))
+        {
+            return;
+        }
+
+        lock (dependenciesLock)
+        {
+            if (dependenciesReleased || (dependencies is not null && dependencies.Contains(source)))
+            {
+                return;
+            }
+
+            // The list is only ever extended together with a reference: if the Add fails, the reference is given back.
+            var list = dependencies ??= [];
+            var added = false;
+            try
+            {
+                source.DangerousAddRef(ref added);
+                list.Add(source);
+            }
+            catch
+            {
+                if (added)
+                {
+                    source.DangerousRelease();
+                }
+
+                throw;
+            }
+        }
+    }
+
+    /// <summary>Gets how many documents are kept open by this one (<see cref="KeepOpenUntilClosed"/>), for tests.</summary>
+    public int KeptOpenCount
+    {
+        get
+        {
+            lock (dependenciesLock)
+            {
+                return dependencies?.Count ?? 0;
+            }
+        }
+    }
+
     protected override void ReleaseOwnedResources()
     {
         var access = Interlocked.Exchange(ref fileAccess, 0);
@@ -174,10 +234,54 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         }
         finally
         {
-            if (access != 0)
+            try
             {
-                NativeMemory.Free((void*)access);
+                if (access != 0)
+                {
+                    NativeMemory.Free((void*)access);
+                }
             }
+            finally
+            {
+                ReleaseDependencies();
+            }
+        }
+    }
+
+    /// <summary>Lets go of the documents kept open, once; after the native document is closed.</summary>
+    private void ReleaseDependencies()
+    {
+        List<DocumentHandle>? released;
+        lock (dependenciesLock)
+        {
+            dependenciesReleased = true;
+            released = dependencies;
+            dependencies = null;
+        }
+
+        if (released is null)
+        {
+            return;
+        }
+
+        // Every source gets its release, also when the final release of an earlier one throws (its native document and file
+        // would leak otherwise); the first failure is rethrown afterwards.
+        Exception? first = null;
+        foreach (var kept in released)
+        {
+            try
+            {
+                kept.DangerousRelease();
+            }
+            catch (Exception ex)
+            {
+                first ??= ex;
+            }
+        }
+
+        if (first is not null)
+        {
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 }

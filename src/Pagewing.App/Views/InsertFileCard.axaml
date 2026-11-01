@@ -1,0 +1,129 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.InsertFileCard"
+             x:DataType="vm:InsertFileViewModel"
+             KeyboardNavigation.TabNavigation="Cycle"
+             AutomationProperties.Name="{x:Static res:Strings.InsertFileTitle}">
+  <!--
+    The dialog "Insert pages from a file" (milestone 13, spec 5.3): a card over the window below the title bar in the style of the
+    signature and print cards (design system 7.8): surface.raised, radius.overlay, the card shadow. From the top: title and close
+    button; the file (files symbol, name, page count); then what the state of the file asks for: "Opening the file" (polite live
+    text), the password (lock symbol, the prompt naming the file, the field with the focus, a wrong password told in words with a
+    danger symbol, never by colour alone), the pages (field with the default "all", the hint, the complaint about the text with a
+    symbol, where the pages go), or the reason the file cannot be inserted (danger symbol and the cause); at the bottom "Choose
+    another file", "Cancel" and "Insert" (primary; "Open" while the password is asked). Tab goes from top to bottom and stays on the
+    card; Enter inserts (or opens with the password), Esc and "Cancel" close it and nothing else. Not modal. Made when it is first
+    shown, never in the startup path.
+  -->
+  <Border Name="InsertFileBox" Width="480" Margin="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <StackPanel Margin="24,16,24,20" Spacing="14">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Classes="subtitle" VerticalAlignment="Center" TextWrapping="Wrap" Text="{x:Static res:Strings.InsertFileTitle}" />
+        <Button Name="InsertFileCloseButton" Grid.Column="1" Classes="icon"
+                Command="{Binding CancelCommand}"
+                ToolTip.Tip="{x:Static res:Strings.InsertFileClose}"
+                AutomationProperties.Name="{x:Static res:Strings.InsertFileClose}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+        </Button>
+      </Grid>
+
+      <!-- The file. -->
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+        <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center"
+                        Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Files}" />
+        <TextBlock Name="InsertFileName" Grid.Column="1" Classes="strong" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" Text="{Binding FileName}" ToolTip.Tip="{Binding FileName}" />
+        <TextBlock Name="InsertFileCount" Grid.Column="2" Classes="caption num" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   IsVisible="{Binding IsReady}" Text="{Binding PageCountText}" />
+      </Grid>
+
+      <!-- Opening. -->
+      <TextBlock Name="InsertFileOpening" Classes="body" IsVisible="{Binding IsOpening}"
+                 Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                 AutomationProperties.LiveSetting="Polite"
+                 Text="{x:Static res:Strings.InsertFileOpening}" />
+
+      <!-- The password of a protected file. -->
+      <StackPanel Name="InsertFilePasswordPanel" Spacing="8" IsVisible="{Binding NeedsPassword}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                          Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.Lock}" />
+          <TextBlock Name="InsertFilePasswordPrompt" Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                     Text="{Binding PasswordPrompt}" />
+        </Grid>
+        <TextBox Name="InsertFilePassword" MinHeight="32" PasswordChar="•"
+                 Text="{Binding Password, Mode=TwoWay}"
+                 Classes.invalid="{Binding IsPasswordIncorrect}"
+                 AutomationProperties.Name="{x:Static res:Strings.PasswordField}" />
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" IsVisible="{Binding IsPasswordIncorrect}">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                          Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+          <TextBlock Name="InsertFilePasswordMessage" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Danger.Default}"
+                     AutomationProperties.LiveSetting="Assertive"
+                     Text="{x:Static res:Strings.PasswordIncorrect}" />
+        </Grid>
+      </StackPanel>
+
+      <!-- The pages and where they go. -->
+      <StackPanel Name="InsertFilePagesPanel" Spacing="8" IsVisible="{Binding IsReady}">
+        <TextBlock Classes="strong" Text="{x:Static res:Strings.InsertFileRangeLabel}" />
+        <TextBox Name="InsertFileRange" MinHeight="32"
+                 Text="{Binding RangeText, Mode=TwoWay}"
+                 Classes.invalid="{Binding RangeError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 AutomationProperties.Name="{x:Static res:Strings.InsertFileRangeLabel}"
+                 AutomationProperties.HelpText="{x:Static res:Strings.InsertFileRangeHint}" />
+        <TextBlock Name="InsertFileRangeHint" Classes="caption" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.InsertFileRangeHint}" />
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6"
+              IsVisible="{Binding RangeError, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                          Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+          <TextBlock Name="InsertFileRangeError" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Danger.Default}"
+                     AutomationProperties.LiveSetting="Assertive"
+                     Text="{Binding RangeError}" />
+        </Grid>
+        <TextBlock Name="InsertFilePosition" Classes="body" TextWrapping="Wrap" Text="{Binding PositionText}" />
+      </StackPanel>
+
+      <!-- Why the file cannot be inserted. -->
+      <Grid Name="InsertFileFailedPanel" ColumnDefinitions="Auto,*" ColumnSpacing="8" IsVisible="{Binding IsFailed}">
+        <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                        Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+        <StackPanel Grid.Column="1" Spacing="2">
+          <TextBlock Classes="strong" TextWrapping="Wrap" Text="{x:Static res:Strings.InsertFileFailedTitle}" />
+          <TextBlock Name="InsertFileError" Classes="body" TextWrapping="Wrap"
+                     AutomationProperties.LiveSetting="Assertive"
+                     Text="{Binding ErrorText}" />
+        </StackPanel>
+      </Grid>
+
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+        <Button Name="InsertFileChooseOtherButton" Command="{Binding ChooseOtherCommand}"
+                Content="{x:Static res:Strings.InsertFileChooseOther}"
+                AutomationProperties.Name="{x:Static res:Strings.InsertFileChooseOther}" />
+        <Button Name="InsertFileCancelButton" Grid.Column="2" Command="{Binding CancelCommand}"
+                Content="{x:Static res:Strings.InsertFileCancel}"
+                AutomationProperties.Name="{x:Static res:Strings.InsertFileCancel}" />
+        <Button Name="InsertFileButton" Grid.Column="3" Classes="primary" Command="{Binding InsertCommand}"
+                IsVisible="{Binding !NeedsPassword}"
+                Content="{x:Static res:Strings.InsertFileButton}"
+                AutomationProperties.Name="{x:Static res:Strings.InsertFileButton}" />
+        <Button Name="InsertFileSubmitButton" Grid.Column="3" Classes="primary" Command="{Binding SubmitPasswordCommand}"
+                IsVisible="{Binding NeedsPassword}"
+                Content="{x:Static res:Strings.PasswordOpen}"
+                AutomationProperties.Name="{x:Static res:Strings.PasswordOpen}" />
+      </Grid>
+    </StackPanel>
+  </Border>
+</UserControl>

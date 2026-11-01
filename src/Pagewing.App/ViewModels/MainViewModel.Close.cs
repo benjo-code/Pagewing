@@ -210,7 +210,7 @@ public sealed partial class MainViewModel
             ? Tabs.Where(tab => ReferenceEquals(tab, only))
             : Tabs.Where(tab => ReferenceEquals(tab, ActiveTab)).Concat(Tabs.Where(tab => !ReferenceEquals(tab, ActiveTab)));
         return candidates.FirstOrDefault(tab =>
-            tab.AsksBeforeClosing && !(discarded.TryGetValue(tab, out var version) && version == tab.EditVersion));
+            tab.AsksBeforeClosing && !(discarded.TryGetValue(tab, out var version) && version == tab.ChangeVersion));
     }
 
     /// <summary>
@@ -223,8 +223,8 @@ public sealed partial class MainViewModel
     {
         Tabs.Activate(tab);
         var path = tab.FullPath ?? tab.FileName ?? string.Empty;
-        var question = tab.UnsaveableReason is { } reason
-            ? PendingSave.DiscardChanges(tab, path, reason)
+        var question = tab.AsksOnlyAboutPageEdits ? PendingSave.DiscardPageEdits(tab, path)
+            : tab.UnsaveableReason is { } reason ? PendingSave.DiscardChanges(tab, path, reason)
             : PendingSave.SaveChanges(tab, path);
         switch (await AskAsync(question, CancellationToken.None))
         {
@@ -237,7 +237,7 @@ public sealed partial class MainViewModel
                     // stops at that field with its reason instead of asking again after every save (TabViewModel.RevealFormDraft).
                     if (tab.HasEditorChanges && CanSaveNow(tab))
                     {
-                        await SaveTabAsync(tab, saveAs: false);
+                        await SaveDocumentChangesAsync(tab, saveAs: false);
                     }
 
                     tab.RevealFormDraft();
@@ -258,9 +258,16 @@ public sealed partial class MainViewModel
 
                 // Saved (also under another name after the signature card): the next pass asks again if it changed since.
                 // Not saved: the save showed why (its card) or the user cancelled there.
-                return await SaveTabAsync(tab, saveAs: false);
+                return await SaveDocumentChangesAsync(tab, saveAs: false);
             case PendingSaveChoice.DontSave or PendingSaveChoice.Discard:
-                discarded[tab] = tab.EditVersion;
+                if (tab.AsksOnlyAboutPageEdits)
+                {
+                    // "Discard the page changes?" is answered for good: the plan goes now, so a flow that goes on (the update)
+                    // never leaves a plan behind that was given up.
+                    tab.AbandonPageEdits();
+                }
+
+                discarded[tab] = tab.ChangeVersion;
                 return true;
             default:
                 return false;
@@ -269,6 +276,6 @@ public sealed partial class MainViewModel
 
     /// <summary>Whether <see cref="SaveTabAsync"/> would start a save of <paramref name="tab"/> now (it refuses silently otherwise).</summary>
     private bool CanSaveNow(TabViewModel tab) =>
-        !_disposed && _savingTab is null && _pendingSave is null && Tabs.IndexOf(tab) >= 0 && tab.CanSave()
+        !_disposed && _savingTab is null && _pendingSave is null && Tabs.IndexOf(tab) >= 0 && tab.CanSaveDocument()
         && tab.Document is not null && tab.FullPath is not null;
 }

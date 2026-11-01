@@ -30,6 +30,14 @@ public sealed class ThumbnailSource : IDisposable
         Scheduler = new RenderScheduler(document, Cache, pageTheme);
     }
 
+    /// <summary>
+    /// Creates the thumbnails of a document that is not the one of a <see cref="ViewerSession"/> (a file inserted into a page
+    /// plan). The caller owns the source and disposes it before the document.
+    /// </summary>
+    /// <param name="document">The document; it is not owned by the source.</param>
+    /// <param name="pageTheme">The theme the thumbnails are rendered in.</param>
+    public static ThumbnailSource Create(PdfDocument document, PageTheme pageTheme = PageTheme.Light) => new(document, pageTheme);
+
     /// <summary>Gets the cache that holds the thumbnails.</summary>
     public RenderCache Cache { get; }
 

@@ -17,100 +17,6 @@ using Pagewing.Core.Viewing;
 namespace Pagewing.App.Controls;
 
 /// <summary>
-/// One entry of the page thumbnails: the page number, the size of its frame (136 DIP wide, in the density "Kompakt" as
-/// wide as its column; as high as the page format asks) and the thumbnail once it is rendered. UI thread only.
-/// </summary>
-public sealed class ThumbnailItem : ViewModelBase
-{
-    /// <summary>The tallest frame, in widths: a degenerate page format must not make one entry thousands of DIPs high.</summary>
-    private const double MaxAspect = 16;
-
-    private PdfPageSize _format;
-    private double _frameWidth;
-    private double _frameHeight;
-    private Bitmap? _bitmap;
-    private bool _isCurrent;
-
-    internal ThumbnailItem(int pageNumber, PdfPageSize format, double frameWidth)
-    {
-        PageNumber = pageNumber;
-        _format = format;
-        _frameWidth = frameWidth;
-        _frameHeight = FrameHeightFor(format, frameWidth);
-    }
-
-    /// <summary>Gets the page number, 1-based.</summary>
-    public int PageNumber { get; }
-
-    /// <summary>Gets the page number as shown below the frame.</summary>
-    public string PageText => PageNumber.ToString(CultureInfo.InvariantCulture);
-
-    /// <summary>Gets the width of the frame in DIPs (<see cref="ThumbnailPlanner.Width"/>, or the column width of "Kompakt").</summary>
-    public double FrameWidth
-    {
-        get => _frameWidth;
-        internal set
-        {
-            if (SetProperty(ref _frameWidth, value))
-            {
-                FrameHeight = FrameHeightFor(_format, value);
-            }
-        }
-    }
-
-    /// <summary>Gets the height of the frame in DIPs: the page format, or the format of the first page while the size of this page is not known.</summary>
-    public double FrameHeight
-    {
-        get => _frameHeight;
-        private set => SetProperty(ref _frameHeight, value);
-    }
-
-    /// <summary>Gets the rendered thumbnail, or <see langword="null"/> while the frame stays empty. Owned by the list, which disposes it.</summary>
-    public Bitmap? Bitmap
-    {
-        get => _bitmap;
-        internal set
-        {
-            if (SetProperty(ref _bitmap, value))
-            {
-                OnPropertyChanged(nameof(HasBitmap));
-            }
-        }
-    }
-
-    /// <summary>Gets whether the thumbnail is rendered.</summary>
-    public bool HasBitmap => _bitmap is not null;
-
-    /// <summary>Gets whether the page belongs to the current row of the document (two pages in the two-page layouts).</summary>
-    public bool IsCurrent
-    {
-        get => _isCurrent;
-        internal set
-        {
-            if (SetProperty(ref _isCurrent, value))
-            {
-                OnPropertyChanged(nameof(AutomationName));
-            }
-        }
-    }
-
-    /// <summary>Gets the name for assistive technology: "Page 3", or "Page 3, current page".</summary>
-    public string AutomationName =>
-        string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ThumbnailName), PageText)
-        + (IsCurrent ? Strings.ThumbnailCurrentSuffix : string.Empty);
-
-    /// <summary>Sets the page format the frame follows (the real size of the page arrived).</summary>
-    internal void SetFormat(PdfPageSize format)
-    {
-        _format = format;
-        FrameHeight = FrameHeightFor(format, _frameWidth);
-    }
-
-    private static double FrameHeightFor(PdfPageSize format, double width) =>
-        Math.Clamp(ThumbnailPlanner.HeightFor(format, width), 1, width * MaxAspect);
-}
-
-/// <summary>
 /// The page thumbnails of the "Pages" panel (design system 7.3): one entry per page of the tab in its
 /// <c>DataContext</c>, virtualized, with the pages of the current row marked. Only the realized entries ask for their
 /// thumbnail, nearest to the current page first, and only once the tab has shown a sharp page; the thumbnails come from
@@ -123,7 +29,7 @@ public sealed class ThumbnailItem : ViewModelBase
 /// posts to the UI thread, where a thumbnail that is no longer wanted is dropped. The list holds bitmaps only for the
 /// realized entries and releases all of them when it leaves the tab (another tab, another document, the panel closes).
 /// </remarks>
-internal sealed class ThumbnailList : ListBox
+internal sealed partial class ThumbnailList : ListBox
 {
     /// <summary>
     /// What an entry adds to the width of its frame (PagesPanel.axaml): 6 padding, 2 ring of the current page and 1 edge
@@ -159,7 +65,11 @@ internal sealed class ThumbnailList : ListBox
     // Entries whose thumbnail shows content that changed (an annotation, or the saved file in place of the document): kept
     // until the new image replaces it, so the frame does not go empty in between.
     private readonly HashSet<int> _stale = [];
-    private ThumbnailItem[] _items = [];
+
+    // The entries shown now: one per page of the document, or in the mode "Organize pages" one per position of the plan
+    // (_planItems). _docItems is kept while the plan is shown, so leaving the mode is instant.
+    private IReadOnlyList<ThumbnailItem> _items = [];
+    private ThumbnailItem[] _docItems = [];
     private TabViewModel? _tab;
     private ViewerSession? _session;
     private PdfDocument? _document;
@@ -194,6 +104,7 @@ internal sealed class ThumbnailList : ListBox
         ContainerIndexChanged += (_, _) => SchedulePlan();
         AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
         AddHandler(TappedEvent, OnTapped);
+        InitializeOrganize();
 
         // Key bindings of the window (Page Up/Down turn the document's pages) are matched from the focused element
         // upwards before any key event is raised, so the list claims these two keys with bindings of its own.
@@ -413,9 +324,10 @@ internal sealed class ThumbnailList : ListBox
     /// </summary>
     private void MarkStale(IEnumerable<int> pages)
     {
-        foreach (var index in pages)
+        var changed = pages as IReadOnlySet<int> ?? pages.ToHashSet();
+        foreach (var index in _withBitmaps)
         {
-            if (_withBitmaps.Contains(index))
+            if (changed.Contains(PageOf(index)))
             {
                 _stale.Add(index);
             }
@@ -423,6 +335,9 @@ internal sealed class ThumbnailList : ListBox
 
         SchedulePlan();
     }
+
+    /// <summary>The page of the document whose rendering entry <paramref name="index"/> draws, or -1 when it draws none.</summary>
+    private int PageOf(int index) => index >= 0 && index < _items.Count ? _items[index].RenderPage : -1;
 
     /// <summary>Shows what the session holds now: a new document (new entries), more page sizes, or nothing.</summary>
     private void SyncDocument()
@@ -444,7 +359,7 @@ internal sealed class ThumbnailList : ListBox
         }
 
         if (document is not null && _document is not null && !ReferenceEquals(document, _document)
-            && cache is not null && ReferenceEquals(cache, _documentCache) && PageCountOf(document) == _items.Length)
+            && cache is not null && ReferenceEquals(cache, _documentCache) && PageCountOf(document) == _docItems.Length)
         {
             // The saved file in place of the document (the session kept the cache): the same pages, so the entries and the
             // position of the list stay. Its thumbnails are new (the old ones went with the old document): every image
@@ -452,7 +367,7 @@ internal sealed class ThumbnailList : ListBox
             StopWork();
             DetachSource();
             _document = document;
-            MarkStale([.. _withBitmaps]);
+            MarkStale([.. _withBitmaps.Select(PageOf).Where(page => page >= 0).Distinct()]);
             if (sizes.Count > _knownSizes)
             {
                 AddSizes(sizes);
@@ -488,6 +403,7 @@ internal sealed class ThumbnailList : ListBox
             // Once the entries are laid out: the current page in view.
             var items = _items;
             Dispatcher.UIThread.Post(() => ScrollToCurrent(items), DispatcherPriority.Loaded);
+            SyncMode();
             SchedulePlan();
         }
         else if (document is not null && sizes.Count > _knownSizes)
@@ -522,6 +438,7 @@ internal sealed class ThumbnailList : ListBox
             items[index] = new ThumbnailItem(index + 1, size, _frameWidth);
         }
 
+        _docItems = items;
         _items = items;
         _knownSizes = known;
         ItemsSource = items;
@@ -530,12 +447,24 @@ internal sealed class ThumbnailList : ListBox
     /// <summary>Gives the entries whose page size arrived their real format.</summary>
     private void AddSizes(IReadOnlyList<PdfPageSize> sizes)
     {
-        var count = Math.Min(sizes.Count, _items.Length);
+        var count = Math.Min(sizes.Count, _docItems.Length);
         for (var index = _knownSizes; index < count; index++)
         {
             if (IsUsable(sizes[index]))
             {
-                _items[index].SetFormat(sizes[index]);
+                _docItems[index].SetFormat(sizes[index]);
+            }
+        }
+
+        if (_planItems is not null)
+        {
+            // The entries of the plan that show a page of the document whose size just arrived.
+            foreach (var item in _planItems)
+            {
+                if (item.Slot is { Blank: null, Source.Value: 0 } slot && slot.SourceIndex >= _knownSizes && slot.SourceIndex < count && IsUsable(sizes[slot.SourceIndex]))
+                {
+                    item.SetFormat(sizes[slot.SourceIndex]);
+                }
             }
         }
 
@@ -546,9 +475,12 @@ internal sealed class ThumbnailList : ListBox
     private void ResetDocument()
     {
         StopWork();
+        DetachForeign();
         DetachSource();
         ReleaseBitmaps(keep: null);
+        LeavePlanMode(showDocument: false);
         _items = [];
+        _docItems = [];
         _document = null;
         _documentCache = null;
         _knownSizes = 0;
@@ -563,6 +495,18 @@ internal sealed class ThumbnailList : ListBox
             case nameof(TabViewModel.CurrentPage) or nameof(TabViewModel.CurrentPageLast):
                 UpdateCurrent(scroll: true);
                 SchedulePlan();
+                break;
+            case nameof(TabViewModel.IsOrganizing):
+                SyncMode();
+                break;
+            case nameof(TabViewModel.PagePlan):
+                SyncPlan();
+                break;
+            case nameof(TabViewModel.SelectedPagePositions):
+                ApplySelectionFromTab();
+                break;
+            case nameof(TabViewModel.InsertedSources):
+                OnInsertedChanged();
                 break;
             case nameof(TabViewModel.EffectivePageTheme):
                 // The session renders the thumbnails in the new theme and emptied their cache of the old one: the empty
@@ -588,18 +532,24 @@ internal sealed class ThumbnailList : ListBox
     /// </summary>
     private void UpdateCurrent(bool scroll)
     {
+        if (_planMode)
+        {
+            // The positions of the plan are not the pages of the document: no page is "current" there.
+            return;
+        }
+
         var tab = _tab;
         var first = -1;
         var last = -1;
-        if (tab is not null && _items.Length > 0 && tab.CurrentPage >= 1)
+        if (tab is not null && _items.Count > 0 && tab.CurrentPage >= 1)
         {
-            first = Math.Min(tab.CurrentPage, _items.Length) - 1;
-            last = Math.Clamp(Math.Max(tab.CurrentPage, tab.CurrentPageLast) - 1, first, _items.Length - 1);
+            first = Math.Min(tab.CurrentPage, _items.Count) - 1;
+            last = Math.Clamp(Math.Max(tab.CurrentPage, tab.CurrentPageLast) - 1, first, _items.Count - 1);
         }
 
         if ((first, last) != _marked)
         {
-            for (var index = Math.Max(0, _marked.First); index <= _marked.Last && index < _items.Length; index++)
+            for (var index = Math.Max(0, _marked.First); index <= _marked.Last && index < _items.Count; index++)
             {
                 if (index < first || index > last)
                 {
@@ -622,7 +572,7 @@ internal sealed class ThumbnailList : ListBox
         }
     }
 
-    private void ScrollToCurrent(ThumbnailItem[] items)
+    private void ScrollToCurrent(IReadOnlyList<ThumbnailItem> items)
     {
         if (ReferenceEquals(items, _items) && _marked.First >= 0)
         {
@@ -658,7 +608,7 @@ internal sealed class ThumbnailList : ListBox
     {
         _planPosted = false;
         var tab = _tab;
-        if (tab is null || _document is null || _items.Length == 0 || !MayRender(tab))
+        if (tab is null || _document is null || _items.Count == 0 || !MayRender(tab))
         {
             StopWork();
             return;
@@ -683,21 +633,32 @@ internal sealed class ThumbnailList : ListBox
         foreach (var container in GetRealizedContainers())
         {
             var index = IndexFromContainer(container);
-            if (index >= 0 && index < _items.Length)
+            if (index >= 0 && index < _items.Count)
             {
                 realized.Add(index);
             }
         }
 
-        // The planner orders by the distance to the first page it is given: the realized page nearest to the current one.
-        var current = Math.Clamp(tab.CurrentPage - 1, 0, _items.Length - 1);
-        realized.Sort((a, b) =>
+        // The pages those entries draw (in the plan several entries may draw one page, and a blank page or a page of another
+        // file draws none). The planner orders by the distance to the first page it is given: the realized page nearest to the
+        // current one.
+        var pages = new List<int>(realized.Count);
+        foreach (var index in realized)
+        {
+            if (PageOf(index) is >= 0 and var page)
+            {
+                pages.Add(page);
+            }
+        }
+
+        var current = Math.Clamp(tab.CurrentPage - 1, 0, Math.Max(0, _docItems.Length - 1));
+        pages.Sort((a, b) =>
         {
             var byDistance = Math.Abs(a - current).CompareTo(Math.Abs(b - current));
             return byDistance != 0 ? byDistance : a.CompareTo(b);
         });
 
-        var plan = ThumbnailPlanner.Plan(tab.Session.LoadedSizes, realized, _renderScaling, _frameWidth);
+        var plan = ThumbnailPlanner.Plan(tab.Session.LoadedSizes, pages, _renderScaling, _frameWidth);
         var planned = new Dictionary<int, (int Width, int Height)>(plan.Count);
         var stale = false;
         foreach (var request in plan)
@@ -706,7 +667,7 @@ internal sealed class ThumbnailList : ListBox
             planned[request.Key.Page] = size;
             stale |= !trusted
                 && ((source.Cache.TryGet(request.Key, out var cached) && (cached.Width, cached.Height) != size)
-                    || (_items[request.Key.Page].Bitmap is { } shown && (shown.PixelSize.Width, shown.PixelSize.Height) != size));
+                    || realized.Any(index => PageOf(index) == request.Key.Page && _items[index].Bitmap is { } shown && (shown.PixelSize.Width, shown.PixelSize.Height) != size));
         }
 
         if (stale)
@@ -734,11 +695,13 @@ internal sealed class ThumbnailList : ListBox
         // The scheduler skips what the cache holds, so no TileReady comes for it.
         foreach (var index in realized)
         {
-            if (NeedsBitmap(index) && source.Cache.TryGet(KeyOf(index), out var image) && IsPlannedSize(index, image))
+            if (PageOf(index) is >= 0 and var page && NeedsBitmap(index) && source.Cache.TryGet(KeyOf(page), out var image) && IsPlannedSize(page, image))
             {
                 SetBitmap(index, image);
             }
         }
+
+        PlanForeign(realized);
     }
 
     /// <summary>Whether every image in the cache of <paramref name="source"/> was rendered for the current scaling (see <see cref="_clearedFor"/>).</summary>
@@ -753,6 +716,7 @@ internal sealed class ThumbnailList : ListBox
     private void StopWork()
     {
         _source?.Scheduler.Update([]);
+        StopForeign();
         _lastRequests = [];
         _plannedSizes = [];
     }
@@ -792,24 +756,59 @@ internal sealed class ThumbnailList : ListBox
             return;
         }
 
-        var index = key.Page;
-        if (index >= 0 && index < _items.Length && NeedsBitmap(index) && ContainerFromIndex(index) is not null
-            && source.Cache.TryGet(key, out var image))
+        var page = key.Page;
+        if (page >= 0 && source.Cache.TryGet(key, out var image))
         {
-            if (IsPlannedSize(index, image))
+            // Every entry that is in view and draws this page (in the plan a page may be there more than once).
+            foreach (var index in RealizedEntriesOf(page))
             {
-                SetBitmap(index, image);
-            }
-            else if (!IsCacheTrusted(source) || !_plannedSizes.ContainsKey(index))
-            {
-                // Perhaps rendered for another scaling, or no longer planned: the next plan replaces it if it is still
-                // wanted. A planned page of the current scaling whose image has another size (its size was only
-                // estimated) keeps its empty frame instead of being rendered again.
-                SchedulePlan();
+                if (!NeedsBitmap(index))
+                {
+                    continue;
+                }
+
+                if (IsPlannedSize(page, image))
+                {
+                    SetBitmap(index, image);
+                }
+                else if (!IsCacheTrusted(source) || !_plannedSizes.ContainsKey(page))
+                {
+                    // Perhaps rendered for another scaling, or no longer planned: the next plan replaces it if it is still
+                    // wanted. A planned page of the current scaling whose image has another size (its size was only
+                    // estimated) keeps its empty frame instead of being rendered again.
+                    SchedulePlan();
+                    break;
+                }
             }
         }
 
         ThumbnailReceived?.Invoke(key);
+    }
+
+    /// <summary>The indices of the entries in view (with a container) that draw <paramref name="page"/> of the document.</summary>
+    private List<int> RealizedEntriesOf(int page)
+    {
+        var entries = new List<int>(1);
+        if (!_planMode)
+        {
+            if (page < _items.Count && ContainerFromIndex(page) is not null)
+            {
+                entries.Add(page);
+            }
+
+            return entries;
+        }
+
+        foreach (var container in GetRealizedContainers())
+        {
+            var index = IndexFromContainer(container);
+            if (index >= 0 && PageOf(index) == page)
+            {
+                entries.Add(index);
+            }
+        }
+
+        return entries;
     }
 
     /// <summary>Whether entry <paramref name="index"/> has no thumbnail yet, or one of content that changed.</summary>
@@ -853,7 +852,7 @@ internal sealed class ThumbnailList : ListBox
 
             _withBitmaps.Remove(index);
             _stale.Remove(index);
-            if (index < _items.Length && _items[index].Bitmap is { } bitmap)
+            if (index < _items.Count && _items[index].Bitmap is { } bitmap)
             {
                 _items[index].Bitmap = null;
                 bitmap.Dispose();
@@ -881,6 +880,8 @@ internal sealed class ThumbnailList : ListBox
             source.Cache.Clear();
         }
 
+        ClearForeignCaches();
+
         ReleaseBitmaps(keep: null);
         SchedulePlan();
     }
@@ -898,9 +899,17 @@ internal sealed class ThumbnailList : ListBox
         }
 
         _frameWidth = width;
-        foreach (var item in _items)
+        foreach (var item in _docItems)
         {
-            item.FrameWidth = width;
+            item.SetColumnWidth(width);
+        }
+
+        if (_planItems is not null)
+        {
+            foreach (var item in _planItems)
+            {
+                item.SetColumnWidth(width);
+            }
         }
 
         _clearedFor = null;
@@ -910,6 +919,7 @@ internal sealed class ThumbnailList : ListBox
             source.Cache.Clear();
         }
 
+        ClearForeignCaches();
         ReleaseBitmaps(keep: null);
         SchedulePlan();
     }
@@ -917,7 +927,7 @@ internal sealed class ThumbnailList : ListBox
     // Enter and Space show the page of the focused entry, before the list box or its scroll viewer use the keys.
     private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
-        if (e.Handled || e.KeyModifiers != KeyModifiers.None || e.Key is not (Key.Enter or Key.Space))
+        if (_planMode || e.Handled || e.KeyModifiers != KeyModifiers.None || e.Key is not (Key.Enter or Key.Space))
         {
             return;
         }
@@ -937,7 +947,7 @@ internal sealed class ThumbnailList : ListBox
     /// </summary>
     private void MoveByPage(bool forward)
     {
-        if (_items.Length == 0)
+        if (_items.Count == 0)
         {
             return;
         }
@@ -964,7 +974,7 @@ internal sealed class ThumbnailList : ListBox
 
         var columns = Math.Max(1, Columns);
         var step = Math.Max(1, (inView / columns) - 1) * columns;
-        var target = Math.Clamp(forward ? current + step : current - step, 0, _items.Length - 1);
+        var target = Math.Clamp(forward ? current + step : current - step, 0, _items.Count - 1);
         SelectedIndex = target;
         ScrollIntoView(target);
         if (ContainerFromIndex(target) is { } targetContainer)
@@ -975,7 +985,8 @@ internal sealed class ThumbnailList : ListBox
 
     private void OnTapped(object? sender, TappedEventArgs e)
     {
-        if (e.Source is Visual source && source.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { } container
+        // In the mode "Organize pages" a click selects; it shows no page of the document.
+        if (!_planMode && e.Source is Visual source && source.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { } container
             && IndexFromContainer(container) is var index and >= 0)
         {
             e.Handled = true;

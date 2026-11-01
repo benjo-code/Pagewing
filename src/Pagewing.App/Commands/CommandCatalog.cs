@@ -107,9 +107,9 @@ public sealed class CommandCatalog
 
         // Edit: undo and redo of the annotations, only while there is a step. A text field keeps these keys for its own text
         // (YieldsToTextInput), as it keeps Ctrl+C.
-        Tab("edit.undo", () => Strings.CommandUndo, EditGroup, Ctrl(Key.Z), tab => tab.UndoCommand) with { YieldsToTextInput = true },
-        Tab("edit.redo", () => Strings.CommandRedo, EditGroup, CtrlShift(Key.Z), tab => tab.RedoCommand)
-            with { AlternativeGestures = [Ctrl(Key.Y)], YieldsToTextInput = true },
+        PlanGuarded(Tab("edit.undo", () => Strings.CommandUndo, EditGroup, Ctrl(Key.Z), tab => tab.UndoCommand) with { YieldsToTextInput = true }),
+        PlanGuarded(Tab("edit.redo", () => Strings.CommandRedo, EditGroup, CtrlShift(Key.Z), tab => tab.RedoCommand)
+            with { AlternativeGestures = [Ctrl(Key.Y)], YieldsToTextInput = true }),
 
         // The mode "Comment" (design system 7.7): on and off, and the three markups, which start the mode and turn a text
         // selection into a markup at once. Only once the document shows a sharp page and allows annotations (the palette
@@ -139,6 +139,30 @@ public sealed class CommandCatalog
         // the mode belongs to the document and the toolbar, as for "Comment".
         Tab("form.fill", () => Strings.FormModeName, EditGroup, CtrlShift(Key.F), tab => tab.ToggleFillCommand, ready: true),
         Tab("form.highlight", () => Strings.FormCommandHighlight, EditGroup, CtrlShift(Key.J), tab => tab.ToggleHighlightCommand),
+
+        // The mode "Organize pages" (milestone 13): on and off (off only while no page change is pending), and what it does to
+        // the selected pages; the changes are only staged (the plan of the tab) until they are applied. Ctrl+Z and Ctrl+Y undo
+        // and redo the plan in the mode (edit.undo, edit.redo). The commands of the mode run only in it and never make the
+        // tab's commands before (OrganizeTab asks the mode first). Letters, arrows and Delete are on every layout without AltGr;
+        // the arrows and Delete leave a text field its own use (YieldsToTextInput). Discard has no key: Esc and the toolbar.
+        Tab("pages.organize", () => Strings.CommandOrganizePages, EditGroup, CtrlShift(Key.O), tab => tab.OrganizeCommand, ready: true),
+        OrganizeTab("pages.rotateLeft", () => Strings.CommandRotatePagesLeft, CtrlShift(Key.Left), tab => tab.RotateSelectionCommand, -90) with { YieldsToTextInput = true },
+        OrganizeTab("pages.rotateRight", () => Strings.CommandRotatePagesRight, CtrlShift(Key.Right), tab => tab.RotateSelectionCommand, 90) with { YieldsToTextInput = true },
+        OrganizeTab("pages.delete", () => Strings.CommandDeletePages, new KeyGesture(Key.Delete), tab => tab.DeletePagesCommand) with { YieldsToTextInput = true },
+        OrganizeTab("pages.duplicate", () => Strings.CommandDuplicatePages, CtrlShift(Key.N), tab => tab.DuplicateSelectionCommand),
+        OrganizeTab("pages.insertBlank", () => Strings.CommandInsertBlankPage, CtrlShift(Key.B), tab => tab.InsertBlankPageCommand),
+        OrganizeTab("pages.insertFile", () => Strings.CommandInsertFile, CtrlShift(Key.V), tab => tab.InsertFileCommand) with { YieldsToTextInput = true },
+        OrganizeTab("pages.moveEarlier", () => Strings.CommandMovePagesEarlier, CtrlShift(Key.Up), tab => tab.MoveSelectionEarlierCommand) with { YieldsToTextInput = true },
+        OrganizeTab("pages.moveLater", () => Strings.CommandMovePagesLater, CtrlShift(Key.Down), tab => tab.MoveSelectionLaterCommand) with { YieldsToTextInput = true },
+        OrganizeTab("pages.apply", () => Strings.CommandApplyPageEdits, null, tab => tab.ApplyPageEditsCommand, needsPanel: false),
+        OrganizeTab("pages.discard", () => Strings.CommandDiscardPageEdits, null, tab => tab.DiscardPageEditsCommand, needsPanel: false),
+
+        // Writing new files from the open document (milestone 13): the selected pages as a new PDF, the document in several files,
+        // the pages as images. They read the document without the plan and run only with no plan and no unsaved change pending (the
+        // tab says so and the pages panel shows why); they have no keys, the palette and the menu of the pages panel offer them.
+        Tab("pages.extract", () => Strings.CommandExtractPages, FileGroup, null, tab => tab.ExtractSelectionCommand, ready: true),
+        Tab("pages.split", () => Strings.CommandSplitDocument, FileGroup, null, tab => tab.SplitCommand, ready: true),
+        Tab("pages.exportImages", () => Strings.CommandExportImages, FileGroup, null, tab => tab.ExportImagesCommand, ready: true),
 
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
@@ -247,6 +271,47 @@ public sealed class CommandCatalog
                 target!.Execute(parameter);
             }
         });
+    }
+
+    /// <summary>
+    /// A command of the mode "Organize pages" of the active tab: it exists only while the mode is on, and until then the tab's
+    /// command is not even looked up (so nothing of the mode is made by asking the catalog). It also waits while the pages
+    /// panel is closed (the pages it would change are not in sight) and while a card (settings, help, about, print, signature) lies
+    /// over the window: a key such as Delete belongs to a list or drop-down of a card then, and must never reach the pages
+    /// behind. The command palette is no obstacle: it offers these commands and its field keeps the keys of text. "Apply" and
+    /// "Discard" (<paramref name="needsPanel"/> <see langword="false"/>) work with the panel closed, because they end the mode
+    /// and change no page the user cannot see; the card rule holds for them as well.
+    /// </summary>
+    private AppCommand OrganizeTab(string id, Func<string> title, KeyGesture? gesture, Func<TabViewModel, ICommand> command, object? parameter = null, bool needsPanel = true)
+    {
+        bool CanRun(out ICommand? target)
+        {
+            target = _window.ActiveTab is { IsOrganizing: true } tab
+                && (!needsPanel || tab.SidePanel == SidePanelKind.Pages)
+                && _window.Overlay is OverlayKind.None or OverlayKind.Palette
+                    ? command(tab)
+                    : null;
+            return target?.CanExecute(parameter) == true;
+        }
+
+        return new(id, title, EditGroup, gesture, () => CanRun(out _), () =>
+        {
+            if (CanRun(out var target))
+            {
+                target!.Execute(parameter);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Ctrl+Z and Ctrl+Y undo and redo the page plan while the mode "Organize pages" is on (the tab decides, and does so only
+    /// with the pages panel open); a card over the window (a drop-down of the settings) must never reach the plan behind it,
+    /// so while one lies there the keys do nothing in the mode.
+    /// </summary>
+    private AppCommand PlanGuarded(AppCommand command)
+    {
+        bool Blocked() => _window.ActiveTab is { IsOrganizing: true } && _window.Overlay is not (OverlayKind.None or OverlayKind.Palette);
+        return command with { CanExecute = () => !Blocked() && command.CanExecute(), Execute = () => { if (!Blocked()) { command.Execute(); } } };
     }
 
     private AppCommand Layout(string id, Func<string> title, PageLayoutMode mode) =>

@@ -318,6 +318,12 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     }
 
     /// <summary>
+    /// Gets whether the document has page labels: whether the first page has a label (the number tree of <c>/PageLabels</c> must
+    /// start at page 0). An empty label counts, because the style of the range may be "none" while later ranges name pages.
+    /// </summary>
+    public bool HasPageLabels() => Fpdf.FPDF_GetPageLabel(Access(), 0, null, new CULong(0)).Value > 0;
+
+    /// <summary>
     /// Reads the document outline (bookmarks) depth first. A bookmark that was seen before ends its sibling chain
     /// (a damaged file can link a bookmark back to itself or an ancestor), and the limits cut the result
     /// silently: at most <paramref name="maxItems"/> bookmarks in total, and only the top
@@ -401,6 +407,27 @@ internal sealed unsafe class PdfiumDocument : IDisposable
             throw;
         }
     }
+
+    /// <summary>
+    /// Makes this document keep <paramref name="importedFrom"/> open until this one is closed (also when the caller disposes
+    /// <paramref name="importedFrom"/> first), because pages imported from it still point into it. Called by
+    /// <see cref="PdfiumPageEdit.Import"/> before every import. PDFium thread only.
+    /// </summary>
+    internal void KeepOpenFor(PdfiumDocument importedFrom)
+    {
+        Access();
+        importedFrom.Access();
+        handle.KeepOpenUntilClosed(importedFrom.handle);
+    }
+
+    /// <summary>Gets how many source documents this one keeps open (<see cref="KeepOpenFor"/>), for tests. Any thread.</summary>
+    internal int KeptOpenCount => handle.KeptOpenCount;
+
+    /// <summary>Gets the handle, for tests that put a failing resource on it. Any thread.</summary>
+    internal DocumentHandle Handle => handle;
+
+    /// <summary>Gets whether the native document is still open (not closed by <c>FPDF_CloseDocument</c> yet), for tests. Any thread.</summary>
+    internal bool IsNativeOpen => !handle.IsClosed;
 
     /// <summary>
     /// Closes the document once all its pages are closed. On another thread the close is queued to the
@@ -550,6 +577,13 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// </summary>
     /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
     internal void SaveIncremental(Stream destination) => Save(destination, FpdfConstants.SaveIncremental);
+
+    /// <summary>
+    /// Writes the whole document as a new file to <paramref name="destination"/> (<c>FPDF_NO_INCREMENTAL</c>), keeping its
+    /// encryption (no <c>FPDF_REMOVE_SECURITY</c>). Must be called on the PDFium thread.
+    /// </summary>
+    /// <exception cref="IOException">PDFium could not save the document, or the stream could not be written.</exception>
+    internal void SaveRewrite(Stream destination) => Save(destination, FpdfConstants.SaveNoIncremental);
 
     private void Save(Stream destination, int flags)
     {

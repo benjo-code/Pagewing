@@ -794,6 +794,9 @@ public sealed class DocumentSaverTests : IDisposable
         Assert.Equal(@"\\?\C:\a", WindowsFileRename.LongPath(@"C:\a"));
         Assert.Equal(@"\\?\UNC\server\share\a", WindowsFileRename.LongPath(@"\\server\share\a"));
         Assert.Equal(@"\\?\C:\a", WindowsFileRename.LongPath(@"\\?\C:\a"));
+
+        // Without replacing, the flag "replace if exists" (1) is not set, the POSIX semantics (2) are.
+        Assert.Equal(2u, BitConverter.ToUInt32(WindowsFileRename.RenameInfo(@"C:\x\y.pdf", replace: false), 0));
     }
 
     [Fact]
