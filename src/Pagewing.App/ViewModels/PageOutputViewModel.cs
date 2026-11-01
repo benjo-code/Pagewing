@@ -80,7 +80,16 @@ public abstract class PageOutputViewModel : ViewModelBase, IDisposable
     internal PageOutputSource Source { get; }
 
     /// <summary>Gets whether the card has been disposed (the window went, the tab went, the card was closed).</summary>
-    protected bool IsDisposed { get; private set; }
+    internal bool IsDisposed { get; private set; }
+
+    /// <summary>
+    /// Gets or sets what wraps the progress the worker reports to (tests block the worker inside it, so that a job is provably
+    /// running with files written when it is canceled or its tab closes); <see langword="null"/> in the program.
+    /// </summary>
+    internal Func<IProgress<double>, IProgress<double>>? ProgressWrapper { get; set; }
+
+    /// <summary>The words for <paramref name="exception"/> as the card would show them when it ended a run (tests).</summary>
+    internal string DescribeError(Exception exception) => Describe(exception);
 
     /// <summary>Gets where the card is.</summary>
     public PageOutputState State
@@ -271,7 +280,13 @@ public abstract class PageOutputViewModel : ViewModelBase, IDisposable
     /// has written so far; ends the card in <see cref="PageOutputState.Finished"/> with the result. A run while one is running,
     /// or on a disposed card, does nothing (single flight).
     /// </summary>
-    private protected async Task RunAsync(Func<IProgress<double>, ICollection<string>, CancellationToken, Task<IReadOnlyList<string>>> work)
+    private protected Task RunAsync(Func<IProgress<double>, ICollection<string>, CancellationToken, Task<IReadOnlyList<string>>> work) =>
+        LastRun = RunCoreAsync(work);
+
+    /// <summary>Gets the task of the newest run (it never throws), or <see langword="null"/> before one started; tests wait for the end of a job with it.</summary>
+    internal Task? LastRun { get; private set; }
+
+    private async Task RunCoreAsync(Func<IProgress<double>, ICollection<string>, CancellationToken, Task<IReadOnlyList<string>>> work)
     {
         if (IsDisposed || _running || _state == PageOutputState.Running)
         {
@@ -288,7 +303,12 @@ public abstract class PageOutputViewModel : ViewModelBase, IDisposable
         // Appended to by the worker only; read here after the task ended, which orders the two.
         var written = new List<string>();
         var token = _cancellation.Token;
-        var progress = new UiProgress(this);
+        IProgress<double> progress = new UiProgress(this);
+        if (ProgressWrapper is { } wrap)
+        {
+            progress = wrap(progress);
+        }
+
         try
         {
             var paths = await Task.Run(() => work(progress, written, token), CancellationToken.None);

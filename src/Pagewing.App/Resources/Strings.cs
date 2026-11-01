@@ -666,6 +666,7 @@ public static class Strings
     public static string PageOutputExportWriteFailed => Get("PageOutputExportWriteFailed");
     public static string PageOutputExportRenderFailed => Get("PageOutputExportRenderFailed");
     public static string PageOutputMoreNotes => Get("PageOutputMoreNotes");
+    public static string PageOutputErrorExtractTargetExists => Get("PageOutputErrorExtractTargetExists");
     public static string InsertFileTitle => Get("InsertFileTitle");
     public static string InsertFileOpening => Get("InsertFileOpening");
     public static string InsertFileRangeLabel => Get("InsertFileRangeLabel");

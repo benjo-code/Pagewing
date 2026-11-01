@@ -9,7 +9,9 @@ using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
 using Pagewing.App.Views;
 using Pagewing.Core.Annotations;
+using Pagewing.Core.Pages;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Saving;
 using Pagewing.Core.Viewing;
 using Xunit;
 using static Pagewing.App.Tests.SaveCardHost;
@@ -333,68 +335,267 @@ public sealed class SplitAndExportCardTests : IDisposable
     [AvaloniaFact]
     public async Task ProgressAndCancelWork()
     {
-        var (window, viewModel, tab, _) = await OpenAsync("thousand-pages.pdf");
-        var output = Directory.CreateDirectory(Path.Combine(_host.Folder, "images")).FullName;
-        var card = await ShowExportAsync(window, viewModel, tab);
-        card.Folder = output;
-        card.DpiText = "72";
+        using var gate = new JobGate();
+        var (window, viewModel, tab, card, output) = await StartBlockedExportAsync(gate);
 
-        // Running: the bar moves forward and never back; nothing else (a second run, another card) may start meanwhile.
-        card.StartCommand.Execute(null);
+        // Running with the first file written (the worker waits in the progress callback): the bar moved, files exist.
         Assert.Equal(PageOutputState.Running, card.State);
         Assert.False(card.StartCommand.CanExecute(null));
-        var seen = new List<double>();
-        await WaitUntilAsync(window, () =>
-        {
-            seen.Add(card.Progress);
-            return card.Progress > 0;
-        });
-        tab.ExportImagesCommand.Execute(null);
-        viewModel.ShowPaletteCommand.Execute(null);
-        viewModel.ShowSettingsCommand.Execute(null);
-        Settle(window);
-        Assert.Equal(OverlayKind.PageOutput, viewModel.Overlay);
-        Assert.Same(card, viewModel.PageOutput);
+        Assert.InRange(card.Progress, 0.0001, 0.999);
+        var first = Assert.Single(Directory.GetFiles(output));
+        Assert.EndsWith(".png", first, StringComparison.Ordinal);
 
-        // Cancel: the run stops at the next page, the card says what was written, nothing half-done is left.
+        // Cancel: the run stops before the next file, the card says what was written, nothing half-done is left.
         card.CancelCommand.Execute(null);
+        gate.Release();
         await WaitUntilAsync(window, () => card.State == PageOutputState.Finished);
         Assert.False(card.IsError);
         Assert.Equal(Strings.PageOutputCanceled, card.ResultText);
-        var files = Directory.GetFiles(output);
-        Assert.NotEmpty(files);
-        Assert.True(files.Length < 1000, "the run stopped before the end");
-        Assert.All(files, file => Assert.EndsWith(".png", file, StringComparison.Ordinal));
-        Assert.Contains(Fmt(Strings.PageOutputWritten, files.Length, string.Empty).TrimEnd(' ', ':'), card.WrittenText, StringComparison.Ordinal);
+        Assert.Equal([first], Directory.GetFiles(output));
+        Assert.Equal(Fmt(Strings.PageOutputWritten, 1, Path.GetFileName(first)), card.WrittenText);
         Assert.True(card.Progress < 1);
-        Assert.All(seen, value => Assert.InRange(value, 0, 1));
+        Assert.Empty(Directory.GetFiles(output, ".pw-*"));
 
         // The card can be closed now.
         card.CloseCommand.Execute(null);
         Settle(window);
         Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        Assert.NotNull(tab);
     }
 
     [AvaloniaFact]
-    public async Task ClosingTheTabCancelsARunningExport()
+    public async Task ARunningCardIsNotReplacedByAnotherCommandOrOverlay()
     {
+        using var gate = new JobGate();
+        var (window, viewModel, tab, card, output) = await StartBlockedExportAsync(gate);
+
+        // Another command of the pages panel, the palette and the settings are ignored: the job that writes stays the card of the window.
+        tab.ExportImagesCommand.Execute(null);
+        tab.SplitCommand.Execute(null);
+        viewModel.ShowPaletteCommand.Execute(null);
+        viewModel.ShowSettingsCommand.Execute(null);
+        viewModel.HideOverlay();
+        Settle(window);
+        Assert.Equal(OverlayKind.PageOutput, viewModel.Overlay);
+        Assert.Same(card, viewModel.PageOutput);
+        Assert.Equal(PageOutputState.Running, card.State);
+        Assert.False(card.IsDisposed);
+        Assert.Same(card, Find<ExportImagesCard>(window, "ExportImagesCard").DataContext);
+
+        // The job is intact: it ends the way the user ends it, with its file.
+        card.CancelCommand.Execute(null);
+        gate.Release();
+        await WaitUntilAsync(window, () => card.State == PageOutputState.Finished);
+        Assert.Single(Directory.GetFiles(output));
+    }
+
+    [AvaloniaFact]
+    public async Task AShownCardIsReplacedByTheNextOneAndItsViewFollows()
+    {
+        var (window, viewModel, tab, _) = await OpenAsync();
+        var split = await ShowSplitAsync(window, viewModel, tab.SplitCommand, PageOutputState.Setup);
+        var splitView = Find<SplitCard>(window, "SplitCard");
+        Assert.Same(split, splitView.DataContext);
+
+        // Another command while a card waits for its options: the old view model is disposed, the window has the new one, and
+        // the view shows it (not the old card, whose Start would run a job the window does not know).
+        var export = await ShowExportAsync(window, viewModel, tab);
+        Assert.Same(export, viewModel.PageOutput);
+        Assert.True(split.IsDisposed);
+        Assert.False(export.IsDisposed);
+        var exportView = Find<ExportImagesCard>(window, "ExportImagesCard");
+        Assert.Same(export, exportView.DataContext);
+        Assert.True(exportView.IsVisible);
+        Assert.False(splitView.IsVisible);
+
+        // And back.
+        var again = await ShowSplitAsync(window, viewModel, tab.SplitCommand, PageOutputState.Setup);
+        Assert.NotSame(split, again);
+        Assert.True(export.IsDisposed);
+        Assert.Same(again, splitView.DataContext);
+        Assert.True(splitView.IsVisible);
+        Assert.False(exportView.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task ClosingTheTabCancelsARunningJobOfTheReplacingCard()
+    {
+        // A card is replaced by another one, whose job is then started: closing the tab cancels exactly that job.
+        using var gate = new JobGate();
         var (window, viewModel, tab, _) = await OpenAsync("thousand-pages.pdf");
+        viewModel.PageOutputProgressWrapper = gate.Wrap;
         var output = Directory.CreateDirectory(Path.Combine(_host.Folder, "images")).FullName;
+        var old = await ShowSplitAsync(window, viewModel, tab.SplitCommand, PageOutputState.Setup);
         var card = await ShowExportAsync(window, viewModel, tab);
+        Assert.True(old.IsDisposed);
         card.Folder = output;
         card.DpiText = "72";
         card.StartCommand.Execute(null);
-        await WaitUntilAsync(window, () => card.Progress > 0);
+        await WaitUntilAsync(window, () => gate.Started.IsCompleted && card.Progress > 0);
+        var written = Directory.GetFiles(output).Single();
 
-        // The tab goes: the run is cancelled, the card goes with it, and no temporary file stays.
+        // The tab goes while the worker waits in the callback: the card goes with it, the token is canceled, and after the
+        // release the worker writes no further file and leaves no temporary one.
         viewModel.CloseTabCommand.Execute(tab);
         await WaitUntilAsync(window, () => viewModel.PageOutput is null);
-
         Assert.Equal(OverlayKind.None, viewModel.Overlay);
+        Assert.True(card.IsDisposed);
+        gate.Release();
+        await card.LastRun!.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
+        Assert.Equal([written], Directory.GetFiles(output));
+    }
 
-        // The run ends at its next page and takes its half-written file with it.
-        await WaitUntilAsync(window, () => Directory.GetFiles(output, ".pw-*").Length == 0);
-        Assert.True(Directory.GetFiles(output).Length < 1000);
+    [AvaloniaFact]
+    public async Task ClosingTheWindowCancelsARunningJob()
+    {
+        using var gate = new JobGate();
+        var (_, viewModel, _, card, output) = await StartBlockedExportAsync(gate);
+        var written = Directory.GetFiles(output).Single();
+
+        viewModel.Dispose();
+        Assert.True(card.IsDisposed);
+        gate.Release();
+        await card.LastRun!.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
+        Assert.Equal([written], Directory.GetFiles(output));
+    }
+
+    [AvaloniaFact]
+    public async Task ExtractReplacesAFileTheSaveDialogConfirmedButNeverTheOpenDocument()
+    {
+        var (window, viewModel, tab, path) = await OpenAsync(organize: true);
+        var confirmed = Path.Combine(_host.Folder, "confirmed.pdf");
+        await File.WriteAllTextAsync(confirmed, "old", TestContext.Current.CancellationToken);
+        tab.SelectPages([0]);
+        var card = await ShowSplitAsync(window, viewModel, tab.ExtractSelectionCommand, PageOutputState.Review);
+
+        // The save dialog names a file that exists (it asked the user): that is the explicit choice, so it is replaced.
+        _host.Picker.Result = confirmed;
+        card.StartCommand.Execute(null);
+        await WaitUntilAsync(window, () => card.State == PageOutputState.Finished);
+        Assert.False(card.IsError, card.ResultText);
+        Assert.Equal(["PAGE 1"], await PageMarksAsync(confirmed));
+        Assert.Equal(Fmt(Strings.SplitDoneOne, confirmed), card.ResultText);
+        Assert.True(File.Exists(path));
+    }
+
+    [AvaloniaFact]
+    public async Task ANameThatTheNamingRulesChangeIsNotTreatedAsConfirmed()
+    {
+        var (window, viewModel, tab, _) = await OpenAsync(organize: true);
+        tab.SelectPages([0]);
+
+        // A name of 100 characters becomes a shorter file name. The file the dialog confirmed (the long name) is not the file
+        // that would be written, so nothing is replaced on its account: the new file is written beside it.
+        var longPath = Path.Combine(_host.Folder, new string('x', 100) + ".pdf");
+        await File.WriteAllTextAsync(longPath, "precious", TestContext.Current.CancellationToken);
+        var written = DocumentSplitter.TargetPaths([new SplitPart(new string('x', 100), [0])], _host.Folder)[0];
+        Assert.NotEqual(longPath, written);
+
+        var card = await ShowSplitAsync(window, viewModel, tab.ExtractSelectionCommand, PageOutputState.Review);
+        _host.Picker.Result = longPath;
+        card.StartCommand.Execute(null);
+        await WaitUntilAsync(window, () => card.State == PageOutputState.Finished);
+        Assert.False(card.IsError, card.ResultText);
+        Assert.Equal("precious", await File.ReadAllTextAsync(longPath, TestContext.Current.CancellationToken));
+        Assert.Equal(Fmt(Strings.SplitDoneOne, written), card.ResultText);
+        card.CloseCommand.Execute(null);
+        Settle(window);
+
+        // The changed name now exists, and a second try with the same long name is refused with the words of an extract (there is
+        // no "Replace existing files" here), without touching either file.
+        var before = await File.ReadAllBytesAsync(written, TestContext.Current.CancellationToken);
+        card = await ShowSplitAsync(window, viewModel, tab.ExtractSelectionCommand, PageOutputState.Review);
+        _host.Picker.Result = longPath;
+        card.StartCommand.Execute(null);
+        await WaitUntilAsync(window, () => card.State == PageOutputState.Finished);
+        Assert.True(card.IsError);
+        Assert.Equal(Strings.PageOutputErrorExtractTargetExists, card.ResultText);
+        Assert.Equal(before, await File.ReadAllBytesAsync(written, TestContext.Current.CancellationToken));
+        Assert.Equal("precious", await File.ReadAllTextAsync(longPath, TestContext.Current.CancellationToken));
+    }
+
+    [AvaloniaFact]
+    public async Task TheWordsForAFailureFollowItsCause()
+    {
+        var (window, viewModel, tab, _) = await OpenAsync(organize: true);
+        tab.SelectPages([0]);
+        var split = await ShowSplitAsync(window, viewModel, tab.SplitCommand, PageOutputState.Setup);
+        var path = Path.Combine(_host.Folder, "a.pdf");
+
+        DocumentSplitException Part(SaveFailureReason reason) =>
+            new(DocumentSplitError.PartFailed, "x", [path], 1, new SaveFailureException(reason, "y"));
+
+        // A part that failed is named with its cause; a file that changed outside says so alone.
+        Assert.Equal(Fmt(Strings.PageOutputErrorPart, 2, Strings.SaveErrorEncrypted), split.DescribeError(Part(SaveFailureReason.EncryptedNotSupported)));
+        Assert.Equal(Fmt(Strings.PageOutputErrorPart, 2, Strings.SaveErrorVerificationFailed), split.DescribeError(Part(SaveFailureReason.VerificationFailed)));
+        Assert.Equal(Fmt(Strings.PageOutputErrorPart, 2, Strings.SaveErrorDiskFull), split.DescribeError(Part(SaveFailureReason.DiskFull)));
+        Assert.Equal(Strings.PageOutputErrorSourceChanged, split.DescribeError(Part(SaveFailureReason.SourceModified)));
+        Assert.Equal(
+            Fmt(Strings.PageOutputErrorTargetExists, "a.pdf"),
+            split.DescribeError(new DocumentSplitException(DocumentSplitError.TargetExists, "x", [path], 1, null)));
+        Assert.Equal(Strings.PageOutputErrorTargetIsSource, split.DescribeError(new DocumentSplitException(DocumentSplitError.TargetIsSource, "x", [path])));
+        Assert.Equal(Strings.PageOutputErrorGone, split.DescribeError(new ObjectDisposedException("x")));
+        Assert.DoesNotContain(path, split.DescribeError(Part(SaveFailureReason.WriteFailed)), StringComparison.Ordinal);
+
+        // An extract has no "Replace existing files": its words for a file in the way do not mention it.
+        split.CancelCommand.Execute(null);
+        Settle(window);
+        var extract = await ShowSplitAsync(window, viewModel, tab.ExtractSelectionCommand, PageOutputState.Review);
+        Assert.Equal(Strings.PageOutputErrorExtractTargetExists, extract.DescribeError(new DocumentSplitException(DocumentSplitError.TargetExists, "x", [path], 0, null)));
+        extract.CancelCommand.Execute(null);
+        Settle(window);
+
+        // An export names the page and the cause.
+        var export = await ShowExportAsync(window, viewModel, tab);
+        Assert.Equal(
+            Fmt(Strings.PageOutputExportWriteFailed, 3, Strings.SaveErrorDiskFull),
+            export.DescribeError(new PageExportException(PageExportError.WriteFailed, "x", 2, [path], new SaveFailureException(SaveFailureReason.DiskFull, "y"))));
+        Assert.Equal(
+            Fmt(Strings.PageOutputErrorTargetExists, "a.pdf"),
+            export.DescribeError(new PageExportException(PageExportError.TargetExists, "x", -1, [path], null)));
+    }
+
+    [AvaloniaFact]
+    public async Task TheMenuNamesTheReasonWhyEntriesAreOff()
+    {
+        var (window, viewModel, tab, _) = await OpenAsync();
+        viewModel.ToggleSidePanelCommand.Execute(SidePanelKind.Pages);
+        Settle(window);
+        var button = Find<Button>(window, "PageOutputButton");
+
+        // Reading view, nothing selected: the entry for the selection is off, and the menu says why in words.
+        var line = ReasonLineOf(button);
+        Assert.True(line.IsVisible);
+        Assert.Equal(Strings.ExtractNeedsSelection, line.Text);
+        Assert.Equal(Strings.ExtractNeedsSelection, Avalonia.Automation.AutomationProperties.GetName(line));
+
+        // In the mode with a selection nothing is off: no reason, no line. The menu of the tools is the same menu.
+        tab.OrganizeCommand.Execute(null);
+        Settle(window);
+        tab.SelectPages([0]);
+        Settle(window);
+        var toolButton = Find<Button>(window, "PageOutputToolButton");
+        Assert.False(ReasonLineOf(toolButton).IsVisible);
+        Assert.False(ReasonLineOf(toolButton).IsVisible);
+
+        // A page plan that waits: apply or discard first.
+        tab.RotateSelectionCommand.Execute(90);
+        Settle(window);
+        line = ReasonLineOf(toolButton);
+        Assert.True(line.IsVisible);
+        Assert.Equal(Strings.PageOutputBlockedPlan, line.Text);
+        tab.UndoPagesCommand.Execute(null);
+        tab.SelectPages([0]);
+        Settle(window);
+        Assert.False(ReasonLineOf(toolButton).IsVisible);
+
+        // Unsaved changes: save first.
+        tab.DiscardPageEditsCommand.Execute(null);
+        await MarkAsync(window, tab);
+        Settle(window);
+        line = ReasonLineOf(Find<Button>(window, "PageOutputButton"));
+        Assert.True(line.IsVisible);
+        Assert.Equal(Strings.PageOutputBlockedUnsaved, line.Text);
     }
 
     [AvaloniaFact]
@@ -606,7 +807,7 @@ public sealed class SplitAndExportCardTests : IDisposable
             Strings.ExportTitle, Strings.ExportDpiLabel, Strings.ExportDpiHint, Strings.ExportDpiInvalid, Strings.ExportScopeLabel,
             Strings.ExportSelected, Strings.ExportAll, Strings.ExportFormat, Strings.ExportStart,
             Strings.PageOutputExportDoneOne, Strings.PageOutputExportDoneMany, Strings.PageOutputExportTooLarge, Strings.PageOutputExportWriteFailed,
-            Strings.PageOutputExportRenderFailed, Strings.PageOutputMoreNotes,
+            Strings.PageOutputExportRenderFailed, Strings.PageOutputMoreNotes, Strings.PageOutputErrorExtractTargetExists,
         ];
         Assert.All(texts, text => Assert.False(string.IsNullOrWhiteSpace(text)));
         Assert.All(texts, text => Assert.DoesNotContain("rechtsgültig", text, StringComparison.OrdinalIgnoreCase));
@@ -634,6 +835,59 @@ public sealed class SplitAndExportCardTests : IDisposable
     }
 
     // --- Helpers --------------------------------------------------------------------------------------------------------
+
+    private static TextBlock ReasonLineOf(Button button)
+    {
+        var flyout = Assert.IsType<MenuFlyout>(button.Flyout);
+        flyout.ShowAt(button);
+        var line = Assert.Single(flyout.Items.OfType<TextBlock>());
+        flyout.Hide();
+        return line;
+    }
+
+    /// <summary>Opens the export card on the 1000 pages, starts it, and returns when the first file is written and the worker waits.</summary>
+    private async Task<(MainWindow Window, MainViewModel ViewModel, TabViewModel Tab, ExportImagesViewModel Card, string Output)> StartBlockedExportAsync(JobGate gate)
+    {
+        var (window, viewModel, tab, _) = await OpenAsync("thousand-pages.pdf");
+        viewModel.PageOutputProgressWrapper = gate.Wrap;
+        var output = Directory.CreateDirectory(Path.Combine(_host.Folder, "images")).FullName;
+        var card = await ShowExportAsync(window, viewModel, tab);
+        card.Folder = output;
+        card.DpiText = "72";
+        card.StartCommand.Execute(null);
+        Assert.Equal(PageOutputState.Running, card.State);
+        await WaitUntilAsync(window, () => gate.Started.IsCompleted && card.Progress > 0);
+        return (window, viewModel, tab, card, output);
+    }
+
+    /// <summary>Blocks the worker of a job in its progress callback after the first file, so that the job is provably running when the test acts.</summary>
+    private sealed class JobGate : IDisposable
+    {
+        private readonly ManualResetEventSlim _release = new(false);
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Started => _started.Task;
+
+        public IProgress<double> Wrap(IProgress<double> inner) => new Blocking(inner, this);
+
+        public void Release() => _release.Set();
+
+        public void Dispose()
+        {
+            _release.Set();
+            _release.Dispose();
+        }
+
+        private sealed class Blocking(IProgress<double> inner, JobGate owner) : IProgress<double>
+        {
+            public void Report(double value)
+            {
+                inner.Report(value);
+                owner._started.TrySetResult();
+                owner._release.Wait(TimeSpan.FromSeconds(30));
+            }
+        }
+    }
 
     private static string Fmt(string format, params object[] arguments) =>
         string.Format(Strings.Culture, CompositeFormat.Parse(format), arguments);

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Pagewing.App.Resources;
 using Pagewing.App.ViewModels;
 
@@ -16,6 +17,8 @@ internal sealed class PageOutputMenu
     private readonly Button _button;
     private TabViewModel? _tab;
     private MenuItem? _extractItem;
+    private TextBlock? _reasonLine;
+    private Separator? _reasonSeparator;
 
     /// <summary>Creates the menu on the flyout of <paramref name="button"/> (a <see cref="MenuFlyout"/>).</summary>
     public PageOutputMenu(Button button)
@@ -47,8 +50,25 @@ internal sealed class PageOutputMenu
 
         tab.PropertyChanged += OnTabPropertyChanged;
         _extractItem = new MenuItem { Name = "ExtractItem", Header = Strings.CommandExtractPages, Command = tab.ExtractSelectionCommand };
+
+        // Why an entry cannot run, in words at the top of the menu (not interactive, not a stop of the arrow keys): the entries
+        // that are off give a sighted user no reason by themselves.
+        _reasonLine = new TextBlock
+        {
+            Name = "PageOutputMenuReason",
+            Classes = { "caption" },
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 280,
+            Margin = new Avalonia.Thickness(12, 6),
+            Focusable = false,
+            IsHitTestVisible = false,
+        };
+        _reasonLine.Bind(TextBlock.ForegroundProperty, _reasonLine.GetResourceObservable("Pw.Brush.Text.Secondary"));
+        _reasonSeparator = new Separator();
         flyout.ItemsSource = new Control[]
         {
+            _reasonLine,
+            _reasonSeparator,
             _extractItem,
             new MenuItem { Name = "SplitItem", Header = Strings.CommandSplitDocument, Command = tab.SplitCommand },
             new MenuItem { Name = "ExportImagesItem", Header = Strings.CommandExportImages, Command = tab.ExportImagesCommand },
@@ -81,9 +101,18 @@ internal sealed class PageOutputMenu
         var blocked = _tab?.PageOutputBlockedReason;
         AutomationProperties.SetHelpText(_button, blocked);
         ToolTip.SetTip(_button, blocked is null ? Strings.PageOutputMenu : $"{Strings.PageOutputMenu}: {blocked}");
+        var reason = _tab?.ExtractUnavailableReason;
         if (_extractItem is not null)
         {
-            AutomationProperties.SetHelpText(_extractItem, _tab?.ExtractUnavailableReason);
+            AutomationProperties.SetHelpText(_extractItem, reason);
+        }
+
+        if (_reasonLine is not null && _reasonSeparator is not null)
+        {
+            _reasonLine.Text = reason;
+            _reasonLine.IsVisible = reason is not null;
+            _reasonSeparator.IsVisible = reason is not null;
+            AutomationProperties.SetName(_reasonLine, reason);
         }
     }
 }

@@ -27,6 +27,9 @@ public sealed partial class MainViewModel
     /// </summary>
     internal Func<string?, Task<string?>>? FolderPicker { get; set; }
 
+    /// <summary>Gets or sets what wraps the progress of the cards' jobs (tests block a job inside it); <see langword="null"/> in the program.</summary>
+    internal Func<IProgress<double>, IProgress<double>>? PageOutputProgressWrapper { get; set; }
+
     private bool IsPageOutputRunning => _pageOutput is { IsRunning: true };
 
     /// <summary>Shows the card of <paramref name="kind"/> for <paramref name="tab"/> when the commands may run now.</summary>
@@ -43,6 +46,13 @@ public sealed partial class MainViewModel
             return;
         }
 
+        // A card that is shown and does not write goes first (its view model is disposed, the view takes the new one); one that
+        // writes is kept as it is (it was refused above), so the running job is always the card of the window.
+        if (Overlay == OverlayKind.PageOutput)
+        {
+            HideOverlay();
+        }
+
         // The document the user sees with the file it was opened from, read together (a tab that closed meanwhile has none).
         if (DocumentSplitter.SourceOf(tab.Session) is not { } source)
         {
@@ -55,6 +65,7 @@ public sealed partial class MainViewModel
             ? new ExportImagesViewModel(input, PickOutputFolderAsync)
             : new SplitViewModel(input, kind == PageOutputKind.Extract, PickOutputFolderAsync, PickOutputFileAsync);
         card.Closed += HideOverlay;
+        card.ProgressWrapper = PageOutputProgressWrapper;
 
         // The tab decides whether its document still allows it: a change of the lock or of the document ends the card.
         _pageOutputTabHandler = (_, e) =>

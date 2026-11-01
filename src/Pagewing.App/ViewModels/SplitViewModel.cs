@@ -276,7 +276,8 @@ public sealed class SplitViewModel : PageOutputViewModel
                 case DocumentSplitError.DirectoryMissing:
                     return Strings.PageOutputErrorFolderMissing;
                 case DocumentSplitError.TargetExists:
-                    return Format(Strings.PageOutputErrorTargetExists, NamesOf(split.Paths));
+                    // An extract has no "Replace existing files": the name was not the one the dialog confirmed, or a file appeared after it.
+                    return _isExtract ? Strings.PageOutputErrorExtractTargetExists : Format(Strings.PageOutputErrorTargetExists, NamesOf(split.Paths));
                 case DocumentSplitError.TargetIsSource:
                     return Strings.PageOutputErrorTargetIsSource;
                 case DocumentSplitError.UnsafeName:

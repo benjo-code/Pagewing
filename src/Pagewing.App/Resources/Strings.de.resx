@@ -2001,4 +2001,7 @@
   <data name="PageOutputMoreNotes" xml:space="preserve">
     <value>… und {0} weitere Hinweise</value>
   </data>
+  <data name="PageOutputErrorExtractTargetExists" xml:space="preserve">
+    <value>Eine Datei mit diesem Namen gibt es schon, sie wurde nicht ersetzt. Wählen Sie einen anderen Namen.</value>
+  </data>
 </root>
