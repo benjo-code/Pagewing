@@ -105,6 +105,50 @@ public sealed class RedactRasterTests
     }
 
     [Fact]
+    public async Task ColoursPositionAndOrientationSurviveTheWriter()
+    {
+        // A page of 80 x 40 pt with an image of 80 x 40 px, so that rendering at scale 1 maps one pixel to one pixel. Four quadrants with
+        // distinct colours tell an R/B swap, a vertical or horizontal flip and a wrong stride apart. The bottom left quadrant has alpha 0
+        // and the bottom right alpha 128 in the input: a raster page is opaque and the alpha byte is ignored (BGRx), so both render as
+        // their colour channels, solid, and neither as transparent (white) nor blended.
+        const int Width = 80;
+        const int Height = 40;
+        var bgra = new byte[Width * Height * 4];
+        for (var y = 0; y < Height; y++)
+        {
+            for (var x = 0; x < Width; x++)
+            {
+                var top = y < Height / 2;
+                var left = x < Width / 2;
+                (byte B, byte G, byte R, byte A) pixel = (top, left) switch
+                {
+                    (true, true) => (0, 0, 255, 255),
+                    (true, false) => (0, 255, 0, 255),
+                    (false, true) => (255, 0, 0, 0),
+                    _ => (0, 255, 255, 128),
+                };
+                var at = ((y * Width) + x) * 4;
+                bgra[at] = pixel.B;
+                bgra[at + 1] = pixel.G;
+                bgra[at + 2] = pixel.R;
+                bgra[at + 3] = pixel.A;
+            }
+        }
+
+        using var folder = new TempFolder();
+        var (written, _) = await WriteAndReopenAsync(folder, new RasterPage(Width, Height, 0, Width, Height, bgra));
+        await using var _1 = written;
+        var rendered = await written.RenderPageAsync(0, 1.0, null, Ct);
+
+        Assert.Equal(Width, rendered.Width);
+        Assert.Equal(Height, rendered.Height);
+        AssertPixel(rendered, 20, 10, red: 255, green: 0, blue: 0);
+        AssertPixel(rendered, 60, 10, red: 0, green: 255, blue: 0);
+        AssertPixel(rendered, 20, 30, red: 0, green: 0, blue: 255);
+        AssertPixel(rendered, 60, 30, red: 255, green: 255, blue: 0);
+    }
+
+    [Fact]
     public async Task RotationIsWrittenOnThePage()
     {
         using var folder = new TempFolder();
@@ -227,6 +271,16 @@ public sealed class RedactRasterTests
         }
 
         return differing <= blocks * 0.0027;
+    }
+
+    private static void AssertPixel(RenderedImage image, int x, int y, int red, int green, int blue)
+    {
+        var at = (y * image.Stride) + (x * 4);
+        var pixels = image.Pixels.Span;
+        Assert.InRange(pixels[at], Math.Max(0, blue - 2), Math.Min(255, blue + 2));
+        Assert.InRange(pixels[at + 1], Math.Max(0, green - 2), Math.Min(255, green + 2));
+        Assert.InRange(pixels[at + 2], Math.Max(0, red - 2), Math.Min(255, red + 2));
+        Assert.Equal(255, pixels[at + 3]);
     }
 
     private static double Mean(RenderedImage image, int x0, int y0, int channel)
