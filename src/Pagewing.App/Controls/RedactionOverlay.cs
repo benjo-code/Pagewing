@@ -49,6 +49,9 @@ internal sealed class RedactionOverlay : Control
     /// <summary>The thickness in DIPs of the edge of a mark.</summary>
     internal const double EdgeThickness = 2;
 
+    /// <summary>The thickness in DIPs of the thin edge of an area in the preview.</summary>
+    internal const double PreviewEdgeThickness = 1;
+
     /// <summary>The most selected marks that are elements for screen readers (the rest is drawn and counted in the toolbar).</summary>
     internal const int MaxAutomationFrames = 16;
 
@@ -72,6 +75,8 @@ internal sealed class RedactionOverlay : Control
     private readonly Dictionary<HandleKind, Border> _handleElements = [];
     private readonly List<(Rect Frame, bool Single)> _frames = [];
     private RedactionPlan? _plan;
+    private bool _preview;
+    private Pen? _previewPen;
     private Dictionary<int, List<RedactionMark>> _byPage = NoMarks;
     private IReadOnlySet<Guid> _selected = new HashSet<Guid>();
 
@@ -101,6 +106,15 @@ internal sealed class RedactionOverlay : Control
     /// <summary>Gets the area or the new place of a mark being dragged, or <see langword="null"/>.</summary>
     internal RedactionDragView? Drag => _drag;
 
+    /// <summary>Gets whether the marks are drawn as the filled areas they will leave (the preview).</summary>
+    internal bool IsPreview => _preview;
+
+    /// <summary>
+    /// Gets the colour the areas of the preview are filled with: black or white, as the fill of the plan says (the colour of the
+    /// content that is written, not a colour of the interface).
+    /// </summary>
+    internal Color PreviewFillColor => _plan?.Fill == RedactionFill.White ? Colors.White : Colors.Black;
+
     /// <summary>Gets how many times the plan was indexed (for tests: a scroll or a change of the selection indexes nothing).</summary>
     internal int IndexCount { get; private set; }
 
@@ -129,6 +143,22 @@ internal sealed class RedactionOverlay : Control
         IndexCount++;
         RebuildSelected();
         UpdateElements();
+        InvalidateAll();
+    }
+
+    /// <summary>
+    /// Switches the preview: the marks are drawn as opaque areas in the fill of the plan, as they will be after applying (with a thin
+    /// edge, so a white area stays visible on a white page), instead of the tint and the hatch. Only this layer changes: nothing is
+    /// rendered, and PDFium and the working copy are not involved.
+    /// </summary>
+    internal void SetPreview(bool preview)
+    {
+        if (_preview == preview)
+        {
+            return;
+        }
+
+        _preview = preview;
         InvalidateAll();
     }
 
@@ -361,6 +391,24 @@ internal sealed class RedactionOverlay : Control
         }
 
         LastDrawnRectangles++;
+        if (_preview)
+        {
+            // What will be written: the area in its fill, exactly the rectangle; a thin edge in the colour of the marks keeps a white
+            // area (and a black one on a dark page) visible, so the preview is not told by its fill alone.
+            context.DrawRectangle(_plan?.Fill == RedactionFill.White ? Brushes.White : Brushes.Black, null, rect);
+            if (rect.Width > PreviewEdgeThickness && rect.Height > PreviewEdgeThickness)
+            {
+                if (_previewPen is not { } previewPen || previewPen.Brush is not ISolidColorBrush known || known.Color != pens.Edge)
+                {
+                    _previewPen = previewPen = new Pen(new SolidColorBrush(pens.Edge), PreviewEdgeThickness);
+                }
+
+                context.DrawRectangle(null, previewPen, rect.Deflate(PreviewEdgeThickness / 2));
+            }
+
+            return;
+        }
+
         context.DrawRectangle(pens.FillBrush, null, rect);
 
         // The hatch: lines at 45 degrees, only over the part in view (a mark may be far taller than the window at a high zoom).

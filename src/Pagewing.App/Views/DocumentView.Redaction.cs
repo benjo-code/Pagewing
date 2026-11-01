@@ -218,6 +218,7 @@ public sealed partial class DocumentView
         {
             var overlay = EnsureRedactionOverlay();
             overlay.SetPlan(tab.RedactionPlan);
+            overlay.SetPreview(tab.IsRedactionPreview);
             overlay.SetSelection(tab.SelectedMarks);
             if (_redactionGesture is { MarkId: { } id } && tab.RedactionPlan?.Marks.All(mark => mark.Id != id) != false)
             {
@@ -232,6 +233,7 @@ public sealed partial class DocumentView
         {
             shown.SetDrag(null);
             shown.SetPlan(null);
+            shown.SetPreview(false);
             shown.SetSelection(new HashSet<Guid>());
         }
     }

@@ -2295,4 +2295,367 @@
   <data name="RedactRowSelected" xml:space="preserve">
     <value>ausgewählt</value>
   </data>
+  <data name="CommandRedactApply" xml:space="preserve">
+    <value>Schwärzen anwenden</value>
+  </data>
+  <data name="CommandRedactPreview" xml:space="preserve">
+    <value>Vorschau der Schwärzung</value>
+  </data>
+  <data name="RedactApplyButton" xml:space="preserve">
+    <value>Anwenden …</value>
+  </data>
+  <data name="RedactApplyTip" xml:space="preserve">
+    <value>Prüfen, was entfernt wird, und dann die Datei schwärzen</value>
+  </data>
+  <data name="RedactPreviewButton" xml:space="preserve">
+    <value>Vorschau</value>
+  </data>
+  <data name="RedactPreviewTip" xml:space="preserve">
+    <value>Die markierten Bereiche als gefüllte Flächen zeigen, mit den Zahlen dessen, was entfernt wird</value>
+  </data>
+  <data name="RedactPreviewBarName" xml:space="preserve">
+    <value>Vorschau der Schwärzung</value>
+  </data>
+  <data name="RedactPreviewWorking" xml:space="preserve">
+    <value>Zählt, was entfernt wird …</value>
+  </data>
+  <data name="RedactPreviewFailed" xml:space="preserve">
+    <value>Die Zahlen konnten nicht berechnet werden. Es wurde nichts verändert.</value>
+  </data>
+  <data name="RedactPreviewRefused" xml:space="preserve">
+    <value>Die Datei lässt sich nicht schwärzen: {0}</value>
+  </data>
+  <data name="RedactPreviewEmpty" xml:space="preserve">
+    <value>Noch keine Markierungen, also wird nichts entfernt.</value>
+  </data>
+  <data name="RedactPreviewNote" xml:space="preserve">
+    <value>Die Vorschau verändert nichts an der Datei.</value>
+  </data>
+  <data name="RedactSumFormat" xml:space="preserve">
+    <value>Entfernt: {0}</value>
+  </data>
+  <data name="RedactSumNothing" xml:space="preserve">
+    <value>unter den Markierungen liegt nichts, die Flächen werden gezeichnet</value>
+  </data>
+  <data name="RedactSumCharOne" xml:space="preserve">
+    <value>1 Zeichen</value>
+  </data>
+  <data name="RedactSumChars" xml:space="preserve">
+    <value>{0} Zeichen</value>
+  </data>
+  <data name="RedactSumImageOne" xml:space="preserve">
+    <value>1 Bild</value>
+  </data>
+  <data name="RedactSumImages" xml:space="preserve">
+    <value>{0} Bilder</value>
+  </data>
+  <data name="RedactSumAnnotationOne" xml:space="preserve">
+    <value>1 Annotation</value>
+  </data>
+  <data name="RedactSumAnnotations" xml:space="preserve">
+    <value>{0} Annotationen</value>
+  </data>
+  <data name="RedactSumPathOne" xml:space="preserve">
+    <value>1 Pfad</value>
+  </data>
+  <data name="RedactSumPaths" xml:space="preserve">
+    <value>{0} Pfade</value>
+  </data>
+  <data name="RedactSumFormObjectOne" xml:space="preserve">
+    <value>1 Formularobjekt</value>
+  </data>
+  <data name="RedactSumFormObjects" xml:space="preserve">
+    <value>{0} Formularobjekte</value>
+  </data>
+  <data name="RedactSumTextObjectWholeOne" xml:space="preserve">
+    <value>1 Textobjekt ganz</value>
+  </data>
+  <data name="RedactSumTextObjectsWhole" xml:space="preserve">
+    <value>{0} Textobjekte ganz</value>
+  </data>
+  <data name="RedactSecFallbacks" xml:space="preserve">
+    <value>Ganz entfernt statt genau:</value>
+  </data>
+  <data name="RedactSecCleaned" xml:space="preserve">
+    <value>Wird bereinigt (immer, bei jeder Schwärzung):</value>
+  </data>
+  <data name="RedactSecCleanedDone" xml:space="preserve">
+    <value>Bereinigt (aus der geschriebenen Datei zurückgelesen):</value>
+  </data>
+  <data name="RedactSecNotCleaned" xml:space="preserve">
+    <value>Nicht bereinigt und nicht geprüft:</value>
+  </data>
+  <data name="RedactSecAfter" xml:space="preserve">
+    <value>Wird nach dem Schreiben geprüft:</value>
+  </data>
+  <data name="RedactSecRemoved" xml:space="preserve">
+    <value>Entfernt:</value>
+  </data>
+  <data name="RedactSecChecked" xml:space="preserve">
+    <value>Geprüft:</value>
+  </data>
+  <data name="RedactSecNotChecked" xml:space="preserve">
+    <value>Nicht geprüft:</value>
+  </data>
+  <data name="RedactSecNotCheckedNote" xml:space="preserve">
+    <value>Die Zeilen der Prüfung selbst sind englisch.</value>
+  </data>
+  <data name="RedactSecFindings" xml:space="preserve">
+    <value>Was die Prüfung gefunden hat:</value>
+  </data>
+  <data name="RedactCheckList" xml:space="preserve">
+    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel, die Daten auf Dokumentebene und ein Rendern jeder geschwärzten Seite im Vergleich zum Original.</value>
+  </data>
+  <data name="RedactCheckNothingWritten" xml:space="preserve">
+    <value>Findet die Prüfung etwas, wird nichts geschrieben, und die Markierungen bleiben.</value>
+  </data>
+  <data name="RedactFallbackText" xml:space="preserve">
+    <value>Seite {0}: Ein Textobjekt wurde ganz entfernt, weil sich die Zeichen, die bleiben würden, nicht neu schreiben und zurücklesen ließen.</value>
+  </data>
+  <data name="RedactFallbackImage" xml:space="preserve">
+    <value>Seite {0}: Ein Bild wurde ganz entfernt, statt unter der Markierung überschrieben zu werden.</value>
+  </data>
+  <data name="RedactFallbackPath" xml:space="preserve">
+    <value>Seite {0}: Ein Pfad wurde ganz entfernt, statt um die Markierung herum zugeschnitten zu werden.</value>
+  </data>
+  <data name="RedactFallbackForm" xml:space="preserve">
+    <value>Seite {0}: Ein Formularobjekt wurde ganz entfernt, statt zerlegt zu werden.</value>
+  </data>
+  <data name="RedactNothingUnderMarks" xml:space="preserve">
+    <value>Seite {0}: Unter den Markierungen lag kein Inhalt; die Flächen werden gezeichnet.</value>
+  </data>
+  <data name="RedactPageRemoved" xml:space="preserve">
+    <value>Seite {0}: {1}.</value>
+  </data>
+  <data name="RedactRemovedAnnotationsNote" xml:space="preserve">
+    <value>mit ihren Popups und Antworten</value>
+  </data>
+  <data name="RedactFieldAuthor" xml:space="preserve">
+    <value>Autor</value>
+  </data>
+  <data name="RedactFieldTitle" xml:space="preserve">
+    <value>Titel</value>
+  </data>
+  <data name="RedactFieldSubject" xml:space="preserve">
+    <value>Thema</value>
+  </data>
+  <data name="RedactFieldKeywords" xml:space="preserve">
+    <value>Stichwörter</value>
+  </data>
+  <data name="RedactFieldCreator" xml:space="preserve">
+    <value>Ersteller</value>
+  </data>
+  <data name="RedactFieldProducer" xml:space="preserve">
+    <value>Erzeugerprogramm</value>
+  </data>
+  <data name="RedactCleanField" xml:space="preserve">
+    <value>{0} in den Dokumenteigenschaften (der Text wird hier nicht wiederholt)</value>
+  </data>
+  <data name="RedactCleanXmp" xml:space="preserve">
+    <value>XMP-Metadaten: bis zu {0} (die Zahl kann Metadaten von Objekten in den Seiten enthalten, die bleiben; siehe unten).</value>
+  </data>
+  <data name="RedactCleanBookmarks" xml:space="preserve">
+    <value>Lesezeichen: bis zu {0}.</value>
+  </data>
+  <data name="RedactCleanAttachments" xml:space="preserve">
+    <value>Angehängte Dateien: {0}.</value>
+  </data>
+  <data name="RedactCleanScripts" xml:space="preserve">
+    <value>JavaScript: bis zu {0} (die Zahl kann Aktionen von Annotationen enthalten, die bleiben; siehe unten).</value>
+  </data>
+  <data name="RedactCleanLabels" xml:space="preserve">
+    <value>Seitenbeschriftungen: {0}.</value>
+  </data>
+  <data name="RedactCleanNone" xml:space="preserve">
+    <value>Die Datei enthält nichts von den Daten auf Dokumentebene, die das Bereinigen entfernt.</value>
+  </data>
+  <data name="RedactCleanNoneIncomplete" xml:space="preserve">
+    <value>Nichts gefunden; die Suche konnte nicht jeden Stream lesen, es kann also mehr geben.</value>
+  </data>
+  <data name="RedactCleanIncomplete" xml:space="preserve">
+    <value>Die Suche konnte nicht jeden Stream lesen, es kann also mehr geben.</value>
+  </data>
+  <data name="RedactCleanSeeBelow" xml:space="preserve">
+    <value>Die übrigen Einträge stehen unter „Nicht bereinigt und nicht geprüft“.</value>
+  </data>
+  <data name="RedactLossLinksOne" xml:space="preserve">
+    <value>{0} interner Link verliert sein Ziel: Er bleibt auf der Seite, führt aber nirgendwohin.</value>
+  </data>
+  <data name="RedactLossLinks" xml:space="preserve">
+    <value>{0} interne Links verlieren ihr Ziel: Sie bleiben auf den Seiten, führen aber nirgendwohin.</value>
+  </data>
+  <data name="RedactLossFieldsOne" xml:space="preserve">
+    <value>{0} Formularfeld lässt sich danach nicht mehr zuverlässig ausfüllen: Sein Widget bleibt nur als Annotation auf der Seite.</value>
+  </data>
+  <data name="RedactLossFields" xml:space="preserve">
+    <value>{0} Formularfelder lassen sich danach nicht mehr zuverlässig ausfüllen: Ihre Widgets bleiben nur als Annotationen auf den Seiten.</value>
+  </data>
+  <data name="RedactLossRgbOne" xml:space="preserve">
+    <value>{0} Bild, das unter einer Markierung überschrieben wird, wird neu als RGB geschrieben; die Farben eines CMYK- oder indizierten Bildes können in anderen Programmen anders aussehen.</value>
+  </data>
+  <data name="RedactLossRgb" xml:space="preserve">
+    <value>{0} Bilder, die unter einer Markierung überschrieben werden, werden neu als RGB geschrieben; die Farben von CMYK- oder indizierten Bildern können in anderen Programmen anders aussehen.</value>
+  </data>
+  <data name="RedactLossSignature" xml:space="preserve">
+    <value>Dieses Dokument ist signiert. Danach zeigen Programme wie Acrobat die Signatur als ungültig an; ihre Daten bleiben als wirkungslose Daten in der Datei.</value>
+  </data>
+  <data name="RedactNotCleanedObjects" xml:space="preserve">
+    <value>Metadaten und private Daten (/Metadata, /PieceInfo) von Formularobjekten und Bildobjekten, die mit den Seiten kommen.</value>
+  </data>
+  <data name="RedactNotCleanedActions" xml:space="preserve">
+    <value>Aktionen von Annotationen (/AA, Links und andere Aktionen), die mit den Seiten kommen.</value>
+  </data>
+  <data name="RedactNotCleanedFieldValues" xml:space="preserve">
+    <value>Die Werte (/V, /DV) von Formularfeldern bleiben an ihren Widgets in der Datei; ein markierter Text darin wird von der Prüfung der Dateibytes noch gefunden, und dann wird nichts geschrieben.</value>
+  </data>
+  <data name="RedactNotCleanedSignature" xml:space="preserve">
+    <value>Die Daten einer digitalen Signatur (Zertifikatsname, Inhalt) bleiben als wirkungslose Daten in der Datei.</value>
+  </data>
+  <data name="RedactNotCheckedNoTermOne" xml:space="preserve">
+    <value>{0} Markierung hat keinen Begriff (ein auf der Seite aufgezogenes Rechteck): Der Text darunter wird entfernt, in den Dateibytes wird aber nicht nach ihm gesucht; geprüft werden nur die Zeichen im Bereich.</value>
+  </data>
+  <data name="RedactNotCheckedNoTerm" xml:space="preserve">
+    <value>{0} Markierungen haben keinen Begriff (auf der Seite aufgezogene Rechtecke): Der Text darunter wird entfernt, in den Dateibytes wird aber nicht nach ihm gesucht; geprüft werden nur die Zeichen in den Bereichen.</value>
+  </data>
+  <data name="RedactCheckedText" xml:space="preserve">
+    <value>Seitentext: Jeder entfernte Text kommt im Seitentext der geschriebenen Datei höchstens so oft vor wie vorher minus die entfernten Stellen (nie, bei einem Text, der überall markiert wurde).</value>
+  </data>
+  <data name="RedactCheckedBytes" xml:space="preserve">
+    <value>Dateibytes: Die Datei wurde nach jedem entfernten Text von mindestens 4 Zeichen durchsucht, mit dekodierten Zeichenketten und entpackten Streams, auch in älteren Revisionen, Metadaten und Anhängen.</value>
+  </data>
+  <data name="RedactCheckedAreas" xml:space="preserve">
+    <value>Markierte Bereiche: Kein Zeichen der geschriebenen Datei liegt in einem markierten Bereich, und die Pixel von Bildern darunter haben die Farbe des Bereichs.</value>
+  </data>
+  <data name="RedactCheckedPages" xml:space="preserve">
+    <value>Seiten: Jede geschwärzte Seite wurde aus der geschriebenen Datei gerendert und sieht außerhalb der markierten Bereiche aus wie das Original.</value>
+  </data>
+  <data name="RedactCheckedKeys" xml:space="preserve">
+    <value>Seitenschlüssel: Keine Seite der geschriebenen Datei trägt /Thumb, /PieceInfo, /Metadata oder /AA.</value>
+  </data>
+  <data name="RedactCheckedCleanup" xml:space="preserve">
+    <value>Bereinigung: Die Dokumenteigenschaften, Lesezeichen, der Namensbaum (Anhänge, Skripte), Seitenbeschriftungen, die Öffnen-Aktion, Aktionen, Formular und Berechtigungen wurden aus der geschriebenen Datei zurückgelesen; nichts davon ist übrig.</value>
+  </data>
+  <data name="RedactApplyTitle" xml:space="preserve">
+    <value>„{0}“ schwärzen?</value>
+  </data>
+  <data name="RedactIrreversible" xml:space="preserve">
+    <value>Das Schwärzen lässt sich nicht rückgängig machen.</value>
+  </data>
+  <data name="RedactRefusedTitle" xml:space="preserve">
+    <value>„{0}“ lässt sich nicht schwärzen</value>
+  </data>
+  <data name="RedactRefusedNothing" xml:space="preserve">
+    <value>Es wurde nichts geschrieben. Die Markierungen bleiben.</value>
+  </data>
+  <data name="RedactFailedTitle" xml:space="preserve">
+    <value>Die Prüfung hat ein Problem mit „{0}“ gefunden</value>
+  </data>
+  <data name="RedactFailedNothing" xml:space="preserve">
+    <value>Es wurde nichts geschrieben, und die Originaldatei ist unverändert. Die Markierungen bleiben.</value>
+  </data>
+  <data name="RedactReportTitle" xml:space="preserve">
+    <value>„{0}“ wurde geschwärzt</value>
+  </data>
+  <data name="RedactReportIntro" xml:space="preserve">
+    <value>Das wurde entfernt, bereinigt und geprüft, und das nicht.</value>
+  </data>
+  <data name="RedactViewFailedTitle" xml:space="preserve">
+    <value>Die geschwärzte Datei wurde nach „{0}“ geschrieben</value>
+  </data>
+  <data name="SaveChoiceClose" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="RedactReportName" xml:space="preserve">
+    <value>Bericht der Schwärzung</value>
+  </data>
+  <data name="RedactRefusalHeadingEncrypted" xml:space="preserve">
+    <value>Die Datei ist verschlüsselt</value>
+  </data>
+  <data name="RedactRefusalHeadingKeys" xml:space="preserve">
+    <value>Seitenschlüssel, die sich nicht entfernen lassen</value>
+  </data>
+  <data name="RedactRefusalHeadingKeysUnverified" xml:space="preserve">
+    <value>Die Seitenschlüssel konnten nicht geprüft werden</value>
+  </data>
+  <data name="RedactRefusalHeadingPage" xml:space="preserve">
+    <value>Eine Seite lässt sich nicht schwärzen</value>
+  </data>
+  <data name="RedactRefusalEncrypted" xml:space="preserve">
+    <value>Die Datei ist verschlüsselt. Beim Schwärzen würde sie ohne ihren Schutz geschrieben, und Pagewing entfernt einen Schutz nie stillschweigend; deshalb wird die Datei nicht geschwärzt.</value>
+  </data>
+  <data name="RedactRefusalKeysUnverified" xml:space="preserve">
+    <value>Die Seitenschlüssel der Datei konnten nicht geprüft werden, deshalb wird die Datei nicht geschwärzt: Eine Seite kann ein Vorschaubild, private Daten, Metadaten oder Aktionen tragen, die Pagewing nicht entfernen kann.</value>
+  </data>
+  <data name="RedactRefusalKeys" xml:space="preserve">
+    <value>Auf {0} hängen ein Vorschaubild, private Daten, Metadaten oder Aktionen, die Pagewing nicht entfernen kann; deshalb wird die Datei nicht geschwärzt.</value>
+  </data>
+  <data name="RedactRefusalKeyNames" xml:space="preserve">
+    <value>Schlüssel: {0}</value>
+  </data>
+  <data name="RedactRefusalPage" xml:space="preserve">
+    <value>{0} lässt sich nicht schwärzen, weil das Schwärzen Inhalt außerhalb der markierten Bereiche verändern würde. Die Datei wird nicht geschwärzt.</value>
+  </data>
+  <data name="RedactRefusalPageReason" xml:space="preserve">
+    <value>Grund laut Prüfung (technisch, auf Englisch): {0}</value>
+  </data>
+  <data name="RedactRefusalPageHint" xml:space="preserve">
+    <value>Wenn die Markierungen auf dieser Seite auf Kommentaren oder Formularfeldern liegen, markieren Sie statt des Textes den Bereich auf der Seite, oder löschen Sie zuerst die Kommentare.</value>
+  </data>
+  <data name="RedactRefusalOther" xml:space="preserve">
+    <value>Die Datei wird nicht geschwärzt.</value>
+  </data>
+  <data name="RedactPageOne" xml:space="preserve">
+    <value>Seite {0}</value>
+  </data>
+  <data name="RedactPageMany" xml:space="preserve">
+    <value>Seiten {0}</value>
+  </data>
+  <data name="RedactPageFile" xml:space="preserve">
+    <value>die Datei</value>
+  </data>
+  <data name="RedactFailureNotCompleted" xml:space="preserve">
+    <value>Die Prüfung der geschriebenen Datei ließ sich nicht abschließen, deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailureUnremovable" xml:space="preserve">
+    <value>Entfernter Text{0} steht noch in der Datei, an einer Stelle, die kein Seitenobjekt ist (zum Beispiel eine Type-3-Schrift, ein Muster oder ein Stream eines Formulars), und Pagewing kann ihn dort nicht entfernen; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailureText" xml:space="preserve">
+    <value>Ein entfernter Text steht noch im Seitentext des Ergebnisses{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailureChar" xml:space="preserve">
+    <value>Zeichen des Ergebnisses liegen in einem markierten Bereich{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailureImage" xml:space="preserve">
+    <value>Pixel eines Bildes unter einem markierten Bereich wurden nicht überschrieben{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailureUnreadable" xml:space="preserve">
+    <value>Ein Teil der Datei ließ sich nicht lesen{0}; deshalb lässt sich nicht zeigen, dass vom entfernten Text nichts mehr darin steht, und die Datei wurde nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailureKeys" xml:space="preserve">
+    <value>Eine Seite trägt noch ein Vorschaubild, private Daten, Metadaten oder Aktionen, die Pagewing nicht entfernen kann, oder die Schlüssel ließen sich nicht prüfen{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailurePage" xml:space="preserve">
+    <value>Eine Seite sieht außerhalb der markierten Bereiche anders aus{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailureUnverifiable" xml:space="preserve">
+    <value>Nach einem entfernten Text ließ sich nicht suchen{0}; deshalb lässt sich das Ergebnis nicht prüfen, und die Datei wurde nicht geschrieben.</value>
+  </data>
+  <data name="RedactFailureCleanup" xml:space="preserve">
+    <value>Etwas, das die Bereinigung hätte entfernen sollen, steht noch in der geschriebenen Datei{0}; deshalb wurde die Datei nicht geschrieben. Angabe (technisch, auf Englisch): {1}</value>
+  </data>
+  <data name="RedactErrorNotPrepared" xml:space="preserve">
+    <value>Die Markierungen ließen sich nicht vorbereiten. Es wurde nichts geschrieben; die Markierungen bleiben.</value>
+  </data>
+  <data name="RedactErrorDraft" xml:space="preserve">
+    <value>Ein in ein Formularfeld oder Textfeld getippter Text wurde nicht übernommen und ginge verloren. Korrigieren oder verwerfen Sie ihn und wenden Sie die Markierungen dann erneut an.</value>
+  </data>
+  <data name="RedactErrorFileChanged" xml:space="preserve">
+    <value>Die Datei wurde außerhalb von Pagewing geändert. Öffnen Sie sie erneut, um zu schwärzen. Es wurde nichts geschrieben; die Markierungen bleiben in diesem Tab, bis Sie ihn schließen.</value>
+  </data>
+  <data name="RedactSaveFirstText" xml:space="preserve">
+    <value>Es gibt Kommentare oder Formulareinträge, die noch nicht gespeichert sind. Das Schwärzen schreibt die ganze Datei neu und enthält sie nicht. Speichern Sie sie zuerst; danach lassen sich die Markierungen anwenden.</value>
+  </data>
+  <data name="RedactApplyBlocked" xml:space="preserve">
+    <value>Das Schwärzen wartet, bis der Druckauftrag beendet ist.</value>
+  </data>
 </root>

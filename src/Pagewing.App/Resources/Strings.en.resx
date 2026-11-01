@@ -2295,4 +2295,367 @@
   <data name="RedactRowSelected" xml:space="preserve">
     <value>selected</value>
   </data>
+  <data name="CommandRedactApply" xml:space="preserve">
+    <value>Apply redactions</value>
+  </data>
+  <data name="CommandRedactPreview" xml:space="preserve">
+    <value>Preview redactions</value>
+  </data>
+  <data name="RedactApplyButton" xml:space="preserve">
+    <value>Apply …</value>
+  </data>
+  <data name="RedactApplyTip" xml:space="preserve">
+    <value>Check what will be removed, then redact the file</value>
+  </data>
+  <data name="RedactPreviewButton" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="RedactPreviewTip" xml:space="preserve">
+    <value>Show the marked areas as filled areas, with the numbers of what is removed</value>
+  </data>
+  <data name="RedactPreviewBarName" xml:space="preserve">
+    <value>Preview of the redaction</value>
+  </data>
+  <data name="RedactPreviewWorking" xml:space="preserve">
+    <value>Counting what is removed …</value>
+  </data>
+  <data name="RedactPreviewFailed" xml:space="preserve">
+    <value>The numbers could not be worked out. Nothing was changed.</value>
+  </data>
+  <data name="RedactPreviewRefused" xml:space="preserve">
+    <value>The file cannot be redacted: {0}</value>
+  </data>
+  <data name="RedactPreviewEmpty" xml:space="preserve">
+    <value>No marks yet, so nothing is removed.</value>
+  </data>
+  <data name="RedactPreviewNote" xml:space="preserve">
+    <value>The preview changes nothing in the file.</value>
+  </data>
+  <data name="RedactSumFormat" xml:space="preserve">
+    <value>Removes: {0}</value>
+  </data>
+  <data name="RedactSumNothing" xml:space="preserve">
+    <value>nothing is under the marks, the areas are drawn</value>
+  </data>
+  <data name="RedactSumCharOne" xml:space="preserve">
+    <value>1 character</value>
+  </data>
+  <data name="RedactSumChars" xml:space="preserve">
+    <value>{0} characters</value>
+  </data>
+  <data name="RedactSumImageOne" xml:space="preserve">
+    <value>1 image</value>
+  </data>
+  <data name="RedactSumImages" xml:space="preserve">
+    <value>{0} images</value>
+  </data>
+  <data name="RedactSumAnnotationOne" xml:space="preserve">
+    <value>1 annotation</value>
+  </data>
+  <data name="RedactSumAnnotations" xml:space="preserve">
+    <value>{0} annotations</value>
+  </data>
+  <data name="RedactSumPathOne" xml:space="preserve">
+    <value>1 path</value>
+  </data>
+  <data name="RedactSumPaths" xml:space="preserve">
+    <value>{0} paths</value>
+  </data>
+  <data name="RedactSumFormObjectOne" xml:space="preserve">
+    <value>1 form object</value>
+  </data>
+  <data name="RedactSumFormObjects" xml:space="preserve">
+    <value>{0} form objects</value>
+  </data>
+  <data name="RedactSumTextObjectWholeOne" xml:space="preserve">
+    <value>1 text object as a whole</value>
+  </data>
+  <data name="RedactSumTextObjectsWhole" xml:space="preserve">
+    <value>{0} text objects as a whole</value>
+  </data>
+  <data name="RedactSecFallbacks" xml:space="preserve">
+    <value>Removed as a whole instead of precisely:</value>
+  </data>
+  <data name="RedactSecCleaned" xml:space="preserve">
+    <value>Will be cleaned (always, with every redaction):</value>
+  </data>
+  <data name="RedactSecCleanedDone" xml:space="preserve">
+    <value>Cleaned (read back from the written file):</value>
+  </data>
+  <data name="RedactSecNotCleaned" xml:space="preserve">
+    <value>Not cleaned and not checked:</value>
+  </data>
+  <data name="RedactSecAfter" xml:space="preserve">
+    <value>Will be checked after writing:</value>
+  </data>
+  <data name="RedactSecRemoved" xml:space="preserve">
+    <value>Removed:</value>
+  </data>
+  <data name="RedactSecChecked" xml:space="preserve">
+    <value>Checked:</value>
+  </data>
+  <data name="RedactSecNotChecked" xml:space="preserve">
+    <value>Not checked:</value>
+  </data>
+  <data name="RedactSecNotCheckedNote" xml:space="preserve">
+    <value>The lines of the check itself are in English.</value>
+  </data>
+  <data name="RedactSecFindings" xml:space="preserve">
+    <value>What the check found:</value>
+  </data>
+  <data name="RedactCheckList" xml:space="preserve">
+    <value>The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the document-level data, and a render of every redacted page against the original.</value>
+  </data>
+  <data name="RedactCheckNothingWritten" xml:space="preserve">
+    <value>If the check finds anything, nothing is written and the marks stay.</value>
+  </data>
+  <data name="RedactFallbackText" xml:space="preserve">
+    <value>Page {0}: a text object was removed as a whole, because the characters that would stay could not be rewritten and read back.</value>
+  </data>
+  <data name="RedactFallbackImage" xml:space="preserve">
+    <value>Page {0}: an image was removed as a whole instead of being overwritten under the mark.</value>
+  </data>
+  <data name="RedactFallbackPath" xml:space="preserve">
+    <value>Page {0}: a path was removed as a whole instead of being cut around the mark.</value>
+  </data>
+  <data name="RedactFallbackForm" xml:space="preserve">
+    <value>Page {0}: a form object was removed as a whole instead of being taken apart.</value>
+  </data>
+  <data name="RedactNothingUnderMarks" xml:space="preserve">
+    <value>Page {0}: no content was under the marks; the areas are drawn.</value>
+  </data>
+  <data name="RedactPageRemoved" xml:space="preserve">
+    <value>Page {0}: {1}.</value>
+  </data>
+  <data name="RedactRemovedAnnotationsNote" xml:space="preserve">
+    <value>with their popups and replies</value>
+  </data>
+  <data name="RedactFieldAuthor" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="RedactFieldTitle" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="RedactFieldSubject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="RedactFieldKeywords" xml:space="preserve">
+    <value>Keywords</value>
+  </data>
+  <data name="RedactFieldCreator" xml:space="preserve">
+    <value>Creator</value>
+  </data>
+  <data name="RedactFieldProducer" xml:space="preserve">
+    <value>Producer</value>
+  </data>
+  <data name="RedactCleanField" xml:space="preserve">
+    <value>{0} in the document properties (the text is not repeated here)</value>
+  </data>
+  <data name="RedactCleanXmp" xml:space="preserve">
+    <value>XMP metadata: up to {0} (the count can include metadata of objects inside the pages, which stays; see below).</value>
+  </data>
+  <data name="RedactCleanBookmarks" xml:space="preserve">
+    <value>Bookmarks: up to {0}.</value>
+  </data>
+  <data name="RedactCleanAttachments" xml:space="preserve">
+    <value>Attached files: {0}.</value>
+  </data>
+  <data name="RedactCleanScripts" xml:space="preserve">
+    <value>JavaScript: up to {0} (the count can include actions of annotations, which stay; see below).</value>
+  </data>
+  <data name="RedactCleanLabels" xml:space="preserve">
+    <value>Page labels: {0}.</value>
+  </data>
+  <data name="RedactCleanNone" xml:space="preserve">
+    <value>The file has none of the document-level data that the cleanup removes.</value>
+  </data>
+  <data name="RedactCleanNoneIncomplete" xml:space="preserve">
+    <value>None found; the scan could not read every stream, so there may be more.</value>
+  </data>
+  <data name="RedactCleanIncomplete" xml:space="preserve">
+    <value>The scan could not read every stream, so there may be more.</value>
+  </data>
+  <data name="RedactCleanSeeBelow" xml:space="preserve">
+    <value>The remaining entries are told under “Not cleaned and not checked”.</value>
+  </data>
+  <data name="RedactLossLinksOne" xml:space="preserve">
+    <value>{0} internal link loses its target: it stays on the page but leads nowhere.</value>
+  </data>
+  <data name="RedactLossLinks" xml:space="preserve">
+    <value>{0} internal links lose their target: they stay on the pages but lead nowhere.</value>
+  </data>
+  <data name="RedactLossFieldsOne" xml:space="preserve">
+    <value>{0} form field is no longer reliably fillable: its widget stays on the page as an annotation only.</value>
+  </data>
+  <data name="RedactLossFields" xml:space="preserve">
+    <value>{0} form fields are no longer reliably fillable: their widgets stay on the pages as annotations only.</value>
+  </data>
+  <data name="RedactLossRgbOne" xml:space="preserve">
+    <value>{0} image overwritten under a mark is written again as RGB; the colours of a CMYK or indexed image may look different in other viewers.</value>
+  </data>
+  <data name="RedactLossRgb" xml:space="preserve">
+    <value>{0} images overwritten under a mark are written again as RGB; the colours of CMYK or indexed images may look different in other viewers.</value>
+  </data>
+  <data name="RedactLossSignature" xml:space="preserve">
+    <value>This document is signed. Afterwards, programs such as Acrobat show the signature as invalid; its data stays in the file as inert data.</value>
+  </data>
+  <data name="RedactNotCleanedObjects" xml:space="preserve">
+    <value>Metadata and private data (/Metadata, /PieceInfo) of form objects and image objects that come with the pages.</value>
+  </data>
+  <data name="RedactNotCleanedActions" xml:space="preserve">
+    <value>Actions of annotations (/AA, links and other actions) that come with the pages.</value>
+  </data>
+  <data name="RedactNotCleanedFieldValues" xml:space="preserve">
+    <value>The values (/V, /DV) of form fields stay on their widgets in the file; a marked text inside them is still found by the check of the file bytes, and then nothing is written.</value>
+  </data>
+  <data name="RedactNotCleanedSignature" xml:space="preserve">
+    <value>The data of a digital signature (certificate name, contents) stays in the file as inert data.</value>
+  </data>
+  <data name="RedactNotCheckedNoTermOne" xml:space="preserve">
+    <value>{0} mark has no term (a rectangle dragged on the page): the text under it is removed, but the file bytes are not searched for it; only the characters inside the area are looked for.</value>
+  </data>
+  <data name="RedactNotCheckedNoTerm" xml:space="preserve">
+    <value>{0} marks have no term (rectangles dragged on the page): the text under them is removed, but the file bytes are not searched for it; only the characters inside the areas are looked for.</value>
+  </data>
+  <data name="RedactCheckedText" xml:space="preserve">
+    <value>Page text: every removed text occurs in the page text of the written file at most as often as before minus the places removed (never, for a text marked everywhere).</value>
+  </data>
+  <data name="RedactCheckedBytes" xml:space="preserve">
+    <value>File bytes: the file was searched for each removed text of at least 4 characters, with strings decoded and streams unpacked, in older revisions, metadata and attachments too.</value>
+  </data>
+  <data name="RedactCheckedAreas" xml:space="preserve">
+    <value>Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are the colour of the area.</value>
+  </data>
+  <data name="RedactCheckedPages" xml:space="preserve">
+    <value>Pages: every redacted page was rendered from the written file and looks like the original outside the marked areas.</value>
+  </data>
+  <data name="RedactCheckedKeys" xml:space="preserve">
+    <value>Page keys: no page of the written file carries /Thumb, /PieceInfo, /Metadata or /AA.</value>
+  </data>
+  <data name="RedactCheckedCleanup" xml:space="preserve">
+    <value>Cleanup: the document properties, bookmarks, the names tree (attached files, scripts), page labels, the open action, actions, form and permissions were read back from the written file; none is left.</value>
+  </data>
+  <data name="RedactApplyTitle" xml:space="preserve">
+    <value>Redact “{0}”?</value>
+  </data>
+  <data name="RedactIrreversible" xml:space="preserve">
+    <value>Redacting cannot be undone.</value>
+  </data>
+  <data name="RedactRefusedTitle" xml:space="preserve">
+    <value>“{0}” cannot be redacted</value>
+  </data>
+  <data name="RedactRefusedNothing" xml:space="preserve">
+    <value>Nothing was written. The marks stay.</value>
+  </data>
+  <data name="RedactFailedTitle" xml:space="preserve">
+    <value>The check found a problem with “{0}”</value>
+  </data>
+  <data name="RedactFailedNothing" xml:space="preserve">
+    <value>Nothing was written and the original file is unchanged. The marks stay.</value>
+  </data>
+  <data name="RedactReportTitle" xml:space="preserve">
+    <value>“{0}” was redacted</value>
+  </data>
+  <data name="RedactReportIntro" xml:space="preserve">
+    <value>This is what was removed, cleaned and checked, and what was not.</value>
+  </data>
+  <data name="RedactViewFailedTitle" xml:space="preserve">
+    <value>The redacted file was written to “{0}”</value>
+  </data>
+  <data name="SaveChoiceClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="RedactReportName" xml:space="preserve">
+    <value>Report of the redaction</value>
+  </data>
+  <data name="RedactRefusalHeadingEncrypted" xml:space="preserve">
+    <value>The file is encrypted</value>
+  </data>
+  <data name="RedactRefusalHeadingKeys" xml:space="preserve">
+    <value>Page keys that cannot be removed</value>
+  </data>
+  <data name="RedactRefusalHeadingKeysUnverified" xml:space="preserve">
+    <value>The page keys could not be checked</value>
+  </data>
+  <data name="RedactRefusalHeadingPage" xml:space="preserve">
+    <value>A page cannot be redacted</value>
+  </data>
+  <data name="RedactRefusalEncrypted" xml:space="preserve">
+    <value>The file is encrypted. Redacting it would write it without its protection, and Pagewing does not remove protection silently, so the file is not redacted.</value>
+  </data>
+  <data name="RedactRefusalKeysUnverified" xml:space="preserve">
+    <value>The page keys of the file could not be checked, so the file is not redacted: a page may carry a thumbnail, private data, metadata or actions that Pagewing cannot remove.</value>
+  </data>
+  <data name="RedactRefusalKeys" xml:space="preserve">
+    <value>On {0} there are a thumbnail, private data, metadata or actions that Pagewing cannot remove, so the file is not redacted.</value>
+  </data>
+  <data name="RedactRefusalKeyNames" xml:space="preserve">
+    <value>Keys: {0}</value>
+  </data>
+  <data name="RedactRefusalPage" xml:space="preserve">
+    <value>{0} cannot be redacted, because redacting it would change content outside the marked areas. The file is not redacted.</value>
+  </data>
+  <data name="RedactRefusalPageReason" xml:space="preserve">
+    <value>Reason given by the check (technical, in English): {0}</value>
+  </data>
+  <data name="RedactRefusalPageHint" xml:space="preserve">
+    <value>If the marks on this page lie on comments or form fields, mark the area on the page instead of the text, or delete the comments first.</value>
+  </data>
+  <data name="RedactRefusalOther" xml:space="preserve">
+    <value>The file is not redacted.</value>
+  </data>
+  <data name="RedactPageOne" xml:space="preserve">
+    <value>page {0}</value>
+  </data>
+  <data name="RedactPageMany" xml:space="preserve">
+    <value>pages {0}</value>
+  </data>
+  <data name="RedactPageFile" xml:space="preserve">
+    <value>the file</value>
+  </data>
+  <data name="RedactFailureNotCompleted" xml:space="preserve">
+    <value>The check of the written file could not be completed, so the file was not written.</value>
+  </data>
+  <data name="RedactFailureUnremovable" xml:space="preserve">
+    <value>Text that was removed{0} is still in the file in a place that is not a page object (for example a Type 3 font, a pattern or a stream of a form), and Pagewing cannot remove it, so the file was not written.</value>
+  </data>
+  <data name="RedactFailureText" xml:space="preserve">
+    <value>A removed text is still in the page text of the result{0}, so the file was not written.</value>
+  </data>
+  <data name="RedactFailureChar" xml:space="preserve">
+    <value>Characters of the result lie inside a marked area{0}, so the file was not written.</value>
+  </data>
+  <data name="RedactFailureImage" xml:space="preserve">
+    <value>Pixels of an image under a marked area were not overwritten{0}, so the file was not written.</value>
+  </data>
+  <data name="RedactFailureUnreadable" xml:space="preserve">
+    <value>Part of the file could not be read{0}, so it cannot be shown that nothing of the removed text is left in it, and the file was not written.</value>
+  </data>
+  <data name="RedactFailureKeys" xml:space="preserve">
+    <value>A page still carries a thumbnail, private data, metadata or actions that Pagewing cannot remove, or the keys could not be checked{0}, so the file was not written.</value>
+  </data>
+  <data name="RedactFailurePage" xml:space="preserve">
+    <value>A page looks different outside the marked areas{0}, so the file was not written.</value>
+  </data>
+  <data name="RedactFailureUnverifiable" xml:space="preserve">
+    <value>A removed text could not be searched for{0}, so the result cannot be checked and the file was not written.</value>
+  </data>
+  <data name="RedactFailureCleanup" xml:space="preserve">
+    <value>Something that the cleanup should have removed is still in the written file{0}, so the file was not written. Detail (technical, in English): {1}</value>
+  </data>
+  <data name="RedactErrorNotPrepared" xml:space="preserve">
+    <value>The marks could not be prepared. Nothing was written; the marks are kept.</value>
+  </data>
+  <data name="RedactErrorDraft" xml:space="preserve">
+    <value>A text typed into a form field or a text box has not been accepted and would be lost. Correct or discard it, then apply the marks again.</value>
+  </data>
+  <data name="RedactErrorFileChanged" xml:space="preserve">
+    <value>The file was changed outside Pagewing. Reopen it to redact. Nothing was written; the marks stay in this tab until you close it.</value>
+  </data>
+  <data name="RedactSaveFirstText" xml:space="preserve">
+    <value>There are comments or form entries that are not saved yet. Redacting rewrites the whole file and does not include them. Save them first; then the marks can be applied.</value>
+  </data>
+  <data name="RedactApplyBlocked" xml:space="preserve">
+    <value>Redacting waits until the print job has ended.</value>
+  </data>
 </root>

@@ -78,12 +78,26 @@ public sealed class ApplyPagesInfo
         }
 
         var sorted = pages.Distinct().Order().ToArray();
+        var text = GroupsOf(sorted);
+
+        var format = original
+            ? (sorted.Length == 1 ? Strings.PagesOriginalOne : Strings.PagesOriginalMany)
+            : (sorted.Length == 1 ? Strings.PagesNewOne : Strings.PagesNewMany);
+        return Format(format, text);
+    }
+
+    /// <summary>
+    /// The 0-based, ascending, distinct <paramref name="sorted"/> pages as 1-based numbers in groups ("3", "3, 4", "5–9", at most ten
+    /// groups, then an ellipsis).
+    /// </summary>
+    internal static string GroupsOf(IReadOnlyList<int> sorted)
+    {
         var text = new StringBuilder();
         var groups = 0;
-        for (var i = 0; i < sorted.Length;)
+        for (var i = 0; i < sorted.Count;)
         {
             var end = i;
-            while (end + 1 < sorted.Length && sorted[end + 1] == sorted[end] + 1)
+            while (end + 1 < sorted.Count && sorted[end + 1] == sorted[end] + 1)
             {
                 end++;
             }
@@ -109,10 +123,7 @@ public sealed class ApplyPagesInfo
             i = end + 1;
         }
 
-        var format = original
-            ? (sorted.Length == 1 ? Strings.PagesOriginalOne : Strings.PagesOriginalMany)
-            : (sorted.Length == 1 ? Strings.PagesNewOne : Strings.PagesNewMany);
-        return Format(format, text.ToString());
+        return text.ToString();
     }
 
     private static string SummaryOf(PageEditPlan plan)

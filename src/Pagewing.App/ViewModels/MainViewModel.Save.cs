@@ -103,8 +103,11 @@ public sealed partial class MainViewModel
         ArgumentNullException.ThrowIfNull(tab);
 
         // Page changes that wait are written by the rewrite of "Apply", with its card (Ctrl+S and "Save as" open it); the
-        // comments and form values go first (MainViewModel.Pages.cs).
-        return tab.HasPendingPageEdits ? ApplyPageEditsAsync(tab) : SaveDocumentChangesAsync(tab, saveAs);
+        // comments and form values go first (MainViewModel.Pages.cs). So do redaction marks that wait: Ctrl+S opens the card of
+        // "Apply" for them (MainViewModel.Redaction.cs), never the save of the annotations.
+        return tab.HasPendingRedactions ? ApplyRedactionsAsync(tab)
+            : tab.HasPendingPageEdits ? ApplyPageEditsAsync(tab)
+            : SaveDocumentChangesAsync(tab, saveAs);
     }
 
     /// <summary>

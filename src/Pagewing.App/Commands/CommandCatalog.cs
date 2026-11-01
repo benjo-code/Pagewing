@@ -164,11 +164,13 @@ public sealed class CommandCatalog
         // and in the panel (they hold the focus when it applies), and Esc to the document. The commands of the mode run only in
         // it and never make the tab's commands before (RedactTab asks the mode first). "Mark selection" (Ctrl+Enter, a key on every
         // layout, which a text field keeps for itself) turns the selected text into marks; "Find and redact" shows or hides the panel
-        // with the search and the list of marks (no key: it is a button of the toolbar, and the palette lists it); "Apply" comes with
-        // the apply flow.
+        // with the search and the list of marks (no key: it is a button of the toolbar, and the palette lists it); "Preview" and "Apply"
+        // are buttons of the toolbar too (no key; Ctrl+S opens the card of "Apply" while marks wait).
         Tab("redact.mode", () => Strings.CommandRedactMode, EditGroup, CtrlShift(Key.P), tab => tab.RedactCommand, ready: true),
         RedactTab("redact.markSelection", () => Strings.CommandRedactMarkSelection, Ctrl(Key.Enter), tab => tab.MarkSelectionCommand) with { YieldsToTextInput = true },
         RedactTab("redact.find", () => Strings.CommandRedactFind, null, tab => tab.ToggleRedactionPanelCommand),
+        RedactTab("redact.preview", () => Strings.CommandRedactPreview, null, tab => tab.ToggleRedactionPreviewCommand),
+        RedactTab("redact.apply", () => Strings.CommandRedactApply, null, tab => tab.ApplyRedactionsCommand),
         RedactTab("redact.deleteMarks", () => Strings.CommandRedactDeleteMarks, null, tab => tab.DeleteMarksCommand),
         RedactTab("redact.discard", () => Strings.CommandRedactDiscard, null, tab => tab.DiscardRedactionsCommand),
 

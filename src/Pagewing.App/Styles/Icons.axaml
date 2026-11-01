@@ -99,5 +99,6 @@
   <StreamGeometry x:Key="Pw.Icon.FileImport">M14 3v4a1 1 0 0 0 1 1h4 M5 13v-8a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2h-5.5 M5 18h7 M9 15l3 3l-3 3</StreamGeometry>
   <StreamGeometry x:Key="Pw.Icon.Files">M15 3v4a1 1 0 0 0 1 1h4 M18 17h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h4l5 5v7a2 2 0 0 1 -2 2 M16 17v2a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h2</StreamGeometry>
   <StreamGeometry x:Key="Pw.Icon.ArrowsSort">M3 9l4 -4l4 4m-4 -4v14 M21 15l-4 4l-4 -4m4 4v-14</StreamGeometry>
+  <StreamGeometry x:Key="Pw.Icon.Eye">M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0 M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6</StreamGeometry>
   <StreamGeometry x:Key="Pw.Icon.EyeOff">M10.585 10.587a2 2 0 0 0 2.829 2.828 M16.681 16.673a8.717 8.717 0 0 1 -4.681 1.327c-3.6 0 -6.6 -2 -9 -6c1.272 -2.12 2.712 -3.678 4.32 -4.674m2.86 -1.146a9.055 9.055 0 0 1 1.82 -.18c3.6 0 6.6 2 9 6c-.666 1.11 -1.379 2.067 -2.138 2.87 M3 3l18 18</StreamGeometry>
 </ResourceDictionary>

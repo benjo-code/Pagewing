@@ -153,10 +153,11 @@ public sealed partial class MainViewModel
     /// Comments and form values that are not saved stay out of the rewrite, so they are saved first: the card asks ("Save" or
     /// "Cancel", the plan stays), then the incremental save runs with its usual questions. Typed text that a form field
     /// refused cannot be saved and would be lost: the apply stops with the reason (undoing or discarding the plan lets the user
-    /// correct the text). Nothing in the tab that is not saved is ever dropped by the apply.
+    /// correct the text). Nothing in the tab that is not saved is ever dropped by the apply. The apply of the redaction marks
+    /// (<paramref name="redaction"/>) asks the same, with its own texts.
     /// </summary>
     /// <returns>Whether the apply goes on.</returns>
-    private async Task<bool> SaveDocumentChangesFirstAsync(TabViewModel tab, string path, CancellationToken token)
+    private async Task<bool> SaveDocumentChangesFirstAsync(TabViewModel tab, string path, CancellationToken token, bool redaction = false)
     {
         // The text of an open text box field and the open value of a form field become changes of the editor (or stay as
         // refused text, which counts below).
@@ -172,7 +173,7 @@ public sealed partial class MainViewModel
                 return false;
             }
 
-            if (await AskAsync(PendingSave.SaveAnnotationsFirst(tab, path), token) != PendingSaveChoice.Save)
+            if (await AskAsync(PendingSave.SaveAnnotationsFirst(tab, path, redaction ? static () => Strings.RedactSaveFirstText : null), token) != PendingSaveChoice.Save)
             {
                 return false;
             }
@@ -188,13 +189,13 @@ public sealed partial class MainViewModel
 
         if (tab.HasFormDraft || tab.HasTextBoxText)
         {
-            await AskAsync(PendingSave.PageApplyError(tab, path, static () => Strings.ApplyErrorDraft), token);
+            await AskAsync(PendingSave.PageApplyError(tab, path, redaction ? static () => Strings.RedactErrorDraft : static () => Strings.ApplyErrorDraft), token);
             return false;
         }
 
         if (tab.AsksAboutDocumentChanges)
         {
-            await AskAsync(PendingSave.PageApplyError(tab, path, static () => Strings.ApplyErrorNotPrepared), token);
+            await AskAsync(PendingSave.PageApplyError(tab, path, redaction ? static () => Strings.RedactErrorNotPrepared : static () => Strings.ApplyErrorNotPrepared), token);
             return false;
         }
 

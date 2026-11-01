@@ -6,7 +6,6 @@
              xmlns:red="using:Pagewing.Core.Redaction"
              x:Class="Pagewing.App.Views.RedactionToolbar"
              x:DataType="vm:TabViewModel"
-             Height="{DynamicResource Pw.Size.ToolbarHeight}"
              AutomationProperties.Name="{x:Static res:Strings.RedactToolbarName}"
              AutomationProperties.AccessibilityView="Content">
   <!--
@@ -18,12 +17,15 @@
     panel "Redact" with the search and the list of marks, with the focus in its field); the fill, "Black" and "White", two
     toggle buttons that name their colour in words; Undo and Redo; Delete mark. On the right the counter of the marks ("4 marks
     on 2 pages"), the hint that nothing is removed before the marks are applied, "Discard" and the primary button "Done", which
-    leaves the mode and is possible while no mark waits (with marks they are applied or discarded; the tooltip says so). Tab
+    leaves the mode and is possible while no mark waits (with marks they are applied or discarded; the tooltip says so). With
+    marks the primary button is "Apply …" (task 13: it opens the card with the numbers, the lists and the choice where to save),
+    and "Preview" (a toggle after the tools) shows the marks as the filled areas they will leave and a second row under the bar
+    with the numbers of what is removed; it changes nothing in the file. Tab
     moves through them in this order; Enter and Space press; Esc drops a drag, then the selected marks, then the text
-    selection, then ends the mode. Too narrow (640 px window, German): first the hint goes, then the labels of the tools and the
-    fill, then the text of the mode name, then its icon, last the counter text (the counter stays the name of the toolbar for
-    screen readers). Made when the mode is first started (MainWindow.Redaction.cs), never in the startup path; its styles live
-    here for the same reason. The DataContext is the active tab. "Apply" is not here yet: it comes with the apply flow.
+    selection, then ends the mode. Too narrow (640 px window, German): first the hint goes, then the labels of the tools, the
+    preview and the fill, then the text of the mode name, then its icon, then the counter text (the counter stays the name of
+    the toolbar for screen readers), then the words of "Done" and "Discard", last the words of "Apply" (their icons, tooltips and names stay). Made when the mode is first started (MainWindow.Redaction.cs), never in the startup path; its styles live
+    here for the same reason. The DataContext is the active tab.
   -->
   <UserControl.Styles>
     <Style Selector="Button.tool">
@@ -62,7 +64,8 @@
           Background="{DynamicResource Pw.Brush.Surface.Toolbar}"
           BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
           BorderThickness="0,0,0,1">
-    <Grid Name="ToolbarContent" Margin="12,0,8,0" ColumnDefinitions="Auto,*,Auto">
+    <StackPanel>
+    <Grid Name="ToolbarContent" Height="{DynamicResource Pw.Size.ToolbarHeight}" Margin="12,0,8,0" ColumnDefinitions="Auto,*,Auto">
       <StackPanel Name="ModeLabel" Grid.Column="0" Orientation="Horizontal" Spacing="6" Margin="0,0,12,0" VerticalAlignment="Center">
         <ctl:StrokeIcon Name="ModeIcon" Width="18" Height="18" VerticalAlignment="Center"
                         Brush="{DynamicResource Pw.Brush.Accent.Default}" Data="{StaticResource Pw.Icon.EyeOff}" />
@@ -149,6 +152,19 @@
                 AutomationProperties.Name="{x:Static res:Strings.CommandRedactDeleteMarks}">
           <ctl:StrokeIcon Width="18" Height="18" Data="{StaticResource Pw.Icon.Trash}" />
         </Button>
+
+        <Border Classes="toolbarSeparator" />
+
+        <ctl:ActionToggleButton Name="PreviewButton" Classes="icon tool"
+                                Classes.active="{Binding IsRedactionPreview}" IsChecked="{Binding IsRedactionPreview, Mode=OneWay}"
+                                Command="{Binding ToggleRedactionPreviewCommand}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactPreviewTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactPreviewButton}">
+          <StackPanel Orientation="Horizontal">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Eye}" />
+            <TextBlock Name="PreviewLabel" Classes="body" Text="{x:Static res:Strings.RedactPreviewButton}" />
+          </StackPanel>
+        </ctl:ActionToggleButton>
       </StackPanel>
 
       <StackPanel Name="EndArea" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8" Margin="12,0,0,0">
@@ -163,18 +179,45 @@
                 Command="{Binding DiscardRedactionsCommand}"
                 ToolTip.Tip="{x:Static res:Strings.CommandRedactDiscard}"
                 AutomationProperties.Name="{x:Static res:Strings.CommandRedactDiscard}">
-          <TextBlock Text="{x:Static res:Strings.RedactDiscardButton}" Margin="0" />
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.X}" />
+            <TextBlock Name="DiscardLabel" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactDiscardButton}" Margin="0" />
+          </StackPanel>
         </Button>
-        <Button Name="DoneButton" Classes="primary" VerticalAlignment="Center"
+        <Button Name="ApplyButton" Classes="primary" VerticalAlignment="Center"
+                IsVisible="{Binding HasPendingRedactions}"
+                Command="{Binding ApplyRedactionsCommand}"
+                ToolTip.Tip="{x:Static res:Strings.RedactApplyTip}"
+                AutomationProperties.Name="{x:Static res:Strings.RedactApplyButton}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.EyeOff}" />
+            <TextBlock Name="ApplyLabel" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactApplyButton}" />
+          </StackPanel>
+        </Button>
+        <Button Name="DoneButton" Classes.primary="{Binding !HasPendingRedactions}" VerticalAlignment="Center"
                 Command="{Binding RedactEntryCommand}"
                 ToolTip.Tip="{x:Static res:Strings.RedactDoneTooltip}"
                 AutomationProperties.Name="{x:Static res:Strings.RedactDone}">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Check}" />
-            <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.RedactDone}" />
+            <TextBlock Name="DoneLabel" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactDone}" />
           </StackPanel>
         </Button>
       </StackPanel>
     </Grid>
+    <Border Name="PreviewRow" IsVisible="{Binding IsRedactionPreview}" Padding="12,0,8,8"
+            AutomationProperties.Name="{x:Static res:Strings.RedactPreviewBarName}"
+            AutomationProperties.AccessibilityView="Content">
+      <StackPanel Spacing="2">
+        <TextBlock Name="PreviewText" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   Text="{Binding RedactionPreviewText}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <TextBlock Name="PreviewNote" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.RedactPreviewNote}" />
+      </StackPanel>
+    </Border>
+    </StackPanel>
   </Border>
 </UserControl>

@@ -353,7 +353,7 @@ public sealed partial class TabViewModel
     /// Whether "Save" can run: an open document with unsaved changes, or with page changes that wait to be applied (Ctrl+S
     /// then opens the card of "Apply", <see cref="MainViewModel.ApplyPageEditsAsync"/>), no save and no print job of the tab running.
     /// </summary>
-    internal bool CanSave() => CanSaveDocument() || (CanSaveAs() && HasPendingPageEdits);
+    internal bool CanSave() => CanSaveDocument() || (CanSaveAs() && (HasPendingPageEdits || HasPendingRedactions));
 
     /// <summary>Whether the changes of the document itself (annotations, form values) can be saved: <see cref="CanSave"/> without the page plan.</summary>
     internal bool CanSaveDocument() => CanSaveAs() && _isDirty;
@@ -437,6 +437,7 @@ public sealed partial class TabViewModel
 
         // Applying page changes is a save: it waits for the same things (a save, a print job, a card, the update lock).
         _applyPageEditsCommand?.RaiseCanExecuteChanged();
+        RaiseRedactionApplyCanExecuteChanged();
     }
 
     /// <summary>A waiting nudge is made first, so undo undoes it (the editor runs the operations in this order).</summary>

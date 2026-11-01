@@ -239,8 +239,8 @@ public sealed class RedactModelTests : IDisposable
         Assert.True(viewModel.HasUnsavedChanges);
         Assert.Contains("redaction marks pending", tab.TabAutomationName, StringComparison.Ordinal);
 
-        // Nothing to save: the file cannot take the marks, and Ctrl+S does not pretend to.
-        Assert.False(tab.SaveCommand.CanExecute(null));
+        // Ctrl+S does not save the marks as comments: it opens the card of "Apply" (RedactApplyTests), which redacts or does nothing.
+        Assert.True(tab.SaveCommand.CanExecute(null));
 
         // The tab asks first: "Discard the marks?" with "Cancel" as the default, no "Save".
         viewModel.CloseActiveTabCommand.Execute(null);

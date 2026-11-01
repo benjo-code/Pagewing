@@ -171,7 +171,8 @@ public sealed partial class TabViewModel
     internal bool HasRedactionCommands =>
         _deleteMarksCommand is not null || _undoRedactionCommand is not null || _redoRedactionCommand is not null
         || _discardRedactionsCommand is not null || _markSelectionCommand is not null || _chooseRedactionToolCommand is not null
-        || _setRedactionFillCommand is not null || _toggleRedactionPanelCommand is not null;
+        || _setRedactionFillCommand is not null || _toggleRedactionPanelCommand is not null || _applyRedactionsCommand is not null
+        || _toggleRedactionPreviewCommand is not null;
 
     /// <summary>
     /// Gets whether the only thing closing would lose is the plan of marks (<see cref="HasPendingRedactions"/>): "Save" cannot
@@ -354,6 +355,8 @@ public sealed partial class TabViewModel
     /// <summary>Drops the plan and its history and leaves the mode (discard, leaving without a mark).</summary>
     private void DropRedactions()
     {
+        // The preview ends with the plan: a run of its numbers that is working is stopped.
+        EndRedactionPreview();
         if (_redactionHistory is { } history)
         {
             // The versions of the dropped history stay counted (plus one: dropping is a change of what closing asks about).
@@ -544,10 +547,14 @@ public sealed partial class TabViewModel
         // Splitting and exporting images read the document without the marks, so pending marks lock them.
         RaisePageOutputChanged();
         RaiseRedactionCanExecuteChanged();
+        SchedulePreviewIfPlanChanged();
     }
 
     private void RaiseRedactionCanExecuteChanged()
     {
+        // Ctrl+S and "Save as" apply the marks while some wait, and the button "Apply" asks the same.
+        RaiseSaveCanExecuteChanged();
+        RaiseRedactionApplyCanExecuteChanged();
         _redactCommand?.RaiseCanExecuteChanged();
         _deleteMarksCommand?.RaiseCanExecuteChanged();
         _undoRedactionCommand?.RaiseCanExecuteChanged();

@@ -56,7 +56,7 @@ public sealed class RedactionStartPathTests : IDisposable
     public async Task OpeningADocumentAndItsPanelsMakesNothingOfTheMode()
     {
         var (window, viewModel, _) = Show();
-        var probe = new Probe(viewModel);
+        var probe = new Probe(viewModel, window);
         await viewModel.OpenAsync(TestData.Pdf("pages-marked.pdf"));
         var tab = viewModel.ActiveTab!;
         await WaitUntilAsync(window, () => tab.HasShownSharpPage);
@@ -81,7 +81,7 @@ public sealed class RedactionStartPathTests : IDisposable
     public async Task MeasurementRunsMakeNothingOfTheMode()
     {
         var (window, viewModel, view) = Show();
-        var probe = new Probe(viewModel);
+        var probe = new Probe(viewModel, window);
         var path = TestData.Pdf("pages-marked.pdf");
         using var measurement = MeasurementRun.Create(StartupOptions.Parse(["--measure-startup", path]), viewModel, view, Sink())!;
 
@@ -160,8 +160,13 @@ public sealed class RedactionStartPathTests : IDisposable
             ?? throw new InvalidOperationException("MainViewModel no longer has the field _saveEngine; adapt this probe.");
 
         private readonly MainViewModel _viewModel;
+        private readonly MainWindow _window;
 
-        public Probe(MainViewModel viewModel) => _viewModel = viewModel;
+        public Probe(MainViewModel viewModel, MainWindow window)
+        {
+            _viewModel = viewModel;
+            _window = window;
+        }
 
         public void AssertNothingWasMade(TabViewModel tab)
         {
@@ -184,6 +189,15 @@ public sealed class RedactionStartPathTests : IDisposable
             // The working copy: its engine is not made, and no card or overlay of the mode is there.
             Assert.Null(SaveEngineField.GetValue(_viewModel));
             Assert.Equal(OverlayKind.None, _viewModel.Overlay);
+
+            // The apply flow (task 13): no preview, no question, no seam taken, and no card of it (the window makes each with its first question).
+            Assert.False(tab.IsRedactionPreview);
+            Assert.Null(tab.RedactionPreviewText);
+            Assert.Null(_viewModel.PendingSave);
+            Assert.Null(_viewModel.RedactionAnalyzer);
+            Assert.Null(_viewModel.RedactionRewriter);
+            Assert.DoesNotContain(_window.SaveCards, card => card is RedactApplyCard or RedactReportCard);
+            Assert.Null(_window.GetVisualDescendants().OfType<RedactionToolbar>().FirstOrDefault());
         }
     }
 

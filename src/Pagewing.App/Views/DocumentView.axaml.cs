@@ -964,7 +964,7 @@ public sealed partial class DocumentView : UserControl
 
         // The mode "Redact": its plan and selection on the layer (DocumentView.Redaction.cs). A refused mark comes as a
         // RedactionHint of the tab, each time (a change of RedactionNotice would not tell a repeated refusal).
-        if (e.PropertyName is nameof(TabViewModel.IsRedacting) or nameof(TabViewModel.RedactionPlan) or nameof(TabViewModel.SelectedMarks))
+        if (e.PropertyName is nameof(TabViewModel.IsRedacting) or nameof(TabViewModel.RedactionPlan) or nameof(TabViewModel.SelectedMarks) or nameof(TabViewModel.IsRedactionPreview))
         {
             SyncRedaction();
         }

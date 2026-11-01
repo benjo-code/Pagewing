@@ -810,6 +810,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         _search?.Dispose();
         _comments?.Dispose();
         DiscardRedactionPanel();
+        EndRedactionPreview();
         ReleaseInsertedSources();
         TextSelection = null;
         ClearHistory();

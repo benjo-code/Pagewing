@@ -63,6 +63,25 @@ public enum PendingSaveKind
     /// organizing, the page changes stay).
     /// </summary>
     SaveAnnotationsFirst,
+
+    /// <summary>
+    /// The marks of the tab are to be applied (milestone 14, <see cref="PendingSave.Redaction"/> has the numbers, the fallbacks, the
+    /// cleanup, the losses and what is not cleaned): "Save as …" (default; the name suggested is "&lt;name&gt;-redacted.pdf"), "Save in
+    /// the original file" (dangerous, locked at first, never the default) and "Back". Redacting cannot be undone.
+    /// </summary>
+    ApplyRedactions,
+
+    /// <summary>
+    /// The file cannot be redacted (encrypted, page keys Pagewing cannot remove, a page that cannot be redacted): the card names
+    /// the kind, the reason and the pages, and has "Back" alone. Nothing was written, the marks stay.
+    /// </summary>
+    RedactionRefused,
+
+    /// <summary>The check of the written file found something: the card names the findings, "Back" alone. Nothing was written, the marks stay.</summary>
+    RedactionFailed,
+
+    /// <summary>The report after a redaction that passed its check: what was removed, cleaned, lost and checked, and what was not. "Close" alone.</summary>
+    RedactionReport,
 }
 
 /// <summary>An answer to a <see cref="PendingSave"/>.</summary>
@@ -97,6 +116,9 @@ public enum PendingSaveChoice
 
     /// <summary>Write the page changes into the original file, which they replace for good (only <see cref="PendingSaveKind.ApplyPages"/>).</summary>
     SaveInOriginal,
+
+    /// <summary>Close the report of a redaction (only <see cref="PendingSaveKind.RedactionReport"/>).</summary>
+    Close,
 }
 
 /// <summary>
@@ -142,9 +164,11 @@ public sealed class PendingSave
         IReadOnlyList<string>? emptyFieldNames = null,
         string? firstFieldName = null,
         Func<string>? title = null,
-        ApplyPagesInfo? apply = null)
+        ApplyPagesInfo? apply = null,
+        RedactionApplyInfo? redaction = null)
     {
         Apply = apply;
+        Redaction = redaction;
         _message = message;
         _title = title;
         Kind = kind;
@@ -193,6 +217,9 @@ public sealed class PendingSave
     /// <summary>Gets what the card of <see cref="PendingSaveKind.ApplyPages"/> shows (summary and losses), or <see langword="null"/>.</summary>
     public ApplyPagesInfo? Apply { get; }
 
+    /// <summary>Gets what the cards of the redaction show (numbers, fallbacks, cleanup, losses, refusals, findings, report), or <see langword="null"/>.</summary>
+    public RedactionApplyInfo? Redaction { get; }
+
     /// <summary>Gets the answers the card offers, in the order of its buttons.</summary>
     public IReadOnlyList<PendingSaveChoice> Choices { get; }
 
@@ -215,6 +242,10 @@ public sealed class PendingSave
         PendingSaveKind.DiscardChanges => Format(Strings.DiscardChangesTitle, FileName),
         PendingSaveKind.ApplyPages => Format(Strings.ApplyPagesTitle, FileName),
         PendingSaveKind.SaveAnnotationsFirst => Format(Strings.SaveFirstTitle, FileName),
+        PendingSaveKind.ApplyRedactions => Format(Strings.RedactApplyTitle, FileName),
+        PendingSaveKind.RedactionRefused => Format(Strings.RedactRefusedTitle, FileName),
+        PendingSaveKind.RedactionFailed => Format(Strings.RedactFailedTitle, FileName),
+        PendingSaveKind.RedactionReport => Format(Strings.RedactReportTitle, FileName),
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningTitle,
         PendingSaveKind.SignatureNote => Strings.SignatureNoteTitle,
         PendingSaveKind.FileChanged => Format(Strings.FileChangedTitle, FileName),
@@ -233,6 +264,10 @@ public sealed class PendingSave
             : Strings.SaveChangesText,
         PendingSaveKind.ApplyPages => Strings.ApplyPagesIrreversible,
         PendingSaveKind.SaveAnnotationsFirst => Strings.SaveFirstText,
+        PendingSaveKind.ApplyRedactions => Strings.RedactIrreversible,
+        PendingSaveKind.RedactionRefused => Strings.RedactRefusedNothing,
+        PendingSaveKind.RedactionFailed => Strings.RedactFailedNothing,
+        PendingSaveKind.RedactionReport => Strings.RedactReportIntro,
         PendingSaveKind.SignatureWarning when FormsOnly && Level == DocMdpLevel.FormsOnly => Strings.SignatureWarningFormsText,
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningText,
         PendingSaveKind.RequiredFields => Format(EmptyFieldNames.Count == 1 ? Strings.RequiredFieldsTextOne : Strings.RequiredFieldsTextMany, FirstFieldName),
@@ -249,7 +284,8 @@ public sealed class PendingSave
     /// cannot be saved, a failure): it shows the warning symbol with its text, and screen readers announce the text.
     /// </summary>
     public bool IsWarning => Kind is PendingSaveKind.SignatureWarning or PendingSaveKind.FileChanged or PendingSaveKind.SaveError
-        or PendingSaveKind.DiscardChanges or PendingSaveKind.ApplyPages;
+        or PendingSaveKind.DiscardChanges or PendingSaveKind.ApplyPages or PendingSaveKind.ApplyRedactions or PendingSaveKind.RedactionRefused
+        or PendingSaveKind.RedactionFailed;
 
     /// <summary>Gets whether the question was answered.</summary>
     public bool IsResolved => _choice.Task.IsCompleted;
@@ -271,6 +307,7 @@ public sealed class PendingSave
         PendingSaveChoice.Discard => Strings.SaveChoiceDiscard,
         PendingSaveChoice.GoToField => Strings.SaveChoiceGoToField,
         PendingSaveChoice.SaveInOriginal => Strings.SaveChoiceSaveInOriginal,
+        PendingSaveChoice.Close => Strings.SaveChoiceClose,
         _ => Strings.SaveChoiceCancel,
     };
 
@@ -377,9 +414,43 @@ public sealed class PendingSave
         return new(PendingSaveKind.ApplyPages, tab, path, [PendingSaveChoice.SaveAs, PendingSaveChoice.SaveInOriginal, PendingSaveChoice.Cancel], PendingSaveChoice.SaveAs, apply: info);
     }
 
-    /// <summary>The question before the page changes are applied while comments or form values are not saved: "Save" (default) or "Cancel".</summary>
-    internal static PendingSave SaveAnnotationsFirst(TabViewModel tab, string path) =>
-        new(PendingSaveKind.SaveAnnotationsFirst, tab, path, [PendingSaveChoice.Save, PendingSaveChoice.Cancel], PendingSaveChoice.Save);
+    /// <summary>
+    /// The question before the page changes (or the redaction marks, with their own <paramref name="message"/>) are applied while
+    /// comments or form values are not saved: "Save" (default) or "Cancel".
+    /// </summary>
+    internal static PendingSave SaveAnnotationsFirst(TabViewModel tab, string path, Func<string>? message = null) =>
+        new(PendingSaveKind.SaveAnnotationsFirst, tab, path, [PendingSaveChoice.Save, PendingSaveChoice.Cancel], PendingSaveChoice.Save, message: message);
+
+    /// <summary>
+    /// The card of "Apply" for the redaction marks (milestone 14): the numbers and the lists of <paramref name="info"/>, "Save as …"
+    /// the default (the original stays), "Save in the original file" (dangerous: locked at first, never the default) and "Back".
+    /// </summary>
+    internal static PendingSave ApplyRedactions(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.ApplyRedactions, tab, path, [PendingSaveChoice.SaveAs, PendingSaveChoice.SaveInOriginal, PendingSaveChoice.Cancel], PendingSaveChoice.SaveAs, redaction: info);
+    }
+
+    /// <summary>The card of a refusal (no "Apply"): the kind, the reason and the pages, "Back" alone.</summary>
+    internal static PendingSave RedactionRefused(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.RedactionRefused, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info);
+    }
+
+    /// <summary>The card of a check that found something (nothing was written): the findings, "Back" alone.</summary>
+    internal static PendingSave RedactionFailed(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.RedactionFailed, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info);
+    }
+
+    /// <summary>The report after a redaction that passed its check, "Close" alone. <paramref name="path"/> is the written file.</summary>
+    internal static PendingSave RedactionReport(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.RedactionReport, tab, path, [PendingSaveChoice.Close], PendingSaveChoice.Close, redaction: info);
+    }
 
     /// <summary>
     /// The page changes cannot be applied for a reason that is not a failed save (the plan is refused, a source cannot be

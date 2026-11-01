@@ -760,13 +760,18 @@ public sealed class RedactMarkingTests : IDisposable
         Assert.False(black.IsChecked);
         Assert.False(Button<Button>(toolbar, "MarkSelectionButton").Command!.CanExecute(null));
 
-        // Discard drops the marks and ends the mode; the toolbar goes. There is no button that applies the marks yet.
+        // With a mark waiting "Apply …" is the primary button (task 13: RedactApplyTests has its card), and "Done" is not.
+        var apply = Button<Button>(toolbar, "ApplyButton");
+        Assert.True(apply.IsVisible);
+        Assert.Contains("primary", apply.Classes);
+        Assert.DoesNotContain("primary", done.Classes);
+
+        // Discard drops the marks and ends the mode; the toolbar goes.
         Button<Button>(toolbar, "DiscardButton").Command!.Execute(null);
         Settle(window);
         Assert.False(tab.IsRedacting);
         Assert.False(toolbar.IsVisible);
         Assert.Null(view.RedactionOverlay!.Plan);
-        Assert.Null(FindOrNull<Button>(toolbar, "ApplyButton"));
     }
 
     [AvaloniaFact]
