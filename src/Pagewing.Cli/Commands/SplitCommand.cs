@@ -123,23 +123,37 @@ internal static class SplitCommand
     {
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var inTheWay = new List<string>();
+        var folders = new List<string>();
         foreach (var target in targets)
         {
-            var exists = File.Exists(target) || Directory.Exists(target);
+            var isFolder = Directory.Exists(target);
+            var exists = isFolder || File.Exists(target);
             if (exists && (string.Equals(target, inputPath, comparison) || FileIdentity.AreSameFile(target, inputPath) == true))
             {
                 throw new CliException($"A part must not replace the input file ('{Path.GetFileName(target)}'), with or without --force. Nothing was written.");
             }
 
-            if (exists && (!force || Directory.Exists(target)))
+            if (isFolder)
+            {
+                // --force replaces files, never a folder: it is not a "file that exists", and asking for --force would mislead.
+                folders.Add(Path.GetFileName(target));
+            }
+            else if (exists && !force)
             {
                 inTheWay.Add(Path.GetFileName(target));
             }
         }
 
-        if (inTheWay.Count > 0)
+        if (inTheWay.Count > 0 || folders.Count > 0)
         {
-            throw new CliException($"These files already exist: {string.Join(", ", inTheWay.Select(static name => $"'{name}'"))}. Use --force to replace them. Nothing was written.");
+            var sentences = new List<string>();
+            sentences.AddRange(folders.Select(static name => $"'{name}' is a folder and cannot be replaced."));
+            if (inTheWay.Count > 0)
+            {
+                sentences.Add($"These files already exist: {string.Join(", ", inTheWay.Select(static name => $"'{name}'"))}. Use --force to replace them.");
+            }
+
+            throw new CliException($"{string.Join(" ", sentences)} Nothing was written.");
         }
     }
 

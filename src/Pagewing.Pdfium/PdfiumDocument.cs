@@ -423,6 +423,9 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     /// <summary>Gets how many source documents this one keeps open (<see cref="KeepOpenFor"/>), for tests. Any thread.</summary>
     internal int KeptOpenCount => handle.KeptOpenCount;
 
+    /// <summary>Gets the handle, for tests that put a failing resource on it. Any thread.</summary>
+    internal DocumentHandle Handle => handle;
+
     /// <summary>Gets whether the native document is still open (not closed by <c>FPDF_CloseDocument</c> yet), for tests. Any thread.</summary>
     internal bool IsNativeOpen => !handle.IsClosed;
 

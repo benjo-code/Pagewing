@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -192,9 +193,23 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
                 return;
             }
 
+            // The list is only ever extended together with a reference: if the Add fails, the reference is given back.
+            var list = dependencies ??= [];
             var added = false;
-            source.DangerousAddRef(ref added);
-            (dependencies ??= []).Add(source);
+            try
+            {
+                source.DangerousAddRef(ref added);
+                list.Add(source);
+            }
+            catch
+            {
+                if (added)
+                {
+                    source.DangerousRelease();
+                }
+
+                throw;
+            }
         }
     }
 
@@ -249,9 +264,24 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
             return;
         }
 
+        // Every source gets its release, also when the final release of an earlier one throws (its native document and file
+        // would leak otherwise); the first failure is rethrown afterwards.
+        Exception? first = null;
         foreach (var kept in released)
         {
-            kept.DangerousRelease();
+            try
+            {
+                kept.DangerousRelease();
+            }
+            catch (Exception ex)
+            {
+                first ??= ex;
+            }
+        }
+
+        if (first is not null)
+        {
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 }

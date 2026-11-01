@@ -103,6 +103,8 @@ public sealed class ExportCommandTests : CliTestBase
     [Theory]
     [InlineData("--dpi", "0", 2)]
     [InlineData("--dpi", "abc", 2)]
+    [InlineData("--dpi", "NaN", 2)]
+    [InlineData("--dpi", "Infinity", 2)]
     [InlineData("--pages", "5-3", 2)]
     [InlineData("--pages", "abc", 2)]
     [InlineData("--pages", "9", 1)]

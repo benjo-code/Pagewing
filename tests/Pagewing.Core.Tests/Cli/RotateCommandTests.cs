@@ -443,6 +443,28 @@ public sealed class RotateCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task RotateSaysTheInputFileWasChangedWithTheDocumentedWording()
+    {
+        var input = Copy("signed-docmdp-none.pdf");
+        var output = Path.Combine(workDirectory.FullName, "out.pdf");
+
+        // The signed file has a warning, which is the last thing before the write: touch the input then.
+        using var stderr = new ProbeWriter(() => File.AppendAllText(input, "\n% changed by another program\n"));
+
+        var result = await RunAsync(stderr, environment: null, CancellationToken.None, "rotate", input, "--pages", "1", "--angle", "90", "--output", output);
+
+        // The wording is documented as stable for scripts. Rotate has one input and names no file (the file is the one given);
+        // only merge and split, which write from several files, name the one that changed (see the merge tests).
+        Assert.True(result.ExitCode == 1, result.Error);
+        Assert.Contains(
+            "pagewing: The input file was changed by another program while the command ran. Nothing was written; run the command again.",
+            result.Error,
+            StringComparison.Ordinal);
+        Assert.False(File.Exists(output));
+        Assert.Empty(TemporaryFiles());
+    }
+
+    [Fact]
     public async Task CancelLeavesNoTemporaryFile()
     {
         var input = Copy("pages-marked.pdf");

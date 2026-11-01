@@ -84,6 +84,28 @@ public sealed class SplitCommandTests : CliTestBase
         Assert.Empty(Directory.GetFileSystemEntries(output));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SplitNamesAFolderInTheWayAsAFolderAlsoWithForce(bool force)
+    {
+        var input = Copy("pages-marked.pdf");
+        var output = Folder("out");
+        Directory.CreateDirectory(Path.Combine(output, "pages-marked-p001-002.pdf"));
+        string[] args = force
+            ? ["split", input, "--output", output, "--every", "2", "--force"]
+            : ["split", input, "--output", output, "--every", "2"];
+
+        var result = await RunAsync(args);
+
+        // A folder is no "file that exists": --force would not help, so the message never asks for it on its account.
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("'pages-marked-p001-002.pdf' is a folder and cannot be replaced.", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Nothing was written.", result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("already exist", result.Error, StringComparison.Ordinal);
+        Assert.Equal([Path.Combine(output, "pages-marked-p001-002.pdf")], Directory.GetFileSystemEntries(output));
+    }
+
     [Fact]
     public async Task SplitBookmarksWritesNamedFilesAndRefusesNone()
     {

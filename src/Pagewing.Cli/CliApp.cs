@@ -57,6 +57,8 @@ public static class CliApp
 
         Options:
           --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all; rotate: required).
+                             Pages are taken in ascending order, each once: --pages 3,1 gives pages 1 and 3,
+                             so --pages cannot reorder pages.
                              For merge: after a file, the pages taken from that file.
           --dpi <n>          Resolution of rendered pages (default: 144).
           --output <dir>     Directory for the PNG files, created if missing (default: .).

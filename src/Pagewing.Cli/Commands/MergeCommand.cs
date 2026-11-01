@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Pagewing.Core.Pages;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
@@ -46,6 +47,7 @@ internal static class MergeCommand
 
         var engine = new PdfEngine();
         var documents = new List<PdfDocument>(inputs.Count);
+        ExceptionDispatchInfo? closeFailure = null;
         try
         {
             var passwords = new string?[inputs.Count];
@@ -65,15 +67,18 @@ internal static class MergeCommand
                 {
                     await document.DisposeAsync().ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // A document that fails to close cannot change the result of the command any more.
+                    // Every document gets its close, and a close failure never replaces an error that is already on its way
+                    // (this block must not throw); it is reported like rotate does, after the success, below.
+                    closeFailure ??= ExceptionDispatchInfo.Capture(ex);
                 }
             }
         }
 
         await context.Output.WriteLineAsync(request.Output.AsMemory(), ct).ConfigureAwait(false);
         await context.Output.FlushAsync(ct).ConfigureAwait(false);
+        closeFailure?.Throw();
     }
 
     /// <summary>Reads the command line of <c>merge</c>.</summary>

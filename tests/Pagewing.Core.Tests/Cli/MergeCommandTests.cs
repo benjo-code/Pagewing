@@ -132,19 +132,19 @@ public sealed class MergeCommandTests : CliTestBase
     }
 
     [Theory]
-    [InlineData("only-output")]
-    [InlineData("one-file")]
-    [InlineData("no-output")]
-    [InlineData("no-files-no-output")]
-    [InlineData("pages-before-a-file")]
-    [InlineData("password-before-a-file")]
-    [InlineData("pages-twice")]
-    [InlineData("unknown-option")]
-    [InlineData("option-of-another-command")]
-    [InlineData("bad-range")]
-    [InlineData("output-twice")]
-    [InlineData("option-without-value")]
-    public async Task MergeNeedsAtLeastTwoFilesAndAnOutput(string mistake)
+    [InlineData("only-output", "needs at least two PDF files")]
+    [InlineData("one-file", "needs at least two PDF files")]
+    [InlineData("no-output", "needs --output <out.pdf>")]
+    [InlineData("no-files-no-output", "needs --output <out.pdf>")]
+    [InlineData("pages-before-a-file", "The option '--pages' belongs to a file")]
+    [InlineData("password-before-a-file", "The option '--password' belongs to a file")]
+    [InlineData("pages-twice", "The option '--pages' is given twice for the same file.")]
+    [InlineData("unknown-option", "Unknown option '--frobnicate' for 'merge'.")]
+    [InlineData("option-of-another-command", "Unknown option '--angle' for 'merge'.")]
+    [InlineData("bad-range", "Invalid value for --pages:")]
+    [InlineData("output-twice", "The option '--output' is given twice.")]
+    [InlineData("option-without-value", "The option '--output' needs a value.")]
+    public async Task MergeNeedsAtLeastTwoFilesAndAnOutput(string mistake, string reason)
     {
         var a = Copy("hello_world.pdf", "a.pdf");
         var b = Copy("text-basic.pdf", "b.pdf");
@@ -168,8 +168,59 @@ public sealed class MergeCommandTests : CliTestBase
 
         Assert.Equal(2, result.ExitCode);
         Assert.StartsWith("pagewing: ", result.Error, StringComparison.Ordinal);
+        Assert.Contains(reason, result.Error, StringComparison.Ordinal);
         Assert.Contains("Usage:", result.Error, StringComparison.Ordinal);
         Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task MergeReadsTheEqualsFormsOfItsOptions()
+    {
+        var first = Copy("pages-marked.pdf", "first.pdf");
+        var second = Copy("pages-marked.pdf", "second.pdf");
+
+        var result = await RunAsync("merge", $"--output={Output}", first, "--pages=1", second, "--pages=5-6");
+
+        Assert.Equal(0, result.ExitCode);
+        var texts = await PageTextsAsync(Output);
+        Assert.Equal(3, texts.Length);
+        Assert.Contains("PAGE 1", texts[0], StringComparison.Ordinal);
+        Assert.Contains("PAGE 5", texts[1], StringComparison.Ordinal);
+        Assert.Contains("PAGE 6", texts[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MergeTakesFileNamesAfterDoubleDashAsFilesOnly()
+    {
+        var first = Copy("pages-marked.pdf", "first.pdf");
+        var second = Copy("pages-marked.pdf", "second.pdf");
+
+        var ended = await RunAsync("merge", "--output", Output, "--", first, second);
+
+        Assert.Equal(0, ended.ExitCode);
+        Assert.Equal(12, (await PageTextsAsync(Output)).Length);
+        File.Delete(Output);
+
+        // What follows "--" is a file name, also when it looks like an option.
+        var optionAsFile = await RunAsync("merge", "--output", Output, "--", first, "--pages");
+
+        Assert.Equal(1, optionAsFile.ExitCode);
+        Assert.Contains("Cannot open '--pages'", optionAsFile.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task MergeWarnsAboutBookmarksOfTheFirstFileWhoseSelectionDropsTheirPages()
+    {
+        var first = Copy("pages-marked.pdf", "first.pdf");
+        var second = Copy("text-basic.pdf", "second.pdf");
+
+        // The first file keeps only page 1: the bookmarks of the other chapters point to deleted pages.
+        var result = await RunAsync("merge", "--output", Output, first, "--pages", "1", second);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("warning: Bookmarks that point to deleted pages stay as entries without a target", result.Error, StringComparison.Ordinal);
+        Assert.True(File.Exists(Output));
     }
 
     [Fact]
@@ -288,6 +339,24 @@ public sealed class MergeCommandTests : CliTestBase
         Assert.DoesNotContain(UserPassword, byOption.Error + byOption.Output + byEnvironment.Error + byEnvironment.Output, StringComparison.Ordinal);
         await using var opened = await Engine.OpenAsync(Output, UserPassword, Ct);
         Assert.Equal(3, opened.PageCount);
+    }
+
+    [Fact]
+    public async Task MergeUsesThePasswordOptionOfAFileEvenWhenTheEnvironmentHoldsAWrongOne()
+    {
+        var locked = Copy("encrypted_hello_world_r3.pdf", "locked.pdf");
+        var plain = Copy("hello_world.pdf", "plain.pdf");
+        var wrongEnvironment = new Dictionary<string, string> { ["PAGEWING_PASSWORD"] = "wrong" };
+
+        var byOption = await RunAsync(wrongEnvironment, "merge", locked, "--password", UserPassword, plain, "--output", Output);
+        var byEnvironment = await RunAsync(wrongEnvironment, "merge", locked, plain, "--output", Path.Combine(WorkDirectory.FullName, "env.pdf"));
+
+        // The option wins for its file; a file without one gets the (wrong) environment value and fails.
+        Assert.Equal(0, byOption.ExitCode);
+        Assert.Equal(1, byEnvironment.ExitCode);
+        Assert.Contains($"The password for '{locked}' is incorrect.", byEnvironment.Error, StringComparison.Ordinal);
+        await using var opened = await Engine.OpenAsync(Output, UserPassword, Ct);
+        Assert.Equal(2, opened.PageCount);
     }
 
     [Theory]
@@ -474,6 +543,16 @@ public sealed class MergeCommandTests : CliTestBase
         {
             Assert.Contains(word, result.Output, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public async Task HelpTextSaysThatPagesCannotReorder()
+    {
+        var result = await RunAsync("--help");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--pages 3,1 gives pages 1 and 3", result.Output, StringComparison.Ordinal);
+        Assert.Contains("--pages cannot reorder pages", result.Output, StringComparison.Ordinal);
     }
 
     [Theory]
