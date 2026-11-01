@@ -122,6 +122,11 @@ static class TestPdfs
         new("forms-signed.pdf", FormsSigned()),
         new("forms-rotated.pdf", FormsRotated()),
         new("forms-hostile.pdf", FormsHostile()),
+        new("redact-everywhere.pdf", RedactEverywhere()),
+        new("redact-covered.pdf", RedactCovered()),
+        new("redact-revisions.pdf", RedactRevisions()),
+        new("redact-image.pdf", RedactImage()),
+        new("redact-rotated.pdf", RedactRotated()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -1064,6 +1069,330 @@ static class TestPdfs
         return doc.Build();
     }
 
+    // ---- Redaction (milestone 14). The term "Zephyrstraße 17" is written as a literal string with the single byte 0xDF for "ß"
+    // (PDFDocEncoding and WinAnsi agree on it), so a plain byte search finds it wherever the file is not compressed; "Quellmann"
+    // is the second term for metadata. ----
+
+    private const string RedactTerm = "Zephyrstraße 17";
+    private const string RedactSecondTerm = "Quellmann";
+
+    // Where the term hides (milestone 14 relies on exactly this layout), 2 pages of 300 x 400:
+    //   page 1: visible text "Adresse: Zephyrstraße 17" (Helvetica 14 at 20,340); the form XObject /Fm1 (shared with page 2) at
+    //   20,300; a tiling pattern whose cell shows the term, painted into the rectangle 20,250 200 x 30; an image "scan" (200 x 80
+    //   at 20,150) with INVISIBLE text over it (text render mode 3); a Text note (/Contents) and its reply (/IRT) with the term;
+    //   a text form field "Adresse" whose /V is the term (widget at 20,100 200 x 25).
+    //   page 2: visible text "Seite zwei" and the same form XObject /Fm1 at 20,300.
+    //   Document level: bookmark title, info dictionary (/Author Quellmann, /Subject with the term), XMP metadata stream (UTF-8, both
+    //   terms), an embedded file notes.txt whose content carries the term. Nothing is compressed.
+    private static byte[] RedactEverywhere()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Begriff überall");
+        var helvetica = doc.Add(Helvetica);
+        var fonts = $"<< /Font << /F1 {helvetica} 0 R >> >>";
+        var page1 = doc.Reserve();
+        var page2 = doc.Reserve();
+
+        var form = doc.AddStream(
+            $"/Type /XObject /Subtype /Form /BBox [0 0 150 30] /Resources {fonts}",
+            Text($"BT /F1 12 Tf 2 10 Td ({RedactTerm}) Tj ET"));
+        var pattern = doc.AddStream(
+            $"/Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 100 20] /XStep 100 /YStep 20 /Resources {fonts}",
+            Text($"BT /F1 8 Tf 2 6 Td ({RedactTerm}) Tj ET"));
+
+        const int scanSize = 32;
+        var scan = new byte[scanSize * scanSize];
+        for (var y = 0; y < scanSize; y++)
+        {
+            for (var x = 0; x < scanSize; x++)
+            {
+                scan[(y * scanSize) + x] = (byte)(((x / 4) + (y / 4)) % 2 == 0 ? 200 : 235);
+            }
+        }
+
+        var scanId = doc.AddStream($"/Type /XObject /Subtype /Image /Width {scanSize} /Height {scanSize} /BitsPerComponent 8 /ColorSpace /DeviceGray", scan);
+
+        var note = doc.Add($"<< /Type /Annot /Subtype /Text /Rect [250 340 268 358] /Name /Note /F 28 /NM (redact-note-0001) /T (Alice) /Contents ({RedactTerm}) /C [1 1 0] /P {page1} 0 R >>");
+        var reply = doc.Add($"<< /Type /Annot /Subtype /Text /Rect [270 340 288 358] /Name /Comment /F 28 /NM (redact-reply-0001) /T (Bob) /Contents (Re: {RedactTerm}) /IRT {note} 0 R /RT /R /C [1 1 0] /P {page1} 0 R >>");
+        var widget = FormField(doc, page1, FormRect(20, 100, 200, 125), $"/FT /Tx /T (Adresse) /V ({RedactTerm}) {FormDa}");
+
+        doc.AddPage(
+            $"/MediaBox [0 0 300 400] /Annots [{AnnotRefs([note, reply, widget])}]",
+            $"<< /Font << /F1 {helvetica} 0 R >> /XObject << /Fm1 {form} 0 R /Scan {scanId} 0 R >> /Pattern << /P1 {pattern} 0 R >> >>",
+            $"""
+            BT /F1 12 Tf 20 372 Td (Redaction fixture, page one) Tj ET
+            BT /F1 14 Tf 20 340 Td (Adresse: {RedactTerm}) Tj ET
+            q 1 0 0 1 20 300 cm /Fm1 Do Q
+            q /Pattern cs /P1 scn 20 250 200 30 re f Q
+            q 200 0 0 80 20 150 cm /Scan Do Q
+            q BT 3 Tr /F1 12 Tf 30 180 Td ({RedactTerm}) Tj ET Q
+            BT /F1 10 Tf 20 135 Td (Scan above carries invisible text.) Tj ET
+            """,
+            page1);
+        doc.AddPage(
+            "/MediaBox [0 0 300 400]",
+            $"<< /Font << /F1 {helvetica} 0 R >> /XObject << /Fm1 {form} 0 R >> >>",
+            """
+            BT /F1 12 Tf 20 372 Td (Seite zwei) Tj ET
+            q 1 0 0 1 20 300 cm /Fm1 Do Q
+            """,
+            page2);
+
+        var outline = doc.Reserve();
+        var bookmark = doc.Reserve();
+        doc.Set(outline, $"<< /Type /Outlines /First {bookmark} 0 R /Last {bookmark} 0 R /Count 1 >>");
+        doc.Set(bookmark, $"<< /Title ({RedactTerm}) /Parent {outline} 0 R /Dest [{page1} 0 R /Fit] >>");
+
+        var xmp = doc.AddStream(
+            "/Type /Metadata /Subtype /XML",
+            Encoding.UTF8.GetBytes(
+                "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n"
+                + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+                + "<rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
+                + $"<dc:creator><rdf:Seq><rdf:li>{RedactSecondTerm}</rdf:li></rdf:Seq></dc:creator>"
+                + $"<dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">{RedactTerm}</rdf:li></rdf:Alt></dc:description>"
+                + "</rdf:Description></rdf:RDF></x:xmpmeta>\n<?xpacket end=\"w\"?>"));
+
+        var attachment = doc.AddStream("/Type /EmbeddedFile /Subtype /text#2Fplain", Text($"Attachment text: {RedactTerm}\n"));
+        var fileSpec = doc.Add($"<< /Type /Filespec /F (notes.txt) /UF (notes.txt) /EF << /F {attachment} 0 R >> >>");
+
+        doc.InfoEntries = $"/Author ({RedactSecondTerm}) /Subject ({RedactTerm})";
+        doc.CatalogEntries = $"/Outlines {outline} 0 R /PageMode /UseOutlines /Metadata {xmp} 0 R /Names << /EmbeddedFiles << /Names [(notes.txt) {fileSpec} 0 R] >> >> "
+            + AcroFormEntry(doc, [widget]);
+        return doc.Build();
+    }
+
+    // The LEAK fixture: live text under a black rectangle. One page 300 x 200: the line "Public line stays visible" (Helvetica 14 at
+    // 20,160) and "Adresse: Zephyrstraße 17" (Helvetica 14 at 20,120) with a black rectangle 15,112 260 x 24 painted OVER it. Rendering
+    // shows a black bar, text extraction and the raw bytes still find the term: a redaction that only covers must fail the check.
+    private static byte[] RedactCovered()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: nur verdeckt");
+        doc.AddPage("/MediaBox [0 0 300 200]", "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>", $"""
+            BT /F1 14 Tf 20 160 Td (Public line stays visible) Tj ET
+            BT /F1 14 Tf 20 120 Td (Adresse: {RedactTerm}) Tj ET
+            0 g 15 112 260 24 re f
+            """);
+        return doc.Build();
+    }
+
+    // The term only in an OLDER incremental revision. One page 300 x 200. Revision 1: the content stream shows "Adresse: Zephyrstraße 17"
+    // (Helvetica 14 at 20,120) and "Public line stays visible". Revision 2 (appended with a new xref section and /Prev) replaces that content
+    // stream by one that shows "Address removed" and the public line; the old bytes remain in the file. PDFium sees only revision 2,
+    // a raw byte search finds the term in revision 1 (the first revision stays the exact beginning of the file).
+    private static byte[] RedactRevisions()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: ältere Revision");
+        doc.AddPage("/MediaBox [0 0 300 200]", "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>", $"""
+            BT /F1 14 Tf 20 160 Td (Public line stays visible) Tj ET
+            BT /F1 14 Tf 20 120 Td (Adresse: {RedactTerm}) Tj ET
+            """);
+        var replacement = PdfDoc.StreamBody(string.Empty, Text("""
+            BT /F1 14 Tf 20 160 Td (Public line stays visible) Tj ET
+            BT /F1 14 Tf 20 120 Td (Address removed) Tj ET
+            """));
+        return doc.BuildWithRevision(doc.LastContentId, replacement);
+    }
+
+    // Three 64 x 64 images with known pixels, shown at 128 x 128 pt on one page of 420 x 170 (label at the top):
+    //   /ImFlate at x=10: DeviceRGB, 8 bit, Flate (stored blocks, so the bytes do not depend on a zlib version); vertical stripes of 8 px,
+    //     columns x/8 even (200,30,30), odd (30,30,200).
+    //   /ImJpeg at x=150: DeviceGray, baseline JPEG that only has DC coefficients (every 8 x 8 block is flat, the decode is exact);
+    //     vertical stripes of 8 px, even columns 70, odd 190.
+    //   /ImMask at x=290 (on a grey 0.7 rectangle): DeviceRGB Flate with an /SMask (DeviceGray, Flate); colour stripes by column
+    //     (x/8 even (30,160,30), odd (240,200,30)); alpha by row, y/8 even 255, odd 128.
+    private static byte[] RedactImage()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Bilder");
+        const int size = 64;
+        var flate = new byte[size * size * 3];
+        var jpeg = new byte[size * size];
+        var colour = new byte[size * size * 3];
+        var alpha = new byte[size * size];
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var even = (x / 8) % 2 == 0;
+                var i = ((y * size) + x) * 3;
+                (flate[i], flate[i + 1], flate[i + 2]) = even ? ((byte)200, (byte)30, (byte)30) : ((byte)30, (byte)30, (byte)200);
+                jpeg[(y * size) + x] = even ? (byte)70 : (byte)190;
+                (colour[i], colour[i + 1], colour[i + 2]) = even ? ((byte)30, (byte)160, (byte)30) : ((byte)240, (byte)200, (byte)30);
+                alpha[(y * size) + x] = (y / 8) % 2 == 0 ? (byte)255 : (byte)128;
+            }
+        }
+
+        const string head = "/Type /XObject /Subtype /Image /Width 64 /Height 64 /BitsPerComponent 8";
+        var flateId = doc.AddStream($"{head} /ColorSpace /DeviceRGB /Filter /FlateDecode", StoredFlate(flate));
+        var jpegId = doc.AddStream($"{head} /ColorSpace /DeviceGray /Filter /DCTDecode", FlatBlockJpeg(jpeg, size));
+        var maskId = doc.AddStream($"{head} /ColorSpace /DeviceGray /Filter /FlateDecode", StoredFlate(alpha));
+        var maskedId = doc.AddStream($"{head} /ColorSpace /DeviceRGB /Filter /FlateDecode /SMask {maskId} 0 R", StoredFlate(colour));
+        doc.AddPage(
+            "/MediaBox [0 0 420 170]",
+            $"<< /Font << /F1 {doc.Add(Helvetica)} 0 R >> /XObject << /ImFlate {flateId} 0 R /ImJpeg {jpegId} 0 R /ImMask {maskedId} 0 R >> >>",
+            """
+            BT /F1 10 Tf 10 156 Td (Image fixture: Flate, JPEG, SMask) Tj ET
+            0.7 0.7 0.7 rg 290 16 128 128 re f
+            q 128 0 0 128 10 16 cm /ImFlate Do Q
+            q 128 0 0 128 150 16 cm /ImJpeg Do Q
+            q 128 0 0 128 290 16 cm /ImMask Do Q
+            """);
+        return doc.Build();
+    }
+
+    // A rotated page with a CropBox inside the MediaBox. MediaBox [0 0 400 300], CropBox [20 10 380 290], /Rotate 90 (shown 280 x 360).
+    // Three text lines in unrotated user space (Helvetica 14): "Top line" at 60,250; "Adresse: Zephyrstraße 17" at 60,150;
+    // "Bottom line" at 60,70. A red marker square 40 x 40 sits at the CropBox corner 20,10 and shows which corner is which.
+    private static byte[] RedactRotated()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: gedrehte Seite");
+        doc.AddPage("/MediaBox [0 0 400 300] /CropBox [20 10 380 290] /Rotate 90", "<< /Font << /F1 " + doc.Add(Helvetica) + " 0 R >> >>", $"""
+            1 0 0 rg 20 10 40 40 re f
+            0 g
+            BT /F1 14 Tf 60 250 Td (Top line) Tj ET
+            BT /F1 14 Tf 60 150 Td (Adresse: {RedactTerm}) Tj ET
+            BT /F1 14 Tf 60 70 Td (Bottom line) Tj ET
+            """);
+        return doc.Build();
+    }
+
+    // Flate data made only of stored (uncompressed) deflate blocks: valid zlib, identical on every runtime.
+    private static byte[] StoredFlate(byte[] data)
+    {
+        var output = new MemoryStream();
+        output.WriteByte(0x78);
+        output.WriteByte(0x01);
+        var position = 0;
+        do
+        {
+            var length = Math.Min(65535, data.Length - position);
+            output.WriteByte(position + length >= data.Length ? (byte)1 : (byte)0);
+            output.WriteByte((byte)(length & 0xFF));
+            output.WriteByte((byte)(length >> 8));
+            output.WriteByte((byte)(~length & 0xFF));
+            output.WriteByte((byte)((~length >> 8) & 0xFF));
+            output.Write(data, position, length);
+            position += length;
+        }
+        while (position < data.Length);
+
+        uint a = 1;
+        uint b = 0;
+        foreach (var value in data)
+        {
+            a = (a + value) % 65521;
+            b = (b + a) % 65521;
+        }
+
+        var adler = (b << 16) | a;
+        output.WriteByte((byte)(adler >> 24));
+        output.WriteByte((byte)(adler >> 16));
+        output.WriteByte((byte)(adler >> 8));
+        output.WriteByte((byte)adler);
+        return output.ToArray();
+    }
+
+    // A baseline grey JPEG that stores only the DC coefficient of every 8 x 8 block (the mean of the block, quantiser 8, so the
+    // DC value is mean - 128), with a one-symbol AC table (end of block). Blocks of equal value make the decode exact.
+    private static byte[] FlatBlockJpeg(byte[] pixels, int size)
+    {
+        // Standard luminance DC table: lengths 0,1,5,1,1,1,1,1,1,0,... and the symbols 0 to 11; the codes follow the canonical assignment.
+        int[] counts = [0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0];
+        var codes = new (int Code, int Length)[12];
+        var code = 0;
+        var symbol = 0;
+        for (var length = 1; length <= 16; length++)
+        {
+            for (var i = 0; i < counts[length - 1]; i++)
+            {
+                codes[symbol++] = (code++, length);
+            }
+
+            code <<= 1;
+        }
+
+        var output = new MemoryStream();
+        void Marker(byte marker, byte[] payload)
+        {
+            output.WriteByte(0xFF);
+            output.WriteByte(marker);
+            output.WriteByte((byte)((payload.Length + 2) >> 8));
+            output.WriteByte((byte)(payload.Length + 2));
+            output.Write(payload);
+        }
+
+        output.WriteByte(0xFF);
+        output.WriteByte(0xD8);
+        Marker(0xDB, [.. new byte[] { 0x00 }, .. Enumerable.Repeat((byte)8, 64)]);
+        Marker(0xC0, [8, (byte)(size >> 8), (byte)size, (byte)(size >> 8), (byte)size, 1, 1, 0x11, 0]);
+        Marker(0xC4, [.. new byte[] { 0x00 }, .. counts.Select(c => (byte)c), .. Enumerable.Range(0, 12).Select(v => (byte)v)]);
+        Marker(0xC4, [.. new byte[] { 0x10, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 0x00]);
+        Marker(0xDA, [1, 1, 0x00, 0, 63, 0]);
+
+        var bits = 0;
+        var bitCount = 0;
+        void Write(int value, int length)
+        {
+            for (var i = length - 1; i >= 0; i--)
+            {
+                bits = (bits << 1) | ((value >> i) & 1);
+                if (++bitCount == 8)
+                {
+                    output.WriteByte((byte)bits);
+                    if (bits == 0xFF)
+                    {
+                        output.WriteByte(0);
+                    }
+
+                    bits = 0;
+                    bitCount = 0;
+                }
+            }
+        }
+
+        var previous = 0;
+        for (var blockY = 0; blockY < size / 8; blockY++)
+        {
+            for (var blockX = 0; blockX < size / 8; blockX++)
+            {
+                var sum = 0;
+                for (var y = 0; y < 8; y++)
+                {
+                    for (var x = 0; x < 8; x++)
+                    {
+                        sum += pixels[(((blockY * 8) + y) * size) + (blockX * 8) + x];
+                    }
+                }
+
+                var dc = ((sum + 32) / 64) - 128;
+                var difference = dc - previous;
+                previous = dc;
+                var magnitude = Math.Abs(difference);
+                var category = 0;
+                while ((1 << category) <= magnitude)
+                {
+                    category++;
+                }
+
+                Write(codes[category].Code, codes[category].Length);
+                if (category > 0)
+                {
+                    Write(difference >= 0 ? difference : difference + (1 << category) - 1, category);
+                }
+
+                Write(0, 1); // end of block: the only AC symbol has the code "0"
+            }
+        }
+
+        while (bitCount != 0)
+        {
+            Write(1, 1);
+        }
+
+        output.WriteByte(0xFF);
+        output.WriteByte(0xD9);
+        return output.ToArray();
+    }
+
     private static int[] ThreeEmptyPages(PdfDoc doc)
     {
         var pages = new int[3];
@@ -1086,13 +1415,18 @@ sealed class PdfDoc
     private readonly int catalog;
     private readonly int pagesRoot;
     private readonly int info;
+    private readonly string title;
+    private long lastXref;
 
     public PdfDoc(string title)
     {
+        this.title = title;
         catalog = Reserve();
         pagesRoot = Reserve();
-        info = Add($"<< /Title {TextString(title)} /Producer (Pagewing test generator) >>");
+        info = Add(InfoBody());
     }
+
+    private string InfoBody() => $"<< /Title {TextString(title)} /Producer (Pagewing test generator){(InfoEntries.Length > 0 ? " " + InfoEntries : string.Empty)} >>";
 
     public static byte[] Latin1(string value)
     {
@@ -1108,6 +1442,12 @@ sealed class PdfDoc
 
     // Extra entries for the catalog dictionary, for example "/Outlines 7 0 R".
     public string CatalogEntries { get; set; } = string.Empty;
+
+    // Extra entries for the document information dictionary, for example "/Author (Quellmann)".
+    public string InfoEntries { get; set; } = string.Empty;
+
+    // Id of the content stream of the page added last by AddPage.
+    public int LastContentId { get; private set; }
 
     // Id of an object that Build writes first in the file (the /Linearized dictionary), or null for plain id order.
     public int? FirstObject { get; set; }
@@ -1131,10 +1471,16 @@ sealed class PdfDoc
     public int AddStream(string entries, byte[] data)
     {
         var id = Reserve();
+        objects[id - 1] = StreamBody(entries, data);
+        return id;
+    }
+
+    // The body of a stream object (dictionary, stream, data, endstream).
+    public static byte[] StreamBody(string entries, byte[] data)
+    {
         var head = Latin1($"<< {entries} /Length {data.Length} >>\nstream\n");
         var tail = Latin1("\nendstream");
-        objects[id - 1] = [.. head, .. data, .. tail];
-        return id;
+        return [.. head, .. data, .. tail];
     }
 
     // pageEntries: MediaBox, Rotate, CropBox, Annots ...; resources: a resource dictionary; content: the page content stream.
@@ -1142,6 +1488,7 @@ sealed class PdfDoc
     public int AddPage(string pageEntries, string resources, string content, int? reservedId = null)
     {
         var contentId = AddStream(string.Empty, Latin1(content));
+        LastContentId = contentId;
         var body = $"<< /Type /Page /Parent {pagesRoot} 0 R {pageEntries} /Resources {resources} /Contents {contentId} 0 R >>";
         var id = reservedId ?? Reserve();
         Set(id, body);
@@ -1154,6 +1501,7 @@ sealed class PdfDoc
         var kids = string.Join(' ', pages.Select(p => $"{p} 0 R"));
         objects[catalog - 1] = Latin1($"<< /Type /Catalog /Pages {pagesRoot} 0 R{(CatalogEntries.Length > 0 ? " " + CatalogEntries : string.Empty)} >>");
         objects[pagesRoot - 1] = Latin1($"<< /Type /Pages /Count {pages.Count} /Kids [{kids}] >>");
+        objects[info - 1] = Latin1(InfoBody());
 
         var output = new MemoryStream();
         output.Write(Latin1("%PDF-1.7\n"));
@@ -1171,6 +1519,7 @@ sealed class PdfDoc
         }
 
         var xref = output.Position;
+        lastXref = xref;
         var table = new StringBuilder();
         table.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Count + 1}\n0000000000 65535 f \n");
         foreach (var offset in offsets)
@@ -1180,6 +1529,24 @@ sealed class PdfDoc
 
         table.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Count + 1} /Root {catalog} 0 R /Info {info} 0 R >>\nstartxref\n{xref}\n%%EOF\n");
         output.Write(Latin1(table.ToString()));
+        return output.ToArray();
+    }
+
+    // Builds the file and appends an incremental update that replaces the object id with newBody (a new xref section, /Prev
+    // pointing to the xref of the first revision). The bytes of the first revision stay the exact beginning of the file.
+    public byte[] BuildWithRevision(int id, byte[] newBody)
+    {
+        var first = Build();
+        var output = new MemoryStream();
+        output.Write(first);
+        var offset = output.Position;
+        output.Write(Latin1($"{id} 0 obj\n"));
+        output.Write(newBody);
+        output.Write(Latin1("\nendobj\n"));
+        var xref = output.Position;
+        output.Write(Latin1(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n{id} 1\n{offset:D10} 00000 n \ntrailer\n<< /Size {objects.Count + 1} /Root {catalog} 0 R /Info {info} 0 R /Prev {lastXref} >>\nstartxref\n{xref}\n%%EOF\n")));
         return output.ToArray();
     }
 

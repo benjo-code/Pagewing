@@ -70,12 +70,15 @@ internal static class RenderCorpus
     /// and the six forms-*.pdf of milestone 11 (form fields, scripts, an XFA stub, signature dummies, rotated pages and a hostile
     /// field tree), whose subject is reading and filling the fields, not the plain page drawing; and stamps-foreign.pdf of milestone 12 (stamps and
     /// a signature-like ink written by other programs, read and kept locked, not rendered here); and pages-marked.pdf of milestone 13
-    /// (page order, rotation, outline and page labels of the page operations, whose subject is the structure, not the drawing).
+    /// (page order, rotation, outline and page labels of the page operations, whose subject is the structure, not the drawing); and the five
+    /// redact-*.pdf of milestone 14 (a term hidden in every place a file can keep text, a leak with live text under a black rectangle, an old
+    /// revision, striped images and a rotated page with a CropBox), whose subject is what stays in the file after redacting, not the plain drawing.
     /// </summary>
     public static IReadOnlyList<string> Skipped { get; } =
     [
         "annotations-foreign.pdf", "drawings-foreign.pdf", "empty.pdf", "forms-basic.pdf", "forms-calc.pdf", "forms-hostile.pdf", "forms-rotated.pdf", "forms-signed.pdf",
         "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "pages-marked.pdf", "print-mixed.pdf",
+        "redact-covered.pdf", "redact-everywhere.pdf", "redact-image.pdf", "redact-revisions.pdf", "redact-rotated.pdf",
         "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "stamps-foreign.pdf", "text-dense.pdf", "text-rich.pdf",
     ];
 
