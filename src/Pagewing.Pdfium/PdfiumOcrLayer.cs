@@ -361,6 +361,12 @@ internal static unsafe class PdfiumOcrLayer
 
     private static bool IsOwn(nint item)
     {
+        // Our layer is invisible text: visible text that happens to carry the mark name is somebody else's and is never read as, or removed with, the layer.
+        if (Fpdf.FPDFTextObj_GetTextRenderMode(item) != FpdfConstants.TextRenderModeInvisible)
+        {
+            return false;
+        }
+
         var marks = Fpdf.FPDFPageObj_CountMarks(item);
         for (var m = 0; m < marks; m++)
         {

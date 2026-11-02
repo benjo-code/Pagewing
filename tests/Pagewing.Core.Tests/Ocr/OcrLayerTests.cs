@@ -42,6 +42,56 @@ public sealed class OcrLayerTests
         Assert.Equal(14, withLayer.TextCharacters);
     }
 
+    [Fact]
+    public async Task VisibleTextThatCarriesTheMarkIsNeverTakenForTheLayerNorRemoved()
+    {
+        // Our layer is invisible text with the mark; a file whose visible text carries the same mark name must not lose it in a redo run.
+        using var folder = new TempFolder();
+        var path = Path.Combine(folder.Path, "marked-visible.pdf");
+        await File.WriteAllBytesAsync(path, MarkedVisibleText(), Ct);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+
+        var info = await document.GetOcrPageInfoAsync(0, Ct);
+        var removed = await document.RemoveOcrLayerAsync(0, Ct);
+
+        Assert.False(info.HasOwnLayer);
+        Assert.Equal(7, info.TextCharacters);
+        Assert.Equal(0, removed);
+        Assert.Empty(await document.ReadOcrLayerAsync(0, Ct));
+        var text = await document.GetPageTextAsync(0, Ct);
+        Assert.Contains("Visible", text.GetText(0, text.Chars.Count), StringComparison.Ordinal);
+    }
+
+    private static byte[] MarkedVisibleText()
+    {
+        const string Content = "/PagewingOcr BMC BT /F1 18 Tf 50 700 Td (Visible) Tj ET EMC";
+        string[] objects =
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            $"<< /Length {Content.Length} >>\nstream\n{Content}\nendstream",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        ];
+        var text = new System.Text.StringBuilder("%PDF-1.7\n");
+        var offsets = new List<int>();
+        for (var i = 0; i < objects.Length; i++)
+        {
+            offsets.Add(text.Length);
+            text.Append(i + 1).Append(" 0 obj\n").Append(objects[i]).Append("\nendobj\n");
+        }
+
+        var xref = text.Length;
+        text.Append("xref\n0 ").Append(objects.Length + 1).Append("\n0000000000 65535 f \n");
+        foreach (var offset in offsets)
+        {
+            text.Append(offset.ToString("D10", System.Globalization.CultureInfo.InvariantCulture)).Append(" 00000 n \n");
+        }
+
+        text.Append("trailer\n<< /Size ").Append(objects.Length + 1).Append(" /Root 1 0 R >>\nstartxref\n").Append(xref).Append("\n%%EOF\n");
+        return System.Text.Encoding.ASCII.GetBytes(text.ToString());
+    }
+
     [Theory]
     [InlineData("ocr-scan.pdf")]
     [InlineData("ocr-scan-rotated.pdf")]

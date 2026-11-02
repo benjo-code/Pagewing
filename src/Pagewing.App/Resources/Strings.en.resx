@@ -3336,6 +3336,9 @@
   <data name="OcrReportNothing" xml:space="preserve">
     <value>Nothing was added to the document.</value>
   </data>
+  <data name="OcrReportNotUndoable" xml:space="preserve">
+    <value>This run was too large for the undo history, so it cannot be undone. Save the document to keep it, or close it without saving to drop it.</value>
+  </data>
   <data name="OcrReportLow" xml:space="preserve">
     <value>Pages to check: {0}. They may be turned or hard to read; turn them and try again.</value>
   </data>

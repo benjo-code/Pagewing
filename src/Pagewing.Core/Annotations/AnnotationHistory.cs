@@ -245,6 +245,16 @@ public sealed class AnnotationHistory
     /// </summary>
     public void MarkChanged() => Version++;
 
+    /// <summary>
+    /// Counts a text recognition run that did not fit the history as an unsaved change without a step: the document was touched (<see cref="HasOcrChanges"/>),
+    /// there is nothing to undo.
+    /// </summary>
+    public void MarkOcrChanged()
+    {
+        _ocrSteps = true;
+        Version++;
+    }
+
     /// <summary>Empties both stacks, for example after the document was reloaded; <see cref="Version"/> keeps increasing.</summary>
     public void Clear()
     {

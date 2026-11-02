@@ -5,7 +5,7 @@
              xmlns:res="using:Pagewing.App.Resources"
              x:Class="Pagewing.App.Views.OcrCard"
              x:DataType="vm:OcrViewModel"
-             KeyboardNavigation.TabNavigation="Cycle"
+             KeyboardNavigation.TabNavigation="Continue"
              AutomationProperties.Name="{x:Static res:Strings.OcrTitle}">
   <!--
     The card of the text recognition (OCR, milestone 15): a card over the window below the title bar in the style of the signature, print and
@@ -15,7 +15,7 @@
     trust; a notice for a signed document), the run (progress "3 of 12 pages", the remaining time after three pages, "Cancel"), the question after a stop
     ("Use finished pages" / "Discard", Discard first), the report (what was done in numbers, the pages to check with a link each, every page that was
     not recognized with its reason, the note that the words are an unsaved change) and the failure (danger symbol and the cause). Texts and symbols,
-    never colour alone. Tab goes from top to bottom and stays on the card; Enter starts (or closes), Esc stops a run, answers the question with
+    never colour alone. Tab goes from top to bottom and leaves the card after its last control (never a trap, WCAG 2.1.2); Enter starts (or closes), Esc stops a run, answers the question with
     Discard, or closes the card and nothing else. Made when it is first shown, never in the startup path.
   -->
   <Border Name="OcrBox" Width="520" Margin="24"

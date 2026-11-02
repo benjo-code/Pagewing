@@ -563,11 +563,32 @@ public sealed class AnnotationEditor
                 return null;
             }
 
+            // A run is long work; one that does not fit the undo history (a scanned book) is written all the same, as an unsaved change that cannot be undone.
             var step = plan.Step;
-            RequireRoomFor(step.EstimatedBytes);
+            bool undoable;
+            lock (gate)
+            {
+                undoable = history.Fits(step.EstimatedBytes, ImageBudget);
+            }
+
             var (written, leftOut) = await OcrLayerApplier.WriteAsync(document, plan).ConfigureAwait(false);
-            Record(new HashSet<int>(plan.After.Keys), step);
-            return new OcrApplyResult([.. plan.After.Keys], written, leftOut, plan.AlreadyRecognized);
+            var pages = new HashSet<int>(plan.After.Keys);
+            if (undoable)
+            {
+                Record(pages, step);
+            }
+            else
+            {
+                lock (gate)
+                {
+                    history.MarkOcrChanged();
+                    changedPages.UnionWith(pages);
+                }
+
+                session.InvalidatePages(pages);
+            }
+
+            return new OcrApplyResult([.. plan.After.Keys], written, leftOut + plan.LeftOut, plan.AlreadyRecognized, undoable);
         });
     }
 

@@ -80,7 +80,7 @@ internal static class OcrCommand
         var plan = await OcrLayerApplier.PlanAsync(document, result, replace, ct).ConfigureAwait(false);
         var report = result.Report with
         {
-            WordsLeftOut = plan.After.Values.SelectMany(static words => words).Count(static word => !word.Text.All(TextBoxCharacters.IsSupported)),
+            WordsLeftOut = plan.LeftOut,
         };
 
         // What was found is told before the first byte is written, like the warnings of the other writing commands.

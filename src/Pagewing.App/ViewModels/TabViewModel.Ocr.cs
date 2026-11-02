@@ -42,6 +42,9 @@ public sealed partial class TabViewModel
 
     private bool _ocrFeaturesEnabled = true;
 
+    /// <summary>Gets or sets what tells whether the OCR library is there (set by the window): without it the hint "This looks like a scan" is not offered.</summary>
+    internal Func<bool> OcrLibraryAvailable { get; set; } = static () => true;
+
     /// <summary>
     /// Gets whether a text recognition run of this tab goes on (set by the window while its card runs). The tab is locked meanwhile: no markup, no
     /// form value, no organizing or redacting, no undo, redo, save or print (<see cref="IsEditingFrozen"/>, <see cref="SaveBlockedReason"/>).
@@ -157,7 +160,7 @@ public sealed partial class TabViewModel
     internal async Task EnsureOcrHintAsync()
     {
         var document = _document;
-        if (!_ocrFeaturesEnabled || _ocrHintScanned || document is null || !_hasShownSharpPage || _disposed)
+        if (!_ocrFeaturesEnabled || _ocrHintScanned || document is null || !_hasShownSharpPage || _disposed || !OcrLibraryAvailable())
         {
             return;
         }

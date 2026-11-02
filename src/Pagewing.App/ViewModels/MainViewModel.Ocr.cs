@@ -8,7 +8,9 @@ namespace Pagewing.App.ViewModels;
 /// <summary>
 /// The card of the text recognition in a window (milestone 15): a tab's command asks for it (<see cref="TabViewModel.OcrRequested"/>), the window makes the
 /// card and shows it as the overlay <see cref="OverlayKind.Ocr"/>. The card is the job: while a run goes on no other overlay replaces it, it ends with the
-/// tab that runs (a tab that closes cancels its run), and closing the window cancels it. Esc stops a run (the question after a stop answers "Discard").
+/// tab that runs (a tab that closes cancels its run), and closing the window cancels it. Esc stops a run only with the focus on the card (its own key
+/// binding; the window's command <see cref="CancelOcrCommand"/> stands aside while a run goes on or the question after a stop is asked, so Esc elsewhere, for
+/// example to clear a selection, never ends half an hour of work).
 /// Nothing of it is made, read or loaded before the first use: no language file is listed, no library is loaded, no engine is made.
 /// </summary>
 public sealed partial class MainViewModel
@@ -53,8 +55,14 @@ public sealed partial class MainViewModel
     /// <summary>Gets or sets what makes the store of the language files (the folders of the program and of the user when <see langword="null"/>; tests use a folder of their own, never the real one).</summary>
     internal Func<TessdataStore>? TessdataStoreProvider { get; set; }
 
-    /// <summary>The command of Esc for the card: stops a run, answers the question after a stop with "Discard", or closes the card.</summary>
-    public ICommand CancelOcrCommand => _cancelOcrCommand ??= new RelayCommand(() => _ocr?.HandleEscape(), () => Overlay == OverlayKind.Ocr && _ocr is not null);
+    /// <summary>Gets or sets whether the OCR library is next to the program (the file is looked for, nothing is loaded; tests put an answer here). The hint is not offered without it.</summary>
+    internal Func<bool> OcrLibraryProbe { get; set; } = static () => TesseractEngineFactory.IsLibraryAvailable;
+
+    /// <summary>
+    /// The command of Esc for the card from anywhere in the window: closes the choices, the report or the failure. While a run goes on or the question
+    /// after a stop is asked it is not executable: the card's own binding (focus on the card) stops the run or answers "Discard".
+    /// </summary>
+    public ICommand CancelOcrCommand => _cancelOcrCommand ??= new RelayCommand(() => _ocr?.HandleEscape(), () => Overlay == OverlayKind.Ocr && _ocr is { State: not (OcrCardState.Running or OcrCardState.Choose) });
 
     private bool IsOcrRunning => _ocr is { IsBusy: true };
 
@@ -77,6 +85,13 @@ public sealed partial class MainViewModel
         Func<Task<string?>>? picker = LanguageFilePicker ?? (_picker is ILanguageFilePicker languages ? languages.PickLanguageFileAsync : null);
         var card = new OcrViewModel(tab, store, Settings, folder => OcrEngineFactory?.Invoke(folder) ?? new TesseractEngineFactory(folder), picker);
         card.Closed += HideOverlay;
+        card.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(OcrViewModel.State))
+            {
+                _cancelOcrCommand?.RaiseCanExecuteChanged();
+            }
+        };
         _ocr = card;
         _ocrTab = tab;
         ShowOverlay(OverlayKind.Ocr);

@@ -64,9 +64,8 @@ public sealed class OcrHostileTests : IDisposable
 
         var applied = await editor.ApplyOcrAsync(result, replace: false);
 
-        Assert.NotNull(applied);
-        Assert.Equal(0, applied.WordsWritten);
-        Assert.Equal(2, applied.WordsLeftOut);
+        Assert.Null(applied);
+        Assert.False(editor.IsDirty);
         Assert.False((await session.Document!.GetOcrPageInfoAsync(0, Ct)).HasOwnLayer);
     }
 }

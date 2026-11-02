@@ -1306,6 +1306,7 @@ public static class Strings
     public static string OcrReportTitle => Get("OcrReportTitle");
     public static string OcrReportSummary => Get("OcrReportSummary");
     public static string OcrReportNothing => Get("OcrReportNothing");
+    public static string OcrReportNotUndoable => Get("OcrReportNotUndoable");
     public static string OcrReportLow => Get("OcrReportLow");
     public static string OcrReportNoWords => Get("OcrReportNoWords");
     public static string OcrReportLittle => Get("OcrReportLittle");

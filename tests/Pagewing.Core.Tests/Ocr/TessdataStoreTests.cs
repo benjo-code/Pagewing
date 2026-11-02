@@ -195,4 +195,26 @@ public sealed class TessdataStoreTests : IDisposable
         Assert.Equal(["xyz"], failure.Missing);
         Assert.Equal(["deu", "eng"], failure.Installed);
     }
+
+    [Fact]
+    public void OnlyTheCommandLineFolderSharesTheLanguageFilesOfTheParent()
+    {
+        var root = Directory.CreateTempSubdirectory("pagewing-shipped-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "tessdata"));
+            var cli = Directory.CreateDirectory(Path.Combine(root, "cli")).FullName;
+            var app = Directory.CreateDirectory(Path.Combine(root, "Pagewing")).FullName;
+
+            Assert.Equal(Path.Combine(root, "tessdata"), TessdataStore.ShippedDirectoryFor(cli));
+            Assert.Equal(Path.Combine(root, "tessdata"), TessdataStore.ShippedDirectoryFor(cli + Path.DirectorySeparatorChar));
+
+            // An application folder with no tessdata of its own never reads the folder next to it (Downloads, Programs, ...).
+            Assert.Equal(Path.Combine(app, "tessdata"), TessdataStore.ShippedDirectoryFor(app));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

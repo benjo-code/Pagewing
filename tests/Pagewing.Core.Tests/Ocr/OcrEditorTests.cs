@@ -105,17 +105,48 @@ public sealed class OcrEditorTests : IDisposable
     }
 
     [Fact]
-    public async Task OversizedRunIsRefusedBeforeTheDocumentChanges()
+    public async Task OversizedRunIsAppliedWithoutAnUndoStepAndStaysAnUnsavedChange()
     {
+        // A run that does not fit the history (a scanned book) must not be thrown away after an hour: it is written, counts as unsaved, cannot be undone.
         using var session = await OpenAsync("ocr-scan.pdf");
         var editor = new AnnotationEditor(session) { ImageBudget = 200 };
 
-        await Assert.ThrowsAsync<AnnotationHistoryFullException>(() => editor.ApplyOcrAsync(Run((0, Known("ocr-scan.pdf", 0))), replace: false));
+        var applied = await editor.ApplyOcrAsync(Run((0, Known("ocr-scan.pdf", 0))), replace: false);
 
+        Assert.NotNull(applied);
+        Assert.False(applied.Undoable);
+        Assert.Equal([0], applied.Pages);
+        Assert.True(editor.IsDirty);
+        Assert.True(editor.HasOcrChanges);
+        Assert.False(editor.CanUndo);
+        Assert.Contains(0, editor.ChangedPages);
+        Assert.True((await session.Document!.GetOcrPageInfoAsync(0, Ct)).HasOwnLayer);
+    }
+
+    [Fact]
+    public async Task PageWhoseWordsAreAllOutsideTheFontMakesNoStep()
+    {
+        using var session = await OpenAsync("ocr-scan.pdf");
+        var editor = new AnnotationEditor(session);
+
+        var applied = await editor.ApplyOcrAsync(Run((0, [new OcrPageWord("Привет", 40, 40, 120, 64, 90), new OcrPageWord("мир", 140, 40, 200, 64, 90)])), replace: false);
+
+        Assert.Null(applied);
         Assert.False(editor.IsDirty);
         Assert.False(editor.CanUndo);
-        Assert.Empty(editor.ChangedPages);
-        Assert.False((await session.Document!.GetOcrPageInfoAsync(0, Ct)).HasOwnLayer);
+    }
+
+    [Fact]
+    public async Task PlanCountsTheWordsLeftOutAndKeepsOnlyWhatTheFontCarries()
+    {
+        using var session = await OpenAsync("ocr-scan.pdf");
+        var run = Run((0, [new OcrPageWord("Привет", 40, 40, 120, 64, 90), new OcrPageWord("Straße", 140, 40, 220, 64, 90)]), (1, [new OcrPageWord("мир", 40, 40, 100, 64, 90)]));
+
+        var plan = await OcrLayerApplier.PlanAsync(session.Document!, run, replace: false, Ct);
+
+        Assert.Equal([0], plan.After.Keys);
+        Assert.Equal(["Straße"], plan.After[0].Select(static w => w.Text));
+        Assert.Equal(2, plan.LeftOut);
     }
 
     [Fact]

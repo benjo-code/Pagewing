@@ -280,6 +280,19 @@ public sealed class OcrCommandTests : CliTestBase
     }
 
     [Fact]
+    public async Task APageWhoseWordsTheFontCannotCarryExits1AndWritesNothing()
+    {
+        using var fake = UseFake(_ => One("Привет"));
+        var input = Copy("ocr-scan.pdf");
+        var output = Path.Combine(WorkDirectory.FullName, "out.pdf");
+
+        var result = await RunAsync("ocr", input, "--output", output, "--tessdata", tessdata);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
     public async Task ReportNeverContainsTheTextTheEngineFound()
     {
         using var fake = UseFake(_ => One("Confidential4711"));

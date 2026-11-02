@@ -327,6 +327,7 @@ public sealed partial class TabViewModel
             if (_isEditingFrozen != value)
             {
                 _isEditingFrozen = value;
+                OnPropertyChanged(nameof(IsUpdateLocked));
                 if (value)
                 {
                     DiscardPendingSignature();
@@ -340,6 +341,9 @@ public sealed partial class TabViewModel
             }
         }
     }
+
+    /// <summary>Gets whether the lock is the one of an update (<see cref="IsEditingFrozen"/> without a text recognition run): the status bar names the update only then.</summary>
+    public bool IsUpdateLocked => _isEditingFrozen;
 
     /// <summary>Gets whether the note about a signature that allows comments was shown for the open document (window, once per document).</summary>
     internal bool SignatureNoteShown

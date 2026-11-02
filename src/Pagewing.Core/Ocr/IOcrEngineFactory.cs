@@ -31,6 +31,9 @@ public interface IOcrEngineFactory
 /// <param name="tessdataFolder">The folder with the <c>.traineddata</c> files of the languages (see <see cref="TessdataStore.ResolveFolder"/>).</param>
 public sealed class TesseractEngineFactory(string tessdataFolder) : IOcrEngineFactory
 {
+    /// <summary>Gets whether the OCR library is next to the program. Looks for the file only; loads nothing.</summary>
+    public static bool IsLibraryAvailable => TesseractLibrary.Default.IsAvailable;
+
     /// <inheritdoc />
     public IOcrEngine Create(string languages) => new TesseractEngine(OcrEngine.Create(tessdataFolder, languages));
 

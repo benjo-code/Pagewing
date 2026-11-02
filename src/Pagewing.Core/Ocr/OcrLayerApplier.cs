@@ -1,3 +1,4 @@
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Pdf;
 
 namespace Pagewing.Core.Ocr;
@@ -9,7 +10,8 @@ namespace Pagewing.Core.Ocr;
 public sealed record OcrLayerPlan(
     IReadOnlyDictionary<int, IReadOnlyList<OcrPageWord>> Before,
     IReadOnlyDictionary<int, IReadOnlyList<OcrPageWord>> After,
-    IReadOnlyList<int> AlreadyRecognized)
+    IReadOnlyList<int> AlreadyRecognized,
+    int LeftOut = 0)
 {
     /// <summary>Gets whether there is nothing to write.</summary>
     public bool IsEmpty => After.Count == 0;
@@ -32,9 +34,13 @@ public static class OcrLayerApplier
         var before = new SortedDictionary<int, IReadOnlyList<OcrPageWord>>();
         var after = new SortedDictionary<int, IReadOnlyList<OcrPageWord>>();
         var already = new List<int>();
+        var leftOut = 0;
         foreach (var page in result.Pages.OrderBy(static p => p.Page))
         {
-            var words = page.Words.Where(static w => w.IsUsable).ToList();
+            // Only words the font of the layer can carry are planned; the rest is counted (never replaced), and a page with nothing left gets no layer.
+            var usable = page.Words.Where(static w => w.IsUsable).ToList();
+            var words = usable.Where(static w => w.Text.All(TextBoxCharacters.IsSupported)).ToList();
+            leftOut += usable.Count - words.Count;
             if (words.Count == 0)
             {
                 continue;
@@ -55,7 +61,7 @@ public static class OcrLayerApplier
             }
         }
 
-        return new OcrLayerPlan(before, after, already);
+        return new OcrLayerPlan(before, after, already, leftOut);
     }
 
     /// <summary>

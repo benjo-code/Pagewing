@@ -1087,6 +1087,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         tab.IsEditingFrozen = _isEditingFrozen;
         tab.FormFeaturesEnabled = _formFeaturesEnabled;
         tab.OcrFeaturesEnabled = _ocrFeaturesEnabled;
+        tab.OcrLibraryAvailable = () => OcrEngineFactory is not null || OcrLibraryProbe();
         var handlers = (
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),

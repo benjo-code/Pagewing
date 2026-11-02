@@ -3336,6 +3336,9 @@
   <data name="OcrReportNothing" xml:space="preserve">
     <value>Dem Dokument wurde nichts hinzugefügt.</value>
   </data>
+  <data name="OcrReportNotUndoable" xml:space="preserve">
+    <value>Dieser Lauf war zu groß für den Rückgängig-Verlauf und lässt sich nicht rückgängig machen. Speichern Sie das Dokument, um ihn zu behalten, oder schließen Sie es ohne Speichern, um ihn zu verwerfen.</value>
+  </data>
   <data name="OcrReportLow" xml:space="preserve">
     <value>Seiten zum Prüfen: {0}. Sie könnten gedreht oder schlecht lesbar sein; drehen Sie sie und versuchen Sie es erneut.</value>
   </data>

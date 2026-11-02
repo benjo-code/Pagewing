@@ -2,6 +2,7 @@ using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -298,8 +299,9 @@ public sealed class OcrUiTests : IDisposable
         card.StartCommand.Execute(null);
         await WaitUntilAsync(window, () => card.ProgressText.StartsWith("1 of", StringComparison.Ordinal));
 
-        Assert.True(viewModel.CancelOcrCommand.CanExecute(null));
-        viewModel.CancelOcrCommand.Execute(null);
+        // Esc stops a run only with the focus on the card (its own key binding); the window's command stands aside, so Esc elsewhere clears a selection.
+        Assert.False(viewModel.CancelOcrCommand.CanExecute(null));
+        card.HandleEscape();
         await WaitUntilAsync(window, () => card.State == OcrCardState.Choose);
 
         Assert.Contains("1 pages", card.ChooseText, StringComparison.Ordinal);
@@ -335,7 +337,7 @@ public sealed class OcrUiTests : IDisposable
         var card = viewModel.Ocr!;
         card.StartCommand.Execute(null);
         await WaitUntilAsync(window, () => card.ProgressText.StartsWith("1 of", StringComparison.Ordinal));
-        viewModel.CancelOcrCommand.Execute(null);
+        card.HandleEscape();
         await WaitUntilAsync(window, () => card.State == OcrCardState.Choose);
 
         card.UseFinishedCommand.Execute(null);
@@ -451,6 +453,136 @@ public sealed class OcrUiTests : IDisposable
         Strings.Culture = new CultureInfo("de");
         Assert.Contains("unsichtbarer Text", warning.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("gültig ", warning.Message.Replace("ungültig", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task EscOfTheWindowClosesTheChoicesButNeverStopsARunOrAnswersTheQuestion()
+    {
+        var (window, viewModel) = Show(behavior: call =>
+        {
+            if (call.Index == 0)
+            {
+                return new OcrRecognition([new OcrWord("Quokkaword", 100, 100, 300, 150, 90)]);
+            }
+
+            call.Cancellation.WaitHandle.WaitOne(TimeSpan.FromSeconds(30));
+            call.Cancellation.ThrowIfCancellationRequested();
+            return new OcrRecognition([]);
+        });
+        await viewModel.OpenAsync(Copy("ocr-scan.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.CanRunOcr);
+        tab.OcrCommand.Execute(null);
+        var card = viewModel.Ocr!;
+        Assert.True(viewModel.CancelOcrCommand.CanExecute(null));
+
+        card.StartCommand.Execute(null);
+        await WaitUntilAsync(window, () => card.ProgressText.StartsWith("1 of", StringComparison.Ordinal));
+        Assert.False(viewModel.CancelOcrCommand.CanExecute(null));
+
+        card.HandleEscape();
+        await WaitUntilAsync(window, () => card.State == OcrCardState.Choose);
+        Assert.False(viewModel.CancelOcrCommand.CanExecute(null));
+    }
+
+    [AvaloniaFact]
+    public async Task ARunShowsItsProgressInTheStatusBarAndNotTheUpdateLockText()
+    {
+        var (window, viewModel) = Show(behavior: call =>
+        {
+            if (call.Index == 0)
+            {
+                return new OcrRecognition([]);
+            }
+
+            call.Cancellation.WaitHandle.WaitOne(TimeSpan.FromSeconds(30));
+            call.Cancellation.ThrowIfCancellationRequested();
+            return new OcrRecognition([]);
+        });
+        await viewModel.OpenAsync(Copy("ocr-scan.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.CanRunOcr);
+        tab.OcrCommand.Execute(null);
+        var card = viewModel.Ocr!;
+        card.StartCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.IsOcrRunning && tab.OcrProgressText.Length > 0);
+
+        var texts = window.GetVisualDescendants().OfType<TextBlock>().ToList();
+        Assert.False(texts.Single(static t => t.Name == "EditingLockedText").IsVisible);
+        var status = texts.Single(static t => t.Name == "OcrStatusText");
+        Assert.True(status.IsVisible);
+        Assert.Equal(tab.OcrProgressText, status.Text);
+        card.HandleEscape();
+        await WaitUntilAsync(window, () => !tab.IsOcrRunning);
+    }
+
+    [AvaloniaFact]
+    public async Task AFolderOfLanguageFilesThatCannotBeUsedEndsInTheFailedStateNotInRunning()
+    {
+        var (window, viewModel) = Show();
+        viewModel.OcrEngineFactory = _ => throw new UnauthorizedAccessException("denied");
+        await viewModel.OpenAsync(Copy("ocr-scan.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.CanRunOcr);
+        tab.OcrCommand.Execute(null);
+        var card = viewModel.Ocr!;
+
+        card.StartCommand.Execute(null);
+
+        await WaitUntilAsync(window, () => card.State == OcrCardState.Failed);
+        Assert.False(tab.IsOcrRunning);
+    }
+
+    [AvaloniaFact]
+    public async Task TheCardNeverTrapsTheTabKey()
+    {
+        var (window, viewModel) = Show();
+        await viewModel.OpenAsync(Copy("ocr-scan.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.CanRunOcr);
+        tab.OcrCommand.Execute(null);
+        Settle(window);
+
+        var card = window.GetVisualDescendants().OfType<OcrCard>().Single();
+
+        // WCAG 2.1.2: Tab leaves the card after its last control (the document behind it can be read during a run).
+        Assert.NotEqual(KeyboardNavigationMode.Cycle, KeyboardNavigation.GetTabNavigation(card));
+    }
+
+    [AvaloniaFact]
+    public async Task NoHintWithoutTheLibraryBeside()
+    {
+        var (window, viewModel) = Show();
+        viewModel.OcrEngineFactory = null;
+        viewModel.OcrLibraryProbe = static () => false;
+        await viewModel.OpenAsync(Copy("ocr-scan.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.HasShownSharpPage);
+
+        await tab.EnsureOcrHintAsync();
+        Settle(window);
+
+        Assert.False(tab.ShowsOcrHint);
+    }
+
+    [AvaloniaFact]
+    public async Task ARunTooLargeForTheHistoryIsWrittenAndTheReportSaysItCannotBeUndone()
+    {
+        var (window, viewModel) = Show(behavior: _ => new OcrRecognition([new OcrWord("Quokkaword", 100, 100, 300, 150, 90)]));
+        await viewModel.OpenAsync(Copy("ocr-scan.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.CanRunOcr);
+        tab.Editor.ImageBudget = 100;
+        tab.OcrCommand.Execute(null);
+        var card = viewModel.Ocr!;
+
+        card.StartCommand.Execute(null);
+        await WaitUntilAsync(window, () => card.State == OcrCardState.Report);
+
+        Assert.Contains(Strings.OcrReportNotUndoable, card.ReportLines);
+        Assert.True(tab.Editor.IsDirty);
+        Assert.False(tab.Editor.CanUndo);
+        Assert.NotEmpty(await tab.Document!.ReadOcrLayerAsync(0, TestContext.Current.CancellationToken));
     }
 
     private string Copy(string name)

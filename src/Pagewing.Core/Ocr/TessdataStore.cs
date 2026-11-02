@@ -105,8 +105,9 @@ public sealed class TessdataStore
     }
 
     /// <summary>
-    /// The folder of the shipped files for an application in <paramref name="baseDirectory"/>: its <c>tessdata</c> folder, or the one of the
-    /// parent folder (the command line sits in <c>cli/</c> and shares the one at the root of the package).
+    /// The folder of the shipped files for an application in <paramref name="baseDirectory"/>: its <c>tessdata</c> folder, or, only for the command
+    /// line (it sits in <c>cli/</c> and shares the one at the root of the package), the one of the parent folder. No other program folder ever reads
+    /// the folder next to it (Downloads, Programs, ...).
     /// </summary>
     public static string ShippedDirectoryFor(string baseDirectory)
     {
@@ -116,7 +117,13 @@ public sealed class TessdataStore
             return own;
         }
 
-        var parent = Directory.GetParent(Path.TrimEndingDirectorySeparator(baseDirectory))?.FullName;
+        var trimmed = Path.TrimEndingDirectorySeparator(baseDirectory);
+        if (!string.Equals(Path.GetFileName(trimmed), "cli", StringComparison.OrdinalIgnoreCase))
+        {
+            return own;
+        }
+
+        var parent = Directory.GetParent(trimmed)?.FullName;
         return parent is not null && Directory.Exists(Path.Combine(parent, "tessdata")) ? Path.Combine(parent, "tessdata") : own;
     }
 

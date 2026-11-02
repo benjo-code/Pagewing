@@ -687,7 +687,7 @@ public sealed class OcrViewModel : ViewModelBase, IDisposable
         {
             Fail(Strings.OcrFailedFull);
         }
-        catch (Exception e) when (e is InvalidOperationException or IOException or ObjectDisposedException or ArgumentException or InvalidDataException)
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException or ObjectDisposedException or ArgumentException or InvalidDataException)
         {
             Fail(Strings.OcrFormat("OcrFailedGeneric", e.Message));
         }
@@ -812,6 +812,11 @@ public sealed class OcrViewModel : ViewModelBase, IDisposable
         if (report.WordsLeftOut > 0)
         {
             lines.Add(Strings.OcrFormat("OcrReportLeftOut", report.WordsLeftOut));
+        }
+
+        if (applied is { Undoable: false })
+        {
+            lines.Add(Strings.OcrReportNotUndoable);
         }
 
         ReportLines = lines;
