@@ -127,6 +127,7 @@ public sealed partial class TabViewModel
         _isRedacting ? null
         : _disposed || !IsReady || _document is null || !_hasShownSharpPage ? Strings.RedactNotReady
         : _isOrganizing ? PageEditsBlockedReason
+        : _isTextEditing ? TextEditActiveReason
         : _encryption is { Encrypted: true } known && ReferenceEquals(known.Document, _document) ? Strings.RedactEncrypted
         : null;
 

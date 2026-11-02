@@ -264,7 +264,7 @@ public sealed partial class TabViewModel
 
     /// <summary>Gets whether the document has changes that are not saved, or on their way (annotations and form values; not the page plan).</summary>
     internal bool AsksAboutDocumentChanges =>
-        _isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || _editor is { IsDirty: true } or { IsBusy: true };
+        _isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || HasTextEditDraft || _editor is { IsDirty: true } or { IsBusy: true };
 
     /// <summary>
     /// Gets whether the only thing closing would lose is the page plan (<see cref="HasPendingPageEdits"/>): "Save" cannot
@@ -400,7 +400,7 @@ public sealed partial class TabViewModel
         }
 
         var editor = _editor;
-        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft;
+        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || HasTextEditDraft;
         if (IsDirty && HasTextEditSaveNote)
         {
             TextEditSaveNote = string.Empty;
@@ -409,6 +409,7 @@ public sealed partial class TabViewModel
         CanUndo = editor?.CanUndo == true;
         CanRedo = editor?.CanRedo == true;
         OnFormEditVersion();
+        OnTextEditVersion();
 
         // Unsaved changes lock extracting, splitting and exporting (PageOutputBlockedReason).
         RaisePageOutputChanged();

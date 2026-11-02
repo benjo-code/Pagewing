@@ -163,6 +163,7 @@ public sealed partial class MainViewModel
         // refused text, which counts below).
         tab.FlushTextBoxDraft();
         tab.FlushFormDraft();
+        tab.FlushTextEditDraft();
         await tab.WhenEditsSettledAsync();
         if (tab.HasEditorChanges)
         {

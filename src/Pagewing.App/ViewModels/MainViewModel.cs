@@ -1280,6 +1280,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // them like about any change.
         tab.FlushTextBoxDraft();
         tab.FlushFormDraft();
+        tab.FlushTextEditDraft();
         if (tab.AsksBeforeClosing)
         {
             if (!_resolving && !(_pendingSave is { } question && ReferenceEquals(question.Tab, tab)))

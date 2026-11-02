@@ -111,7 +111,7 @@ public sealed partial class TabViewModel
     /// <summary>Gets why the command cannot run now, or <see langword="null"/>: a mode is on, a run, a save or a print goes on.</summary>
     public string? OcrBlockedReason =>
         _isOcrRunning ? Strings.OcrBlockedRunning
-        : _isAnnotating || _isFilling || _isOrganizing || _isRedacting ? Strings.OcrBlockedMode
+        : _isAnnotating || _isFilling || _isOrganizing || _isRedacting || _isTextEditing ? Strings.OcrBlockedMode
         : _isSaving || _isPrinting || _isAskedAbout || _isEditingFrozen ? Strings.OcrBlockedBusy
         : null;
 

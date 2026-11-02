@@ -140,6 +140,10 @@ public sealed class CommandCatalog
         Tab("form.fill", () => Strings.FormModeName, EditGroup, CtrlShift(Key.F), tab => tab.ToggleFillCommand, ready: true),
         Tab("form.highlight", () => Strings.FormCommandHighlight, EditGroup, CtrlShift(Key.J), tab => tab.ToggleHighlightCommand),
 
+        // The mode "Edit text" (milestone 16): lines of existing text, no paragraphs. Ctrl+Shift+E is annotate.ellipse; Ctrl+Shift+W is free. Enter applies
+        // the text of a line, Esc drops it (DocumentView.TryEscape, not the catalog), Tab never stays in the field.
+        Tab("text.edit", () => Strings.CommandTextEdit, EditGroup, CtrlShift(Key.W), tab => tab.ToggleTextEditCommand, ready: true),
+
         // The mode "Organize pages" (milestone 13): on and off (off only while no page change is pending), and what it does to
         // the selected pages; the changes are only staged (the plan of the tab) until they are applied. Ctrl+Z and Ctrl+Y undo
         // and redo the plan in the mode (edit.undo, edit.redo). The commands of the mode run only in it and never make the

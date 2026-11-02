@@ -3450,4 +3450,94 @@
   <data name="TextEditSaveNote" xml:space="preserve">
     <value>The old text stays in earlier versions of the file. To remove it for good, use Redact.</value>
   </data>
+  <data name="CommandTextEdit" xml:space="preserve">
+    <value>Edit text</value>
+  </data>
+  <data name="TextEditNote" xml:space="preserve">
+    <value>Edit lines, not paragraphs. Characters the font lacks are set in a replacement font (Geist).</value>
+  </data>
+  <data name="TextEditNoteSaved" xml:space="preserve">
+    <value>The old text stays in earlier versions of the file.</value>
+  </data>
+  <data name="TextEditDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="TextEditHintBarName" xml:space="preserve">
+    <value>Edit text</value>
+  </data>
+  <data name="TextEditMissing" xml:space="preserve">
+    <value>Missing in this font: {0}. They are set in Geist.</value>
+  </data>
+  <data name="TextEditWholeRun" xml:space="preserve">
+    <value>Whole line in replacement font</value>
+  </data>
+  <data name="TextEditRejected" xml:space="preserve">
+    <value>Not possible: {0} are in neither this font nor Geist. Nothing was changed.</value>
+  </data>
+  <data name="TextEditTooLong" xml:space="preserve">
+    <value>Too long: a line has at most {0} characters. Nothing was changed.</value>
+  </data>
+  <data name="TextEditOverlaps" xml:space="preserve">
+    <value>The text would cover other text.</value>
+  </data>
+  <data name="TextEditOutside" xml:space="preserve">
+    <value>The text would reach beyond the edge of the page.</value>
+  </data>
+  <data name="TextEditRemoves" xml:space="preserve">
+    <value>Empty: the line is taken away. Undo brings it back.</value>
+  </data>
+  <data name="TextEditStale" xml:space="preserve">
+    <value>The page changed meanwhile. Open the line again.</value>
+  </data>
+  <data name="TextEditWriteFailed" xml:space="preserve">
+    <value>The text could not be written. The page may have changed; look at it.</value>
+  </data>
+  <data name="TextEditNotNow" xml:space="preserve">
+    <value>Editing text is not possible right now.</value>
+  </data>
+  <data name="TextEditNotReady" xml:space="preserve">
+    <value>Text can be edited once the page is shown.</value>
+  </data>
+  <data name="TextEditBlockedMode" xml:space="preserve">
+    <value>Finish the other mode first (comment, fill in, organize, redact or text recognition).</value>
+  </data>
+  <data name="TextEditActive" xml:space="preserve">
+    <value>The mode “Edit text” is on.</value>
+  </data>
+  <data name="TextEditFieldName" xml:space="preserve">
+    <value>Text of the line</value>
+  </data>
+  <data name="TextEditFieldHint" xml:space="preserve">
+    <value>Enter applies the text, Esc drops it.</value>
+  </data>
+  <data name="TextEditLockInvisibleText" xml:space="preserve">
+    <value>Hidden text (for example from text recognition): the page shows a picture, not this text.</value>
+  </data>
+  <data name="TextEditLockType3Font" xml:space="preserve">
+    <value>This page uses a Type 3 font. Pagewing cannot write such a page again.</value>
+  </data>
+  <data name="TextEditLockVerticalWriting" xml:space="preserve">
+    <value>Vertical text cannot be edited.</value>
+  </data>
+  <data name="TextEditLockUnsupportedRenderMode" xml:space="preserve">
+    <value>This text mode (clipping) cannot be edited.</value>
+  </data>
+  <data name="TextEditLockFormXObject" xml:space="preserve">
+    <value>Text in a reused page element (for example a header shared by pages) cannot be edited.</value>
+  </data>
+  <data name="TextEditLockMarkedContent" xml:space="preserve">
+    <value>This text has an alternative text or belongs to a layer. Editing it would leave the old text behind.</value>
+  </data>
+  <data name="TextEditLockNotSavable" xml:space="preserve">
+    <value>Pagewing cannot save this file, so edits would be lost.</value>
+  </data>
+  <data name="TextEditLockPageNotRewritable" xml:space="preserve">
+    <value>Writing this page again would change other things on it. Nothing was changed.</value>
+  </data>
+  <data name="TextEditLockTooManyRuns" xml:space="preserve">
+    <value>This page has too many lines to edit.</value>
+  </data>
+  <data name="TextEditLockRunTooLong" xml:space="preserve">
+    <value>This line is too long to edit.</value>
+  </data>
 </root>

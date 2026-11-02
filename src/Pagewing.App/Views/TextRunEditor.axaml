@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.TextRunEditor"
+             HorizontalAlignment="Left"
+             VerticalAlignment="Top">
+  <!--
+    The field over one line of the page (milestone 16, design system 7.7): a single-line text field laid over the run, the size and colour of the run at the
+    zoom of the view, the paper white behind it (content of the PDF, set in code) and a 1 px accent.default frame. Enter applies the text, Esc drops it;
+    Tab leaves the field (it never keeps the focus) and applies it. Below it, only when the text cannot be applied, the reason in type.caption (text.primary on
+    surface.raised with a danger.default edge). The hints about missing characters and overflow are in the hint bar, not here. Made by the document view at
+    the first opened line, never in the startup path.
+  -->
+  <StackPanel Name="TextRunEditorFrame" Spacing="4">
+    <TextBox Name="Field"
+             AcceptsReturn="False"
+             MinWidth="0"
+             MinHeight="0"
+             BorderThickness="1"
+             BorderBrush="{DynamicResource Pw.Brush.Accent.Default}"
+             FontFamily="{DynamicResource Pw.Font.Sans}"
+             AutomationProperties.Name="{x:Static res:Strings.TextEditFieldName}"
+             AutomationProperties.HelpText="{x:Static res:Strings.TextEditFieldHint}"
+             ToolTip.Tip="{x:Static res:Strings.TextEditFieldHint}" />
+    <Border Name="ProblemFrame"
+            IsVisible="False"
+            MaxWidth="360"
+            HorizontalAlignment="Left"
+            Padding="8,4"
+            Background="{DynamicResource Pw.Brush.Surface.Raised}"
+            BorderBrush="{DynamicResource Pw.Brush.Danger.Default}"
+            BorderThickness="1"
+            CornerRadius="{DynamicResource Pw.Radius.Control}">
+      <TextBlock Name="ProblemText" Classes="caption" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Border>
+  </StackPanel>
+</UserControl>
