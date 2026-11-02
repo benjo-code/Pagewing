@@ -807,7 +807,7 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
 
                     if (!raw.Insert(rectangle))
                     {
-                        raw.Destroy(rectangle);
+                        // FPDFPage_InsertObject frees the object itself on failure (fpdf_edit.h): destroying it here would be a double free.
                         throw new InvalidOperationException("PDFium could not add the area to the page.");
                     }
 
@@ -825,7 +825,7 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
                 treatedAreas.Add(hole.Area);
             }
 
-            var overlayPlan = PdfiumRedactionOverlay.Decide(overlay, keptAreas, treatedAreas.Contains);
+            var overlayPlan = PdfiumRedactionOverlay.Decide(overlay, keptAreas, treatedAreas.Contains, PdfiumRedaction.MaxObjects - objectCount);
             pass.OverlaysDrawn = overlayPlan.Drawn;
             pass.OverlaysNotShown = overlayPlan.NotShown;
             pass.OverlaysNotFitting = overlayPlan.NotFitting;

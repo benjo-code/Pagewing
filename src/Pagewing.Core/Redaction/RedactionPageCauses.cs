@@ -56,6 +56,7 @@ public static class RedactionPageCauses
         ("The rewritten page has ", " characters; at most", RedactionPageCause.TooLarge),
         ("The form objects of the page hold more than", null, RedactionPageCause.TooLarge),
         ("An image under a rectangle has ", " pixels; at most", RedactionPageCause.TooLarge),
+        ("The images of the page lie under the rectangles in more than", null, RedactionPageCause.TooLarge),
         ("A shape that covers more than half of the page", null, RedactionPageCause.BigShape),
         ("The bounds of a text object could not be read", null, RedactionPageCause.Unreadable),
         ("The bounds of an image could not be read", null, RedactionPageCause.Unreadable),

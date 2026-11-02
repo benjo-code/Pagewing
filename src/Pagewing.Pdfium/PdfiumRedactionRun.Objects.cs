@@ -32,6 +32,9 @@ internal sealed partial class PdfiumRedactionRun
     /// <summary>The most pieces the opaque area of one rectangle may be cut into around treated images; beyond it those images get the solid fill instead.</summary>
     internal const int MaxSolidPieces = 64;
 
+    /// <summary>The most (image, rectangle) pairs of one page that are planned; a box of a treated pair holds two arrays (about 160 bytes), so this bounds the memory of the plan to some tens of MiB. A page with more is refused.</summary>
+    internal const int MaxBoxesPerPage = 200_000;
+
     /// <summary>The key of an object: the index of the page object, and for a child of a form object its position (0 or more) among the children that the form is taken apart into.</summary>
     internal static long KeyOf(int index, int leaf) => ((long)index << KeyShift) | (uint)(leaf + 1);
 
@@ -181,6 +184,9 @@ internal sealed partial class PdfiumRedactionRun
         public List<ExpectedImage> Expected { get; } = [];
 
         public int Visits { get; set; }
+
+        /// <summary>How many places the planned images lie under a rectangle in (see <see cref="MaxBoxesPerPage"/>).</summary>
+        public int Boxes { get; set; }
     }
 
     private static IEnumerable<Edit> AllEdits(IEnumerable<Edit> edits)
@@ -646,6 +652,14 @@ internal sealed partial class PdfiumRedactionRun
                 var area = c.UserAreas[k];
                 if (area.Touches(pageBounds) && PdfiumRedactionObjects.TryPixelBox(composed.Value, (int)width, (int)height, area, out var box))
                 {
+                    // One box for each image and rectangle that meet: a page full of images under many rectangles would otherwise hold
+                    // millions of them. Refused, never cut off (the analysis and applying both plan here, so both refuse).
+                    if (++c.Boxes > MaxBoxesPerPage)
+                    {
+                        c.Pass.Refusal = $"The images of the page lie under the rectangles in more than {MaxBoxesPerPage} places; at most that many are handled.";
+                        return null;
+                    }
+
                     boxes.Add(new BoxPlan(box, k, null, null, null));
                 }
             }

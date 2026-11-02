@@ -500,6 +500,23 @@ public sealed partial class NativeBindingsTests
     }
 
     /// <summary>
+    /// Pins what the header says about who owns a page object when <c>FPDFPage_InsertObject</c> fails: PDFium frees it. Redaction therefore
+    /// never destroys an object after a failed insert (that would free it twice, as the overlay text once did). The header is silent about
+    /// <c>FPDFPage_InsertObjectAtIndex</c> on failure (it only says the ownership moves back to PDFium), so its callers are not changed
+    /// until the header says it; if an update words either text differently, check every insert in <c>PdfiumRedaction*</c> again.
+    /// </summary>
+    [Fact]
+    public void InsertObjectFreesThePageObjectOnFailureAsTheHeaderSays()
+    {
+        var header = File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdf_edit.h")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var block = header.Split("\n\n").SingleOrDefault(b => b.Contains("\nFPDFPage_InsertObject(", StringComparison.Ordinal));
+        Assert.True(block is not null, "FPDFPage_InsertObject is not declared in fpdf_edit.h.");
+        var words = Regex.Replace(block, @"\s*//\s*", " ").Trim();
+        Assert.Contains("Ownership of |page_object| transfers to |page| on success. |page_object| is freed on failure.", words, StringComparison.Ordinal);
+        Assert.Contains("FPDFPage_InsertObjectAtIndex(", header, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Guards the experimental clipping path API that decides whether an image can be pixelated or blurred (milestone 14.1):
     /// <c>FPDFPageObj_GetClipPath</c>, <c>FPDFClipPath_CountPaths</c>, <c>FPDFClipPath_CountPathSegments</c> and
     /// <c>FPDFClipPath_GetPathSegment</c> are still experimental in the header, and they answer as the rule assumes: an image that nothing

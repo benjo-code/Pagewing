@@ -543,15 +543,7 @@ public sealed partial class PdfDocument
         [.. (impact.RemovedAreas ?? []).Select(static a => new PageRect(a.Left, a.Top, a.Right, a.Bottom))],
         ImageAreasTreated: impact.ImageAreasTreated,
         ImageAreasSolid: impact.ImageAreasSolid,
-        ImageSolidReasons: impact.ImageSolidReasons is { Count: > 0 } reasons ? [.. reasons.Select(static r => r switch
-        {
-            PdfiumImageSolidReason.TooSmall => ImageSolidReason.TooSmall,
-            PdfiumImageSolidReason.TurnedOrSheared => ImageSolidReason.TurnedOrSheared,
-            PdfiumImageSolidReason.Clipped => ImageSolidReason.Clipped,
-            PdfiumImageSolidReason.Overlapping => ImageSolidReason.Overlapping,
-            PdfiumImageSolidReason.TooManyImages => ImageSolidReason.TooManyImages,
-            _ => ImageSolidReason.Unreadable,
-        })] : null,
+        ImageSolidReasons: impact.ImageSolidReasons is { Count: > 0 } reasons ? [.. reasons.Select(static r => SolidReasonOf(r))] : null,
         OverlaysNotShown: impact.OverlaysNotShown,
         OverlaysNotFitting: impact.OverlaysNotFitting,
         OverlaysDrawn: impact.OverlaysDrawn,
@@ -559,4 +551,16 @@ public sealed partial class PdfDocument
         OverlayPaths: impact.OverlayPaths,
         OverlaySegments: impact.OverlaySegments,
         OverlayLimitReached: impact.OverlayLimitReached);
+
+    /// <summary>The reason an image area got the solid fill, one to one (an unknown value is a programming error and throws, it never maps to a guess).</summary>
+    internal static ImageSolidReason SolidReasonOf(PdfiumImageSolidReason reason) => reason switch
+    {
+        PdfiumImageSolidReason.TooSmall => ImageSolidReason.TooSmall,
+        PdfiumImageSolidReason.TurnedOrSheared => ImageSolidReason.TurnedOrSheared,
+        PdfiumImageSolidReason.Clipped => ImageSolidReason.Clipped,
+        PdfiumImageSolidReason.Overlapping => ImageSolidReason.Overlapping,
+        PdfiumImageSolidReason.Unreadable => ImageSolidReason.Unreadable,
+        PdfiumImageSolidReason.TooManyImages => ImageSolidReason.TooManyImages,
+        _ => throw new InvalidOperationException($"Unknown reason for the solid fill of an image: {reason}."),
+    };
 }

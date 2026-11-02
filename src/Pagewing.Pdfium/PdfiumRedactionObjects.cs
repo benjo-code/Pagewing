@@ -86,6 +86,9 @@ internal static unsafe class PdfiumRedactionObjects
     /// <summary>The tolerance, in points, when the corners of a path are compared to see whether it is a rectangle.</summary>
     private const double CornerTolerance = 1e-3;
 
+    /// <summary>The most paths a clipping path may have for <see cref="IsClipped"/> to read them all; more counts as clipped (solid fill).</summary>
+    internal const int MaxClipPaths = 64;
+
     /// <summary>The matrix of a page object.</summary>
     public static bool TryGetMatrix(nint pageObject, out Affine matrix)
     {
@@ -129,6 +132,12 @@ internal static unsafe class PdfiumRedactionObjects
         if (paths <= 0)
         {
             return false;
+        }
+
+        // A hostile page can pile up clips without end; every path costs native calls for each box of the image. Too many counts as cut (solid fill).
+        if (paths > MaxClipPaths)
+        {
+            return true;
         }
 
         for (var p = 0; p < paths; p++)

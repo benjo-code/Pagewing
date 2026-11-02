@@ -311,7 +311,8 @@ internal static class PdfiumRedactionOverlay
     /// <param name="spec">The texts, the layout, the glyphs and the budget.</param>
     /// <param name="areas">The rectangles the page keeps: the index of the rectangle in <see cref="PdfiumOverlaySpec.Texts"/> and the rectangle in points from the top left of the displayed page.</param>
     /// <param name="isTreated">Whether a treated (pixelated or blurred) image lies under the rectangle with this index among <paramref name="areas"/>.</param>
-    public static PdfiumOverlayPlan Decide(PdfiumOverlaySpec spec, IReadOnlyList<(int Source, PdfiumRedactionArea Rect)> areas, Func<int, bool> isTreated)
+    /// <param name="pathRoom">How many more objects the page may hold (<see cref="PdfiumRedaction.MaxObjects"/> less those it has): the page cap of paths is no more than this, so a text that would take the page past the limit is counted as over the limit now and not refused when the result is read.</param>
+    public static PdfiumOverlayPlan Decide(PdfiumOverlaySpec spec, IReadOnlyList<(int Source, PdfiumRedactionArea Rect)> areas, Func<int, bool> isTreated, int pathRoom = int.MaxValue)
     {
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(areas);
@@ -323,7 +324,8 @@ internal static class PdfiumRedactionOverlay
         long segments = 0;
         var limit = spec.LimitReached;
         var pageStop = false;
-        var pagePaths = Math.Min(spec.PathBudget, spec.PagePaths);
+        var pageCap = Math.Min(spec.PagePaths, Math.Max(0, pathRoom));
+        var pagePaths = Math.Min(spec.PathBudget, pageCap);
         var pageSegments = Math.Min(spec.SegmentBudget, spec.PageSegments);
         for (var i = 0; i < areas.Count; i++)
         {
@@ -344,7 +346,7 @@ internal static class PdfiumRedactionOverlay
             shapes ??= new PdfiumOverlayShapes(table);
             var placement = spec.Layout(text, rect, table);
             var shape = placement.Fits ? shapes.Of(text) : null;
-            if (!placement.Fits || shape is null || placement.Lines.Count == 0)
+            if (!placement.Fits || shape is null || shape.Parts.Count == 0 || placement.Lines.Count == 0)
             {
                 items.Add(new PdfiumOverlayItem(i, PdfiumOverlayOutcome.NotFitting, rect, text, null, 0, 0));
                 notFitting++;
@@ -361,7 +363,7 @@ internal static class PdfiumRedactionOverlay
             if (limit || pageStop || tooManyPaths || tooManySegments)
             {
                 pageStop = true;
-                limit |= (tooManyPaths && spec.PathBudget <= spec.PagePaths) || (tooManySegments && spec.SegmentBudget <= spec.PageSegments);
+                limit |= (tooManyPaths && spec.PathBudget <= pageCap) || (tooManySegments && spec.SegmentBudget <= spec.PageSegments);
                 items.Add(new PdfiumOverlayItem(i, PdfiumOverlayOutcome.OverLimit, rect, text, null, 0, 0));
                 notFitting++;
                 overLimit++;
@@ -403,7 +405,7 @@ internal static class PdfiumRedactionOverlay
         var size = placement.FontSize;
         if (!(size > 0) || !double.IsFinite(size) || shape.Parts.Count == 0)
         {
-            return shape.Parts.Count == 0;
+            return false;
         }
 
         foreach (var line in placement.Lines)
@@ -452,7 +454,7 @@ internal static class PdfiumRedactionOverlay
 
                 if (Fpdf.FPDFPage_InsertObject(page, path) == 0)
                 {
-                    Fpdf.FPDFPageObj_Destroy(path);
+                    // FPDFPage_InsertObject frees the object itself on failure (fpdf_edit.h): destroying it here would be a double free.
                     throw new InvalidOperationException("PDFium could not add the overlay text to the page.");
                 }
 
