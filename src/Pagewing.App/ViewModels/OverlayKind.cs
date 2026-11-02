@@ -24,6 +24,15 @@ public enum OverlayKind
     /// <summary>The print dialog (Ctrl+P), where the system has none of its own.</summary>
     Print,
 
+    /// <summary>The dialog "Insert pages from a file" of the mode "Organize pages": the password, the pages and the position.</summary>
+    InsertFile,
+
+    /// <summary>The card of extracting the selection, splitting the document or exporting pages as images (the pages panel).</summary>
+    PageOutput,
+
     /// <summary>The dialog "New signature": draw one or import an image and keep it in the library.</summary>
     Signature,
+
+    /// <summary>The card of the text recognition (OCR): the choices, the run, the report.</summary>
+    Ocr,
 }

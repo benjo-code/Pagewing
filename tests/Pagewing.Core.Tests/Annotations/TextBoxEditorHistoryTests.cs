@@ -16,8 +16,6 @@ public sealed class TextBoxEditorHistoryTests : IDisposable
     private readonly TempFolder folder = new();
     private readonly PdfEngine engine = new();
 
-    public TextBoxEditorHistoryTests() => UseTextBoxFont();
-
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     public void Dispose() => folder.Dispose();

@@ -5,7 +5,7 @@ using Pagewing.App.Resources;
 namespace Pagewing.App.Services;
 
 /// <summary>The file dialog of the platform, through the <see cref="TopLevel.StorageProvider"/> of a window.</summary>
-public sealed class AvaloniaFilePicker : IFilePicker, IImagePicker
+public sealed class AvaloniaFilePicker : IFilePicker, IImagePicker, IFolderPicker, ILanguageFilePicker
 {
     private readonly TopLevel _owner;
 
@@ -25,6 +25,19 @@ public sealed class AvaloniaFilePicker : IFilePicker, IImagePicker
         });
 
         // Only local files can be opened; a picker that returns something else counts as cancelled.
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<string?> PickLanguageFileAsync()
+    {
+        var files = await _owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = Strings.OcrAddLanguage.TrimEnd('…', ' ', '.'),
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("tessdata") { Patterns = ["*.traineddata"] }],
+        });
+
+        // Only local files can be read; a picker that returns something else counts as cancelled.
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
@@ -69,6 +82,33 @@ public sealed class AvaloniaFilePicker : IFilePicker, IImagePicker
 
         // Only a local file can be written; anything else counts as cancelled.
         return file?.TryGetLocalPath();
+    }
+
+    public async Task<string?> PickFolderAsync(string? startFolder)
+    {
+        var storage = _owner.StorageProvider;
+        IStorageFolder? start = null;
+        if (!string.IsNullOrEmpty(startFolder))
+        {
+            try
+            {
+                start = await storage.TryGetFolderFromPathAsync(startFolder);
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                // The folder is gone or not reachable: the dialog starts where the system likes.
+            }
+        }
+
+        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = Strings.PageOutputChooseFolder.TrimEnd('…', ' ', '.'),
+            AllowMultiple = false,
+            SuggestedStartLocation = start,
+        });
+
+        // Only a local folder can be written into; anything else counts as cancelled.
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 
     private static FilePickerFileType PdfType() => new(Strings.PdfFileType)

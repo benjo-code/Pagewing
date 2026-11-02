@@ -1,0 +1,118 @@
+using System.ComponentModel;
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Pagewing.App.Resources;
+using Pagewing.App.ViewModels;
+
+namespace Pagewing.App.Views;
+
+/// <summary>
+/// The menu "Extract, split, export" of the pages panel (milestone 13, spec 5.3): three entries on the commands of a tab, on the
+/// flyout of a button. The panel (outside the mode) and the tools of the mode each have one button; this keeps the entries and
+/// their help texts (why an entry cannot run) in step with the tab. Made with the panel, never in the startup path.
+/// </summary>
+internal sealed class PageOutputMenu
+{
+    private readonly Button _button;
+    private TabViewModel? _tab;
+    private MenuItem? _extractItem;
+    private TextBlock? _reasonLine;
+    private Separator? _reasonSeparator;
+
+    /// <summary>Creates the menu on the flyout of <paramref name="button"/> (a <see cref="MenuFlyout"/>).</summary>
+    public PageOutputMenu(Button button)
+    {
+        ArgumentNullException.ThrowIfNull(button);
+        _button = button;
+    }
+
+    /// <summary>Puts the entries on the commands of <paramref name="tab"/> (none: the menu is empty) and follows its reasons.</summary>
+    public void Attach(TabViewModel? tab)
+    {
+        if (_tab is not null)
+        {
+            _tab.PropertyChanged -= OnTabPropertyChanged;
+        }
+
+        _tab = tab;
+        _extractItem = null;
+        if (_button.Flyout is not MenuFlyout flyout)
+        {
+            return;
+        }
+
+        if (tab is null)
+        {
+            flyout.ItemsSource = null;
+            return;
+        }
+
+        tab.PropertyChanged += OnTabPropertyChanged;
+        _extractItem = new MenuItem { Name = "ExtractItem", Header = Strings.CommandExtractPages, Command = tab.ExtractSelectionCommand };
+
+        // Why an entry cannot run, in words at the top of the menu (not interactive, not a stop of the arrow keys): the entries
+        // that are off give a sighted user no reason by themselves.
+        _reasonLine = new TextBlock
+        {
+            Name = "PageOutputMenuReason",
+            Classes = { "caption" },
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 280,
+            Margin = new Avalonia.Thickness(12, 6),
+            Focusable = false,
+            IsHitTestVisible = false,
+        };
+        _reasonLine.Bind(TextBlock.ForegroundProperty, _reasonLine.GetResourceObservable("Pw.Brush.Text.Secondary"));
+        _reasonSeparator = new Separator();
+        flyout.ItemsSource = new Control[]
+        {
+            _reasonLine,
+            _reasonSeparator,
+            _extractItem,
+            new MenuItem { Name = "SplitItem", Header = Strings.CommandSplitDocument, Command = tab.SplitCommand },
+            new MenuItem { Name = "ExportImagesItem", Header = Strings.CommandExportImages, Command = tab.ExportImagesCommand },
+        };
+        UpdateReasons();
+    }
+
+    /// <summary>Stops following the tab (the panel or the tools went).</summary>
+    public void Detach()
+    {
+        if (_tab is not null)
+        {
+            _tab.PropertyChanged -= OnTabPropertyChanged;
+            _tab = null;
+        }
+    }
+
+    private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TabViewModel.ExtractUnavailableReason) or nameof(TabViewModel.PageOutputBlockedReason))
+        {
+            UpdateReasons();
+        }
+    }
+
+    // The reasons are the help text of the button and of the entry for the selection, so screen readers and the tooltip say
+    // why nothing can be chosen.
+    private void UpdateReasons()
+    {
+        var blocked = _tab?.PageOutputBlockedReason;
+        AutomationProperties.SetHelpText(_button, blocked);
+        ToolTip.SetTip(_button, blocked is null ? Strings.PageOutputMenu : $"{Strings.PageOutputMenu}: {blocked}");
+        var reason = _tab?.ExtractUnavailableReason;
+        if (_extractItem is not null)
+        {
+            AutomationProperties.SetHelpText(_extractItem, reason);
+        }
+
+        if (_reasonLine is not null && _reasonSeparator is not null)
+        {
+            _reasonLine.Text = reason;
+            _reasonLine.IsVisible = reason is not null;
+            _reasonSeparator.IsVisible = reason is not null;
+            AutomationProperties.SetName(_reasonLine, reason);
+        }
+    }
+}

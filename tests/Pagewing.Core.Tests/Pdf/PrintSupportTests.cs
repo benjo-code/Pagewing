@@ -289,7 +289,6 @@ public sealed class PrintSupportTests : IDisposable
         // A text box prints light, as its own appearance draws it: solid glyphs in its colour; the dark page read nothing.
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Printing to a device context needs Windows.");
         var ct = TestContext.Current.CancellationToken;
-        UseTextBoxFont();
         await using var document = await OpenFixtureAsync("text-basic.pdf");
         await document.CreateTextBoxAsync(0, new TextBoxSpec(new PageRect(20, 120, 280, 190), "Gedruckt 5 €", 36, Blue), null, ct);
         await document.RenderPageAsync(0, 2, new RenderOptions { PageTheme = PageTheme.Dark }, ct);

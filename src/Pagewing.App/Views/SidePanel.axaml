@@ -30,6 +30,9 @@
     <DataTemplate x:Key="Comments">
       <views:CommentsPanel Name="CommentsContent" />
     </DataTemplate>
+    <DataTemplate x:Key="Redact">
+      <views:RedactionPanel Name="RedactContent" />
+    </DataTemplate>
   </UserControl.Resources>
 
   <UserControl.Styles>

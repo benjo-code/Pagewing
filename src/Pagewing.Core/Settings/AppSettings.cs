@@ -138,6 +138,12 @@ public sealed record AppSettings
     /// <summary>Whether Pagewing checks for a newer version by itself (at most once in 24 hours). Off means no network access at all.</summary>
     public bool UpdateCheck { get; set; } = true;
 
+    /// <summary>
+    /// The languages of the last text recognition (<c>deu+eng</c>, in the order of their priority), or <see langword="null"/> for the default
+    /// (the interface language and English). After <see cref="Normalized"/> a valid selection (<see cref="Ocr.OcrLanguages.Normalize"/>) or <see langword="null"/>.
+    /// </summary>
+    public string? OcrLanguages { get; set; }
+
     /// <summary>The longest author name that is kept (a longer name is dropped).</summary>
     public const int MaxAuthorNameLength = 128;
 
@@ -204,6 +210,59 @@ public sealed record AppSettings
         return this with { ToolStyles = styles };
     }
 
+    /// <summary>The most text modules ("codes") for the text on redacted areas that are kept.</summary>
+    public const int MaxRedactionCodes = 20;
+
+    /// <summary>The longest text module, in characters, that is kept (a longer one is dropped).</summary>
+    public const int MaxRedactionCodeLength = 40;
+
+    /// <summary>
+    /// The text modules the user keeps for the text on redacted areas (a file number, "confidential"), or <see langword="null"/> while
+    /// the user changed none: then nothing is stored and the interface offers "geschwärzt" or "redacted" by its language. An empty list
+    /// means the user took them all away. After <see cref="Normalized"/> every entry is trimmed, not empty, at most
+    /// <see cref="MaxRedactionCodeLength"/> characters, drawable by the text box font and unique, and there are at most
+    /// <see cref="MaxRedactionCodes"/>. Change with <see cref="WithRedactionCodes"/>; the list of an instance is never edited.
+    /// </summary>
+    public List<string>? RedactionCodes { get; set; }
+
+    /// <summary>Returns a copy with the text modules <paramref name="codes"/> (normalized into a new list), or none stored for <see langword="null"/>.</summary>
+    /// <param name="codes">The text modules, or <see langword="null"/> to go back to the default.</param>
+    /// <returns>The changed copy; the list of this instance and <paramref name="codes"/> are not touched.</returns>
+    public AppSettings WithRedactionCodes(IEnumerable<string>? codes) =>
+        this with { RedactionCodes = codes is null ? null : NormalizedRedactionCodes([.. codes]) };
+
+    // Trims, then drops the empty, the overlong, the ones with a character the overlay cannot draw (the plan would refuse such a text) and
+    // repeats, and keeps the first MaxRedactionCodes. Returns the same list when nothing needs repair, so a normalized copy equals its source.
+    private static List<string>? NormalizedRedactionCodes(List<string>? codes)
+    {
+        if (codes is null)
+        {
+            return null;
+        }
+
+        var kept = new List<string>(Math.Min(codes.Count, MaxRedactionCodes));
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var changed = false;
+        foreach (var code in codes)
+        {
+            var trimmed = code?.Trim();
+            if (kept.Count >= MaxRedactionCodes
+                || string.IsNullOrEmpty(trimmed)
+                || trimmed.Length > MaxRedactionCodeLength
+                || !trimmed.All(TextBoxCharacters.IsSupported)
+                || !seen.Add(trimmed))
+            {
+                changed = true;
+                continue;
+            }
+
+            changed |= !ReferenceEquals(trimmed, code);
+            kept.Add(trimmed);
+        }
+
+        return changed ? kept : codes;
+    }
+
     private static bool IsValid(ToolStyle? style) =>
         style is not null && Enum.IsDefined(style.Color) && Enum.IsDefined(style.Width);
 
@@ -243,11 +302,13 @@ public sealed record AppSettings
         var defaults = Default;
         return this with
         {
+            OcrLanguages = Ocr.OcrLanguages.Normalize(OcrLanguages),
             AuthorName = string.IsNullOrWhiteSpace(AuthorName) || AuthorName.Length > MaxAuthorNameLength ? null : AuthorName,
             HighlightColor = Enum.IsDefined(HighlightColor) ? HighlightColor : defaults.HighlightColor,
             UnderlineColor = Enum.IsDefined(UnderlineColor) ? UnderlineColor : defaults.UnderlineColor,
             StrikeOutColor = Enum.IsDefined(StrikeOutColor) ? StrikeOutColor : defaults.StrikeOutColor,
             ToolStyles = NormalizedToolStyles(ToolStyles),
+            RedactionCodes = NormalizedRedactionCodes(RedactionCodes),
             Theme = Enum.IsDefined(Theme) ? Theme : defaults.Theme,
             Language = Enum.IsDefined(Language) ? Language : defaults.Language,
             Density = Enum.IsDefined(Density) ? Density : defaults.Density,

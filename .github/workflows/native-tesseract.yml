@@ -1,0 +1,118 @@
+name: Native Tesseract
+
+# Builds the OCR library of milestone 15 (Tesseract + Leptonica in one shared library, packaging/native/) and uploads it to a
+# PRERELEASE of this repository named native-tesseract-<Tesseract version>-<build number>. Started by hand only:
+#   gh workflow run native-tesseract.yml --ref dev -f build=1
+# The tag never starts with "v": the update check reads releases/latest and release.yml accepts SemVer tags only, so this
+# prerelease can never be mistaken for a Pagewing release (Docs/DECISIONS.md, entry "OCR: Tesseract bauen und ausliefern (M15)").
+# After the run, tools/package.cs (NativeTesseract.Libraries) gets the size and SHA-256 of each file from the job summary; `native-fetch`
+# checks them. GitHub-hosted runners only: nothing here needs the own runners, and the build runs third-party source code.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: 'Build number n of the tag native-tesseract-<version>-<n> (a rebuild of the same version is a new number)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create the prerelease
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          [[ "$BUILD" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "build '$BUILD' ist keine Zahl" >&2; exit 1; }
+          source <(grep -E '^[A-Z_]+=' packaging/native/versions.txt)
+          TAG="native-tesseract-${TESSERACT_TAG}-${BUILD}"
+          [[ "$TAG" =~ ^v ]] && { echo "Tag darf nicht mit v beginnen" >&2; exit 1; }
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "Release $TAG gibt es schon; ein Neubau braucht eine neue Nummer" >&2; exit 1; fi
+          gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "$TAG" \
+            --notes "Tesseract ${TESSERACT_TAG} und Leptonica ${LEPTONICA_TAG} als eine Bibliothek je System (packaging/native/). Keine Pagewing-Version; die Dateien holt tools/package.cs (native-fetch) mit festgehaltener SHA-256."
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: prepare
+    runs-on: windows-2025
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build tesseract.dll
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/native/build-windows.ps1 -OutDir artifacts/native/win-x64
+      - name: Check the dependencies
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -like '*Hostx64\x64*' } | Select-Object -First 1
+          $dll = 'artifacts/native/win-x64/tesseract.dll'
+          $dependents = (& $dumpbin.FullName /dependents $dll | Select-String '\.dll$' | ForEach-Object { $_.Line.Trim() }) | Where-Object { $_ -notlike 'Dump of*' }
+          Write-Host "dependents: $dependents"
+          if (($dependents | Where-Object { $_ -ne 'KERNEL32.dll' }).Count -gt 0) { throw "tesseract.dll hat andere Abhaengigkeiten als KERNEL32.dll: $dependents" }
+          $exports = & $dumpbin.FullName /exports $dll
+          foreach ($name in 'TessBaseAPICreate', 'TessBaseAPIInit3', 'TessBaseAPISetImage', 'TessBaseAPIRecognize', 'TessResultIteratorGetUTF8Text') {
+            if (-not ($exports | Select-String -SimpleMatch $name)) { throw "Export $name fehlt" }
+          }
+      - name: Upload and print the pins
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          gh release upload $env:TAG artifacts/native/win-x64/tesseract.dll --clobber
+          $file = Get-Item artifacts/native/win-x64/tesseract.dll
+          $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "| tesseract.dll | $($file.Length) | $hash |" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+  linux:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Build libtesseract.so in ubuntu:22.04
+        run: bash packaging/native/container-build.sh artifacts/native/linux-x64
+      - name: Check the binary
+        run: |
+          dotnet run tools/package.cs -- check-binary artifacts/native/linux-x64/libtesseract.so --max-glibc 2.35 --max-glibcxx 3.4.30
+          if nm -D artifacts/native/linux-x64/libtesseract.so | grep -E ' (curl_|archive_|omp_|GOMP_)'; then echo "unerwartete Symbole (curl, archive, OpenMP)" >&2; exit 1; fi
+          for name in TessBaseAPICreate TessBaseAPIInit3 TessBaseAPISetImage TessBaseAPIRecognize TessResultIteratorGetUTF8Text; do
+            nm -D --defined-only artifacts/native/linux-x64/libtesseract.so | grep -q " T $name\$" || { echo "Export $name fehlt" >&2; exit 1; }
+          done
+      - name: Upload and print the pins
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          gh release upload "$TAG" artifacts/native/linux-x64/libtesseract.so --clobber
+          f=artifacts/native/linux-x64/libtesseract.so
+          echo "| libtesseract.so | $(stat -c %s "$f") | $(sha256sum "$f" | cut -d' ' -f1) |" | tee -a "$GITHUB_STEP_SUMMARY"

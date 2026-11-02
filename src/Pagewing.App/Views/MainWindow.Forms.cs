@@ -193,7 +193,7 @@ public sealed partial class MainWindow
         };
 
         // After the toolbars in the tab order, before the cards (password, error, link) that lie over the document area.
-        var after = new Control?[] { DocumentView, _annotationToolbar, _formToolbar }
+        var after = new Control?[] { DocumentView, _annotationToolbar, _formToolbar, _redactionToolbar }
             .Select(control => control is null ? -1 : DocumentAreaLayers.Children.IndexOf(control))
             .Max();
         DocumentAreaLayers.Children.Insert(after + 1, bar);
@@ -217,6 +217,11 @@ public sealed partial class MainWindow
             top += ToolbarHeightOf(form);
         }
 
+        if (_redactionToolbar is { IsVisible: true } redaction)
+        {
+            top += ToolbarHeightOf(redaction);
+        }
+
         if (_formHintBar is { IsVisible: true } bar)
         {
             bar.Margin = new Thickness(0, top, 0, 0);
@@ -224,6 +229,22 @@ public sealed partial class MainWindow
             // At the top of the document area it takes the rounded corner of the area, below a toolbar none.
             bar.HintFrame.CornerRadius = top > 0 ? default : new CornerRadius(DocumentArea.CornerRadius.TopLeft, 0, 0, 0);
             top += HintBarHeightOf(bar);
+        }
+
+        // The hint of the text recognition lies below the hint of a form when both are shown.
+        if (_ocrHintBar is { IsVisible: true } ocrBar)
+        {
+            ocrBar.Margin = new Thickness(0, top, 0, 0);
+            ocrBar.HintFrame.CornerRadius = top > 0 ? default : new CornerRadius(DocumentArea.CornerRadius.TopLeft, 0, 0, 0);
+            top += OcrHintBarHeightOf(ocrBar);
+        }
+
+        // The bar of the mode "Edit text" lies below the others.
+        if (_textEditHintBar is { IsVisible: true } textBar)
+        {
+            textBar.Margin = new Thickness(0, top, 0, 0);
+            textBar.HintFrame.CornerRadius = top > 0 ? default : new CornerRadius(DocumentArea.CornerRadius.TopLeft, 0, 0, 0);
+            top += TextEditHintBarHeightOf(textBar);
         }
 
         DocumentView.Margin = new Thickness(0, top, 0, 0);

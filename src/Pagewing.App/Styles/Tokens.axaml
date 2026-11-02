@@ -92,6 +92,16 @@
       <Color x:Key="Pw.Color.Selection.PageOnDark">#599DA7FF</Color>
       <SolidColorBrush x:Key="Pw.Brush.Selection.PageOnDark" Color="#599DA7FF" />
 
+      <!--
+        Marks to redact (M14): drawn by the app over the page, never by PDFium, the same in every theme and on a light or a dark
+        page. The edge and the hatch are Redact.Edge (3:1 against both pages, TokenTests.MarkColoursMeetAAOnLightAndDarkPage),
+        the tint is 15 % of it (Avalonia reads #AARRGGBB); the page text stays readable under it.
+      -->
+      <Color x:Key="Pw.Color.Redact.Edge">#E5484D</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Redact.Edge" Color="#E5484D" />
+      <Color x:Key="Pw.Color.Redact.Fill">#26E5484D</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Redact.Fill" Color="#26E5484D" />
+
       <!-- Shadows (section 5.3) -->
       <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #14000000, 0 2 10 0 #1A000000</BoxShadows>
       <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #DCDFE5, 0 12 32 -12 #1A000000</BoxShadows>
@@ -185,6 +195,12 @@
       <SolidColorBrush x:Key="Pw.Brush.Search.CurrentOnDark" Color="#73F5A524" />
       <Color x:Key="Pw.Color.Selection.PageOnDark">#599DA7FF</Color>
       <SolidColorBrush x:Key="Pw.Brush.Selection.PageOnDark" Color="#599DA7FF" />
+
+      <!-- Marks to redact (M14): the same in every theme, see the light set. -->
+      <Color x:Key="Pw.Color.Redact.Edge">#E5484D</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Redact.Edge" Color="#E5484D" />
+      <Color x:Key="Pw.Color.Redact.Fill">#26E5484D</Color>
+      <SolidColorBrush x:Key="Pw.Brush.Redact.Fill" Color="#26E5484D" />
 
       <!-- Shadows (section 5.3) -->
       <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #24FFFFFF, 0 2 10 0 #99000000</BoxShadows>

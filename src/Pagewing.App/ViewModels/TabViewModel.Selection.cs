@@ -217,6 +217,8 @@ public sealed partial class TabViewModel
         // (TabViewModel.TextBoxes.cs, TabViewModel.Forms.cs).
         FlushTextBoxDraft();
         FlushFormDraft();
+        FlushTextEditDraft();
+        _redactionPanel?.FlushOverlayDraft();
         if (_nudge is not { } nudge)
         {
             return;

@@ -512,3 +512,227 @@ Pflicht unter Windows: **Chrome** (eingebauter PDF-Viewer) und **Adobe Acrobat R
 ### Ergebnis festhalten
 
 Das Ergebnis ist der Nachweis des Abnahmekriteriums von Milestone 11 „Ausgefüllte Test-Formulare zeigen die Werte in einem anderen Viewer (Test + manuelle Prüfung)“ und der Handprüfung im Release `v0.2.0` in `Docs/roadmap.json` (danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence` je Viewer: Datum, Programm und Version, Betriebssystem, für jede Datei „wie erwartet“ oder die Abweichung (welche Datei, welcher Punkt der Prüfliste, was zu sehen war). Ein Kriterium wird erst abgehakt, wenn Chrome und Acrobat Reader geprüft sind; die Acrobat-Aussage zur echt signierten Datei gehört nur dann dazu, wenn sie geprüft wurde, sonst bleibt dieser Teil ausdrücklich offen. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
+
+## Seiten organisieren prüfen (M13)
+
+Handprüfung des Projektinhabers zu Milestone 13 (Seiten organisieren, zusammenführen, teilen, als Bild exportieren, CLI `rotate`/`merge`/`split`/`export`). Alles Rechnerische und der PDFium-Round-Trip (Seitenzahl, Reihenfolge, Drehung, Text, Lesezeichen, Formulare, Verschlüsselung) ist automatisch getestet (`PageEditSpikeTests`, `PageEditExecutorTests`, `PageEditFormImportTests`, `DocumentSaverRewriteTests`, die `*Cli`-Tests, `ApplyPagesTests`, `InsertFileTests`, `SplitAndExportCardTests`, `PagesOrganize*Tests`); geprüft hat das alles bisher nur **PDFium selbst** (und `qpdf --check`, siehe Punkt 20). Nur ein Mensch am echten Fenster und mit anderen Programmen kann prüfen, was hier steht. Die Prüfung läuft nie in der CI und gehört zur Abnahme von `v1.0.0` (Anweisung des Projektinhabers vom 2026-10-30: Handprüfungen wandern dorthin). Die Nummerierung beginnt wie bei den Formularen neu bei 1.
+
+### Muster erzeugen
+
+Die Ergebnisdateien entstehen mit der veröffentlichten CLI (oder `dotnet run --project src/Pagewing.Cli -- …`) aus den Dateien in `testdata/pdfs`; die App-Fassungen entstehen von Hand (Datei öffnen, Strg+Umschalt+O, ändern, „Anwenden“ → „Speichern unter …“ in denselben Ordner).
+
+```powershell
+$T = "$env:TEMP\pagewing-pages"; New-Item -ItemType Directory -Force $T, "$T\split-bookmarks", "$T\split-every", "$T\export" | Out-Null
+$P = "testdata\pdfs"
+pagewing rotate $P\pages-marked.pdf --pages 2,5 --angle 90 --output $T\rotated.pdf
+pagewing merge --output $T\merged.pdf $P\pages-marked.pdf $P\text-rich.pdf --pages 1
+pagewing merge --output $T\merged-forms.pdf $P\forms-basic.pdf $P\forms-basic.pdf
+pagewing merge --output $T\merged-form-and-plain.pdf $P\hello_world.pdf $P\forms-basic.pdf
+pagewing split $P\pages-marked.pdf --bookmarks --output $T\split-bookmarks
+pagewing split $P\pages-marked.pdf --every 2 --output $T\split-every
+pagewing export $P\pages-marked.pdf --dpi 100 --output $T\export
+$env:PAGEWING_PASSWORD = "hôtel"; pagewing rotate $P\encrypted_hello_world_r6.pdf --pages all --angle 180 --output $T\encrypted-rotated.pdf; Remove-Item Env:PAGEWING_PASSWORD
+pagewing rotate $P\signed-docmdp-2.pdf --pages 1 --angle 90 --output $T\signed-rotated.pdf
+```
+
+Aus der App (Dateinamen frei): `pages-marked.pdf` mit Seite 3 gelöscht, Seiten 1 und 2 vertauscht, Seite 4 dupliziert und einer leeren Seite hinter Seite 1 (`app-organized.pdf`); `forms-basic.pdf` mit eingefügtem `forms-basic.pdf` (`app-merged-forms.pdf`). Dazu die Ablehnung: `text-basic.pdf` mit eingefügtem `encrypted_hello_world_r6.pdf` (Hauptdatei unverschlüsselt); erwartet ist eine Karte mit Grund und nichts Geschriebenes.
+
+### Prüfliste
+
+**Bedienung im echten Fenster** (Windows und, soweit möglich, Linux; hell, dunkel, Hochkontrast, „Kompakt“; Deutsch und Englisch):
+
+1. **Panel und Leiste:** Strg+Umschalt+O öffnet den Modus und das Panel „Seiten“. Zähler „6 → 4 Seiten“, Hinweis „Seitenänderungen warten auf Anwenden“, alle Knöpfe mit Beschriftung und Kürzel im Tooltip, bei schmalem Panel umbrechend und nichts abgeschnitten. Gedrehte, leere, kopierte und eingefügte Seiten tragen Symbol **und** Text; die Auswahl ist am Rahmen, am Häkchen und an der fetten Nummer zu erkennen, nie nur an der Farbe. Die Liste außerhalb des Modus sieht aus wie vorher.
+2. **Ziehen:** Eine Seite und eine Mehrfachauswahl (Strg/Umschalt) ziehen; die Einfügemarke sitzt zwischen den Seiten (eine und zwei Spalten in „Kompakt“); Loslassen verschiebt, Esc während des Zugs verwirft; am Rand der Liste scrollt es mit (bekannt: nur solange sich der Zeiger bewegt, Backlog „Auto-Scroll per Timer“); ein Finger auf einem Touchscreen scrollt statt zu ziehen. Wie fühlt es sich bei 1.000 Seiten (`thousand-pages.pdf`) an?
+3. **Tastatur ohne Maus:** Auswahl mit Pfeilen, Strg+A, Entf, Strg+Umschalt+Links/Rechts, Strg+Umschalt+N/B/V/Hoch/Runter, Strg+Z/Strg+Y (wirken im Modus auf den Plan), Anwenden und Verwerfen; Tab verlässt die Liste und den Modus und hält den Fokus nie fest; Entf in einer fokussierten Auswahlliste einer Karte (Einstellungen) löscht **keine** Seite. Die Kürzel auf einer **deutschen Tastatur** (AltGr, Umlaute) und Strg+Umschalt+V gegen Systemkürzel.
+4. **Menü „Extrahieren, teilen, exportieren“ und Kontextmenü:** Einträge, Kürzel, die Zeile mit dem Grund bei gesperrten Einträgen; die Reihenfolge des Fokus im Flyout mit der Grundzeile.
+5. **Bildschirmleser** (Narrator, NVDA; Orca unter Linux): Einträge der Liste melden Nummer und Markierungen („Gedreht um 90°“, „Kopie“, „Leere Seite“, „Aus anderer Datei“), der Tab meldet „Seitenänderungen ausstehend“, abgelehnte Änderungen werden als Hinweis vorgelesen, Karten (Anwenden, Datei einfügen, Teilen, Bilder) haben sinnvolle Namen und Reihenfolge.
+6. **Anwenden-Karte:** Standard „Speichern unter …“ mit Fokus; „In der Originaldatei speichern“ ist gefährlich gekennzeichnet und 400 ms gesperrt; die Verlustliste liest sich verständlich und scrollt; hell, dunkel, Hochkontrast. Nach dem Anwenden endet der Modus, die Ansicht bleibt an der richtigen Seite (Zoom, Panel, Layout unverändert), die Miniaturen zeigen die neue Datei.
+7. **Datei einfügen:** Dateidialog, verschlüsselte Datei (Passwortfeld, falsches Passwort), keine PDF, Seitenbereich mit Fehlern (`5-3`, `0`), Einfügeposition; eine Datei, die vor dem Anwenden außerhalb geändert wird, bricht das Anwenden mit Nennung der Datei ab.
+8. **Ordner- und Speichern-Dialog** auf beiden Systemen (Linux: Portal): Zielordner für Teilen und Bilder, „Speichern unter“ beim Extrahieren inklusive der Überschreiben-Rückfrage des Systems.
+9. **Das letzte Fenster mitten im Export schließen:** keine `.pw-*`-Reste im Zielordner, keine halben Dateien (das Aufräumen läuft nach dem Abbruch asynchron).
+10. **Große Datei:** Anwenden auf einer Datei von mehreren hundert MiB; Rendern und Scrollen bleiben währenddessen bedienbar, nur der Schreibschritt blockiert den `PdfiumThread` (rund 7 s bei 378 MiB gemessen).
+
+**Ergebnisdateien in anderen Programmen** (Pflicht unter Windows: **Chrome** und **Adobe Acrobat Reader**; optional Edge, Firefox, Okular, Evince). Jede Datei öffnen; nichts darf eine Meldung „beschädigt“ oder „repariert“ auslösen, und Acrobat fragt beim Schließen nichts:
+
+11. `rotated.pdf`: Seiten 2 und 5 sind gedreht (Seite 5 hatte schon `/Rotate 90`, ist jetzt 180°), Reihenfolge und Text unverändert, Lesezeichen führen auf die richtigen Seiten, Seitenbeschriftungen unverändert.
+12. `merged.pdf`: Seiten von `pages-marked.pdf`, gefolgt von Seite 1 von `text-rich.pdf`; Lesezeichen **nur** die der ersten Datei; Seitenbeschriftungen (römisch/dezimal) an ihren alten Positionen.
+13. **Formulare, die offene Frage:** `merged-forms.pdf`, `merged-form-and-plain.pdf` (die Hauptdatei hat hier kein Formular) und `app-merged-forms.pdf`: Lassen sich die Felder der **eingefügten** Seiten in Acrobat und Chrome ausfüllen? Erwartet (nicht belegt) ist: nicht zuverlässig, weil die Widgets nicht im Formular der Datei stehen. Zeigen gleich benannte Felder denselben Wert? Das Ergebnis gehört zum Backlog-Eintrag „Formularfelder beim Duplizieren oder Zusammenführen umbenennen“. Die Anwenden-Karte und die CLI müssen es vorher genannt haben.
+14. `split-bookmarks\*.pdf` (Teile 1 bis 2, 3 bis 4, 5 bis 6, Namen aus den Lesezeichen) und `split-every\*.pdf`: Seitenzahl und Text je Teil, Inhaltsverzeichnis im Teil (der Eintrag der gelöschten Seiten ohne Ziel), Seitenbeschriftungen bleiben an den Positionen.
+15. `export\*.png`: gleiche Ansicht wie `pagewing render` (Größe, Drehung, Annotationen), Dateinamen `<Name>-p001.png`.
+16. `encrypted-rotated.pdf` fragt nach dem Passwort `hôtel` und zeigt die Seite gedreht; die Berechtigungen sind unverändert (Eigenschaften, Sicherheit).
+17. `signed-rotated.pdf` (Strukturattrappe, DocMDP-Stufe 2, keine gültige Signatur): Acrobat zeigt die Signatur als ungültig oder nicht prüfbar; Pagewing hat vor dem Schreiben gewarnt („wird als ungültig angezeigt“, nie „gültig“). Eine **echte**, selbst signierte Datei (nie einchecken) zeigt in Acrobat nach dem Neuschrieb eine ungültige Signatur; das ist erwartet.
+18. `app-organized.pdf`: Reihenfolge, Kopie und leere Seite wie vorgemerkt; die duplizierte Seite zeigt denselben Inhalt; die leere Seite hat die Größe der Nachbarin.
+19. **Pagewing selbst:** Alle diese Dateien in Pagewing öffnen (hell und dunkel), drucken (Vorschau) und erneut organisieren; kein Absturz beim Speichern von Dateien mit eingefügten Formularseiten (Regressionswächter `PageEditFormImportTests`).
+20. **`qpdf --check`** auf alle Ergebnisdateien (Rezept des Spikes: qpdf 11.9.0 im Container `ubuntu:24.04`; Docker vorausgesetzt, `$T` ist der Ordner der Muster):
+
+```sh
+docker run --rm -v "$T":/data ubuntu:24.04 bash -c 'apt-get update -qq && apt-get install -y -qq qpdf >/dev/null && cd /data && for f in $(find . -name "*.pdf" ! -name "encrypted-*"); do echo "== $f"; qpdf --check "$f" || echo "EXIT $?"; done; qpdf --check --password="hôtel" encrypted-rotated.pdf'
+```
+
+Erwartet: überall „No syntax or stream encoding errors found“ (Warnungen zu nicht erreichbaren Widgets gibt es erst bei `--json-key=acroform`, nicht bei `--check`). Die Rohdateien des Spikes (`PAGEWING_SPIKE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-class "*PageEditSpikeTests"`) prüft man genauso.
+
+**Linux-Läufe** (die Tests laufen nur dort; unter Windows nicht ausgeführt):
+
+21. `dotnet test tests/Pagewing.Core.Tests --filter-class "*RotateCommandTests"` (der `statx`-Zweig von `FileIdentity`: Symlink-Ordner, Hardlink, gleiche Datei) und `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Cli"`.
+22. `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Saving" --filter-namespace "*Pages"` (der Zweig `File.Move(…, overwrite: false)` des nicht ersetzenden Verschiebens, Unix-Rechte des Ziels, Platte voll) und `--filter-class "*PageEditFormImportTests"` (Lebensdauer importierter Formularseiten).
+23. App unter Linux (X11 und Wayland): Ziehen in der Liste, Auto-Scroll, Ordner-Portal, Speichern-Portal mit Überschreiben, Tastenkürzel.
+
+**Messung auf echter Hardware:**
+
+24. Startzeit-Check (Workflow `hardware-measure.yml`, Runner `dotnet-windows-gpu`, nur auf Anweisung): die Budgets bleiben; das ist auch der einzige belastbare Beleg für die Kosten der sieben neuen Icon-Geometrien im Startpfad. Dazu `PAGEWING_MEASURE_OUT=<Ordner> dotnet test tests/Pagewing.App.Tests -c Release --filter-class "*PagesOrganizeMeasurementTests"` (Eintritt in den Modus auf 1.000 Seiten, Planoperationen, Anwenden auf 20.000 Seiten) und ein Gefühlstest: `thousand-pages.pdf` im Modus scrollen.
+
+### Ergebnis festhalten
+
+Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 13 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 13“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung (welcher Punkt, was zu sehen war); Punkt 13 immer mit der ausdrücklichen Antwort „Felder eingefügter Seiten ausfüllbar: ja/nein/teilweise (Programm, Version)“. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
+
+## Schwärzen prüfen (M14)
+
+Handprüfung des Projektinhabers zu Milestone 14 (Schwärzen in der App und `pagewing redact`). Alles Rechnerische, die Prüfung der Ergebnisdatei (Text, Rohbytes, Pixel, Seitenschlüssel, Bereinigtes, Seitenbilder außerhalb der Markierungen), die Ablehnungen und die Texte beider Sprachen sind automatisch getestet (`RedactTextTests`, `RedactImagePathFormTests`, `RedactionVerifierTests`, `PageKeyScannerTests`, `CleanRebuildTests`, `RedactionApplierTests`, `RedactionSearchTests`, `RedactCommandTests`, in der App `RedactModelTests`, `RedactMarkingTests`, `RedactPanelTests`, `RedactApplyTests`, `RedactionStartPathTests`). Was ein Test nicht sagen kann: ob **andere Programme** die Datei genauso lesen wie Pagewing und wie sich die Oberfläche am echten Bildschirm anfühlt. Pagewing verspricht nie, dass ein anderes Programm die Datei genauso liest; diese Liste soll es belegen.
+
+### Muster erzeugen
+
+Aus den Dateien in `testdata/pdfs` mit der veröffentlichten CLI (oder `dotnet run --project src/Pagewing.Cli -- …`); die App-Fassungen entstehen von Hand (Datei öffnen, Strg+Umschalt+P, markieren, „Anwenden …“ → „Speichern unter …“ in denselben Ordner).
+
+```powershell
+$T = "$env:TEMP\pagewing-redact"; New-Item -ItemType Directory -Force $T | Out-Null
+$P = "testdata\pdfs"
+# Begriff an allen Stellen (sichtbarer Text, Form-XObject auf beiden Seiten, unsichtbarer Text über dem Scan, Notiz und Antwort, Formularfeld, Lesezeichen, Info, XMP, Anhang)
+pagewing redact $P\redact-everywhere-nopattern.pdf --output $T\everywhere.pdf --text "Zephyrstraße 17" --rect 1:248,40,42,22 --rect 1:20,275,180,25
+pagewing redact $P\redact-attachments.pdf --output $T\attachments.pdf --rect 1:15,62,265,28
+pagewing redact $P\redact-image.pdf --output $T\image.pdf --rect 1:10,26,128,128
+pagewing redact $P\redact-rotated.pdf --output $T\rotated.pdf --text "Zephyrstraße 17"
+pagewing redact $P\redact-fonts.pdf --output $T\fonts.pdf --text "Zephyrstraße 17"
+pagewing redact $P\redact-revisions.pdf --output $T\revisions.pdf --rect 1:15,60,200,30
+pagewing redact $P\text-dense.pdf --output $T\dense.pdf --text Needle
+pagewing redact $P\signed-docmdp-2.pdf --output $T\signed.pdf --rect 1:20,20,60,20
+```
+
+Aus der App (Dateinamen frei): `redact-everywhere-nopattern.pdf` mit einer Suche nach `Zephyrstraße 17` und „Alle markieren“, dazu je ein Bereich über der Notiz, ihrer Antwort und dem Formularfeld (`app-everywhere.pdf`); `text-rich.pdf` mit einer Textauswahl über zwei Zeilen und über den Trennstrich (`app-text.pdf`); `redact-image.pdf` mit einem Bereich über dem JPEG-Bild (`app-image.pdf`). Dazu die Ablehnungen, jede erwartet mit Karte (Grund und Seiten) und nichts Geschriebenem: `encrypted_hello_world_r6.pdf` (verschlüsselt), `redact-everywhere.pdf` mit einem Bereich über dem Tiling-Muster (Seite lässt sich nicht schwärzen oder die Prüfung findet den Begriff im Musterstrom), eine Datei mit `/Thumb` an einer Seite (aus `RedactionApplierTests`, `ThumbFile`, nicht eingecheckt: eine PDF mit `/Thumb` auf Seite 2 selbst bauen).
+
+### Prüfliste
+
+**Ergebnisdateien in anderen Programmen** (Pflicht unter Windows: **Chrome** und **Adobe Acrobat Reader**; optional Edge, Firefox, Okular, Evince). Jede Datei öffnen; nichts darf eine Meldung „beschädigt“ oder „repariert“ auslösen, und Acrobat fragt beim Schließen nichts:
+
+1. **Aussehen wie die Vorschau:** `everywhere.pdf`, `app-everywhere.pdf`, `image.pdf`, `rotated.pdf`, `fonts.pdf`, `dense.pdf`: die Flächen liegen genau dort, wo markiert wurde (bei `rotated.pdf` nicht gespiegelt), der Rest der Seite sieht aus wie im Original (Schriften, Abstände, Bilder, Hintergründe; Seite mit Muster oder Schattierung ist abgelehnt, nicht ungenau).
+2. **Kein Text unter den Flächen:** in jedem Programm **Alles auswählen und kopieren** (Strg+A, Strg+C) und in einen Editor einfügen; mit **Suchen** (Strg+F) nach dem geschwärzten Begriff, auch in Teilen (`Zephyr`, `17`). Erwartet: kein Treffer, nichts Kopierbares unter den Flächen; das Nachbarwort bleibt kopierbar.
+3. **Kein Bild unter den Flächen:** `image.pdf` und `app-image.pdf` in Acrobat: das Bild herausziehen oder mit dem Objekt-Werkzeug anklicken zeigt nur die überschriebenen Pixel; kein Pixel der Fläche ist durch Vergrößern wiederherstellbar.
+4. **Bereinigt:** Eigenschaften (Titel, Autor, Betreff, Stichwörter leer), Seitenbereich Lesezeichen leer, Anhänge des Dokuments leer (die Dateien von Büroklammer-Annotationen bleiben und stehen im Bericht unter „Nicht bereinigt“: `redact-attachments.pdf` zeigt `catalog.txt` nicht mehr, `paperclip.txt` noch), Dokument-JavaScript keins (Acrobat: Eigenschaften, Anhänge, Lesezeichen, Seitenbeschriftungen unverändert dezimal ab 1); Strings-Suche in den Rohbytes (`strings everywhere.pdf | grep -i zephyr`, oder PowerShell `Select-String`) findet nichts, auch nicht in älteren Revisionen: `revisions.pdf` hat genau ein `%%EOF` und kein `/Prev`.
+5. **Außerhalb unverändert:** `dense.pdf` und `text-rich`-Ergebnis seitenweise neben dem Original legen (Seitenbild bei 100 %); außerhalb der Flächen gleich, Text bleibt auswählbar.
+6. **Formulare:** In `app-everywhere.pdf` zeigen Acrobat und Chrome die Felder als Widgets; sie sind laut Karte nicht mehr zuverlässig ausfüllbar (erwartet, kein Fehler). Die ausdrückliche Antwort festhalten: „Felder ausfüllbar: ja/nein/teilweise (Programm, Version)“.
+7. **Signatur:** `signed.pdf` (Strukturattrappe, DocMDP-Stufe 2, keine gültige Signatur): Pagewing hat vor dem Schreiben gewarnt („wird als ungültig angezeigt“, nie „gültig“); Acrobat zeigt die Signatur als ungültig oder nicht prüfbar. Eine **echte**, selbst signierte Datei (nie einchecken) zeigt nach dem Schwärzen in Acrobat eine ungültige Signatur; erwartet.
+8. **`qpdf --check`** auf alle Ergebnisdateien (Rezept wie bei M13: qpdf 11.9.0 im Container `ubuntu:24.04`, `$T` der Ordner der Muster): überall „No syntax or stream encoding errors found“.
+
+```sh
+docker run --rm -v "$T":/data ubuntu:24.04 bash -c 'apt-get update -qq && apt-get install -y -qq qpdf >/dev/null && cd /data && for f in $(find . -name "*.pdf"); do echo "== $f"; qpdf --check "$f" || echo "EXIT $?"; done'
+```
+
+**Bedienung im echten Fenster** (Windows und, soweit möglich, Linux; hell, dunkel, Hochkontrast, „Kompakt“; Deutsch und Englisch):
+
+9. **Markieren:** Bereich ziehen, verschieben, in der Größe ändern (Griffe), löschen (Entf), Text auswählen und mit Strg+Enter markieren, mit Maus **und Stift**; die Markierung ist auf der hellen und der dunklen Seite deutlich sichtbar (Fläche, Schraffur, Rahmen, nie nur Farbe); Tab verlässt die Markierungen und hält den Fokus nie fest; Esc-Reihenfolge (Zug, Auswahl, Modus). Kürzel Strg+Umschalt+P und Strg+Enter auf einer **deutschen Tastatur** und gegen Systemkürzel.
+10. **150 % und 200 % Skalierung** und die englische Fassung bei 640 px Fensterbreite: Werkzeugleiste (Überlauf, „Anwenden …“ nicht abgeschnitten), Panel „Schwärzen“, Karten.
+11. **Bildschirmleser** (Narrator, NVDA; Orca unter Linux): Marken (Rahmen und Griffe), Treffer mit Quelle und „Unsichtbarer Text“, Zähler, Hinweise (abgelehnte Markierung, Sperre der anderen Modi), Anwenden-Karte mit Abschnitten, Ablehnungskarten und Prüfbericht in sinnvoller Reihenfolge.
+12. **Hochkontrast** (Windows): Markierung, Vorschau, Karten, Schaltflächen sind erkennbar; der Stern, das Schloss und die Symbole tragen Text.
+13. **Suche mit sehr vielen Treffern** (echte Hardware): `dense.pdf` und eine Datei mit mehr als 10.000 Treffern (zum Beispiel ein einzelner Buchstabe in `text-dense.pdf`): Die Suche bricht an der Grenze von 10.000 Treffern mit Hinweis ab, die Oberfläche bleibt bedienbar, „Alle markieren“ verlangt das Wort des Nutzers. Dazu das Anwenden auf `dense.pdf` mit 200 Markierungen: Rendern und Scrollen bleiben währenddessen bedienbar.
+14. **Anwenden-Karte:** Standard „Speichern unter …“ mit Fokus (Vorschlag `<Name>-redacted.pdf`); „In der Originaldatei speichern“ ist gefährlich gekennzeichnet und 400 ms gesperrt; die Listen („Wird entfernt“, „Rückfälle“, „Wird bereinigt“, „Geht verloren“, „Nicht bereinigt“) lesen sich verständlich und scrollen; nach dem Anwenden zeigt der Tab die geschwärzte Datei, der Bericht („Bereinigt“, „Geprüft“, „Nicht geprüft“) erscheint als eigene Frage, das Original auf der Platte ist unverändert (Byte-Vergleich).
+15. **Zustandswechsel mit offenen Markierungen:** Tab schließen, Tab in ein neues Fenster ziehen (der Plan wandert mit), Update-Weg, Drucken (die Markierungen erscheinen nicht im Ausdruck), Modus wechseln, die Quelldatei zwischen Markieren und Anwenden von außen ändern (Karte mit „Abbrechen“, nichts geschrieben).
+
+**Linux-Läufe** (die Tests laufen nur dort; unter Windows nicht ausgeführt):
+
+16. `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Redaction" --filter-namespace "*Saving" --filter-namespace "*Pages" --filter-namespace "*Cli"` (der `statx`-Zweig von `FileIdentity`, `File.Move(…, overwrite: false)`, Unix-Rechte `0600` der temporären Datei und der Kopie des Prüfrenderns (`TheDryRunCopyIsPrivateWhileItExistsAndGoneAfterwards` in `RedactImagePathFormTests`, prüft den Modus nur dort), die CLI-Tests von `redact`) und `dotnet test tests/Pagewing.App.Tests --filter-class "*Redact*"`.
+17. App unter Linux (X11 und Wayland): Markieren mit Maus und Stift, Speichern-Portal mit Überschreiben, Tastenkürzel, Karten.
+
+**Messung auf echter Hardware:**
+
+18. Startzeit-Check (Workflow `hardware-measure.yml`, Runner `dotnet-windows-gpu`, nur auf Anweisung): die Budgets bleiben; das ist der einzige belastbare Beleg für die Kosten des Eintrags „Schwärzen“ in der Aktionsleiste (`RedactButton`) und seiner Icon-Geometrien im Startpfad. Dazu `PAGEWING_MEASURE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests -c Release --filter-class "*RedactMeasurementTests"` (Seiten je Sekunde beim Anwenden, Dauer von Prüfung und Rohbytes-Scan, Spitzenspeicher; Vergleichswerte in `Docs/DECISIONS.md`, „Schwärzen: Messwerte (M14, Aufgabe 14)“).
+
+**Muster, Füllungen, Überlagerungstext und Seite als Bild (Milestone 14.1)** – die Ergebnisdateien entstehen mit der CLI, die Bedienung gehört in die Punkte 9 bis 15 (dort zusätzlich die neuen Teile des Panels und der Werkzeugleiste). Automatisch getestet sind Scanner, Prüfsummen, die Rechnung der Blöcke in zwei unabhängigen Umsetzungen, die Prüfung der geschriebenen Datei, die Karten und Texte in beiden Sprachen und die CLI (`RedactionPatternsTests`, `RedactionPatternSearchTests`, `ImageBlocksTests`, `RedactImageTreatmentTests`, `RedactionOverlayLayoutTests`, `RedactionOverlayRuleTests`, `RedactOverlayDrawTests`, `RedactRasterTests`, `RedactRasterApplyTests`, `RedactionVerifierTests`, `RedactCommandTests`; App: `RedactPanelTests`, `RedactApplyTests`, `RedactApplyRasterTests`, `RedactionStartPathTests`).
+
+```powershell
+# $T und $P wie oben
+pagewing redact $P\redact-patterns.pdf --output $T\patterns.pdf --pattern iban --pattern card --pattern phone --pattern email
+pagewing redact $P\redact-patterns.pdf --output $T\patterns-all.pdf --pattern iban --pattern card --include-unchecked
+pagewing redact $P\redact-image.pdf --output $T\fill.pdf --rect 1:10,26,128,128 --fill "#1F3A5F"
+pagewing redact $P\redact-image-blocks.pdf --output $T\pixelate.pdf --rect 1:46,56,72,72 --rect 1:190,60,90,50 --rect 1:20,210,20,20 --image-fill pixelate
+pagewing redact $P\redact-image-blocks.pdf --output $T\blur.pdf --rect 1:46,56,72,72 --rect 1:190,60,90,50 --rect 1:20,210,20,20 --image-fill blur --image-strength very-coarse
+pagewing redact $P\redact-everywhere-nopattern.pdf --output $T\overlay.pdf --text "Zephyrstraße 17" --overlay-text "GESCHWÄRZT"
+pagewing redact $P\redact-everywhere-nopattern.pdf --output $T\overlay-repeat.pdf --rect 1:20,275,180,25 --overlay-text "VERTRAULICH" --overlay-repeat
+pagewing redact $P\redact-rotated.pdf --output $T\overlay-rotated.pdf --text "Zephyrstraße 17" --overlay-text "XX"
+pagewing redact $P\redact-everywhere.pdf --output $T\raster.pdf --text "Zephyrstraße 17" --rasterize-unredactable
+pagewing redact $P\redact-rotated.pdf --output $T\raster-rotated.pdf --rasterize-pages 1 --dpi 100
+```
+
+19. **Muster:** `patterns.pdf` in Chrome und Acrobat Reader: die Flächen liegen genau auf den gültigen IBANs (auch der über NBSP gruppierten und der ungruppierten), den Kartennummern mit richtiger Prüfsumme, den Telefonnummern und E-Mail-Adressen; **unberührt** bleiben die Fallen (Datum, ISBN, Versionsnummer, die 20-stellige Ziffernfolge, `john@localhost`) und die IBAN mit Tippfehler sowie die Karte mit falscher Prüfsumme (erst `patterns-all.pdf` nimmt sie mit). Die über zwei Zeilen geteilte IBAN bleibt stehen (der Bericht sagt es unter *Not searched*). **Suchen (Strg+F) und Alles kopieren** in beiden Programmen nach `DE89`, `3704`, `4111`, `max.mustermann`, `0711`: kein Treffer, auch nicht ohne Leerzeichen oder in Teilen.
+20. **IBAN-Tabelle gegen das SWIFT-Register (Pflicht vor dem Release, kein Programm kann das prüfen):** die 89 Länder und Längen aus `src/Pagewing.Core/Redaction/IbanRegistry.cs` mit der aktuellen Fassung des „SWIFT IBAN Registry“ auf swift.com vergleichen (`swift.com` war beim Bau nicht erreichbar, Stand der Tabelle 2026-11-02, Quelle sonst `iban.com/structure` und Wikipedia). Besonders die jungen Einträge BI, DJ, FK, HN, LY, MN, NI, OM, RU, SD, SO, ST, YE, und ob ein Land des Registers fehlt oder ein ausgelassenes (AO, BF, BJ, CF, CG, CI, CM, CV, DZ, GA, GQ, GW, IR, KM, MA, MG, ML, MZ, NE, SN, TD, TG) inzwischen im Register steht. Abweichungen sind eine Korrektur der Tabelle samt Eintrag in `Docs/DECISIONS.md` (Quelle und Stand) und ein neuer Test.
+21. **Füllfarbe:** `fill.pdf` und `blur.pdf`/`pixelate.pdf`: die Farbe der Fläche stimmt in beiden Programmen mit `#1F3A5F` (bzw. Schwarz) überein, auch dort, wo ein Bild darunter lag (das Bild herausziehen zeigt nur die Füllfarbe).
+22. **Bildflächen:** `pixelate.pdf` und `blur.pdf`: Die Fläche zeigt nur wenige grobe Blöcke (höchstens 6 je Achse, `very-coarse` höchstens 3), ohne erkennbares Detail; Weichzeichnen läuft zwischen den Blöcken weich, ohne Kanten außerhalb; der Bereich `1:20,210,20,20` über dem 7 × 7 Pixel kleinen Bild bekommt die Volltonfläche (zu klein; gedrehte, beschnittene und sich überlappende Bilder ebenso; der Bericht nennt Zahl und Grund unter *Image areas*). Der Text „Secret 4711“ unter dem zweiten Bereich ist nicht mehr als Text vorhanden. Das Bild in Acrobat herausziehen: nur Blockwerte, kein Originalpixel. **Ausdrücklich festhalten**, ob in `pixelate.pdf` oder `blur.pdf` etwas Lesbares aus dem Original zu erkennen ist (erwartet: nein bei diesen Mustern; der Bericht warnt bei Text in Bildern).
+23. **Überlagerungstext:** `overlay.pdf`, `overlay-repeat.pdf`, `overlay-rotated.pdf`: der Text liegt vollständig **innerhalb** der Fläche, ist gut lesbar (hell auf dunkler Fläche, mindestens 4,5:1), die Wiederholung kachelt ohne Überlauf, auf der gedrehten Seite steht er aufrecht; in Acrobat **und** Chrome gleich. Er ist **nicht** auswählbar, nicht kopierbar und mit Strg+F nicht zu finden (er ist als Formen gezeichnet); in Acrobat mit dem Objekt-Werkzeug sind es Pfade. Flächen, auf denen der Text nicht passt (zu klein), sind gefüllt ohne Text, und der Bericht zählt sie. Gegenprobe: `--overlay-text` mit einem geschwärzten Begriff endet mit Exit 1 und ohne Ausgabedatei.
+24. **Seite als Bild:** `raster.pdf`: Seite 1 ist **ein Bild** (kein Text zum Markieren, Strg+A wählt kein Wort, Strg+F findet nichts, in Acrobat ein einziges Bildobjekt, keine Links, Kommentare, Formularfelder), die markierten Flächen sind gefüllt, Seite 2 behält ihren Text; Aussehen der Seite 1 wie das Original, scharf genug bei 200 dpi. `raster-rotated.pdf`: Seite steht aufrecht, nicht gespiegelt, mit der Größe der angezeigten Seite. Bei einer sehr großen Seite (über 32 Megapixel bei der gewählten Auflösung) nennt der Bericht die gesenkte Auflösung.
+25. **Bedienung in der App** (Windows, hell, dunkel, Hochkontrast, Deutsch und Englisch, 150 % und 200 %, 640 px): Panel „Schwärzen“ im Mustermodus (Arten, Zähler, Gruppen, „… hinzufügen“ für nicht stimmende Prüfsummen), Werkzeugleiste (Farbe mit Hex-Feld und Vorgaben, „Bildflächen“ mit dem Satz zu Text in Bildern, Überlagerungstext je Marke, „Seite als Bild“ mit Auflösung), die Rettungskarte für eine abgelehnte Seite (nie vorgewählt, nennt Verlust und Größe, „Weiter“ erst nach einer Wahl), Vorschau (zeigt die Fläche, **nicht** den Überlagerungstext; der Hinweis sagt es). Esc und Tab in den Flyouts der Werkzeugleiste (Füllung, Bildflächen) und die Fenstergröße des Überlagerungstext-Blocks. Bildschirmleser: Arten, Gruppenüberschriften, Rettungskarte, Sätze der Karte.
+26. **Linux:** die Tests der Punkte 16 und 17 enthalten die Tests von M14.1 (`--filter-namespace "*Redaction"` und `"*Cli"`); die Grenze des Überlagerungstextes (150.000 Segmente je Seite, `MaxOverlaySegmentsPerPage`) auf echter Hardware und unter Linux gegenmessen: `PAGEWING_MEASURE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests -c Release --filter-class "*RedactOverlayDrawTests"` schreibt `redact-overlay-measurements.txt` (längster Einzelauftrag des `PdfiumThread` soll bei etwa 0,1 s liegen).
+
+### Ergebnis festhalten
+
+Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 14 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 14“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung (welcher Punkt, was zu sehen war); Punkt 2 immer mit der ausdrücklichen Antwort „Text unter den Flächen kopierbar oder suchbar: ja/nein (Programm, Version)“ und Punkt 6 mit „Felder ausfüllbar“. Ein **Fund unter Punkt 2 oder 4** (der Begriff ist in einem Programm doch zu finden) ist ein Fehler im Schwärzen und wird sofort gemeldet, nicht gesammelt. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
+
+## OCR prüfen (M15)
+
+### Textebene im Fremdviewer (Aufgabe 1)
+
+Muster erzeugen: `PAGEWING_SPIKE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-class "*OcrLayerSpikeTests"` schreibt `ocr-layer-plain.pdf` (A4, ein Graustufenbild über die ganze Seite, darüber die unsichtbaren Wörter „Müller Straße Größe“ in der Zeile bei 100 pt) und `ocr-layer-rotated.pdf` (`/Rotate 90`, CropBox mit Versatz; Wörter „Müller Straße“ und „Größe“ tiefer).
+
+Prüfliste je Viewer (Chrome, Acrobat Reader, Pagewing):
+
+- [ ] Die Wörter lassen sich mit der Maus markieren, die Markierung liegt auf der Zeile bei 100 pt (rotiert: auf der Zeile im gedrehten Bild), nicht daneben.
+- [ ] Strg+F findet „Straße“ und „Größe“; Kopieren liefert die Wörter mit Umlauten und ß.
+- [ ] Die Seite sieht aus wie das Bild ohne Text (nichts Sichtbares, kein Rahmen, keine Verfärbung).
+- [ ] Ergebnis festhalten (Viewer, Version, ja/nein je Punkt) im Eintrag „OCR: Textebene, Spike (M15, Aufgabe 1)“ in `Docs/DECISIONS.md`. Fällt etwas durch, ändert sich nur `PdfiumOcrLayer` (Aufgabe 6).
+
+
+### Die Bibliothek bauen und holen (Aufgabe 2)
+
+Pagewing liefert Tesseract 5.5.4 und Leptonica 1.87.0 als **eine** eigene Bibliothek je System (`tesseract.dll`, `libtesseract.so`) und die Sprachdateien `eng` und `deu` (`tessdata_fast`). Versionen, Commits und Bauschalter: `packaging/native/versions.txt`.
+
+- Lokal (Entwicklung, landet in `artifacts/native/<rid>/`, nicht im Repo): Windows `powershell -File packaging/native/build-windows.ps1` (MSVC, Build Tools mit C++-Workload, CMake, `vswhere` im PATH), Linux `bash packaging/native/container-build.sh` (Docker, Container `ubuntu:22.04`, glibc 2.35). Die Tests mit der echten Engine suchen dort oder in `PAGEWING_TESSERACT_DIR`; ohne Bibliothek melden sie sich als übersprungen (`PAGEWING_REQUIRE_OCR=1` macht das zum Fehler).
+- Ausgeliefert: Der Workflow `.github/workflows/native-tesseract.yml` (nur `workflow_dispatch`, der Standardbranch ist `dev`, die Datei muss dort liegen) baut beide Bibliotheken und legt sie an ein Vorabrelease mit dem Tag `native-tesseract-5.5.4-<Nummer>`: `gh workflow run native-tesseract.yml --repo benjo-code/Pagewing --ref dev -f build=<Nummer>`. Build 1 ist gelaufen (2026-11-02); Größe und SHA-256 stehen in `tools/package.cs` (`NativeTesseract.Libraries`), `dotnet run tools/package.cs -- native-fetch --rid <rid> --out <Ordner>` prüft sie. Ein Neubau ist eine neue Nummer (`BuildNumber`) und neue Prüfsummen. `release.yml`, `container-build.sh` und `ci.yml` holen die Bibliothek damit.
+- Prüfen nach dem Bau: `check-binary` (nur `KERNEL32` bzw. glibc bis 2.35, kein curl, libarchive, OpenMP), `dotnet run tools/licenses.cs -- check`.
+
+### Gesamtprüfung von Hand (Aufgabe 12)
+
+Muster erzeugen: `PAGEWING_INTEROP_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests -- --filter-method "*WritesOcrSamplesForOtherViewers"` schreibt `ocr-scan-recognized.pdf`, `ocr-scan-rotated-recognized.pdf`, `ocr-mixed-recognized.pdf` und `README-ocr.txt` (Wörter und Plätze). Die Ebene kommt aus den **bekannten** Wörtern der Fixtures, die Prüfung gilt also dem Darstellen, nicht der Erkennung.
+
+- [ ] Chrome und Acrobat Reader: Die Seiten sehen aus wie das Scan-Bild (nichts Sichtbares, keine Verschiebung); Suche nach einem Wort aus `README-ocr.txt` trifft auf dem Wort im Bild, auch auf der gedrehten Seite; Markieren und Kopieren liefert die Wörter in Lesereihenfolge.
+- [ ] Acrobat: Datei einmal speichern und in Pagewing öffnen: Wird die Ebene noch als Ebene von Pagewing erkannt (`Strg+Umschalt+Q`, Modus „Ersetzen“ ersetzt sie statt zu verdoppeln)? Ergebnis festhalten in `Docs/DECISIONS.md`, Eintrag „OCR: Textebene, Spike (M15, Aufgabe 1)“.
+- [ ] Ein **eigener echter Scan** (mehrere Seiten, deutsch, mit Umlauten) mit `pagewing ocr scan.pdf --output scan-ocr.pdf --language deu+eng` und in der App: Zeit je Seite notieren (`PAGEWING_MEASURE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests -c Release -- --filter-method "*MeasuresTheEngineTheLayerAndAThousandPages"` für die Engine-Zahlen), Treffer der Suche liegen auf den Wörtern, die Warnung „niedrige Konfidenz“ nennt die richtigen Seiten.
+- [ ] Die Karte (Auswahl, Lauf, Frage nach Abbruch, Bericht, Fehler) und der Hinweis „Das sieht wie ein Scan aus“ in Hell, Dunkel, Hochkontrast (Windows), „Kompakt“, bei 150 % und 200 % Skalierung und mit Bildschirmleser (Namen, Fortschritt wird angesagt, Esc stoppt); die Tastatur: `Strg+Umschalt+Q`, Tab-Reihenfolge, nie in der Karte gefangen.
+- [ ] Ein Lauf auf einer **signierten** Datei: die Warnung vor dem Speichern nennt den hinzugefügten Text; Abbrechen ändert nichts.
+- [ ] Linux: `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Ocr" --filter-namespace "*Cli"` mit `libtesseract.so` (UTF-8-Pfade, `OcrEngineTests`, `OcrRunnerNativeTests`), danach die App mit einem Scan.
+- [ ] Startzeit-Check auf dem Haupt-PC (Workflow `hardware-measure.yml`): die Budgets bleiben unverändert (der Hinweis liest erst nach dem ersten scharfen Bild; die Bibliothek wird beim Start nie geladen).
+
+## Text bearbeiten prüfen (M16)
+
+### Muster im Fremdviewer (Aufgabe 2 und 7)
+
+Muster erzeugen: `PAGEWING_INTEROP_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-method "*WritesTextEditSamplesForOtherViewers"` schreibt `text-edit-standard-edited.pdf` (Helvetica-Zeile, Korrektur), `text-edit-subset-edited.pdf` (eingebettete Teilmenge, alle Zeichen in der Schrift), `text-edit-subset-geist-edited.pdf` (die „9“ in Geist Regular), `text-edit-rotated-edited.pdf` (um 90° gedrehte Seite mit CropBox, längerer Text) und `README-text-edit.txt` mit den Zeilen. Die Befunde des Spikes stehen in `Docs/DECISIONS.md`, „Text bearbeiten: Spike (M16)“; `PAGEWING_SPIKE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-class "*TextEditSpikeTests"` schreibt dort ebenfalls Muster.
+
+Prüfliste je Viewer (Chrome, Acrobat Reader, Pagewing):
+
+1. Die neue Zeile steht dort, wo die alte stand, in derselben Schrift (beim Muster mit Geist ist nur die „9“ in einer anderen Schrift); nichts anderes auf der Seite hat sich bewegt.
+2. Suchen nach dem neuen Text findet ihn, Suchen nach dem alten findet ihn **nicht**; Auswählen und Kopieren der Zeile liefert den neuen Text.
+3. Das gedrehte Muster steht aufrecht und liest sich von links nach rechts; die anderen beiden Zeilen der Seite sind unverändert.
+4. Acrobat: lässt sich die Zeile mit dem eigenen Bearbeiten weiter bearbeiten? **Eine ehrliche Antwort, kein Ziel** („ja/nein/mit welcher Schrift“). Danach einmal in Acrobat speichern und die Datei in Pagewing öffnen: ist der Text noch der neue?
+5. Die Datei ist größer als das Original (die Seite wird neu geschrieben und das Schriftprogramm der Seite mitgeschrieben; mit Geist rund 25 KB mehr); das Original steht unverändert am Anfang der Datei (`fc /b` oder `cmp` auf die ersten Bytes).
+
+### Eigene echte Datei
+
+Eine eigene PDF mit einem echten Tippfehler in einer Textzeile (Word-Export, Browserdruck, LibreOffice): Zeile anklicken, korrigieren, Enter, speichern. Notieren: Schrift des Programms, das die Datei erzeugt hat; ob die Zeile **gesperrt** war und mit welchem Grund; ob die Schrift Zeichen hergegeben hat (der Hinweis „In dieser Schrift fehlen …“ erscheint bei einer ganzen Schrift für Zeichen, die auf der Seite noch nicht stehen); ob das Ergebnis im Viewer und in Acrobat gleich aussieht.
+
+### Modus, Feld und Hinweisleiste (Sichtprüfung)
+
+In Hell, Dunkel, Hochkontrast (Windows), „Kompakt“, 150 % und 200 % Skalierung und mit einem Bildschirmleser (Narrator, NVDA, Orca): Umriss der Zeile unter dem Zeiger (nie nur Farbe: gesperrte gestrichelt mit Schloss), das Feld über der Zeile (Größe, Farbe, Fokusring), die Hinweisleiste (Umbruch im schmalen Fenster, der Live-Hinweis wird vorgelesen), der Schalter „Ganze Zeile in Ersatzschrift“, die Statusleisten-Notiz nach dem ersten Speichern. Tab verlässt das Feld und fängt den Fokus nie.
+
+### Linux und Startzeit
+
+- Linux: `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*TextEdit"` und `dotnet test tests/Pagewing.App.Tests --filter-class "*TextEdit*"` (nur dort offen; PDFium schreibt Schriften und Seitenelemente je Betriebssystem gleich, die Ersatzschriften nicht benutzter Standardschriften können je OS verschieden sein).
+- Startzeit: der Modus liegt nicht im Startpfad (`TextEditUiTests.NothingOfTheFeatureIsCreatedBeforeUse`); der Startzeit-Check auf dem Haupt-PC (`Hardware measurement`) bleibt wie bei M14 und M15 eine Handprüfung vor dem Release.
+
+Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 16 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 16“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung; Punkt 4 immer mit der ausdrücklichen Antwort. Ein **Fund unter Punkt 1 oder 2** (die Zeile steht anders oder der alte Text ist noch zu finden) ist ein Fehler im Bearbeiten und wird sofort gemeldet, nicht gesammelt.

@@ -58,6 +58,7 @@ public sealed partial class SidePanel : UserControl
         SidePanelKind.Contents => Strings.ContentsPanelTitle,
         SidePanelKind.Search => Strings.SearchPanelTitle,
         SidePanelKind.Comments => Strings.CommentsPanelTitle,
+        SidePanelKind.Redact => Strings.RedactPanelTitle,
         _ => string.Empty,
     };
 

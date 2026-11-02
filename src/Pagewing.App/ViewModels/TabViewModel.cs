@@ -284,6 +284,12 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 RaiseNavigationCanExecuteChanged();
                 ResetPageField();
                 OnPropertyChanged(nameof(CurrentPageSize));
+                if (_redactionHistory is not null)
+                {
+                    // "Page as image" concerns the page in view while no mark is selected.
+                    OnPropertyChanged(nameof(RasterTargetsAreImages));
+                    _toggleRasterPageCommand?.RaiseCanExecuteChanged();
+                }
             }
         }
     }
@@ -398,6 +404,14 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 return;
             }
 
+            // In the mode "Organize pages" the keys of undo and redo work only with the pages panel open.
+            if (_isOrganizing)
+            {
+                _undoCommand?.RaiseCanExecuteChanged();
+                _redoCommand?.RaiseCanExecuteChanged();
+            }
+
+            OnRedactionPanelChanged(old, value);
             if (value == SidePanelKind.Search)
             {
                 _panelBeforeSearch = old;
@@ -480,6 +494,15 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _hasShownSharpPage, value))
             {
                 OnAnnotateAvailabilityChanged();
+                RaiseOcrCanExecuteChanged();
+                if (value)
+                {
+                    _ = EnsureOcrHintAsync();
+                }
+                else
+                {
+                    ResetOcrHint();
+                }
             }
         }
     }
@@ -497,6 +520,7 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _textSelection, value is { IsEmpty: true } ? null : value))
             {
                 OnPropertyChanged(nameof(HasTextSelection));
+                RaiseMarkingCanExecuteChanged();
             }
         }
     }
@@ -773,6 +797,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         if (!_disposed)
         {
             _session.SetPageTheme(theme);
+            foreach (var inserted in _insertedSources.Values)
+            {
+                inserted.SetPageTheme(theme);
+            }
         }
 
         OnPropertyChanged(nameof(EffectivePageTheme));
@@ -796,6 +824,9 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         ResetOutline();
         _search?.Dispose();
         _comments?.Dispose();
+        DiscardRedactionPanel();
+        EndRedactionPreview();
+        ReleaseInsertedSources();
         TextSelection = null;
         ClearHistory();
         _checkingPassword = false;
@@ -868,6 +899,8 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             thumbnails.Scheduler.Update([]);
             thumbnails.Cache.Clear();
         }
+
+        ReleaseInsertedThumbnails();
     }
 
     /// <summary>Reads the outline on the PDFium thread and shows it, unless the tab moved on meanwhile (UI thread).</summary>
@@ -1036,7 +1069,18 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         // page, zoom, position, selection, search and outline stay, and the file is not treated as new.
         var cache = document is not null ? _session.Cache : null;
         var oldDocument = _document;
-        var isAdoption = document is not null && oldDocument is not null && !ReferenceEquals(document, oldDocument)
+
+        // The rewritten file of an applied page plan (PageEditApplier) comes with a cache of its own like a newly opened file,
+        // but it is the same document in other pages: the tab keeps zoom, layout and panel and follows its page.
+        var rewrite = Volatile.Read(ref _expectedRewrite);
+        var isRewrite = rewrite is not null && document is not null && oldDocument is not null
+            && ReferenceEquals(rewrite.Document, document) && !ReferenceEquals(document, oldDocument);
+        if (isRewrite)
+        {
+            Volatile.Write(ref _expectedRewrite, null);
+        }
+
+        var isAdoption = !isRewrite && document is not null && oldDocument is not null && !ReferenceEquals(document, oldDocument)
             && cache is not null && ReferenceEquals(cache, _documentCache);
         var isNewDocument = document is not null && !ReferenceEquals(document, _document) && !isAdoption;
         var documentChanged = !ReferenceEquals(document, _document);
@@ -1065,7 +1109,28 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
         Error = _pickerFailure is not null ? PdfOpenError.Unknown : state == ViewerState.Failed ? _session.Error : null;
         PageCount = pageCount;
         _nextPageCommand.RaiseCanExecuteChanged();
-        if (isNewDocument)
+        if (isRewrite)
+        {
+            // The pages are others now, so what was read of the old document goes (the plan ends with it, the signatures are read
+            // again at the next save); zoom, zoom mode, layout and panel stay, and the view shows the page that follows.
+            HasShownSharpPage = false;
+            _thumbnails = null;
+            ResetAnnotationState();
+            var page = Math.Clamp(rewrite!.Page, 0, Math.Max(pageCount - 1, 0));
+            CurrentPage = pageCount > 0 ? page + 1 : 0;
+            CurrentPageLast = CurrentPage;
+            if (pageCount > 0)
+            {
+                SavedView = new ViewState(new PageAnchor(page, 0), SavedView?.HorizontalFromCentre ?? 0);
+            }
+
+            // Not told to the history of recent files again when the path stayed (a "Save as" tells it, as an open would).
+            if (ReferenceEquals(ReportedDocument, oldDocument) && string.Equals(_fullPath, _session.Path, StringComparison.Ordinal))
+            {
+                ReportedDocument = document;
+            }
+        }
+        else if (isNewDocument)
         {
             // Zoom mode, layout and panel belong to the tab and stay; a saved view brings its own zoom.
             HasShownSharpPage = false;
@@ -1090,8 +1155,10 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             CurrentPage = 0;
             CurrentPageLast = 0;
 
-            // No document, no mode.
+            // No document, no mode, no page plan, no marks.
             ResetAnnotateMode();
+            ResetPageEdits();
+            ResetRedaction();
         }
 
         // The password check is over once the session leaves Loading. The password stays only for another try.
@@ -1120,7 +1187,15 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             // the next one) loaded is searched once it is there.
             if (hadDocument)
             {
-                _search?.Reset();
+                // A rewritten file keeps the query, which is searched again in its pages; another document starts clean.
+                if (isRewrite)
+                {
+                    _search?.OnDocumentRewritten();
+                }
+                else
+                {
+                    _search?.Reset();
+                }
 
                 // So does the list of its annotations; the panel asks for a new one.
                 DiscardComments();

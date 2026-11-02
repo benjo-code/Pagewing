@@ -53,8 +53,6 @@ public sealed partial class TabViewModel
         {
             if (_editor is null)
             {
-                // Only a delegate: the text box font is read when the first text box is made (Services/TextBoxFontSource).
-                Services.TextBoxFontSource.Register();
                 _editor = new AnnotationEditor(_session);
                 _editor.Changed += OnEditorChanged;
             }
@@ -125,6 +123,9 @@ public sealed partial class TabViewModel
                 RaiseSaveCanExecuteChanged();
                 _undoCommand?.RaiseCanExecuteChanged();
                 _redoCommand?.RaiseCanExecuteChanged();
+
+                // The plan is not edited while it is being written.
+                RaisePageCanExecuteChanged();
             }
         }
     }
@@ -163,15 +164,28 @@ public sealed partial class TabViewModel
     }
 
     /// <summary>Gets why the tab cannot be saved now although it could otherwise (a print job runs), or <see langword="null"/>.</summary>
-    public string? SaveBlockedReason => _isPrinting ? Strings.SaveBlockedPrinting : null;
+    public string? SaveBlockedReason => _isPrinting ? Strings.SaveBlockedPrinting : _isOcrRunning ? Strings.SaveBlockedOcr : null;
 
     /// <summary>
     /// Gets the name of the tab for screen readers: the file name, with "unsaved changes" after it while
-    /// <see cref="IsDirty"/> (the dot is not the only sign of the state, design system 7.10).
+    /// <see cref="IsDirty"/> and "page changes pending" while page changes wait to be applied
+    /// (<see cref="HasPendingPageEdits"/>); the dot is not the only sign of the state (design system 7.10).
     /// </summary>
-    public string? TabAutomationName => FileName is { } name && _isDirty
-        ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.TabUnsavedName), name)
-        : FileName;
+    public string? TabAutomationName
+    {
+        get
+        {
+            var name = FileName is { } file && _isDirty
+                ? string.Format(Strings.Culture, CompositeFormat.Parse(Strings.TabUnsavedName), file)
+                : FileName;
+            if (name is not null && HasPendingRedactions)
+            {
+                return name + Strings.TabRedactionSuffix;
+            }
+
+            return name is not null && HasPendingPageEdits ? name + Strings.TabPageEditsSuffix : name;
+        }
+    }
 
     /// <summary>Ctrl+S: saves the changes to the file of the tab; only while there are some (<see cref="IsDirty"/>).</summary>
     public ICommand SaveCommand => _saveCommand ??= new RelayCommand(() => SaveRequested?.Invoke(false), CanSave);
@@ -179,11 +193,58 @@ public sealed partial class TabViewModel
     /// <summary>Ctrl+Shift+S: saves the document under another name, once it is open; the tab then belongs to that file.</summary>
     public ICommand SaveAsCommand => _saveAsCommand ??= new RelayCommand(() => SaveRequested?.Invoke(true), CanSaveAs);
 
-    /// <summary>Ctrl+Z: undoes the newest change of the annotations.</summary>
-    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(UndoAfterNudge, () => IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
+    /// <summary>
+    /// Ctrl+Z: undoes the newest change of the annotations; in the mode "Organize pages" the newest change of the page plan
+    /// instead (<see cref="UndoPagesCommand"/>), in the mode "Redact" the newest mark (<see cref="UndoRedactionCommand"/>),
+    /// never an annotation meanwhile.
+    /// </summary>
+    public ICommand UndoCommand => _undoCommand ??= new RelayCommand(
+        () =>
+        {
+            if (_isOrganizing)
+            {
+                // Only a plan in sight is changed: with the pages panel closed the key does nothing.
+                if (_sidePanel == SidePanelKind.Pages)
+                {
+                    UndoPages();
+                }
+            }
+            else if (_isRedacting)
+            {
+                UndoRedaction();
+            }
+            else
+            {
+                UndoAfterNudge();
+            }
+        },
+        () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: true)
+            : _isRedacting ? CanStepRedactions(undo: true)
+            : IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !IsEditingFrozen);
 
-    /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again.</summary>
-    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(RedoAfterNudge, () => IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
+    /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again (of the page plan in the mode "Organize pages", of the marks in "Redact").</summary>
+    public ICommand RedoCommand => _redoCommand ??= new RelayCommand(
+        () =>
+        {
+            if (_isOrganizing)
+            {
+                if (_sidePanel == SidePanelKind.Pages)
+                {
+                    RedoPages();
+                }
+            }
+            else if (_isRedacting)
+            {
+                RedoRedaction();
+            }
+            else
+            {
+                RedoAfterNudge();
+            }
+        },
+        () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: false)
+            : _isRedacting ? CanStepRedactions(undo: false)
+            : IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !IsEditingFrozen);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with
@@ -199,13 +260,30 @@ public sealed partial class TabViewModel
     /// operation the editor accepted and has not recorded yet). The question waits for those first
     /// (<see cref="WhenEditsSettledAsync"/>), so a change made a moment before closing is never dropped silently.
     /// </summary>
-    internal bool AsksBeforeClosing => !_disposed && (_isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || _editor is { IsDirty: true } or { IsBusy: true });
+    internal bool AsksBeforeClosing => !_disposed && (AsksAboutDocumentChanges || HasPendingPageEdits || HasPendingRedactions);
+
+    /// <summary>Gets whether the document has changes that are not saved, or on their way (annotations and form values; not the page plan).</summary>
+    internal bool AsksAboutDocumentChanges =>
+        _isDirty || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || HasTextEditDraft || _editor is { IsDirty: true } or { IsBusy: true };
+
+    /// <summary>
+    /// Gets whether the only thing closing would lose is the page plan (<see cref="HasPendingPageEdits"/>): "Save" cannot
+    /// write it, so the question is "Discard the page changes?" (<see cref="PendingSave.DiscardPageEdits"/>).
+    /// </summary>
+    internal bool AsksOnlyAboutPageEdits => !_disposed && HasPendingPageEdits && !AsksAboutDocumentChanges;
 
     /// <summary>
     /// Gets the version of the editor's history (<see cref="AnnotationEditor.Version"/>; 0 without an editor): a "Don't
     /// save" before closing counts only for this version, any later change asks again.
     /// </summary>
     internal int EditVersion => _editor?.Version ?? 0;
+
+    /// <summary>
+    /// Gets the version of everything closing would ask about: the editor's history and the page plan's. It never goes back
+    /// (also not when the plan is dropped, <see cref="ResetPageEdits"/>), so a "Don't save" given for an older version never
+    /// covers a later change (<see cref="MainViewModel"/>, the question before closing and the update).
+    /// </summary>
+    internal int ChangeVersion => EditVersion + PageEditVersion + RedactionVersion;
 
     /// <summary>
     /// Gets or sets whether a card of the save flow asks about this tab (set by the window with
@@ -242,12 +320,14 @@ public sealed partial class TabViewModel
     /// </summary>
     public bool IsEditingFrozen
     {
-        get => _isEditingFrozen;
+        // A text recognition run locks editing the same way (IsOcrRunning), so every place that asks "frozen" waits for the run too.
+        get => _isEditingFrozen || _isOcrRunning;
         internal set
         {
             if (_isEditingFrozen != value)
             {
                 _isEditingFrozen = value;
+                OnPropertyChanged(nameof(IsUpdateLocked));
                 if (value)
                 {
                     DiscardPendingSignature();
@@ -262,6 +342,9 @@ public sealed partial class TabViewModel
         }
     }
 
+    /// <summary>Gets whether the lock is the one of an update (<see cref="IsEditingFrozen"/> without a text recognition run): the status bar names the update only then.</summary>
+    public bool IsUpdateLocked => _isEditingFrozen;
+
     /// <summary>Gets whether the note about a signature that allows comments was shown for the open document (window, once per document).</summary>
     internal bool SignatureNoteShown
     {
@@ -269,11 +352,17 @@ public sealed partial class TabViewModel
         set => _signatureNoteShown = value;
     }
 
-    /// <summary>Whether "Save" can run: an open document with unsaved changes, no save and no print job of the tab running.</summary>
-    internal bool CanSave() => CanSaveAs() && _isDirty;
+    /// <summary>
+    /// Whether "Save" can run: an open document with unsaved changes, or with page changes that wait to be applied (Ctrl+S
+    /// then opens the card of "Apply", <see cref="MainViewModel.ApplyPageEditsAsync"/>), no save and no print job of the tab running.
+    /// </summary>
+    internal bool CanSave() => CanSaveDocument() || (CanSaveAs() && (HasPendingPageEdits || HasPendingRedactions));
+
+    /// <summary>Whether the changes of the document itself (annotations, form values) can be saved: <see cref="CanSave"/> without the page plan.</summary>
+    internal bool CanSaveDocument() => CanSaveAs() && _isDirty;
 
     /// <summary>Whether "Save as" can run: an open document, no save and no print job of the tab running.</summary>
-    internal bool CanSaveAs() => !_disposed && IsReady && _document is not null && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen;
+    internal bool CanSaveAs() => !_disposed && IsReady && _document is not null && !_isSaving && !_isPrinting && !_isAskedAbout && !IsEditingFrozen;
 
     /// <summary>
     /// Reads the signatures of the open document once per document (at its first save, never at open) with
@@ -311,10 +400,19 @@ public sealed partial class TabViewModel
         }
 
         var editor = _editor;
-        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft;
+        IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft || HasTextEditDraft;
+        if (IsDirty && HasTextEditSaveNote)
+        {
+            TextEditSaveNote = string.Empty;
+        }
+
         CanUndo = editor?.CanUndo == true;
         CanRedo = editor?.CanRedo == true;
         OnFormEditVersion();
+        OnTextEditVersion();
+
+        // Unsaved changes lock extracting, splitting and exporting (PageOutputBlockedReason).
+        RaisePageOutputChanged();
     }
 
     /// <summary>The session swapped its document for the saved file (<see cref="Refresh"/>): what was read of it stays.</summary>
@@ -326,6 +424,7 @@ public sealed partial class TabViewModel
         }
 
         RebindAnnotateMode(old, adopted);
+        RebindRedaction(old, adopted);
     }
 
     /// <summary>Another file is open in the tab: its signatures are read again at its first save, and the note may come again.</summary>
@@ -334,7 +433,10 @@ public sealed partial class TabViewModel
         _signature = null;
         _signatureNoteShown = false;
         UnsaveableReason = null;
+        ResetTextEdit();
         ResetAnnotateMode();
+        ResetPageEdits();
+        ResetRedaction();
         SyncFromEditor();
     }
 
@@ -342,6 +444,10 @@ public sealed partial class TabViewModel
     {
         _saveCommand?.RaiseCanExecuteChanged();
         _saveAsCommand?.RaiseCanExecuteChanged();
+
+        // Applying page changes is a save: it waits for the same things (a save, a print job, a card, the update lock).
+        _applyPageEditsCommand?.RaiseCanExecuteChanged();
+        RaiseRedactionApplyCanExecuteChanged();
     }
 
     /// <summary>A waiting nudge is made first, so undo undoes it (the editor runs the operations in this order).</summary>

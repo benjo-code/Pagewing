@@ -42,13 +42,20 @@ dotnet publish src/Pagewing.App -c Release -r linux-x64 -p:Version="$VERSION" -o
 dotnet run tools/smoke-cli.cs -- out/cli/pagewing
 dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli
 
+# The OCR library and the language data (SHA-256 pinned in tools/package.cs); the library is checked against the glibc floor like the rest.
+dotnet run tools/package.cs -- native-fetch --rid linux-x64 --out out/native
+
 # Blocking: a binary that needs a newer glibc or libstdc++ than Ubuntu 22.04 offers must not be shipped.
-files=$(find out/app out/cli -maxdepth 1 -type f \( -name Pagewing -o -name pagewing -o -name '*.so' -o -name '*.so.*' \) | sort)
+files=$(find out/app out/cli out/native -maxdepth 1 -type f \( -name Pagewing -o -name pagewing -o -name '*.so' -o -name '*.so.*' \) | sort)
 echo "$files"
 # shellcheck disable=SC2086
 dotnet run tools/package.cs -- check-binary $files --max-glibc 2.35
 
-dotnet run tools/package.cs -- layout --rid linux-x64 --app out/app --cli out/cli --out out/layout
+dotnet run tools/package.cs -- layout --rid linux-x64 --app out/app --cli out/cli --out out/layout --native out/native
+
+# The first smoke test above has no OCR library next to the binary and only runs `ocr --dry-run`; the layout has the library and
+# tessdata/ as shipped, so this run does the real `ocr` on ocr-scan.pdf (a package whose library does not load fails here, not at the user).
+dotnet run tools/smoke-cli.cs -- out/layout/cli/pagewing
 
 dotnet run tools/package.cs -- deb --layout out/layout --version "$VERSION" --out "out/release/pagewing_${DEBVERSION}_amd64.deb"
 dotnet run tools/package.cs -- deb-smoke "out/release/pagewing_${DEBVERSION}_amd64.deb"

@@ -18,6 +18,9 @@ public sealed partial class MainWindow
     private FileChangedCard? _fileChangedCard;
     private SaveErrorCard? _saveErrorCard;
     private RequiredFieldsCard? _requiredFieldsCard;
+    private ApplyPagesCard? _applyPagesCard;
+    private RedactApplyCard? _redactApplyCard;
+    private RedactReportCard? _redactReportCard;
 
     // The user's close of the window was answered (or the app ends): the next close goes through without asking.
     private bool _closeConfirmed;
@@ -25,7 +28,7 @@ public sealed partial class MainWindow
 
     /// <summary>Gets the cards of the save flow made so far (for tests: none before the first question).</summary>
     internal IEnumerable<SaveCard> SaveCards =>
-        new SaveCard?[] { _saveChangesCard, _signatureCard, _fileChangedCard, _saveErrorCard, _requiredFieldsCard }.OfType<SaveCard>();
+        new SaveCard?[] { _saveChangesCard, _signatureCard, _fileChangedCard, _saveErrorCard, _requiredFieldsCard, _applyPagesCard, _redactApplyCard, _redactReportCard }.OfType<SaveCard>();
 
     /// <summary>Closes the window without asking about unsaved changes (the app ends: <see cref="Services.Workspace.Dispose"/>).</summary>
     internal void CloseWithoutAsking()
@@ -90,9 +93,12 @@ public sealed partial class MainWindow
 
     private SaveCard CardFor(PendingSaveKind kind) => kind switch
     {
-        PendingSaveKind.SaveChanges or PendingSaveKind.DiscardChanges => _saveChangesCard ??= AddSaveCard(new SaveChangesCard { Name = "SaveChangesCard" }),
+        PendingSaveKind.SaveChanges or PendingSaveKind.DiscardChanges or PendingSaveKind.SaveAnnotationsFirst => _saveChangesCard ??= AddSaveCard(new SaveChangesCard { Name = "SaveChangesCard" }),
         PendingSaveKind.SignatureWarning or PendingSaveKind.SignatureNote => _signatureCard ??= AddSaveCard(new SignatureWarningCard { Name = "SignatureWarningCard" }),
         PendingSaveKind.FileChanged => _fileChangedCard ??= AddSaveCard(new FileChangedCard { Name = "FileChangedCard" }),
+        PendingSaveKind.ApplyPages => _applyPagesCard ??= AddSaveCard(new ApplyPagesCard { Name = "ApplyPagesCard" }),
+        PendingSaveKind.ApplyRedactions or PendingSaveKind.RedactionRefused or PendingSaveKind.RedactionRescue or PendingSaveKind.RedactionFailed => _redactApplyCard ??= AddSaveCard(new RedactApplyCard { Name = "RedactApplyCard" }),
+        PendingSaveKind.RedactionReport => _redactReportCard ??= AddSaveCard(new RedactReportCard { Name = "RedactReportCard" }),
         PendingSaveKind.RequiredFields => _requiredFieldsCard ??= AddSaveCard(new RequiredFieldsCard { Name = "RequiredFieldsCard" }),
         _ => _saveErrorCard ??= AddSaveCard(new SaveErrorCard { Name = "SaveErrorCard" }),
     };

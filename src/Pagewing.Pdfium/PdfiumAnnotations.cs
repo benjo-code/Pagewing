@@ -70,7 +70,7 @@ internal static unsafe class PdfiumAnnotations
     internal const int CancellationInterval = 64;
 
     /// <summary>What <see cref="LinkedIndex"/> returns when the link budget is used up.</summary>
-    private const int LinkUnresolved = -2;
+    internal const int LinkUnresolved = -2;
 
     /// <summary>The most quadrilaterals of one markup; a markup with more is treated as damaged and skipped.</summary>
     public const int MaxQuads = 4_096;
@@ -111,19 +111,26 @@ internal static unsafe class PdfiumAnnotations
     /// with more than <see cref="MaxQuads"/>) are skipped.
     /// </summary>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled while reading.</exception>
-    public static List<PdfiumAnnotation> Read(PdfiumPage page, int limit, CancellationToken cancellationToken = default)
+    public static List<PdfiumAnnotation> Read(PdfiumPage page, int limit, CancellationToken cancellationToken = default) =>
+        Read(page, limit, out _, cancellationToken);
+
+    /// <summary>
+    /// Like <see cref="Read(PdfiumPage, int, CancellationToken)"/>, and says whether something that is no popup and no reply was
+    /// left out: <paramref name="incomplete"/> is set when the <paramref name="limit"/> cut the list (also a limit of 0 on a page
+    /// that has such entries), when an entry was skipped as damaged, or when the page has more entries than
+    /// <see cref="MaxScannedPerPage"/> (the rest is never looked at).
+    /// </summary>
+    internal static List<PdfiumAnnotation> Read(PdfiumPage page, int limit, out bool incomplete, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(page);
         var native = page.Access();
         var result = new List<PdfiumAnnotation>();
-        if (limit <= 0)
-        {
-            return result;
-        }
-
+        incomplete = false;
         var scan = Scan(native, cancellationToken);
+        incomplete = Fpdf.FPDFPage_GetAnnotCount(native) > MaxScannedPerPage;
         var transform = PdfiumPageText.TransformOf(page);
-        for (var index = 0; index < scan.Subtypes.Length && result.Count < limit; index++)
+        var index = 0;
+        for (; index < scan.Subtypes.Length && result.Count < Math.Max(0, limit); index++)
         {
             if (index % CancellationInterval == 0)
             {
@@ -139,6 +146,15 @@ internal static unsafe class PdfiumAnnotations
             {
                 result.Add(annotation);
             }
+            else
+            {
+                incomplete = true;
+            }
+        }
+
+        for (; index < scan.Subtypes.Length && !incomplete; index++)
+        {
+            incomplete = !scan.IsReply[index] && scan.Subtypes[index] != FpdfConstants.AnnotPopup;
         }
 
         return result;
@@ -979,7 +995,7 @@ internal static unsafe class PdfiumAnnotations
     /// <see cref="LinkUnresolved"/> if <paramref name="budget"/> cannot pay the <paramref name="count"/> entries the
     /// search may compare (the raw <c>FPDFPage_GetAnnotCount</c>, because the search walks the whole <c>/Annots</c>).
     /// </summary>
-    private static int LinkedIndex(nint page, nint annotation, ReadOnlySpan<byte> key, int count, ref long budget)
+    internal static int LinkedIndex(nint page, nint annotation, ReadOnlySpan<byte> key, int count, ref long budget)
     {
         if (!HasKey(annotation, key))
         {

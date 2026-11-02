@@ -5,6 +5,7 @@ using System.Security;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Text;
+using Pagewing.Core.Pages;
 using Pagewing.Core.Pdf;
 
 namespace Pagewing.Core.Saving;
@@ -32,6 +33,11 @@ namespace Pagewing.Core.Saving;
 /// Whether the user confirmed overwriting the path of the original although another file now stands there (the stamp at
 /// the path differs while the opened file is untouched). It never overrides <see cref="SaveFailureReason.SourceModified"/>.
 /// </param>
+/// <param name="ReplaceExisting">
+/// Whether an existing target may be replaced (the default, as "Save" and "Save As" ask the user first). The command line passes
+/// <see langword="false"/> unless <c>--force</c> was given: a file that stands at the target when the temporary file is moved into place
+/// (also one that appeared meanwhile) is never replaced, the save ends in <see cref="SaveFailureReason.TargetExists"/> and removes its temporary file.
+/// </param>
 public sealed record SaveRequest(
     string OriginalPath,
     string TargetPath,
@@ -39,14 +45,15 @@ public sealed record SaveRequest(
     string? Password,
     int ExpectedPageCount,
     IReadOnlyDictionary<int, int> ExpectedAnnotationCounts,
-    bool OverwriteChangedOriginal)
+    bool OverwriteChangedOriginal,
+    bool ReplaceExisting = true)
 {
     /// <summary>Prints the members like a record does, with the password replaced (secrets never reach a log).</summary>
     private bool PrintMembers(StringBuilder builder)
     {
         builder.Append(
             CultureInfo.InvariantCulture,
-            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPageCount = {ExpectedPageCount}, ExpectedAnnotationCounts = {ExpectedAnnotationCounts?.Count ?? 0} pages, OverwriteChangedOriginal = {OverwriteChangedOriginal}");
+            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPageCount = {ExpectedPageCount}, ExpectedAnnotationCounts = {ExpectedAnnotationCounts?.Count ?? 0} pages, OverwriteChangedOriginal = {OverwriteChangedOriginal}, ReplaceExisting = {ReplaceExisting}");
         return true;
     }
 }
@@ -157,14 +164,121 @@ public static class DocumentSaver
             }
         }
 
+        var job = new Job(
+            request.OriginalPath,
+            request.TargetPath,
+            request.OriginalStamp,
+            request.OverwriteChangedOriginal,
+            request.Password,
+            ExtraSources: [],
+            Write: document.SaveIncrementalAsync,
+            CheckPrefix: true,
+            Check: (reopened, wasEncrypted, _, token) => CheckAsync(reopened, request, wasEncrypted, token),
+            ReplaceExisting: request.ReplaceExisting);
+        return await RunAsync(document, engine, job, progress, faults, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes the complete document of a page edit (never incrementally: the page operations change the pages the original
+    /// bytes describe, so there is no prefix to keep) through the same chain as
+    /// <see cref="SaveAsync(PdfDocument, PdfEngine, SaveRequest, IProgress{double}?, CancellationToken)"/>. Before the first byte,
+    /// the file of the working copy and of every <see cref="RewriteRequest.UnchangedSources"/> entry must still be what was
+    /// opened (handle against handle; <see cref="SaveFailureReason.SourceModified"/> without override, also for "Save As");
+    /// when the target is the original, the stamp at its path must still be the opened one
+    /// (<see cref="SaveFailureReason.OriginalChanged"/>, overridable); an existing target must not be read-only. Then the working
+    /// copy is written with <see cref="PdfDocument.SaveRewriteAsync"/> into <c>.pw-&lt;12 hex&gt;.tmp</c> in the target folder, the
+    /// sources are checked again, the file is opened with <paramref name="engine"/> and the password, and its page count, its
+    /// encryption (an encrypted document must stay encrypted, otherwise <see cref="SaveFailureReason.EncryptedNotSupported"/>)
+    /// and the fingerprint of every page (all up to 50, then a deterministic sample) are compared with
+    /// <see cref="RewriteRequest.ExpectedPages"/> (<see cref="SaveFailureReason.VerificationFailed"/>); the checked pages are
+    /// rendered; then <see cref="RewriteRequest.ExtraCheck"/> runs, if there is one, on the reopened file (a failure of it is
+    /// <see cref="SaveFailureReason.RedactionFailed"/>); the sources are checked once more and the target is replaced. A working copy
+    /// built from an empty document has no file worth watching, but it reads lazily from the documents its pages were imported from:
+    /// <see cref="RewriteRequest.RequiresListedSources"/> makes the request refuse unless those documents are listed. Every failure and cancellation before the replace
+    /// leaves the target byte for byte as it was and removes the temporary file. The checked document is returned and stays
+    /// open; the working copy stays with the caller.
+    /// </summary>
+    /// <param name="workingCopy">The working copy built by the page edit executor (not rendered, not changed afterwards).</param>
+    /// <param name="engine">Opens the written file for the check.</param>
+    /// <param name="request">What to write and check.</param>
+    /// <param name="progress">Receives 0 to 1 while the temporary file is written (from the PDFium thread).</param>
+    /// <param name="cancellationToken">Cancels until the target is replaced; afterwards it has no effect.</param>
+    /// <exception cref="SaveFailureException">The save failed; the target is unchanged.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled; the target is unchanged.</exception>
+    /// <exception cref="ObjectDisposedException">The working copy or a source is disposed.</exception>
+    /// <exception cref="ArgumentException">The working copy is a scratch document and no source is listed.</exception>
+    public static Task<SaveResult> RewriteAsync(
+        PdfDocument workingCopy,
+        PdfEngine engine,
+        RewriteRequest request,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        RewriteAsync(workingCopy, engine, request, progress, faults: null, cancellationToken);
+
+    /// <summary>Like the public overload, with hooks for tests.</summary>
+    internal static async Task<SaveResult> RewriteAsync(
+        PdfDocument workingCopy,
+        PdfEngine engine,
+        RewriteRequest request,
+        IProgress<double>? progress,
+        SaveFaults? faults,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(workingCopy);
+        ArgumentNullException.ThrowIfNull(engine);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrEmpty(request.OriginalPath, nameof(request));
+        ArgumentException.ThrowIfNullOrEmpty(request.TargetPath, nameof(request));
+        ArgumentNullException.ThrowIfNull(request.ExpectedPages, nameof(request));
+        ArgumentNullException.ThrowIfNull(request.UnchangedSources, nameof(request));
+        ArgumentOutOfRangeException.ThrowIfZero(request.ExpectedPages.Count, nameof(request));
+        if (request.UnchangedSources.Any(source => source is null))
+        {
+            throw new ArgumentException("A source document is missing.", nameof(request));
+        }
+
+        if (request.RequiresListedSources && request.UnchangedSources.Count == 0)
+        {
+            // A rebuilt working copy reads from the documents its pages were imported from; with none listed nothing guards them.
+            throw new ArgumentException("A rebuilt working copy needs every document it reads from in UnchangedSources.", nameof(request));
+        }
+
+        var job = new Job(
+            request.OriginalPath,
+            request.TargetPath,
+            request.OriginalStamp,
+            request.OverwriteChangedOriginal,
+            request.Password,
+            request.UnchangedSources,
+            Write: workingCopy.SaveRewriteAsync,
+            CheckPrefix: false,
+            Check: async (reopened, wasEncrypted, temporaryPath, token) =>
+            {
+                await CheckRewriteAsync(reopened, request, wasEncrypted, token).ConfigureAwait(false);
+                if (request.ExtraCheck is { } extra)
+                {
+                    await RunExtraCheckAsync(extra, reopened, temporaryPath, token).ConfigureAwait(false);
+                }
+            },
+            ReplaceExisting: request.ReplaceExisting,
+            RequiresListedSources: request.RequiresListedSources);
+        return await RunAsync(workingCopy, engine, job, progress, faults, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The chain both saves share: source checks, check of the original's path, temporary file, write, (prefix check), reopen,
+    /// check, replace. What differs is in <paramref name="job"/>.
+    /// </summary>
+    private static async Task<SaveResult> RunAsync(PdfDocument document, PdfEngine engine, Job job, IProgress<double>? progress, SaveFaults? faults, CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
-        var original = Path.GetFullPath(request.OriginalPath);
-        var target = Path.GetFullPath(request.TargetPath);
+        var original = Path.GetFullPath(job.OriginalPath);
+        var target = Path.GetFullPath(job.TargetPath);
         var folder = Path.GetDirectoryName(target)
             ?? throw new SaveFailureException(SaveFailureReason.NotWritable, "The target has no folder.");
 
-        var sourceLength = CheckSource(document);
-        if (request.OriginalStamp is { } stamp && FileStamp.Of(original) != stamp && SamePath(original, target) && !request.OverwriteChangedOriginal)
+        var sourceLength = CheckSources(document, job);
+        if (job.OriginalStamp is { } stamp && FileStamp.Of(original) != stamp && SamePath(original, target) && !job.OverwriteChangedOriginal)
         {
             throw new SaveFailureException(SaveFailureReason.OriginalChanged, "Another file stands at the path of the original since it was opened.");
         }
@@ -177,7 +291,7 @@ public static class DocumentSaver
         var committed = false;
         try
         {
-            await WriteAsync(document, file, sourceLength, progress, faults, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(job.Write, file, sourceLength, progress, faults, cancellationToken).ConfigureAwait(false);
             CopyTargetMetadata(temporary, existing);
             var lateAccessList = OperatingSystem.IsWindows() ? GiveAccessList(temporary, existing.AccessList, faults) : null;
             faults?.AfterWrite?.Invoke();
@@ -185,15 +299,19 @@ public static class DocumentSaver
 
             // PDFium copied the source while it wrote, which can take seconds: a rewrite in place meanwhile ends up in the
             // copy, and the prefix check would compare it with the same new bytes. So the source is checked again.
-            CheckSource(document);
-            await CheckPrefixAsync(temporary, document, sourceLength, cancellationToken).ConfigureAwait(false);
-            CheckSource(document);
-            reopened = await ReopenAsync(engine, temporary, request.Password, cancellationToken).ConfigureAwait(false);
-            await CheckAsync(reopened, request, wasEncrypted, cancellationToken).ConfigureAwait(false);
+            CheckSources(document, job);
+            if (job.CheckPrefix)
+            {
+                await CheckPrefixAsync(temporary, document, sourceLength, cancellationToken).ConfigureAwait(false);
+                CheckSources(document, job);
+            }
+
+            reopened = await ReopenAsync(engine, temporary, job.Password, cancellationToken).ConfigureAwait(false);
+            await job.Check(reopened, wasEncrypted, temporary, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
-            CheckSource(document);
-            Replace(temporary, target, folder, faults);
+            CheckSources(document, job);
+            Replace(temporary, target, folder, job.ReplaceExisting, faults);
             committed = true;
             if (lateAccessList is not null && OperatingSystem.IsWindows())
             {
@@ -289,6 +407,49 @@ public static class DocumentSaver
         }
 
         return atOpen.Length;
+    }
+
+    /// <summary>
+    /// Checks the document and every extra source (<see cref="CheckSource"/>), always all of them; returns the length of the
+    /// document's file, or, for a rebuilt working copy (<see cref="Job.RequiresListedSources"/>), whose own file is a few hundred
+    /// bytes, the sum of the lengths of the listed sources, the best guess of the size of the result for the progress.
+    /// </summary>
+    private static long CheckSources(PdfDocument document, Job job)
+    {
+        var length = CheckSource(document);
+        var listed = 0L;
+        foreach (var source in job.ExtraSources)
+        {
+            listed += CheckSource(source);
+        }
+
+        return job.RequiresListedSources ? listed : length;
+    }
+
+    /// <summary>
+    /// Runs the extra check of a rewrite. A cancellation of the caller passes through; a <see cref="SaveFailureException"/> of the check
+    /// becomes <see cref="SaveFailureReason.RedactionFailed"/> with its <see cref="SaveFailureException.Details"/>; any other
+    /// exception (a file that cannot be read, a bug) fails the save too, because a check that could not be completed has not passed.
+    /// The message is fixed: the exception of the check is the inner exception, and its message may quote what was redacted.
+    /// </summary>
+    private static async Task RunExtraCheckAsync(Func<RewriteCheckContext, CancellationToken, Task> extra, PdfDocument reopened, string temporaryPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await extra(new RewriteCheckContext(reopened, temporaryPath), cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (SaveFailureException ex)
+        {
+            throw new SaveFailureException(SaveFailureReason.RedactionFailed, "The check of the written file found a problem.", ex) { Details = ex.Details, FilePath = ex.FilePath };
+        }
+        catch (Exception ex)
+        {
+            throw new SaveFailureException(SaveFailureReason.RedactionFailed, "The check of the written file could not be completed.", ex);
+        }
     }
 
     /// <summary>
@@ -469,9 +630,9 @@ public static class DocumentSaver
         }
     }
 
-    /// <summary>Writes the incremental save into <paramref name="file"/>, flushes it to disk and closes it.</summary>
+    /// <summary>Writes the save (<paramref name="write"/>) into <paramref name="file"/>, flushes it to disk and closes it.</summary>
     private static async Task WriteAsync(
-        PdfDocument document,
+        Func<Stream, CancellationToken, Task> write,
         FileStream file,
         long expectedLength,
         IProgress<double>? progress,
@@ -485,7 +646,7 @@ public static class DocumentSaver
                 var inner = faults?.WrapTemporary?.Invoke(file) ?? file;
                 var counting = new ProgressStream(inner, expectedLength, progress, cancellationToken);
                 progress?.Report(0);
-                await document.SaveIncrementalAsync(counting, cancellationToken).ConfigureAwait(false);
+                await write(counting, cancellationToken).ConfigureAwait(false);
                 inner.Flush();
                 file.Flush(flushToDisk: true);
                 progress?.Report(1);
@@ -606,6 +767,54 @@ public static class DocumentSaver
     }
 
     /// <summary>
+    /// Compares the reopened file of a rewrite with what was expected: the page count, the encryption and the fingerprint of
+    /// every page up to 50 (then a sample, <see cref="PageEditExecutor.SampledPages"/>), and renders the checked pages.
+    /// </summary>
+    private static async Task CheckRewriteAsync(PdfDocument reopened, RewriteRequest request, bool wasEncrypted, CancellationToken cancellationToken)
+    {
+        var expected = request.ExpectedPages;
+        if (reopened.PageCount != expected.Count)
+        {
+            throw new SaveFailureException(SaveFailureReason.VerificationFailed, $"The saved file has {reopened.PageCount} pages instead of {expected.Count}.");
+        }
+
+        if (wasEncrypted && !(await reopened.GetPrintInfoAsync(cancellationToken).ConfigureAwait(false)).IsEncrypted)
+        {
+            throw new SaveFailureException(SaveFailureReason.EncryptedNotSupported, "The saved file would lose its encryption.");
+        }
+
+        try
+        {
+            var options = new RenderOptions { Priority = PdfPriority.Background };
+            var pages = PageEditExecutor.SampledPages(expected.Count);
+            var actual = await PageEditExecutor.FingerprintsAsync(reopened, pages, cancellationToken).ConfigureAwait(false);
+            for (var i = 0; i < pages.Count; i++)
+            {
+                if (!Matches(expected[pages[i]], actual[i]))
+                {
+                    throw new SaveFailureException(SaveFailureReason.VerificationFailed, $"Page {pages[i] + 1} of the saved file is not the page that was expected.");
+                }
+
+                var size = await reopened.GetPageSizeAsync(pages[i], cancellationToken).ConfigureAwait(false);
+                var longer = Math.Max(size.Width, size.Height);
+                var scale = longer > 0 ? Math.Min(1, CheckRenderSize / longer) : 1;
+                await reopened.RenderPageAsync(pages[i], scale, options, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidDataException or PdfRenderException or ArgumentOutOfRangeException)
+        {
+            throw new SaveFailureException(SaveFailureReason.VerificationFailed, "A page of the saved file cannot be read or rendered.", ex);
+        }
+    }
+
+    /// <summary>Whether two fingerprints describe the same page; sizes may differ by the rounding step (0.5 pt), so a value on a rounding boundary cannot fail a correct file.</summary>
+    private static bool Matches(PageFingerprint expected, PageFingerprint actual) =>
+        expected.Rotation == actual.Rotation
+        && (!expected.CompareText || (expected.TextSetHash == actual.TextSetHash && (!expected.CompareTextOrder || expected.TextHash == actual.TextHash)))
+        && Math.Abs(expected.Width - actual.Width) <= 0.5
+        && Math.Abs(expected.Height - actual.Height) <= 0.5;
+
+    /// <summary>
     /// Moves the checked temporary file over the target. Linux: one atomic <c>rename</c>, which replaces the target even while
     /// it is open. Windows: the atomic POSIX rename (<see cref="WindowsFileRename.ReplaceAtomically"/>); Windows' ordinary
     /// rename refuses to replace a file another handle has open, even one shared for deleting, and the old document of the
@@ -614,19 +823,41 @@ public static class DocumentSaver
     /// (renaming a file opened shared for deleting is allowed), the temporary file takes its name and the old file is
     /// deleted. If that second move fails, the old file is moved back.
     /// </summary>
-    private static void Replace(string temporary, string target, string folder, SaveFaults? faults)
+    private static void Replace(string temporary, string target, string folder, bool replaceExisting, SaveFaults? faults)
     {
         if (OperatingSystem.IsWindows())
         {
-            var error = faults?.AtomicReplace is { } replace ? replace(temporary, target) : WindowsFileRename.ReplaceAtomically(temporary, target);
+            var error = faults?.AtomicReplace is { } replace ? replace(temporary, target) : WindowsFileRename.ReplaceAtomically(temporary, target, replaceExisting);
             if (error == 0)
             {
                 return;
             }
 
+            if (!replaceExisting && error is WindowsFileRename.ErrorAlreadyExists or WindowsFileRename.ErrorFileExists)
+            {
+                throw TargetExists(new Win32Exception(error));
+            }
+
             if (!WindowsFileRename.IsUnsupported(error))
             {
                 throw FailureOfWin32(error);
+            }
+        }
+
+        if (!replaceExisting)
+        {
+            // Never replaces: .NET moves without overwriting by linking the new name first and then removing the old one, so a
+            // file that appears at the target at any moment before that ends here and stays as it is.
+            try
+            {
+                File.Move(temporary, target, overwrite: false);
+                return;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                throw File.Exists(target) || Directory.Exists(target)
+                    ? TargetExists(ex)
+                    : FailureOf(ex, "The file could not be written.");
             }
         }
 
@@ -681,6 +912,25 @@ public static class DocumentSaver
         TryDelete(aside);
     }
 
+    /// <summary>
+    /// Moves a finished temporary file over (or, without <paramref name="replaceExisting"/>, next to) <paramref name="target"/>
+    /// with the same rules as the save of a document: atomic where the file system allows it, and without
+    /// <paramref name="replaceExisting"/> never replacing a file that appears at the target meanwhile. For files other than
+    /// documents (the PNG files of an image export) that are written to a temporary file in the folder of the target first.
+    /// </summary>
+    /// <param name="temporary">The full path of the finished temporary file, in the folder of <paramref name="target"/>.</param>
+    /// <param name="target">The full path of the file to create or replace.</param>
+    /// <param name="replaceExisting">Whether an existing target may be replaced.</param>
+    /// <exception cref="SaveFailureException">The move failed; with <see cref="SaveFailureReason.TargetExists"/> a file stands at the target and was not replaced.</exception>
+    internal static void MoveIntoPlace(string temporary, string target, bool replaceExisting) =>
+        Replace(temporary, target, Path.GetDirectoryName(target) ?? string.Empty, replaceExisting, faults: null);
+
+    /// <summary>A short temporary name independent of the target's name (<c>.pw-&lt;12 hex&gt;.tmp</c>), so a long target name never makes it too long.</summary>
+    internal static string TemporaryName() => ShortName(".tmp");
+
+    private static SaveFailureException TargetExists(Exception inner) =>
+        new(SaveFailureReason.TargetExists, "A file already exists at the target.", inner);
+
     /// <summary>Maps a write or replace error: full disk, file in use, no access, anything else.</summary>
     private static SaveFailureException FailureOf(Exception error, string message)
     {
@@ -723,6 +973,20 @@ public static class DocumentSaver
             // Nothing more can be done; the file (.tmp or .old) is not the target.
         }
     }
+
+    /// <summary>What one run of the chain does: what it watches, how it writes, whether it checks the prefix, what it checks after the reopen.</summary>
+    private sealed record Job(
+        string OriginalPath,
+        string TargetPath,
+        FileStamp? OriginalStamp,
+        bool OverwriteChangedOriginal,
+        string? Password,
+        IReadOnlyList<PdfDocument> ExtraSources,
+        Func<Stream, CancellationToken, Task> Write,
+        bool CheckPrefix,
+        Func<PdfDocument, bool, string, CancellationToken, Task> Check,
+        bool ReplaceExisting = true,
+        bool RequiresListedSources = false);
 
     /// <summary>What an existing target passes on to the file that replaces it.</summary>
     private readonly record struct TargetInfo(bool Exists, bool Hidden, UnixFileMode? UnixMode, byte[]? AccessList = null);

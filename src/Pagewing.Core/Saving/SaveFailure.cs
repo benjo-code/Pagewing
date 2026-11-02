@@ -47,6 +47,21 @@ public enum SaveFailureReason
     /// tell its own cancellation from a failure.
     /// </summary>
     Canceled,
+
+    /// <summary>
+    /// A file stands at the target and the save was told not to replace an existing file
+    /// (<see cref="RewriteRequest.ReplaceExisting"/> is <see langword="false"/>), for example because another program created
+    /// it while the file was written. The file at the target is untouched.
+    /// </summary>
+    TargetExists,
+
+    /// <summary>
+    /// The written file passed the checks every rewrite makes, but the extra check of the caller
+    /// (<see cref="RewriteRequest.ExtraCheck"/>, the redaction check) found something or could not be completed. Nothing is
+    /// replaced. <see cref="SaveFailureException.Details"/> carries what the check attached, <see cref="Exception.InnerException"/>
+    /// the exception it threw.
+    /// </summary>
+    RedactionFailed,
 }
 
 /// <summary>A save failed; <see cref="Reason"/> says why. <see cref="Exception.Message"/> is a short English explanation.</summary>
@@ -75,4 +90,17 @@ public sealed class SaveFailureException : Exception
 
     /// <summary>Gets the reason, for example to show a localized message.</summary>
     public SaveFailureReason Reason { get; }
+
+    /// <summary>
+    /// Gets the file the failure is about when it is not the document being saved (a file inserted into the page plan that is no
+    /// longer the file that was inserted), or <see langword="null"/>.
+    /// </summary>
+    public string? FilePath { get; init; }
+
+    /// <summary>
+    /// Gets what the extra check of a rewrite (<see cref="RewriteRequest.ExtraCheck"/>) attached to its failure, for example the
+    /// findings of the redaction check, or <see langword="null"/>. The type is the contract between the check and its caller; the
+    /// saver only passes it on (<see cref="SaveFailureReason.RedactionFailed"/>), so it knows no type of the redaction.
+    /// </summary>
+    public object? Details { get; init; }
 }

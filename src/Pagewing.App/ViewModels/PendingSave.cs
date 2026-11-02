@@ -49,6 +49,46 @@ public enum PendingSaveKind
     /// "Fill in form" shows that field) and "Save anyway". Never blocks saving; asked before the signature card.
     /// </summary>
     RequiredFields,
+
+    /// <summary>
+    /// The page changes of the tab are to be written (milestone 13, <see cref="PendingSave.Apply"/> has the summary and the list
+    /// of what the rewrite loses): "Save as …" (default), "Save in the original file" (locked at first) and "Back". A full
+    /// rewrite cannot be undone, and Pagewing keeps no backup copy.
+    /// </summary>
+    ApplyPages,
+
+    /// <summary>
+    /// The page changes are to be applied, but the document has changes that are not saved (comments, form values): they are
+    /// not part of the rewrite, so "Save" (default; the incremental save, after which the apply goes on) or "Cancel" (back to
+    /// organizing, the page changes stay).
+    /// </summary>
+    SaveAnnotationsFirst,
+
+    /// <summary>
+    /// The marks of the tab are to be applied (milestone 14, <see cref="PendingSave.Redaction"/> has the numbers, the fallbacks, the
+    /// cleanup, the losses and what is not cleaned): "Save as …" (default; the name suggested is "&lt;name&gt;-redacted.pdf"), "Save in
+    /// the original file" (dangerous, locked at first, never the default) and "Back". Redacting cannot be undone.
+    /// </summary>
+    ApplyRedactions,
+
+    /// <summary>
+    /// The file cannot be redacted (encrypted, page keys Pagewing cannot remove, a page that cannot be redacted): the card names
+    /// the kind, the reason and the pages, and has "Back" alone. Nothing was written, the marks stay.
+    /// </summary>
+    RedactionRefused,
+
+    /// <summary>
+    /// The file cannot be redacted only because of some pages (milestone 14.1): the card names them and offers to turn each into an image
+    /// instead (<see cref="PendingSave.Rescue"/>, never preselected). "Continue" (only with a page chosen) puts the choice into the plan
+    /// and the analysis runs again; "Back" (default) leaves everything as it was. Nothing was written, the marks stay.
+    /// </summary>
+    RedactionRescue,
+
+    /// <summary>The check of the written file found something: the card names the findings, "Back" alone. Nothing was written, the marks stay.</summary>
+    RedactionFailed,
+
+    /// <summary>The report after a redaction that passed its check: what was removed, cleaned, lost and checked, and what was not. "Close" alone.</summary>
+    RedactionReport,
 }
 
 /// <summary>An answer to a <see cref="PendingSave"/>.</summary>
@@ -80,6 +120,15 @@ public enum PendingSaveChoice
 
     /// <summary>Do not save now; show the first empty required field to fill it in (only <see cref="PendingSaveKind.RequiredFields"/>).</summary>
     GoToField,
+
+    /// <summary>Write the page changes into the original file, which they replace for good (only <see cref="PendingSaveKind.ApplyPages"/>).</summary>
+    SaveInOriginal,
+
+    /// <summary>Close the report of a redaction (only <see cref="PendingSaveKind.RedactionReport"/>).</summary>
+    Close,
+
+    /// <summary>Put the chosen pages into the plan as images and analyse again (only <see cref="PendingSaveKind.RedactionRescue"/>).</summary>
+    Continue,
 }
 
 /// <summary>
@@ -103,6 +152,9 @@ public sealed class PendingSave
     // The text of a question whose text is not given by its kind and reason (SaveNotPossible), or null.
     private readonly Func<string>? _message;
 
+    // The title of a question whose title is not given by its kind (the page changes), or null.
+    private readonly Func<string>? _title;
+
     // When the card was last laid out (Clock timestamp); none: no card shows the question now.
     private long? _shownAt;
 
@@ -119,10 +171,26 @@ public sealed class PendingSave
         DocMdpLevel level = DocMdpLevel.NotSet,
         Func<string>? message = null,
         bool formsOnly = false,
+        bool ocr = false,
+        bool textEdit = false,
         IReadOnlyList<string>? emptyFieldNames = null,
-        string? firstFieldName = null)
+        string? firstFieldName = null,
+        Func<string>? title = null,
+        ApplyPagesInfo? apply = null,
+        RedactionApplyInfo? redaction = null,
+        RedactionRescueOffer? rescue = null)
     {
+        Apply = apply;
+        Redaction = redaction;
+        Rescue = rescue;
+        if (rescue is not null)
+        {
+            // The choice of a page makes "Continue" possible: the card asks its buttons again.
+            rescue.Changed += () => ArmedChanged?.Invoke();
+        }
+
         _message = message;
+        _title = title;
         Kind = kind;
         Tab = tab;
         Path = path;
@@ -131,6 +199,8 @@ public sealed class PendingSave
         Reason = reason;
         Level = level;
         FormsOnly = formsOnly;
+        Ocr = ocr;
+        TextEdit = textEdit;
         EmptyFieldNames = emptyFieldNames ?? [];
         FirstFieldName = firstFieldName ?? (EmptyFieldNames.Count > 0 ? EmptyFieldNames[0] : string.Empty);
         ResolveCommand = new RelayCommand<PendingSaveChoice>(choice => Resolve(choice));
@@ -160,11 +230,32 @@ public sealed class PendingSave
     /// </summary>
     public bool FormsOnly { get; }
 
+    /// <summary>
+    /// Gets whether a text recognition run is among the changes to be saved (<see cref="PendingSaveKind.SignatureWarning"/>): the warning says that
+    /// invisible text is added to the file.
+    /// </summary>
+    public bool Ocr { get; }
+
+    /// <summary>
+    /// Gets whether a text edit is among the changes to be saved (<see cref="PendingSaveKind.SignatureWarning"/>): the warning says that changed text
+    /// is added to the file.
+    /// </summary>
+    public bool TextEdit { get; }
+
     /// <summary>Gets the full names of the empty required fields (<see cref="PendingSaveKind.RequiredFields"/>), in the order of the pages.</summary>
     public IReadOnlyList<string> EmptyFieldNames { get; }
 
     /// <summary>Gets how the card names the first empty required field (its alternate name, else its name).</summary>
     public string FirstFieldName { get; }
+
+    /// <summary>Gets what the card of <see cref="PendingSaveKind.ApplyPages"/> shows (summary and losses), or <see langword="null"/>.</summary>
+    public ApplyPagesInfo? Apply { get; }
+
+    /// <summary>Gets what the cards of the redaction show (numbers, fallbacks, cleanup, losses, refusals, findings, report), or <see langword="null"/>.</summary>
+    public RedactionApplyInfo? Redaction { get; }
+
+    /// <summary>Gets the pages the user may turn into images (<see cref="PendingSaveKind.RedactionRescue"/>), or <see langword="null"/>.</summary>
+    public RedactionRescueOffer? Rescue { get; }
 
     /// <summary>Gets the answers the card offers, in the order of its buttons.</summary>
     public IReadOnlyList<PendingSaveChoice> Choices { get; }
@@ -182,10 +273,17 @@ public sealed class PendingSave
     public event Action? ArmedChanged;
 
     /// <summary>Gets the title of the card in the language of the interface.</summary>
-    public string Title => Kind switch
+    public string Title => _title?.Invoke() ?? Kind switch
     {
         PendingSaveKind.SaveChanges => Format(Strings.SaveChangesTitle, FileName),
         PendingSaveKind.DiscardChanges => Format(Strings.DiscardChangesTitle, FileName),
+        PendingSaveKind.ApplyPages => Format(Strings.ApplyPagesTitle, FileName),
+        PendingSaveKind.SaveAnnotationsFirst => Format(Strings.SaveFirstTitle, FileName),
+        PendingSaveKind.ApplyRedactions => Format(Strings.RedactApplyTitle, FileName),
+        PendingSaveKind.RedactionRefused => Format(Strings.RedactRefusedTitle, FileName),
+        PendingSaveKind.RedactionRescue => Format(Strings.RedactRescueTitle, FileName),
+        PendingSaveKind.RedactionFailed => Format(Strings.RedactFailedTitle, FileName),
+        PendingSaveKind.RedactionReport => Format(Strings.RedactReportTitle, FileName),
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningTitle,
         PendingSaveKind.SignatureNote => Strings.SignatureNoteTitle,
         PendingSaveKind.FileChanged => Format(Strings.FileChangedTitle, FileName),
@@ -198,8 +296,21 @@ public sealed class PendingSave
     /// <summary>Gets the text of the card in the language of the interface (never "valid" for a signature).</summary>
     public string Message => _message?.Invoke() ?? Kind switch
     {
-        PendingSaveKind.SaveChanges => Strings.SaveChangesText,
+        // Saving does not apply the page changes: the text says they are lost as well (nothing is dropped unnamed).
+        PendingSaveKind.SaveChanges => Tab.HasPendingPageEdits ? Strings.SaveChangesWithPagesText
+            : Tab.HasPendingRedactions ? Strings.SaveChangesWithMarksText
+            : Strings.SaveChangesText,
+        PendingSaveKind.ApplyPages => Strings.ApplyPagesIrreversible,
+        PendingSaveKind.SaveAnnotationsFirst => Strings.SaveFirstText,
+        PendingSaveKind.ApplyRedactions => Strings.RedactIrreversible,
+        PendingSaveKind.RedactionRefused => Strings.RedactRefusedNothing,
+        PendingSaveKind.RedactionRescue => Strings.RedactRefusedNothing,
+        PendingSaveKind.RedactionFailed => Strings.RedactFailedNothing,
+        PendingSaveKind.RedactionReport => Strings.RedactReportIntro,
         PendingSaveKind.SignatureWarning when FormsOnly && Level == DocMdpLevel.FormsOnly => Strings.SignatureWarningFormsText,
+        PendingSaveKind.SignatureWarning when Ocr && TextEdit => $"{Strings.SignatureWarningText} {Strings.SignatureWarningOcr} {Strings.SignatureWarningTextEdit}",
+        PendingSaveKind.SignatureWarning when Ocr => $"{Strings.SignatureWarningText} {Strings.SignatureWarningOcr}",
+        PendingSaveKind.SignatureWarning when TextEdit => $"{Strings.SignatureWarningText} {Strings.SignatureWarningTextEdit}",
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningText,
         PendingSaveKind.RequiredFields => Format(EmptyFieldNames.Count == 1 ? Strings.RequiredFieldsTextOne : Strings.RequiredFieldsTextMany, FirstFieldName),
         PendingSaveKind.SignatureNote => Strings.SignatureNoteText,
@@ -215,7 +326,8 @@ public sealed class PendingSave
     /// cannot be saved, a failure): it shows the warning symbol with its text, and screen readers announce the text.
     /// </summary>
     public bool IsWarning => Kind is PendingSaveKind.SignatureWarning or PendingSaveKind.FileChanged or PendingSaveKind.SaveError
-        or PendingSaveKind.DiscardChanges;
+        or PendingSaveKind.DiscardChanges or PendingSaveKind.ApplyPages or PendingSaveKind.ApplyRedactions or PendingSaveKind.RedactionRefused
+        or PendingSaveKind.RedactionRescue or PendingSaveKind.RedactionFailed;
 
     /// <summary>Gets whether the question was answered.</summary>
     public bool IsResolved => _choice.Task.IsCompleted;
@@ -236,20 +348,27 @@ public sealed class PendingSave
         PendingSaveChoice.Overwrite => Strings.SaveChoiceOverwrite,
         PendingSaveChoice.Discard => Strings.SaveChoiceDiscard,
         PendingSaveChoice.GoToField => Strings.SaveChoiceGoToField,
+        PendingSaveChoice.SaveInOriginal => Strings.SaveChoiceSaveInOriginal,
+        PendingSaveChoice.Close => Strings.SaveChoiceClose,
+        PendingSaveChoice.Continue => Strings.SaveChoiceContinue,
         _ => Strings.SaveChoiceCancel,
     };
 
     /// <summary>Gets whether <paramref name="choice"/> loses or overwrites something: never the default, locked at first (<see cref="ArmingDelay"/>).</summary>
     public static bool IsDangerous(PendingSaveChoice choice) =>
-        choice is PendingSaveChoice.DontSave or PendingSaveChoice.SaveAnyway or PendingSaveChoice.Overwrite or PendingSaveChoice.Discard;
+        choice is PendingSaveChoice.DontSave or PendingSaveChoice.SaveAnyway or PendingSaveChoice.Overwrite or PendingSaveChoice.Discard
+            or PendingSaveChoice.SaveInOriginal;
 
     /// <summary>
     /// Gets whether the card's button of <paramref name="choice"/> acts now: the question offers it and is not answered yet,
     /// and for a dangerous choice <see cref="ArmingDelay"/> has passed since the card was laid out.
     /// </summary>
     public bool IsArmed(PendingSaveChoice choice) =>
-        !IsResolved && Choices.Contains(choice)
+        !IsResolved && Choices.Contains(choice) && CanAnswer(choice)
         && (!IsDangerous(choice) || (_shownAt is { } shown && Clock.GetElapsedTime(shown) >= ArmingDelay));
+
+    // "Continue" needs a page the user chose: the card of a rejected page never goes on without one.
+    private bool CanAnswer(PendingSaveChoice choice) => choice != PendingSaveChoice.Continue || Rescue is { CanContinue: true };
 
     /// <summary>A button of the card: answers with <paramref name="choice"/> while it is armed (<see cref="IsArmed"/>).</summary>
     /// <returns><see langword="false"/> when the choice is locked, not offered, or the question was answered.</returns>
@@ -282,7 +401,7 @@ public sealed class PendingSave
     /// <returns><see langword="false"/> when the question was answered already or does not offer <paramref name="choice"/>.</returns>
     public bool Resolve(PendingSaveChoice choice)
     {
-        if (!Choices.Contains(choice) || !_choice.TrySetResult(choice))
+        if (!Choices.Contains(choice) || !CanAnswer(choice) || !_choice.TrySetResult(choice))
         {
             return false;
         }
@@ -312,12 +431,122 @@ public sealed class PendingSave
         new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, reason);
 
     /// <summary>
+    /// The question before a tab closes that has page changes which are not applied (milestone 13) and nothing else unsaved:
+    /// the changes are not written by "Save", so it is a warning like <see cref="DiscardChanges"/> ("Close and discard changes"
+    /// or "Cancel", "Cancel" the default), with its own title and text.
+    /// </summary>
+    internal static PendingSave DiscardPageEdits(TabViewModel tab, string path) =>
+        new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel,
+            message: static () => Strings.DiscardPageEditsText,
+            title: () => Format(Strings.DiscardPageEditsTitle, System.IO.Path.GetFileName(path)));
+
+    /// <summary>
+    /// The question before a tab closes that has redaction marks which are not applied (milestone 14) and nothing else unsaved:
+    /// nothing was removed from the file and "Save" does not apply the marks, so it is a warning like
+    /// <see cref="DiscardPageEdits"/> ("Close and discard changes" or "Cancel", "Cancel" the default).
+    /// </summary>
+    internal static PendingSave DiscardRedactions(TabViewModel tab, string path) =>
+        new(PendingSaveKind.DiscardChanges, tab, path, [PendingSaveChoice.Discard, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel,
+            message: static () => Strings.DiscardRedactionsText,
+            title: () => Format(Strings.DiscardRedactionsTitle, System.IO.Path.GetFileName(path)));
+
+    /// <summary>
+    /// The card of "Apply" (milestone 13): the summary and the losses of <paramref name="info"/>, "Save as …" the default (the
+    /// original stays), "Save in the original file" (locked at first, never the default) and "Back".
+    /// </summary>
+    internal static PendingSave ApplyPages(TabViewModel tab, string path, ApplyPagesInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.ApplyPages, tab, path, [PendingSaveChoice.SaveAs, PendingSaveChoice.SaveInOriginal, PendingSaveChoice.Cancel], PendingSaveChoice.SaveAs, apply: info);
+    }
+
+    /// <summary>
+    /// The question before the page changes (or the redaction marks, with their own <paramref name="message"/>) are applied while
+    /// comments or form values are not saved: "Save" (default) or "Cancel".
+    /// </summary>
+    internal static PendingSave SaveAnnotationsFirst(TabViewModel tab, string path, Func<string>? message = null) =>
+        new(PendingSaveKind.SaveAnnotationsFirst, tab, path, [PendingSaveChoice.Save, PendingSaveChoice.Cancel], PendingSaveChoice.Save, message: message);
+
+    /// <summary>
+    /// The card of "Apply" for the redaction marks (milestone 14): the numbers and the lists of <paramref name="info"/>, "Save as …"
+    /// the default (the original stays), "Save in the original file" (dangerous: locked at first, never the default) and "Back".
+    /// </summary>
+    internal static PendingSave ApplyRedactions(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.ApplyRedactions, tab, path, [PendingSaveChoice.SaveAs, PendingSaveChoice.SaveInOriginal, PendingSaveChoice.Cancel], PendingSaveChoice.SaveAs, redaction: info);
+    }
+
+    /// <summary>
+    /// The confirmation after "Save as …" named the original file (milestone 14): the same card as <see cref="ApplyRedactions"/> without
+    /// the file dialog, "Save in the original file" (dangerous: locked at first, never the default) and "Back".
+    /// </summary>
+    internal static PendingSave ApplyRedactionsInOriginal(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.ApplyRedactions, tab, path, [PendingSaveChoice.SaveInOriginal, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info);
+    }
+
+    /// <summary>The card of a refusal (no "Apply"): the kind, the reason and the pages, "Back" alone.</summary>
+    internal static PendingSave RedactionRefused(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.RedactionRefused, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info);
+    }
+
+    /// <summary>
+    /// The card of a file that is refused only because of pages that can become images (milestone 14.1): the reasons of <paramref name="info"/>,
+    /// the offer with a check box for each page (never preselected), "Continue" (waits for a chosen page) and "Back", which is the default.
+    /// </summary>
+    internal static PendingSave RedactionRescue(TabViewModel tab, string path, RedactionApplyInfo info, RedactionRescueOffer offer)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        ArgumentNullException.ThrowIfNull(offer);
+        return new(PendingSaveKind.RedactionRescue, tab, path, [PendingSaveChoice.Continue, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info, rescue: offer);
+    }
+
+    /// <summary>The card of a check that found something (nothing was written): the findings, "Back" alone.</summary>
+    internal static PendingSave RedactionFailed(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.RedactionFailed, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info);
+    }
+
+    /// <summary>The report after a redaction that passed its check, "Close" alone. <paramref name="path"/> is the written file.</summary>
+    internal static PendingSave RedactionReport(TabViewModel tab, string path, RedactionApplyInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(PendingSaveKind.RedactionReport, tab, path, [PendingSaveChoice.Close], PendingSaveChoice.Close, redaction: info);
+    }
+
+    /// <summary>
+    /// The page changes cannot be applied for a reason that is not a failed save (the plan is refused, a source cannot be
+    /// read, typed text would be lost): the error card with <paramref name="message"/> and "Cancel" alone. The plan is kept.
+    /// </summary>
+    internal static PendingSave PageApplyError(TabViewModel tab, string path, Func<string> message, Func<string>? title = null)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        return new(PendingSaveKind.SaveError, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, message: message, title: title);
+    }
+
+    /// <summary>
+    /// The page changes were written to <paramref name="path"/>, but the tab could not take the file over: the card says the file
+    /// is written (never "not saved") and that Pagewing opens it again. "Cancel" alone is its way to go on.
+    /// </summary>
+    internal static PendingSave PageApplyViewFailed(TabViewModel tab, string path) =>
+        PageApplyError(
+            tab,
+            path,
+            () => string.Format(Strings.Culture, CompositeFormat.Parse(Strings.ApplyErrorViewFailed), path),
+            () => Format(Strings.ApplyViewFailedTitle, System.IO.Path.GetFileName(path)));
+
+    /// <summary>
     /// The warning before saving a document whose signature forbids the change (DocMDP level 1 or 2). With
     /// <paramref name="formsOnly"/> (only form values changed since the last save) the text at level 2, which allows form
     /// fields, says so; the warning, its choices and its default stay the same.
     /// </summary>
-    internal static PendingSave SignatureWarning(TabViewModel tab, string path, DocMdpLevel level, bool formsOnly = false) =>
-        new(PendingSaveKind.SignatureWarning, tab, path, [PendingSaveChoice.Cancel, PendingSaveChoice.SaveAs, PendingSaveChoice.SaveAnyway], PendingSaveChoice.Cancel, level: level, formsOnly: formsOnly);
+    internal static PendingSave SignatureWarning(TabViewModel tab, string path, DocMdpLevel level, bool formsOnly = false, bool ocr = false, bool textEdit = false) =>
+        new(PendingSaveKind.SignatureWarning, tab, path, [PendingSaveChoice.Cancel, PendingSaveChoice.SaveAs, PendingSaveChoice.SaveAnyway], PendingSaveChoice.Cancel, level: level, formsOnly: formsOnly, ocr: ocr, textEdit: textEdit);
 
     /// <summary>
     /// The question before saving a form whose required fields are empty: "Go to the first empty field" (default) or "Save

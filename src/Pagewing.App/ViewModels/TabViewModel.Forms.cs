@@ -192,7 +192,7 @@ public sealed partial class TabViewModel
     /// the mode not on, and the offer neither closed (<see cref="CloseFillOfferCommand"/>) nor used before for this document
     /// in this tab (once the mode was on, it is not offered again).
     /// </summary>
-    public bool OffersFill => CanReadForm && !_isFilling && !_fillOfferClosed && HasFormFields;
+    public bool OffersFill => CanReadForm && !_isFilling && !_isOrganizing && !_isRedacting && !_fillOfferClosed && HasFormFields;
 
     /// <summary>
     /// Gets the reason of the last value that was refused and that no field shows (<see cref="FormValueRefused"/>), for the
@@ -543,7 +543,7 @@ public sealed partial class TabViewModel
     internal bool EditDraft(FormWidgetKey key, string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        if (!_isFilling || _isEditingFrozen || !CanReadForm || FindWidget(key) is not { } field || !IsEditable(field)
+        if (!_isFilling || IsEditingFrozen || !CanReadForm || FindWidget(key) is not { } field || !IsEditable(field)
             || !(field.Kind == FormFieldKind.Text || (field.Kind == FormFieldKind.ComboBox && field.Traits.HasFlag(FormFieldTraits.Edit))))
         {
             return false;
@@ -715,8 +715,8 @@ public sealed partial class TabViewModel
         return false;
     }
 
-    /// <summary>Whether the mode can start now: a form, shown sharp, the mode not on.</summary>
-    private bool CanBeginFill() => !_isFilling && CanReadForm;
+    /// <summary>Whether the mode can start now: a form, shown sharp, the mode not on, and neither "Organize pages" nor "Redact" on.</summary>
+    private bool CanBeginFill() => !_isFilling && CanReadForm && !_isOrganizing && !_isRedacting && !_isTextEditing;
 
     /// <summary>
     /// The checks of a write and its start. <see langword="null"/>: refused at once (the reason is in the draft, or raised);
@@ -993,7 +993,7 @@ public sealed partial class TabViewModel
     /// <returns>Whether the mode is on now.</returns>
     private bool TryReenterFill(FormWidgetKey key)
     {
-        if (_isAnnotating || _isEditingFrozen || _isAskedAbout || !CanBeginFill())
+        if (_isAnnotating || IsEditingFrozen || _isAskedAbout || !CanBeginFill())
         {
             return false;
         }

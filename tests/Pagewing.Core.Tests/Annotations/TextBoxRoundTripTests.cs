@@ -22,8 +22,6 @@ public sealed partial class TextBoxRoundTripTests : IDisposable
 
     private readonly TempFolder folder = new();
 
-    public TextBoxRoundTripTests() => UseTextBoxFont();
-
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     public void Dispose() => folder.Dispose();

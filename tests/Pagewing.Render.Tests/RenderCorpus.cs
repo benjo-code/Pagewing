@@ -69,13 +69,18 @@ internal static class RenderCorpus
     /// drawings-foreign.pdf of milestone 10 (drawings written by other programs, read and round-tripped, not rendered here);
     /// and the six forms-*.pdf of milestone 11 (form fields, scripts, an XFA stub, signature dummies, rotated pages and a hostile
     /// field tree), whose subject is reading and filling the fields, not the plain page drawing; and stamps-foreign.pdf of milestone 12 (stamps and
-    /// a signature-like ink written by other programs, read and kept locked, not rendered here).
+    /// a signature-like ink written by other programs, read and kept locked, not rendered here); and pages-marked.pdf of milestone 13
+    /// (page order, rotation, outline and page labels of the page operations, whose subject is the structure, not the drawing); and the five
+    /// redact-*.pdf of milestone 14 (a term hidden in every place a file can keep text, a leak with live text under a black rectangle, an old
+    /// revision, striped images and a rotated page with a CropBox), whose subject is what stays in the file after redacting, not the plain drawing.
     /// </summary>
     public static IReadOnlyList<string> Skipped { get; } =
     [
         "annotations-foreign.pdf", "drawings-foreign.pdf", "empty.pdf", "forms-basic.pdf", "forms-calc.pdf", "forms-hostile.pdf", "forms-rotated.pdf", "forms-signed.pdf",
-        "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "print-mixed.pdf",
-        "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "stamps-foreign.pdf", "text-dense.pdf", "text-rich.pdf",
+        "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "pages-marked.pdf", "print-mixed.pdf",
+        "redact-attachments.pdf", "redact-covered.pdf", "redact-everywhere.pdf", "redact-everywhere-nopattern.pdf", "redact-image.pdf", "redact-revisions.pdf", "redact-rotated.pdf",
+        "redact-fonts.pdf", "redact-image-kinds.pdf", "redact-control.pdf", "redact-ligature.pdf", "redact-hidden.pdf", "redact-paths.pdf", "redact-structure.pdf", "redact-objstm.pdf",
+        "redact-patterns.pdf", "redact-image-blocks.pdf", "ocr-scan.pdf", "ocr-scan-rotated.pdf", "ocr-mixed.pdf", "ocr-hostile.pdf", "text-edit-subset.pdf", "text-edit-standard.pdf", "text-edit-full.pdf", "text-edit-styles.pdf", "text-edit-rotated.pdf", "text-edit-locked.pdf", "text-edit-hostile.pdf", "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "stamps-foreign.pdf", "text-dense.pdf", "text-rich.pdf",
     ];
 
     /// <summary>Looks up a case by its name (<see cref="RenderCase.Stem"/>).</summary>

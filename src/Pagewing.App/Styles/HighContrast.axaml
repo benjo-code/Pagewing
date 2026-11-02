@@ -89,6 +89,12 @@
   <Color x:Key="Pw.Color.Selection.PageOnDark">#599DA7FF</Color>
   <SolidColorBrush x:Key="Pw.Brush.Selection.PageOnDark" Color="#599DA7FF" />
 
+  <!-- Marks to redact (M14): drawn over the page, which stays light or dark as in the other themes. -->
+  <Color x:Key="Pw.Color.Redact.Edge">#E5484D</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Redact.Edge" Color="#E5484D" />
+  <Color x:Key="Pw.Color.Redact.Fill">#26E5484D</Color>
+  <SolidColorBrush x:Key="Pw.Brush.Redact.Fill" Color="#26E5484D" />
+
   <!-- Shadows (section 5.3): page.border and border.subtle are white, so pages and cards get a 1 px white edge. -->
   <BoxShadows x:Key="Pw.Shadow.Page">0 0 0 1 #FFFFFF, 0 2 10 0 #99000000</BoxShadows>
   <BoxShadows x:Key="Pw.Shadow.Card">0 0 0 1 #FFFFFF, 0 12 32 -12 #99000000</BoxShadows>

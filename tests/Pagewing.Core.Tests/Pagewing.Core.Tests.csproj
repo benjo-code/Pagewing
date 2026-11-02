@@ -13,6 +13,8 @@
   <ItemGroup>
     <Compile Include="..\Shared\TestData.cs" Link="Shared\TestData.cs" />
     <Compile Include="..\Shared\PngDecoder.cs" Link="Shared\PngDecoder.cs" />
+    <Compile Include="..\Shared\OcrFixtures.cs" Link="Shared\OcrFixtures.cs" />
+    <Compile Include="..\Shared\TextEditFixtures.cs" Link="Shared\TextEditFixtures.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Lets NativeBindingsTests find the PDFium headers of the restored package. -->

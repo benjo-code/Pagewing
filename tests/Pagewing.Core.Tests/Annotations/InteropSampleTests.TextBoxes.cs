@@ -26,7 +26,6 @@ public sealed partial class InteropSampleTests
         var output = Environment.GetEnvironmentVariable(OutputVariable);
         Assert.SkipWhen(string.IsNullOrEmpty(output), $"Interop samples only: set {OutputVariable}=<folder>.");
         output = Directory.CreateDirectory(output).FullName;
-        UseTextBoxFont();
 
         var engine = new PdfEngine();
         using var work = new TempFolder();

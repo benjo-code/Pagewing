@@ -1,0 +1,161 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.PagesOrganizeBar"
+             x:DataType="vm:TabViewModel"
+             AutomationProperties.Name="{x:Static res:Strings.PagesOrganizeBar}"
+             AutomationProperties.AccessibilityView="Content">
+  <!--
+    The tools of the mode "Organize pages" in the "Pages" panel (milestone 13; design system 7.7 and 7.3, spec 5.3): above the
+    list, surface.sidebar like the panel, a border.subtle line below. From the top: the count "12 → 10 pages" (type.strong,
+    with the symbol of the mode) and, while a change waits, the note "Page changes are waiting to be applied." with a symbol
+    (so the state is told in words, not by a colour); the notice of a refused change (alert-triangle in danger.default,
+    text.primary, a close button); the tool buttons (28 px, icon only, name and shortcut in the tooltip and for screen
+    readers): turn left, turn right, delete, duplicate, blank page, insert pages from a file, move earlier, move later, undo, redo; then "Apply"
+    (primary, check) and "Discard" (secondary; "Done" while nothing is staged, as nothing is lost by it). "Discard" with
+    changes pending asks first (DiscardConfirm: "Keep" has the focus). The tools wrap when the panel is narrow. Made when the
+    mode starts (PagesPanel), never in the startup path; its styles live here for the same reason. The DataContext is the
+    active tab.
+  -->
+  <UserControl.Styles>
+    <Style Selector="Button.pageTool">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Foreground" Value="{DynamicResource Pw.Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="Button.pageAction">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Name="BarFrame" Background="{DynamicResource Pw.Brush.Surface.Sidebar}"
+          BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}" BorderThickness="0,0,0,1"
+          Padding="14,0,14,10">
+    <StackPanel Spacing="8">
+      <!-- The count, and the note while a change waits. -->
+      <StackPanel Spacing="4">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center"
+                          Brush="{DynamicResource Pw.Brush.Accent.Default}" Data="{StaticResource Pw.Icon.ArrowsSort}" />
+          <TextBlock Name="PageCounter" Classes="strong num" VerticalAlignment="Center"
+                     Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                     Text="{Binding PageCounterText}" />
+        </StackPanel>
+        <Grid Name="PendingNote" ColumnDefinitions="Auto,*" IsVisible="{Binding HasPendingPageEdits}">
+          <ctl:StrokeIcon Name="PendingIcon" Width="14" Height="14" VerticalAlignment="Top" Margin="0,1,6,0"
+                          Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+          <TextBlock Name="PendingText" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                     Text="{x:Static res:Strings.PageEditsPending}" />
+        </Grid>
+      </StackPanel>
+
+      <!-- Why the last change was refused. -->
+      <Grid Name="NoticeRow" ColumnDefinitions="Auto,*,Auto"
+            IsVisible="{Binding PageEditNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Top" Margin="0,2,6,0"
+                        Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+        <TextBlock Name="NoticeText" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   AutomationProperties.LiveSetting="Polite"
+                   Text="{Binding PageEditNotice}" />
+        <Button Name="NoticeCloseButton" Grid.Column="2" Classes="icon pageTool"
+                Command="{Binding DismissPageEditNoticeCommand}"
+                ToolTip.Tip="{x:Static res:Strings.PagesNoticeClose}"
+                AutomationProperties.Name="{x:Static res:Strings.PagesNoticeClose}">
+          <ctl:StrokeIcon Width="14" Height="14" Data="{StaticResource Pw.Icon.X}" />
+        </Button>
+      </Grid>
+
+      <!-- The tools; each button is a stop of Tab. -->
+      <WrapPanel Name="Tools" Orientation="Horizontal" ItemSpacing="2" LineSpacing="2">
+        <Button Name="RotateLeftButton" Classes="icon pageTool" Command="{Binding RotateSelectionCommand}">
+          <Button.CommandParameter>
+            <x:Int32>-90</x:Int32>
+          </Button.CommandParameter>
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.RotateLeft}" />
+        </Button>
+        <Button Name="RotateRightButton" Classes="icon pageTool" Command="{Binding RotateSelectionCommand}">
+          <Button.CommandParameter>
+            <x:Int32>90</x:Int32>
+          </Button.CommandParameter>
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.RotateRight}" />
+        </Button>
+        <Button Name="DeleteButton" Classes="icon pageTool" Command="{Binding DeletePagesCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Trash}" />
+        </Button>
+        <Button Name="DuplicateButton" Classes="icon pageTool" Command="{Binding DuplicateSelectionCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Copy}" />
+        </Button>
+        <Button Name="BlankButton" Classes="icon pageTool" Command="{Binding InsertBlankPageCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.FilePlus}" />
+        </Button>
+        <Button Name="InsertFileToolButton" Classes="icon pageTool" Command="{Binding InsertFileCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.FileImport}" />
+        </Button>
+        <Button Name="MoveEarlierButton" Classes="icon pageTool" Command="{Binding MoveSelectionEarlierCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronUp}" />
+        </Button>
+        <Button Name="MoveLaterButton" Classes="icon pageTool" Command="{Binding MoveSelectionLaterCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ChevronDown}" />
+        </Button>
+        <Button Name="UndoButton" Classes="icon pageTool" Command="{Binding UndoPagesCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ArrowBackUp}" />
+        </Button>
+        <Button Name="RedoButton" Classes="icon pageTool" Command="{Binding RedoPagesCommand}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.ArrowForwardUp}" />
+        </Button>
+        <!-- Extract the selection, split, export as images (the menu of PageOutputMenu): new files, the document stays as it is. -->
+        <Button Name="PageOutputToolButton" Classes="icon pageTool"
+                AutomationProperties.Name="{x:Static res:Strings.PageOutputMenu}">
+          <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Dots}" />
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight" />
+          </Button.Flyout>
+        </Button>
+      </WrapPanel>
+
+      <!-- Apply and discard (done). -->
+      <Grid Name="ActionRow" ColumnDefinitions="*,*" ColumnSpacing="8">
+        <Button Name="ApplyButton" Classes="primary pageAction"
+                Command="{Binding ApplyPageEditsCommand}"
+                ToolTip.Tip="{x:Static res:Strings.CommandApplyPageEdits}"
+                AutomationProperties.Name="{x:Static res:Strings.PagesApply}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Check}" />
+            <TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.PagesApply}" />
+          </StackPanel>
+        </Button>
+        <Button Name="DiscardButton" Grid.Column="1" Classes="pageAction">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Name="DiscardIcon" Width="16" Height="16" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Check}" />
+            <TextBlock Name="DiscardText" VerticalAlignment="Center" Text="{x:Static res:Strings.PagesDone}" />
+          </StackPanel>
+        </Button>
+      </Grid>
+
+      <!-- Asked before staged changes are dropped. -->
+      <StackPanel Name="DiscardConfirm" Spacing="8" IsVisible="False">
+        <TextBlock Name="DiscardAsk" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   AutomationProperties.LiveSetting="Assertive"
+                   Text="{x:Static res:Strings.PagesDiscardAsk}" />
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+          <Button Name="KeepButton" Classes="primary pageAction"
+                  AutomationProperties.Name="{x:Static res:Strings.PagesKeep}">
+            <TextBlock Text="{x:Static res:Strings.PagesKeep}" />
+          </Button>
+          <Button Name="ConfirmDiscardButton" Grid.Column="1" Classes="pageAction"
+                  AutomationProperties.Name="{x:Static res:Strings.PagesDiscardConfirm}">
+            <TextBlock Text="{x:Static res:Strings.PagesDiscardConfirm}" TextWrapping="Wrap" />
+          </Button>
+        </Grid>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

@@ -34,9 +34,6 @@ internal static class AnnotationTestFiles
 
     public const string FormsHostile = "forms-hostile.pdf";
 
-    /// <summary>Hands the shipped Geist Regular to the text boxes, as the app does on first use (the first source set stays).</summary>
-    public static void UseTextBoxFont() => TextBoxFont.Use(static () => File.ReadAllBytes(TestData.GeistRegular));
-
     public static Task<PdfDocument> OpenAsync(string path) =>
         new PdfEngine().OpenAsync(path, cancellationToken: TestContext.Current.CancellationToken);
 

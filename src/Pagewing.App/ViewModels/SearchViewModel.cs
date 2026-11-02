@@ -230,6 +230,18 @@ public sealed class SearchViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// The pages were rewritten (page changes applied, milestone 13): the matches belonged to pages that are others now, so
+    /// they go and the query is searched again in the new document. Nothing happens without a query.
+    /// </summary>
+    internal void OnDocumentRewritten()
+    {
+        if (!_disposed && _query.Length > 0)
+        {
+            Restart();
+        }
+    }
+
+    /// <summary>
     /// The tab has a document now that it did not have before (the first one, or the one after a password): a query typed
     /// while it loaded is searched now.
     /// </summary>

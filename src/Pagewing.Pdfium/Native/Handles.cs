@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -119,6 +120,10 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
     private nint fileAccess;
     private IDisposable? ownedContext;
     private PdfiumFormEnvironment? formEnvironment;
+    private nint ocrFont;
+    private readonly object dependenciesLock = new();
+    private List<DocumentHandle>? dependencies;
+    private bool dependenciesReleased;
 
     /// <summary>
     /// Gets or sets the form-fill environment of the document, or <see langword="null"/> without a form. Set once, on the
@@ -152,6 +157,33 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         set => Volatile.Write(ref ownedContext, value);
     }
 
+    /// <summary>
+    /// Gets or sets the font of the OCR text layer (<c>FPDF_FONT</c> from <c>FPDFText_LoadFont</c>), 0 until the first layer is written. One font
+    /// serves every page of the document, so the file holds it once however many pages are recognized. PDFium thread only; closed before the document.
+    /// </summary>
+    public nint OcrFont
+    {
+        get => Volatile.Read(ref ocrFont);
+        set => Volatile.Write(ref ocrFont, value);
+    }
+
+    private readonly Dictionary<long, List<nint>> textEditStash = [];
+    private long nextStashToken;
+
+    /// <summary>
+    /// Keeps page objects that were taken out of a page by a text edit (milestone 16), so that an undo can put them back exactly as they were;
+    /// destroyed when the document closes. PDFium thread only. Returns the token to get them back with <see cref="TakeStash"/>.
+    /// </summary>
+    public long Stash(List<nint> objects)
+    {
+        var token = ++nextStashToken;
+        textEditStash[token] = objects;
+        return token;
+    }
+
+    /// <summary>Takes the objects kept under a token (they belong to the caller then), or <see langword="null"/> when there are none.</summary>
+    public List<nint>? TakeStash(long token) => textEditStash.Remove(token, out var objects) ? objects : null;
+
     protected override void CloseNative(nint value)
     {
         try
@@ -161,7 +193,91 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         }
         finally
         {
-            Fpdf.FPDF_CloseDocument(value);
+            try
+            {
+                // Objects a text edit took out of a page wait here for an undo; they hold fonts, so they go before the fonts and the document.
+                foreach (var objects in textEditStash.Values)
+                {
+                    foreach (var item in objects)
+                    {
+                        Fpdf.FPDFPageObj_Destroy(item);
+                    }
+                }
+
+                textEditStash.Clear();
+            }
+            finally
+            {
+                try
+                {
+                    // A font loaded with FPDFText_LoadFont is closed before its document.
+                    var font = Interlocked.Exchange(ref ocrFont, 0);
+                    if (font != 0)
+                    {
+                        Fpdf.FPDFFont_Close(font);
+                    }
+                }
+                finally
+                {
+                    Fpdf.FPDF_CloseDocument(value);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Keeps <paramref name="source"/> open (its native document and its file) until this document is closed, even when the
+    /// source is disposed before. Called before pages of <paramref name="source"/> are imported into this document:
+    /// <c>FPDF_ImportPagesByIndex</c> leaves objects of the imported widget pages that still point into the source document,
+    /// and <c>FPDF_SaveAsCopy</c> of this document reads them (an access violation once the source is gone). The source is
+    /// released right after this document is closed, never before. Does nothing for the document itself and for a source
+    /// that is already kept. Any thread; the source must still be open.
+    /// </summary>
+    /// <remarks>Two documents that import from each other would keep each other open forever; page edits never do that (only a working copy imports).</remarks>
+    public void KeepOpenUntilClosed(DocumentHandle source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (ReferenceEquals(source, this))
+        {
+            return;
+        }
+
+        lock (dependenciesLock)
+        {
+            if (dependenciesReleased || (dependencies is not null && dependencies.Contains(source)))
+            {
+                return;
+            }
+
+            // The list is only ever extended together with a reference: if the Add fails, the reference is given back.
+            var list = dependencies ??= [];
+            var added = false;
+            try
+            {
+                source.DangerousAddRef(ref added);
+                list.Add(source);
+            }
+            catch
+            {
+                if (added)
+                {
+                    source.DangerousRelease();
+                }
+
+                throw;
+            }
+        }
+    }
+
+    /// <summary>Gets how many documents are kept open by this one (<see cref="KeepOpenUntilClosed"/>), for tests.</summary>
+    public int KeptOpenCount
+    {
+        get
+        {
+            lock (dependenciesLock)
+            {
+                return dependencies?.Count ?? 0;
+            }
         }
     }
 
@@ -174,10 +290,54 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         }
         finally
         {
-            if (access != 0)
+            try
             {
-                NativeMemory.Free((void*)access);
+                if (access != 0)
+                {
+                    NativeMemory.Free((void*)access);
+                }
             }
+            finally
+            {
+                ReleaseDependencies();
+            }
+        }
+    }
+
+    /// <summary>Lets go of the documents kept open, once; after the native document is closed.</summary>
+    private void ReleaseDependencies()
+    {
+        List<DocumentHandle>? released;
+        lock (dependenciesLock)
+        {
+            dependenciesReleased = true;
+            released = dependencies;
+            dependencies = null;
+        }
+
+        if (released is null)
+        {
+            return;
+        }
+
+        // Every source gets its release, also when the final release of an earlier one throws (its native document and file
+        // would leak otherwise); the first failure is rethrown afterwards.
+        Exception? first = null;
+        foreach (var kept in released)
+        {
+            try
+            {
+                kept.DangerousRelease();
+            }
+            catch (Exception ex)
+            {
+                first ??= ex;
+            }
+        }
+
+        if (first is not null)
+        {
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 }

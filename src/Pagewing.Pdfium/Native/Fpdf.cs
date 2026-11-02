@@ -5,7 +5,7 @@ namespace Pagewing.Pdfium.Native;
 
 /// <summary>
 /// Raw PDFium bindings (package <c>bblanchon.PDFium.*</c> 157.0.8100, headers <c>fpdfview.h</c>,
-/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>, <c>fpdf_formfill.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
+/// <c>fpdf_progressive.h</c>, <c>fpdf_text.h</c>, <c>fpdf_doc.h</c>, <c>fpdf_annot.h</c>, <c>fpdf_signature.h</c>, <c>fpdf_formfill.h</c>, <c>fpdf_ppo.h</c>, <c>fpdf_edit.h</c>). <c>FPDF_BOOL</c> is <c>int</c>,
 /// <c>FS_FLOAT</c> is <c>float</c>. Only functions Pagewing needs are bound.
 /// Every call must run on the <see cref="PdfiumThread"/>. C <c>unsigned long</c> is bound as
 /// <see cref="CULong"/> because it is 32-bit on Windows and 64-bit on Linux.
@@ -168,6 +168,11 @@ internal static unsafe partial class Fpdf
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial CULong FPDF_GetMetaText(nint document, byte* tag, void* buffer, CULong bufferLength);
+
+    /// <summary><c>FPDF_GetPageLabel</c>: the label of a page as UTF-16LE; returns the length in bytes including the terminator, 0 when the page has no label.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDF_GetPageLabel(nint document, int pageIndex, void* buffer, CULong bufferLength);
 
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -533,6 +538,335 @@ internal static unsafe partial class Fpdf
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFBitmap_GetFormat(nint bitmap);
+
+    // Page editing (fpdf_ppo.h, fpdf_edit.h). Used only by PdfiumPageEdit on a working copy of a document that is rewritten.
+
+    /// <summary>
+    /// <c>FPDF_ImportPagesByIndex</c> (fpdf_ppo.h): copies the pages <c>page_indices</c> (zero based, may repeat, may come from
+    /// <c>dest_doc</c> itself) of <c>src_doc</c> into <c>dest_doc</c> at <c>index</c>; <c>length</c> is an <c>unsigned long</c>.
+    /// FALSE if any page index is invalid.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_ImportPagesByIndex(nint destination, nint source, int* pageIndices, CULong length, int index);
+
+    /// <summary>
+    /// <c>FPDF_MovePages</c> (fpdf_edit.h, experimental): moves the pages <c>page_indices</c> (ordered, no duplicates) so that they
+    /// start at <c>dest_page_index</c> in the document without them; <c>page_indices_len</c> is an <c>unsigned long</c>.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDF_MovePages(nint document, int* pageIndices, CULong pageIndicesLength, int destinationPageIndex);
+
+    /// <summary><c>FPDFPage_Delete</c>: deletes the page at the index (no result).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFPage_Delete(nint document, int pageIndex);
+
+    /// <summary><c>FPDFPage_New</c>: a new, empty page of the size at the index; closed with <see cref="FPDF_ClosePage"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPage_New(nint document, int pageIndex, double width, double height);
+
+    /// <summary><c>FPDFPage_SetRotation</c>: 0, 1, 2 or 3 for 0, 90, 180 or 270 degrees clockwise.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial void FPDFPage_SetRotation(nint page, int rotate);
+
+    /// <summary><c>FPDFPage_GetRotation</c>: 0, 1, 2 or 3 for 0, 90, 180 or 270 degrees clockwise.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_GetRotation(nint page);
+
+    // Page objects (fpdf_edit.h; partly experimental API). Used only by PdfiumRedaction on a working copy of a document that is
+    // rewritten. FPDF_PAGEOBJECT, FPDF_FONT and FPDF_PATHSEGMENT are opaque pointers. A page object belongs to its page (or form
+    // object) until FPDFPage_RemoveObject / FPDFFormObj_RemoveObject hands it to the caller, who frees it with FPDFPageObj_Destroy.
+
+    /// <summary>The number of page objects of a page.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_CountObjects(nint page);
+
+    /// <summary>The page object at an index, or 0.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPage_GetObject(nint page, int index);
+
+    /// <summary>
+    /// Experimental API: takes a page object out of the page; the caller owns it afterwards and destroys it. Removing a text
+    /// object invalidates every text page handle of the page.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_RemoveObject(nint page, nint pageObject);
+
+    /// <summary>Inserts a page object at the end of the page's objects; the page owns it afterwards (a failed insert frees it).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_InsertObject(nint page, nint pageObject);
+
+    /// <summary>Inserts a page object at an index (<c>size_t</c>); the page owns it afterwards.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_InsertObjectAtIndex(nint page, nint pageObject, nuint index);
+
+    /// <summary>Writes the page objects back to the content stream of the page; changes are lost without it.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPage_GenerateContent(nint page);
+
+    /// <summary>One of <c>FPDF_PAGEOBJ_*</c>, <c>FPDF_PAGEOBJ_UNKNOWN</c> on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_GetType(nint pageObject);
+
+    /// <summary>The bounds of a page object in page space (y up): left, bottom, right, top.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_GetBounds(nint pageObject, float* left, float* bottom, float* right, float* top);
+
+    /// <summary>Experimental API: the number of content marks (marked-content tags) of a page object, -1 on failure.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_CountMarks(nint pageObject);
+
+    /// <summary>Experimental API: the content mark at an index (<c>unsigned long</c>); owned by the library, invalid once the object is gone.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_GetMark(nint pageObject, CULong index);
+
+    /// <summary>Experimental API: adds a content mark with a name (UTF-8 <c>FPDF_BYTESTRING</c>) to a page object; owned by the library.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_AddMark(nint pageObject, byte* name);
+
+    /// <summary>Experimental API: the name of a content mark as UTF-16LE; <c>buflen</c> and <c>outLength</c> count bytes (<c>unsigned long</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_GetName(nint mark, ushort* buffer, CULong buflen, CULong* outLength);
+
+    /// <summary>Experimental API: the number of properties of a content mark, -1 on failure (milestone 16: <c>/ActualText</c>, <c>/Alt</c>, <c>/E</c> lock a run).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_CountParams(nint mark);
+
+    /// <summary>Experimental API: the key of a property of a content mark as UTF-16LE; <c>buflen</c> and <c>outLength</c> count bytes (<c>unsigned long</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_GetParamKey(nint mark, CULong index, ushort* buffer, CULong buflen, CULong* outLength);
+
+    /// <summary>Experimental API: the type of the value of a property of a content mark (<c>FPDF_OBJECT_NUMBER</c> is 2); the key is a byte string.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_GetParamValueType(nint mark, byte* key);
+
+    /// <summary>Experimental API: the value of a number property of a content mark as an int.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_GetParamIntValue(nint mark, byte* key, int* value);
+
+    /// <summary>Experimental API: sets (or adds) an int property of a content mark of a page object.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_SetIntParam(nint document, nint pageObject, nint mark, byte* key, int value);
+
+    /// <summary>The clipping path of a page object (<c>FPDF_CLIPPATH</c>, owned by the object; never null for a valid object).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_GetClipPath(nint pageObject);
+
+    /// <summary>The number of paths in a clipping path (0 when the object is not clipped), or -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFClipPath_CountPaths(nint clipPath);
+
+    /// <summary>The number of segments in one path of a clipping path, or -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFClipPath_CountPathSegments(nint clipPath, int pathIndex);
+
+    /// <summary>One segment of a path of a clipping path (owned by the page), or 0 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFClipPath_GetPathSegment(nint clipPath, int pathIndex, int segmentIndex);
+
+    /// <summary>The fill colour of a page object (<c>unsigned int</c> components, 0 to 255).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_GetFillColor(nint pageObject, uint* red, uint* green, uint* blue, uint* alpha);
+
+    /// <summary>Sets the fill colour of a page object.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_SetFillColor(nint pageObject, uint red, uint green, uint blue, uint alpha);
+
+    /// <summary>The stroke colour of a page object.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_GetStrokeColor(nint pageObject, uint* red, uint* green, uint* blue, uint* alpha);
+
+    /// <summary>Sets the stroke colour of a page object.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_SetStrokeColor(nint pageObject, uint red, uint green, uint blue, uint alpha);
+
+    /// <summary>
+    /// The text of a text object as UTF-16LE; the result counts bytes including the terminator, 0 on error. <c>length</c> and the
+    /// result are <c>unsigned long</c>.
+    /// </summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFTextObj_GetText(nint textObject, nint textPage, ushort* buffer, CULong length);
+
+    /// <summary>Experimental API: the text object a character of a text page belongs to (not owned by the caller), or 0.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFText_GetTextObject(nint textPage, int index);
+
+    /// <summary>The origin of a character in page space (y up).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFText_GetCharOrigin(nint textPage, int index, double* x, double* y);
+
+    /// <summary>Experimental API: the font of a text object (the object keeps ownership).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFTextObj_GetFont(nint textObject);
+
+    /// <summary>The font size of a text object (the size of the font, not multiplied by the matrix).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFTextObj_GetFontSize(nint textObject, float* size);
+
+    /// <summary>The text rendering mode of a text object (<c>FPDF_TEXTRENDERMODE_*</c>, -1 on error).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFTextObj_GetTextRenderMode(nint textObject);
+
+    /// <summary>Experimental API: sets the text rendering mode of a text object.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFTextObj_SetTextRenderMode(nint textObject, int renderMode);
+
+    /// <summary>A new text object that uses a loaded font; freed by the page it is inserted into or by <see cref="FPDFPageObj_Destroy"/>.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_CreateTextObj(nint document, nint font, float fontSize);
+
+    /// <summary>Sets the text of a text object from UTF-16LE (zero terminated); fails for an empty text.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFText_SetText(nint textObject, ushort* text);
+
+    /// <summary>Experimental API: sets the text from character codes (<c>size_t</c> count).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFText_SetCharcodes(nint textObject, uint* charcodes, nuint count);
+
+    /// <summary>Experimental API: sets the positions of all characters but the first (<c>size_t</c> count = characters - 1).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFText_SetPositions(nint textObject, float* positions, nuint count);
+
+    /// <summary>Experimental API: whether the font program is embedded.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFont_GetIsEmbedded(nint font);
+
+    /// <summary>Experimental API: the base font name as UTF-8 (<c>size_t</c> length and result, including the terminator).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nuint FPDFFont_GetBaseFontName(nint font, byte* buffer, nuint length);
+
+    /// <summary>The number of page objects inside a form object, -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFormObj_CountObjects(nint formObject);
+
+    /// <summary>The page object of a form object at an index (<c>unsigned long</c>), or 0.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFFormObj_GetObject(nint formObject, CULong index);
+
+    /// <summary>Experimental API: takes a page object out of a form object; the caller owns it and destroys it.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFFormObj_RemoveObject(nint formObject, nint pageObject);
+
+    /// <summary>A closed path object that is a rectangle (x, y of the lower left corner, width, height).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_CreateNewRect(float x, float y, float width, float height);
+
+    /// <summary>A new path object whose first segment is a move to (x, y) (user space); the caller owns it until a page takes it.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_CreateNewPath(float x, float y);
+
+    /// <summary>Starts a new subpath of a path object at (x, y) without a line from the current point.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_MoveTo(nint path, float x, float y);
+
+    /// <summary>Adds a line from the current point to (x, y).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_LineTo(nint path, float x, float y);
+
+    /// <summary>Adds a cubic Bezier curve from the current point through two control points to (x3, y3).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_BezierTo(nint path, float x1, float y1, float x2, float y2, float x3, float y3);
+
+    /// <summary>Closes the current subpath of a path object with a line to its start.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_Close(nint path);
+
+    /// <summary>Sets how a path is drawn (<c>FPDF_FILLMODE_*</c>, stroke as <c>FPDF_BOOL</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_SetDrawMode(nint path, int fillMode, int stroke);
+
+    /// <summary>Reads how a path is drawn.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_GetDrawMode(nint path, int* fillMode, int* stroke);
+
+    /// <summary>The number of segments of a path object, -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_CountSegments(nint path);
+
+    /// <summary>A segment of a path object (owned by the path), or 0.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPath_GetPathSegment(nint path, int index);
+
+    /// <summary>The raw bytes of the image of an image object as stored (before any filter); <c>unsigned long</c> length and result.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFImageObj_GetImageDataRaw(nint imageObject, void* buffer, CULong length);
+
+    /// <summary>The decoded bytes of the image of an image object; <c>unsigned long</c> length and result.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFImageObj_GetImageDataDecoded(nint imageObject, void* buffer, CULong length);
+
+    /// <summary>The number of filters of the image of an image object.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFImageObj_GetImageFilterCount(nint imageObject);
+
+    /// <summary>The name of a filter of the image (UTF-8, <c>unsigned long</c> length and result including the terminator).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial CULong FPDFImageObj_GetImageFilter(nint imageObject, int index, void* buffer, CULong length);
+
+    /// <summary>The size, resolution, bits per pixel and colour space of the image of an image object.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFImageObj_GetImageMetadata(nint imageObject, nint page, FpdfImageObjMetadata* metadata);
 
     // Fonts and glyph outlines (fpdf_edit.h; partly experimental API). Used only to read the outlines of the text box font
     // (Geist Regular) in a document that is never saved; see PdfiumGlyphs. FPDF_FONT, FPDF_GLYPHPATH and FPDF_PATHSEGMENT
@@ -964,6 +1298,32 @@ internal struct FsQuadPointsF
 
     /// <summary>The y-coordinate of the fourth corner (<c>y4</c>).</summary>
     public float Y4;
+}
+
+/// <summary><c>FPDF_IMAGEOBJ_METADATA</c> from <c>fpdf_edit.h</c>: size, resolution, depth and colour space of an image.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FpdfImageObjMetadata
+{
+    /// <summary>The width in pixels (<c>width</c>).</summary>
+    public uint Width;
+
+    /// <summary>The height in pixels (<c>height</c>).</summary>
+    public uint Height;
+
+    /// <summary>The horizontal resolution in pixels per inch (<c>horizontal_dpi</c>).</summary>
+    public float HorizontalDpi;
+
+    /// <summary>The vertical resolution in pixels per inch (<c>vertical_dpi</c>).</summary>
+    public float VerticalDpi;
+
+    /// <summary>The bits per pixel (<c>bits_per_pixel</c>).</summary>
+    public uint BitsPerPixel;
+
+    /// <summary>The colour space, one of <c>FPDF_COLORSPACE_*</c> (<c>colorspace</c>).</summary>
+    public int ColorSpace;
+
+    /// <summary>The marked content id, -1 for none (<c>marked_content_id</c>).</summary>
+    public int MarkedContentId;
 }
 
 /// <summary><c>FS_MATRIX</c> from <c>fpdfview.h</c>: the affine matrix [a b c d e f].</summary>

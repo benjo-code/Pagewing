@@ -61,6 +61,20 @@ public sealed partial class NativeBindingsTests
         [nameof(FpdfConstants.SegmentBezierTo)] = "FPDF_SEGMENT_BEZIERTO",
         [nameof(FpdfConstants.SegmentMoveTo)] = "FPDF_SEGMENT_MOVETO",
         [nameof(FpdfConstants.FontTrueType)] = "FPDF_FONT_TRUETYPE",
+        [nameof(FpdfConstants.FontType1)] = "FPDF_FONT_TYPE1",
+        [nameof(FpdfConstants.PageObjUnknown)] = "FPDF_PAGEOBJ_UNKNOWN",
+        [nameof(FpdfConstants.PageObjText)] = "FPDF_PAGEOBJ_TEXT",
+        [nameof(FpdfConstants.PageObjPath)] = "FPDF_PAGEOBJ_PATH",
+        [nameof(FpdfConstants.PageObjImage)] = "FPDF_PAGEOBJ_IMAGE",
+        [nameof(FpdfConstants.PageObjShading)] = "FPDF_PAGEOBJ_SHADING",
+        [nameof(FpdfConstants.PageObjForm)] = "FPDF_PAGEOBJ_FORM",
+        [nameof(FpdfConstants.FillModeNone)] = "FPDF_FILLMODE_NONE",
+        [nameof(FpdfConstants.FillModeAlternate)] = "FPDF_FILLMODE_ALTERNATE",
+        [nameof(FpdfConstants.FillModeWinding)] = "FPDF_FILLMODE_WINDING",
+        [nameof(FpdfConstants.ColorSpaceDeviceGray)] = "FPDF_COLORSPACE_DEVICEGRAY",
+        [nameof(FpdfConstants.ColorSpaceDeviceRgb)] = "FPDF_COLORSPACE_DEVICERGB",
+        [nameof(FpdfConstants.ColorSpaceDeviceCmyk)] = "FPDF_COLORSPACE_DEVICECMYK",
+        [nameof(FpdfConstants.ColorSpaceIndexed)] = "FPDF_COLORSPACE_INDEXED",
         [nameof(FpdfConstants.FormTypeNone)] = "FORMTYPE_NONE",
         [nameof(FpdfConstants.FormTypeAcroForm)] = "FORMTYPE_ACRO_FORM",
         [nameof(FpdfConstants.FormTypeXfaFull)] = "FORMTYPE_XFA_FULL",
@@ -96,6 +110,7 @@ public sealed partial class NativeBindingsTests
     {
         [nameof(FpdfConstants.FontFlagForceBold)] = 1L << (19 - 1),
         [nameof(FpdfConstants.FontFlagItalic)] = 1L << (7 - 1),
+        [nameof(FpdfConstants.TextRenderModeInvisible)] = 3,
         [nameof(FpdfConstants.PermissionPrint)] = 1L << (3 - 1),
         [nameof(FpdfConstants.PermissionAnnotate)] = 1L << (6 - 1),
         [nameof(FpdfConstants.FormFlagNoToggleToOff)] = 1L << (15 - 1),
@@ -163,6 +178,9 @@ public sealed partial class NativeBindingsTests
 
         // The specification values only hold while FPDFText_GetFontInfo still reports the font descriptor flags.
         Assert.Contains("Font Descriptor Flags", File.ReadAllText(Path.Combine(headerDirectory, "fpdf_text.h")), StringComparison.Ordinal);
+
+        // The rendering mode is an enum in fpdfview.h, not a define.
+        Assert.Contains("FPDF_TEXTRENDERMODE_INVISIBLE = 3", File.ReadAllText(Path.Combine(headerDirectory, "fpdfview.h")), StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -381,5 +399,218 @@ public sealed partial class NativeBindingsTests
         }
 
         protected override void ReleaseOwnedResources() => Interlocked.Increment(ref ownedResourcesReleased);
+    }
+
+    /// <summary>
+    /// Guards the functions the overlay text of a redaction is drawn with (milestone 14.1): <c>FPDFPageObj_CreateNewPath</c>,
+    /// <c>FPDFPath_MoveTo</c>, <c>LineTo</c>, <c>BezierTo</c> and <c>Close</c>. The declarations in <c>fpdf_edit.h</c> must read as the
+    /// bindings do (the same parameters in the same order and of the same width: a handle is a pointer, a coordinate a <c>float</c>, a
+    /// <c>FPDF_BOOL</c> an <c>int</c>), and PDFium must build what the overlay expects: the creation is itself a move to the first point,
+    /// a curve is three segments, and a close marks the last segment without adding one.
+    /// </summary>
+    [Fact]
+    public async Task PathBuildingApiMatchesTheHeaderAndBuildsWhatTheOverlayExpects()
+    {
+        var header = Regex.Replace(File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdf_edit.h")), @"\s+", " ");
+        var declared = new (string Name, string Result, string Parameters)[]
+        {
+            ("FPDFPageObj_CreateNewPath", "FPDF_PAGEOBJECT", "float x, float y"),
+            ("FPDFPath_MoveTo", "FPDF_BOOL", "FPDF_PAGEOBJECT path, float x, float y"),
+            ("FPDFPath_LineTo", "FPDF_BOOL", "FPDF_PAGEOBJECT path, float x, float y"),
+            ("FPDFPath_BezierTo", "FPDF_BOOL", "FPDF_PAGEOBJECT path, float x1, float y1, float x2, float y2, float x3, float y3"),
+            ("FPDFPath_Close", "FPDF_BOOL", "FPDF_PAGEOBJECT path"),
+        };
+        foreach (var (name, result, parameters) in declared)
+        {
+            Assert.Contains($"{result} FPDF_CALLCONV {name}({parameters});", header, StringComparison.Ordinal);
+            var method = typeof(Fpdf).GetMethod(name, BindingFlags.Public | BindingFlags.Static);
+            Assert.NotNull(method);
+            var expected = parameters.Split(", ").Select(static p => p.Split(' ')[0] == "float" ? typeof(float) : typeof(nint)).ToArray();
+            Assert.Equal(expected, method.GetParameters().Select(static p => p.ParameterType).ToArray());
+            Assert.Equal(result == "FPDF_BOOL" ? typeof(int) : typeof(nint), method.ReturnType);
+        }
+
+        var segments = await PdfiumThread.Shared.InvokeAsync(
+            () =>
+            {
+                var document = Fpdf.FPDF_CreateNewDocument();
+                Assert.NotEqual(0, document);
+                try
+                {
+                    var page = Fpdf.FPDFPage_New(document, 0, 200, 100);
+                    Assert.NotEqual(0, page);
+                    try
+                    {
+                        var path = Fpdf.FPDFPageObj_CreateNewPath(10, 20);
+                        Assert.NotEqual(0, path);
+                        Assert.Equal(1, Fpdf.FPDFPath_LineTo(path, 50, 20));
+                        Assert.Equal(1, Fpdf.FPDFPath_BezierTo(path, 60, 20, 70, 30, 70, 40));
+                        Assert.Equal(1, Fpdf.FPDFPath_Close(path));
+                        Assert.Equal(1, Fpdf.FPDFPath_MoveTo(path, 100, 50));
+                        Assert.Equal(1, Fpdf.FPDFPath_LineTo(path, 120, 50));
+                        Assert.Equal(1, Fpdf.FPDFPath_LineTo(path, 120, 70));
+                        Assert.Equal(1, Fpdf.FPDFPath_Close(path));
+                        Assert.Equal(1, Fpdf.FPDFPageObj_SetFillColor(path, 255, 255, 255, 255));
+                        Assert.Equal(1, Fpdf.FPDFPath_SetDrawMode(path, FpdfConstants.FillModeWinding, 0));
+                        Assert.Equal(1, Fpdf.FPDFPage_InsertObject(page, path));
+
+                        var list = new List<(int Type, float X, float Y, bool Close)>();
+                        unsafe
+                        {
+                            for (var i = 0; i < Fpdf.FPDFPath_CountSegments(path); i++)
+                            {
+                                var segment = Fpdf.FPDFPath_GetPathSegment(path, i);
+                                float x = 0, y = 0;
+                                Assert.Equal(1, Fpdf.FPDFPathSegment_GetPoint(segment, &x, &y));
+                                list.Add((Fpdf.FPDFPathSegment_GetType(segment), x, y, Fpdf.FPDFPathSegment_GetClose(segment) != 0));
+                            }
+
+                            float left = 0, bottom = 0, right = 0, top = 0;
+                            Assert.Equal(1, Fpdf.FPDFPageObj_GetBounds(path, &left, &bottom, &right, &top));
+                            Assert.Equal((10f, 20f, 120f, 70f), (left, bottom, right, top));
+                        }
+
+                        return list;
+                    }
+                    finally
+                    {
+                        Fpdf.FPDF_ClosePage(page);
+                    }
+                }
+                finally
+                {
+                    Fpdf.FPDF_CloseDocument(document);
+                }
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // The creation is the first move, a curve is three segments (control, control, end), a close only marks the last point.
+        Assert.Equal(
+            [
+                (FpdfConstants.SegmentMoveTo, 10f, 20f, false),
+                (FpdfConstants.SegmentLineTo, 50f, 20f, false),
+                (FpdfConstants.SegmentBezierTo, 60f, 20f, false),
+                (FpdfConstants.SegmentBezierTo, 70f, 30f, false),
+                (FpdfConstants.SegmentBezierTo, 70f, 40f, true),
+                (FpdfConstants.SegmentMoveTo, 100f, 50f, false),
+                (FpdfConstants.SegmentLineTo, 120f, 50f, false),
+                (FpdfConstants.SegmentLineTo, 120f, 70f, true),
+            ],
+            segments);
+    }
+
+    /// <summary>
+    /// Pins what the header says about who owns a page object when <c>FPDFPage_InsertObject</c> fails: PDFium frees it. Redaction therefore
+    /// never destroys an object after a failed insert (that would free it twice, as the overlay text once did). The header is silent about
+    /// <c>FPDFPage_InsertObjectAtIndex</c> on failure (it only says the ownership moves back to PDFium), so its callers are not changed
+    /// until the header says it; if an update words either text differently, check every insert in <c>PdfiumRedaction*</c> again.
+    /// </summary>
+    [Fact]
+    public void InsertObjectFreesThePageObjectOnFailureAsTheHeaderSays()
+    {
+        var header = File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdf_edit.h")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var block = header.Split("\n\n").SingleOrDefault(b => b.Contains("\nFPDFPage_InsertObject(", StringComparison.Ordinal));
+        Assert.True(block is not null, "FPDFPage_InsertObject is not declared in fpdf_edit.h.");
+        var words = Regex.Replace(block, @"\s*//\s*", " ").Trim();
+        Assert.Contains("Ownership of |page_object| transfers to |page| on success. |page_object| is freed on failure.", words, StringComparison.Ordinal);
+        Assert.Contains("FPDFPage_InsertObjectAtIndex(", header, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Guards the experimental clipping path API that decides whether an image can be pixelated or blurred (milestone 14.1):
+    /// <c>FPDFPageObj_GetClipPath</c>, <c>FPDFClipPath_CountPaths</c>, <c>FPDFClipPath_CountPathSegments</c> and
+    /// <c>FPDFClipPath_GetPathSegment</c> are still experimental in the header, and they answer as the rule assumes: an image that nothing
+    /// cuts has no path in its clip (the header says -1 is a failure, PDFium also answers -1 for a clip without content, so -1 and 0
+    /// both mean "no cut"), an image cut to a rectangle has one path of a closed rectangle (a move and four lines). If an update of PDFium
+    /// fails this, check the header and the behaviour before you change <c>PdfiumRedactionObjects.IsClipped</c>; do not loosen it.
+    /// </summary>
+    [Fact]
+    public async Task ClipPathApiAnswersAsTheTreatmentAssumes()
+    {
+        var header = File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdf_transformpage.h")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        foreach (var name in new[] { "FPDFPageObj_GetClipPath(", "FPDFClipPath_CountPaths(", "FPDFClipPath_CountPathSegments(", "FPDFClipPath_GetPathSegment(" })
+        {
+            var block = header.Split("\n\n").SingleOrDefault(b => b.Contains(name, StringComparison.Ordinal));
+            Assert.True(block is not null, $"{name} is not declared in fpdf_transformpage.h.");
+            Assert.StartsWith("// Experimental API.", block, StringComparison.Ordinal);
+        }
+
+        var images = await PdfiumThread.Shared.InvokeAsync(
+            () =>
+            {
+                using var document = PdfiumDocument.Open(PdfiumThread.Shared, TestData.Pdf("redact-image-blocks.pdf"), null);
+                using var page = PdfiumRedaction.OpenPage(document, 0);
+                var found = new List<(int Paths, int Segments, int FirstType, bool Clipped)>();
+                for (var i = 0; i < page.CountObjects(); i++)
+                {
+                    var obj = page.GetObject(i);
+                    if (Fpdf.FPDFPageObj_GetType(obj) != FpdfConstants.PageObjImage)
+                    {
+                        continue;
+                    }
+
+                    var clip = Fpdf.FPDFPageObj_GetClipPath(obj);
+                    Assert.NotEqual(0, clip);
+                    var paths = Fpdf.FPDFClipPath_CountPaths(clip);
+                    var segments = paths > 0 ? Fpdf.FPDFClipPath_CountPathSegments(clip, 0) : 0;
+                    var firstType = segments > 0 ? Fpdf.FPDFPathSegment_GetType(Fpdf.FPDFClipPath_GetPathSegment(clip, 0, 0)) : -1;
+                    found.Add((paths, segments, firstType, PdfiumRedactionObjects.IsClipped(obj)));
+                }
+
+                return found;
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, images.Count);
+        foreach (var plain in images.Take(4))
+        {
+            Assert.True(plain.Paths <= 0, $"An image nothing cuts has {plain.Paths} clip paths.");
+            Assert.False(plain.Clipped);
+        }
+
+        var clipped = images[4];
+        Assert.Equal(1, clipped.Paths);
+        Assert.Equal(5, clipped.Segments);
+        Assert.Equal(FpdfConstants.SegmentMoveTo, clipped.FirstType);
+        Assert.True(clipped.Clipped);
+    }
+
+    /// <summary>
+    /// Guards the experimental content mark API the OCR text layer is recognized by (milestone 15): <c>FPDFPageObj_CountMarks</c>,
+    /// <c>FPDFPageObj_GetMark</c>, <c>FPDFPageObj_AddMark</c> and <c>FPDFPageObjMark_GetName</c> are still experimental in the header, take the
+    /// tag as a byte string and give the name back as UTF-16 with its length in bytes. If an update of PDFium fails this, check the header and the
+    /// layer tests (<c>OcrLayerTests</c>, <c>OcrLayerSpikeTests</c>) before you change <c>PdfiumOcrLayer</c>; do not loosen it.
+    /// </summary>
+    [Fact]
+    public void ContentMarkApiIsStillTheExperimentalOneTheLayerReads()
+    {
+        var header = File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdf_edit.h")).ReplaceLineEndings("\n");
+        var declarations = new Dictionary<string, string>
+        {
+            ["FPDFPageObj_CountMarks("] = "FPDFPageObj_CountMarks(FPDF_PAGEOBJECT page_object);",
+            ["FPDFPageObj_GetMark("] = "FPDFPageObj_GetMark(FPDF_PAGEOBJECT page_object, unsigned long index);",
+            ["FPDFPageObj_AddMark("] = "FPDFPageObj_AddMark(FPDF_PAGEOBJECT page_object, FPDF_BYTESTRING name);",
+            ["FPDFPageObjMark_GetName("] = "FPDFPageObjMark_GetName(FPDF_PAGEOBJECTMARK mark,",
+            ["FPDFPageObjMark_CountParams("] = "FPDFPageObjMark_CountParams(FPDF_PAGEOBJECTMARK mark);",
+            ["FPDFPageObjMark_GetParamKey("] = "FPDFPageObjMark_GetParamKey(FPDF_PAGEOBJECTMARK mark,",
+            ["FPDFPageObjMark_GetParamValueType(FPDF_PAGEOBJECTMARK mark,"] = "FPDFPageObjMark_GetParamValueType(FPDF_PAGEOBJECTMARK mark,",
+            ["FPDFPageObjMark_GetParamIntValue(FPDF_PAGEOBJECTMARK mark,"] = "FPDFPageObjMark_GetParamIntValue(FPDF_PAGEOBJECTMARK mark,",
+            ["FPDFPageObjMark_SetIntParam(FPDF_DOCUMENT document,"] = "FPDFPageObjMark_SetIntParam(FPDF_DOCUMENT document,",
+        };
+        foreach (var (name, declaration) in declarations)
+        {
+            var block = header.Split("\n\n").SingleOrDefault(b => b.Contains(name, StringComparison.Ordinal));
+            Assert.True(block is not null, $"{name} is not declared in fpdf_edit.h.");
+            Assert.StartsWith("// Experimental API.", block, StringComparison.Ordinal);
+            Assert.Contains(declaration, block.ReplaceLineEndings(" ").Replace("  ", " ", StringComparison.Ordinal), StringComparison.Ordinal);
+        }
+
+        Assert.Contains("FPDF_WCHAR* buffer,", header, StringComparison.Ordinal);
+        Assert.Contains("unsigned long buflen,", header, StringComparison.Ordinal);
+        Assert.Contains("unsigned long* out_buflen);", header, StringComparison.Ordinal);
+
+        // The render mode "invisible" the layer is written in (fpdfview.h).
+        Assert.Equal(3, FpdfConstants.TextRenderModeInvisible);
+        Assert.Contains("FPDF_TEXTRENDERMODE_INVISIBLE = 3", File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdfview.h")), StringComparison.Ordinal);
     }
 }
