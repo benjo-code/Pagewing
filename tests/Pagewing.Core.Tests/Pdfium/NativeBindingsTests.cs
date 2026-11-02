@@ -574,4 +574,38 @@ public sealed partial class NativeBindingsTests
         Assert.Equal(FpdfConstants.SegmentMoveTo, clipped.FirstType);
         Assert.True(clipped.Clipped);
     }
+
+    /// <summary>
+    /// Guards the experimental content mark API the OCR text layer is recognized by (milestone 15): <c>FPDFPageObj_CountMarks</c>,
+    /// <c>FPDFPageObj_GetMark</c>, <c>FPDFPageObj_AddMark</c> and <c>FPDFPageObjMark_GetName</c> are still experimental in the header, take the
+    /// tag as a byte string and give the name back as UTF-16 with its length in bytes. If an update of PDFium fails this, check the header and the
+    /// layer tests (<c>OcrLayerTests</c>, <c>OcrLayerSpikeTests</c>) before you change <c>PdfiumOcrLayer</c>; do not loosen it.
+    /// </summary>
+    [Fact]
+    public void ContentMarkApiIsStillTheExperimentalOneTheLayerReads()
+    {
+        var header = File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdf_edit.h")).ReplaceLineEndings("\n");
+        var declarations = new Dictionary<string, string>
+        {
+            ["FPDFPageObj_CountMarks("] = "FPDFPageObj_CountMarks(FPDF_PAGEOBJECT page_object);",
+            ["FPDFPageObj_GetMark("] = "FPDFPageObj_GetMark(FPDF_PAGEOBJECT page_object, unsigned long index);",
+            ["FPDFPageObj_AddMark("] = "FPDFPageObj_AddMark(FPDF_PAGEOBJECT page_object, FPDF_BYTESTRING name);",
+            ["FPDFPageObjMark_GetName("] = "FPDFPageObjMark_GetName(FPDF_PAGEOBJECTMARK mark,",
+        };
+        foreach (var (name, declaration) in declarations)
+        {
+            var block = header.Split("\n\n").SingleOrDefault(b => b.Contains(name, StringComparison.Ordinal));
+            Assert.True(block is not null, $"{name} is not declared in fpdf_edit.h.");
+            Assert.StartsWith("// Experimental API.", block, StringComparison.Ordinal);
+            Assert.Contains(declaration, block.ReplaceLineEndings(" ").Replace("  ", " ", StringComparison.Ordinal), StringComparison.Ordinal);
+        }
+
+        Assert.Contains("FPDF_WCHAR* buffer,", header, StringComparison.Ordinal);
+        Assert.Contains("unsigned long buflen,", header, StringComparison.Ordinal);
+        Assert.Contains("unsigned long* out_buflen);", header, StringComparison.Ordinal);
+
+        // The render mode "invisible" the layer is written in (fpdfview.h).
+        Assert.Equal(3, FpdfConstants.TextRenderModeInvisible);
+        Assert.Contains("FPDF_TEXTRENDERMODE_INVISIBLE = 3", File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdfview.h")), StringComparison.Ordinal);
+    }
 }

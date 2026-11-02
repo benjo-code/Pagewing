@@ -317,7 +317,7 @@ internal static unsafe class LayerSpike
     private const int TextObject = 1;
 
     /// <summary>Writes the words of the pages as invisible text; returns how many words were written and how many were left out (a character the font lacks).</summary>
-    public static (int Written, int Skipped) AddLayers(PdfiumDocument document, IReadOnlyDictionary<int, IReadOnlyList<SpikeWord>> pages)
+    public static (int Written, int Skipped) AddLayers(PdfiumDocument document, IReadOnlyDictionary<int, IReadOnlyList<SpikeWord>> pages, bool marked = true)
     {
         var native = document.Access();
         var fontData = TextBoxFont.ReadData();
@@ -353,7 +353,7 @@ internal static unsafe class LayerSpike
                         continue;
                     }
 
-                    Add(native, handle, font, transform, word);
+                    Add(native, handle, font, transform, word, marked);
                     written++;
                 }
 
@@ -415,7 +415,7 @@ internal static unsafe class LayerSpike
         return false;
     }
 
-    private static void Add(nint document, nint page, nint font, DisplayTransform transform, SpikeWord word)
+    private static void Add(nint document, nint page, nint font, DisplayTransform transform, SpikeWord word, bool marked)
     {
         var height = word.Bottom - word.Top;
         var item = Fpdf.FPDFPageObj_CreateTextObj(document, font, (float)height);
@@ -460,7 +460,7 @@ internal static unsafe class LayerSpike
         var tag = Encoding.ASCII.GetBytes(Mark + "\0");
         fixed (byte* name = tag)
         {
-            if (Fpdf.FPDFPageObj_SetMatrix(item, &matrix) == 0 || Fpdf.FPDFPageObj_AddMark(item, name) == 0)
+            if (Fpdf.FPDFPageObj_SetMatrix(item, &matrix) == 0 || (marked && Fpdf.FPDFPageObj_AddMark(item, name) == 0))
             {
                 Fpdf.FPDFPageObj_Destroy(item);
                 throw new InvalidOperationException("The text object could not be placed.");
