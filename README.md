@@ -40,7 +40,7 @@ Die Pakete hängen am [GitHub-Release](https://github.com/benjo-code/Pagewing/re
 - .NET 10 mit Native AOT für kurze Startzeit
 - [Avalonia](https://avaloniaui.net/) 12 als UI-Framework
 - [PDFium](https://pdfium.googlesource.com/pdfium/), die PDF-Engine von Chrome, ohne JavaScript-Unterstützung (Binaries von [bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries))
-- Später [Tesseract](https://github.com/tesseract-ocr/tesseract) für OCR
+- [Tesseract](https://github.com/tesseract-ocr/tesseract) 5.5 für OCR, in einer eigenen Bibliothek mitgeliefert und erst beim ersten Gebrauch geladen
 
 Architektur und Entscheidungen stehen in der [Gesamt-Spec](Docs/superpowers/specs/2026-10-16-pagewing-design.md) und in [Docs/DECISIONS.md](Docs/DECISIONS.md).
 
