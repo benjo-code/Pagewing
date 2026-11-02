@@ -231,6 +231,14 @@ public sealed partial class MainWindow
             top += HintBarHeightOf(bar);
         }
 
+        // The hint of the text recognition lies below the hint of a form when both are shown.
+        if (_ocrHintBar is { IsVisible: true } ocrBar)
+        {
+            ocrBar.Margin = new Thickness(0, top, 0, 0);
+            ocrBar.HintFrame.CornerRadius = top > 0 ? default : new CornerRadius(DocumentArea.CornerRadius.TopLeft, 0, 0, 0);
+            top += OcrHintBarHeightOf(ocrBar);
+        }
+
         DocumentView.Margin = new Thickness(0, top, 0, 0);
     }
 

@@ -673,3 +673,37 @@ pagewing redact $P\redact-rotated.pdf --output $T\raster-rotated.pdf --rasterize
 ### Ergebnis festhalten
 
 Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 14 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 14“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung (welcher Punkt, was zu sehen war); Punkt 2 immer mit der ausdrücklichen Antwort „Text unter den Flächen kopierbar oder suchbar: ja/nein (Programm, Version)“ und Punkt 6 mit „Felder ausfüllbar“. Ein **Fund unter Punkt 2 oder 4** (der Begriff ist in einem Programm doch zu finden) ist ein Fehler im Schwärzen und wird sofort gemeldet, nicht gesammelt. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
+
+## OCR prüfen (M15)
+
+### Textebene im Fremdviewer (Aufgabe 1)
+
+Muster erzeugen: `PAGEWING_SPIKE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-class "*OcrLayerSpikeTests"` schreibt `ocr-layer-plain.pdf` (A4, ein Graustufenbild über die ganze Seite, darüber die unsichtbaren Wörter „Müller Straße Größe“ in der Zeile bei 100 pt) und `ocr-layer-rotated.pdf` (`/Rotate 90`, CropBox mit Versatz; Wörter „Müller Straße“ und „Größe“ tiefer).
+
+Prüfliste je Viewer (Chrome, Acrobat Reader, Pagewing):
+
+- [ ] Die Wörter lassen sich mit der Maus markieren, die Markierung liegt auf der Zeile bei 100 pt (rotiert: auf der Zeile im gedrehten Bild), nicht daneben.
+- [ ] Strg+F findet „Straße“ und „Größe“; Kopieren liefert die Wörter mit Umlauten und ß.
+- [ ] Die Seite sieht aus wie das Bild ohne Text (nichts Sichtbares, kein Rahmen, keine Verfärbung).
+- [ ] Ergebnis festhalten (Viewer, Version, ja/nein je Punkt) im Eintrag „OCR: Textebene, Spike (M15, Aufgabe 1)“ in `Docs/DECISIONS.md`. Fällt etwas durch, ändert sich nur `PdfiumOcrLayer` (Aufgabe 6).
+
+
+### Die Bibliothek bauen und holen (Aufgabe 2)
+
+Pagewing liefert Tesseract 5.5.4 und Leptonica 1.87.0 als **eine** eigene Bibliothek je System (`tesseract.dll`, `libtesseract.so`) und die Sprachdateien `eng` und `deu` (`tessdata_fast`). Versionen, Commits und Bauschalter: `packaging/native/versions.txt`.
+
+- Lokal (Entwicklung, landet in `artifacts/native/<rid>/`, nicht im Repo): Windows `powershell -File packaging/native/build-windows.ps1` (MSVC, Build Tools mit C++-Workload, CMake, `vswhere` im PATH), Linux `bash packaging/native/container-build.sh` (Docker, Container `ubuntu:22.04`, glibc 2.35). Die Tests mit der echten Engine suchen dort oder in `PAGEWING_TESSERACT_DIR`; ohne Bibliothek melden sie sich als übersprungen (`PAGEWING_REQUIRE_OCR=1` macht das zum Fehler).
+- Ausgeliefert: Der Workflow `.github/workflows/native-tesseract.yml` (nur `workflow_dispatch`) baut beide Bibliotheken und legt sie an ein Vorabrelease mit dem Tag `native-tesseract-5.5.4-1`. **Der Projektinhaber startet ihn** (`gh workflow run native-tesseract.yml --ref <Branch>`); danach tragen Größe und SHA-256 jeder Datei aus der Job-Zusammenfassung in `tools/package.cs` (`NativeTesseract.Libraries`) ein, und `dotnet run tools/package.cs -- native-fetch --rid <rid> --out <Ordner>` prüft sie. Erst dann hängt `layout --native` an `release.yml` und `container-build.sh`, und `ci.yml` holt die Bibliothek (bis dahin laufen die Tests mit der echten Engine in der CI nicht).
+- Prüfen nach dem Bau: `check-binary` (nur `KERNEL32` bzw. glibc bis 2.35, kein curl, libarchive, OpenMP), `dotnet run tools/licenses.cs -- check`.
+
+### Gesamtprüfung von Hand (Aufgabe 12)
+
+Muster erzeugen: `PAGEWING_INTEROP_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests -- --filter-method "*WritesOcrSamplesForOtherViewers"` schreibt `ocr-scan-recognized.pdf`, `ocr-scan-rotated-recognized.pdf`, `ocr-mixed-recognized.pdf` und `README-ocr.txt` (Wörter und Plätze). Die Ebene kommt aus den **bekannten** Wörtern der Fixtures, die Prüfung gilt also dem Darstellen, nicht der Erkennung.
+
+- [ ] Chrome und Acrobat Reader: Die Seiten sehen aus wie das Scan-Bild (nichts Sichtbares, keine Verschiebung); Suche nach einem Wort aus `README-ocr.txt` trifft auf dem Wort im Bild, auch auf der gedrehten Seite; Markieren und Kopieren liefert die Wörter in Lesereihenfolge.
+- [ ] Acrobat: Datei einmal speichern und in Pagewing öffnen: Wird die Ebene noch als Ebene von Pagewing erkannt (`Strg+Umschalt+Q`, Modus „Ersetzen“ ersetzt sie statt zu verdoppeln)? Ergebnis festhalten in `Docs/DECISIONS.md`, Eintrag „OCR: Textebene, Spike (M15, Aufgabe 1)“.
+- [ ] Ein **eigener echter Scan** (mehrere Seiten, deutsch, mit Umlauten) mit `pagewing ocr scan.pdf --output scan-ocr.pdf --language deu+eng` und in der App: Zeit je Seite notieren (`PAGEWING_MEASURE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests -c Release -- --filter-method "*MeasuresTheEngineTheLayerAndAThousandPages"` für die Engine-Zahlen), Treffer der Suche liegen auf den Wörtern, die Warnung „niedrige Konfidenz“ nennt die richtigen Seiten.
+- [ ] Die Karte (Auswahl, Lauf, Frage nach Abbruch, Bericht, Fehler) und der Hinweis „Das sieht wie ein Scan aus“ in Hell, Dunkel, Hochkontrast (Windows), „Kompakt“, bei 150 % und 200 % Skalierung und mit Bildschirmleser (Namen, Fortschritt wird angesagt, Esc stoppt); die Tastatur: `Strg+Umschalt+Q`, Tab-Reihenfolge, nie in der Karte gefangen.
+- [ ] Ein Lauf auf einer **signierten** Datei: die Warnung vor dem Speichern nennt den hinzugefügten Text; Abbrechen ändert nichts.
+- [ ] Linux: `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Ocr" --filter-namespace "*Cli"` mit `libtesseract.so` (UTF-8-Pfade, `OcrEngineTests`, `OcrRunnerNativeTests`), danach die App mit einem Scan.
+- [ ] Startzeit-Check auf dem Haupt-PC (Workflow `hardware-measure.yml`): die Budgets bleiben unverändert (der Hinweis liest erst nach dem ersten scharfen Bild; die Bibliothek wird beim Start nie geladen).

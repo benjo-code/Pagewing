@@ -120,6 +120,7 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
     private nint fileAccess;
     private IDisposable? ownedContext;
     private PdfiumFormEnvironment? formEnvironment;
+    private nint ocrFont;
     private readonly object dependenciesLock = new();
     private List<DocumentHandle>? dependencies;
     private bool dependenciesReleased;
@@ -156,6 +157,16 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         set => Volatile.Write(ref ownedContext, value);
     }
 
+    /// <summary>
+    /// Gets or sets the font of the OCR text layer (<c>FPDF_FONT</c> from <c>FPDFText_LoadFont</c>), 0 until the first layer is written. One font
+    /// serves every page of the document, so the file holds it once however many pages are recognized. PDFium thread only; closed before the document.
+    /// </summary>
+    public nint OcrFont
+    {
+        get => Volatile.Read(ref ocrFont);
+        set => Volatile.Write(ref ocrFont, value);
+    }
+
     protected override void CloseNative(nint value)
     {
         try
@@ -165,7 +176,19 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         }
         finally
         {
-            Fpdf.FPDF_CloseDocument(value);
+            try
+            {
+                // A font loaded with FPDFText_LoadFont is closed before its document.
+                var font = Interlocked.Exchange(ref ocrFont, 0);
+                if (font != 0)
+                {
+                    Fpdf.FPDFFont_Close(font);
+                }
+            }
+            finally
+            {
+                Fpdf.FPDF_CloseDocument(value);
+            }
         }
     }
 

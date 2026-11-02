@@ -4,6 +4,7 @@
     <AssemblyName>pagewing</AssemblyName>
     <IsAotCompatible>true</IsAotCompatible>
     <PublishAot>true</PublishAot>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Pagewing.Core\Pagewing.Core.csproj" />

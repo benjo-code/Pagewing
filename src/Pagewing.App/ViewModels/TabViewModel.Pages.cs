@@ -128,7 +128,8 @@ public sealed partial class TabViewModel
     /// equals the document is no obstacle.
     /// </summary>
     public string? PageOutputBlockedReason =>
-        HasPendingPageEdits ? Strings.PageOutputBlockedPlan
+        _isOcrRunning ? Strings.OcrBlockedRunning
+        : HasPendingPageEdits ? Strings.PageOutputBlockedPlan
         : HasPendingRedactions ? Strings.PageOutputBlockedMarks
         : AsksAboutDocumentChanges ? Strings.PageOutputBlockedUnsaved
         : null;
@@ -202,7 +203,7 @@ public sealed partial class TabViewModel
     /// button and Ctrl+S ask the same; <see cref="SaveBlockedReason"/> says why while a print job runs.
     /// </summary>
     internal bool CanApplyPages =>
-        !_disposed && IsReady && _document is not null && HasPendingPageEdits && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen;
+        !_disposed && IsReady && _document is not null && HasPendingPageEdits && !_isSaving && !_isPrinting && !_isAskedAbout && !IsEditingFrozen;
 
     /// <summary>
     /// Tells the tab that the document the session is about to adopt is the rewritten file of the plan just applied
@@ -268,7 +269,7 @@ public sealed partial class TabViewModel
     /// the one it started with, so a change made meanwhile would be dropped unseen). A print job does not matter: the plan is
     /// not the document.
     /// </summary>
-    private bool CanEditPages => !_disposed && _isOrganizing && _pageHistory is not null && !_isAskedAbout && !_isEditingFrozen && !_isSaving;
+    private bool CanEditPages => !_disposed && _isOrganizing && _pageHistory is not null && !_isAskedAbout && !IsEditingFrozen && !_isSaving;
 
     /// <summary>
     /// Gets why a document of <paramref name="pageCount"/> pages cannot be organized, or <see langword="null"/>: the plan holds
@@ -343,7 +344,7 @@ public sealed partial class TabViewModel
 
     /// <summary>Whether the mode can start now: it may be asked for, no card asks about the tab, editing is not locked, no save runs.</summary>
     private bool CanBeginOrganize() =>
-        !_disposed && !_isOrganizing && OrganizeUnavailableReason is null && !_isAskedAbout && !_isEditingFrozen && !_isSaving;
+        !_disposed && !_isOrganizing && OrganizeUnavailableReason is null && !_isAskedAbout && !IsEditingFrozen && !_isSaving;
 
     private bool CanToggleOrganize() => _isOrganizing ? !_disposed && !HasPendingPageEdits : CanBeginOrganize();
 

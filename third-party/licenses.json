@@ -335,6 +335,35 @@
       "version": "Alpine 3.21 (mimalloc 2.1.7)",
       "license": "MIT",
       "licenseFile": "third-party/appimage-runtime/mimalloc-LICENSE"
+    },
+    {
+      "id": "Tesseract OCR",
+      "kind": "native",
+      "version": "5.5.4",
+      "license": "Apache-2.0",
+      "licenseFile": "third-party/tesseract/LICENSE",
+      "files": [
+        "tesseract.dll",
+        "libtesseract.so"
+      ]
+    },
+    {
+      "id": "Leptonica (statisch in Tesseract)",
+      "kind": "native",
+      "version": "1.87.0",
+      "license": "BSD-2-Clause",
+      "licenseFile": "third-party/leptonica/LICENSE"
+    },
+    {
+      "id": "tessdata_fast (Sprachdaten eng, deu)",
+      "kind": "asset",
+      "version": "4.1.0",
+      "license": "Apache-2.0",
+      "licenseFile": "third-party/tessdata-fast/LICENSE",
+      "files": [
+        "tessdata/eng.traineddata",
+        "tessdata/deu.traineddata"
+      ]
     }
   ]
 }

@@ -76,7 +76,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private ITimer? _armingTimer;
 
     // What this window listens to on each of its tabs; a tab that moves to another window takes none of it along.
-    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save, Action Apply, Action Redact, Action InsertFile, Action<PageOutputKind> PageOutput)> _tabHandlers = [];
+    private readonly Dictionary<TabViewModel, (Action Close, Action OpenOther, PropertyChangedEventHandler Changed, Action<bool> Save, Action Apply, Action Redact, Action InsertFile, Action<PageOutputKind> PageOutput, Action Ocr)> _tabHandlers = [];
     private TabViewModel? _activeTab;
     private int? _tabDropIndex;
     private bool _picking;
@@ -193,6 +193,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 return;
             }
 
+            // So does a card that recognizes text (Esc stops the run on the card).
+            if (_overlay == OverlayKind.Ocr && IsOcrRunning && !_ocrForced)
+            {
+                return;
+            }
+
             // The palette's entries are ready before the window shows it.
             var old = _overlay;
             _overlay = value;
@@ -219,6 +225,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             else if (old == OverlayKind.PageOutput)
             {
                 DisposePageOutput();
+            }
+            else if (old == OverlayKind.Ocr)
+            {
+                DisposeOcr();
             }
 
             if (value == OverlayKind.Palette)
@@ -954,6 +964,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _settingsCard?.OnClosed();
         DisposeInsertFile();
         DisposePageOutput();
+        DisposeOcr();
         DisposePrinting();
         DisposeSaving();
         DisposeDefaultApp();
@@ -1075,6 +1086,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         tab.AnnotationSettings = Settings;
         tab.IsEditingFrozen = _isEditingFrozen;
         tab.FormFeaturesEnabled = _formFeaturesEnabled;
+        tab.OcrFeaturesEnabled = _ocrFeaturesEnabled;
+        tab.OcrLibraryAvailable = () => OcrEngineFactory is not null || OcrLibraryProbe();
         var handlers = (
             Close: (Action)(() => CloseTab(tab)),
             OpenOther: (Action)(() => _ = PickAndOpenAsync(tab)),
@@ -1083,7 +1096,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             Apply: (Action)(() => _ = ApplyPageEditsAsync(tab)),
             Redact: (Action)(() => _ = ApplyRedactionsAsync(tab)),
             InsertFile: (Action)(() => _ = InsertFileAsync(tab)),
-            PageOutput: (Action<PageOutputKind>)(kind => ShowPageOutput(tab, kind)));
+            PageOutput: (Action<PageOutputKind>)(kind => ShowPageOutput(tab, kind)),
+            Ocr: (Action)(() => ShowOcr(tab)));
         tab.CloseRequested += handlers.Close;
         tab.OpenOtherRequested += handlers.OpenOther;
         tab.PropertyChanged += handlers.Changed;
@@ -1093,6 +1107,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         tab.RedactionPreviewAnalyzer = (plan, token) => AnalyzeRedactionsOfAsync(tab, plan, token);
         tab.InsertFileRequested += handlers.InsertFile;
         tab.PageOutputRequested += handlers.PageOutput;
+        tab.OcrRequested += handlers.Ocr;
         _tabHandlers[tab] = handlers;
 
         // The file of the command line may be open already when its tab comes; a tab from another window was reported there.
@@ -1133,6 +1148,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             tab.RedactionPreviewAnalyzer = null;
             tab.InsertFileRequested -= handlers.InsertFile;
             tab.PageOutputRequested -= handlers.PageOutput;
+            tab.OcrRequested -= handlers.Ocr;
+            CancelOcrOf(tab);
         }
     }
 
@@ -1334,6 +1351,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         // The card of extracting, splitting or exporting belongs to its tab too; one that writes files stays until it is done.
         if (Overlay == OverlayKind.PageOutput && !IsPageOutputRunning && !ReferenceEquals(_pageOutputTab, next))
+        {
+            HideOverlay();
+        }
+
+        // So does the card of the text recognition; one that runs stays until it is done.
+        if (Overlay == OverlayKind.Ocr && !IsOcrRunning && !ReferenceEquals(_ocrTab, next))
         {
             HideOverlay();
         }

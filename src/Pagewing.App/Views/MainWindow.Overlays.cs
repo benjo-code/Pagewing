@@ -96,6 +96,9 @@ public sealed partial class MainWindow
                     case OverlayKind.InsertFile:
                         _insertFileCard?.FocusFirst();
                         break;
+                    case OverlayKind.Ocr:
+                        _ocrCard?.FocusFirst();
+                        break;
                     case OverlayKind.PageOutput:
                         _splitCard?.FocusFirst();
                         _exportImagesCard?.FocusFirst();
@@ -186,6 +189,7 @@ public sealed partial class MainWindow
         UpdateNewSignatureCard(kind);
         UpdateInsertFileCard(kind);
         UpdatePageOutputCards(kind);
+        UpdateOcrCard(kind);
 
         // An overlay had the keys and nothing that is shown now takes them.
         if (overlayHadFocus && kind == OverlayKind.None)
@@ -202,7 +206,7 @@ public sealed partial class MainWindow
 
     private bool IsInShownOverlay(IInputElement? element) =>
         element is Visual visual
-        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual) || IsWithin(_aboutCard, visual) || IsWithin(_printCard, visual) || IsWithin(_newSignatureCard, visual) || IsWithin(_insertFileCard, visual) || IsWithin(_splitCard, visual) || IsWithin(_exportImagesCard, visual));
+        && (IsWithin(_helpCard, visual) || IsWithin(_palette, visual) || IsWithin(_settingsCard, visual) || IsWithin(_aboutCard, visual) || IsWithin(_printCard, visual) || IsWithin(_newSignatureCard, visual) || IsWithin(_insertFileCard, visual) || IsWithin(_splitCard, visual) || IsWithin(_exportImagesCard, visual) || IsWithin(_ocrCard, visual));
 
     private static bool IsWithin(Control? overlay, Visual visual) =>
         overlay is { IsVisible: true } && (ReferenceEquals(overlay, visual) || overlay.IsVisualAncestorOf(visual));

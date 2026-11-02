@@ -164,7 +164,7 @@ public sealed partial class TabViewModel
     }
 
     /// <summary>Gets why the tab cannot be saved now although it could otherwise (a print job runs), or <see langword="null"/>.</summary>
-    public string? SaveBlockedReason => _isPrinting ? Strings.SaveBlockedPrinting : null;
+    public string? SaveBlockedReason => _isPrinting ? Strings.SaveBlockedPrinting : _isOcrRunning ? Strings.SaveBlockedOcr : null;
 
     /// <summary>
     /// Gets the name of the tab for screen readers: the file name, with "unsaved changes" after it while
@@ -220,7 +220,7 @@ public sealed partial class TabViewModel
         },
         () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: true)
             : _isRedacting ? CanStepRedactions(undo: true)
-            : IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
+            : IsReady && (_canUndo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !IsEditingFrozen);
 
     /// <summary>Ctrl+Shift+Z or Ctrl+Y: applies the newest undone change again (of the page plan in the mode "Organize pages", of the marks in "Redact").</summary>
     public ICommand RedoCommand => _redoCommand ??= new RelayCommand(
@@ -244,7 +244,7 @@ public sealed partial class TabViewModel
         },
         () => _isOrganizing ? _sidePanel == SidePanelKind.Pages && CanStepPages(undo: false)
             : _isRedacting ? CanStepRedactions(undo: false)
-            : IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen);
+            : IsReady && (_canRedo || HasDrawingInFlight) && !_isSaving && !_isPrinting && !_isAskedAbout && !IsEditingFrozen);
 
     /// <summary>
     /// Gets why the changes of the tab cannot be saved now, or <see langword="null"/>: set by the window when a save failed with
@@ -320,12 +320,14 @@ public sealed partial class TabViewModel
     /// </summary>
     public bool IsEditingFrozen
     {
-        get => _isEditingFrozen;
+        // A text recognition run locks editing the same way (IsOcrRunning), so every place that asks "frozen" waits for the run too.
+        get => _isEditingFrozen || _isOcrRunning;
         internal set
         {
             if (_isEditingFrozen != value)
             {
                 _isEditingFrozen = value;
+                OnPropertyChanged(nameof(IsUpdateLocked));
                 if (value)
                 {
                     DiscardPendingSignature();
@@ -339,6 +341,9 @@ public sealed partial class TabViewModel
             }
         }
     }
+
+    /// <summary>Gets whether the lock is the one of an update (<see cref="IsEditingFrozen"/> without a text recognition run): the status bar names the update only then.</summary>
+    public bool IsUpdateLocked => _isEditingFrozen;
 
     /// <summary>Gets whether the note about a signature that allows comments was shown for the open document (window, once per document).</summary>
     internal bool SignatureNoteShown
@@ -357,7 +362,7 @@ public sealed partial class TabViewModel
     internal bool CanSaveDocument() => CanSaveAs() && _isDirty;
 
     /// <summary>Whether "Save as" can run: an open document, no save and no print job of the tab running.</summary>
-    internal bool CanSaveAs() => !_disposed && IsReady && _document is not null && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen;
+    internal bool CanSaveAs() => !_disposed && IsReady && _document is not null && !_isSaving && !_isPrinting && !_isAskedAbout && !IsEditingFrozen;
 
     /// <summary>
     /// Reads the signatures of the open document once per document (at its first save, never at open) with

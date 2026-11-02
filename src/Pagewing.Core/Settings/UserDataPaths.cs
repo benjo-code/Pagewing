@@ -45,6 +45,9 @@ public static class UserDataPaths
     /// <summary>The folder of the saved signatures (<c>signatures</c> in <see cref="ConfigDirectory()"/>); read only when a menu of signatures opens.</summary>
     public static string SignaturesDirectory() => Path.Combine(ConfigDirectory(), "signatures");
 
+    /// <summary>The folder of the language models the user imported for text recognition (<c>tessdata</c> in <see cref="ConfigDirectory()"/>); created by the first import.</summary>
+    public static string TessdataDirectory() => Path.Combine(ConfigDirectory(), "tessdata");
+
     private static string? Read(Func<string, string?> getEnvironmentVariable, string name)
     {
         var value = getEnvironmentVariable(name);

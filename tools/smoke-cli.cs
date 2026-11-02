@@ -9,6 +9,8 @@
 // Since M14.1 it also runs `redact` with --pattern iban (redact-patterns.pdf), --image-fill pixelate (redact-image-blocks.pdf),
 // --overlay-text (the embedded font and the glyph tables, in a --dry-run and a real run) and --rasterize-unredactable
 // (redact-everywhere.pdf: a page that cannot be redacted in place becomes an image), so the published binary runs the new code.
+// Since M15 it also runs `ocr`: a --dry-run (no library needed: the decision and the resolution of each page of ocr-mixed.pdf) and,
+// when the OCR library is next to the binary (the published package has it), a real run on ocr-scan.pdf whose output `text` finds the words.
 
 using System.Diagnostics;
 using System.Text;
@@ -207,6 +209,54 @@ try
 finally
 {
     Directory.Delete(redactDirectory, recursive: true);
+}
+
+// ocr: the dry run lists what would be recognized (it loads no library, so the language folder only has to exist).
+var ocrDirectory = Path.Combine(Path.GetTempPath(), "pagewing-smoke-ocr-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(ocrDirectory);
+try
+{
+    var dummyData = Path.Combine(ocrDirectory, "tessdata");
+    Directory.CreateDirectory(dummyData);
+    File.WriteAllBytes(Path.Combine(dummyData, "eng.traineddata"), [1]);
+    var ocrMixed = Path.GetFullPath(Path.Combine("testdata", "pdfs", "ocr-mixed.pdf"));
+    var ocrDry = Run(binary, "ocr", ocrMixed, "--dry-run", "--tessdata", dummyData, "--language", "eng");
+    if (ocrDry.ExitCode != 0 || !ocrDry.Output.Contains("page 1: skip (has text of its own)", StringComparison.Ordinal) || !ocrDry.Output.Contains("would recognize 2 pages", StringComparison.Ordinal))
+    {
+        failures.Add($"ocr --dry-run: erwartet Exit 0, 'page 1: skip (has text of its own)' und 'would recognize 2 pages', erhalten Exit {ocrDry.ExitCode} mit '{ocrDry.Output.Trim()}' / '{ocrDry.Error.Trim()}'");
+    }
+
+    // A real run, when the package has the library and the language data next to the binary.
+    var binaryFolder = Path.GetDirectoryName(binary)!;
+    var libraryName = OperatingSystem.IsWindows() ? "tesseract.dll" : "libtesseract.so";
+    var shippedData = new[] { Path.Combine(binaryFolder, "tessdata"), Path.Combine(binaryFolder, "..", "tessdata") }.FirstOrDefault(Directory.Exists);
+    if (File.Exists(Path.Combine(binaryFolder, libraryName)) && shippedData is not null)
+    {
+        var ocrInput = Path.Combine(ocrDirectory, "scan.pdf");
+        File.Copy(Path.GetFullPath(Path.Combine("testdata", "pdfs", "ocr-scan.pdf")), ocrInput);
+        var ocrFile = Path.Combine(ocrDirectory, "scan-ocr.pdf");
+        var ocr = Run(binary, "ocr", ocrInput, "--output", ocrFile, "--pages", "1", "--language", "eng");
+        if (ocr.ExitCode != 0 || !File.Exists(ocrFile) || !ocr.Error.Contains("Recognized 1 page", StringComparison.Ordinal))
+        {
+            failures.Add($"ocr: erwartet Exit 0, {ocrFile} und 'Recognized 1 page', erhalten Exit {ocr.ExitCode} mit '{ocr.Output.Trim()}' / '{ocr.Error.Trim()}'");
+        }
+        else
+        {
+            var ocrText = Run(binary, "text", ocrFile, "--pages", "1");
+            if (ocrText.ExitCode != 0 || !ocrText.Output.Contains("Invoice", StringComparison.Ordinal))
+            {
+                failures.Add($"ocr: 'text' der Ausgabe soll 'Invoice' enthalten, erhalten Exit {ocrText.ExitCode} mit '{ocrText.Output.Trim()}' / '{ocrText.Error.Trim()}'");
+            }
+        }
+    }
+    else
+    {
+        Console.WriteLine($"ocr: ohne Bibliothek und Sprachdaten neben dem Binary nur der Trockenlauf geprüft ({libraryName} fehlt).");
+    }
+}
+finally
+{
+    Directory.Delete(ocrDirectory, recursive: true);
 }
 
 foreach (var failure in failures)

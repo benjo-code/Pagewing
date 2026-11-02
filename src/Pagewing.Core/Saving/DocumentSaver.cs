@@ -33,6 +33,11 @@ namespace Pagewing.Core.Saving;
 /// Whether the user confirmed overwriting the path of the original although another file now stands there (the stamp at
 /// the path differs while the opened file is untouched). It never overrides <see cref="SaveFailureReason.SourceModified"/>.
 /// </param>
+/// <param name="ReplaceExisting">
+/// Whether an existing target may be replaced (the default, as "Save" and "Save As" ask the user first). The command line passes
+/// <see langword="false"/> unless <c>--force</c> was given: a file that stands at the target when the temporary file is moved into place
+/// (also one that appeared meanwhile) is never replaced, the save ends in <see cref="SaveFailureReason.TargetExists"/> and removes its temporary file.
+/// </param>
 public sealed record SaveRequest(
     string OriginalPath,
     string TargetPath,
@@ -40,14 +45,15 @@ public sealed record SaveRequest(
     string? Password,
     int ExpectedPageCount,
     IReadOnlyDictionary<int, int> ExpectedAnnotationCounts,
-    bool OverwriteChangedOriginal)
+    bool OverwriteChangedOriginal,
+    bool ReplaceExisting = true)
 {
     /// <summary>Prints the members like a record does, with the password replaced (secrets never reach a log).</summary>
     private bool PrintMembers(StringBuilder builder)
     {
         builder.Append(
             CultureInfo.InvariantCulture,
-            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPageCount = {ExpectedPageCount}, ExpectedAnnotationCounts = {ExpectedAnnotationCounts?.Count ?? 0} pages, OverwriteChangedOriginal = {OverwriteChangedOriginal}");
+            $"OriginalPath = {OriginalPath}, TargetPath = {TargetPath}, OriginalStamp = {OriginalStamp}, Password = {(Password is null ? "null" : "(hidden)")}, ExpectedPageCount = {ExpectedPageCount}, ExpectedAnnotationCounts = {ExpectedAnnotationCounts?.Count ?? 0} pages, OverwriteChangedOriginal = {OverwriteChangedOriginal}, ReplaceExisting = {ReplaceExisting}");
         return true;
     }
 }
@@ -167,7 +173,8 @@ public static class DocumentSaver
             ExtraSources: [],
             Write: document.SaveIncrementalAsync,
             CheckPrefix: true,
-            Check: (reopened, wasEncrypted, _, token) => CheckAsync(reopened, request, wasEncrypted, token));
+            Check: (reopened, wasEncrypted, _, token) => CheckAsync(reopened, request, wasEncrypted, token),
+            ReplaceExisting: request.ReplaceExisting);
         return await RunAsync(document, engine, job, progress, faults, cancellationToken).ConfigureAwait(false);
     }
 

@@ -494,6 +494,15 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _hasShownSharpPage, value))
             {
                 OnAnnotateAvailabilityChanged();
+                RaiseOcrCanExecuteChanged();
+                if (value)
+                {
+                    _ = EnsureOcrHintAsync();
+                }
+                else
+                {
+                    ResetOcrHint();
+                }
             }
         }
     }

@@ -3186,4 +3186,262 @@
   <data name="RedactOverlayDraftDropped" xml:space="preserve">
     <value>Der eingegebene Text wurde nicht übernommen: Er hat ein Zeichen, das sich nicht zeichnen lässt.</value>
   </data>
+  <data name="CommandOcr" xml:space="preserve">
+    <value>Text erkennen (OCR) …</value>
+  </data>
+  <data name="OcrTitle" xml:space="preserve">
+    <value>Text erkennen (OCR)</value>
+  </data>
+  <data name="OcrClose" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="OcrIntro" xml:space="preserve">
+    <value>Macht gescannte Seiten durchsuchbar. Das Bild jeder Seite bleibt unverändert; die erkannten Wörter kommen als unsichtbarer Text dahinter.</value>
+  </data>
+  <data name="OcrLanguagesLabel" xml:space="preserve">
+    <value>Sprachen</value>
+  </data>
+  <data name="OcrLanguagesNone" xml:space="preserve">
+    <value>Keine Sprachdaten gefunden. Fügen Sie eine Sprachdatei hinzu.</value>
+  </data>
+  <data name="OcrLanguageSlow" xml:space="preserve">
+    <value>Mehr als drei Sprachen machen den Lauf langsamer und ungenauer.</value>
+  </data>
+  <data name="OcrLanguageImported" xml:space="preserve">
+    <value>von Ihnen hinzugefügt</value>
+  </data>
+  <data name="OcrAddLanguage" xml:space="preserve">
+    <value>Sprachdatei hinzufügen …</value>
+  </data>
+  <data name="OcrAddLanguageTrust" xml:space="preserve">
+    <value>Eine Sprachdatei wird von der Texterkennung gelesen. Fügen Sie nur Dateien aus einer Quelle hinzu, der Sie vertrauen.</value>
+  </data>
+  <data name="OcrAddLanguageChoose" xml:space="preserve">
+    <value>Datei wählen …</value>
+  </data>
+  <data name="OcrAddLanguageCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="OcrLanguageAdded" xml:space="preserve">
+    <value>Sprache hinzugefügt: {0}</value>
+  </data>
+  <data name="OcrLanguageAddFailed" xml:space="preserve">
+    <value>Die Datei konnte nicht hinzugefügt werden: {0}</value>
+  </data>
+  <data name="OcrImportInvalidName" xml:space="preserve">
+    <value>Der Dateiname muss aus den Buchstaben a bis z und _ bestehen, gefolgt von .traineddata.</value>
+  </data>
+  <data name="OcrImportNotAFile" xml:space="preserve">
+    <value>Es ist keine Datei.</value>
+  </data>
+  <data name="OcrImportTooLarge" xml:space="preserve">
+    <value>Die Datei ist größer als 200 MB.</value>
+  </data>
+  <data name="OcrImportEmpty" xml:space="preserve">
+    <value>Die Datei ist leer.</value>
+  </data>
+  <data name="OcrImportAlready" xml:space="preserve">
+    <value>Für diese Sprache wurde schon eine Datei hinzugefügt.</value>
+  </data>
+  <data name="OcrImportFailed" xml:space="preserve">
+    <value>Die Datei konnte nicht kopiert werden.</value>
+  </data>
+  <data name="OcrPagesLabel" xml:space="preserve">
+    <value>Seiten</value>
+  </data>
+  <data name="OcrPagesAll" xml:space="preserve">
+    <value>Alle Seiten</value>
+  </data>
+  <data name="OcrPagesCurrent" xml:space="preserve">
+    <value>Aktuelle Seite</value>
+  </data>
+  <data name="OcrPagesRange" xml:space="preserve">
+    <value>Seitenbereich</value>
+  </data>
+  <data name="OcrRangeHint" xml:space="preserve">
+    <value>Zum Beispiel 1-3,5</value>
+  </data>
+  <data name="OcrRangeError" xml:space="preserve">
+    <value>Das ist kein Seitenbereich des Dokuments.</value>
+  </data>
+  <data name="OcrModeLabel" xml:space="preserve">
+    <value>Seiten, die schon Text haben</value>
+  </data>
+  <data name="OcrModeSkip" xml:space="preserve">
+    <value>Seiten mit Text überspringen</value>
+  </data>
+  <data name="OcrModeRedo" xml:space="preserve">
+    <value>Die Textebene eines früheren Laufs ersetzen</value>
+  </data>
+  <data name="OcrModeForce" xml:space="preserve">
+    <value>Auch Seiten mit Text erkennen</value>
+  </data>
+  <data name="OcrResolutionLabel" xml:space="preserve">
+    <value>Auflösung</value>
+  </data>
+  <data name="OcrResolutionAuto" xml:space="preserve">
+    <value>Automatisch (empfohlen)</value>
+  </data>
+  <data name="OcrResolutionDpi" xml:space="preserve">
+    <value>{0} dpi</value>
+  </data>
+  <data name="OcrWhat" xml:space="preserve">
+    <value>Die Seiten werden auf diesem Computer erkannt; nichts wird irgendwohin gesendet. Die Seitenbilder bleiben unverändert, und Sie können das Ergebnis bis zum Speichern rückgängig machen. Die Erkennung macht Fehler: Sie ist nicht fehlerfrei.</value>
+  </data>
+  <data name="OcrStart" xml:space="preserve">
+    <value>Starten</value>
+  </data>
+  <data name="OcrCancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="OcrRunning" xml:space="preserve">
+    <value>Text wird erkannt …</value>
+  </data>
+  <data name="OcrProgress" xml:space="preserve">
+    <value>{0} von {1} Seiten</value>
+  </data>
+  <data name="OcrRemaining" xml:space="preserve">
+    <value>Noch etwa {0}</value>
+  </data>
+  <data name="OcrRemainingSeconds" xml:space="preserve">
+    <value>{0} s</value>
+  </data>
+  <data name="OcrRemainingMinutes" xml:space="preserve">
+    <value>{0} min</value>
+  </data>
+  <data name="OcrCancelling" xml:space="preserve">
+    <value>Wird beendet …</value>
+  </data>
+  <data name="OcrReadingStaysPossible" xml:space="preserve">
+    <value>Sie können währenddessen weiterlesen. Bearbeiten, Speichern und Drucken warten, bis der Lauf fertig ist.</value>
+  </data>
+  <data name="OcrChooseTitle" xml:space="preserve">
+    <value>Der Lauf wurde beendet</value>
+  </data>
+  <data name="OcrChooseText" xml:space="preserve">
+    <value>{0} Seiten waren erkannt, bevor Sie beendet haben. Übernehmen?</value>
+  </data>
+  <data name="OcrUseFinished" xml:space="preserve">
+    <value>Fertige Seiten übernehmen</value>
+  </data>
+  <data name="OcrDiscard" xml:space="preserve">
+    <value>Verwerfen</value>
+  </data>
+  <data name="OcrReportTitle" xml:space="preserve">
+    <value>Texterkennung beendet</value>
+  </data>
+  <data name="OcrReportSummary" xml:space="preserve">
+    <value>Erkannte Seiten: {0}. Wörter: {1}. Mittlere Konfidenz der Erkennung: {2} %.</value>
+  </data>
+  <data name="OcrReportNothing" xml:space="preserve">
+    <value>Dem Dokument wurde nichts hinzugefügt.</value>
+  </data>
+  <data name="OcrReportNotUndoable" xml:space="preserve">
+    <value>Dieser Lauf war zu groß für den Rückgängig-Verlauf und lässt sich nicht rückgängig machen. Speichern Sie das Dokument, um ihn zu behalten, oder schließen Sie es ohne Speichern, um ihn zu verwerfen.</value>
+  </data>
+  <data name="OcrReportLow" xml:space="preserve">
+    <value>Seiten zum Prüfen: {0}. Sie könnten gedreht oder schlecht lesbar sein; drehen Sie sie und versuchen Sie es erneut.</value>
+  </data>
+  <data name="OcrReportNoWords" xml:space="preserve">
+    <value>Seiten ohne ein Wort: {0}.</value>
+  </data>
+  <data name="OcrReportLittle" xml:space="preserve">
+    <value>Seiten mit wenig eigenem Text, der bleibt: {0}.</value>
+  </data>
+  <data name="OcrReportLowered" xml:space="preserve">
+    <value>Seiten mit gesenkter Auflösung erkannt: {0}.</value>
+  </data>
+  <data name="OcrReportLeftOut" xml:space="preserve">
+    <value>{0} Wörter wurden ausgelassen: ein Zeichen daraus fehlt in der Schrift der Textebene.</value>
+  </data>
+  <data name="OcrReportAlready" xml:space="preserve">
+    <value>Seiten, die schon eine Textebene hatten und unberührt blieben: {0}.</value>
+  </data>
+  <data name="OcrReportSkippedTitle" xml:space="preserve">
+    <value>Seiten, die nicht erkannt wurden</value>
+  </data>
+  <data name="OcrReportSkippedRow" xml:space="preserve">
+    <value>Seite {0}: {1}</value>
+  </data>
+  <data name="OcrReasonHasText" xml:space="preserve">
+    <value>hat eigenen Text</value>
+  </data>
+  <data name="OcrReasonAlready" xml:space="preserve">
+    <value>hat schon eine Textebene</value>
+  </data>
+  <data name="OcrReasonTooLarge" xml:space="preserve">
+    <value>zu groß für die Erkennung</value>
+  </data>
+  <data name="OcrReasonResolution" xml:space="preserve">
+    <value>Auflösung zu niedrig</value>
+  </data>
+  <data name="OcrReasonTimeout" xml:space="preserve">
+    <value>dauerte länger als die Zeitgrenze</value>
+  </data>
+  <data name="OcrReasonFailed" xml:space="preserve">
+    <value>konnte nicht erkannt werden</value>
+  </data>
+  <data name="OcrReasonNoChars" xml:space="preserve">
+    <value>kein Wort, das die Textebene tragen kann</value>
+  </data>
+  <data name="OcrReportUndo" xml:space="preserve">
+    <value>Die Wörter sind eine ungespeicherte Änderung: mit Strg+Z rückgängig machen oder mit Strg+S speichern.</value>
+  </data>
+  <data name="OcrReportGoTo" xml:space="preserve">
+    <value>Zu Seite {0}</value>
+  </data>
+  <data name="OcrFailedTitle" xml:space="preserve">
+    <value>Die Texterkennung wurde abgebrochen</value>
+  </data>
+  <data name="OcrFailedLibrary" xml:space="preserve">
+    <value>Die Erkennungsbibliothek fehlt oder ist beschädigt. Installieren Sie Pagewing neu.</value>
+  </data>
+  <data name="OcrFailedLanguage" xml:space="preserve">
+    <value>Eine Sprachdatei fehlt oder ist beschädigt: {0}</value>
+  </data>
+  <data name="OcrFailedFull" xml:space="preserve">
+    <value>Es warten zu viele Änderungen. Speichern Sie zuerst das Dokument und starten Sie dann erneut.</value>
+  </data>
+  <data name="OcrFailedGeneric" xml:space="preserve">
+    <value>Die Texterkennung wurde abgebrochen: {0}</value>
+  </data>
+  <data name="OcrHintText" xml:space="preserve">
+    <value>Das sieht wie ein Scan aus. Durchsuchbar machen?</value>
+  </data>
+  <data name="OcrHintButton" xml:space="preserve">
+    <value>Text erkennen</value>
+  </data>
+  <data name="OcrHintNotNow" xml:space="preserve">
+    <value>Nicht jetzt</value>
+  </data>
+  <data name="OcrHintNever" xml:space="preserve">
+    <value>Für diese Datei nicht mehr fragen</value>
+  </data>
+  <data name="OcrHintClose" xml:space="preserve">
+    <value>Hinweis schließen</value>
+  </data>
+  <data name="OcrStatusRunning" xml:space="preserve">
+    <value>Text wird erkannt: {0} von {1} Seiten</value>
+  </data>
+  <data name="OcrBlockedMode" xml:space="preserve">
+    <value>Beenden Sie zuerst den aktuellen Modus.</value>
+  </data>
+  <data name="OcrBlockedRunning" xml:space="preserve">
+    <value>Die Texterkennung läuft.</value>
+  </data>
+  <data name="OcrBlockedBusy" xml:space="preserve">
+    <value>Warten Sie, bis das Speichern oder Drucken beendet ist.</value>
+  </data>
+  <data name="SaveBlockedOcr" xml:space="preserve">
+    <value>Die Texterkennung läuft; speichern Sie, wenn sie fertig ist.</value>
+  </data>
+  <data name="OcrSignatureNote" xml:space="preserve">
+    <value>Diese Datei hat eine digitale Signatur. Das Hinzufügen des erkannten Textes ist eine Änderung der Datei: Die Signatur wird danach möglicherweise als ungültig angezeigt.</value>
+  </data>
+  <data name="CommandOcrCancel" xml:space="preserve">
+    <value>Texterkennung beenden</value>
+  </data>
+  <data name="SignatureWarningOcr" xml:space="preserve">
+    <value>Der erkannte Text wird der Datei als unsichtbarer Text hinzugefügt.</value>
+  </data>
 </root>

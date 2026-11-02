@@ -37,7 +37,7 @@ public sealed partial class TabViewModel
     /// same; <see cref="SaveBlockedReason"/> says why while a print job runs.
     /// </summary>
     internal bool CanApplyRedactions =>
-        !_disposed && IsReady && _document is not null && HasPendingRedactions && !_isSaving && !_isPrinting && !_isAskedAbout && !_isEditingFrozen;
+        !_disposed && IsReady && _document is not null && HasPendingRedactions && !_isSaving && !_isPrinting && !_isAskedAbout && !IsEditingFrozen;
 
     /// <summary>Gets whether the preview is on: the marks are shown as filled areas and the toolbar shows the numbers of what is removed.</summary>
     public bool IsRedactionPreview => _isRedactionPreview;

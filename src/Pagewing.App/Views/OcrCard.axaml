@@ -1,0 +1,219 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.OcrCard"
+             x:DataType="vm:OcrViewModel"
+             KeyboardNavigation.TabNavigation="Continue"
+             AutomationProperties.Name="{x:Static res:Strings.OcrTitle}">
+  <!--
+    The card of the text recognition (OCR, milestone 15): a card over the window below the title bar in the style of the signature, print and
+    insert cards (design system 7.8): surface.raised, radius.overlay, the card shadow. Not modal: the document behind it can be read and scrolled while
+    a run goes on. One card, five states, only one of them shown at a time: the choices (what the run does in a sentence that also says that
+    recognition is not error-free; languages with the chosen ones first; pages; the mode; the resolution; "Add language file" with the notice about
+    trust; a notice for a signed document), the run (progress "3 of 12 pages", the remaining time after three pages, "Cancel"), the question after a stop
+    ("Use finished pages" / "Discard", Discard first), the report (what was done in numbers, the pages to check with a link each, every page that was
+    not recognized with its reason, the note that the words are an unsaved change) and the failure (danger symbol and the cause). Texts and symbols,
+    never colour alone. Tab goes from top to bottom and leaves the card after its last control (never a trap, WCAG 2.1.2); Enter starts (or closes), Esc stops a run, answers the question with
+    Discard, or closes the card and nothing else. Made when it is first shown, never in the startup path.
+  -->
+  <Border Name="OcrBox" Width="520" Margin="24"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          CornerRadius="{StaticResource Pw.Radius.Overlay}"
+          Background="{DynamicResource Pw.Brush.Surface.Raised}"
+          BoxShadow="{DynamicResource Pw.Shadow.Card}">
+    <ScrollViewer Name="OcrScroller" MaxHeight="620" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="24,16,24,20" Spacing="14">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Name="OcrTitleText" Classes="subtitle" VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding Title}" />
+          <Button Name="OcrCloseButton" Grid.Column="1" Classes="icon"
+                  Command="{Binding CloseCommand}" IsEnabled="{Binding !IsRunning}"
+                  ToolTip.Tip="{x:Static res:Strings.OcrClose}"
+                  AutomationProperties.Name="{x:Static res:Strings.OcrClose}">
+            <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.X}" />
+          </Button>
+        </Grid>
+
+        <!-- The choices. -->
+        <StackPanel Name="OcrOptionsPanel" Spacing="12" IsVisible="{Binding IsOptions}">
+          <TextBlock Name="OcrIntro" Classes="body" TextWrapping="Wrap" Text="{x:Static res:Strings.OcrIntro}" />
+
+          <StackPanel Spacing="6">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.OcrLanguagesLabel}" />
+            <TextBlock Name="OcrNoLanguages" Classes="caption" TextWrapping="Wrap" IsVisible="{Binding HasNoLanguages}"
+                       Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                       Text="{x:Static res:Strings.OcrLanguagesNone}" />
+            <ItemsControl Name="OcrLanguageList" ItemsSource="{Binding Languages}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:OcrLanguageItem">
+                  <CheckBox MinHeight="28" IsChecked="{Binding IsSelected, Mode=TwoWay}" Content="{Binding Display}"
+                            AutomationProperties.Name="{Binding Display}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" IsVisible="{Binding ShowsSlowWarning}">
+              <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+              <TextBlock Name="OcrSlowWarning" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                         AutomationProperties.LiveSetting="Polite" Text="{Binding SlowWarning}" />
+            </Grid>
+            <Button Name="OcrAddLanguageButton" HorizontalAlignment="Left" Command="{Binding AddLanguageCommand}"
+                    Content="{x:Static res:Strings.OcrAddLanguage}"
+                    AutomationProperties.Name="{x:Static res:Strings.OcrAddLanguage}" />
+            <StackPanel Name="OcrImportPrompt" Spacing="6" IsVisible="{Binding ImportPrompt}">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                                Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+                <TextBlock Name="OcrImportTrust" Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                           Text="{x:Static res:Strings.OcrAddLanguageTrust}" />
+              </Grid>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Name="OcrChooseFileButton" Command="{Binding ChooseLanguageFileCommand}"
+                        Content="{x:Static res:Strings.OcrAddLanguageChoose}"
+                        AutomationProperties.Name="{x:Static res:Strings.OcrAddLanguageChoose}" />
+                <Button Name="OcrCancelImportButton" Command="{Binding CancelImportCommand}"
+                        Content="{x:Static res:Strings.OcrAddLanguageCancel}"
+                        AutomationProperties.Name="{x:Static res:Strings.OcrAddLanguageCancel}" />
+              </StackPanel>
+            </StackPanel>
+            <TextBlock Name="OcrImportMessage" Classes="caption" TextWrapping="Wrap"
+                       IsVisible="{Binding ImportMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       AutomationProperties.LiveSetting="Polite" Text="{Binding ImportMessage}" />
+          </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.OcrPagesLabel}" />
+            <ComboBox Name="OcrScopeList" MinHeight="32" HorizontalAlignment="Stretch" SelectedIndex="{Binding ScopeIndex, Mode=TwoWay}"
+                      AutomationProperties.Name="{x:Static res:Strings.OcrPagesLabel}">
+              <ComboBoxItem Content="{x:Static res:Strings.OcrPagesAll}" />
+              <ComboBoxItem Content="{x:Static res:Strings.OcrPagesCurrent}" />
+              <ComboBoxItem Content="{x:Static res:Strings.OcrPagesRange}" />
+            </ComboBox>
+            <TextBox Name="OcrRangeField" MinHeight="32" IsVisible="{Binding IsRangeScope}"
+                     Text="{Binding RangeText, Mode=TwoWay}"
+                     Classes.invalid="{Binding RangeError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     PlaceholderText="{x:Static res:Strings.OcrRangeHint}"
+                     AutomationProperties.Name="{x:Static res:Strings.OcrPagesRange}"
+                     AutomationProperties.HelpText="{x:Static res:Strings.OcrRangeHint}" />
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6"
+                  IsVisible="{Binding RangeError, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+              <TextBlock Name="OcrRangeError" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Pw.Brush.Danger.Default}"
+                         AutomationProperties.LiveSetting="Assertive" Text="{Binding RangeError}" />
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.OcrModeLabel}" />
+            <ComboBox Name="OcrModeList" MinHeight="32" HorizontalAlignment="Stretch"
+                      ItemsSource="{Binding ModeChoices}" SelectedIndex="{Binding ModeIndex, Mode=TwoWay}"
+                      AutomationProperties.Name="{x:Static res:Strings.OcrModeLabel}" />
+          </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.OcrResolutionLabel}" />
+            <ComboBox Name="OcrResolutionList" MinHeight="32" HorizontalAlignment="Stretch"
+                      ItemsSource="{Binding ResolutionChoices}" SelectedIndex="{Binding ResolutionIndex, Mode=TwoWay}"
+                      AutomationProperties.Name="{x:Static res:Strings.OcrResolutionLabel}" />
+          </StackPanel>
+
+          <TextBlock Name="OcrWhatHappens" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{x:Static res:Strings.OcrWhat}" />
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" IsVisible="{Binding ShowsSignatureNote}">
+            <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top"
+                            Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+            <TextBlock Name="OcrSignatureNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap" Text="{Binding SignatureNote}" />
+          </Grid>
+
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <Button Name="OcrOptionsCancelButton" Grid.Column="1" Command="{Binding CloseCommand}"
+                    Content="{x:Static res:Strings.OcrCancel}" AutomationProperties.Name="{x:Static res:Strings.OcrCancel}" />
+            <Button Name="OcrStartButton" Grid.Column="2" Classes="primary" Command="{Binding StartCommand}"
+                    Content="{x:Static res:Strings.OcrStart}" AutomationProperties.Name="{x:Static res:Strings.OcrStart}" />
+          </Grid>
+        </StackPanel>
+
+        <!-- The run. -->
+        <StackPanel Name="OcrRunningPanel" Spacing="10" IsVisible="{Binding IsRunning}">
+          <TextBlock Name="OcrRunningText" Classes="body" AutomationProperties.LiveSetting="Polite" Text="{Binding RunningText}" />
+          <ProgressBar Name="OcrProgressBar" Minimum="0" Maximum="1" Value="{Binding ProgressFraction}"
+                       AutomationProperties.Name="{x:Static res:Strings.OcrRunning}" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Name="OcrProgressText" Classes="body num" Text="{Binding ProgressText}" />
+            <TextBlock Name="OcrRemainingText" Grid.Column="1" Classes="caption"
+                       Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding RemainingText}" />
+          </Grid>
+          <TextBlock Classes="caption" TextWrapping="Wrap" Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                     Text="{x:Static res:Strings.OcrReadingStaysPossible}" />
+          <Button Name="OcrCancelRunButton" HorizontalAlignment="Right" Command="{Binding CancelCommand}"
+                  IsEnabled="{Binding !IsCancelling}"
+                  Content="{x:Static res:Strings.OcrCancel}" AutomationProperties.Name="{x:Static res:Strings.OcrCancel}" />
+        </StackPanel>
+
+        <!-- The question after a stop: Discard is the answer Esc gives. -->
+        <StackPanel Name="OcrChoosePanel" Spacing="10" IsVisible="{Binding IsChoose}">
+          <TextBlock Name="OcrChooseText" Classes="body" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive" Text="{Binding ChooseText}" />
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Name="OcrDiscardButton" Command="{Binding DiscardCommand}"
+                    Content="{x:Static res:Strings.OcrDiscard}" AutomationProperties.Name="{x:Static res:Strings.OcrDiscard}" />
+            <Button Name="OcrUseFinishedButton" Command="{Binding UseFinishedCommand}"
+                    Content="{x:Static res:Strings.OcrUseFinished}" AutomationProperties.Name="{x:Static res:Strings.OcrUseFinished}" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- The report. -->
+        <StackPanel Name="OcrReportPanel" Spacing="10" IsVisible="{Binding IsReport}">
+          <TextBlock Name="OcrReportSummary" Classes="body" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Text="{Binding ReportSummary}" />
+          <ItemsControl Name="OcrReportLines" ItemsSource="{Binding ReportLines}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Classes="body" TextWrapping="Wrap" Margin="0,0,0,4" Text="{Binding}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <ItemsControl Name="OcrReportLinks" ItemsSource="{Binding ReportLinks}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:OcrPageLink">
+                <Button HorizontalAlignment="Left" Margin="0,0,0,4"
+                        Command="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).GoToPageCommand}"
+                        CommandParameter="{Binding Page}" Content="{Binding Label}"
+                        AutomationProperties.Name="{Binding Label}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <StackPanel Name="OcrSkippedPanel" Spacing="4" IsVisible="{Binding HasSkipped}">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.OcrReportSkippedTitle}" />
+            <ItemsControl Name="OcrSkippedRows" ItemsSource="{Binding SkippedRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Classes="body" TextWrapping="Wrap" Text="{Binding}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+          <TextBlock Name="OcrReportUndo" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{x:Static res:Strings.OcrReportUndo}" />
+          <TextBlock Name="OcrReportDisclaimer" Classes="caption" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{x:Static res:Strings.OcrWhat}" />
+          <Button Name="OcrReportCloseButton" HorizontalAlignment="Right" Classes="primary" Command="{Binding CloseCommand}"
+                  Content="{x:Static res:Strings.OcrClose}" AutomationProperties.Name="{x:Static res:Strings.OcrClose}" />
+        </StackPanel>
+
+        <!-- The failure. -->
+        <StackPanel Name="OcrFailedPanel" Spacing="10" IsVisible="{Binding IsFailed}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <ctl:StrokeIcon Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                            Brush="{DynamicResource Pw.Brush.Danger.Default}" Data="{StaticResource Pw.Icon.AlertTriangle}" />
+            <TextBlock Name="OcrFailedText" Grid.Column="1" Classes="body" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Assertive" Text="{Binding FailedText}" />
+          </Grid>
+          <Button Name="OcrFailedCloseButton" HorizontalAlignment="Right" Classes="primary" Command="{Binding CloseCommand}"
+                  Content="{x:Static res:Strings.OcrClose}" AutomationProperties.Name="{x:Static res:Strings.OcrClose}" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </Border>
+</UserControl>

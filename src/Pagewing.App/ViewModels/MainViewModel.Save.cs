@@ -334,7 +334,7 @@ public sealed partial class MainViewModel
         switch (SignaturePolicy.Evaluate(info))
         {
             case SignatureAdvice.WouldInvalidate:
-                return await AskAsync(PendingSave.SignatureWarning(tab, path, info.Permission, tab.HasOnlyFormChanges), cancellationToken) switch
+                return await AskAsync(PendingSave.SignatureWarning(tab, path, info.Permission, tab.HasOnlyFormChanges, tab.HasOcrChanges), cancellationToken) switch
                 {
                     PendingSaveChoice.SaveAnyway => SignatureAnswer.Go,
                     PendingSaveChoice.SaveAs => SignatureAnswer.SaveAs,

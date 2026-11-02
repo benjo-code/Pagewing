@@ -543,7 +543,7 @@ public sealed partial class TabViewModel
     internal bool EditDraft(FormWidgetKey key, string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        if (!_isFilling || _isEditingFrozen || !CanReadForm || FindWidget(key) is not { } field || !IsEditable(field)
+        if (!_isFilling || IsEditingFrozen || !CanReadForm || FindWidget(key) is not { } field || !IsEditable(field)
             || !(field.Kind == FormFieldKind.Text || (field.Kind == FormFieldKind.ComboBox && field.Traits.HasFlag(FormFieldTraits.Edit))))
         {
             return false;
@@ -993,7 +993,7 @@ public sealed partial class TabViewModel
     /// <returns>Whether the mode is on now.</returns>
     private bool TryReenterFill(FormWidgetKey key)
     {
-        if (_isAnnotating || _isEditingFrozen || _isAskedAbout || !CanBeginFill())
+        if (_isAnnotating || IsEditingFrozen || _isAskedAbout || !CanBeginFill())
         {
             return false;
         }

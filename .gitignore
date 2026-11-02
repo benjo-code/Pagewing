@@ -23,3 +23,6 @@ BenchmarkDotNet.Artifacts/
 
 # Superpowers Brainstorming (lokale Mockups)
 .superpowers/
+
+# Local native builds (packaging/native)
+artifacts/

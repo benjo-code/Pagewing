@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Pagewing.Pdfium\Pagewing.Pdfium.csproj" />
+    <ProjectReference Include="..\Pagewing.Ocr\Pagewing.Ocr.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!--

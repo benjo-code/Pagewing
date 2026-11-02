@@ -1,4 +1,5 @@
 using Pagewing.Core.Forms;
+using Pagewing.Core.Ocr;
 using Pagewing.Core.Signatures;
 
 namespace Pagewing.Core.Annotations;
@@ -33,6 +34,37 @@ public abstract record AnnotationCommand
     /// <param name="After">The state after the change, as read back.</param>
     /// <param name="Pages">Every page with a widget of the field.</param>
     public sealed record FormValue(string FieldName, FormFieldState Before, FormFieldState After, IReadOnlySet<int> Pages) : AnnotationCommand;
+
+    /// <summary>
+    /// A text recognition run was applied: the words of Pagewing's invisible layer, by page. Undo takes the layer of each page out and writes
+    /// <paramref name="Before"/> again (the layer a "replace" run found, if any), redo takes it out and writes <paramref name="After"/>. The word
+    /// lists are the history's data (the layer is rewritten from them), so the step counts against the history budget with their size.
+    /// </summary>
+    /// <param name="Before">The words of the layer each page had before the run; a page without a layer is not in it.</param>
+    /// <param name="After">The words each page got.</param>
+    public sealed record OcrLayer(IReadOnlyDictionary<int, IReadOnlyList<OcrPageWord>> Before, IReadOnlyDictionary<int, IReadOnlyList<OcrPageWord>> After) : AnnotationCommand
+    {
+        /// <summary>Gets every page the step touches, in page order.</summary>
+        public IReadOnlyList<int> Pages => [.. Before.Keys.Union(After.Keys).Order()];
+
+        /// <summary>The memory the word lists of the step take, estimated: what the history budget counts.</summary>
+        public long EstimatedBytes => BytesOf(Before) + BytesOf(After);
+
+        /// <summary>The estimated memory of word lists (the text twice, the box, the confidence and the object).</summary>
+        public static long BytesOf(IReadOnlyDictionary<int, IReadOnlyList<OcrPageWord>> pages)
+        {
+            long bytes = 0;
+            foreach (var words in pages.Values)
+            {
+                foreach (var word in words)
+                {
+                    bytes += 72 + (2L * word.Text.Length);
+                }
+            }
+
+            return bytes;
+        }
+    }
 }
 
 /// <summary>The packed images of the signatures in the history would be more than <see cref="SignatureLimits.MaxHistoryImageBytes"/>: save first.</summary>
@@ -58,13 +90,14 @@ public sealed class AnnotationHistory
     private readonly List<AnnotationCommand> _undo = [];
     private readonly List<AnnotationCommand> _redo = [];
 
-    // What was pushed since the last Clear: form values, and any other step (also one undone, dropped or forgotten since).
+    // What was pushed since the last Clear: form values, text recognition, and any other step (also one undone, dropped or forgotten since).
     private bool _formSteps;
     private bool _otherSteps;
+    private bool _ocrSteps;
 
     /// <summary>
-    /// Gets the bytes of the packed images in both stacks (the memory the history holds for them). Empty after <see cref="Clear"/>,
-    /// so after a save.
+    /// Gets the bytes of the packed images and the word lists of text recognition in both stacks (the memory the history holds for them).
+    /// Empty after <see cref="Clear"/>, so after a save.
     /// </summary>
     public long ImageBytes => ImageBytesOf(_undo) + ImageBytesOf(_redo);
 
@@ -99,6 +132,12 @@ public sealed class AnnotationHistory
     /// </summary>
     public bool HasOnlyFormChanges => _formSteps && !_otherSteps;
 
+    /// <summary>
+    /// Gets whether a text recognition step was pushed since the last <see cref="Clear"/>, also one undone, dropped or forgotten since: the
+    /// document was touched by it. Saving a signed document says then that invisible text is added.
+    /// </summary>
+    public bool HasOcrChanges => _ocrSteps;
+
     private static long ImageBytesOf(List<AnnotationCommand> commands)
     {
         long bytes = 0;
@@ -108,6 +147,7 @@ public sealed class AnnotationHistory
             {
                 AnnotationCommand.Create create => create.Image?.Deflated.Length ?? 0,
                 AnnotationCommand.Delete delete => delete.Image?.Deflated.Length ?? 0,
+                AnnotationCommand.OcrLayer ocr => ocr.EstimatedBytes,
                 _ => 0,
             };
         }
@@ -127,6 +167,11 @@ public sealed class AnnotationHistory
         else
         {
             _otherSteps = true;
+        }
+
+        if (command is AnnotationCommand.OcrLayer)
+        {
+            _ocrSteps = true;
         }
 
         _redo.Clear();
@@ -200,6 +245,16 @@ public sealed class AnnotationHistory
     /// </summary>
     public void MarkChanged() => Version++;
 
+    /// <summary>
+    /// Counts a text recognition run that did not fit the history as an unsaved change without a step: the document was touched (<see cref="HasOcrChanges"/>),
+    /// there is nothing to undo.
+    /// </summary>
+    public void MarkOcrChanged()
+    {
+        _ocrSteps = true;
+        Version++;
+    }
+
     /// <summary>Empties both stacks, for example after the document was reloaded; <see cref="Version"/> keeps increasing.</summary>
     public void Clear()
     {
@@ -207,6 +262,7 @@ public sealed class AnnotationHistory
         _redo.Clear();
         _formSteps = false;
         _otherSteps = false;
+        _ocrSteps = false;
         Version++;
     }
 }

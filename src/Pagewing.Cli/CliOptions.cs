@@ -1,6 +1,7 @@
 using System.Globalization;
 using Pagewing.Cli.Commands;
 using Pagewing.Core.Annotations;
+using Pagewing.Core.Ocr;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Redaction;
 
@@ -60,7 +61,12 @@ internal sealed record CliOptions(
     RedactionImageTreatment ImageFill = RedactionImageTreatment.Solid,
     RedactionImageStrength ImageStrength = RedactionImageStrength.Coarse,
     string? OverlayText = null,
-    bool OverlayRepeat = false)
+    bool OverlayRepeat = false,
+    string? Languages = null,
+    string? Tessdata = null,
+    OcrMode OcrMode = OcrMode.Skip,
+    int OcrDpi = 0,
+    int Jobs = 0)
 {
     public const string DefaultDpi = "144";
 
@@ -97,6 +103,7 @@ internal sealed record CliOptions(
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
             "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--fill", "--image-fill", "--image-strength", "--overlay-text", "--overlay-repeat", "--output", "--force", "--password"],
+            "ocr" => ["--language", "--tessdata", "--pages", "--mode", "--dpi", "--jobs", "--dry-run", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -104,10 +111,11 @@ internal sealed record CliOptions(
         var isRotate = command == "rotate";
         var isSplit = command == "split";
         var isRedact = command == "redact";
+        var isOcr = command == "ocr";
 
         // The commands of milestones 13 and 14 refuse an option given twice (the older commands keep their lenient reading);
         // --text and --rect of redact may be given as often as needed.
-        var strict = command is "split" or "export" or "redact";
+        var strict = command is "split" or "export" or "redact" or "ocr";
         var texts = new List<string>();
         var patterns = new List<RedactionPatternKind>();
         var includeUnchecked = false;
@@ -134,6 +142,10 @@ internal sealed record CliOptions(
         var optionsEnded = false;
         string? pages = null;
         string? dpiText = null;
+        string? languageText = null;
+        string? tessdata = null;
+        string? modeText = null;
+        string? jobsText = null;
         string? angleText = null;
         string? output = null;
         var annotations = true;
@@ -239,6 +251,18 @@ internal sealed record CliOptions(
                     case "--pages":
                         pages = value;
                         break;
+                    case "--language":
+                        languageText = value;
+                        break;
+                    case "--tessdata":
+                        tessdata = value;
+                        break;
+                    case "--mode":
+                        modeText = value;
+                        break;
+                    case "--jobs":
+                        jobsText = value;
+                        break;
                     case "--dpi":
                         dpiText = value;
                         break;
@@ -338,8 +362,9 @@ internal sealed record CliOptions(
             }
         }
 
-        // For redact --dpi is the resolution of the pages that become images (a whole number from 72 to 300), not of a render.
-        var dpi = ParseDpi(isRedact ? DefaultDpi : dpiText ?? DefaultDpi);
+        // For redact --dpi is the resolution of the pages that become images (a whole number from 72 to 300), not of a render; for ocr
+        // it is the resolution the pages are recognized at (parsed with the other options of the command below).
+        var dpi = ParseDpi(isRedact || isOcr ? DefaultDpi : dpiText ?? DefaultDpi);
         if (isSplit)
         {
             if (string.IsNullOrEmpty(output))
@@ -421,6 +446,11 @@ internal sealed record CliOptions(
             return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked, Fill: fill, ImageFill: imageFill, ImageStrength: imageStrength, OverlayText: overlayText, OverlayRepeat: overlayRepeat);
         }
 
+        if (isOcr)
+        {
+            return ParseOcr(file, pages, languageText, tessdata, modeText, dpiText, jobsText, output, dryRun, force, password, dpi, annotations);
+        }
+
         if (isRotate)
         {
             if (pages is null)
@@ -448,6 +478,78 @@ internal sealed record CliOptions(
 
         return new CliOptions(command, file, pages, dpi, output ?? ".", annotations, password, query, matchCase, wholeWord, Force: force);
     }
+
+    /// <summary>
+    /// The rest of the parse of <c>pagewing ocr</c>: the languages (<c>[a-z_]+</c> joined with <c>+</c>), the mode (<c>skip</c>, <c>redo</c>, <c>force</c>),
+    /// the resolution (whole number from 150 to 600, default automatic), the jobs (1 to 16) and the output file (not needed with <c>--dry-run</c>).
+    /// </summary>
+    private static CliOptions ParseOcr(
+        string file,
+        string? pages,
+        string? languageText,
+        string? tessdata,
+        string? modeText,
+        string? dpiText,
+        string? jobsText,
+        string? output,
+        bool dryRun,
+        bool force,
+        string? password,
+        double dpi,
+        bool annotations)
+    {
+        string? languages = null;
+        if (languageText is not null)
+        {
+            languages = OcrLanguages.Normalize(languageText)
+                ?? throw new UsageException($"Invalid value for --language: '{Shown(languageText)}' (use the names of language models, letters a to z and _, joined with +, for example deu+eng).");
+        }
+
+        if (tessdata is not null && tessdata.Length == 0)
+        {
+            throw new UsageException("The option '--tessdata' needs a folder.");
+        }
+
+        var mode = OcrMode.Skip;
+        if (modeText is not null)
+        {
+            mode = modeText.ToLowerInvariant() switch
+            {
+                "skip" => OcrMode.Skip,
+                "redo" => OcrMode.Redo,
+                "force" => OcrMode.Force,
+                _ => throw new UsageException($"Invalid value for --mode: '{Shown(modeText)}' (use skip, redo or force)."),
+            };
+        }
+
+        var ocrDpi = 0;
+        if (dpiText is not null
+            && (!int.TryParse(dpiText, NumberStyles.None, CultureInfo.InvariantCulture, out ocrDpi) || ocrDpi < OcrResolution.MinDpi || ocrDpi > OcrOptions.MaxDpi))
+        {
+            throw new UsageException($"Invalid value for --dpi: '{Shown(dpiText)}' (use a whole number from {OcrResolution.MinDpi.ToString(CultureInfo.InvariantCulture)} to {OcrOptions.MaxDpi.ToString(CultureInfo.InvariantCulture)}).");
+        }
+
+        var jobs = 0;
+        if (jobsText is not null
+            && (!int.TryParse(jobsText, NumberStyles.None, CultureInfo.InvariantCulture, out jobs) || jobs < 1 || jobs > OcrOptions.MaxJobs))
+        {
+            throw new UsageException($"Invalid value for --jobs: '{Shown(jobsText)}' (use a whole number from 1 to {OcrOptions.MaxJobs.ToString(CultureInfo.InvariantCulture)}).");
+        }
+
+        if (output is not null && output.Length == 0)
+        {
+            throw new UsageException("The option '--output' needs a file name.");
+        }
+
+        if (output is null && !dryRun)
+        {
+            throw new UsageException("The 'ocr' command needs --output <out.pdf> (only --dry-run works without it).");
+        }
+
+        return new CliOptions("ocr", file, pages, dpi, ".", annotations, password, OutputFile: output, Force: force, DryRun: dryRun, Languages: languages, Tessdata: tessdata, OcrMode: mode, OcrDpi: ocrDpi, Jobs: jobs);
+    }
+
+    private static string Shown(string value) => value.Length > 40 ? value[..40] + "..." : value;
 
     /// <summary>Reads the value of <c>--fill</c>: <c>black</c>, <c>white</c> or a colour written as <c>#RRGGBB</c>.</summary>
     private static RedactionFill ParseFill(string value)

@@ -110,6 +110,9 @@ internal abstract class MeasurementRun : IDisposable
 
         // Nor does it read the form of a document (hints, offer of the mode): the budgets measure the open and the first sharp page.
         ViewModel.FormFeaturesEnabled = false;
+
+        // Nor does it look whether the document is a scan or offer text recognition (the hint, the command, the card).
+        ViewModel.OcrFeaturesEnabled = false;
         View.FirstSharpTileDrawn += OnFirstSharpTileDrawn;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         WatchActiveTab();
