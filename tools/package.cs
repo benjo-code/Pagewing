@@ -2,7 +2,8 @@
 
 // Packaging tool of Pagewing (grows with Milestone 8; further subcommands are added to Commands).
 //   dotnet run tools/package.cs -- check-binary <file>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]
-//   dotnet run tools/package.cs -- layout --rid <win-x64|linux-x64> --app <dir> --cli <dir> --out <dir> [--repo <root>]
+//   dotnet run tools/package.cs -- layout --rid <win-x64|linux-x64> --app <dir> --cli <dir> --out <dir> [--repo <root>] [--native <dir>]
+//   dotnet run tools/package.cs -- native-fetch --rid <win-x64|linux-x64> --out <dir> [--from <dir>]      (OCR library and language data, SHA-256 pinned)
 //   dotnet run tools/package.cs -- zip --layout <dir> --version <x.y.z> --out <file>
 //   dotnet run tools/package.cs -- sums <file>... --out <SHA256SUMS.txt>
 //   dotnet run tools/package.cs -- sums-verify --file <SHA256SUMS.txt> --sha256 <hex>
@@ -36,7 +37,8 @@ static class Cli
     private const string Usage =
         "Aufruf: dotnet run tools/package.cs -- <Befehl>\n" +
         "  check-binary <Datei>... [--max-glibc 2.35] [--max-glibcxx 3.4.30]   prueft GLIBC- und GLIBCXX-Versionen und NEEDED-Bibliotheken (ELF)\n" +
-        "  layout --rid <rid> --app <Ordner> --cli <Ordner> --out <Ordner>   legt das Paketlayout an (App, cli/, LICENSE, THIRD-PARTY-NOTICES.txt)\n" +
+        "  layout --rid <rid> --app <Ordner> --cli <Ordner> --out <Ordner> [--native <Ordner>]   legt das Paketlayout an (App, cli/, LICENSE, THIRD-PARTY-NOTICES.txt; mit --native die OCR-Bibliothek und tessdata/)\n" +
+        "  native-fetch --rid <rid> --out <Ordner> [--from <Ordner>]         holt die OCR-Bibliothek (Vorabversion native-tesseract-*, SHA-256 geprueft) und die Sprachdaten eng, deu\n" +
         "  zip --layout <Ordner> --version <x.y.z> --out <Datei>             reproduzierbare ZIP-Datei, oberster Ordner Pagewing-<Version>/\n" +
         "  sums <Datei>... --out <Datei>                                     SHA-256-Summen (<sha256>  <Dateiname>)\n" +
         "  sums-verify --file <Datei> --sha256 <Hex>                         prueft eine SHA256SUMS-Datei gegen die Summe des Bau-Jobs (leer oder falsch: Fehler)\n" +
@@ -61,6 +63,7 @@ static class Cli
     {
         ["check-binary"] = CheckBinary.Run,
         ["layout"] = Layout.Run,
+        ["native-fetch"] = NativeFetch.Run,
         ["zip"] = ZipCommand.Run,
         ["sums"] = Sums.Run,
         ["sums-verify"] = SumsVerify.Run,
@@ -368,7 +371,7 @@ static class Layout
 
     public static int Run(string[] args)
     {
-        var parsed = Options.Parse(args, "--rid", "--app", "--cli", "--out", "--repo");
+        var parsed = Options.Parse(args, "--rid", "--app", "--cli", "--out", "--repo", "--native");
         if (parsed is not { } p || p.Positional.Count != 0 ||
             !p.Named.TryGetValue("--rid", out var rid) || !p.Named.TryGetValue("--app", out var app) ||
             !p.Named.TryGetValue("--cli", out var cli) || !p.Named.TryGetValue("--out", out var output))
@@ -408,6 +411,18 @@ static class Layout
             }
         }
 
+        var nativeDir = p.Named.GetValueOrDefault("--native");
+        if (nativeDir is not null)
+        {
+            foreach (var file in NativeTesseract.For(rid))
+            {
+                if (!File.Exists(Path.Combine(nativeDir, file.Target)))
+                {
+                    problems.Add($"Ordner --native enthaelt {file.Target} nicht: {nativeDir}");
+                }
+            }
+        }
+
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
         {
             problems.Add($"Ausgabeordner ist nicht leer: {output}");
@@ -426,6 +441,20 @@ static class Layout
         Directory.CreateDirectory(output);
         CopyTree(app, output, rid);
         CopyTree(cli, Path.Combine(output, "cli"), rid);
+        if (nativeDir is not null)
+        {
+            // The OCR library sits next to the executable of the app and of the CLI (it is only loaded from there); the language data once at the root.
+            foreach (var file in NativeTesseract.For(rid))
+            {
+                var source = Path.Combine(nativeDir, file.Target);
+                Copy(source, Path.Combine(output, file.Target), false);
+                if (!file.Target.StartsWith("tessdata/", StringComparison.Ordinal))
+                {
+                    Copy(source, Path.Combine(output, "cli", file.Target), false);
+                }
+            }
+        }
+
         Copy(license, Path.Combine(output, "LICENSE"), false);
         Copy(notices, Path.Combine(output, "THIRD-PARTY-NOTICES.txt"), false);
         Console.WriteLine($"layout: {Directory.EnumerateFiles(output, "*", SearchOption.AllDirectories).Count()} Dateien in {output}");
@@ -3067,6 +3096,195 @@ static class RuntimeSourcesCommand
     }
 }
 
+// One file of the OCR library set: the release asset (or public download) and where it goes in the layout.
+record NativeFile(string Rid, string Asset, string Target, long Size, string Sha256, string? Url = null);
+
+// The pinned OCR library of milestone 15 (Docs/DECISIONS.md, entry "OCR: Tesseract bauen und ausliefern (M15)"; packaging/native/).
+// The libraries come from the prerelease native-tesseract-<version>-<n> of this repository, built by .github/workflows/native-tesseract.yml;
+// the tag never starts with "v", so neither the update check (releases/latest) nor release.yml (SemVer tags) can mistake it for a release.
+static class NativeTesseract
+{
+    public const string TesseractVersion = "5.5.4";
+
+    // The number of the build of this version. A rebuild is a new release (native-tesseract-5.5.4-2) and new pins.
+    public const int BuildNumber = 1;
+
+    public const string Repo = "benjo-code/Pagewing";
+
+    public static string Tag => $"native-tesseract-{TesseractVersion}-{BuildNumber}";
+
+    // Pinned after the run of native-tesseract.yml; an empty hash means "not built yet" and native-fetch refuses.
+    public static readonly NativeFile[] Libraries =
+    [
+        new("win-x64", "tesseract.dll", "tesseract.dll", 0, string.Empty),
+        new("linux-x64", "libtesseract.so", "libtesseract.so", 0, string.Empty),
+    ];
+
+    // tessdata_fast 4.1.0 (Apache-2.0), downloaded from the public repository; hashes computed from the files on 2026-11-02.
+    public static readonly NativeFile[] Tessdata =
+    [
+        new("any", "eng.traineddata", "tessdata/eng.traineddata", 4113088, "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+            "https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata"),
+        new("any", "deu.traineddata", "tessdata/deu.traineddata", 1525436, "19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d",
+            "https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/deu.traineddata"),
+    ];
+
+    public static IReadOnlyList<NativeFile> For(string rid) => [.. Libraries.Where(f => f.Rid == rid), .. Tessdata];
+}
+
+// native-fetch --rid <rid> --out <dir> [--from <dir>]: lays the OCR library and the language data of the RID into <dir>.
+// Everything is fetched into a staging folder and checked (size and SHA-256 per file) first; nothing is laid down unless all pass.
+// --from takes the files from a folder instead of the network (offline use, selftest).
+static class NativeFetch
+{
+    public static int Run(string[] args)
+    {
+        var parsed = Options.Parse(args, "--rid", "--out", "--from");
+        if (parsed is not { } p || p.Positional.Count != 0 || !p.Named.TryGetValue("--rid", out var rid) || !p.Named.TryGetValue("--out", out var output))
+        {
+            Console.Error.WriteLine("Aufruf: native-fetch --rid <win-x64|linux-x64> --out <Ordner> [--from <Ordner>]");
+            return 2;
+        }
+
+        if (rid is not ("win-x64" or "linux-x64"))
+        {
+            Console.Error.WriteLine($"unbekannte RID: {rid}");
+            return 2;
+        }
+
+        return Fetch(NativeTesseract.For(rid), Path.GetFullPath(output), p.Named.GetValueOrDefault("--from") is { } from ? Path.GetFullPath(from) : null);
+    }
+
+    // Returns 0 when every file is laid down, 1 when any file is missing or does not match its pin (then nothing is laid down).
+    public static int Fetch(IReadOnlyList<NativeFile> files, string output, string? from, Func<string, string, bool>? release = null)
+    {
+        foreach (var file in files)
+        {
+            if (Pinned.PinProblem(file.Sha256, $"NativeTesseract ({file.Asset})") is { } problem)
+            {
+                Console.Error.WriteLine($"native-fetch: {problem}; die Bibliothek ist noch nicht gebaut und festgehalten (packaging/native/, Workflow native-tesseract.yml)");
+                return 1;
+            }
+        }
+
+        Directory.CreateDirectory(output);
+        var stage = Path.Combine(output, ".native-stage-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stage);
+        try
+        {
+            if (from is null && files.Any(f => f.Url is null) && !(release ?? GhPrerelease)(NativeTesseract.Repo, NativeTesseract.Tag))
+            {
+                Console.Error.WriteLine($"native-fetch: {NativeTesseract.Tag} ist keine Vorabversion oder nicht lesbar (gh, GH_TOKEN?); nichts geladen");
+                return 1;
+            }
+
+            foreach (var file in files)
+            {
+                var staged = Path.Combine(stage, file.Asset);
+                if (from is not null)
+                {
+                    var source = Path.Combine(from, file.Asset);
+                    if (!File.Exists(source))
+                    {
+                        Console.Error.WriteLine($"native-fetch: {source} fehlt");
+                        return 1;
+                    }
+
+                    File.Copy(source, staged);
+                }
+                else if (file.Url is not null)
+                {
+                    Console.WriteLine($"native-fetch: lade {file.Url}");
+                    Pinned.Fetch(file.Url, staged);
+                }
+                else if (!GhDownload(NativeTesseract.Repo, NativeTesseract.Tag, file.Asset, stage))
+                {
+                    Console.Error.WriteLine($"native-fetch: {file.Asset} konnte nicht aus {NativeTesseract.Tag} geladen werden");
+                    return 1;
+                }
+
+                if (Pinned.VerifyFile(staged, file.Size, file.Sha256, $"NativeTesseract ({file.Asset})") is { } mismatch)
+                {
+                    Console.Error.WriteLine($"native-fetch: {file.Asset} abgelehnt: {mismatch}; nichts abgelegt");
+                    return 1;
+                }
+            }
+
+            foreach (var file in files)
+            {
+                var target = Path.Combine(output, file.Target);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Move(Path.Combine(stage, file.Asset), target, overwrite: true);
+            }
+
+            Console.WriteLine($"native-fetch: {files.Count} Dateien (SHA-256 geprueft) in {output}");
+            return 0;
+        }
+        catch (Exception e) when (e is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"native-fetch: {e.Message}");
+            return 1;
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(stage, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    // gh reads GH_TOKEN from the environment; the repository is private until the public switch, so the download needs it.
+    private static bool GhPrerelease(string repo, string tag) =>
+        Gh(["release", "view", tag, "--repo", repo, "--json", "isPrerelease", "--jq", ".isPrerelease"], out var output) && output.Trim() == "true";
+
+    private static bool GhDownload(string repo, string tag, string asset, string directory) =>
+        Gh(["release", "download", tag, "--repo", repo, "--pattern", asset, "--dir", directory, "--clobber"], out _);
+
+    private static bool Gh(string[] arguments, out string output)
+    {
+        output = string.Empty;
+        var info = new ProcessStartInfo("gh") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in arguments)
+        {
+            info.ArgumentList.Add(argument);
+        }
+
+        try
+        {
+            using var process = Process.Start(info);
+            if (process is null)
+            {
+                return false;
+            }
+
+            var standardOutput = process.StandardOutput.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(TimeSpan.FromMinutes(10)))
+            {
+                process.Kill(entireProcessTree: true);
+                return false;
+            }
+
+            output = standardOutput.Result;
+            if (process.ExitCode != 0)
+            {
+                Console.Error.WriteLine(standardError.Result.Trim());
+            }
+
+            return process.ExitCode == 0;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            Console.Error.WriteLine("native-fetch: gh (GitHub CLI) wurde nicht gefunden");
+            return false;
+        }
+    }
+}
+
 static class RuntimeFetch
 {
     public static int Run(string[] args)
@@ -3803,6 +4021,49 @@ static class SelfTest
             Expect("layout: win-x64 verlangt pdfium.dll", Cli.Run(["layout", "--rid", "win-x64", "--app", app, "--cli", cli, "--out", Path.Combine(dir, "layout4"), "--repo", repo]), 1);
             Expect("layout: unbekannte RID liefert 2", Cli.Run(["layout", "--rid", "mac", "--app", app, "--cli", cli, "--out", dir]), 2);
             Expect("layout: fehlende Option liefert 2", Cli.Run(["layout", "--rid", "linux-x64"]), 2);
+
+            // The OCR library set: the layout puts the library next to the app and the CLI and the language data once at the root.
+            File.WriteAllText(Path.Combine(app, "libpdfium.so"), "pdfium");
+            var nativeDir = Path.Combine(dir, "native");
+            Directory.CreateDirectory(Path.Combine(nativeDir, "tessdata"));
+            File.WriteAllText(Path.Combine(nativeDir, "libtesseract.so"), "tesseract");
+            File.WriteAllText(Path.Combine(nativeDir, "tessdata", "eng.traineddata"), "eng");
+            File.WriteAllText(Path.Combine(nativeDir, "tessdata", "deu.traineddata"), "deu");
+            var layoutNative = Path.Combine(dir, "layout-native");
+            Expect("layout: mit --native", Cli.Run([.. LayoutArgs(layoutNative), "--native", nativeDir]), 0);
+            Expect("layout: Bibliothek neben der App", File.ReadAllText(Path.Combine(layoutNative, "libtesseract.so")), "tesseract");
+            Expect("layout: Bibliothek neben der CLI", File.ReadAllText(Path.Combine(layoutNative, "cli", "libtesseract.so")), "tesseract");
+            Expect("layout: tessdata/ einmal an der Wurzel", File.Exists(Path.Combine(layoutNative, "tessdata", "eng.traineddata")) && File.Exists(Path.Combine(layoutNative, "tessdata", "deu.traineddata")), true);
+            Expect("layout: kein tessdata/ in cli/", Directory.Exists(Path.Combine(layoutNative, "cli", "tessdata")), false);
+            File.Delete(Path.Combine(nativeDir, "tessdata", "deu.traineddata"));
+            Expect("layout: --native ohne Sprachdatei bricht ab", Cli.Run([.. LayoutArgs(Path.Combine(dir, "layout-native2")), "--native", nativeDir]), 1);
+            Expect("layout: bei Abbruch entsteht nichts (native)", Directory.Exists(Path.Combine(dir, "layout-native2")), false);
+
+            // native-fetch: nothing is laid down unless every file has its pinned size and SHA-256.
+            Expect("native-fetch: Tag ist kein SemVer-Tag von release.yml", Regex.IsMatch(NativeTesseract.Tag, @"^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$"), false);
+            Expect("native-fetch: Tag nennt die Tesseract-Version", NativeTesseract.Tag.StartsWith($"native-tesseract-{NativeTesseract.TesseractVersion}-", StringComparison.Ordinal), true);
+            Expect("native-fetch: Sprachdaten sind festgehalten", NativeTesseract.Tessdata.Select(f => Pinned.PinProblem(f.Sha256, f.Asset)).All(problem => problem is null), true);
+            Expect("native-fetch: unbekannte RID liefert 2", Cli.Run(["native-fetch", "--rid", "mac", "--out", dir]), 2);
+            var fetchFrom = Path.Combine(dir, "fetch-from");
+            Directory.CreateDirectory(fetchFrom);
+            File.WriteAllText(Path.Combine(fetchFrom, "lib.bin"), "library");
+            File.WriteAllText(Path.Combine(fetchFrom, "eng.bin"), "english");
+            string Hash(string name) => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(fetchFrom, name))));
+            NativeFile[] Pins(string libraryHash) =>
+            [
+                new("linux-x64", "lib.bin", "libtesseract.so", 7, libraryHash),
+                new("any", "eng.bin", "tessdata/eng.traineddata", 7, Hash("eng.bin")),
+            ];
+            var fetchOut = Path.Combine(dir, "fetch-out");
+            Expect("native-fetch: falsche Pruefsumme wird abgelehnt", NativeFetch.Fetch(Pins(new string('0', 64)), fetchOut, fetchFrom), 1);
+            Expect("native-fetch: bei Ablehnung liegt nichts da", Directory.EnumerateFileSystemEntries(fetchOut).Any(), false);
+            Expect("native-fetch: nicht festgehaltene Pruefsumme wird abgelehnt", NativeFetch.Fetch(Pins(string.Empty), Path.Combine(dir, "fetch-out2"), fetchFrom), 1);
+            Expect("native-fetch: nicht festgehalten legt nichts an", Directory.Exists(Path.Combine(dir, "fetch-out2")), false);
+            Expect("native-fetch: falsche Groesse wird abgelehnt", NativeFetch.Fetch([new("any", "eng.bin", "tessdata/eng.traineddata", 8, Hash("eng.bin"))], fetchOut, fetchFrom), 1);
+            Expect("native-fetch: fehlende Datei wird abgelehnt", NativeFetch.Fetch([new("any", "none.bin", "none.bin", 1, Hash("eng.bin"))], fetchOut, fetchFrom), 1);
+            Expect("native-fetch: Erfolg", NativeFetch.Fetch(Pins(Hash("lib.bin")), fetchOut, fetchFrom), 0);
+            Expect("native-fetch: Dateien an ihrem Platz", File.ReadAllText(Path.Combine(fetchOut, "libtesseract.so")) + File.ReadAllText(Path.Combine(fetchOut, "tessdata", "eng.traineddata")), "libraryenglish");
+            Expect("native-fetch: Ablage ohne Reste", Directory.GetFileSystemEntries(fetchOut).Select(Path.GetFileName).Order().SequenceEqual(["libtesseract.so", "tessdata"]), true);
 
             var zip1 = Path.Combine(dir, "a.zip");
             var zip2 = Path.Combine(dir, "b.zip");
