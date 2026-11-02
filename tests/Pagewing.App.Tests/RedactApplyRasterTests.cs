@@ -272,6 +272,121 @@ public sealed partial class RedactApplyTests
     // ------------------------------------------------------------------ no rescue
 
     [AvaloniaFact]
+    public async Task OfferStartsAtTheResolutionOfThePlan()
+    {
+        // The resolution is plan-wide: pages the user already set to 300 dpi are not reset to 200 by "Continue".
+        var (window, viewModel, _, tab, _) = await MarkedAsync();
+        tab.SetRasterDpiCommand.Execute(300);
+        var seen = new List<RedactionPlan>();
+        viewModel.RedactionAnalyzer = RefusesPageUnlessImage(0, seen);
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRescue);
+        var offer = viewModel.PendingSave!.Rescue!;
+        Assert.Equal(300, offer.Dpi);
+        Assert.True(Find<RadioButton>(card, "RedactRescueDpi300").IsChecked);
+        Assert.False(Find<RadioButton>(card, "RedactRescueDpi200").IsChecked);
+        Assert.StartsWith("At 300 dpi", offer.Pages[0].EstimateText, StringComparison.Ordinal);
+        Assert.Contains("every page that becomes an image", Strings.RedactRescueDpiLabel, StringComparison.Ordinal);
+
+        offer.Pages[0].IsChosen = true;
+        Settle(window);
+        Assert.True(viewModel.PendingSave.Choose(PendingSaveChoice.Continue));
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        Assert.Equal(300, tab.RedactionPlan!.RasterDpi);
+        Assert.Equal(300, seen[1].RasterDpi);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel));
+        Assert.False(await apply);
+    }
+
+    [AvaloniaFact]
+    public async Task AnOfferablePageStaysOfferedNextToOnesThatCannotBeTurnedIntoImages()
+    {
+        var (window, viewModel, _, tab, _) = await MarkedAsync();
+        var reads = new List<int>();
+
+        // Page 1 is an ordinary page, page 2 is far too large, page 3 cannot be read. None of them was ever chosen.
+        viewModel.RescuePageSizeReader = (_, page, _) =>
+        {
+            reads.Add(page);
+            return page switch
+            {
+                0 => Task.FromResult(new PdfPageSize(595, 842)),
+                1 => Task.FromResult(new PdfPageSize(14400, 14400)),
+                _ => throw new InvalidOperationException("unreadable"),
+            };
+        };
+        viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(CleanAnalysis(
+        [
+            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [0], RenderCheckReason),
+            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [1], RenderCheckReason),
+            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [2], RenderCheckReason),
+        ]));
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRescue);
+
+        // Only the ordinary page is offered; the others are named under "cannot be turned into images", each with its own true sentence.
+        Assert.Equal([0, 1, 2], reads);
+        Assert.Equal([0], viewModel.PendingSave!.Rescue!.Pages.Select(static page => page.Page));
+        var stuck = Assert.Single(viewModel.PendingSave.Redaction!.Sections, section => section.Heading == Strings.RedactRescueHeadingStuck);
+        Assert.Equal(
+            ["Page 2 is too large to be turned into an image, even at 72 dpi.", "Page 3 cannot be read, so it cannot be turned into an image."],
+            stuck.Lines);
+        Assert.All(stuck.Lines, line => Assert.DoesNotContain("Undo", line, StringComparison.OrdinalIgnoreCase));
+        Assert.True(viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel));
+        Assert.False(await apply);
+
+        // Nothing offerable: the plain refusal follows, naming the unreadable page without advice to undo a choice that was never made.
+        viewModel.RescuePageSizeReader = (_, _, _) => throw new InvalidOperationException("unreadable");
+        viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(CleanAnalysis([PageOneRefused]));
+        apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRefused);
+        Assert.Null(viewModel.PendingSave!.Rescue);
+        var plain = Assert.Single(viewModel.PendingSave.Redaction!.Sections, section => section.Heading == Strings.RedactRescueHeadingStuck);
+        Assert.Equal(["Page 1 cannot be read, so it cannot be turned into an image."], plain.Lines);
+        Assert.True(viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel));
+        Assert.False(await apply);
+        Assert.Empty(tab.RedactionPlan!.RasterPages);
+    }
+
+    [AvaloniaFact]
+    public async Task AppliedRasterOnlyPlanIsNoLongerAnUnsavedChange()
+    {
+        // A plan of one page as an image and no mark, through the real pipeline.
+        var (window, viewModel, view, tab, _) = await MarkedAsync("redact-everywhere-nopattern.pdf", area: false);
+        tab.CurrentPage = 1;
+        tab.ToggleRasterPageCommand.Execute(null);
+        Assert.True(tab.HasPendingRedactions);
+        Assert.True(tab.AsksBeforeClosing);
+        _host.Picker.Result = Path.Combine(_host.Folder, "raster-only.pdf");
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        Assert.True(viewModel.PendingSave!.Resolve(PendingSaveChoice.SaveAs));
+        Assert.True(await apply);
+        await WaitUntilAsync(window, () => ReferenceEquals(view.Document, tab.Session.Document) && tab.HasShownSharpPage);
+
+        Assert.False(tab.HasPendingRedactions);
+        Assert.False(tab.AsksBeforeClosing);
+        Assert.Null(tab.RedactionPlan);
+        Assert.Equal(string.Empty, await TextOfAsync(tab.Document!, 0));
+        await WaitForCardAsync<RedactReportCard>(window, viewModel, PendingSaveKind.RedactionReport);
+        viewModel.PendingSave!.Abandon();
+        await WaitUntilAsync(window, () => viewModel.PendingSave is null && tab.RedactCommand.CanExecute(null));
+
+        // Discarding a new raster-only plan ends the unsaved state as well.
+        tab.RedactCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.IsRedacting);
+        tab.CurrentPage = 1;
+        tab.ToggleRasterPageCommand.Execute(null);
+        Assert.True(tab.AsksBeforeClosing);
+        tab.DiscardRedactionsCommand.Execute(null);
+        Assert.False(tab.HasPendingRedactions);
+        Assert.False(tab.AsksBeforeClosing);
+    }
+
+    [AvaloniaFact]
     public async Task EncryptedOrPageKeyRefusalOffersNoRescue()
     {
         var (window, viewModel, _, tab, _) = await MarkedAsync();

@@ -12,11 +12,14 @@ namespace Pagewing.App.ViewModels;
 /// </summary>
 public sealed class RedactionRescueOffer : ViewModelBase
 {
-    private int _dpi = RedactionLimits.DefaultRasterDpi;
+    private int _dpi;
 
-    internal RedactionRescueOffer(IEnumerable<(int Page, double WidthPoints, double HeightPoints)> pages)
+    /// <param name="pages">The pages that can be turned into images, with their size in points.</param>
+    /// <param name="dpi">The resolution the plan has now: it is plan-wide, so "Continue" must not reset pages the user already set (200 when not given).</param>
+    internal RedactionRescueOffer(IEnumerable<(int Page, double WidthPoints, double HeightPoints)> pages, int dpi = RedactionLimits.DefaultRasterDpi)
     {
         ArgumentNullException.ThrowIfNull(pages);
+        _dpi = Math.Clamp(dpi, RedactionLimits.MinRasterDpi, RedactionLimits.MaxRasterDpi);
         Pages = [.. pages.Select(page => new RasterRescuePage(this, page.Page, page.WidthPoints, page.HeightPoints))];
     }
 

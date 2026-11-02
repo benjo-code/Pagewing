@@ -2863,7 +2863,7 @@
     <value>Seite {0}: Diese Seite stattdessen in ein Bild umwandeln</value>
   </data>
   <data name="RedactRescueDpiLabel" xml:space="preserve">
-    <value>Auflösung</value>
+    <value>Auflösung (gilt für jede Seite, die ein Bild wird)</value>
   </data>
   <data name="RedactRescueEstimate" xml:space="preserve">
     <value>Bei {0} dpi: {1} × {2} Pixel; die Datei wächst um bis zu etwa {3}.</value>
@@ -2924,5 +2924,8 @@
   </data>
   <data name="RedactRasterOthers" xml:space="preserve">
     <value>Alle anderen Seiten behalten Text und Vektoren.</value>
+  </data>
+  <data name="RedactRescueUnreadable" xml:space="preserve">
+    <value>Seite {0} lässt sich nicht lesen und deshalb nicht in ein Bild umwandeln.</value>
   </data>
 </root>

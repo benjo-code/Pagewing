@@ -1098,6 +1098,7 @@ public static class Strings
     public static string RedactRescueEstimate => Get("RedactRescueEstimate");
     public static string RedactRescueEstimateLowered => Get("RedactRescueEstimateLowered");
     public static string RedactRescueTooLarge => Get("RedactRescueTooLarge");
+    public static string RedactRescueUnreadable => Get("RedactRescueUnreadable");
     public static string RedactRescueStuck => Get("RedactRescueStuck");
     public static string RedactRescueHeadingStuck => Get("RedactRescueHeadingStuck");
     public static string RedactRescueNotStaged => Get("RedactRescueNotStaged");

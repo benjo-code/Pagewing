@@ -13,11 +13,14 @@ namespace Pagewing.App.ViewModels;
 /// </summary>
 public sealed partial class MainViewModel
 {
+    /// <summary>Gets or sets how the size of a refused page is read for the offer (<see cref="PdfDocument.GetPageSizeAsync"/> when <see langword="null"/>; tests give a page that cannot be read or is huge).</summary>
+    internal Func<PdfDocument, int, CancellationToken, Task<PdfPageSize>>? RescuePageSizeReader { get; set; }
+
     /// <summary>
     /// Works out how the refusals of <paramref name="analysis"/> are told: the card with the offer when pages can be rescued, else the plain
     /// card of the refusal (<c>Offer</c> is <see langword="null"/>).
     /// </summary>
-    private static async Task<(RedactionApplyInfo Info, RedactionRescueOffer? Offer)> BuildRescueAsync(
+    private async Task<(RedactionApplyInfo Info, RedactionRescueOffer? Offer)> BuildRescueAsync(
         RedactionPlan plan, RedactionAnalysis analysis, PdfDocument document, CancellationToken token)
     {
         var info = RedactionApplyInfo.ForRefusals(analysis.Refusals);
@@ -41,11 +44,12 @@ public sealed partial class MainViewModel
             PdfPageSize size;
             try
             {
-                size = await document.GetPageSizeAsync(page, token).ConfigureAwait(false);
+                size = await (RescuePageSizeReader?.Invoke(document, page, token) ?? document.GetPageSizeAsync(page, token));
             }
             catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or ObjectDisposedException or ArgumentException)
             {
-                stuck.Add(Format(Strings.RedactRescueStuck, number));
+                // Never chosen, so nothing to undo: the page cannot be read, and what cannot be read cannot become an image.
+                stuck.Add(Format(Strings.RedactRescueUnreadable, number));
                 continue;
             }
 
@@ -64,7 +68,7 @@ public sealed partial class MainViewModel
             info = RedactionApplyInfo.WithSections([.. info.Sections, new RedactionSection(Strings.RedactRescueHeadingStuck, stuck)]);
         }
 
-        return (info, offered.Count == 0 ? null : new RedactionRescueOffer(offered));
+        return (info, offered.Count == 0 ? null : new RedactionRescueOffer(offered, plan.RasterDpi));
     }
 
     private static string Format(string format, string argument) =>
