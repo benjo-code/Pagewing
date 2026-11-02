@@ -184,6 +184,10 @@ public sealed class CommandCatalog
         Tab("pages.split", () => Strings.CommandSplitDocument, FileGroup, null, tab => tab.SplitCommand, ready: true),
         Tab("pages.exportImages", () => Strings.CommandExportImages, FileGroup, null, tab => tab.ExportImagesCommand, ready: true),
 
+        // Text recognition (milestone 15): the card of the choices, the run and the report. Ctrl+Shift+Q is free; the command runs
+        // with no mode on and nothing saving or printing (the tab says so). Esc of the card stops a run (ocr.cancel, before overlay.hide).
+        Tab("ocr.run", () => Strings.CommandOcr, FileGroup, CtrlShift(Key.Q), tab => tab.OcrCommand, ready: true),
+
         // View: zoom (main block, number pad, and Shift+= which is "+" on US layouts), zoom modes, layouts, page, panels.
         Tab("view.zoomIn", () => Strings.CommandZoomIn, ViewGroup, Ctrl(Key.OemPlus), tab => tab.ZoomInCommand)
             with { AlternativeGestures = [CtrlShift(Key.OemPlus), Ctrl(Key.Add)] },
@@ -250,6 +254,7 @@ public sealed class CommandCatalog
         // Then Esc hides an overlay whose own Esc does not get the key (the focus has left it); without an overlay the key
         // goes on to the focused element (the document, the search field). Not listed either. The window binds the keys in
         // this order, so a waiting address goes first.
+        Window("ocr.cancel", () => Strings.CommandOcrCancel, WindowGroup, new KeyGesture(Key.Escape), _window.CancelOcrCommand) with { Listed = false },
         new("overlay.hide", () => Strings.CommandCloseOverlay, WindowGroup, new KeyGesture(Key.Escape),
             () => _window.Overlay != OverlayKind.None, _window.HideOverlay, Listed: false),
 

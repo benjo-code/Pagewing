@@ -32,4 +32,7 @@ public enum OverlayKind
 
     /// <summary>The dialog "New signature": draw one or import an image and keep it in the library.</summary>
     Signature,
+
+    /// <summary>The card of the text recognition (OCR): the choices, the run, the report.</summary>
+    Ocr,
 }

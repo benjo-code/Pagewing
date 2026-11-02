@@ -468,7 +468,7 @@ public sealed partial class SaveCardsTests : IDisposable
 
         // In the catalog Esc means: the link card, the save cards, an overlay, the update card.
         Assert.Equal(
-            ["link.cancel", "save.cancel", "overlay.hide", "update.dismiss"],
+            ["link.cancel", "save.cancel", "ocr.cancel", "overlay.hide", "update.dismiss"],
             viewModel.Commands.All.Where(command => command.Gesture?.Equals(new KeyGesture(Key.Escape)) == true).Select(command => command.Id));
     }
 

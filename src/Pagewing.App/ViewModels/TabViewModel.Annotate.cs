@@ -453,7 +453,7 @@ public sealed partial class TabViewModel
     /// Whether a markup can be made now: the mode is on with an open document shown, no card asks about the tab, and editing
     /// is not locked for an update (<see cref="IsEditingFrozen"/>).
     /// </summary>
-    private bool CanRunMarkup() => CanRequestAnnotate() && !_isAskedAbout && !_isEditingFrozen;
+    private bool CanRunMarkup() => CanRequestAnnotate() && !_isAskedAbout && !IsEditingFrozen;
 
     /// <summary>
     /// Starts the mode, with <paramref name="tool"/> if given (or, with <paramref name="selectTool"/>, with the select tool),

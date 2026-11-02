@@ -41,7 +41,7 @@ public static class OcrRunner
     /// <exception cref="ArgumentException">The options are invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A page of the options does not exist, or a number is out of range.</exception>
     /// <exception cref="OcrEngineException">The library or the language data is missing or damaged; no page was recognized.</exception>
-    /// <exception cref="OperationCanceledException">The run was canceled; nothing is kept.</exception>
+    /// <exception cref="OcrRunCanceledException">The run was canceled; nothing is kept, but the pages that were done are in the exception.</exception>
     public static Task<OcrRunResult> RunAsync(PdfDocument document, OcrOptions options, IOcrEngineFactory factory, IProgress<OcrProgress>? progress, CancellationToken cancellationToken) =>
         RunAsync(document, options, factory, progress, new OcrRunnerSettings(), cancellationToken);
 
@@ -129,9 +129,15 @@ public static class OcrRunner
                     throw fatal;
                 }
 
-                outer.ThrowIfCancellationRequested();
                 var ordered = results.OrderBy(static r => r.Page).ToList();
-                return new OcrRunResult(ordered, OcrReport.Build(ordered, [.. skipped], [.. littleText]));
+                var finished = new OcrRunResult(ordered, OcrReport.Build(ordered, [.. skipped], [.. littleText]));
+                if (outer.IsCancellationRequested)
+                {
+                    // The pages that were done before the cancel are handed on: the user may choose to use them (never written without a question).
+                    throw new OcrRunCanceledException(finished, outer);
+                }
+
+                return finished;
             }
             catch
             {

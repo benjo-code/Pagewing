@@ -189,10 +189,10 @@ public sealed partial class TabViewModel
     /// the one it started with, so a change made meanwhile would be dropped unseen). A print job does not matter: the marks are
     /// not the document and are never printed.
     /// </summary>
-    private bool CanEditRedactions => !_disposed && _isRedacting && _redactionHistory is not null && !_isAskedAbout && !_isEditingFrozen && !_isSaving;
+    private bool CanEditRedactions => !_disposed && _isRedacting && _redactionHistory is not null && !_isAskedAbout && !IsEditingFrozen && !_isSaving;
 
     // The apply flow is the one that saves and asks: it stages the choice of a rejected page itself, only an update's lock stops it.
-    private bool CanEditDuringApply => !_disposed && _isRedacting && _redactionHistory is not null && !_isEditingFrozen;
+    private bool CanEditDuringApply => !_disposed && _isRedacting && _redactionHistory is not null && !IsEditingFrozen;
 
     /// <summary>
     /// Adds a rectangle mark. The area is normalized here (a drag from the lower right to the upper left gives the same
@@ -250,7 +250,7 @@ public sealed partial class TabViewModel
 
     /// <summary>Whether the mode can start now: it may be asked for, no card asks about the tab, editing is not locked, no save runs.</summary>
     private bool CanBeginRedact() =>
-        !_disposed && !_isRedacting && RedactionBlockedReason is null && !_isAskedAbout && !_isEditingFrozen && !_isSaving;
+        !_disposed && !_isRedacting && RedactionBlockedReason is null && !_isAskedAbout && !IsEditingFrozen && !_isSaving;
 
     private bool CanToggleRedact() => _isRedacting ? !_disposed && !HasPendingRedactions : CanBeginRedact();
 

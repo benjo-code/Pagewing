@@ -53,8 +53,8 @@ public sealed partial class LocalizationTests : IDisposable
         var english = ReadKeys("Strings.en.resx");
         var german = ReadKeys("Strings.de.resx");
         // The name of the app, the colour "Orange" of the two palettes, which German writes as English does, and the resolutions "150 dpi",
-        // "200 dpi" and "300 dpi" (a number and a unit that both languages write alike), and the kind of pattern "IBAN" (an acronym).
-        var same = english.Where(pair => pair.Key is not ("AppName" or "MarkupColorOrange" or "DrawColorOrange" or "RedactRasterDpi150" or "RedactRasterDpi200" or "RedactRasterDpi300" or "RedactPatternIban") && german[pair.Key] == pair.Value)
+        // "200 dpi" and "300 dpi" (a number and a unit that both languages write alike), and the kind of pattern "IBAN" (an acronym), and the resolution and the seconds and minutes of the remaining time of the text recognition (a number and a unit).
+        var same = english.Where(pair => pair.Key is not ("AppName" or "MarkupColorOrange" or "DrawColorOrange" or "RedactRasterDpi150" or "RedactRasterDpi200" or "RedactRasterDpi300" or "RedactPatternIban" or "OcrResolutionDpi" or "OcrRemainingSeconds" or "OcrRemainingMinutes") && german[pair.Key] == pair.Value)
             .Select(pair => pair.Key)
             .ToArray();
 

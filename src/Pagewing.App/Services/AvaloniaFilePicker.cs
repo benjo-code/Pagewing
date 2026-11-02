@@ -5,7 +5,7 @@ using Pagewing.App.Resources;
 namespace Pagewing.App.Services;
 
 /// <summary>The file dialog of the platform, through the <see cref="TopLevel.StorageProvider"/> of a window.</summary>
-public sealed class AvaloniaFilePicker : IFilePicker, IImagePicker, IFolderPicker
+public sealed class AvaloniaFilePicker : IFilePicker, IImagePicker, IFolderPicker, ILanguageFilePicker
 {
     private readonly TopLevel _owner;
 
@@ -25,6 +25,19 @@ public sealed class AvaloniaFilePicker : IFilePicker, IImagePicker, IFolderPicke
         });
 
         // Only local files can be opened; a picker that returns something else counts as cancelled.
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<string?> PickLanguageFileAsync()
+    {
+        var files = await _owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = Strings.OcrAddLanguage.TrimEnd('…', ' ', '.'),
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("tessdata") { Patterns = ["*.traineddata"] }],
+        });
+
+        // Only local files can be read; a picker that returns something else counts as cancelled.
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 

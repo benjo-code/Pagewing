@@ -171,6 +171,7 @@ public sealed class PendingSave
         DocMdpLevel level = DocMdpLevel.NotSet,
         Func<string>? message = null,
         bool formsOnly = false,
+        bool ocr = false,
         IReadOnlyList<string>? emptyFieldNames = null,
         string? firstFieldName = null,
         Func<string>? title = null,
@@ -197,6 +198,7 @@ public sealed class PendingSave
         Reason = reason;
         Level = level;
         FormsOnly = formsOnly;
+        Ocr = ocr;
         EmptyFieldNames = emptyFieldNames ?? [];
         FirstFieldName = firstFieldName ?? (EmptyFieldNames.Count > 0 ? EmptyFieldNames[0] : string.Empty);
         ResolveCommand = new RelayCommand<PendingSaveChoice>(choice => Resolve(choice));
@@ -225,6 +227,12 @@ public sealed class PendingSave
     /// level 2, which allows form fields, the text says so, without claiming anything about the signature.
     /// </summary>
     public bool FormsOnly { get; }
+
+    /// <summary>
+    /// Gets whether a text recognition run is among the changes to be saved (<see cref="PendingSaveKind.SignatureWarning"/>): the warning says that
+    /// invisible text is added to the file.
+    /// </summary>
+    public bool Ocr { get; }
 
     /// <summary>Gets the full names of the empty required fields (<see cref="PendingSaveKind.RequiredFields"/>), in the order of the pages.</summary>
     public IReadOnlyList<string> EmptyFieldNames { get; }
@@ -292,6 +300,7 @@ public sealed class PendingSave
         PendingSaveKind.RedactionFailed => Strings.RedactFailedNothing,
         PendingSaveKind.RedactionReport => Strings.RedactReportIntro,
         PendingSaveKind.SignatureWarning when FormsOnly && Level == DocMdpLevel.FormsOnly => Strings.SignatureWarningFormsText,
+        PendingSaveKind.SignatureWarning when Ocr => $"{Strings.SignatureWarningText} {Strings.SignatureWarningOcr}",
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningText,
         PendingSaveKind.RequiredFields => Format(EmptyFieldNames.Count == 1 ? Strings.RequiredFieldsTextOne : Strings.RequiredFieldsTextMany, FirstFieldName),
         PendingSaveKind.SignatureNote => Strings.SignatureNoteText,
@@ -526,8 +535,8 @@ public sealed class PendingSave
     /// <paramref name="formsOnly"/> (only form values changed since the last save) the text at level 2, which allows form
     /// fields, says so; the warning, its choices and its default stay the same.
     /// </summary>
-    internal static PendingSave SignatureWarning(TabViewModel tab, string path, DocMdpLevel level, bool formsOnly = false) =>
-        new(PendingSaveKind.SignatureWarning, tab, path, [PendingSaveChoice.Cancel, PendingSaveChoice.SaveAs, PendingSaveChoice.SaveAnyway], PendingSaveChoice.Cancel, level: level, formsOnly: formsOnly);
+    internal static PendingSave SignatureWarning(TabViewModel tab, string path, DocMdpLevel level, bool formsOnly = false, bool ocr = false) =>
+        new(PendingSaveKind.SignatureWarning, tab, path, [PendingSaveChoice.Cancel, PendingSaveChoice.SaveAs, PendingSaveChoice.SaveAnyway], PendingSaveChoice.Cancel, level: level, formsOnly: formsOnly, ocr: ocr);
 
     /// <summary>
     /// The question before saving a form whose required fields are empty: "Go to the first empty field" (default) or "Save

@@ -126,7 +126,8 @@ public sealed class OcrRunnerTests
 
         await cancel.CancelAsync();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        var canceled = await Assert.ThrowsAsync<OcrRunCanceledException>(() => run);
+        Assert.Empty(canceled.Partial.Pages);
         Assert.Equal(0, fake.Active);
         Assert.Equal(fake.Created, fake.Disposed);
         Assert.True(fake.Calls <= 3, $"{fake.Calls} pages were recognized after the cancel");

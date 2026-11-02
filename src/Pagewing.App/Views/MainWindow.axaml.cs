@@ -94,6 +94,7 @@ public sealed partial class MainWindow : Window
         AttachUpdate(old, _viewModel);
         AttachAnnotate(old, _viewModel);
         AttachForms(old, _viewModel);
+        AttachOcr(old, _viewModel);
         AttachRedaction(old, _viewModel);
     }
 

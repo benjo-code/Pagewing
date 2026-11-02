@@ -88,7 +88,7 @@ public sealed class CommandCatalogTests : IDisposable
 
         // Only the meanings of Esc at window level stay out of the lists: the link card's, the save cards', the overlays', then the update
         // card's (with the note after "Check for updates").
-        Assert.Equal(["link.cancel", "save.cancel", "overlay.hide", "update.dismiss"], catalog.All.Where(command => !command.Listed).Select(command => command.Id));
+        Assert.Equal(["link.cancel", "save.cancel", "ocr.cancel", "overlay.hide", "update.dismiss"], catalog.All.Where(command => !command.Listed).Select(command => command.Id));
         Assert.Equal(["file", "edit", "view", "nav", "search", "window"], CommandCatalog.Groups);
         Strings.Culture = new CultureInfo("de");
         Assert.Equal(["Datei", "Bearbeiten", "Ansicht", "Navigation", "Suche", "Fenster"], CommandCatalog.Groups.Select(CommandCatalog.GroupTitle));
@@ -453,12 +453,12 @@ public sealed class CommandCatalogTests : IDisposable
             {
                 // Avalonia matches the plus and minus of the number pad as those of the main block (KeyGesture.Matches),
                 // which only the alternatives of one command may share.
-                // Esc alone has four unlisted commands, which the window asks in turn: the link card first, the save cards, then an
-                // overlay, then the update card or its note.
+                // Esc alone has five unlisted commands, which the window asks in turn: the link card first, the save cards, the card of the text
+                // recognition (it stops a run), then an overlay, then the update card or its note.
                 var key = (Normalized(gesture.Key), gesture.KeyModifiers);
                 if (owners.TryGetValue(key, out var owner))
                 {
-                    var escape = gesture.Equals(new KeyGesture(Key.Escape)) && owner == "link.cancel" && command.Id is "save.cancel" or "overlay.hide" or "update.dismiss";
+                    var escape = gesture.Equals(new KeyGesture(Key.Escape)) && owner == "link.cancel" && command.Id is "save.cancel" or "ocr.cancel" or "overlay.hide" or "update.dismiss";
                     Assert.True(owner == command.Id || escape, $"{gesture} belongs to {owner} and {command.Id}");
                 }
                 else
@@ -510,7 +510,7 @@ public sealed class CommandCatalogTests : IDisposable
         {
             if (key == Key.Escape && modifiers == KeyModifiers.None)
             {
-                Assert.Equal(["link.cancel", "save.cancel", "overlay.hide", "update.dismiss"], ids);
+                Assert.Equal(["link.cancel", "save.cancel", "ocr.cancel", "overlay.hide", "update.dismiss"], ids);
                 continue;
             }
 

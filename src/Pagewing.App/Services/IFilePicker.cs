@@ -25,6 +25,14 @@ public interface IFilePicker
     Task<string?> PickSavePdfAsync(string suggestedName, string? folder);
 }
 
+/// <summary>Lets the user choose a language file (<c>.traineddata</c>) for the text recognition (the system file dialog; a fake in tests).</summary>
+public interface ILanguageFilePicker
+{
+    /// <summary>Shows the dialog with the filter "Language files" (<c>*.traineddata</c>).</summary>
+    /// <returns>The full local path of the chosen file, or <see langword="null"/> when the user cancelled.</returns>
+    Task<string?> PickLanguageFileAsync();
+}
+
 /// <summary>Lets the user choose a folder to write new files into (the system folder dialog; a fake in tests).</summary>
 public interface IFolderPicker
 {
