@@ -745,7 +745,7 @@
     {
       "number": 4,
       "name": "OCR & Text bearbeiten",
-      "spec": { "text": "M15 (OCR) liegt vor, M16 (Text bearbeiten) bekommt vor seinem Plan einen Nachtrag; Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6", "link": "superpowers/specs/2026-11-02-teilprojekt4-ocr-design.md" },
+      "spec": { "text": "M15 (OCR) liegt vor, M16 (Text bearbeiten) hat den Nachtrag [2026-11-02-m16-text-bearbeiten-design.md](superpowers/specs/2026-11-02-m16-text-bearbeiten-design.md); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6", "link": "superpowers/specs/2026-11-02-teilprojekt4-ocr-design.md" },
       "milestones": [
         {
           "id": "15",
@@ -768,7 +768,8 @@
         {
           "id": "16",
           "title": "Text bearbeiten",
-          "status": "open",
+          "status": "planned",
+          "plan": "superpowers/plans/2026-11-02-milestone-16-text-bearbeiten.md",
           "prerequisites": ["15"],
           "goal": "Vorhandene Textzeilen und Tippfehler lassen sich korrigieren, mit Ersatzschrift für fehlende Zeichen.",
           "tasks": [

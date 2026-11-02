@@ -45,7 +45,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 14 | Schwärzen | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-11-01-milestone-14-schwaerzen.md) | 2026-11-01 |
 | 14.1 | Schwärzen: Muster, Füllungen, Seite als Bild | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-11-01-milestone-14-1-schwaerzen-muster-fuellungen.md) | 2026-11-02 |
 | 15 | OCR | 4 – OCR & Text bearbeiten | ✅ fertig | [Plan](superpowers/plans/2026-11-02-milestone-15-ocr.md) | 2026-11-02 |
-| 16 | Text bearbeiten | 4 – OCR & Text bearbeiten | ⬜ offen | – | – |
+| 16 | Text bearbeiten | 4 – OCR & Text bearbeiten | 🟡 geplant | [Plan](superpowers/plans/2026-11-02-milestone-16-text-bearbeiten.md) | – |
 | – | **Release `v1.0.0`** – Seiten organisieren, Schwärzen, OCR und Textbearbeitung (M13 bis M16) | – | ⬜ offen | – | – |
 
 ## Scope-Änderungen
@@ -566,7 +566,7 @@ Ziel: Schwärzen findet Muster (E-Mail, IBAN, Telefon, Kreditkarte), bietet weit
 
 # Teilprojekt 4 – OCR & Text bearbeiten
 
-**Spec:** [2026-11-02-teilprojekt4-ocr-design.md](superpowers/specs/2026-11-02-teilprojekt4-ocr-design.md) M15 (OCR) liegt vor, M16 (Text bearbeiten) bekommt vor seinem Plan einen Nachtrag; Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
+**Spec:** [2026-11-02-teilprojekt4-ocr-design.md](superpowers/specs/2026-11-02-teilprojekt4-ocr-design.md) M15 (OCR) liegt vor, M16 (Text bearbeiten) hat den Nachtrag [2026-11-02-m16-text-bearbeiten-design.md](superpowers/specs/2026-11-02-m16-text-bearbeiten-design.md); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
 
 ## Milestone 15 – OCR
 **Status:** ✅ fertig (2026-11-02) · **Plan:** [2026-11-02-milestone-15-ocr.md](superpowers/plans/2026-11-02-milestone-15-ocr.md) · **Voraussetzungen:** M14
@@ -583,7 +583,7 @@ Ziel: Gescannte PDFs lassen sich offline durchsuchbar machen.
 - [x] Gescannte Test-PDF ist nach OCR durchsuchbar, Treffer liegen an der richtigen Stelle (Test) – `OcrRunnerNativeTests.ScanFixtureIsRecognisedAtTheKnownPositions` (ocr-scan.pdf, ocr-scan-rotated.pdf) und `OcrInteractionTests.RotatedFixtureSearchHitsAreOnTheWord` mit der echten Engine; `OcrInteractionTests.OcrThenRedactingAWordRemovesPixelsAndLayerAndTheCheckPasses`
 
 ## Milestone 16 – Text bearbeiten
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M15
+**Status:** 🟡 geplant · **Plan:** [2026-11-02-milestone-16-text-bearbeiten.md](superpowers/plans/2026-11-02-milestone-16-text-bearbeiten.md) · **Voraussetzungen:** M15
 
 Ziel: Vorhandene Textzeilen und Tippfehler lassen sich korrigieren, mit Ersatzschrift für fehlende Zeichen.
 
