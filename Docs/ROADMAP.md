@@ -44,7 +44,7 @@ Gesamtfahrplan für das Projekt. Jeder Milestone ist so geschnitten, dass er in 
 | 13 | Seiten organisieren | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-10-31-milestone-13-seiten-organisieren.md) | 2026-11-01 |
 | 14 | Schwärzen | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-11-01-milestone-14-schwaerzen.md) | 2026-11-01 |
 | 14.1 | Schwärzen: Muster, Füllungen, Seite als Bild | 3 – Seiten & Schwärzen | ✅ fertig | [Plan](superpowers/plans/2026-11-01-milestone-14-1-schwaerzen-muster-fuellungen.md) | 2026-11-02 |
-| 15 | OCR | 4 – OCR & Text bearbeiten | ⬜ offen | – | – |
+| 15 | OCR | 4 – OCR & Text bearbeiten | 🟡 geplant | [Plan](superpowers/plans/2026-11-02-milestone-15-ocr.md) | – |
 | 16 | Text bearbeiten | 4 – OCR & Text bearbeiten | ⬜ offen | – | – |
 | – | **Release `v1.0.0`** – Seiten organisieren, Schwärzen, OCR und Textbearbeitung (M13 bis M16) | – | ⬜ offen | – | – |
 
@@ -564,15 +564,15 @@ Ziel: Schwärzen findet Muster (E-Mail, IBAN, Telefon, Kreditkarte), bietet weit
 
 # Teilprojekt 4 – OCR & Text bearbeiten
 
-**Spec:** noch nicht erstellt (wird in M15 erstellt); Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
+**Spec:** [2026-11-02-teilprojekt4-ocr-design.md](superpowers/specs/2026-11-02-teilprojekt4-ocr-design.md) M15 (OCR) liegt vor, M16 (Text bearbeiten) bekommt vor seinem Plan einen Nachtrag; Rahmen in der [Gesamt-Spec](superpowers/specs/2026-10-16-pagewing-design.md), Abschnitt 6
 
 ## Milestone 15 – OCR
-**Status:** ⬜ offen · **Plan:** – · **Voraussetzungen:** M14
+**Status:** 🟡 geplant · **Plan:** [2026-11-02-milestone-15-ocr.md](superpowers/plans/2026-11-02-milestone-15-ocr.md) · **Voraussetzungen:** M14
 
 Ziel: Gescannte PDFs lassen sich offline durchsuchbar machen.
 
 **Aufgaben**
-- [ ] Spec erstellen (Brainstorming) für Teilprojekt 4, inkl. Auslieferung von Tesseract und Sprachdaten
+- [x] Spec erstellen (Brainstorming) für Teilprojekt 4, inkl. Auslieferung von Tesseract und Sprachdaten. Erledigt 2026-11-02: [2026-11-02-teilprojekt4-ocr-design.md](superpowers/specs/2026-11-02-teilprojekt4-ocr-design.md)
 - [ ] `Pagewing.Ocr`: eigene `[LibraryImport]`-Bindings auf die Tesseract-C-API, erst bei Nutzung geladen
 - [ ] Unsichtbare Textebene erzeugen, im Hintergrund mit Fortschritt und Abbruch
 - [ ] CLI `pagewing ocr`
