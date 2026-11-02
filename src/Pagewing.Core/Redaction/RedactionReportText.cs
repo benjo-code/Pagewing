@@ -206,6 +206,12 @@ public static class RedactionReportText
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"Page {fallback.Page + 1}: removed as a whole instead of precisely ({fallback.Kind}): {fallback.Reason}"));
         }
 
+        // A page turned into an image is not "nothing removed": its text and everything else of it but the picture is gone.
+        foreach (var info in analysis.Raster ?? [])
+        {
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"Page {info.Page + 1}: turned into an image ({info.Dpi} dpi); only the picture of the page stays, its text, links, comments and form fields are not kept."));
+        }
+
         Section(text, "Removed", lines);
     }
 
@@ -328,6 +334,13 @@ public static class RedactionReportText
                 _ =>
                     Count(loss.Count, "digital signature no longer verifies after the change; its data stays in the file as inert data and is not removed.", "digital signatures no longer verify after the change; their data stays in the file as inert data and is not removed."),
             });
+        }
+
+        // The widgets of a page turned into an image are not left as annotations (as the line above says for the others): they are gone.
+        var rasterFields = analysis.Raster?.Sum(static r => r.FormFields) ?? 0;
+        if (rasterFields > 0)
+        {
+            lines.Add(Count(rasterFields, "form field is gone from the pages turned into images: its widget is not kept, not even as an annotation.", "form fields are gone from the pages turned into images: their widgets are not kept, not even as annotations."));
         }
 
         Section(text, "Lost", lines);

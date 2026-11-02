@@ -537,6 +537,35 @@ public sealed class RedactRasterApplyTests : IDisposable
         Assert.False(RawPdf.ContainsAnywhere(bytes, "linkword-5512"));
     }
 
+    [Fact]
+    public async Task TheReportOfARasterOnlyPlanSaysWhatHappensToThePage()
+    {
+        var file = new VerifierPdf("BT /F1 12 Tf 20 150 Td (A page with a field) Tj ET");
+        var field = file.Add("<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /V (x) /Rect [110 20 200 40] /F 4 /DA (/Helv 0 Tf 0 g) >>");
+        file.CatalogEntries = $"/AcroForm << /Fields [{field} 0 R] /DA (/Helv 0 Tf 0 g) >>";
+        file.PageEntries = $"/Annots [{field} 0 R]";
+        var path = Write("report.pdf", file.Build());
+        var plan = RedactionPlan.Empty.WithRasterPage(0, on: true);
+        using var session = new ViewerSession(engine);
+        await session.OpenAsync(path);
+
+        var analysis = await new RedactionExecutor(engine).AnalyzeAsync(plan, session.Document!, path, null, Ct);
+        var before = RedactionReportText.Of(analysis);
+        var result = await RedactionApplier.ApplyAsync(session, engine, new RedactionApplyRequest(plan, Target()), null, Ct);
+        var after = RedactionReportText.Of(analysis, result.Check);
+
+        foreach (var report in new[] { before, after })
+        {
+            // A page that becomes an image is not "nothing removed": the report names the page and what it does not keep.
+            Assert.DoesNotContain("Removed:\n- none", report, StringComparison.Ordinal);
+            Assert.Contains("Page 1: turned into an image", report, StringComparison.Ordinal);
+            Assert.Contains("text, links, comments and form fields are not kept", report, StringComparison.Ordinal);
+
+            // The widget is gone from the page, not left on it as an annotation.
+            Assert.Contains("gone from the pages turned into images", report, StringComparison.Ordinal);
+        }
+    }
+
     // ------------------------------------------------------------------ the size of the page
 
     private string PageOfSize(double widthPt, double heightPt) =>

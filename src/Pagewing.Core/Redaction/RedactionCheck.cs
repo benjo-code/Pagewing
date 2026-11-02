@@ -287,7 +287,7 @@ public enum RedactionNotCheckedKind
     /// <summary>Another program may read the file differently.</summary>
     OtherViewer,
 
-    /// <summary>The apply step compares only the redacted pages with the original, outside the marked areas (forms: annotations left out).</summary>
+    /// <summary>The apply step compares only the pages redacted in place with the original, outside the marked areas (forms: annotations left out); pages turned into images are not compared (<c>Count</c> of them, when there are any).</summary>
     ApplyRender,
 
     /// <summary>The apply step looks for page keys in the page dictionaries only.</summary>
