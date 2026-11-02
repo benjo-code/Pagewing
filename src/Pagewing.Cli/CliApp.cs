@@ -6,7 +6,7 @@ using Pagewing.Core.Pdf;
 namespace Pagewing.Cli;
 
 /// <summary>
-/// The command line of Pagewing: <c>info</c>, <c>render</c>, <c>text</c>, <c>search</c>, <c>rotate</c>, <c>merge</c>, <c>split</c>, <c>export</c> and <c>redact</c>. Exit codes: 0 success, 1 runtime
+/// The command line of Pagewing: <c>info</c>, <c>render</c>, <c>text</c>, <c>search</c>, <c>rotate</c>, <c>merge</c>, <c>split</c>, <c>export</c>, <c>redact</c> and <c>ocr</c>. Exit codes: 0 success, 1 runtime
 /// error (<c>pagewing: &lt;message&gt;</c> on stderr), 2 usage error (message and usage text on stderr).
 /// </summary>
 public static class CliApp
@@ -26,6 +26,7 @@ public static class CliApp
           pagewing split  <file> --output <dir> (--every <n> | --ranges <ranges> | --bookmarks) [--force] [--password <pw>]
           pagewing export <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--force] [--password <pw>]
           pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--image-fill <solid|pixelate|blur>] [--image-strength <coarse|very-coarse>] [--overlay-text <text>] [--overlay-repeat] [--force] [--password <pw>]
+          pagewing ocr    <file> --output <out.pdf> [--language <deu+eng>] [--tessdata <folder>] [--pages <range>] [--mode <skip|redo|force>] [--dpi <150-600>] [--jobs <n>] [--dry-run] [--force] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -69,13 +70,35 @@ public static class CliApp
                    signature is shown as invalid afterwards. The input is never changed. A page can also
                    be turned into an image (--rasterize-pages, --rasterize-unredactable): see there.
 
+          ocr      Recognize the text of scanned pages and write the result to a new file: the page picture
+                   stays as it is, the recognized words go behind it as invisible text, so the file can be
+                   searched and its text selected. The file is written incrementally (the bytes of the input
+                   stay the beginning of the output) and never replaces the input. Pages that have text of
+                   their own are skipped (--mode skip); redo replaces the text layer of an earlier run, force
+                   recognizes every page. The report on stderr says how many pages and words, the engine's own
+                   confidence (it is not a promise: recognition makes mistakes) and every page that was skipped
+                   with the reason; it never contains the recognized text. A run that recognizes no page is an
+                   error (exit 1, nothing written). --dry-run lists the pages that would be recognized and at what
+                   resolution, loads no library and writes nothing. The language models are the .traineddata files
+                   of the tessdata folder next to pagewing and of the one you imported them into, or of --tessdata.
+
         Options:
           --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all; rotate: required).
                              For redact: only the matches of --text and --pattern on these pages are removed.
                              Pages are taken in ascending order, each once: --pages 3,1 gives pages 1 and 3,
                              so --pages cannot reorder pages.
                              For merge: after a file, the pages taken from that file.
+          --language <names> Ocr: the language models to recognize with, joined with +, in the order of their priority,
+                             for example deu+eng (default: the language of the system and English, as far as installed).
+                             An unknown language is an error (exit 1) that lists the installed ones.
+          --tessdata <dir>   Ocr: the folder with the <language>.traineddata files, instead of the ones next to pagewing.
+          --mode <how>       Ocr: skip (default: pages with text or with an OCR layer are skipped), redo (replace the OCR
+                             layer of an earlier run, still skip pages with text of their own) or force (recognize every page).
+          --jobs <n>         Ocr: how many pages are recognized at once, 1 to 16 (default: one less than the cores, at most 4).
           --dpi <n>          Resolution of rendered pages (default: 144).
+                             For ocr: the resolution pages are recognized at, a whole number from 150 to 600 (default: from the
+                             picture of the page, 150 to 300). A page too large for 50 megapixels gets a lower one, which the
+                             report names; below 150 dpi it is skipped.
                              For redact: the resolution of the pages that become images, a whole number from
                              72 to 300 (default: 200); only with --rasterize-pages or --rasterize-unredactable.
                              A page too large for it gets a lower resolution, which the report names.
@@ -87,7 +110,7 @@ public static class CliApp
           --ranges <list>    Split: a new file per range, for example "1-3,4-9" (ranges may overlap).
           --bookmarks        Split: a new file per top-level bookmark; the pages before the first
                              one form a file of their own. A file without such a bookmark is an error.
-          --force            Commands that write files (rotate, merge, split, export, redact): replace an existing
+          --force            Commands that write files (rotate, merge, split, export, redact, ocr): replace an existing
                              output file. The output is never the input, with or without --force.
           --no-annotations   Render and export without annotations.
           --text <term>      Redact: remove every match of the term. May be given several times. Without --pages
@@ -120,7 +143,7 @@ public static class CliApp
                              encrypted file or a page key that cannot be removed, and it needs --text, --pattern or --rect.
           --dry-run          Redact: only search and analyse; print the number of matches per page and the
                              report, write nothing (exit 0 if the file would be written, the final check
-                             of the written file excepted).
+                             of the written file excepted). Ocr: list the pages that would be recognized.
           --allow-unsearched Redact: go on although some pages could not be searched completely (a page that cannot be
                              read, an annotation or form field left out by a limit or damage). Without it the command
                              stops (exit 1, nothing written, also with --dry-run) and names the pages, because the
@@ -164,6 +187,8 @@ public static class CliApp
           pagewing redact contract.pdf --output contract-redacted.pdf --text "Jane Doe" --rect 2:72,100,200,24
           pagewing redact contract.pdf --output out.pdf --text 4711 --dry-run
           pagewing redact contract.pdf --output out.pdf --pattern iban --pattern email
+          pagewing ocr scan.pdf --output scan-searchable.pdf --language deu+eng
+          pagewing ocr scan.pdf --dry-run
 
         A file whose name starts with a dash is written ./-name.pdf (or after --, which ends
         the options; --pages and --password then cannot follow). Options and --help are
@@ -350,6 +375,10 @@ public static class CliApp
         else if (options.Command == "redact")
         {
             await RedactCommand.RunAsync(document, options, PasswordOf(options, getEnvironmentVariable), output, stderr, ct, progress).ConfigureAwait(false);
+        }
+        else if (options.Command == "ocr")
+        {
+            await OcrCommand.RunAsync(document, options, PasswordOf(options, getEnvironmentVariable), output, stderr, ct, progress).ConfigureAwait(false);
         }
         else if (options.Command == "export")
         {

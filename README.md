@@ -77,7 +77,7 @@ Die Roadmap wird aus `Docs/roadmap.json` erzeugt: `dotnet run tools/roadmap.cs -
 
 ## CLI
 
-`pagewing` zeigt Informationen an, rendert Seiten als PNG, gibt den Text aus, organisiert Seiten (drehen, zusammenführen, teilen, als Bilder exportieren) und schwärzt Text und Bereiche (`redact`). Die Ausgaben sind englisch und stabil, damit Skripte sie auswerten können. Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf.
+`pagewing` zeigt Informationen an, rendert Seiten als PNG, gibt den Text aus, organisiert Seiten (drehen, zusammenführen, teilen, als Bilder exportieren) schwärzt Text und Bereiche (`redact`) und macht gescannte Seiten durchsuchbar (`ocr`). Die Ausgaben sind englisch und stabil, damit Skripte sie auswerten können. Exit-Codes: `0` Erfolg, `1` Fehler (Meldung `pagewing: …` auf stderr), `2` falscher Aufruf.
 
 ```bash
 pagewing info dokument.pdf                       # Seitenzahl, PDF-Version, Metadaten, Seitengrößen
@@ -93,6 +93,8 @@ pagewing redact vertrag.pdf --output vertrag-redacted.pdf --text "Max Mustermann
 pagewing redact vertrag.pdf --output x.pdf --text 4711 --dry-run
 pagewing redact vertrag.pdf --output x.pdf --pattern iban --pattern email
 pagewing redact vertrag.pdf --output x.pdf --text 4711 --rasterize-unredactable --dpi 150
+pagewing ocr scan.pdf --output scan-durchsuchbar.pdf --language deu+eng
+pagewing ocr scan.pdf --dry-run                  # zeigt, welche Seiten erkannt würden, lädt keine Bibliothek
 pagewing --help
 ```
 
@@ -127,6 +129,21 @@ pagewing redact <Datei> --output <aus.pdf> [--text <Begriff>]... [--pattern <ema
 - **Text auf den Flächen:** `--overlay-text <Text>` schreibt einen Text auf jede markierte Fläche des Aufrufs (die Kommandozeile kennt keine einzelnen Markierungen): höchstens 200 Zeichen, nur Zeichen der Schrift des Textes (ein Text mit einem anderen Zeichen wird **als Ganzes** abgelehnt, nie geändert; die Meldung nennt die Stelle, nie den Text). Er wird mittig und so groß wie möglich eingepasst (nicht unter 6 pt); passt er auch dann nicht, bleibt die Fläche ohne Text gefüllt und der Bericht zählt sie („does not fit“, auch bei `--dry-run`); auf verpixelten oder weichgezeichneten Bildflächen steht kein Text. `--overlay-repeat` kachelt den Text über die Fläche (nur zusammen mit `--overlay-text`). **Enthält der Text einen geschwärzten Begriff** (ohne Beachtung der Schreibung, Leerräume zählen nicht), lehnt die Analyse ab (Exit 1, keine Ausgabedatei, auch bei `--dry-run`): der Text würde ihn zurück auf die Seite bringen. Ehrlich gesagt wird der Text als Formen gezeichnet, nicht als Text: er ist nicht auswählbar, steht in keiner Datei als Text, und die Prüfung der geschriebenen Datei liest ihn **nicht** zurück (*Not checked*). Exit 2: `--overlay-repeat` ohne `--overlay-text`, `--overlay-text` leer oder länger als 200 Zeichen oder mit nicht darstellbarem Zeichen, doppelt angegeben oder ohne `--text`/`--pattern`/`--rect`.
 - **`--dry-run`** sucht und analysiert, schreibt nichts und zeigt je `--text` die Zahl der Treffer je Seite (nie den Text) und den Bericht. Exit 0 heißt: Es würde geschrieben; die Prüfung der geschriebenen Datei läuft erst beim Schreiben und kann den Befehl noch beenden. Ablehnungen gelten auch hier (Exit 1).
 - Wie die anderen schreibenden Befehle: kein Überschreiben ohne `--force`, nie eine Eingabedatei, bei Strg+C bleibt keine temporäre Datei. stdout bei Erfolg: der Pfad der Ausgabe. Exit 2: Rechteck falsch geformt (`--rect`), leerer `--text`, unbekannte Art bei `--pattern`, `--include-unchecked` ohne `--pattern`, weder `--text` noch `--pattern` noch `--rect` noch `--rasterize-pages`, `--output` fehlt, `--pages` ohne `--text`/`--pattern`, ungültiger Bereich (auch bei `--rasterize-pages`), `--dpi` außerhalb 72 bis 300 oder ohne `--rasterize-*`, `--rasterize-unredactable` ohne `--text`/`--pattern`/`--rect`, ungültiges `--image-fill` oder `--image-strength`, `--image-strength` ohne `--image-fill pixelate`/`blur`.
+
+### `ocr`: Texterkennung
+
+```
+pagewing ocr <Datei> --output <aus.pdf> [--language <deu+eng>] [--tessdata <Ordner>] [--pages <Bereich>] [--mode <skip|redo|force>] [--dpi <150-600>] [--jobs <n>] [--dry-run] [--force] [--password <pw>]
+```
+
+Erkennt den Text gescannter Seiten mit Tesseract (offline, über die mitgelieferte Bibliothek) und legt ihn als **unsichtbare Textebene** hinter das unveränderte Seitenbild: Die Datei ist danach durchsuchbar, der Text auswählbar und kopierbar, die Seite sieht aus wie vorher.
+
+- **Geschrieben wird inkrementell:** Die Bytes der Eingabe bleiben der exakte Anfang der Ausgabe (signierte Bereiche und die Dateigröße bleiben schonend), über denselben geprüften, atomaren Weg wie das Speichern der App. Kein Überschreiben ohne `--force`, **nie** eine Eingabedatei. Eine signierte Datei: vor dem Schreiben steht eine `warning:`-Zeile; bei einer Signatur, die keine Änderungen erlaubt, wird sie danach als ungültig angezeigt.
+- **Sprachen:** `--language deu+eng` (die Namen der Modelle, in der Reihenfolge ihrer Priorität; Standard: die Sprache des Systems und Englisch, soweit installiert). Mitgeliefert sind `eng` und `deu` (`tessdata_fast`); weitere `.traineddata`-Dateien kommen in den Ordner `tessdata` im Benutzerordner der App oder mit `--tessdata <Ordner>` aus einem eigenen Ordner. Eine unbekannte Sprache ist ein Fehler (Exit 1), der die installierten nennt.
+- **Seiten:** Standard `--mode skip`: Seiten mit Text (ab 50 Zeichen ohne Leerraum) oder mit der Textebene eines früheren Laufs werden übersprungen und stehen mit Grund im Bericht. `redo` ersetzt die Textebene eines früheren Laufs, `force` erkennt jede Seite (der vorhandene Text bleibt). `--dpi` (150 bis 600) wählt die Auflösung, sonst wird sie aus dem Bild der Seite gewählt (150 bis 300); eine Seite über 50 Megapixel bekommt eine niedrigere Auflösung, die der Bericht nennt, unter 150 dpi wird sie übersprungen. `--jobs` bestimmt, wie viele Seiten gleichzeitig erkannt werden (Standard: Kerne − 1, höchstens 4).
+- **Bericht auf stderr** (nie der erkannte Text): Seiten, Wörter, die eigene Konfidenz der Erkennung, Seiten mit niedriger Konfidenz, Seiten ohne Wörter, Seiten mit wenig eigenem Text, Wörter, die die Schrift der Textebene nicht tragen kann (andere Schriftsysteme), und **jede** übersprungene Seite mit Grund. Der Bericht zählt nur: Die Erkennung macht Fehler, und er sagt nie, sie sei korrekt oder vollständig. Wird keine Seite erkannt (oder findet sich kein Wort), ist das Exit 1 und es wird nichts geschrieben.
+- **`--dry-run`** listet je Seite, ob sie erkannt würde und mit welcher Auflösung (stdout), lädt weder Tesseract noch eine Sprachdatei und schreibt nichts (`--output` ist dann nicht nötig).
+- stdout bei Erfolg: der Pfad der Ausgabe. Exit 1: Sprache oder Bibliothek fehlt oder ist beschädigt, Ausgabe vorhanden ohne `--force` oder gleich der Eingabe, Seite hinter dem Ende, keine Seite erkannt, Schreib- oder Prüffehler. Exit 2: ungültiges `--mode`, `--dpi` (nicht 150 bis 600), `--jobs` (nicht 1 bis 16), `--language`, leeres `--tessdata`, `--output` fehlt (außer mit `--dry-run`), eine Option doppelt.
 
 `--pages` und `--password` hinter einer Datei gelten für diese Datei (wie bei `qpdf --pages`); die erste Datei von `merge` ist die primäre (ihre Lesezeichen, Formulare und Seitenbeschriftungen bleiben, die der anderen Dateien nicht). `split --bookmarks` teilt an den Lesezeichen der obersten Ebene. `export` legt einen fehlenden Ausgabeordner an (wie `render`), `split` nicht. Eine Datei, die wie eine Option heißt oder mit `-` beginnt, geht als `./-name.pdf`. Seiten umsortieren oder duplizieren geht bisher nur in der App (Modus „Seiten organisieren“, Strg+Umschalt+O).
 

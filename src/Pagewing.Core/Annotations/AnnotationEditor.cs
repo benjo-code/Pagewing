@@ -557,83 +557,18 @@ public sealed class AnnotationEditor
         ArgumentNullException.ThrowIfNull(result);
         return RunAsync<OcrApplyResult?>(async document =>
         {
-            var before = new SortedDictionary<int, IReadOnlyList<OcrPageWord>>();
-            var after = new SortedDictionary<int, IReadOnlyList<OcrPageWord>>();
-            var already = new List<int>();
-            foreach (var page in result.Pages.OrderBy(static p => p.Page))
-            {
-                var words = page.Words.Where(static w => w.IsUsable).ToList();
-                if (words.Count == 0)
-                {
-                    continue;
-                }
-
-                // Reading first: a page that is not there fails before anything is written.
-                var existing = await document.ReadOcrLayerAsync(page.Page).ConfigureAwait(false);
-                if (existing.Count > 0 && !replace)
-                {
-                    already.Add(page.Page);
-                    continue;
-                }
-
-                after[page.Page] = words;
-                if (existing.Count > 0)
-                {
-                    before[page.Page] = existing;
-                }
-            }
-
-            if (after.Count == 0)
+            var plan = await OcrLayerApplier.PlanAsync(document, result, replace).ConfigureAwait(false);
+            if (plan.IsEmpty)
             {
                 return null;
             }
 
-            var step = new AnnotationCommand.OcrLayer(before, after);
+            var step = plan.Step;
             RequireRoomFor(step.EstimatedBytes);
-
-            var written = 0;
-            var leftOut = 0;
-            var touched = new List<int>();
-            try
-            {
-                foreach (var (page, words) in after)
-                {
-                    touched.Add(page);
-                    await document.RemoveOcrLayerAsync(page).ConfigureAwait(false);
-                    var added = await document.AddOcrLayerAsync(page, words).ConfigureAwait(false);
-                    written += added.Written;
-                    leftOut += added.Skipped;
-                }
-            }
-            catch
-            {
-                await RestoreOcrAsync(document, touched, before).ConfigureAwait(false);
-                throw;
-            }
-
-            Record(new HashSet<int>(after.Keys), step);
-            return new OcrApplyResult([.. after.Keys], written, leftOut, already);
+            var (written, leftOut) = await OcrLayerApplier.WriteAsync(document, plan).ConfigureAwait(false);
+            Record(new HashSet<int>(plan.After.Keys), step);
+            return new OcrApplyResult([.. plan.After.Keys], written, leftOut, plan.AlreadyRecognized);
         });
-    }
-
-    /// <summary>Puts the layers of the pages back as they were before a step that failed part-way (best effort: an error here is not reported, the original one is).</summary>
-    private static async Task RestoreOcrAsync(PdfDocument document, List<int> pages, SortedDictionary<int, IReadOnlyList<OcrPageWord>> before)
-    {
-        foreach (var page in pages)
-        {
-            try
-            {
-                await document.RemoveOcrLayerAsync(page).ConfigureAwait(false);
-                if (before.TryGetValue(page, out var old))
-                {
-                    await document.AddOcrLayerAsync(page, old).ConfigureAwait(false);
-                }
-            }
-            catch (Exception e) when (e is InvalidOperationException or ArgumentException or ObjectDisposedException)
-            {
-                // The page cannot be taken back either; the exception of the run stays the one the caller sees.
-            }
-        }
     }
 
     /// <summary>Undoes the newest change; does nothing when there is none.</summary>
