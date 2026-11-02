@@ -74,7 +74,7 @@ public sealed class RedactionPatternsTests
             Assert.True(RedactionPatterns.Mod97IsOne(iban), $"{country}: {iban} fails the chunked mod 97");
         }
 
-        Assert.True(IbanRegistry.Examples.Count >= 85);
+        Assert.Equal(89, IbanRegistry.Examples.Count);
     }
 
     [Fact]
@@ -672,42 +672,255 @@ public sealed class RedactionPatternsTests
         Assert.Empty(Scan("0711\n1234567", RedactionPatternKind.Phone));
     }
 
+    // ---- Fix round 1 ----
+
+    [Theory]
+    [InlineData("PL61 1090 1014 0000 0712 1981 2874", " Zahlung")]
+    [InlineData("PL61 1090 1014 0000 0712 1981 2874", " Zahlungseingang vom Kunden")]
+    [InlineData("ES91 2100 0418 4502 0005 1332", " Kontoinhaber Max")]
+    [InlineData("AT61 1904 3002 3457 3201", " Verwendungszweck Miete")]
+    [InlineData("AD12 0001 2030 2003 5910 0100", " Müller")]
+    [InlineData("AT61 1904 3002 3457 3201", " Überweisung")]
+    [InlineData("AD12 0001 2030 2003 5910 0100", " 12 Euro")]
+    [InlineData("AD12 0001 2030 2003 5910 0100", " 5")]
+    [InlineData("PL61109010140000071219812874", " Zahlung")]
+    [InlineData("ES9121000418450200051332", " Kontoinhaber")]
+    [InlineData("AT611904300234573201", " Verwendungszweck Miete")]
+    public void ValidIbanFollowedByAWordIsFoundWithoutTheWord(string iban, string tail)
+    {
+        foreach (var separator in new[] { " ", Nbsp })
+        {
+            var written = iban.Replace(" ", separator, StringComparison.Ordinal);
+            var text = "Konto: " + written + tail + ".";
+
+            var match = Single(text);
+
+            Assert.Equal(RedactionPatternKind.Iban, match.Kind);
+            Assert.Equal(PatternCertainty.ChecksumOk, match.Certainty);
+            Assert.Equal(written, Slice(text, match));
+        }
+    }
+
+    [Fact]
+    public void IbanFollowedByANonAsciiLetterWithoutASeparatorIsNoMatch()
+    {
+        Assert.Empty(Scan("AD12 0001 2030 2003 5910 0100é", RedactionPatternKind.Iban));
+        Assert.Empty(Scan("AT611904300234573201ü", RedactionPatternKind.Iban));
+    }
+
+    [Fact]
+    public void IbanWithAnAsciiLetterAttachedIsTheWrongLengthNotACut()
+    {
+        var text = "AD12 0001 2030 2003 5910 0100X";
+
+        var match = Single(text, RedactionPatternKind.Iban);
+
+        Assert.Equal(PatternCertainty.ChecksumFailed, match.Certainty);
+        Assert.Equal(text, Slice(text, match));
+    }
+
+    [Fact]
+    public void ABareAlphanumericRunLongerThanThirtyFourStaysNoCandidateEvenWithAWordBehindIt()
+    {
+        Assert.Empty(Scan("DE89" + new string('1', 40) + " Zahlung", RedactionPatternKind.Iban));
+        Assert.Empty(Scan("PL61109010140000071219812874" + new string('1', 10), RedactionPatternKind.Iban));
+    }
+
+    [Fact]
+    public void RegistryHasExactlyTheEightyNineCountriesAndNotThePartialOnes()
+    {
+        var expected = "AD AE AL AT AZ BA BE BG BH BI BR BY CH CR CY CZ DE DJ DK DO EE EG ES FI FK FO FR GB GE GI GL GR GT HN HR HU IE IL IQ IS IT JO KW KZ LB LC LI LT LU LV LY MC MD ME MK MN MR MT MU NI NL NO OM PK PL PS PT QA RO RS RU SA SC SD SE SI SK SM SO ST SV TL TN TR UA VA VG XK YE".Split(' ');
+
+        Assert.Equal(89, expected.Length);
+        Assert.Equal(expected, IbanRegistry.Examples.Select(e => e.Country).OrderBy(c => c, StringComparer.Ordinal));
+        foreach (var partial in new[] { "AO", "BF", "BJ", "CF", "CG", "CI", "CM", "CV", "DZ", "GA", "GQ", "GW", "IR", "MA", "MG", "ML", "MZ", "NE", "SN", "TD", "TG", "KM" })
+        {
+            Assert.False(IbanRegistry.TryGetLength(partial, out _), partial);
+        }
+    }
+
+    [Fact]
+    public void CardAfterAFourDigitNumberIsFoundNotTheShiftedShape()
+    {
+        foreach (var prefix in new[] { "Zahlung 2024 ", "12.03.2024 ", "PIN 1234 ", "Nr 5678 " })
+        {
+            var text = prefix + "4111 1111 1111 1111";
+
+            var match = Single(text, RedactionPatternKind.Card);
+
+            Assert.Equal(PatternCertainty.ChecksumOk, match.Certainty);
+            Assert.Equal("4111 1111 1111 1111", Slice(text, match));
+        }
+    }
+
+    [Fact]
+    public void ANineteenDigitCardBehindAFourDigitNumberIsFoundWhole()
+    {
+        var text = "PIN 1234 4111 1111 1111 1111 110";
+
+        var match = Single(text, RedactionPatternKind.Card);
+
+        Assert.Equal(PatternCertainty.ChecksumOk, match.Certainty);
+        Assert.Equal("4111 1111 1111 1111 110", Slice(text, match));
+    }
+
+    [Fact]
+    public void ANineteenDigitCardStaysWhole()
+    {
+        var text = "4111 1111 1111 1111 110";
+
+        Assert.Equal(text, Slice(text, Single(text, RedactionPatternKind.Card)));
+    }
+
+    [Fact]
+    public void TwoCardsBackToBackAreTwoMatches()
+    {
+        var text = "4111 1111 1111 1111 5555 5555 5555 4444";
+
+        var matches = Scan(text, RedactionPatternKind.Card);
+
+        Assert.Equal(["4111 1111 1111 1111", "5555 5555 5555 4444"], matches.Select(m => Slice(text, m)));
+        Assert.All(matches, m => Assert.Equal(PatternCertainty.ChecksumOk, m.Certainty));
+    }
+
+    [Fact]
+    public void AFailedCardShapeIsKeptWhenNoShiftedShapeHasAGoodChecksum()
+    {
+        var text = "1234 5678 9012 3456 7890";
+
+        var match = Assert.Single(Scan(text, RedactionPatternKind.Card));
+
+        Assert.Equal(PatternCertainty.ChecksumFailed, match.Certainty);
+        Assert.Equal("1234 5678 9012 3456", Slice(text, match));
+    }
+
+    [Fact]
+    public void FifteenDigitCardInFourFourFourThreeIsFoundOnlyWithAGoodChecksum()
+    {
+        var good = Single("Karte 4929 1234 5678 909.", RedactionPatternKind.Card);
+
+        Assert.Equal(PatternCertainty.ChecksumOk, good.Certainty);
+        Assert.Empty(Scan("4929 1234 5678 900", RedactionPatternKind.Card));
+    }
+
+    [Theory]
+    [InlineData("Tel. 0711 / 123 45 67", "0711 / 123 45 67")]
+    [InlineData("0711 / 1234567", "0711 / 1234567")]
+    [InlineData("Tel. 0711 - 1234567", "0711 - 1234567")]
+    [InlineData("Tel. 0711 /1234567", "0711 /1234567")]
+    [InlineData("Tel. 0711/ 1234567", "0711/ 1234567")]
+    [InlineData("Tel: +49 711 / 1234567", "+49 711 / 1234567")]
+    [InlineData("Tel: +49 / 711 1234567", "+49 / 711 1234567")]
+    public void PhoneWithSpacesAroundASlashOrHyphenIsOneMatch(string text, string expected)
+    {
+        var match = Single(text, RedactionPatternKind.Phone);
+
+        Assert.Equal(expected, Slice(text, match));
+        Assert.Equal(PatternCertainty.ShapeOnly, match.Certainty);
+    }
+
+    [Theory]
+    [InlineData("Seiten 12 - 18")]
+    [InlineData("Kapitel 3 / 4")]
+    [InlineData("Seiten 0 - 18")]
+    [InlineData("von 01.02.2024 - 31.12.2024")]
+    [InlineData("2024 - 2025")]
+    [InlineData("Version 1.2.3 / 4.5.6")]
+    [InlineData("ISBN 0 - 306 - 40615 - 2")]
+    public void RangesAndNumbersWithSpacedDashesAreNoPhones(string text)
+    {
+        Assert.Empty(Scan(text, RedactionPatternKind.Phone));
+    }
+
+    [Fact]
+    public void ASpacedDashIsOnlyAcceptedOnceAndEarlyInTheNumber()
+    {
+        // Rule: a slash or hyphen with a space on one or both sides joins groups only once per number and only behind the first or the
+        // second group. A spaced dash behind the third group ends the number.
+        var behindThree = "0711 123 45 - 67 89 01";
+        Assert.Equal("0711 123 45", Slice(behindThree, Single(behindThree, RedactionPatternKind.Phone)));
+        Assert.Empty(Scan("0711 - 12 - 3456789", RedactionPatternKind.Phone));
+    }
+
+    [Fact]
+    public void NeighboursThatArePairsOfSurrogatesAreNoLettersOrDigits()
+    {
+        var emoji = "\U0001F600";
+        var phone = Single(emoji + "+49 711 1234567" + emoji, RedactionPatternKind.Phone);
+        var iban = Single(emoji + "DE89 3704 0044 0532 0130 00" + emoji, RedactionPatternKind.Iban);
+        var card = Single(emoji + "4111 1111 1111 1111" + emoji, RedactionPatternKind.Card);
+
+        Assert.Equal(PatternCertainty.ChecksumOk, iban.Certainty);
+        Assert.Equal(PatternCertainty.ChecksumOk, card.Certainty);
+        Assert.Equal((2, 17), (phone.Start, phone.End));
+        Assert.Equal((2, 29), (iban.Start, iban.End));
+        Assert.Equal((2, 21), (card.Start, card.End));
+    }
+
+    [Fact]
+    public void ALetterThatIsAPairOfSurrogatesIsPartOfALongerRun()
+    {
+        // U+1D400 MATHEMATICAL BOLD CAPITAL A is a letter outside the BMP.
+        var letter = "\U0001D400";
+        Assert.Empty(Scan(letter + "+49 711 1234567", RedactionPatternKind.Phone));
+        Assert.Empty(Scan("0711 1234567" + letter, RedactionPatternKind.Phone));
+        Assert.Empty(Scan(letter + "DE89370400440532013000", RedactionPatternKind.Iban));
+        Assert.Empty(Scan("DE89370400440532013000" + letter, RedactionPatternKind.Iban));
+        Assert.Empty(Scan(letter + "4111111111111111", RedactionPatternKind.Card));
+        Assert.Empty(Scan("4111111111111111" + letter, RedactionPatternKind.Card));
+    }
+
     // ---- Hostile input ----
 
     [Fact]
     public void ScannerIsLinearOnAHostileInput()
     {
         const int Size = 1_000_000;
-        var inputs = new List<string>
+        // The second value is the exact number of matches (-1: only the general rules are checked: sorted, in bounds, no overlap).
+        var inputs = new List<(string Text, int Expected)>
         {
-            new string('1', Size),
-            string.Concat(Enumerable.Repeat("1 ", Size / 2)),
-            string.Concat(Enumerable.Repeat("1234 ", Size / 5)),
-            string.Concat(Enumerable.Repeat("1-", Size / 2)),
-            string.Concat(Enumerable.Repeat("(0)", Size / 3)),
-            string.Concat(Enumerable.Repeat("+4", Size / 2)),
-            string.Concat(Enumerable.Repeat("DE11 ", Size / 5)),
-            string.Concat(Enumerable.Repeat("AA11", Size / 4)),
-            string.Concat(Enumerable.Repeat("@a", Size / 2)),
-            string.Concat(Enumerable.Repeat("a@", Size / 2)),
-            new string('a', Size) + "@" + new string('b', Size / 2),
-            new string('a', Size / 2) + "@" + new string('b', Size / 2) + "." + new string('c', 10),
-            string.Concat(Enumerable.Repeat("a.b@c.", Size / 6)),
-            string.Concat(Enumerable.Repeat("0 ", Size / 2)),
-            string.Concat(Enumerable.Repeat("01.02.", Size / 6)),
-            string.Concat(Enumerable.Repeat("4111 1111 1111 1111 ", Size / 20)),
-            new string('\u00A0', Size),
+            (new string('1', Size), 0),
+            (string.Concat(Enumerable.Repeat("1 ", Size / 2)), 0),
+            (string.Concat(Enumerable.Repeat("1234 ", Size / 5)), -1),
+            (string.Concat(Enumerable.Repeat("1-", Size / 2)), 0),
+            (string.Concat(Enumerable.Repeat("(0)", Size / 3)), 0),
+            (string.Concat(Enumerable.Repeat("+4", Size / 2)), 0),
+            (string.Concat(Enumerable.Repeat("DE11 ", Size / 5)), 1), // only the last at most eight blocks fit the size of an IBAN: one ChecksumFailed match
+            (string.Concat(Enumerable.Repeat("AA11", Size / 4)), 0),
+            (string.Concat(Enumerable.Repeat("@a", Size / 2)), 0),
+            (string.Concat(Enumerable.Repeat("a@", Size / 2)), 0),
+            (new string('a', Size) + "@" + new string('b', Size / 2), 0),
+            (new string('a', Size / 2) + "@" + new string('b', Size / 2) + "." + new string('c', 10), 0),
+            (string.Concat(Enumerable.Repeat("a.b@c.", Size / 6)), 0),
+            (string.Concat(Enumerable.Repeat("0 ", Size / 2)), 0),
+            (string.Concat(Enumerable.Repeat("01.02.", Size / 6)), 0),
+            (string.Concat(Enumerable.Repeat("4111 1111 1111 1111 ", Size / 20)), Size / 20),
+            (string.Concat(Enumerable.Repeat("x@y.de ", Size / 7)), Size / 7),
+            (string.Concat(Enumerable.Repeat("DE89 3704 0044 0532 0130 00 ", Size / 28)), Size / 28),
+            (string.Concat(Enumerable.Repeat("0711 / 1234567, ", Size / 16)), Size / 16),
+            (new string('\u00A0', Size), 0),
         };
 
         var watch = Stopwatch.StartNew();
-        foreach (var input in inputs)
+        foreach (var (input, expected) in inputs)
         {
             var matches = Scan(input);
-            Assert.NotNull(matches);
+            if (expected >= 0)
+            {
+                Assert.True(expected == matches.Count, $"{input[..Math.Min(24, input.Length)]}...: expected {expected}, found {matches.Count}");
+            }
+
+            var previousEnd = 0;
+            foreach (var match in matches)
+            {
+                Assert.True(match.Start >= previousEnd && match.End > match.Start && match.End <= input.Length);
+                previousEnd = match.End;
+            }
         }
 
         watch.Stop();
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"took {watch.Elapsed}");
+        // About one second alone in Debug; the budget leaves room for a loaded machine. A quadratic scanner would need minutes here.
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"took {watch.Elapsed}");
     }
 
     [Fact]

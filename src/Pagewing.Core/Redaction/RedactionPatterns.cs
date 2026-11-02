@@ -159,8 +159,20 @@ public static partial class RedactionPatterns
 
     private static bool IsHyphen(char c) => c is '-' or '\u2010' or '\u2011';
 
-    /// <summary>Whether the character continues a run of letters or digits (so that a match next to it would sit inside a longer run).</summary>
-    private static bool ContinuesRun(char c) => char.IsLetterOrDigit(c);
+    /// <summary>Whether the letter or digit at <paramref name="i"/> (a surrogate pair counts as one character) would continue a run.</summary>
+    private static bool LetterOrDigitAt(string t, int i) => i >= 0 && i < t.Length && char.IsLetterOrDigit(t, i);
+
+    /// <summary>Whether the letter or digit that ends right before <paramref name="end"/> (a surrogate pair counts as one character) would continue a run.</summary>
+    private static bool LetterOrDigitBefore(string t, int end)
+    {
+        if (end <= 0)
+        {
+            return false;
+        }
+
+        var c = t[end - 1];
+        return char.IsLowSurrogate(c) ? end >= 2 && char.IsHighSurrogate(t[end - 2]) && char.IsLetterOrDigit(t, end - 2) : char.IsLetterOrDigit(c);
+    }
 
     private static bool IsWordCategory(UnicodeCategory category) => category is
         UnicodeCategory.UppercaseLetter or UnicodeCategory.LowercaseLetter or UnicodeCategory.TitlecaseLetter

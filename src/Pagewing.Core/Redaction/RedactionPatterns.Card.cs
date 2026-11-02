@@ -2,12 +2,23 @@ namespace Pagewing.Core.Redaction;
 
 public static partial class RedactionPatterns
 {
-    // Grouped forms, in the order they are tried: 4-4-4-4-3 (19 digits), Amex 4-6-5, Diners 4-6-4, 4-4-4-4.
-    private static readonly int[][] CardShapes = [[4, 4, 4, 4, 3], [4, 6, 5], [4, 6, 4], [4, 4, 4, 4]];
+    // Grouped forms, in the order they are tried: 4-4-4-4-3 (19 digits), Amex 4-6-5, Diners 4-6-4, 4-4-4-4, and 4-4-4-3 (15 digits).
+    // A shape that is "Luhn only" is accepted only with a right checksum (it never makes a ChecksumFailed candidate).
+    private static readonly (int[] Groups, bool LuhnOnly)[] CardShapes =
+    [
+        ([4, 4, 4, 4, 3], false),
+        ([4, 6, 5], false),
+        ([4, 6, 4], false),
+        ([4, 4, 4, 4], false),
+        ([4, 4, 4, 3], true),
+    ];
 
     private const int MaxCardGroups = 5;
 
     private const int MaxCardGroupRead = 7;
+
+    // A number in front of a card ("PIN 1234 4111 1111 1111 1111", a year, a date) can make the first shape start one or two groups too early.
+    private const int ShiftsTried = 2;
 
     /// <summary>
     /// Payment card numbers: 13 to 19 digits, in one piece or grouped 4-4-4-4, 4-4-4-4-3, 4-6-5 (Amex) or 4-6-4 (Diners) with a space
@@ -20,6 +31,8 @@ public static partial class RedactionPatterns
         Span<byte> digits = stackalloc byte[MaxCardDigits];
         Span<int> groupStart = stackalloc int[MaxCardGroups];
         Span<int> groupEnd = stackalloc int[MaxCardGroups];
+        Span<int> savedStart = stackalloc int[ShiftsTried + 1];
+        Span<int> savedEnd = stackalloc int[ShiftsTried + 1];
         var n = t.Length;
         var i = 0;
         while (i < n)
@@ -37,10 +50,34 @@ public static partial class RedactionPatterns
                 runEnd++;
             }
 
-            if (t[i] != '0' && (i == 0 || (!ContinuesRun(t[i - 1]) && t[i - 1] != '+'))
-                && TryCard(t, i, runEnd, digits, groupStart, groupEnd, out var end, out var certainty))
+            if (t[i] != '0' && (i == 0 || (!LetterOrDigitBefore(t, i) && t[i - 1] != '+'))
+                && TryCard(t, i, runEnd, digits, groupStart, groupEnd, out var end, out var certainty, out var groups))
             {
-                (certainty == PatternCertainty.ChecksumOk ? ok : other).Add(new PatternMatch(RedactionPatternKind.Card, i, end, certainty));
+                var matchStart = i;
+                if (certainty != PatternCertainty.ChecksumOk)
+                {
+                    // Prefer a card with a right checksum that starts one or two groups later.
+                    for (var k = 0; k <= ShiftsTried; k++)
+                    {
+                        savedStart[k] = k < groups ? groupStart[k] : -1;
+                        savedEnd[k] = k < groups ? groupEnd[k] : -1;
+                    }
+
+                    for (var k = 1; k <= ShiftsTried && savedStart[k] >= 0; k++)
+                    {
+                        if (t[savedStart[k]] != '0'
+                            && TryCard(t, savedStart[k], savedEnd[k], digits, groupStart, groupEnd, out var shiftedEnd, out var shiftedCertainty, out _)
+                            && shiftedCertainty == PatternCertainty.ChecksumOk)
+                        {
+                            matchStart = savedStart[k];
+                            end = shiftedEnd;
+                            certainty = shiftedCertainty;
+                            break;
+                        }
+                    }
+                }
+
+                (certainty == PatternCertainty.ChecksumOk ? ok : other).Add(new PatternMatch(RedactionPatternKind.Card, matchStart, end, certainty));
                 i = end;
                 continue;
             }
@@ -49,13 +86,13 @@ public static partial class RedactionPatterns
         }
     }
 
-    private static bool TryCard(string t, int start, int runEnd, Span<byte> digits, Span<int> groupStart, Span<int> groupEnd, out int end, out PatternCertainty certainty)
+    private static bool TryCard(string t, int start, int runEnd, Span<byte> digits, Span<int> groupStart, Span<int> groupEnd, out int end, out PatternCertainty certainty, out int groups)
     {
         end = start;
         certainty = PatternCertainty.ChecksumFailed;
 
         // Read up to five groups: the run, then runs that follow after exactly one separator.
-        var groups = 0;
+        groups = 0;
         var s = start;
         var e = runEnd;
         while (true)
@@ -80,7 +117,7 @@ public static partial class RedactionPatterns
         var found = false;
         var foundEnd = start;
         var foundOk = false;
-        foreach (var shape in CardShapes)
+        foreach (var (shape, luhnOnly) in CardShapes)
         {
             if (groups < shape.Length || !GroupsMatch(shape, groupStart, groupEnd))
             {
@@ -88,7 +125,7 @@ public static partial class RedactionPatterns
             }
 
             var shapeEnd = groupEnd[shape.Length - 1];
-            if (shapeEnd < t.Length && ContinuesRun(t[shapeEnd]))
+            if (LetterOrDigitAt(t, shapeEnd))
             {
                 continue;
             }
@@ -102,7 +139,7 @@ public static partial class RedactionPatterns
                 break;
             }
 
-            if (!found)
+            if (!found && !luhnOnly)
             {
                 found = true;
                 foundEnd = shapeEnd;
@@ -113,7 +150,7 @@ public static partial class RedactionPatterns
         {
             // The ungrouped form: the run alone.
             var runLength = runEnd - start;
-            if (runLength is >= MinCardDigits and <= MaxCardDigits && (runEnd >= t.Length || !ContinuesRun(t[runEnd])))
+            if (runLength is >= MinCardDigits and <= MaxCardDigits && !LetterOrDigitAt(t, runEnd))
             {
                 var length = CopyDigits(t, groupStart, groupEnd, 1, digits);
                 if (!IsIsbn13(digits[..length]))

@@ -9,12 +9,14 @@ public readonly record struct IbanExample(string Country, string Iban);
 /// The IBAN length of each country (ISO 13616). Facts only: the country code, the total length of an IBAN and one example.
 /// </summary>
 /// <remarks>
-/// Source: the SWIFT IBAN Registry (ISO 13616-1 registration authority), main register, as of 2026-11-02; the lengths were
-/// cross-checked against the public list at https://www.iban.com/structure (same date), which agrees for every entry. The countries
-/// with a "partial" or "experimental" IBAN (for example AO, BF, DZ, IR, MA, SN) are not in the registry and are left out on purpose:
-/// an IBAN of an unknown country is no candidate for the scanner. The examples are self-checked by
-/// <c>EveryRegistryExamplePassesLengthAndMod97</c>; the table itself must be compared with the current registry by a person
-/// before each release (see Docs/DECISIONS.md).
+/// Source and state, 2026-11-02: the table is the SWIFT IBAN Registry (ISO 13616) as the author knows it and as the public list at
+/// https://www.iban.com/structure shows it; the reviewer of this file also compared the 89 countries and lengths with the
+/// Wikipedia article "International Bank Account Number" (no length differs, no country of the registry is missing). The primary
+/// register at swift.com was not available; it still has to be compared by a person before each release.
+/// The countries with a "partial" or "experimental" IBAN are not in the registry and are left out on purpose: AO, BF, BJ, CF, CG, CI,
+/// CM, CV, DZ, GA, GQ, GW, IR, MA, MG, ML, MZ, NE, SN, TD, TG and KM. An IBAN of an unknown country is no candidate for the scanner.
+/// The lengths are typed in the table, not taken from the examples; <c>EveryRegistryExamplePassesLengthAndMod97</c> compares the two and
+/// checks mod 97 for every example, which catches typos in the transcription.
 /// </remarks>
 public static class IbanRegistry
 {

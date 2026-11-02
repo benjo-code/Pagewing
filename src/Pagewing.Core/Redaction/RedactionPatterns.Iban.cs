@@ -19,7 +19,7 @@ public static partial class RedactionPatterns
         while (i + 4 <= t.Length)
         {
             if (IsAsciiLetter(t[i]) && IsAsciiLetter(t[i + 1]) && IsDigit(t[i + 2]) && IsDigit(t[i + 3])
-                && (i == 0 || !ContinuesRun(t[i - 1]))
+                && !LetterOrDigitBefore(t, i)
                 && TryIban(t, i, buffer, boundaryCount, boundaryEnd, out var end, out var certainty))
             {
                 result.Add(new PatternMatch(RedactionPatternKind.Iban, i, end, certainty));
@@ -45,6 +45,7 @@ public static partial class RedactionPatterns
         var count = 0;
         var groupLength = 0;
         var boundaries = 0;
+        var overflow = false;
         var i = start;
         while (i < t.Length)
         {
@@ -53,7 +54,9 @@ public static partial class RedactionPatterns
             {
                 if (count == MaxIbanLength)
                 {
-                    return false;
+                    // Too long for an IBAN: stop reading. Only a cut at a group boundary can still make a candidate.
+                    overflow = true;
+                    break;
                 }
 
                 buffer[count++] = UpperAscii(c);
@@ -74,29 +77,43 @@ public static partial class RedactionPatterns
             }
         }
 
-        if (i < t.Length && ContinuesRun(t[i]))
+        if (count == countryLength && !overflow)
         {
-            // A non-ASCII letter or digit right behind the code: part of a longer word.
-            return false;
-        }
+            // The run ends where the country says it should; a letter or digit right behind it (a non-ASCII one: ASCII ones were read)
+            // means the code sits inside a longer word.
+            if (LetterOrDigitAt(t, i))
+            {
+                return false;
+            }
 
-        if (count < MinIbanLength)
-        {
-            return false;
+            end = i;
         }
-
-        end = i;
-        if (count > countryLength)
+        else
         {
-            // Words after a last block of four ("... 0100 Max") are not part of the IBAN: cut at the block that makes the right length.
+            // Words behind a last block ("... 0100 Max", "... 2874 Zahlung") are not part of the IBAN: cut at the block boundary that
+            // makes the right length. What the word contains (even a non-ASCII letter) does not matter once the cut is known.
+            var cut = -1;
             for (var k = 0; k < boundaries; k++)
             {
                 if (boundaryCount[k] == countryLength)
                 {
-                    end = boundaryEnd[k];
-                    count = countryLength;
+                    cut = k;
                     break;
                 }
+            }
+
+            if (cut >= 0)
+            {
+                end = boundaryEnd[cut];
+                count = countryLength;
+            }
+            else if (overflow || count < MinIbanLength || LetterOrDigitAt(t, i))
+            {
+                return false;
+            }
+            else
+            {
+                end = i;
             }
         }
 

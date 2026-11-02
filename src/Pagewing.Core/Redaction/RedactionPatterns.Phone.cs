@@ -4,6 +4,8 @@ public static partial class RedactionPatterns
 {
     private static List<PatternMatch> ScanPhones(string t) => new PhoneScanner(t).Run();
 
+    private static bool IsDashOrSlash(char c) => IsHyphen(c) || c == '/';
+
     private static bool IsPhoneSeparator(char c) => IsSpaceSeparator(c) || IsHyphen(c) || c is '/' or '.';
 
     /// <summary>
@@ -63,11 +65,12 @@ public static partial class RedactionPatterns
                 _chainStart = first - 1;
             }
 
-            _startOk = _chainStart == 0 || !ContinuesRun(t[_chainStart - 1]);
+            _startOk = !LetterOrDigitBefore(t, _chainStart);
             _count = 0;
             var overlong = false;
             var pendingSeparator = '\0';
             byte pendingFlags = 0;
+            var spacedUsed = false;
             var pos = first;
             int end;
             while (true)
@@ -95,16 +98,28 @@ public static partial class RedactionPatterns
                 var j = e;
                 byte flags = 0;
                 var separator = '\0';
+                var spaced = false;
                 if (j < t.Length && t[j] == ')')
                 {
                     flags |= CloseFlag;
                     j++;
                 }
 
+                if (j + 1 < t.Length && IsSpaceSeparator(t[j]) && IsDashOrSlash(t[j + 1]))
+                {
+                    j++;
+                    spaced = true;
+                }
+
                 if (j < t.Length && IsPhoneSeparator(t[j]))
                 {
                     separator = t[j];
                     j++;
+                    if (IsDashOrSlash(separator) && j < t.Length && IsSpaceSeparator(t[j]))
+                    {
+                        j++;
+                        spaced = true;
+                    }
                 }
 
                 if (j < t.Length && t[j] == '(')
@@ -113,8 +128,12 @@ public static partial class RedactionPatterns
                     j++;
                 }
 
-                if (j > e && j < t.Length && IsDigit(t[j]))
+                // A slash or hyphen with a space beside it ("0711 / 1234567") joins groups only once per number and only behind
+                // the first or the second group, so that ranges and lists ("12 - 18", "1.2.3 / 4.5.6") stay apart.
+                var spacedAllowed = !spaced || (!spacedUsed && _count <= 2);
+                if (j > e && j < t.Length && IsDigit(t[j]) && spacedAllowed)
                 {
+                    spacedUsed |= spaced;
                     pendingSeparator = separator;
                     pendingFlags = flags;
                     pos = j;
@@ -233,7 +252,7 @@ public static partial class RedactionPatterns
                 return false;
             }
 
-            if (end < t.Length && ContinuesRun(t[end]))
+            if (LetterOrDigitAt(t, end))
             {
                 return false;
             }
@@ -335,7 +354,7 @@ public static partial class RedactionPatterns
             }
 
             if (groups == 3 && digits == 9 && end + 1 < t.Length && IsHyphen(t[end]) && t[end + 1] is 'X' or 'x'
-                && (end + 2 == t.Length || !ContinuesRun(t[end + 2])))
+                && !LetterOrDigitAt(t, end + 2))
             {
                 for (var k = a; k < b; k++)
                 {
