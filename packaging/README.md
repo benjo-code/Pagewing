@@ -673,3 +673,17 @@ pagewing redact $P\redact-rotated.pdf --output $T\raster-rotated.pdf --rasterize
 ### Ergebnis festhalten
 
 Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 14 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 14“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung (welcher Punkt, was zu sehen war); Punkt 2 immer mit der ausdrücklichen Antwort „Text unter den Flächen kopierbar oder suchbar: ja/nein (Programm, Version)“ und Punkt 6 mit „Felder ausfüllbar“. Ein **Fund unter Punkt 2 oder 4** (der Begriff ist in einem Programm doch zu finden) ist ein Fehler im Schwärzen und wird sofort gemeldet, nicht gesammelt. Abweichungen sind Befunde für einen Fix, kein Anlass, die Erwartungen dieser Liste zu ändern.
+
+## OCR prüfen (M15)
+
+### Textebene im Fremdviewer (Aufgabe 1)
+
+Muster erzeugen: `PAGEWING_SPIKE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-class "*OcrLayerSpikeTests"` schreibt `ocr-layer-plain.pdf` (A4, ein Graustufenbild über die ganze Seite, darüber die unsichtbaren Wörter „Müller Straße Größe“ in der Zeile bei 100 pt) und `ocr-layer-rotated.pdf` (`/Rotate 90`, CropBox mit Versatz; Wörter „Müller Straße“ und „Größe“ tiefer).
+
+Prüfliste je Viewer (Chrome, Acrobat Reader, Pagewing):
+
+- [ ] Die Wörter lassen sich mit der Maus markieren, die Markierung liegt auf der Zeile bei 100 pt (rotiert: auf der Zeile im gedrehten Bild), nicht daneben.
+- [ ] Strg+F findet „Straße“ und „Größe“; Kopieren liefert die Wörter mit Umlauten und ß.
+- [ ] Die Seite sieht aus wie das Bild ohne Text (nichts Sichtbares, kein Rahmen, keine Verfärbung).
+- [ ] Ergebnis festhalten (Viewer, Version, ja/nein je Punkt) im Eintrag „OCR: Textebene, Spike (M15, Aufgabe 1)“ in `Docs/DECISIONS.md`. Fällt etwas durch, ändert sich nur `PdfiumOcrLayer` (Aufgabe 6).
+

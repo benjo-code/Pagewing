@@ -625,6 +625,26 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFPageObj_GetBounds(nint pageObject, float* left, float* bottom, float* right, float* top);
 
+    /// <summary>Experimental API: the number of content marks (marked-content tags) of a page object, -1 on failure.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObj_CountMarks(nint pageObject);
+
+    /// <summary>Experimental API: the content mark at an index (<c>unsigned long</c>); owned by the library, invalid once the object is gone.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_GetMark(nint pageObject, CULong index);
+
+    /// <summary>Experimental API: adds a content mark with a name (UTF-8 <c>FPDF_BYTESTRING</c>) to a page object; owned by the library.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_AddMark(nint pageObject, byte* name);
+
+    /// <summary>Experimental API: the name of a content mark as UTF-16LE; <c>buflen</c> and <c>outLength</c> count bytes (<c>unsigned long</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_GetName(nint mark, ushort* buffer, CULong buflen, CULong* outLength);
+
     /// <summary>The clipping path of a page object (<c>FPDF_CLIPPATH</c>, owned by the object; never null for a valid object).</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
