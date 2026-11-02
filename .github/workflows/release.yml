@@ -248,6 +248,11 @@ jobs:
       - name: Package layout
         run: dotnet run tools/package.cs -- layout --rid win-x64 --app out/app --cli out/cli --out out/layout --native out/native
 
+      # The first smoke test has no OCR library next to the binary and only runs `ocr --dry-run`; the layout has the library and
+      # tessdata/ as shipped, so this run does the real `ocr` on ocr-scan.pdf.
+      - name: Smoke test of the CLI in the package layout (real OCR run)
+        run: dotnet run tools/smoke-cli.cs -- out/layout/cli/pagewing.exe
+
       - name: Portable ZIP
         run: dotnet run tools/package.cs -- zip --layout out/layout --version $env:VERSION --out "out/release/Pagewing-$env:VERSION-win-x64-portable.zip"
 
