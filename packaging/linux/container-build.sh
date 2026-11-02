@@ -53,6 +53,10 @@ dotnet run tools/package.cs -- check-binary $files --max-glibc 2.35
 
 dotnet run tools/package.cs -- layout --rid linux-x64 --app out/app --cli out/cli --out out/layout --native out/native
 
+# The first smoke test above has no OCR library next to the binary and only runs `ocr --dry-run`; the layout has the library and
+# tessdata/ as shipped, so this run does the real `ocr` on ocr-scan.pdf (a package whose library does not load fails here, not at the user).
+dotnet run tools/smoke-cli.cs -- out/layout/cli/pagewing
+
 dotnet run tools/package.cs -- deb --layout out/layout --version "$VERSION" --out "out/release/pagewing_${DEBVERSION}_amd64.deb"
 dotnet run tools/package.cs -- deb-smoke "out/release/pagewing_${DEBVERSION}_amd64.deb"
 
