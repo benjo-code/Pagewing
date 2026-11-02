@@ -2311,7 +2311,7 @@
     <value>Muster</value>
   </data>
   <data name="RedactPatternKindsName" xml:space="preserve">
-    <value>Zu suchende Arten von Nummern</value>
+    <value>Zu suchende Arten</value>
   </data>
   <data name="RedactPatternEmail" xml:space="preserve">
     <value>E-Mail</value>

@@ -527,7 +527,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         CancelRun();
         ClearHits();
         ResetNotes();
-        _hitMode = _mode;
+        SetHitMode(_mode);
         _hitQuery = _query;
         _hitOptions = new SearchOptions(_matchCase, _wholeWord);
         var run = new FindRun(document, _mode, _hitQuery, _hitOptions, [.. _kinds.Where(static kind => kind.IsChecked).Select(static kind => kind.Kind)], _tab.PageTexts);
@@ -561,7 +561,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         CancelRun();
         ClearHits();
         ResetNotes();
-        _hitMode = _mode;
+        SetHitMode(_mode);
         State = RedactionSearchState.Idle;
         Summary = string.Empty;
     }
@@ -582,7 +582,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
 
         _hits.ResetTo([]);
         _hitsConsumed = false;
-        _failedCount = 0;
+        SetFailedCount(0);
         foreach (var kind in _kinds)
         {
             kind.Count = null;
@@ -746,12 +746,28 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
             previous = group;
         }
 
-        if (_failedCount != counts[FailedGroup])
-        {
-            _failedCount = counts[FailedGroup];
-            OnPropertyChanged(nameof(HasChecksumFailedHits));
-            OnPropertyChanged(nameof(CheckFailedLabel));
-        }
+        SetFailedCount(counts[FailedGroup]);
+    }
+
+    // The row "Add all ... with a checksum that does not match" shows from the mode of the hits on show and their number of failed
+    // checksums; these two setters are the only places that write either, and each tells the bindings, so no path can forget to.
+    private void SetFailedCount(int count)
+    {
+        _failedCount = count;
+        RaiseFailedGroupChanged();
+    }
+
+    private void SetHitMode(RedactionSearchMode mode)
+    {
+        _hitMode = mode;
+        RaiseFailedGroupChanged();
+        _markAllCommand.RaiseCanExecuteChanged();
+    }
+
+    private void RaiseFailedGroupChanged()
+    {
+        OnPropertyChanged(nameof(HasChecksumFailedHits));
+        OnPropertyChanged(nameof(CheckFailedLabel));
     }
 
     private void CheckFailed()

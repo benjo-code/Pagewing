@@ -946,6 +946,174 @@ public sealed class RedactPanelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task TheFailedChecksumRowFollowsTheListWhenTheSearchEnds()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        var panel = await OpenPanelAsync(window, tab);
+        var search = tab.RedactionPanel;
+        search.IsPatternMode = true;
+        RedactionHit[] withFailed =
+        [
+            PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumFailed, "DE89 3704 0044 0532 0130 01", 0),
+            PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumFailed, "DE89 3704 0044 0532 0130 02", 1),
+            PatternHit(RedactionPatternKind.Email, PatternCertainty.ShapeOnly, "ann@example.org", 1),
+        ];
+        RedactionHit[] withoutFailed = [withFailed[2]];
+        var raised = new List<string?>();
+        search.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        // The area of the result is built when the first search shows it.
+        StackPanel? found = null;
+        StackPanel Row() => found ??= FindOrNull<StackPanel>(panel, "CheckFailedRow") ?? throw new InvalidOperationException("The row is not built.");
+
+        async Task SearchAsync(RedactionHit[] hits)
+        {
+            search.PatternSearcher = (_, _, report, _, token) => PatternListing(hits, report, null, limit: false, token);
+            search.SearchCommand.Execute(null);
+            await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+            Settle(window);
+        }
+
+        // What the row shows is what its bindings were told: visibility and label follow every change of the list.
+        void AssertShown(int failed)
+        {
+            Assert.True(search.HasChecksumFailedHits);
+            Assert.True(Row().IsVisible);
+            Assert.Equal(Strings.RedactAddFailed(failed), search.CheckFailedLabel);
+        }
+
+        void AssertGoneAndTold()
+        {
+            Assert.Contains(nameof(RedactionViewModel.HasChecksumFailedHits), raised);
+            Assert.Contains(nameof(RedactionViewModel.CheckFailedLabel), raised);
+            Assert.False(search.HasChecksumFailedHits);
+            Assert.False(Row().IsVisible);
+            raised.Clear();
+        }
+
+        // (a) The switch to the word search empties the list: the row goes with it.
+        await SearchAsync(withFailed);
+        AssertShown(2);
+        raised.Clear();
+        search.IsWordMode = true;
+        Settle(window);
+        AssertGoneAndTold();
+
+        // (b) A kind that is ticked off ends the search the same way.
+        search.IsPatternMode = true;
+        await SearchAsync(withFailed);
+        AssertShown(2);
+        raised.Clear();
+        search.PatternKinds.Single(kind => kind.Kind == RedactionPatternKind.Phone).IsChecked = false;
+        Settle(window);
+        AssertGoneAndTold();
+
+        // (c) A running search that is stopped drops what it found, the row included.
+        var gate = new TaskCompletionSource();
+        search.PatternSearcher = (_, _, report, _, token) => PatternWaiting(withFailed, report, gate.Task, token);
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.Hits.Count == 3 && search.IsRunning);
+        Settle(window);
+        AssertShown(2);
+        raised.Clear();
+        search.StopCommand.Execute(null);
+        Settle(window);
+        AssertGoneAndTold();
+        gate.SetResult();
+
+        // (d) A new search that finds no checksum that fails starts with an empty list and ends without the row.
+        await SearchAsync(withFailed);
+        AssertShown(2);
+        raised.Clear();
+        await SearchAsync(withoutFailed);
+        Assert.Contains(nameof(RedactionViewModel.HasChecksumFailedHits), raised);
+        Assert.Contains(nameof(RedactionViewModel.CheckFailedLabel), raised);
+        Assert.False(search.HasChecksumFailedHits);
+        Assert.False(Row().IsVisible);
+        Assert.Single(search.Hits);
+    }
+
+    [AvaloniaFact]
+    public async Task AnUntickedHitStaysUntickedWhenMoreHitsComeIn()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        await OpenPanelAsync(window, tab);
+        var search = tab.RedactionPanel;
+        search.IsPatternMode = true;
+        RedactionHit first = PatternHit(RedactionPatternKind.Email, PatternCertainty.ShapeOnly, "ann@example.org", 0);
+        RedactionHit second = PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumOk, "DE89 3704 0044 0532 0130 00", 0);
+        RedactionHit third = PatternHit(RedactionPatternKind.Phone, PatternCertainty.ShapeOnly, "+49 711 1234567", 1);
+        RedactionHit fourth = PatternHit(RedactionPatternKind.Card, PatternCertainty.ChecksumFailed, "4111 1111 1111 1112", 1);
+        var gate = new TaskCompletionSource();
+
+        // Two batches: the first stands in the list while the search still runs, the second comes in after the user has unticked a hit.
+        search.PatternSearcher = (_, _, _, _, token) => TwoBatches([first, second], [third, fourth], gate.Task, token);
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.Hits.Count == 2);
+        Assert.True(search.IsRunning);
+        var early = search.Hits.ToArray();
+        Assert.All(early, hit => Assert.True(hit.IsChecked));
+        early.Single(hit => hit.Hit == first).IsChecked = false;
+        gate.SetResult();
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+
+        Assert.Equal(4, search.Hits.Count);
+
+        // The unticked hit and the hit that was left alone are the same rows as before: the second batch did not reset them.
+        Assert.Contains(early[0], search.Hits);
+        Assert.Contains(early[1], search.Hits);
+        Assert.False(search.Hits.Single(hit => hit.Hit == first).IsChecked);
+        Assert.True(search.Hits.Single(hit => hit.Hit == second).IsChecked);
+
+        // Only the new rows get the preselection: a shape is ticked, a failed checksum is not.
+        Assert.True(search.Hits.Single(hit => hit.Hit == third).IsChecked);
+        Assert.False(search.Hits.Single(hit => hit.Hit == fourth).IsChecked);
+        Assert.Equal(2, search.CheckedCount);
+    }
+
+    private static async IAsyncEnumerable<RedactionHit> PatternWaiting(
+        RedactionHit[] hits,
+        RedactionSearchReport? report,
+        Task gate,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        // A pause before each hit lets the time limit of a batch pass, so every hit goes to the UI thread on its own; then the search waits until it is stopped.
+        foreach (var hit in hits)
+        {
+            await Task.Delay(RedactionViewModel.BatchInterval + TimeSpan.FromMilliseconds(40), token);
+            yield return hit;
+        }
+
+        await Task.WhenAny(gate, Task.Delay(System.Threading.Timeout.Infinite, token));
+        report!.LimitReached = false;
+    }
+
+    private static async IAsyncEnumerable<RedactionHit> TwoBatches(
+        RedactionHit[] first,
+        RedactionHit[] second,
+        Task gate,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        // A hit goes to the UI thread when it comes in after BatchInterval, so a pause before each hit makes every hit its own batch.
+        foreach (var hit in first)
+        {
+            await Task.Delay(RedactionViewModel.BatchInterval + TimeSpan.FromMilliseconds(40), token);
+            yield return hit;
+        }
+
+        await Task.WhenAny(gate, Task.Delay(System.Threading.Timeout.Infinite, token));
+        foreach (var hit in second)
+        {
+            await Task.Delay(RedactionViewModel.BatchInterval + TimeSpan.FromMilliseconds(40), token);
+            yield return hit;
+        }
+    }
+
+    [AvaloniaFact]
     public async Task ModeSwitchIsReachableByKeyboardAndTabNeverTraps()
     {
         var (window, viewModel, view) = Show();
