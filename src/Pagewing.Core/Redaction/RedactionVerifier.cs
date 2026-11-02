@@ -48,6 +48,13 @@ public static class RedactionVerifier
     /// </summary>
     public const double PositionTolerance = 0.1;
 
+    /// <summary>
+    /// How far, in points, a path on a page that became an image may reach out of the mark rectangle that holds it. The layout keeps the
+    /// text at least <see cref="RedactionOverlayLayout.Inset"/> inside; this is only slack for the single-precision numbers of the content
+    /// stream (a float is accurate to about 0.001 pt at page size), so a shape that leaves the area by more than 0.05 pt fails the check.
+    /// </summary>
+    public const double PathSlack = 0.05;
+
     /// <summary>Checks the result of a redaction.</summary>
     /// <param name="reopened">The written result, opened again.</param>
     /// <param name="file">The bytes of that same file (seekable); it is read, never changed.</param>
@@ -78,10 +85,17 @@ public static class RedactionVerifier
 
         var rasterPages = expectation.RasterPages is { Count: > 0 } raster ? raster.Distinct().Order().ToArray() : [];
         await CheckPagesAsync(reopened, plan, rasterPages, texts, findings, cancellationToken).ConfigureAwait(false);
-        await CheckRasterPagesAsync(reopened, rasterPages, findings, notChecked, cancellationToken).ConfigureAwait(false);
+        await CheckRasterPagesAsync(reopened, plan, rasterPages, findings, notChecked, cancellationToken).ConfigureAwait(false);
         CheckTextRule(texts, findings);
         await CheckRawAsync(file, texts, limits, findings, notChecked, cancellationToken).ConfigureAwait(false);
         await CheckPixelsAsync(reopened, expectation, findings, notChecked, cancellationToken).ConfigureAwait(false);
+
+        // The overlay text is drawn as shapes: nothing reads it back. A page redacted in place is compared with the original outside the
+        // marked areas (a shape outside would show there), a page that became an image only has its shapes checked to lie inside a mark.
+        if (plan.Marks.Any(static m => m.OverlayText is not null))
+        {
+            notChecked.Add(RedactionNotCheckedKind.OverlayTextNotRead, "Overlay text: the text drawn on the areas is not read back from the written file; whether it reads as intended is not checked.");
+        }
 
         notChecked.Add(RedactionNotCheckedKind.RawFontMapping, "Raw bytes: text in fonts with their own code mapping (subset fonts) is not readable in the streams; only the page text covers it.");
         notChecked.Add(RedactionNotCheckedKind.RawEncodings, "Raw bytes: only the removed texts are searched, as given and in composed and decomposed form, in Latin-1, Windows-ANSI, PDFDocEncoding, UTF-8 and UTF-16; text in any other encoding, or split by other operators, is not found.");
@@ -289,12 +303,13 @@ public static class RedactionVerifier
     }
 
     /// <summary>
-    /// A page that became an image must be exactly that in the written file: one image object, no text, no path (until the overlay text
-    /// of task 15 allows paths inside the mark rectangles), no other object, no annotation (links and form fields are annotations). The
-    /// objects are counted in the result, never taken from the plan. A page that cannot be counted (too many objects, unreadable) fails:
-    /// a check that could not look never passes.
+    /// A page that became an image must be exactly that in the written file: one image object, no text, no other object, no annotation
+    /// (links and form fields are annotations), and no path except the shapes of the overlay text, which are allowed only INSIDE a mark
+    /// rectangle of the page (<see cref="PathSlack"/> of slack). The objects and the place of every path are read from the result, never
+    /// taken from the plan. A page that cannot be counted (too many objects, unreadable) fails, and so does a path whose place is not
+    /// known: a check that could not look never passes.
     /// </summary>
-    private static async Task CheckRasterPagesAsync(PdfDocument reopened, int[] rasterPages, List<RedactionFinding> findings, NotCheckedLog notChecked, CancellationToken cancellationToken)
+    private static async Task CheckRasterPagesAsync(PdfDocument reopened, RedactionPlan plan, int[] rasterPages, List<RedactionFinding> findings, NotCheckedLog notChecked, CancellationToken cancellationToken)
     {
         if (rasterPages.Length == 0)
         {
@@ -334,7 +349,14 @@ public static class RedactionVerifier
 
             if (summary.Paths != 0)
             {
-                problems.Add(string.Create(CultureInfo.InvariantCulture, $"{summary.Paths} path object(s)"));
+                if (summary.PathBounds is not { } bounds || bounds.Count != summary.Paths)
+                {
+                    problems.Add(string.Create(CultureInfo.InvariantCulture, $"{summary.Paths} path object(s) whose place could not be read"));
+                }
+                else if (PathsOutside(bounds, plan.AreasOn(page)) is var outside and > 0)
+                {
+                    problems.Add(string.Create(CultureInfo.InvariantCulture, $"{outside} path object(s) outside the marked areas"));
+                }
             }
 
             if (summary.Others != 0)
@@ -357,8 +379,33 @@ public static class RedactionVerifier
             RedactionNotCheckedKind.RasterOutsideAreas,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"Pages turned into images ({rasterPages.Length} page(s)): a visible occurrence of a removed text outside the marked areas stays in the image and cannot be found without OCR; only the structure of the page (one image, no text, path, annotation, link or form field) and the marked areas are checked."),
+                $"Pages turned into images ({rasterPages.Length} page(s)): a visible occurrence of a removed text outside the marked areas stays in the image and cannot be found without OCR; only the structure of the page (one image, no text, no annotation, link or form field, no path outside the marked areas) and the marked areas are checked."),
             rasterPages.Length);
+    }
+
+    /// <summary>How many of the paths lie (even partly) outside every one of the rectangles.</summary>
+    private static int PathsOutside(IReadOnlyList<PageRect> bounds, IReadOnlyList<PageRect> areas)
+    {
+        var outside = 0;
+        foreach (var path in bounds)
+        {
+            var inside = false;
+            foreach (var area in areas)
+            {
+                if (path.Left >= area.Left - PathSlack && path.Right <= area.Right + PathSlack && path.Top >= area.Top - PathSlack && path.Bottom <= area.Bottom + PathSlack)
+                {
+                    inside = true;
+                    break;
+                }
+            }
+
+            if (!inside)
+            {
+                outside++;
+            }
+        }
+
+        return outside;
     }
 
     private static void CheckTextRule(List<CheckedText> texts, List<RedactionFinding> findings)

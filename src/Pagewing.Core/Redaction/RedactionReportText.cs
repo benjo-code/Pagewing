@@ -79,6 +79,7 @@ public static class RedactionReportText
         var text = new StringBuilder();
         Removed(text, analysis);
         ImageAreas(text, analysis, done: false);
+        OverlayText(text, analysis);
         Cleaned(text, analysis, confirmed: false, showValues);
         Lost(text, analysis);
         NotCleaned(text, analysis);
@@ -103,6 +104,7 @@ public static class RedactionReportText
         var text = new StringBuilder();
         Removed(text, analysis);
         ImageAreas(text, analysis, done: true);
+        OverlayText(text, analysis);
 
         // Only what the read-back of the written file confirmed is called cleaned.
         if (check.IsClean)
@@ -140,7 +142,7 @@ public static class RedactionReportText
 
                 var raster = analysis.Raster;
                 var pages = string.Join(", ", raster.Select(static r => (r.Page + 1).ToString(CultureInfo.InvariantCulture)));
-                checkedLines.Add($"Pages turned into images: {(raster.Count == 1 ? "page" : "pages")} {pages}: in the written file {(raster.Count == 1 ? "it has" : "each has")} exactly one image and no text, path, other object, annotation, link or form field (links and form fields are annotations), and the pixels under the marks are the colour of the area. These pages are not rendered against the original.");
+                checkedLines.Add($"Pages turned into images: {(raster.Count == 1 ? "page" : "pages")} {pages}: in the written file {(raster.Count == 1 ? "it has" : "each has")} exactly one image and no text, other object, annotation, link or form field (links and form fields are annotations), no path outside the marked areas, and the pixels under the marks are the colour of the area. These pages are not rendered against the original.");
             }
 
             checkedLines.Add("Page keys: no page of the written file carries /Thumb, /PieceInfo, /Metadata or /AA.");
@@ -176,8 +178,8 @@ public static class RedactionReportText
         }
 
         return InPlacePages(analysis) > 0
-            ? Head + ", and a render of every page redacted in place against the original. Pages turned into images are checked for their structure instead (exactly one image, nothing else); they are not rendered against the original."
-            : Head + ". Pages turned into images are checked for their structure (exactly one image, nothing else); they are not rendered against the original.";
+            ? Head + ", and a render of every page redacted in place against the original. Pages turned into images are checked for their structure instead (exactly one image, nothing else but overlay text inside the marked areas); they are not rendered against the original."
+            : Head + ". Pages turned into images are checked for their structure (exactly one image, nothing else but overlay text inside the marked areas); they are not rendered against the original.";
     }
 
     private static void Removed(StringBuilder text, RedactionAnalysis analysis)
@@ -236,6 +238,33 @@ public static class RedactionReportText
 
         lines.Add(ImageTextCaution);
         Section(text, "Image areas", lines);
+    }
+
+    // Overlay text that is left out: over a pixelated or blurred image area, where it does not fit, where the limit of the document is
+    // reached. The areas stay filled; a plan without such an area has nothing to say here.
+    private static void OverlayText(StringBuilder text, RedactionAnalysis analysis)
+    {
+        var lines = new List<string>();
+        if (analysis.OverlaysNotShown > 0)
+        {
+            lines.Add(Count(analysis.OverlaysNotShown, "area gets no overlay text because a pixelated or blurred image lies under it (its background depends on the image).", "areas get no overlay text because a pixelated or blurred image lies under them (their background depends on the image)."));
+        }
+
+        if (analysis.OverlaysNotFitting > 0)
+        {
+            lines.Add(Count(analysis.OverlaysNotFitting, "overlay text does not fit its area; the area stays filled without text.", "overlay texts do not fit their areas; the areas stay filled without text."));
+            if (analysis.OverlaysOverLimit > 0)
+            {
+                lines.Add(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{analysis.OverlaysOverLimit} of them because the limit for the overlay text was reached (a page takes at most {RedactionLimits.MaxOverlayPathsPerPage:N0} lines or {RedactionLimits.MaxOverlaySegmentsPerPage:N0} outline segments, a document {RedactionLimits.MaxOverlayPaths:N0} or {RedactionLimits.MaxOverlaySegments:N0}); the others did not fit."));
+            }
+        }
+
+        if (lines.Count > 0)
+        {
+            Section(text, "Overlay text", lines);
+        }
     }
 
     private static void Cleaned(StringBuilder text, RedactionAnalysis analysis, bool confirmed, bool showValues)

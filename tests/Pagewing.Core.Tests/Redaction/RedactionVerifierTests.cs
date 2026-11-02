@@ -1121,17 +1121,35 @@ public sealed class RedactionVerifierTests
     }
 
     [Fact]
-    public async Task RasterPageWithPathOutsideAreasFails()
+    public async Task VerifierAcceptsPathsInsideAreasOnRasterPagesAndFailsOutside()
     {
         using var folder = new TempFolder();
 
-        // Until the overlay text exists (task 15 lets paths inside the mark rectangles through) a raster page has no path at all,
-        // so a path outside the areas fails; task 15 adapts the second case to a path inside an area.
-        var outside = SingleRasterFinding(await VerifyAsync(Write(folder, "outside.pdf", RasterPdf(0, extraContent: "0 0 1 rg 5 5 20 20 re f")), RasterExpect(0)));
-        Assert.Contains("path object", outside.Detail, StringComparison.Ordinal);
+        // The overlay text of a page that became an image is a path (milestone 14.1, task 15): allowed inside a mark rectangle, nowhere else.
+        // RasterArea is 50..150 across and 50..100 from the top; the page is 200 high, so user y 100..150 is that band.
+        var inside = await VerifyAsync(Write(folder, "inside.pdf", RasterPdf(0, extraContent: "0 0 1 rg 60 110 20 20 re f")), RasterExpect(0));
+        Assert.True(inside.IsClean, string.Join('\n', inside.Findings.Select(static f => f.Detail)));
 
-        var inside = SingleRasterFinding(await VerifyAsync(Write(folder, "inside.pdf", RasterPdf(0, extraContent: "0 0 1 rg 60 110 20 20 re f")), RasterExpect(0)));
-        Assert.Contains("path object", inside.Detail, StringComparison.Ordinal);
+        var outside = SingleRasterFinding(await VerifyAsync(Write(folder, "outside.pdf", RasterPdf(0, extraContent: "0 0 1 rg 5 5 20 20 re f")), RasterExpect(0)));
+        Assert.Contains("1 path object(s) outside the marked areas", outside.Detail, StringComparison.Ordinal);
+
+        // A path that starts inside and reaches out fails, by a hair too (the slack is only for the numbers of the file) ...
+        var reaching = SingleRasterFinding(await VerifyAsync(Write(folder, "reaching.pdf", RasterPdf(0, extraContent: "0 0 1 rg 60 110 100 20 re f")), RasterExpect(0)));
+        Assert.Contains("outside the marked areas", reaching.Detail, StringComparison.Ordinal);
+        var hair = SingleRasterFinding(await VerifyAsync(Write(folder, "hair.pdf", RasterPdf(0, extraContent: "0 0 1 rg 60 110 90.5 20 re f")), RasterExpect(0)));
+        Assert.Contains("outside the marked areas", hair.Detail, StringComparison.Ordinal);
+
+        // ... and one that fills the area exactly (the opaque area itself, drawn by the engine on a page redacted in place) is inside.
+        var exact = await VerifyAsync(Write(folder, "exact.pdf", RasterPdf(0, extraContent: "0 0 1 rg 50 100 100 50 re f")), RasterExpect(0));
+        Assert.True(exact.IsClean, string.Join('\n', exact.Findings.Select(static f => f.Detail)));
+
+        // One path inside does not excuse another outside; each page counts its own paths.
+        var both = SingleRasterFinding(await VerifyAsync(Write(folder, "both.pdf", RasterPdf(0, extraContent: "0 0 1 rg 60 110 20 20 re f 5 5 20 20 re f")), RasterExpect(0)));
+        Assert.Contains("1 path object(s) outside the marked areas", both.Detail, StringComparison.Ordinal);
+
+        // A page that was not asked to become an image has no rule about paths at all.
+        var notRaster = await VerifyAsync(Write(folder, "plain.pdf", RasterPdf(0, extraContent: "0 0 1 rg 5 5 20 20 re f")), new RedactionExpectation(PlanOf(0, RasterArea), [], RedactionFill.Black));
+        Assert.DoesNotContain(notRaster.Findings, static f => f.Kind == RedactionFindingKind.RasterPageInvalid);
     }
 
     [Fact]

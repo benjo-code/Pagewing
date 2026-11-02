@@ -2599,10 +2599,10 @@
     <value>{0} Markierungen haben keinen Begriff (auf der Seite aufgezogene Rechtecke): Der Text darunter wird entfernt, in den Dateibytes wird aber nicht nach ihm gesucht; geprüft werden nur die Zeichen in den Bereichen.</value>
   </data>
   <data name="RedactCheckListRaster" xml:space="preserve">
-    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel, die Daten auf Dokumentebene und ein Rendern jeder an Ort und Stelle geschwärzten Seite im Vergleich zum Original. In Bilder umgewandelte Seiten werden stattdessen auf ihren Aufbau geprüft (genau ein Bild, sonst nichts); sie werden nicht mit dem Original verglichen.</value>
+    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel, die Daten auf Dokumentebene und ein Rendern jeder an Ort und Stelle geschwärzten Seite im Vergleich zum Original. In Bilder umgewandelte Seiten werden stattdessen auf ihren Aufbau geprüft (genau ein Bild, sonst nichts außer Überlagerungstext innerhalb der markierten Bereiche); sie werden nicht mit dem Original verglichen.</value>
   </data>
   <data name="RedactCheckListRasterOnly" xml:space="preserve">
-    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel und die Daten auf Dokumentebene. In Bilder umgewandelte Seiten werden auf ihren Aufbau geprüft (genau ein Bild, sonst nichts); sie werden nicht mit dem Original verglichen.</value>
+    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel und die Daten auf Dokumentebene. In Bilder umgewandelte Seiten werden auf ihren Aufbau geprüft (genau ein Bild, sonst nichts außer Überlagerungstext innerhalb der markierten Bereiche); sie werden nicht mit dem Original verglichen.</value>
   </data>
   <data name="RedactCheckedText" xml:space="preserve">
     <value>Seitentext: Jeder entfernte Text kommt im Seitentext der geschriebenen Datei höchstens so oft vor wie vorher minus die entfernten Stellen (nie, bei einem Text, der überall markiert wurde).</value>
@@ -2620,7 +2620,7 @@
     <value>Seiten: Jede an Ort und Stelle geschwärzte Seite wurde aus der geschriebenen Datei gerendert und sieht außerhalb der markierten Bereiche aus wie das Original.</value>
   </data>
   <data name="RedactCheckedRaster" xml:space="preserve">
-    <value>In Bilder umgewandelte Seiten ({0}): In der geschriebenen Datei hat jede genau ein Bild und keinen Text, keinen Pfad, kein anderes Objekt, keine Annotation, keinen Link und kein Formularfeld (Links und Formularfelder sind Annotationen), und die Pixel unter den Markierungen haben die Farbe des Bereichs. Diese Seiten werden nicht mit dem Original verglichen.</value>
+    <value>In Bilder umgewandelte Seiten ({0}): In der geschriebenen Datei hat jede genau ein Bild und keinen Text, kein anderes Objekt, keine Annotation, keinen Link und kein Formularfeld (Links und Formularfelder sind Annotationen), keinen Pfad außerhalb der markierten Bereiche, und die Pixel unter den Markierungen haben die Farbe des Bereichs. Diese Seiten werden nicht mit dem Original verglichen.</value>
   </data>
   <data name="RedactCheckedKeys" xml:space="preserve">
     <value>Seitenschlüssel: Keine Seite der geschriebenen Datei trägt /Thumb, /PieceInfo, /Metadata oder /AA.</value>
@@ -2854,7 +2854,7 @@
     <value>XMP-Metadaten und JavaScript: Auf Dokumentebene durch den Neuaufbau der Datei entfernt; die Einträge in Objekten der Seiten (Formularobjekte, Bildobjekte, Annotationen) werden nicht zurückgelesen.</value>
   </data>
   <data name="RedactNcRasterOutside" xml:space="preserve">
-    <value>In Bilder umgewandelte Seiten ({0}): Ein sichtbares Vorkommen eines entfernten Textes außerhalb der markierten Bereiche bleibt im Bild stehen und lässt sich ohne OCR nicht finden; geprüft werden nur der Aufbau der Seite (ein Bild, kein Text, kein Pfad, keine Annotation, kein Link, kein Formularfeld) und die markierten Bereiche.</value>
+    <value>In Bilder umgewandelte Seiten ({0}): Ein sichtbares Vorkommen eines entfernten Textes außerhalb der markierten Bereiche bleibt im Bild stehen und lässt sich ohne OCR nicht finden; geprüft werden nur der Aufbau der Seite (ein Bild, kein Text, keine Annotation, kein Link, kein Formularfeld, kein Pfad außerhalb der markierten Bereiche) und die markierten Bereiche.</value>
   </data>
   <data name="RedactCauseChangesOutsideAreas" xml:space="preserve">
     <value>das Schwärzen Inhalt außerhalb der markierten Bereiche verändern würde (PDFium kann diese Seite nicht erneut schreiben, ohne sie zu verändern)</value>
@@ -3098,5 +3098,26 @@
   </data>
   <data name="RedactFailureImageTreatment" xml:space="preserve">
     <value>Eine Bildfläche, die verpixelt oder weichgezeichnet sein sollte, ist weder voll gefüllt noch die Blockmittelwerte des Originals{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactSecOverlay" xml:space="preserve">
+    <value>Überlagerungstext</value>
+  </data>
+  <data name="RedactOverlayNotShownOne" xml:space="preserve">
+    <value>{0} Fläche erhält keinen Überlagerungstext: Darunter liegt ein verpixeltes oder weichgezeichnetes Bild, und sein Hintergrund hängt vom Bild ab.</value>
+  </data>
+  <data name="RedactOverlayNotShownMany" xml:space="preserve">
+    <value>{0} Flächen erhalten keinen Überlagerungstext: Darunter liegt ein verpixeltes oder weichgezeichnetes Bild, und ihr Hintergrund hängt vom Bild ab.</value>
+  </data>
+  <data name="RedactOverlayNotFittingOne" xml:space="preserve">
+    <value>{0} Überlagerungstext passt nicht in seine Fläche; die Fläche bleibt ohne Text gefüllt.</value>
+  </data>
+  <data name="RedactOverlayNotFittingMany" xml:space="preserve">
+    <value>{0} Überlagerungstexte passen nicht in ihre Flächen; die Flächen bleiben ohne Text gefüllt.</value>
+  </data>
+  <data name="RedactOverlayOverLimit" xml:space="preserve">
+    <value>{0} davon, weil die Grenze für den Überlagerungstext erreicht wurde (eine Seite nimmt höchstens {1} Zeilen oder {2} Umrisssegmente auf, ein Dokument {3} oder {4}); die übrigen passten nicht.</value>
+  </data>
+  <data name="RedactNcOverlayNotRead" xml:space="preserve">
+    <value>Überlagerungstext: Der auf die Flächen gezeichnete Text wird nicht aus der geschriebenen Datei zurückgelesen; ob er wie gewollt lesbar ist, wird nicht geprüft.</value>
   </data>
 </root>

@@ -66,10 +66,50 @@ public sealed partial class RedactionExecutor
     }
 
     /// <summary>
+    /// Adds to the information of each raster page what its overlay text will do (drawn, does not fit, left out by the limit of the
+    /// document), decided by the function that draws it, with the budget that is left after the pages redacted in place and the raster pages
+    /// before it. Pages without overlay text come back as they are.
+    /// </summary>
+    private static async Task<IReadOnlyList<RasterPageInfo>> WithRasterOverlaysAsync(RedactionPlan plan, PdfDocument original, IReadOnlyList<RasterPageInfo> infos, OverlayBudget budget, CancellationToken cancellationToken)
+    {
+        if (infos.Count == 0 || plan.Marks.All(static m => m.OverlayText is null))
+        {
+            return infos;
+        }
+
+        var result = new List<RasterPageInfo>(infos.Count);
+        foreach (var info in infos)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var areas = plan.AreasOn(info.Page);
+            if (RedactionOverlayWork.For(plan, info.Page, areas, budget) is not { } work)
+            {
+                result.Add(info);
+                continue;
+            }
+
+            var size = await original.GetPageSizeAsync(info.Page, cancellationToken).ConfigureAwait(false);
+            var overlay = await original.PlanRasterOverlayAsync(size.Width, size.Height, areas, work, cancellationToken).ConfigureAwait(false);
+            budget = budget.After(overlay.Paths, overlay.Segments, overlay.LimitReached);
+            result.Add(info with
+            {
+                OverlaysDrawn = overlay.Drawn,
+                OverlaysNotFitting = overlay.NotFitting,
+                OverlaysOverLimit = overlay.OverLimit,
+                OverlayPaths = overlay.Paths,
+                OverlaySegments = overlay.Segments,
+                OverlayLimitReached = overlay.LimitReached,
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// The new document of a build: the pages of the working copy in their order, except that every raster page is the image of the
     /// original page. Runs of normal pages are imported together; a raster page is rendered, painted and added in its place.
     /// </summary>
-    private async Task<PdfDocument> BuildCleanAsync(RedactionPlan plan, PdfDocument original, PdfDocument working, Action<double>? progress, CancellationToken cancellationToken)
+    private async Task<PdfDocument> BuildCleanAsync(RedactionPlan plan, PdfDocument original, PdfDocument working, OverlayBudget budget, Action<double>? progress, CancellationToken cancellationToken)
     {
         var clean = await engine.CreateEmptyAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -89,7 +129,16 @@ public sealed partial class RedactionExecutor
                 var raster = await RenderRasterPageAsync(plan, original, page, Hooks, cancellationToken).ConfigureAwait(false);
                 try
                 {
-                    await clean.AddRasterPageAsync(destination, raster, cancellationToken).ConfigureAwait(false);
+                    // The overlay text goes above the image as path objects; its decision is the one the analysis made.
+                    RasterOverlay? overlay = null;
+                    var areas = plan.AreasOn(page);
+                    if (RedactionOverlayWork.For(plan, page, areas, budget) is { } work)
+                    {
+                        overlay = await clean.PlanRasterOverlayAsync(raster.WidthPt, raster.HeightPt, areas, work, cancellationToken).ConfigureAwait(false);
+                        budget = budget.After(overlay.Paths, overlay.Segments, overlay.LimitReached);
+                    }
+
+                    await clean.AddRasterPageAsync(destination, raster, overlay, cancellationToken).ConfigureAwait(false);
                 }
                 catch (InvalidOperationException ex)
                 {

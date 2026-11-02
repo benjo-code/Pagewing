@@ -83,7 +83,14 @@ internal sealed record PdfiumRedactionImpact(
     IReadOnlyList<PdfiumRedactionArea>? RemovedAreas = null,
     int ImageAreasTreated = 0,
     int ImageAreasSolid = 0,
-    IReadOnlyList<PdfiumImageSolidReason>? ImageSolidReasons = null);
+    IReadOnlyList<PdfiumImageSolidReason>? ImageSolidReasons = null,
+    int OverlaysDrawn = 0,
+    int OverlaysNotShown = 0,
+    int OverlaysNotFitting = 0,
+    int OverlaysOverLimit = 0,
+    int OverlayPaths = 0,
+    long OverlaySegments = 0,
+    bool OverlayLimitReached = false);
 
 /// <summary>
 /// Redacts one page (text, images, paths, form objects and annotations), as steps on the PDFium thread (<see cref="PdfiumThread.InvokeSteppedAsync{T}"/>): a
@@ -133,6 +140,7 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
     private readonly bool apply;
     private readonly Action? onModified;
     private readonly PdfiumRedactionSeam? seam;
+    private readonly PdfiumOverlaySpec? overlay;
     private readonly IEnumerator<bool> steps;
     private readonly List<nint> pendingCreated = [];
 
@@ -151,8 +159,10 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         bool veryCoarse,
         bool apply,
         Action? onModified,
-        PdfiumRedactionSeam? seam)
+        PdfiumRedactionSeam? seam,
+        PdfiumOverlaySpec? overlay)
     {
+        this.overlay = overlay;
         this.onModified = onModified;
         this.seam = seam;
         this.document = document;
@@ -177,6 +187,7 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
     /// <param name="seam">Hooks for tests, or <see langword="null"/>.</param>
     /// <param name="treatment">What happens to the pixels of an image under a rectangle: the fill colour, or blocks (see <see cref="PdfiumImageBlocks"/>).</param>
     /// <param name="veryCoarse">Whether pixelating and blurring use at most 3 blocks along a side instead of 6.</param>
+    /// <param name="overlay">The text to draw on the rectangles and the budget for it, or <see langword="null"/> for none. Both the dry run and applying decide for it; only applying draws.</param>
     public static PdfiumRedactionRun Start(
         PdfiumDocument document,
         int pageIndex,
@@ -186,7 +197,8 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         Action? onModified = null,
         PdfiumRedactionSeam? seam = null,
         PdfiumImageTreatment treatment = PdfiumImageTreatment.Solid,
-        bool veryCoarse = false)
+        bool veryCoarse = false,
+        PdfiumOverlaySpec? overlay = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(areas);
@@ -206,7 +218,12 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
             copy[i] = a;
         }
 
-        return new PdfiumRedactionRun(document, pageIndex, copy, fill, treatment, veryCoarse, apply, onModified, seam);
+        if (overlay is not null && overlay.Texts.Count != copy.Length)
+        {
+            throw new ArgumentException("The overlay needs one text (or none) for each rectangle.", nameof(overlay));
+        }
+
+        return new PdfiumRedactionRun(document, pageIndex, copy, fill, treatment, veryCoarse, apply, onModified, seam, overlay);
     }
 
     /// <inheritdoc />
@@ -406,7 +423,14 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         RemovedAreasOf(pass),
         pass.ImageAreasTreated,
         pass.ImageAreasSolid,
-        [.. pass.SolidReasons]);
+        [.. pass.SolidReasons],
+        pass.OverlaysDrawn,
+        pass.OverlaysNotShown,
+        pass.OverlaysNotFitting,
+        pass.OverlaysOverLimit,
+        pass.OverlayPaths,
+        pass.OverlaySegments,
+        pass.OverlayLimitReached);
 
     /// <summary>The removed regions as rectangles in points from the top left of the displayed page (what the render check has to leave out besides the rectangles).</summary>
     private static List<PdfiumRedactionArea> RemovedAreasOf(PassState pass)
@@ -445,7 +469,11 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
     /// <summary>Converts the rectangles to user space of the loaded page, clipped to the page; rectangles outside the page are dropped.</summary>
     internal static bool TryUserAreas(nint pageHandle, PdfiumRedactionArea[] areas, List<UserRect> userAreas) => TryUserAreas(pageHandle, areas, userAreas, out _);
 
-    internal static bool TryUserAreas(nint pageHandle, PdfiumRedactionArea[] areas, List<UserRect> userAreas, out DisplayTransform transform)
+    internal static bool TryUserAreas(nint pageHandle, PdfiumRedactionArea[] areas, List<UserRect> userAreas, out DisplayTransform transform) =>
+        TryUserAreas(pageHandle, areas, userAreas, out transform, null);
+
+    /// <summary>As above; <paramref name="kept"/> also receives, for every rectangle that stays, its index among <paramref name="areas"/> and its clipped rectangle in points from the top left.</summary>
+    internal static bool TryUserAreas(nint pageHandle, PdfiumRedactionArea[] areas, List<UserRect> userAreas, out DisplayTransform transform, List<(int Source, PdfiumRedactionArea Rect)>? kept)
     {
         transform = default;
         double width = Fpdf.FPDF_GetPageWidthF(pageHandle);
@@ -455,8 +483,9 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
             return false;
         }
 
-        foreach (var area in areas)
+        for (var source = 0; source < areas.Length; source++)
         {
+            var area = areas[source];
             var left = Math.Max(area.Left, 0);
             var top = Math.Max(area.Top, 0);
             var right = Math.Min(area.Right, width);
@@ -469,6 +498,7 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
             var (x1, y1) = transform.ToUser(left, top);
             var (x2, y2) = transform.ToUser(right, bottom);
             userAreas.Add(new UserRect(Math.Min(x1, x2), Math.Min(y1, y2), Math.Max(x1, x2), Math.Max(y1, y2)));
+            kept?.Add((source, new PdfiumRedactionArea(left, top, right, bottom)));
         }
 
         return true;
@@ -521,7 +551,8 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         }
 
         var userAreas = new List<UserRect>();
-        if (!TryUserAreas(handle, areas, userAreas, out var displayTransform))
+        var keptAreas = new List<(int Source, PdfiumRedactionArea Rect)>();
+        if (!TryUserAreas(handle, areas, userAreas, out var displayTransform, keptAreas))
         {
             pass.Refusal = "The geometry of the page could not be read.";
             yield break;
@@ -782,6 +813,35 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
 
                     changed = true;
                 }
+            }
+        }
+
+        // ---- Overlay text: both passes decide (the dry run says what applying does), only the real page draws. ----
+        if (overlay is not null)
+        {
+            var treatedAreas = new HashSet<int>();
+            foreach (var hole in pass.Treated)
+            {
+                treatedAreas.Add(hole.Area);
+            }
+
+            var overlayPlan = PdfiumRedactionOverlay.Decide(overlay, keptAreas, treatedAreas.Contains);
+            pass.OverlaysDrawn = overlayPlan.Drawn;
+            pass.OverlaysNotShown = overlayPlan.NotShown;
+            pass.OverlaysNotFitting = overlayPlan.NotFitting;
+            pass.OverlaysOverLimit = overlayPlan.OverLimit;
+            pass.OverlayPaths = overlayPlan.Paths;
+            pass.OverlaySegments = overlayPlan.Segments;
+            pass.OverlayLimitReached = overlayPlan.LimitReached;
+            yield return true;
+            if (!scratch && overlayPlan.Drawn > 0)
+            {
+                foreach (var step in PdfiumRedactionOverlay.Draw(raw.Access(), overlayPlan, overlay.Color, displayTransform.ToUser(0, 0), displayTransform.AlongX, displayTransform.AlongY))
+                {
+                    yield return step;
+                }
+
+                changed = true;
             }
         }
 
@@ -1307,6 +1367,27 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
 
         /// <summary>What the pass removed as a whole or character by character, in user space: the page may differ there (the check leaves it out).</summary>
         public List<UserRect> Removed { get; } = [];
+
+        /// <summary>The areas that got overlay text.</summary>
+        public int OverlaysDrawn { get; set; }
+
+        /// <summary>The areas without overlay text because a treated image lies under them.</summary>
+        public int OverlaysNotShown { get; set; }
+
+        /// <summary>The areas whose overlay text does not fit (the areas over the limit included).</summary>
+        public int OverlaysNotFitting { get; set; }
+
+        /// <summary>The areas without overlay text because the budget of the document is reached.</summary>
+        public int OverlaysOverLimit { get; set; }
+
+        /// <summary>The path objects of the overlay text.</summary>
+        public int OverlayPaths { get; set; }
+
+        /// <summary>The path segments of the overlay text.</summary>
+        public long OverlaySegments { get; set; }
+
+        /// <summary>Whether the budget of the document is reached after this page.</summary>
+        public bool OverlayLimitReached { get; set; }
 
         public DisplayTransform? Transform { get; set; }
 

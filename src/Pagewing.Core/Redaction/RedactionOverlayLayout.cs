@@ -34,6 +34,9 @@ public static class RedactionOverlayLayout
     /// <summary>The largest size, in points, an automatically sized text gets (a text on a large area is not blown up to its height).</summary>
     public const double MaxAutoFontSize = 72;
 
+    /// <summary>The size, in points, of a text that is not sized automatically, and the largest size of a repeated text that is (the size of the text boxes of the annotation tools).</summary>
+    public const double DefaultFontSize = 12;
+
     /// <summary>The margin, in points, between the area and the text on every side.</summary>
     public const double Inset = 1;
 

@@ -302,6 +302,28 @@ public sealed class RedactionPlan
     }
 
     /// <summary>
+    /// Returns the overlay text of every rectangle <see cref="AreasOn"/> returns for a page, in the same order (a mark's text for each of its
+    /// rectangles), <see langword="null"/> where the mark has none.
+    /// </summary>
+    /// <param name="page">The 0-based page.</param>
+    public IReadOnlyList<string?> OverlayTextsOn(int page)
+    {
+        var texts = new List<string?>();
+        foreach (var mark in _marks)
+        {
+            if (mark.Page == page)
+            {
+                for (var i = 0; i < mark.Areas.Count; i++)
+                {
+                    texts.Add(mark.OverlayText);
+                }
+            }
+        }
+
+        return texts;
+    }
+
+    /// <summary>
     /// Checks a mark and returns a copy that owns its list. The count of the rectangles is checked before the list is read, so a
     /// hostile list is refused without touching it.
     /// </summary>

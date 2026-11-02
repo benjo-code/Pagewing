@@ -2599,10 +2599,10 @@
     <value>{0} marks have no term (rectangles dragged on the page): the text under them is removed, but the file bytes are not searched for it; only the characters inside the areas are looked for.</value>
   </data>
   <data name="RedactCheckListRaster" xml:space="preserve">
-    <value>The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the document-level data, and a render of every page redacted in place against the original. Pages turned into images are checked for their structure instead (exactly one image, nothing else); they are not rendered against the original.</value>
+    <value>The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the document-level data, and a render of every page redacted in place against the original. Pages turned into images are checked for their structure instead (exactly one image, nothing else but overlay text inside the marked areas); they are not rendered against the original.</value>
   </data>
   <data name="RedactCheckListRasterOnly" xml:space="preserve">
-    <value>The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the document-level data. Pages turned into images are checked for their structure (exactly one image, nothing else); they are not rendered against the original.</value>
+    <value>The written file is read back: the removed texts, the characters inside the marked areas, the file bytes, the pixels of images under the marks, the page keys, the document-level data. Pages turned into images are checked for their structure (exactly one image, nothing else but overlay text inside the marked areas); they are not rendered against the original.</value>
   </data>
   <data name="RedactCheckedText" xml:space="preserve">
     <value>Page text: every removed text occurs in the page text of the written file at most as often as before minus the places removed (never, for a text marked everywhere).</value>
@@ -2620,7 +2620,7 @@
     <value>Pages: every page redacted in place was rendered from the written file and looks like the original outside the marked areas.</value>
   </data>
   <data name="RedactCheckedRaster" xml:space="preserve">
-    <value>Pages turned into images ({0}): in the written file each has exactly one image and no text, path, other object, annotation, link or form field (links and form fields are annotations), and the pixels under the marks are the colour of the area. These pages are not rendered against the original.</value>
+    <value>Pages turned into images ({0}): in the written file each has exactly one image and no text, other object, annotation, link or form field (links and form fields are annotations), no path outside the marked areas, and the pixels under the marks are the colour of the area. These pages are not rendered against the original.</value>
   </data>
   <data name="RedactCheckedKeys" xml:space="preserve">
     <value>Page keys: no page of the written file carries /Thumb, /PieceInfo, /Metadata or /AA.</value>
@@ -2854,7 +2854,7 @@
     <value>XMP metadata and JavaScript: removed from the document level by building the file anew; the entries inside page-level objects (form objects, image objects, annotations) are not read back.</value>
   </data>
   <data name="RedactNcRasterOutside" xml:space="preserve">
-    <value>Pages turned into images ({0}): a visible occurrence of a removed text outside the marked areas stays in the image and cannot be found without OCR; only the structure of the page (one image, no text, path, annotation, link or form field) and the marked areas are checked.</value>
+    <value>Pages turned into images ({0}): a visible occurrence of a removed text outside the marked areas stays in the image and cannot be found without OCR; only the structure of the page (one image, no text, no annotation, link or form field, no path outside the marked areas) and the marked areas are checked.</value>
   </data>
   <data name="RedactCauseChangesOutsideAreas" xml:space="preserve">
     <value>redacting it would change content outside the marked areas (PDFium cannot write this page again without changing it)</value>
@@ -3098,5 +3098,26 @@
   </data>
   <data name="RedactFailureImageTreatment" xml:space="preserve">
     <value>An image area that should be pixelated or blurred is neither filled solid nor the block averages of the original{0}, so the file was not written.</value>
+  </data>
+  <data name="RedactSecOverlay" xml:space="preserve">
+    <value>Overlay text</value>
+  </data>
+  <data name="RedactOverlayNotShownOne" xml:space="preserve">
+    <value>{0} area gets no overlay text: a pixelated or blurred image lies under it, and its background depends on the image.</value>
+  </data>
+  <data name="RedactOverlayNotShownMany" xml:space="preserve">
+    <value>{0} areas get no overlay text: a pixelated or blurred image lies under them, and their background depends on the image.</value>
+  </data>
+  <data name="RedactOverlayNotFittingOne" xml:space="preserve">
+    <value>{0} overlay text does not fit its area; the area stays filled without text.</value>
+  </data>
+  <data name="RedactOverlayNotFittingMany" xml:space="preserve">
+    <value>{0} overlay texts do not fit their areas; the areas stay filled without text.</value>
+  </data>
+  <data name="RedactOverlayOverLimit" xml:space="preserve">
+    <value>{0} of them because the limit for the overlay text was reached (a page takes at most {1} lines or {2} outline segments, a document {3} or {4}); the others did not fit.</value>
+  </data>
+  <data name="RedactNcOverlayNotRead" xml:space="preserve">
+    <value>Overlay text: the text drawn on the areas is not read back from the written file; whether it reads as intended is not checked.</value>
   </data>
 </root>

@@ -301,6 +301,9 @@ public enum RedactionNotCheckedKind
 
     /// <summary>Image areas that were pixelated or blurred (<c>Count</c> pixelated or blurred, <c>Second</c> filled solid): the check compares them with the block means, but whether text inside the image stays legible is not checked, and Pagewing does not recognise text in images.</summary>
     ImageTextLegible,
+
+    /// <summary>Overlay text was part of the plan: it is drawn as shapes on the areas and is not read back from the written file.</summary>
+    OverlayTextNotRead,
 }
 
 /// <summary>One line of what the check did not check, with the data the interface needs to say it in its own language.</summary>

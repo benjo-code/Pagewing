@@ -1272,6 +1272,44 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.StartsWith(language == "en" ? "Cleaned" : "Bereinigt", Strings.RedactSecCleanedDone, StringComparison.Ordinal);
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task CardAndReportNameOverlayTextThatIsLeftOut(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        var page = new PageRedactionImpact(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], [], null, OverlaysNotShown: 2, OverlaysNotFitting: 3, OverlaysOverLimit: 1);
+        var raster = new RasterPageInfo(1, 200, 100, 100, false, 1000, OverlaysNotFitting: 1, OverlaysOverLimit: 1);
+        var analysis = new RedactionAnalysis([page], [], CleanupComplete: true, [], [], PageKeysChecked: true, Marks: 1, MarksWithoutTerm: 1, Raster: [raster]);
+
+        // The numbers add up over the pages redacted in place and the pages that became images.
+        Assert.Equal(2, analysis.OverlaysNotShown);
+        Assert.Equal(4, analysis.OverlaysNotFitting);
+        Assert.Equal(2, analysis.OverlaysOverLimit);
+
+        foreach (var info in new[] { RedactionApplyInfo.Create(analysis), RedactionApplyInfo.ForReport(analysis, new RedactionCheck([], [])) })
+        {
+            var section = Assert.Single(info.Sections, section => section.Heading == Strings.RedactSecOverlay);
+            Assert.Equal(3, section.Lines.Count);
+            Assert.Contains("2", section.Lines[0], StringComparison.Ordinal);
+            Assert.Contains("4", section.Lines[1], StringComparison.Ordinal);
+            Assert.Contains("2", section.Lines[2], StringComparison.Ordinal);
+            Assert.Contains("150.000", section.Lines[2].Replace(",", ".", StringComparison.Ordinal), StringComparison.Ordinal);
+            Assert.All(section.Lines, static line => Assert.DoesNotMatch(ValidWord(), line));
+            Assert.DoesNotContain("{", string.Concat(section.Lines), StringComparison.Ordinal);
+        }
+
+        // Nothing left out: no part at all, so the card says nothing it does not mean.
+        var none = RedactionApplyInfo.Create(new RedactionAnalysis([new PageRedactionImpact(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], [], null, OverlaysDrawn: 3)], [], CleanupComplete: true, [], [], PageKeysChecked: true, Marks: 1, MarksWithoutTerm: 1));
+        Assert.DoesNotContain(none.Sections, section => section.Heading == Strings.RedactSecOverlay);
+
+        // The check says that it does not read the overlay text back.
+        var said = RedactionApplyInfo.SayNotChecked(new RedactionNotChecked(RedactionNotCheckedKind.OverlayTextNotRead, "x"));
+        Assert.Equal(Strings.RedactNcOverlayNotRead, said);
+        Assert.Contains(language == "en" ? "not read back" : "nicht", said, StringComparison.Ordinal);
+    }
+
     [AvaloniaFact]
     public async Task EveryNewTextExistsInBothLanguages()
     {

@@ -402,6 +402,104 @@ public sealed partial class NativeBindingsTests
     }
 
     /// <summary>
+    /// Guards the functions the overlay text of a redaction is drawn with (milestone 14.1): <c>FPDFPageObj_CreateNewPath</c>,
+    /// <c>FPDFPath_MoveTo</c>, <c>LineTo</c>, <c>BezierTo</c> and <c>Close</c>. The declarations in <c>fpdf_edit.h</c> must read as the
+    /// bindings do (the same parameters in the same order and of the same width: a handle is a pointer, a coordinate a <c>float</c>, a
+    /// <c>FPDF_BOOL</c> an <c>int</c>), and PDFium must build what the overlay expects: the creation is itself a move to the first point,
+    /// a curve is three segments, and a close marks the last segment without adding one.
+    /// </summary>
+    [Fact]
+    public async Task PathBuildingApiMatchesTheHeaderAndBuildsWhatTheOverlayExpects()
+    {
+        var header = Regex.Replace(File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdf_edit.h")), @"\s+", " ");
+        var declared = new (string Name, string Result, string Parameters)[]
+        {
+            ("FPDFPageObj_CreateNewPath", "FPDF_PAGEOBJECT", "float x, float y"),
+            ("FPDFPath_MoveTo", "FPDF_BOOL", "FPDF_PAGEOBJECT path, float x, float y"),
+            ("FPDFPath_LineTo", "FPDF_BOOL", "FPDF_PAGEOBJECT path, float x, float y"),
+            ("FPDFPath_BezierTo", "FPDF_BOOL", "FPDF_PAGEOBJECT path, float x1, float y1, float x2, float y2, float x3, float y3"),
+            ("FPDFPath_Close", "FPDF_BOOL", "FPDF_PAGEOBJECT path"),
+        };
+        foreach (var (name, result, parameters) in declared)
+        {
+            Assert.Contains($"{result} FPDF_CALLCONV {name}({parameters});", header, StringComparison.Ordinal);
+            var method = typeof(Fpdf).GetMethod(name, BindingFlags.Public | BindingFlags.Static);
+            Assert.NotNull(method);
+            var expected = parameters.Split(", ").Select(static p => p.Split(' ')[0] == "float" ? typeof(float) : typeof(nint)).ToArray();
+            Assert.Equal(expected, method.GetParameters().Select(static p => p.ParameterType).ToArray());
+            Assert.Equal(result == "FPDF_BOOL" ? typeof(int) : typeof(nint), method.ReturnType);
+        }
+
+        var segments = await PdfiumThread.Shared.InvokeAsync(
+            () =>
+            {
+                var document = Fpdf.FPDF_CreateNewDocument();
+                Assert.NotEqual(0, document);
+                try
+                {
+                    var page = Fpdf.FPDFPage_New(document, 0, 200, 100);
+                    Assert.NotEqual(0, page);
+                    try
+                    {
+                        var path = Fpdf.FPDFPageObj_CreateNewPath(10, 20);
+                        Assert.NotEqual(0, path);
+                        Assert.Equal(1, Fpdf.FPDFPath_LineTo(path, 50, 20));
+                        Assert.Equal(1, Fpdf.FPDFPath_BezierTo(path, 60, 20, 70, 30, 70, 40));
+                        Assert.Equal(1, Fpdf.FPDFPath_Close(path));
+                        Assert.Equal(1, Fpdf.FPDFPath_MoveTo(path, 100, 50));
+                        Assert.Equal(1, Fpdf.FPDFPath_LineTo(path, 120, 50));
+                        Assert.Equal(1, Fpdf.FPDFPath_LineTo(path, 120, 70));
+                        Assert.Equal(1, Fpdf.FPDFPath_Close(path));
+                        Assert.Equal(1, Fpdf.FPDFPageObj_SetFillColor(path, 255, 255, 255, 255));
+                        Assert.Equal(1, Fpdf.FPDFPath_SetDrawMode(path, FpdfConstants.FillModeWinding, 0));
+                        Assert.Equal(1, Fpdf.FPDFPage_InsertObject(page, path));
+
+                        var list = new List<(int Type, float X, float Y, bool Close)>();
+                        unsafe
+                        {
+                            for (var i = 0; i < Fpdf.FPDFPath_CountSegments(path); i++)
+                            {
+                                var segment = Fpdf.FPDFPath_GetPathSegment(path, i);
+                                float x = 0, y = 0;
+                                Assert.Equal(1, Fpdf.FPDFPathSegment_GetPoint(segment, &x, &y));
+                                list.Add((Fpdf.FPDFPathSegment_GetType(segment), x, y, Fpdf.FPDFPathSegment_GetClose(segment) != 0));
+                            }
+
+                            float left = 0, bottom = 0, right = 0, top = 0;
+                            Assert.Equal(1, Fpdf.FPDFPageObj_GetBounds(path, &left, &bottom, &right, &top));
+                            Assert.Equal((10f, 20f, 120f, 70f), (left, bottom, right, top));
+                        }
+
+                        return list;
+                    }
+                    finally
+                    {
+                        Fpdf.FPDF_ClosePage(page);
+                    }
+                }
+                finally
+                {
+                    Fpdf.FPDF_CloseDocument(document);
+                }
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // The creation is the first move, a curve is three segments (control, control, end), a close only marks the last point.
+        Assert.Equal(
+            [
+                (FpdfConstants.SegmentMoveTo, 10f, 20f, false),
+                (FpdfConstants.SegmentLineTo, 50f, 20f, false),
+                (FpdfConstants.SegmentBezierTo, 60f, 20f, false),
+                (FpdfConstants.SegmentBezierTo, 70f, 30f, false),
+                (FpdfConstants.SegmentBezierTo, 70f, 40f, true),
+                (FpdfConstants.SegmentMoveTo, 100f, 50f, false),
+                (FpdfConstants.SegmentLineTo, 120f, 50f, false),
+                (FpdfConstants.SegmentLineTo, 120f, 70f, true),
+            ],
+            segments);
+    }
+
+    /// <summary>
     /// Guards the experimental clipping path API that decides whether an image can be pixelated or blurred (milestone 14.1):
     /// <c>FPDFPageObj_GetClipPath</c>, <c>FPDFClipPath_CountPaths</c>, <c>FPDFClipPath_CountPathSegments</c> and
     /// <c>FPDFClipPath_GetPathSegment</c> are still experimental in the header, and they answer as the rule assumes: an image that nothing

@@ -33,7 +33,7 @@ public sealed partial class PdfDocument
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task<PageRedactionImpact> AnalyzeRedactionAsync(int page, IReadOnlyList<PageRect> areas, CancellationToken cancellationToken = default) =>
-        RunRedactionAsync(page, areas, RedactionFill.Black, RedactionImageTreatment.Solid, RedactionImageStrength.Coarse, apply: false, cancellationToken);
+        RunRedactionAsync(page, areas, RedactionFill.Black, RedactionImageTreatment.Solid, RedactionImageStrength.Coarse, overlay: null, apply: false, cancellationToken);
 
     /// <summary>
     /// The dry run with pixelating or blurring chosen for the images under the rectangles: says how many image areas would be treated and how
@@ -51,7 +51,11 @@ public sealed partial class PdfDocument
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task<PageRedactionImpact> AnalyzeRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionImageTreatment treatment, RedactionImageStrength strength, CancellationToken cancellationToken = default) =>
-        RunRedactionAsync(page, areas, RedactionFill.Black, treatment, strength, apply: false, cancellationToken);
+        RunRedactionAsync(page, areas, RedactionFill.Black, treatment, strength, overlay: null, apply: false, cancellationToken);
+
+    /// <summary>The dry run with overlay text: also says which texts are drawn, which are left out and why (<see cref="PageRedactionImpact.OverlaysNotShown"/>, <see cref="PageRedactionImpact.OverlaysNotFitting"/>), with the decisions of the call that applies.</summary>
+    internal Task<PageRedactionImpact> AnalyzeRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionImageTreatment treatment, RedactionImageStrength strength, RedactionOverlayWork? overlay, CancellationToken cancellationToken = default) =>
+        RunRedactionAsync(page, areas, RedactionFill.Black, treatment, strength, overlay, apply: false, cancellationToken);
 
     /// <summary>
     /// Removes what is under the rectangles from the page and draws an opaque area of exactly each rectangle over it: the
@@ -82,7 +86,7 @@ public sealed partial class PdfDocument
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task<PageRedactionImpact> RedactPageAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, CancellationToken cancellationToken = default) =>
-        RunRedactionAsync(page, areas, fill, RedactionImageTreatment.Solid, RedactionImageStrength.Coarse, apply: true, cancellationToken);
+        RunRedactionAsync(page, areas, fill, RedactionImageTreatment.Solid, RedactionImageStrength.Coarse, overlay: null, apply: true, cancellationToken);
 
     /// <summary>
     /// As <see cref="RedactPageAsync(int, IReadOnlyList{PageRect}, RedactionFill, CancellationToken)"/>, but the pixels of an image under a
@@ -107,7 +111,15 @@ public sealed partial class PdfDocument
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task<PageRedactionImpact> RedactPageAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, RedactionImageTreatment treatment, RedactionImageStrength strength, CancellationToken cancellationToken = default) =>
-        RunRedactionAsync(page, areas, fill, treatment, strength, apply: true, cancellationToken);
+        RunRedactionAsync(page, areas, fill, treatment, strength, overlay: null, apply: true, cancellationToken);
+
+    /// <summary>
+    /// As the call with the treatment, and draws the overlay text of the rectangles as path objects on the opaque areas (no text, no font in the
+    /// file): centred, or tiled, in the size that fits; left out over a treated image, where it does not fit or where the budget of the
+    /// document is reached (the area stays filled). Nothing is drawn outside the rectangle.
+    /// </summary>
+    internal Task<PageRedactionImpact> RedactPageAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, RedactionImageTreatment treatment, RedactionImageStrength strength, RedactionOverlayWork? overlay, CancellationToken cancellationToken = default) =>
+        RunRedactionAsync(page, areas, fill, treatment, strength, overlay, apply: true, cancellationToken);
 
     /// <summary>
     /// For each range of characters of a page (indexes as <see cref="GetPageTextAsync(int, CancellationToken)"/> reports them, last
@@ -404,7 +416,7 @@ public sealed partial class PdfDocument
         Volatile.Write(ref redactionRunning, 0);
     }
 
-    private async Task<PageRedactionImpact> RunRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, RedactionImageTreatment treatment, RedactionImageStrength strength, bool apply, CancellationToken cancellationToken)
+    private async Task<PageRedactionImpact> RunRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, RedactionImageTreatment treatment, RedactionImageStrength strength, RedactionOverlayWork? overlay, bool apply, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(areas);
@@ -445,10 +457,16 @@ public sealed partial class PdfDocument
         }
 
         var pdfiumFill = new PdfiumRedactionFill(fill.Red, fill.Green, fill.Blue);
+        if (overlay is not null && overlay.Texts.Count != copy.Length)
+        {
+            throw new ArgumentException("The overlay needs one text (or none) for each rectangle.", nameof(overlay));
+        }
+
+        var overlaySpec = overlay is { HasText: true } ? overlay.ToSpec(document.Thread) : null;
         if (!apply)
         {
             var dry = await document.Thread.InvokeSteppedAsync(
-                () => PdfiumRedactionRun.Start(document, page, copy, pdfiumFill, apply: false, onModified: null, RedactionSeam, pdfiumTreatment, veryCoarse),
+                () => PdfiumRedactionRun.Start(document, page, copy, pdfiumFill, apply: false, onModified: null, RedactionSeam, pdfiumTreatment, veryCoarse, overlaySpec),
                 PdfiumPriority.Background,
                 cancellationToken).ConfigureAwait(false);
             return ToImpact(page, dry);
@@ -481,7 +499,8 @@ public sealed partial class PdfDocument
                     },
                     RedactionSeam,
                     pdfiumTreatment,
-                    veryCoarse),
+                    veryCoarse,
+                    overlaySpec),
                 PdfiumPriority.Background,
                 cancellationToken).ConfigureAwait(false);
             clean = impact.RefusalReason is null;
@@ -532,5 +551,12 @@ public sealed partial class PdfDocument
             PdfiumImageSolidReason.Overlapping => ImageSolidReason.Overlapping,
             PdfiumImageSolidReason.TooManyImages => ImageSolidReason.TooManyImages,
             _ => ImageSolidReason.Unreadable,
-        })] : null);
+        })] : null,
+        OverlaysNotShown: impact.OverlaysNotShown,
+        OverlaysNotFitting: impact.OverlaysNotFitting,
+        OverlaysDrawn: impact.OverlaysDrawn,
+        OverlaysOverLimit: impact.OverlaysOverLimit,
+        OverlayPaths: impact.OverlayPaths,
+        OverlaySegments: impact.OverlaySegments,
+        OverlayLimitReached: impact.OverlayLimitReached);
 }

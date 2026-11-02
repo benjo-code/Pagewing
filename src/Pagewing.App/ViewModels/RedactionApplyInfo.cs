@@ -54,6 +54,11 @@ public sealed class RedactionApplyInfo
             sections.Add(new RedactionSection(Strings.RedactSecImageAreas, imageAreas));
         }
 
+        if (OverlayLines(analysis) is { Count: > 0 } overlay)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecOverlay, overlay));
+        }
+
         if (FallbackLines(analysis) is { Count: > 0 } fallbacks)
         {
             sections.Add(new RedactionSection(Strings.RedactSecFallbacks, fallbacks));
@@ -119,6 +124,11 @@ public sealed class RedactionApplyInfo
         if (ImageAreaLines(analysis) is { Count: > 0 } imageAreas)
         {
             sections.Add(new RedactionSection(Strings.RedactSecImageAreas, imageAreas));
+        }
+
+        if (OverlayLines(analysis) is { Count: > 0 } overlay)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecOverlay, overlay));
         }
 
         if (FallbackLines(analysis) is { Count: > 0 } fallbacks)
@@ -322,6 +332,7 @@ public sealed class RedactionApplyInfo
             RedactionNotCheckedKind.ApplyXmp => Strings.RedactNcApplyXmp,
             RedactionNotCheckedKind.RasterOutsideAreas => Format(Strings.RedactNcRasterOutside, Number(item.Count)),
             RedactionNotCheckedKind.ImageTextLegible => Format(Strings.RedactNcImageText, Number(item.Count), Number(item.Second)),
+            RedactionNotCheckedKind.OverlayTextNotRead => Strings.RedactNcOverlayNotRead,
             _ => null,
         };
     }
@@ -486,6 +497,34 @@ public sealed class RedactionApplyInfo
         }
 
         lines.Add(Strings.RedactImageCaution);
+        return lines;
+    }
+
+    // Overlay text that is left out (over a treated image, not fitting, over the limit of the document); the areas stay filled. A plan
+    // with nothing left out has nothing to say here.
+    private static List<string> OverlayLines(RedactionAnalysis analysis)
+    {
+        var lines = new List<string>();
+        if (analysis.OverlaysNotShown > 0)
+        {
+            lines.Add(CountText(analysis.OverlaysNotShown, Strings.RedactOverlayNotShownOne, Strings.RedactOverlayNotShownMany));
+        }
+
+        if (analysis.OverlaysNotFitting > 0)
+        {
+            lines.Add(CountText(analysis.OverlaysNotFitting, Strings.RedactOverlayNotFittingOne, Strings.RedactOverlayNotFittingMany));
+            if (analysis.OverlaysOverLimit > 0)
+            {
+                lines.Add(Format(
+                    Strings.RedactOverlayOverLimit,
+                    Number(analysis.OverlaysOverLimit),
+                    Number(RedactionLimits.MaxOverlayPathsPerPage),
+                    Number(RedactionLimits.MaxOverlaySegmentsPerPage),
+                    Number(RedactionLimits.MaxOverlayPaths),
+                    Number(RedactionLimits.MaxOverlaySegments)));
+            }
+        }
+
         return lines;
     }
 

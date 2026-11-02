@@ -146,7 +146,7 @@ public sealed partial class RedactionExecutor
         }
 
         var inventory = await ReadInventoryAsync(original, path, cancellationToken).ConfigureAwait(false);
-        PassResult pass = new([], [], KeysChecked: false, []);
+        PassResult pass = new([], [], KeysChecked: false, [], OverlayBudget.Full);
         if (!plan.IsEmpty)
         {
             var working = await OpenWorkingCopyAsync(original, path, password, cancellationToken).ConfigureAwait(false);
@@ -256,7 +256,7 @@ public sealed partial class RedactionExecutor
             }
 
             var expectation = await ExpectationAsync(plan, original, cancellationToken).ConfigureAwait(false);
-            clean = await BuildCleanAsync(plan, original, working, value => progress?.Report(PassShare + ((1 - PassShare) / 2 * value)), cancellationToken).ConfigureAwait(false);
+            clean = await BuildCleanAsync(plan, original, working, pass.Budget, value => progress?.Report(PassShare + ((1 - PassShare) / 2 * value)), cancellationToken).ConfigureAwait(false);
             if (Hooks?.CleanBuilt is { } built)
             {
                 await built(clean).ConfigureAwait(false);
@@ -458,26 +458,34 @@ public sealed partial class RedactionExecutor
         var refusals = new List<RedactionRefusal>();
         var (raster, rasterRefusals) = await RasterInfosAsync(plan, original, working, cancellationToken).ConfigureAwait(false);
         refusals.AddRange(rasterRefusals);
+
+        // The overlay text has one budget for the document: the pages redacted in place take from it by their number, then the pages that
+        // become images by theirs. The analysis and applying take the same order, so both decide alike.
+        var budget = OverlayBudget.Full;
         for (var i = 0; i < pages.Length; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var page = pages[i];
             var areas = Hooks?.AreasToRedact is { } replace ? replace(page, plan.AreasOn(page)) : plan.AreasOn(page);
+            var overlay = RedactionOverlayWork.For(plan, page, areas, budget);
             var impact = refusals.Count == 0
-                ? await working.RedactPageAsync(page, areas, plan.Fill, plan.ImageTreatment, plan.ImageStrength, cancellationToken).ConfigureAwait(false)
-                : await working.AnalyzeRedactionAsync(page, areas, plan.ImageTreatment, plan.ImageStrength, cancellationToken).ConfigureAwait(false);
+                ? await working.RedactPageAsync(page, areas, plan.Fill, plan.ImageTreatment, plan.ImageStrength, overlay, cancellationToken).ConfigureAwait(false)
+                : await working.AnalyzeRedactionAsync(page, areas, plan.ImageTreatment, plan.ImageStrength, overlay, cancellationToken).ConfigureAwait(false);
             if (impact.Refusal is { } refusal)
             {
                 refusals.Add(refusal);
             }
 
             impacts.Add(impact);
+            budget = budget.After(impact.OverlayPaths, impact.OverlaySegments, impact.OverlayLimitReached);
             progress?.Report((i + 1) / (double)(pages.Length + 1));
         }
 
+        var afterPages = budget;
+        raster = await WithRasterOverlaysAsync(plan, original, raster, budget, cancellationToken).ConfigureAwait(false);
         if (refusals.Count > 0)
         {
-            return new PassResult(impacts, refusals, KeysChecked: false, raster);
+            return new PassResult(impacts, refusals, KeysChecked: false, raster, afterPages);
         }
 
         // One write of the working copy for the render check of all pages; the same bytes give the early page key answer.
@@ -509,7 +517,7 @@ public sealed partial class RedactionExecutor
 
         if (refusals.Count > 0)
         {
-            return new PassResult(impacts, [.. refusals.OrderBy(static r => r.Pages.Count > 0 ? r.Pages[0] : -1)], KeysChecked: false, raster);
+            return new PassResult(impacts, [.. refusals.OrderBy(static r => r.Pages.Count > 0 ? r.Pages[0] : -1)], KeysChecked: false, raster, afterPages);
         }
 
         if (keys is not null && keys.ToRefusal() is { } keyRefusal)
@@ -518,10 +526,10 @@ public sealed partial class RedactionExecutor
         }
 
         progress?.Report(1);
-        return new PassResult(impacts, refusals, KeysChecked: keys is { WasChecked: true }, raster);
+        return new PassResult(impacts, refusals, KeysChecked: keys is { WasChecked: true }, raster, afterPages);
     }
 
-    private sealed record PassResult(IReadOnlyList<PageRedactionImpact> Impacts, IReadOnlyList<RedactionRefusal> Refusals, bool KeysChecked, IReadOnlyList<RasterPageInfo> Raster);
+    private sealed record PassResult(IReadOnlyList<PageRedactionImpact> Impacts, IReadOnlyList<RedactionRefusal> Refusals, bool KeysChecked, IReadOnlyList<RasterPageInfo> Raster, OverlayBudget Budget);
 
     /// <summary>Takes a part of the progress bar: 0 to 1 of the step becomes <c>start</c> to <c>start + share</c> of the whole.</summary>
     internal sealed class Scaled(IProgress<double>? target, double start, double share) : IProgress<double>

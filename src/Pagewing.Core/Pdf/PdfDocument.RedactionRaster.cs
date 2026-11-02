@@ -1,4 +1,5 @@
 using Pagewing.Core.Redaction;
+using Pagewing.Core.Text;
 using Pagewing.Pdfium;
 
 namespace Pagewing.Core.Pdf;
@@ -25,7 +26,43 @@ public sealed partial class PdfDocument
     /// <exception cref="InvalidOperationException">PDFium could not create the page; nothing is left of it.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the job started.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
-    public Task AddRasterPageAsync(int index, RasterPage page, CancellationToken cancellationToken = default)
+    public Task AddRasterPageAsync(int index, RasterPage page, CancellationToken cancellationToken = default) =>
+        AddRasterPageAsync(index, page, overlay: null, cancellationToken);
+
+    /// <summary>
+    /// Decides the overlay text of the rectangles of a page that becomes an image, with the function that redacts a page in place decides
+    /// with (no treated image: the background is the fill colour). One short job; nothing is changed. The rectangles are clipped to the page.
+    /// </summary>
+    /// <param name="widthPt">The width of the displayed page in points.</param>
+    /// <param name="heightPt">The height of the displayed page in points.</param>
+    /// <param name="areas">The rectangles in points from the top left of the page.</param>
+    /// <param name="work">The texts (one for each rectangle), the style and the budget; must have a text.</param>
+    /// <param name="cancellationToken">Cancels before the job starts.</param>
+    internal async Task<RasterOverlay> PlanRasterOverlayAsync(double widthPt, double heightPt, IReadOnlyList<PageRect> areas, RedactionOverlayWork work, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(areas);
+        ArgumentNullException.ThrowIfNull(work);
+        if (work.Texts.Count != areas.Count)
+        {
+            throw new ArgumentException("The overlay needs one text (or none) for each rectangle.", nameof(work));
+        }
+
+        var rectangles = areas.Select(static a => new PdfiumRedactionArea(a.Left, a.Top, a.Right, a.Bottom)).ToArray();
+        var spec = work.ToSpec(document.Thread);
+        var plan = await document.Thread.InvokeAsync(
+            () => PdfiumRedactionRaster.PlanOverlay(spec, rectangles, widthPt, heightPt),
+            PdfiumPriority.Background,
+            cancellationToken).ConfigureAwait(false);
+        return new RasterOverlay(plan, spec.Color);
+    }
+
+    /// <summary>As <see cref="AddRasterPageAsync(int, RasterPage, CancellationToken)"/>, and draws the overlay text above the image as path objects.</summary>
+    /// <param name="index">The 0-based position the new page gets.</param>
+    /// <param name="page">The page to add; not turned.</param>
+    /// <param name="overlay">The decided overlay text of the page (from <see cref="PlanRasterOverlayAsync"/> for the same size), or <see langword="null"/>.</param>
+    /// <param name="cancellationToken">Cancels before the job starts.</param>
+    internal Task AddRasterPageAsync(int index, RasterPage page, RasterOverlay? overlay, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(page);
@@ -44,7 +81,7 @@ public sealed partial class PdfDocument
             {
                 try
                 {
-                    PdfiumRedactionRaster.AddPage(document, index, page.WidthPt, page.HeightPt, page.Rotation, page.WidthPx, page.HeightPx, page.Bgra);
+                    PdfiumRedactionRaster.AddPage(document, index, page.WidthPt, page.HeightPt, page.Rotation, page.WidthPx, page.HeightPx, page.Bgra, overlay?.Plan, overlay?.Color ?? default);
                 }
                 finally
                 {
@@ -95,6 +132,46 @@ public sealed partial class PdfDocument
             () => PdfiumRedactionRaster.Summarize(document, page),
             PdfiumPriority.Background,
             cancellationToken).ConfigureAwait(false);
-        return new PageObjectSummary(summary.Images, summary.Paths, summary.Texts, summary.Others, summary.Annotations);
+        return new PageObjectSummary(
+            summary.Images,
+            summary.Paths,
+            summary.Texts,
+            summary.Others,
+            summary.Annotations,
+            summary.PathBounds is null ? null : [.. summary.PathBounds.Select(static b => new PageRect(b.Left, b.Top, b.Right, b.Bottom))]);
     }
+}
+
+/// <summary>The decided overlay text of a page that becomes an image: what is drawn, what is left out and why, and the colour.</summary>
+internal sealed class RasterOverlay
+{
+    internal RasterOverlay(PdfiumOverlayPlan plan, PdfiumRedactionFill color)
+    {
+        Plan = plan;
+        Color = color;
+    }
+
+    /// <summary>Gets the decisions.</summary>
+    internal PdfiumOverlayPlan Plan { get; }
+
+    /// <summary>Gets the colour of the glyphs.</summary>
+    internal PdfiumRedactionFill Color { get; }
+
+    /// <summary>Gets how many texts are drawn.</summary>
+    public int Drawn => Plan.Drawn;
+
+    /// <summary>Gets how many texts do not fit (the budget reason included).</summary>
+    public int NotFitting => Plan.NotFitting;
+
+    /// <summary>Gets how many of those are left out because the budget of the document is reached.</summary>
+    public int OverLimit => Plan.OverLimit;
+
+    /// <summary>Gets how many path objects the drawn texts take.</summary>
+    public int Paths => Plan.Paths;
+
+    /// <summary>Gets how many path segments the drawn texts take.</summary>
+    public long Segments => Plan.Segments;
+
+    /// <summary>Gets whether the budget of the document is reached after this page.</summary>
+    public bool LimitReached => Plan.LimitReached;
 }

@@ -36,6 +36,9 @@ internal sealed class VerifierPdf
     /// <summary>Gets or sets text added to the dictionary of every page.</summary>
     public string PageEntries { get; set; } = string.Empty;
 
+    /// <summary>Gets or sets the media box of every page (four numbers).</summary>
+    public string MediaBox { get; set; } = "0 0 300 200";
+
     /// <summary>Gets or sets text added to the dictionary of the page with the same index (after <see cref="PageEntries"/>).</summary>
     public IReadOnlyList<string> PageEntriesByPage { get; set; } = [];
 
@@ -122,7 +125,7 @@ internal sealed class VerifierPdf
         Set(2, $"<< /Type /Pages /Kids [{kids}] /Count {pageCount} >>");
         for (var i = 0; i < pageCount; i++)
         {
-            Set(4 + (2 * i), $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 3 0 R >> {ResourceEntries} >> /Contents {5 + (2 * i)} 0 R {PageEntries} {(i < PageEntriesByPage.Count ? PageEntriesByPage[i] : string.Empty)} >>");
+            Set(4 + (2 * i), $"<< /Type /Page /Parent 2 0 R /MediaBox [{MediaBox}] /Resources << /Font << /F1 3 0 R >> {ResourceEntries} >> /Contents {5 + (2 * i)} 0 R {PageEntries} {(i < PageEntriesByPage.Count ? PageEntriesByPage[i] : string.Empty)} >>");
         }
 
         using var file = new MemoryStream();

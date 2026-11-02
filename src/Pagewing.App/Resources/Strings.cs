@@ -1169,6 +1169,13 @@ public static class Strings
     public static string RedactImgReasonTooMany => Get("RedactImgReasonTooMany");
     public static string RedactCheckedAreasTreated => Get("RedactCheckedAreasTreated");
     public static string RedactNcImageText => Get("RedactNcImageText");
+    public static string RedactSecOverlay => Get("RedactSecOverlay");
+    public static string RedactOverlayNotShownOne => Get("RedactOverlayNotShownOne");
+    public static string RedactOverlayNotShownMany => Get("RedactOverlayNotShownMany");
+    public static string RedactOverlayNotFittingOne => Get("RedactOverlayNotFittingOne");
+    public static string RedactOverlayNotFittingMany => Get("RedactOverlayNotFittingMany");
+    public static string RedactOverlayOverLimit => Get("RedactOverlayOverLimit");
+    public static string RedactNcOverlayNotRead => Get("RedactNcOverlayNotRead");
     public static string RedactFailureImageTreatment => Get("RedactFailureImageTreatment");
     public static string RedactRescueStuck => Get("RedactRescueStuck");
     public static string RedactRescueHeadingStuck => Get("RedactRescueHeadingStuck");

@@ -65,9 +65,14 @@ public sealed record RedactionRefusal(RedactionRefusalKind Kind, IReadOnlyList<i
 /// <param name="RemovedAreas">Where content went besides the rectangles, in points from the top left of the displayed page: the boxes of the characters that were removed (a character counts as soon as its box touches a rectangle, so its box can reach out of the rectangle) and the bounds of what was removed as a whole. The render check leaves these out too (<see cref="RedactionPageAreas.For"/>).</param>
 /// <param name="ImageAreasTreated">The image areas (one image under one rectangle) that were pixelated or blurred. 0 when the plan treats image areas solid.</param>
 /// <param name="ImageAreasSolid">The image areas that got the solid fill although pixelating or blurring was chosen, because the rule does not apply (see <see cref="ImageSolidReason"/>; one entry in <paramref name="ImageSolidReasons"/> each). 0 when the plan treats image areas solid: nothing falls back then.</param>
-/// <param name="OverlaysNotShown">The areas that got no overlay text because a treated image lies under them (overlay text, a later task); 0 until then.</param>
-/// <param name="OverlaysNotFitting">The areas whose overlay text does not fit (overlay text, a later task); 0 until then.</param>
+/// <param name="OverlaysNotShown">The areas that got no overlay text because a treated image lies under them.</param>
+/// <param name="OverlaysNotFitting">The areas whose overlay text does not fit, the areas over the limit of the document included (they stay filled without text).</param>
 /// <param name="ImageSolidReasons">Why each of the <paramref name="ImageAreasSolid"/> areas fell back, in the order the page was processed; <see langword="null"/> for none.</param>
+/// <param name="OverlaysDrawn">The areas that got their overlay text.</param>
+/// <param name="OverlaysOverLimit">Of <paramref name="OverlaysNotFitting"/>, the areas that got no text because the limit of the page (<see cref="RedactionLimits.MaxOverlayPathsPerPage"/> path objects or <see cref="RedactionLimits.MaxOverlaySegmentsPerPage"/> segments) or of the document (<see cref="RedactionLimits.MaxOverlayPaths"/>, <see cref="RedactionLimits.MaxOverlaySegments"/>) was reached.</param>
+/// <param name="OverlayPaths">The path objects of the overlay text on this page.</param>
+/// <param name="OverlaySegments">The path segments of the overlay text on this page.</param>
+/// <param name="OverlayLimitReached">Whether the limit of the document was reached on this page or before it.</param>
 public sealed record PageRedactionImpact(
     int Page,
     int CharsRemoved,
@@ -87,7 +92,12 @@ public sealed record PageRedactionImpact(
     int ImageAreasSolid = 0,
     int OverlaysNotShown = 0,
     int OverlaysNotFitting = 0,
-    IReadOnlyList<ImageSolidReason>? ImageSolidReasons = null);
+    IReadOnlyList<ImageSolidReason>? ImageSolidReasons = null,
+    int OverlaysDrawn = 0,
+    int OverlaysOverLimit = 0,
+    int OverlayPaths = 0,
+    long OverlaySegments = 0,
+    bool OverlayLimitReached = false);
 
 /// <summary>Why an image area got the solid fill although pixelating or blurring was chosen.</summary>
 public enum ImageSolidReason
@@ -207,6 +217,15 @@ public sealed record RedactionAnalysis(
     /// <summary>Gets whether the file must not be redacted (any refusal).</summary>
     public bool IsRefused => Refusals.Count > 0;
 
+    /// <summary>Gets how many areas get no overlay text because a treated image lies under them.</summary>
+    public int OverlaysNotShown => Pages.Sum(static p => p.OverlaysNotShown);
+
+    /// <summary>Gets how many areas get no overlay text because it does not fit (the areas over the limit of the document included), on the pages redacted in place and on the pages turned into images.</summary>
+    public int OverlaysNotFitting => Pages.Sum(static p => p.OverlaysNotFitting) + (Raster?.Sum(static r => r.OverlaysNotFitting) ?? 0);
+
+    /// <summary>Gets how many of <see cref="OverlaysNotFitting"/> are left out because the limit of the document was reached.</summary>
+    public int OverlaysOverLimit => Pages.Sum(static p => p.OverlaysOverLimit) + (Raster?.Sum(static r => r.OverlaysOverLimit) ?? 0);
+
     /// <summary>Gets everything that is removed as a whole instead of precisely, with the reason, in page order.</summary>
     public IReadOnlyList<RedactionFallback> Fallbacks => [.. Pages.SelectMany(static p => p.Fallbacks)];
 }
@@ -225,6 +244,12 @@ public sealed record RedactionAnalysis(
 /// <param name="FormFields">How many form field widgets the page has: they are not fillable afterwards.</param>
 /// <param name="Links">How many links the page has: they stop working.</param>
 /// <param name="HasText">Whether the page has text: all of it is gone from the page.</param>
+/// <param name="OverlaysNotFitting">The areas of the page whose overlay text does not fit, the areas over the limit of the document included.</param>
+/// <param name="OverlaysOverLimit">Of those, the areas left out because the limit of the document was reached.</param>
+/// <param name="OverlaysDrawn">The areas of the page that get their overlay text.</param>
+/// <param name="OverlayPaths">The path objects of the overlay text on the page.</param>
+/// <param name="OverlaySegments">The path segments of the overlay text on the page.</param>
+/// <param name="OverlayLimitReached">Whether the limit of the document was reached on this page or before it.</param>
 public sealed record RasterPageInfo(
     int Page,
     int Dpi,
@@ -235,7 +260,13 @@ public sealed record RasterPageInfo(
     int Annotations = 0,
     int FormFields = 0,
     int Links = 0,
-    bool HasText = false);
+    bool HasText = false,
+    int OverlaysNotFitting = 0,
+    int OverlaysOverLimit = 0,
+    int OverlaysDrawn = 0,
+    int OverlayPaths = 0,
+    long OverlaySegments = 0,
+    bool OverlayLimitReached = false);
 
 /// <summary>What the cleanup removes and what the rebuild loses, read from a document and its file.</summary>
 /// <param name="Cleanup">What the cleanup removes, in the order of <see cref="CleanupKind"/>.</param>
