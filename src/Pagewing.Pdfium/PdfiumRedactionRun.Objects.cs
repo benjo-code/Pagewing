@@ -6,6 +6,20 @@ namespace Pagewing.Pdfium;
 internal readonly record struct ExpectedImage(long Key, UserRect Bounds, long Width, long Height);
 
 /// <summary>
+/// What happens to the pixels of an image under one rectangle: the box, the rectangle (index among the areas of the page) it comes from,
+/// and either the blocks (pixelating or blurring) or, for the solid fill, no blocks. When pixelating or blurring was chosen but the rule does
+/// not apply, <see cref="Reason"/> says why this box gets the solid fill.
+/// </summary>
+internal readonly record struct BoxPlan(PixelBox Box, int Area, int[]? ColumnEdges, int[]? RowEdges, PdfiumImageSolidReason? Reason)
+{
+    /// <summary>Whether the box is pixelated or blurred.</summary>
+    public bool IsTreated => ColumnEdges is not null && RowEdges is not null;
+}
+
+/// <summary>A treated image that shows under an area: the opaque area is not drawn over <see cref="Rect"/> (the page space rectangle of the image).</summary>
+internal readonly record struct TreatedHole(int Area, UserRect Rect);
+
+/// <summary>
 /// The part of the redaction run that deals with objects other than text: images, paths and form objects, planned and applied as edits
 /// of the page. A form object that holds something under a rectangle is taken apart on the page (its children go to the page with the
 /// matrix <c>child × form</c> at the place of the form), because PDFium does not write changes of a form object back to its XObject.
@@ -14,6 +28,9 @@ internal sealed partial class PdfiumRedactionRun
 {
     /// <summary>Bits of a key that hold the position of a child inside a form object (the object index of the page sits above them).</summary>
     private const int KeyShift = 24;
+
+    /// <summary>The most pieces the opaque area of one rectangle may be cut into around treated images; beyond it those images get the solid fill instead.</summary>
+    internal const int MaxSolidPieces = 64;
 
     /// <summary>The key of an object: the index of the page object, and for a child of a form object its position (0 or more) among the children that the form is taken apart into.</summary>
     internal static long KeyOf(int index, int leaf) => ((long)index << KeyShift) | (uint)(leaf + 1);
@@ -55,8 +72,17 @@ internal sealed partial class PdfiumRedactionRun
 
         public List<nint> Texts { get; init; } = [];
 
-        /// <summary>The pixels of an image that lie under the rectangles (empty for an image that is only replaced).</summary>
-        public List<PixelBox> Boxes { get; init; } = [];
+        /// <summary>The pixels of an image that lie under the rectangles, one entry per rectangle (empty for an image that is only replaced).</summary>
+        public List<BoxPlan> Boxes { get; init; } = [];
+
+        /// <summary>Where the image is shown on the page (page space), for the opaque area that leaves a treated image alone.</summary>
+        public UserRect ImageRect { get; init; }
+
+        /// <summary>For an image removed as a whole while pixelating or blurring was chosen: how many rectangles touch it, and why it was not treated.</summary>
+        public int SolidAreas { get; set; }
+
+        /// <summary>Why the image was removed as a whole instead of treated (see <see cref="SolidAreas"/>).</summary>
+        public PdfiumImageSolidReason SolidReason { get; set; }
 
         public int ImageWidth { get; init; }
 
@@ -144,6 +170,12 @@ internal sealed partial class PdfiumRedactionRun
         public required bool Scratch { get; init; }
 
         public required double PageArea { get; init; }
+
+        /// <summary>What happens to the pixels of an image under a rectangle.</summary>
+        public required PdfiumImageTreatment Treatment { get; init; }
+
+        /// <summary>Whether pixelating and blurring use the coarser grid.</summary>
+        public required bool VeryCoarse { get; init; }
 
         /// <summary>The images the page shows once all edits are done.</summary>
         public List<ExpectedImage> Expected { get; } = [];
@@ -594,12 +626,12 @@ internal sealed partial class PdfiumRedactionRun
         {
             if (!haveSize || composed is null)
             {
-                return Whole(EditKind.ImageWhole, key, index, handle, "the size or the matrix of the image could not be read", pageBounds);
+                return WholeImage(c, key, index, handle, "the size or the matrix of the image could not be read", pageBounds, PdfiumImageSolidReason.Unreadable);
             }
 
             if (!composed.Value.IsAxisParallel)
             {
-                return Whole(EditKind.ImageWhole, key, index, handle, "the image is turned or sheared, so its pixels under the rectangle cannot be told apart", pageBounds);
+                return WholeImage(c, key, index, handle, "the image is turned or sheared, so its pixels under the rectangle cannot be told apart", pageBounds, PdfiumImageSolidReason.TurnedOrSheared);
             }
 
             if (width * height > PdfiumRedaction.MaxImagePixels)
@@ -608,19 +640,25 @@ internal sealed partial class PdfiumRedactionRun
                 return null;
             }
 
-            var boxes = new List<PixelBox>();
-            foreach (var area in c.UserAreas)
+            var boxes = new List<BoxPlan>();
+            for (var k = 0; k < c.UserAreas.Count; k++)
             {
+                var area = c.UserAreas[k];
                 if (area.Touches(pageBounds) && PdfiumRedactionObjects.TryPixelBox(composed.Value, (int)width, (int)height, area, out var box))
                 {
-                    boxes.Add(box);
+                    boxes.Add(new BoxPlan(box, k, null, null, null));
                 }
             }
 
             if (boxes.Count > 0)
             {
+                if (c.Treatment != PdfiumImageTreatment.Solid)
+                {
+                    ClassifyBoxes(c, handle, boxes);
+                }
+
                 expected.Add(new ExpectedImage(key, shown, width, height));
-                return new Edit(key, index, handle, EditKind.ImageOverwrite) { Boxes = boxes, ImageWidth = (int)width, ImageHeight = (int)height, Rescue = rescue, Region = pageBounds };
+                return new Edit(key, index, handle, EditKind.ImageOverwrite) { Boxes = boxes, ImageRect = shown, ImageWidth = (int)width, ImageHeight = (int)height, Rescue = rescue, Region = pageBounds };
             }
         }
 
@@ -641,6 +679,170 @@ internal sealed partial class PdfiumRedactionRun
         }
 
         return new Edit(key, index, handle, EditKind.ImageOverwrite) { ImageWidth = (int)width, ImageHeight = (int)height, Rescue = true, Region = pageBounds };
+    }
+
+    /// <summary>
+    /// An image under a rectangle that is removed as a whole. When pixelating or blurring was chosen that is a fall back to the solid fill:
+    /// the rectangles that touch the image are counted, with the reason.
+    /// </summary>
+    private static Edit WholeImage(PlanContext c, long key, int index, nint handle, string reason, UserRect pageBounds, PdfiumImageSolidReason why)
+    {
+        var edit = Whole(EditKind.ImageWhole, key, index, handle, reason, pageBounds);
+        if (c.Treatment != PdfiumImageTreatment.Solid)
+        {
+            var touching = 0;
+            foreach (var area in c.UserAreas)
+            {
+                if (area.Touches(pageBounds))
+                {
+                    touching++;
+                }
+            }
+
+            edit.SolidAreas = Math.Max(touching, 1);
+            edit.SolidReason = why;
+        }
+
+        return edit;
+    }
+
+    /// <summary>
+    /// Decides for each box of an image whether it is pixelated or blurred, or gets the solid fill: not when the image is clipped, not when its
+    /// box overlaps another box of the same image (the blocks of the second would be taken from pixels the first already changed, and the
+    /// check of the result takes them from the original), not when the box is too small for 2 x 2 blocks.
+    /// </summary>
+    private static void ClassifyBoxes(PlanContext c, nint image, List<BoxPlan> boxes)
+    {
+        var clipped = PdfiumRedactionObjects.IsClipped(image);
+        var overlapping = FindOverlapping(boxes);
+        for (var i = 0; i < boxes.Count; i++)
+        {
+            var plan = boxes[i];
+            if (clipped)
+            {
+                boxes[i] = plan with { Reason = PdfiumImageSolidReason.Clipped };
+            }
+            else if (overlapping[i])
+            {
+                boxes[i] = plan with { Reason = PdfiumImageSolidReason.Overlapping };
+            }
+            else if (PdfiumImageBlocks.TryPlan(plan.Box.Width, plan.Box.Height, c.VeryCoarse, out var columns, out var rows))
+            {
+                boxes[i] = plan with { ColumnEdges = columns, RowEdges = rows };
+            }
+            else
+            {
+                boxes[i] = plan with { Reason = PdfiumImageSolidReason.TooSmall };
+            }
+        }
+    }
+
+    /// <summary>Which boxes share at least one pixel with another box (a sweep along the left edges, so that many boxes apart cost little).</summary>
+    private static bool[] FindOverlapping(List<BoxPlan> boxes)
+    {
+        var result = new bool[boxes.Count];
+        var order = new int[boxes.Count];
+        for (var i = 0; i < order.Length; i++)
+        {
+            order[i] = i;
+        }
+
+        Array.Sort(order, (a, b) => boxes[a].Box.X0.CompareTo(boxes[b].Box.X0));
+        for (var a = 0; a < order.Length; a++)
+        {
+            var first = boxes[order[a]].Box;
+            for (var b = a + 1; b < order.Length && boxes[order[b]].Box.X0 < first.X1; b++)
+            {
+                var second = boxes[order[b]].Box;
+                if (first.Y0 < second.Y1 && second.Y0 < first.Y1)
+                {
+                    result[order[a]] = true;
+                    result[order[b]] = true;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Plan time, before anything is written: a rectangle whose opaque area would have to be cut into more than <see cref="MaxSolidPieces"/>
+    /// pieces around its treated images gives up those images (they get the solid fill and the whole rectangle is drawn), so that the work
+    /// per rectangle stays small and what is written is what the analysis said.
+    /// </summary>
+    private static void DowngradeCrowdedAreas(List<Edit> edits, List<UserRect> userAreas)
+    {
+        var holes = new Dictionary<int, List<UserRect>>();
+        foreach (var edit in AllEdits(edits))
+        {
+            if (edit.Kind != EditKind.ImageOverwrite)
+            {
+                continue;
+            }
+
+            foreach (var plan in edit.Boxes)
+            {
+                if (plan.IsTreated)
+                {
+                    if (!holes.TryGetValue(plan.Area, out var list))
+                    {
+                        holes[plan.Area] = list = [];
+                    }
+
+                    list.Add(edit.ImageRect);
+                }
+            }
+        }
+
+        foreach (var (area, list) in holes)
+        {
+            if (PdfiumRedactionObjects.Subtract(userAreas[area], list, MaxSolidPieces) is not null)
+            {
+                continue;
+            }
+
+            foreach (var edit in AllEdits(edits))
+            {
+                if (edit.Kind != EditKind.ImageOverwrite)
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < edit.Boxes.Count; i++)
+                {
+                    if (edit.Boxes[i].IsTreated && edit.Boxes[i].Area == area)
+                    {
+                        edit.Boxes[i] = edit.Boxes[i] with { ColumnEdges = null, RowEdges = null, Reason = PdfiumImageSolidReason.TooManyImages };
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// For each rectangle the parts that the opaque area is drawn over: all of it, or what is left when the images that really were treated
+    /// under it are cut out (the pixels there are the blocks). A rectangle that cannot be cut within the limit gets the whole area.
+    /// </summary>
+    private static IReadOnlyList<UserRect>[] SolidPieces(List<UserRect> userAreas, PassState pass)
+    {
+        var holes = new Dictionary<int, List<UserRect>>();
+        foreach (var hole in pass.Treated)
+        {
+            if (!holes.TryGetValue(hole.Area, out var list))
+            {
+                holes[hole.Area] = list = [];
+            }
+
+            list.Add(hole.Rect);
+        }
+
+        var result = new IReadOnlyList<UserRect>[userAreas.Count];
+        for (var j = 0; j < result.Length; j++)
+        {
+            result[j] = holes.TryGetValue(j, out var list) && PdfiumRedactionObjects.Subtract(userAreas[j], list, MaxSolidPieces) is { } pieces ? pieces : [userAreas[j]];
+        }
+
+        return result;
     }
 
     /// <summary>The edit for a path that touches a rectangle: cut a filled rectangle into the pieces outside, remove anything else as a whole, or refuse a large shape.</summary>
@@ -735,6 +937,12 @@ internal sealed partial class PdfiumRedactionRun
                 NoteRegion(pass, edit);
                 pass.ImagesRemovedWhole++;
                 pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.ImageRemovedWhole, edit.Reason ?? "removed as a whole"));
+                for (var n = 0; n < edit.SolidAreas; n++)
+                {
+                    pass.ImageAreasSolid++;
+                    pass.SolidReasons.Add(edit.SolidReason);
+                }
+
                 break;
             case EditKind.PathWhole:
                 RemoveWhole(raw, edit);
@@ -820,25 +1028,31 @@ internal sealed partial class PdfiumRedactionRun
             NoteRegion(pass, edit);
             pass.ImagesRemovedWhole++;
             pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.ImageRemovedWhole, "the pixels of the image could not be read"));
+            CountUnreadable(pass, edit);
             return;
         }
 
-        if (edit.Boxes.Count > 0)
+        // The whole image is changed in memory first and stored in one step below: a failure on the way never leaves a half-treated image.
+        // Every image is written back as RGB with alpha (gray, indexed and CMYK ones included), so any colour fits.
+        foreach (var plan in edit.Boxes)
         {
-            // Every image is written back as RGB with alpha (gray, indexed and CMYK ones included), so any colour fits.
-            foreach (var box in edit.Boxes)
+            if (plan.ColumnEdges is { } columns && plan.RowEdges is { } rows)
             {
-                for (var y = box.Y0; y < box.Y1; y++)
+                PdfiumImageBlocks.Apply(pixels, width, plan.Box, columns, rows, blur: treatment == PdfiumImageTreatment.Blur);
+                continue;
+            }
+
+            var box = plan.Box;
+            for (var y = box.Y0; y < box.Y1; y++)
+            {
+                var row = ((long)y * width) + box.X0;
+                for (var x = 0; x < box.Width; x++)
                 {
-                    var row = ((long)y * width) + box.X0;
-                    for (var x = 0; x < box.Width; x++)
-                    {
-                        var at = (row + x) * 4;
-                        pixels[at] = fill.Blue;
-                        pixels[at + 1] = fill.Green;
-                        pixels[at + 2] = fill.Red;
-                        pixels[at + 3] = 255;
-                    }
+                    var at = (row + x) * 4;
+                    pixels[at] = fill.Blue;
+                    pixels[at + 1] = fill.Green;
+                    pixels[at + 2] = fill.Red;
+                    pixels[at + 3] = 255;
                 }
             }
         }
@@ -852,6 +1066,7 @@ internal sealed partial class PdfiumRedactionRun
                 NoteRegion(pass, edit);
                 pass.ImagesRemovedWhole++;
                 pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.ImageRemovedWhole, "PDFium could not make a new image object for it"));
+                CountUnreadable(pass, edit);
                 return;
             }
 
@@ -874,6 +1089,7 @@ internal sealed partial class PdfiumRedactionRun
             NoteRegion(pass, edit);
             pass.ImagesRemovedWhole++;
             pass.Fallbacks.Add(new PdfiumFallback(PdfiumFallbackKind.ImageRemovedWhole, "PDFium could not store the changed pixels"));
+            CountUnreadable(pass, edit);
             return;
         }
 
@@ -883,14 +1099,42 @@ internal sealed partial class PdfiumRedactionRun
 
             // Whole pixels are overwritten: where an image has big pixels (a scan at low resolution) the overwritten cells reach out of
             // the rectangle by up to one pixel. The page differs there on purpose, so the render check has to leave those cells out too.
-            foreach (var box in edit.Boxes)
+            foreach (var plan in edit.Boxes)
             {
+                var box = plan.Box;
                 pass.Removed.Add(matrix.Bounds(new UserRect(
                     (double)box.X0 / width,
                     1.0 - ((double)box.Y1 / height),
                     (double)box.X1 / width,
                     1.0 - ((double)box.Y0 / height))));
+
+                // Counted only now that the pixels are stored: a treated area shows its image, a solid one that fell back has a reason.
+                if (plan.IsTreated)
+                {
+                    pass.ImageAreasTreated++;
+                    pass.Treated.Add(new TreatedHole(plan.Area, edit.ImageRect));
+                }
+                else if (treatment != PdfiumImageTreatment.Solid)
+                {
+                    pass.ImageAreasSolid++;
+                    pass.SolidReasons.Add(plan.Reason ?? PdfiumImageSolidReason.Unreadable);
+                }
             }
+        }
+    }
+
+    /// <summary>An image that was to be treated is removed as a whole because its pixels could not be read or stored: each of its areas counts as solid.</summary>
+    private void CountUnreadable(PassState pass, Edit edit)
+    {
+        if (treatment == PdfiumImageTreatment.Solid)
+        {
+            return;
+        }
+
+        for (var n = 0; n < edit.Boxes.Count; n++)
+        {
+            pass.ImageAreasSolid++;
+            pass.SolidReasons.Add(PdfiumImageSolidReason.Unreadable);
         }
     }
 

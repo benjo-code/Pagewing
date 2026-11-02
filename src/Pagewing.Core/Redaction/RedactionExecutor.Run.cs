@@ -375,8 +375,8 @@ public sealed partial class RedactionExecutor
             var page = pages[i];
             var areas = Hooks?.AreasToRedact is { } replace ? replace(page, plan.AreasOn(page)) : plan.AreasOn(page);
             var impact = refusals.Count == 0
-                ? await working.RedactPageAsync(page, areas, plan.Fill, cancellationToken).ConfigureAwait(false)
-                : await working.AnalyzeRedactionAsync(page, areas, cancellationToken).ConfigureAwait(false);
+                ? await working.RedactPageAsync(page, areas, plan.Fill, plan.ImageTreatment, plan.ImageStrength, cancellationToken).ConfigureAwait(false)
+                : await working.AnalyzeRedactionAsync(page, areas, plan.ImageTreatment, plan.ImageStrength, cancellationToken).ConfigureAwait(false);
             if (impact.Refusal is { } refusal)
             {
                 refusals.Add(refusal);

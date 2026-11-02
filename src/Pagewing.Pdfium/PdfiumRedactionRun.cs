@@ -16,6 +16,25 @@ internal readonly record struct PdfiumRedactionFill(byte Red, byte Green, byte B
     public static PdfiumRedactionFill White { get; } = new(255, 255, 255);
 }
 
+/// <summary>What happens to the pixels of an image under a rectangle (mirror of the Core type).</summary>
+internal enum PdfiumImageTreatment
+{
+    Solid,
+    Pixelate,
+    Blur,
+}
+
+/// <summary>Why an image area got the solid fill although pixelating or blurring was chosen (mirror of the Core type).</summary>
+internal enum PdfiumImageSolidReason
+{
+    TooSmall,
+    TurnedOrSheared,
+    Clipped,
+    Overlapping,
+    Unreadable,
+    TooManyImages,
+}
+
 /// <summary>
 /// Hooks for tests that make a run see what PDFium would not show it (a box that is not a number, a page that differs from its scratch
 /// copy, a failing read-back, a cancellation at a chosen moment). Production code never sets them. Every hook runs on the PDFium thread.
@@ -61,7 +80,10 @@ internal sealed record PdfiumRedactionImpact(
     int ImagesRemovedWhole = 0,
     int PathsCropped = 0,
     int PathsRemovedWhole = 0,
-    IReadOnlyList<PdfiumRedactionArea>? RemovedAreas = null);
+    IReadOnlyList<PdfiumRedactionArea>? RemovedAreas = null,
+    int ImageAreasTreated = 0,
+    int ImageAreasSolid = 0,
+    IReadOnlyList<PdfiumImageSolidReason>? ImageSolidReasons = null);
 
 /// <summary>
 /// Redacts one page (text, images, paths, form objects and annotations), as steps on the PDFium thread (<see cref="PdfiumThread.InvokeSteppedAsync{T}"/>): a
@@ -106,6 +128,8 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
     private readonly int pageIndex;
     private readonly PdfiumRedactionArea[] areas;
     private readonly PdfiumRedactionFill fill;
+    private readonly PdfiumImageTreatment treatment;
+    private readonly bool veryCoarse;
     private readonly bool apply;
     private readonly Action? onModified;
     private readonly PdfiumRedactionSeam? seam;
@@ -118,7 +142,16 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
     private nint textPage;
     private nint reloadedPage;
 
-    private PdfiumRedactionRun(PdfiumDocument document, int pageIndex, PdfiumRedactionArea[] areas, PdfiumRedactionFill fill, bool apply, Action? onModified, PdfiumRedactionSeam? seam)
+    private PdfiumRedactionRun(
+        PdfiumDocument document,
+        int pageIndex,
+        PdfiumRedactionArea[] areas,
+        PdfiumRedactionFill fill,
+        PdfiumImageTreatment treatment,
+        bool veryCoarse,
+        bool apply,
+        Action? onModified,
+        PdfiumRedactionSeam? seam)
     {
         this.onModified = onModified;
         this.seam = seam;
@@ -126,6 +159,8 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         this.pageIndex = pageIndex;
         this.areas = areas;
         this.fill = fill;
+        this.treatment = treatment;
+        this.veryCoarse = veryCoarse;
         this.apply = apply;
         steps = Run().GetEnumerator();
     }
@@ -140,6 +175,8 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
     /// <exception cref="ArgumentException">A rectangle is not finite or has no size.</exception>
     /// <param name="onModified">Called on the PDFium thread right before the first change to the page (never in a dry run or a scratch copy).</param>
     /// <param name="seam">Hooks for tests, or <see langword="null"/>.</param>
+    /// <param name="treatment">What happens to the pixels of an image under a rectangle: the fill colour, or blocks (see <see cref="PdfiumImageBlocks"/>).</param>
+    /// <param name="veryCoarse">Whether pixelating and blurring use at most 3 blocks along a side instead of 6.</param>
     public static PdfiumRedactionRun Start(
         PdfiumDocument document,
         int pageIndex,
@@ -147,7 +184,9 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         PdfiumRedactionFill fill,
         bool apply,
         Action? onModified = null,
-        PdfiumRedactionSeam? seam = null)
+        PdfiumRedactionSeam? seam = null,
+        PdfiumImageTreatment treatment = PdfiumImageTreatment.Solid,
+        bool veryCoarse = false)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(areas);
@@ -167,7 +206,7 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
             copy[i] = a;
         }
 
-        return new PdfiumRedactionRun(document, pageIndex, copy, fill, apply, onModified, seam);
+        return new PdfiumRedactionRun(document, pageIndex, copy, fill, treatment, veryCoarse, apply, onModified, seam);
     }
 
     /// <inheritdoc />
@@ -364,7 +403,10 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         pass.ImagesRemovedWhole,
         pass.PathsCropped,
         pass.PathsRemovedWhole,
-        RemovedAreasOf(pass));
+        RemovedAreasOf(pass),
+        pass.ImageAreasTreated,
+        pass.ImageAreasSolid,
+        [.. pass.SolidReasons]);
 
     /// <summary>The removed regions as rectangles in points from the top left of the displayed page (what the render check has to leave out besides the rectangles).</summary>
     private static List<PdfiumRedactionArea> RemovedAreasOf(PassState pass)
@@ -633,6 +675,8 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
             Pass = pass,
             Scratch = scratch,
             PageArea = (double)Fpdf.FPDF_GetPageWidthF(handle) * Fpdf.FPDF_GetPageHeightF(handle),
+            Treatment = treatment,
+            VeryCoarse = veryCoarse,
         };
         foreach (var step in PlanObjects(plan))
         {
@@ -642,6 +686,12 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         if (pass.Refusal is not null)
         {
             yield break;
+        }
+
+        // Before anything is written: an area that would need more opaque pieces than allowed around its treated images gets the solid fill on them.
+        if (treatment != PdfiumImageTreatment.Solid)
+        {
+            DowngradeCrowdedAreas(edits, userAreas);
         }
 
         // ---- The text of what is removed as a whole, while the text page is open. ----
@@ -712,21 +762,26 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
                 changed = true;
             }
 
-            foreach (var area in userAreas)
+            // The opaque area lies over every rectangle except where a treated image shows: that part keeps the blocks.
+            var pieces = SolidPieces(userAreas, pass);
+            for (var j = 0; j < userAreas.Count; j++)
             {
-                var rectangle = PdfiumRedactionNative.CreateFillRectangle(area, fill.Red, fill.Green, fill.Blue);
-                if (rectangle == 0)
+                foreach (var piece in pieces[j])
                 {
-                    throw new InvalidOperationException("PDFium could not create the area.");
-                }
+                    var rectangle = PdfiumRedactionNative.CreateFillRectangle(piece, fill.Red, fill.Green, fill.Blue);
+                    if (rectangle == 0)
+                    {
+                        throw new InvalidOperationException("PDFium could not create the area.");
+                    }
 
-                if (!raw.Insert(rectangle))
-                {
-                    raw.Destroy(rectangle);
-                    throw new InvalidOperationException("PDFium could not add the area to the page.");
-                }
+                    if (!raw.Insert(rectangle))
+                    {
+                        raw.Destroy(rectangle);
+                        throw new InvalidOperationException("PDFium could not add the area to the page.");
+                    }
 
-                changed = true;
+                    changed = true;
+                }
             }
         }
 
@@ -1237,6 +1292,18 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
         public int PathsCropped { get; set; }
 
         public int PathsRemovedWhole { get; set; }
+
+        /// <summary>The image areas that were pixelated or blurred.</summary>
+        public int ImageAreasTreated { get; set; }
+
+        /// <summary>The image areas that got the solid fill although pixelating or blurring was chosen.</summary>
+        public int ImageAreasSolid { get; set; }
+
+        /// <summary>Why each of those fell back.</summary>
+        public List<PdfiumImageSolidReason> SolidReasons { get; } = [];
+
+        /// <summary>Where a treated image shows under an area (written, not planned): the opaque area leaves these out.</summary>
+        public List<TreatedHole> Treated { get; } = [];
 
         /// <summary>What the pass removed as a whole or character by character, in user space: the page may differ there (the check leaves it out).</summary>
         public List<UserRect> Removed { get; } = [];

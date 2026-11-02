@@ -625,6 +625,26 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFPageObj_GetBounds(nint pageObject, float* left, float* bottom, float* right, float* top);
 
+    /// <summary>The clipping path of a page object (<c>FPDF_CLIPPATH</c>, owned by the object; never null for a valid object).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_GetClipPath(nint pageObject);
+
+    /// <summary>The number of paths in a clipping path (0 when the object is not clipped), or -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFClipPath_CountPaths(nint clipPath);
+
+    /// <summary>The number of segments in one path of a clipping path, or -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFClipPath_CountPathSegments(nint clipPath, int pathIndex);
+
+    /// <summary>One segment of a path of a clipping path (owned by the page), or 0 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFClipPath_GetPathSegment(nint clipPath, int pathIndex, int segmentIndex);
+
     /// <summary>The fill colour of a page object (<c>unsigned int</c> components, 0 to 255).</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

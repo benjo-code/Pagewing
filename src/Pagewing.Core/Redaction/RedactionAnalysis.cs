@@ -60,6 +60,11 @@ public sealed record RedactionRefusal(RedactionRefusalKind Kind, IReadOnlyList<i
 /// <param name="RemovedText">The text that goes, one entry per run of removed characters (the whole text for an object removed as a whole); the check of the result uses it.</param>
 /// <param name="Refusal">Why the page cannot be redacted, or <see langword="null"/>. A refused page was not changed by the analysis; after a refusal from <c>RedactPageAsync</c> the document may have changed and must be discarded.</param>
 /// <param name="RemovedAreas">Where content went besides the rectangles, in points from the top left of the displayed page: the boxes of the characters that were removed (a character counts as soon as its box touches a rectangle, so its box can reach out of the rectangle) and the bounds of what was removed as a whole. The render check leaves these out too (<see cref="RedactionPageAreas.For"/>).</param>
+/// <param name="ImageAreasTreated">The image areas (one image under one rectangle) that were pixelated or blurred. 0 when the plan treats image areas solid.</param>
+/// <param name="ImageAreasSolid">The image areas that got the solid fill although pixelating or blurring was chosen, because the rule does not apply (see <see cref="ImageSolidReason"/>; one entry in <paramref name="ImageSolidReasons"/> each). 0 when the plan treats image areas solid: nothing falls back then.</param>
+/// <param name="OverlaysNotShown">The areas that got no overlay text because a treated image lies under them (overlay text, a later task); 0 until then.</param>
+/// <param name="OverlaysNotFitting">The areas whose overlay text does not fit (overlay text, a later task); 0 until then.</param>
+/// <param name="ImageSolidReasons">Why each of the <paramref name="ImageAreasSolid"/> areas fell back, in the order the page was processed; <see langword="null"/> for none.</param>
 public sealed record PageRedactionImpact(
     int Page,
     int CharsRemoved,
@@ -74,7 +79,34 @@ public sealed record PageRedactionImpact(
     IReadOnlyList<RedactionFallback> Fallbacks,
     IReadOnlyList<string> RemovedText,
     RedactionRefusal? Refusal,
-    IReadOnlyList<Pagewing.Core.Text.PageRect>? RemovedAreas = null);
+    IReadOnlyList<Pagewing.Core.Text.PageRect>? RemovedAreas = null,
+    int ImageAreasTreated = 0,
+    int ImageAreasSolid = 0,
+    int OverlaysNotShown = 0,
+    int OverlaysNotFitting = 0,
+    IReadOnlyList<ImageSolidReason>? ImageSolidReasons = null);
+
+/// <summary>Why an image area got the solid fill although pixelating or blurring was chosen.</summary>
+public enum ImageSolidReason
+{
+    /// <summary>The pixel rectangle under the mark is smaller than 2 x 2 blocks of <see cref="RedactionLimits.MinBlockPixels"/> pixels.</summary>
+    TooSmall,
+
+    /// <summary>The image is turned or sheared, so the pixels under the mark cannot be told apart; it is removed as a whole.</summary>
+    TurnedOrSheared,
+
+    /// <summary>The image is cut by a clipping path, so what it shows is not its pixel rectangle.</summary>
+    Clipped,
+
+    /// <summary>The pixel rectangle under the mark overlaps the one of another mark on the same image.</summary>
+    Overlapping,
+
+    /// <summary>Pagewing could not read or write the pixels of the image safely (its size, matrix or pixels are unreadable); it is removed as a whole.</summary>
+    Unreadable,
+
+    /// <summary>So many treated images lie under the mark that the opaque area could not be cut around them within the limit.</summary>
+    TooManyImages,
+}
 
 /// <summary>What the cleanup of a redaction removes from the file in every case ("cleaning is not a switch"): the document-level data that a rebuild into a new document leaves behind.</summary>
 public enum CleanupKind

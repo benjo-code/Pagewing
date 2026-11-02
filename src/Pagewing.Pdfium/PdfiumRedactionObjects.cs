@@ -102,6 +102,96 @@ internal static unsafe class PdfiumRedactionObjects
         return Fpdf.FPDFPageObj_SetMatrix(pageObject, &value) != 0;
     }
 
+    /// <summary>
+    /// Whether the clipping path of a page object cuts what it shows: some clip is not an upright rectangle (or cannot be read), or a clip
+    /// rectangle does not hold the bounds of the object. PDFium gives every object the clip of the page (or form) box, which does not cut a
+    /// picture inside the page and so does not count. Pixelating or blurring does not apply to a cut image, because what it shows is not its
+    /// whole pixel rectangle. The bounds and the clip are in the same space (the page for an object of the page, the form for its child).
+    /// </summary>
+    public static bool IsClipped(nint pageObject)
+    {
+        if (!PdfiumRedactionNative.TryGetBounds(pageObject, out var bounds))
+        {
+            return true;
+        }
+
+        var clip = Fpdf.FPDFPageObj_GetClipPath(pageObject);
+        if (clip == 0)
+        {
+            return false;
+        }
+
+        // PDFium answers -1 for an object that has no clipping path at all (it is not an error), and the paths otherwise.
+        var paths = Fpdf.FPDFClipPath_CountPaths(clip);
+        if (paths <= 0)
+        {
+            return false;
+        }
+
+        for (var p = 0; p < paths; p++)
+        {
+            if (!TryReadClipRectangle(clip, p, out var rect)
+                || rect.Left > bounds.Left + CornerTolerance || rect.Bottom > bounds.Bottom + CornerTolerance
+                || rect.Right < bounds.Right - CornerTolerance || rect.Top < bounds.Top - CornerTolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>One path of a clipping path as an upright rectangle (four corners, or five with the first repeated, made of straight lines), or <see langword="false"/>.</summary>
+    private static bool TryReadClipRectangle(nint clip, int pathIndex, out UserRect rect)
+    {
+        rect = default;
+        var count = Fpdf.FPDFClipPath_CountPathSegments(clip, pathIndex);
+        if (count is not (4 or 5))
+        {
+            return false;
+        }
+
+        var x = new double[count];
+        var y = new double[count];
+        for (var i = 0; i < count; i++)
+        {
+            var segment = Fpdf.FPDFClipPath_GetPathSegment(clip, pathIndex, i);
+            if (segment == 0 || Fpdf.FPDFPathSegment_GetType(segment) != (i == 0 ? FpdfConstants.SegmentMoveTo : FpdfConstants.SegmentLineTo))
+            {
+                return false;
+            }
+
+            float px = 0;
+            float py = 0;
+            if (Fpdf.FPDFPathSegment_GetPoint(segment, &px, &py) == 0 || !float.IsFinite(px) || !float.IsFinite(py))
+            {
+                return false;
+            }
+
+            x[i] = px;
+            y[i] = py;
+        }
+
+        if (count == 5 && (!Same(x[4], x[0]) || !Same(y[4], y[0])))
+        {
+            return false;
+        }
+
+        var horizontalFirst = Same(y[0], y[1]) && Same(x[1], x[2]) && Same(y[2], y[3]) && Same(x[3], x[0]);
+        var verticalFirst = Same(x[0], x[1]) && Same(y[1], y[2]) && Same(x[2], x[3]) && Same(y[3], y[0]);
+        if (!horizontalFirst && !verticalFirst)
+        {
+            return false;
+        }
+
+        rect = new UserRect(
+            Math.Min(Math.Min(x[0], x[1]), Math.Min(x[2], x[3])),
+            Math.Min(Math.Min(y[0], y[1]), Math.Min(y[2], y[3])),
+            Math.Max(Math.Max(x[0], x[1]), Math.Max(x[2], x[3])),
+            Math.Max(Math.Max(y[0], y[1]), Math.Max(y[2], y[3])));
+        return true;
+    }
+
     /// <summary>The size of an image in pixels, from its dictionary (nothing is decoded).</summary>
     public static bool TryGetPixelSize(nint image, out long width, out long height)
     {
