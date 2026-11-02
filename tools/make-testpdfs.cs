@@ -137,6 +137,8 @@ static class TestPdfs
         new("redact-paths.pdf", RedactPaths()),
         new("redact-structure.pdf", RedactStructure()),
         new("redact-objstm.pdf", RedactObjectStreams()),
+        new("redact-patterns.pdf", RedactPatterns()),
+        new("redact-image-blocks.pdf", RedactImageBlocks()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -1293,7 +1295,7 @@ static class TestPdfs
 
     // One page 420 x 420 whose lines all show the sentence "Name: Zephyrstraße 17 ok" (one text object per line) in other fonts. The x position
     // is 20 for every line; the baselines are 390 - 30 * line. The font program of the TrueType and CID lines is the full Geist Regular (SIL OFL 1.1,
-    // src/Pagewing.App/Assets/Fonts), embedded as it is (no subset: the generator has no subsetter); the fonts differ in how they encode:
+    // src/Pagewing.Core/Assets/Fonts), embedded as it is (no subset: the generator has no subsetter); the fonts differ in how they encode:
     //   line 0  /F1  Helvetica, Type 1 standard font, not embedded, WinAnsi, Tj
     //   line 1  /F2  simple TrueType, embedded Geist, WinAnsi, no ToUnicode, Tj
     //   line 2  /F3  Type0 Identity-H, CIDFontType2, CIDToGIDMap /Identity (code = glyph id), ToUnicode, Tj with a hex string
@@ -1306,7 +1308,7 @@ static class TestPdfs
     private static byte[] RedactFonts()
     {
         var doc = new PdfDoc("Pagewing Schwärzen: Schriften");
-        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.App", "Assets", "Fonts", "Geist-Regular.ttf")));
+        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.Core", "Assets", "Fonts", "Geist-Regular.ttf")));
         var helvetica = doc.Add(Helvetica);
 
         var fontFile = doc.AddStream($"/Length1 {ttf.Data.Length}", ttf.Data);
@@ -1428,7 +1430,7 @@ static class TestPdfs
     private static byte[] RedactLigature()
     {
         var doc = new PdfDoc("Pagewing Schwärzen: Ligatur");
-        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.App", "Assets", "Fonts", "Geist-Regular.ttf")));
+        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.Core", "Assets", "Fonts", "Geist-Regular.ttf")));
         var helvetica = doc.Add(Helvetica);
         var fontFile = doc.AddStream($"/Length1 {ttf.Data.Length}", ttf.Data);
         string Scaled(int value) => ((value * 1000) / ttf.UnitsPerEm).ToString(CultureInfo.InvariantCulture);
@@ -1522,6 +1524,65 @@ static class TestPdfs
         }
 
         throw new DirectoryNotFoundException("Pagewing.slnx nicht gefunden.");
+    }
+
+    // One page 440 x 330 for pixelating and blurring (milestone 14.1): images whose blocks all differ (no stripes), so that a mean of a block
+    // is a number nothing else has. Every image is DeviceRGB, 8 bit, Flate (stored blocks); the pixels are a formula of the column x and row y:
+    //   /ImGrad  96 x 96 px at 10,160 shown 144 x 144 pt (1.5 pt per pixel): red = x*255/95, green = y*255/95, blue = 40 + (x*y) mod 97 on the
+    //            even squares of 8 x 8 pixels ((x/8 + y/8) even) and 200 - (x*y) mod 89 on the odd ones
+    //   /ImText  64 x 64 px at 170,160 shown 128 x 128 pt, with the text "Secret 4711" (Helvetica 14, 180,220) drawn over it: red = 4x mod 256,
+    //            green = 4y mod 256, blue = 5 (x xor y) mod 256
+    //   /ImTurn  32 x 32 px turned by 30 degrees (matrix 83.14 48 -48 83.14 350 170, about 96 pt a side): red = 8x, green = 255 - 8y, blue = x*y mod 256
+    //   /ImTiny  7 x 7 px at 10,90 shown 56 x 56 pt: red = 36x, green = 36y, blue = 18 (x + y)
+    //   /ImClip  96 x 96 px at 320,20 shown 96 x 96 pt, clipped to the rectangle 330,30 80 x 60 (a cropped image): red = y*255/95,
+    //            green = (3x + 5y) mod 256, blue = 255 - x*255/95
+    // Besides a red rectangle 100,90 70 x 56 (vector) and the line "Plain 1234" (Helvetica 14, 180,110): nothing under them.
+    private static byte[] RedactImageBlocks()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Bildblöcke");
+        byte[] Pixels(int size, Func<int, int, (int R, int G, int B)> at)
+        {
+            var data = new byte[size * size * 3];
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    var (r, g, b) = at(x, y);
+                    var i = ((y * size) + x) * 3;
+                    (data[i], data[i + 1], data[i + 2]) = ((byte)r, (byte)g, (byte)b);
+                }
+            }
+
+            return data;
+        }
+
+        string Head(int size) => $"/Type /XObject /Subtype /Image /Width {size} /Height {size} /BitsPerComponent 8 /ColorSpace /DeviceRGB /Filter /FlateDecode";
+        var grad = Pixels(96, (x, y) => (x * 255 / 95, y * 255 / 95, ((x / 8) + (y / 8)) % 2 == 0 ? 40 + (x * y % 97) : 200 - (x * y % 89)));
+        var text = Pixels(64, (x, y) => (x * 4 % 256, y * 4 % 256, (x ^ y) * 5 % 256));
+        var turn = Pixels(32, (x, y) => (x * 8, 255 - (y * 8), x * y % 256));
+        var tiny = Pixels(7, (x, y) => (x * 36, y * 36, (x + y) * 18));
+        var clip = Pixels(96, (x, y) => (y * 255 / 95, ((3 * x) + (5 * y)) % 256, 255 - (x * 255 / 95)));
+        var gradId = doc.AddStream(Head(96), StoredFlate(grad));
+        var textId = doc.AddStream(Head(64), StoredFlate(text));
+        var turnId = doc.AddStream(Head(32), StoredFlate(turn));
+        var tinyId = doc.AddStream(Head(7), StoredFlate(tiny));
+        var clipId = doc.AddStream(Head(96), StoredFlate(clip));
+        doc.AddPage(
+            "/MediaBox [0 0 440 330]",
+            $"<< /Font << /F1 {doc.Add(Helvetica)} 0 R >> /XObject << /ImGrad {gradId} 0 R /ImText {textId} 0 R /ImTurn {turnId} 0 R /ImTiny {tinyId} 0 R /ImClip {clipId} 0 R >> >>",
+            """
+            BT /F1 10 Tf 10 316 Td (Image blocks: gradient, text, turned, tiny, clipped) Tj ET
+            q 144 0 0 144 10 160 cm /ImGrad Do Q
+            q 128 0 0 128 170 160 cm /ImText Do Q
+            BT /F1 14 Tf 180 220 Td (Secret 4711) Tj ET
+            q 83.14 48 -48 83.14 350 170 cm /ImTurn Do Q
+            q 56 0 0 56 10 90 cm /ImTiny Do Q
+            0.8 0.2 0.2 rg 100 90 70 56 re f
+            0 g
+            BT /F1 14 Tf 180 110 Td (Plain 1234) Tj ET
+            q 330 30 80 60 re W n 96 0 0 96 320 20 cm /ImClip Do Q
+            """);
+        return doc.Build();
     }
 
     // One page 450 x 130 with four more image kinds, each 64 x 64 px shown at 100 x 100 pt (stripes of 8 px along x, 8 columns), at y=16:
@@ -1681,6 +1742,63 @@ static class TestPdfs
         doc.CatalogEntries = $"/OpenAction {script} 0 R /Names << /JavaScript << /Names [(init) {script} 0 R] >> >> /PageLabels << /Nums [0 << /P ({RedactTerm} - ) >>] >> "
             + $"/Metadata {catalogXmp} 0 R /StructTreeRoot {structRoot} 0 R /OCProperties << /OCGs [{layer} 0 R] /D << /BaseState /ON /OFF [{layer} 0 R] >> >> "
             + AcroFormEntry(doc, [parent]);
+        return doc.Build();
+    }
+
+    // Patterns for "search and redact" (milestone 14.1). One page 400 x 600, Helvetica 10, one text object per line from y = 570 down
+    // in steps of 16. Page text: IBANs (valid DE, GB, FR; DE with a wrong check digit; NL ungrouped; GB grouped with no-break spaces),
+    // cards (Luhn-valid 4111..., hyphenated 4111-..., 5555...; Luhn-invalid grouped 1234 ...), telephone numbers (+49, 0711/, (0711)),
+    // e-mail addresses (two good, "john@localhost" and "@example.com" as non-addresses), traps (a date, an ISBN, a version, a 20-digit
+    // run) and an IBAN split across two lines. A Text annotation carries an IBAN, two text fields carry an e-mail address and a
+    // telephone number. Expected hits (test FixtureYieldsTheExpectedHitsPerKindAndCertainty): Iban 6 ChecksumOk + 1 ChecksumFailed,
+    // Card 3 ChecksumOk + 1 ChecksumFailed, Phone 4 ShapeOnly, Email 3 ShapeOnly.
+    private static byte[] RedactPatterns()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Muster");
+        var helvetica = doc.Add(Helvetica);
+        var page1 = doc.Reserve();
+        var lines = new[]
+        {
+            "IBAN DE89 3704 0044 0532 0130 00",
+            "IBAN GB82 WEST 1234 5698 7654 32",
+            "IBAN FR14 2004 1010 0505 0001 3M02 606",
+            "IBAN (typo) DE88 3704 0044 0532 0130 00",
+            "IBAN NL91ABNA0417164300",
+            "IBAN GB82\\240WEST\\2401234\\2405698\\2407654\\24032",
+            "Card 4111 1111 1111 1111",
+            "Card 4111-1111-1111-1111",
+            "Card 5555 5555 5555 4444",
+            "Card (typo) 1234 5678 9012 3456",
+            "Tel +49 711 1234567",
+            "Fax 0711/1234567",
+            "Mobil (0711) 123 45 67",
+            "Mail max.mustermann@example.com",
+            "Mail a+b@sub.example.co.uk",
+            "No mail john@localhost and @example.com",
+            "Datum 01.02.2024 und ISBN 978-3-16-148410-0 Version 1.2.3",
+            "Run 12345678901234567890",
+            "Konto DE89 3704 0044 0",
+            "532 0130 00 (split)",
+        };
+
+        var content = new StringBuilder();
+        var y = 570;
+        foreach (var line in lines)
+        {
+            content.Append(CultureInfo.InvariantCulture, $"BT /F1 10 Tf 20 {y} Td ({line}) Tj ET\n");
+            y -= 16;
+        }
+
+        var note = doc.Add($"<< /Type /Annot /Subtype /Text /Rect [350 560 368 578] /Name /Note /F 28 /NM (pattern-note-0001) /Contents (Please transfer to DE89 3704 0044 0532 0130 00 today) /C [1 1 0] /P {page1} 0 R >>");
+        var mail = FormField(doc, page1, FormRect(20, 100, 220, 125), $"/FT /Tx /T (Mail) /V (form@example.org) {FormDa}");
+        var phone = FormField(doc, page1, FormRect(20, 60, 220, 85), $"/FT /Tx /T (Phone) /V (+49 711 7654321) {FormDa}");
+
+        doc.AddPage(
+            $"/MediaBox [0 0 400 600] /Annots [{AnnotRefs([note, mail, phone])}]",
+            $"<< /Font << /F1 {helvetica} 0 R >> >>",
+            content.ToString(),
+            page1);
+        doc.CatalogEntries = AcroFormEntry(doc, [mail, phone]);
         return doc.Build();
     }
 

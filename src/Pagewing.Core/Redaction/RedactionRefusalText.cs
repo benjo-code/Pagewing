@@ -37,6 +37,12 @@ public enum RedactionFailureKind
 
     /// <summary>Something the cleanup should have removed at the document level is still in the written file.</summary>
     CleanupItemStillPresent,
+
+    /// <summary>A page that became an image is not only one image, or could not be counted.</summary>
+    RasterPageInvalid,
+
+    /// <summary>An image area of a plan that pixelates or blurs is neither the fill colour nor the block result worked out from the original.</summary>
+    ImageTreatmentWrong,
 }
 
 /// <summary>
@@ -67,6 +73,9 @@ public static class RedactionRefusalText
             case RedactionRefusalKind.PageNotRedactable:
                 return $"Redacting {PageList(refusal.Pages)} would change content outside the marked areas, so the file is not redacted. {refusal.Reason}";
 
+            case RedactionRefusalKind.OverlayRepeatsTerm:
+                return $"The text on the areas of {PageList(refusal.Pages)} contains a text that is redacted, which would put it back on the page, so the file is not redacted. Change the text on the areas.";
+
             default:
                 return $"The file is not redacted. {refusal.Reason}";
         }
@@ -95,6 +104,8 @@ public static class RedactionRefusalText
             RedactionFindingKind.PageKeysStillPresent => RedactionFailureKind.PageKeysStillPresent,
             RedactionFindingKind.PageChangedOutsideAreas => RedactionFailureKind.PageChangedOutsideAreas,
             RedactionFindingKind.CleanupItemStillPresent => RedactionFailureKind.CleanupItemStillPresent,
+            RedactionFindingKind.RasterPageInvalid => RedactionFailureKind.RasterPageInvalid,
+            RedactionFindingKind.ImageTreatmentWrong => RedactionFailureKind.ImageTreatmentWrong,
             _ => RedactionFailureKind.RemovedTextUnverifiable,
         };
     }
@@ -131,6 +142,10 @@ public static class RedactionRefusalText
                 $"A page still carries a thumbnail, private data, metadata or actions that Pagewing cannot remove, or the keys could not be checked{where}, so the file was not written.",
             RedactionFailureKind.PageChangedOutsideAreas =>
                 $"A page looks different outside the marked areas{where}, so the file was not written.",
+            RedactionFailureKind.RasterPageInvalid =>
+                $"A page that was turned into an image is not only one image, or could not be checked{where}, so the file was not written.",
+            RedactionFailureKind.ImageTreatmentWrong =>
+                $"An image area that should be pixelated or blurred is neither filled solid nor the block averages of the original{where}, so the file was not written.",
             _ =>
                 $"A removed text could not be searched for{where}, so the result cannot be checked and the file was not written.",
         };

@@ -97,7 +97,7 @@ public sealed partial class MainWindow
         PendingSaveKind.SignatureWarning or PendingSaveKind.SignatureNote => _signatureCard ??= AddSaveCard(new SignatureWarningCard { Name = "SignatureWarningCard" }),
         PendingSaveKind.FileChanged => _fileChangedCard ??= AddSaveCard(new FileChangedCard { Name = "FileChangedCard" }),
         PendingSaveKind.ApplyPages => _applyPagesCard ??= AddSaveCard(new ApplyPagesCard { Name = "ApplyPagesCard" }),
-        PendingSaveKind.ApplyRedactions or PendingSaveKind.RedactionRefused or PendingSaveKind.RedactionFailed => _redactApplyCard ??= AddSaveCard(new RedactApplyCard { Name = "RedactApplyCard" }),
+        PendingSaveKind.ApplyRedactions or PendingSaveKind.RedactionRefused or PendingSaveKind.RedactionRescue or PendingSaveKind.RedactionFailed => _redactApplyCard ??= AddSaveCard(new RedactApplyCard { Name = "RedactApplyCard" }),
         PendingSaveKind.RedactionReport => _redactReportCard ??= AddSaveCard(new RedactReportCard { Name = "RedactReportCard" }),
         PendingSaveKind.RequiredFields => _requiredFieldsCard ??= AddSaveCard(new RequiredFieldsCard { Name = "RequiredFieldsCard" }),
         _ => _saveErrorCard ??= AddSaveCard(new SaveErrorCard { Name = "SaveErrorCard" }),

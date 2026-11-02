@@ -567,6 +567,130 @@ public sealed class RedactModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task RasterOnlyPlanCountsAsUnsavedChange()
+    {
+        var (window, viewModel, view) = _host.Show();
+        var (tab, path) = await _host.OpenCopyAsync(window, viewModel, view, "pages-marked.pdf");
+        await EnterAsync(tab, window);
+        Assert.False(tab.AsksBeforeClosing);
+        Assert.False(tab.HasPendingRedactions);
+
+        // A page that becomes an image is a staged change without a mark: it is unsaved like one (closing, window, update path).
+        tab.CurrentPage = 2;
+        Assert.True(tab.ToggleRasterPageCommand.CanExecute(null));
+        tab.ToggleRasterPageCommand.Execute(null);
+        Assert.Empty(tab.RedactionPlan!.Marks);
+        Assert.Equal([1], tab.RedactionPlan.RasterPages.Order());
+        Assert.False(tab.RedactionPlan.IsEmpty);
+        Assert.True(tab.HasPendingRedactions);
+        Assert.True(tab.AsksBeforeClosing);
+        Assert.True(tab.AsksOnlyAboutRedactions);
+        Assert.True(viewModel.HasUnsavedChanges);
+        Assert.Equal("1 page as image", tab.RedactionCounterText);
+        Assert.True(tab.RasterTargetsAreImages);
+
+        // The update path asks the same question as closing does (Workspace.ResolveUnsavedChangesAsync asks each window like this).
+        var answer = viewModel.ResolveUnsavedChangesAsync();
+        var card = await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.DiscardChanges);
+        Assert.Equal(Strings.DiscardRedactionsText, viewModel.PendingSave!.Message);
+        Click(window, card.ButtonOf(PendingSaveChoice.Cancel)!);
+        Assert.False(await answer);
+        Assert.Contains(tab, viewModel.Tabs);
+        Assert.True(tab.HasPendingRedactions);
+
+        // Closing asks as well; "Close and discard changes" writes nothing.
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        viewModel.CloseActiveTabCommand.Execute(null);
+        card = await WaitForCardAsync<SaveChangesCard>(window, viewModel, PendingSaveKind.DiscardChanges);
+        _host.PassTheLock(window);
+        Click(window, card.ButtonOf(PendingSaveChoice.Discard)!);
+        await SaveCardHost.WaitUntilAsync(window, () => !viewModel.Tabs.Contains(tab));
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [AvaloniaFact]
+    public async Task PageAsImageIsAStepOfTheHistoryOfThePageInViewOrOfTheSelectedMarks()
+    {
+        var tab = await OpenAsync("pages-marked.pdf");
+        await EnterAsync(tab);
+        Assert.Equal(200, tab.RasterDpi);
+        Assert.False(tab.HasRasterPages);
+        tab.CurrentPage = 1;
+        var version = tab.RedactionHistory!.Version;
+
+        // The page in view, then the same again takes it out; each is one step, and undo takes them back in turn.
+        tab.ToggleRasterPageCommand.Execute(null);
+        Assert.Equal([0], tab.RedactionPlan!.RasterPages.Order());
+        Assert.Equal(version + 1, tab.RedactionHistory.Version);
+        Assert.True(tab.HasRasterPages);
+        tab.ToggleRasterPageCommand.Execute(null);
+        Assert.Empty(tab.RedactionPlan.RasterPages);
+        Assert.Equal(version + 2, tab.RedactionHistory.Version);
+        tab.UndoRedactionCommand.Execute(null);
+        Assert.Equal([0], tab.RedactionPlan.RasterPages.Order());
+
+        // With marks selected the pages of the marks count, not the page in view.
+        Assert.True(tab.AddAreaMark(2, new PageRect(10, 10, 50, 50)));
+        Assert.True(tab.AddAreaMark(3, new PageRect(10, 10, 50, 50)));
+        tab.SelectMarks(tab.RedactionPlan.Marks.Select(static mark => mark.Id));
+        Assert.False(tab.RasterTargetsAreImages);
+        tab.ToggleRasterPageCommand.Execute(null);
+        Assert.Equal([0, 2, 3], tab.RedactionPlan.RasterPages.Order());
+        Assert.True(tab.RasterTargetsAreImages);
+        Assert.Equal("2 marks on 2 pages, 3 pages as images", tab.RedactionCounterText);
+
+        // The resolution is a step too; only 72 to 300 are taken.
+        tab.SetRasterDpiCommand.Execute(300);
+        Assert.Equal(300, tab.RasterDpi);
+        Assert.True(tab.IsRasterDpi300);
+        Assert.False(tab.IsRasterDpi200);
+        Assert.False(tab.SetRasterDpiCommand.CanExecute(500));
+        tab.UndoRedactionCommand.Execute(null);
+        Assert.Equal(200, tab.RasterDpi);
+
+        // The choice of a card puts each page in as a step of its own, the first with the resolution.
+        var before = tab.RedactionHistory.Version;
+        Assert.True(tab.StageRasterChoice([4, 5], 150));
+        Assert.Equal(before + 2, tab.RedactionHistory.Version);
+        Assert.Equal(150, tab.RasterDpi);
+        tab.UndoRedactionCommand.Execute(null);
+        Assert.DoesNotContain(5, tab.RedactionPlan.RasterPages);
+        Assert.Contains(4, tab.RedactionPlan.RasterPages);
+        Assert.Equal(150, tab.RasterDpi);
+        tab.UndoRedactionCommand.Execute(null);
+        Assert.DoesNotContain(4, tab.RedactionPlan.RasterPages);
+        Assert.Equal(200, tab.RasterDpi);
+    }
+
+    [AvaloniaFact]
+    public async Task PageAsImageIsNotAvailableOutsideTheModeAndMakesNothingBeforeIt()
+    {
+        var tab = await OpenAsync("pages-marked.pdf");
+        Assert.False(tab.HasRedactionCommands);
+        Assert.False(tab.HasRasterPages);
+        Assert.False(tab.RasterTargetsAreImages);
+        tab.CurrentPage = 1;
+
+        await EnterAsync(tab);
+        Assert.False(tab.HasRedactionCommands);
+        _ = tab.ToggleRasterPageCommand;
+        Assert.True(tab.HasRedactionCommands);
+        Assert.True(tab.ToggleRasterPageCommand.CanExecute(null));
+
+        // Nothing to turn into an image without a page in view or a mark: the command waits.
+        tab.CurrentPage = 0;
+        Assert.False(tab.ToggleRasterPageCommand.CanExecute(null));
+        tab.CurrentPage = 1;
+
+        // The mode ends: the plan goes, and the command does nothing any more.
+        tab.DiscardRedactionsCommand.Execute(null);
+        Assert.False(tab.ToggleRasterPageCommand.CanExecute(null));
+        tab.ToggleRasterPageCommand.Execute(null);
+        Assert.Null(tab.RedactionPlan);
+        Assert.False(tab.HasRasterPages);
+    }
+
+    [AvaloniaFact]
     public async Task NothingIsCreatedAtStartup()
     {
         var tab = await OpenAsync("pages-marked.pdf");

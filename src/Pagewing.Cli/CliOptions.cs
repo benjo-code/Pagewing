@@ -1,5 +1,6 @@
 using System.Globalization;
 using Pagewing.Cli.Commands;
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Redaction;
 
@@ -49,9 +50,28 @@ internal sealed record CliOptions(
     IReadOnlyList<string>? Texts = null,
     IReadOnlyList<RedactRect>? Rects = null,
     bool DryRun = false,
-    bool AllowUnsearched = false)
+    bool AllowUnsearched = false,
+    string? RasterizePages = null,
+    bool RasterizeUnredactable = false,
+    int RasterDpi = RedactionLimits.DefaultRasterDpi,
+    IReadOnlyList<RedactionPatternKind>? Patterns = null,
+    bool IncludeUnchecked = false,
+    RedactionFill Fill = default,
+    RedactionImageTreatment ImageFill = RedactionImageTreatment.Solid,
+    RedactionImageStrength ImageStrength = RedactionImageStrength.Coarse,
+    string? OverlayText = null,
+    bool OverlayRepeat = false)
 {
     public const string DefaultDpi = "144";
+
+    /// <summary>The names <c>--pattern</c> accepts, in the order the help and the messages list them.</summary>
+    public static IReadOnlyList<(string Name, RedactionPatternKind Kind)> PatternNames { get; } =
+    [
+        ("email", RedactionPatternKind.Email),
+        ("iban", RedactionPatternKind.Iban),
+        ("phone", RedactionPatternKind.Phone),
+        ("card", RedactionPatternKind.Card),
+    ];
 
     /// <summary>The angles <c>rotate</c> accepts.</summary>
     private static readonly int[] Angles = [90, 180, 270, -90];
@@ -76,7 +96,7 @@ internal sealed record CliOptions(
             "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
-            "redact" => ["--text", "--rect", "--pages", "--match-case", "--dry-run", "--allow-unsearched", "--output", "--force", "--password"],
+            "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--fill", "--image-fill", "--image-strength", "--overlay-text", "--overlay-repeat", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -89,9 +109,19 @@ internal sealed record CliOptions(
         // --text and --rect of redact may be given as often as needed.
         var strict = command is "split" or "export" or "redact";
         var texts = new List<string>();
+        var patterns = new List<RedactionPatternKind>();
+        var includeUnchecked = false;
+        var fill = RedactionFill.Black;
+        var imageFill = RedactionImageTreatment.Solid;
+        var imageStrength = RedactionImageStrength.Coarse;
+        var imageStrengthGiven = false;
+        string? overlayText = null;
+        var overlayRepeat = false;
         var rects = new List<RedactRect>();
         var dryRun = false;
         var allowUnsearched = false;
+        var rasterizeUnredactable = false;
+        string? rasterizePages = null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         string? everyText = null;
         string? ranges = null;
@@ -131,7 +161,7 @@ internal sealed record CliOptions(
                     throw new UsageException($"Unknown option '{name}' for '{command}'.");
                 }
 
-                if (strict && name is not ("--text" or "--rect") && !seen.Add(name))
+                if (strict && name is not ("--text" or "--rect" or "--pattern") && !seen.Add(name))
                 {
                     throw new UsageException($"The option '{name}' is given twice.");
                 }
@@ -147,7 +177,7 @@ internal sealed record CliOptions(
                     continue;
                 }
 
-                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched")
+                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched" or "--rasterize-unredactable" or "--include-unchecked" or "--overlay-repeat")
                 {
                     if (value is not null)
                     {
@@ -173,6 +203,18 @@ internal sealed record CliOptions(
                     else if (name == "--allow-unsearched")
                     {
                         allowUnsearched = true;
+                    }
+                    else if (name == "--rasterize-unredactable")
+                    {
+                        rasterizeUnredactable = true;
+                    }
+                    else if (name == "--include-unchecked")
+                    {
+                        includeUnchecked = true;
+                    }
+                    else if (name == "--overlay-repeat")
+                    {
+                        overlayRepeat = true;
                     }
                     else
                     {
@@ -200,6 +242,9 @@ internal sealed record CliOptions(
                     case "--dpi":
                         dpiText = value;
                         break;
+                    case "--rasterize-pages":
+                        rasterizePages = value;
+                        break;
                     case "--angle":
                         angleText = value;
                         break;
@@ -217,6 +262,22 @@ internal sealed record CliOptions(
                         break;
                     case "--rect":
                         rects.Add(RedactRect.Parse(value));
+                        break;
+                    case "--pattern":
+                        AddPattern(patterns, value);
+                        break;
+                    case "--fill":
+                        fill = ParseFill(value);
+                        break;
+                    case "--image-fill":
+                        imageFill = ParseImageFill(value);
+                        break;
+                    case "--image-strength":
+                        imageStrength = ParseImageStrength(value);
+                        imageStrengthGiven = true;
+                        break;
+                    case "--overlay-text":
+                        overlayText = ParseOverlayText(value);
                         break;
                     default:
                         password = value;
@@ -265,7 +326,20 @@ internal sealed record CliOptions(
             }
         }
 
-        var dpi = ParseDpi(dpiText ?? DefaultDpi);
+        if (rasterizePages is not null)
+        {
+            try
+            {
+                PageRange.Validate(rasterizePages);
+            }
+            catch (FormatException ex)
+            {
+                throw new UsageException($"Invalid value for --rasterize-pages: {ex.Message}");
+            }
+        }
+
+        // For redact --dpi is the resolution of the pages that become images (a whole number from 72 to 300), not of a render.
+        var dpi = ParseDpi(isRedact ? DefaultDpi : dpiText ?? DefaultDpi);
         if (isSplit)
         {
             if (string.IsNullOrEmpty(output))
@@ -279,14 +353,59 @@ internal sealed record CliOptions(
 
         if (isRedact)
         {
-            if (texts.Count == 0 && rects.Count == 0)
+            if (texts.Count == 0 && patterns.Count == 0 && rects.Count == 0 && rasterizePages is null)
             {
-                throw new UsageException("The 'redact' command needs at least one --text <term> or --rect <page>:<x>,<y>,<w>,<h>.");
+                throw new UsageException("The 'redact' command needs at least one --text <term>, --pattern <email|iban|phone|card>, --rect <page>:<x>,<y>,<w>,<h> or --rasterize-pages <range>.");
             }
 
-            if (pages is not null && texts.Count == 0)
+            // A page can only be refused because of a mark on it, so without a mark there is nothing to rescue.
+            if (rasterizeUnredactable && texts.Count == 0 && patterns.Count == 0 && rects.Count == 0)
             {
-                throw new UsageException("The option '--pages' limits --text; the command has no --text.");
+                throw new UsageException("The option '--rasterize-unredactable' turns pages that cannot be redacted in place into images; the command has no --text, --pattern or --rect that could mark such a page (use --rasterize-pages to choose pages).");
+            }
+
+            // --include-unchecked only decides what to do with the matches of a pattern whose checksum is wrong.
+            if (includeUnchecked && patterns.Count == 0)
+            {
+                throw new UsageException("The option '--include-unchecked' decides about pattern matches whose checksum or length is wrong; the command has no --pattern.");
+            }
+
+            var rasterDpi = RedactionLimits.DefaultRasterDpi;
+            if (dpiText is not null)
+            {
+                if (rasterizePages is null && !rasterizeUnredactable)
+                {
+                    throw new UsageException("The option '--dpi' sets the resolution of pages that become images; the command has no --rasterize-pages or --rasterize-unredactable.");
+                }
+
+                if (!int.TryParse(dpiText, NumberStyles.None, CultureInfo.InvariantCulture, out rasterDpi)
+                    || rasterDpi < RedactionLimits.MinRasterDpi
+                    || rasterDpi > RedactionLimits.MaxRasterDpi)
+                {
+                    throw new UsageException($"Invalid value for --dpi: '{dpiText}' (use a whole number from {RedactionLimits.MinRasterDpi.ToString(CultureInfo.InvariantCulture)} to {RedactionLimits.MaxRasterDpi.ToString(CultureInfo.InvariantCulture)}).");
+                }
+            }
+
+            if (pages is not null && texts.Count == 0 && patterns.Count == 0)
+            {
+                throw new UsageException("The option '--pages' limits --text and --pattern; the command has neither.");
+            }
+
+            // The strength says how coarse the blocks are; with the solid fill there are none.
+            if (imageStrengthGiven && imageFill == RedactionImageTreatment.Solid)
+            {
+                throw new UsageException("The option '--image-strength' sets the blocks of --image-fill pixelate or --image-fill blur; the command has neither.");
+            }
+
+            // The text goes on the marks of the call; repeating it needs the text.
+            if (overlayRepeat && overlayText is null)
+            {
+                throw new UsageException("The option '--overlay-repeat' repeats the text of --overlay-text; the command has none.");
+            }
+
+            if (overlayText is not null && texts.Count == 0 && patterns.Count == 0 && rects.Count == 0)
+            {
+                throw new UsageException("The option '--overlay-text' puts a text on the marked areas; the command has no --text, --pattern or --rect that marks one.");
             }
 
             if (output is not null && output.Length == 0)
@@ -299,7 +418,7 @@ internal sealed record CliOptions(
                 throw new UsageException("The 'redact' command needs --output <out.pdf> (only --dry-run works without it).");
             }
 
-            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched);
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked, Fill: fill, ImageFill: imageFill, ImageStrength: imageStrength, OverlayText: overlayText, OverlayRepeat: overlayRepeat);
         }
 
         if (isRotate)
@@ -330,6 +449,95 @@ internal sealed record CliOptions(
         return new CliOptions(command, file, pages, dpi, output ?? ".", annotations, password, query, matchCase, wholeWord, Force: force);
     }
 
+    /// <summary>Reads the value of <c>--fill</c>: <c>black</c>, <c>white</c> or a colour written as <c>#RRGGBB</c>.</summary>
+    private static RedactionFill ParseFill(string value)
+    {
+        if (string.Equals(value, "black", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionFill.Black;
+        }
+
+        if (string.Equals(value, "white", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionFill.White;
+        }
+
+        if (RedactionFill.TryParse(value, out var fill))
+        {
+            return fill;
+        }
+
+        var shown = value.Length > 40 ? value[..40] + "..." : value;
+        throw new UsageException($"Invalid value for --fill: '{shown}' (use black, white or a colour written as #RRGGBB).");
+    }
+
+    /// <summary>Reads the value of <c>--image-fill</c>: <c>solid</c> (the default), <c>pixelate</c> or <c>blur</c>.</summary>
+    private static RedactionImageTreatment ParseImageFill(string value)
+    {
+        if (string.Equals(value, "solid", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageTreatment.Solid;
+        }
+
+        if (string.Equals(value, "pixelate", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageTreatment.Pixelate;
+        }
+
+        if (string.Equals(value, "blur", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageTreatment.Blur;
+        }
+
+        var shown = value.Length > 40 ? value[..40] + "..." : value;
+        throw new UsageException($"Invalid value for --image-fill: '{shown}' (use solid, pixelate or blur).");
+    }
+
+    /// <summary>Reads the value of <c>--image-strength</c>: <c>coarse</c> (up to 6 blocks along an axis) or <c>very-coarse</c> (up to 3).</summary>
+    private static RedactionImageStrength ParseImageStrength(string value)
+    {
+        if (string.Equals(value, "coarse", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageStrength.Coarse;
+        }
+
+        if (string.Equals(value, "very-coarse", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageStrength.VeryCoarse;
+        }
+
+        var shown = value.Length > 40 ? value[..40] + "..." : value;
+        throw new UsageException($"Invalid value for --image-strength: '{shown}' (use coarse or very-coarse).");
+    }
+
+    /// <summary>
+    /// Reads the value of <c>--overlay-text</c>: at most <see cref="RedactionLimits.MaxOverlayTextLength"/> characters, not empty, and only
+    /// characters the font of the text can draw. A text with any other character is refused as a whole; the message names the position
+    /// (from 1), never the text.
+    /// </summary>
+    private static string ParseOverlayText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new UsageException("The option '--overlay-text' needs a text that is not empty and not only white space.");
+        }
+
+        if (value.Length > RedactionLimits.MaxOverlayTextLength)
+        {
+            throw new UsageException($"The option '--overlay-text' takes at most {RedactionLimits.MaxOverlayTextLength.ToString(CultureInfo.InvariantCulture)} characters.");
+        }
+
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (!TextBoxCharacters.IsSupported(value[i]))
+            {
+                throw new UsageException($"The option '--overlay-text' has a character the text on the areas cannot draw (unsupported character at position {(i + 1).ToString(CultureInfo.InvariantCulture)}); the text is not changed, give another.");
+            }
+        }
+
+        return value;
+    }
+
     private static void AddTerm(List<string> texts, string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -346,6 +554,32 @@ internal sealed record CliOptions(
         {
             texts.Add(value);
         }
+    }
+
+    private static void AddPattern(List<RedactionPatternKind> patterns, string value)
+    {
+        foreach (var (name, kind) in PatternNames)
+        {
+            if (string.Equals(name, value, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!patterns.Contains(kind))
+                {
+                    patterns.Add(kind);
+                }
+
+                return;
+            }
+        }
+
+        // The value is part of the message; a control character never reaches the terminal.
+        var shown = string.Create(value.Length, value, static (span, source) =>
+        {
+            for (var i = 0; i < span.Length; i++)
+            {
+                span[i] = char.IsControl(source[i]) ? ' ' : source[i];
+            }
+        });
+        throw new UsageException($"Invalid value for --pattern: '{shown}' (use one of: {string.Join(", ", PatternNames.Select(static p => p.Name))}).");
     }
 
     /// <summary>Checks that exactly one way of cutting was chosen and that it is well formed; returns <c>--every</c> (0 when another way was chosen).</summary>

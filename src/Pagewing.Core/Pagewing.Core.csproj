@@ -8,6 +8,13 @@
     <ProjectReference Include="..\Pagewing.Pdfium\Pagewing.Pdfium.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!--
+      Geist Regular (subset, licence in third-party/geist), the font of the text boxes and of the overlay text of a redaction. The file lives
+      here once and is embedded in this assembly, so the command line has it too; the app links it as an Avalonia resource for its own text.
+    -->
+    <EmbeddedResource Include="Assets\Fonts\Geist-Regular.ttf" LogicalName="Pagewing.Core.Assets.Fonts.Geist-Regular.ttf" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Pagewing.Core.Tests" />
     <!-- The UI tests drive a ViewerSession with its test constructor (failing or delayed opens). -->
     <InternalsVisibleTo Include="Pagewing.App.Tests" />

@@ -33,6 +33,9 @@ public enum RedactionRefusalKind
 
     /// <summary>A page cannot be rewritten without changing it outside the marks (or beyond the limits against hostile pages).</summary>
     PageNotRedactable,
+
+    /// <summary>The overlay text of a mark contains a text that is redacted (<see cref="RedactionOverlayRule"/>); the pages are those of the marks that carry the text.</summary>
+    OverlayRepeatsTerm,
 }
 
 /// <summary>A reason to refuse redaction, with the 0-based pages it concerns.</summary>
@@ -60,6 +63,16 @@ public sealed record RedactionRefusal(RedactionRefusalKind Kind, IReadOnlyList<i
 /// <param name="RemovedText">The text that goes, one entry per run of removed characters (the whole text for an object removed as a whole); the check of the result uses it.</param>
 /// <param name="Refusal">Why the page cannot be redacted, or <see langword="null"/>. A refused page was not changed by the analysis; after a refusal from <c>RedactPageAsync</c> the document may have changed and must be discarded.</param>
 /// <param name="RemovedAreas">Where content went besides the rectangles, in points from the top left of the displayed page: the boxes of the characters that were removed (a character counts as soon as its box touches a rectangle, so its box can reach out of the rectangle) and the bounds of what was removed as a whole. The render check leaves these out too (<see cref="RedactionPageAreas.For"/>).</param>
+/// <param name="ImageAreasTreated">The image areas (one image under one rectangle) that were pixelated or blurred. 0 when the plan treats image areas solid.</param>
+/// <param name="ImageAreasSolid">The image areas that got the solid fill although pixelating or blurring was chosen, because the rule does not apply (see <see cref="ImageSolidReason"/>; one entry in <paramref name="ImageSolidReasons"/> each). 0 when the plan treats image areas solid: nothing falls back then.</param>
+/// <param name="OverlaysNotShown">The areas that got no overlay text because a treated image lies under them.</param>
+/// <param name="OverlaysNotFitting">The areas whose overlay text does not fit, the areas over the limit of the document included (they stay filled without text).</param>
+/// <param name="ImageSolidReasons">Why each of the <paramref name="ImageAreasSolid"/> areas fell back, in the order the page was processed; <see langword="null"/> for none.</param>
+/// <param name="OverlaysDrawn">The areas that got their overlay text.</param>
+/// <param name="OverlaysOverLimit">Of <paramref name="OverlaysNotFitting"/>, the areas that got no text because the limit of the page (<see cref="RedactionLimits.MaxOverlayPathsPerPage"/> path objects or <see cref="RedactionLimits.MaxOverlaySegmentsPerPage"/> segments) or of the document (<see cref="RedactionLimits.MaxOverlayPaths"/>, <see cref="RedactionLimits.MaxOverlaySegments"/>) was reached.</param>
+/// <param name="OverlayPaths">The path objects of the overlay text on this page.</param>
+/// <param name="OverlaySegments">The path segments of the overlay text on this page.</param>
+/// <param name="OverlayLimitReached">Whether the limit of the document was reached on this page or before it.</param>
 public sealed record PageRedactionImpact(
     int Page,
     int CharsRemoved,
@@ -74,7 +87,39 @@ public sealed record PageRedactionImpact(
     IReadOnlyList<RedactionFallback> Fallbacks,
     IReadOnlyList<string> RemovedText,
     RedactionRefusal? Refusal,
-    IReadOnlyList<Pagewing.Core.Text.PageRect>? RemovedAreas = null);
+    IReadOnlyList<Pagewing.Core.Text.PageRect>? RemovedAreas = null,
+    int ImageAreasTreated = 0,
+    int ImageAreasSolid = 0,
+    int OverlaysNotShown = 0,
+    int OverlaysNotFitting = 0,
+    IReadOnlyList<ImageSolidReason>? ImageSolidReasons = null,
+    int OverlaysDrawn = 0,
+    int OverlaysOverLimit = 0,
+    int OverlayPaths = 0,
+    long OverlaySegments = 0,
+    bool OverlayLimitReached = false);
+
+/// <summary>Why an image area got the solid fill although pixelating or blurring was chosen.</summary>
+public enum ImageSolidReason
+{
+    /// <summary>The pixel rectangle under the mark is smaller than 2 x 2 blocks of <see cref="RedactionLimits.MinBlockPixels"/> pixels.</summary>
+    TooSmall,
+
+    /// <summary>The image is turned or sheared, so the pixels under the mark cannot be told apart; it is removed as a whole.</summary>
+    TurnedOrSheared,
+
+    /// <summary>The image is cut by a clipping path, so what it shows is not its pixel rectangle.</summary>
+    Clipped,
+
+    /// <summary>The pixel rectangle under the mark overlaps the one of another mark on the same image.</summary>
+    Overlapping,
+
+    /// <summary>Pagewing could not read or write the pixels of the image safely (its size, matrix or pixels are unreadable); it is removed as a whole.</summary>
+    Unreadable,
+
+    /// <summary>So many treated images lie under the mark that the opaque area could not be cut around them within the limit.</summary>
+    TooManyImages,
+}
 
 /// <summary>What the cleanup of a redaction removes from the file in every case ("cleaning is not a switch"): the document-level data that a rebuild into a new document leaves behind.</summary>
 public enum CleanupKind
@@ -154,6 +199,8 @@ public sealed record RedactionLoss(RedactionLossKind Kind, int Count);
 /// <param name="Marks">The number of marks of the plan.</param>
 /// <param name="MarksWithoutTerm">The number of marks without a term (a rectangle dragged on the page): the text under them is removed, but the check has no text to search for.</param>
 /// <param name="AttachmentAnnotations">How many paperclip annotations (<c>/FileAttachment</c>) the file has: up to that many embedded files come with the pages and stay in the file (not cleaned).</param>
+/// <param name="Raster">What turning the pages of <see cref="RedactionPlan.RasterPages"/> into images costs, one entry per page in page order; <see langword="null"/> when the plan has none.</param>
+/// <param name="ImageTreatment">What the plan does with the image areas (<see cref="RedactionPlan.ImageTreatment"/>): the report words its counts and its caution about text in images by it.</param>
 public sealed record RedactionAnalysis(
     IReadOnlyList<PageRedactionImpact> Pages,
     IReadOnlyList<CleanupItem> Cleanup,
@@ -163,14 +210,63 @@ public sealed record RedactionAnalysis(
     bool PageKeysChecked,
     int Marks,
     int MarksWithoutTerm,
-    int AttachmentAnnotations = 0)
+    int AttachmentAnnotations = 0,
+    IReadOnlyList<RasterPageInfo>? Raster = null,
+    RedactionImageTreatment ImageTreatment = RedactionImageTreatment.Solid)
 {
     /// <summary>Gets whether the file must not be redacted (any refusal).</summary>
     public bool IsRefused => Refusals.Count > 0;
 
+    /// <summary>Gets how many areas get no overlay text because a treated image lies under them.</summary>
+    public int OverlaysNotShown => Pages.Sum(static p => p.OverlaysNotShown);
+
+    /// <summary>Gets how many areas get no overlay text because it does not fit (the areas over the limit of the document included), on the pages redacted in place and on the pages turned into images.</summary>
+    public int OverlaysNotFitting => Pages.Sum(static p => p.OverlaysNotFitting) + (Raster?.Sum(static r => r.OverlaysNotFitting) ?? 0);
+
+    /// <summary>Gets how many of <see cref="OverlaysNotFitting"/> are left out because the limit of the document was reached.</summary>
+    public int OverlaysOverLimit => Pages.Sum(static p => p.OverlaysOverLimit) + (Raster?.Sum(static r => r.OverlaysOverLimit) ?? 0);
+
     /// <summary>Gets everything that is removed as a whole instead of precisely, with the reason, in page order.</summary>
     public IReadOnlyList<RedactionFallback> Fallbacks => [.. Pages.SelectMany(static p => p.Fallbacks)];
 }
+
+/// <summary>
+/// What turning one page into an image does (milestone 14.1), told before anything is applied: the resolution that is really used, the
+/// size, and what the page loses besides its text. The counts are read from the ORIGINAL page.
+/// </summary>
+/// <param name="Page">The 0-based page.</param>
+/// <param name="Dpi">The resolution, in dots per inch, the page is rendered at.</param>
+/// <param name="WidthPx">The width of the image in pixels.</param>
+/// <param name="HeightPx">The height of the image in pixels.</param>
+/// <param name="Lowered">Whether <paramref name="Dpi"/> is lower than the one the plan asks for because the page would exceed <see cref="RedactionLimits.MaxRasterPixels"/> (never silent: the card names it).</param>
+/// <param name="EstimatedBytes">An upper estimate of the size the image adds to the file: the uncompressed RGB size (Flate rarely does worse; most pages are far smaller).</param>
+/// <param name="Annotations">How many annotation objects the page has (links and form field widgets included): all of them are gone from the page.</param>
+/// <param name="FormFields">How many form field widgets the page has: they are not fillable afterwards.</param>
+/// <param name="Links">How many links the page has: they stop working.</param>
+/// <param name="HasText">Whether the page has text: all of it is gone from the page.</param>
+/// <param name="OverlaysNotFitting">The areas of the page whose overlay text does not fit, the areas over the limit of the document included.</param>
+/// <param name="OverlaysOverLimit">Of those, the areas left out because the limit of the document was reached.</param>
+/// <param name="OverlaysDrawn">The areas of the page that get their overlay text.</param>
+/// <param name="OverlayPaths">The path objects of the overlay text on the page.</param>
+/// <param name="OverlaySegments">The path segments of the overlay text on the page.</param>
+/// <param name="OverlayLimitReached">Whether the limit of the document was reached on this page or before it.</param>
+public sealed record RasterPageInfo(
+    int Page,
+    int Dpi,
+    int WidthPx,
+    int HeightPx,
+    bool Lowered,
+    long EstimatedBytes,
+    int Annotations = 0,
+    int FormFields = 0,
+    int Links = 0,
+    bool HasText = false,
+    int OverlaysNotFitting = 0,
+    int OverlaysOverLimit = 0,
+    int OverlaysDrawn = 0,
+    int OverlayPaths = 0,
+    long OverlaySegments = 0,
+    bool OverlayLimitReached = false);
 
 /// <summary>What the cleanup removes and what the rebuild loses, read from a document and its file.</summary>
 /// <param name="Cleanup">What the cleanup removes, in the order of <see cref="CleanupKind"/>.</param>

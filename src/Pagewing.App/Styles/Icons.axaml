@@ -101,4 +101,6 @@
   <StreamGeometry x:Key="Pw.Icon.ArrowsSort">M3 9l4 -4l4 4m-4 -4v14 M21 15l-4 4l-4 -4m4 4v-14</StreamGeometry>
   <StreamGeometry x:Key="Pw.Icon.Eye">M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0 M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6</StreamGeometry>
   <StreamGeometry x:Key="Pw.Icon.EyeOff">M10.585 10.587a2 2 0 0 0 2.829 2.828 M16.681 16.673a8.717 8.717 0 0 1 -4.681 1.327c-3.6 0 -6.6 -2 -9 -6c1.272 -2.12 2.712 -3.678 4.32 -4.674m2.86 -1.146a9.055 9.055 0 0 1 1.82 -.18c3.6 0 6.6 2 9 6c-.666 1.11 -1.379 2.067 -2.138 2.87 M3 3l18 18</StreamGeometry>
+  <!-- droplet (the free fill colour of redaction) -->
+  <StreamGeometry x:Key="Pw.Icon.Droplet">M7.502 19.423c2.602 2.105 6.395 2.105 8.996 0c2.602 -2.105 3.262 -5.708 1.566 -8.546l-4.89 -7.26c-.42 -.625 -1.287 -.803 -1.936 -.397a1.376 1.376 0 0 0 -.41 .397l-4.893 7.26c-1.695 2.838 -1.035 6.441 1.567 8.546z</StreamGeometry>
 </ResourceDictionary>

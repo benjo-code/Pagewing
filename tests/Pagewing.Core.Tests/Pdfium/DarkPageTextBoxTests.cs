@@ -23,8 +23,6 @@ public sealed class DarkPageTextBoxTests : IDisposable
 
     private readonly TempFolder folder = new();
 
-    public DarkPageTextBoxTests() => UseTextBoxFont();
-
     private static RenderOptions Dark { get; } = new() { PageTheme = PageTheme.Dark };
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

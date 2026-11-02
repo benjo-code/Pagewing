@@ -28,8 +28,10 @@
     <EmbeddedResource Include="Resources\ThirdPartyNotices.txt" LogicalName="Pagewing.App.Resources.ThirdPartyNotices.txt" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Geist / Geist Mono subset, licence in third-party/geist (selected in Styles/Fonts.axaml). -->
+    <!-- Geist / Geist Mono subset, licence in third-party/geist (selected in Styles/Fonts.axaml). Geist Regular lives once, in Core (the
+         overlay text and the text boxes are drawn with it there); the app links that file under the path the font family expects. -->
     <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+    <AvaloniaResource Include="..\Pagewing.Core\Assets\Fonts\Geist-Regular.ttf" Link="Assets\Fonts\Geist-Regular.ttf" />
   </ItemGroup>
   <ItemGroup>
     <!-- Window icon for the platforms that do not take it from the executable (Windows does, see ApplicationIcon). -->

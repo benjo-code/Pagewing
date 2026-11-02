@@ -125,6 +125,54 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.Null(viewModel.PendingSave);
     }
 
+    [AvaloniaFact]
+    public async Task FreeColorOfTooLowContrastToTheSelectionMarkerStillShowsTheMarker()
+    {
+        var (window, viewModel, view, tab, _) = await MarkedAsync();
+        viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(FakeAnalysis());
+        tab.RedactionPreviewDelay = TimeSpan.Zero;
+        tab.ClearMarkSelection();
+        var overlay = view.RedactionOverlay!;
+        var area = MarkArea(view, Mark);
+        tab.ToggleRedactionPreviewCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.RedactionPreviewText is not null && tab.RedactionPreviewText != Strings.RedactPreviewWorking);
+
+        // Whatever the user chooses, the thin edge that tells an area from the page stands out 3:1 from its fill: the colour of the
+        // marks itself, the colour of the light page and of the dark page, greys and the presets.
+        var mark = overlay.EdgeColor;
+        var fills = new List<RedactionFill>
+        {
+            new(mark.R, mark.G, mark.B),
+            new(0xE4, 0x47, 0x4C),
+            new(0xFF, 0xFF, 0xFF),
+            new(0x00, 0x00, 0x00),
+            new(0x80, 0x80, 0x80),
+            new(0x7F, 0x7F, 0x7F),
+            new(0xFB, 0x6A, 0x6E),
+            new(0x1E, 0x1F, 0x24),
+            new(0xF5, 0xF5, 0xF5),
+        };
+        fills.AddRange(RedactionFill.Presets);
+        foreach (var fill in fills)
+        {
+            tab.RedactionFill = fill;
+            Settle(window);
+            Assert.Equal(Avalonia.Media.Color.FromRgb(fill.Red, fill.Green, fill.Blue), overlay.PreviewFillColor);
+            var ratio = Wcag.Contrast(overlay.PreviewEdgeColor, overlay.PreviewFillColor);
+            Assert.True(ratio >= 3, $"{fill.ToHex()}: the edge has {ratio:F2}:1 against the fill");
+        }
+
+        // Seen, not only computed: with the fill of the colour of the marks, the pixel of the edge differs from the pixel inside.
+        tab.RedactionFill = new RedactionFill(mark.R, mark.G, mark.B);
+        Settle(window);
+        using var frame = FramePixels.Snapshot(LayersOf(view));
+        var inside = Pixel(frame, area.Center);
+        var onEdge = Pixel(frame, new Point(area.Left + (RedactionOverlay.PreviewEdgeThickness / 2) + 0.01, area.Center.Y));
+        Assert.Equal(overlay.PreviewFillColor, inside);
+        Assert.NotEqual(inside, onEdge);
+        Assert.True(Wcag.Contrast(inside, onEdge) >= 3, $"the edge shows {Wcag.Contrast(inside, onEdge):F2}:1 against the area");
+    }
+
     // ------------------------------------------------------------------ the questions before the card
 
     [AvaloniaFact]
@@ -366,22 +414,24 @@ public sealed partial class RedactApplyTests : IDisposable
         var (window, viewModel, _, tab, _) = await MarkedAsync();
         viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(CleanAnalysis(
         [
-            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [2], RenderCheckReason),
+            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [1], RenderCheckReason),
         ]));
 
         var apply = viewModel.ApplyRedactionsAsync(tab);
-        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRefused);
+        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRescue);
 
-        // "This page cannot be redacted, because ...": the page and the reason of the check; no greyed offer.
+        // "This page cannot be redacted, because ...": the page and the reason of the check. Since milestone 14.1 the card also offers the
+        // page as an image (RedactApplyRasterTests), by the user's choice only.
         var section = Assert.Single(viewModel.PendingSave!.Redaction!.Sections);
         Assert.Equal(Strings.RedactRefusalHeadingPage, section.Heading);
         Assert.Equal(
-            "Page 3 cannot be redacted, because redacting it would change content outside the marked areas (PDFium cannot write this page again without changing it). The file is not redacted.",
+            "Page 2 cannot be redacted, because redacting it would change content outside the marked areas (PDFium cannot write this page again without changing it). The file is not redacted.",
             Assert.Single(section.Lines));
-        Assert.Equal(["Back"], ShownChoices(card));
-        Assert.All(card.GetVisualDescendants().OfType<Button>(), button => Assert.True(button.IsEnabled || !button.IsVisible));
+        Assert.Equal(["Continue", "Back"], ShownChoices(card));
+        Assert.False(card.ButtonOf(PendingSaveChoice.Continue)!.IsEnabled);
+        Assert.True(card.ButtonOf(PendingSaveChoice.Cancel)!.IsEnabled);
 
-        // Nothing in any language promises a later version or another way: that belongs to a later milestone.
+        // Nothing in the texts of the reasons promises a later version or another way: that belongs to a later milestone.
         foreach (var language in new[] { "en", "de" })
         {
             Strings.Culture = new CultureInfo(language);
@@ -486,6 +536,31 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.Equal([language == "en" ? "Back" : "Zurück"], ShownChoices(card));
         viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
         Assert.False(await apply);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task OverlayRefusalHasASentenceInBothLanguages(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        var refusal = new RedactionRefusal(RedactionRefusalKind.OverlayRepeatsTerm, [0, 2], "x");
+
+        var section = Assert.Single(RedactionApplyInfo.ForRefusals([refusal]).Sections);
+
+        // Its own heading and sentence (not the general "not redacted"), with the pages as page numbers in the language of the interface,
+        // and the sentence tells what to do, never what the text was.
+        Assert.Equal(Strings.RedactRefusalHeadingOverlay, section.Heading);
+        Assert.NotEqual(Strings.RedactRefusalHeadingOverlay, Strings.RedactRefusalOther);
+        var line = Assert.Single(section.Lines);
+        Assert.Contains(language == "en" ? "pages 1, 3" : "Seiten 1, 3", line, StringComparison.Ordinal);
+        Assert.NotEqual(Strings.RedactRefusalOther, line);
+        Assert.Equal(line, RedactionApplyInfo.RefusalLine(refusal));
+        Assert.Contains(line, RedactionApplyInfo.PreviewLine(new RedactionAnalysis([], [], CleanupComplete: true, [], [refusal], PageKeysChecked: false, 2, 0)), StringComparison.Ordinal);
+        Assert.DoesNotMatch(ValidWord(), line);
+        Assert.DoesNotMatch(PromiseWords(), line);
+        Strings.Culture = new CultureInfo("en");
     }
 
     // ------------------------------------------------------------------ the work
@@ -1032,6 +1107,63 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.Contains(failing.Sections, section => section.Heading == Strings.RedactSecNotChecked);
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task NoLineSaysThatPagesTurnedIntoImagesWereComparedWithTheOriginal(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        var rasterPrefix = language == "en" ? "Pages turned into images (" : "In Bilder umgewandelte Seiten (";
+        var inPlace = new PageRedactionImpact(0, 30, 2, 1, 1, 0, 0, 0, 0, 2, [], ["a"], null);
+        var plain = FakeAnalysis() with { Raster = null };
+        var rasterOnly = FakeAnalysis() with { Pages = [], Raster = [new RasterPageInfo(1, 200, 100, 100, false, 1000)] };
+        var mixed = FakeAnalysis() with { Pages = [inPlace], Raster = [new RasterPageInfo(2, 200, 100, 100, false, 1000)] };
+        var rasterMarked = FakeAnalysis() with { Pages = [inPlace with { Page = 2 }], Raster = [new RasterPageInfo(2, 200, 100, 100, false, 1000)] };
+
+        // (c) Without pages turned into images nothing changes: the old lines, the old preview.
+        var plainReport = Lines(RedactionApplyInfo.ForReport(plain, RenderCheck(0)), Strings.RedactSecChecked);
+        Assert.Contains(Strings.RedactCheckedPages, plainReport);
+        Assert.DoesNotContain(plainReport, line => line.StartsWith(rasterPrefix, StringComparison.Ordinal));
+        Assert.Contains(Strings.RedactNcApplyRender, Lines(RedactionApplyInfo.ForReport(plain, RenderCheck(0)), Strings.RedactSecNotChecked));
+        Assert.Contains(Strings.RedactCheckList, Lines(RedactionApplyInfo.Create(plain), Strings.RedactSecAfter));
+
+        // (a) Only pages turned into images: no line says that a page was rendered and looks like the original.
+        var onlyReport = RedactionApplyInfo.ForReport(rasterOnly, RenderCheck(1));
+        var onlyChecked = Lines(onlyReport, Strings.RedactSecChecked);
+        Assert.DoesNotContain(Strings.RedactCheckedPages, onlyChecked);
+        Assert.DoesNotContain(Strings.RedactCheckedPagesInPlace, onlyChecked);
+        Assert.Contains(onlyChecked, line => line.StartsWith(rasterPrefix, StringComparison.Ordinal));
+        Assert.Contains(Strings.RedactNcApplyRenderRaster, Lines(onlyReport, Strings.RedactSecNotChecked));
+        Assert.DoesNotContain(Strings.RedactNcApplyRender, Lines(onlyReport, Strings.RedactSecNotChecked));
+        var onlyAfter = Lines(RedactionApplyInfo.Create(rasterOnly), Strings.RedactSecAfter);
+        Assert.Contains(Strings.RedactCheckListRasterOnly, onlyAfter);
+        Assert.DoesNotContain(Strings.RedactCheckList, onlyAfter);
+
+        // (b) Both kinds: the render claim is for the page redacted in place only, and the raster pages have their own line.
+        // A page that is in the list of pages and turned into an image (a mark on it) does not count as redacted in place.
+        foreach (var analysis in new[] { mixed })
+        {
+            var report = RedactionApplyInfo.ForReport(analysis, RenderCheck(1));
+            var checkedLines = Lines(report, Strings.RedactSecChecked);
+            Assert.DoesNotContain(Strings.RedactCheckedPages, checkedLines);
+            Assert.Contains(Strings.RedactCheckedPagesInPlace, checkedLines);
+            Assert.Contains(checkedLines, line => line.StartsWith(rasterPrefix, StringComparison.Ordinal));
+            Assert.Contains(Strings.RedactNcApplyRenderRaster, Lines(report, Strings.RedactSecNotChecked));
+            Assert.Contains(Strings.RedactCheckListRaster, Lines(RedactionApplyInfo.Create(analysis), Strings.RedactSecAfter));
+        }
+
+        var markedReport = Lines(RedactionApplyInfo.ForReport(rasterMarked, RenderCheck(1)), Strings.RedactSecChecked);
+        Assert.DoesNotContain(Strings.RedactCheckedPagesInPlace, markedReport);
+        Assert.DoesNotContain(Strings.RedactCheckedPages, markedReport);
+
+        static RedactionCheck RenderCheck(int rasterPages) =>
+            new([], ["x"], [new RedactionNotChecked(RedactionNotCheckedKind.ApplyRender, "x", rasterPages)]);
+
+        static IReadOnlyList<string> Lines(RedactionApplyInfo info, string heading) =>
+            Assert.Single(info.Sections, section => section.Heading == heading).Lines;
+    }
+
     [AvaloniaFact]
     public async Task EveryKindOfWhatWasNotCheckedHasASentenceInBothLanguages()
     {
@@ -1138,6 +1270,115 @@ public sealed partial class RedactApplyTests : IDisposable
         // Both headings stay: "Will be cleaned" on the card, "Cleaned" in the report.
         Assert.StartsWith(language == "en" ? "Will be cleaned" : "Wird bereinigt", Strings.RedactSecCleaned, StringComparison.Ordinal);
         Assert.StartsWith(language == "en" ? "Cleaned" : "Bereinigt", Strings.RedactSecCleanedDone, StringComparison.Ordinal);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task CardAndReportNameOverlayTextThatIsLeftOut(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        var page = new PageRedactionImpact(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], [], null, OverlaysNotShown: 2, OverlaysNotFitting: 3, OverlaysOverLimit: 1);
+        var raster = new RasterPageInfo(1, 200, 100, 100, false, 1000, OverlaysNotFitting: 1, OverlaysOverLimit: 1);
+        var analysis = new RedactionAnalysis([page], [], CleanupComplete: true, [], [], PageKeysChecked: true, Marks: 1, MarksWithoutTerm: 1, Raster: [raster]);
+
+        // The numbers add up over the pages redacted in place and the pages that became images.
+        Assert.Equal(2, analysis.OverlaysNotShown);
+        Assert.Equal(4, analysis.OverlaysNotFitting);
+        Assert.Equal(2, analysis.OverlaysOverLimit);
+
+        foreach (var info in new[] { RedactionApplyInfo.Create(analysis), RedactionApplyInfo.ForReport(analysis, new RedactionCheck([], [])) })
+        {
+            var section = Assert.Single(info.Sections, section => section.Heading == Strings.RedactSecOverlay);
+            Assert.Equal(3, section.Lines.Count);
+            Assert.Contains("2", section.Lines[0], StringComparison.Ordinal);
+            Assert.Contains("4", section.Lines[1], StringComparison.Ordinal);
+            Assert.Contains("2", section.Lines[2], StringComparison.Ordinal);
+            Assert.Contains("150.000", section.Lines[2].Replace(",", ".", StringComparison.Ordinal), StringComparison.Ordinal);
+            Assert.All(section.Lines, static line => Assert.DoesNotMatch(ValidWord(), line));
+            Assert.DoesNotContain("{", string.Concat(section.Lines), StringComparison.Ordinal);
+        }
+
+        // Nothing left out: no part at all, so the card says nothing it does not mean.
+        var none = RedactionApplyInfo.Create(new RedactionAnalysis([new PageRedactionImpact(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], [], null, OverlaysDrawn: 3)], [], CleanupComplete: true, [], [], PageKeysChecked: true, Marks: 1, MarksWithoutTerm: 1));
+        Assert.DoesNotContain(none.Sections, section => section.Heading == Strings.RedactSecOverlay);
+
+        // The check says that it does not read the overlay text back.
+        var said = RedactionApplyInfo.SayNotChecked(new RedactionNotChecked(RedactionNotCheckedKind.OverlayTextNotRead, "x"));
+        Assert.Equal(Strings.RedactNcOverlayNotRead, said);
+        Assert.Contains(language == "en" ? "not read back" : "nicht", said, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task CardCountsNotFittingAndNotShownOverlays()
+    {
+        // The real analysis, no seam: one area over the first image of the page (pixelated, so no text goes on it) and one on an empty
+        // part of the page that is far too small for its 150 characters. Page 440 x 330 pt, the image under 46,56 to 118,128.
+        var (window, viewModel, _, tab, _) = await MarkedAsync("redact-image-blocks.pdf", area: false);
+        tab.RedactionImageTreatment = RedactionImageTreatment.Pixelate;
+        Assert.True(tab.AddAreaMark(0, new PageRect(46, 56, 118, 128)));
+        var onImage = tab.RedactionPlan!.Marks[0].Id;
+        Assert.True(tab.AddAreaMark(0, new PageRect(250, 20, 330, 60)));
+        var small = tab.RedactionPlan.Marks[1].Id;
+        Assert.True(tab.SetOverlayText(new HashSet<Guid> { onImage }, "x"));
+        Assert.True(tab.SetOverlayText(new HashSet<Guid> { small }, new string('w', 150)));
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+
+        // The card names both counts before anything is written, in the section of the overlay text, in words.
+        var info = viewModel.PendingSave!.Redaction!;
+        var section = Assert.Single(info.Sections, static s => s.Heading == Strings.RedactSecOverlay);
+        Assert.Equal(2, section.Lines.Count);
+        Assert.Contains("1 area gets no overlay text", section.Lines[0], StringComparison.Ordinal);
+        Assert.Contains("1 overlay text does not fit", section.Lines[1], StringComparison.Ordinal);
+        var texts = card.GetVisualDescendants().OfType<TextBlock>().Select(static t => t.Text).ToList();
+        Assert.Contains(texts, text => text is not null && text.Contains(section.Lines[0], StringComparison.Ordinal));
+        Assert.Contains(texts, text => text is not null && text.Contains(section.Lines[1], StringComparison.Ordinal));
+
+        // The card never repeats the text on the areas.
+        Assert.DoesNotContain(info.AllTexts, static text => text.Contains(new string('w', 20), StringComparison.Ordinal));
+        viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
+        Assert.False(await apply);
+        Assert.True(tab.HasPendingRedactions);
+    }
+
+    [AvaloniaFact]
+    public async Task ApplyIsRefusedByTheAnalysisAnyway()
+    {
+        // The field warns, but only the analysis decides: a text that holds the term of a mark ends in the card of a refusal, and
+        // nothing is written (the writer is never called).
+        var (window, viewModel, _, tab, path) = await MarkedAsync();
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        var rewrites = 0;
+        viewModel.RedactionRewriter = (_, _, _, _, _) =>
+        {
+            rewrites++;
+            throw new InvalidOperationException("must not be called");
+        };
+        var term = new RedactionMark(Guid.NewGuid(), RedactionKind.Text, 0, [new PageRect(10, 10, 80, 30)], "Zephyr", Everywhere: false, OverlayText: "Zephyr was here");
+        Assert.True(tab.AddRedactionMarks([term]));
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRefused);
+
+        var section = Assert.Single(viewModel.PendingSave!.Redaction!.Sections);
+        Assert.Equal(Strings.RedactRefusalHeadingOverlay, section.Heading);
+        Assert.DoesNotContain(viewModel.PendingSave.Redaction.AllTexts, static text => text.Contains("Zephyr", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal([PendingSaveChoice.Cancel], viewModel.PendingSave.Choices);
+        viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
+        Assert.False(await apply);
+        Assert.Equal(0, rewrites);
+        Assert.True(tab.HasPendingRedactions);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+
+        // Changing the text lifts the refusal: the card of the numbers comes.
+        Assert.True(tab.SetOverlayText(new HashSet<Guid> { term.Id }, "redacted"));
+        var again = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel);
+        Assert.False(await again);
     }
 
     [AvaloniaFact]
@@ -1304,7 +1545,9 @@ public sealed partial class RedactApplyTests : IDisposable
             "RedactRefusalPageHint", "RedactRefusalOther", "RedactPageOne", "RedactPageMany", "RedactPageFile",
             "RedactFailureNotCompleted", "RedactFailureUnremovable", "RedactFailureText", "RedactFailureChar", "RedactFailureImage",
             "RedactFailureUnreadable", "RedactFailureKeys", "RedactFailurePage", "RedactFailureUnverifiable", "RedactFailureCleanup",
-            "RedactErrorNotPrepared", "RedactErrorDraft", "RedactErrorFileChanged", "RedactSaveFirstText", "RedactApplyBlocked"
+            "RedactErrorNotPrepared", "RedactErrorDraft", "RedactErrorFileChanged", "RedactSaveFirstText", "RedactApplyBlocked",
+            "RedactFailureRaster", "RedactNcRasterOutside", "RedactNcApplyRenderRaster", "RedactCheckListRaster", "RedactCheckListRasterOnly",
+            "RedactCheckedPagesInPlace", "RedactCheckedRaster", "RedactRefusalHeadingOverlay", "RedactRefusalOverlay"
     ];
 
     // Every text of the apply flow that the interface shows, in the language that is set.
@@ -1325,6 +1568,206 @@ public sealed partial class RedactApplyTests : IDisposable
 
     [GeneratedRegex(@"(?<![\p{L}])(valid|gültig)(?![\p{L}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ValidWord();
+
+    // ------------------------------------------------------------------ pixelated and blurred image areas (milestone 14.1, task 13)
+
+    // An analysis of a plan that pixelates or blurs: two treated areas, three that got the solid fill (two too small, one turned image).
+    private static RedactionAnalysis TreatedAnalysis(RedactionImageTreatment treatment) => new(
+        [new PageRedactionImpact(0, 0, 0, 0, 2, 1, 0, 0, 0, 0, [], [], null, ImageAreasTreated: 2, ImageAreasSolid: 3, ImageSolidReasons: [ImageSolidReason.TooSmall, ImageSolidReason.TurnedOrSheared, ImageSolidReason.TooSmall])],
+        [],
+        CleanupComplete: true,
+        [],
+        [],
+        PageKeysChecked: true,
+        Marks: 1,
+        MarksWithoutTerm: 1,
+        ImageTreatment: treatment);
+
+    private const string HonestSentenceEnglish = "Text in images can stay legible even when it is pixelated or blurred; Pagewing does not recognise text in images. For text in an image choose the solid fill.";
+    private const string HonestSentenceGerman = "Text in Bildern kann auch verpixelt oder weichgezeichnet lesbar bleiben; Pagewing erkennt ihn nicht. Für Text im Bild die Volltonfläche wählen.";
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task CardShowsTheHonestSentenceInBothLanguages(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        var sentence = language == "en" ? HonestSentenceEnglish : HonestSentenceGerman;
+        Assert.Equal(sentence, Strings.RedactImageCaution);
+
+        foreach (var treatment in new[] { RedactionImageTreatment.Pixelate, RedactionImageTreatment.Blur })
+        {
+            var analysis = TreatedAnalysis(treatment);
+            var how = treatment == RedactionImageTreatment.Pixelate ? Strings.RedactTreatmentPixelated : Strings.RedactTreatmentBlurred;
+            foreach (var info in new[] { RedactionApplyInfo.Create(analysis), RedactionApplyInfo.ForReport(analysis, new RedactionCheck([], ["x"], [new RedactionNotChecked(RedactionNotCheckedKind.ImageTextLegible, "x", 2, 3)])) })
+            {
+                var section = Assert.Single(info.Sections, section => section.Heading == Strings.RedactSecImageAreas);
+
+                // How many areas are treated and how many are filled solid, and why; the sentence closes the part.
+                Assert.Equal(3, section.Lines.Count);
+                Assert.StartsWith("2 ", section.Lines[0], StringComparison.Ordinal);
+                Assert.Contains(how, section.Lines[0], StringComparison.Ordinal);
+                Assert.StartsWith("3 ", section.Lines[1], StringComparison.Ordinal);
+                Assert.Contains(RedactionApplyInfo.SayImageSolidReason(ImageSolidReason.TooSmall) + " (2×)", section.Lines[1], StringComparison.Ordinal);
+                Assert.Contains(RedactionApplyInfo.SayImageSolidReason(ImageSolidReason.TurnedOrSheared) + " (1×)", section.Lines[1], StringComparison.Ordinal);
+                Assert.Equal(sentence, section.Lines[2]);
+                Assert.DoesNotContain(info.AllTexts, static text => ValidWord().IsMatch(text));
+            }
+
+            // The report does not claim more than the check does: the line about areas says "either the colour or the block averages", and
+            // the not-checked part names the text in images.
+            var report = RedactionApplyInfo.ForReport(analysis, new RedactionCheck([], ["x"], [new RedactionNotChecked(RedactionNotCheckedKind.ImageTextLegible, "x", 2, 3)]));
+            Assert.Contains(Strings.RedactCheckedAreasTreated, report.Sections.Single(static s => s.Heading == Strings.RedactSecChecked).Lines);
+            Assert.DoesNotContain(Strings.RedactCheckedAreas, report.Sections.Single(static s => s.Heading == Strings.RedactSecChecked).Lines);
+            Assert.Contains(report.Sections.Single(static s => s.Heading == Strings.RedactSecNotChecked).Lines, line => line.Contains('2') && line.Contains('3') && line.Contains(language == "en" ? "image parts" : "Bildteile", StringComparison.Ordinal));
+        }
+
+        // A plan that fills image areas solid says nothing of the kind.
+        var solid = RedactionApplyInfo.Create(TreatedAnalysis(RedactionImageTreatment.Solid));
+        Assert.DoesNotContain(solid.Sections, static s => s.Heading == Strings.RedactSecImageAreas);
+        Assert.DoesNotContain(solid.AllTexts, static text => text.Contains(Strings.RedactImageCaution, StringComparison.Ordinal));
+    }
+
+    [AvaloniaFact]
+    public async Task TheCardOfAnApplyCarriesTheHonestSentence()
+    {
+        var (window, viewModel, _, tab, _) = await MarkedAsync();
+        tab.RedactionImageTreatment = RedactionImageTreatment.Blur;
+        viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(TreatedAnalysis(RedactionImageTreatment.Blur));
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+
+        var texts = viewModel.PendingSave!.Redaction!.AllTexts.ToList();
+        Assert.Contains(Strings.RedactSecImageAreas, texts);
+        Assert.Contains(Strings.RedactImageCaution, texts);
+        viewModel.PendingSave.Abandon();
+        Assert.False(await apply);
+    }
+
+    [AvaloniaFact]
+    public async Task EveryReasonForTheSolidFillHasASentenceInBothLanguages()
+    {
+        await Task.CompletedTask;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var reason in Enum.GetValues<ImageSolidReason>())
+        {
+            Strings.Culture = new CultureInfo("en");
+            var en = RedactionApplyInfo.SayImageSolidReason(reason);
+            Strings.Culture = new CultureInfo("de");
+            var de = RedactionApplyInfo.SayImageSolidReason(reason);
+
+            // A reason without a sentence fails here: add it to RedactionApplyInfo.SayImageSolidReason and to both resx files.
+            Assert.False(string.IsNullOrWhiteSpace(en), $"{reason} has no English sentence");
+            Assert.False(string.IsNullOrWhiteSpace(de), $"{reason} has no German sentence");
+            Assert.NotEqual(en, de);
+            Assert.True(seen.Add(en), $"{reason} shares its English sentence");
+            Assert.DoesNotMatch(PromiseWords(), en);
+            Assert.DoesNotMatch(PromiseWords(), de);
+        }
+
+        Strings.Culture = new CultureInfo("en");
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionApplyInfo.SayImageSolidReason((ImageSolidReason)99));
+    }
+
+    [AvaloniaFact]
+    public async Task EveryKindOfFindingHasALineInBothLanguages()
+    {
+        await Task.CompletedTask;
+        foreach (var kind in Enum.GetValues<RedactionFindingKind>())
+        {
+            var check = new RedactionCheck([new RedactionFinding(kind, 2, "detail", [2])], []);
+            Strings.Culture = new CultureInfo("en");
+            var en = Assert.Single(RedactionApplyInfo.ForFailure(check).Sections).Lines.Single();
+            Strings.Culture = new CultureInfo("de");
+            var de = Assert.Single(RedactionApplyInfo.ForFailure(check).Sections).Lines.Single();
+            Assert.False(string.IsNullOrWhiteSpace(en), $"{kind} has no English line");
+            Assert.NotEqual(en, de);
+            Assert.DoesNotContain("{0}", de, StringComparison.Ordinal);
+            Assert.DoesNotMatch(ValidWord(), en);
+            Assert.DoesNotMatch(ValidWord(), de);
+        }
+
+        Strings.Culture = new CultureInfo("en");
+        var treatment = RedactionApplyInfo.ForFailure(new RedactionCheck([new RedactionFinding(RedactionFindingKind.ImageTreatmentWrong, 0, "d")], [])).Sections.Single().Lines.Single();
+        Assert.StartsWith("An image area that should be pixelated or blurred", treatment, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task PreviewMarksTreatedAreasWithoutShowingOriginalPixels()
+    {
+        var (window, viewModel, view, tab, _) = await MarkedAsync();
+        viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(TreatedAnalysis(RedactionImageTreatment.Pixelate));
+        tab.RedactionPreviewDelay = TimeSpan.Zero;
+        tab.ClearMarkSelection();
+        var overlay = view.RedactionOverlay!;
+        var area = MarkArea(view, Mark);
+        tab.ToggleRedactionPreviewCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.RedactionPreviewText is not null && tab.RedactionPreviewText != Strings.RedactPreviewWorking);
+        var toolbar = Find<RedactionToolbar>(window, "RedactionToolbar");
+        var fill = Avalonia.Media.Colors.Black;
+
+        // The solid fill: the area is the fill, edge to edge, and there is no frame inside it.
+        Assert.False(overlay.PreviewMarksImageTreatment);
+        using (var frame = FramePixels.Snapshot(LayersOf(view)))
+        {
+            Assert.Equal(fill, Pixel(frame, area.Center));
+            Assert.DoesNotContain(FrameRow(frame, area), static color => color.R != 0 || color.G != 0 || color.B != 0);
+        }
+
+        Assert.Equal(Strings.RedactPreviewNote, Find<TextBlock>(toolbar, "PreviewNote").Text);
+
+        // Pixelating chosen: still the fill under the mark (the preview never draws a pixelated version of the page or of an image), plus
+        // a dashed frame inside the area, a pattern that stays visible without colour; the note under the preview says so.
+        tab.RedactionImageTreatment = RedactionImageTreatment.Pixelate;
+        Settle(window);
+        Assert.True(overlay.PreviewMarksImageTreatment);
+        Assert.Equal(fill, overlay.PreviewFillColor);
+        using (var frame = FramePixels.Snapshot(LayersOf(view)))
+        {
+            Assert.Equal(fill, Pixel(frame, area.Center));
+            Assert.Equal(fill, Pixel(frame, new Point(area.Left + 12, area.Center.Y)));
+
+            // Everything between the edge and the inner frame, and inside it, is the fill: nothing of the page shows through.
+            var row = FrameRow(frame, area);
+            Assert.Contains(row, color => color.R != 0 || color.G != 0 || color.B != 0);
+            Assert.Contains(row, color => color.R == 0 && color.G == 0 && color.B == 0);
+            var marker = row.First(color => color.R != 0 || color.G != 0 || color.B != 0);
+            Assert.True(Wcag.Contrast(marker, fill) >= 3, $"the frame has {Wcag.Contrast(marker, fill):F2}:1 against the fill");
+        }
+
+        Assert.Equal(Strings.RedactPreviewNote + " " + Strings.RedactPreviewImageNote, Find<TextBlock>(toolbar, "PreviewNote").Text);
+
+        // Blurring marks the same way; solid takes the frame away again.
+        tab.RedactionImageTreatment = RedactionImageTreatment.Blur;
+        Settle(window);
+        Assert.True(overlay.PreviewMarksImageTreatment);
+        tab.RedactionImageTreatment = RedactionImageTreatment.Solid;
+        Settle(window);
+        Assert.False(overlay.PreviewMarksImageTreatment);
+        using (var frame = FramePixels.Snapshot(LayersOf(view)))
+        {
+            Assert.DoesNotContain(FrameRow(frame, area), static color => color.R != 0 || color.G != 0 || color.B != 0);
+        }
+
+        // The preview is only a view: no card, nothing written, no analysis of the working copy rendered.
+        Assert.Empty(window.SaveCards);
+        Assert.Null(viewModel.PendingSave);
+    }
+
+    // The pixels of the row where the dashed frame runs, inside the area and clear of its corners (the frame is PreviewMarkerInset inside).
+    private static List<Avalonia.Media.Color> FrameRow(FramePixels frame, Rect area)
+    {
+        var y = (int)Math.Floor(area.Top + RedactionOverlay.PreviewMarkerInset);
+        var row = new List<Avalonia.Media.Color>();
+        for (var x = (int)Math.Ceiling(area.Left + 10); x < (int)Math.Floor(area.Right - 10); x++)
+        {
+            row.Add(frame.GetColor(x, y));
+        }
+
+        return row;
+    }
 }
 
 /// <summary>

@@ -124,6 +124,19 @@ internal static unsafe class PdfiumRedaction
             return (Fpdf.FPDFPageObj_GetType(pageObject), left, bottom, right, top);
         }
 
+        /// <summary>The bounds of a page object, or <see langword="false"/> when PDFium could not give them (the numbers are then not a place; never use them).</summary>
+        public bool TryGetBounds(nint pageObject, out float left, out float bottom, out float right, out float top)
+        {
+            _ = Access();
+            float l = 0;
+            float b = 0;
+            float r = 0;
+            float t = 0;
+            var ok = Fpdf.FPDFPageObj_GetBounds(pageObject, &l, &b, &r, &t) != 0 && float.IsFinite(l) && float.IsFinite(b) && float.IsFinite(r) && float.IsFinite(t);
+            (left, bottom, right, top) = ok ? (l, b, r, t) : (0f, 0f, 0f, 0f);
+            return ok;
+        }
+
         /// <summary>
         /// The text of a text object as <see cref="Fpdf.FPDFTextObj_GetText"/> returns it, with the text page of its page; <see langword="null"/>
         /// if it is longer than <see cref="MaxTextLength"/>.

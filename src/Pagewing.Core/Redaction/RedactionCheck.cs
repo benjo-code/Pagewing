@@ -1,3 +1,4 @@
+using System.Text;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Text;
 
@@ -20,8 +21,50 @@ namespace Pagewing.Core.Redaction;
 /// <param name="Text">The text as the page held it.</param>
 /// <param name="Everywhere">Whether the text must be gone from the whole document.</param>
 /// <param name="OccurrencesBefore">How often the text occurred in the text of the whole original document (with <see cref="Everywhere"/> it is not used).</param>
-public sealed record RemovedText(int Page, string Text, bool Everywhere, int OccurrencesBefore)
+/// <param name="RawForm">
+/// For a pattern hit that is written in groups ("DE89 3704 ..."): the text without its separators (<see cref="RawFormOf"/>), which the
+/// raw-bytes check looks for as well, because the spaces between groups are not in the content stream when they come from the spacing
+/// of the glyphs. <see langword="null"/> for everything else.
+/// </param>
+public sealed record RemovedText(int Page, string Text, bool Everywhere, int OccurrencesBefore, string? RawForm = null)
 {
+    /// <summary>
+    /// The form of a text without separators for the raw-bytes check: spaces (also no-break, narrow no-break and thin spaces), hyphens,
+    /// slashes, dots and round brackets removed. A form that is not shorter than the text itself carries nothing new and a form under
+    /// <see cref="RedactionLimits.MinRawCheckLength"/> characters would match by chance; both give <see langword="null"/>.
+    /// </summary>
+    /// <param name="text">The text of the hit.</param>
+    /// <returns>The form without separators, or <see langword="null"/>.</returns>
+    public static string? RawFormOf(string text)
+    {
+        var stripped = WithoutSeparators(text);
+        return stripped.Length < text.Length && stripped.Length >= RedactionLimits.MinRawCheckLength ? stripped : null;
+    }
+
+    /// <summary>
+    /// The text without any separator (the set of <see cref="RawFormOf"/>: white space of every kind, hyphens, slashes, dots, brackets, soft
+    /// hyphen). Always a string, however short; <see cref="RedactionOverlayRule"/> compares overlay text and terms in this form as well.
+    /// </summary>
+    /// <param name="text">The text.</param>
+    /// <returns>The text with every separator removed.</returns>
+    internal static string WithoutSeparators(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var builder = new StringBuilder(text.Length);
+        foreach (var c in text)
+        {
+            if (!IsSeparator(c))
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.Length == text.Length ? text : builder.ToString();
+    }
+
+    private static bool IsSeparator(char c) =>
+        char.IsWhiteSpace(c) || c is '-' or '‐' or '‑' or '/' or '.' or '(' or ')' or '[' or ']' or '­';
+
     /// <summary>
     /// Builds an entry with <see cref="OccurrencesBefore"/> counted in the ORIGINAL document, document-wide, with the matcher and the
     /// text cut (<see cref="RedactionLimits.MaxTermLength"/>) the check uses.
@@ -43,7 +86,20 @@ public sealed record RemovedText(int Page, string Text, bool Everywhere, int Occ
     /// <param name="candidates">The removed texts without a trustworthy count.</param>
     /// <param name="cancellationToken">Cancels between pages.</param>
     /// <exception cref="ArgumentException">A text is empty or only white space.</exception>
-    public static async Task<IReadOnlyList<RemovedText>> FromOriginalAsync(PdfDocument original, IReadOnlyList<RemovedText> candidates, CancellationToken cancellationToken = default)
+    public static Task<IReadOnlyList<RemovedText>> FromOriginalAsync(PdfDocument original, IReadOnlyList<RemovedText> candidates, CancellationToken cancellationToken = default) =>
+        FromOriginalAsync(original, candidates, excludedPages: null, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="FromOriginalAsync(PdfDocument, IReadOnlyList{RemovedText}, CancellationToken)"/>, without counting the text of
+    /// <paramref name="excludedPages"/>: the pages that become images have no text in the result, so the occurrences on them are gone
+    /// anyway and must not count as a place that stays (the rule of the check is "at most the occurrences before, minus the removed places").
+    /// </summary>
+    /// <param name="original">The original document.</param>
+    /// <param name="candidates">The removed texts without a trustworthy count.</param>
+    /// <param name="excludedPages">The 0-based pages whose text is not counted, or <see langword="null"/> for none.</param>
+    /// <param name="cancellationToken">Cancels between pages.</param>
+    /// <exception cref="ArgumentException">A text is empty or only white space.</exception>
+    public static async Task<IReadOnlyList<RemovedText>> FromOriginalAsync(PdfDocument original, IReadOnlyList<RemovedText> candidates, IReadOnlySet<int>? excludedPages, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(original);
         ArgumentNullException.ThrowIfNull(candidates);
@@ -63,6 +119,11 @@ public sealed record RemovedText(int Page, string Text, bool Everywhere, int Occ
         for (var page = 0; page < original.PageCount; page++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (excludedPages is not null && excludedPages.Contains(page))
+            {
+                continue;
+            }
+
             var text = await original.GetPageTextAsync(page, PdfPriority.Background, cancellationToken).ConfigureAwait(false);
             TextMatcher.CountNormalized(text.Chars, matchCase: true, needles, counts);
         }
@@ -75,7 +136,31 @@ public sealed record RemovedText(int Page, string Text, bool Everywhere, int Occ
 /// <param name="Plan">The marks that were applied.</param>
 /// <param name="Removed">The texts that were removed, one entry per removed place.</param>
 /// <param name="Fill">The colour the areas were filled with.</param>
-public sealed record RedactionExpectation(RedactionPlan Plan, IReadOnlyList<RemovedText> Removed, RedactionFill Fill);
+/// <param name="RasterPages">The 0-based pages that were turned into images (the pages of <see cref="RedactionPlan.RasterPages"/>), ascending; <see langword="null"/> for none. Their text is gone, so the places of marks on them do not count in the occurrence rule.</param>
+/// <param name="ImageAreas">
+/// For a plan that pixelates or blurs (<see cref="RedactionPlan.ImageTreatment"/>): what the images of the ORIGINAL held under each area, as
+/// block means (<see cref="ExpectedImageArea"/>), so that the check accepts the block result next to the fill colour. <see langword="null"/>
+/// or empty: only the fill colour is accepted, which is the strict answer for a plan that treats image areas solid.
+/// </param>
+public sealed record RedactionExpectation(
+    RedactionPlan Plan,
+    IReadOnlyList<RemovedText> Removed,
+    RedactionFill Fill,
+    IReadOnlyList<int>? RasterPages = null,
+    IReadOnlyList<ExpectedImageArea>? ImageAreas = null);
+
+/// <summary>
+/// What one image of the ORIGINAL held under one area of the plan, reduced to what pixelating or blurring keeps of it: the block means.
+/// The check does not need (and does not keep) the original pixels; it works the expected pixels out of these means with
+/// <see cref="ImageBlocks.ExpectedFromMeans"/>, and the result of the written file must equal them (blur: within
+/// <see cref="RedactionVerifier.BlurTolerance"/> per channel) or the fill colour.
+/// </summary>
+/// <param name="Page">The 0-based page.</param>
+/// <param name="Area">The area of the mark, as the plan has it.</param>
+/// <param name="Width">The width in pixels of the part of the image under the area (the pixel rectangle that rounds the area outwards).</param>
+/// <param name="Height">The height in pixels of that part.</param>
+/// <param name="BlockMeans">The means of its blocks (blue, green, red, row by row, <see cref="ImageBlocks.Plan"/> of <paramref name="Width"/> x <paramref name="Height"/> for the strength of the plan).</param>
+public sealed record ExpectedImageArea(int Page, PageRect Area, int Width, int Height, byte[] BlockMeans);
 
 /// <summary>The kinds of finding of the check.</summary>
 public enum RedactionFindingKind
@@ -89,7 +174,7 @@ public enum RedactionFindingKind
     /// <summary>A removed text is still in the bytes of the file (an old revision, metadata, an attachment, a pattern ...) more often than the page text shows it.</summary>
     RawBytesStillPresent,
 
-    /// <summary>A pixel of an image under a marked area is not the colour of the area.</summary>
+    /// <summary>A pixel of an image under a marked area is not the colour of the area (and where pixelating or blurring was chosen, the area is not a treated one either).</summary>
     ImagePixelNotOverwritten,
 
     /// <summary>Something could not be read, so the check cannot say whether text hides in it.</summary>
@@ -106,6 +191,16 @@ public enum RedactionFindingKind
 
     /// <summary>Something the cleanup is meant to remove at the document level (a field of the information dictionary, bookmarks, the names tree, page labels, the XMP of the document ...) is still in the written file (set by the apply step; the detail names the item, never its content).</summary>
     CleanupItemStillPresent,
+
+    /// <summary>A page that was turned into an image is not just one image (more or no image, text, paths, other objects, annotations, links or form fields), or could not be counted; the detail names the counts, never content.</summary>
+    RasterPageInvalid,
+
+    /// <summary>
+    /// An image area of a plan that pixelates or blurs is neither the fill colour nor exactly the block result worked out from the original
+    /// (the original pixels, other blocks, the wrong strength or treatment, a partly treated area); the detail names counts and places,
+    /// never pixel values.
+    /// </summary>
+    ImageTreatmentWrong,
 }
 
 /// <summary>One thing the check found. The detail names the kind of the problem and the place, never the text itself.</summary>
@@ -192,7 +287,7 @@ public enum RedactionNotCheckedKind
     /// <summary>Another program may read the file differently.</summary>
     OtherViewer,
 
-    /// <summary>The apply step compares only the redacted pages with the original, outside the marked areas (forms: annotations left out).</summary>
+    /// <summary>The apply step compares only the pages redacted in place with the original, outside the marked areas (forms: annotations left out); pages turned into images are not compared (<c>Count</c> of them, when there are any).</summary>
     ApplyRender,
 
     /// <summary>The apply step looks for page keys in the page dictionaries only.</summary>
@@ -200,6 +295,15 @@ public enum RedactionNotCheckedKind
 
     /// <summary>XMP and JavaScript were removed from the document level only; the entries inside page-level objects are not read back.</summary>
     ApplyXmp,
+
+    /// <summary>Pages turned into images (<c>Count</c> pages): a visible occurrence of a removed text outside the marked areas stays in the image and cannot be found without OCR.</summary>
+    RasterOutsideAreas,
+
+    /// <summary>Image areas that were pixelated or blurred (<c>Count</c> pixelated or blurred, <c>Second</c> filled solid): the check compares them with the block means, but whether text inside the image stays legible is not checked, and Pagewing does not recognise text in images.</summary>
+    ImageTextLegible,
+
+    /// <summary>Overlay text was part of the plan: it is drawn as shapes on the areas and is not read back from the written file.</summary>
+    OverlayTextNotRead,
 }
 
 /// <summary>One line of what the check did not check, with the data the interface needs to say it in its own language.</summary>

@@ -11,6 +11,9 @@ public enum RedactionError
 
     /// <summary>A text mark has no term, or a term that is empty or only white space.</summary>
     EmptyTerm,
+
+    /// <summary>The overlay text has a character that the text box font cannot show (refused as a whole, never changed).</summary>
+    OverlayInvalid,
 }
 
 /// <summary>A mark or edit that the redaction plan refuses; the plan is unchanged.</summary>

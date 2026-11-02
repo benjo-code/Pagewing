@@ -33,7 +33,29 @@ public sealed partial class PdfDocument
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task<PageRedactionImpact> AnalyzeRedactionAsync(int page, IReadOnlyList<PageRect> areas, CancellationToken cancellationToken = default) =>
-        RunRedactionAsync(page, areas, RedactionFill.Black, apply: false, cancellationToken);
+        RunRedactionAsync(page, areas, RedactionFill.Black, RedactionImageTreatment.Solid, RedactionImageStrength.Coarse, overlay: null, apply: false, cancellationToken);
+
+    /// <summary>
+    /// The dry run with pixelating or blurring chosen for the images under the rectangles: says how many image areas would be treated and how
+    /// many would get the solid fill instead (<see cref="PageRedactionImpact.ImageAreasTreated"/>, <see cref="PageRedactionImpact.ImageAreasSolid"/>),
+    /// with the same decisions as <see cref="RedactPageAsync(int, IReadOnlyList{PageRect}, RedactionFill, RedactionImageTreatment, RedactionImageStrength, CancellationToken)"/>.
+    /// </summary>
+    /// <param name="page">The 0-based page.</param>
+    /// <param name="areas">The rectangles in points from the top left of the displayed page.</param>
+    /// <param name="treatment">What happens to the pixels of an image under a rectangle.</param>
+    /// <param name="strength">How coarse pixelating and blurring work.</param>
+    /// <param name="cancellationToken">Cancels between two steps of the job.</param>
+    /// <returns>What would happen; <see cref="PageRedactionImpact.Refusal"/> is set when the page cannot be redacted.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The page does not exist, or <paramref name="treatment"/> or <paramref name="strength"/> is not a defined value.</exception>
+    /// <exception cref="RedactionException">A rectangle is not finite or has no size, or there are more than <see cref="MaxRedactionAreasPerPage"/>.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PageRedactionImpact> AnalyzeRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionImageTreatment treatment, RedactionImageStrength strength, CancellationToken cancellationToken = default) =>
+        RunRedactionAsync(page, areas, RedactionFill.Black, treatment, strength, overlay: null, apply: false, cancellationToken);
+
+    /// <summary>The dry run with overlay text: also says which texts are drawn, which are left out and why (<see cref="PageRedactionImpact.OverlaysNotShown"/>, <see cref="PageRedactionImpact.OverlaysNotFitting"/>), with the decisions of the call that applies.</summary>
+    internal Task<PageRedactionImpact> AnalyzeRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionImageTreatment treatment, RedactionImageStrength strength, RedactionOverlayWork? overlay, CancellationToken cancellationToken = default) =>
+        RunRedactionAsync(page, areas, RedactionFill.Black, treatment, strength, overlay, apply: false, cancellationToken);
 
     /// <summary>
     /// Removes what is under the rectangles from the page and draws an opaque area of exactly each rectangle over it: the
@@ -64,7 +86,40 @@ public sealed partial class PdfDocument
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
     public Task<PageRedactionImpact> RedactPageAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, CancellationToken cancellationToken = default) =>
-        RunRedactionAsync(page, areas, fill, apply: true, cancellationToken);
+        RunRedactionAsync(page, areas, fill, RedactionImageTreatment.Solid, RedactionImageStrength.Coarse, overlay: null, apply: true, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="RedactPageAsync(int, IReadOnlyList{PageRect}, RedactionFill, CancellationToken)"/>, but the pixels of an image under a
+    /// rectangle can be pixelated or blurred instead of getting the fill colour: few coarse blocks that each hold the mean of their pixels
+    /// (<see cref="ImageBlocks"/>; <c>PdfiumImageBlocks</c> does the writing). Pixels outside the rectangle stay bit for bit. Where the rule does not
+    /// apply (the rectangle is smaller than 2 x 2 blocks of 8 pixels, the image is turned, sheared or clipped, two rectangles overlap on the same
+    /// image) the area gets the solid fill and is counted in <see cref="PageRedactionImpact.ImageAreasSolid"/> with its reason. The opaque
+    /// area is drawn only over the part of a rectangle that no treated image shows through; text and vector content in a rectangle are removed
+    /// as always and get the solid fill.
+    /// </summary>
+    /// <param name="page">The 0-based page.</param>
+    /// <param name="areas">The rectangles in points from the top left of the displayed page; parts outside the page are clipped.</param>
+    /// <param name="fill">The colour of the opaque area (and of the solid fill of image areas).</param>
+    /// <param name="treatment">What happens to the pixels of an image under a rectangle.</param>
+    /// <param name="strength">How coarse pixelating and blurring work.</param>
+    /// <param name="cancellationToken">Cancels between two steps; a canceled call may leave the document changed, which must then be discarded.</param>
+    /// <returns>What was done. When <see cref="PageRedactionImpact.Refusal"/> is set, the document may have changed and must be discarded.</returns>
+    /// <exception cref="RedactionTaintedException">An earlier call left the document tainted.</exception>
+    /// <exception cref="InvalidOperationException">Another call of this method on the document is still running.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The page does not exist, or <paramref name="treatment"/> or <paramref name="strength"/> is not a defined value.</exception>
+    /// <exception cref="RedactionException">A rectangle is not finite or has no size, or there are more than <see cref="MaxRedactionAreasPerPage"/>.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    public Task<PageRedactionImpact> RedactPageAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, RedactionImageTreatment treatment, RedactionImageStrength strength, CancellationToken cancellationToken = default) =>
+        RunRedactionAsync(page, areas, fill, treatment, strength, overlay: null, apply: true, cancellationToken);
+
+    /// <summary>
+    /// As the call with the treatment, and draws the overlay text of the rectangles as path objects on the opaque areas (no text, no font in the
+    /// file): centred, or tiled, in the size that fits; left out over a treated image, where it does not fit or where the budget of the
+    /// document is reached (the area stays filled). Nothing is drawn outside the rectangle.
+    /// </summary>
+    internal Task<PageRedactionImpact> RedactPageAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, RedactionImageTreatment treatment, RedactionImageStrength strength, RedactionOverlayWork? overlay, CancellationToken cancellationToken = default) =>
+        RunRedactionAsync(page, areas, fill, treatment, strength, overlay, apply: true, cancellationToken);
 
     /// <summary>
     /// For each range of characters of a page (indexes as <see cref="GetPageTextAsync(int, CancellationToken)"/> reports them, last
@@ -131,7 +186,21 @@ public sealed partial class PdfDocument
     /// <exception cref="RedactionException">A rectangle is not finite or has no size.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     /// <exception cref="ObjectDisposedException">A document is disposed.</exception>
-    public async Task<IReadOnlyList<RedactionRefusal>> VerifyRedactionRenderAsync(PdfDocument original, IReadOnlyList<RedactionPageAreas> pages, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<RedactionRefusal>> VerifyRedactionRenderAsync(PdfDocument original, IReadOnlyList<RedactionPageAreas> pages, CancellationToken cancellationToken = default) =>
+        VerifyRedactionRenderAsync(original, pages, writeWithoutPages: false, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="VerifyRedactionRenderAsync(PdfDocument, IReadOnlyList{RedactionPageAreas}, CancellationToken)"/>. With
+    /// <paramref name="writeWithoutPages"/> the document is written once for <see cref="RedactionVerifySeam.WrittenCopy"/> even when there
+    /// is no page to compare (a plan whose pages all become images redacts nothing on the working copy, but the bytes of the whole
+    /// file are still checked for page keys PDFium cannot remove); nothing is rendered then.
+    /// </summary>
+    /// <param name="original">A document with the same pages that was not redacted.</param>
+    /// <param name="pages">The pages that were redacted, each with its rectangles; may be empty with <paramref name="writeWithoutPages"/>.</param>
+    /// <param name="writeWithoutPages">Whether the document is written (and the seam called) when <paramref name="pages"/> is empty.</param>
+    /// <param name="cancellationToken">Cancels between two steps.</param>
+    /// <returns>One refusal per page that fails; empty when all pass.</returns>
+    internal async Task<IReadOnlyList<RedactionRefusal>> VerifyRedactionRenderAsync(PdfDocument original, IReadOnlyList<RedactionPageAreas> pages, bool writeWithoutPages, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(original);
@@ -161,7 +230,7 @@ public sealed partial class PdfDocument
         }
 
         var refusals = new List<RedactionRefusal>();
-        if (pages.Count == 0)
+        if (pages.Count == 0 && !writeWithoutPages)
         {
             return refusals;
         }
@@ -184,6 +253,11 @@ public sealed partial class PdfDocument
 
             Interlocked.Increment(ref redactionDryRunWrites);
             VerifySeam?.WrittenCopy?.Invoke(path);
+            if (pages.Count == 0)
+            {
+                return refusals;
+            }
+
             PdfDocument written;
             try
             {
@@ -342,11 +416,24 @@ public sealed partial class PdfDocument
         Volatile.Write(ref redactionRunning, 0);
     }
 
-    private async Task<PageRedactionImpact> RunRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, bool apply, CancellationToken cancellationToken)
+    private async Task<PageRedactionImpact> RunRedactionAsync(int page, IReadOnlyList<PageRect> areas, RedactionFill fill, RedactionImageTreatment treatment, RedactionImageStrength strength, RedactionOverlayWork? overlay, bool apply, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(areas);
         ThrowIfNotAPage(page);
+        var pdfiumTreatment = treatment switch
+        {
+            RedactionImageTreatment.Solid => PdfiumImageTreatment.Solid,
+            RedactionImageTreatment.Pixelate => PdfiumImageTreatment.Pixelate,
+            RedactionImageTreatment.Blur => PdfiumImageTreatment.Blur,
+            _ => throw new ArgumentOutOfRangeException(nameof(treatment)),
+        };
+        var veryCoarse = strength switch
+        {
+            RedactionImageStrength.Coarse => false,
+            RedactionImageStrength.VeryCoarse => true,
+            _ => throw new ArgumentOutOfRangeException(nameof(strength)),
+        };
         if (apply && IsRedactionTainted)
         {
             throw new RedactionTaintedException("An earlier redaction of this document did not finish cleanly; the document must be discarded.");
@@ -369,11 +456,17 @@ public sealed partial class PdfDocument
             copy[i] = new PdfiumRedactionArea(area.Left, area.Top, area.Right, area.Bottom);
         }
 
-        var pdfiumFill = fill == RedactionFill.White ? PdfiumRedactionFill.White : PdfiumRedactionFill.Black;
+        var pdfiumFill = new PdfiumRedactionFill(fill.Red, fill.Green, fill.Blue);
+        if (overlay is not null && overlay.Texts.Count != copy.Length)
+        {
+            throw new ArgumentException("The overlay needs one text (or none) for each rectangle.", nameof(overlay));
+        }
+
+        var overlaySpec = overlay is { HasText: true } ? overlay.ToSpec(document.Thread) : null;
         if (!apply)
         {
             var dry = await document.Thread.InvokeSteppedAsync(
-                () => PdfiumRedactionRun.Start(document, page, copy, pdfiumFill, apply: false, onModified: null, RedactionSeam),
+                () => PdfiumRedactionRun.Start(document, page, copy, pdfiumFill, apply: false, onModified: null, RedactionSeam, pdfiumTreatment, veryCoarse, overlaySpec),
                 PdfiumPriority.Background,
                 cancellationToken).ConfigureAwait(false);
             return ToImpact(page, dry);
@@ -404,7 +497,10 @@ public sealed partial class PdfDocument
                             Interlocked.Increment(ref redactionInFlight);
                         }
                     },
-                    RedactionSeam),
+                    RedactionSeam,
+                    pdfiumTreatment,
+                    veryCoarse,
+                    overlaySpec),
                 PdfiumPriority.Background,
                 cancellationToken).ConfigureAwait(false);
             clean = impact.RefusalReason is null;
@@ -444,5 +540,27 @@ public sealed partial class PdfDocument
             f.Reason))],
         [.. impact.RemovedText],
         impact.RefusalReason is null ? null : new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [page], impact.RefusalReason),
-        [.. (impact.RemovedAreas ?? []).Select(static a => new PageRect(a.Left, a.Top, a.Right, a.Bottom))]);
+        [.. (impact.RemovedAreas ?? []).Select(static a => new PageRect(a.Left, a.Top, a.Right, a.Bottom))],
+        ImageAreasTreated: impact.ImageAreasTreated,
+        ImageAreasSolid: impact.ImageAreasSolid,
+        ImageSolidReasons: impact.ImageSolidReasons is { Count: > 0 } reasons ? [.. reasons.Select(static r => SolidReasonOf(r))] : null,
+        OverlaysNotShown: impact.OverlaysNotShown,
+        OverlaysNotFitting: impact.OverlaysNotFitting,
+        OverlaysDrawn: impact.OverlaysDrawn,
+        OverlaysOverLimit: impact.OverlaysOverLimit,
+        OverlayPaths: impact.OverlayPaths,
+        OverlaySegments: impact.OverlaySegments,
+        OverlayLimitReached: impact.OverlayLimitReached);
+
+    /// <summary>The reason an image area got the solid fill, one to one (an unknown value is a programming error and throws, it never maps to a guess).</summary>
+    internal static ImageSolidReason SolidReasonOf(PdfiumImageSolidReason reason) => reason switch
+    {
+        PdfiumImageSolidReason.TooSmall => ImageSolidReason.TooSmall,
+        PdfiumImageSolidReason.TurnedOrSheared => ImageSolidReason.TurnedOrSheared,
+        PdfiumImageSolidReason.Clipped => ImageSolidReason.Clipped,
+        PdfiumImageSolidReason.Overlapping => ImageSolidReason.Overlapping,
+        PdfiumImageSolidReason.Unreadable => ImageSolidReason.Unreadable,
+        PdfiumImageSolidReason.TooManyImages => ImageSolidReason.TooManyImages,
+        _ => throw new InvalidOperationException($"Unknown reason for the solid fill of an image: {reason}."),
+    };
 }

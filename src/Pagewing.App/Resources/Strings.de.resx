@@ -2085,6 +2085,33 @@
   <data name="RedactFillWhite" xml:space="preserve">
     <value>Weiß</value>
   </data>
+  <data name="RedactFillCustom" xml:space="preserve">
+    <value>Farbe …</value>
+  </data>
+  <data name="RedactFillCustomTip" xml:space="preserve">
+    <value>Eine andere Farbe für die Flächen wählen</value>
+  </data>
+  <data name="RedactFillHexLabel" xml:space="preserve">
+    <value>Farbe als #RRGGBB</value>
+  </data>
+  <data name="RedactFillHexError" xml:space="preserve">
+    <value>Farbe als #RRGGBB eingeben, zum Beispiel #336699.</value>
+  </data>
+  <data name="RedactFillPreset0" xml:space="preserve">
+    <value>Graphit</value>
+  </data>
+  <data name="RedactFillPreset1" xml:space="preserve">
+    <value>Grau</value>
+  </data>
+  <data name="RedactFillPreset2" xml:space="preserve">
+    <value>Hellgrau</value>
+  </data>
+  <data name="RedactFillPreset3" xml:space="preserve">
+    <value>Marineblau</value>
+  </data>
+  <data name="RedactFillPreset4" xml:space="preserve">
+    <value>Dunkelrot</value>
+  </data>
   <data name="RedactDiscardButton" xml:space="preserve">
     <value>Verwerfen</value>
   </data>
@@ -2208,6 +2235,9 @@
   <data name="RedactNotSearchedNoForm" xml:space="preserve">
     <value>Die Werte von Formularfeldern in einer Datei ohne Formular (Widgets ohne /AcroForm) werden nicht durchsucht.</value>
   </data>
+  <data name="RedactNotSearchedPatterns" xml:space="preserve">
+    <value>Muster finden nur, was der Text zeigt und was ihre eingebauten Regeln kennen: Eine Nummer, die über einen Zeilenumbruch oder eine Seitengrenze geteilt ist, Ziffern, die durch andere Zeichen als die üblichen Trenner unterbrochen sind, Nummern in Bildern, IBANs von Ländern außerhalb der eingebauten Tabelle, Telefonnummern, die nicht mit +, 0 oder ( beginnen, Zifferfolgen aus mehr als 64 Gruppen, E-Mail-Adressen mit ungewöhnlichen Zeichen vor dem @ (&amp; = * !) und Kartennummern in anderen Gruppierungen werden nicht gefunden.</value>
+  </data>
   <data name="RedactMarkAll" xml:space="preserve">
     <value>Alle markieren</value>
   </data>
@@ -2297,6 +2327,48 @@
   </data>
   <data name="RedactRowSelected" xml:space="preserve">
     <value>ausgewählt</value>
+  </data>
+  <data name="RedactModeGroupName" xml:space="preserve">
+    <value>Suchen nach</value>
+  </data>
+  <data name="RedactModeWord" xml:space="preserve">
+    <value>Wort</value>
+  </data>
+  <data name="RedactModePattern" xml:space="preserve">
+    <value>Muster</value>
+  </data>
+  <data name="RedactPatternKindsName" xml:space="preserve">
+    <value>Zu suchende Arten</value>
+  </data>
+  <data name="RedactPatternEmail" xml:space="preserve">
+    <value>E-Mail</value>
+  </data>
+  <data name="RedactPatternIban" xml:space="preserve">
+    <value>IBAN</value>
+  </data>
+  <data name="RedactPatternPhone" xml:space="preserve">
+    <value>Telefon</value>
+  </data>
+  <data name="RedactPatternCard" xml:space="preserve">
+    <value>Kreditkarte</value>
+  </data>
+  <data name="RedactGroupChecksumOk" xml:space="preserve">
+    <value>Prüfsumme stimmt</value>
+  </data>
+  <data name="RedactGroupShapeOnly" xml:space="preserve">
+    <value>Format passt</value>
+  </data>
+  <data name="RedactGroupChecksumFailed" xml:space="preserve">
+    <value>Prüfsumme stimmt nicht</value>
+  </data>
+  <data name="RedactAddFailedOf" xml:space="preserve">
+    <value>Alle {0} mit nicht stimmender Prüfsumme hinzufügen</value>
+  </data>
+  <data name="RedactAddFailedHint" xml:space="preserve">
+    <value>Diese haben die Form der Nummer, bestehen aber deren Prüfung nicht. Sie sind nicht angehakt, doch auch eine Nummer mit Tippfehler ist oft noch sensibel.</value>
+  </data>
+  <data name="RedactKindPatternOf" xml:space="preserve">
+    <value>Muster: {0}</value>
   </data>
   <data name="CommandRedactApply" xml:space="preserve">
     <value>Schwärzen anwenden</value>
@@ -2526,6 +2598,12 @@
   <data name="RedactNotCheckedNoTerm" xml:space="preserve">
     <value>{0} Markierungen haben keinen Begriff (auf der Seite aufgezogene Rechtecke): Der Text darunter wird entfernt, in den Dateibytes wird aber nicht nach ihm gesucht; geprüft werden nur die Zeichen in den Bereichen.</value>
   </data>
+  <data name="RedactCheckListRaster" xml:space="preserve">
+    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel, die Daten auf Dokumentebene und ein Rendern jeder an Ort und Stelle geschwärzten Seite im Vergleich zum Original. In Bilder umgewandelte Seiten werden stattdessen auf ihren Aufbau geprüft (genau ein Bild, sonst nichts außer Überlagerungstext innerhalb der markierten Bereiche); sie werden nicht mit dem Original verglichen.</value>
+  </data>
+  <data name="RedactCheckListRasterOnly" xml:space="preserve">
+    <value>Die geschriebene Datei wird zurückgelesen: die entfernten Texte, die Zeichen in den markierten Bereichen, die Dateibytes, die Pixel von Bildern unter den Markierungen, die Seitenschlüssel und die Daten auf Dokumentebene. In Bilder umgewandelte Seiten werden auf ihren Aufbau geprüft (genau ein Bild, sonst nichts außer Überlagerungstext innerhalb der markierten Bereiche); sie werden nicht mit dem Original verglichen.</value>
+  </data>
   <data name="RedactCheckedText" xml:space="preserve">
     <value>Seitentext: Jeder entfernte Text kommt im Seitentext der geschriebenen Datei höchstens so oft vor wie vorher minus die entfernten Stellen (nie, bei einem Text, der überall markiert wurde).</value>
   </data>
@@ -2537,6 +2615,12 @@
   </data>
   <data name="RedactCheckedPages" xml:space="preserve">
     <value>Seiten: Jede geschwärzte Seite wurde aus der geschriebenen Datei gerendert und sieht außerhalb der markierten Bereiche aus wie das Original.</value>
+  </data>
+  <data name="RedactCheckedPagesInPlace" xml:space="preserve">
+    <value>Seiten: Jede an Ort und Stelle geschwärzte Seite wurde aus der geschriebenen Datei gerendert und sieht außerhalb der markierten Bereiche aus wie das Original.</value>
+  </data>
+  <data name="RedactCheckedRaster" xml:space="preserve">
+    <value>In Bilder umgewandelte Seiten ({0}): In der geschriebenen Datei hat jede genau ein Bild und keinen Text, kein anderes Objekt, keine Annotation, keinen Link und kein Formularfeld (Links und Formularfelder sind Annotationen), keinen Pfad außerhalb der markierten Bereiche, und die Pixel unter den Markierungen haben die Farbe des Bereichs. Diese Seiten werden nicht mit dem Original verglichen.</value>
   </data>
   <data name="RedactCheckedKeys" xml:space="preserve">
     <value>Seitenschlüssel: Keine Seite der geschriebenen Datei trägt /Thumb, /PieceInfo, /Metadata oder /AA.</value>
@@ -2613,6 +2697,12 @@
   <data name="RedactRefusalOther" xml:space="preserve">
     <value>Die Datei wird nicht geschwärzt.</value>
   </data>
+  <data name="RedactRefusalHeadingOverlay" xml:space="preserve">
+    <value>Der Text auf den Flächen enthält einen geschwärzten Text</value>
+  </data>
+  <data name="RedactRefusalOverlay" xml:space="preserve">
+    <value>Der Text auf den Flächen von {0} enthält einen Text, der geschwärzt wird, und würde ihn so wieder auf die Seite bringen; deshalb wird die Datei nicht geschwärzt. Ändern oder entfernen Sie den Text auf den Flächen.</value>
+  </data>
   <data name="RedactPageOne" xml:space="preserve">
     <value>Seite {0}</value>
   </data>
@@ -2651,6 +2741,9 @@
   </data>
   <data name="RedactFailureCleanup" xml:space="preserve">
     <value>Etwas, das die Bereinigung hätte entfernen sollen, steht noch in der geschriebenen Datei{0}; deshalb wurde die Datei nicht geschrieben. Angabe (technisch, auf Englisch): {1}</value>
+  </data>
+  <data name="RedactFailureRaster" xml:space="preserve">
+    <value>Eine in ein Bild umgewandelte Seite besteht nicht nur aus einem Bild oder ließ sich nicht prüfen{0}; deshalb wurde die Datei nicht geschrieben.</value>
   </data>
   <data name="RedactErrorNotPrepared" xml:space="preserve">
     <value>Die Markierungen ließen sich nicht vorbereiten. Es wurde nichts geschrieben; die Markierungen bleiben.</value>
@@ -2743,7 +2836,7 @@
     <value>Bildpunkte: {0} markierte(r) Bereich(e) hinter den ersten {1} wurden nicht zurückgelesen.</value>
   </data>
   <data name="RedactNcPixelsOnly" xml:space="preserve">
-    <value>Bildpunkte: Zurückgelesen werden nur Bilder, die einen markierten Bereich berühren; eine Farbe oder ein Verlauf, der kein Bild ist, wird von der Render-Prüfung des Anwendens abgedeckt, nicht hier.</value>
+    <value>Bildpunkte: Die Füllfarbe wird nur in Bildern zurückgelesen, die einen markierten Bereich berühren. Bei einer Fläche ohne Bild (nur Text oder Vektoren) wird geprüft, dass der Inhalt entfernt ist, die Farbe des gezeichneten Rechtecks wird aber nicht aus der geschriebenen Datei zurückgelesen.</value>
   </data>
   <data name="RedactNcOtherViewer" xml:space="preserve">
     <value>Ein anderes Programm kann die Datei anders lesen; öffnen Sie das Ergebnis in einem zweiten Programm, um nachzusehen.</value>
@@ -2751,11 +2844,17 @@
   <data name="RedactNcApplyRender" xml:space="preserve">
     <value>Render-Vergleich: Nur die geschwärzten Seiten werden mit dem Original verglichen, und zwar außerhalb der markierten Bereiche und der Stellen, an denen Inhalt entfernt wurde; Seiten ohne Markierung werden nicht verglichen, und bei einem Dokument mit Formular bleiben die Annotationen (Formularfelder eingeschlossen) in beiden Darstellungen weg.</value>
   </data>
+  <data name="RedactNcApplyRenderRaster" xml:space="preserve">
+    <value>Render-Vergleich: Nur die an Ort und Stelle geschwärzten Seiten werden mit dem Original verglichen, und zwar außerhalb der markierten Bereiche und der Stellen, an denen Inhalt entfernt wurde; Seiten ohne Markierung und in Bilder umgewandelte Seiten werden nicht verglichen, und bei einem Dokument mit Formular bleiben die Annotationen (Formularfelder eingeschlossen) in beiden Darstellungen weg.</value>
+  </data>
   <data name="RedactNcApplyKeys" xml:space="preserve">
     <value>Seitenschlüssel: Gesucht wird nur nach /Thumb, /PieceInfo, /Metadata und /AA in den Seitenwörterbüchern; dieselben Schlüssel von Formularobjekten, Bildobjekten und Annotationen werden nicht gesucht.</value>
   </data>
   <data name="RedactNcApplyXmp" xml:space="preserve">
     <value>XMP-Metadaten und JavaScript: Auf Dokumentebene durch den Neuaufbau der Datei entfernt; die Einträge in Objekten der Seiten (Formularobjekte, Bildobjekte, Annotationen) werden nicht zurückgelesen.</value>
+  </data>
+  <data name="RedactNcRasterOutside" xml:space="preserve">
+    <value>In Bilder umgewandelte Seiten ({0}): Ein sichtbares Vorkommen eines entfernten Textes außerhalb der markierten Bereiche bleibt im Bild stehen und lässt sich ohne OCR nicht finden; geprüft werden nur der Aufbau der Seite (ein Bild, kein Text, keine Annotation, kein Link, kein Formularfeld, kein Pfad außerhalb der markierten Bereiche) und die markierten Bereiche.</value>
   </data>
   <data name="RedactCauseChangesOutsideAreas" xml:space="preserve">
     <value>das Schwärzen Inhalt außerhalb der markierten Bereiche verändern würde (PDFium kann diese Seite nicht erneut schreiben, ohne sie zu verändern)</value>
@@ -2786,5 +2885,305 @@
   </data>
   <data name="RedactRefusalPageUnknown" xml:space="preserve">
     <value>{0} lässt sich nicht schwärzen. Die Datei wird nicht geschwärzt.</value>
+  </data>
+  <data name="CommandRedactRasterPage" xml:space="preserve">
+    <value>Seite in Bild umwandeln (oder zurück)</value>
+  </data>
+  <data name="RedactRasterButton" xml:space="preserve">
+    <value>Seite als Bild</value>
+  </data>
+  <data name="RedactRasterToggleTip" xml:space="preserve">
+    <value>Wandelt die Seite der ausgewählten Markierungen oder die Seite im Blick in ein Bild um oder wieder zurück. Aller Text, alle Links, Kommentare und Formularfelder der Seite gehen verloren.</value>
+  </data>
+  <data name="RedactRasterDpiLabel" xml:space="preserve">
+    <value>Auflösung der Seiten als Bild</value>
+  </data>
+  <data name="RedactRasterDpi150" xml:space="preserve">
+    <value>150 dpi</value>
+  </data>
+  <data name="RedactRasterDpi200" xml:space="preserve">
+    <value>200 dpi</value>
+  </data>
+  <data name="RedactRasterDpi300" xml:space="preserve">
+    <value>300 dpi</value>
+  </data>
+  <data name="RedactRasterRowKindFormat" xml:space="preserve">
+    <value>Als Bild, {0} dpi</value>
+  </data>
+  <data name="RedactRasterRowNameFormat" xml:space="preserve">
+    <value>Seite {0} wird ein Bild, {1} dpi</value>
+  </data>
+  <data name="RedactCountRasterOne" xml:space="preserve">
+    <value>1 Seite als Bild</value>
+  </data>
+  <data name="RedactCountRaster" xml:space="preserve">
+    <value>{0} Seiten als Bilder</value>
+  </data>
+  <data name="RedactSumRasterOne" xml:space="preserve">
+    <value>{0} Seite in ein Bild umgewandelt</value>
+  </data>
+  <data name="RedactSumRaster" xml:space="preserve">
+    <value>{0} Seiten in Bilder umgewandelt</value>
+  </data>
+  <data name="SaveChoiceContinue" xml:space="preserve">
+    <value>Weiter</value>
+  </data>
+  <data name="RedactRescueTitle" xml:space="preserve">
+    <value>„{0}“ lässt sich so nicht schwärzen</value>
+  </data>
+  <data name="RedactRescueIntro" xml:space="preserve">
+    <value>Stattdessen lässt sich jede dieser Seiten in ein Bild umwandeln. Der gesamte Text der Seite geht verloren; sie ist danach ein Bild. Links, Kommentare und Formularfelder der Seite entfallen. Nichts wird umgewandelt, wenn Sie es nicht wählen.</value>
+  </data>
+  <data name="RedactRescueChoice" xml:space="preserve">
+    <value>Diese Seite stattdessen in ein Bild umwandeln</value>
+  </data>
+  <data name="RedactRescueChoiceName" xml:space="preserve">
+    <value>Seite {0}: Diese Seite stattdessen in ein Bild umwandeln</value>
+  </data>
+  <data name="RedactRescueDpiLabel" xml:space="preserve">
+    <value>Auflösung (gilt für jede Seite, die ein Bild wird)</value>
+  </data>
+  <data name="RedactRescueEstimate" xml:space="preserve">
+    <value>Bei {0} dpi: {1} × {2} Pixel; die Datei wächst um bis zu etwa {3}.</value>
+  </data>
+  <data name="RedactRescueEstimateLowered" xml:space="preserve">
+    <value>Bei {0} dpi, weniger als die gewählten {4} dpi, weil die Seite groß ist: {1} × {2} Pixel; die Datei wächst um bis zu etwa {3}.</value>
+  </data>
+  <data name="RedactRescueTooLarge" xml:space="preserve">
+    <value>Seite {0} ist zu groß, um in ein Bild umgewandelt zu werden, selbst bei 72 dpi.</value>
+  </data>
+  <data name="RedactRescueStuck" xml:space="preserve">
+    <value>Seite {0} ist als Bild vorgesehen, lässt sich aber auch so nicht schwärzen. Machen Sie die Wahl rückgängig, um fortzufahren.</value>
+  </data>
+  <data name="RedactRescueHeadingStuck" xml:space="preserve">
+    <value>Seiten, die sich nicht in Bilder umwandeln lassen</value>
+  </data>
+  <data name="RedactRescueNotStaged" xml:space="preserve">
+    <value>Die Wahl konnte nicht in den Plan übernommen werden. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="RedactSecRaster" xml:space="preserve">
+    <value>Wird in ein Bild umgewandelt</value>
+  </data>
+  <data name="RedactRasterIntro" xml:space="preserve">
+    <value>Der gesamte Text dieser Seiten geht verloren; jede ist danach ein Bild. Links, Kommentare und Formularfelder dieser Seiten entfallen.</value>
+  </data>
+  <data name="RedactRasterPage" xml:space="preserve">
+    <value>Seite {0} wird ein Bild mit {1} dpi ({2} × {3} Pixel; die Datei wächst um bis zu etwa {4}).</value>
+  </data>
+  <data name="RedactRasterPageLowered" xml:space="preserve">
+    <value>Seite {0} wird ein Bild mit {1} dpi, weniger als gewählt, weil die Seite groß ist ({2} × {3} Pixel; die Datei wächst um bis zu etwa {4}).</value>
+  </data>
+  <data name="RedactRasterLost" xml:space="preserve">
+    <value>Seite {0} verliert: {1}.</value>
+  </data>
+  <data name="RedactRasterLostText" xml:space="preserve">
+    <value>ihren gesamten Text</value>
+  </data>
+  <data name="RedactRasterLostLinkOne" xml:space="preserve">
+    <value>{0} Link</value>
+  </data>
+  <data name="RedactRasterLostLinks" xml:space="preserve">
+    <value>{0} Links</value>
+  </data>
+  <data name="RedactRasterLostAnnotationOne" xml:space="preserve">
+    <value>{0} Annotation (Kommentare, Links und Formularfelder zählen dazu)</value>
+  </data>
+  <data name="RedactRasterLostAnnotations" xml:space="preserve">
+    <value>{0} Annotationen (Kommentare, Links und Formularfelder zählen dazu)</value>
+  </data>
+  <data name="RedactRasterLostFieldOne" xml:space="preserve">
+    <value>{0} Formularfeld, nicht mehr ausfüllbar</value>
+  </data>
+  <data name="RedactRasterLostFields" xml:space="preserve">
+    <value>{0} Formularfelder, nicht mehr ausfüllbar</value>
+  </data>
+  <data name="RedactRasterLostNothing" xml:space="preserve">
+    <value>nichts weiter; sie hat keinen Text, keine Links, Annotationen oder Formularfelder</value>
+  </data>
+  <data name="RedactRasterOthers" xml:space="preserve">
+    <value>Alle anderen Seiten behalten Text und Vektoren.</value>
+  </data>
+  <data name="RedactRescueUnreadable" xml:space="preserve">
+    <value>Seite {0} lässt sich nicht lesen und deshalb nicht in ein Bild umwandeln.</value>
+  </data>
+  <data name="RedactImageAreas" xml:space="preserve">
+    <value>Bildflächen</value>
+  </data>
+  <data name="RedactImageAreasTip" xml:space="preserve">
+    <value>Was aus den Teilen von Bildern unter den Markierungen wird: die Volltonfläche oder wenige grobe Blöcke des Bildes</value>
+  </data>
+  <data name="RedactImageSolid" xml:space="preserve">
+    <value>Volltonfläche</value>
+  </data>
+  <data name="RedactImagePixelate" xml:space="preserve">
+    <value>Verpixeln</value>
+  </data>
+  <data name="RedactImageBlur" xml:space="preserve">
+    <value>Weichzeichnen</value>
+  </data>
+  <data name="RedactImageSolidTip" xml:space="preserve">
+    <value>Die Teile von Bildern unter einer Markierung bekommen die Füllfarbe (Standard)</value>
+  </data>
+  <data name="RedactImagePixelateTip" xml:space="preserve">
+    <value>Verpixeln: Die Teile von Bildern unter einer Markierung werden zu wenigen hartkantigen Blöcken; nur deren Mittelwerte bleiben</value>
+  </data>
+  <data name="RedactImageBlurTip" xml:space="preserve">
+    <value>Weichzeichnen: Die Teile von Bildern unter einer Markierung werden zu einem weichen Verlauf aus wenigen Blockmittelwerten</value>
+  </data>
+  <data name="RedactImageStrengthLabel" xml:space="preserve">
+    <value>Blöcke</value>
+  </data>
+  <data name="RedactImageCoarse" xml:space="preserve">
+    <value>Grob</value>
+  </data>
+  <data name="RedactImageVeryCoarse" xml:space="preserve">
+    <value>Sehr grob</value>
+  </data>
+  <data name="RedactImageCoarseTip" xml:space="preserve">
+    <value>Höchstens 6 Blöcke je Achse, keiner kleiner als 8 Pixel</value>
+  </data>
+  <data name="RedactImageVeryCoarseTip" xml:space="preserve">
+    <value>Höchstens 3 Blöcke je Achse, keiner kleiner als 8 Pixel</value>
+  </data>
+  <data name="RedactImageCaution" xml:space="preserve">
+    <value>Text in Bildern kann auch verpixelt oder weichgezeichnet lesbar bleiben; Pagewing erkennt ihn nicht. Für Text im Bild die Volltonfläche wählen.</value>
+  </data>
+  <data name="RedactPreviewImageNote" xml:space="preserve">
+    <value>Verpixeln oder Weichzeichnen ist gewählt: Ein gestrichelter Rahmen kennzeichnet jede Fläche. Über Bildern zeigt die geschriebene Datei dort grobe Blöcke statt der Füllung, wo die Regel gilt (die Zahlen oben zählen sie); die Vorschau zeigt nie die Pixel des Bildes.</value>
+  </data>
+  <data name="RedactPreviewOverlayNote" xml:space="preserve">
+    <value>Die Vorschau zeigt nur die Füllung, nicht den Überlagerungstext.</value>
+  </data>
+  <data name="RedactSecImageAreas" xml:space="preserve">
+    <value>Bildflächen</value>
+  </data>
+  <data name="RedactTreatmentPixelated" xml:space="preserve">
+    <value>verpixelt</value>
+  </data>
+  <data name="RedactTreatmentBlurred" xml:space="preserve">
+    <value>weichgezeichnet</value>
+  </data>
+  <data name="RedactImgTreatedOne" xml:space="preserve">
+    <value>{0} Bildfläche ist {1}: Vom Original bleiben nur grobe Blockmittelwerte.</value>
+  </data>
+  <data name="RedactImgTreatedMany" xml:space="preserve">
+    <value>{0} Bildflächen sind {1}: Vom Original bleiben nur grobe Blockmittelwerte.</value>
+  </data>
+  <data name="RedactImgSolidOne" xml:space="preserve">
+    <value>{0} Bildfläche erhält stattdessen die Volltonfläche ({1}).</value>
+  </data>
+  <data name="RedactImgSolidMany" xml:space="preserve">
+    <value>{0} Bildflächen erhalten stattdessen die Volltonfläche ({1}).</value>
+  </data>
+  <data name="RedactImgReasonTooSmall" xml:space="preserve">
+    <value>die Fläche ist kleiner als 2 × 2 Blöcke zu je 8 Pixeln</value>
+  </data>
+  <data name="RedactImgReasonTurned" xml:space="preserve">
+    <value>das Bild ist gedreht oder geschert</value>
+  </data>
+  <data name="RedactImgReasonClipped" xml:space="preserve">
+    <value>das Bild ist durch einen Beschnittpfad beschnitten</value>
+  </data>
+  <data name="RedactImgReasonOverlapping" xml:space="preserve">
+    <value>mehrere Flächen überlappen sich auf demselben Bild</value>
+  </data>
+  <data name="RedactImgReasonUnreadable" xml:space="preserve">
+    <value>die Pixel des Bildes ließen sich nicht zuverlässig lesen oder schreiben</value>
+  </data>
+  <data name="RedactImgReasonTooMany" xml:space="preserve">
+    <value>unter einer Fläche liegen zu viele behandelte Bilder</value>
+  </data>
+  <data name="RedactCheckedAreasTreated" xml:space="preserve">
+    <value>Markierte Bereiche: Kein Zeichen der geschriebenen Datei liegt in einem markierten Bereich, und die Pixel von Bildern darunter haben entweder die Farbe des Bereichs oder genau die aus dem Original berechneten Blockmittelwerte (Weichzeichnen: höchstens eine Stufe Abweichung je Farbkanal; immer deckend); das Bild behält keine Pixeldaten des Originals über diese Blockmittelwerte hinaus.</value>
+  </data>
+  <data name="RedactNcImageText" xml:space="preserve">
+    <value>Bildteile: {0} zurückgelesene Bildteile wurden mit den Blockmittelwerten des Originals verglichen, {1} sind voll gefüllt (ein Bild unter mehreren Markierungen zählt je Markierung, in Bilder umgewandelte Seiten zählen mit, und die Analyse zählt Flächen, deshalb können die Zahlen abweichen). Ob Text in einem verpixelten oder weichgezeichneten Bild noch lesbar ist, wird nicht geprüft, und Pagewing erkennt keinen Text in Bildern. Für Text im Bild die Volltonfläche wählen.</value>
+  </data>
+  <data name="RedactFailureImageTreatment" xml:space="preserve">
+    <value>Eine Bildfläche, die verpixelt oder weichgezeichnet sein sollte, ist weder voll gefüllt noch die Blockmittelwerte des Originals{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
+  <data name="RedactSecOverlay" xml:space="preserve">
+    <value>Überlagerungstext</value>
+  </data>
+  <data name="RedactOverlayNotShownOne" xml:space="preserve">
+    <value>{0} Fläche erhält keinen Überlagerungstext: Darunter liegt ein verpixeltes oder weichgezeichnetes Bild, und sein Hintergrund hängt vom Bild ab.</value>
+  </data>
+  <data name="RedactOverlayNotShownMany" xml:space="preserve">
+    <value>{0} Flächen erhalten keinen Überlagerungstext: Darunter liegt ein verpixeltes oder weichgezeichnetes Bild, und ihr Hintergrund hängt vom Bild ab.</value>
+  </data>
+  <data name="RedactOverlayNotFittingOne" xml:space="preserve">
+    <value>{0} Überlagerungstext passt nicht in seine Fläche; die Fläche bleibt ohne Text gefüllt.</value>
+  </data>
+  <data name="RedactOverlayNotFittingMany" xml:space="preserve">
+    <value>{0} Überlagerungstexte passen nicht in ihre Flächen; die Flächen bleiben ohne Text gefüllt.</value>
+  </data>
+  <data name="RedactOverlayOverLimit" xml:space="preserve">
+    <value>{0} davon, weil die Grenze für den Überlagerungstext erreicht wurde (eine Seite nimmt höchstens {1} Zeilen oder {2} Umrisssegmente auf, ein Dokument {3} oder {4}); die übrigen passten nicht.</value>
+  </data>
+  <data name="RedactNcOverlayNotRead" xml:space="preserve">
+    <value>Überlagerungstext: Der auf die Flächen gezeichnete Text wird nicht aus der geschriebenen Datei zurückgelesen; ob er wie gewollt lesbar ist, wird nicht geprüft.</value>
+  </data>
+  <data name="RedactOverlayHeading" xml:space="preserve">
+    <value>Text auf der Fläche</value>
+  </data>
+  <data name="RedactOverlayPlaceholder" xml:space="preserve">
+    <value>Kein Text auf der Fläche</value>
+  </data>
+  <data name="RedactOverlayMixed" xml:space="preserve">
+    <value>Verschiedene Texte auf den gewählten Flächen</value>
+  </data>
+  <data name="RedactOverlayHint" xml:space="preserve">
+    <value>Mit Enter übernehmen. Der Text wird als Formen gezeichnet: Er lässt sich nicht auswählen, und die Prüfung der geschriebenen Datei liest ihn nicht zurück. Kurze Flächen, etwa Treffer in normalem Fließtext, sind oft zu niedrig für den Text und bekommen dann keinen (die Karte vor dem Anwenden nennt die Zahl). Die Vorschau zeigt nur die Füllung, nicht den Text.</value>
+  </data>
+  <data name="RedactOverlayInvalidAtFormat" xml:space="preserve">
+    <value>Der Text hat ein Zeichen, das sich nicht zeichnen lässt (Stelle {0}). Er wird nicht übernommen; bitte ändern.</value>
+  </data>
+  <data name="RedactOverlayInvalid" xml:space="preserve">
+    <value>Der Text auf der Fläche hat ein Zeichen, das sich nicht zeichnen lässt.</value>
+  </data>
+  <data name="RedactOverlayRepeatsTerm" xml:space="preserve">
+    <value>Dieser Text enthält einen geschwärzten Text. Er brächte ihn zurück auf die Seite, deshalb wird das Anwenden abgelehnt, bis der Text geändert ist.</value>
+  </data>
+  <data name="RedactOverlaySnippets" xml:space="preserve">
+    <value>Bausteine</value>
+  </data>
+  <data name="RedactOverlayUseSnippetFormat" xml:space="preserve">
+    <value>Baustein „{0}“ einsetzen</value>
+  </data>
+  <data name="RedactOverlayRemoveSnippetFormat" xml:space="preserve">
+    <value>Baustein „{0}“ entfernen</value>
+  </data>
+  <data name="RedactOverlayAddSnippet" xml:space="preserve">
+    <value>Als Baustein merken</value>
+  </data>
+  <data name="RedactOverlayCodeTooLongFormat" xml:space="preserve">
+    <value>Ein Baustein hat höchstens {0} Zeichen.</value>
+  </data>
+  <data name="RedactOverlayCodesFullFormat" xml:space="preserve">
+    <value>Es werden höchstens {0} Bausteine gemerkt. Zuerst einen entfernen.</value>
+  </data>
+  <data name="RedactOverlayCodeKnown" xml:space="preserve">
+    <value>Dieser Baustein ist schon gemerkt.</value>
+  </data>
+  <data name="RedactOverlayCodeDefault" xml:space="preserve">
+    <value>geschwärzt</value>
+  </data>
+  <data name="RedactOverlayRepeat" xml:space="preserve">
+    <value>Wiederholen</value>
+  </data>
+  <data name="RedactOverlayAutoSize" xml:space="preserve">
+    <value>Größe anpassen</value>
+  </data>
+  <data name="RedactOverlayColorAuto" xml:space="preserve">
+    <value>Textfarbe automatisch</value>
+  </data>
+  <data name="RedactOverlayColorLabel" xml:space="preserve">
+    <value>Textfarbe</value>
+  </data>
+  <data name="RedactOverlayContrastLowFormat" xml:space="preserve">
+    <value>Der Kontrast zur Füllung ist {0}:1, unter 4,5:1. Der Text ist womöglich schwer lesbar.</value>
+  </data>
+  <data name="RedactOverlayDraftDropped" xml:space="preserve">
+    <value>Der eingegebene Text wurde nicht übernommen: Er hat ein Zeichen, das sich nicht zeichnen lässt.</value>
   </data>
 </root>

@@ -88,10 +88,7 @@ public sealed partial class TabViewModel
         get => _redactionHistory?.Current.Fill ?? RedactionFill.Black;
         set
         {
-            if (Enum.IsDefined(value))
-            {
-                StageRedaction(plan => plan.WithFill(value), null);
-            }
+            StageRedaction(plan => plan.WithFill(value), null);
         }
     }
 
@@ -171,8 +168,8 @@ public sealed partial class TabViewModel
     internal bool HasRedactionCommands =>
         _deleteMarksCommand is not null || _undoRedactionCommand is not null || _redoRedactionCommand is not null
         || _discardRedactionsCommand is not null || _markSelectionCommand is not null || _chooseRedactionToolCommand is not null
-        || _setRedactionFillCommand is not null || _toggleRedactionPanelCommand is not null || _applyRedactionsCommand is not null
-        || _toggleRedactionPreviewCommand is not null;
+        || _setRedactionFillCommand is not null || _setRedactionImageTreatmentCommand is not null || _setRedactionImageStrengthCommand is not null || _toggleRedactionPanelCommand is not null || _applyRedactionsCommand is not null
+        || _toggleRedactionPreviewCommand is not null || _toggleRasterPageCommand is not null || _setRasterDpiCommand is not null;
 
     /// <summary>
     /// Gets whether the only thing closing would lose is the plan of marks (<see cref="HasPendingRedactions"/>): "Save" cannot
@@ -193,6 +190,9 @@ public sealed partial class TabViewModel
     /// not the document and are never printed.
     /// </summary>
     private bool CanEditRedactions => !_disposed && _isRedacting && _redactionHistory is not null && !_isAskedAbout && !_isEditingFrozen && !_isSaving;
+
+    // The apply flow is the one that saves and asks: it stages the choice of a rejected page itself, only an update's lock stops it.
+    private bool CanEditDuringApply => !_disposed && _isRedacting && _redactionHistory is not null && !_isEditingFrozen;
 
     /// <summary>
     /// Adds a rectangle mark. The area is normalized here (a drag from the lower right to the upper left gives the same
@@ -418,10 +418,11 @@ public sealed partial class TabViewModel
     /// <param name="edit">The change; may throw <see cref="RedactionException"/>.</param>
     /// <param name="selectionAfter">The selection after the change, or <see langword="null"/> to keep it.</param>
     /// <param name="amend">Whether the change belongs to the last step (a run of arrow keys) and is merged into it.</param>
+    /// <param name="duringApply">Whether the apply flow stages it (the choice of the card of a rejected page): that flow holds the save lock itself.</param>
     /// <returns>Whether the plan changed.</returns>
-    private bool StageRedaction(Func<RedactionPlan, RedactionPlan> edit, IEnumerable<Guid>? selectionAfter, bool amend = false)
+    private bool StageRedaction(Func<RedactionPlan, RedactionPlan> edit, IEnumerable<Guid>? selectionAfter, bool amend = false, bool duringApply = false)
     {
-        if (!CanEditRedactions)
+        if (!(duringApply ? CanEditDuringApply : CanEditRedactions))
         {
             return false;
         }
@@ -513,12 +514,14 @@ public sealed partial class TabViewModel
 
         _selectedMarks = next.Count == 0 ? NoMarks : new ReadOnlySet<Guid>(next);
         OnPropertyChanged(nameof(SelectedMarks));
+        OnPropertyChanged(nameof(RasterTargetsAreImages));
         RaiseRedactionCanExecuteChanged();
     }
 
     private static string NoticeOf(RedactionError error) => error switch
     {
         RedactionError.LimitExceeded => Strings.RedactMarksLimit,
+        RedactionError.OverlayInvalid => Strings.RedactOverlayInvalid,
         _ => Strings.RedactMarkRefused,
     };
 
@@ -530,6 +533,19 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(RedactionFill));
         OnPropertyChanged(nameof(IsRedactionFillBlack));
         OnPropertyChanged(nameof(IsRedactionFillWhite));
+        OnPropertyChanged(nameof(IsRedactionFillCustom));
+        OnPropertyChanged(nameof(RedactionFillHex));
+        OnPropertyChanged(nameof(RedactionImageTreatment));
+        OnPropertyChanged(nameof(RedactionImageStrength));
+        OnPropertyChanged(nameof(IsRedactionImageSolid));
+        OnPropertyChanged(nameof(IsRedactionImagePixelate));
+        OnPropertyChanged(nameof(IsRedactionImageBlur));
+        OnPropertyChanged(nameof(IsRedactionImageTreated));
+        OnPropertyChanged(nameof(IsRedactionImageCoarse));
+        OnPropertyChanged(nameof(IsRedactionImageVeryCoarse));
+        OnPropertyChanged(nameof(RedactionImageTreatmentText));
+        OnPropertyChanged(nameof(RedactionPreviewNote));
+        OnPropertyChanged(nameof(RedactionOverlayStyle));
         OnPropertyChanged(nameof(RedactionCounterText));
         OnPropertyChanged(nameof(RedactionToolIsArea));
         OnPropertyChanged(nameof(RedactionToolIsText));
@@ -543,6 +559,7 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(OffersFill));
         OnPropertyChanged(nameof(OrganizeUnavailableReason));
         OnPropertyChanged(nameof(CanOrganize));
+        RaiseRasterStateChanged();
 
         // Splitting and exporting images read the document without the marks, so pending marks lock them.
         RaisePageOutputChanged();
@@ -559,8 +576,12 @@ public sealed partial class TabViewModel
         _deleteMarksCommand?.RaiseCanExecuteChanged();
         _undoRedactionCommand?.RaiseCanExecuteChanged();
         _redoRedactionCommand?.RaiseCanExecuteChanged();
+        _setRedactionImageTreatmentCommand?.RaiseCanExecuteChanged();
+        _setRedactionImageStrengthCommand?.RaiseCanExecuteChanged();
         _discardRedactionsCommand?.RaiseCanExecuteChanged();
         _toggleRedactionPanelCommand?.RaiseCanExecuteChanged();
+        _toggleRasterPageCommand?.RaiseCanExecuteChanged();
+        _setRasterDpiCommand?.RaiseCanExecuteChanged();
         RaiseMarkingCanExecuteChanged();
 
         // Ctrl+Z and Ctrl+Y are the plan's in the mode.

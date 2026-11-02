@@ -47,6 +47,12 @@ public sealed record RedactionHit(RedactionHitSource Source, int Page, IReadOnly
 
     /// <summary>Gets why <see cref="Markable"/> is <see langword="false"/> (English, for the list of hits); <see langword="null"/> for a hit that can be marked.</summary>
     public string? NotMarkableReason { get; init; }
+
+    /// <summary>Gets the kind of pattern that found the hit (<see cref="RedactionPatternSearch"/>); <see langword="null"/> for the hit of a term.</summary>
+    public RedactionPatternKind? Pattern { get; init; }
+
+    /// <summary>Gets how sure the pattern scanner is about the hit; <see langword="null"/> exactly when <see cref="Pattern"/> is.</summary>
+    public PatternCertainty? Certainty { get; init; }
 }
 
 /// <summary>
@@ -104,6 +110,7 @@ public static class RedactionSearch
         "Text that exists only in the appearance (/AP) of an annotation is not searched.",
         "Invisible text is flagged only for the render mode 3 (invisible); text that is covered by something else is found but not flagged.",
         "The values of form fields in a file without a form (widgets without /AcroForm) are not searched.",
+        "Patterns (e-mail address, IBAN, telephone number, card number) find only what the text shows and what their built-in rules know: one split across a line break or a page boundary, digits interrupted by other characters than the usual separators, numbers inside images, IBANs of countries outside the built-in table, telephone numbers that do not start with +, 0 or (, digit chains of more than 64 groups, e-mail addresses whose local part has unusual characters (& = * !), and card numbers grouped in other layouts are not found.",
     ];
 
     /// <summary>
@@ -194,8 +201,16 @@ public static class RedactionSearch
             throw new RedactionException(RedactionError.InvalidArea, hit.NotMarkableReason ?? "The hit cannot be marked.");
         }
 
-        return new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, hit.Page, [.. hit.Areas], hit.Text, everywhere && !options.WholeWord);
+        return MarkOf(hit, everywhere && !options.WholeWord);
     }
+
+    /// <summary>
+    /// The mark of a markable hit. A pattern hit is exactly the place the scanner found: the pattern finds every place it can
+    /// recognise, so its mark never demands "gone from the whole document" (a copy the scanner could not recognise must not make
+    /// the check fail), whatever <paramref name="everywhere"/> says.
+    /// </summary>
+    private static RedactionMark MarkOf(RedactionHit hit, bool everywhere) =>
+        new(Guid.NewGuid(), RedactionKind.Hit, hit.Page, [.. hit.Areas], hit.Text, hit.Pattern is null && everywhere, null, hit.Pattern);
 
     /// <summary>
     /// Makes marks of all hits that can become one, for <see cref="RedactionPlan.WithRange"/>; the others are counted, not made
@@ -209,7 +224,48 @@ public static class RedactionSearch
     /// <param name="options">The options the search ran with.</param>
     /// <param name="notMarkable">How many hits were left out because they are not <see cref="RedactionHit.Markable"/>.</param>
     /// <returns>The marks in the order of the hits.</returns>
-    public static IReadOnlyList<RedactionMark> ToMarks(IEnumerable<RedactionHit> hits, string term, bool everywhere, SearchOptions options, out int notMarkable)
+    public static IReadOnlyList<RedactionMark> ToMarks(IEnumerable<RedactionHit> hits, string term, bool everywhere, SearchOptions options, out int notMarkable) =>
+        ToMarksCore(hits, term, everywhere, options, out notMarkable);
+
+    /// <summary>
+    /// Makes marks of the hits of a pattern search (<see cref="RedactionPatternSearch"/>), which have no query: every mark carries
+    /// <see cref="RedactionMark.Pattern"/> and is never "everywhere". Hits that are not <see cref="RedactionHit.Markable"/> are counted, not made.
+    /// Hits whose checksum failed (<see cref="PatternCertainty.ChecksumFailed"/>) are markable and become marks too: the caller (the
+    /// application, the command line) decides whether to drop them before it calls this, as this method does not look at the certainty.
+    /// Only hits of a pattern search belong here: a hit of a term (<see cref="RedactionHit.Pattern"/> <see langword="null"/>) needs its
+    /// query and the choice "everywhere", so it is refused instead of being turned into a mark that would silently differ from the others.
+    /// </summary>
+    /// <param name="hits">The hits of <see cref="RedactionPatternSearch.FindAsync"/>.</param>
+    /// <param name="notMarkable">How many hits were left out because they are not <see cref="RedactionHit.Markable"/>.</param>
+    /// <returns>The marks in the order of the hits.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="hits"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">A hit is not a pattern hit; nothing is returned.</exception>
+    public static IReadOnlyList<RedactionMark> ToMarks(IEnumerable<RedactionHit> hits, out int notMarkable)
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+        var marks = new List<RedactionMark>();
+        notMarkable = 0;
+        foreach (var hit in hits)
+        {
+            if (hit.Pattern is null)
+            {
+                throw new ArgumentException("Only hits of a pattern search can be turned into marks without a query; use the overload with the query for the hits of a term.", nameof(hits));
+            }
+
+            if (hit.Markable)
+            {
+                marks.Add(MarkOf(hit, everywhere: false));
+            }
+            else
+            {
+                notMarkable++;
+            }
+        }
+
+        return marks;
+    }
+
+    private static List<RedactionMark> ToMarksCore(IEnumerable<RedactionHit> hits, string term, bool everywhere, SearchOptions options, out int notMarkable)
     {
         ArgumentNullException.ThrowIfNull(hits);
         var marks = new List<RedactionMark>();
@@ -271,10 +327,61 @@ public static class RedactionSearch
     private static bool IsBlank(TextChar c) =>
         c.IsLineBreak || c.CodePoint is '\r' or '\n' || (Rune.IsValid(c.CodePoint) && Rune.IsWhiteSpace(new Rune(c.CodePoint)));
 
-    private static async IAsyncEnumerable<RedactionHit> FindCoreAsync(
+    private static IAsyncEnumerable<RedactionHit> FindCoreAsync(
         PdfDocument document,
         string term,
         SearchOptions options,
+        RedactionSearchReport? report,
+        PageTextSource? texts,
+        CancellationToken cancellationToken) =>
+        FindInSourcesAsync(document, new TermMatcher(term, options), report, texts, cancellationToken);
+
+    /// <summary>
+    /// How a search finds its hits in the three kinds of source. The walk over pages, annotations and form fields, the report of what
+    /// could not be read, the limits and the rectangles of a hit are shared (<see cref="FindInSourcesAsync"/>); only the question
+    /// "where in this text" differs between the search for a term and the search for patterns.
+    /// </summary>
+    internal interface IHitMatcher
+    {
+        /// <summary>Finds hits in the text of a page; at most <paramref name="budget"/> (the walk needs no more).</summary>
+        Task<List<RedactionHit>> FindInPageTextAsync(PdfDocument document, int page, PageText pageText, int budget, CancellationToken cancellationToken);
+
+        /// <summary>Finds hits in the text of an annotation or a form field (already cut to <see cref="RedactionSearch.MaxSourceTextLength"/>).</summary>
+        List<RedactionHit> FindInText(RedactionHitSource source, int page, string text, PageRect area, string detail);
+    }
+
+    private sealed class TermMatcher(string term, SearchOptions options) : IHitMatcher
+    {
+        public async Task<List<RedactionHit>> FindInPageTextAsync(PdfDocument document, int page, PageText pageText, int budget, CancellationToken cancellationToken)
+        {
+            var found = TextMatcher.Find(pageText.Chars, term, options);
+            if (found.Count == 0)
+            {
+                return [];
+            }
+
+            var take = Math.Min(found.Count, budget);
+            IReadOnlyList<TextMatch> matches = found.Count == take ? found : [.. found.Take(take)];
+            return await PageTextHitsAsync(document, page, pageText, matches, cancellationToken).ConfigureAwait(false);
+        }
+
+        public List<RedactionHit> FindInText(RedactionHitSource source, int page, string text, PageRect area, string detail)
+        {
+            var chars = RuneChars(text);
+            var hits = new List<RedactionHit>();
+            foreach (var (first, last) in TextMatcher.Find(chars, term, options))
+            {
+                hits.Add(TextHit(source, page, chars, area, detail, first, last));
+            }
+
+            return hits;
+        }
+    }
+
+    /// <summary>The walk shared by the search for a term and the search for patterns.</summary>
+    internal static async IAsyncEnumerable<RedactionHit> FindInSourcesAsync(
+        PdfDocument document,
+        IHitMatcher matcher,
         RedactionSearchReport? report,
         PageTextSource? texts,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -299,12 +406,10 @@ public static class RedactionSearch
 
             if (pageText is not null)
             {
-                var found = TextMatcher.Find(pageText.Chars, term, options);
-                if (found.Count > 0)
+                var pageHits = await matcher.FindInPageTextAsync(document, page, pageText, MaxHits - total, cancellationToken).ConfigureAwait(false);
+                if (pageHits.Count > 0)
                 {
-                    var take = Math.Min(found.Count, MaxHits - total);
-                    IReadOnlyList<TextMatch> matches = found.Count == take ? found : [.. found.Take(take)];
-                    foreach (var hit in await PageTextHitsAsync(document, page, pageText, matches, cancellationToken).ConfigureAwait(false))
+                    foreach (var hit in pageHits)
                     {
                         total++;
                         yield return hit;
@@ -341,7 +446,7 @@ public static class RedactionSearch
                     continue;
                 }
 
-                foreach (var hit in TextHits(RedactionHitSource.Annotation, page, annotation.Contents, annotation.Bounds, annotation.Subtype, term, options, report))
+                foreach (var hit in matcher.FindInText(RedactionHitSource.Annotation, page, CutSourceText(annotation.Contents, page, report), annotation.Bounds, annotation.Subtype))
                 {
                     total++;
                     yield return hit;
@@ -380,7 +485,7 @@ public static class RedactionSearch
 
                 foreach (var value in ValuesOf(field))
                 {
-                    foreach (var hit in TextHits(RedactionHitSource.FormField, page, value, field.Bounds, field.Key.FieldName, term, options, report))
+                    foreach (var hit in matcher.FindInText(RedactionHitSource.FormField, page, CutSourceText(value, page, report), field.Bounds, field.Key.FieldName))
                     {
                         total++;
                         yield return hit;
@@ -403,7 +508,7 @@ public static class RedactionSearch
         }
     }
 
-    private static async Task<List<RedactionHit>> PageTextHitsAsync(
+    internal static async Task<List<RedactionHit>> PageTextHitsAsync(
         PdfDocument document,
         int page,
         PageText pageText,
@@ -434,36 +539,33 @@ public static class RedactionSearch
         return hits;
     }
 
-    private static List<RedactionHit> TextHits(
-        RedactionHitSource source,
-        int page,
-        string text,
-        PageRect area,
-        string detail,
-        string term,
-        SearchOptions options,
-        RedactionSearchReport? report)
+    /// <summary>Cuts the text of an annotation or a form field to <see cref="MaxSourceTextLength"/> and marks the page as incomplete when it was cut.</summary>
+    private static string CutSourceText(string text, int page, RedactionSearchReport? report)
     {
-        if (text.Length > MaxSourceTextLength)
+        if (text.Length <= MaxSourceTextLength)
         {
-            text = text[..MaxSourceTextLength];
-            report?.MarkIncomplete(page);
+            return text;
         }
 
+        report?.MarkIncomplete(page);
+        return text[..MaxSourceTextLength];
+    }
+
+    /// <summary>The characters of a text without boxes (one per code point), as the matcher and the snippet read a source that is not page text.</summary>
+    internal static List<TextChar> RuneChars(string text)
+    {
         var chars = new List<TextChar>(text.Length);
         foreach (var rune in text.EnumerateRunes())
         {
             chars.Add(new TextChar(rune.Value, default, TextCharTraits.None, 0));
         }
 
-        var hits = new List<RedactionHit>();
-        foreach (var (first, last) in TextMatcher.Find(chars, term, options))
-        {
-            hits.Add(Make(source, page, IsUsable(area) ? [area] : [], TextMatcher.SnippetOf(chars, first, last), detail, false, lossy: false));
-        }
-
-        return hits;
+        return chars;
     }
+
+    /// <summary>The hit of the characters first to last of an annotation or a form field; the area is the whole annotation or widget.</summary>
+    internal static RedactionHit TextHit(RedactionHitSource source, int page, IReadOnlyList<TextChar> chars, PageRect area, string detail, int first, int last) =>
+        Make(source, page, IsUsable(area) ? [area] : [], TextMatcher.SnippetOf(chars, first, last), detail, false, lossy: false);
 
     internal static RedactionHit Make(RedactionHitSource source, int page, List<PageRect> areas, SearchSnippet snippet, string? detail, bool invisible, bool lossy = false)
     {

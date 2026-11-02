@@ -625,6 +625,26 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFPageObj_GetBounds(nint pageObject, float* left, float* bottom, float* right, float* top);
 
+    /// <summary>The clipping path of a page object (<c>FPDF_CLIPPATH</c>, owned by the object; never null for a valid object).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_GetClipPath(nint pageObject);
+
+    /// <summary>The number of paths in a clipping path (0 when the object is not clipped), or -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFClipPath_CountPaths(nint clipPath);
+
+    /// <summary>The number of segments in one path of a clipping path, or -1 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFClipPath_CountPathSegments(nint clipPath, int pathIndex);
+
+    /// <summary>One segment of a path of a clipping path (owned by the page), or 0 on error.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFClipPath_GetPathSegment(nint clipPath, int pathIndex, int segmentIndex);
+
     /// <summary>The fill colour of a page object (<c>unsigned int</c> components, 0 to 255).</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -732,6 +752,31 @@ internal static unsafe partial class Fpdf
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial nint FPDFPageObj_CreateNewRect(float x, float y, float width, float height);
+
+    /// <summary>A new path object whose first segment is a move to (x, y) (user space); the caller owns it until a page takes it.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial nint FPDFPageObj_CreateNewPath(float x, float y);
+
+    /// <summary>Starts a new subpath of a path object at (x, y) without a line from the current point.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_MoveTo(nint path, float x, float y);
+
+    /// <summary>Adds a line from the current point to (x, y).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_LineTo(nint path, float x, float y);
+
+    /// <summary>Adds a cubic Bezier curve from the current point through two control points to (x3, y3).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_BezierTo(nint path, float x1, float y1, float x2, float y2, float x3, float y3);
+
+    /// <summary>Closes the current subpath of a path object with a line to its start.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPath_Close(nint path);
 
     /// <summary>Sets how a path is drawn (<c>FPDF_FILLMODE_*</c>, stroke as <c>FPDF_BOOL</c>).</summary>
     [LibraryImport(Library)]

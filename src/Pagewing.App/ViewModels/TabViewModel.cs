@@ -284,6 +284,12 @@ public sealed partial class TabViewModel : ViewModelBase, IDisposable
                 RaiseNavigationCanExecuteChanged();
                 ResetPageField();
                 OnPropertyChanged(nameof(CurrentPageSize));
+                if (_redactionHistory is not null)
+                {
+                    // "Page as image" concerns the page in view while no mark is selected.
+                    OnPropertyChanged(nameof(RasterTargetsAreImages));
+                    _toggleRasterPageCommand?.RaiseCanExecuteChanged();
+                }
             }
         }
     }

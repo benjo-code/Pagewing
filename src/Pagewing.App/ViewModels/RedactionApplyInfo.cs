@@ -44,6 +44,21 @@ public sealed class RedactionApplyInfo
     {
         ArgumentNullException.ThrowIfNull(analysis);
         var sections = new List<RedactionSection>();
+        if (RasterLines(analysis) is { Count: > 0 } raster)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecRaster, raster));
+        }
+
+        if (ImageAreaLines(analysis) is { Count: > 0 } imageAreas)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecImageAreas, imageAreas));
+        }
+
+        if (OverlayLines(analysis) is { Count: > 0 } overlay)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecOverlay, overlay));
+        }
+
         if (FallbackLines(analysis) is { Count: > 0 } fallbacks)
         {
             sections.Add(new RedactionSection(Strings.RedactSecFallbacks, fallbacks));
@@ -56,7 +71,7 @@ public sealed class RedactionApplyInfo
         }
 
         sections.Add(new RedactionSection(Strings.RedactSecNotCleaned, NotCleanedLines(analysis)));
-        sections.Add(new RedactionSection(Strings.RedactSecAfter, [Strings.RedactCheckList, Strings.RedactCheckNothingWritten]));
+        sections.Add(new RedactionSection(Strings.RedactSecAfter, [CheckListOf(analysis), Strings.RedactCheckNothingWritten]));
         return new RedactionApplyInfo(SummaryOf(analysis), sections);
     }
 
@@ -73,6 +88,9 @@ public sealed class RedactionApplyInfo
 
         return new RedactionApplyInfo(string.Empty, sections);
     }
+
+    /// <summary>A card made of the given parts alone (the card of a refusal with the offer of the rescue adds its own).</summary>
+    internal static RedactionApplyInfo WithSections(IReadOnlyList<RedactionSection> sections) => new(string.Empty, sections);
 
     /// <summary>The card of a check that found something (nothing was written): one line for each finding, by kind and page.</summary>
     /// <param name="check">The check from the failure, or <see langword="null"/> when the check itself could not be completed.</param>
@@ -98,6 +116,21 @@ public sealed class RedactionApplyInfo
         {
             new(Strings.RedactSecRemoved, RemovedLines(analysis)),
         };
+        if (RasterLines(analysis) is { Count: > 0 } raster)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecRaster, raster));
+        }
+
+        if (ImageAreaLines(analysis) is { Count: > 0 } imageAreas)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecImageAreas, imageAreas));
+        }
+
+        if (OverlayLines(analysis) is { Count: > 0 } overlay)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecOverlay, overlay));
+        }
+
         if (FallbackLines(analysis) is { Count: > 0 } fallbacks)
         {
             sections.Add(new RedactionSection(Strings.RedactSecFallbacks, fallbacks));
@@ -124,8 +157,22 @@ public sealed class RedactionApplyInfo
                 checkedLines.Add(Strings.RedactCheckedBytes);
             }
 
-            checkedLines.Add(Strings.RedactCheckedAreas);
-            checkedLines.Add(Strings.RedactCheckedPages);
+            checkedLines.Add(analysis.ImageTreatment == RedactionImageTreatment.Solid ? Strings.RedactCheckedAreas : Strings.RedactCheckedAreasTreated);
+            if (analysis.Raster is not { Count: > 0 })
+            {
+                checkedLines.Add(Strings.RedactCheckedPages);
+            }
+            else
+            {
+                // The render comparison covers the pages redacted in place only; a page turned into an image is checked for its structure.
+                if (InPlacePages(analysis) > 0)
+                {
+                    checkedLines.Add(Strings.RedactCheckedPagesInPlace);
+                }
+
+                checkedLines.Add(Format(Strings.RedactCheckedRaster, PagesOf([.. analysis.Raster.Select(static r => r.Page)])));
+            }
+
             checkedLines.Add(Strings.RedactCheckedKeys);
             checkedLines.Add(Strings.RedactCheckedCleanup);
             sections.Add(new RedactionSection(Strings.RedactSecChecked, checkedLines));
@@ -194,6 +241,7 @@ public sealed class RedactionApplyInfo
             RedactionRefusalKind.UnremovablePageKeys when refusal.PageKeysUnverified => Strings.RedactRefusalKeysUnverified,
             RedactionRefusalKind.UnremovablePageKeys => Format(Strings.RedactRefusalKeys, PagesOf(refusal.Pages)),
             RedactionRefusalKind.PageNotRedactable => PageLine(refusal),
+            RedactionRefusalKind.OverlayRepeatsTerm => Format(Strings.RedactRefusalOverlay, PagesOf(refusal.Pages)),
             _ => Strings.RedactRefusalOther,
         };
     }
@@ -237,6 +285,9 @@ public sealed class RedactionApplyInfo
                 }
 
                 break;
+            case RedactionRefusalKind.OverlayRepeatsTerm:
+                heading = Strings.RedactRefusalHeadingOverlay;
+                break;
             default:
                 heading = Strings.RedactRefusalOther;
                 break;
@@ -276,9 +327,12 @@ public sealed class RedactionApplyInfo
             RedactionNotCheckedKind.PixelsBeyond => Format(Strings.RedactNcPixelsBeyond, Number(item.Count), Number(item.Second)),
             RedactionNotCheckedKind.PixelsOnlyImages => Strings.RedactNcPixelsOnly,
             RedactionNotCheckedKind.OtherViewer => Strings.RedactNcOtherViewer,
-            RedactionNotCheckedKind.ApplyRender => Strings.RedactNcApplyRender,
+            RedactionNotCheckedKind.ApplyRender => item.Count > 0 ? Strings.RedactNcApplyRenderRaster : Strings.RedactNcApplyRender,
             RedactionNotCheckedKind.ApplyPageKeys => Strings.RedactNcApplyKeys,
             RedactionNotCheckedKind.ApplyXmp => Strings.RedactNcApplyXmp,
+            RedactionNotCheckedKind.RasterOutsideAreas => Format(Strings.RedactNcRasterOutside, Number(item.Count)),
+            RedactionNotCheckedKind.ImageTextLegible => Format(Strings.RedactNcImageText, Number(item.Count), Number(item.Second)),
+            RedactionNotCheckedKind.OverlayTextNotRead => Strings.RedactNcOverlayNotRead,
             _ => null,
         };
     }
@@ -323,6 +377,8 @@ public sealed class RedactionApplyInfo
             RedactionFailureKind.PageKeysStillPresent => Format(Strings.RedactFailureKeys, where),
             RedactionFailureKind.PageChangedOutsideAreas => Format(Strings.RedactFailurePage, where),
             RedactionFailureKind.CleanupItemStillPresent => Format(Strings.RedactFailureCleanup, where, finding.Detail),
+            RedactionFailureKind.RasterPageInvalid => Format(Strings.RedactFailureRaster, where),
+            RedactionFailureKind.ImageTreatmentWrong => Format(Strings.RedactFailureImageTreatment, where),
             _ => Format(Strings.RedactFailureUnverifiable, where),
         };
     }
@@ -347,6 +403,12 @@ public sealed class RedactionApplyInfo
         }
 
         var text = Join(Parts(chars, images, annotations, paths, forms), textWhole);
+        if (analysis.Raster is { Count: > 0 } raster)
+        {
+            var pagesAsImages = CountText(raster.Count, Strings.RedactSumRasterOne, Strings.RedactSumRaster);
+            text = text.Length == 0 ? pagesAsImages : text + "; " + pagesAsImages;
+        }
+
         return text.Length == 0
             ? Format(Strings.RedactSumFormat, Strings.RedactSumNothing)
             : Format(Strings.RedactSumFormat, text);
@@ -409,6 +471,75 @@ public sealed class RedactionApplyInfo
             },
             (fallback.Page + 1).ToString(Strings.Culture))),
     ];
+
+    // Image areas of a plan that pixelates or blurs: how many were treated, how many got the solid fill and why, and the caution about
+    // text in images. A plan that fills image areas solid has nothing to say here.
+    private static List<string> ImageAreaLines(RedactionAnalysis analysis)
+    {
+        var lines = new List<string>();
+        if (analysis.ImageTreatment == RedactionImageTreatment.Solid)
+        {
+            return lines;
+        }
+
+        var treated = analysis.Pages.Sum(static page => page.ImageAreasTreated);
+        var solid = analysis.Pages.Sum(static page => page.ImageAreasSolid);
+        var how = analysis.ImageTreatment == RedactionImageTreatment.Pixelate ? Strings.RedactTreatmentPixelated : Strings.RedactTreatmentBlurred;
+        lines.Add(Format(treated == 1 ? Strings.RedactImgTreatedOne : Strings.RedactImgTreatedMany, treated.ToString("N0", Strings.Culture), how));
+        if (solid > 0)
+        {
+            var reasons = analysis.Pages
+                .SelectMany(static page => page.ImageSolidReasons ?? [])
+                .GroupBy(static reason => reason)
+                .OrderBy(static group => group.Key)
+                .Select(static group => $"{SayImageSolidReason(group.Key)} ({group.Count().ToString("N0", Strings.Culture)}×)");
+            lines.Add(Format(solid == 1 ? Strings.RedactImgSolidOne : Strings.RedactImgSolidMany, solid.ToString("N0", Strings.Culture), string.Join("; ", reasons)));
+        }
+
+        lines.Add(Strings.RedactImageCaution);
+        return lines;
+    }
+
+    // Overlay text that is left out (over a treated image, not fitting, over the limit of the document); the areas stay filled. A plan
+    // with nothing left out has nothing to say here.
+    private static List<string> OverlayLines(RedactionAnalysis analysis)
+    {
+        var lines = new List<string>();
+        if (analysis.OverlaysNotShown > 0)
+        {
+            lines.Add(CountText(analysis.OverlaysNotShown, Strings.RedactOverlayNotShownOne, Strings.RedactOverlayNotShownMany));
+        }
+
+        if (analysis.OverlaysNotFitting > 0)
+        {
+            lines.Add(CountText(analysis.OverlaysNotFitting, Strings.RedactOverlayNotFittingOne, Strings.RedactOverlayNotFittingMany));
+            if (analysis.OverlaysOverLimit > 0)
+            {
+                lines.Add(Format(
+                    Strings.RedactOverlayOverLimit,
+                    Number(analysis.OverlaysOverLimit),
+                    Number(RedactionLimits.MaxOverlayPathsPerPage),
+                    Number(RedactionLimits.MaxOverlaySegmentsPerPage),
+                    Number(RedactionLimits.MaxOverlayPaths),
+                    Number(RedactionLimits.MaxOverlaySegments)));
+            }
+        }
+
+        return lines;
+    }
+
+    /// <summary>Says in the language of the interface why an image area got the solid fill although pixelating or blurring was chosen (a test keeps every reason mapped).</summary>
+    /// <param name="reason">The reason.</param>
+    internal static string SayImageSolidReason(ImageSolidReason reason) => reason switch
+    {
+        ImageSolidReason.TooSmall => Strings.RedactImgReasonTooSmall,
+        ImageSolidReason.TurnedOrSheared => Strings.RedactImgReasonTurned,
+        ImageSolidReason.Clipped => Strings.RedactImgReasonClipped,
+        ImageSolidReason.Overlapping => Strings.RedactImgReasonOverlapping,
+        ImageSolidReason.Unreadable => Strings.RedactImgReasonUnreadable,
+        ImageSolidReason.TooManyImages => Strings.RedactImgReasonTooMany,
+        _ => throw new ArgumentOutOfRangeException(nameof(reason)),
+    };
 
     // What the cleanup removes in this file, from the data of the scan; the fields of the document properties are named, never printed.
     private static List<string> CleanedLines(RedactionAnalysis analysis, bool confirmed)
@@ -496,6 +627,87 @@ public sealed class RedactionApplyInfo
 
         return lines;
     }
+
+    // Pages with marks that stay vectors and text: only these are rendered against the original.
+    private static int InPlacePages(RedactionAnalysis analysis) =>
+        analysis.Pages.Count(page => analysis.Raster is not { } raster || !raster.Any(r => r.Page == page.Page));
+
+    private static string CheckListOf(RedactionAnalysis analysis) =>
+        analysis.Raster is not { Count: > 0 }
+            ? Strings.RedactCheckList
+            : InPlacePages(analysis) > 0 ? Strings.RedactCheckListRaster : Strings.RedactCheckListRasterOnly;
+
+    // Pages that become images: the sentence of what that costs, then for each page the resolution it really gets with the size, and what
+    // the page loses (counted on the original page).
+    private static List<string> RasterLines(RedactionAnalysis analysis)
+    {
+        var lines = new List<string>();
+        if (analysis.Raster is not { Count: > 0 } raster)
+        {
+            return lines;
+        }
+
+        lines.Add(Strings.RedactRasterIntro);
+        foreach (var info in raster)
+        {
+            var number = (info.Page + 1).ToString(Strings.Culture);
+            lines.Add(Format(
+                info.Lowered ? Strings.RedactRasterPageLowered : Strings.RedactRasterPage,
+                number,
+                info.Dpi.ToString(Strings.Culture),
+                Number(info.WidthPx),
+                Number(info.HeightPx),
+                SizeText(info.EstimatedBytes)));
+            lines.Add(Format(Strings.RedactRasterLost, number, LostOnRasterPage(info)));
+        }
+
+        lines.Add(Strings.RedactRasterOthers);
+        return lines;
+    }
+
+    private static string LostOnRasterPage(RasterPageInfo info)
+    {
+        var parts = new List<string>();
+        if (info.HasText)
+        {
+            parts.Add(Strings.RedactRasterLostText);
+        }
+
+        Add(parts, info.Links, Strings.RedactRasterLostLinkOne, Strings.RedactRasterLostLinks);
+        Add(parts, info.Annotations, Strings.RedactRasterLostAnnotationOne, Strings.RedactRasterLostAnnotations);
+        Add(parts, info.FormFields, Strings.RedactRasterLostFieldOne, Strings.RedactRasterLostFields);
+        return parts.Count == 0 ? Strings.RedactRasterLostNothing : string.Join("; ", parts);
+    }
+
+    /// <summary>
+    /// What turning a page into an image costs at <paramref name="dpi"/>, in the language of the interface: the resolution it really
+    /// gets (lower when the page would be too large), the pixels and the size the file grows by <em>at most</em>; <see langword="null"/>
+    /// for a page that is too large even at the lowest resolution.
+    /// </summary>
+    internal static string? RasterEstimate(double widthPoints, double heightPoints, int dpi)
+    {
+        RasterSize size;
+        try
+        {
+            size = RasterGeometry.Resolve(widthPoints, heightPoints, dpi);
+        }
+        catch (RedactionException)
+        {
+            return null;
+        }
+
+        return Format(
+            size.Lowered ? Strings.RedactRescueEstimateLowered : Strings.RedactRescueEstimate,
+            size.Dpi.ToString(Strings.Culture),
+            Number(size.WidthPx),
+            Number(size.HeightPx),
+            SizeText((long)size.WidthPx * size.HeightPx * 3),
+            dpi.ToString(Strings.Culture));
+    }
+
+    // Mebibytes (1024 x 1024 bytes, as the command line says) with at most one decimal; never below 0.1 (a size is an upper bound, "about 0" would read as nothing).
+    internal static string SizeText(long bytes) =>
+        Math.Max(0.1, Math.Round(bytes / (1024.0 * 1024.0), 1)).ToString("0.#", Strings.Culture) + " MiB";
 
     private static string Number(long value) => value.ToString("N0", Strings.Culture);
 

@@ -24,7 +24,7 @@
     moves through them in this order; Enter and Space press; Esc drops a drag, then the selected marks, then the text
     selection, then ends the mode. Too narrow (640 px window, German): first the hint goes, then the labels of the tools, the
     preview and the fill, then the text of the mode name, then its icon, then the counter text (the counter stays the name of
-    the toolbar for screen readers), then the words of "Done" and "Discard", last the words of "Apply" (their icons, tooltips and names stay). Made when the mode is first started (MainWindow.Redaction.cs), never in the startup path; its styles live
+    the toolbar for screen readers), then the words of "Done" and "Discard", then the words of "Apply", last the words "Black" and "White" give way to a swatch of their colour (icons, tooltips and names stay). Made when the mode is first started (MainWindow.Redaction.cs), never in the startup path; its styles live
     here for the same reason. The DataContext is the active tab.
   -->
   <UserControl.Styles>
@@ -124,14 +124,124 @@
                                 Command="{Binding SetRedactionFillCommand}" CommandParameter="{x:Static red:RedactionFill.Black}"
                                 ToolTip.Tip="{x:Static res:Strings.RedactFillTip}"
                                 AutomationProperties.Name="{x:Static res:Strings.RedactFillBlack}">
-          <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactFillBlack}" />
+          <StackPanel Orientation="Horizontal">
+            <Border Name="FillBlackSwatch" Width="14" Height="14" CornerRadius="2" VerticalAlignment="Center" IsVisible="False"
+                    BorderThickness="1" BorderBrush="{DynamicResource Pw.Brush.Border.Strong}" />
+            <TextBlock Name="FillBlackWord" Classes="body" Margin="0" Text="{x:Static res:Strings.RedactFillBlack}" />
+          </StackPanel>
         </ctl:ActionToggleButton>
         <ctl:ActionToggleButton Name="FillWhiteButton" Classes="icon tool" Margin="2,0,0,0"
                                 Classes.active="{Binding IsRedactionFillWhite}" IsChecked="{Binding IsRedactionFillWhite, Mode=OneWay}"
                                 Command="{Binding SetRedactionFillCommand}" CommandParameter="{x:Static red:RedactionFill.White}"
                                 ToolTip.Tip="{x:Static res:Strings.RedactFillTip}"
                                 AutomationProperties.Name="{x:Static res:Strings.RedactFillWhite}">
-          <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactFillWhite}" />
+          <StackPanel Orientation="Horizontal">
+            <Border Name="FillWhiteSwatch" Width="14" Height="14" CornerRadius="2" VerticalAlignment="Center" IsVisible="False"
+                    BorderThickness="1" BorderBrush="{DynamicResource Pw.Brush.Border.Strong}" />
+            <TextBlock Name="FillWhiteWord" Classes="body" Margin="0" Text="{x:Static res:Strings.RedactFillWhite}" />
+          </StackPanel>
+        </ctl:ActionToggleButton>
+        <!-- "Colour …": any other colour. A flyout with the hex field (#RRGGBB) and five presets (built in the code behind from
+             RedactionFill.Presets, each with its name and a check mark when chosen, so no colour is told by colour alone). The
+             button shows a swatch of the colour and an accent frame when the fill is neither black nor white. -->
+        <ctl:ActionToggleButton Name="FillCustomButton" Classes="icon tool" Margin="2,0,0,0"
+                                Classes.active="{Binding IsRedactionFillCustom}" IsChecked="{Binding IsRedactionFillCustom, Mode=OneWay}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactFillCustomTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactFillCustom}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Droplet}" />
+            <StackPanel Name="FillCustomDetail" Orientation="Horizontal" Spacing="6">
+              <Border Name="FillSwatch" Width="14" Height="14" CornerRadius="2" VerticalAlignment="Center"
+                      BorderThickness="1" BorderBrush="{DynamicResource Pw.Brush.Border.Strong}"
+                      IsVisible="{Binding IsRedactionFillCustom}" />
+              <TextBlock Name="FillCustomLabel" Classes="body" Margin="0" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactFillCustom}" />
+            </StackPanel>
+          </StackPanel>
+          <ctl:ActionToggleButton.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft">
+              <StackPanel Name="FillFlyoutContent" Spacing="8" MinWidth="220">
+                <TextBlock Classes="body" Text="{x:Static res:Strings.RedactFillHexLabel}"
+                           Foreground="{DynamicResource Pw.Brush.Text.Secondary}" />
+                <TextBox Name="FillHexBox" MaxLength="7"
+                         AutomationProperties.Name="{x:Static res:Strings.RedactFillHexLabel}" />
+                <TextBlock Name="FillHexError" Classes="body" TextWrapping="Wrap" IsVisible="False"
+                           Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                           Text="{x:Static res:Strings.RedactFillHexError}"
+                           AutomationProperties.LiveSetting="Polite" />
+                <StackPanel Name="FillPresets" Orientation="Horizontal" Spacing="4" />
+              </StackPanel>
+            </Flyout>
+          </ctl:ActionToggleButton.Flyout>
+        </ctl:ActionToggleButton>
+
+        <!-- "Image areas": what the parts of images under the marks become. One button with the chosen treatment in words next to
+             its name (so the state is never told by colour alone); its flyout has the three treatments, the two strengths of the
+             blocks (possible while pixelating or blurring is chosen) and the sentence that text in images can stay legible, which
+             Pagewing cannot see. The DataContext of the flyout is set in the code behind (a popup is outside the visual tree). -->
+        <ctl:ActionToggleButton Name="ImageAreasButton" Classes="icon tool" Margin="2,0,0,0"
+                                Classes.active="{Binding IsRedactionImageTreated}" IsChecked="{Binding IsRedactionImageTreated, Mode=OneWay}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactImageAreasTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactImageAreas}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.LayoutGrid}" />
+            <StackPanel Name="ImageAreasDetail" Orientation="Horizontal" Spacing="6">
+              <TextBlock Name="ImageAreasLabel" Classes="body" Margin="0" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactImageAreas}" />
+              <TextBlock Name="ImageAreasValue" Classes="body" Margin="0" VerticalAlignment="Center"
+                         Foreground="{DynamicResource Pw.Brush.Text.Secondary}" Text="{Binding RedactionImageTreatmentText}" />
+            </StackPanel>
+          </StackPanel>
+          <ctl:ActionToggleButton.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft">
+              <StackPanel Name="ImageAreasFlyoutContent" Spacing="8" MinWidth="260" MaxWidth="380">
+                <TextBlock Classes="body" Text="{x:Static res:Strings.RedactImageAreas}"
+                           Foreground="{DynamicResource Pw.Brush.Text.Secondary}" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <ctl:ActionToggleButton Name="ImageSolidButton" Classes="icon tool"
+                                          Classes.active="{Binding IsRedactionImageSolid}" IsChecked="{Binding IsRedactionImageSolid, Mode=OneWay}"
+                                          Command="{Binding SetRedactionImageTreatmentCommand}" CommandParameter="{x:Static red:RedactionImageTreatment.Solid}"
+                                          ToolTip.Tip="{x:Static res:Strings.RedactImageSolidTip}"
+                                          AutomationProperties.Name="{x:Static res:Strings.RedactImageSolid}">
+                    <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactImageSolid}" />
+                  </ctl:ActionToggleButton>
+                  <ctl:ActionToggleButton Name="ImagePixelateButton" Classes="icon tool"
+                                          Classes.active="{Binding IsRedactionImagePixelate}" IsChecked="{Binding IsRedactionImagePixelate, Mode=OneWay}"
+                                          Command="{Binding SetRedactionImageTreatmentCommand}" CommandParameter="{x:Static red:RedactionImageTreatment.Pixelate}"
+                                          ToolTip.Tip="{x:Static res:Strings.RedactImagePixelateTip}"
+                                          AutomationProperties.Name="{x:Static res:Strings.RedactImagePixelate}">
+                    <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactImagePixelate}" />
+                  </ctl:ActionToggleButton>
+                  <ctl:ActionToggleButton Name="ImageBlurButton" Classes="icon tool"
+                                          Classes.active="{Binding IsRedactionImageBlur}" IsChecked="{Binding IsRedactionImageBlur, Mode=OneWay}"
+                                          Command="{Binding SetRedactionImageTreatmentCommand}" CommandParameter="{x:Static red:RedactionImageTreatment.Blur}"
+                                          ToolTip.Tip="{x:Static res:Strings.RedactImageBlurTip}"
+                                          AutomationProperties.Name="{x:Static res:Strings.RedactImageBlur}">
+                    <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactImageBlur}" />
+                  </ctl:ActionToggleButton>
+                </StackPanel>
+                <TextBlock Classes="body" Text="{x:Static res:Strings.RedactImageStrengthLabel}"
+                           Foreground="{DynamicResource Pw.Brush.Text.Secondary}" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <ctl:ActionToggleButton Name="ImageCoarseButton" Classes="icon tool"
+                                          Classes.active="{Binding IsRedactionImageCoarse}" IsChecked="{Binding IsRedactionImageCoarse, Mode=OneWay}"
+                                          Command="{Binding SetRedactionImageStrengthCommand}" CommandParameter="{x:Static red:RedactionImageStrength.Coarse}"
+                                          ToolTip.Tip="{x:Static res:Strings.RedactImageCoarseTip}"
+                                          AutomationProperties.Name="{x:Static res:Strings.RedactImageCoarse}">
+                    <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactImageCoarse}" />
+                  </ctl:ActionToggleButton>
+                  <ctl:ActionToggleButton Name="ImageVeryCoarseButton" Classes="icon tool"
+                                          Classes.active="{Binding IsRedactionImageVeryCoarse}" IsChecked="{Binding IsRedactionImageVeryCoarse, Mode=OneWay}"
+                                          Command="{Binding SetRedactionImageStrengthCommand}" CommandParameter="{x:Static red:RedactionImageStrength.VeryCoarse}"
+                                          ToolTip.Tip="{x:Static res:Strings.RedactImageVeryCoarseTip}"
+                                          AutomationProperties.Name="{x:Static res:Strings.RedactImageVeryCoarse}">
+                    <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactImageVeryCoarse}" />
+                  </ctl:ActionToggleButton>
+                </StackPanel>
+                <TextBlock Name="ImageCautionText" Classes="body" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                           Text="{x:Static res:Strings.RedactImageCaution}" />
+              </StackPanel>
+            </Flyout>
+          </ctl:ActionToggleButton.Flyout>
         </ctl:ActionToggleButton>
 
         <Border Classes="toolbarSeparator" />
@@ -215,7 +325,7 @@
                    AutomationProperties.LiveSetting="Polite" />
         <TextBlock Name="PreviewNote" Classes="body" TextWrapping="Wrap"
                    Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
-                   Text="{x:Static res:Strings.RedactPreviewNote}" />
+                   Text="{Binding RedactionPreviewNote}" />
       </StackPanel>
     </Border>
     </StackPanel>

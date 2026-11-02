@@ -130,6 +130,18 @@ public sealed class RedactionPlanTests
     }
 
     [Fact]
+    public void APatternKindThatIsNoValueOfTheEnumIsRefused()
+    {
+        // The kind is set by the search; a value from outside (a loaded plan, a caller) never gets into the plan.
+        var mark = new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, 0, [Box], "IBAN", false, Pattern: (RedactionPatternKind)99);
+        Assert.Equal(RedactionError.InvalidArea, ErrorOf(() => RedactionPlan.Empty.With(mark)));
+        foreach (var kind in Enum.GetValues<RedactionPatternKind>())
+        {
+            Assert.Equal(kind, RedactionPlan.Empty.With(mark with { Pattern = kind }).Marks.Single().Pattern);
+        }
+    }
+
+    [Fact]
     public void NegativeAndOutOfPageAreasAreAcceptedAndClippedLater()
     {
         var plan = RedactionPlan.Empty
@@ -239,6 +251,224 @@ public sealed class RedactionPlanTests
         Assert.Same(plan, plan.WithFill(RedactionFill.Black));
         Assert.Equal(RedactionFill.White, white.With(Area(3)).Fill);
         Assert.Equal(RedactionFill.White, white.Without([white.Marks[0].Id]).Fill);
+    }
+
+    [Fact]
+    public void FillIsRgbWithBlackAndWhiteAsDefaults()
+    {
+        Assert.Equal(new RedactionFill(0, 0, 0), RedactionFill.Black);
+        Assert.Equal(new RedactionFill(255, 255, 255), RedactionFill.White);
+        Assert.Equal(RedactionFill.Black, RedactionPlan.Empty.Fill);
+
+        Assert.True(RedactionFill.TryParse("#1A2B3C", out var parsed));
+        Assert.Equal(new RedactionFill(26, 43, 60), parsed);
+        Assert.Equal("#1A2B3C", parsed.ToHex());
+        Assert.Equal("#000000", RedactionFill.Black.ToHex());
+        Assert.Equal("#FFFFFF", RedactionFill.White.ToHex());
+        Assert.True(RedactionFill.TryParse("#1a2b3c", out var lower));
+        Assert.Equal(parsed, lower);
+
+        foreach (var bad in new[] { "1A2B3C", "#12", "#GGGGGG", "", "#1A2B3C0", "#1A2B3", " #1A2B3C", "#+1A2B3" })
+        {
+            Assert.False(RedactionFill.TryParse(bad, out var none), bad);
+            Assert.Equal(default, none);
+        }
+
+        Assert.False(RedactionFill.TryParse(null, out _));
+    }
+
+    [Fact]
+    public void PlanWithOnlyRasterPagesIsNotEmpty()
+    {
+        var plan = RedactionPlan.Empty.WithRasterPage(3, true);
+
+        Assert.False(plan.IsEmpty);
+        Assert.Empty(plan.Pages);
+        Assert.Empty(plan.Marks);
+        Assert.Contains(3, plan.RasterPages);
+        Assert.True(RedactionPlan.Empty.IsEmpty);
+        Assert.Empty(RedactionPlan.Empty.RasterPages);
+
+        var off = plan.WithRasterPage(3, false);
+        Assert.True(off.IsEmpty);
+        Assert.Empty(off.RasterPages);
+        Assert.Same(off, off.WithRasterPage(3, false));
+        Assert.Same(plan, plan.WithRasterPage(3, true));
+    }
+
+    [Fact]
+    public void RasterChoiceSurvivesEveryOtherOperation()
+    {
+        var mark = Area(1);
+        var plan = RedactionPlan.Empty
+            .WithRasterPage(5, true)
+            .WithRasterDpi(150)
+            .WithFill(new RedactionFill(1, 2, 3))
+            .WithImageTreatment(RedactionImageTreatment.Blur)
+            .WithImageStrength(RedactionImageStrength.VeryCoarse)
+            .WithOverlayStyle(new RedactionOverlayStyle(Repeat: true));
+
+        foreach (var next in new[] { plan.With(mark), plan.WithRange([mark]), plan.With(mark).Replace(mark), plan.With(mark).Without([mark.Id]) })
+        {
+            Assert.Equal([5], next.RasterPages);
+            Assert.Equal(150, next.RasterDpi);
+            Assert.Equal(new RedactionFill(1, 2, 3), next.Fill);
+            Assert.Equal(RedactionImageTreatment.Blur, next.ImageTreatment);
+            Assert.Equal(RedactionImageStrength.VeryCoarse, next.ImageStrength);
+            Assert.True(next.Overlay.Repeat);
+        }
+
+        Assert.Equal([5], plan.WithFill(RedactionFill.White).RasterPages);
+        Assert.Equal(RedactionImageTreatment.Solid, RedactionPlan.Empty.ImageTreatment);
+        Assert.Equal(RedactionImageStrength.Coarse, RedactionPlan.Empty.ImageStrength);
+        Assert.Equal(new RedactionOverlayStyle(), RedactionPlan.Empty.Overlay);
+    }
+
+    [Fact]
+    public void RasterDpiIsLimited()
+    {
+        Assert.Equal(RedactionLimits.DefaultRasterDpi, RedactionPlan.Empty.RasterDpi);
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => RedactionPlan.Empty.WithRasterDpi(71)));
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => RedactionPlan.Empty.WithRasterDpi(301)));
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => RedactionPlan.Empty.WithRasterDpi(-1)));
+        foreach (var dpi in new[] { 72, 200, 300 })
+        {
+            Assert.Equal(dpi, RedactionPlan.Empty.WithRasterDpi(dpi).RasterDpi);
+        }
+    }
+
+    [Fact]
+    public void RasterPagesAreLimited()
+    {
+        var plan = RedactionPlan.Empty;
+        for (var page = 0; page < RedactionLimits.MaxRasterPages; page++)
+        {
+            plan = plan.WithRasterPage(page, true);
+        }
+
+        Assert.Equal(RedactionLimits.MaxRasterPages, plan.RasterPages.Count);
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => plan.WithRasterPage(RedactionLimits.MaxRasterPages, true)));
+        Assert.Equal(RedactionLimits.MaxRasterPages, plan.RasterPages.Count);
+        Assert.Same(plan, plan.WithRasterPage(0, true));
+        Assert.Equal(RedactionError.InvalidArea, ErrorOf(() => RedactionPlan.Empty.WithRasterPage(-1, true)));
+    }
+
+    [Fact]
+    public void OverlayTextIsCheckedWhenTheMarkEnters()
+    {
+        var plan = RedactionPlan.Empty.With(Area());
+
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => plan.With(Area() with { OverlayText = new string('a', RedactionLimits.MaxOverlayTextLength + 1) })));
+        Assert.Equal(RedactionLimits.MaxOverlayTextLength, plan.With(Area() with { OverlayText = new string('a', RedactionLimits.MaxOverlayTextLength) }).Marks[1].OverlayText!.Length);
+
+        // Only white space means no text.
+        Assert.Null(plan.With(Area() with { OverlayText = "  \t " }).Marks[1].OverlayText);
+        Assert.Null(plan.With(Area() with { OverlayText = string.Empty }).Marks[1].OverlayText);
+        Assert.Equal("Name € ä", plan.With(Area() with { OverlayText = "Name € ä" }).Marks[1].OverlayText);
+
+        // Anything the text box cannot show is refused as a whole, never changed; the plan stays as it was.
+        foreach (var bad in new[] { "ok ☃", "one\ntwo", "😀", "tab\there", "­" })
+        {
+            Assert.Equal(RedactionError.OverlayInvalid, ErrorOf(() => plan.With(Area() with { OverlayText = bad })));
+            Assert.Equal(RedactionError.OverlayInvalid, ErrorOf(() => plan.WithRange([Area() with { OverlayText = bad }])));
+            Assert.Equal(RedactionError.OverlayInvalid, ErrorOf(() => plan.Replace(plan.Marks[0] with { OverlayText = bad })));
+        }
+
+        Assert.Single(plan.Marks);
+        Assert.Null(plan.Marks[0].OverlayText);
+        Assert.Null(plan.Marks[0].Pattern);
+    }
+
+    [Fact]
+    public void WithOverlayTextSetsTheTextOfSeveralMarksInOneStep()
+    {
+        var first = Area();
+        var second = Area(1);
+        var third = Area(2) with { OverlayText = "keep" };
+        var plan = RedactionPlan.Empty.WithRange([first, second, third]);
+
+        var changed = plan.WithOverlayText(new HashSet<Guid> { first.Id, third.Id, Guid.NewGuid() }, "Name € ä");
+
+        Assert.Equal(["Name € ä", null, "Name € ä"], changed.Marks.Select(static m => m.OverlayText));
+        Assert.Equal(plan.Marks.Select(static m => m.Id), changed.Marks.Select(static m => m.Id));
+        Assert.Equal("keep", plan.Marks[2].OverlayText);
+
+        // White space alone, or null, clears; a text that is there already, or no mark, is no change.
+        Assert.Equal([null, null, null], changed.WithOverlayText(new HashSet<Guid> { first.Id, third.Id }, "  ").Marks.Select(static m => m.OverlayText));
+        Assert.Same(changed, changed.WithOverlayText(new HashSet<Guid> { first.Id, third.Id }, "Name € ä"));
+        Assert.Same(plan, plan.WithOverlayText(new HashSet<Guid>(), "x"));
+        Assert.Same(plan, plan.WithOverlayText(new HashSet<Guid> { second.Id }, null));
+
+        // A text the font cannot draw, or a long one, is refused as a whole and the plan stays as it was.
+        Assert.Equal(RedactionError.OverlayInvalid, ErrorOf(() => plan.WithOverlayText(new HashSet<Guid> { first.Id }, "ok ☃")));
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => plan.WithOverlayText(new HashSet<Guid> { first.Id }, new string('a', RedactionLimits.MaxOverlayTextLength + 1))));
+        Assert.Null(plan.Marks[0].OverlayText);
+    }
+
+    [Fact]
+    public void UnchangedStyleReturnsTheSamePlan()
+    {
+        var plan = RedactionPlan.Empty.With(Area());
+
+        Assert.Same(plan, plan.WithImageTreatment(RedactionImageTreatment.Solid));
+        Assert.Same(plan, plan.WithImageStrength(RedactionImageStrength.Coarse));
+        Assert.Same(plan, plan.WithOverlayStyle(new RedactionOverlayStyle()));
+        Assert.Same(plan, plan.WithRasterDpi(RedactionLimits.DefaultRasterDpi));
+        Assert.Same(plan, plan.WithFill(RedactionFill.Black));
+
+        Assert.Equal(RedactionImageTreatment.Pixelate, plan.WithImageTreatment(RedactionImageTreatment.Pixelate).ImageTreatment);
+        Assert.Equal(RedactionImageStrength.VeryCoarse, plan.WithImageStrength(RedactionImageStrength.VeryCoarse).ImageStrength);
+        Assert.NotSame(plan, plan.WithOverlayStyle(new RedactionOverlayStyle(AutoSize: false)));
+        Assert.Equal(RedactionImageTreatment.Solid, plan.ImageTreatment);
+    }
+
+    [Fact]
+    public void MarkKeepsAPatternKindAndOverlayText()
+    {
+        var mark = new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, 0, [Box], "DE89370400440532013000", true, "IBAN", RedactionPatternKind.Iban);
+        var plan = RedactionPlan.Empty.With(mark);
+
+        Assert.Equal(RedactionPatternKind.Iban, plan.Marks[0].Pattern);
+        Assert.Equal("IBAN", plan.Marks[0].OverlayText);
+    }
+
+    [Fact]
+    public void HistoryUndoesAndRedoesTheRasterChoice()
+    {
+        var history = new RedactionHistory(RedactionPlan.Empty);
+        history.Do(history.Current.WithRasterPage(2, true));
+        history.Do(history.Current.WithRasterDpi(300));
+
+        Assert.False(history.Current.IsEmpty);
+        Assert.Equal(300, history.Current.RasterDpi);
+
+        history.Undo();
+        Assert.Equal(RedactionLimits.DefaultRasterDpi, history.Current.RasterDpi);
+        Assert.Equal([2], history.Current.RasterPages);
+
+        history.Undo();
+        Assert.True(history.Current.IsEmpty);
+        Assert.True(history.CanRedo);
+
+        history.Redo();
+        history.Redo();
+        Assert.Equal(300, history.Current.RasterDpi);
+        Assert.Equal([2], history.Current.RasterPages);
+    }
+
+    [Fact]
+    public void PinnedLimits()
+    {
+        Assert.Equal(32_000_000, RedactionLimits.MaxRasterPixels);
+        Assert.Equal(72, RedactionLimits.MinRasterDpi);
+        Assert.Equal(300, RedactionLimits.MaxRasterDpi);
+        Assert.Equal(200, RedactionLimits.DefaultRasterDpi);
+        Assert.Equal(1_000, RedactionLimits.MaxRasterPages);
+        Assert.Equal(200, RedactionLimits.MaxOverlayTextLength);
+        Assert.Equal(6.0, RedactionLimits.MinOverlayFontSize);
+        Assert.Equal(8, RedactionLimits.MinBlockPixels);
+        Assert.Equal(6, RedactionLimits.CoarseBlocksPerAxis);
+        Assert.Equal(3, RedactionLimits.VeryCoarseBlocksPerAxis);
     }
 
     [Fact]
@@ -369,5 +599,13 @@ public sealed class RedactionPlanTests
         public IEnumerator<PageRect> GetEnumerator() => throw new InvalidOperationException("The list must not be enumerated.");
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    [Fact]
+    public void ImageTreatmentAndStrengthRefuseUndefinedValues()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionPlan.Empty.WithImageTreatment((RedactionImageTreatment)7));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionPlan.Empty.WithImageStrength((RedactionImageStrength)(-1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionPlan.Empty.WithImageStrength((RedactionImageStrength)2));
     }
 }

@@ -115,7 +115,7 @@ public sealed class TextBoxSpecTests
     {
         // Every supported character must have its own glyph in the shipped font: a missing one would make PDFium fall back to
         // a system font, which differs between machines.
-        var covered = CmapOf(Path.Combine(TestData.Root, "src", "Pagewing.App", "Assets", "Fonts", "Geist-Regular.ttf"));
+        var covered = CmapOf(TestData.GeistRegular);
         var wanted = new HashSet<int>();
         for (var c = 0x20; c <= 0x17F; c++)
         {

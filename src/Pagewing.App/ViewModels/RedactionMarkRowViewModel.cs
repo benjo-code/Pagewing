@@ -14,14 +14,21 @@ public sealed class RedactionMarkRowViewModel : ViewModelBase
 
     private bool _isSelected;
 
-    private RedactionMarkRowViewModel(int page, RedactionMark? mark)
+    private RedactionMarkRowViewModel(int page, RedactionMark? mark, int rasterDpi = 0)
     {
         Page = page;
         Mark = mark;
+        RasterDpi = rasterDpi;
     }
 
     /// <summary>Gets whether this row is the header of a page (it is no mark: it cannot be selected, deleted or jumped to).</summary>
-    public bool IsHeader => Mark is null;
+    public bool IsHeader => Mark is null && RasterDpi == 0;
+
+    /// <summary>Gets the resolution of the row "As image" of a page that becomes an image, or 0 for any other row. The row is no mark; it shows the page.</summary>
+    public int RasterDpi { get; }
+
+    /// <summary>Gets whether this row says that its page becomes an image.</summary>
+    public bool IsRaster => RasterDpi > 0;
 
     /// <summary>Gets the mark, or <see langword="null"/> for the header of a page.</summary>
     public RedactionMark? Mark { get; }
@@ -35,12 +42,13 @@ public sealed class RedactionMarkRowViewModel : ViewModelBase
     /// <summary>Gets the 1-based page as the page mark shows it.</summary>
     public string PageText => (Page + 1).ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Gets the kind of the mark: "Rectangle", "Selected text" or "Search hit".</summary>
-    public string KindText => Mark?.Kind switch
+    /// <summary>Gets the kind of the mark: "Rectangle", "Selected text", "Search hit", or for a hit of a pattern search "Pattern: IBAN".</summary>
+    public string KindText => IsRaster ? Strings.RedactRasterRowKind(RasterDpi) : Mark switch
     {
-        RedactionKind.Text => Strings.RedactKindText,
-        RedactionKind.Hit => Strings.RedactKindHit,
-        RedactionKind.Area => Strings.RedactKindArea,
+        { Pattern: { } pattern } => Strings.RedactKindPattern(RedactionPatternText.NameOf(pattern)),
+        { Kind: RedactionKind.Text } => Strings.RedactKindText,
+        { Kind: RedactionKind.Hit } => Strings.RedactKindHit,
+        { Kind: RedactionKind.Area } => Strings.RedactKindArea,
         _ => string.Empty,
     };
 
@@ -95,6 +103,11 @@ public sealed class RedactionMarkRowViewModel : ViewModelBase
                 return HeaderText;
             }
 
+            if (IsRaster)
+            {
+                return Strings.RedactRasterRowName(Page + 1, RasterDpi);
+            }
+
             var name = Strings.RedactMarkRowNameFor(KindText, PageText);
             if (HasTerm)
             {
@@ -108,4 +121,6 @@ public sealed class RedactionMarkRowViewModel : ViewModelBase
     internal static RedactionMarkRowViewModel Header(int page) => new(page, null);
 
     internal static RedactionMarkRowViewModel Of(RedactionMark mark) => new(mark.Page, mark);
+
+    internal static RedactionMarkRowViewModel Raster(int page, int dpi) => new(page, null, dpi);
 }

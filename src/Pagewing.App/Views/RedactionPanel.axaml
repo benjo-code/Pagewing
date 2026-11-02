@@ -79,7 +79,21 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Margin="14,0,14,6" Spacing="8">
+      <!-- What the search looks for (milestone 14.1): a word, or numbers of a kind the scanners know. Two radio buttons: Tab reaches them, Space chooses, Tab never stays. -->
+      <WrapPanel Name="ModeSwitch" Orientation="Horizontal"
+                 AutomationProperties.Name="{x:Static res:Strings.RedactModeGroupName}"
+                 AutomationProperties.AccessibilityView="Content">
+        <RadioButton Name="ModeWordButton" GroupName="PanelRedactMode" Margin="0,0,16,0"
+                     IsChecked="{Binding IsWordMode, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.RedactModeWord}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactModeWord}" />
+        <RadioButton Name="ModePatternButton" GroupName="PanelRedactMode"
+                     IsChecked="{Binding IsPatternMode, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.RedactModePattern}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactModePattern}" />
+      </WrapPanel>
       <TextBox Name="QueryField"
+               IsVisible="{Binding IsWordMode}"
                Text="{Binding Query}"
                MaxLength="1000"
                PlaceholderText="{x:Static res:Strings.RedactQueryPlaceholder}"
@@ -94,10 +108,29 @@
           <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
         </TextBox.KeyBindings>
       </TextBox>
-      <WrapPanel Orientation="Horizontal">
+      <WrapPanel Name="WordOptions" Orientation="Horizontal" IsVisible="{Binding IsWordMode}">
         <CheckBox Name="MatchCaseBox" Margin="0,0,16,0" IsChecked="{Binding MatchCase}" Content="{x:Static res:Strings.RedactMatchCase}" />
         <CheckBox Name="WholeWordBox" IsChecked="{Binding WholeWord}" Content="{x:Static res:Strings.RedactWholeWord}" />
       </WrapPanel>
+      <!-- The kinds of numbers to look for, each with its counter once a search ran. -->
+      <ItemsControl Name="PatternKindList" IsVisible="{Binding IsPatternMode}"
+                    ItemsSource="{Binding PatternKinds}"
+                    AutomationProperties.Name="{x:Static res:Strings.RedactPatternKindsName}"
+                    AutomationProperties.AccessibilityView="Content">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:RedactionPatternKindViewModel">
+            <CheckBox Name="PatternKindBox" Margin="0,0,16,0"
+                      IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                      Content="{Binding Label}"
+                      AutomationProperties.Name="{Binding Label}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
       <StackPanel Orientation="Horizontal" Spacing="8">
         <Button Name="RunSearchButton" Classes="primary"
                 Command="{Binding SearchCommand}"
@@ -147,12 +180,13 @@
                    AutomationProperties.LiveSetting="Polite" />
         <WrapPanel Orientation="Horizontal">
           <Button Name="MarkAllButton" Classes="primary" Margin="0,0,8,4"
+                  IsVisible="{Binding IsWordMode}"
                   Command="{Binding MarkAllCommand}"
                   ToolTip.Tip="{x:Static res:Strings.RedactMarkAllTip}"
                   AutomationProperties.Name="{x:Static res:Strings.RedactMarkAll}">
             <TextBlock Text="{x:Static res:Strings.RedactMarkAll}" />
           </Button>
-          <Button Name="MarkCheckedButton" Margin="0,0,8,4"
+          <Button Name="MarkCheckedButton" Margin="0,0,8,4" Classes.primary="{Binding IsPatternMode}"
                   Command="{Binding MarkCheckedCommand}"
                   AutomationProperties.Name="{x:Static res:Strings.RedactMarkChecked}">
             <TextBlock Text="{x:Static res:Strings.RedactMarkChecked}" />
@@ -168,6 +202,15 @@
             <TextBlock Text="{x:Static res:Strings.RedactUncheckAll}" />
           </Button>
         </WrapPanel>
+        <!-- Numbers whose checksum does not match: listed apart and not checked; one click adds them all. -->
+        <StackPanel Name="CheckFailedRow" IsVisible="{Binding HasChecksumFailedHits}" Spacing="2">
+          <Button Name="CheckFailedButton" HorizontalAlignment="Left"
+                  Command="{Binding CheckFailedCommand}"
+                  AutomationProperties.Name="{Binding CheckFailedLabel}">
+            <TextBlock Text="{Binding CheckFailedLabel}" TextWrapping="Wrap" />
+          </Button>
+          <TextBlock Name="CheckFailedHint" Classes="caption note" Text="{x:Static res:Strings.RedactAddFailedHint}" />
+        </StackPanel>
         <ctl:ActionToggleButton Name="NotSearchedButton" HorizontalAlignment="Left"
                                 IsChecked="{Binding ShowNotSearched, Mode=OneWay}"
                                 Command="{Binding ToggleNotSearchedCommand}"
@@ -204,6 +247,11 @@
         </ListBox.ItemsPanel>
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="vm:RedactionHitViewModel">
+            <StackPanel>
+            <!-- The heading of a group of a pattern search (checksum matches, format matches, checksum does not match) stands above its first row, in words. -->
+            <TextBlock Name="HitGroupHeading" Classes="strong" Margin="8,8,8,2"
+                       IsVisible="{Binding HasGroupHeading}"
+                       Text="{Binding GroupHeading}" />
             <Border Classes="row" BorderThickness="2,0,0,0" CornerRadius="{DynamicResource Pw.Radius.Control}" Padding="6,5,8,5">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <CheckBox Name="HitCheck" Grid.Column="0" MinWidth="0" Margin="0,0,4,0" VerticalAlignment="Top"
@@ -215,6 +263,9 @@
                            MinWidth="24" Margin="0,5,8,0" VerticalAlignment="Top" TextAlignment="Right" />
                 <StackPanel Grid.Column="2" Spacing="2">
                   <WrapPanel Orientation="Horizontal">
+                    <TextBlock Name="HitPattern" Classes="caption strong" Margin="0,0,8,0"
+                               IsVisible="{Binding HasPattern}"
+                               Text="{Binding PatternLabel}" />
                     <TextBlock Classes="caption rowKind" Margin="0,0,8,0" Text="{Binding SourceLabel}" />
                     <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,8,0" IsVisible="{Binding IsInvisible}">
                       <ctl:StrokeIcon Width="14" Height="14" VerticalAlignment="Center"
@@ -240,13 +291,15 @@
                 </StackPanel>
               </Grid>
             </Border>
+            </StackPanel>
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
      </StackPanel>
     </ScrollViewer>
 
-    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="14,8,6,4">
+    <StackPanel Grid.Row="2" Margin="14,8,6,4" Spacing="6">
+    <Grid ColumnDefinitions="*,Auto">
       <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <TextBlock Classes="strong" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactMarksHeader}" />
         <TextBlock Name="MarksCounter" Classes="caption note" VerticalAlignment="Center"
@@ -262,6 +315,143 @@
         <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Trash}" />
       </Button>
     </Grid>
+
+    <!-- Pages that become images (milestone 14.1): the page of the selected marks, else the page in view; the resolution once a page does. -->
+    <ctl:ActionToggleButton Name="RasterPageButton" HorizontalAlignment="Left"
+                            IsChecked="{Binding RasterTargetsAreImages, Mode=OneWay}"
+                            Command="{Binding ToggleRasterPageCommand}"
+                            ToolTip.Tip="{x:Static res:Strings.RedactRasterToggleTip}"
+                            AutomationProperties.Name="{x:Static res:Strings.RedactRasterButton}">
+      <TextBlock Text="{x:Static res:Strings.RedactRasterButton}" />
+    </ctl:ActionToggleButton>
+    <StackPanel Name="RasterDpiRow" IsVisible="{Binding HasRasterPages}" Spacing="2">
+      <TextBlock Classes="caption note" Text="{x:Static res:Strings.RedactRasterDpiLabel}" />
+      <WrapPanel Orientation="Horizontal">
+        <RadioButton Name="RasterDpi150" GroupName="PanelRasterDpi" Margin="0,0,12,0" IsChecked="{Binding IsRasterDpi150, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.RedactRasterDpi150}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactRasterDpi150}" />
+        <RadioButton Name="RasterDpi200" GroupName="PanelRasterDpi" Margin="0,0,12,0" IsChecked="{Binding IsRasterDpi200, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.RedactRasterDpi200}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactRasterDpi200}" />
+        <RadioButton Name="RasterDpi300" GroupName="PanelRasterDpi" IsChecked="{Binding IsRasterDpi300, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.RedactRasterDpi300}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactRasterDpi300}" />
+      </WrapPanel>
+    </StackPanel>
+
+    <!-- The text on the areas (milestone 14.1): the field, the saved snippets and the options of the plan, made only while a mark is
+         selected (the editor is null otherwise, so no control of it exists). The draft applies with Enter or on leaving the field. -->
+    <ContentControl Name="OverlayEditorHost" Content="{Binding OverlayEditor}" Focusable="False" IsTabStop="False">
+      <ContentControl.ContentTemplate>
+        <DataTemplate x:DataType="vm:RedactionOverlayEditorViewModel">
+          <StackPanel Name="OverlayEditor" Spacing="6" Margin="0,2,0,0" IsEnabled="{Binding CanEdit}"
+                      AutomationProperties.Name="{x:Static res:Strings.RedactOverlayHeading}"
+                      AutomationProperties.AccessibilityView="Content">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.RedactOverlayHeading}" />
+            <TextBox Name="OverlayTextBox"
+                     Text="{Binding Text}"
+                     MaxLength="{Binding MaxLength}"
+                     PlaceholderText="{Binding Placeholder}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactOverlayHeading}">
+              <!-- The window binds other keys first; the field claims Enter with a binding of its own. -->
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding CommitCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+            <Grid Name="OverlayInvalidRow" ColumnDefinitions="Auto,*" IsVisible="{Binding HasInvalid}">
+              <ctl:StrokeIcon Width="16" Height="16" Margin="0,1,8,0" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                              Data="{StaticResource Pw.Icon.AlertTriangle}" />
+              <TextBlock Name="OverlayInvalidNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                         Text="{Binding InvalidText}"
+                         AutomationProperties.LiveSetting="Polite" />
+            </Grid>
+            <Grid Name="OverlayWarningRow" ColumnDefinitions="Auto,*" IsVisible="{Binding HasWarning}">
+              <ctl:StrokeIcon Width="16" Height="16" Margin="0,1,8,0" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                              Data="{StaticResource Pw.Icon.AlertTriangle}" />
+              <TextBlock Name="OverlayWarningNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                         Text="{Binding Warning}"
+                         AutomationProperties.LiveSetting="Polite" />
+            </Grid>
+
+            <!-- The saved snippets: a button puts one on the selected areas, the small button next to it takes it out of the list. -->
+            <TextBlock Classes="caption note" Text="{x:Static res:Strings.RedactOverlaySnippets}" />
+            <ItemsControl Name="OverlaySnippets" ItemsSource="{Binding Snippets}"
+                          AutomationProperties.Name="{x:Static res:Strings.RedactOverlaySnippets}"
+                          AutomationProperties.AccessibilityView="Content">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RedactionSnippetViewModel">
+                  <StackPanel Orientation="Horizontal" Margin="0,0,8,4">
+                    <Button Name="SnippetUseButton" Command="{Binding UseCommand}"
+                            AutomationProperties.Name="{Binding UseName}">
+                      <TextBlock Text="{Binding Text}" />
+                    </Button>
+                    <Button Name="SnippetRemoveButton" Classes="icon" Width="28" Height="28" MinWidth="0" MinHeight="0"
+                            Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                            Command="{Binding RemoveCommand}"
+                            ToolTip.Tip="{Binding RemoveName}"
+                            AutomationProperties.Name="{Binding RemoveName}">
+                      <ctl:StrokeIcon Width="14" Height="14" Data="{StaticResource Pw.Icon.X}" />
+                    </Button>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Name="AddSnippetButton" HorizontalAlignment="Left"
+                    Command="{Binding AddCodeCommand}"
+                    AutomationProperties.Name="{x:Static res:Strings.RedactOverlayAddSnippet}">
+              <TextBlock Text="{x:Static res:Strings.RedactOverlayAddSnippet}" />
+            </Button>
+            <TextBlock Name="SnippetNote" Classes="caption note"
+                       IsVisible="{Binding HasCodeNote}"
+                       Text="{Binding CodeNote}" />
+
+            <!-- The options of the plan: they apply to the text of every mark. -->
+            <WrapPanel Orientation="Horizontal">
+              <CheckBox Name="OverlayRepeatBox" Margin="0,0,16,0" IsChecked="{Binding Repeat}"
+                        Content="{x:Static res:Strings.RedactOverlayRepeat}" />
+              <CheckBox Name="OverlayAutoSizeBox" IsChecked="{Binding AutoSize}"
+                        Content="{x:Static res:Strings.RedactOverlayAutoSize}" />
+            </WrapPanel>
+            <CheckBox Name="OverlayColorAutoBox" IsChecked="{Binding IsColorAuto}"
+                      Content="{x:Static res:Strings.RedactOverlayColorAuto}" />
+            <TextBox Name="OverlayColorBox"
+                     IsVisible="{Binding !IsColorAuto}"
+                     Text="{Binding ColorText}"
+                     MaxLength="{Binding ColorMaxLength}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactOverlayColorLabel}">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding CommitColorCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+            <TextBlock Name="OverlayColorError" Classes="caption" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                       IsVisible="{Binding HasColorError}"
+                       Text="{Binding ColorError}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <Grid Name="OverlayContrastRow" ColumnDefinitions="Auto,*" IsVisible="{Binding HasContrastWarning}">
+              <ctl:StrokeIcon Width="16" Height="16" Margin="0,1,8,0" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                              Data="{StaticResource Pw.Icon.AlertTriangle}" />
+              <TextBlock Name="OverlayContrastNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                         Text="{Binding ContrastWarning}"
+                         AutomationProperties.LiveSetting="Polite" />
+            </Grid>
+            <TextBlock Name="OverlayHint" Classes="caption note" Text="{x:Static res:Strings.RedactOverlayHint}" />
+          </StackPanel>
+        </DataTemplate>
+      </ContentControl.ContentTemplate>
+    </ContentControl>
+    </StackPanel>
 
     <Grid Grid.Row="3">
       <TextBlock Name="MarksEmpty" Classes="caption note" Margin="14,4,14,0" VerticalAlignment="Top"

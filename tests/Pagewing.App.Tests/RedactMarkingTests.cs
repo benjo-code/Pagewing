@@ -775,6 +775,86 @@ public sealed class RedactMarkingTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ToolbarOffersBlackWhiteAndFreeColorWithHexField()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        var toolbar = FindOrNull<RedactionToolbar>(window, "RedactionToolbar")!;
+        tab.AddAreaMark(0, new PageRect(10, 10, 60, 40));
+        Settle(window);
+        var black = Button<ToggleButton>(toolbar, "FillBlackButton");
+        var white = Button<ToggleButton>(toolbar, "FillWhiteButton");
+        var custom = Button<ToggleButton>(toolbar, "FillCustomButton");
+        var box = toolbar.FillHexBox;
+
+        // Black is the start: the free colour is not chosen, its swatch is hidden, and the field shows the colour as text.
+        Assert.True(black.IsChecked);
+        Assert.False(custom.IsChecked);
+        Assert.False(toolbar.FillSwatch.IsVisible);
+        Assert.IsType<Flyout>(custom.Flyout);
+        Assert.Equal("#000000", box.Text);
+        Assert.Equal(Strings.RedactFillCustom, AutomationProperties.GetName(custom));
+        Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(box)));
+
+        // A colour typed as #RRGGBB (either case) becomes the fill of the plan; the state is a frame and a swatch, not colour alone.
+        box.Text = "#336699";
+        Assert.True(toolbar.CommitFillText(showError: true));
+        Assert.Equal(new RedactionFill(0x33, 0x66, 0x99), tab.RedactionPlan!.Fill);
+        Assert.True(custom.IsChecked);
+        Assert.Contains("active", custom.Classes);
+        Assert.False(black.IsChecked);
+        Assert.False(white.IsChecked);
+        Assert.True(toolbar.FillSwatch.IsVisible);
+        Assert.False(toolbar.FillHexError.IsVisible);
+        box.Text = "#aabbcc";
+        Assert.True(toolbar.CommitFillText(showError: true));
+        Assert.Equal(new RedactionFill(0xAA, 0xBB, 0xCC), tab.RedactionFill);
+        Assert.Equal("#AABBCC", box.Text);
+
+        // Text that is no colour changes nothing: Enter tells why, leaving the field puts the colour of the plan back.
+        foreach (var bad in new[] { "#zz", "#FFF", "336699", "#1234567", string.Empty })
+        {
+            box.Text = bad;
+            Assert.False(toolbar.CommitFillText(showError: true), bad);
+            Assert.True(toolbar.FillHexError.IsVisible, bad);
+            Assert.Equal(new RedactionFill(0xAA, 0xBB, 0xCC), tab.RedactionFill);
+        }
+
+        box.Text = "#zz";
+        Assert.False(toolbar.CommitFillText(showError: false));
+        Assert.False(toolbar.FillHexError.IsVisible);
+        Assert.Equal("#AABBCC", box.Text);
+
+        // Five presets, each with a name (words and colour) and a mark when chosen.
+        Assert.Equal(5, toolbar.FillPresets.Children.Count);
+        for (var i = 0; i < 5; i++)
+        {
+            var preset = Assert.IsType<Button>(toolbar.FillPresets.Children[i]);
+            Assert.Equal($"FillPreset{i}", preset.Name);
+            Assert.Contains(RedactionFill.Presets[i].ToHex(), AutomationProperties.GetName(preset), StringComparison.Ordinal);
+            preset.Command!.Execute(preset.CommandParameter);
+            Assert.Equal(RedactionFill.Presets[i], tab.RedactionFill);
+            Assert.True(custom.IsChecked);
+            Assert.Equal(RedactionFill.Presets[i].ToHex(), box.Text);
+            Assert.Equal([preset], toolbar.FillPresets.Children.OfType<Button>().Where(b => b.Classes.Contains("active")).ToArray());
+        }
+
+        // Black and white stay one click away and un-choose the free colour.
+        white.Command!.Execute(white.CommandParameter);
+        Assert.True(white.IsChecked);
+        Assert.False(custom.IsChecked);
+        Assert.Equal("#FFFFFF", box.Text);
+        Assert.DoesNotContain(toolbar.FillPresets.Children.OfType<Button>(), b => b.Classes.Contains("active"));
+
+        // The names are in both languages.
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Farbe …", Strings.RedactFillCustom);
+        Assert.Equal("Graphit #333333", Strings.RedactFillPresetName(0, "#333333"));
+        Strings.Culture = new CultureInfo("en");
+    }
+
+    [AvaloniaFact]
     public async Task TheToolbarStaysUsableInANarrowWindow()
     {
         var (window, viewModel, view) = Show();
@@ -790,7 +870,7 @@ public sealed class RedactMarkingTests : IDisposable
         }
 
         // Everything that cannot lose its place stays in the row: the buttons, whatever else went.
-        foreach (var name in new[] { "AreaToolButton", "TextToolButton", "MarkSelectionButton", "FillBlackButton", "FillWhiteButton", "UndoButton", "RedoButton", "DeleteMarksButton", "DiscardButton", "DoneButton" })
+        foreach (var name in new[] { "AreaToolButton", "TextToolButton", "MarkSelectionButton", "FillBlackButton", "FillWhiteButton", "FillCustomButton", "UndoButton", "RedoButton", "DeleteMarksButton", "DiscardButton", "DoneButton" })
         {
             var button = Button<Control>(toolbar, name);
             Assert.True(button.IsVisible, name);
@@ -800,6 +880,17 @@ public sealed class RedactMarkingTests : IDisposable
         var content = toolbar.GetVisualDescendants().OfType<Grid>().First(grid => grid.Name == "ToolbarContent");
         var needed = Needs(content);
         Assert.True(needed <= content.Bounds.Width + 0.5, $"the toolbar needs {needed:F0} DIPs of {content.Bounds.Width:F0}");
+
+        // A free colour adds a swatch to its button; it goes with the label, and the row still fits.
+        tab.RedactionFill = new RedactionFill(0x33, 0x66, 0x99);
+        for (var i = 0; i < 4; i++)
+        {
+            Settle(window);
+        }
+
+        Assert.True(Button<ToggleButton>(toolbar, "FillCustomButton").IsChecked);
+        needed = Needs(content);
+        Assert.True(needed <= content.Bounds.Width + 0.5, $"with a free colour the toolbar needs {needed:F0} DIPs of {content.Bounds.Width:F0}");
     }
 
     [AvaloniaFact]
@@ -863,7 +954,8 @@ public sealed class RedactMarkingTests : IDisposable
         string[] keys =
         [
             "CommandRedactMarkSelection", "RedactToolbarName", "RedactToolArea", "RedactToolAreaTip", "RedactToolText", "RedactToolTextTip",
-            "RedactMarkSelection", "RedactFill", "RedactFillTip", "RedactFillBlack", "RedactFillWhite", "RedactDiscardButton", "RedactDone",
+            "RedactMarkSelection", "RedactFill", "RedactFillTip", "RedactFillBlack", "RedactFillWhite", "RedactFillCustom", "RedactFillCustomTip", "RedactFillHexLabel", "RedactFillHexError",
+            "RedactFillPreset0", "RedactFillPreset1", "RedactFillPreset2", "RedactFillPreset3", "RedactFillPreset4", "RedactDiscardButton", "RedactDone",
             "RedactDoneTooltip", "RedactCountNone", "RedactCountOneMark", "RedactCountOnePage", "RedactCountPages", "RedactPlanHint",
             "RedactMarkKindName", "RedactMarkNameOf", "RedactSelectionNotMarkable", "RedactCheckFailed",
         ];
@@ -1261,6 +1353,116 @@ public sealed class RedactMarkingTests : IDisposable
             _timestamp += 16;
             input((RawInputEventArgs)constructor.Invoke([_device, _timestamp, root, type, point, modifiers]));
             Settle(window);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task ToolbarGroupSwitchesTreatmentAndStrength()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        var toolbar = FindOrNull<RedactionToolbar>(window, "RedactionToolbar")!;
+        tab.AddAreaMark(0, new PageRect(10, 10, 60, 40));
+        Settle(window);
+        var group = Button<ToggleButton>(toolbar, "ImageAreasButton");
+        var solid = toolbar.ImageSolidButton;
+        var pixelate = toolbar.ImagePixelateButton;
+        var blur = toolbar.ImageBlurButton;
+        var coarse = toolbar.ImageCoarseButton;
+        var veryCoarse = toolbar.ImageVeryCoarseButton;
+
+        // Solid is the start; the group has a name and a flyout, and its value is told in words next to the name.
+        Assert.IsType<Flyout>(group.Flyout);
+        Assert.Equal(Strings.RedactImageAreas, AutomationProperties.GetName(group));
+        Assert.Equal(Strings.RedactImageSolid, toolbar.ImageAreasValue.Text);
+        Assert.False(group.IsChecked);
+        Assert.Equal(RedactionImageTreatment.Solid, tab.RedactionPlan!.ImageTreatment);
+        Assert.True(solid.IsChecked);
+        Assert.False(pixelate.IsChecked);
+        Assert.False(blur.IsChecked);
+        Assert.True(coarse.IsChecked);
+
+        // The strength means nothing with the solid fill: its buttons wait.
+        Assert.False(coarse.Command!.CanExecute(coarse.CommandParameter));
+        Assert.False(veryCoarse.Command!.CanExecute(veryCoarse.CommandParameter));
+        var version = tab.RedactionHistory!.Version;
+
+        // Pixelate is a step of the history; the state is a frame, a check and a word, not colour alone.
+        pixelate.Command!.Execute(pixelate.CommandParameter);
+        Assert.Equal(RedactionImageTreatment.Pixelate, tab.RedactionPlan.ImageTreatment);
+        Assert.Equal(version + 1, tab.RedactionHistory.Version);
+        Assert.True(pixelate.IsChecked);
+        Assert.Contains("active", pixelate.Classes);
+        Assert.False(solid.IsChecked);
+        Assert.True(group.IsChecked);
+        Assert.Contains("active", group.Classes);
+        Assert.Equal(Strings.RedactImagePixelate, toolbar.ImageAreasValue.Text);
+        Assert.True(veryCoarse.Command.CanExecute(veryCoarse.CommandParameter));
+
+        // The strength is a step too, and Coarse and Very coarse exclude each other.
+        veryCoarse.Command.Execute(veryCoarse.CommandParameter);
+        Assert.Equal(RedactionImageStrength.VeryCoarse, tab.RedactionPlan.ImageStrength);
+        Assert.Equal(version + 2, tab.RedactionHistory.Version);
+        Assert.True(veryCoarse.IsChecked);
+        Assert.False(coarse.IsChecked);
+
+        // The same choice again is no step.
+        pixelate.Command.Execute(pixelate.CommandParameter);
+        veryCoarse.Command.Execute(veryCoarse.CommandParameter);
+        Assert.Equal(version + 2, tab.RedactionHistory.Version);
+
+        blur.Command!.Execute(blur.CommandParameter);
+        Assert.Equal(RedactionImageTreatment.Blur, tab.RedactionPlan.ImageTreatment);
+        Assert.Equal(Strings.RedactImageBlur, toolbar.ImageAreasValue.Text);
+        Assert.True(blur.IsChecked);
+        Assert.False(pixelate.IsChecked);
+
+        // Undo and redo walk through the choices.
+        tab.UndoRedactionCommand.Execute(null);
+        Assert.Equal(RedactionImageTreatment.Pixelate, tab.RedactionPlan.ImageTreatment);
+        Assert.True(pixelate.IsChecked);
+        tab.RedoRedactionCommand.Execute(null);
+        Assert.Equal(RedactionImageTreatment.Blur, tab.RedactionPlan.ImageTreatment);
+
+        // A value that is none of the treatments changes nothing (and throws nothing).
+        var steps = tab.RedactionHistory.Version;
+        tab.RedactionImageTreatment = (RedactionImageTreatment)9;
+        tab.RedactionImageStrength = (RedactionImageStrength)(-3);
+        Assert.Equal(steps, tab.RedactionHistory.Version);
+        Assert.Equal(RedactionImageTreatment.Blur, tab.RedactionImageTreatment);
+
+        // Back to solid: the group is not "on" any more and the strength waits again.
+        solid.Command!.Execute(solid.CommandParameter);
+        Assert.False(group.IsChecked);
+        Assert.False(veryCoarse.Command.CanExecute(veryCoarse.CommandParameter));
+        Assert.Equal(RedactionImageTreatment.Solid, tab.RedactionPlan.ImageTreatment);
+
+        // The flyout holds the buttons and the sentence about text in images, which stays on screen while it is open.
+        group.Flyout!.ShowAt(group);
+        Settle(window);
+        Assert.True(toolbar.ImagePixelateButton.IsEffectivelyVisible);
+        Assert.Equal(Strings.RedactImageCaution, toolbar.ImageCautionText.Text);
+        Assert.True(toolbar.ImageCautionText.IsEffectivelyVisible);
+        group.Flyout.Hide();
+
+        // Every name is there in both languages, and the buttons carry them for screen readers.
+        foreach (var language in new[] { "en", "de" })
+        {
+            Strings.Culture = new CultureInfo(language);
+            Assert.Equal(Strings.RedactImagePixelate, language == "en" ? "Pixelate" : "Verpixeln");
+            Assert.Equal(Strings.RedactImageBlur, language == "en" ? "Blur" : "Weichzeichnen");
+            Assert.Equal(Strings.RedactImageSolid, language == "en" ? "Solid" : "Volltonfläche");
+            Assert.Equal(Strings.RedactImageCoarse, language == "en" ? "Coarse" : "Grob");
+            Assert.Equal(Strings.RedactImageVeryCoarse, language == "en" ? "Very coarse" : "Sehr grob");
+            Assert.Equal(Strings.RedactImageAreas, language == "en" ? "Image areas" : "Bildflächen");
+        }
+
+        Strings.Culture = new CultureInfo("en");
+        foreach (var button in new[] { solid, pixelate, blur, coarse, veryCoarse })
+        {
+            Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(button)));
+            Assert.NotNull(ToolTip.GetTip(button));
         }
     }
 }

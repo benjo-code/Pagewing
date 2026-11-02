@@ -1,6 +1,6 @@
 # Geist und Geist Mono – Drittlizenz
 
-Pagewing bettet die Schriften **Geist** (Schnitte 400, 500, 600) und **Geist Mono** (400, 500) als Teilmenge ein (`src/Pagewing.App/Assets/Fonts/`). Entscheidung und Vorbehalt (Startkosten) stehen in `Docs/DECISIONS.md`, Eintrag „Schrift: Geist und Geist Mono, als Teilmenge eingebettet“.
+Pagewing bettet die Schriften **Geist** (Schnitte 400, 500, 600) und **Geist Mono** (400, 500) als Teilmenge ein (`src/Pagewing.App/Assets/Fonts/`; Geist Regular liegt einmal in `src/Pagewing.Core/Assets/Fonts/`, ist dort in `Pagewing.Core` eingebettet und wird von der App von dort verlinkt). Entscheidung und Vorbehalt (Startkosten) stehen in `Docs/DECISIONS.md`, Eintrag „Schrift: Geist und Geist Mono, als Teilmenge eingebettet“.
 
 ## Quelle und Lizenz
 

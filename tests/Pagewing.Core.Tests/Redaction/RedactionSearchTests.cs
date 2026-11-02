@@ -418,11 +418,22 @@ public sealed class RedactionSearchTests
         Assert.True(report.IsComplete);
         Assert.False(report.LimitReached);
         Assert.Empty(report.IncompletePages);
-        Assert.Equal(7, RedactionSearch.NotSearched.Count);
+        Assert.Equal(8, RedactionSearch.NotSearched.Count);
         Assert.All(RedactionSearch.NotSearched, static line => Assert.EndsWith(".", line, StringComparison.Ordinal));
         foreach (var key in new[] { "/IRT", "popup", "/T)", "/Subj", "/TU", "field", "/RV", "/DV", "/AP", "render mode 3", "/AcroForm" })
         {
             Assert.Contains(RedactionSearch.NotSearched, line => line.Contains(key, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void ThePatternLineOfWhatWasNotSearchedNamesEveryKnownGap()
+    {
+        // A run of the patterns must not read as complete: the line names what the built-in rules do not know.
+        var line = Assert.Single(RedactionSearch.NotSearched, static l => l.StartsWith("Patterns", StringComparison.Ordinal));
+        foreach (var gap in new[] { "line break", "page boundary", "numbers inside images", "IBANs of countries outside", "do not start with +, 0 or (", "more than 64 groups", "unusual characters", "other layouts" })
+        {
+            Assert.Contains(gap, line, StringComparison.Ordinal);
         }
     }
 
