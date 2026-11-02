@@ -1073,12 +1073,17 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>Applies the draft in the field of the text on the areas, if there is one (before applying, saving, printing or closing).</summary>
+    internal void FlushOverlayDraft() => _overlayEditor?.Commit();
+
     private void DropOverlayEditor()
     {
         var editor = _overlayEditor;
         _overlayEditor = null;
         if (editor is not null)
         {
+            // A draft that was typed for its marks goes into the plan before the editor lets go of them (Esc, the last mark deselected).
+            editor.LeaveDraft();
             editor.Dispose();
             OnPropertyChanged(nameof(OverlayEditor));
         }

@@ -344,7 +344,7 @@
     <ContentControl Name="OverlayEditorHost" Content="{Binding OverlayEditor}" Focusable="False" IsTabStop="False">
       <ContentControl.ContentTemplate>
         <DataTemplate x:DataType="vm:RedactionOverlayEditorViewModel">
-          <StackPanel Name="OverlayEditor" Spacing="6" Margin="0,2,0,0"
+          <StackPanel Name="OverlayEditor" Spacing="6" Margin="0,2,0,0" IsEnabled="{Binding CanEdit}"
                       AutomationProperties.Name="{x:Static res:Strings.RedactOverlayHeading}"
                       AutomationProperties.AccessibilityView="Content">
             <TextBlock Classes="strong" Text="{x:Static res:Strings.RedactOverlayHeading}" />

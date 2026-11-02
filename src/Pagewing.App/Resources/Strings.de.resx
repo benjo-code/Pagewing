@@ -3130,7 +3130,7 @@
     <value>Verschiedene Texte auf den gewählten Flächen</value>
   </data>
   <data name="RedactOverlayHint" xml:space="preserve">
-    <value>Mit Enter übernehmen. Der Text wird als Formen gezeichnet: Er lässt sich nicht auswählen, und die Prüfung der geschriebenen Datei liest ihn nicht zurück.</value>
+    <value>Mit Enter übernehmen. Der Text wird als Formen gezeichnet: Er lässt sich nicht auswählen, und die Prüfung der geschriebenen Datei liest ihn nicht zurück. Kurze Flächen, etwa Treffer in normalem Fließtext, sind oft zu niedrig für den Text und bekommen dann keinen (die Karte vor dem Anwenden nennt die Zahl). Die Vorschau zeigt nur die Füllung, nicht den Text.</value>
   </data>
   <data name="RedactOverlayInvalidAtFormat" xml:space="preserve">
     <value>Der Text hat ein Zeichen, das sich nicht zeichnen lässt (Stelle {0}). Er wird nicht übernommen; bitte ändern.</value>
@@ -3179,5 +3179,8 @@
   </data>
   <data name="RedactOverlayContrastLowFormat" xml:space="preserve">
     <value>Der Kontrast zur Füllung ist {0}:1, unter 4,5:1. Der Text ist womöglich schwer lesbar.</value>
+  </data>
+  <data name="RedactOverlayDraftDropped" xml:space="preserve">
+    <value>Der eingegebene Text wurde nicht übernommen: Er hat ein Zeichen, das sich nicht zeichnen lässt.</value>
   </data>
 </root>

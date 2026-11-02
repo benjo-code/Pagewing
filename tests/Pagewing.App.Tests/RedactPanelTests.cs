@@ -1340,6 +1340,190 @@ public sealed class RedactPanelTests : IDisposable
         Assert.Equal("ok text", tab.RedactionPlan.Marks[0].OverlayText);
     }
 
+    [AvaloniaTheory]
+    [InlineData("select")]
+    [InlineData("clear")]
+    [InlineData("escape")]
+    public async Task DraftIsAppliedToItsOwnMarksWhenTheSelectionLeaves(string how)
+    {
+        var (window, tab, panel, first, second) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        var history = tab.RedactionHistory!;
+        var version = history.Version;
+
+        // Typed, not applied: no Enter, no change of focus. Then the selection moves on by another way.
+        OverlayField(panel).Text = "draft";
+        Assert.Equal(version, history.Version);
+        LeaveSelection(tab, how, second);
+        Settle(window);
+
+        // The text is on the marks it was typed for, as one step, and on no other mark.
+        Assert.Equal("draft", tab.RedactionPlan!.Marks.Single(m => m.Id == first).OverlayText);
+        Assert.Null(tab.RedactionPlan.Marks.Single(m => m.Id == second).OverlayText);
+        Assert.Equal(version + 1, history.Version);
+        Assert.True(tab.IsRedacting);
+        if (how == "select")
+        {
+            Assert.True(string.IsNullOrEmpty(OverlayField(panel).Text));
+            Assert.False(tab.RedactionPanel.OverlayEditor!.IsDirty);
+        }
+        else
+        {
+            Assert.Null(tab.RedactionPanel.OverlayEditor);
+        }
+
+        // One undo takes it back.
+        tab.UndoCommand.Execute(null);
+        Assert.Null(tab.RedactionPlan.Marks.Single(m => m.Id == first).OverlayText);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("select")]
+    [InlineData("clear")]
+    [InlineData("escape")]
+    public async Task InvalidDraftIsDroppedWithANoticeWhenTheSelectionLeaves(string how)
+    {
+        var (window, tab, panel, first, second) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        var history = tab.RedactionHistory!;
+        var version = history.Version;
+        OverlayField(panel).Text = "ok ☃";
+
+        LeaveSelection(tab, how, second);
+        Settle(window);
+
+        // No step, no text anywhere, no exception, and the user is told that the text was not used.
+        Assert.Equal(version, history.Version);
+        Assert.All(tab.RedactionPlan!.Marks, mark => Assert.Null(mark.OverlayText));
+        Assert.Equal(Strings.RedactOverlayDraftDropped, tab.RedactionNotice);
+    }
+
+    private static void LeaveSelection(TabViewModel tab, string how, Guid other)
+    {
+        switch (how)
+        {
+            case "select":
+                tab.SelectMarks([other]);
+                break;
+            case "clear":
+                tab.ClearMarkSelection();
+                break;
+            default:
+                Assert.True(tab.EscapeRedact());
+                break;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task TypingAndDeletingAgainIsNoChangeOfAMixedSelection()
+    {
+        var (window, tab, panel, first, second) = await OverlayPanelAsync();
+        Assert.True(tab.SetOverlayText(Ids(first), "A"));
+        Assert.True(tab.SetOverlayText(Ids(second), "B"));
+        tab.SelectMarks([first, second]);
+        Settle(window);
+        var editor = tab.RedactionPanel.OverlayEditor!;
+        var version = tab.RedactionHistory!.Version;
+        Assert.Equal(Strings.RedactOverlayMixed, editor.Placeholder);
+
+        // A character typed and taken back is the starting state again: not dirty, and leaving the field changes nothing.
+        Assert.True(OverlayField(panel).Focus(NavigationMethod.Tab));
+        OverlayField(panel).Text = "x";
+        Assert.True(editor.IsDirty);
+        OverlayField(panel).Text = string.Empty;
+        Assert.False(editor.IsDirty);
+        Assert.True(FindOrNull<CheckBox>(panel, "OverlayRepeatBox")!.Focus(NavigationMethod.Tab));
+        Settle(window);
+        Assert.Equal(["A", "B"], tab.RedactionPlan!.Marks.Select(static m => m.OverlayText));
+        Assert.Equal(version, tab.RedactionHistory.Version);
+
+        // The selection moving on does not clear anything either.
+        OverlayField(panel).Text = "y";
+        OverlayField(panel).Text = string.Empty;
+        tab.SelectMarks([first]);
+        Settle(window);
+        Assert.Equal(["A", "B"], tab.RedactionPlan.Marks.Select(static m => m.OverlayText));
+        Assert.Equal(version, tab.RedactionHistory.Version);
+
+        // A real edit still reaches all of them, and clearing a text that is no longer mixed works.
+        tab.SelectMarks([first, second]);
+        Settle(window);
+        editor.Text = "Z";
+        Assert.True(editor.Commit());
+        Assert.Equal(["Z", "Z"], tab.RedactionPlan.Marks.Select(static m => m.OverlayText));
+        editor.Text = string.Empty;
+        Assert.True(editor.IsDirty);
+        Assert.True(editor.Commit());
+        Assert.All(tab.RedactionPlan.Marks, mark => Assert.Null(mark.OverlayText));
+    }
+
+    [AvaloniaFact]
+    public async Task CommitDoesNothingForATextTheFontLacksNotEvenANotice()
+    {
+        var (window, tab, panel, first, _) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        var editor = tab.RedactionPanel.OverlayEditor!;
+        var version = tab.RedactionHistory!.Version;
+        Assert.Null(tab.RedactionNotice);
+
+        // The guard is the editor's own: without it the plan would refuse the text and set its notice.
+        OverlayField(panel).Text = "ok ☃";
+        Assert.False(editor.Commit());
+        Assert.Null(tab.RedactionNotice);
+        Assert.Equal(version, tab.RedactionHistory.Version);
+        Assert.All(tab.RedactionPlan!.Marks, mark => Assert.Null(mark.OverlayText));
+        Assert.True(editor.IsDirty);
+    }
+
+    [AvaloniaFact]
+    public async Task EditorControlsAreDisabledWhileThePlanTakesNoChanges()
+    {
+        var (window, tab, panel, first, _) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        Controls();
+        Assert.All(Controls(), static control => Assert.True(control.IsEffectivelyEnabled));
+
+        // A card asks about the tab, a save runs, an update locks editing: the editor greys out, and the text is not applied meanwhile.
+        foreach (var lockIt in new Action<bool>[] { on => tab.IsAskedAbout = on, on => tab.IsSaving = on, on => tab.IsEditingFrozen = on })
+        {
+            lockIt(true);
+            Settle(window);
+            Assert.True(tab.RedactionPanel.OverlayEditor is { CanEdit: false });
+            Assert.All(Controls(), static control => Assert.False(control.IsEffectivelyEnabled));
+            lockIt(false);
+            Settle(window);
+            Assert.True(tab.RedactionPanel.OverlayEditor is { CanEdit: true });
+            Assert.All(Controls(), static control => Assert.True(control.IsEffectivelyEnabled));
+        }
+
+        Control[] Controls() =>
+        [
+            OverlayField(panel),
+            FindOrNull<CheckBox>(panel, "OverlayRepeatBox")!,
+            FindOrNull<CheckBox>(panel, "OverlayAutoSizeBox")!,
+            FindOrNull<CheckBox>(panel, "OverlayColorAutoBox")!,
+            FindOrNull<Button>(panel, "SnippetUseButton")!,
+        ];
+    }
+
+    [AvaloniaFact]
+    public void HintSaysThatShortAreasGetNoTextAndThePreviewShowsOnlyTheFill()
+    {
+        Strings.Culture = new CultureInfo("en");
+        Assert.Contains("body text", Strings.RedactOverlayHint, StringComparison.Ordinal);
+        Assert.Contains("too low", Strings.RedactOverlayHint, StringComparison.Ordinal);
+        Assert.Contains("preview shows the fill only", Strings.RedactOverlayHint, StringComparison.Ordinal);
+        Strings.Culture = new CultureInfo("de");
+        Assert.Contains("Fließtext", Strings.RedactOverlayHint, StringComparison.Ordinal);
+        Assert.Contains("zu niedrig", Strings.RedactOverlayHint, StringComparison.Ordinal);
+        Assert.Contains("Vorschau zeigt nur die Füllung", Strings.RedactOverlayHint, StringComparison.Ordinal);
+        Strings.Culture = new CultureInfo("en");
+    }
+
     [AvaloniaFact]
     public async Task TermInTheOverlayWarnsWhileTyping()
     {
@@ -1632,7 +1816,7 @@ public sealed class RedactPanelTests : IDisposable
             "RedactOverlayInvalid", "RedactOverlayRepeatsTerm", "RedactOverlaySnippets", "RedactOverlayUseSnippetFormat",
             "RedactOverlayRemoveSnippetFormat", "RedactOverlayAddSnippet", "RedactOverlayCodeTooLongFormat", "RedactOverlayCodesFullFormat",
             "RedactOverlayCodeKnown", "RedactOverlayCodeDefault", "RedactOverlayRepeat", "RedactOverlayAutoSize", "RedactOverlayColorAuto",
-            "RedactOverlayColorLabel", "RedactOverlayContrastLowFormat",
+            "RedactOverlayColorLabel", "RedactOverlayContrastLowFormat", "RedactOverlayDraftDropped",
         ];
         var english = new ResourceManager("Pagewing.App.Resources.Strings.en", typeof(Strings).Assembly);
         var german = new ResourceManager("Pagewing.App.Resources.Strings.de", typeof(Strings).Assembly);

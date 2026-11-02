@@ -3130,7 +3130,7 @@
     <value>Different texts on the selected areas</value>
   </data>
   <data name="RedactOverlayHint" xml:space="preserve">
-    <value>Enter applies the text. It is drawn as shapes: it cannot be selected, and the check of the written file does not read it back.</value>
+    <value>Enter applies the text. It is drawn as shapes: it cannot be selected, and the check of the written file does not read it back. Short areas, such as hits on normal body text, are often too low for the text and then get none (the card before applying says how many). The preview shows the fill only, not the text.</value>
   </data>
   <data name="RedactOverlayInvalidAtFormat" xml:space="preserve">
     <value>The text has a character that cannot be drawn (position {0}). It is not used; change it.</value>
@@ -3179,5 +3179,8 @@
   </data>
   <data name="RedactOverlayContrastLowFormat" xml:space="preserve">
     <value>The contrast with the fill is {0}:1, below 4.5:1. The text may be hard to read.</value>
+  </data>
+  <data name="RedactOverlayDraftDropped" xml:space="preserve">
+    <value>The text you typed was not applied: it has a character that cannot be drawn.</value>
   </data>
 </root>

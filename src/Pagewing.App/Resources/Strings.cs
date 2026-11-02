@@ -1180,6 +1180,7 @@ public static class Strings
     public static string RedactOverlayPlaceholder => Get("RedactOverlayPlaceholder");
     public static string RedactOverlayMixed => Get("RedactOverlayMixed");
     public static string RedactOverlayHint => Get("RedactOverlayHint");
+    public static string RedactOverlayDraftDropped => Get("RedactOverlayDraftDropped");
     public static string RedactOverlayInvalid => Get("RedactOverlayInvalid");
     public static string RedactOverlayRepeatsTerm => Get("RedactOverlayRepeatsTerm");
     public static string RedactOverlaySnippets => Get("RedactOverlaySnippets");

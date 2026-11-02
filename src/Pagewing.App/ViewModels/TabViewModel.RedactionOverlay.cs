@@ -37,6 +37,14 @@ public sealed partial class TabViewModel
         return StageRedaction(plan => plan.WithOverlayStyle(change(plan.Overlay)), null);
     }
 
-    /// <summary>Gets whether the plan takes changes now (the editor of the text greys itself out otherwise).</summary>
+    /// <summary>Gets whether the plan takes changes now. The controls of the editor bind to it (<see cref="RedactionOverlayEditorViewModel.CanEdit"/>) and are disabled otherwise.</summary>
     internal bool CanEditOverlay => CanEditRedactions;
+
+    /// <summary>Tells the user something about the plan in the way refusals are told (the notice and the hint over the document).</summary>
+    /// <param name="text">The sentence, in the language of the interface.</param>
+    internal void NoteRedaction(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        RedactionNotice = text;
+    }
 }

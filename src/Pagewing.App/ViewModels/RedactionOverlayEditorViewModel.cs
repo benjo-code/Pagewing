@@ -63,6 +63,7 @@ public sealed class RedactionOverlayEditorViewModel : ViewModelBase, IDisposable
     private int _invalidAt = -1;
     private string _colorText = string.Empty;
     private string? _colorError;
+    private bool _leaving;
     private bool _disposed;
 
     internal RedactionOverlayEditorViewModel(TabViewModel tab)
@@ -87,8 +88,9 @@ public sealed class RedactionOverlayEditorViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// Gets or sets the text in the field (a draft). It is applied by <see cref="Commit"/>; typing alone changes nothing in the plan. With
-    /// several marks selected that have different texts the field starts empty (<see cref="Placeholder"/> says so), and any edit then applies
-    /// to all of them.
+    /// several marks selected that have different texts the field starts empty (<see cref="Placeholder"/> says so). The draft counts as a
+    /// change only while it differs from the text the field started with: a character typed and taken back is no change, so leaving the
+    /// field then leaves the texts of a mixed selection alone (to clear them all, give them one text first, then clear it).
     /// </summary>
     public string Text
     {
@@ -102,11 +104,14 @@ public sealed class RedactionOverlayEditorViewModel : ViewModelBase, IDisposable
             }
 
             _text = next;
-            _dirty = _mixed || !string.Equals(_text, _loaded, StringComparison.Ordinal);
+            _dirty = !string.Equals(_text, _loaded, StringComparison.Ordinal);
             OnPropertyChanged();
             RaiseDraftState();
         }
     }
+
+    /// <summary>Gets whether the plan takes changes now; the controls of the editor are disabled while it does not (a card asks about the tab, a save runs, an update locks editing).</summary>
+    public bool CanEdit => _tab.CanEditOverlay;
 
     /// <summary>Gets the hint shown in the empty field: no text, or that the selected areas have different texts.</summary>
     public string Placeholder => _mixed ? Strings.RedactOverlayMixed : Strings.RedactOverlayPlaceholder;
@@ -324,6 +329,38 @@ public sealed class RedactionOverlayEditorViewModel : ViewModelBase, IDisposable
         return _tab.RedactionOverlayStyle.TextColor == fill;
     }
 
+    /// <summary>
+    /// Settles the draft before the editor stops following its marks (the selection changes, Esc clears it): a draft that can be applied
+    /// is applied to the marks it was typed for, as one step; a draft with a character that cannot be drawn is not, and the tab says so.
+    /// Nothing happens without a draft, while the plan takes no changes, or when the plan is gone (the mode ends).
+    /// </summary>
+    internal void LeaveDraft()
+    {
+        if (_leaving || !_dirty || _tab.RedactionPlan is null)
+        {
+            return;
+        }
+
+        // The apply runs the handlers of the plan, which come back here: they must not apply the same draft again.
+        _leaving = true;
+        try
+        {
+            if (_invalidAt >= 0)
+            {
+                _tab.NoteRedaction(Strings.RedactOverlayDraftDropped);
+            }
+            else if (_tab.CanEditOverlay)
+            {
+                // The marks of the draft, as they were when it was typed: never the selection that is coming.
+                _tab.SetOverlayText(_targetIds, _text);
+            }
+        }
+        finally
+        {
+            _leaving = false;
+        }
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
@@ -393,9 +430,19 @@ public sealed class RedactionOverlayEditorViewModel : ViewModelBase, IDisposable
 
     private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!_disposed && e.PropertyName is nameof(TabViewModel.RedactionPlan) or nameof(TabViewModel.SelectedMarks) or nameof(TabViewModel.RedactionOverlayStyle))
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (e.PropertyName is nameof(TabViewModel.RedactionPlan) or nameof(TabViewModel.SelectedMarks) or nameof(TabViewModel.RedactionOverlayStyle))
         {
             Refresh();
+        }
+
+        if (e.PropertyName is nameof(TabViewModel.RedactionPlan) or nameof(TabViewModel.IsSaving) or nameof(TabViewModel.IsAskedAbout) or nameof(TabViewModel.IsEditingFrozen))
+        {
+            OnPropertyChanged(nameof(CanEdit));
         }
     }
 
@@ -405,6 +452,11 @@ public sealed class RedactionOverlayEditorViewModel : ViewModelBase, IDisposable
     {
         var ids = _tab.SelectedMarks;
         var selectionChanged = !_targetIds.SetEquals(ids);
+        if (selectionChanged)
+        {
+            LeaveDraft();
+        }
+
         _targetIds = ids;
         var texts = new HashSet<string>(StringComparer.Ordinal);
         if (_tab.RedactionPlan is { } plan)
