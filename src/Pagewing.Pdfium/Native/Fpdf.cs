@@ -645,6 +645,16 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFPageObjMark_GetName(nint mark, ushort* buffer, CULong buflen, CULong* outLength);
 
+    /// <summary>Experimental API: the number of properties of a content mark, -1 on failure (milestone 16: <c>/ActualText</c>, <c>/Alt</c>, <c>/E</c> lock a run).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_CountParams(nint mark);
+
+    /// <summary>Experimental API: the key of a property of a content mark as UTF-16LE; <c>buflen</c> and <c>outLength</c> count bytes (<c>unsigned long</c>).</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_GetParamKey(nint mark, CULong index, ushort* buffer, CULong buflen, CULong* outLength);
+
     /// <summary>The clipping path of a page object (<c>FPDF_CLIPPATH</c>, owned by the object; never null for a valid object).</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
