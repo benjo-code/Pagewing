@@ -3271,3 +3271,17 @@ Plan: `Docs/superpowers/plans/2026-11-02-release-v1.0.0.md`. Anweisungen des Pro
 **Entscheidung:** Nach dem Anlegen des Layouts läuft `smoke-cli` ein zweites Mal gegen die CLI im Layout (`out/layout/cli/pagewing[.exe]`): dort liegen Bibliothek und `tessdata/` wie ausgeliefert, also macht es den echten `ocr`-Lauf auf `ocr-scan.pdf` und prüft, dass `text` der Ausgabe „Invoice“ nennt. Der erste Aufruf bleibt (er fängt einen kaputten Publish früh, ohne die Bibliothek abzuwarten). Geändert: `packaging/linux/container-build.sh` und der Windows-Job in `.github/workflows/release.yml`. Die Bibliothek im Layout ist dieselbe Datei, die in `.deb`, AppImage, ZIP und Installer wandert (ein Layout, alle vier Pakete); eine eigene Prüfung je Paketform bleibt Handprüfung.
 
 **Verworfen:** `native-fetch` vor den ersten `smoke-cli` ziehen (der Lauf ginge dann gegen `out/cli` mit lose danebengelegter Bibliothek, nicht gegen das, was ausgeliefert wird); `ocr` in `deb-smoke`/`appimage-smoke` einbauen (zwei weitere Werkzeugänderungen für dasselbe Layout). **Risiko:** Der Linux-Lauf im Container hat kein Display; `ocr` braucht keines, es ist die CLI.
+
+## 2026-11-02 – Release v1.0.0: Handprüfungen, Hardware-Messung und Updater-Testaufbau übersprungen (Anweisung des Projektinhabers)
+
+**Kontext:** Der Plan für `v1.0.0` sah vor der Veröffentlichung die Messung auf echter Hardware (K5), die Prüfung des Updaters mit dem Testaufbau und die Handprüfungen A bis I (Phase 3) vor; „Ende von Phase 3“ war die Voraussetzung für Phase 4. Der Projektinhaber hat am 2026-11-02 entschieden, die Hardware-Messung und die manuellen Prüfungen diesmal zu überspringen und das Release zu veröffentlichen.
+
+**Entscheidung:**
+- Veröffentlicht wird mit den Kriterien K1 bis K4 und K7 (lokale Prüfungen, CI auf `dev`, Linux-Tests im Container, Trockenlauf mit der OCR-Bibliothek, ehrlicher Changelog). K6 folgt nach der Veröffentlichung.
+- **Nichts wird abgehakt, was nicht geprüft wurde:** K5 und die 17 übernommenen Handprüf-Kriterien bleiben `done: false`; ebenso K8 (erste echte Aktualisierung von `v0.2.0` auf `v1.0.0`). Der Absturzbeweis des alten Pause-Rückrufs (Plan, Phase 2, Schritt 6) wurde nicht versucht und bleibt offen.
+- Die Sätze, die das Gegenteil versprachen, gelten nicht mehr: „bis dahin prüft der Projektinhaber den Updater mit dem Testaufbau“ (Roadmap, Scope-Änderung vom selben Tag; im Eintrag „Release v1.0.0: Abnahme …“ der Satz zum Updater) und „Voraussetzung: Phase 3 abgeschlossen“ (Plan, Phase 4). Der Plan trägt dazu einen Hinweis.
+- Das Release `1.0.0` steht in der Roadmap auf `in-progress`, nicht auf `done`. Ob es ohne die offenen Handprüfungen `done` wird, entscheidet der Projektinhaber; Vorbild sind M11 und M15, wo Kriterien mit Datum und Anweisung verschoben wurden. Der Changelog `[1.0.0]` nennt jede ausgelassene Prüfung (K7), auch dass der Updater nie gegen ein Release gelaufen ist.
+
+**Folgen und Risiko:** Ein Fehler, den nur die Handprüfung gefunden hätte (Aussehen und Bedienung im Fenster, Acrobat und Chrome, Bildschirmleser, OCR unter einem Benutzerordner mit Nicht-ASCII-Zeichen, falsche Länge in der IBAN-Tabelle), steht erst nach der Veröffentlichung fest und wird mit `v1.0.1` über `hotfix/<thema>` behoben (nur auf Anweisung). Scheitert das erste echte Update (K8), laden Nutzer den Installer von Hand; der Changelog sagt das vorab.
+
+**Nicht geändert:** Die Kriterien selbst, ihre Texte und die Zahl 25; die Fork-PR-Probe (zweites Konto) bleibt ein Vorschlag an den Projektinhaber.
