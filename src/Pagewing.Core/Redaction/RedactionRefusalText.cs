@@ -73,6 +73,9 @@ public static class RedactionRefusalText
             case RedactionRefusalKind.PageNotRedactable:
                 return $"Redacting {PageList(refusal.Pages)} would change content outside the marked areas, so the file is not redacted. {refusal.Reason}";
 
+            case RedactionRefusalKind.OverlayRepeatsTerm:
+                return $"The text on the areas of {PageList(refusal.Pages)} contains a text that is redacted, which would put it back on the page, so the file is not redacted. Change the text on the areas.";
+
             default:
                 return $"The file is not redacted. {refusal.Reason}";
         }

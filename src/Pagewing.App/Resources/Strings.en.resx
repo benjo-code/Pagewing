@@ -2697,6 +2697,12 @@
   <data name="RedactRefusalOther" xml:space="preserve">
     <value>The file is not redacted.</value>
   </data>
+  <data name="RedactRefusalHeadingOverlay" xml:space="preserve">
+    <value>The text on the areas contains a redacted text</value>
+  </data>
+  <data name="RedactRefusalOverlay" xml:space="preserve">
+    <value>The text on the areas of {0} contains a text that is redacted, which would put it back on the page, so the file is not redacted. Change or remove the text on the areas.</value>
+  </data>
   <data name="RedactPageOne" xml:space="preserve">
     <value>page {0}</value>
   </data>

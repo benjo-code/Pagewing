@@ -23,7 +23,7 @@ public sealed partial class PdfDocument
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page, or the font size is outside 6 to 96 points.</exception>
     /// <exception cref="ArgumentException">The box is smaller than 4 points on a side or not finite, or the text is refused (<see cref="TextBoxSpec.CheckText"/>).</exception>
     /// <exception cref="PdfAnnotationLimitException">The document lists <see cref="MaxAnnotations"/> already (see <see cref="CreateDrawingAsync"/>); nothing is created.</exception>
-    /// <exception cref="InvalidOperationException">No font is set (<see cref="TextBoxFont.Use"/>), or PDFium could not create the annotation; the page is left unchanged.</exception>
+    /// <exception cref="InvalidOperationException">The font is not embedded (a broken build), or PDFium could not create the annotation; the page is left unchanged.</exception>
     /// <exception cref="InvalidDataException">The page is damaged and cannot be loaded.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before the annotation was created.</exception>
     /// <exception cref="ObjectDisposedException">The document is disposed.</exception>

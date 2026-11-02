@@ -538,6 +538,31 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.False(await apply);
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task OverlayRefusalHasASentenceInBothLanguages(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        var refusal = new RedactionRefusal(RedactionRefusalKind.OverlayRepeatsTerm, [0, 2], "x");
+
+        var section = Assert.Single(RedactionApplyInfo.ForRefusals([refusal]).Sections);
+
+        // Its own heading and sentence (not the general "not redacted"), with the pages as page numbers in the language of the interface,
+        // and the sentence tells what to do, never what the text was.
+        Assert.Equal(Strings.RedactRefusalHeadingOverlay, section.Heading);
+        Assert.NotEqual(Strings.RedactRefusalHeadingOverlay, Strings.RedactRefusalOther);
+        var line = Assert.Single(section.Lines);
+        Assert.Contains(language == "en" ? "pages 1, 3" : "Seiten 1, 3", line, StringComparison.Ordinal);
+        Assert.NotEqual(Strings.RedactRefusalOther, line);
+        Assert.Equal(line, RedactionApplyInfo.RefusalLine(refusal));
+        Assert.Contains(line, RedactionApplyInfo.PreviewLine(new RedactionAnalysis([], [], CleanupComplete: true, [], [refusal], PageKeysChecked: false, 2, 0)), StringComparison.Ordinal);
+        Assert.DoesNotMatch(ValidWord(), line);
+        Assert.DoesNotMatch(PromiseWords(), line);
+        Strings.Culture = new CultureInfo("en");
+    }
+
     // ------------------------------------------------------------------ the work
 
     [AvaloniaFact]
@@ -1413,7 +1438,7 @@ public sealed partial class RedactApplyTests : IDisposable
             "RedactFailureUnreadable", "RedactFailureKeys", "RedactFailurePage", "RedactFailureUnverifiable", "RedactFailureCleanup",
             "RedactErrorNotPrepared", "RedactErrorDraft", "RedactErrorFileChanged", "RedactSaveFirstText", "RedactApplyBlocked",
             "RedactFailureRaster", "RedactNcRasterOutside", "RedactNcApplyRenderRaster", "RedactCheckListRaster", "RedactCheckListRasterOnly",
-            "RedactCheckedPagesInPlace", "RedactCheckedRaster"
+            "RedactCheckedPagesInPlace", "RedactCheckedRaster", "RedactRefusalHeadingOverlay", "RedactRefusalOverlay"
     ];
 
     // Every text of the apply flow that the interface shows, in the language that is set.

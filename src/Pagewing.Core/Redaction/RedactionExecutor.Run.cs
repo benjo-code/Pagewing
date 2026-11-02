@@ -136,9 +136,13 @@ public sealed partial class RedactionExecutor
         ArgumentException.ThrowIfNullOrEmpty(path);
         EnsureMarksFit(plan, original);
         var withoutTerm = plan.Marks.Count(static m => string.IsNullOrWhiteSpace(m.Term));
+
+        // What the plan alone decides (an overlay text with a redacted term in it) stands in the list in front of what the file decides;
+        // BuildAsync asks the same rule, so the card says what the apply does.
+        var planRefusal = RedactionOverlayRule.Refusal(plan);
         if (await FileRefusalAsync(original, cancellationToken).ConfigureAwait(false) is { } file)
         {
-            return new RedactionAnalysis([], [], CleanupComplete: true, [], [file], PageKeysChecked: false, plan.Marks.Count, withoutTerm);
+            return new RedactionAnalysis([], [], CleanupComplete: true, [], planRefusal is null ? [file] : [file, planRefusal], PageKeysChecked: false, plan.Marks.Count, withoutTerm);
         }
 
         var inventory = await ReadInventoryAsync(original, path, cancellationToken).ConfigureAwait(false);
@@ -168,7 +172,7 @@ public sealed partial class RedactionExecutor
             inventory.Cleanup,
             inventory.Complete,
             [.. losses.OrderBy(static l => l.Kind)],
-            pass.Refusals,
+            planRefusal is null ? pass.Refusals : [planRefusal, .. pass.Refusals],
             pass.KeysChecked,
             plan.Marks.Count,
             withoutTerm,
@@ -226,7 +230,13 @@ public sealed partial class RedactionExecutor
         // Nothing is opened, changed or written for a file that is refused as a whole.
         if (await FileRefusalAsync(original, cancellationToken).ConfigureAwait(false) is { } file)
         {
-            throw new RedactionRefusedException([file]);
+            throw new RedactionRefusedException(RedactionOverlayRule.Refusal(plan) is { } alsoRefused ? [file, alsoRefused] : [file]);
+        }
+
+        // The rule of the overlay text reads the plan only, so it is asked before a working copy is opened (nothing is changed or created).
+        if (RedactionOverlayRule.Refusal(plan) is { } planRefusal)
+        {
+            throw new RedactionRefusedException([planRefusal]);
         }
 
         var working = await OpenWorkingCopyAsync(original, path, password, cancellationToken).ConfigureAwait(false);

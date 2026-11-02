@@ -5,7 +5,7 @@ namespace Pagewing.Core.Annotations;
 /// <summary>
 /// The characters a text box can show: those of Basic Latin, Latin-1, Latin Extended-A, "ẞ", the dashes, quotes and the
 /// ellipsis of General Punctuation, and "€", as far as the shipped Geist Regular (the subset of
-/// <c>Pagewing.App/Assets/Fonts</c>) has a glyph for them. The appearance is drawn from that font's outlines, and a
+/// <c>Pagewing.Core/Assets/Fonts</c>) has a glyph for them. The appearance is drawn from that font's outlines, and a
 /// character without its own glyph would come from a system font that differs between machines, so a text with any other
 /// character is refused as a whole (never changed). A line break is no character here; it is handled by the layout.
 /// </summary>

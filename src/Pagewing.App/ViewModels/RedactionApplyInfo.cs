@@ -231,6 +231,7 @@ public sealed class RedactionApplyInfo
             RedactionRefusalKind.UnremovablePageKeys when refusal.PageKeysUnverified => Strings.RedactRefusalKeysUnverified,
             RedactionRefusalKind.UnremovablePageKeys => Format(Strings.RedactRefusalKeys, PagesOf(refusal.Pages)),
             RedactionRefusalKind.PageNotRedactable => PageLine(refusal),
+            RedactionRefusalKind.OverlayRepeatsTerm => Format(Strings.RedactRefusalOverlay, PagesOf(refusal.Pages)),
             _ => Strings.RedactRefusalOther,
         };
     }
@@ -273,6 +274,9 @@ public sealed class RedactionApplyInfo
                     lines.Add(Strings.RedactRefusalPageHint);
                 }
 
+                break;
+            case RedactionRefusalKind.OverlayRepeatsTerm:
+                heading = Strings.RedactRefusalHeadingOverlay;
                 break;
             default:
                 heading = Strings.RedactRefusalOther;

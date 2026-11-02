@@ -1295,7 +1295,7 @@ static class TestPdfs
 
     // One page 420 x 420 whose lines all show the sentence "Name: Zephyrstraße 17 ok" (one text object per line) in other fonts. The x position
     // is 20 for every line; the baselines are 390 - 30 * line. The font program of the TrueType and CID lines is the full Geist Regular (SIL OFL 1.1,
-    // src/Pagewing.App/Assets/Fonts), embedded as it is (no subset: the generator has no subsetter); the fonts differ in how they encode:
+    // src/Pagewing.Core/Assets/Fonts), embedded as it is (no subset: the generator has no subsetter); the fonts differ in how they encode:
     //   line 0  /F1  Helvetica, Type 1 standard font, not embedded, WinAnsi, Tj
     //   line 1  /F2  simple TrueType, embedded Geist, WinAnsi, no ToUnicode, Tj
     //   line 2  /F3  Type0 Identity-H, CIDFontType2, CIDToGIDMap /Identity (code = glyph id), ToUnicode, Tj with a hex string
@@ -1308,7 +1308,7 @@ static class TestPdfs
     private static byte[] RedactFonts()
     {
         var doc = new PdfDoc("Pagewing Schwärzen: Schriften");
-        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.App", "Assets", "Fonts", "Geist-Regular.ttf")));
+        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.Core", "Assets", "Fonts", "Geist-Regular.ttf")));
         var helvetica = doc.Add(Helvetica);
 
         var fontFile = doc.AddStream($"/Length1 {ttf.Data.Length}", ttf.Data);
@@ -1430,7 +1430,7 @@ static class TestPdfs
     private static byte[] RedactLigature()
     {
         var doc = new PdfDoc("Pagewing Schwärzen: Ligatur");
-        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.App", "Assets", "Fonts", "Geist-Regular.ttf")));
+        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.Core", "Assets", "Fonts", "Geist-Regular.ttf")));
         var helvetica = doc.Add(Helvetica);
         var fontFile = doc.AddStream($"/Length1 {ttf.Data.Length}", ttf.Data);
         string Scaled(int value) => ((value * 1000) / ttf.UnitsPerEm).ToString(CultureInfo.InvariantCulture);

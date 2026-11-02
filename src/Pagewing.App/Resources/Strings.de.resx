@@ -2697,6 +2697,12 @@
   <data name="RedactRefusalOther" xml:space="preserve">
     <value>Die Datei wird nicht geschwärzt.</value>
   </data>
+  <data name="RedactRefusalHeadingOverlay" xml:space="preserve">
+    <value>Der Text auf den Flächen enthält einen geschwärzten Text</value>
+  </data>
+  <data name="RedactRefusalOverlay" xml:space="preserve">
+    <value>Der Text auf den Flächen von {0} enthält einen Text, der geschwärzt wird, und würde ihn so wieder auf die Seite bringen; deshalb wird die Datei nicht geschwärzt. Ändern oder entfernen Sie den Text auf den Flächen.</value>
+  </data>
   <data name="RedactPageOne" xml:space="preserve">
     <value>Seite {0}</value>
   </data>

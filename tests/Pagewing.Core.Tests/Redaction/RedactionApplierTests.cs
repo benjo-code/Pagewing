@@ -931,6 +931,7 @@ public sealed class RedactionApplierTests : IDisposable
         Assert.Contains("encrypted", texts[RedactionRefusalKind.Encrypted], StringComparison.Ordinal);
         Assert.Contains("pages 3, 5", texts[RedactionRefusalKind.UnremovablePageKeys], StringComparison.Ordinal);
         Assert.Contains("pages 3, 5", texts[RedactionRefusalKind.PageNotRedactable], StringComparison.Ordinal);
+        Assert.Contains("pages 3, 5", texts[RedactionRefusalKind.OverlayRepeatsTerm], StringComparison.Ordinal);
 
         // "Could not be checked" is told by its flag and has its own text, no pages.
         var unverified = new RedactionRefusal(RedactionRefusalKind.UnremovablePageKeys, [], PageKeyScanner.UnverifiedReason, PageKeysUnverified: true);

@@ -33,6 +33,9 @@ public enum RedactionRefusalKind
 
     /// <summary>A page cannot be rewritten without changing it outside the marks (or beyond the limits against hostile pages).</summary>
     PageNotRedactable,
+
+    /// <summary>The overlay text of a mark contains a text that is redacted (<see cref="RedactionOverlayRule"/>); the pages are those of the marks that carry the text.</summary>
+    OverlayRepeatsTerm,
 }
 
 /// <summary>A reason to refuse redaction, with the 0-based pages it concerns.</summary>

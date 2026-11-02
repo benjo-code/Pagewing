@@ -1051,6 +1051,8 @@ public static class Strings
     public static string RedactRefusalPageReason => Get("RedactRefusalPageReason");
     public static string RedactRefusalPageHint => Get("RedactRefusalPageHint");
     public static string RedactRefusalOther => Get("RedactRefusalOther");
+    public static string RedactRefusalHeadingOverlay => Get("RedactRefusalHeadingOverlay");
+    public static string RedactRefusalOverlay => Get("RedactRefusalOverlay");
     public static string RedactPageOne => Get("RedactPageOne");
     public static string RedactPageMany => Get("RedactPageMany");
     public static string RedactPageFile => Get("RedactPageFile");

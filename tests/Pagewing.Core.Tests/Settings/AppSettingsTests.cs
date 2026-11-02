@@ -212,4 +212,82 @@ public sealed class AppSettingsTests
 
         Assert.Equal(settings, settings.Normalized());
     }
+
+    [Fact]
+    public void CodesAreLimitedAndNormalized()
+    {
+        // Nothing is stored while the user changed nothing: the interface shows "geschwärzt" or "redacted" by language.
+        Assert.Null(AppSettings.Default.RedactionCodes);
+        Assert.Null(AppSettings.Default.Normalized().RedactionCodes);
+        Assert.Equal(20, AppSettings.MaxRedactionCodes);
+        Assert.Equal(40, AppSettings.MaxRedactionCodeLength);
+
+        var exactly = new string('x', AppSettings.MaxRedactionCodeLength);
+        var tooLong = new string('y', AppSettings.MaxRedactionCodeLength + 1);
+        var codes = new List<string> { "  Akte 1 ", string.Empty, "   ", tooLong, "Akte 1", "ok ☃", exactly, "Vertraulich" };
+        codes.AddRange(Enumerable.Range(0, 30).Select(static i => "Code " + i));
+
+        var normalized = (AppSettings.Default with { RedactionCodes = codes }).Normalized().RedactionCodes;
+
+        // Trimmed, without the empty, the overlong, the ones the overlay cannot draw and the repeated; at most 20; the order stays.
+        Assert.NotNull(normalized);
+        Assert.Equal(AppSettings.MaxRedactionCodes, normalized.Count);
+        Assert.Equal(["Akte 1", exactly, "Vertraulich", "Code 0", "Code 1"], normalized.Take(5));
+        Assert.All(normalized, static code => Assert.InRange(code.Length, 1, AppSettings.MaxRedactionCodeLength));
+        Assert.Equal(normalized.Count, normalized.Distinct(StringComparer.Ordinal).Count());
+
+        // A list that needs no repair is the same list, so a normalized copy equals its source.
+        var clean = (AppSettings.Default with { RedactionCodes = ["a", "b"] });
+        Assert.Same(clean.RedactionCodes, clean.Normalized().RedactionCodes);
+
+        // No code left is an empty list, not the default: the user took them all away.
+        Assert.Empty((AppSettings.Default with { RedactionCodes = [" ", tooLong] }).Normalized().RedactionCodes!);
+        Assert.Empty((AppSettings.Default with { RedactionCodes = [] }).Normalized().RedactionCodes!);
+    }
+
+    [Fact]
+    public void WithRedactionCodesMakesANewNormalizedListAndNeverAliasesTheOldOne()
+    {
+        var first = AppSettings.Default.WithRedactionCodes(["  Akte 1", "Akte 1", "Vertraulich"]);
+        var source = new List<string> { "Eins" };
+        var second = first.WithRedactionCodes(source);
+        source.Add("Zwei");
+
+        Assert.Equal(["Akte 1", "Vertraulich"], first.RedactionCodes);
+        Assert.Equal(["Eins"], second.RedactionCodes);
+        Assert.NotSame(first.RedactionCodes, second.RedactionCodes);
+        Assert.Null(first.WithRedactionCodes(null).RedactionCodes);
+        Assert.Empty(first.WithRedactionCodes([]).RedactionCodes!);
+    }
+
+    [Fact]
+    public void SettingsJsonRoundTripKeepsCodes()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pagewing-settings-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new SettingsStore(Path.Combine(directory, "settings.json"));
+
+            Assert.True(store.TrySave(AppSettings.Default.WithRedactionCodes(["Akte ä", "Vertraulich"])));
+            Assert.Equal(["Akte ä", "Vertraulich"], store.Load().RedactionCodes);
+
+            // An untouched file has none, and a file written without the field reads as none.
+            Assert.True(store.TrySave(AppSettings.Default));
+            Assert.Null(store.Load().RedactionCodes);
+            File.WriteAllText(Path.Combine(directory, "settings.json"), "{ \"Theme\": \"Dark\" }");
+            Assert.Null(store.Load().RedactionCodes);
+
+            // A hand-edited file is repaired on load: too many, too long and repeated entries do not get in.
+            var many = string.Join(", ", Enumerable.Range(0, 40).Select(static i => $"\"c{i}\""));
+            File.WriteAllText(Path.Combine(directory, "settings.json"), $"{{ \"RedactionCodes\": [ \"a\", null, \"a\", \"{new string('z', 41)}\", {many} ] }}");
+            var repaired = store.Load().RedactionCodes;
+            Assert.NotNull(repaired);
+            Assert.Equal(AppSettings.MaxRedactionCodes, repaired.Count);
+            Assert.Equal(["a", "c0"], repaired.Take(2));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }
