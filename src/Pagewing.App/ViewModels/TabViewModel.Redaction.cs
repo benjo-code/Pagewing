@@ -168,7 +168,7 @@ public sealed partial class TabViewModel
     internal bool HasRedactionCommands =>
         _deleteMarksCommand is not null || _undoRedactionCommand is not null || _redoRedactionCommand is not null
         || _discardRedactionsCommand is not null || _markSelectionCommand is not null || _chooseRedactionToolCommand is not null
-        || _setRedactionFillCommand is not null || _toggleRedactionPanelCommand is not null || _applyRedactionsCommand is not null
+        || _setRedactionFillCommand is not null || _setRedactionImageTreatmentCommand is not null || _setRedactionImageStrengthCommand is not null || _toggleRedactionPanelCommand is not null || _applyRedactionsCommand is not null
         || _toggleRedactionPreviewCommand is not null || _toggleRasterPageCommand is not null || _setRasterDpiCommand is not null;
 
     /// <summary>
@@ -534,6 +534,16 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(IsRedactionFillWhite));
         OnPropertyChanged(nameof(IsRedactionFillCustom));
         OnPropertyChanged(nameof(RedactionFillHex));
+        OnPropertyChanged(nameof(RedactionImageTreatment));
+        OnPropertyChanged(nameof(RedactionImageStrength));
+        OnPropertyChanged(nameof(IsRedactionImageSolid));
+        OnPropertyChanged(nameof(IsRedactionImagePixelate));
+        OnPropertyChanged(nameof(IsRedactionImageBlur));
+        OnPropertyChanged(nameof(IsRedactionImageTreated));
+        OnPropertyChanged(nameof(IsRedactionImageCoarse));
+        OnPropertyChanged(nameof(IsRedactionImageVeryCoarse));
+        OnPropertyChanged(nameof(RedactionImageTreatmentText));
+        OnPropertyChanged(nameof(RedactionPreviewNote));
         OnPropertyChanged(nameof(RedactionCounterText));
         OnPropertyChanged(nameof(RedactionToolIsArea));
         OnPropertyChanged(nameof(RedactionToolIsText));
@@ -564,6 +574,8 @@ public sealed partial class TabViewModel
         _deleteMarksCommand?.RaiseCanExecuteChanged();
         _undoRedactionCommand?.RaiseCanExecuteChanged();
         _redoRedactionCommand?.RaiseCanExecuteChanged();
+        _setRedactionImageTreatmentCommand?.RaiseCanExecuteChanged();
+        _setRedactionImageStrengthCommand?.RaiseCanExecuteChanged();
         _discardRedactionsCommand?.RaiseCanExecuteChanged();
         _toggleRedactionPanelCommand?.RaiseCanExecuteChanged();
         _toggleRasterPageCommand?.RaiseCanExecuteChanged();

@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Pagewing.Cli;
 using Pagewing.Cli.Commands;
 using Pagewing.Core.Pdf;
+using Pagewing.Core.Redaction;
 using Pagewing.Core.Tests.Redaction;
 using Pagewing.Core.Text;
 using Pagewing.TestSupport;
@@ -667,9 +668,11 @@ public sealed class RedactCommandTests : CliTestBase
         var result = await RunAsync("--help");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--image-fill <solid|pixelate|blur>] [--image-strength <coarse|very-coarse>] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
         Assert.Contains("--dry-run", result.Output, StringComparison.Ordinal);
         Assert.Contains("--fill <colour>", result.Output, StringComparison.Ordinal);
+        Assert.Contains("--image-fill <how>", result.Output, StringComparison.Ordinal);
+        Assert.Contains("--image-strength <s>", result.Output, StringComparison.Ordinal);
         Assert.Contains("NOT checked", result.Output, StringComparison.Ordinal);
         Assert.Contains("--rasterize-pages <range>", result.Output, StringComparison.Ordinal);
         Assert.Contains("--rasterize-unredactable", result.Output, StringComparison.Ordinal);
@@ -1258,5 +1261,115 @@ public sealed class RedactCommandTests : CliTestBase
         Assert.Contains("[--include-unchecked]", result.Output, StringComparison.Ordinal);
         Assert.Contains("--include-unchecked", result.Output, StringComparison.Ordinal);
         Assert.DoesNotContain("all IBANs", result.Output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ---- --image-fill and --image-strength (milestone 14.1, task 13) ----
+    // redact-image-blocks.pdf is 330 pt high; --rect is page:x,y,width,height from the top left, so 1:46,56,72,72 is the area over the
+    // first image (columns 24 to 72 and rows 20 to 68 of its 96 x 96 pixels).
+
+    private static readonly PageRect ImageArea = new(46, 56, 118, 128);
+
+    /// <summary>The part of the first image of page 1 that lies under <see cref="ImageArea"/> in a file (blue, green, red, alpha), with its size.</summary>
+    private async Task<(int Width, int Height, byte[] Bgra)> ImageUnderTheAreaAsync(string path)
+    {
+        await using var document = await Engine.OpenAsync(path, cancellationToken: Ct);
+        var part = Assert.Single(await document.GetImageAreaPixelsAsync(0, ImageArea, Ct));
+        return (part.Width, part.Height, part.Bgra);
+    }
+
+    [Theory]
+    [InlineData("pixelate", "coarse", RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse)]
+    [InlineData("pixelate", "very-coarse", RedactionImageTreatment.Pixelate, RedactionImageStrength.VeryCoarse)]
+    [InlineData("blur", null, RedactionImageTreatment.Blur, RedactionImageStrength.Coarse)]
+    [InlineData("BLUR", "VERY-COARSE", RedactionImageTreatment.Blur, RedactionImageStrength.VeryCoarse)]
+    public async Task CliImageFillPixelatesAndVerifies(string fill, string? strength, RedactionImageTreatment treatment, RedactionImageStrength expectedStrength)
+    {
+        var input = Copy("redact-image-blocks.pdf");
+        var before = await ImageUnderTheAreaAsync(input);
+        string[] arguments = ["redact", input, "--output", Output, "--rect", "1:46,56,72,72", "--image-fill", fill];
+        if (strength is not null)
+        {
+            arguments = [.. arguments, "--image-strength", strength];
+        }
+
+        var result = await RunAsync(arguments);
+
+        // The command ran its own check of the written file (a failing check is exit 1 and no file), and what it wrote is read back here.
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.Equal([Output], result.OutputLines);
+        var after = await ImageUnderTheAreaAsync(Output);
+        Assert.Equal((before.Width, before.Height), (after.Width, after.Height));
+        var grid = ImageBlocks.Plan(before.Width, before.Height, expectedStrength)!;
+        var expected = ImageBlocks.Expected(before.Bgra, before.Width, before.Height, new PixelRect(0, 0, before.Width, before.Height), grid, treatment);
+        Assert.NotEqual(before.Bgra, expected);
+        Assert.Equal(expected, after.Bgra);
+
+        // The report on stderr counts the areas and says what the check cannot say; it never carries a pixel or a removed text.
+        Assert.Contains("Image areas:", result.Error, StringComparison.Ordinal);
+        Assert.Contains(treatment == RedactionImageTreatment.Pixelate ? "1 image area pixelated" : "1 image area blurred", result.Error, StringComparison.Ordinal);
+        Assert.Contains(RedactionReportText.ImageTextCaution, result.Error, StringComparison.Ordinal);
+        Assert.Contains("does not recognise text in images", result.Error, StringComparison.Ordinal);
+        Assert.Empty(TemporaryFiles());
+    }
+
+    [Fact]
+    public async Task CliImageFillDefaultsToSolid()
+    {
+        var input = Copy("redact-image-blocks.pdf");
+        foreach (var extra in new[] { Array.Empty<string>(), ["--image-fill", "solid"] })
+        {
+            var output = Path.Combine(WorkDirectory.FullName, $"out-{extra.Length}.pdf");
+            var result = await RunAsync(["redact", input, "--output", output, "--rect", "1:46,56,72,72", .. extra]);
+            Assert.True(result.ExitCode == 0, result.Error);
+            var after = await ImageUnderTheAreaAsync(output);
+            for (var i = 0; i < after.Bgra.Length; i += 4)
+            {
+                Assert.Equal([0, 0, 0, 255], after.Bgra[i..(i + 4)]);
+            }
+
+            // Nothing is said about treated image areas when none were asked for.
+            Assert.DoesNotContain("Image areas:", result.Error, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task CliImageOptionsAreUsageErrorsWhenWrong()
+    {
+        var input = Copy("redact-image-blocks.pdf");
+        string[] baseline = ["redact", input, "--output", Output, "--rect", "1:46,56,72,72"];
+
+        // An unknown value, a value that is missing, an option twice, and a strength without blocks to be coarse: exit 2, nothing written.
+        foreach (var bad in new[]
+        {
+            new[] { "--image-fill", "sharp" },
+            new[] { "--image-fill", string.Empty },
+            new[] { "--image-fill" },
+            new[] { "--image-fill", "blur", "--image-strength", "fine" },
+            new[] { "--image-fill", "blur", "--image-strength", "coarse", "--image-strength", "very-coarse" },
+            new[] { "--image-fill", "blur", "--image-fill", "pixelate" },
+            new[] { "--image-strength", "coarse" },
+            new[] { "--image-fill", "solid", "--image-strength", "very-coarse" },
+        })
+        {
+            var result = await RunAsync([.. baseline, .. bad]);
+            Assert.Equal(2, result.ExitCode);
+            Assert.Contains("--image-", result.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(Output));
+        }
+    }
+
+    [Fact]
+    public async Task CliDryRunCountsTheTreatedAndTheSolidAreas()
+    {
+        // The area over the first image is treated; the one over the 7 x 7 pixel image (3 x 3 pixels under it) gets the solid fill.
+        var input = Copy("redact-image-blocks.pdf");
+        var result = await RunAsync("redact", input, "--dry-run", "--rect", "1:46,56,72,72", "--rect", "1:20,210,20,20", "--image-fill", "blur", "--image-strength", "very-coarse");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.False(File.Exists(Output));
+        Assert.Contains("1 image area will be blurred", result.Error, StringComparison.Ordinal);
+        Assert.Contains("1 image area gets the solid fill instead", result.Error, StringComparison.Ordinal);
+        Assert.Contains(RedactionReportText.ImageSolidReasonText(ImageSolidReason.TooSmall), result.Error, StringComparison.Ordinal);
+        Assert.Contains(RedactionReportText.ImageTextCaution, result.Error, StringComparison.Ordinal);
     }
 }

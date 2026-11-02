@@ -751,4 +751,67 @@ public sealed class RedactImageTreatmentTests
 
         return bgra;
     }
+
+    // ---- The analysis and the report say it (milestone 14.1, task 13) ----
+
+    private static RedactionPlan TreatedPlan(RedactionImageTreatment treatment, params PageRect[] areas) =>
+        RedactionPlan.Empty.WithImageTreatment(treatment).WithImageStrength(RedactionImageStrength.Coarse)
+            .With(new RedactionMark(Guid.NewGuid(), RedactionKind.Area, 0, areas, null, false));
+
+    // Shown coordinates (top left origin, 330 high): the area over image 0, the 7 x 7 image, the turned image and the clipped image.
+    private static readonly PageRect[] FourAreas = [new(46, 56, 118, 128), new(20, 210, 40, 230), new(360, 87, 375, 102), new(340, 250, 400, 290)];
+
+    [Fact]
+    public async Task AnalysisCountsTreatedAndSolidAreas()
+    {
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-image-blocks.pdf");
+        await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
+
+        var analysis = await new RedactionExecutor(engine).AnalyzeAsync(TreatedPlan(RedactionImageTreatment.Pixelate, FourAreas), shown, path, null, Ct);
+
+        Assert.False(analysis.IsRefused);
+        Assert.Equal(RedactionImageTreatment.Pixelate, analysis.ImageTreatment);
+        var page = Assert.Single(analysis.Pages);
+        Assert.Equal(1, page.ImageAreasTreated);
+        Assert.Equal(3, page.ImageAreasSolid);
+        Assert.Equivalent(new[] { ImageSolidReason.TooSmall, ImageSolidReason.TurnedOrSheared, ImageSolidReason.Clipped }, page.ImageSolidReasons!);
+
+        // The English report, before applying: the numbers, the reasons and the caution about text in images.
+        var report = RedactionReportText.Of(analysis);
+        Assert.Contains("Image areas:", report, StringComparison.Ordinal);
+        Assert.Contains("1 image area will be pixelated", report, StringComparison.Ordinal);
+        Assert.Contains("3 image areas get the solid fill instead", report, StringComparison.Ordinal);
+        foreach (var reason in page.ImageSolidReasons!)
+        {
+            Assert.Contains(RedactionReportText.ImageSolidReasonText(reason), report, StringComparison.Ordinal);
+        }
+
+        Assert.Contains(RedactionReportText.ImageTextCaution, report, StringComparison.Ordinal);
+
+        // Nothing is promised that the check does not do: the "Will be checked" part does not say text in images is covered.
+        Assert.DoesNotContain("legible text", report, StringComparison.OrdinalIgnoreCase);
+
+        // The same plan blurred says "blurred"; the solid plan has no such part.
+        var blurred = await new RedactionExecutor(engine).AnalyzeAsync(TreatedPlan(RedactionImageTreatment.Blur, FourAreas), shown, path, null, Ct);
+        Assert.Contains("1 image area will be blurred", RedactionReportText.Of(blurred), StringComparison.Ordinal);
+        var solid = await new RedactionExecutor(engine).AnalyzeAsync(TreatedPlan(RedactionImageTreatment.Solid, FourAreas), shown, path, null, Ct);
+        Assert.Equal(0, solid.Pages.Sum(static p => p.ImageAreasTreated + p.ImageAreasSolid));
+        Assert.DoesNotContain("Image areas:", RedactionReportText.Of(solid), StringComparison.Ordinal);
+        Assert.DoesNotContain(RedactionReportText.ImageTextCaution, RedactionReportText.Of(solid), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryReasonForTheSolidFillHasASentence()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var reason in Enum.GetValues<ImageSolidReason>())
+        {
+            var text = RedactionReportText.ImageSolidReasonText(reason);
+            Assert.False(string.IsNullOrWhiteSpace(text), $"{reason} has no sentence");
+            Assert.True(seen.Add(text), $"{reason} shares its sentence with another reason");
+        }
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionReportText.ImageSolidReasonText((ImageSolidReason)99));
+    }
 }

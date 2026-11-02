@@ -1262,4 +1262,257 @@ public sealed class RedactionVerifierTests
     }
 
     private static byte[] MiniZ() => VerifierPdf.Zlib(Latin1("BT (Zephyrstraße 17) Tj ET"));
+
+    // ---- Pixelated and blurred image areas (milestone 14.1, task 13) ----
+    // redact-image-blocks.pdf is 330 pt high; its areas are given as shown (top left origin), so the user space y 202 to 274 is 56 to 128.
+
+    private static readonly PageRect GradArea = new(46, 56, 118, 128);
+    private static readonly PageRect TinyArea = new(20, 210, 40, 230);
+    private static readonly PageRect TurnedArea = new(360, 87, 375, 102);
+    private static readonly PageRect ClippedArea = new(340, 250, 400, 290);
+
+    private static RedactionPlan TreatedPlan(RedactionImageTreatment treatment, RedactionImageStrength strength, params PageRect[] areas) =>
+        RedactionPlan.Empty.WithImageTreatment(treatment).WithImageStrength(strength)
+            .With(new RedactionMark(Guid.NewGuid(), RedactionKind.Area, 0, areas, null, false));
+
+    private int _treatedFiles;
+
+    /// <summary>Redacts a copy of a fixture the way the plan says and returns the written file with what the check expects of it (worked out from the original).</summary>
+    private async Task<(string Output, RedactionExpectation Expectation)> TreatedAsync(TempFolder folder, string fixture, RedactionPlan plan)
+    {
+        var number = ++_treatedFiles;
+        var input = Path.Combine(folder.Path, $"in-{number}.pdf");
+        File.Copy(TestData.Pdf(fixture), input);
+        var output = Path.Combine(folder.Path, $"out-{number}.pdf");
+        await using (var document = await engine.OpenAsync(input, cancellationToken: Ct))
+        {
+            foreach (var mark in plan.Marks)
+            {
+                await document.RedactPageAsync(mark.Page, mark.Areas, plan.Fill, plan.ImageTreatment, plan.ImageStrength, Ct);
+            }
+
+            await using var stream = File.Create(output);
+            await document.SaveRewriteAsync(stream, Ct);
+        }
+
+        await using var original = await engine.OpenAsync(input, cancellationToken: Ct);
+        return (output, await RedactionExecutor.ExpectationAsync(plan, original, Ct));
+    }
+
+    private static RedactionExpectation WithMeans(RedactionExpectation expectation, Func<byte[], byte[]> change) =>
+        expectation with { ImageAreas = [.. expectation.ImageAreas!.Select(area => area with { BlockMeans = change(area.BlockMeans) })] };
+
+    private static byte[] Shifted(byte[] means, int delta) => [.. means.Select(m => (byte)Math.Clamp(m + delta, 0, 255))];
+
+    // The blocks in the reverse order: the same set of means arranged differently.
+    private static byte[] ReversedBlocks(byte[] means)
+    {
+        var blocks = means.Length / 3;
+        var result = new byte[means.Length];
+        for (var block = 0; block < blocks; block++)
+        {
+            Array.Copy(means, block * 3, result, (blocks - 1 - block) * 3, 3);
+        }
+
+        return result;
+    }
+
+    [Fact]
+    public async Task VerifierFailsWhenTheAreaIsStillTheOriginalPixels()
+    {
+        // The mutation that matters: the file is the original, nothing was treated. Only the fill colour, or exactly the block result, passes.
+        using var folder = new TempFolder();
+        var plan = TreatedPlan(RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse, GradArea);
+        var path = Copy(folder, "redact-image-blocks.pdf");
+        await using var original = await engine.OpenAsync(path, cancellationToken: Ct);
+        var expectation = await RedactionExecutor.ExpectationAsync(plan, original, Ct);
+        Assert.Single(expectation.ImageAreas!);
+
+        var check = await VerifyAsync(path, expectation);
+
+        var finding = Assert.Single(check.Findings);
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, finding.Kind);
+        Assert.Equal(0, finding.Page);
+
+        // Blurring chosen: the same.
+        var blurPlan = TreatedPlan(RedactionImageTreatment.Blur, RedactionImageStrength.VeryCoarse, GradArea);
+        var blurCheck = await VerifyAsync(path, await RedactionExecutor.ExpectationAsync(blurPlan, original, Ct));
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single(blurCheck.Findings).Kind);
+    }
+
+    [Theory]
+    [InlineData(RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse)]
+    [InlineData(RedactionImageTreatment.Pixelate, RedactionImageStrength.VeryCoarse)]
+    [InlineData(RedactionImageTreatment.Blur, RedactionImageStrength.Coarse)]
+    [InlineData(RedactionImageTreatment.Blur, RedactionImageStrength.VeryCoarse)]
+    public async Task VerifierPassesTheRealTreatment(RedactionImageTreatment treatment, RedactionImageStrength strength)
+    {
+        using var folder = new TempFolder();
+        var plan = TreatedPlan(treatment, strength, GradArea);
+        var (output, expectation) = await TreatedAsync(folder, "redact-image-blocks.pdf", plan);
+
+        var check = await VerifyAsync(output, expectation);
+
+        Assert.True(check.IsClean, string.Join("; ", check.Findings.Select(static f => f.Detail)));
+
+        // The report says what was read back and what it cannot say: the text in a treated image.
+        var line = Assert.Single(check.Items, static i => i.Kind == RedactionNotCheckedKind.ImageTextLegible);
+        Assert.Equal((1, 0), (line.Count, line.Second));
+        Assert.Contains("does not recognise text in images", line.Text, StringComparison.Ordinal);
+
+        // Without the expected blocks only the fill colour passes: the same file is a finding, the strict answer.
+        var strict = await VerifyAsync(output, expectation with { ImageAreas = null });
+        Assert.Equal(RedactionFindingKind.ImagePixelNotOverwritten, Assert.Single(strict.Findings).Kind);
+    }
+
+    [Fact]
+    public async Task VerifierFailsWhenBlocksDifferFromTheOriginalsMeans()
+    {
+        // Two pages with the same layout and different pixels: the file of the first, judged against the means of the second, fails.
+        using var folder = new TempFolder();
+        var area = new PageRect(66, 70, 114, 118);
+        var plan = TreatedPlan(RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse, area);
+        var one = Path.Combine(folder.Path, "one.pdf");
+        var other = Path.Combine(folder.Path, "other.pdf");
+        await File.WriteAllBytesAsync(one, PatternPdf(seed: 1), Ct);
+        await File.WriteAllBytesAsync(other, PatternPdf(seed: 2), Ct);
+        var output = Path.Combine(folder.Path, "out.pdf");
+        await using (var document = await engine.OpenAsync(one, cancellationToken: Ct))
+        {
+            await document.RedactPageAsync(0, [area], plan.Fill, plan.ImageTreatment, plan.ImageStrength, Ct);
+            await using var stream = File.Create(output);
+            await document.SaveRewriteAsync(stream, Ct);
+        }
+
+        await using var originalOne = await engine.OpenAsync(one, cancellationToken: Ct);
+        await using var originalOther = await engine.OpenAsync(other, cancellationToken: Ct);
+        var right = await RedactionExecutor.ExpectationAsync(plan, originalOne, Ct);
+        var wrong = await RedactionExecutor.ExpectationAsync(plan, originalOther, Ct);
+        Assert.NotEqual(right.ImageAreas![0].BlockMeans, wrong.ImageAreas![0].BlockMeans);
+
+        Assert.True((await VerifyAsync(output, right)).IsClean);
+        var check = await VerifyAsync(output, wrong);
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single(check.Findings).Kind);
+    }
+
+    private static byte[] PatternPdf(int seed)
+    {
+        var pixels = new byte[48 * 48 * 3];
+        for (var y = 0; y < 48; y++)
+        {
+            for (var x = 0; x < 48; x++)
+            {
+                var i = ((y * 48) + x) * 3;
+                pixels[i] = (byte)((x * (4 + seed)) + (y * 3 * seed));
+                pixels[i + 1] = (byte)((y * (5 + seed)) + (x * seed * 2));
+                pixels[i + 2] = (byte)(((x ^ y) * 7 * seed) + (x * y));
+            }
+        }
+
+        var pdf = new MiniPdf();
+        var image = pdf.AddStream("/Type /XObject /Subtype /Image /Width 48 /Height 48 /BitsPerComponent 8 /ColorSpace /DeviceRGB", pixels);
+        pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /XObject << /Im1 {image} 0 R >> >>", "q 96 0 0 96 50 50 cm /Im1 Do Q\n");
+        return pdf.Build();
+    }
+
+    [Fact]
+    public async Task VerifierFailsWhenTheSameBlocksAreArrangedDifferently()
+    {
+        // The right set of block means, in another order: the pixels do not show them where the original had them.
+        using var folder = new TempFolder();
+        var plan = TreatedPlan(RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse, GradArea);
+        var (output, expectation) = await TreatedAsync(folder, "redact-image-blocks.pdf", plan);
+        Assert.True((await VerifyAsync(output, expectation)).IsClean);
+
+        var shuffled = WithMeans(expectation, ReversedBlocks);
+        Assert.NotEqual(expectation.ImageAreas![0].BlockMeans, shuffled.ImageAreas![0].BlockMeans);
+        Assert.Equal(expectation.ImageAreas[0].BlockMeans.Order(), shuffled.ImageAreas[0].BlockMeans.Order());
+        var check = await VerifyAsync(output, shuffled);
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single(check.Findings).Kind);
+    }
+
+    [Fact]
+    public async Task VerifierFailsWhenTheBlocksHaveAnotherStrengthOrTreatment()
+    {
+        using var folder = new TempFolder();
+        var veryCoarse = TreatedPlan(RedactionImageTreatment.Pixelate, RedactionImageStrength.VeryCoarse, GradArea);
+        var (output, _) = await TreatedAsync(folder, "redact-image-blocks.pdf", veryCoarse);
+        var input = Path.Combine(folder.Path, "in-1.pdf");
+        await using var original = await engine.OpenAsync(input, cancellationToken: Ct);
+
+        // Written with 3 x 3 blocks, judged as 6 x 6 blocks.
+        var coarse = await RedactionExecutor.ExpectationAsync(TreatedPlan(RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse, GradArea), original, Ct);
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(output, coarse)).Findings).Kind);
+
+        // Pixelated blocks, judged as a blur of the same means.
+        var blur = await RedactionExecutor.ExpectationAsync(TreatedPlan(RedactionImageTreatment.Blur, RedactionImageStrength.VeryCoarse, GradArea), original, Ct);
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(output, blur)).Findings).Kind);
+
+        // The right judgement passes.
+        var right = await RedactionExecutor.ExpectationAsync(veryCoarse, original, Ct);
+        Assert.True((await VerifyAsync(output, right)).IsClean);
+    }
+
+    [Fact]
+    public async Task VerifierAcceptsTheSolidFillWhereTheTreatmentFellBack()
+    {
+        // One area is treated; the others fall back to the solid fill (too small, turned image, clipped image): all of it passes.
+        using var folder = new TempFolder();
+        var plan = TreatedPlan(RedactionImageTreatment.Blur, RedactionImageStrength.Coarse, GradArea, TinyArea, TurnedArea, ClippedArea);
+        var (output, expectation) = await TreatedAsync(folder, "redact-image-blocks.pdf", plan);
+
+        var check = await VerifyAsync(output, expectation);
+
+        Assert.True(check.IsClean, string.Join("; ", check.Findings.Select(static f => f.Detail)));
+        var line = Assert.Single(check.Items, static i => i.Kind == RedactionNotCheckedKind.ImageTextLegible);
+        Assert.Equal((1, 2), (line.Count, line.Second));
+
+        // An area that fell back is not accepted as anything but the fill: the colour of a different plan fails.
+        var other = await VerifyAsync(output, expectation with { Fill = RedactionFill.White, Plan = plan.WithFill(RedactionFill.White) });
+        Assert.Contains(other.Findings, static f => f.Kind is RedactionFindingKind.ImagePixelNotOverwritten or RedactionFindingKind.ImageTreatmentWrong);
+    }
+
+    [Fact]
+    public async Task OnlyTheBlurIsAllowedToDifferByOne()
+    {
+        using var folder = new TempFolder();
+        var pixelate = TreatedPlan(RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse, GradArea);
+        var (pixelated, pixelateExpectation) = await TreatedAsync(folder, "redact-image-blocks.pdf", pixelate);
+        var blur = TreatedPlan(RedactionImageTreatment.Blur, RedactionImageStrength.Coarse, GradArea);
+        var (blurred, blurExpectation) = await TreatedAsync(folder, "redact-image-blocks.pdf", blur);
+
+        // A pixelated area is exact: one step in every block is a finding. A blurred area follows the means within RedactionVerifier.BlurTolerance.
+        Assert.True((await VerifyAsync(pixelated, pixelateExpectation)).IsClean);
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(pixelated, WithMeans(pixelateExpectation, m => Shifted(m, 1)))).Findings).Kind);
+        Assert.Equal(1, RedactionVerifier.BlurTolerance);
+        Assert.True((await VerifyAsync(blurred, WithMeans(blurExpectation, m => Shifted(m, 1)))).IsClean);
+        Assert.True((await VerifyAsync(blurred, WithMeans(blurExpectation, m => Shifted(m, -1)))).IsClean);
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(blurred, WithMeans(blurExpectation, m => Shifted(m, 2)))).Findings).Kind);
+    }
+
+    [Fact]
+    public async Task AnExpectationThatDoesNotFitItsGridAcceptsNothing()
+    {
+        using var folder = new TempFolder();
+        var plan = TreatedPlan(RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse, GradArea);
+        var (output, expectation) = await TreatedAsync(folder, "redact-image-blocks.pdf", plan);
+
+        var check = await VerifyAsync(output, WithMeans(expectation, static m => m[..^3]));
+
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single(check.Findings).Kind);
+    }
+
+    [Fact]
+    public async Task ASolidPlanKeepsTheStrictAnswerAndAddsNoImageLine()
+    {
+        using var folder = new TempFolder();
+        var plan = RedactionPlan.Empty.With(new RedactionMark(Guid.NewGuid(), RedactionKind.Area, 0, [GradArea], null, false));
+        var (output, expectation) = await TreatedAsync(folder, "redact-image-blocks.pdf", plan);
+        Assert.Null(expectation.ImageAreas);
+
+        var check = await VerifyAsync(output, expectation);
+
+        Assert.True(check.IsClean);
+        Assert.DoesNotContain(check.Items, static i => i.Kind == RedactionNotCheckedKind.ImageTextLegible);
+    }
 }

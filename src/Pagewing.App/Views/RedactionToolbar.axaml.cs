@@ -21,8 +21,8 @@ namespace Pagewing.App.Views;
 /// </summary>
 public sealed partial class RedactionToolbar : UserControl
 {
-    /// <summary>The last level of <see cref="Fit"/>: the hint, the labels, the mode name, its icon, the text of the counter and the words of "Done", "Discard" and "Apply" are gone.</summary>
-    private const int MaxFitLevel = 8;
+    /// <summary>The last level of <see cref="Fit"/>: the hint, the labels, the mode name, its icon, the text of the counter, the words of "Done", "Discard" and "Apply" and the words "Black" and "White" are gone.</summary>
+    private const int MaxFitLevel = 9;
 
     /// <summary>From this level of <see cref="Fit"/> on the buttons of the tools have less padding.</summary>
     private const int TightLevel = 7;
@@ -51,6 +51,10 @@ public sealed partial class RedactionToolbar : UserControl
         FillHexBox.KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.Enter), Command = new RelayCommand(() => CommitFillText(showError: true)) });
         FillHexBox.LostFocus += (_, _) => CommitFillText(showError: false);
         BuildPresets();
+
+        // The swatches that stand for "Black" and "White" in the narrowest window: the colour of the content that is written, not of the interface.
+        FillBlackSwatch.Background = new SolidColorBrush(Color.FromRgb(RedactionFill.Black.Red, RedactionFill.Black.Green, RedactionFill.Black.Blue));
+        FillWhiteSwatch.Background = new SolidColorBrush(Color.FromRgb(RedactionFill.White.Red, RedactionFill.White.Green, RedactionFill.White.Blue));
 
         // "Apply …" comes and goes with the first and the last mark, and the counter changes its words: the row is fitted again.
         ApplyButton.PropertyChanged += (_, e) =>
@@ -108,6 +112,8 @@ public sealed partial class RedactionToolbar : UserControl
             _tab.PropertyChanged += OnTabPropertyChanged;
         }
 
+        // The flyout of the image areas is a popup, outside the visual tree: its content gets the tab by hand.
+        ImageAreasFlyoutContent.DataContext = _tab;
         ShowFill();
     }
 
@@ -217,7 +223,7 @@ public sealed partial class RedactionToolbar : UserControl
     /// Too narrow for everything (design system 6, narrow window), step by step until it fits: first the hint goes, then the
     /// labels of the tools, the preview and the fill (their tooltips and names stay), then the text of the mode name, then its icon,
     /// then the text of the counter and the separators between the groups, then the words of "Done" and "Discard", last those of
-    /// "Apply". The buttons
+    /// "Apply", and last the words "Black" and "White" (a swatch of their colour stays). The buttons
     /// always stay in the row.
     /// </summary>
     private void Fit()
@@ -246,12 +252,17 @@ public sealed partial class RedactionToolbar : UserControl
                 PreviewLabel.IsVisible = level < 2;
                 FillLabel.IsVisible = level < 2;
                 FillCustomDetail.IsVisible = level < 2;
+                ImageAreasDetail.IsVisible = level < 2;
                 ModeName.IsVisible = level < 3;
                 ModeLabel.IsVisible = level < 4;
                 CounterText.IsVisible = level < 5;
                 DoneLabel.IsVisible = level < 6;
                 DiscardLabel.IsVisible = level < 7;
                 ApplyLabel.IsVisible = level < 8;
+                FillBlackWord.IsVisible = level < 9;
+                FillWhiteWord.IsVisible = level < 9;
+                FillBlackSwatch.IsVisible = level >= 9;
+                FillWhiteSwatch.IsVisible = level >= 9;
                 foreach (var separator in ToolsArea.Children.OfType<Border>())
                 {
                     separator.IsVisible = level < 5;

@@ -25,7 +25,7 @@ public static class CliApp
           pagewing merge  --output <out.pdf> <file> [--pages <range>] [--password <pw>] <file> [--pages <range>] [--password <pw>] ... [--force]
           pagewing split  <file> --output <dir> (--every <n> | --ranges <ranges> | --bookmarks) [--force] [--password <pw>]
           pagewing export <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--force] [--password <pw>]
-          pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--force] [--password <pw>]
+          pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--image-fill <solid|pixelate|blur>] [--image-strength <coarse|very-coarse>] [--force] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -127,6 +127,16 @@ public static class CliApp
                              text may still be there. With it the report lists these pages as "Not searched (accepted)".
           --fill <colour>    Redact: the colour of the areas that replace the removed content: black (default),
                              white or a colour written as #RRGGBB. Pages that become images take it too.
+          --image-fill <how> Redact: what the parts of images under the marks become: solid (default, the fill
+                             colour), pixelate or blur (a few coarse blocks of the image: only their averages
+                             remain; no block is smaller than 8 pixels). Text in an image can stay legible even
+                             then, and Pagewing does not recognise text in images: for such text choose solid.
+                             Text and paths under a mark always get the solid fill. Where the rule does not apply
+                             (a turned, sheared or clipped image, a mark smaller than 2 x 2 blocks of 8 pixels,
+                             marks that overlap on one image) the area gets the solid fill, and the report says how
+                             many and why.
+          --image-strength <s> Redact, with --image-fill pixelate or blur: coarse (default, up to 6 blocks along an axis)
+                             or very-coarse (up to 3).
           --match-case       Search and redact: distinguish upper and lower case (default: ignore case; with
                              redact every spelling found is removed).
           --whole-word       Search: match only whole words.

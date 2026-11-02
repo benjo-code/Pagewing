@@ -205,13 +205,29 @@ public sealed class RedactionPlan
 
     /// <summary>Returns the plan with another treatment of the images under the marks.</summary>
     /// <param name="treatment">The treatment.</param>
-    public RedactionPlan WithImageTreatment(RedactionImageTreatment treatment) =>
-        treatment == ImageTreatment ? this : new RedactionPlan(_marks, Fill, treatment, ImageStrength, Overlay, _rasterPages, RasterDpi);
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="treatment"/> is not a defined value.</exception>
+    public RedactionPlan WithImageTreatment(RedactionImageTreatment treatment)
+    {
+        if (!Enum.IsDefined(treatment))
+        {
+            throw new ArgumentOutOfRangeException(nameof(treatment), "The treatment is not a defined value.");
+        }
+
+        return treatment == ImageTreatment ? this : new RedactionPlan(_marks, Fill, treatment, ImageStrength, Overlay, _rasterPages, RasterDpi);
+    }
 
     /// <summary>Returns the plan with another strength of pixelating and blurring.</summary>
     /// <param name="strength">The strength.</param>
-    public RedactionPlan WithImageStrength(RedactionImageStrength strength) =>
-        strength == ImageStrength ? this : new RedactionPlan(_marks, Fill, ImageTreatment, strength, Overlay, _rasterPages, RasterDpi);
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="strength"/> is not a defined value.</exception>
+    public RedactionPlan WithImageStrength(RedactionImageStrength strength)
+    {
+        if (!Enum.IsDefined(strength))
+        {
+            throw new ArgumentOutOfRangeException(nameof(strength), "The strength is not a defined value.");
+        }
+
+        return strength == ImageStrength ? this : new RedactionPlan(_marks, Fill, ImageTreatment, strength, Overlay, _rasterPages, RasterDpi);
+    }
 
     /// <summary>Returns the plan with another style of the overlay text.</summary>
     /// <param name="style">The style.</param>

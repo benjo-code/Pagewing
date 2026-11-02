@@ -15,7 +15,11 @@ namespace Pagewing.Core.Redaction;
 /// unpacked, old revisions and metadata included). The text may occur there at most as often as the page text shows it (with
 /// <see cref="RemovedText.Everywhere"/>: never), so a legitimate occurrence that was not marked does not fail the check, and a copy
 /// in an attachment, in metadata or in an old revision does.</item>
-/// <item>Pixels: the image pixels under every marked area are the colour of the area.</item>
+/// <item>Pixels: the image pixels under every marked area are the colour of the area. Where the plan pixelates or blurs image areas
+/// (<see cref="RedactionPlan.ImageTreatment"/>), an area is accepted when it is exactly the fill colour (the area fell back to the solid
+/// fill; the file does not say whether it did) or exactly the block result that <see cref="ExpectedImageArea"/> (block means of the
+/// ORIGINAL pixels, worked out by <see cref="ImageBlocks"/>) gives; the original pixels, other blocks, another strength or treatment
+/// and a half-treated area are findings.</item>
 /// <item>Pages turned into images (<see cref="RedactionExpectation.RasterPages"/>): the page of the result has exactly one image object and
 /// nothing else (no text, path, other object or annotation; links and form fields are annotations), or the check fails. A page the
 /// reader cannot count fails as well. What stays in the image outside the marked areas is not checked
@@ -30,6 +34,13 @@ public static class RedactionVerifier
 
     /// <summary>The most areas whose image pixels are read back; further ones are listed as not checked.</summary>
     public const int MaxPixelAreas = 2_000;
+
+    /// <summary>
+    /// How far a channel of a BLURRED image area may be from the value worked out from the block means of the original. The two
+    /// implementations (the one that writes and the one that expects) agree bit for bit on every test vector, so this is slack against a
+    /// rounding of the reader, not part of the rule; a pixelated area has to be exact, and so has the fill colour.
+    /// </summary>
+    public const int BlurTolerance = 1;
 
     /// <summary>
     /// The overlap, in points, that a character of the result may have with a marked area without counting as inside: the page text
@@ -70,7 +81,7 @@ public static class RedactionVerifier
         await CheckRasterPagesAsync(reopened, rasterPages, findings, notChecked, cancellationToken).ConfigureAwait(false);
         CheckTextRule(texts, findings);
         await CheckRawAsync(file, texts, limits, findings, notChecked, cancellationToken).ConfigureAwait(false);
-        await CheckPixelsAsync(reopened, plan, expectation.Fill, findings, notChecked, cancellationToken).ConfigureAwait(false);
+        await CheckPixelsAsync(reopened, expectation, findings, notChecked, cancellationToken).ConfigureAwait(false);
 
         notChecked.Add(RedactionNotCheckedKind.RawFontMapping, "Raw bytes: text in fonts with their own code mapping (subset fonts) is not readable in the streams; only the page text covers it.");
         notChecked.Add(RedactionNotCheckedKind.RawEncodings, "Raw bytes: only the removed texts are searched, as given and in composed and decomposed form, in Latin-1, Windows-ANSI, PDFDocEncoding, UTF-8 and UTF-16; text in any other encoding, or split by other operators, is not found.");
@@ -474,11 +485,30 @@ public static class RedactionVerifier
 
     private static string DetailOf(RawScanNote note) => note.Detail.Length == 0 ? "no detail" : note.Detail;
 
-    private static async Task CheckPixelsAsync(PdfDocument reopened, RedactionPlan plan, RedactionFill fill, List<RedactionFinding> findings, NotCheckedLog notChecked, CancellationToken cancellationToken)
+    private static async Task CheckPixelsAsync(PdfDocument reopened, RedactionExpectation expectation, List<RedactionFinding> findings, NotCheckedLog notChecked, CancellationToken cancellationToken)
     {
+        var plan = expectation.Plan;
+        var fill = expectation.Fill;
+        var treatment = plan.ImageTreatment;
+        var expectedByArea = new Dictionary<(int, PageRect), List<ExpectedImageArea>>();
+        if (treatment != RedactionImageTreatment.Solid && expectation.ImageAreas is { } expectedAreas)
+        {
+            foreach (var expected in expectedAreas)
+            {
+                if (!expectedByArea.TryGetValue((expected.Page, expected.Area), out var list))
+                {
+                    list = [];
+                    expectedByArea[(expected.Page, expected.Area)] = list;
+                }
+
+                list.Add(expected);
+            }
+        }
+
         var seen = new HashSet<(int, PageRect)>();
         var checkedAreas = 0;
         var skipped = 0;
+        var tally = new ImageTally();
         foreach (var mark in plan.Marks)
         {
             if (mark.Page >= reopened.PageCount)
@@ -504,9 +534,10 @@ public static class RedactionVerifier
                 try
                 {
                     var images = await reopened.GetImageAreaPixelsAsync(mark.Page, area, cancellationToken).ConfigureAwait(false);
+                    var candidates = expectedByArea.TryGetValue((mark.Page, area), out var found) ? found : [];
                     foreach (var image in images)
                     {
-                        CheckImage(mark.Page, image, fill, findings);
+                        CheckImage(mark.Page, image, fill, plan, candidates, findings, tally);
                     }
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or RedactionException)
@@ -525,9 +556,27 @@ public static class RedactionVerifier
         }
 
         notChecked.Add(RedactionNotCheckedKind.PixelsOnlyImages, "Pixels: the colour of the fill is read back only in images that touch a marked area. For an area without an image (text or vector content only) the removal of the content is checked, but the colour of the drawn rectangle is not read back from the written file.");
+        if (treatment != RedactionImageTreatment.Solid)
+        {
+            notChecked.Add(
+                RedactionNotCheckedKind.ImageTextLegible,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Image areas: {tally.Treated} image area(s) read back were pixelated or blurred and {tally.Solid} filled solid. Their pixels were compared with the block averages of the original; whether text in a pixelated or blurred image can still be read is not checked, and Pagewing does not recognise text in images. For text in an image choose the solid fill."),
+                tally.Treated,
+                tally.Solid);
+        }
     }
 
-    private static void CheckImage(int page, ImageAreaPixels image, RedactionFill fill, List<RedactionFinding> findings)
+    /// <summary>How many image areas the read-back found treated and filled solid.</summary>
+    private sealed class ImageTally
+    {
+        public int Treated { get; set; }
+
+        public int Solid { get; set; }
+    }
+
+    private static void CheckImage(int page, ImageAreaPixels image, RedactionFill fill, RedactionPlan plan, IReadOnlyList<ExpectedImageArea> candidates, List<RedactionFinding> findings, ImageTally tally)
     {
         if (image.Width <= 0 || image.Height <= 0 || image.Bgra.Length < image.Width * image.Height * 4)
         {
@@ -554,7 +603,18 @@ public static class RedactionVerifier
             }
         }
 
-        if (wrong > 0)
+        if (wrong == 0)
+        {
+            tally.Solid++;
+            return;
+        }
+
+        // The area is not the fill colour. Where the plan pixelates or blurs it may still be the block result of one of the images the
+        // original held under this area in this size; a size no original image had under the area (an area that was too small to treat
+        // has no candidate either) is judged by the fill colour alone.
+        var treatment = plan.ImageTreatment;
+        List<ExpectedImageArea> sameSize = treatment == RedactionImageTreatment.Solid ? [] : candidates.Where(c => c.Width == image.Width && c.Height == image.Height).ToList();
+        if (sameSize.Count == 0)
         {
             findings.Add(new RedactionFinding(
                 RedactionFindingKind.ImagePixelNotOverwritten,
@@ -562,7 +622,54 @@ public static class RedactionVerifier
                 string.Create(
                     CultureInfo.InvariantCulture,
                     $"{wrong} of {image.Width * image.Height} pixels of an image under a marked area are not the fill colour; the first is in column {first % image.Width} of row {first / image.Width}.")));
+            return;
         }
+
+        var tolerance = treatment == RedactionImageTreatment.Blur ? BlurTolerance : 0;
+        var grid = ImageBlocks.Plan(image.Width, image.Height, plan.ImageStrength);
+        var nearest = int.MaxValue;
+        if (grid is not null)
+        {
+            foreach (var candidate in sameSize)
+            {
+                byte[] expected;
+                try
+                {
+                    expected = ImageBlocks.ExpectedFromMeans(candidate.BlockMeans, grid, treatment);
+                }
+                catch (ArgumentException)
+                {
+                    // Means that do not fit the grid are no expectation: this candidate cannot accept anything.
+                    continue;
+                }
+
+                var different = 0;
+                for (var i = 0; i < length; i++)
+                {
+                    if (Math.Abs(image.Bgra[i] - expected[i]) > tolerance)
+                    {
+                        different++;
+                    }
+                }
+
+                if (different == 0)
+                {
+                    tally.Treated++;
+                    return;
+                }
+
+                nearest = Math.Min(nearest, different);
+            }
+        }
+
+        findings.Add(new RedactionFinding(
+            RedactionFindingKind.ImageTreatmentWrong,
+            page,
+            nearest == int.MaxValue
+                ? "An image area under a mark is not the fill colour and no block result could be worked out for it from the original, so it is not what pixelating or blurring writes."
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"An image area under a mark is neither the fill colour nor the block result worked out from the original: at best {nearest} of its {length} colour values differ from it.")));
     }
 
     private static (int Count, double X, double Y) CharsInsideAreas(PageText text, IReadOnlyList<PageRect> areas)

@@ -173,7 +173,8 @@ public sealed partial class RedactionExecutor
             plan.Marks.Count,
             withoutTerm,
             inventory.AttachmentAnnotations,
-            plan.RasterPages.Count > 0 ? pass.Raster : null);
+            plan.RasterPages.Count > 0 ? pass.Raster : null,
+            plan.ImageTreatment);
     }
 
     /// <summary>
@@ -297,15 +298,16 @@ public sealed partial class RedactionExecutor
         }
 
         IReadOnlyList<int>? rasterPages = plan.RasterPages.Count > 0 ? [.. plan.RasterPages.Order()] : null;
+        var imageAreas = await ImageAreasAsync(plan, original, cancellationToken).ConfigureAwait(false);
         if (candidates.Count == 0)
         {
-            return new RedactionExpectation(plan, [], plan.Fill, rasterPages);
+            return new RedactionExpectation(plan, [], plan.Fill, rasterPages, imageAreas);
         }
 
         try
         {
             // The text of a page that becomes an image is gone in the result: its occurrences are not counted as ones that stay.
-            return new RedactionExpectation(plan, await RemovedText.FromOriginalAsync(original, candidates, plan.RasterPages, cancellationToken).ConfigureAwait(false), plan.Fill, rasterPages);
+            return new RedactionExpectation(plan, await RemovedText.FromOriginalAsync(original, candidates, plan.RasterPages, cancellationToken).ConfigureAwait(false), plan.Fill, rasterPages, imageAreas);
         }
         catch (InvalidDataException ex)
         {
@@ -320,6 +322,83 @@ public sealed partial class RedactionExecutor
                     []),
             };
         }
+    }
+
+    /// <summary>
+    /// For a plan that pixelates or blurs: what every image of the ORIGINAL holds under each area, reduced to the block means the result
+    /// must show (<see cref="ExpectedImageArea"/>). The original is read through the same pixel box the check of the result uses, never
+    /// through the working copy; the same areas in the same order as <see cref="RedactionVerifier"/> reads back (the first
+    /// <see cref="RedactionVerifier.MaxPixelAreas"/> distinct ones). <see langword="null"/> for a plan that fills image areas solid.
+    /// </summary>
+    private static async Task<IReadOnlyList<ExpectedImageArea>?> ImageAreasAsync(RedactionPlan plan, PdfDocument original, CancellationToken cancellationToken)
+    {
+        if (plan.ImageTreatment == RedactionImageTreatment.Solid)
+        {
+            return null;
+        }
+
+        var result = new List<ExpectedImageArea>();
+        var seen = new HashSet<(int, PageRect)>();
+        foreach (var mark in plan.Marks)
+        {
+            foreach (var area in mark.Areas)
+            {
+                if (!seen.Add((mark.Page, area)))
+                {
+                    continue;
+                }
+
+                if (seen.Count > RedactionVerifier.MaxPixelAreas)
+                {
+                    return result;
+                }
+
+                // A page turned into an image has one image of the whole page, the area of which is plainly the fill colour.
+                if (plan.RasterPages.Contains(mark.Page))
+                {
+                    continue;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                IReadOnlyList<ImageAreaPixels> parts;
+                try
+                {
+                    parts = await original.GetImageAreaPixelsAsync(mark.Page, area, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or RedactionException)
+                {
+                    // The originals under an area cannot be read: what the result must show is unknown, which is never "fine".
+                    throw new SaveFailureException(
+                        SaveFailureReason.RedactionFailed,
+                        "The check of the redaction could not be completed.",
+                        ex)
+                    {
+                        Details = new RedactionCheck(
+                            [new RedactionFinding(RedactionFindingKind.UnreadableStream, mark.Page, "The images under a marked area of the original could not be read, so the result cannot be checked against the block averages.")],
+                            []),
+                    };
+                }
+
+                foreach (var part in parts)
+                {
+                    if (part.Width <= 0 || part.Height <= 0 || part.Bgra.Length < (long)part.Width * part.Height * 4)
+                    {
+                        continue;
+                    }
+
+                    // A part under the size for 2 x 2 blocks gets the solid fill, so nothing is expected of it but the fill colour.
+                    if (ImageBlocks.Plan(part.Width, part.Height, plan.ImageStrength) is not { } grid)
+                    {
+                        continue;
+                    }
+
+                    var means = ImageBlocks.BlockMeansOf(part.Bgra, part.Width, part.Height, new PixelRect(0, 0, part.Width, part.Height), grid);
+                    result.Add(new ExpectedImageArea(mark.Page, area, part.Width, part.Height, means));
+                }
+            }
+        }
+
+        return result;
     }
 
     private static void EnsureMarksFit(RedactionPlan plan, PdfDocument original)

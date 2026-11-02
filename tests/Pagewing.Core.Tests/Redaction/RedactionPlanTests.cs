@@ -562,4 +562,12 @@ public sealed class RedactionPlanTests
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
+
+    [Fact]
+    public void ImageTreatmentAndStrengthRefuseUndefinedValues()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionPlan.Empty.WithImageTreatment((RedactionImageTreatment)7));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionPlan.Empty.WithImageStrength((RedactionImageStrength)(-1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionPlan.Empty.WithImageStrength((RedactionImageStrength)2));
+    }
 }

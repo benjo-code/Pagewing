@@ -187,6 +187,7 @@ public sealed record RedactionLoss(RedactionLossKind Kind, int Count);
 /// <param name="MarksWithoutTerm">The number of marks without a term (a rectangle dragged on the page): the text under them is removed, but the check has no text to search for.</param>
 /// <param name="AttachmentAnnotations">How many paperclip annotations (<c>/FileAttachment</c>) the file has: up to that many embedded files come with the pages and stay in the file (not cleaned).</param>
 /// <param name="Raster">What turning the pages of <see cref="RedactionPlan.RasterPages"/> into images costs, one entry per page in page order; <see langword="null"/> when the plan has none.</param>
+/// <param name="ImageTreatment">What the plan does with the image areas (<see cref="RedactionPlan.ImageTreatment"/>): the report words its counts and its caution about text in images by it.</param>
 public sealed record RedactionAnalysis(
     IReadOnlyList<PageRedactionImpact> Pages,
     IReadOnlyList<CleanupItem> Cleanup,
@@ -197,7 +198,8 @@ public sealed record RedactionAnalysis(
     int Marks,
     int MarksWithoutTerm,
     int AttachmentAnnotations = 0,
-    IReadOnlyList<RasterPageInfo>? Raster = null)
+    IReadOnlyList<RasterPageInfo>? Raster = null,
+    RedactionImageTreatment ImageTreatment = RedactionImageTreatment.Solid)
 {
     /// <summary>Gets whether the file must not be redacted (any refusal).</summary>
     public bool IsRefused => Refusals.Count > 0;

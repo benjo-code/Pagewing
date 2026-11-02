@@ -55,6 +55,9 @@ internal sealed class RedactionOverlay : Control
     /// <summary>The least contrast, 3:1 (WCAG 2.2, 1.4.11), between the thin edge of an area in the preview and its fill.</summary>
     internal const double MinPreviewEdgeContrast = 3;
 
+    /// <summary>How far in DIPs the dashed frame lies inside an area of the preview when pixelating or blurring is chosen.</summary>
+    internal const double PreviewMarkerInset = 3;
+
     /// <summary>The most selected marks that are elements for screen readers (the rest is drawn and counted in the toolbar).</summary>
     internal const int MaxAutomationFrames = 16;
 
@@ -80,6 +83,7 @@ internal sealed class RedactionOverlay : Control
     private RedactionPlan? _plan;
     private bool _preview;
     private Pen? _previewPen;
+    private Pen? _previewMarkerPen;
     private SolidColorBrush? _previewFill;
     private Dictionary<int, List<RedactionMark>> _byPage = NoMarks;
     private IReadOnlySet<Guid> _selected = new HashSet<Guid>();
@@ -118,6 +122,13 @@ internal sealed class RedactionOverlay : Control
     /// is written, not a colour of the interface).
     /// </summary>
     internal Color PreviewFillColor => _plan is { Fill: var fill } ? Color.FromRgb(fill.Red, fill.Green, fill.Blue) : Colors.Black;
+
+    /// <summary>
+    /// Gets whether the preview marks every area with a dashed inner frame, because the plan pixelates or blurs image areas. The
+    /// preview cannot say which areas lie over an image (the analysis counts them); what it never does is show the pixels of an image,
+    /// pixelated or not: the area is the fill, and the frame is the only difference to the solid fill, told by its pattern and not by colour.
+    /// </summary>
+    internal bool PreviewMarksImageTreatment => _plan is { ImageTreatment: not RedactionImageTreatment.Solid };
 
     /// <summary>
     /// Gets the colour of the thin edge of an area in the preview: the colour of the marks where that keeps
@@ -450,6 +461,17 @@ internal sealed class RedactionOverlay : Control
                 }
 
                 context.DrawRectangle(null, previewPen, rect.Deflate(PreviewEdgeThickness / 2));
+
+                // Pixelating or blurring chosen: a dashed frame inside the area (the pattern, not a colour, tells it from the solid fill).
+                if (PreviewMarksImageTreatment && rect.Width > (2 * PreviewMarkerInset) + PreviewEdgeThickness && rect.Height > (2 * PreviewMarkerInset) + PreviewEdgeThickness)
+                {
+                    if (_previewMarkerPen is not { } markerPen || markerPen.Brush is not ISolidColorBrush markerKnown || markerKnown.Color != edgeColor)
+                    {
+                        _previewMarkerPen = markerPen = new Pen(new SolidColorBrush(edgeColor), PreviewEdgeThickness, new DashStyle([4, 3], 0));
+                    }
+
+                    context.DrawRectangle(null, markerPen, rect.Deflate(PreviewMarkerInset));
+                }
             }
 
             return;

@@ -1434,6 +1434,206 @@ public sealed partial class RedactApplyTests : IDisposable
 
     [GeneratedRegex(@"(?<![\p{L}])(valid|gültig)(?![\p{L}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ValidWord();
+
+    // ------------------------------------------------------------------ pixelated and blurred image areas (milestone 14.1, task 13)
+
+    // An analysis of a plan that pixelates or blurs: two treated areas, three that got the solid fill (two too small, one turned image).
+    private static RedactionAnalysis TreatedAnalysis(RedactionImageTreatment treatment) => new(
+        [new PageRedactionImpact(0, 0, 0, 0, 2, 1, 0, 0, 0, 0, [], [], null, ImageAreasTreated: 2, ImageAreasSolid: 3, ImageSolidReasons: [ImageSolidReason.TooSmall, ImageSolidReason.TurnedOrSheared, ImageSolidReason.TooSmall])],
+        [],
+        CleanupComplete: true,
+        [],
+        [],
+        PageKeysChecked: true,
+        Marks: 1,
+        MarksWithoutTerm: 1,
+        ImageTreatment: treatment);
+
+    private const string HonestSentenceEnglish = "Text in images can stay legible even when it is pixelated or blurred; Pagewing does not recognise text in images. For text in an image choose the solid fill.";
+    private const string HonestSentenceGerman = "Text in Bildern kann auch verpixelt oder weichgezeichnet lesbar bleiben; Pagewing erkennt ihn nicht. Für Text im Bild die Volltonfläche wählen.";
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task CardShowsTheHonestSentenceInBothLanguages(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        await Task.CompletedTask;
+        var sentence = language == "en" ? HonestSentenceEnglish : HonestSentenceGerman;
+        Assert.Equal(sentence, Strings.RedactImageCaution);
+
+        foreach (var treatment in new[] { RedactionImageTreatment.Pixelate, RedactionImageTreatment.Blur })
+        {
+            var analysis = TreatedAnalysis(treatment);
+            var how = treatment == RedactionImageTreatment.Pixelate ? Strings.RedactTreatmentPixelated : Strings.RedactTreatmentBlurred;
+            foreach (var info in new[] { RedactionApplyInfo.Create(analysis), RedactionApplyInfo.ForReport(analysis, new RedactionCheck([], ["x"], [new RedactionNotChecked(RedactionNotCheckedKind.ImageTextLegible, "x", 2, 3)])) })
+            {
+                var section = Assert.Single(info.Sections, section => section.Heading == Strings.RedactSecImageAreas);
+
+                // How many areas are treated and how many are filled solid, and why; the sentence closes the part.
+                Assert.Equal(3, section.Lines.Count);
+                Assert.StartsWith("2 ", section.Lines[0], StringComparison.Ordinal);
+                Assert.Contains(how, section.Lines[0], StringComparison.Ordinal);
+                Assert.StartsWith("3 ", section.Lines[1], StringComparison.Ordinal);
+                Assert.Contains(RedactionApplyInfo.SayImageSolidReason(ImageSolidReason.TooSmall) + " (2×)", section.Lines[1], StringComparison.Ordinal);
+                Assert.Contains(RedactionApplyInfo.SayImageSolidReason(ImageSolidReason.TurnedOrSheared) + " (1×)", section.Lines[1], StringComparison.Ordinal);
+                Assert.Equal(sentence, section.Lines[2]);
+                Assert.DoesNotContain(info.AllTexts, static text => ValidWord().IsMatch(text));
+            }
+
+            // The report does not claim more than the check does: the line about areas says "either the colour or the block averages", and
+            // the not-checked part names the text in images.
+            var report = RedactionApplyInfo.ForReport(analysis, new RedactionCheck([], ["x"], [new RedactionNotChecked(RedactionNotCheckedKind.ImageTextLegible, "x", 2, 3)]));
+            Assert.Contains(Strings.RedactCheckedAreasTreated, report.Sections.Single(static s => s.Heading == Strings.RedactSecChecked).Lines);
+            Assert.DoesNotContain(Strings.RedactCheckedAreas, report.Sections.Single(static s => s.Heading == Strings.RedactSecChecked).Lines);
+            Assert.Contains(report.Sections.Single(static s => s.Heading == Strings.RedactSecNotChecked).Lines, static line => line.Contains('2') && line.Contains('3'));
+        }
+
+        // A plan that fills image areas solid says nothing of the kind.
+        var solid = RedactionApplyInfo.Create(TreatedAnalysis(RedactionImageTreatment.Solid));
+        Assert.DoesNotContain(solid.Sections, static s => s.Heading == Strings.RedactSecImageAreas);
+        Assert.DoesNotContain(solid.AllTexts, static text => text.Contains(Strings.RedactImageCaution, StringComparison.Ordinal));
+    }
+
+    [AvaloniaFact]
+    public async Task TheCardOfAnApplyCarriesTheHonestSentence()
+    {
+        var (window, viewModel, _, tab, _) = await MarkedAsync();
+        tab.RedactionImageTreatment = RedactionImageTreatment.Blur;
+        viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(TreatedAnalysis(RedactionImageTreatment.Blur));
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+
+        var texts = viewModel.PendingSave!.Redaction!.AllTexts.ToList();
+        Assert.Contains(Strings.RedactSecImageAreas, texts);
+        Assert.Contains(Strings.RedactImageCaution, texts);
+        viewModel.PendingSave.Abandon();
+        Assert.False(await apply);
+    }
+
+    [AvaloniaFact]
+    public async Task EveryReasonForTheSolidFillHasASentenceInBothLanguages()
+    {
+        await Task.CompletedTask;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var reason in Enum.GetValues<ImageSolidReason>())
+        {
+            Strings.Culture = new CultureInfo("en");
+            var en = RedactionApplyInfo.SayImageSolidReason(reason);
+            Strings.Culture = new CultureInfo("de");
+            var de = RedactionApplyInfo.SayImageSolidReason(reason);
+
+            // A reason without a sentence fails here: add it to RedactionApplyInfo.SayImageSolidReason and to both resx files.
+            Assert.False(string.IsNullOrWhiteSpace(en), $"{reason} has no English sentence");
+            Assert.False(string.IsNullOrWhiteSpace(de), $"{reason} has no German sentence");
+            Assert.NotEqual(en, de);
+            Assert.True(seen.Add(en), $"{reason} shares its English sentence");
+            Assert.DoesNotMatch(PromiseWords(), en);
+            Assert.DoesNotMatch(PromiseWords(), de);
+        }
+
+        Strings.Culture = new CultureInfo("en");
+        Assert.Throws<ArgumentOutOfRangeException>(() => RedactionApplyInfo.SayImageSolidReason((ImageSolidReason)99));
+    }
+
+    [AvaloniaFact]
+    public async Task EveryKindOfFindingHasALineInBothLanguages()
+    {
+        await Task.CompletedTask;
+        foreach (var kind in Enum.GetValues<RedactionFindingKind>())
+        {
+            var check = new RedactionCheck([new RedactionFinding(kind, 2, "detail", [2])], []);
+            Strings.Culture = new CultureInfo("en");
+            var en = Assert.Single(RedactionApplyInfo.ForFailure(check).Sections).Lines.Single();
+            Strings.Culture = new CultureInfo("de");
+            var de = Assert.Single(RedactionApplyInfo.ForFailure(check).Sections).Lines.Single();
+            Assert.False(string.IsNullOrWhiteSpace(en), $"{kind} has no English line");
+            Assert.NotEqual(en, de);
+            Assert.DoesNotContain("{0}", de, StringComparison.Ordinal);
+            Assert.DoesNotMatch(ValidWord(), en);
+            Assert.DoesNotMatch(ValidWord(), de);
+        }
+
+        Strings.Culture = new CultureInfo("en");
+        var treatment = RedactionApplyInfo.ForFailure(new RedactionCheck([new RedactionFinding(RedactionFindingKind.ImageTreatmentWrong, 0, "d")], [])).Sections.Single().Lines.Single();
+        Assert.StartsWith("An image area that should be pixelated or blurred", treatment, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task PreviewMarksTreatedAreasWithoutShowingOriginalPixels()
+    {
+        var (window, viewModel, view, tab, _) = await MarkedAsync();
+        viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(TreatedAnalysis(RedactionImageTreatment.Pixelate));
+        tab.RedactionPreviewDelay = TimeSpan.Zero;
+        tab.ClearMarkSelection();
+        var overlay = view.RedactionOverlay!;
+        var area = MarkArea(view, Mark);
+        tab.ToggleRedactionPreviewCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.RedactionPreviewText is not null && tab.RedactionPreviewText != Strings.RedactPreviewWorking);
+        var toolbar = Find<RedactionToolbar>(window, "RedactionToolbar");
+        var fill = Avalonia.Media.Colors.Black;
+
+        // The solid fill: the area is the fill, edge to edge, and there is no frame inside it.
+        Assert.False(overlay.PreviewMarksImageTreatment);
+        using (var frame = FramePixels.Snapshot(LayersOf(view)))
+        {
+            Assert.Equal(fill, Pixel(frame, area.Center));
+            Assert.DoesNotContain(FrameRow(frame, area), static color => color.R != 0 || color.G != 0 || color.B != 0);
+        }
+
+        Assert.Equal(Strings.RedactPreviewNote, Find<TextBlock>(toolbar, "PreviewNote").Text);
+
+        // Pixelating chosen: still the fill under the mark (the preview never draws a pixelated version of the page or of an image), plus
+        // a dashed frame inside the area, a pattern that stays visible without colour; the note under the preview says so.
+        tab.RedactionImageTreatment = RedactionImageTreatment.Pixelate;
+        Settle(window);
+        Assert.True(overlay.PreviewMarksImageTreatment);
+        Assert.Equal(fill, overlay.PreviewFillColor);
+        using (var frame = FramePixels.Snapshot(LayersOf(view)))
+        {
+            Assert.Equal(fill, Pixel(frame, area.Center));
+            Assert.Equal(fill, Pixel(frame, new Point(area.Left + 12, area.Center.Y)));
+
+            // Everything between the edge and the inner frame, and inside it, is the fill: nothing of the page shows through.
+            var row = FrameRow(frame, area);
+            Assert.Contains(row, color => color.R != 0 || color.G != 0 || color.B != 0);
+            Assert.Contains(row, color => color.R == 0 && color.G == 0 && color.B == 0);
+            var marker = row.First(color => color.R != 0 || color.G != 0 || color.B != 0);
+            Assert.True(Wcag.Contrast(marker, fill) >= 3, $"the frame has {Wcag.Contrast(marker, fill):F2}:1 against the fill");
+        }
+
+        Assert.Equal(Strings.RedactPreviewNote + " " + Strings.RedactPreviewImageNote, Find<TextBlock>(toolbar, "PreviewNote").Text);
+
+        // Blurring marks the same way; solid takes the frame away again.
+        tab.RedactionImageTreatment = RedactionImageTreatment.Blur;
+        Settle(window);
+        Assert.True(overlay.PreviewMarksImageTreatment);
+        tab.RedactionImageTreatment = RedactionImageTreatment.Solid;
+        Settle(window);
+        Assert.False(overlay.PreviewMarksImageTreatment);
+        using (var frame = FramePixels.Snapshot(LayersOf(view)))
+        {
+            Assert.DoesNotContain(FrameRow(frame, area), static color => color.R != 0 || color.G != 0 || color.B != 0);
+        }
+
+        // The preview is only a view: no card, nothing written, no analysis of the working copy rendered.
+        Assert.Empty(window.SaveCards);
+        Assert.Null(viewModel.PendingSave);
+    }
+
+    // The pixels of the row where the dashed frame runs, inside the area and clear of its corners (the frame is PreviewMarkerInset inside).
+    private static List<Avalonia.Media.Color> FrameRow(FramePixels frame, Rect area)
+    {
+        var y = (int)Math.Floor(area.Top + RedactionOverlay.PreviewMarkerInset);
+        var row = new List<Avalonia.Media.Color>();
+        for (var x = (int)Math.Ceiling(area.Left + 10); x < (int)Math.Floor(area.Right - 10); x++)
+        {
+            row.Add(frame.GetColor(x, y));
+        }
+
+        return row;
+    }
 }
 
 /// <summary>

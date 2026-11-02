@@ -3000,4 +3000,97 @@
   <data name="RedactRescueUnreadable" xml:space="preserve">
     <value>Seite {0} lässt sich nicht lesen und deshalb nicht in ein Bild umwandeln.</value>
   </data>
+  <data name="RedactImageAreas" xml:space="preserve">
+    <value>Bildflächen</value>
+  </data>
+  <data name="RedactImageAreasTip" xml:space="preserve">
+    <value>Was aus den Teilen von Bildern unter den Markierungen wird: die Volltonfläche oder wenige grobe Blöcke des Bildes</value>
+  </data>
+  <data name="RedactImageSolid" xml:space="preserve">
+    <value>Volltonfläche</value>
+  </data>
+  <data name="RedactImagePixelate" xml:space="preserve">
+    <value>Verpixeln</value>
+  </data>
+  <data name="RedactImageBlur" xml:space="preserve">
+    <value>Weichzeichnen</value>
+  </data>
+  <data name="RedactImageSolidTip" xml:space="preserve">
+    <value>Die Teile von Bildern unter einer Markierung bekommen die Füllfarbe (Standard)</value>
+  </data>
+  <data name="RedactImagePixelateTip" xml:space="preserve">
+    <value>Verpixeln: Die Teile von Bildern unter einer Markierung werden zu wenigen hartkantigen Blöcken; nur deren Mittelwerte bleiben</value>
+  </data>
+  <data name="RedactImageBlurTip" xml:space="preserve">
+    <value>Weichzeichnen: Die Teile von Bildern unter einer Markierung werden zu einem weichen Verlauf aus wenigen Blockmittelwerten</value>
+  </data>
+  <data name="RedactImageStrengthLabel" xml:space="preserve">
+    <value>Blöcke</value>
+  </data>
+  <data name="RedactImageCoarse" xml:space="preserve">
+    <value>Grob</value>
+  </data>
+  <data name="RedactImageVeryCoarse" xml:space="preserve">
+    <value>Sehr grob</value>
+  </data>
+  <data name="RedactImageCoarseTip" xml:space="preserve">
+    <value>Höchstens 6 Blöcke je Achse, keiner kleiner als 8 Pixel</value>
+  </data>
+  <data name="RedactImageVeryCoarseTip" xml:space="preserve">
+    <value>Höchstens 3 Blöcke je Achse, keiner kleiner als 8 Pixel</value>
+  </data>
+  <data name="RedactImageCaution" xml:space="preserve">
+    <value>Text in Bildern kann auch verpixelt oder weichgezeichnet lesbar bleiben; Pagewing erkennt ihn nicht. Für Text im Bild die Volltonfläche wählen.</value>
+  </data>
+  <data name="RedactPreviewImageNote" xml:space="preserve">
+    <value>Verpixeln oder Weichzeichnen ist gewählt: Ein gestrichelter Rahmen kennzeichnet jede Fläche. Über Bildern zeigt die geschriebene Datei dort grobe Blöcke statt der Füllung, wo die Regel gilt (die Zahlen oben zählen sie); die Vorschau zeigt nie die Pixel des Bildes.</value>
+  </data>
+  <data name="RedactSecImageAreas" xml:space="preserve">
+    <value>Bildflächen</value>
+  </data>
+  <data name="RedactTreatmentPixelated" xml:space="preserve">
+    <value>verpixelt</value>
+  </data>
+  <data name="RedactTreatmentBlurred" xml:space="preserve">
+    <value>weichgezeichnet</value>
+  </data>
+  <data name="RedactImgTreatedOne" xml:space="preserve">
+    <value>{0} Bildfläche ist {1}: Vom Original bleiben nur grobe Blockmittelwerte.</value>
+  </data>
+  <data name="RedactImgTreatedMany" xml:space="preserve">
+    <value>{0} Bildflächen sind {1}: Vom Original bleiben nur grobe Blockmittelwerte.</value>
+  </data>
+  <data name="RedactImgSolidOne" xml:space="preserve">
+    <value>{0} Bildfläche erhält stattdessen die Volltonfläche ({1}).</value>
+  </data>
+  <data name="RedactImgSolidMany" xml:space="preserve">
+    <value>{0} Bildflächen erhalten stattdessen die Volltonfläche ({1}).</value>
+  </data>
+  <data name="RedactImgReasonTooSmall" xml:space="preserve">
+    <value>die Fläche ist kleiner als 2 × 2 Blöcke zu je 8 Pixeln</value>
+  </data>
+  <data name="RedactImgReasonTurned" xml:space="preserve">
+    <value>das Bild ist gedreht oder geschert</value>
+  </data>
+  <data name="RedactImgReasonClipped" xml:space="preserve">
+    <value>das Bild ist durch einen Beschnittpfad beschnitten</value>
+  </data>
+  <data name="RedactImgReasonOverlapping" xml:space="preserve">
+    <value>mehrere Flächen überlappen sich auf demselben Bild</value>
+  </data>
+  <data name="RedactImgReasonUnreadable" xml:space="preserve">
+    <value>die Pixel des Bildes ließen sich nicht zuverlässig lesen oder schreiben</value>
+  </data>
+  <data name="RedactImgReasonTooMany" xml:space="preserve">
+    <value>unter einer Fläche liegen zu viele behandelte Bilder</value>
+  </data>
+  <data name="RedactCheckedAreasTreated" xml:space="preserve">
+    <value>Markierte Bereiche: Kein Zeichen der geschriebenen Datei liegt in einem markierten Bereich, und die Pixel von Bildern darunter haben entweder die Farbe des Bereichs oder genau die aus dem Original berechneten Blockmittelwerte; kein anderes Pixel des Originals ist dort geblieben.</value>
+  </data>
+  <data name="RedactNcImageText" xml:space="preserve">
+    <value>Bildflächen: {0} wurden mit den Blockmittelwerten des Originals verglichen, {1} sind voll gefüllt. Ob Text in einem verpixelten oder weichgezeichneten Bild noch lesbar ist, wird nicht geprüft, und Pagewing erkennt keinen Text in Bildern. Für Text im Bild die Volltonfläche wählen.</value>
+  </data>
+  <data name="RedactFailureImageTreatment" xml:space="preserve">
+    <value>Eine Bildfläche, die verpixelt oder weichgezeichnet sein sollte, ist weder voll gefüllt noch die Blockmittelwerte des Originals{0}; deshalb wurde die Datei nicht geschrieben.</value>
+  </data>
 </root>

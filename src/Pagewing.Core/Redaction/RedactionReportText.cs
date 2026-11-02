@@ -49,6 +49,27 @@ public static class RedactionReportText
     /// <summary>The line under "Not cleaned" that says the annotations outside the marks are kept as they are (always shown).</summary>
     public const string AnnotationsAlongText = "Annotations outside the marked areas (comment texts, authors, replies, popups, notes) come along unchanged; only an annotation under a mark is removed.";
 
+    /// <summary>The sentence that Pagewing says whenever image areas are pixelated or blurred: it cannot tell whether text in the image stays legible.</summary>
+    public const string ImageTextCaution = "Text in images can stay legible even when it is pixelated or blurred; Pagewing does not recognise text in images. For text in an image choose the solid fill.";
+
+    /// <summary>
+    /// Says in English why an image area got the solid fill although pixelating or blurring was chosen (the reasons are told in the
+    /// report; the interface has its own sentence for each).
+    /// </summary>
+    /// <param name="reason">The reason.</param>
+    /// <returns>A phrase that fits after "because".</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="reason"/> is not a defined value.</exception>
+    public static string ImageSolidReasonText(ImageSolidReason reason) => reason switch
+    {
+        ImageSolidReason.TooSmall => "the area is smaller than 2 x 2 blocks of 8 pixels",
+        ImageSolidReason.TurnedOrSheared => "the image is turned or sheared",
+        ImageSolidReason.Clipped => "the image is cut by a clipping path",
+        ImageSolidReason.Overlapping => "several areas overlap on the same image",
+        ImageSolidReason.Unreadable => "the pixels of the image could not be read or written reliably",
+        ImageSolidReason.TooManyImages => "too many treated images lie under one area",
+        _ => throw new ArgumentOutOfRangeException(nameof(reason)),
+    };
+
     /// <summary>Gets the report before anything is applied: removed, cleaned, lost, not cleaned, and what will be checked.</summary>
     /// <param name="analysis">The analysis.</param>
     /// <param name="showValues">Whether the fields of the information dictionary are listed with their text (the card); <see langword="false"/> lists only that they were there (the command line, whose output ends up in logs).</param>
@@ -57,6 +78,7 @@ public static class RedactionReportText
         ArgumentNullException.ThrowIfNull(analysis);
         var text = new StringBuilder();
         Removed(text, analysis);
+        ImageAreas(text, analysis, done: false);
         Cleaned(text, analysis, confirmed: false, showValues);
         Lost(text, analysis);
         NotCleaned(text, analysis);
@@ -80,6 +102,7 @@ public static class RedactionReportText
         ArgumentNullException.ThrowIfNull(check);
         var text = new StringBuilder();
         Removed(text, analysis);
+        ImageAreas(text, analysis, done: true);
 
         // Only what the read-back of the written file confirmed is called cleaned.
         if (check.IsClean)
@@ -100,7 +123,9 @@ public static class RedactionReportText
                 checkedLines.Add("File bytes: the file was searched for each removed text of at least 4 characters, with strings decoded and streams unpacked, in older revisions, metadata and attachments too.");
             }
 
-            checkedLines.Add("Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are the colour of the area.");
+            checkedLines.Add(analysis.ImageTreatment == RedactionImageTreatment.Solid
+                ? "Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are the colour of the area."
+                : "Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are either the colour of the area or exactly the block averages worked out from the original (nothing else, so no original pixel is left).");
             // The render comparison covers the pages redacted in place only: a page turned into an image is checked for its structure.
             if (analysis.Raster is not { Count: > 0 })
             {
@@ -180,6 +205,37 @@ public static class RedactionReportText
         }
 
         Section(text, "Removed", lines);
+    }
+
+    // Image areas of a plan that pixelates or blurs: how many were treated, how many got the solid fill and why, and the caution that
+    // belongs to it. A plan that fills image areas solid has nothing to say here.
+    private static void ImageAreas(StringBuilder text, RedactionAnalysis analysis, bool done)
+    {
+        if (analysis.ImageTreatment == RedactionImageTreatment.Solid)
+        {
+            return;
+        }
+
+        var treated = analysis.Pages.Sum(static p => p.ImageAreasTreated);
+        var solid = analysis.Pages.Sum(static p => p.ImageAreasSolid);
+        var verb = analysis.ImageTreatment == RedactionImageTreatment.Pixelate ? (done ? "pixelated" : "will be pixelated") : (done ? "blurred" : "will be blurred");
+        var lines = new List<string>
+        {
+            Count(treated, $"image area {verb}: only coarse block averages of the original remain in it.", $"image areas {verb}: only coarse block averages of the original remain in them."),
+        };
+        if (solid > 0)
+        {
+            var reasons = analysis.Pages
+                .SelectMany(static p => p.ImageSolidReasons ?? [])
+                .GroupBy(static r => r)
+                .OrderBy(static g => g.Key)
+                .Select(static g => string.Create(CultureInfo.InvariantCulture, $"{g.Count()} because {ImageSolidReasonText(g.Key)}"));
+            var filled = done ? "got" : solid == 1 ? "gets" : "get";
+            lines.Add($"{solid.ToString(CultureInfo.InvariantCulture)} {(solid == 1 ? "image area" : "image areas")} {filled} the solid fill instead ({string.Join("; ", reasons)}).");
+        }
+
+        lines.Add(ImageTextCaution);
+        Section(text, "Image areas", lines);
     }
 
     private static void Cleaned(StringBuilder text, RedactionAnalysis analysis, bool confirmed, bool showValues)

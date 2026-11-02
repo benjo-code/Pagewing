@@ -3000,4 +3000,97 @@
   <data name="RedactRescueUnreadable" xml:space="preserve">
     <value>Page {0} cannot be read, so it cannot be turned into an image.</value>
   </data>
+  <data name="RedactImageAreas" xml:space="preserve">
+    <value>Image areas</value>
+  </data>
+  <data name="RedactImageAreasTip" xml:space="preserve">
+    <value>What the parts of images under the marks become: the solid fill, or a few coarse blocks of the image</value>
+  </data>
+  <data name="RedactImageSolid" xml:space="preserve">
+    <value>Solid</value>
+  </data>
+  <data name="RedactImagePixelate" xml:space="preserve">
+    <value>Pixelate</value>
+  </data>
+  <data name="RedactImageBlur" xml:space="preserve">
+    <value>Blur</value>
+  </data>
+  <data name="RedactImageSolidTip" xml:space="preserve">
+    <value>The parts of images under a mark get the fill colour (the default)</value>
+  </data>
+  <data name="RedactImagePixelateTip" xml:space="preserve">
+    <value>Pixelate: the parts of images under a mark become a few hard-edged blocks; only their averages remain</value>
+  </data>
+  <data name="RedactImageBlurTip" xml:space="preserve">
+    <value>Blur: the parts of images under a mark become a smooth blend of a few block averages</value>
+  </data>
+  <data name="RedactImageStrengthLabel" xml:space="preserve">
+    <value>Blocks</value>
+  </data>
+  <data name="RedactImageCoarse" xml:space="preserve">
+    <value>Coarse</value>
+  </data>
+  <data name="RedactImageVeryCoarse" xml:space="preserve">
+    <value>Very coarse</value>
+  </data>
+  <data name="RedactImageCoarseTip" xml:space="preserve">
+    <value>Up to 6 blocks along an axis, none smaller than 8 pixels</value>
+  </data>
+  <data name="RedactImageVeryCoarseTip" xml:space="preserve">
+    <value>Up to 3 blocks along an axis, none smaller than 8 pixels</value>
+  </data>
+  <data name="RedactImageCaution" xml:space="preserve">
+    <value>Text in images can stay legible even when it is pixelated or blurred; Pagewing does not recognise text in images. For text in an image choose the solid fill.</value>
+  </data>
+  <data name="RedactPreviewImageNote" xml:space="preserve">
+    <value>Pixelating or blurring is chosen: a dashed frame marks every area. Over images the written file shows coarse blocks instead of the fill where the rule applies (the numbers above count them); the preview never shows the pixels of the image.</value>
+  </data>
+  <data name="RedactSecImageAreas" xml:space="preserve">
+    <value>Image areas</value>
+  </data>
+  <data name="RedactTreatmentPixelated" xml:space="preserve">
+    <value>pixelated</value>
+  </data>
+  <data name="RedactTreatmentBlurred" xml:space="preserve">
+    <value>blurred</value>
+  </data>
+  <data name="RedactImgTreatedOne" xml:space="preserve">
+    <value>{0} image area is {1}: only coarse block averages of the original remain in it.</value>
+  </data>
+  <data name="RedactImgTreatedMany" xml:space="preserve">
+    <value>{0} image areas are {1}: only coarse block averages of the original remain in them.</value>
+  </data>
+  <data name="RedactImgSolidOne" xml:space="preserve">
+    <value>{0} image area gets the solid fill instead ({1}).</value>
+  </data>
+  <data name="RedactImgSolidMany" xml:space="preserve">
+    <value>{0} image areas get the solid fill instead ({1}).</value>
+  </data>
+  <data name="RedactImgReasonTooSmall" xml:space="preserve">
+    <value>the area is smaller than 2 × 2 blocks of 8 pixels</value>
+  </data>
+  <data name="RedactImgReasonTurned" xml:space="preserve">
+    <value>the image is turned or sheared</value>
+  </data>
+  <data name="RedactImgReasonClipped" xml:space="preserve">
+    <value>the image is cut by a clipping path</value>
+  </data>
+  <data name="RedactImgReasonOverlapping" xml:space="preserve">
+    <value>several areas overlap on the same image</value>
+  </data>
+  <data name="RedactImgReasonUnreadable" xml:space="preserve">
+    <value>the pixels of the image could not be read or written reliably</value>
+  </data>
+  <data name="RedactImgReasonTooMany" xml:space="preserve">
+    <value>too many treated images lie under one area</value>
+  </data>
+  <data name="RedactCheckedAreasTreated" xml:space="preserve">
+    <value>Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are either the colour of the area or exactly the block averages worked out from the original; no other pixel of the original is left there.</value>
+  </data>
+  <data name="RedactNcImageText" xml:space="preserve">
+    <value>Image areas: {0} were compared with the block averages of the original, {1} are filled solid. Whether text in a pixelated or blurred image can still be read is not checked, and Pagewing does not recognise text in images. For text in an image choose the solid fill.</value>
+  </data>
+  <data name="RedactFailureImageTreatment" xml:space="preserve">
+    <value>An image area that should be pixelated or blurred is neither filled solid nor the block averages of the original{0}, so the file was not written.</value>
+  </data>
 </root>

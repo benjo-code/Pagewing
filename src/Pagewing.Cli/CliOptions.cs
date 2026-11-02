@@ -55,7 +55,9 @@ internal sealed record CliOptions(
     int RasterDpi = RedactionLimits.DefaultRasterDpi,
     IReadOnlyList<RedactionPatternKind>? Patterns = null,
     bool IncludeUnchecked = false,
-    RedactionFill Fill = default)
+    RedactionFill Fill = default,
+    RedactionImageTreatment ImageFill = RedactionImageTreatment.Solid,
+    RedactionImageStrength ImageStrength = RedactionImageStrength.Coarse)
 {
     public const string DefaultDpi = "144";
 
@@ -91,7 +93,7 @@ internal sealed record CliOptions(
             "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
-            "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--fill", "--output", "--force", "--password"],
+            "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--fill", "--image-fill", "--image-strength", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -107,6 +109,9 @@ internal sealed record CliOptions(
         var patterns = new List<RedactionPatternKind>();
         var includeUnchecked = false;
         var fill = RedactionFill.Black;
+        var imageFill = RedactionImageTreatment.Solid;
+        var imageStrength = RedactionImageStrength.Coarse;
+        var imageStrengthGiven = false;
         var rects = new List<RedactRect>();
         var dryRun = false;
         var allowUnsearched = false;
@@ -255,6 +260,13 @@ internal sealed record CliOptions(
                     case "--fill":
                         fill = ParseFill(value);
                         break;
+                    case "--image-fill":
+                        imageFill = ParseImageFill(value);
+                        break;
+                    case "--image-strength":
+                        imageStrength = ParseImageStrength(value);
+                        imageStrengthGiven = true;
+                        break;
                     default:
                         password = value;
                         break;
@@ -367,6 +379,12 @@ internal sealed record CliOptions(
                 throw new UsageException("The option '--pages' limits --text and --pattern; the command has neither.");
             }
 
+            // The strength says how coarse the blocks are; with the solid fill there are none.
+            if (imageStrengthGiven && imageFill == RedactionImageTreatment.Solid)
+            {
+                throw new UsageException("The option '--image-strength' sets the blocks of --image-fill pixelate or --image-fill blur; the command has neither.");
+            }
+
             if (output is not null && output.Length == 0)
             {
                 throw new UsageException("The option '--output' needs a file name.");
@@ -377,7 +395,7 @@ internal sealed record CliOptions(
                 throw new UsageException("The 'redact' command needs --output <out.pdf> (only --dry-run works without it).");
             }
 
-            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked, Fill: fill);
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked, Fill: fill, ImageFill: imageFill, ImageStrength: imageStrength);
         }
 
         if (isRotate)
@@ -428,6 +446,45 @@ internal sealed record CliOptions(
 
         var shown = value.Length > 40 ? value[..40] + "..." : value;
         throw new UsageException($"Invalid value for --fill: '{shown}' (use black, white or a colour written as #RRGGBB).");
+    }
+
+    /// <summary>Reads the value of <c>--image-fill</c>: <c>solid</c> (the default), <c>pixelate</c> or <c>blur</c>.</summary>
+    private static RedactionImageTreatment ParseImageFill(string value)
+    {
+        if (string.Equals(value, "solid", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageTreatment.Solid;
+        }
+
+        if (string.Equals(value, "pixelate", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageTreatment.Pixelate;
+        }
+
+        if (string.Equals(value, "blur", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageTreatment.Blur;
+        }
+
+        var shown = value.Length > 40 ? value[..40] + "..." : value;
+        throw new UsageException($"Invalid value for --image-fill: '{shown}' (use solid, pixelate or blur).");
+    }
+
+    /// <summary>Reads the value of <c>--image-strength</c>: <c>coarse</c> (up to 6 blocks along an axis) or <c>very-coarse</c> (up to 3).</summary>
+    private static RedactionImageStrength ParseImageStrength(string value)
+    {
+        if (string.Equals(value, "coarse", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageStrength.Coarse;
+        }
+
+        if (string.Equals(value, "very-coarse", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionImageStrength.VeryCoarse;
+        }
+
+        var shown = value.Length > 40 ? value[..40] + "..." : value;
+        throw new UsageException($"Invalid value for --image-strength: '{shown}' (use coarse or very-coarse).");
     }
 
     private static void AddTerm(List<string> texts, string value)

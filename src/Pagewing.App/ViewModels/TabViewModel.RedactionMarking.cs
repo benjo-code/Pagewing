@@ -35,6 +35,8 @@ public sealed partial class TabViewModel
     private RelayCommand? _redactEntryCommand;
     private RelayCommand<RedactionTool>? _chooseRedactionToolCommand;
     private RelayCommand<RedactionFill>? _setRedactionFillCommand;
+    private RelayCommand<RedactionImageTreatment>? _setRedactionImageTreatmentCommand;
+    private RelayCommand<RedactionImageStrength>? _setRedactionImageStrengthCommand;
 
     // The run of arrow keys that is one step: the version of the history right after its last press, when that was, and which marks.
     private int _markNudgeVersion = -1;
@@ -76,6 +78,68 @@ public sealed partial class TabViewModel
     /// <summary>Gets the fill written as <c>#RRGGBB</c> (the text of the colour field).</summary>
     public string RedactionFillHex => RedactionFill.ToHex();
 
+    /// <summary>
+    /// Gets or sets what the parts of images under the marks become (solid fill at first; pixelating and blurring leave a few coarse
+    /// blocks). Setting it in the mode is a step of the history, like the fill; outside the mode, with a card over the tab or with a value
+    /// that is none of the treatments it does nothing.
+    /// </summary>
+    public RedactionImageTreatment RedactionImageTreatment
+    {
+        get => _redactionHistory?.Current.ImageTreatment ?? RedactionImageTreatment.Solid;
+        set
+        {
+            if (Enum.IsDefined(value))
+            {
+                StageRedaction(plan => plan.WithImageTreatment(value), null);
+            }
+        }
+    }
+
+    /// <summary>Gets or sets how coarse pixelating and blurring are (the same rules as <see cref="RedactionImageTreatment"/>).</summary>
+    public RedactionImageStrength RedactionImageStrength
+    {
+        get => _redactionHistory?.Current.ImageStrength ?? RedactionImageStrength.Coarse;
+        set
+        {
+            if (Enum.IsDefined(value))
+            {
+                StageRedaction(plan => plan.WithImageStrength(value), null);
+            }
+        }
+    }
+
+    /// <summary>Gets whether the parts of images get the solid fill (the default).</summary>
+    public bool IsRedactionImageSolid => RedactionImageTreatment == RedactionImageTreatment.Solid;
+
+    /// <summary>Gets whether the parts of images are pixelated.</summary>
+    public bool IsRedactionImagePixelate => RedactionImageTreatment == RedactionImageTreatment.Pixelate;
+
+    /// <summary>Gets whether the parts of images are blurred.</summary>
+    public bool IsRedactionImageBlur => RedactionImageTreatment == RedactionImageTreatment.Blur;
+
+    /// <summary>Gets whether pixelating or blurring is chosen, so that the strength means something.</summary>
+    public bool IsRedactionImageTreated => !IsRedactionImageSolid;
+
+    /// <summary>Gets whether the blocks are the coarse ones (up to 6 along an axis).</summary>
+    public bool IsRedactionImageCoarse => RedactionImageStrength == RedactionImageStrength.Coarse;
+
+    /// <summary>Gets whether the blocks are the very coarse ones (up to 3 along an axis).</summary>
+    public bool IsRedactionImageVeryCoarse => RedactionImageStrength == RedactionImageStrength.VeryCoarse;
+
+    /// <summary>Gets the chosen treatment in words, in the language of the interface (the value next to the name of the toolbar button, so the state is never told by colour alone).</summary>
+    public string RedactionImageTreatmentText => RedactionImageTreatment switch
+    {
+        RedactionImageTreatment.Pixelate => Strings.RedactImagePixelate,
+        RedactionImageTreatment.Blur => Strings.RedactImageBlur,
+        _ => Strings.RedactImageSolid,
+    };
+
+    /// <summary>
+    /// Gets the note under the preview: that it changes nothing in the file and, with pixelating or blurring chosen, that a dashed frame
+    /// marks the areas and the preview never shows the pixels of the image.
+    /// </summary>
+    public string RedactionPreviewNote => IsRedactionImageTreated ? Strings.RedactPreviewNote + " " + Strings.RedactPreviewImageNote : Strings.RedactPreviewNote;
+
     /// <summary>Gets the counter of the marks, "4 marks on 2 pages" (the text of the toolbar and its name for screen readers).</summary>
     public string RedactionCounterText
     {
@@ -96,6 +160,16 @@ public sealed partial class TabViewModel
     public ICommand SetRedactionFillCommand => _setRedactionFillCommand ??= new RelayCommand<RedactionFill>(
         fill => RedactionFill = fill,
         _ => CanEditRedactions);
+
+    /// <summary>Chooses what the parts of images under the marks become (parameter: a <see cref="RedactionImageTreatment"/>); a step of the history.</summary>
+    public ICommand SetRedactionImageTreatmentCommand => _setRedactionImageTreatmentCommand ??= new RelayCommand<RedactionImageTreatment>(
+        treatment => RedactionImageTreatment = treatment,
+        _ => CanEditRedactions);
+
+    /// <summary>Chooses how coarse pixelating and blurring are (parameter: a <see cref="RedactionImageStrength"/>); a step of the history, possible while a treatment with blocks is chosen.</summary>
+    public ICommand SetRedactionImageStrengthCommand => _setRedactionImageStrengthCommand ??= new RelayCommand<RedactionImageStrength>(
+        strength => RedactionImageStrength = strength,
+        _ => CanEditRedactions && IsRedactionImageTreated);
 
     /// <summary>
     /// The entry of the action bar and the button "Done" of the toolbar: starts the mode or leaves it like <see cref="RedactCommand"/>,

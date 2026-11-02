@@ -85,13 +85,61 @@ public static class ImageBlocks
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="treatment"/> is not a block treatment.</exception>
     public static byte[] Expected(byte[] bgra, int width, int height, PixelRect box, BlockGrid grid, RedactionImageTreatment treatment)
     {
-        ArgumentNullException.ThrowIfNull(bgra);
+        if (treatment is not (RedactionImageTreatment.Pixelate or RedactionImageTreatment.Blur))
+        {
+            throw new ArgumentOutOfRangeException(nameof(treatment), "Only pixelating and blurring are calculated in blocks.");
+        }
+
+        Validate(bgra, width, height, box, grid);
+        return Render(MeansOf(bgra, width, box, grid), box.Width, box.Height, grid, treatment);
+    }
+
+    /// <summary>
+    /// The block means (blue, green, red per block, row by row) of the rectangle <paramref name="box"/>: all that pixelating or blurring
+    /// keeps of the original. The check of a result keeps these instead of the original pixels.
+    /// </summary>
+    /// <param name="bgra">The pixels of the whole image (blue, green, red, alpha per pixel, top row first).</param>
+    /// <param name="width">The width of the image in pixels.</param>
+    /// <param name="height">The height of the image in pixels.</param>
+    /// <param name="box">The pixel rectangle under the mark; inside the image.</param>
+    /// <param name="grid">The blocks, from <see cref="Plan"/> for the size of <paramref name="box"/>.</param>
+    /// <returns><c>Rows * Columns * 3</c> values.</returns>
+    /// <exception cref="ArgumentException">The image, the rectangle and the grid do not fit together.</exception>
+    public static byte[] BlockMeansOf(byte[] bgra, int width, int height, PixelRect box, BlockGrid grid)
+    {
+        Validate(bgra, width, height, box, grid);
+        return [.. MeansOf(bgra, width, box, grid).Select(static m => (byte)m)];
+    }
+
+    /// <summary>The pixels that a rectangle must hold after pixelating or blurring, worked out from the block means alone (see <see cref="BlockMeansOf"/>); equal to <see cref="Expected"/> of the original they come from.</summary>
+    /// <param name="means"><c>grid.Rows * grid.Columns * 3</c> block means (blue, green, red, row by row).</param>
+    /// <param name="grid">The blocks.</param>
+    /// <param name="treatment"><see cref="RedactionImageTreatment.Pixelate"/> or <see cref="RedactionImageTreatment.Blur"/>.</param>
+    /// <returns>The pixels of the rectangle (width and height of the grid, blue, green, red, alpha 255).</returns>
+    /// <exception cref="ArgumentException">The means do not fit the grid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="treatment"/> is not a block treatment.</exception>
+    public static byte[] ExpectedFromMeans(byte[] means, BlockGrid grid, RedactionImageTreatment treatment)
+    {
+        ArgumentNullException.ThrowIfNull(means);
         ArgumentNullException.ThrowIfNull(grid);
         if (treatment is not (RedactionImageTreatment.Pixelate or RedactionImageTreatment.Blur))
         {
             throw new ArgumentOutOfRangeException(nameof(treatment), "Only pixelating and blurring are calculated in blocks.");
         }
 
+        if (grid.ColumnEdges.Length != grid.Columns + 1 || grid.RowEdges.Length != grid.Rows + 1 || grid.ColumnEdges[0] != 0 || grid.RowEdges[0] != 0
+            || grid.ColumnEdges[^1] <= 0 || grid.RowEdges[^1] <= 0 || means.Length != grid.Rows * grid.Columns * 3)
+        {
+            throw new ArgumentException("The means do not fit the grid.", nameof(means));
+        }
+
+        return Render(means.Select(static m => (int)m).ToArray(), grid.ColumnEdges[^1], grid.RowEdges[^1], grid, treatment);
+    }
+
+    private static void Validate(byte[] bgra, int width, int height, PixelRect box, BlockGrid grid)
+    {
+        ArgumentNullException.ThrowIfNull(bgra);
+        ArgumentNullException.ThrowIfNull(grid);
         if (width <= 0 || height <= 0 || (long)width * height * 4 != bgra.Length)
         {
             throw new ArgumentException("The pixels do not have the size of the image.", nameof(bgra));
@@ -107,8 +155,11 @@ public static class ImageBlocks
         {
             throw new ArgumentException("The blocks do not fill the rectangle.", nameof(grid));
         }
+    }
 
-        var means = MeansOf(bgra, width, box, grid);
+    private static byte[] Render(int[] means, int boxWidth, int boxHeight, BlockGrid grid, RedactionImageTreatment treatment)
+    {
+        var box = new PixelRect(0, 0, boxWidth, boxHeight);
 
         // Along each axis, once: the block that holds a position (pixelate) and the two blocks it lies between with the weight (blur).
         var across = new (int First, int Second, long Weight, long Divisor)[box.Width];

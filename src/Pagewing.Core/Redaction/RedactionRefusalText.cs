@@ -40,6 +40,9 @@ public enum RedactionFailureKind
 
     /// <summary>A page that became an image is not only one image, or could not be counted.</summary>
     RasterPageInvalid,
+
+    /// <summary>An image area of a plan that pixelates or blurs is neither the fill colour nor the block result worked out from the original.</summary>
+    ImageTreatmentWrong,
 }
 
 /// <summary>
@@ -99,6 +102,7 @@ public static class RedactionRefusalText
             RedactionFindingKind.PageChangedOutsideAreas => RedactionFailureKind.PageChangedOutsideAreas,
             RedactionFindingKind.CleanupItemStillPresent => RedactionFailureKind.CleanupItemStillPresent,
             RedactionFindingKind.RasterPageInvalid => RedactionFailureKind.RasterPageInvalid,
+            RedactionFindingKind.ImageTreatmentWrong => RedactionFailureKind.ImageTreatmentWrong,
             _ => RedactionFailureKind.RemovedTextUnverifiable,
         };
     }
@@ -137,6 +141,8 @@ public static class RedactionRefusalText
                 $"A page looks different outside the marked areas{where}, so the file was not written.",
             RedactionFailureKind.RasterPageInvalid =>
                 $"A page that was turned into an image is not only one image, or could not be checked{where}, so the file was not written.",
+            RedactionFailureKind.ImageTreatmentWrong =>
+                $"An image area that should be pixelated or blurred is neither filled solid nor the block averages of the original{where}, so the file was not written.",
             _ =>
                 $"A removed text could not be searched for{where}, so the result cannot be checked and the file was not written.",
         };

@@ -113,7 +113,7 @@ internal static class RedactCommand
         RedactionPlan plan;
         try
         {
-            plan = RedactionPlan.Empty.WithFill(options.Fill).WithRange(marks);
+            plan = RedactionPlan.Empty.WithFill(options.Fill).WithImageTreatment(options.ImageFill).WithImageStrength(options.ImageStrength).WithRange(marks);
         }
         catch (RedactionException ex)
         {

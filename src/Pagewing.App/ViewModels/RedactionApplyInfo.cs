@@ -49,6 +49,11 @@ public sealed class RedactionApplyInfo
             sections.Add(new RedactionSection(Strings.RedactSecRaster, raster));
         }
 
+        if (ImageAreaLines(analysis) is { Count: > 0 } imageAreas)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecImageAreas, imageAreas));
+        }
+
         if (FallbackLines(analysis) is { Count: > 0 } fallbacks)
         {
             sections.Add(new RedactionSection(Strings.RedactSecFallbacks, fallbacks));
@@ -111,6 +116,11 @@ public sealed class RedactionApplyInfo
             sections.Add(new RedactionSection(Strings.RedactSecRaster, raster));
         }
 
+        if (ImageAreaLines(analysis) is { Count: > 0 } imageAreas)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecImageAreas, imageAreas));
+        }
+
         if (FallbackLines(analysis) is { Count: > 0 } fallbacks)
         {
             sections.Add(new RedactionSection(Strings.RedactSecFallbacks, fallbacks));
@@ -137,7 +147,7 @@ public sealed class RedactionApplyInfo
                 checkedLines.Add(Strings.RedactCheckedBytes);
             }
 
-            checkedLines.Add(Strings.RedactCheckedAreas);
+            checkedLines.Add(analysis.ImageTreatment == RedactionImageTreatment.Solid ? Strings.RedactCheckedAreas : Strings.RedactCheckedAreasTreated);
             if (analysis.Raster is not { Count: > 0 })
             {
                 checkedLines.Add(Strings.RedactCheckedPages);
@@ -307,6 +317,7 @@ public sealed class RedactionApplyInfo
             RedactionNotCheckedKind.ApplyPageKeys => Strings.RedactNcApplyKeys,
             RedactionNotCheckedKind.ApplyXmp => Strings.RedactNcApplyXmp,
             RedactionNotCheckedKind.RasterOutsideAreas => Format(Strings.RedactNcRasterOutside, Number(item.Count)),
+            RedactionNotCheckedKind.ImageTextLegible => Format(Strings.RedactNcImageText, Number(item.Count), Number(item.Second)),
             _ => null,
         };
     }
@@ -352,6 +363,7 @@ public sealed class RedactionApplyInfo
             RedactionFailureKind.PageChangedOutsideAreas => Format(Strings.RedactFailurePage, where),
             RedactionFailureKind.CleanupItemStillPresent => Format(Strings.RedactFailureCleanup, where, finding.Detail),
             RedactionFailureKind.RasterPageInvalid => Format(Strings.RedactFailureRaster, where),
+            RedactionFailureKind.ImageTreatmentWrong => Format(Strings.RedactFailureImageTreatment, where),
             _ => Format(Strings.RedactFailureUnverifiable, where),
         };
     }
@@ -444,6 +456,47 @@ public sealed class RedactionApplyInfo
             },
             (fallback.Page + 1).ToString(Strings.Culture))),
     ];
+
+    // Image areas of a plan that pixelates or blurs: how many were treated, how many got the solid fill and why, and the caution about
+    // text in images. A plan that fills image areas solid has nothing to say here.
+    private static List<string> ImageAreaLines(RedactionAnalysis analysis)
+    {
+        var lines = new List<string>();
+        if (analysis.ImageTreatment == RedactionImageTreatment.Solid)
+        {
+            return lines;
+        }
+
+        var treated = analysis.Pages.Sum(static page => page.ImageAreasTreated);
+        var solid = analysis.Pages.Sum(static page => page.ImageAreasSolid);
+        var how = analysis.ImageTreatment == RedactionImageTreatment.Pixelate ? Strings.RedactTreatmentPixelated : Strings.RedactTreatmentBlurred;
+        lines.Add(Format(treated == 1 ? Strings.RedactImgTreatedOne : Strings.RedactImgTreatedMany, treated.ToString("N0", Strings.Culture), how));
+        if (solid > 0)
+        {
+            var reasons = analysis.Pages
+                .SelectMany(static page => page.ImageSolidReasons ?? [])
+                .GroupBy(static reason => reason)
+                .OrderBy(static group => group.Key)
+                .Select(static group => $"{SayImageSolidReason(group.Key)} ({group.Count().ToString("N0", Strings.Culture)}×)");
+            lines.Add(Format(solid == 1 ? Strings.RedactImgSolidOne : Strings.RedactImgSolidMany, solid.ToString("N0", Strings.Culture), string.Join("; ", reasons)));
+        }
+
+        lines.Add(Strings.RedactImageCaution);
+        return lines;
+    }
+
+    /// <summary>Says in the language of the interface why an image area got the solid fill although pixelating or blurring was chosen (a test keeps every reason mapped).</summary>
+    /// <param name="reason">The reason.</param>
+    internal static string SayImageSolidReason(ImageSolidReason reason) => reason switch
+    {
+        ImageSolidReason.TooSmall => Strings.RedactImgReasonTooSmall,
+        ImageSolidReason.TurnedOrSheared => Strings.RedactImgReasonTurned,
+        ImageSolidReason.Clipped => Strings.RedactImgReasonClipped,
+        ImageSolidReason.Overlapping => Strings.RedactImgReasonOverlapping,
+        ImageSolidReason.Unreadable => Strings.RedactImgReasonUnreadable,
+        ImageSolidReason.TooManyImages => Strings.RedactImgReasonTooMany,
+        _ => throw new ArgumentOutOfRangeException(nameof(reason)),
+    };
 
     // What the cleanup removes in this file, from the data of the scan; the fields of the document properties are named, never printed.
     private static List<string> CleanedLines(RedactionAnalysis analysis, bool confirmed)
