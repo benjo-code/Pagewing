@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using Pagewing.Cli;
 using Pagewing.Cli.Commands;
@@ -612,8 +613,252 @@ public sealed class RedactCommandTests : CliTestBase
         var result = await RunAsync("--help");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
         Assert.Contains("--dry-run", result.Output, StringComparison.Ordinal);
         Assert.Contains("NOT checked", result.Output, StringComparison.Ordinal);
+        Assert.Contains("--rasterize-pages <range>", result.Output, StringComparison.Ordinal);
+        Assert.Contains("--rasterize-unredactable", result.Output, StringComparison.Ordinal);
+        Assert.Contains("cannot be checked for visible occurrences", result.Output, StringComparison.Ordinal);
+    }
+
+    // ------------------------------------------------------------------ pages turned into images (milestone 14.1)
+
+    /// <summary>The same bytes with another page size for every page that has the default box (same length, so the cross-reference table still fits).</summary>
+    private string TwoPagesWithBox(string box)
+    {
+        var text = Encoding.Latin1.GetString(File.ReadAllBytes(TwoPages()));
+        var changed = text.Replace("/MediaBox [0 0 300 200] /Resources", $"/MediaBox{box}/Resources", StringComparison.Ordinal);
+        Assert.NotEqual(text, changed);
+        Assert.Equal(text.Length, changed.Length);
+        var path = Path.Combine(WorkDirectory.FullName, "box.pdf");
+        File.WriteAllBytes(path, Encoding.Latin1.GetBytes(changed));
+        return path;
+    }
+
+    /// <summary><c>redact-everywhere.pdf</c> with a first page of 6000 x 6000 pt: still the tiling pattern PDFium cannot redact around, but too large to become an image of 72 dpi or more.</summary>
+    private string HugeUnredactablePage()
+    {
+        var text = Encoding.Latin1.GetString(File.ReadAllBytes(Copy("redact-everywhere.pdf")));
+        var changed = text.Replace("/MediaBox [0 0 300 400] /Annots", "/MediaBox[0 0 6000 6000]/Annots", StringComparison.Ordinal);
+        Assert.NotEqual(text, changed);
+        Assert.Equal(text.Length, changed.Length);
+        var path = Path.Combine(WorkDirectory.FullName, "huge.pdf");
+        File.WriteAllBytes(path, Encoding.Latin1.GetBytes(changed));
+        return path;
+    }
+
+    [Fact]
+    public async Task RejectedFileWithoutRasterFlagExitsOne()
+    {
+        var input = Copy("redact-everywhere.pdf");
+        var before = await File.ReadAllBytesAsync(input, Ct);
+
+        var result = await RunAsync("redact", input, "--output", Output, "--text", Term, "--pages", "1");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Redacting page 1 would change content outside the marked areas, so the file is not redacted.", result.Error, StringComparison.Ordinal);
+
+        // The way out is named, and it is a choice of the user, not a default.
+        Assert.Contains("--rasterize-unredactable", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+        Assert.Equal(before, await File.ReadAllBytesAsync(input, Ct));
+    }
+
+    [Fact]
+    public async Task RasterizeUnredactableRescuesAndNamesThePages()
+    {
+        var input = Copy("redact-everywhere.pdf");
+        var before = await File.ReadAllBytesAsync(input, Ct);
+
+        // Document-wide, as the term must be gone from the whole file: page one becomes an image, the other pages are redacted in place.
+        var result = await RunAsync("redact", input, "--output", Output, "--text", Term, "--rasterize-unredactable");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.Equal([Output], result.OutputLines);
+
+        // The pages are named by number, with what they lose; never a value.
+        Assert.Contains("--rasterize-unredactable turns page 1 into an image", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Pages turned into images:", result.Error, StringComparison.Ordinal);
+        Assert.Contains("page 1: 200 dpi", result.Error, StringComparison.Ordinal);
+        Assert.Contains("all of its text", result.Error, StringComparison.Ordinal);
+        Assert.Contains("cannot be found without OCR", result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Zephyr", result.Error, StringComparison.Ordinal);
+        Assert.Equal(before, await File.ReadAllBytesAsync(input, Ct));
+        Assert.Empty(TemporaryFiles());
+
+        await using var reopened = await Engine.OpenAsync(Output, cancellationToken: Ct);
+        Assert.Equal(2, reopened.PageCount);
+        Assert.Equal(string.Empty, (await reopened.GetTextAsync(0, Ct)).Trim());
+        Assert.Equal(1, (await reopened.GetPageObjectSummaryAsync(0, Ct)).Images);
+        Assert.Contains("Seite zwei", await reopened.GetTextAsync(1, Ct), StringComparison.Ordinal);
+        Assert.False(RawPdf.ContainsAnywhere(await File.ReadAllBytesAsync(Output, Ct), Term));
+    }
+
+    [Fact]
+    public async Task RasterizePagesNeedsNoMark()
+    {
+        var input = TwoPages();
+
+        var result = await RunAsync("redact", input, "--rasterize-pages", "2", "--output", Output);
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.Equal([Output], result.OutputLines);
+        Assert.Contains("page 2: 200 dpi", result.Error, StringComparison.Ordinal);
+
+        await using (var reopened = await Engine.OpenAsync(Output, cancellationToken: Ct))
+        {
+            Assert.Contains("public line", await reopened.GetTextAsync(0, Ct), StringComparison.Ordinal);
+            Assert.Equal(string.Empty, (await reopened.GetTextAsync(1, Ct)).Trim());
+            Assert.Equal(1, (await reopened.GetPageObjectSummaryAsync(1, Ct)).Images);
+        }
+
+        Assert.Empty(TemporaryFiles());
+
+        // The resolution is the user's to choose.
+        File.Delete(Output);
+        var lower = await RunAsync("redact", input, "--rasterize-pages", "1-2", "--dpi", "100", "--output", Output);
+        Assert.True(lower.ExitCode == 0, lower.Error);
+        Assert.Contains("page 1: 100 dpi", lower.Error, StringComparison.Ordinal);
+        Assert.Contains("page 2: 100 dpi", lower.Error, StringComparison.Ordinal);
+
+        // A page beyond the end is an error like for --pages.
+        var beyondTarget = Path.Combine(WorkDirectory.FullName, "beyond.pdf");
+        var beyond = await RunAsync("redact", input, "--rasterize-pages", "3", "--output", beyondTarget);
+        Assert.Equal(1, beyond.ExitCode);
+        Assert.Contains("Page 3 is out of range", beyond.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(beyondTarget));
+    }
+
+    [Theory]
+    [InlineData("71")]
+    [InlineData("301")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("abc")]
+    [InlineData("200.5")]
+    public async Task DpiOutsideTheRangeIsUsageError(string dpi)
+    {
+        var result = await RunAsync("redact", TwoPages(), "--rasterize-pages", "1", "--dpi", dpi, "--output", Output);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("--dpi", result.Error, StringComparison.Ordinal);
+        Assert.Contains("72", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Usage:", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task RasterOptionsWithoutTheirPartnerAreUsageErrors()
+    {
+        var input = TwoPages();
+
+        // --dpi only sets the resolution of pages that become images.
+        var dpiAlone = await RunAsync("redact", input, "--text", "secret value", "--dpi", "150", "--output", Output);
+        Assert.Equal(2, dpiAlone.ExitCode);
+        Assert.Contains("--dpi", dpiAlone.Error, StringComparison.Ordinal);
+        Assert.Contains("--rasterize-pages", dpiAlone.Error, StringComparison.Ordinal);
+
+        // --rasterize-unredactable only rescues marked pages: without a mark there is nothing to rescue.
+        var rescueAlone = await RunAsync("redact", input, "--rasterize-unredactable", "--output", Output);
+        Assert.Equal(2, rescueAlone.ExitCode);
+        Assert.Contains("--rasterize-unredactable", rescueAlone.Error, StringComparison.Ordinal);
+
+        var badRange = await RunAsync("redact", input, "--rasterize-pages", "5-3", "--output", Output);
+        Assert.Equal(2, badRange.ExitCode);
+        Assert.Contains("--rasterize-pages", badRange.Error, StringComparison.Ordinal);
+
+        var twice = await RunAsync("redact", input, "--rasterize-pages", "1", "--rasterize-pages", "2", "--output", Output);
+        Assert.Equal(2, twice.ExitCode);
+        Assert.Contains("given twice", twice.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task DryRunPredictsRasterPages()
+    {
+        var input = TwoPages();
+        var before = await File.ReadAllBytesAsync(input, Ct);
+
+        var result = await RunAsync("redact", input, "--rasterize-pages", "2", "--dpi", "150", "--dry-run");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.Empty(result.OutputBytes);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+        Assert.Equal(before, await File.ReadAllBytesAsync(input, Ct));
+        Assert.Contains("Dry run: nothing is written.", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Pages turned into images:", result.Error, StringComparison.Ordinal);
+        Assert.Contains("page 2: 150 dpi (625 x 417 pixels", result.Error, StringComparison.Ordinal);
+        Assert.Contains("all of its text", result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("page 1: ", result.Error, StringComparison.Ordinal);
+
+        // A page that is too large for the resolution is told, never lowered in silence.
+        var large = await RunAsync("redact", TwoPagesWithBox("[0 0 3000 3000]"), "--rasterize-pages", "1", "--dry-run");
+        Assert.True(large.ExitCode == 0, large.Error);
+        Assert.Matches(@"page 1: \d+ dpi, lowered from 200 dpi because the page is large", large.Error);
+
+        // The rescue is predicted too.
+        var rescue = await RunAsync("redact", Copy("redact-everywhere.pdf"), "--text", Term, "--pages", "1", "--rasterize-unredactable", "--dry-run");
+        Assert.True(rescue.ExitCode == 0, rescue.Error);
+        Assert.Contains("--rasterize-unredactable turns page 1 into an image", rescue.Error, StringComparison.Ordinal);
+        Assert.Contains("page 1: 200 dpi", rescue.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task RasterizeFlagDoesNotRescueEncryptedOrPageKeyFiles()
+    {
+        // Encrypted: refused before anything else, the flag changes nothing.
+        var encrypted = Copy("encrypted_hello_world_r3.pdf");
+        var env = new Dictionary<string, string> { ["PAGEWING_PASSWORD"] = UserPassword };
+        var locked = await RunAsync(env, "redact", encrypted, "--output", Output, "--rect", "1:10,10,50,20", "--rasterize-unredactable");
+        Assert.Equal(1, locked.ExitCode);
+        Assert.Contains("pagewing: The file is encrypted.", locked.Error, StringComparison.Ordinal);
+        var lockedPages = await RunAsync(env, "redact", encrypted, "--output", Output, "--rasterize-pages", "1");
+        Assert.Equal(1, lockedPages.ExitCode);
+        Assert.Contains("pagewing: The file is encrypted.", lockedPages.Error, StringComparison.Ordinal);
+
+        // A page key PDFium cannot remove: the same message as without the flag, and the page is named.
+        var file = new VerifierPdf("BT /F1 12 Tf 20 150 Td (one) Tj ET", "BT /F1 12 Tf 20 150 Td (two) Tj ET");
+        var stream = file.AddStream("/Type /XObject /Subtype /Image /Width 1 /Height 1 /BitsPerComponent 8 /ColorSpace /DeviceGray", [0x66]);
+        file.PageEntriesByPage = ["", $"/Thumb {stream} 0 R"];
+        var thumb = Path.Combine(WorkDirectory.FullName, "thumb.pdf");
+        await File.WriteAllBytesAsync(thumb, file.Build(), Ct);
+        var without = await RunAsync("redact", thumb, "--output", Output, "--rect", "1:15,35,45,25");
+        var with = await RunAsync("redact", thumb, "--output", Output, "--rect", "1:15,35,45,25", "--rasterize-unredactable");
+        var onThePage = await RunAsync("redact", thumb, "--output", Output, "--rasterize-pages", "2");
+
+        Assert.Equal(1, without.ExitCode);
+        Assert.Equal(1, with.ExitCode);
+        Assert.Equal(without.Error, with.Error);
+        Assert.Equal(1, onThePage.ExitCode);
+        Assert.Contains("are on page 2, so the file is not redacted.", onThePage.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+    }
+
+    [Fact]
+    public async Task APageThatCannotBecomeAnImageStaysARefusal()
+    {
+        // Too large for 72 dpi: the choice does not rescue it, the command does not loop, and the page is named.
+        var chosen = await RunAsync("redact", TwoPagesWithBox("[0 0 6000 6000]"), "--rasterize-pages", "2", "--output", Output);
+        Assert.Equal(1, chosen.ExitCode);
+        Assert.Contains("page 2", chosen.Error, StringComparison.Ordinal);
+
+        // The page was chosen already, so the way out of the other refusal is not offered for it.
+        Assert.DoesNotContain("--rasterize-unredactable", chosen.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+
+        var input = HugeUnredactablePage();
+        var before = await File.ReadAllBytesAsync(input, Ct);
+        var rescue = await RunAsync("redact", input, "--output", Output, "--text", Term, "--pages", "1", "--rasterize-unredactable");
+
+        Assert.Equal(1, rescue.ExitCode);
+        Assert.Contains("page 1", rescue.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Zephyr", rescue.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+        Assert.Equal(before, await File.ReadAllBytesAsync(input, Ct));
     }
 }

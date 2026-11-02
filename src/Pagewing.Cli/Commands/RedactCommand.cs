@@ -83,6 +83,7 @@ internal static class RedactCommand
         var engine = new PdfEngine();
         var pages = CliApp.SelectPages(options.Pages, document.PageCount);
         var rects = await ClipRectsAsync(document, options.Rects ?? [], error, ct).ConfigureAwait(false);
+        var rasterPages = options.RasterizePages is null ? [] : CliApp.SelectPages(options.RasterizePages, document.PageCount);
 
         // A file that cannot be redacted at all is named before anything is searched.
         if (await RedactionExecutor.FileRefusalAsync(document, ct).ConfigureAwait(false) is { } refusal)
@@ -116,15 +117,59 @@ internal static class RedactCommand
             throw new CliException($"The marks cannot be made: {ex.Message} Nothing was written.", ex);
         }
 
-        var analysis = await new RedactionExecutor(engine).AnalyzeAsync(plan, document, inputPath, password, ct).ConfigureAwait(false);
+        try
+        {
+            plan = WithRasterPages(plan, rasterPages, options.RasterDpi);
+        }
+        catch (RedactionException ex)
+        {
+            throw new CliException($"The pages cannot be turned into images: {ex.Message} Nothing was written.", ex);
+        }
+
+        var executor = new RedactionExecutor(engine);
+        var analysis = await executor.AnalyzeAsync(plan, document, inputPath, password, ct).ConfigureAwait(false);
+
+        // --rasterize-unredactable: exactly the pages the analysis refuses as not redactable become images. The plan is analysed once more,
+        // and what is still refused (a page too large for 72 dpi, one that cannot be read, a file refused for another reason) stays a
+        // refusal; the pages added are never added a second time, so there is no loop.
+        IReadOnlyList<int> rescued = [];
+        if (analysis.IsRefused && options.RasterizeUnredactable)
+        {
+            rescued = [.. analysis.Refusals
+                .Where(static r => r.Kind == RedactionRefusalKind.PageNotRedactable)
+                .SelectMany(static r => r.Pages)
+                .Where(page => !plan.RasterPages.Contains(page))
+                .Distinct()
+                .Order()];
+            if (rescued.Count > 0)
+            {
+                try
+                {
+                    plan = WithRasterPages(plan, rescued, options.RasterDpi);
+                }
+                catch (RedactionException ex)
+                {
+                    throw new CliException($"The pages cannot be turned into images: {ex.Message} Nothing was written.", ex);
+                }
+
+                analysis = await executor.AnalyzeAsync(plan, document, inputPath, password, ct).ConfigureAwait(false);
+            }
+        }
+
         if (analysis.IsRefused)
         {
-            throw new CliException(RedactionRefusalText.Of(analysis.Refusals));
+            throw new CliException(RefusalMessage(analysis.Refusals, options, plan.RasterPages));
+        }
+
+        if (rescued.Count > 0)
+        {
+            var one = rescued.Count == 1;
+            await error.WriteLineAsync($"warning: --rasterize-unredactable turns {PageWord(rescued)} into {(one ? "an image" : "images")}: {(one ? "it cannot" : "they cannot")} be redacted in place.".AsMemory(), ct).ConfigureAwait(false);
         }
 
         if (options.DryRun)
         {
-            await WriteDryRunAsync(error, found, rects, analysis, ct).ConfigureAwait(false);
+            await WriteDryRunAsync(error, found, rects, analysis, plan.RasterDpi, ct).ConfigureAwait(false);
             return;
         }
 
@@ -139,6 +184,12 @@ internal static class RedactCommand
             }
         }
 
+        // The pages that become images are told before the first byte is written, too.
+        if (RasterSection(analysis, plan.RasterDpi) is { Length: > 0 } rasterSection)
+        {
+            await error.WriteLineAsync(rasterSection.AsMemory(), ct).ConfigureAwait(false);
+        }
+
         await error.FlushAsync(ct).ConfigureAwait(false);
 
         RedactionApplyResult result;
@@ -150,7 +201,7 @@ internal static class RedactCommand
         }
         catch (RedactionRefusedException ex)
         {
-            throw new CliException(ex.Refusals.Count > 0 ? RedactionRefusalText.Of(ex.Refusals) : ex.Message, ex);
+            throw new CliException(ex.Refusals.Count > 0 ? RefusalMessage(ex.Refusals, options, plan.RasterPages) : ex.Message, ex);
         }
         catch (SaveFailureException ex) when (ex.Reason == SaveFailureReason.RedactionFailed)
         {
@@ -300,7 +351,7 @@ internal static class RedactCommand
     }
 
     /// <summary>The preview: how many matches on which page (never the matched text), then what the redaction would do. Writes nothing to disk.</summary>
-    private static async Task WriteDryRunAsync(TextWriter error, Found found, IReadOnlyList<ClippedRect> rects, RedactionAnalysis analysis, CancellationToken ct)
+    private static async Task WriteDryRunAsync(TextWriter error, Found found, IReadOnlyList<ClippedRect> rects, RedactionAnalysis analysis, int rasterDpi, CancellationToken ct)
     {
         var text = new StringBuilder("Dry run: nothing is written.\n\n");
         var number = 0;
@@ -329,9 +380,94 @@ internal static class RedactCommand
             text.Append(Count(rects.Count, "rectangle", "rectangles")).Append(" on ").Append(PageWord(rects.Select(static r => r.Page).Distinct().Order().ToArray())).Append('\n');
         }
 
-        text.Append('\n').Append(RedactionReportText.Of(analysis, showValues: false)).Append('\n').Append(AcceptedSection(found)).Append("\nThe check of the written file runs only when the file is written; it can still end the command.");
+        text.Append('\n');
+        if (RasterSection(analysis, rasterDpi) is { Length: > 0 } rasterSection)
+        {
+            text.Append(rasterSection).Append("\n\n");
+        }
+
+        text.Append(RedactionReportText.Of(analysis, showValues: false)).Append('\n').Append(AcceptedSection(found)).Append("\nThe check of the written file runs only when the file is written; it can still end the command.");
         await error.WriteLineAsync(text.ToString().AsMemory(), ct).ConfigureAwait(false);
     }
+
+    /// <summary>The plan with the pages (0-based) added to the pages that become images, at <paramref name="dpi"/>.</summary>
+    private static RedactionPlan WithRasterPages(RedactionPlan plan, IReadOnlyList<int> pages, int dpi)
+    {
+        plan = plan.WithRasterDpi(dpi);
+        foreach (var page in pages)
+        {
+            plan = plan.WithRasterPage(page, on: true);
+        }
+
+        return plan;
+    }
+
+    /// <summary>The text of a refusal; for pages that cannot be redacted in place it also names the way out the user has to choose.</summary>
+    private static string RefusalMessage(IReadOnlyList<RedactionRefusal> refusals, CliOptions options, IReadOnlySet<int> rasterPages)
+    {
+        // A page the user already chose to turn into an image is refused for its own reason (too large, unreadable): no hint then.
+        var text = RedactionRefusalText.Of(refusals);
+        if (!options.RasterizeUnredactable && refusals.Any(r => r.Kind == RedactionRefusalKind.PageNotRedactable && r.Pages.Any(page => !rasterPages.Contains(page))))
+        {
+            text += "\nTo turn pages that cannot be redacted in place into images instead, use --rasterize-unredactable: all text, links, comments and form fields of such a page are lost.";
+        }
+
+        return text;
+    }
+
+    /// <summary>
+    /// What turning pages into images does, before it is done: the resolution really used (never lowered in silence), the size, what
+    /// each page loses, and what the check cannot do for such a page. Page numbers count from 1; no content of the document is repeated.
+    /// Empty when no page becomes an image.
+    /// </summary>
+    private static string RasterSection(RedactionAnalysis analysis, int requestedDpi)
+    {
+        if (analysis.Raster is not { Count: > 0 } raster)
+        {
+            return string.Empty;
+        }
+
+        var text = new StringBuilder("Pages turned into images:");
+        foreach (var info in raster)
+        {
+            text.Append("\n- page ").Append(Number(info.Page + 1)).Append(": ").Append(Number(info.Dpi)).Append(" dpi");
+            if (info.Lowered)
+            {
+                text.Append(", lowered from ").Append(Number(requestedDpi)).Append(" dpi because the page is large");
+            }
+
+            text.Append(" (").Append(Number(info.WidthPx)).Append(" x ").Append(Number(info.HeightPx)).Append(" pixels, the file grows by up to about ").Append(SizeText(info.EstimatedBytes)).Append("). Lost: ");
+            var lost = new List<string>();
+            if (info.HasText)
+            {
+                lost.Add("all of its text");
+            }
+
+            if (info.Links > 0)
+            {
+                lost.Add(Count(info.Links, "link", "links"));
+            }
+
+            if (info.Annotations > 0)
+            {
+                lost.Add($"{Count(info.Annotations, "annotation", "annotations")} (comments, links and form fields are among them)");
+            }
+
+            if (info.FormFields > 0)
+            {
+                lost.Add($"{Count(info.FormFields, "form field", "form fields")}, no longer fillable");
+            }
+
+            text.Append(lost.Count == 0 ? "nothing else; it has no text, links, annotations or form fields" : string.Join("; ", lost)).Append('.');
+        }
+
+        text.Append("\nAll other pages keep their text and vectors. A page turned into an image is an image only: a visible occurrence of a removed text outside the marked areas stays in it and cannot be found without OCR, so these pages cannot be checked for visible occurrences outside the marks.");
+        return text.ToString();
+    }
+
+    // Megabytes with at most one decimal; never below 0.1 (a size is an upper bound).
+    private static string SizeText(long bytes) =>
+        Math.Max(0.1, Math.Round(bytes / (1024.0 * 1024.0), 1)).ToString("0.#", CultureInfo.InvariantCulture) + " MiB";
 
     private static string SourceName(RedactionHitSource source) => source switch
     {

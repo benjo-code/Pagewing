@@ -49,7 +49,10 @@ internal sealed record CliOptions(
     IReadOnlyList<string>? Texts = null,
     IReadOnlyList<RedactRect>? Rects = null,
     bool DryRun = false,
-    bool AllowUnsearched = false)
+    bool AllowUnsearched = false,
+    string? RasterizePages = null,
+    bool RasterizeUnredactable = false,
+    int RasterDpi = RedactionLimits.DefaultRasterDpi)
 {
     public const string DefaultDpi = "144";
 
@@ -76,7 +79,7 @@ internal sealed record CliOptions(
             "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
-            "redact" => ["--text", "--rect", "--pages", "--match-case", "--dry-run", "--allow-unsearched", "--output", "--force", "--password"],
+            "redact" => ["--text", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -92,6 +95,8 @@ internal sealed record CliOptions(
         var rects = new List<RedactRect>();
         var dryRun = false;
         var allowUnsearched = false;
+        var rasterizeUnredactable = false;
+        string? rasterizePages = null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         string? everyText = null;
         string? ranges = null;
@@ -147,7 +152,7 @@ internal sealed record CliOptions(
                     continue;
                 }
 
-                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched")
+                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched" or "--rasterize-unredactable")
                 {
                     if (value is not null)
                     {
@@ -174,6 +179,10 @@ internal sealed record CliOptions(
                     {
                         allowUnsearched = true;
                     }
+                    else if (name == "--rasterize-unredactable")
+                    {
+                        rasterizeUnredactable = true;
+                    }
                     else
                     {
                         wholeWord = true;
@@ -199,6 +208,9 @@ internal sealed record CliOptions(
                         break;
                     case "--dpi":
                         dpiText = value;
+                        break;
+                    case "--rasterize-pages":
+                        rasterizePages = value;
                         break;
                     case "--angle":
                         angleText = value;
@@ -265,7 +277,20 @@ internal sealed record CliOptions(
             }
         }
 
-        var dpi = ParseDpi(dpiText ?? DefaultDpi);
+        if (rasterizePages is not null)
+        {
+            try
+            {
+                PageRange.Validate(rasterizePages);
+            }
+            catch (FormatException ex)
+            {
+                throw new UsageException($"Invalid value for --rasterize-pages: {ex.Message}");
+            }
+        }
+
+        // For redact --dpi is the resolution of the pages that become images (a whole number from 72 to 300), not of a render.
+        var dpi = ParseDpi(isRedact ? DefaultDpi : dpiText ?? DefaultDpi);
         if (isSplit)
         {
             if (string.IsNullOrEmpty(output))
@@ -279,9 +304,31 @@ internal sealed record CliOptions(
 
         if (isRedact)
         {
-            if (texts.Count == 0 && rects.Count == 0)
+            if (texts.Count == 0 && rects.Count == 0 && rasterizePages is null)
             {
-                throw new UsageException("The 'redact' command needs at least one --text <term> or --rect <page>:<x>,<y>,<w>,<h>.");
+                throw new UsageException("The 'redact' command needs at least one --text <term>, --rect <page>:<x>,<y>,<w>,<h> or --rasterize-pages <range>.");
+            }
+
+            // A page can only be refused because of a mark on it, so without a mark there is nothing to rescue.
+            if (rasterizeUnredactable && texts.Count == 0 && rects.Count == 0)
+            {
+                throw new UsageException("The option '--rasterize-unredactable' turns pages that cannot be redacted in place into images; the command has no --text or --rect that could mark such a page (use --rasterize-pages to choose pages).");
+            }
+
+            var rasterDpi = RedactionLimits.DefaultRasterDpi;
+            if (dpiText is not null)
+            {
+                if (rasterizePages is null && !rasterizeUnredactable)
+                {
+                    throw new UsageException("The option '--dpi' sets the resolution of pages that become images; the command has no --rasterize-pages or --rasterize-unredactable.");
+                }
+
+                if (!int.TryParse(dpiText, NumberStyles.None, CultureInfo.InvariantCulture, out rasterDpi)
+                    || rasterDpi < RedactionLimits.MinRasterDpi
+                    || rasterDpi > RedactionLimits.MaxRasterDpi)
+                {
+                    throw new UsageException($"Invalid value for --dpi: '{dpiText}' (use a whole number from {RedactionLimits.MinRasterDpi.ToString(CultureInfo.InvariantCulture)} to {RedactionLimits.MaxRasterDpi.ToString(CultureInfo.InvariantCulture)}).");
+                }
             }
 
             if (pages is not null && texts.Count == 0)
@@ -299,7 +346,7 @@ internal sealed record CliOptions(
                 throw new UsageException("The 'redact' command needs --output <out.pdf> (only --dry-run works without it).");
             }
 
-            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched);
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi);
         }
 
         if (isRotate)

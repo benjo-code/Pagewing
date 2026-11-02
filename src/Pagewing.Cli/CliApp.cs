@@ -25,7 +25,7 @@ public static class CliApp
           pagewing merge  --output <out.pdf> <file> [--pages <range>] [--password <pw>] <file> [--pages <range>] [--password <pw>] ... [--force]
           pagewing split  <file> --output <dir> (--every <n> | --ranges <ranges> | --bookmarks) [--force] [--password <pw>]
           pagewing export <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--force] [--password <pw>]
-          pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]
+          pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -65,7 +65,8 @@ public static class CliApp
                    that cannot be redacted safely (encrypted, a page with /Thumb, /PieceInfo, /Metadata or
                    /AA, a page that cannot be written again unchanged outside the marks) is refused with
                    the reason and the pages. A digitally signed input is announced with a warning; the
-                   signature is shown as invalid afterwards. The input is never changed.
+                   signature is shown as invalid afterwards. The input is never changed. A page can also
+                   be turned into an image (--rasterize-pages, --rasterize-unredactable): see there.
 
         Options:
           --pages <range>    Pages to process: 3, 2-5, 1,3,5-7 or all (default: all; rotate: required).
@@ -74,6 +75,9 @@ public static class CliApp
                              so --pages cannot reorder pages.
                              For merge: after a file, the pages taken from that file.
           --dpi <n>          Resolution of rendered pages (default: 144).
+                             For redact: the resolution of the pages that become images, a whole number from
+                             72 to 300 (default: 200); only with --rasterize-pages or --rasterize-unredactable.
+                             A page too large for it gets a lower resolution, which the report names.
           --output <dir>     Directory for the PNG files, created if missing (default: .).
                              For rotate, merge and redact: the PDF file to write (required; redact: not with --dry-run).
                              For split: the folder for the new files (required, must exist).
@@ -92,6 +96,18 @@ public static class CliApp
           --rect <spec>      Redact: remove what lies under a rectangle, <page>:<x>,<y>,<w>,<h> (page from 1,
                              points, origin top left, dot as decimal separator). May be given several times;
                              a part beyond the page is clipped and reported.
+          --rasterize-pages <range>
+                             Redact: turn these pages into images (same syntax as --pages; --text and --rect are
+                             not needed). The whole text of such a page is lost, as are its links, comments and
+                             form fields; the marked areas are filled in the image. A page that is an image can
+                             only be checked for its structure and the marked areas: a visible occurrence of a
+                             removed text elsewhere on it stays and cannot be found without OCR, so such pages
+                             cannot be checked for visible occurrences outside the marks.
+          --rasterize-unredactable
+                             Redact: turn exactly the pages into images that are refused as "would change content
+                             outside the marked areas", and name them on stderr. Without it, or without
+                             --rasterize-pages, such a page ends the command (exit 1). It does not help against an
+                             encrypted file or a page key that cannot be removed, and it needs --text or --rect.
           --dry-run          Redact: only search and analyse; print the number of matches per page and the
                              report, write nothing (exit 0 if the file would be written, the final check
                              of the written file excepted).
