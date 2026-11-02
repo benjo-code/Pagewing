@@ -37,6 +37,18 @@ public sealed record RemovedText(int Page, string Text, bool Everywhere, int Occ
     /// <returns>The form without separators, or <see langword="null"/>.</returns>
     public static string? RawFormOf(string text)
     {
+        var stripped = WithoutSeparators(text);
+        return stripped.Length < text.Length && stripped.Length >= RedactionLimits.MinRawCheckLength ? stripped : null;
+    }
+
+    /// <summary>
+    /// The text without any separator (the set of <see cref="RawFormOf"/>: white space of every kind, hyphens, slashes, dots, brackets, soft
+    /// hyphen). Always a string, however short; <see cref="RedactionOverlayRule"/> compares overlay text and terms in this form as well.
+    /// </summary>
+    /// <param name="text">The text.</param>
+    /// <returns>The text with every separator removed.</returns>
+    internal static string WithoutSeparators(string text)
+    {
         ArgumentNullException.ThrowIfNull(text);
         var builder = new StringBuilder(text.Length);
         foreach (var c in text)
@@ -47,7 +59,7 @@ public sealed record RemovedText(int Page, string Text, bool Everywhere, int Occ
             }
         }
 
-        return builder.Length < text.Length && builder.Length >= RedactionLimits.MinRawCheckLength ? builder.ToString() : null;
+        return builder.Length == text.Length ? text : builder.ToString();
     }
 
     private static bool IsSeparator(char c) =>

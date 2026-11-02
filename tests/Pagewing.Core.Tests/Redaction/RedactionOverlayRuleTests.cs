@@ -130,6 +130,88 @@ public sealed class RedactionOverlayRuleTests : IDisposable
         Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "Müller", "Akte Müller"))));
     }
 
+    private const string GroupedIban = "DE89 3704 0044 0532 0130 00";
+
+    [Fact]
+    public void SeparatorVariantsOfASpaceAreTheSameText()
+    {
+        // The term as the page holds it (no-break, narrow no-break and thin spaces between the groups) against an overlay with plain spaces.
+        foreach (var space in new[] { " ", " ", " ", "\t", "  ", "\n", "\r\n" })
+        {
+            var term = GroupedIban.Replace(" ", space, StringComparison.Ordinal);
+            Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, term, "Konto " + GroupedIban + " bitte"))));
+        }
+
+        // And the other way round: the term in plain spaces, the overlay written with other spaces.
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, GroupedIban, "Konto " + GroupedIban.Replace(" ", " ", StringComparison.Ordinal)))));
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, GroupedIban, "Konto " + GroupedIban.Replace(" ", "  ", StringComparison.Ordinal)))));
+    }
+
+    [Fact]
+    public void AnUngroupedOverlayRepeatsAGroupedTermAndTheOtherWayRound()
+    {
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, GroupedIban, "DE89370400440532013000"))));
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, GroupedIban, "Nr. de89370400440532013000 !"))));
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "DE89370400440532013000", "Konto " + GroupedIban))));
+    }
+
+    [Fact]
+    public void WhiteSpaceInsideATermFromASelectionDoesNotHideIt()
+    {
+        // A selection over two lines: a double space, a tab, a line break inside the term.
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "Hans  Meier\tWeg\n5 Berlin", "Hans Meier Weg 5 Berlin"))));
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "Hans Meier Weg 5 Berlin", "x HansMeierWeg5Berlin x"))));
+    }
+
+    [Fact]
+    public void HyphenatedPhoneTermsMatchTheirOtherWritings()
+    {
+        foreach (var term in new[] { "+49-711-1234567", "+49‑711‑1234567", "+49‐711‐1234567" })
+        {
+            foreach (var overlay in new[] { "+49 711 1234567", "+497111234567", "Tel +49-711-1234567", "+49 (711) 1234567" })
+            {
+                Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, term, overlay))));
+            }
+        }
+
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "+49 711 1234567", "+49-711-1234567"))));
+        Assert.Null(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "+49-711-1234567", "+49 711 7654321"))));
+    }
+
+    [Fact]
+    public void AShortRemainderOfAStrippedTermIsComparedOnlyForEquality()
+    {
+        // "1 2 3" is 5 characters but 3 without its spaces: a piece of the overlay text only by chance. Not refused ...
+        Assert.Null(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "1 2 3", "geschwärzt"))));
+        Assert.Null(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "1 2 3", "Akte 1234 Nr. 5"))));
+        Assert.Null(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "a-b", "geschwärzt"))));
+
+        // ... unless the whole overlay text, with and without its separators, is that term.
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "1 2 3", "1-2-3"))));
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "1 2 3", "123"))));
+        Assert.NotNull(RedactionOverlayRule.Refusal(PlanOf(Mark(0, "ab", "a b"))));
+
+        // Only separators are no term at all.
+        Assert.Null(RedactionOverlayRule.Refusal(PlanOf(Mark(0, " - / ", "geschwärzt"))));
+    }
+
+    [Fact]
+    public void TheUsualOverlayTextsAreNeverRefusedByNormalTerms()
+    {
+        string[] terms =
+        [
+            "Max Mustermann", GroupedIban, "+49 711 1234567", "Berlin", "Konto 4711", "Anna Schmidt-Müller", "4111 1111 1111 1111",
+            "max@example.org", "Zephyrstraße 17", "12.03.1985", "Dr. med. Eva Berg", "1 2 3", "Nr. 7",
+        ];
+        var marks = terms.Select(static (t, i) => Mark(i % 3, t)).ToList();
+        marks.Add(Mark(0, null, "geschwärzt"));
+        marks.Add(Mark(1, null, "redacted"));
+        marks.Add(Mark(2, null, "Geschwärzt / Redacted"));
+        marks.Add(Mark(2, null, "Vertraulich"));
+
+        Assert.Null(RedactionOverlayRule.Refusal(RedactionPlan.Empty.WithRange(marks)));
+    }
+
     [Fact]
     public void MarksAddedAfterTheTextAreChecked()
     {
@@ -187,5 +269,29 @@ public sealed class RedactionOverlayRuleTests : IDisposable
 
         Assert.Null(refusal);
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"took {clock.Elapsed}");
+    }
+
+    [Fact]
+    public void DistinctOverlaysAgainstDistinctTermsStayCheap()
+    {
+        // The hostile shape: every mark has its own overlay of 200 characters and its own term, none of them found in another, so no
+        // verdict is shared and no mark ends early. The rule runs twice per apply (analysis and build); each run must stay well inside 5 s.
+        const int Count = 2_000;
+        var filler = new string('x', 150);
+        var marks = Enumerable.Range(0, Count)
+            .Select(i => Mark(i % 50, "Begriff " + i.ToString("D5", System.Globalization.CultureInfo.InvariantCulture), (filler + i.ToString("D5", System.Globalization.CultureInfo.InvariantCulture) + new string('y', 45))))
+            .ToList();
+        var plan = RedactionPlan.Empty.WithRange(marks);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var refusal = RedactionOverlayRule.Refusal(plan);
+
+        clock.Stop();
+        Assert.Null(refusal);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"took {clock.Elapsed}");
+
+        // And with one hit at the very end the answer is still right.
+        var hit = plan.With(Mark(7, "Begriff 00042", filler + "Begriff00042"));
+        Assert.Equal([7], RedactionOverlayRule.Refusal(hit)!.Pages);
     }
 }
