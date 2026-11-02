@@ -46,7 +46,7 @@ Architektur und Entscheidungen stehen in der [Gesamt-Spec](Docs/superpowers/spec
 
 ## Setup
 
-Das Code-Grundgerüst steht (Milestone 0): Solution mit `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.App` (leeres Avalonia-Fenster) und `Pagewing.Cli`, jeweils als Native-AOT-Binary baubar, dazu CI auf Linux und Windows. Milestone 1 ist in Arbeit: Der Kern öffnet PDFs, rendert Seiten und Kacheln und extrahiert Text, nutzbar über die CLI (`pagewing info`, `render`, `text`, siehe unten). Die App selbst zeigt noch kein PDF; das folgt ab Milestone 3.
+Die Solution besteht aus `Pagewing.Pdfium`, `Pagewing.Core`, `Pagewing.Ocr`, `Pagewing.App` (Avalonia-Desktop-App) und `Pagewing.Cli`; App und CLI sind als Native-AOT-Binary baubar, die CI läuft auf Linux und Windows. Der Stand der Funktionen steht in der [Roadmap](Docs/ROADMAP.md), die CLI-Befehle unten.
 
 **Voraussetzungen:** .NET-10-SDK. Für den AOT-Publish braucht es zusätzlich die nativen Build-Werkzeuge:
 

@@ -61,6 +61,20 @@ public sealed class UpdateVersionTests
     }
 
     [Fact]
+    public void AMajorReleaseTagIsNewerThanTheInstalledMinorRelease()
+    {
+        // The first real update: an installed 0.2.0 sees the tag of 1.0.0 on the release page.
+        Assert.True(UpdateVersion.TryParse("0.2.0", out var installed));
+        Assert.True(UpdateVersion.TryParse("v1.0.0", out var offered));
+        Assert.True(offered > installed);
+        Assert.False(installed >= offered);
+
+        // Numbers, not text: "1.0.0" sorts before "0.10.0" as text.
+        Assert.True(UpdateVersion.TryParse("0.10.0", out var tenth));
+        Assert.True(offered > tenth);
+    }
+
+    [Fact]
     public void FormatsAsDottedNumbers()
     {
         Assert.Equal("1.2.3", new UpdateVersion(1, 2, 3).ToString());
