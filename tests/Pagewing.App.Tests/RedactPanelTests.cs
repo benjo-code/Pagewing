@@ -12,6 +12,7 @@ using Avalonia.Input;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Pagewing.App.Controls;
 using Pagewing.App.Resources;
 using Pagewing.App.Services;
 using Pagewing.App.ViewModels;
@@ -1168,6 +1169,496 @@ public sealed class RedactPanelTests : IDisposable
         Assert.True(left, "Tab did not leave the panel.");
         Assert.Contains(boxes[0], visited);
         Assert.Contains(boxes[3], visited);
+    }
+
+    // ---- the text on the areas (milestone 14.1, task 16) ----
+
+    private static HashSet<Guid> Ids(params Guid[] ids) => [.. ids];
+
+    private static TextBox OverlayField(RedactionPanel panel) =>
+        FindOrNull<TextBox>(panel, "OverlayTextBox") ?? throw new InvalidOperationException("The field of the text on the areas is not there.");
+
+    /// <summary>A panel of a tab in the mode with two rectangles, the second one selected (a new mark is the selection).</summary>
+    private async Task<(Window Window, TabViewModel Tab, RedactionPanel Panel, Guid First, Guid Second)> OverlayPanelAsync()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        Assert.True(tab.AddAreaMark(0, new PageRect(100, 300, 220, 360)));
+        Assert.True(tab.AddAreaMark(1, new PageRect(50, 50, 150, 90)));
+        var panel = await OpenPanelAsync(window, tab);
+        Settle(window);
+        return (window, tab, panel, tab.RedactionPlan!.Marks[0].Id, tab.RedactionPlan.Marks[1].Id);
+    }
+
+    [AvaloniaFact]
+    public async Task OverlayFieldAppearsOnlyInTheSelectedMarkRow()
+    {
+        var (window, tab, panel, first, second) = await OverlayPanelAsync();
+
+        // Nothing selected: no editor and no control of it (the model is dropped with the last selected mark).
+        tab.ClearMarkSelection();
+        Settle(window);
+        Assert.Null(tab.RedactionPanel.OverlayEditor);
+        Assert.Null(FindOrNull<TextBox>(panel, "OverlayTextBox"));
+        Assert.Null(FindOrNull<StackPanel>(panel, "OverlayEditor"));
+
+        // A selected mark brings the field, named, reachable by Tab, empty, with the options and the snippets.
+        tab.SelectMarks([first]);
+        Settle(window);
+        var field = OverlayField(panel);
+        Assert.True(field.IsVisible && field.Focusable && field.IsEffectivelyEnabled);
+        Assert.Equal(Strings.RedactOverlayHeading, AutomationProperties.GetName(field));
+        Assert.Equal(AccessibilityView.Content, AutomationProperties.GetAccessibilityView(FindOrNull<StackPanel>(panel, "OverlayEditor")!));
+        Assert.Equal(RedactionLimits.MaxOverlayTextLength, field.MaxLength);
+        Assert.True(string.IsNullOrEmpty(field.Text));
+        foreach (var name in new[] { "OverlayRepeatBox", "OverlayAutoSizeBox", "OverlayColorAutoBox" })
+        {
+            Assert.NotNull(FindOrNull<CheckBox>(panel, name));
+        }
+
+        // The field shows the text of the selected mark; another mark shows its own.
+        Assert.True(tab.SetOverlayText(Ids(first), "Akte 17"));
+        Settle(window);
+        Assert.Equal("Akte 17", OverlayField(panel).Text);
+        tab.SelectMarks([second]);
+        Settle(window);
+        Assert.True(string.IsNullOrEmpty(OverlayField(panel).Text));
+
+        // Marks with different texts: an empty field that says so, and any edit then reaches all of them.
+        tab.SelectMarks([first, second]);
+        Settle(window);
+        var editor = tab.RedactionPanel.OverlayEditor!;
+        Assert.Equal(Strings.RedactOverlayMixed, editor.Placeholder);
+        Assert.Equal(Strings.RedactOverlayMixed, OverlayField(panel).PlaceholderText);
+        editor.Text = "Alle";
+        Assert.True(editor.Commit());
+        Assert.All(tab.RedactionPlan!.Marks, mark => Assert.Equal("Alle", mark.OverlayText));
+
+        // The mode ends: the panel and the editor go with the plan.
+        tab.DiscardRedactionsCommand.Execute(null);
+        Settle(window);
+        Assert.False(tab.IsRedactionPanelCreated);
+        Assert.Null(FindOrNull<TextBox>(panel, "OverlayTextBox"));
+    }
+
+    [AvaloniaFact]
+    public async Task OverlayTextIsOneHistoryStepAppliedOnEnterOrOnLeavingTheField()
+    {
+        var (window, tab, panel, first, _) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        var field = OverlayField(panel);
+        var history = tab.RedactionHistory!;
+        var version = history.Version;
+
+        // Typing is a draft: no step of the history, no change of the plan, and the editor knows it is not applied.
+        Assert.True(field.Focus(NavigationMethod.Tab));
+        foreach (var text in new[] { "a", "ab", "abc", "abcd" })
+        {
+            field.Text = text;
+        }
+
+        Assert.Equal(version, history.Version);
+        Assert.Null(tab.RedactionPlan!.Marks[0].OverlayText);
+        Assert.True(tab.RedactionPanel.OverlayEditor!.IsDirty);
+
+        // Enter applies it as one step; undo takes the whole text back.
+        Press(window, Key.Enter, PhysicalKey.Enter, RawInputModifiers.None);
+        Assert.Equal(version + 1, history.Version);
+        Assert.Equal("abcd", tab.RedactionPlan.Marks[0].OverlayText);
+        Assert.False(tab.RedactionPanel.OverlayEditor.IsDirty);
+        tab.UndoCommand.Execute(null);
+        Assert.Null(tab.RedactionPlan.Marks[0].OverlayText);
+        tab.RedoCommand.Execute(null);
+        Assert.Equal("abcd", tab.RedactionPlan.Marks[0].OverlayText);
+
+        // Enter with nothing new is no step.
+        Settle(window);
+        Assert.True(OverlayField(panel).Focus(NavigationMethod.Tab));
+        var before = history.Version;
+        Press(window, Key.Enter, PhysicalKey.Enter, RawInputModifiers.None);
+        Assert.Equal(before, history.Version);
+
+        // Leaving the field applies it, too.
+        OverlayField(panel).Text = "Neu";
+        Assert.Equal("abcd", tab.RedactionPlan.Marks[0].OverlayText);
+        Assert.True(FindOrNull<Button>(panel, "AddSnippetButton")!.Focus(NavigationMethod.Tab));
+        Settle(window);
+        Assert.Equal("Neu", tab.RedactionPlan.Marks[0].OverlayText);
+        Assert.Equal(before + 1, history.Version);
+
+        // White space alone clears the text (one step).
+        Assert.True(OverlayField(panel).Focus(NavigationMethod.Tab));
+        OverlayField(panel).Text = "   ";
+        Press(window, Key.Enter, PhysicalKey.Enter, RawInputModifiers.None);
+        Assert.Null(tab.RedactionPlan.Marks[0].OverlayText);
+        Assert.Equal(before + 2, history.Version);
+        Assert.True(string.IsNullOrEmpty(OverlayField(panel).Text));
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task CharactersTheFontLacksRefuseTheWholeTextAndAreTold(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var (window, tab, panel, first, _) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        var editor = tab.RedactionPanel.OverlayEditor!;
+        var version = tab.RedactionHistory!.Version;
+        Assert.True(OverlayField(panel).Focus(NavigationMethod.Tab));
+
+        // A snowman is no glyph of the font: the position is told in words (with an icon, never colour alone), the text is not used.
+        OverlayField(panel).Text = "ok ☃ text";
+        Settle(window);
+        Assert.True(editor.HasInvalid);
+        Assert.Equal(Strings.RedactOverlayInvalidAt(4), editor.InvalidText);
+        Assert.Contains("4", editor.InvalidText, StringComparison.Ordinal);
+        var row = FindOrNull<Grid>(panel, "OverlayInvalidRow")!;
+        Assert.True(row.IsVisible);
+        Assert.Equal(editor.InvalidText, FindOrNull<TextBlock>(panel, "OverlayInvalidNote")!.Text);
+        Assert.NotEmpty(row.GetVisualDescendants().OfType<StrokeIcon>());
+        Press(window, Key.Enter, PhysicalKey.Enter, RawInputModifiers.None);
+        Assert.Equal(version, tab.RedactionHistory.Version);
+        Assert.Null(tab.RedactionPlan!.Marks[0].OverlayText);
+        Assert.Equal("ok ☃ text", OverlayField(panel).Text);
+
+        // The plan itself refuses such a text too and tells the notice (a path other than the field), and nothing changes.
+        Assert.False(tab.SetOverlayText(Ids(first), "x ☃"));
+        Assert.Equal(Strings.RedactOverlayInvalid, tab.RedactionNotice);
+        Assert.Null(tab.RedactionPlan.Marks[0].OverlayText);
+        tab.DismissRedactionNoticeCommand.Execute(null);
+
+        // Without the character it goes through.
+        OverlayField(panel).Text = "ok text";
+        Settle(window);
+        Assert.False(editor.HasInvalid);
+        Assert.False(row.IsVisible);
+        Press(window, Key.Enter, PhysicalKey.Enter, RawInputModifiers.None);
+        Assert.Equal("ok text", tab.RedactionPlan.Marks[0].OverlayText);
+    }
+
+    [AvaloniaFact]
+    public async Task TermInTheOverlayWarnsWhileTyping()
+    {
+        var (window, tab, panel, _, _) = await OverlayPanelAsync();
+        var mark = new RedactionMark(Guid.NewGuid(), RedactionKind.Text, 0, [new PageRect(100, 100, 160, 120)], "Pagewing", Everywhere: false);
+        Assert.True(tab.AddRedactionMarks([mark]));
+        Settle(window);
+        var editor = tab.RedactionPanel.OverlayEditor!;
+        var version = tab.RedactionHistory!.Version;
+        var row = FindOrNull<Grid>(panel, "OverlayWarningRow")!;
+        Assert.False(editor.HasWarning);
+        Assert.False(row.IsVisible);
+
+        // While it is typed, whatever the case: a sentence with an icon, never the term, and nothing changed in the plan.
+        Assert.True(OverlayField(panel).Focus(NavigationMethod.Tab));
+        OverlayField(panel).Text = "see PAGE wind here";
+        Settle(window);
+        Assert.False(editor.HasWarning);
+        OverlayField(panel).Text = "see PAGEWING here";
+        Settle(window);
+        Assert.True(editor.HasWarning);
+
+        // Spaces and hyphens do not hide it.
+        OverlayField(panel).Text = "see PAGE - wing here";
+        Settle(window);
+        Assert.True(editor.HasWarning);
+        OverlayField(panel).Text = "see PAGEWING here";
+        Settle(window);
+        Assert.Equal(Strings.RedactOverlayRepeatsTerm, editor.Warning);
+        Assert.True(row.IsVisible);
+        Assert.Equal(Strings.RedactOverlayRepeatsTerm, FindOrNull<TextBlock>(panel, "OverlayWarningNote")!.Text);
+        Assert.NotEmpty(row.GetVisualDescendants().OfType<StrokeIcon>());
+        Assert.DoesNotContain("Pagewing", editor.Warning!, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(version, tab.RedactionHistory.Version);
+
+        // The warning goes with the text.
+        OverlayField(panel).Text = "harmless";
+        Settle(window);
+        Assert.False(editor.HasWarning);
+        Assert.False(row.IsVisible);
+
+        // Applying the text is not forbidden here (the analysis refuses later): the plan takes it, and the warning stays while the plan holds it.
+        OverlayField(panel).Text = "see PAGEWING here";
+        Press(window, Key.Enter, PhysicalKey.Enter, RawInputModifiers.None);
+        Assert.Equal("see PAGEWING here", tab.RedactionPlan!.Marks.Single(m => m.Id == mark.Id).OverlayText);
+        Settle(window);
+        Assert.True(editor.HasWarning);
+
+        // A term marked AFTER the text counts as well: the text of the other mark now holds a term.
+        var other = tab.RedactionPlan.Marks[0].Id;
+        tab.SelectMarks([other]);
+        Settle(window);
+        tab.SetOverlayText(Ids(other), "a harmless text");
+        var later = new RedactionMark(Guid.NewGuid(), RedactionKind.Text, 1, [new PageRect(10, 10, 60, 30)], "harmless", Everywhere: false);
+        Assert.True(tab.AddRedactionMarks([later]));
+        tab.SelectMarks([other]);
+        Settle(window);
+        Assert.True(tab.RedactionPanel.OverlayEditor!.HasWarning);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task ColourBelowTheContrastIsWarnedInWordsNotForbidden(string language)
+    {
+        Strings.Culture = new CultureInfo(language);
+        var (window, tab, panel, first, _) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        var editor = tab.RedactionPanel.OverlayEditor!;
+        var color = FindOrNull<CheckBox>(panel, "OverlayColorAutoBox")!;
+        var version = tab.RedactionHistory!.Version;
+
+        // Automatic: black or white by contrast, no field for a colour, no warning.
+        Assert.True(editor.IsColorAuto);
+        Assert.True(color.IsChecked);
+        Assert.False(FindOrNull<TextBox>(panel, "OverlayColorBox")!.IsVisible);
+        Assert.False(editor.HasContrastWarning);
+
+        // Choosing a colour starts from the one that would have been chosen (white on black): enough contrast, no warning.
+        color.IsChecked = false;
+        Settle(window);
+        Assert.False(editor.IsColorAuto);
+        Assert.Equal(RedactionFill.White, tab.RedactionOverlayStyle.TextColor);
+        Assert.Equal(version + 1, tab.RedactionHistory.Version);
+        var box = FindOrNull<TextBox>(panel, "OverlayColorBox")!;
+        Assert.True(box.IsVisible);
+        Assert.Equal("#FFFFFF", box.Text);
+        Assert.False(editor.HasContrastWarning);
+
+        // A dark grey on the black fill: allowed, but told in words with the ratio and an icon.
+        box.Text = "#202020";
+        Assert.True(editor.CommitColor());
+        Settle(window);
+        Assert.Equal(new RedactionFill(0x20, 0x20, 0x20), tab.RedactionOverlayStyle.TextColor);
+        Assert.True(editor.HasContrastWarning);
+        var ratio = RedactionOverlayColor.Contrast(new RedactionFill(0x20, 0x20, 0x20), RedactionFill.Black);
+        Assert.True(ratio < RedactionOverlayColor.MinContrast);
+        Assert.Equal(Strings.RedactOverlayContrastLow(ratio), editor.ContrastWarning);
+        var row = FindOrNull<Grid>(panel, "OverlayContrastRow")!;
+        Assert.True(row.IsVisible);
+        Assert.NotEmpty(row.GetVisualDescendants().OfType<StrokeIcon>());
+        Assert.Equal(editor.ContrastWarning, FindOrNull<TextBlock>(panel, "OverlayContrastNote")!.Text);
+
+        // A text that is no colour is told; the colour of the plan stays.
+        box.Text = "#12";
+        Assert.False(editor.CommitColor());
+        Assert.True(editor.HasColorError);
+        Assert.Equal(Strings.RedactFillHexError, editor.ColorError);
+        Assert.Equal(new RedactionFill(0x20, 0x20, 0x20), tab.RedactionOverlayStyle.TextColor);
+
+        // A good contrast again: the warning goes.
+        box.Text = "#ffffff";
+        Assert.True(editor.CommitColor());
+        Assert.False(editor.HasContrastWarning);
+
+        // Back to automatic is a step too, and undo works through all of them.
+        color.IsChecked = true;
+        Settle(window);
+        Assert.Null(tab.RedactionOverlayStyle.TextColor);
+        tab.UndoCommand.Execute(null);
+        Assert.Equal(RedactionFill.White, tab.RedactionOverlayStyle.TextColor);
+    }
+
+    [AvaloniaFact]
+    public async Task RepeatAndFitSizeAreStepsOfThePlan()
+    {
+        var (window, tab, panel, first, _) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        var repeat = FindOrNull<CheckBox>(panel, "OverlayRepeatBox")!;
+        var fit = FindOrNull<CheckBox>(panel, "OverlayAutoSizeBox")!;
+        var version = tab.RedactionHistory!.Version;
+        Assert.False(repeat.IsChecked);
+        Assert.True(fit.IsChecked);
+
+        repeat.IsChecked = true;
+        fit.IsChecked = false;
+        Settle(window);
+        Assert.Equal(new RedactionOverlayStyle(Repeat: true, AutoSize: false), tab.RedactionOverlayStyle);
+        Assert.Equal(version + 2, tab.RedactionHistory.Version);
+        Assert.Same(tab.RedactionOverlayStyle, tab.RedactionPlan!.Overlay);
+
+        // Undo takes them back one by one, and the boxes follow.
+        tab.UndoCommand.Execute(null);
+        Settle(window);
+        Assert.True(repeat.IsChecked);
+        Assert.True(fit.IsChecked);
+        tab.UndoCommand.Execute(null);
+        Settle(window);
+        Assert.False(repeat.IsChecked);
+        Assert.Equal(new RedactionOverlayStyle(), tab.RedactionOverlayStyle);
+    }
+
+    [AvaloniaFact]
+    public async Task CodesAreOfferedFromTheSettingsAndLimited()
+    {
+        var (window, tab, panel, first, _) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        var editor = tab.RedactionPanel.OverlayEditor!;
+        var settings = tab.AnnotationSettings;
+
+        // Nothing stored: the module of the language is the only suggestion, and the settings stay untouched.
+        Assert.Equal(["redacted"], editor.Snippets.Select(static s => s.Text));
+        Assert.Null(settings.Current.RedactionCodes);
+        var use = panel.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SnippetUseButton");
+        Assert.Equal(Strings.RedactOverlayUseSnippet("redacted"), AutomationProperties.GetName(use));
+        var remove = panel.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SnippetRemoveButton");
+        Assert.Equal(Strings.RedactOverlayRemoveSnippet("redacted"), AutomationProperties.GetName(remove));
+
+        // A snippet goes on the selected areas in one step.
+        var version = tab.RedactionHistory!.Version;
+        editor.Snippets[0].UseCommand.Execute(null);
+        Assert.Equal("redacted", tab.RedactionPlan!.Marks[0].OverlayText);
+        Assert.Equal(version + 1, tab.RedactionHistory.Version);
+        Assert.Null(settings.Current.RedactionCodes);
+
+        // The text of the field is saved as another one: now the settings keep the list (the first one included).
+        Assert.False(editor.CanAddCode);
+        editor.Text = "File 4711";
+        Assert.True(editor.CanAddCode);
+        Assert.True(editor.AddCodeCommand.CanExecute(null));
+        editor.AddCodeCommand.Execute(null);
+        Assert.Equal(["redacted", "File 4711"], settings.Current.RedactionCodes);
+        Assert.Equal(["redacted", "File 4711"], editor.Snippets.Select(static s => s.Text));
+        Settle(window);
+        Assert.Equal(2, panel.GetVisualDescendants().OfType<Button>().Count(b => b.Name == "SnippetUseButton"));
+
+        // The same text again is not saved twice; the field says why.
+        Assert.False(editor.CanAddCode);
+        Assert.Equal(Strings.RedactOverlayCodeKnown, editor.CodeNote);
+        Assert.True(FindOrNull<TextBlock>(panel, "SnippetNote")!.IsVisible);
+
+        // Taking one out is a step of the settings, not of the plan.
+        editor.Snippets[0].RemoveCommand.Execute(null);
+        Assert.Equal(["File 4711"], settings.Current.RedactionCodes);
+        Assert.Equal(version + 1, tab.RedactionHistory.Version);
+
+        // At most 40 characters per module, and only characters the font has.
+        editor.Text = new string('a', AppSettings.MaxRedactionCodeLength + 1);
+        Assert.False(editor.CanAddCode);
+        Assert.Equal(Strings.RedactOverlayCodeTooLong(AppSettings.MaxRedactionCodeLength), editor.CodeNote);
+        editor.Text = new string('a', AppSettings.MaxRedactionCodeLength);
+        Assert.True(editor.CanAddCode);
+        editor.Text = "Akte ☃";
+        Assert.False(editor.CanAddCode);
+
+        // At most 20 modules: the 21st is refused with the reason, nothing is dropped silently.
+        for (var i = settings.Current.RedactionCodes!.Count; i < AppSettings.MaxRedactionCodes; i++)
+        {
+            editor.Text = $"code {i}";
+            Assert.True(editor.CanAddCode);
+            editor.AddCodeCommand.Execute(null);
+        }
+
+        Assert.Equal(AppSettings.MaxRedactionCodes, settings.Current.RedactionCodes!.Count);
+        editor.Text = "one too many";
+        Assert.False(editor.CanAddCode);
+        Assert.False(editor.AddCodeCommand.CanExecute(null));
+        Assert.Equal(Strings.RedactOverlayCodesFull(AppSettings.MaxRedactionCodes), editor.CodeNote);
+        Assert.Equal(AppSettings.MaxRedactionCodes, editor.Snippets.Count);
+
+        // Taking them all away leaves an empty list (the user's choice), and the default does not come back.
+        foreach (var snippet in editor.Snippets.ToList())
+        {
+            snippet.RemoveCommand.Execute(null);
+        }
+
+        Assert.NotNull(settings.Current.RedactionCodes);
+        Assert.Empty(settings.Current.RedactionCodes!);
+        Assert.Empty(editor.Snippets);
+    }
+
+    [AvaloniaFact]
+    public async Task OverlayEditorIsReachableByKeyboardAndTabNeverTraps()
+    {
+        var (window, tab, panel, first, _) = await OverlayPanelAsync();
+        tab.SelectMarks([first]);
+        Settle(window);
+        Assert.True(OverlayField(panel).Focus(NavigationMethod.Tab));
+
+        // A text in the field makes "Save as snippet" a stop (a button that cannot act is no stop).
+        OverlayField(panel).Text = "File 4711";
+
+        // Tab moves with every press through the controls of the editor and on, and leaves the panel in the end.
+        var visited = new List<object?>();
+        var left = false;
+        for (var i = 0; i < 60 && !left; i++)
+        {
+            var before = TopLevel.GetTopLevel(window)!.FocusManager!.GetFocusedElement();
+            Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+            var after = TopLevel.GetTopLevel(window)!.FocusManager!.GetFocusedElement();
+            Assert.NotSame(before, after);
+            visited.Add(after);
+            left = after is Visual visual && !ReferenceEquals(visual, panel) && !panel.IsVisualAncestorOf(visual);
+        }
+
+        Assert.True(left, "Tab did not leave the panel.");
+        Assert.Contains(FindOrNull<Button>(panel, "AddSnippetButton"), visited);
+        Assert.Contains(FindOrNull<CheckBox>(panel, "OverlayRepeatBox"), visited);
+        Assert.Contains(FindOrNull<CheckBox>(panel, "OverlayColorAutoBox"), visited);
+        Assert.Contains(panel.GetVisualDescendants().OfType<Button>().First(b => b.Name == "SnippetUseButton"), visited);
+        Assert.Contains(panel.GetVisualDescendants().OfType<Button>().First(b => b.Name == "SnippetRemoveButton"), visited);
+
+        // Every control of the editor has a name for screen readers.
+        var editor = FindOrNull<StackPanel>(panel, "OverlayEditor")!;
+        foreach (var button in editor.GetVisualDescendants().OfType<Button>().Where(static b => b is not CheckBox))
+        {
+            Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(button)), $"{button.Name} has no automation name");
+        }
+
+        foreach (var box in editor.GetVisualDescendants().OfType<CheckBox>())
+        {
+            Assert.True(!string.IsNullOrWhiteSpace(AutomationProperties.GetName(box)) || box.Content is string { Length: > 0 }, $"{box.Name} has no name");
+        }
+
+        foreach (var text in editor.GetVisualDescendants().OfType<TextBox>())
+        {
+            Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(text)), $"{text.Name} has no automation name");
+        }
+    }
+
+    [AvaloniaFact]
+    public void TextsOfTheTextOnTheAreasExistInBothLanguages()
+    {
+        string[] keys =
+        [
+            "RedactOverlayHeading", "RedactOverlayPlaceholder", "RedactOverlayMixed", "RedactOverlayHint", "RedactOverlayInvalidAtFormat",
+            "RedactOverlayInvalid", "RedactOverlayRepeatsTerm", "RedactOverlaySnippets", "RedactOverlayUseSnippetFormat",
+            "RedactOverlayRemoveSnippetFormat", "RedactOverlayAddSnippet", "RedactOverlayCodeTooLongFormat", "RedactOverlayCodesFullFormat",
+            "RedactOverlayCodeKnown", "RedactOverlayCodeDefault", "RedactOverlayRepeat", "RedactOverlayAutoSize", "RedactOverlayColorAuto",
+            "RedactOverlayColorLabel", "RedactOverlayContrastLowFormat",
+        ];
+        var english = new ResourceManager("Pagewing.App.Resources.Strings.en", typeof(Strings).Assembly);
+        var german = new ResourceManager("Pagewing.App.Resources.Strings.de", typeof(Strings).Assembly);
+        foreach (var key in keys)
+        {
+            var en = english.GetString(key, CultureInfo.InvariantCulture);
+            var de = german.GetString(key, CultureInfo.InvariantCulture);
+            Assert.False(string.IsNullOrWhiteSpace(en), $"{key} is missing in English");
+            Assert.False(string.IsNullOrWhiteSpace(de), $"{key} is missing in German");
+            Assert.NotEqual(en, de);
+            Assert.Equal(Placeholders(en!), Placeholders(de!));
+
+            // No text claims a guarantee, a legal effect or that something is valid.
+            foreach (var word in new[] { "safe", "secure", "guarantee", "legally", "valid", "sicher", "garantie", "rechtsgültig", "gültig" })
+            {
+                Assert.DoesNotContain(word, en!, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain(word, de!, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("geschwärzt", Strings.RedactOverlayCodeDefault);
+        Assert.Contains("2,1", Strings.RedactOverlayContrastLow(2.1), StringComparison.Ordinal);
+        Strings.Culture = new CultureInfo("en");
+        Assert.Equal("redacted", Strings.RedactOverlayCodeDefault);
+        Assert.Contains("2.1", Strings.RedactOverlayContrastLow(2.1), StringComparison.Ordinal);
     }
 
     private static RedactionHit PatternHit(RedactionPatternKind kind, PatternCertainty certainty, string text, int page) =>

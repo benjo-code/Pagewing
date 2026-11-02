@@ -338,6 +338,119 @@
                      AutomationProperties.Name="{x:Static res:Strings.RedactRasterDpi300}" />
       </WrapPanel>
     </StackPanel>
+
+    <!-- The text on the areas (milestone 14.1): the field, the saved snippets and the options of the plan, made only while a mark is
+         selected (the editor is null otherwise, so no control of it exists). The draft applies with Enter or on leaving the field. -->
+    <ContentControl Name="OverlayEditorHost" Content="{Binding OverlayEditor}" Focusable="False" IsTabStop="False">
+      <ContentControl.ContentTemplate>
+        <DataTemplate x:DataType="vm:RedactionOverlayEditorViewModel">
+          <StackPanel Name="OverlayEditor" Spacing="6" Margin="0,2,0,0"
+                      AutomationProperties.Name="{x:Static res:Strings.RedactOverlayHeading}"
+                      AutomationProperties.AccessibilityView="Content">
+            <TextBlock Classes="strong" Text="{x:Static res:Strings.RedactOverlayHeading}" />
+            <TextBox Name="OverlayTextBox"
+                     Text="{Binding Text}"
+                     MaxLength="{Binding MaxLength}"
+                     PlaceholderText="{Binding Placeholder}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactOverlayHeading}">
+              <!-- The window binds other keys first; the field claims Enter with a binding of its own. -->
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding CommitCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+            <Grid Name="OverlayInvalidRow" ColumnDefinitions="Auto,*" IsVisible="{Binding HasInvalid}">
+              <ctl:StrokeIcon Width="16" Height="16" Margin="0,1,8,0" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                              Data="{StaticResource Pw.Icon.AlertTriangle}" />
+              <TextBlock Name="OverlayInvalidNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                         Text="{Binding InvalidText}"
+                         AutomationProperties.LiveSetting="Polite" />
+            </Grid>
+            <Grid Name="OverlayWarningRow" ColumnDefinitions="Auto,*" IsVisible="{Binding HasWarning}">
+              <ctl:StrokeIcon Width="16" Height="16" Margin="0,1,8,0" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                              Data="{StaticResource Pw.Icon.AlertTriangle}" />
+              <TextBlock Name="OverlayWarningNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                         Text="{Binding Warning}"
+                         AutomationProperties.LiveSetting="Polite" />
+            </Grid>
+
+            <!-- The saved snippets: a button puts one on the selected areas, the small button next to it takes it out of the list. -->
+            <TextBlock Classes="caption note" Text="{x:Static res:Strings.RedactOverlaySnippets}" />
+            <ItemsControl Name="OverlaySnippets" ItemsSource="{Binding Snippets}"
+                          AutomationProperties.Name="{x:Static res:Strings.RedactOverlaySnippets}"
+                          AutomationProperties.AccessibilityView="Content">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RedactionSnippetViewModel">
+                  <StackPanel Orientation="Horizontal" Margin="0,0,8,4">
+                    <Button Name="SnippetUseButton" Command="{Binding UseCommand}"
+                            AutomationProperties.Name="{Binding UseName}">
+                      <TextBlock Text="{Binding Text}" />
+                    </Button>
+                    <Button Name="SnippetRemoveButton" Classes="icon" Width="28" Height="28" MinWidth="0" MinHeight="0"
+                            Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                            Command="{Binding RemoveCommand}"
+                            ToolTip.Tip="{Binding RemoveName}"
+                            AutomationProperties.Name="{Binding RemoveName}">
+                      <ctl:StrokeIcon Width="14" Height="14" Data="{StaticResource Pw.Icon.X}" />
+                    </Button>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Name="AddSnippetButton" HorizontalAlignment="Left"
+                    Command="{Binding AddCodeCommand}"
+                    AutomationProperties.Name="{x:Static res:Strings.RedactOverlayAddSnippet}">
+              <TextBlock Text="{x:Static res:Strings.RedactOverlayAddSnippet}" />
+            </Button>
+            <TextBlock Name="SnippetNote" Classes="caption note"
+                       IsVisible="{Binding HasCodeNote}"
+                       Text="{Binding CodeNote}" />
+
+            <!-- The options of the plan: they apply to the text of every mark. -->
+            <WrapPanel Orientation="Horizontal">
+              <CheckBox Name="OverlayRepeatBox" Margin="0,0,16,0" IsChecked="{Binding Repeat}"
+                        Content="{x:Static res:Strings.RedactOverlayRepeat}" />
+              <CheckBox Name="OverlayAutoSizeBox" IsChecked="{Binding AutoSize}"
+                        Content="{x:Static res:Strings.RedactOverlayAutoSize}" />
+            </WrapPanel>
+            <CheckBox Name="OverlayColorAutoBox" IsChecked="{Binding IsColorAuto}"
+                      Content="{x:Static res:Strings.RedactOverlayColorAuto}" />
+            <TextBox Name="OverlayColorBox"
+                     IsVisible="{Binding !IsColorAuto}"
+                     Text="{Binding ColorText}"
+                     MaxLength="{Binding ColorMaxLength}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactOverlayColorLabel}">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding CommitColorCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+            <TextBlock Name="OverlayColorError" Classes="caption" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                       IsVisible="{Binding HasColorError}"
+                       Text="{Binding ColorError}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <Grid Name="OverlayContrastRow" ColumnDefinitions="Auto,*" IsVisible="{Binding HasContrastWarning}">
+              <ctl:StrokeIcon Width="16" Height="16" Margin="0,1,8,0" VerticalAlignment="Top"
+                              Brush="{DynamicResource Pw.Brush.Text.Primary}"
+                              Data="{StaticResource Pw.Icon.AlertTriangle}" />
+              <TextBlock Name="OverlayContrastNote" Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                         Text="{Binding ContrastWarning}"
+                         AutomationProperties.LiveSetting="Polite" />
+            </Grid>
+            <TextBlock Name="OverlayHint" Classes="caption note" Text="{x:Static res:Strings.RedactOverlayHint}" />
+          </StackPanel>
+        </DataTemplate>
+      </ContentControl.ContentTemplate>
+    </ContentControl>
     </StackPanel>
 
     <Grid Grid.Row="3">

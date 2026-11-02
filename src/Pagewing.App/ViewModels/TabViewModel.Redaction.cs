@@ -521,6 +521,7 @@ public sealed partial class TabViewModel
     private static string NoticeOf(RedactionError error) => error switch
     {
         RedactionError.LimitExceeded => Strings.RedactMarksLimit,
+        RedactionError.OverlayInvalid => Strings.RedactOverlayInvalid,
         _ => Strings.RedactMarkRefused,
     };
 
@@ -544,6 +545,7 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(IsRedactionImageVeryCoarse));
         OnPropertyChanged(nameof(RedactionImageTreatmentText));
         OnPropertyChanged(nameof(RedactionPreviewNote));
+        OnPropertyChanged(nameof(RedactionOverlayStyle));
         OnPropertyChanged(nameof(RedactionCounterText));
         OnPropertyChanged(nameof(RedactionToolIsArea));
         OnPropertyChanged(nameof(RedactionToolIsText));

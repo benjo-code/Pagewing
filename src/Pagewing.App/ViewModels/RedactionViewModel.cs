@@ -96,6 +96,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
     private bool _showNotSearched;
     private bool _bulkChecking;
     private bool _disposed;
+    private RedactionOverlayEditorViewModel? _overlayEditor;
 
     // The query and the options the hits on show belong to: a change of either ends the search, so they cannot differ from the fields.
     private string _hitQuery = string.Empty;
@@ -125,6 +126,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         PatternKinds = _kinds;
         _tab.PropertyChanged += OnTabPropertyChanged;
         RebuildMarkRows();
+        UpdateOverlayEditor();
     }
 
     /// <summary>
@@ -375,6 +377,12 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
     /// <summary>Gets the counter of the marks of the plan, "4 marks on 2 pages".</summary>
     public string MarksSummary => _tab.RedactionCounterText;
 
+    /// <summary>
+    /// Gets the editor of the text on the areas of the selected marks, or <see langword="null"/> while no mark is selected: it is made with the
+    /// first selected mark and dropped with the last one, so the controls of the text exist only when there is a mark to put it on.
+    /// </summary>
+    public RedactionOverlayEditorViewModel? OverlayEditor => _overlayEditor;
+
     /// <summary>Gets whether the plan has no mark yet (the list says how to make one).</summary>
     public bool HasNoMarks => _tab.RedactionPlan is not { IsEmpty: false };
 
@@ -492,6 +500,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
 
         _disposed = true;
         _tab.PropertyChanged -= OnTabPropertyChanged;
+        DropOverlayEditor();
 
         // A search that still runs stops, and what it found is not kept.
         CancelRun();
@@ -933,12 +942,14 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         {
             case nameof(TabViewModel.RedactionPlan):
                 RebuildMarkRows();
+                UpdateOverlayEditor();
                 OnPropertyChanged(nameof(MarksSummary));
                 OnPropertyChanged(nameof(HasNoMarks));
                 RaiseMarkStateChanged();
                 break;
             case nameof(TabViewModel.SelectedMarks):
                 SyncSelection();
+                UpdateOverlayEditor();
                 break;
             case nameof(TabViewModel.RasterTargetsAreImages):
                 OnPropertyChanged(nameof(RasterTargetsAreImages));
@@ -1045,6 +1056,32 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
 
         _rows.Apply(wanted, DiffLimit);
         SyncSelection();
+    }
+
+    // The editor of the text on the areas lives while a mark is selected in the plan.
+    private void UpdateOverlayEditor()
+    {
+        var wanted = !_disposed && _tab.IsRedacting && _tab.RedactionPlan is not null && _tab.SelectedMarks.Count > 0;
+        if (wanted && _overlayEditor is null)
+        {
+            _overlayEditor = new RedactionOverlayEditorViewModel(_tab);
+            OnPropertyChanged(nameof(OverlayEditor));
+        }
+        else if (!wanted && _overlayEditor is not null)
+        {
+            DropOverlayEditor();
+        }
+    }
+
+    private void DropOverlayEditor()
+    {
+        var editor = _overlayEditor;
+        _overlayEditor = null;
+        if (editor is not null)
+        {
+            editor.Dispose();
+            OnPropertyChanged(nameof(OverlayEditor));
+        }
     }
 
     private void SyncSelection()

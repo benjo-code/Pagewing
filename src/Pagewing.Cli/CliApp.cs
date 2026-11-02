@@ -25,7 +25,7 @@ public static class CliApp
           pagewing merge  --output <out.pdf> <file> [--pages <range>] [--password <pw>] <file> [--pages <range>] [--password <pw>] ... [--force]
           pagewing split  <file> --output <dir> (--every <n> | --ranges <ranges> | --bookmarks) [--force] [--password <pw>]
           pagewing export <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--force] [--password <pw>]
-          pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--image-fill <solid|pixelate|blur>] [--image-strength <coarse|very-coarse>] [--force] [--password <pw>]
+          pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--image-fill <solid|pixelate|blur>] [--image-strength <coarse|very-coarse>] [--overlay-text <text>] [--overlay-repeat] [--force] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -137,6 +137,16 @@ public static class CliApp
                              many and why.
           --image-strength <s> Redact, with --image-fill pixelate or blur: coarse (default, up to 6 blocks along an axis)
                              or very-coarse (up to 3).
+          --overlay-text <text>
+                             Redact: write a text on every marked area (of this call), for example "redacted" or a
+                             file number: at most 200 characters, only characters the font of the text has (a text
+                             with any other character is refused as a whole, never changed). It is sized to fit
+                             (not below 6 pt); where it does not fit, the area stays filled without text and the
+                             report counts it. Not on image areas that are pixelated or blurred. A text that holds a
+                             redacted term (any case, spaces ignored) is refused (exit 1, nothing written). The text is
+                             drawn as shapes: it is not selectable, no file holds it as text, and the check of the
+                             written file does not read it back.
+          --overlay-repeat   Redact, with --overlay-text: repeat the text over the area instead of writing it once.
           --match-case       Search and redact: distinguish upper and lower case (default: ignore case; with
                              redact every spelling found is removed).
           --whole-word       Search: match only whole words.

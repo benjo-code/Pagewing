@@ -1,5 +1,6 @@
 using System.Globalization;
 using Pagewing.Cli.Commands;
+using Pagewing.Core.Annotations;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Redaction;
 
@@ -57,7 +58,9 @@ internal sealed record CliOptions(
     bool IncludeUnchecked = false,
     RedactionFill Fill = default,
     RedactionImageTreatment ImageFill = RedactionImageTreatment.Solid,
-    RedactionImageStrength ImageStrength = RedactionImageStrength.Coarse)
+    RedactionImageStrength ImageStrength = RedactionImageStrength.Coarse,
+    string? OverlayText = null,
+    bool OverlayRepeat = false)
 {
     public const string DefaultDpi = "144";
 
@@ -93,7 +96,7 @@ internal sealed record CliOptions(
             "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
-            "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--fill", "--image-fill", "--image-strength", "--output", "--force", "--password"],
+            "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--fill", "--image-fill", "--image-strength", "--overlay-text", "--overlay-repeat", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -112,6 +115,8 @@ internal sealed record CliOptions(
         var imageFill = RedactionImageTreatment.Solid;
         var imageStrength = RedactionImageStrength.Coarse;
         var imageStrengthGiven = false;
+        string? overlayText = null;
+        var overlayRepeat = false;
         var rects = new List<RedactRect>();
         var dryRun = false;
         var allowUnsearched = false;
@@ -172,7 +177,7 @@ internal sealed record CliOptions(
                     continue;
                 }
 
-                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched" or "--rasterize-unredactable" or "--include-unchecked")
+                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched" or "--rasterize-unredactable" or "--include-unchecked" or "--overlay-repeat")
                 {
                     if (value is not null)
                     {
@@ -206,6 +211,10 @@ internal sealed record CliOptions(
                     else if (name == "--include-unchecked")
                     {
                         includeUnchecked = true;
+                    }
+                    else if (name == "--overlay-repeat")
+                    {
+                        overlayRepeat = true;
                     }
                     else
                     {
@@ -266,6 +275,9 @@ internal sealed record CliOptions(
                     case "--image-strength":
                         imageStrength = ParseImageStrength(value);
                         imageStrengthGiven = true;
+                        break;
+                    case "--overlay-text":
+                        overlayText = ParseOverlayText(value);
                         break;
                     default:
                         password = value;
@@ -385,6 +397,17 @@ internal sealed record CliOptions(
                 throw new UsageException("The option '--image-strength' sets the blocks of --image-fill pixelate or --image-fill blur; the command has neither.");
             }
 
+            // The text goes on the marks of the call; repeating it needs the text.
+            if (overlayRepeat && overlayText is null)
+            {
+                throw new UsageException("The option '--overlay-repeat' repeats the text of --overlay-text; the command has none.");
+            }
+
+            if (overlayText is not null && texts.Count == 0 && patterns.Count == 0 && rects.Count == 0)
+            {
+                throw new UsageException("The option '--overlay-text' puts a text on the marked areas; the command has no --text, --pattern or --rect that marks one.");
+            }
+
             if (output is not null && output.Length == 0)
             {
                 throw new UsageException("The option '--output' needs a file name.");
@@ -395,7 +418,7 @@ internal sealed record CliOptions(
                 throw new UsageException("The 'redact' command needs --output <out.pdf> (only --dry-run works without it).");
             }
 
-            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked, Fill: fill, ImageFill: imageFill, ImageStrength: imageStrength);
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked, Fill: fill, ImageFill: imageFill, ImageStrength: imageStrength, OverlayText: overlayText, OverlayRepeat: overlayRepeat);
         }
 
         if (isRotate)
@@ -485,6 +508,34 @@ internal sealed record CliOptions(
 
         var shown = value.Length > 40 ? value[..40] + "..." : value;
         throw new UsageException($"Invalid value for --image-strength: '{shown}' (use coarse or very-coarse).");
+    }
+
+    /// <summary>
+    /// Reads the value of <c>--overlay-text</c>: at most <see cref="RedactionLimits.MaxOverlayTextLength"/> characters, not empty, and only
+    /// characters the font of the text can draw. A text with any other character is refused as a whole; the message names the position
+    /// (from 1), never the text.
+    /// </summary>
+    private static string ParseOverlayText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new UsageException("The option '--overlay-text' needs a text that is not empty and not only white space.");
+        }
+
+        if (value.Length > RedactionLimits.MaxOverlayTextLength)
+        {
+            throw new UsageException($"The option '--overlay-text' takes at most {RedactionLimits.MaxOverlayTextLength.ToString(CultureInfo.InvariantCulture)} characters.");
+        }
+
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (!TextBoxCharacters.IsSupported(value[i]))
+            {
+                throw new UsageException($"The option '--overlay-text' has a character the text on the areas cannot draw (unsupported character at position {(i + 1).ToString(CultureInfo.InvariantCulture)}); the text is not changed, give another.");
+            }
+        }
+
+        return value;
     }
 
     private static void AddTerm(List<string> texts, string value)

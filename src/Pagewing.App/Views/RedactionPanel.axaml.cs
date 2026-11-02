@@ -40,6 +40,9 @@ public sealed partial class RedactionPanel : UserControl
         MarkList.AddHandler(KeyDownEvent, OnMarkListKeyDownTunnel, RoutingStrategies.Tunnel);
         MarkList.AddHandler(TappedEvent, OnMarkTapped);
 
+        // The text on the areas and its colour apply when their field is left (they are made with the editor, so the panel listens above them).
+        AddHandler(LostFocusEvent, OnOverlayFieldLostFocus);
+
         // Key bindings of the window are matched from the focused element upwards before any key event is raised, so the lists
         // claim their moving keys (and the list of marks Delete) with bindings of their own.
         foreach (var key in MovingKeys)
@@ -273,6 +276,23 @@ public sealed partial class RedactionPanel : UserControl
         {
             e.Handled = true;
             panel.ChooseMark(row);
+        }
+    }
+
+    private void OnOverlayFieldLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (_panel?.OverlayEditor is not { } editor || e.Source is not TextBox { Name: { } name })
+        {
+            return;
+        }
+
+        if (name == "OverlayTextBox")
+        {
+            editor.Commit();
+        }
+        else if (name == "OverlayColorBox")
+        {
+            editor.CommitColor();
         }
     }
 

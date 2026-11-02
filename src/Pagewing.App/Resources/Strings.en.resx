@@ -3120,4 +3120,64 @@
   <data name="RedactNcOverlayNotRead" xml:space="preserve">
     <value>Overlay text: the text drawn on the areas is not read back from the written file; whether it reads as intended is not checked.</value>
   </data>
+  <data name="RedactOverlayHeading" xml:space="preserve">
+    <value>Text on the area</value>
+  </data>
+  <data name="RedactOverlayPlaceholder" xml:space="preserve">
+    <value>No text on the area</value>
+  </data>
+  <data name="RedactOverlayMixed" xml:space="preserve">
+    <value>Different texts on the selected areas</value>
+  </data>
+  <data name="RedactOverlayHint" xml:space="preserve">
+    <value>Enter applies the text. It is drawn as shapes: it cannot be selected, and the check of the written file does not read it back.</value>
+  </data>
+  <data name="RedactOverlayInvalidAtFormat" xml:space="preserve">
+    <value>The text has a character that cannot be drawn (position {0}). It is not used; change it.</value>
+  </data>
+  <data name="RedactOverlayInvalid" xml:space="preserve">
+    <value>The text on the area has a character that cannot be drawn.</value>
+  </data>
+  <data name="RedactOverlayRepeatsTerm" xml:space="preserve">
+    <value>This text contains a text that is redacted. It would put it back on the page, so applying is refused until the text changes.</value>
+  </data>
+  <data name="RedactOverlaySnippets" xml:space="preserve">
+    <value>Snippets</value>
+  </data>
+  <data name="RedactOverlayUseSnippetFormat" xml:space="preserve">
+    <value>Use snippet {0}</value>
+  </data>
+  <data name="RedactOverlayRemoveSnippetFormat" xml:space="preserve">
+    <value>Remove snippet {0}</value>
+  </data>
+  <data name="RedactOverlayAddSnippet" xml:space="preserve">
+    <value>Save as snippet</value>
+  </data>
+  <data name="RedactOverlayCodeTooLongFormat" xml:space="preserve">
+    <value>A snippet holds at most {0} characters.</value>
+  </data>
+  <data name="RedactOverlayCodesFullFormat" xml:space="preserve">
+    <value>At most {0} snippets are kept. Remove one first.</value>
+  </data>
+  <data name="RedactOverlayCodeKnown" xml:space="preserve">
+    <value>This snippet is saved already.</value>
+  </data>
+  <data name="RedactOverlayCodeDefault" xml:space="preserve">
+    <value>redacted</value>
+  </data>
+  <data name="RedactOverlayRepeat" xml:space="preserve">
+    <value>Repeat</value>
+  </data>
+  <data name="RedactOverlayAutoSize" xml:space="preserve">
+    <value>Fit size</value>
+  </data>
+  <data name="RedactOverlayColorAuto" xml:space="preserve">
+    <value>Automatic text colour</value>
+  </data>
+  <data name="RedactOverlayColorLabel" xml:space="preserve">
+    <value>Text colour</value>
+  </data>
+  <data name="RedactOverlayContrastLowFormat" xml:space="preserve">
+    <value>The contrast with the fill is {0}:1, below 4.5:1. The text may be hard to read.</value>
+  </data>
 </root>

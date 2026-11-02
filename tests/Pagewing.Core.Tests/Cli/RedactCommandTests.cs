@@ -668,7 +668,7 @@ public sealed class RedactCommandTests : CliTestBase
         var result = await RunAsync("--help");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--image-fill <solid|pixelate|blur>] [--image-strength <coarse|very-coarse>] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--image-fill <solid|pixelate|blur>] [--image-strength <coarse|very-coarse>] [--overlay-text <text>] [--overlay-repeat] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
         Assert.Contains("--dry-run", result.Output, StringComparison.Ordinal);
         Assert.Contains("--fill <colour>", result.Output, StringComparison.Ordinal);
         Assert.Contains("--image-fill <how>", result.Output, StringComparison.Ordinal);
@@ -1371,5 +1371,183 @@ public sealed class RedactCommandTests : CliTestBase
         Assert.Contains("1 image area gets the solid fill instead", result.Error, StringComparison.Ordinal);
         Assert.Contains(RedactionReportText.ImageSolidReasonText(ImageSolidReason.TooSmall), result.Error, StringComparison.Ordinal);
         Assert.Contains(RedactionReportText.ImageTextCaution, result.Error, StringComparison.Ordinal);
+    }
+
+    // ---- --overlay-text and --overlay-repeat (milestone 14.1, task 16) ----
+    // TwoPages: 300 x 200 pt, "secret value" at (20, 150) on both pages, which is the band 15,38 to 110,56 from the top left.
+
+    /// <summary>
+    /// Two pages with "secret value" in 24 pt (the box of a text mark is then high enough for the smallest overlay text of 6 pt; a mark on small
+    /// body text is not, and the report counts it as not fitting) and "public line" in 12 pt.
+    /// </summary>
+    private string LargeTextPages()
+    {
+        const string Content = "BT /F1 24 Tf 20 150 Td (secret value) Tj ET BT /F1 12 Tf 20 100 Td (public line) Tj ET";
+        var path = Path.Combine(WorkDirectory.FullName, "large.pdf");
+        File.WriteAllBytes(path, new VerifierPdf(Content, Content).Build());
+        return path;
+    }
+
+    /// <summary>The text objects and the bounds of the path objects of a page of a written file.</summary>
+    private async Task<(int Texts, IReadOnlyList<PageRect> Paths)> PageObjectsAsync(string path, int page)
+    {
+        await using var document = await Engine.OpenAsync(path, cancellationToken: Ct);
+        var summary = await document.GetPageObjectSummaryAsync(page, Ct);
+        return (summary.Texts, summary.PathBounds ?? []);
+    }
+
+    [Fact]
+    public async Task CliOverlayTextAppliesToAllMarksAndRefusesATerm()
+    {
+        var input = LargeTextPages();
+
+        // Without the option the areas are plain fills: the baseline of the path objects.
+        var plain = Path.Combine(WorkDirectory.FullName, "plain.pdf");
+        Assert.Equal(0, (await RunAsync("redact", input, "--output", plain, "--text", "secret value")).ExitCode);
+        var plainPage1 = await PageObjectsAsync(plain, 0);
+        var plainPage2 = await PageObjectsAsync(plain, 1);
+
+        // The text goes on every mark of the call (both pages, found by --text), is drawn as path objects, and leaves no text object behind.
+        var result = await RunAsync("redact", input, "--output", Output, "--text", "secret value", "--overlay-text", "redacted");
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.Equal([Output], result.OutputLines);
+        var page1 = await PageObjectsAsync(Output, 0);
+        var page2 = await PageObjectsAsync(Output, 1);
+        Assert.Equal(plainPage1.Texts, page1.Texts);
+        Assert.Equal(plainPage2.Texts, page2.Texts);
+        Assert.True(page1.Paths.Count > plainPage1.Paths.Count, "page 1 got no overlay paths");
+        Assert.True(page2.Paths.Count > plainPage2.Paths.Count, "page 2 got no overlay paths");
+
+        // Nothing reaches outside the filled area.
+        var fill = plainPage1.Paths.Aggregate(static (a, b) => new PageRect(Math.Min(a.Left, b.Left), Math.Min(a.Top, b.Top), Math.Max(a.Right, b.Right), Math.Max(a.Bottom, b.Bottom)));
+        Assert.All(page1.Paths, bounds => Assert.True(
+            bounds.Left >= fill.Left - RedactionVerifier.PathSlack && bounds.Right <= fill.Right + RedactionVerifier.PathSlack
+            && bounds.Top >= fill.Top - RedactionVerifier.PathSlack && bounds.Bottom <= fill.Bottom + RedactionVerifier.PathSlack,
+            "a path lies outside the filled area"));
+        var bytes = await File.ReadAllBytesAsync(Output, Ct);
+        Assert.False(RawPdf.ContainsAnywhere(bytes, "redacted"));
+        Assert.False(RawPdf.ContainsAnywhere(bytes, "secret value"));
+        Assert.Empty(TemporaryFiles());
+
+        // The report says honestly what the check does not read.
+        Assert.Contains("not read back", result.Error, StringComparison.Ordinal);
+
+        // A rectangle is a mark of the call too.
+        var rect = Path.Combine(WorkDirectory.FullName, "rect.pdf");
+        var viaRect = await RunAsync("redact", input, "--output", rect, "--rect", "1:15,38,95,18", "--overlay-text", "redacted");
+        Assert.True(viaRect.ExitCode == 0, viaRect.Error);
+        Assert.True((await PageObjectsAsync(rect, 0)).Paths.Count > plainPage1.Paths.Count);
+
+        // A text that holds a redacted term, whatever its case or spacing, ends the command: exit 1, nothing written, the term not repeated.
+        foreach (var dry in new[] { false, true })
+        {
+            var refused = Path.Combine(WorkDirectory.FullName, $"refused-{dry}.pdf");
+            string[] arguments = dry
+                ? ["redact", input, "--text", "secret value", "--overlay-text", "see SECRET   value here", "--dry-run"]
+                : ["redact", input, "--text", "secret value", "--overlay-text", "see SECRET   value here", "--output", refused];
+            var no = await RunAsync(arguments);
+            Assert.Equal(1, no.ExitCode);
+            Assert.Contains("contains a text that is redacted", no.Error, StringComparison.Ordinal);
+            Assert.DoesNotContain("secret", no.Error, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(refused));
+        }
+
+        Assert.Empty(TemporaryFiles());
+    }
+
+    [Fact]
+    public async Task CliOverlayRepeat()
+    {
+        var input = TwoPages();
+        string[] marks = ["--rect", "1:15,38,200,60"];
+
+        // Repeating needs the text it repeats.
+        var alone = await RunAsync(["redact", input, "--output", Output, .. marks, "--overlay-repeat"]);
+        Assert.Equal(2, alone.ExitCode);
+        Assert.Contains("--overlay-repeat", alone.Error, StringComparison.Ordinal);
+        Assert.Contains("--overlay-text", alone.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+
+        // One run draws the text once, the other tiles it over the area.
+        var once = Path.Combine(WorkDirectory.FullName, "once.pdf");
+        var tiled = Path.Combine(WorkDirectory.FullName, "tiled.pdf");
+        Assert.Equal(0, (await RunAsync(["redact", input, "--output", once, .. marks, "--overlay-text", "ab cd"])).ExitCode);
+        var repeat = await RunAsync(["redact", input, "--output", tiled, .. marks, "--overlay-text", "ab cd", "--overlay-repeat"]);
+        Assert.True(repeat.ExitCode == 0, repeat.Error);
+        var onceCount = (await PageObjectsAsync(once, 0)).Paths.Count;
+        var tiledCount = (await PageObjectsAsync(tiled, 0)).Paths.Count;
+        Assert.True(tiledCount > onceCount, $"{tiledCount} paths tiled against {onceCount} once");
+    }
+
+    [Theory]
+    [InlineData("--overlay-text", "")]
+    [InlineData("--overlay-text", "   ")]
+    public async Task CliOverlayTextThatIsEmptyIsAUsageError(string option, string value)
+    {
+        var result = await RunAsync("redact", TwoPages(), "--output", Output, "--text", "secret value", option, value);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("--overlay-text", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task CliOverlayTextWithTooManyOrUndrawableCharactersIsAUsageError()
+    {
+        var input = TwoPages();
+        string[] baseline = ["redact", input, "--output", Output, "--text", "secret value"];
+
+        // 201 characters: one too many.
+        var tooLong = await RunAsync([.. baseline, "--overlay-text", new string('a', RedactionLimits.MaxOverlayTextLength + 1)]);
+        Assert.Equal(2, tooLong.ExitCode);
+        Assert.Contains("200", tooLong.Error, StringComparison.Ordinal);
+
+        // 200 is fine to parse (the engine then decides whether it fits).
+        Assert.Equal(0, (await RunAsync([.. baseline, "--overlay-text", new string('a', RedactionLimits.MaxOverlayTextLength)])).ExitCode);
+        File.Delete(Output);
+
+        // A character the font has not: the text is refused as a whole and the message names the position, never the text.
+        var bad = await RunAsync([.. baseline, "--overlay-text", "ok 日 text"]);
+        Assert.Equal(2, bad.ExitCode);
+        Assert.Contains("position 4", bad.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("日", bad.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+
+        // Given twice, or without any mark to put it on.
+        Assert.Equal(2, (await RunAsync([.. baseline, "--overlay-text", "a", "--overlay-text", "b"])).ExitCode);
+        var noMark = await RunAsync("redact", input, "--output", Output, "--rasterize-pages", "1", "--overlay-text", "x");
+        Assert.Equal(2, noMark.ExitCode);
+        Assert.Contains("--overlay-text", noMark.Error, StringComparison.Ordinal);
+        Assert.Equal(2, (await RunAsync([.. baseline, "--overlay-text"])).ExitCode);
+    }
+
+    [Fact]
+    public async Task CliDryRunCountsOverlayTextWithoutValues()
+    {
+        var input = LargeTextPages();
+
+        var fits = await RunAsync("redact", input, "--dry-run", "--text", "secret value", "--overlay-text", "zqmarker");
+        Assert.True(fits.ExitCode == 0, fits.Error);
+        Assert.True(fits.Error.Contains("Overlay text: 2 areas get the overlay text", StringComparison.Ordinal), fits.Error);
+        Assert.DoesNotContain("zqmarker", fits.Error, StringComparison.Ordinal);
+
+        // A text that cannot fit a small area is counted, and the area stays filled.
+        var small = await RunAsync("redact", input, "--dry-run", "--rect", "1:15,38,8,8", "--overlay-text", new string('w', 150));
+        Assert.True(small.ExitCode == 0, small.Error);
+        Assert.Contains("1 overlay text does not fit its area", small.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task HelpListsTheOverlayOptionsAndTheirLimits()
+    {
+        var result = await RunAsync("--help");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--overlay-text <text>", result.Output, StringComparison.Ordinal);
+        Assert.Contains("--overlay-repeat", result.Output, StringComparison.Ordinal);
+        Assert.Contains("drawn as shapes", result.Output, StringComparison.Ordinal);
+        Assert.Contains("not selectable", result.Output, StringComparison.Ordinal);
+        Assert.Contains("does not read it back", result.Output, StringComparison.Ordinal);
     }
 }

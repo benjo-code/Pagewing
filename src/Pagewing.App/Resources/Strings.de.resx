@@ -3120,4 +3120,64 @@
   <data name="RedactNcOverlayNotRead" xml:space="preserve">
     <value>Überlagerungstext: Der auf die Flächen gezeichnete Text wird nicht aus der geschriebenen Datei zurückgelesen; ob er wie gewollt lesbar ist, wird nicht geprüft.</value>
   </data>
+  <data name="RedactOverlayHeading" xml:space="preserve">
+    <value>Text auf der Fläche</value>
+  </data>
+  <data name="RedactOverlayPlaceholder" xml:space="preserve">
+    <value>Kein Text auf der Fläche</value>
+  </data>
+  <data name="RedactOverlayMixed" xml:space="preserve">
+    <value>Verschiedene Texte auf den gewählten Flächen</value>
+  </data>
+  <data name="RedactOverlayHint" xml:space="preserve">
+    <value>Mit Enter übernehmen. Der Text wird als Formen gezeichnet: Er lässt sich nicht auswählen, und die Prüfung der geschriebenen Datei liest ihn nicht zurück.</value>
+  </data>
+  <data name="RedactOverlayInvalidAtFormat" xml:space="preserve">
+    <value>Der Text hat ein Zeichen, das sich nicht zeichnen lässt (Stelle {0}). Er wird nicht übernommen; bitte ändern.</value>
+  </data>
+  <data name="RedactOverlayInvalid" xml:space="preserve">
+    <value>Der Text auf der Fläche hat ein Zeichen, das sich nicht zeichnen lässt.</value>
+  </data>
+  <data name="RedactOverlayRepeatsTerm" xml:space="preserve">
+    <value>Dieser Text enthält einen geschwärzten Text. Er brächte ihn zurück auf die Seite, deshalb wird das Anwenden abgelehnt, bis der Text geändert ist.</value>
+  </data>
+  <data name="RedactOverlaySnippets" xml:space="preserve">
+    <value>Bausteine</value>
+  </data>
+  <data name="RedactOverlayUseSnippetFormat" xml:space="preserve">
+    <value>Baustein „{0}“ einsetzen</value>
+  </data>
+  <data name="RedactOverlayRemoveSnippetFormat" xml:space="preserve">
+    <value>Baustein „{0}“ entfernen</value>
+  </data>
+  <data name="RedactOverlayAddSnippet" xml:space="preserve">
+    <value>Als Baustein merken</value>
+  </data>
+  <data name="RedactOverlayCodeTooLongFormat" xml:space="preserve">
+    <value>Ein Baustein hat höchstens {0} Zeichen.</value>
+  </data>
+  <data name="RedactOverlayCodesFullFormat" xml:space="preserve">
+    <value>Es werden höchstens {0} Bausteine gemerkt. Zuerst einen entfernen.</value>
+  </data>
+  <data name="RedactOverlayCodeKnown" xml:space="preserve">
+    <value>Dieser Baustein ist schon gemerkt.</value>
+  </data>
+  <data name="RedactOverlayCodeDefault" xml:space="preserve">
+    <value>geschwärzt</value>
+  </data>
+  <data name="RedactOverlayRepeat" xml:space="preserve">
+    <value>Wiederholen</value>
+  </data>
+  <data name="RedactOverlayAutoSize" xml:space="preserve">
+    <value>Größe anpassen</value>
+  </data>
+  <data name="RedactOverlayColorAuto" xml:space="preserve">
+    <value>Textfarbe automatisch</value>
+  </data>
+  <data name="RedactOverlayColorLabel" xml:space="preserve">
+    <value>Textfarbe</value>
+  </data>
+  <data name="RedactOverlayContrastLowFormat" xml:space="preserve">
+    <value>Der Kontrast zur Füllung ist {0}:1, unter 4,5:1. Der Text ist womöglich schwer lesbar.</value>
+  </data>
 </root>

@@ -198,6 +198,36 @@ public sealed class RedactionPlan
         return WithMarks(marks);
     }
 
+    /// <summary>
+    /// Sets the overlay text of the marks with the given ids in one step (the plan is copied once, not once per mark, which matters for a
+    /// selection of thousands). Ids that are not in the plan are ignored. The text is checked once, as it is when a mark enters.
+    /// </summary>
+    /// <param name="ids">The ids of the marks.</param>
+    /// <param name="text">The text, or <see langword="null"/> (or white space alone) for none.</param>
+    /// <returns>The new plan; this plan if no mark changes.</returns>
+    /// <exception cref="RedactionException">The text is longer than allowed or has a character that cannot be drawn; the plan is as it was.</exception>
+    public RedactionPlan WithOverlayText(IReadOnlySet<Guid> ids, string? text)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var normalized = NormalizeOverlayText(text);
+        if (ids.Count == 0)
+        {
+            return this;
+        }
+
+        RedactionMark[]? changed = null;
+        for (var i = 0; i < _marks.Length; i++)
+        {
+            if (ids.Contains(_marks[i].Id) && !string.Equals(_marks[i].OverlayText, normalized, StringComparison.Ordinal))
+            {
+                changed ??= (RedactionMark[])_marks.Clone();
+                changed[i] = _marks[i] with { OverlayText = normalized };
+            }
+        }
+
+        return changed is null ? this : WithMarks(changed);
+    }
+
     /// <summary>Returns the plan with another fill.</summary>
     /// <param name="fill">The colour of the areas.</param>
     public RedactionPlan WithFill(RedactionFill fill) =>

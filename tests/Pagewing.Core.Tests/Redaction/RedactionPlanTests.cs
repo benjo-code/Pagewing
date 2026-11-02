@@ -368,6 +368,32 @@ public sealed class RedactionPlanTests
     }
 
     [Fact]
+    public void WithOverlayTextSetsTheTextOfSeveralMarksInOneStep()
+    {
+        var first = Area();
+        var second = Area(1);
+        var third = Area(2) with { OverlayText = "keep" };
+        var plan = RedactionPlan.Empty.WithRange([first, second, third]);
+
+        var changed = plan.WithOverlayText(new HashSet<Guid> { first.Id, third.Id, Guid.NewGuid() }, "Name € ä");
+
+        Assert.Equal(["Name € ä", null, "Name € ä"], changed.Marks.Select(static m => m.OverlayText));
+        Assert.Equal(plan.Marks.Select(static m => m.Id), changed.Marks.Select(static m => m.Id));
+        Assert.Equal("keep", plan.Marks[2].OverlayText);
+
+        // White space alone, or null, clears; a text that is there already, or no mark, is no change.
+        Assert.Equal([null, null, null], changed.WithOverlayText(new HashSet<Guid> { first.Id, third.Id }, "  ").Marks.Select(static m => m.OverlayText));
+        Assert.Same(changed, changed.WithOverlayText(new HashSet<Guid> { first.Id, third.Id }, "Name € ä"));
+        Assert.Same(plan, plan.WithOverlayText(new HashSet<Guid>(), "x"));
+        Assert.Same(plan, plan.WithOverlayText(new HashSet<Guid> { second.Id }, null));
+
+        // A text the font cannot draw, or a long one, is refused as a whole and the plan stays as it was.
+        Assert.Equal(RedactionError.OverlayInvalid, ErrorOf(() => plan.WithOverlayText(new HashSet<Guid> { first.Id }, "ok ☃")));
+        Assert.Equal(RedactionError.LimitExceeded, ErrorOf(() => plan.WithOverlayText(new HashSet<Guid> { first.Id }, new string('a', RedactionLimits.MaxOverlayTextLength + 1))));
+        Assert.Null(plan.Marks[0].OverlayText);
+    }
+
+    [Fact]
     public void UnchangedStyleReturnsTheSamePlan()
     {
         var plan = RedactionPlan.Empty.With(Area());

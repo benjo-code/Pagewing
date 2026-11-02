@@ -1311,6 +1311,77 @@ public sealed partial class RedactApplyTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task CardCountsNotFittingAndNotShownOverlays()
+    {
+        // The real analysis, no seam: one area over the first image of the page (pixelated, so no text goes on it) and one on an empty
+        // part of the page that is far too small for its 150 characters. Page 440 x 330 pt, the image under 46,56 to 118,128.
+        var (window, viewModel, _, tab, _) = await MarkedAsync("redact-image-blocks.pdf", area: false);
+        tab.RedactionImageTreatment = RedactionImageTreatment.Pixelate;
+        Assert.True(tab.AddAreaMark(0, new PageRect(46, 56, 118, 128)));
+        var onImage = tab.RedactionPlan!.Marks[0].Id;
+        Assert.True(tab.AddAreaMark(0, new PageRect(250, 20, 330, 60)));
+        var small = tab.RedactionPlan.Marks[1].Id;
+        Assert.True(tab.SetOverlayText(new HashSet<Guid> { onImage }, "x"));
+        Assert.True(tab.SetOverlayText(new HashSet<Guid> { small }, new string('w', 150)));
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+
+        // The card names both counts before anything is written, in the section of the overlay text, in words.
+        var info = viewModel.PendingSave!.Redaction!;
+        var section = Assert.Single(info.Sections, static s => s.Heading == Strings.RedactSecOverlay);
+        Assert.Equal(2, section.Lines.Count);
+        Assert.Contains("1 area gets no overlay text", section.Lines[0], StringComparison.Ordinal);
+        Assert.Contains("1 overlay text does not fit", section.Lines[1], StringComparison.Ordinal);
+        var texts = card.GetVisualDescendants().OfType<TextBlock>().Select(static t => t.Text).ToList();
+        Assert.Contains(texts, text => text is not null && text.Contains(section.Lines[0], StringComparison.Ordinal));
+        Assert.Contains(texts, text => text is not null && text.Contains(section.Lines[1], StringComparison.Ordinal));
+
+        // The card never repeats the text on the areas.
+        Assert.DoesNotContain(info.AllTexts, static text => text.Contains(new string('w', 20), StringComparison.Ordinal));
+        viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
+        Assert.False(await apply);
+        Assert.True(tab.HasPendingRedactions);
+    }
+
+    [AvaloniaFact]
+    public async Task ApplyIsRefusedByTheAnalysisAnyway()
+    {
+        // The field warns, but only the analysis decides: a text that holds the term of a mark ends in the card of a refusal, and
+        // nothing is written (the writer is never called).
+        var (window, viewModel, _, tab, path) = await MarkedAsync();
+        var original = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        var rewrites = 0;
+        viewModel.RedactionRewriter = (_, _, _, _, _) =>
+        {
+            rewrites++;
+            throw new InvalidOperationException("must not be called");
+        };
+        var term = new RedactionMark(Guid.NewGuid(), RedactionKind.Text, 0, [new PageRect(10, 10, 80, 30)], "Zephyr", Everywhere: false, OverlayText: "Zephyr was here");
+        Assert.True(tab.AddRedactionMarks([term]));
+
+        var apply = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRefused);
+
+        var section = Assert.Single(viewModel.PendingSave!.Redaction!.Sections);
+        Assert.Equal(Strings.RedactRefusalHeadingOverlay, section.Heading);
+        Assert.DoesNotContain(viewModel.PendingSave.Redaction.AllTexts, static text => text.Contains("Zephyr", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal([PendingSaveChoice.Cancel], viewModel.PendingSave.Choices);
+        viewModel.PendingSave.Resolve(PendingSaveChoice.Cancel);
+        Assert.False(await apply);
+        Assert.Equal(0, rewrites);
+        Assert.True(tab.HasPendingRedactions);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+
+        // Changing the text lifts the refusal: the card of the numbers comes.
+        Assert.True(tab.SetOverlayText(new HashSet<Guid> { term.Id }, "redacted"));
+        var again = viewModel.ApplyRedactionsAsync(tab);
+        await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.ApplyRedactions);
+        viewModel.PendingSave!.Resolve(PendingSaveChoice.Cancel);
+        Assert.False(await again);
+    }
+
+    [AvaloniaFact]
     public async Task EveryNewTextExistsInBothLanguages()
     {
         var keys = AllRedactionKeys();

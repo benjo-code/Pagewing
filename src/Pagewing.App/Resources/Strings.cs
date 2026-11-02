@@ -1176,6 +1176,51 @@ public static class Strings
     public static string RedactOverlayNotFittingMany => Get("RedactOverlayNotFittingMany");
     public static string RedactOverlayOverLimit => Get("RedactOverlayOverLimit");
     public static string RedactNcOverlayNotRead => Get("RedactNcOverlayNotRead");
+    public static string RedactOverlayHeading => Get("RedactOverlayHeading");
+    public static string RedactOverlayPlaceholder => Get("RedactOverlayPlaceholder");
+    public static string RedactOverlayMixed => Get("RedactOverlayMixed");
+    public static string RedactOverlayHint => Get("RedactOverlayHint");
+    public static string RedactOverlayInvalid => Get("RedactOverlayInvalid");
+    public static string RedactOverlayRepeatsTerm => Get("RedactOverlayRepeatsTerm");
+    public static string RedactOverlaySnippets => Get("RedactOverlaySnippets");
+    public static string RedactOverlayAddSnippet => Get("RedactOverlayAddSnippet");
+    public static string RedactOverlayCodeKnown => Get("RedactOverlayCodeKnown");
+    public static string RedactOverlayCodeDefault => Get("RedactOverlayCodeDefault");
+    public static string RedactOverlayRepeat => Get("RedactOverlayRepeat");
+    public static string RedactOverlayAutoSize => Get("RedactOverlayAutoSize");
+    public static string RedactOverlayColorAuto => Get("RedactOverlayColorAuto");
+    public static string RedactOverlayColorLabel => Get("RedactOverlayColorLabel");
+    public static string RedactOverlayInvalidAtFormat => Get("RedactOverlayInvalidAtFormat");
+    public static string RedactOverlayUseSnippetFormat => Get("RedactOverlayUseSnippetFormat");
+    public static string RedactOverlayRemoveSnippetFormat => Get("RedactOverlayRemoveSnippetFormat");
+    public static string RedactOverlayCodeTooLongFormat => Get("RedactOverlayCodeTooLongFormat");
+    public static string RedactOverlayCodesFullFormat => Get("RedactOverlayCodesFullFormat");
+    public static string RedactOverlayContrastLowFormat => Get("RedactOverlayContrastLowFormat");
+
+    /// <summary>Gets the text <c>RedactOverlayInvalidAtFormat</c> with its argument filled in.</summary>
+    /// <param name="position">The value that stands in the text.</param>
+    public static string RedactOverlayInvalidAt(int position) => string.Format(Culture, CompositeFormat.Parse(RedactOverlayInvalidAtFormat), position);
+
+    /// <summary>Gets the text <c>RedactOverlayUseSnippetFormat</c> with its argument filled in.</summary>
+    /// <param name="snippet">The value that stands in the text.</param>
+    public static string RedactOverlayUseSnippet(string snippet) => string.Format(Culture, CompositeFormat.Parse(RedactOverlayUseSnippetFormat), snippet);
+
+    /// <summary>Gets the text <c>RedactOverlayRemoveSnippetFormat</c> with its argument filled in.</summary>
+    /// <param name="snippet">The value that stands in the text.</param>
+    public static string RedactOverlayRemoveSnippet(string snippet) => string.Format(Culture, CompositeFormat.Parse(RedactOverlayRemoveSnippetFormat), snippet);
+
+    /// <summary>Gets the text <c>RedactOverlayCodeTooLongFormat</c> with its argument filled in.</summary>
+    /// <param name="limit">The value that stands in the text.</param>
+    public static string RedactOverlayCodeTooLong(int limit) => string.Format(Culture, CompositeFormat.Parse(RedactOverlayCodeTooLongFormat), limit);
+
+    /// <summary>Gets the text <c>RedactOverlayCodesFullFormat</c> with its argument filled in.</summary>
+    /// <param name="limit">The value that stands in the text.</param>
+    public static string RedactOverlayCodesFull(int limit) => string.Format(Culture, CompositeFormat.Parse(RedactOverlayCodesFullFormat), limit);
+
+    /// <summary>Gets the text <c>RedactOverlayContrastLowFormat</c> with its argument filled in.</summary>
+    /// <param name="ratio">The value that stands in the text.</param>
+    public static string RedactOverlayContrastLow(double ratio) => string.Format(Culture, CompositeFormat.Parse(RedactOverlayContrastLowFormat), ratio.ToString("0.0", Culture));
+
     public static string RedactFailureImageTreatment => Get("RedactFailureImageTreatment");
     public static string RedactRescueStuck => Get("RedactRescueStuck");
     public static string RedactRescueHeadingStuck => Get("RedactRescueHeadingStuck");

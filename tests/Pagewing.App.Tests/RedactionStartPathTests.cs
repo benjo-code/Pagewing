@@ -149,6 +149,56 @@ public sealed class RedactionStartPathTests : IDisposable
         Assert.Equal(1, scanned);
     }
 
+    [AvaloniaFact]
+    public async Task OverlayControlsExistOnlyInTheMode()
+    {
+        var (window, viewModel, _) = Show();
+        var probe = new Probe(viewModel, window);
+        await viewModel.OpenAsync(TestData.Pdf("pages-marked.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.HasShownSharpPage);
+        await WaitUntilAsync(window, () => tab.SidePanel == SidePanelKind.Pages && window.GetVisualDescendants().OfType<ThumbnailList>().Any());
+
+        // Outside the mode nothing of the text on the areas exists: no field, no panel, and reading the style makes nothing.
+        _ = tab.RedactionOverlayStyle;
+        probe.AssertNothingWasMade(tab);
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(), static box => box.Name is "OverlayTextBox" or "OverlayColorBox");
+        Assert.Empty(window.GetVisualDescendants().OfType<RedactionPanel>());
+
+        // The mode and its panel, without a mark: still no editor, no field, no snippet, and the settings were not touched.
+        tab.RedactCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.IsRedacting);
+        tab.ToggleRedactionPanelCommand.Execute(null);
+        await WaitUntilAsync(window, () => window.GetVisualDescendants().OfType<RedactionPanel>().Any());
+        Settle(window);
+        Assert.Null(tab.RedactionPanel.OverlayEditor);
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(), static box => box.Name is "OverlayTextBox" or "OverlayColorBox");
+        Assert.Null(tab.AnnotationSettings.Current.RedactionCodes);
+
+        // The first selected mark makes the editor and its field; the settings still hold nothing of the snippets.
+        Assert.True(tab.AddAreaMark(0, new Pagewing.Core.Text.PageRect(50, 50, 150, 90)));
+        Settle(window);
+        Assert.NotNull(tab.RedactionPanel.OverlayEditor);
+        Assert.Single(window.GetVisualDescendants().OfType<TextBox>(), static box => box.Name == "OverlayTextBox");
+        Assert.Null(tab.AnnotationSettings.Current.RedactionCodes);
+        Assert.Equal(1, tab.RedactionHistory!.Version);
+
+        // Without a selected mark they go again, and with the mode.
+        tab.ClearMarkSelection();
+        Settle(window);
+        Assert.Null(tab.RedactionPanel.OverlayEditor);
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(), static box => box.Name is "OverlayTextBox" or "OverlayColorBox");
+        tab.SelectMarks([tab.RedactionPlan!.Marks[0].Id]);
+        Settle(window);
+        Assert.NotNull(tab.RedactionPanel.OverlayEditor);
+        tab.DiscardRedactionsCommand.Execute(null);
+        Settle(window);
+        Assert.False(tab.IsRedactionPanelCreated);
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(), static box => box.Name is "OverlayTextBox" or "OverlayColorBox");
+        Assert.Null(tab.RedactionHistory);
+        Assert.Empty(tab.SelectedMarks);
+    }
+
     private static async Task WaitUntilAsync(Window window, Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + Timeout;

@@ -110,10 +110,21 @@ internal static class RedactCommand
         // The matches of patterns are never "everywhere": each one is a concrete string at a concrete place.
         marks.AddRange(RedactionSearch.ToMarks(found.RedactedPatternHits, out _));
 
+        // The command line has no single marks: the overlay text goes on every mark of the call. Whether it repeats a redacted term is the
+        // business of the analysis below (the terms are only known after the search), not decided here.
+        if (options.OverlayText is { } overlayText)
+        {
+            for (var i = 0; i < marks.Count; i++)
+            {
+                marks[i] = marks[i] with { OverlayText = overlayText };
+            }
+        }
+
         RedactionPlan plan;
         try
         {
-            plan = RedactionPlan.Empty.WithFill(options.Fill).WithImageTreatment(options.ImageFill).WithImageStrength(options.ImageStrength).WithRange(marks);
+            plan = RedactionPlan.Empty.WithFill(options.Fill).WithImageTreatment(options.ImageFill).WithImageStrength(options.ImageStrength)
+                .WithOverlayStyle(new RedactionOverlayStyle(Repeat: options.OverlayRepeat)).WithRange(marks);
         }
         catch (RedactionException ex)
         {
@@ -463,6 +474,11 @@ internal static class RedactCommand
             text.Append(rasterSection).Append("\n\n");
         }
 
+        if (OverlayDryRunLine(analysis) is { Length: > 0 } overlayLine)
+        {
+            text.Append(overlayLine).Append("\n\n");
+        }
+
         text.Append(RedactionReportText.Of(analysis, showValues: false)).Append('\n').Append(AcceptedSection(found)).Append("\nThe check of the written file runs only when the file is written; it can still end the command.");
         await error.WriteLineAsync(text.ToString().AsMemory(), ct).ConfigureAwait(false);
     }
@@ -540,6 +556,19 @@ internal static class RedactCommand
 
         text.Append("\nAll other pages keep their text and vectors. A page turned into an image is an image only: a visible occurrence of a removed text outside the marked areas stays in it and cannot be found without OCR, so these pages cannot be checked for visible occurrences outside the marks.");
         return text.ToString();
+    }
+
+    /// <summary>
+    /// The areas that get their overlay text, before it is drawn (counts only, never the text). What does not fit or is left out stands in
+    /// the report that follows. The text is drawn as shapes: it is not selectable and the check of the written file does not read it.
+    /// Empty when no area has an overlay text.
+    /// </summary>
+    private static string OverlayDryRunLine(RedactionAnalysis analysis)
+    {
+        var drawn = analysis.Pages.Sum(static p => p.OverlaysDrawn) + (analysis.Raster?.Sum(static r => r.OverlaysDrawn) ?? 0);
+        return drawn == 0
+            ? string.Empty
+            : $"Overlay text: {Count(drawn, "area gets", "areas get")} the overlay text. It is drawn as shapes, so it is not selectable, and the check of the written file does not read it.";
     }
 
     // Megabytes with at most one decimal; never below 0.1 (a size is an upper bound).
