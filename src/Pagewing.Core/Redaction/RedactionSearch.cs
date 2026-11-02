@@ -110,7 +110,7 @@ public static class RedactionSearch
         "Text that exists only in the appearance (/AP) of an annotation is not searched.",
         "Invisible text is flagged only for the render mode 3 (invisible); text that is covered by something else is found but not flagged.",
         "The values of form fields in a file without a form (widgets without /AcroForm) are not searched.",
-        "Patterns (e-mail address, IBAN, telephone number, card number) find only what the text shows: one split across a line break or a page boundary, digits interrupted by other characters than the usual separators, and numbers inside images are not found.",
+        "Patterns (e-mail address, IBAN, telephone number, card number) find only what the text shows and what their built-in rules know: one split across a line break or a page boundary, digits interrupted by other characters than the usual separators, numbers inside images, IBANs of countries outside the built-in table, telephone numbers that do not start with +, 0 or (, digit chains of more than 64 groups, e-mail addresses whose local part has unusual characters (& = * !), and card numbers grouped in other layouts are not found.",
     ];
 
     /// <summary>
@@ -230,6 +230,8 @@ public static class RedactionSearch
     /// <summary>
     /// Makes marks of the hits of a pattern search (<see cref="RedactionPatternSearch"/>), which have no query: every mark carries
     /// <see cref="RedactionMark.Pattern"/> and is never "everywhere". Hits that are not <see cref="RedactionHit.Markable"/> are counted, not made.
+    /// Hits whose checksum failed (<see cref="PatternCertainty.ChecksumFailed"/>) are markable and become marks too: the caller (the
+    /// application, the command line) decides whether to drop them before it calls this, as this method does not look at the certainty.
     /// Only hits of a pattern search belong here: a hit of a term (<see cref="RedactionHit.Pattern"/> <see langword="null"/>) needs its
     /// query and the choice "everywhere", so it is refused instead of being turned into a mark that would silently differ from the others.
     /// </summary>

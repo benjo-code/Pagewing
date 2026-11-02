@@ -760,4 +760,35 @@ public sealed class RedactRasterApplyTests : IDisposable
             }
         }
     }
+
+    [Fact]
+    public async Task LossesCountOnlyWhatTheRebuildLosesOnThePagesKeptAsPages()
+    {
+        // A field and an internal link on each of two pages; page 0 becomes an image. Its field and link are counted for the raster page
+        // ("gone"), so the rebuild's loss ("stays as an annotation only") counts the other page's alone and the two lines never say two things about one field.
+        var file = new VerifierPdf("BT /F1 12 Tf 20 150 Td (first) Tj ET", "BT /F1 12 Tf 20 150 Td (second) Tj ET");
+        var first = file.Add("<< /Type /Annot /Subtype /Widget /FT /Tx /T (one) /V (a) /Rect [110 20 200 40] /F 4 /DA (/Helv 0 Tf 0 g) >>");
+        var second = file.Add("<< /Type /Annot /Subtype /Widget /FT /Tx /T (two) /V (b) /Rect [110 20 200 40] /F 4 /DA (/Helv 0 Tf 0 g) >>");
+        var linkOne = file.Add("<< /Type /Annot /Subtype /Link /Rect [50 20 100 40] /Border [0 0 0] /A << /S /GoTo /D [6 0 R /Fit] >> >>");
+        var linkTwo = file.Add("<< /Type /Annot /Subtype /Link /Rect [50 60 100 80] /Border [0 0 0] /A << /S /GoTo /D [4 0 R /Fit] >> >>");
+        file.CatalogEntries = $"/AcroForm << /Fields [{first} 0 R {second} 0 R] /DA (/Helv 0 Tf 0 g) >>";
+        file.PageEntriesByPage = [$"/Annots [{first} 0 R {linkOne} 0 R]", $"/Annots [{second} 0 R {linkTwo} 0 R]"];
+        var path = Write("two-forms.pdf", file.Build());
+        await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
+        var executor = new RedactionExecutor(engine);
+
+        var asPages = await executor.AnalyzeAsync(RedactionPlan.Empty.With(new RedactionMark(Guid.NewGuid(), RedactionKind.Area, 1, [new PageRect(10, 10, 30, 30)], null, false)), shown, path, null, Ct);
+        Assert.Equal(2, asPages.Losses.Single(static l => l.Kind == RedactionLossKind.FormFieldsNotFillable).Count);
+        Assert.Equal(2, asPages.Losses.Single(static l => l.Kind == RedactionLossKind.InternalLinksLoseTheirTarget).Count);
+
+        var analysis = await executor.AnalyzeAsync(RedactionPlan.Empty.WithRasterPage(0, on: true), shown, path, null, Ct);
+        Assert.False(analysis.IsRefused, RedactionRefusalText.Of(analysis.Refusals));
+        Assert.Equal(1, Assert.Single(analysis.Raster!).FormFields);
+        Assert.Equal(1, analysis.Losses.Single(static l => l.Kind == RedactionLossKind.FormFieldsNotFillable).Count);
+        Assert.Equal(1, analysis.Losses.Single(static l => l.Kind == RedactionLossKind.InternalLinksLoseTheirTarget).Count);
+
+        // Every page an image: nothing is left to lose by the rebuild.
+        var all = await executor.AnalyzeAsync(RedactionPlan.Empty.WithRasterPage(0, on: true).WithRasterPage(1, on: true), shown, path, null, Ct);
+        Assert.DoesNotContain(all.Losses, static l => l.Kind is RedactionLossKind.FormFieldsNotFillable or RedactionLossKind.InternalLinksLoseTheirTarget);
+    }
 }

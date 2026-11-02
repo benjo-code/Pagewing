@@ -388,6 +388,11 @@ public sealed class RedactionPlan
             areas[i] = area;
         }
 
+        if (mark.Pattern is { } pattern && !Enum.IsDefined(pattern))
+        {
+            throw new RedactionException(RedactionError.InvalidArea, "The pattern kind of the mark is not one that exists.");
+        }
+
         if (mark.Term is null)
         {
             if (mark.Kind != RedactionKind.Area || mark.Everywhere)

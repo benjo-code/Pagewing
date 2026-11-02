@@ -127,7 +127,7 @@ public static class RedactionReportText
 
             checkedLines.Add(analysis.ImageTreatment == RedactionImageTreatment.Solid
                 ? "Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are the colour of the area."
-                : "Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are either the colour of the area or exactly the block averages worked out from the original (blur: within one level per colour channel; opaque; nothing else, so no original pixel is left).");
+                : "Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are either the colour of the area or exactly the block averages worked out from the original (blur: within one level per colour channel; opaque; nothing else, so the image keeps no pixel data of the original beyond these block averages).");
             // The render comparison covers the pages redacted in place only: a page turned into an image is checked for its structure.
             if (analysis.Raster is not { Count: > 0 })
             {

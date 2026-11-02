@@ -426,6 +426,17 @@ public sealed class RedactionSearchTests
         }
     }
 
+    [Fact]
+    public void ThePatternLineOfWhatWasNotSearchedNamesEveryKnownGap()
+    {
+        // A run of the patterns must not read as complete: the line names what the built-in rules do not know.
+        var line = Assert.Single(RedactionSearch.NotSearched, static l => l.StartsWith("Patterns", StringComparison.Ordinal));
+        foreach (var gap in new[] { "line break", "page boundary", "numbers inside images", "IBANs of countries outside", "do not start with +, 0 or (", "more than 64 groups", "unusual characters", "other layouts" })
+        {
+            Assert.Contains(gap, line, StringComparison.Ordinal);
+        }
+    }
+
     // ---- what was not searched is reported ----
 
     [Fact]

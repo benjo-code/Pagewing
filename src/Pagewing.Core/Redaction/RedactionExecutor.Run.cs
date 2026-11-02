@@ -160,7 +160,7 @@ public sealed partial class RedactionExecutor
             }
         }
 
-        var losses = inventory.Losses.ToList();
+        var losses = await WithoutRasterPagesAsync(inventory.Losses, original, plan.RasterPages.Count > 0 ? pass.Raster : [], cancellationToken).ConfigureAwait(false);
         var overwritten = pass.Impacts.Sum(static i => i.ImagesOverwritten);
         if (overwritten > 0)
         {
@@ -179,6 +179,39 @@ public sealed partial class RedactionExecutor
             inventory.AttachmentAnnotations,
             plan.RasterPages.Count > 0 ? pass.Raster : null,
             plan.ImageTreatment);
+    }
+
+    /// <summary>
+    /// The losses of the rebuild for the pages that stay pages: the internal links and form fields of a page turned into an image are
+    /// counted for that page (<see cref="RasterPageInfo"/>: they are gone), so they leave the counts of the rebuild, which says they stay
+    /// on the page as annotations. A loss whose count drops to nothing is left out.
+    /// </summary>
+    private static async Task<List<RedactionLoss>> WithoutRasterPagesAsync(IReadOnlyList<RedactionLoss> losses, PdfDocument original, IReadOnlyList<RasterPageInfo> raster, CancellationToken cancellationToken)
+    {
+        if (raster.Count == 0)
+        {
+            return [.. losses];
+        }
+
+        var pages = raster.Select(static r => r.Page).Distinct().Order().ToList();
+        var links = (await original.GetInternalLinkTargetsAsync(pages, cancellationToken).ConfigureAwait(false)).Sum(static t => t.Length);
+        var fields = raster.Sum(static r => r.FormFields);
+        var result = new List<RedactionLoss>(losses.Count);
+        foreach (var loss in losses)
+        {
+            var count = loss.Kind switch
+            {
+                RedactionLossKind.InternalLinksLoseTheirTarget => loss.Count - links,
+                RedactionLossKind.FormFieldsNotFillable => loss.Count - fields,
+                _ => loss.Count,
+            };
+            if (count > 0)
+            {
+                result.Add(loss with { Count = count });
+            }
+        }
+
+        return result;
     }
 
     /// <summary>

@@ -130,6 +130,18 @@ public sealed class RedactionPlanTests
     }
 
     [Fact]
+    public void APatternKindThatIsNoValueOfTheEnumIsRefused()
+    {
+        // The kind is set by the search; a value from outside (a loaded plan, a caller) never gets into the plan.
+        var mark = new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, 0, [Box], "IBAN", false, Pattern: (RedactionPatternKind)99);
+        Assert.Equal(RedactionError.InvalidArea, ErrorOf(() => RedactionPlan.Empty.With(mark)));
+        foreach (var kind in Enum.GetValues<RedactionPatternKind>())
+        {
+            Assert.Equal(kind, RedactionPlan.Empty.With(mark with { Pattern = kind }).Marks.Single().Pattern);
+        }
+    }
+
+    [Fact]
     public void NegativeAndOutOfPageAreasAreAcceptedAndClippedLater()
     {
         var plan = RedactionPlan.Empty
