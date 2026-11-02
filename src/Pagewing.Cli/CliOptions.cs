@@ -52,9 +52,20 @@ internal sealed record CliOptions(
     bool AllowUnsearched = false,
     string? RasterizePages = null,
     bool RasterizeUnredactable = false,
-    int RasterDpi = RedactionLimits.DefaultRasterDpi)
+    int RasterDpi = RedactionLimits.DefaultRasterDpi,
+    IReadOnlyList<RedactionPatternKind>? Patterns = null,
+    bool IncludeUnchecked = false)
 {
     public const string DefaultDpi = "144";
+
+    /// <summary>The names <c>--pattern</c> accepts, in the order the help and the messages list them.</summary>
+    public static IReadOnlyList<(string Name, RedactionPatternKind Kind)> PatternNames { get; } =
+    [
+        ("email", RedactionPatternKind.Email),
+        ("iban", RedactionPatternKind.Iban),
+        ("phone", RedactionPatternKind.Phone),
+        ("card", RedactionPatternKind.Card),
+    ];
 
     /// <summary>The angles <c>rotate</c> accepts.</summary>
     private static readonly int[] Angles = [90, 180, 270, -90];
@@ -79,7 +90,7 @@ internal sealed record CliOptions(
             "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
-            "redact" => ["--text", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--output", "--force", "--password"],
+            "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -92,6 +103,8 @@ internal sealed record CliOptions(
         // --text and --rect of redact may be given as often as needed.
         var strict = command is "split" or "export" or "redact";
         var texts = new List<string>();
+        var patterns = new List<RedactionPatternKind>();
+        var includeUnchecked = false;
         var rects = new List<RedactRect>();
         var dryRun = false;
         var allowUnsearched = false;
@@ -136,7 +149,7 @@ internal sealed record CliOptions(
                     throw new UsageException($"Unknown option '{name}' for '{command}'.");
                 }
 
-                if (strict && name is not ("--text" or "--rect") && !seen.Add(name))
+                if (strict && name is not ("--text" or "--rect" or "--pattern") && !seen.Add(name))
                 {
                     throw new UsageException($"The option '{name}' is given twice.");
                 }
@@ -152,7 +165,7 @@ internal sealed record CliOptions(
                     continue;
                 }
 
-                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched" or "--rasterize-unredactable")
+                if (name is "--match-case" or "--whole-word" or "--force" or "--bookmarks" or "--dry-run" or "--allow-unsearched" or "--rasterize-unredactable" or "--include-unchecked")
                 {
                     if (value is not null)
                     {
@@ -182,6 +195,10 @@ internal sealed record CliOptions(
                     else if (name == "--rasterize-unredactable")
                     {
                         rasterizeUnredactable = true;
+                    }
+                    else if (name == "--include-unchecked")
+                    {
+                        includeUnchecked = true;
                     }
                     else
                     {
@@ -229,6 +246,9 @@ internal sealed record CliOptions(
                         break;
                     case "--rect":
                         rects.Add(RedactRect.Parse(value));
+                        break;
+                    case "--pattern":
+                        AddPattern(patterns, value);
                         break;
                     default:
                         password = value;
@@ -304,15 +324,21 @@ internal sealed record CliOptions(
 
         if (isRedact)
         {
-            if (texts.Count == 0 && rects.Count == 0 && rasterizePages is null)
+            if (texts.Count == 0 && patterns.Count == 0 && rects.Count == 0 && rasterizePages is null)
             {
-                throw new UsageException("The 'redact' command needs at least one --text <term>, --rect <page>:<x>,<y>,<w>,<h> or --rasterize-pages <range>.");
+                throw new UsageException("The 'redact' command needs at least one --text <term>, --pattern <email|iban|phone|card>, --rect <page>:<x>,<y>,<w>,<h> or --rasterize-pages <range>.");
             }
 
             // A page can only be refused because of a mark on it, so without a mark there is nothing to rescue.
-            if (rasterizeUnredactable && texts.Count == 0 && rects.Count == 0)
+            if (rasterizeUnredactable && texts.Count == 0 && patterns.Count == 0 && rects.Count == 0)
             {
-                throw new UsageException("The option '--rasterize-unredactable' turns pages that cannot be redacted in place into images; the command has no --text or --rect that could mark such a page (use --rasterize-pages to choose pages).");
+                throw new UsageException("The option '--rasterize-unredactable' turns pages that cannot be redacted in place into images; the command has no --text, --pattern or --rect that could mark such a page (use --rasterize-pages to choose pages).");
+            }
+
+            // --include-unchecked only decides what to do with the matches of a pattern whose checksum is wrong.
+            if (includeUnchecked && patterns.Count == 0)
+            {
+                throw new UsageException("The option '--include-unchecked' decides about pattern matches whose checksum or length is wrong; the command has no --pattern.");
             }
 
             var rasterDpi = RedactionLimits.DefaultRasterDpi;
@@ -331,9 +357,9 @@ internal sealed record CliOptions(
                 }
             }
 
-            if (pages is not null && texts.Count == 0)
+            if (pages is not null && texts.Count == 0 && patterns.Count == 0)
             {
-                throw new UsageException("The option '--pages' limits --text; the command has no --text.");
+                throw new UsageException("The option '--pages' limits --text and --pattern; the command has neither.");
             }
 
             if (output is not null && output.Length == 0)
@@ -346,7 +372,7 @@ internal sealed record CliOptions(
                 throw new UsageException("The 'redact' command needs --output <out.pdf> (only --dry-run works without it).");
             }
 
-            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi);
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked);
         }
 
         if (isRotate)
@@ -393,6 +419,32 @@ internal sealed record CliOptions(
         {
             texts.Add(value);
         }
+    }
+
+    private static void AddPattern(List<RedactionPatternKind> patterns, string value)
+    {
+        foreach (var (name, kind) in PatternNames)
+        {
+            if (string.Equals(name, value, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!patterns.Contains(kind))
+                {
+                    patterns.Add(kind);
+                }
+
+                return;
+            }
+        }
+
+        // The value is part of the message; a control character never reaches the terminal.
+        var shown = string.Create(value.Length, value, static (span, source) =>
+        {
+            for (var i = 0; i < span.Length; i++)
+            {
+                span[i] = char.IsControl(source[i]) ? ' ' : source[i];
+            }
+        });
+        throw new UsageException($"Invalid value for --pattern: '{shown}' (use one of: {string.Join(", ", PatternNames.Select(static p => p.Name))}).");
     }
 
     /// <summary>Checks that exactly one way of cutting was chosen and that it is well formed; returns <c>--every</c> (0 when another way was chosen).</summary>

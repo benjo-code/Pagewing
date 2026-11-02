@@ -107,6 +107,9 @@ internal static class RedactCommand
             marks.AddRange(RedactionSearch.ToMarks(term.Hits, term.Text, everywhere, searchOptions, out _));
         }
 
+        // The matches of patterns are never "everywhere": each one is a concrete string at a concrete place.
+        marks.AddRange(RedactionSearch.ToMarks(found.RedactedPatternHits, out _));
+
         RedactionPlan plan;
         try
         {
@@ -169,7 +172,7 @@ internal static class RedactCommand
 
         if (options.DryRun)
         {
-            await WriteDryRunAsync(error, found, rects, analysis, plan.RasterDpi, ct).ConfigureAwait(false);
+            await WriteDryRunAsync(error, found, options.Patterns ?? [], rects, analysis, plan.RasterDpi, ct).ConfigureAwait(false);
             return;
         }
 
@@ -270,6 +273,7 @@ internal static class RedactCommand
     private static async Task<Found> SearchAsync(PdfDocument document, CliOptions options, IReadOnlyList<int> pages, TextWriter error, CancellationToken ct)
     {
         var terms = options.Texts ?? [];
+        var kinds = options.Patterns ?? [];
         var selected = pages.ToHashSet();
         var searchOptions = new SearchOptions(options.MatchCase, WholeWord: false);
         var report = new RedactionSearchReport();
@@ -290,9 +294,22 @@ internal static class RedactCommand
             found.Add(new TermHits(term, hits));
         }
 
-        if (terms.Count == 0)
+        // One search for all kinds asked for; --pages limits the matches here as it does for the terms.
+        var patternHits = new List<RedactionHit>();
+        if (kinds.Count > 0)
         {
-            return new Found(found, []);
+            await foreach (var hit in RedactionPatternSearch.FindAsync(document, kinds.ToHashSet(), report, texts: null, ct).ConfigureAwait(false))
+            {
+                if (selected.Contains(hit.Page))
+                {
+                    patternHits.Add(hit);
+                }
+            }
+        }
+
+        if (terms.Count == 0 && kinds.Count == 0)
+        {
+            return new Found(found, [], [], options.IncludeUnchecked);
         }
 
         var incomplete = report.IncompletePages.Where(selected.Contains).ToArray();
@@ -322,15 +339,31 @@ internal static class RedactCommand
             await error.WriteLineAsync($"warning: {PageWord(incomplete)} could not be searched completely; the text may still be there (accepted with --allow-unsearched).".AsMemory(), ct).ConfigureAwait(false);
         }
 
-        var missing = found.Where(static t => t.Hits.Count == 0).ToArray();
-        if (missing.Length > 0)
+        // Matches whose checksum or length is wrong are not redacted unless the user asked for them. What was left alone is said (how
+        // many, of which kind, on which pages), never what it is.
+        var all = new Found(found, options.AllowUnsearched ? incomplete : [], patternHits, options.IncludeUnchecked);
+        if (all.SkippedPatternHits.Count > 0)
         {
-            var lines = missing.Select(t => $"No match for \"{Printable(t.Text)}\"{(options.Pages is null ? string.Empty : $" on {PageWord(pages)}")}.");
-            var tail = incomplete.Length > 0 ? $" {PageWord(incomplete)} could not be searched completely, so the text may be there." : string.Empty;
-            throw new CliException($"{string.Join(' ', lines)}{tail} Nothing was written.");
+            await error.WriteLineAsync(SkippedLine(all.SkippedPatternHits).AsMemory(), ct).ConfigureAwait(false);
         }
 
-        var unmarkable = found.SelectMany(static t => t.Hits).Where(static h => !h.Markable).ToArray();
+        var missing = found.Where(static t => t.Hits.Count == 0).ToArray();
+        var noPattern = kinds.Count > 0 && all.RedactedPatternHits.Count == 0;
+        if (missing.Length > 0 || noPattern)
+        {
+            var lines = missing.Select(t => $"No match for \"{Printable(t.Text)}\"{(options.Pages is null ? string.Empty : $" on {PageWord(pages)}")}.").ToList();
+            if (noPattern)
+            {
+                var names = string.Join(", ", CliOptions.PatternNames.Where(p => kinds.Contains(p.Kind)).Select(static p => p.Name));
+                lines.Add($"No match for the patterns ({names}){(options.Pages is null ? string.Empty : $" on {PageWord(pages)}")}.");
+            }
+
+            var tail = incomplete.Length > 0 ? $" {PageWord(incomplete)} could not be searched completely, so the text may be there." : string.Empty;
+            var hint = noPattern && all.SkippedPatternHits.Count > 0 ? " The matches that were skipped are redacted with --include-unchecked." : string.Empty;
+            throw new CliException($"{string.Join(' ', lines)}{tail}{hint} Nothing was written.");
+        }
+
+        var unmarkable = found.SelectMany(static t => t.Hits).Concat(all.RedactedPatternHits).Where(static h => !h.Markable).ToArray();
         if (unmarkable.Length > 0)
         {
             var text = new StringBuilder("A match cannot be marked, so the text cannot be removed there and nothing was written:");
@@ -347,11 +380,23 @@ internal static class RedactCommand
             throw new CliException(text.ToString());
         }
 
-        return new Found(found, options.AllowUnsearched ? incomplete : []);
+        return all;
+    }
+
+    /// <summary>"Skipped (not redacted): 2 pattern matches whose checksum or length is wrong (iban: 1, card: 1) on page 1." Counts and pages only.</summary>
+    private static string SkippedLine(IReadOnlyList<RedactionHit> skipped)
+    {
+        var kinds = string.Join(", ", CliOptions.PatternNames
+            .Select(p => (p.Name, Count: skipped.Count(h => h.Pattern == p.Kind)))
+            .Where(static k => k.Count > 0)
+            .Select(static k => $"{k.Name}: {Number(k.Count)}"));
+        var pages = skipped.Select(static h => h.Page).Distinct().Order().ToArray();
+        var one = skipped.Count == 1;
+        return $"Skipped (not redacted): {Count(skipped.Count, "pattern match", "pattern matches")} whose checksum or length is wrong ({kinds}) on {PageWord(pages)}. Use --include-unchecked to redact {(one ? "it" : "them")} too.";
     }
 
     /// <summary>The preview: how many matches on which page (never the matched text), then what the redaction would do. Writes nothing to disk.</summary>
-    private static async Task WriteDryRunAsync(TextWriter error, Found found, IReadOnlyList<ClippedRect> rects, RedactionAnalysis analysis, int rasterDpi, CancellationToken ct)
+    private static async Task WriteDryRunAsync(TextWriter error, Found found, IReadOnlyList<RedactionPatternKind> kinds, IReadOnlyList<ClippedRect> rects, RedactionAnalysis analysis, int rasterDpi, CancellationToken ct)
     {
         var text = new StringBuilder("Dry run: nothing is written.\n\n");
         var number = 0;
@@ -372,6 +417,38 @@ internal static class RedactCommand
                 }
 
                 text.Append('\n');
+            }
+        }
+
+        foreach (var (name, kind) in CliOptions.PatternNames.Where(p => kinds.Contains(p.Kind)))
+        {
+            var hits = found.PatternHits.Where(h => h.Pattern == kind).ToArray();
+            text.Append("Pattern ").Append(name).Append(": ").Append(Count(hits.Length, "match", "matches"));
+            var parts = new List<string>();
+            if (hits.Count(static h => h.Certainty == PatternCertainty.ChecksumOk) is > 0 and var ok)
+            {
+                parts.Add($"{Number(ok)} checksum ok");
+            }
+
+            if (hits.Count(static h => h.Certainty == PatternCertainty.ShapeOnly) is > 0 and var shape)
+            {
+                parts.Add($"{Number(shape)} shape only, no checksum");
+            }
+
+            if (hits.Count(static h => h.Certainty == PatternCertainty.ChecksumFailed) is > 0 and var failed)
+            {
+                parts.Add($"{Number(failed)} checksum wrong - {(found.IncludeUnchecked ? "redacted with" : "not redacted without")} --include-unchecked");
+            }
+
+            if (parts.Count > 0)
+            {
+                text.Append(" (").Append(string.Join(", ", parts)).Append(')');
+            }
+
+            text.Append('\n');
+            foreach (var group in hits.GroupBy(static h => h.Page).OrderBy(static g => g.Key))
+            {
+                text.Append("  page ").Append(Number(group.Key + 1)).Append(": ").Append(Number(group.Count())).Append('\n');
             }
         }
 
@@ -520,5 +597,16 @@ internal static class RedactCommand
 
     private sealed record TermHits(string Text, List<RedactionHit> Hits);
 
-    private sealed record Found(List<TermHits> Terms, int[] AcceptedUnsearched);
+    /// <param name="Terms">The matches of each <c>--text</c>.</param>
+    /// <param name="AcceptedUnsearched">The 0-based pages accepted as not fully searched.</param>
+    /// <param name="PatternHits">Every match of the patterns on the selected pages, whatever its certainty.</param>
+    /// <param name="IncludeUnchecked">Whether matches with a wrong checksum are redacted too.</param>
+    private sealed record Found(List<TermHits> Terms, int[] AcceptedUnsearched, IReadOnlyList<RedactionHit> PatternHits, bool IncludeUnchecked)
+    {
+        /// <summary>Gets the pattern matches that become marks.</summary>
+        public IReadOnlyList<RedactionHit> RedactedPatternHits { get; } = [.. PatternHits.Where(h => IncludeUnchecked || h.Certainty != PatternCertainty.ChecksumFailed)];
+
+        /// <summary>Gets the pattern matches that are left alone because their checksum or length is wrong.</summary>
+        public IReadOnlyList<RedactionHit> SkippedPatternHits { get; } = [.. PatternHits.Where(h => !IncludeUnchecked && h.Certainty == PatternCertainty.ChecksumFailed)];
+    }
 }

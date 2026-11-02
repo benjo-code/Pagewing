@@ -613,7 +613,7 @@ public sealed class RedactCommandTests : CliTestBase
         var result = await RunAsync("--help");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
         Assert.Contains("--dry-run", result.Output, StringComparison.Ordinal);
         Assert.Contains("NOT checked", result.Output, StringComparison.Ordinal);
         Assert.Contains("--rasterize-pages <range>", result.Output, StringComparison.Ordinal);
@@ -860,5 +860,348 @@ public sealed class RedactCommandTests : CliTestBase
         Assert.False(File.Exists(Output));
         Assert.Empty(TemporaryFiles());
         Assert.Equal(before, await File.ReadAllBytesAsync(input, Ct));
+    }
+
+    // ------------------------------------------------------------------ patterns (milestone 14.1)
+
+    private const string ValidIban = "DE89 3704 0044 0532 0130 00";
+
+    private const string TypoIban = "DE88 3704 0044 0532 0130 00";
+
+    // Every value of the fixture that a report must never repeat: the groups of the IBANs and the cards, valid or not.
+    private static readonly string[] ValueFragments = ["3704", "0044", "0532", "0130", "ABNA", "0417", "1234", "5678", "9012", "3456", "4111", "5555", "WEST"];
+
+    /// <summary>The text of every page without spaces and tabs (a group separator may be a space or a no-break space), to look for a number as one run; line breaks stay, so a number split over two lines is not one run.</summary>
+    private async Task<string> CompactTextAsync(string path) =>
+        string.Concat((await PageTextsAsync(path)).SelectMany(static t => t).Where(static c => c is not (' ' or ' ' or '\t')));
+
+    private string PatternPages(string first, string second)
+    {
+        var pdf = new VerifierPdf($"BT /F1 12 Tf 20 150 Td ({first}) Tj ET BT /F1 12 Tf 20 100 Td (public line) Tj ET", $"BT /F1 12 Tf 20 150 Td ({second}) Tj ET BT /F1 12 Tf 20 100 Td (public line) Tj ET");
+        var path = Path.Combine(WorkDirectory.FullName, "patterns.pdf");
+        File.WriteAllBytes(path, pdf.Build());
+        return path;
+    }
+
+    [Fact]
+    public async Task PatternIbanIsRedactedAndVerified()
+    {
+        var input = Copy("redact-patterns.pdf");
+        var before = await File.ReadAllBytesAsync(input, Ct);
+        var original = await CompactTextAsync(input);
+        Assert.Contains("DE89370400440532013000", original, StringComparison.Ordinal);
+
+        var result = await RunAsync("redact", input, "--output", Output, "--pattern", "iban");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.Equal([Output], result.OutputLines);
+        Assert.Equal(before, await File.ReadAllBytesAsync(input, Ct));
+        Assert.Empty(TemporaryFiles());
+        Assert.Contains("Removed:", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Checked:", result.Error, StringComparison.Ordinal);
+
+        // The IBANs with a right checksum are gone from the text of the new file, in every spelling, and from its bytes.
+        var text = await CompactTextAsync(Output);
+        var bytes = await File.ReadAllBytesAsync(Output, Ct);
+        foreach (var iban in new[] { "DE89370400440532013000", "GB82WEST12345698765432", "FR1420041010050500013M02606", "NL91ABNA0417164300" })
+        {
+            Assert.DoesNotContain(iban, text, StringComparison.Ordinal);
+            Assert.False(RawPdf.ContainsAnywhere(bytes, iban), iban);
+        }
+
+        Assert.False(RawPdf.ContainsAnywhere(bytes, ValidIban));
+        Assert.False(RawPdf.ContainsAnywhere(bytes, "GB82 WEST 1234 5698 7654 32"));
+
+        // The note of the fixture held an IBAN too (the note is removed with the mark).
+        Assert.False(RawPdf.ContainsAnywhere(bytes, "Please transfer"));
+
+        // Everything else is still there: the IBAN with the wrong check digit (not redacted without the switch), cards, telephone numbers, mail.
+        Assert.Contains("(typo)DE88370400440532013000", text, StringComparison.Ordinal);
+        Assert.Contains("4111111111111111", text, StringComparison.Ordinal);
+        Assert.Contains("+497111234567", text, StringComparison.Ordinal);
+        Assert.Contains("max.mustermann@example.com", text, StringComparison.Ordinal);
+        Assert.Contains("01.02.2024", text, StringComparison.Ordinal);
+
+        // The report names what is not searched, never a value.
+        Assert.Contains("Not searched:", result.Error, StringComparison.Ordinal);
+        foreach (var line in Pagewing.Core.Redaction.RedactionSearch.NotSearched)
+        {
+            Assert.Contains(line, result.Error, StringComparison.Ordinal);
+        }
+
+        foreach (var fragment in ValueFragments)
+        {
+            Assert.DoesNotContain(fragment, result.Error, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task ChecksumFailedHitsAreReportedWithoutValuesAndNotRedacted()
+    {
+        var input = Copy("redact-patterns.pdf");
+
+        var result = await RunAsync("redact", input, "--output", Output, "--pattern", "iban", "--pattern", "card");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+
+        // The count and the page of what was skipped, kind by kind, and the way to include it.
+        Assert.Contains("Skipped (not redacted): 2 pattern matches whose checksum or length is wrong (iban: 1, card: 1) on page 1.", result.Error, StringComparison.Ordinal);
+        Assert.Contains("--include-unchecked", result.Error, StringComparison.Ordinal);
+        foreach (var fragment in ValueFragments)
+        {
+            Assert.DoesNotContain(fragment, result.Error, StringComparison.Ordinal);
+        }
+
+        var text = await CompactTextAsync(Output);
+        Assert.Contains("(typo)DE88370400440532013000", text, StringComparison.Ordinal);
+        Assert.Contains("(typo)1234567890123456", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("DE89370400440532013000", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("4111111111111111", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("5555555555554444", text, StringComparison.Ordinal);
+        var bytes = await File.ReadAllBytesAsync(Output, Ct);
+        Assert.False(RawPdf.ContainsAnywhere(bytes, "4111 1111 1111 1111"));
+        Assert.False(RawPdf.ContainsAnywhere(bytes, "4111-1111-1111-1111"));
+    }
+
+    [Fact]
+    public async Task IncludeUncheckedRedactsThem()
+    {
+        var input = Copy("redact-patterns.pdf");
+
+        var result = await RunAsync("redact", input, "--output", Output, "--pattern", "iban", "--pattern", "card", "--include-unchecked");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.DoesNotContain("Skipped", result.Error, StringComparison.Ordinal);
+        foreach (var fragment in ValueFragments)
+        {
+            Assert.DoesNotContain(fragment, result.Error, StringComparison.Ordinal);
+        }
+
+        var text = await CompactTextAsync(Output);
+        var bytes = await File.ReadAllBytesAsync(Output, Ct);
+        Assert.DoesNotContain("(typo)DE88370400440532013000", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("(typo)1234567890123456", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("DE89370400440532013000", text, StringComparison.Ordinal);
+        Assert.False(RawPdf.ContainsAnywhere(bytes, TypoIban));
+        Assert.False(RawPdf.ContainsAnywhere(bytes, "1234 5678 9012 3456"));
+        Assert.False(RawPdf.ContainsAnywhere(bytes, ValidIban));
+
+        // Kinds that were not asked for stay.
+        Assert.Contains("+497111234567", text, StringComparison.Ordinal);
+        Assert.Contains("max.mustermann@example.com", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PatternWithoutAnyHitExitsOneLikeTextWithoutHit()
+    {
+        var input = PatternPages("secret value", "public line");
+
+        var none = await RunAsync("redact", input, "--output", Output, "--pattern", "email");
+
+        Assert.Equal(1, none.ExitCode);
+        Assert.Contains("pagewing: No match for the patterns (email).", none.Error, StringComparison.Ordinal);
+        Assert.Contains("Nothing was written.", none.Error, StringComparison.Ordinal);
+        Assert.Contains("Not searched:", none.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+
+        // Also as a dry run, and with a text that is found: the patterns asked for found nothing.
+        var dry = await RunAsync("redact", input, "--text", "secret value", "--pattern", "iban", "--pattern", "card", "--dry-run");
+        Assert.Equal(1, dry.ExitCode);
+        Assert.Contains("No match for the patterns (iban, card).", dry.Error, StringComparison.Ordinal);
+
+        // Only matches with a wrong checksum: nothing is redacted, and the message says why and how to include them.
+        var typo = PatternPages(TypoIban, "public line");
+        var skipped = await RunAsync("redact", typo, "--output", Output, "--pattern", "iban");
+        Assert.Equal(1, skipped.ExitCode);
+        Assert.Contains("Skipped (not redacted): 1 pattern match whose checksum or length is wrong (iban: 1) on page 1.", skipped.Error, StringComparison.Ordinal);
+        Assert.Contains("--include-unchecked", skipped.Error, StringComparison.Ordinal);
+        Assert.Contains("Nothing was written.", skipped.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("3704", skipped.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Theory]
+    [InlineData("--pattern", "ibann")]
+    [InlineData("--pattern", "")]
+    [InlineData("--pattern", "IBAN%")]
+    public async Task UnknownPatternIsUsageError(string option, string value)
+    {
+        var result = await RunAsync("redact", PatternPages(ValidIban, "x"), "--output", Output, option, value);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.StartsWith("pagewing: ", result.Error, StringComparison.Ordinal);
+        Assert.Contains("--pattern", result.Error, StringComparison.Ordinal);
+        Assert.Contains("email, iban, phone, card", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Usage:", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task IncludeUncheckedWithoutPatternIsUsageError()
+    {
+        var result = await RunAsync("redact", TwoPages(), "--output", Output, "--text", "secret value", "--include-unchecked");
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("--include-unchecked", result.Error, StringComparison.Ordinal);
+        Assert.Contains("--pattern", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+
+        // The switch is for redact only, and --pattern alone is a complete request (it is something to redact).
+        var other = await RunAsync("text", TwoPages(), "--pattern", "iban");
+        Assert.Equal(2, other.ExitCode);
+        Assert.Contains("Unknown option '--pattern' for 'text'", other.Error, StringComparison.Ordinal);
+        var twice = await RunAsync("redact", PatternPages(ValidIban, "x"), "--output", Output, "--pattern", "iban", "--include-unchecked", "--include-unchecked");
+        Assert.Equal(2, twice.ExitCode);
+        Assert.Contains("given twice", twice.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PatternRespectsPages()
+    {
+        var input = PatternPages($"IBAN {ValidIban}", $"IBAN {ValidIban}");
+
+        var result = await RunAsync("redact", input, "--output", Output, "--pattern", "iban", "--pages", "2");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        var pages = await PageTextsAsync(Output);
+        Assert.Contains("DE89 3704 0044 0532 0130 00", pages[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("3704", pages[1], StringComparison.Ordinal);
+        Assert.Contains("public line", pages[1], StringComparison.Ordinal);
+
+        // A page without a match is "no match", also when the other page has one.
+        var onlyFirst = PatternPages($"IBAN {ValidIban}", "nothing here");
+        var none = await RunAsync("redact", onlyFirst, "--output", Path.Combine(WorkDirectory.FullName, "none.pdf"), "--pattern", "iban", "--pages", "2");
+        Assert.Equal(1, none.ExitCode);
+        Assert.Contains("No match for the patterns (iban) on page 2.", none.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PatternsCombineWithTextAndRectangles()
+    {
+        var input = PatternPages($"IBAN {ValidIban} secret value", "secret value");
+
+        var result = await RunAsync("redact", input, "--output", Output, "--pattern", "iban", "--text", "secret value", "--rect", "2:15,90,100,16");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        var text = await CompactTextAsync(Output);
+        Assert.DoesNotContain("3704", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("secretvalue", text, StringComparison.Ordinal);
+        Assert.False(RawPdf.ContainsAnywhere(await File.ReadAllBytesAsync(Output, Ct), "secret value"));
+        Assert.Contains("IBAN", text, StringComparison.Ordinal);
+
+        // The rectangle took "public line" from page 2 only.
+        var pages = await PageTextsAsync(Output);
+        Assert.Contains("public line", pages[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("public line", pages[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PatternDryRunCountsPerKindAndCertaintyWithoutValues()
+    {
+        var input = Copy("redact-patterns.pdf");
+        var before = await File.ReadAllBytesAsync(input, Ct);
+
+        var result = await RunAsync("redact", input, "--pattern", "iban", "--pattern", "card", "--pattern", "phone", "--pattern", "email", "--dry-run");
+
+        Assert.True(result.ExitCode == 0, result.Error);
+        Assert.Empty(result.OutputBytes);
+        Assert.False(File.Exists(Output));
+        Assert.Empty(TemporaryFiles());
+        Assert.Equal(before, await File.ReadAllBytesAsync(input, Ct));
+        Assert.Contains("Dry run: nothing is written.", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Pattern iban: 7 matches (6 checksum ok, 1 checksum wrong - not redacted without --include-unchecked)", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Pattern card: 4 matches (3 checksum ok, 1 checksum wrong - not redacted without --include-unchecked)", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Pattern phone: 4 matches (4 shape only, no checksum)", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Pattern email: 3 matches (3 shape only, no checksum)", result.Error, StringComparison.Ordinal);
+        Assert.Contains("  page 1: 7", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Skipped (not redacted): 2 pattern matches whose checksum or length is wrong", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Not searched:", result.Error, StringComparison.Ordinal);
+        foreach (var fragment in ValueFragments.Concat(["example", "mustermann", "+49", "0711"]))
+        {
+            Assert.DoesNotContain(fragment, result.Error, StringComparison.Ordinal);
+        }
+
+        // With the switch the checksum failures are counted as redacted and nothing is skipped.
+        var included = await RunAsync("redact", input, "--pattern", "iban", "--include-unchecked", "--dry-run");
+        Assert.True(included.ExitCode == 0, included.Error);
+        Assert.Contains("Pattern iban: 7 matches (6 checksum ok, 1 checksum wrong - redacted with --include-unchecked)", included.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Skipped", included.Error, StringComparison.Ordinal);
+    }
+
+    /// <summary>Page one holds an IBAN; page two has a note without a /Rect, which the search cannot read (reported as not searched).</summary>
+    private string UnsearchedPatternPage()
+    {
+        var pdf = new VerifierPdf($"BT /F1 12 Tf 20 150 Td ({ValidIban}) Tj ET", "BT /F1 12 Tf 20 150 Td (Plain) Tj ET");
+        var damaged = pdf.Add($"<< /Type /Annot /Subtype /Text /Contents {Utf16("Note without a rect")} /F 4 >>");
+        pdf.PageEntriesByPage = [string.Empty, $"/Annots [{damaged} 0 R]"];
+        var path = Path.Combine(WorkDirectory.FullName, "unsearched-patterns.pdf");
+        File.WriteAllBytes(path, pdf.Build());
+        return path;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APatternRunOnAPageNotSearchedCompletelyStopsLikeText(bool dryRun)
+    {
+        var input = UnsearchedPatternPage();
+        var args = new List<string> { "redact", input, "--output", Output, "--pattern", "iban" };
+        if (dryRun)
+        {
+            args.Add("--dry-run");
+        }
+
+        var stopped = await RunAsync([.. args]);
+
+        Assert.Equal(1, stopped.ExitCode);
+        Assert.Contains("pagewing: Page 2 could not be searched completely, so the text may still be there. Nothing was written.", stopped.Error, StringComparison.Ordinal);
+        Assert.Contains("--allow-unsearched", stopped.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+
+        // Accepted, it goes on and says so; --pages 1 does not need the page that cannot be read.
+        args.Add("--allow-unsearched");
+        var accepted = await RunAsync([.. args]);
+        Assert.True(accepted.ExitCode == 0, accepted.Error);
+        Assert.Contains("Not searched (accepted):", accepted.Error, StringComparison.Ordinal);
+        Assert.Contains("- page 2 could not be searched completely", accepted.Error, StringComparison.Ordinal);
+        Assert.Equal(!dryRun, File.Exists(Output));
+
+        if (!dryRun)
+        {
+            Assert.DoesNotContain("3704", await CompactTextAsync(Output), StringComparison.Ordinal);
+        }
+
+        var limited = await RunAsync("redact", input, "--output", Path.Combine(WorkDirectory.FullName, "page-one.pdf"), "--pattern", "iban", "--pages", "1", "--dry-run");
+        Assert.Equal(0, limited.ExitCode);
+    }
+
+    [Fact]
+    public async Task AReachedSearchLimitStopsAPatternRun()
+    {
+        // 200 pages with 60 addresses each are 12,000 places; the search stops at 10,000 and they cannot be removed everywhere.
+        var content = string.Join(' ', Enumerable.Repeat("a@b.cd", 60));
+        var pdf = new VerifierPdf([.. Enumerable.Range(0, 200).Select(_ => $"BT /F1 1 Tf 5 190 Td ({content}) Tj ET")]);
+        var input = Path.Combine(WorkDirectory.FullName, "many-mails.pdf");
+        await File.WriteAllBytesAsync(input, pdf.Build(), Ct);
+
+        var result = await RunAsync("redact", input, "--output", Output, "--pattern", "email", "--dry-run");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("pagewing: The search stopped at 10000 matches and more may exist", result.Error, StringComparison.Ordinal);
+        Assert.Contains("Nothing was written.", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Output));
+    }
+
+    [Fact]
+    public async Task HelpListsThePatternOptions()
+    {
+        var result = await RunAsync("--help");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("[--pattern <email|iban|phone|card>]...", result.Output, StringComparison.Ordinal);
+        Assert.Contains("[--include-unchecked]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("--include-unchecked", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("all IBANs", result.Output, StringComparison.OrdinalIgnoreCase);
     }
 }
