@@ -147,6 +147,7 @@ public sealed partial class MainViewModel
         {
             each.FlushTextBoxDraft();
             each.FlushFormDraft();
+            each.FlushTextEditDraft();
         }
 
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -1,6 +1,6 @@
 # Pagewing
 
-Schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux. PDFs öffnen so schnell wie im Browser. Man kann sie lesen, durchsuchen, kommentieren, ausfüllen, unterschreiben, Seiten organisieren, schwärzen und per OCR durchsuchbar machen. Pagewing läuft als Desktop-App mit modernem Design oder als Kommandozeilen-Werkzeug `pagewing`. Offline, ohne Konto, ohne Telemetrie; ins Netz gehen nur die abschaltbare Update-Prüfung und der Download eines Updates, das man selbst installieren lässt.
+Schnelle Open-Source-Alternative zu Adobe Acrobat für Windows und Linux. PDFs öffnen so schnell wie im Browser. Man kann sie lesen, durchsuchen, kommentieren, ausfüllen, unterschreiben, Seiten organisieren, schwärzen, per OCR durchsuchbar machen und Textzeilen korrigieren (ohne Absatz-Bearbeitung). Pagewing läuft als Desktop-App mit modernem Design oder als Kommandozeilen-Werkzeug `pagewing`. Offline, ohne Konto, ohne Telemetrie; ins Netz gehen nur die abschaltbare Update-Prüfung und der Download eines Updates, das man selbst installieren lässt.
 
 **Status:** [v0.1.0](https://github.com/benjo-code/Pagewing/releases/tag/v0.1.0) (schneller Viewer) ist veröffentlicht, [v0.2.0](https://github.com/benjo-code/Pagewing/releases/tag/v0.2.0) (annotieren, ausfüllen, unterschreiben, automatische Updates) ist veröffentlicht, weitere Versionen sind in Entwicklung. Siehe [Docs/ROADMAP.md](Docs/ROADMAP.md) und [CHANGELOG.md](CHANGELOG.md).
 

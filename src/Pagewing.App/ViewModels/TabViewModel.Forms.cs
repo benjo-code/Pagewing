@@ -716,7 +716,7 @@ public sealed partial class TabViewModel
     }
 
     /// <summary>Whether the mode can start now: a form, shown sharp, the mode not on, and neither "Organize pages" nor "Redact" on.</summary>
-    private bool CanBeginFill() => !_isFilling && CanReadForm && !_isOrganizing && !_isRedacting;
+    private bool CanBeginFill() => !_isFilling && CanReadForm && !_isOrganizing && !_isRedacting && !_isTextEditing;
 
     /// <summary>
     /// The checks of a write and its start. <see langword="null"/>: refused at once (the reason is in the draft, or raised);

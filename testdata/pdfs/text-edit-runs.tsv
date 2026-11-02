@@ -1,0 +1,29 @@
+text-edit-subset.pdf	1	Invoice total: 1,250 EUR	EmbeddedSubset	20	30	14
+text-edit-subset.pdf	1	Kontoauszug März	EmbeddedSubset	20	70	14
+text-edit-standard.pdf	1	Quarterly report 2026	Standard14	20	30	14
+text-edit-standard.pdf	1	Dear customer, thank you	Standard14	20	70	12
+text-edit-full.pdf	1	Complete font line äöü ß	EmbeddedFull	20	30	14
+text-edit-full.pdf	1	Identity full font	EmbeddedFull	20	70	14
+text-edit-styles.pdf	1	Total: 	Standard14	20	30	14
+text-edit-styles.pdf	1	1,250.00	Standard14	58.9	30	14
+text-edit-styles.pdf	1	 EUR	Standard14	113.4	30	14
+text-edit-styles.pdf	1	Pagewing	Standard14	20	70	14
+text-edit-styles.pdf	1	Mixed 	Standard14	20	110	12
+text-edit-styles.pdf	1	fonts here	Standard14	55.3	110	12
+text-edit-styles.pdf	2	Tracked one	Standard14	20	30	12
+text-edit-styles.pdf	2	Tracked two	Standard14	20	70	12
+text-edit-rotated.pdf	1	Turned page line	Standard14	30	20	14
+text-edit-rotated.pdf	1	Upright in user space	Standard14	70	70	12
+text-edit-rotated.pdf	1	Slanted text	Standard14	120	160	12
+text-edit-locked.pdf	1	Editable control line	Standard14	20	20	14
+text-edit-locked.pdf	1	Invisible text layer	Standard14	20	45	14
+text-edit-locked.pdf	1	Shown text	Standard14	20	95	14
+text-edit-locked.pdf	1	Shared header text	Standard14	20	135	14
+text-edit-locked.pdf	1	Nested form text	Standard14	20	195	14
+text-edit-locked.pdf	1	Stroked outline text	Standard14	20	225	14
+text-edit-locked.pdf	1	Clipping text mode	Standard14	20	255	14
+text-edit-locked.pdf	1	Vertical	EmbeddedFull	270	20	14
+text-edit-locked.pdf	2	Editable on page two	Standard14	20	20	14
+text-edit-locked.pdf	2	Shared header text	Standard14	20	135	14
+text-edit-locked.pdf	3	ABBA	Type3	20	20	14
+text-edit-locked.pdf	3	Line beside Type 3	Standard14	20	45	14

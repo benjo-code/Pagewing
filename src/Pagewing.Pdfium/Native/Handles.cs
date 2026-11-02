@@ -167,6 +167,23 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         set => Volatile.Write(ref ocrFont, value);
     }
 
+    private readonly Dictionary<long, List<nint>> textEditStash = [];
+    private long nextStashToken;
+
+    /// <summary>
+    /// Keeps page objects that were taken out of a page by a text edit (milestone 16), so that an undo can put them back exactly as they were;
+    /// destroyed when the document closes. PDFium thread only. Returns the token to get them back with <see cref="TakeStash"/>.
+    /// </summary>
+    public long Stash(List<nint> objects)
+    {
+        var token = ++nextStashToken;
+        textEditStash[token] = objects;
+        return token;
+    }
+
+    /// <summary>Takes the objects kept under a token (they belong to the caller then), or <see langword="null"/> when there are none.</summary>
+    public List<nint>? TakeStash(long token) => textEditStash.Remove(token, out var objects) ? objects : null;
+
     protected override void CloseNative(nint value)
     {
         try
@@ -178,16 +195,32 @@ internal sealed unsafe class DocumentHandle(PdfiumThread thread) : PdfiumHandle(
         {
             try
             {
-                // A font loaded with FPDFText_LoadFont is closed before its document.
-                var font = Interlocked.Exchange(ref ocrFont, 0);
-                if (font != 0)
+                // Objects a text edit took out of a page wait here for an undo; they hold fonts, so they go before the fonts and the document.
+                foreach (var objects in textEditStash.Values)
                 {
-                    Fpdf.FPDFFont_Close(font);
+                    foreach (var item in objects)
+                    {
+                        Fpdf.FPDFPageObj_Destroy(item);
+                    }
                 }
+
+                textEditStash.Clear();
             }
             finally
             {
-                Fpdf.FPDF_CloseDocument(value);
+                try
+                {
+                    // A font loaded with FPDFText_LoadFont is closed before its document.
+                    var font = Interlocked.Exchange(ref ocrFont, 0);
+                    if (font != 0)
+                    {
+                        Fpdf.FPDFFont_Close(font);
+                    }
+                }
+                finally
+                {
+                    Fpdf.FPDF_CloseDocument(value);
+                }
             }
         }
     }

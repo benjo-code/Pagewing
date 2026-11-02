@@ -109,6 +109,7 @@ public sealed partial class TabViewModel
     public string? AnnotateUnavailableReason =>
         _isOrganizing ? PageEditsBlockedReason
         : _isRedacting ? RedactionLockReason
+        : _isTextEditing ? TextEditActiveReason
         : _permission is { Allowed: false } known && ReferenceEquals(known.Document, _document) ? Strings.AnnotateForbidden
         : !CanRequestAnnotate() ? Strings.AnnotateNotReady
         : null;
@@ -443,7 +444,7 @@ public sealed partial class TabViewModel
     /// off (page changes and annotations, which hang on page numbers, never mix; <see cref="PageEditsBlockedReason"/>) and the
     /// mode "Redact" off (<see cref="RedactionLockReason"/>).
     /// </summary>
-    private bool CanRequestAnnotate() => !_disposed && IsReady && _document is not null && _hasShownSharpPage && !_isOrganizing && !_isRedacting;
+    private bool CanRequestAnnotate() => !_disposed && IsReady && _document is not null && _hasShownSharpPage && !_isOrganizing && !_isRedacting && !_isTextEditing;
 
     /// <summary>Whether the mode can start now: it may be asked for, and the document is not known to forbid it.</summary>
     private bool CanBeginAnnotate() =>

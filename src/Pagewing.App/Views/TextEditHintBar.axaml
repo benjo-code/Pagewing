@@ -1,0 +1,51 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pagewing.App.ViewModels"
+             xmlns:ctl="using:Pagewing.App.Controls"
+             xmlns:res="using:Pagewing.App.Resources"
+             x:Class="Pagewing.App.Views.TextEditHintBar"
+             x:DataType="vm:TabViewModel"
+             VerticalAlignment="Top"
+             AutomationProperties.AccessibilityView="Content"
+             AutomationProperties.Name="{x:Static res:Strings.TextEditHintBarName}">
+  <!--
+    The bar of the mode "Edit text" (milestone 16), built like the hint bar of a form: one band over the top of the document area, below the toolbars, never taking
+    the focus. It says what the mode is and is not, for as long as the mode is on and nobody can click it away: "Edit lines, not paragraphs. Characters the font
+    lacks are set in a replacement font." and "The old text stays in earlier versions of the file." Below that line comes the live hint for the open field
+    (characters the font lacks, a refused text, overflow, removal; a polite live region) and, only when it can be chosen, the switch "Whole line in replacement
+    font" (never on by itself). "Done" ends the mode. surface.toolbar with a border.subtle bottom edge, the information symbol in text.secondary (the kind of the
+    message is never told by colour alone), the text in type.body. Made by the window when the mode is first entered, never in the startup path. The DataContext
+    is the active tab.
+  -->
+  <Border Name="TextEditHintFrame" Padding="12,6,8,6"
+          Background="{DynamicResource Pw.Brush.Surface.Toolbar}"
+          BorderBrush="{DynamicResource Pw.Brush.Border.Subtle}"
+          BorderThickness="0,0,0,1">
+    <Grid ColumnDefinitions="Auto,*,Auto">
+      <ctl:StrokeIcon Width="16" Height="16" Margin="0,0,10,0" VerticalAlignment="Top"
+                      Brush="{DynamicResource Pw.Brush.Text.Secondary}" Data="{StaticResource Pw.Icon.InfoCircle}" />
+      <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+        <TextBlock Name="TextEditNoteText" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   Text="{x:Static res:Strings.TextEditNote}" />
+        <TextBlock Name="TextEditNoteSavedText" Classes="caption" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Secondary}"
+                   Text="{x:Static res:Strings.TextEditNoteSaved}" />
+        <TextBlock Name="TextEditLiveHint" Classes="body" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                   IsVisible="{Binding TextEditHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   AutomationProperties.LiveSetting="Polite"
+                   Text="{Binding TextEditHint}" />
+      </StackPanel>
+      <StackPanel Grid.Column="2" Margin="12,0,0,0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <ToggleButton Name="TextEditWholeRunButton"
+                      IsVisible="{Binding CanChooseWholeRun}"
+                      IsChecked="{Binding TextEditWholeRun, Mode=OneWay}"
+                      Content="{x:Static res:Strings.TextEditWholeRun}"
+                      AutomationProperties.Name="{x:Static res:Strings.TextEditWholeRun}" />
+        <Button Name="TextEditDoneButton" Command="{Binding ToggleTextEditCommand}"
+                Content="{x:Static res:Strings.TextEditDone}" AutomationProperties.Name="{x:Static res:Strings.TextEditDone}" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

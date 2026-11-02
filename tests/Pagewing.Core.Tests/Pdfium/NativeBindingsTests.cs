@@ -591,6 +591,11 @@ public sealed partial class NativeBindingsTests
             ["FPDFPageObj_GetMark("] = "FPDFPageObj_GetMark(FPDF_PAGEOBJECT page_object, unsigned long index);",
             ["FPDFPageObj_AddMark("] = "FPDFPageObj_AddMark(FPDF_PAGEOBJECT page_object, FPDF_BYTESTRING name);",
             ["FPDFPageObjMark_GetName("] = "FPDFPageObjMark_GetName(FPDF_PAGEOBJECTMARK mark,",
+            ["FPDFPageObjMark_CountParams("] = "FPDFPageObjMark_CountParams(FPDF_PAGEOBJECTMARK mark);",
+            ["FPDFPageObjMark_GetParamKey("] = "FPDFPageObjMark_GetParamKey(FPDF_PAGEOBJECTMARK mark,",
+            ["FPDFPageObjMark_GetParamValueType(FPDF_PAGEOBJECTMARK mark,"] = "FPDFPageObjMark_GetParamValueType(FPDF_PAGEOBJECTMARK mark,",
+            ["FPDFPageObjMark_GetParamIntValue(FPDF_PAGEOBJECTMARK mark,"] = "FPDFPageObjMark_GetParamIntValue(FPDF_PAGEOBJECTMARK mark,",
+            ["FPDFPageObjMark_SetIntParam(FPDF_DOCUMENT document,"] = "FPDFPageObjMark_SetIntParam(FPDF_DOCUMENT document,",
         };
         foreach (var (name, declaration) in declarations)
         {

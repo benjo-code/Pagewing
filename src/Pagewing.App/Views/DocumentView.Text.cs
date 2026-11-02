@@ -548,7 +548,7 @@ public sealed partial class DocumentView
 
         // A drawing tool owns the press (DocumentView.Drawing.cs), and so does the select tool (DocumentView.Selection.cs) and,
         // in the mode "Fill in form", a field (DocumentView.Forms.cs): no text selection, no link.
-        if (PressEndsTextBox() || PressForSignature(e, properties) || PressForDrawing(e, properties) || PressForSelection(e, properties) || PressForRedaction(e, properties) || PressForForm(e, properties))
+        if (PressEndsTextBox() || PressForSignature(e, properties) || PressForDrawing(e, properties) || PressForSelection(e, properties) || PressForRedaction(e, properties) || PressForForm(e, properties) || PressForTextEdit(e, properties))
         {
             return;
         }
@@ -678,6 +678,7 @@ public sealed partial class DocumentView
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
         MoveForSignature(e);
+        MoveForTextEdit(e);
         if (MoveForDrawing(e) || MoveForSelection(e) || MoveForRedaction(e) || MoveForForm(e))
         {
             return;

@@ -140,6 +140,7 @@ static class TestPdfs
         new("redact-patterns.pdf", RedactPatterns()),
         new("redact-image-blocks.pdf", RedactImageBlocks()),
         .. OcrScans.Files(),
+        .. TextEditPdfs.Files(),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -2319,11 +2320,235 @@ sealed class TtfInfo
         return contours;
     }
 
+    // The number of glyphs of the font.
+    public int GlyphCount => U16(tables["maxp"].Offset + 4);
+
+    // The bytes of a table, or null if the font has none.
+    public byte[]? Table(string tag) => tables.TryGetValue(tag, out var entry) ? Data[entry.Offset..(entry.Offset + entry.Length)] : null;
+
+    // The raw glyph data of a glyph (empty for a glyph without outline).
+    public byte[] RawGlyph(int glyph)
+    {
+        var longOffsets = U16(tables["head"].Offset + 50) == 1;
+        var loca = tables["loca"].Offset;
+        int start = longOffsets ? (int)U32(loca + (glyph * 4)) : U16(loca + (glyph * 2)) * 2;
+        int end = longOffsets ? (int)U32(loca + ((glyph + 1) * 4)) : U16(loca + ((glyph + 1) * 2)) * 2;
+        var glyf = tables["glyf"].Offset;
+        return end <= start ? [] : Data[(glyf + start)..(glyf + end)];
+    }
+
+    // The glyph ids a composite glyph is made of (none for a simple glyph).
+    public List<int> ComponentsOf(int glyph)
+    {
+        var raw = RawGlyph(glyph);
+        var result = new List<int>();
+        if (raw.Length < 10 || (short)((raw[0] << 8) | raw[1]) >= 0)
+        {
+            return result;
+        }
+
+        var at = 10;
+        while (true)
+        {
+            var flags = (raw[at] << 8) | raw[at + 1];
+            result.Add((raw[at + 2] << 8) | raw[at + 3]);
+            at += 4 + ((flags & 1) != 0 ? 4 : 2);
+            at += (flags & 8) != 0 ? 2 : (flags & 0x40) != 0 ? 4 : (flags & 0x80) != 0 ? 8 : 0;
+            if ((flags & 0x20) == 0)
+            {
+                return result;
+            }
+        }
+    }
+
     private int U16(int offset) => (Data[offset] << 8) | Data[offset + 1];
 
     private int S16(int offset) => (short)U16(offset);
 
     private uint U32(int offset) => ((uint)Data[offset] << 24) | ((uint)Data[offset + 1] << 16) | ((uint)Data[offset + 2] << 8) | Data[offset + 3];
+}
+
+// A TrueType subset the way a PDF producer writes one: the glyph ids stay the same, only the glyphs that are used (and the components
+// of the composite ones among them) keep their outline, the others are empty. With a cmap the table holds only the used code points
+// (a simple font needs one); without, the font is meant for Identity-H, where the code is the glyph id.
+static class TtfSubset
+{
+    public static byte[] Build(TtfInfo ttf, IEnumerable<int> codePoints, bool withCmap)
+    {
+        var points = codePoints.Distinct().Order().ToList();
+        var keep = new SortedSet<int> { 0 };
+        foreach (var point in points)
+        {
+            var glyph = ttf.GlyphFor(point);
+            if (glyph != 0)
+            {
+                keep.Add(glyph);
+            }
+        }
+
+        for (var added = true; added;)
+        {
+            added = false;
+            foreach (var glyph in keep.ToList())
+            {
+                foreach (var component in ttf.ComponentsOf(glyph))
+                {
+                    added |= keep.Add(component);
+                }
+            }
+        }
+
+        var glyf = new MemoryStream();
+        var loca = new MemoryStream();
+        for (var glyph = 0; glyph <= ttf.GlyphCount; glyph++)
+        {
+            WriteU32(loca, (uint)glyf.Length);
+            if (glyph < ttf.GlyphCount && keep.Contains(glyph))
+            {
+                var raw = ttf.RawGlyph(glyph);
+                glyf.Write(raw);
+                while (glyf.Length % 4 != 0)
+                {
+                    glyf.WriteByte(0);
+                }
+            }
+        }
+
+        var head = ttf.Table("head")!;
+        head[8] = head[9] = head[10] = head[11] = 0;
+        head[50] = 0;
+        head[51] = 1;
+        var tables = new SortedDictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            ["head"] = head,
+            ["hhea"] = ttf.Table("hhea")!,
+            ["maxp"] = ttf.Table("maxp")!,
+            ["hmtx"] = ttf.Table("hmtx")!,
+            ["loca"] = loca.ToArray(),
+            ["glyf"] = glyf.ToArray(),
+        };
+        foreach (var tag in new[] { "cvt ", "fpgm", "prep" })
+        {
+            if (ttf.Table(tag) is { } table)
+            {
+                tables[tag] = table;
+            }
+        }
+
+        if (withCmap)
+        {
+            tables["cmap"] = Cmap(points.Where(p => p <= 0xFFFF && ttf.GlyphFor(p) != 0).Select(p => (p, ttf.GlyphFor(p))).ToList());
+        }
+
+        return Assemble(tables);
+    }
+
+    private static byte[] Cmap(List<(int Code, int Glyph)> pairs)
+    {
+        var segments = pairs.Count + 1;
+        var body = new MemoryStream();
+        WriteU16(body, 4);
+        WriteU16(body, 16 + (segments * 8));
+        WriteU16(body, 0);
+        WriteU16(body, segments * 2);
+        var entrySelector = (int)Math.Floor(Math.Log2(segments));
+        WriteU16(body, (1 << entrySelector) * 2);
+        WriteU16(body, entrySelector);
+        WriteU16(body, (segments * 2) - ((1 << entrySelector) * 2));
+        foreach (var (code, _) in pairs)
+        {
+            WriteU16(body, code);
+        }
+
+        WriteU16(body, 0xFFFF);
+        WriteU16(body, 0);
+        foreach (var (code, _) in pairs)
+        {
+            WriteU16(body, code);
+        }
+
+        WriteU16(body, 0xFFFF);
+        foreach (var (code, glyph) in pairs)
+        {
+            WriteU16(body, (glyph - code) & 0xFFFF);
+        }
+
+        WriteU16(body, 1);
+        for (var i = 0; i < segments; i++)
+        {
+            WriteU16(body, 0);
+        }
+
+        var cmap = new MemoryStream();
+        WriteU16(cmap, 0);
+        WriteU16(cmap, 1);
+        WriteU16(cmap, 3);
+        WriteU16(cmap, 1);
+        WriteU32(cmap, 12);
+        cmap.Write(body.ToArray());
+        return cmap.ToArray();
+    }
+
+    private static byte[] Assemble(SortedDictionary<string, byte[]> tables)
+    {
+        var count = tables.Count;
+        var entrySelector = (int)Math.Floor(Math.Log2(count));
+        var output = new MemoryStream();
+        WriteU32(output, 0x00010000);
+        WriteU16(output, count);
+        WriteU16(output, (1 << entrySelector) * 16);
+        WriteU16(output, entrySelector);
+        WriteU16(output, (count * 16) - ((1 << entrySelector) * 16));
+        var offset = 12 + (count * 16);
+        foreach (var (tag, data) in tables)
+        {
+            output.Write(Encoding.ASCII.GetBytes(tag));
+            WriteU32(output, Checksum(data));
+            WriteU32(output, (uint)offset);
+            WriteU32(output, (uint)data.Length);
+            offset += (data.Length + 3) & ~3;
+        }
+
+        foreach (var data in tables.Values)
+        {
+            output.Write(data);
+            for (var pad = data.Length; pad % 4 != 0; pad++)
+            {
+                output.WriteByte(0);
+            }
+        }
+
+        return output.ToArray();
+    }
+
+    private static uint Checksum(byte[] data)
+    {
+        uint sum = 0;
+        for (var i = 0; i < data.Length; i += 4)
+        {
+            uint word = 0;
+            for (var j = 0; j < 4; j++)
+            {
+                word = (word << 8) | (i + j < data.Length ? data[i + j] : (byte)0);
+            }
+
+            sum += word;
+        }
+
+        return sum;
+    }
+
+    private static void WriteU16(Stream stream, int value)
+    {
+        stream.WriteByte((byte)(value >> 8));
+        stream.WriteByte((byte)value);
+    }
+
+    private static void WriteU32(Stream stream, uint value)
+    {
+        WriteU16(stream, (int)(value >> 16));
+        WriteU16(stream, (int)(value & 0xFFFF));
+    }
 }
 
 // A tiny embedded Type 1 font (binary eexec form) whose glyphs are boxes, so a fixture can have a Type 1 font program without a font
@@ -2633,6 +2858,327 @@ sealed class PdfDoc
         }
 
         return hex.Append('>').ToString();
+    }
+}
+
+// The text edit fixtures of milestone 16. Geist Regular (SIL OFL 1.1) is the only embedded font program; the "subset" files hold a real
+// subset of it (glyph ids unchanged, only the used glyphs keep an outline, see TtfSubset). text-edit-runs.tsv lists the lines the tests
+// look up: file, page from 1, text, font kind (TextRunFontKind), left, baseline (both in points from the top left of the displayed page,
+// of the origin of the line), size. For turned text the origin is the start of the line.
+static class TextEditPdfs
+{
+    private const string Helvetica = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+    private const string HelveticaBold = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+    private const string TimesRoman = "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+
+    // text-edit-hostile.pdf: the number of runs on page 1 and the length of the run on page 2.
+    public const int HostileRunCount = 10000;
+    public const int HostileRunLength = 2001;
+
+    public static List<KeyValuePair<string, byte[]>> Files()
+    {
+        var runs = new StringBuilder();
+        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.Core", "Assets", "Fonts", "Geist-Regular.ttf")));
+        return
+        [
+            new("text-edit-subset.pdf", Subset(ttf, runs)),
+            new("text-edit-standard.pdf", Standard(runs)),
+            new("text-edit-full.pdf", Full(ttf, runs)),
+            new("text-edit-styles.pdf", Styles(runs)),
+            new("text-edit-rotated.pdf", Rotated(runs)),
+            new("text-edit-locked.pdf", Locked(ttf, runs)),
+            new("text-edit-hostile.pdf", Hostile()),
+            new("text-edit-runs.tsv", Encoding.UTF8.GetBytes(runs.ToString())),
+        ];
+    }
+
+    private static void Record(StringBuilder into, string file, int page, string text, string kind, double left, double baseline, double size) =>
+        into.Append(CultureInfo.InvariantCulture, $"{file}\t{page}\t{text}\t{kind}\t{left}\t{baseline}\t{size}\n");
+
+    private static string RepositoryFile(params string[] parts)
+    {
+        for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Pagewing.slnx")))
+            {
+                return Path.Combine([directory.FullName, .. parts]);
+            }
+        }
+
+        throw new DirectoryNotFoundException("Pagewing.slnx nicht gefunden.");
+    }
+
+    private static string Scaled(TtfInfo ttf, int value) => ((value * 1000) / ttf.UnitsPerEm).ToString(CultureInfo.InvariantCulture);
+
+    private static int Descriptor(PdfDoc doc, TtfInfo ttf, byte[] program, string name)
+    {
+        var file = doc.AddStream($"/Length1 {program.Length}", program);
+        return doc.Add(
+            $"<< /Type /FontDescriptor /FontName /{name} /Flags 32 /FontBBox [{Scaled(ttf, ttf.XMin)} {Scaled(ttf, ttf.YMin)} {Scaled(ttf, ttf.XMax)} {Scaled(ttf, ttf.YMax)}] "
+            + $"/ItalicAngle 0 /Ascent {Scaled(ttf, ttf.Ascent)} /Descent {Scaled(ttf, ttf.Descent)} /CapHeight 700 /StemV 80 /FontFile2 {file} 0 R >>");
+    }
+
+    // A simple TrueType font (WinAnsi); the widths of the characters not in "used" are 0 (a subset has no outline for them).
+    private static int SimpleTrueType(PdfDoc doc, TtfInfo ttf, byte[] program, string name, string? used)
+    {
+        var widths = new StringBuilder();
+        for (var code = 32; code <= 255; code++)
+        {
+            var has = (code is (>= 32 and <= 126) or (>= 160 and <= 255)) && (used is null || used.Contains((char)code, StringComparison.Ordinal));
+            var glyph = has ? ttf.GlyphFor(code) : 0;
+            widths.Append(CultureInfo.InvariantCulture, $"{(glyph == 0 ? "0" : Scaled(ttf, ttf.AdvanceOf(glyph)))} ");
+        }
+
+        var descriptor = Descriptor(doc, ttf, program, name);
+        return doc.Add($"<< /Type /Font /Subtype /TrueType /BaseFont /{name} /FirstChar 32 /LastChar 255 /Widths [{widths}] /Encoding /WinAnsiEncoding /FontDescriptor {descriptor} 0 R >>");
+    }
+
+    // A Type0 font with Identity-H (or -V): the code is the glyph id; /ToUnicode lists the characters of "used" only, as a producer writes it.
+    private static int Type0(PdfDoc doc, TtfInfo ttf, byte[] program, string name, string used, string encoding = "Identity-H")
+    {
+        var distinct = used.Distinct().ToArray();
+        var widths = new StringBuilder();
+        foreach (var c in distinct)
+        {
+            var glyph = ttf.GlyphFor(c);
+            widths.Append(CultureInfo.InvariantCulture, $"{glyph} [{Scaled(ttf, ttf.AdvanceOf(glyph))}] ");
+        }
+
+        var descriptor = Descriptor(doc, ttf, program, name);
+        var cid = doc.Add(
+            $"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{name} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+            + $"/FontDescriptor {descriptor} 0 R /CIDToGIDMap /Identity /DW 600 /W [{widths}] >>");
+        var map = new StringBuilder();
+        map.Append("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n");
+        map.Append("/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
+        map.Append(CultureInfo.InvariantCulture, $"{distinct.Length} beginbfchar\n");
+        foreach (var c in distinct)
+        {
+            map.Append(CultureInfo.InvariantCulture, $"<{ttf.GlyphFor(c):X4}> <{(int)c:X4}>\n");
+        }
+
+        map.Append("endbfchar\nendcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+        var toUnicode = doc.AddStream(string.Empty, PdfDoc.Latin1(map.ToString()));
+        return doc.Add($"<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /{encoding} /DescendantFonts [{cid} 0 R] /ToUnicode {toUnicode} 0 R >>");
+    }
+
+    private static string Hex(TtfInfo ttf, string text) => "<" + string.Concat(text.Select(c => ttf.GlyphFor(c).ToString("X4", CultureInfo.InvariantCulture))) + ">";
+
+    // Page 300 x 200. Line 1 (Type0 Identity-H, subset of the characters of the line, size 14 at 20,170): "Invoice total: 1,250 EUR"; the subset has no
+    // z, k, 9 and no umlauts. Line 2 (simple TrueType with WinAnsi, subset with a cmap of its own, size 14 at 20,130): "Kontoauszug März" (ä is a
+    // composite glyph); the subset has no b, f, ß. Both fonts are named AAAAAA+Geist and BBBBBB+Geist.
+    private static byte[] Subset(TtfInfo ttf, StringBuilder runs)
+    {
+        const string first = "Invoice total: 1,250 EUR";
+        const string second = "Kontoauszug März";
+        var doc = new PdfDoc("Pagewing Textbearbeitung: Teilmenge");
+        var type0 = Type0(doc, ttf, TtfSubset.Build(ttf, first.Select(static c => (int)c), withCmap: false), "AAAAAA+Geist", first);
+        var simple = SimpleTrueType(doc, ttf, TtfSubset.Build(ttf, second.Select(static c => (int)c), withCmap: true), "BBBBBB+Geist", second);
+        doc.AddPage(
+            "/MediaBox [0 0 300 200]",
+            $"<< /Font << /F1 {type0} 0 R /F2 {simple} 0 R >> >>",
+            $"""
+            BT /F1 14 Tf 20 170 Td {Hex(ttf, first)} Tj ET
+            BT /F2 14 Tf 20 130 Td ({second}) Tj ET
+            """);
+        Record(runs, "text-edit-subset.pdf", 1, first, "EmbeddedSubset", 20, 30, 14);
+        Record(runs, "text-edit-subset.pdf", 1, second, "EmbeddedSubset", 20, 70, 14);
+        return doc.Build();
+    }
+
+    // Page 300 x 200: Helvetica "Quarterly report 2026" (size 14 at 20,170), Times-Roman "Dear customer, thank you" (size 12 at 20,130), neither embedded.
+    private static byte[] Standard(StringBuilder runs)
+    {
+        var doc = new PdfDoc("Pagewing Textbearbeitung: Standardschriften");
+        var helvetica = doc.Add(Helvetica);
+        var times = doc.Add(TimesRoman);
+        doc.AddPage(
+            "/MediaBox [0 0 300 200]",
+            $"<< /Font << /F1 {helvetica} 0 R /F2 {times} 0 R >> >>",
+            """
+            BT /F1 14 Tf 20 170 Td (Quarterly report 2026) Tj ET
+            BT /F2 12 Tf 20 130 Td (Dear customer, thank you) Tj ET
+            """);
+        Record(runs, "text-edit-standard.pdf", 1, "Quarterly report 2026", "Standard14", 20, 30, 14);
+        Record(runs, "text-edit-standard.pdf", 1, "Dear customer, thank you", "Standard14", 20, 70, 12);
+        return doc.Build();
+    }
+
+    // Page 300 x 200: the complete Geist, as a simple TrueType font with WinAnsi (line 1, size 14 at 20,170, "Complete font line äöü ß")
+    // and as Type0 Identity-H (line 2, size 14 at 20,130, "Identity full font").
+    private static byte[] Full(TtfInfo ttf, StringBuilder runs)
+    {
+        const string first = "Complete font line äöü ß";
+        const string second = "Identity full font";
+        var doc = new PdfDoc("Pagewing Textbearbeitung: vollständige Schrift");
+        var simple = SimpleTrueType(doc, ttf, ttf.Data, "Geist-Regular", used: null);
+        var type0 = Type0(doc, ttf, ttf.Data, "Geist-Regular", second);
+        doc.AddPage(
+            "/MediaBox [0 0 300 200]",
+            $"<< /Font << /F1 {simple} 0 R /F2 {type0} 0 R >> >>",
+            $"""
+            BT /F1 14 Tf 20 170 Td ({first}) Tj ET
+            BT /F2 14 Tf 20 130 Td {Hex(ttf, second)} Tj ET
+            """);
+        Record(runs, "text-edit-full.pdf", 1, first, "EmbeddedFull", 20, 30, 14);
+        Record(runs, "text-edit-full.pdf", 1, second, "EmbeddedFull", 20, 70, 14);
+        return doc.Build();
+    }
+
+    // Page 1, 300 x 200. Line 1 at 20,170: "Total: " (Helvetica 14, black), "1,250.00" (Helvetica-Bold 14, red), " EUR" (Helvetica 14, black) in one text
+    // object. Line 2 at 20,130: "Pagewing" as a TJ array with kerning shifts (Helvetica 14). Line 3 at 20,90: "Mixed " in Helvetica 12 followed by "fonts here"
+    // in Times-Roman 12 in one object. The origins of the later parts of a line are computed from the AFM widths of Helvetica (58.9 = 20 + width of
+    // "Total: "). Page 2, 300 x 200: "Tracked one" at 20,170 and "Tracked two" at 20,130 (Helvetica 12) with character spacing 1 and word spacing 4:
+    // PDFium does not write Tc and Tw, so rewriting this page would change the line that is not edited.
+    private static byte[] Styles(StringBuilder runs)
+    {
+        var doc = new PdfDoc("Pagewing Textbearbeitung: Stile");
+        var helvetica = doc.Add(Helvetica);
+        var bold = doc.Add(HelveticaBold);
+        var times = doc.Add(TimesRoman);
+        doc.AddPage(
+            "/MediaBox [0 0 300 200]",
+            $"<< /Font << /F1 {helvetica} 0 R /F2 {bold} 0 R /F3 {times} 0 R >> >>",
+            """
+            BT 20 170 Td /F1 14 Tf (Total: ) Tj /F2 14 Tf 1 0 0 rg (1,250.00) Tj /F1 14 Tf 0 g ( EUR) Tj ET
+            BT /F1 14 Tf 20 130 Td [(Pa) 20 (ge) -15 (wi) 10 (ng)] TJ ET
+            BT 20 90 Td /F1 12 Tf (Mixed ) Tj /F3 12 Tf (fonts here) Tj ET
+            """);
+        doc.AddPage(
+            "/MediaBox [0 0 300 200]",
+            $"<< /Font << /F1 {helvetica} 0 R >> >>",
+            """
+            BT /F1 12 Tf 1 Tc 4 Tw 20 170 Td (Tracked one) Tj 0 Tc 0 Tw ET
+            BT /F1 12 Tf 1 Tc 4 Tw 20 130 Td (Tracked two) Tj 0 Tc 0 Tw ET
+            """);
+        Record(runs, "text-edit-styles.pdf", 1, "Total: ", "Standard14", 20, 30, 14);
+        Record(runs, "text-edit-styles.pdf", 1, "1,250.00", "Standard14", 58.9, 30, 14);
+        Record(runs, "text-edit-styles.pdf", 1, " EUR", "Standard14", 113.4, 30, 14);
+        Record(runs, "text-edit-styles.pdf", 1, "Pagewing", "Standard14", 20, 70, 14);
+        Record(runs, "text-edit-styles.pdf", 1, "Mixed ", "Standard14", 20, 110, 12);
+        Record(runs, "text-edit-styles.pdf", 1, "fonts here", "Standard14", 55.3, 110, 12);
+        Record(runs, "text-edit-styles.pdf", 2, "Tracked one", "Standard14", 20, 30, 12);
+        Record(runs, "text-edit-styles.pdf", 2, "Tracked two", "Standard14", 20, 70, 12);
+        return doc.Build();
+    }
+
+    // /MediaBox [0 0 400 300], /CropBox [40 30 340 270] (300 x 240), /Rotate 90: displayed 240 x 300. A point (x, y) of the page shows at
+    // left = y - 30, top = x - 40. Line 1 is written turned by 90 degrees (matrix 0 1 -1 0, so it reads upright on the displayed page):
+    // "Turned page line" (Helvetica 14), origin 60,60 shows at left 30, top 20. Line 2 is written without a matrix and reads downwards on the
+    // displayed page: "Upright in user space" (Helvetica 12), origin 110,100 shows at left 70, top 70. Line 3 is turned by 30 degrees on top
+    // of that: "Slanted text" (Helvetica 12), origin 200,150 shows at left 120, top 160.
+    private static byte[] Rotated(StringBuilder runs)
+    {
+        var doc = new PdfDoc("Pagewing Textbearbeitung: gedrehte Seite");
+        var helvetica = doc.Add(Helvetica);
+        doc.AddPage(
+            "/MediaBox [0 0 400 300] /CropBox [40 30 340 270] /Rotate 90",
+            $"<< /Font << /F1 {helvetica} 0 R >> >>",
+            """
+            BT /F1 14 Tf 0 1 -1 0 60 60 Tm (Turned page line) Tj ET
+            BT /F1 12 Tf 1 0 0 1 110 100 Tm (Upright in user space) Tj ET
+            BT /F1 12 Tf 0.866 0.5 -0.5 0.866 200 150 Tm (Slanted text) Tj ET
+            """);
+        Record(runs, "text-edit-rotated.pdf", 1, "Turned page line", "Standard14", 30, 20, 14);
+        Record(runs, "text-edit-rotated.pdf", 1, "Upright in user space", "Standard14", 70, 70, 12);
+        Record(runs, "text-edit-rotated.pdf", 1, "Slanted text", "Standard14", 120, 160, 12);
+        return doc.Build();
+    }
+
+    // Three pages 300 x 300, lines of size 14 (baselines from the top in brackets). Page 1: "Editable control line" (Helvetica, 20), "Invisible text layer"
+    // (render mode 3, 45), "Shown text" (inside /Span with /ActualText, 95), "Shared header text" (Form XObject that page 2
+    // uses as well, 135), "Nested form text" (Form XObject inside a Form XObject, 195), "Stroked outline text" (render mode 1, 225), "Clipping text mode"
+    // (render mode 4, inside q Q, 255), "Vertical" (Type0 Identity-V, from the top down at x = 270). Page 2: "Shared header text" (135) and
+    // "Editable on page two" (20). Page 3: "ABBA" (Type 3 font, 20) and "Line beside Type 3" (45): PDFium cannot write Type 3 text, so no line of this page is editable.
+    private static byte[] Locked(TtfInfo ttf, StringBuilder runs)
+    {
+        var doc = new PdfDoc("Pagewing Textbearbeitung: gesperrte Läufe");
+        var helvetica = doc.Add(Helvetica);
+        var fontResources = $"<< /Font << /F1 {helvetica} 0 R >> >>";
+        var boxA = doc.AddStream(string.Empty, PdfDoc.Latin1("600 0 0 0 500 700 d1 0 0 500 700 re f"));
+        var boxB = doc.AddStream(string.Empty, PdfDoc.Latin1("600 0 0 0 500 700 d1 0 0 500 350 re f"));
+        var type3 = doc.Add(
+            $"<< /Type /Font /Subtype /Type3 /FontBBox [0 0 600 700] /FontMatrix [0.001 0 0 0.001 0 0] /CharProcs << /A {boxA} 0 R /B {boxB} 0 R >> "
+            + "/Encoding << /Type /Encoding /Differences [65 /A /B] >> /FirstChar 65 /LastChar 66 /Widths [600 600] >>");
+        const string vertical = "Vertical";
+        var type0 = Type0(doc, ttf, ttf.Data, "Geist-Regular", vertical, "Identity-V");
+
+        var shared = doc.AddStream(
+            $"/Type /XObject /Subtype /Form /BBox [0 0 300 40] /Resources {fontResources}",
+            PdfDoc.Latin1("BT /F1 14 Tf 20 15 Td (Shared header text) Tj ET"));
+        var inner = doc.AddStream(
+            $"/Type /XObject /Subtype /Form /BBox [0 0 300 40] /Resources {fontResources}",
+            PdfDoc.Latin1("BT /F1 14 Tf 20 15 Td (Nested form text) Tj ET"));
+        var outer = doc.AddStream(
+            $"/Type /XObject /Subtype /Form /BBox [0 0 300 40] /Resources << /XObject << /Fm3 {inner} 0 R >> >>",
+            PdfDoc.Latin1("q /Fm3 Do Q"));
+
+        doc.AddPage(
+            "/MediaBox [0 0 300 300]",
+            $"<< /Font << /F1 {helvetica} 0 R /F4 {type0} 0 R >> /XObject << /Fm1 {shared} 0 R /Fm2 {outer} 0 R >> >>",
+            $"""
+            BT /F1 14 Tf 20 280 Td (Editable control line) Tj ET
+            BT /F1 14 Tf 3 Tr 20 255 Td (Invisible text layer) Tj 0 Tr ET
+            /Span << /ActualText (Replacement) >> BDC BT /F1 14 Tf 20 205 Td (Shown text) Tj ET EMC
+            q 1 0 0 1 0 150 cm /Fm1 Do Q
+            q 1 0 0 1 0 90 cm /Fm2 Do Q
+            BT /F1 14 Tf 1 Tr 20 75 Td (Stroked outline text) Tj 0 Tr ET
+            q BT /F1 14 Tf 4 Tr 20 45 Td (Clipping text mode) Tj ET Q
+            BT /F4 14 Tf 0 -1 1 0 270 280 Tm {Hex(ttf, vertical)} Tj ET
+            """);
+        doc.AddPage(
+            "/MediaBox [0 0 300 300]",
+            $"<< /Font << /F1 {helvetica} 0 R >> /XObject << /Fm1 {shared} 0 R >> >>",
+            """
+            BT /F1 14 Tf 20 280 Td (Editable on page two) Tj ET
+            q 1 0 0 1 0 150 cm /Fm1 Do Q
+            """);
+        doc.AddPage(
+            "/MediaBox [0 0 300 300]",
+            $"<< /Font << /F1 {helvetica} 0 R /F3 {type3} 0 R >> >>",
+            """
+            BT /F3 14 Tf 20 280 Td (ABBA) Tj ET
+            BT /F1 14 Tf 20 255 Td (Line beside Type 3) Tj ET
+            """);
+        const string file = "text-edit-locked.pdf";
+        Record(runs, file, 1, "Editable control line", "Standard14", 20, 20, 14);
+        Record(runs, file, 1, "Invisible text layer", "Standard14", 20, 45, 14);
+        
+        Record(runs, file, 1, "Shown text", "Standard14", 20, 95, 14);
+        Record(runs, file, 1, "Shared header text", "Standard14", 20, 135, 14);
+        Record(runs, file, 1, "Nested form text", "Standard14", 20, 195, 14);
+        Record(runs, file, 1, "Stroked outline text", "Standard14", 20, 225, 14);
+        Record(runs, file, 1, "Clipping text mode", "Standard14", 20, 255, 14);
+        Record(runs, file, 1, vertical, "EmbeddedFull", 270, 20, 14);
+        Record(runs, file, 2, "Editable on page two", "Standard14", 20, 20, 14);
+        Record(runs, file, 2, "Shared header text", "Standard14", 20, 135, 14);
+        Record(runs, file, 3, "ABBA", "Type3", 20, 20, 14);
+        Record(runs, file, 3, "Line beside Type 3", "Standard14", 20, 45, 14);
+        return doc.Build();
+    }
+
+    // Page 1, 400 x 400: HostileRunCount runs, a grid of 100 x 100 characters "x" (size 3, one text object each, the colour alternates so that
+    // no two neighbours can be one run). Page 2, 1200 x 100: one run of HostileRunLength characters "a" (Helvetica 1 at 10,50).
+    private static byte[] Hostile()
+    {
+        var doc = new PdfDoc("Pagewing Textbearbeitung: feindliche Seiten");
+        var helvetica = doc.Add(Helvetica);
+        var grid = new StringBuilder();
+        for (var row = 0; row < 100; row++)
+        {
+            for (var column = 0; column < 100; column++)
+            {
+                var colour = (row + column) % 2 == 0 ? "1 0 0 rg" : "0 0 1 rg";
+                grid.Append(CultureInfo.InvariantCulture, $"BT {colour} /F1 3 Tf {column * 4} {(row * 4) + 1} Td (x) Tj ET\n");
+            }
+        }
+
+        doc.AddPage("/MediaBox [0 0 400 400]", $"<< /Font << /F1 {helvetica} 0 R >> >>", grid.ToString());
+        doc.AddPage(
+            "/MediaBox [0 0 1200 100]",
+            $"<< /Font << /F1 {helvetica} 0 R >> >>",
+            $"BT /F1 1 Tf 10 50 Td ({new string('a', HostileRunLength)}) Tj ET");
+        return doc.Build();
     }
 }
 

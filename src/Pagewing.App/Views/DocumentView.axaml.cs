@@ -185,6 +185,7 @@ public sealed partial class DocumentView : UserControl
         Sync();
         ReopenTextBoxDraft();
         SyncFormMode();
+        SyncTextEditMode();
         SyncRedaction();
     }
 
@@ -193,6 +194,7 @@ public sealed partial class DocumentView : UserControl
         SaveView();
         CloseTextBoxEditor(apply: true);
         DisconnectForms();
+        DisconnectTextEdit();
         DisconnectSignature();
         DisconnectRedaction();
         EndGesture();
@@ -407,6 +409,7 @@ public sealed partial class DocumentView : UserControl
         _focusPending = true;
         FocusLater();
         SyncFormMode();
+        SyncTextEditMode();
         SyncRedaction();
     }
 
@@ -454,6 +457,12 @@ public sealed partial class DocumentView : UserControl
         if (IsInFormEditor(e.Source))
         {
             // The input of a form field takes its own keys (Space types a space, the arrows move the caret or the choice).
+            return;
+        }
+
+        if (!e.Handled && KeyForTextEdit(e))
+        {
+            e.Handled = true;
             return;
         }
 
@@ -567,6 +576,12 @@ public sealed partial class DocumentView : UserControl
 
         // The mode "Fill in form": the open value of a field, then the focus of the field, then the mode.
         if (tab.EscapeFill())
+        {
+            return true;
+        }
+
+        // The mode "Edit text": the open text of a line (dropped), then the focus of a line, then the mode (a text that waits is applied first).
+        if (tab.EscapeTextEdit())
         {
             return true;
         }
@@ -892,6 +907,14 @@ public sealed partial class DocumentView : UserControl
         // The form layer and the input of a field follow their pages (an input scrolled out of view applies its value).
         _formOverlay?.Refresh();
         RefreshForms(focus: false);
+
+        // The layer of the mode "Edit text" and its field follow their pages; the lines of pages that came into view are read.
+        if (_textEditTab is { } editing)
+        {
+            editing.EnsureTextRuns(VisibleFormPages());
+            _textEditOverlay?.Refresh();
+            PlaceTextRunEditor();
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -941,6 +964,10 @@ public sealed partial class DocumentView : UserControl
         else if (e.PropertyName == nameof(TabViewModel.IsFilling))
         {
             SyncFormMode();
+        }
+        else if (e.PropertyName == nameof(TabViewModel.IsTextEditing))
+        {
+            SyncTextEditMode();
         }
         else if (e.PropertyName == nameof(TabViewModel.FocusedField))
         {

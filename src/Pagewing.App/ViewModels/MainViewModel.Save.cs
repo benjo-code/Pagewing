@@ -178,12 +178,21 @@ public sealed partial class MainViewModel
 
             var target = saveAs ? await PickTargetAsync(tab, path) : path;
             var overwrite = false;
+
+            // The first save of edited text per tab and document says that the old text stays in earlier versions of the file (milestone 16); it is
+            // a note in the status bar, no question: nothing waits for an answer.
+            var textEditNote = tab.HasTextEdits && !tab.TextEditNoticeShown;
             while (target is not null && !token.IsCancellationRequested)
             {
                 var outcome = await WriteAsync(tab, target, overwrite, token);
                 switch (outcome.Choice)
                 {
                     case null:
+                        if (outcome.Saved && textEditNote)
+                        {
+                            tab.NoteTextEditSaved();
+                        }
+
                         return outcome.Saved;
                     case PendingSaveChoice.Overwrite:
                         overwrite = true;
@@ -334,7 +343,7 @@ public sealed partial class MainViewModel
         switch (SignaturePolicy.Evaluate(info))
         {
             case SignatureAdvice.WouldInvalidate:
-                return await AskAsync(PendingSave.SignatureWarning(tab, path, info.Permission, tab.HasOnlyFormChanges, tab.HasOcrChanges), cancellationToken) switch
+                return await AskAsync(PendingSave.SignatureWarning(tab, path, info.Permission, tab.HasOnlyFormChanges, tab.HasOcrChanges, tab.HasTextEdits), cancellationToken) switch
                 {
                     PendingSaveChoice.SaveAnyway => SignatureAnswer.Go,
                     PendingSaveChoice.SaveAs => SignatureAnswer.SaveAs,

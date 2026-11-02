@@ -115,6 +115,7 @@ public sealed partial class TabViewModel
     public string? OrganizeUnavailableReason =>
         _isOrganizing ? null
         : _isRedacting ? RedactionLockReason
+        : _isTextEditing ? TextEditActiveReason
         : _disposed || !IsReady || _document is null || !_hasShownSharpPage ? Strings.PageOrganizeNotReady
         : OrganizeUnavailableReasonFor(PageCount);
 

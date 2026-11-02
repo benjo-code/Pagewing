@@ -3444,4 +3444,103 @@
   <data name="SignatureWarningOcr" xml:space="preserve">
     <value>Der erkannte Text wird der Datei als unsichtbarer Text hinzugefügt.</value>
   </data>
+  <data name="SignatureWarningTextEdit" xml:space="preserve">
+    <value>Der geänderte Text wird der Datei als neue Fassung hinzugefügt.</value>
+  </data>
+  <data name="TextEditSaveNote" xml:space="preserve">
+    <value>Der alte Text bleibt in früheren Fassungen der Datei. Zum echten Entfernen: Schwärzen.</value>
+  </data>
+  <data name="CommandTextEdit" xml:space="preserve">
+    <value>Text bearbeiten</value>
+  </data>
+  <data name="TextEditNote" xml:space="preserve">
+    <value>Zeilen bearbeiten, keine Absätze. Fehlende Zeichen setzt Pagewing in einer Ersatzschrift (Geist).</value>
+  </data>
+  <data name="TextEditNoteSaved" xml:space="preserve">
+    <value>Der alte Text bleibt in früheren Fassungen der Datei.</value>
+  </data>
+  <data name="TextEditDone" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="TextEditHintBarName" xml:space="preserve">
+    <value>Text bearbeiten</value>
+  </data>
+  <data name="TextEditMissing" xml:space="preserve">
+    <value>In dieser Schrift fehlen: {0}. Sie werden in Geist gesetzt.</value>
+  </data>
+  <data name="TextEditWholeRun" xml:space="preserve">
+    <value>Ganze Zeile in Ersatzschrift</value>
+  </data>
+  <data name="TextEditRejected" xml:space="preserve">
+    <value>Nicht möglich: {0} gibt es weder in dieser Schrift noch in Geist. Es wurde nichts geändert.</value>
+  </data>
+  <data name="TextEditTooLong" xml:space="preserve">
+    <value>Zu lang: eine Zeile hat höchstens {0} Zeichen. Es wurde nichts geändert.</value>
+  </data>
+  <data name="TextEditOverlaps" xml:space="preserve">
+    <value>Der Text würde anderen Text überdecken.</value>
+  </data>
+  <data name="TextEditOutside" xml:space="preserve">
+    <value>Der Text würde über den Seitenrand ragen.</value>
+  </data>
+  <data name="TextEditRemoves" xml:space="preserve">
+    <value>Leer: die Zeile wird weggenommen. Rückgängig holt sie zurück.</value>
+  </data>
+  <data name="TextEditStale" xml:space="preserve">
+    <value>Die Seite hat sich inzwischen geändert. Öffnen Sie die Zeile erneut.</value>
+  </data>
+  <data name="TextEditWriteFailed" xml:space="preserve">
+    <value>Der Text konnte nicht geschrieben werden. Die Seite kann sich geändert haben; sehen Sie sie an.</value>
+  </data>
+  <data name="TextEditNotNow" xml:space="preserve">
+    <value>Text bearbeiten ist gerade nicht möglich.</value>
+  </data>
+  <data name="TextEditNotReady" xml:space="preserve">
+    <value>Text lässt sich bearbeiten, sobald die Seite angezeigt wird.</value>
+  </data>
+  <data name="TextEditBlockedMode" xml:space="preserve">
+    <value>Beenden Sie zuerst den anderen Modus (Kommentieren, Ausfüllen, Organisieren, Schwärzen oder Texterkennung).</value>
+  </data>
+  <data name="TextEditActive" xml:space="preserve">
+    <value>Der Modus „Text bearbeiten“ ist aktiv.</value>
+  </data>
+  <data name="TextEditFieldName" xml:space="preserve">
+    <value>Text der Zeile</value>
+  </data>
+  <data name="TextEditFieldHint" xml:space="preserve">
+    <value>Enter übernimmt den Text, Esc verwirft ihn.</value>
+  </data>
+  <data name="TextEditLockInvisibleText" xml:space="preserve">
+    <value>Unsichtbarer Text (zum Beispiel von der Texterkennung): die Seite zeigt ein Bild, nicht diesen Text.</value>
+  </data>
+  <data name="TextEditLockType3Font" xml:space="preserve">
+    <value>Diese Seite benutzt eine Type-3-Schrift. Pagewing kann eine solche Seite nicht neu schreiben.</value>
+  </data>
+  <data name="TextEditLockVerticalWriting" xml:space="preserve">
+    <value>Senkrechter Text lässt sich nicht bearbeiten.</value>
+  </data>
+  <data name="TextEditLockUnsupportedRenderMode" xml:space="preserve">
+    <value>Dieser Textmodus (Beschnitt) lässt sich nicht bearbeiten.</value>
+  </data>
+  <data name="TextEditLockFormXObject" xml:space="preserve">
+    <value>Text in einem wiederverwendeten Seitenelement (zum Beispiel einer Kopfzeile mehrerer Seiten) lässt sich nicht bearbeiten.</value>
+  </data>
+  <data name="TextEditLockMarkedContent" xml:space="preserve">
+    <value>Dieser Text hat einen Ersatztext oder gehört zu einer Ebene. Beim Bearbeiten bliebe der alte Text stehen.</value>
+  </data>
+  <data name="TextEditLockNotSavable" xml:space="preserve">
+    <value>Pagewing kann diese Datei nicht speichern, Änderungen gingen verloren.</value>
+  </data>
+  <data name="TextEditLockPageNotRewritable" xml:space="preserve">
+    <value>Würde die Seite neu geschrieben, änderte sich anderes auf ihr. Es wurde nichts geändert.</value>
+  </data>
+  <data name="TextEditLockTooManyRuns" xml:space="preserve">
+    <value>Diese Seite hat zu viele Zeilen zum Bearbeiten.</value>
+  </data>
+  <data name="TextEditLockRunTooLong" xml:space="preserve">
+    <value>Diese Zeile ist zu lang zum Bearbeiten.</value>
+  </data>
+  <data name="TextEditLockLigature" xml:space="preserve">
+    <value>Diese Zeile hat eine Ligatur (mehrere Buchstaben in einem Glyph, zum Beispiel „fi“). Beim Neuschreiben lägen sie übereinander.</value>
+  </data>
 </root>

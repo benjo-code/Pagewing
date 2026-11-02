@@ -80,7 +80,7 @@ internal static class RenderCorpus
         "forms-xfa.pdf", "linearized.pdf", "not-a-pdf.pdf", "outline.pdf", "outline-cycle.pdf", "pages-marked.pdf", "print-mixed.pdf",
         "redact-attachments.pdf", "redact-covered.pdf", "redact-everywhere.pdf", "redact-everywhere-nopattern.pdf", "redact-image.pdf", "redact-revisions.pdf", "redact-rotated.pdf",
         "redact-fonts.pdf", "redact-image-kinds.pdf", "redact-control.pdf", "redact-ligature.pdf", "redact-hidden.pdf", "redact-paths.pdf", "redact-structure.pdf", "redact-objstm.pdf",
-        "redact-patterns.pdf", "redact-image-blocks.pdf", "ocr-scan.pdf", "ocr-scan-rotated.pdf", "ocr-mixed.pdf", "ocr-hostile.pdf", "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "stamps-foreign.pdf", "text-dense.pdf", "text-rich.pdf",
+        "redact-patterns.pdf", "redact-image-blocks.pdf", "ocr-scan.pdf", "ocr-scan-rotated.pdf", "ocr-mixed.pdf", "ocr-hostile.pdf", "text-edit-subset.pdf", "text-edit-standard.pdf", "text-edit-full.pdf", "text-edit-styles.pdf", "text-edit-rotated.pdf", "text-edit-locked.pdf", "text-edit-hostile.pdf", "signed-docmdp-1.pdf", "signed-docmdp-2.pdf", "signed-docmdp-3.pdf", "signed-docmdp-none.pdf", "stamps-foreign.pdf", "text-dense.pdf", "text-rich.pdf",
     ];
 
     /// <summary>Looks up a case by its name (<see cref="RenderCase.Stem"/>).</summary>

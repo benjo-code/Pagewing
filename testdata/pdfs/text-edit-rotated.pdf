@@ -1,0 +1,39 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [6 0 R] >>
+endobj
+3 0 obj
+<< /Title (Pagewing Textbearbeitung: gedrehte Seite) /Producer (Pagewing test generator) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<<  /Length 183 >>
+stream
+BT /F1 14 Tf 0 1 -1 0 60 60 Tm (Turned page line) Tj ET
+BT /F1 12 Tf 1 0 0 1 110 100 Tm (Upright in user space) Tj ET
+BT /F1 12 Tf 0.866 0.5 -0.5 0.866 200 150 Tm (Slanted text) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [40 30 340 270] /Rotate 90 /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000228 00000 n 
+0000000325 00000 n 
+0000000560 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R /Info 3 0 R >>
+startxref
+722
+%%EOF

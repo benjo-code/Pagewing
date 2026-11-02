@@ -239,6 +239,14 @@ public sealed partial class MainWindow
             top += OcrHintBarHeightOf(ocrBar);
         }
 
+        // The bar of the mode "Edit text" lies below the others.
+        if (_textEditHintBar is { IsVisible: true } textBar)
+        {
+            textBar.Margin = new Thickness(0, top, 0, 0);
+            textBar.HintFrame.CornerRadius = top > 0 ? default : new CornerRadius(DocumentArea.CornerRadius.TopLeft, 0, 0, 0);
+            top += TextEditHintBarHeightOf(textBar);
+        }
+
         DocumentView.Margin = new Thickness(0, top, 0, 0);
     }
 
