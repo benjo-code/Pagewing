@@ -675,6 +675,363 @@ public sealed class RedactPanelTests : IDisposable
         Assert.False(tab.IsRedactionPanelOpen);
     }
 
+    [AvaloniaFact]
+    public async Task PatternModeListsGroupsInOrder()
+    {
+        (string Ok, string Shape, string Failed, string Email, string Iban, string Phone, string Card)[] languages =
+        [
+            ("Checksum matches", "Format matches", "Checksum does not match", "E-mail", "IBAN", "Phone", "Credit card"),
+            ("Prüfsumme stimmt", "Format passt", "Prüfsumme stimmt nicht", "E-Mail", "IBAN", "Telefon", "Kreditkarte"),
+        ];
+        string[] codes = ["en", "de"];
+        for (var round = 0; round < codes.Length; round++)
+        {
+            Strings.Culture = new CultureInfo(codes[round]);
+            var names = languages[round];
+            var (window, viewModel, view) = Show();
+            var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+            await EnterAsync(window, tab);
+            var panel = await OpenPanelAsync(window, tab);
+            var search = tab.RedactionPanel;
+
+            // The panel starts as the word search; the pattern mode is the second way, and nothing is searched until "Find".
+            Assert.Equal(RedactionSearchMode.Word, search.Mode);
+            Assert.True(search.IsWordMode);
+            Assert.False(search.CanSearch);
+            search.IsPatternMode = true;
+            Assert.Equal(RedactionSearchMode.Pattern, search.Mode);
+            Assert.Equal([RedactionPatternKind.Email, RedactionPatternKind.Iban, RedactionPatternKind.Phone, RedactionPatternKind.Card], search.PatternKinds.Select(kind => kind.Kind));
+            Assert.All(search.PatternKinds, kind => Assert.True(kind.IsChecked));
+            Assert.True(search.CanSearch);
+            Assert.Equal([names.Email, names.Iban, names.Phone, names.Card], search.PatternKinds.Select(kind => kind.Label));
+
+            // The scanner finds them in any order; the list is by the words, never by colour alone.
+            RedactionHit[] found =
+            [
+                PatternHit(RedactionPatternKind.Email, PatternCertainty.ShapeOnly, "ann@example.org", 0),
+                PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumFailed, "DE89 3704 0044 0532 0130 01", 1),
+                PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumOk, "DE89 3704 0044 0532 0130 00", 2),
+                PatternHit(RedactionPatternKind.Card, PatternCertainty.ChecksumFailed, "4111 1111 1111 1112", 3),
+                PatternHit(RedactionPatternKind.Card, PatternCertainty.ChecksumOk, "4111 1111 1111 1111", 4),
+                PatternHit(RedactionPatternKind.Phone, PatternCertainty.ShapeOnly, "+49 711 1234567", 5),
+            ];
+            RedactionPatternKind[]? asked = null;
+            search.PatternSearcher = (_, kinds, report, _, token) =>
+            {
+                asked = [.. kinds.Order()];
+                return PatternListing(found, report, null, limit: false, token);
+            };
+            search.SearchCommand.Execute(null);
+            await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+            Assert.Equal([RedactionPatternKind.Email, RedactionPatternKind.Iban, RedactionPatternKind.Phone, RedactionPatternKind.Card], asked);
+
+            Assert.Equal(
+                [PatternCertainty.ChecksumOk, PatternCertainty.ChecksumOk, PatternCertainty.ShapeOnly, PatternCertainty.ShapeOnly, PatternCertainty.ChecksumFailed, PatternCertainty.ChecksumFailed],
+                search.Hits.Select(hit => hit.Hit.Certainty!.Value));
+
+            // The first row of each group carries its heading with the count; the others none.
+            string?[] expectedHeadings = [$"{names.Ok} (2)", null, $"{names.Shape} (2)", null, $"{names.Failed} (2)", null];
+            Assert.Equal(expectedHeadings, search.Hits.Select(hit => hit.GroupHeading));
+            Assert.Equal([true, false, true, false, true, false], search.Hits.Select(hit => hit.HasGroupHeading));
+
+            // One counter per kind, after the search; the name of a row says kind, source and certainty in words.
+            Assert.Equal([$"{names.Email} (1)", $"{names.Iban} (2)", $"{names.Phone} (1)", $"{names.Card} (2)"], search.PatternKinds.Select(kind => kind.Label));
+            var failed = search.Hits[4];
+            Assert.Contains(names.Failed, failed.AutomationName, StringComparison.Ordinal);
+            Assert.Contains(failed.PatternLabel!, failed.AutomationName, StringComparison.Ordinal);
+
+            // The panel shows the headings and the list as rows.
+            Settle(window);
+            Assert.Equal(6, panel.HitList.ItemCount);
+            for (var index = 0; index < expectedHeadings.Length; index++)
+            {
+                panel.HitList.ScrollIntoView(index);
+                Settle(window);
+                var container = panel.HitList.ContainerFromIndex(index) ?? throw new InvalidOperationException($"Row {index} is not realized.");
+                var heading = container.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Name == "HitGroupHeading");
+                Assert.Equal(expectedHeadings[index] is not null, heading.IsVisible);
+                if (expectedHeadings[index] is { } text)
+                {
+                    Assert.Equal(text, heading.Text);
+                }
+            }
+
+            // A change of a kind, of the mode or of the field ends the search: its hits belong to the old choice.
+            search.PatternKinds.Single(kind => kind.Kind == RedactionPatternKind.Phone).IsChecked = false;
+            Assert.Equal(RedactionSearchState.Idle, search.State);
+            Assert.Empty(search.Hits);
+            Assert.Equal([names.Email, names.Iban, names.Phone, names.Card], search.PatternKinds.Select(kind => kind.Label));
+            search.SearchCommand.Execute(null);
+            await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+            Assert.Equal([RedactionPatternKind.Email, RedactionPatternKind.Iban, RedactionPatternKind.Card], asked);
+            search.IsWordMode = true;
+            Assert.Equal(RedactionSearchState.Idle, search.State);
+            Assert.Empty(search.Hits);
+
+            // No kind chosen: nothing to search.
+            search.IsPatternMode = true;
+            foreach (var kind in search.PatternKinds)
+            {
+                kind.IsChecked = false;
+            }
+
+            Assert.False(search.CanSearch);
+            Assert.False(search.SearchCommand.CanExecute(null));
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task ChecksumFailedIsNotPreselected()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        await OpenPanelAsync(window, tab);
+        var search = tab.RedactionPanel;
+        search.IsPatternMode = true;
+        RedactionHit[] found =
+        [
+            PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumFailed, "DE89 3704 0044 0532 0130 01", 0),
+            PatternHit(RedactionPatternKind.Email, PatternCertainty.ShapeOnly, "ann@example.org", 1),
+            PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumOk, "DE89 3704 0044 0532 0130 00", 2),
+            PatternHit(RedactionPatternKind.Card, PatternCertainty.ChecksumFailed, "4111 1111 1111 1112", 3),
+        ];
+        search.PatternSearcher = (_, _, report, _, token) => PatternListing(found, report, null, limit: false, token);
+        Assert.False(search.HasChecksumFailedHits);
+        Assert.False(search.CheckFailedCommand.CanExecute(null));
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+
+        // The checksum and the shape are checked; a failed checksum is listed apart and is not.
+        Assert.All(search.Hits.Where(hit => hit.Hit.Certainty != PatternCertainty.ChecksumFailed), hit => Assert.True(hit.IsChecked));
+        Assert.All(search.Hits.Where(hit => hit.Hit.Certainty == PatternCertainty.ChecksumFailed), hit => Assert.False(hit.IsChecked));
+        Assert.All(search.Hits.Where(hit => hit.Hit.Certainty == PatternCertainty.ChecksumFailed), hit => Assert.True(hit.CanCheck));
+        Assert.Equal(2, search.CheckedCount);
+        Assert.True(search.HasChecksumFailedHits);
+        Assert.Equal(Strings.RedactAddFailed(2), search.CheckFailedLabel);
+        Assert.Contains("2", search.CheckFailedLabel, StringComparison.Ordinal);
+
+        // One click adds them all; then there is nothing left to add.
+        Assert.True(search.CheckFailedCommand.CanExecute(null));
+        search.CheckFailedCommand.Execute(null);
+        Assert.Equal(4, search.CheckedCount);
+        Assert.All(search.Hits, hit => Assert.True(hit.IsChecked));
+        Assert.False(search.CheckFailedCommand.CanExecute(null));
+
+        // A single one can be taken out again by hand.
+        search.Hits.Last().IsChecked = false;
+        Assert.Equal(3, search.CheckedCount);
+        Assert.True(search.CheckFailedCommand.CanExecute(null));
+
+        // The word search has no groups, no heading and no such command to run.
+        search.IsWordMode = true;
+        Assert.False(search.HasChecksumFailedHits);
+        Assert.False(search.CheckFailedCommand.CanExecute(null));
+    }
+
+    [AvaloniaFact]
+    public async Task MarkCheckedAddsPatternMarksWithTheirKind()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        var panel = await OpenPanelAsync(window, tab);
+        var search = tab.RedactionPanel;
+        search.IsPatternMode = true;
+        RedactionHit[] found =
+        [
+            PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumFailed, "DE89 3704 0044 0532 0130 01", 0),
+            PatternHit(RedactionPatternKind.Email, PatternCertainty.ShapeOnly, "ann@example.org", 1),
+            PatternHit(RedactionPatternKind.Iban, PatternCertainty.ChecksumOk, "DE89 3704 0044 0532 0130 00", 1),
+        ];
+        search.PatternSearcher = (_, _, report, _, token) => PatternListing(found, report, null, limit: false, token);
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+
+        // "Mark all" is the word search's "everywhere"; a pattern search has only the checked ones.
+        Assert.False(search.MarkAllCommand.CanExecute(null));
+        Assert.True(search.MarkCheckedCommand.CanExecute(null));
+        search.MarkCheckedCommand.Execute(null);
+
+        Assert.Equal(2, tab.RedactionPlan!.Marks.Count);
+        Assert.All(tab.RedactionPlan.Marks, mark =>
+        {
+            Assert.Equal(RedactionKind.Hit, mark.Kind);
+            Assert.False(mark.Everywhere);
+        });
+        Assert.Equal(
+            [(RedactionPatternKind.Email, "ann@example.org"), (RedactionPatternKind.Iban, "DE89 3704 0044 0532 0130 00")],
+            tab.RedactionPlan.Marks.Select(mark => (mark.Pattern!.Value, mark.Term!)).Order());
+        Assert.Equal("Marked 2 places.", search.MarkedNote);
+
+        // What was marked leaves the list; the failed one stays, not checked, and can be marked afterwards.
+        var rest = Assert.Single(search.Hits);
+        Assert.Equal(PatternCertainty.ChecksumFailed, rest.Hit.Certainty);
+        Assert.False(rest.IsChecked);
+        Assert.False(search.MarkCheckedCommand.CanExecute(null));
+        search.CheckFailedCommand.Execute(null);
+        search.MarkCheckedCommand.Execute(null);
+        Assert.Equal(3, tab.RedactionPlan.Marks.Count);
+        Assert.Equal(RedactionPatternKind.Iban, tab.RedactionPlan.Marks[2].Pattern);
+        Assert.False(tab.RedactionPlan.Marks[2].Everywhere);
+
+        // The list of marks says which kind of pattern a mark came from, in words.
+        Settle(window);
+        Assert.Equal(
+            ["Pattern: E-mail", "Pattern: IBAN", "Pattern: IBAN"],
+            tab.RedactionPanel.MarkRows.Where(row => !row.IsHeader).Select(row => row.KindText).Order(StringComparer.Ordinal));
+        Assert.All(tab.RedactionPanel.MarkRows.Where(row => row.Mark is not null), row => Assert.Contains("Pattern", row.AutomationName, StringComparison.Ordinal));
+        _ = panel;
+    }
+
+    [AvaloniaFact]
+    public async Task IncompletePagesNeedTheUsersWord()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        await OpenPanelAsync(window, tab);
+        var search = tab.RedactionPanel;
+        search.IsPatternMode = true;
+        RedactionHit[] one = [PatternHit(RedactionPatternKind.Email, PatternCertainty.ShapeOnly, "ann@example.org", 0)];
+
+        // A page the scanner could not read completely: the hit is listed, the note names the page, and marking waits for the word.
+        search.PatternSearcher = (_, _, report, _, token) => PatternListing(one, report, incompletePage: 4, limit: false, token);
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+        Assert.Single(search.Hits);
+        Assert.True(search.RequiresAcknowledgement);
+        Assert.Contains("5", search.IncompleteNote, StringComparison.Ordinal);
+        Assert.False(search.MarkCheckedCommand.CanExecute(null));
+        Assert.False(search.CanMark);
+        search.IncompleteAcknowledged = true;
+        Assert.True(search.MarkCheckedCommand.CanExecute(null));
+        search.MarkCheckedCommand.Execute(null);
+        var mark = Assert.Single(tab.RedactionPlan!.Marks);
+        Assert.Equal(RedactionPatternKind.Email, mark.Pattern);
+
+        // The word belongs to one search: the next asks again.
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+        Assert.False(search.IncompleteAcknowledged);
+        Assert.False(search.MarkCheckedCommand.CanExecute(null));
+
+        // No hit from an incomplete search is not "no hits"; a complete one without a hit says so.
+        search.PatternSearcher = (_, _, report, _, token) => PatternListing([], report, incompletePage: 1, limit: false, token);
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+        Assert.Empty(search.Hits);
+        Assert.Equal(Strings.RedactNoHitsSearched, search.Summary);
+        Assert.NotEqual(Strings.RedactNoHits, search.Summary);
+        search.PatternSearcher = (_, _, report, _, token) => PatternListing([], report, incompletePage: null, limit: false, token);
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+        Assert.Equal(Strings.RedactNoHits, search.Summary);
+        Assert.False(search.RequiresAcknowledgement);
+
+        // The limit of hits asks the same, a search that fails is never complete, and the places it never looks at stay listed.
+        search.PatternSearcher = (_, _, report, _, token) => PatternListing(one, report, incompletePage: null, limit: true, token);
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Finished);
+        Assert.True(search.RequiresAcknowledgement);
+        Assert.NotNull(search.LimitNote);
+        search.PatternSearcher = (_, _, _, _, _) => throw new InvalidOperationException("The document went.");
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => search.State == RedactionSearchState.Failed);
+        Assert.True(search.RequiresAcknowledgement);
+        Assert.False(search.NoHitsVisible);
+        Assert.Equal(RedactionSearch.NotSearched.Count, Strings.RedactNotSearchedLines.Count);
+        search.ToggleNotSearchedCommand.Execute(null);
+        Assert.True(search.ShowNotSearched);
+    }
+
+    [AvaloniaFact]
+    public async Task ModeSwitchIsReachableByKeyboardAndTabNeverTraps()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        var panel = await OpenPanelAsync(window, tab);
+        var search = tab.RedactionPanel;
+        var word = FindOrNull<RadioButton>(panel, "ModeWordButton")!;
+        var pattern = FindOrNull<RadioButton>(panel, "ModePatternButton")!;
+        Assert.NotNull(word);
+        Assert.NotNull(pattern);
+        Assert.True(word.IsChecked);
+        Assert.True(word.Focusable && pattern.Focusable);
+        Assert.False(string.IsNullOrEmpty(AutomationProperties.GetName(word)));
+        Assert.False(string.IsNullOrEmpty(AutomationProperties.GetName(pattern)));
+
+        // Focus goes to the switch with the keyboard, the space bar chooses the pattern mode, and the field of the words goes.
+        Assert.True(FindOrNull<TextBox>(panel, "QueryField")!.IsVisible);
+        Assert.True(pattern.Focus(NavigationMethod.Tab));
+        Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.None);
+        Assert.True(search.IsPatternMode);
+        Assert.True(pattern.IsChecked);
+        Assert.False(FindOrNull<TextBox>(panel, "QueryField")!.IsVisible);
+        var boxes = panel.GetVisualDescendants().OfType<CheckBox>().Where(box => box.Name == "PatternKindBox").ToArray();
+        Assert.Equal(4, boxes.Length);
+        Assert.All(boxes, box => Assert.False(string.IsNullOrEmpty(AutomationProperties.GetName(box))));
+        Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.None);
+        Assert.True(search.IsPatternMode);
+
+        // The word switch is reachable the same way and brings the field back.
+        Assert.True(word.Focus(NavigationMethod.Tab));
+        Press(window, Key.Space, PhysicalKey.Space, RawInputModifiers.None);
+        Assert.True(search.IsWordMode);
+        Assert.True(FindOrNull<TextBox>(panel, "QueryField")!.IsVisible);
+        search.IsPatternMode = true;
+        Settle(window);
+
+        // Tab never holds the focus: it moves on with every press, through the kinds and the buttons, and leaves the panel.
+        Assert.True(pattern.Focus(NavigationMethod.Tab));
+        var visited = new List<object?>();
+        var left = false;
+        for (var i = 0; i < 40 && !left; i++)
+        {
+            var before = TopLevel.GetTopLevel(window)!.FocusManager!.GetFocusedElement();
+            Press(window, Key.Tab, PhysicalKey.Tab, RawInputModifiers.None);
+            var after = TopLevel.GetTopLevel(window)!.FocusManager!.GetFocusedElement();
+            Assert.NotSame(before, after);
+            visited.Add(after);
+            left = after is Visual visual && !ReferenceEquals(visual, panel) && !panel.IsVisualAncestorOf(visual);
+        }
+
+        Assert.True(left, "Tab did not leave the panel.");
+        Assert.Contains(boxes[0], visited);
+        Assert.Contains(boxes[3], visited);
+    }
+
+    private static RedactionHit PatternHit(RedactionPatternKind kind, PatternCertainty certainty, string text, int page) =>
+        new(RedactionHitSource.PageText, page, [new PageRect(10, 10, 160, 30)], text, false)
+        {
+            Snippet = new SearchSnippet("a ", text, " b"),
+            Pattern = kind,
+            Certainty = certainty,
+        };
+
+    private static async IAsyncEnumerable<RedactionHit> PatternListing(
+        RedactionHit[] hits,
+        RedactionSearchReport? report,
+        int? incompletePage,
+        bool limit,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        await Task.Yield();
+        foreach (var hit in hits)
+        {
+            token.ThrowIfCancellationRequested();
+            yield return hit;
+        }
+
+        if (incompletePage is { } page)
+        {
+            report!.MarkIncomplete(page);
+        }
+
+        report!.LimitReached = limit;
+    }
+
     private static async IAsyncEnumerable<RedactionHit> Listing(RedactionHit[] hits, [EnumeratorCancellation] CancellationToken token)
     {
         await Task.Yield();

@@ -860,6 +860,28 @@ public static class Strings
     public static string RedactHitListName => Get("RedactHitListName");
     public static string RedactHitCheckName => Get("RedactHitCheckName");
     public static string RedactRowSelected => Get("RedactRowSelected");
+    public static string RedactModeGroupName => Get("RedactModeGroupName");
+    public static string RedactModeWord => Get("RedactModeWord");
+    public static string RedactModePattern => Get("RedactModePattern");
+    public static string RedactPatternKindsName => Get("RedactPatternKindsName");
+    public static string RedactPatternEmail => Get("RedactPatternEmail");
+    public static string RedactPatternIban => Get("RedactPatternIban");
+    public static string RedactPatternPhone => Get("RedactPatternPhone");
+    public static string RedactPatternCard => Get("RedactPatternCard");
+    public static string RedactGroupChecksumOk => Get("RedactGroupChecksumOk");
+    public static string RedactGroupShapeOnly => Get("RedactGroupShapeOnly");
+    public static string RedactGroupChecksumFailed => Get("RedactGroupChecksumFailed");
+    public static string RedactAddFailedOf => Get("RedactAddFailedOf");
+    public static string RedactAddFailedHint => Get("RedactAddFailedHint");
+    public static string RedactKindPatternOf => Get("RedactKindPatternOf");
+
+    /// <summary>Gets the label of the button that checks every hit whose checksum does not match, "Add all 3 with a checksum that does not match".</summary>
+    /// <param name="count">How many hits it takes.</param>
+    public static string RedactAddFailed(int count) => string.Format(Culture, CompositeFormat.Parse(RedactAddFailedOf), count);
+
+    /// <summary>Gets the kind of a mark that came from a pattern, "Pattern: IBAN".</summary>
+    /// <param name="pattern">The name of the kind of pattern.</param>
+    public static string RedactKindPattern(string pattern) => string.Format(Culture, CompositeFormat.Parse(RedactKindPatternOf), pattern);
 
     /// <summary>
     /// Gets the places the search of the mode "Redact" never looks at, one line each and in the same order as

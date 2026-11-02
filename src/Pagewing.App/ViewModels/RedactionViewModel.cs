@@ -12,6 +12,16 @@ using Pagewing.Core.Text;
 
 namespace Pagewing.App.ViewModels;
 
+/// <summary>What the search of the panel "Redact" looks for (milestone 14.1).</summary>
+public enum RedactionSearchMode
+{
+    /// <summary>The text of the field: a word or phrase, wherever it stands.</summary>
+    Word,
+
+    /// <summary>Numbers of a kind the scanners recognise (e-mail address, IBAN, telephone number, card number), no text to type.</summary>
+    Pattern,
+}
+
 /// <summary>How far the search of the panel "Redact" is.</summary>
 public enum RedactionSearchState
 {
@@ -34,7 +44,10 @@ public enum RedactionSearchState
 /// runs on a pool thread through the PDF thread, one page at a time, and hands its hits to the UI thread in small jobs; it ends when
 /// the query or an option changes, when it is stopped, when the panel closes or when the mode ends. A search that was stopped or that
 /// left something out is never shown as "no hits": the summary says what happened, and marking from an incomplete search waits for the
-/// user's word (<see cref="IncompleteAcknowledged"/>), as <c>--allow-unsearched</c> does on the command line. Made by the tab when the
+/// user's word (<see cref="IncompleteAcknowledged"/>), as <c>--allow-unsearched</c> does on the command line. Since milestone 14.1 the
+/// search has a second <see cref="Mode"/>, patterns (e-mail, IBAN, phone, card): no text to type, hits in groups by the certainty of
+/// the scanner (checksum matches and format matches are checked, a checksum that does not match is not, one click adds them), marks that
+/// carry their kind and are never "everywhere". Made by the tab when the
 /// panel first opens (<see cref="TabViewModel.RedactionPanel"/>), never in the startup path; the tab disposes it. UI thread only.
 /// </summary>
 public sealed class RedactionViewModel : ViewModelBase, IDisposable
@@ -45,6 +58,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
     /// <summary>The shortest time between two batches of hits posted to the UI thread.</summary>
     internal static readonly TimeSpan BatchInterval = TimeSpan.FromMilliseconds(50);
 
+    private const int FailedGroup = 2;
     private const int PagesListed = 10;
     private const int DiffLimit = 300;
 
@@ -61,7 +75,12 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
     private readonly RelayCommand _checkAllCommand;
     private readonly RelayCommand _uncheckAllCommand;
     private readonly RelayCommand _toggleNotSearchedCommand;
+    private readonly RelayCommand _checkFailedCommand;
+    private readonly RedactionPatternKindViewModel[] _kinds;
 
+    private RedactionSearchMode _mode;
+    private RedactionSearchMode _hitMode;
+    private int _failedCount;
     private string _query = string.Empty;
     private bool _matchCase;
     private bool _wholeWord;
@@ -90,11 +109,20 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         MarkRows = _rows;
         _searchCommand = new RelayCommand(StartSearch, () => CanSearch);
         _stopCommand = new RelayCommand(Stop, () => _state == RedactionSearchState.Running);
-        _markAllCommand = new RelayCommand(MarkAll, () => CanMark && _hits.Any(static hit => hit.CanCheck));
+        // "Mark all" is the word search's "gone from the whole document"; a pattern search marks the places it found, the checked ones.
+        _markAllCommand = new RelayCommand(MarkAll, () => CanMark && _hitMode == RedactionSearchMode.Word && _hits.Any(static hit => hit.CanCheck));
         _markCheckedCommand = new RelayCommand(MarkChecked, () => CanMark && CheckedCount > 0);
         _checkAllCommand = new RelayCommand(() => SetAllChecked(true), () => _hits.Any(static hit => hit.CanCheck));
         _uncheckAllCommand = new RelayCommand(() => SetAllChecked(false), () => CheckedCount > 0);
         _toggleNotSearchedCommand = new RelayCommand(() => ShowNotSearched = !ShowNotSearched);
+        _checkFailedCommand = new RelayCommand(CheckFailed, () => _hits.Any(static hit => hit.GroupIndex == FailedGroup && hit.CanCheck && !hit.IsChecked));
+        _kinds = [.. Enum.GetValues<RedactionPatternKind>().Select(static kind => new RedactionPatternKindViewModel(kind))];
+        foreach (var kind in _kinds)
+        {
+            kind.CheckedChanged += OnKindCheckedChanged;
+        }
+
+        PatternKinds = _kinds;
         _tab.PropertyChanged += OnTabPropertyChanged;
         RebuildMarkRows();
     }
@@ -105,6 +133,72 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
     /// </summary>
     internal Func<PdfDocument, string, SearchOptions, RedactionSearchReport, PageTextSource?, CancellationToken, IAsyncEnumerable<RedactionHit>> Searcher { get; set; } =
         static (document, term, options, report, texts, cancellationToken) => RedactionSearch.FindAsync(document, term, options, report, texts, cancellationToken);
+
+    /// <summary>
+    /// Gets or sets how the document is searched for patterns: <see cref="RedactionPatternSearch.FindAsync"/> (replaceable for tests). It
+    /// runs on a pool thread and fills the report while it enumerates. Used only by a search in the mode <see cref="RedactionSearchMode.Pattern"/>.
+    /// </summary>
+    internal Func<PdfDocument, IReadOnlySet<RedactionPatternKind>, RedactionSearchReport, PageTextSource?, CancellationToken, IAsyncEnumerable<RedactionHit>> PatternSearcher { get; set; } =
+        static (document, kinds, report, texts, cancellationToken) => RedactionPatternSearch.FindAsync(document, kinds, report, texts, cancellationToken);
+
+    /// <summary>Gets or sets what the search looks for. A change ends a search and empties its hits: they belong to the old choice.</summary>
+    public RedactionSearchMode Mode
+    {
+        get => _mode;
+        set
+        {
+            if (_mode == value)
+            {
+                return;
+            }
+
+            _mode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsWordMode));
+            OnPropertyChanged(nameof(IsPatternMode));
+            ResetSearch();
+            _searchCommand.RaiseCanExecuteChanged();
+            RaiseMarkStateChanged();
+        }
+    }
+
+    /// <summary>Gets or sets whether the search is for a word; the switch of the panel binds to it (setting <see langword="false"/> does nothing: the other choice sets <see langword="true"/>).</summary>
+    public bool IsWordMode
+    {
+        get => _mode == RedactionSearchMode.Word;
+        set
+        {
+            if (value)
+            {
+                Mode = RedactionSearchMode.Word;
+            }
+        }
+    }
+
+    /// <summary>Gets or sets whether the search is for patterns (see <see cref="IsWordMode"/>).</summary>
+    public bool IsPatternMode
+    {
+        get => _mode == RedactionSearchMode.Pattern;
+        set
+        {
+            if (value)
+            {
+                Mode = RedactionSearchMode.Pattern;
+            }
+        }
+    }
+
+    /// <summary>Gets the four kinds of pattern with their check boxes and, after a search, their counters (E-mail, IBAN, Phone, Credit card).</summary>
+    public IReadOnlyList<RedactionPatternKindViewModel> PatternKinds { get; }
+
+    /// <summary>Gets whether hits of a pattern search are on show whose checksum does not match (they are listed apart and not checked).</summary>
+    public bool HasChecksumFailedHits => _hitMode == RedactionSearchMode.Pattern && _failedCount > 0;
+
+    /// <summary>Gets the label of the button that checks them all, "Add all 3 with a checksum that does not match".</summary>
+    public string CheckFailedLabel => Strings.RedactAddFailed(_failedCount);
+
+    /// <summary>Checks every hit whose checksum does not match (one click: they are listed apart and not checked at first).</summary>
+    public ICommand CheckFailedCommand => _checkFailedCommand;
 
     /// <summary>Gets or sets the text to find and redact. A change ends a search and empties its hits: they belong to the old text.</summary>
     public string Query
@@ -268,10 +362,15 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
     /// <summary>Gets how many hits are checked (they can all be marked).</summary>
     public int CheckedCount => _hits.Count(static hit => hit.IsChecked);
 
-    /// <summary>Gets whether a search can start: the document shows a sharp page, and the text is not empty or only white space.</summary>
+    /// <summary>
+    /// Gets whether a search can start: the document shows a sharp page, and for a word the text is not empty or only white space, for
+    /// patterns at least one kind is checked.
+    /// </summary>
     public bool CanSearch =>
         !_disposed && _tab.IsRedacting && _tab.HasShownSharpPage && _tab.Document is not null
-        && !string.IsNullOrWhiteSpace(_query) && _query.Length <= RedactionLimits.MaxTermLength;
+        && (_mode == RedactionSearchMode.Pattern
+            ? _kinds.Any(static kind => kind.IsChecked)
+            : !string.IsNullOrWhiteSpace(_query) && _query.Length <= RedactionLimits.MaxTermLength);
 
     /// <summary>Gets the counter of the marks of the plan, "4 marks on 2 pages".</summary>
     public string MarksSummary => _tab.RedactionCounterText;
@@ -428,10 +527,20 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         CancelRun();
         ClearHits();
         ResetNotes();
+        _hitMode = _mode;
         _hitQuery = _query;
         _hitOptions = new SearchOptions(_matchCase, _wholeWord);
-        var run = new FindRun(document, _hitQuery, _hitOptions, _tab.PageTexts);
+        var run = new FindRun(document, _mode, _hitQuery, _hitOptions, [.. _kinds.Where(static kind => kind.IsChecked).Select(static kind => kind.Kind)], _tab.PageTexts);
         _run = run;
+        if (_mode == RedactionSearchMode.Pattern)
+        {
+            // The counters of the kinds that are looked for count up while the hits come in; the others show no number.
+            foreach (var kind in _kinds)
+            {
+                kind.Count = kind.IsChecked ? 0 : null;
+            }
+        }
+
         State = RedactionSearchState.Running;
         UpdateSummary();
         _ = RunAsync(run);
@@ -452,6 +561,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         CancelRun();
         ClearHits();
         ResetNotes();
+        _hitMode = _mode;
         State = RedactionSearchState.Idle;
         Summary = string.Empty;
     }
@@ -472,6 +582,12 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
 
         _hits.ResetTo([]);
         _hitsConsumed = false;
+        _failedCount = 0;
+        foreach (var kind in _kinds)
+        {
+            kind.Count = null;
+        }
+
         OnHitsChanged();
     }
 
@@ -494,7 +610,9 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
                 {
                     var batch = new List<RedactionHit>();
                     var last = Stopwatch.GetTimestamp();
-                    var hits = Searcher(run.Document, run.Query, run.Options, run.Report, run.Texts, run.Token);
+                    var hits = run.Mode == RedactionSearchMode.Pattern
+                        ? PatternSearcher(run.Document, run.Kinds, run.Report, run.Texts, run.Token)
+                        : Searcher(run.Document, run.Query, run.Options, run.Report, run.Texts, run.Token);
                     await foreach (var hit in hits.WithCancellation(run.Token).ConfigureAwait(false))
                     {
                         batch.Add(hit);
@@ -552,11 +670,25 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        var pattern = run.Mode == RedactionSearchMode.Pattern;
+        var rows = pattern ? new List<RedactionHitViewModel>(hits.Count) : null;
         foreach (var hit in hits)
         {
             var row = new RedactionHitViewModel(hit);
             row.CheckedChanged += OnHitCheckedChanged;
-            _hits.Add(row);
+            if (rows is not null)
+            {
+                rows.Add(row);
+            }
+            else
+            {
+                _hits.Add(row);
+            }
+        }
+
+        if (rows is { Count: > 0 })
+        {
+            AddPatternRows(rows);
         }
 
         if (end is null)
@@ -571,6 +703,87 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         }
 
         FinishRun(end);
+    }
+
+    // The hits of a pattern search stand in groups, by the certainty of the scanner: checksum matches, format matches, checksum does not
+    // match. They come in any order and in batches, so each batch is merged into the list (stable, so inside a group the order of the
+    // scan stays) in one reset.
+    private void AddPatternRows(List<RedactionHitViewModel> rows)
+    {
+        foreach (var row in rows)
+        {
+            if (row.Hit.Pattern is { } found && _kinds.FirstOrDefault(kind => kind.Kind == found) is { } kind)
+            {
+                kind.Count = (kind.Count ?? 0) + 1;
+            }
+        }
+
+        _hits.ResetTo([.. _hits.Concat(rows).OrderBy(static row => row.GroupIndex)]);
+        UpdateGroupHeadings();
+    }
+
+    // The first row of each group carries the heading of the group with its number of hits; the others none.
+    private void UpdateGroupHeadings()
+    {
+        if (_hitMode != RedactionSearchMode.Pattern)
+        {
+            return;
+        }
+
+        Span<int> counts = stackalloc int[3];
+        foreach (var hit in _hits)
+        {
+            counts[hit.GroupIndex]++;
+        }
+
+        var previous = -1;
+        foreach (var hit in _hits)
+        {
+            var group = hit.GroupIndex;
+            hit.GroupHeading = group != previous && hit.Hit.Certainty is { } certainty
+                ? $"{RedactionPatternText.NameOf(certainty)} ({counts[group].ToString(CultureInfo.InvariantCulture)})"
+                : null;
+            previous = group;
+        }
+
+        if (_failedCount != counts[FailedGroup])
+        {
+            _failedCount = counts[FailedGroup];
+            OnPropertyChanged(nameof(HasChecksumFailedHits));
+            OnPropertyChanged(nameof(CheckFailedLabel));
+        }
+    }
+
+    private void CheckFailed()
+    {
+        _bulkChecking = true;
+        try
+        {
+            foreach (var hit in _hits)
+            {
+                if (hit.GroupIndex == FailedGroup)
+                {
+                    hit.IsChecked = true;
+                }
+            }
+        }
+        finally
+        {
+            _bulkChecking = false;
+        }
+
+        RaiseMarkStateChanged();
+    }
+
+    // A change of the kinds that are looked for: what was found belongs to the old choice (only in the mode where they count).
+    private void OnKindCheckedChanged(RedactionPatternKindViewModel kind)
+    {
+        if (_mode == RedactionSearchMode.Pattern)
+        {
+            ResetSearch();
+        }
+
+        _searchCommand.RaiseCanExecuteChanged();
     }
 
     private void FinishRun(SearchEnd end)
@@ -625,7 +838,10 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var marks = RedactionSearch.ToMarks(chosen.Select(static hit => hit.Hit), _hitQuery, everywhere, _hitOptions, out _);
+        // The places of a pattern search are exactly what the scanner found: the marks carry their kind and are never "everywhere".
+        var marks = _hitMode == RedactionSearchMode.Pattern
+            ? RedactionSearch.ToMarks(chosen.Select(static hit => hit.Hit), out _)
+            : RedactionSearch.ToMarks(chosen.Select(static hit => hit.Hit), _hitQuery, everywhere, _hitOptions, out _);
         if (marks.Count == 0 || !_tab.AddRedactionMarks(marks))
         {
             // The plan refused (it is full): the hits stay, and the tab's notice says why.
@@ -639,6 +855,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         }
 
         _hits.ResetTo([.. _hits.Where(hit => !used.Contains(hit))]);
+        UpdateGroupHeadings();
         _hitsConsumed = true;
         var note = Strings.RedactMarkedCount(marks.Count);
 
@@ -689,6 +906,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         _markCheckedCommand.RaiseCanExecuteChanged();
         _checkAllCommand.RaiseCanExecuteChanged();
         _uncheckAllCommand.RaiseCanExecuteChanged();
+        _checkFailedCommand.RaiseCanExecuteChanged();
     }
 
     // The list of marks ------------------------------------------------------------------------------------------------------------
@@ -831,16 +1049,22 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         private readonly CancellationTokenSource _cancellation = new();
         private bool _cancelled;
 
-        public FindRun(PdfDocument document, string query, SearchOptions options, PageTextSource? texts)
+        public FindRun(PdfDocument document, RedactionSearchMode mode, string query, SearchOptions options, HashSet<RedactionPatternKind> kinds, PageTextSource? texts)
         {
             Document = document;
+            Mode = mode;
             Query = query;
             Options = options;
+            Kinds = kinds;
             Texts = texts;
             Token = _cancellation.Token;
         }
 
         public PdfDocument Document { get; }
+
+        public RedactionSearchMode Mode { get; }
+
+        public HashSet<RedactionPatternKind> Kinds { get; }
 
         public string Query { get; }
 

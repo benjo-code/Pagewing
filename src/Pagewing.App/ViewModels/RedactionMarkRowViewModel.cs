@@ -42,12 +42,13 @@ public sealed class RedactionMarkRowViewModel : ViewModelBase
     /// <summary>Gets the 1-based page as the page mark shows it.</summary>
     public string PageText => (Page + 1).ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Gets the kind of the mark: "Rectangle", "Selected text" or "Search hit".</summary>
-    public string KindText => IsRaster ? Strings.RedactRasterRowKind(RasterDpi) : Mark?.Kind switch
+    /// <summary>Gets the kind of the mark: "Rectangle", "Selected text", "Search hit", or for a hit of a pattern search "Pattern: IBAN".</summary>
+    public string KindText => IsRaster ? Strings.RedactRasterRowKind(RasterDpi) : Mark switch
     {
-        RedactionKind.Text => Strings.RedactKindText,
-        RedactionKind.Hit => Strings.RedactKindHit,
-        RedactionKind.Area => Strings.RedactKindArea,
+        { Pattern: { } pattern } => Strings.RedactKindPattern(RedactionPatternText.NameOf(pattern)),
+        { Kind: RedactionKind.Text } => Strings.RedactKindText,
+        { Kind: RedactionKind.Hit } => Strings.RedactKindHit,
+        { Kind: RedactionKind.Area } => Strings.RedactKindArea,
         _ => string.Empty,
     };
 

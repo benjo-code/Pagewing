@@ -2301,6 +2301,48 @@
   <data name="RedactRowSelected" xml:space="preserve">
     <value>ausgewählt</value>
   </data>
+  <data name="RedactModeGroupName" xml:space="preserve">
+    <value>Suchen nach</value>
+  </data>
+  <data name="RedactModeWord" xml:space="preserve">
+    <value>Wort</value>
+  </data>
+  <data name="RedactModePattern" xml:space="preserve">
+    <value>Muster</value>
+  </data>
+  <data name="RedactPatternKindsName" xml:space="preserve">
+    <value>Zu suchende Arten von Nummern</value>
+  </data>
+  <data name="RedactPatternEmail" xml:space="preserve">
+    <value>E-Mail</value>
+  </data>
+  <data name="RedactPatternIban" xml:space="preserve">
+    <value>IBAN</value>
+  </data>
+  <data name="RedactPatternPhone" xml:space="preserve">
+    <value>Telefon</value>
+  </data>
+  <data name="RedactPatternCard" xml:space="preserve">
+    <value>Kreditkarte</value>
+  </data>
+  <data name="RedactGroupChecksumOk" xml:space="preserve">
+    <value>Prüfsumme stimmt</value>
+  </data>
+  <data name="RedactGroupShapeOnly" xml:space="preserve">
+    <value>Format passt</value>
+  </data>
+  <data name="RedactGroupChecksumFailed" xml:space="preserve">
+    <value>Prüfsumme stimmt nicht</value>
+  </data>
+  <data name="RedactAddFailedOf" xml:space="preserve">
+    <value>Alle {0} mit nicht stimmender Prüfsumme hinzunehmen</value>
+  </data>
+  <data name="RedactAddFailedHint" xml:space="preserve">
+    <value>Diese haben die Form der Nummer, bestehen aber deren Prüfung nicht. Sie sind nicht angehakt, doch auch eine Nummer mit Tippfehler ist oft noch sensibel.</value>
+  </data>
+  <data name="RedactKindPatternOf" xml:space="preserve">
+    <value>Muster: {0}</value>
+  </data>
   <data name="CommandRedactApply" xml:space="preserve">
     <value>Schwärzen anwenden</value>
   </data>

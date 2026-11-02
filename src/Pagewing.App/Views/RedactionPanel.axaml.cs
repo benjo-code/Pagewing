@@ -117,7 +117,18 @@ public sealed partial class RedactionPanel : UserControl
             return;
         }
 
-        // A keyboard command: the focus ring shows where the keys go (design system 5.3).
+        // A keyboard command: the focus ring shows where the keys go (design system 5.3). In the pattern mode the field is hidden: the
+        // focus goes to the switch of the mode, from where Tab reaches the kinds.
+        if (_panel is { IsPatternMode: true })
+        {
+            if (ModePatternButton.Focus(NavigationMethod.Tab))
+            {
+                tab.ClearRedactionSearchFocusRequest();
+            }
+
+            return;
+        }
+
         if (QueryField.Focus(NavigationMethod.Tab))
         {
             QueryField.SelectAll();

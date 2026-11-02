@@ -105,6 +105,50 @@ public sealed class RedactionStartPathTests : IDisposable
         probe.AssertNothingWasMade(second);
     }
 
+    [AvaloniaFact]
+    public async Task NothingPatternRelatedExistsBeforeThePanelOpens()
+    {
+        var (window, viewModel, _) = Show();
+        var probe = new Probe(viewModel, window);
+        await viewModel.OpenAsync(TestData.Pdf("pages-marked.pdf"));
+        var tab = viewModel.ActiveTab!;
+        await WaitUntilAsync(window, () => tab.HasShownSharpPage);
+        await WaitUntilAsync(window, () => tab.SidePanel == SidePanelKind.Pages && window.GetVisualDescendants().OfType<ThumbnailList>().Any());
+
+        // Without the panel there is no model of the search (so no kinds, no scanner, no groups) and no view of it.
+        probe.AssertNothingWasMade(tab);
+        Assert.False(tab.IsRedactionPanelCreated);
+        Assert.Empty(window.GetVisualDescendants().OfType<RedactionPanel>());
+
+        // The mode and its panel open the word search: the pattern part stays unused until the user switches to it.
+        tab.RedactCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.IsRedacting);
+        Assert.False(tab.IsRedactionPanelCreated);
+        tab.ToggleRedactionPanelCommand.Execute(null);
+        await WaitUntilAsync(window, () => window.GetVisualDescendants().OfType<RedactionPanel>().Any());
+        var search = tab.RedactionPanel;
+        var scanned = 0;
+        search.PatternSearcher = (_, _, _, _, _) =>
+        {
+            scanned++;
+            return AsyncEnumerable.Empty<Pagewing.Core.Redaction.RedactionHit>();
+        };
+        Settle(window);
+        Assert.Equal(RedactionSearchMode.Word, search.Mode);
+        Assert.Equal(RedactionSearchState.Idle, search.State);
+        Assert.Empty(search.Hits);
+        Assert.Equal(0, scanned);
+
+        // Even a word search never runs the scanners; only the switch to "Pattern" and "Find" do.
+        search.Query = "Zoom";
+        Assert.Equal(0, scanned);
+        search.IsPatternMode = true;
+        Assert.Equal(0, scanned);
+        search.SearchCommand.Execute(null);
+        await WaitUntilAsync(window, () => scanned > 0);
+        Assert.Equal(1, scanned);
+    }
+
     private static async Task WaitUntilAsync(Window window, Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + Timeout;

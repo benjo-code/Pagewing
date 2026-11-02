@@ -2301,6 +2301,48 @@
   <data name="RedactRowSelected" xml:space="preserve">
     <value>selected</value>
   </data>
+  <data name="RedactModeGroupName" xml:space="preserve">
+    <value>Search by</value>
+  </data>
+  <data name="RedactModeWord" xml:space="preserve">
+    <value>Word</value>
+  </data>
+  <data name="RedactModePattern" xml:space="preserve">
+    <value>Pattern</value>
+  </data>
+  <data name="RedactPatternKindsName" xml:space="preserve">
+    <value>Kinds of numbers to find</value>
+  </data>
+  <data name="RedactPatternEmail" xml:space="preserve">
+    <value>E-mail</value>
+  </data>
+  <data name="RedactPatternIban" xml:space="preserve">
+    <value>IBAN</value>
+  </data>
+  <data name="RedactPatternPhone" xml:space="preserve">
+    <value>Phone</value>
+  </data>
+  <data name="RedactPatternCard" xml:space="preserve">
+    <value>Credit card</value>
+  </data>
+  <data name="RedactGroupChecksumOk" xml:space="preserve">
+    <value>Checksum matches</value>
+  </data>
+  <data name="RedactGroupShapeOnly" xml:space="preserve">
+    <value>Format matches</value>
+  </data>
+  <data name="RedactGroupChecksumFailed" xml:space="preserve">
+    <value>Checksum does not match</value>
+  </data>
+  <data name="RedactAddFailedOf" xml:space="preserve">
+    <value>Add all {0} with a checksum that does not match</value>
+  </data>
+  <data name="RedactAddFailedHint" xml:space="preserve">
+    <value>These have the shape of the number but fail its check. They are not checked, but a number with a typo is often still sensitive.</value>
+  </data>
+  <data name="RedactKindPatternOf" xml:space="preserve">
+    <value>Pattern: {0}</value>
+  </data>
   <data name="CommandRedactApply" xml:space="preserve">
     <value>Apply redactions</value>
   </data>
