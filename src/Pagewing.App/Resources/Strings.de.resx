@@ -3085,10 +3085,10 @@
     <value>unter einer Fläche liegen zu viele behandelte Bilder</value>
   </data>
   <data name="RedactCheckedAreasTreated" xml:space="preserve">
-    <value>Markierte Bereiche: Kein Zeichen der geschriebenen Datei liegt in einem markierten Bereich, und die Pixel von Bildern darunter haben entweder die Farbe des Bereichs oder genau die aus dem Original berechneten Blockmittelwerte; kein anderes Pixel des Originals ist dort geblieben.</value>
+    <value>Markierte Bereiche: Kein Zeichen der geschriebenen Datei liegt in einem markierten Bereich, und die Pixel von Bildern darunter haben entweder die Farbe des Bereichs oder genau die aus dem Original berechneten Blockmittelwerte (Weichzeichnen: höchstens eine Stufe Abweichung je Farbkanal; immer deckend); kein anderes Pixel des Originals ist dort geblieben.</value>
   </data>
   <data name="RedactNcImageText" xml:space="preserve">
-    <value>Bildflächen: {0} wurden mit den Blockmittelwerten des Originals verglichen, {1} sind voll gefüllt. Ob Text in einem verpixelten oder weichgezeichneten Bild noch lesbar ist, wird nicht geprüft, und Pagewing erkennt keinen Text in Bildern. Für Text im Bild die Volltonfläche wählen.</value>
+    <value>Bildteile: {0} zurückgelesene Bildteile wurden mit den Blockmittelwerten des Originals verglichen, {1} sind voll gefüllt (ein Bild unter mehreren Markierungen zählt je Markierung, in Bilder umgewandelte Seiten zählen mit, und die Analyse zählt Flächen, deshalb können die Zahlen abweichen). Ob Text in einem verpixelten oder weichgezeichneten Bild noch lesbar ist, wird nicht geprüft, und Pagewing erkennt keinen Text in Bildern. Für Text im Bild die Volltonfläche wählen.</value>
   </data>
   <data name="RedactFailureImageTreatment" xml:space="preserve">
     <value>Eine Bildfläche, die verpixelt oder weichgezeichnet sein sollte, ist weder voll gefüllt noch die Blockmittelwerte des Originals{0}; deshalb wurde die Datei nicht geschrieben.</value>

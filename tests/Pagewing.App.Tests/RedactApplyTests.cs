@@ -1486,7 +1486,7 @@ public sealed partial class RedactApplyTests : IDisposable
             var report = RedactionApplyInfo.ForReport(analysis, new RedactionCheck([], ["x"], [new RedactionNotChecked(RedactionNotCheckedKind.ImageTextLegible, "x", 2, 3)]));
             Assert.Contains(Strings.RedactCheckedAreasTreated, report.Sections.Single(static s => s.Heading == Strings.RedactSecChecked).Lines);
             Assert.DoesNotContain(Strings.RedactCheckedAreas, report.Sections.Single(static s => s.Heading == Strings.RedactSecChecked).Lines);
-            Assert.Contains(report.Sections.Single(static s => s.Heading == Strings.RedactSecNotChecked).Lines, static line => line.Contains('2') && line.Contains('3'));
+            Assert.Contains(report.Sections.Single(static s => s.Heading == Strings.RedactSecNotChecked).Lines, line => line.Contains('2') && line.Contains('3') && line.Contains(language == "en" ? "image parts" : "Bildteile", StringComparison.Ordinal));
         }
 
         // A plan that fills image areas solid says nothing of the kind.

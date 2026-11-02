@@ -36,7 +36,7 @@ public static class RedactionVerifier
     public const int MaxPixelAreas = 2_000;
 
     /// <summary>
-    /// How far a channel of a BLURRED image area may be from the value worked out from the block means of the original. The two
+    /// How far a colour channel (blue, green or red; never the alpha byte, which must be 255) of a BLURRED image area may be from the value worked out from the block means of the original. The two
     /// implementations (the one that writes and the one that expects) agree bit for bit on every test vector, so this is slack against a
     /// rounding of the reader, not part of the rule; a pixelated area has to be exact, and so has the fill colour.
     /// </summary>
@@ -562,7 +562,7 @@ public static class RedactionVerifier
                 RedactionNotCheckedKind.ImageTextLegible,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"Image areas: {tally.Treated} image area(s) read back were pixelated or blurred and {tally.Solid} filled solid. Their pixels were compared with the block averages of the original; whether text in a pixelated or blurred image can still be read is not checked, and Pagewing does not recognise text in images. For text in an image choose the solid fill."),
+                    $"Image areas: {tally.Treated} image part(s) read back were pixelated or blurred and {tally.Solid} filled solid (an image under several marks counts once for each, pages turned into images count too, and the analysis counts areas, so the numbers can differ). Their pixels were compared with the block averages of the original; whether text in a pixelated or blurred image can still be read is not checked, and Pagewing does not recognise text in images. For text in an image choose the solid fill."),
                 tally.Treated,
                 tally.Solid);
         }
@@ -646,7 +646,8 @@ public static class RedactionVerifier
                 var different = 0;
                 for (var i = 0; i < length; i++)
                 {
-                    if (Math.Abs(image.Bgra[i] - expected[i]) > tolerance)
+                    // The alpha byte is exact for every treatment (a treated area is opaque); only the colour of a blur has the slack.
+                    if (Math.Abs(image.Bgra[i] - expected[i]) > ((i & 3) == 3 ? 0 : tolerance))
                     {
                         different++;
                     }

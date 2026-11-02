@@ -3085,10 +3085,10 @@
     <value>too many treated images lie under one area</value>
   </data>
   <data name="RedactCheckedAreasTreated" xml:space="preserve">
-    <value>Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are either the colour of the area or exactly the block averages worked out from the original; no other pixel of the original is left there.</value>
+    <value>Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are either the colour of the area or exactly the block averages worked out from the original (blur: within one level per colour channel; always opaque); no other pixel of the original is left there.</value>
   </data>
   <data name="RedactNcImageText" xml:space="preserve">
-    <value>Image areas: {0} were compared with the block averages of the original, {1} are filled solid. Whether text in a pixelated or blurred image can still be read is not checked, and Pagewing does not recognise text in images. For text in an image choose the solid fill.</value>
+    <value>Image parts: {0} image parts read back were compared with the block averages of the original, {1} are filled solid (an image under several marks counts once for each, pages turned into images count too, and the analysis counts areas, so the numbers can differ). Whether text in a pixelated or blurred image can still be read is not checked, and Pagewing does not recognise text in images. For text in an image choose the solid fill.</value>
   </data>
   <data name="RedactFailureImageTreatment" xml:space="preserve">
     <value>An image area that should be pixelated or blurred is neither filled solid nor the block averages of the original{0}, so the file was not written.</value>

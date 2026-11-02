@@ -1359,6 +1359,7 @@ public sealed class RedactionVerifierTests
         var line = Assert.Single(check.Items, static i => i.Kind == RedactionNotCheckedKind.ImageTextLegible);
         Assert.Equal((1, 0), (line.Count, line.Second));
         Assert.Contains("does not recognise text in images", line.Text, StringComparison.Ordinal);
+        Assert.Contains("image part(s)", line.Text, StringComparison.Ordinal);
 
         // Without the expected blocks only the fill colour passes: the same file is a finding, the strict answer.
         var strict = await VerifyAsync(output, expectation with { ImageAreas = null });
@@ -1395,7 +1396,7 @@ public sealed class RedactionVerifierTests
         Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single(check.Findings).Kind);
     }
 
-    private static byte[] PatternPdf(int seed)
+    private static byte[] PatternPixels(int seed)
     {
         var pixels = new byte[48 * 48 * 3];
         for (var y = 0; y < 48; y++)
@@ -1409,11 +1410,20 @@ public sealed class RedactionVerifierTests
             }
         }
 
+        return pixels;
+    }
+
+    // One page, one 48 x 48 image (2 pt per pixel, lower left corner at 50|50), optionally with an /SMask of the given alpha.
+    private static byte[] ImagePdf(byte[] rgb, byte[]? alpha = null)
+    {
         var pdf = new MiniPdf();
-        var image = pdf.AddStream("/Type /XObject /Subtype /Image /Width 48 /Height 48 /BitsPerComponent 8 /ColorSpace /DeviceRGB", pixels);
+        var mask = alpha is null ? 0 : pdf.AddStream("/Type /XObject /Subtype /Image /Width 48 /Height 48 /BitsPerComponent 8 /ColorSpace /DeviceGray", alpha);
+        var image = pdf.AddStream("/Type /XObject /Subtype /Image /Width 48 /Height 48 /BitsPerComponent 8 /ColorSpace /DeviceRGB" + (alpha is null ? string.Empty : $" /SMask {mask} 0 R"), rgb);
         pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /XObject << /Im1 {image} 0 R >> >>", "q 96 0 0 96 50 50 cm /Im1 Do Q\n");
         return pdf.Build();
     }
+
+    private static byte[] PatternPdf(int seed) => ImagePdf(PatternPixels(seed));
 
     [Fact]
     public async Task VerifierFailsWhenTheSameBlocksAreArrangedDifferently()
@@ -1514,5 +1524,131 @@ public sealed class RedactionVerifierTests
 
         Assert.True(check.IsClean);
         Assert.DoesNotContain(check.Items, static i => i.Kind == RedactionNotCheckedKind.ImageTextLegible);
+    }
+
+    // ---- A part is all or nothing, and opaque (fix round 1) ----
+    // The written results are hand-built files: the image of PatternPdf(1) with the box under the area replaced pixel by pixel.
+
+    private const int BoxSide = 24;
+
+    private static readonly (byte, byte, byte, byte) FillPixel = (0, 0, 0, 255);
+
+    private static readonly PageRect PatternArea = new(66, 70, 114, 118);
+
+    private async Task<(RedactionExpectation Expectation, byte[] Rgb, byte[] Treated, RedactionPlan Plan)> TreatedPatternAsync(TempFolder folder, RedactionImageTreatment treatment)
+    {
+        var plan = TreatedPlan(treatment, RedactionImageStrength.Coarse, PatternArea);
+        var input = Path.Combine(folder.Path, $"pattern-in-{++_treatedFiles}.pdf");
+        await File.WriteAllBytesAsync(input, PatternPdf(seed: 1), Ct);
+        var output = Path.Combine(folder.Path, $"pattern-out-{_treatedFiles}.pdf");
+        await using (var document = await engine.OpenAsync(input, cancellationToken: Ct))
+        {
+            await document.RedactPageAsync(0, [PatternArea], plan.Fill, plan.ImageTreatment, plan.ImageStrength, Ct);
+            await using var stream = File.Create(output);
+            await document.SaveRewriteAsync(stream, Ct);
+        }
+
+        await using var original = await engine.OpenAsync(input, cancellationToken: Ct);
+        var expectation = await RedactionExecutor.ExpectationAsync(plan, original, Ct);
+        await using var reopened = await engine.OpenAsync(output, cancellationToken: Ct);
+        var part = Assert.Single(await reopened.GetImageAreaPixelsAsync(0, PatternArea, Ct));
+        Assert.Equal((BoxSide, BoxSide), (part.Width, part.Height));
+        return (expectation, PatternPixels(seed: 1), part.Bgra, plan);
+    }
+
+    private delegate (byte Blue, byte Green, byte Red, byte Alpha) BoxPixel(int x, int y);
+
+    /// <summary>Writes the image of seed 1 with the box (columns 8 to 32, rows 8 to 32) taken from <paramref name="pixelOf"/>, and an /SMask when some alpha is not 255; returns the path.</summary>
+    private async Task<string> DoctoredAsync(TempFolder folder, byte[] rgb, BoxPixel pixelOf)
+    {
+        var image = (byte[])rgb.Clone();
+        var alpha = new byte[48 * 48];
+        Array.Fill(alpha, (byte)255);
+        for (var y = 0; y < BoxSide; y++)
+        {
+            for (var x = 0; x < BoxSide; x++)
+            {
+                var (b, g, r, a) = pixelOf(x, y);
+                var at = (((8 + y) * 48) + 8 + x);
+                image[at * 3] = r;
+                image[(at * 3) + 1] = g;
+                image[(at * 3) + 2] = b;
+                alpha[at] = a;
+            }
+        }
+
+        var path = Path.Combine(folder.Path, $"doctored-{++_treatedFiles}.pdf");
+        await File.WriteAllBytesAsync(path, ImagePdf(image, alpha.Any(static a => a != 255) ? alpha : null), Ct);
+        return path;
+    }
+
+    private static (byte, byte, byte, byte) TreatedAt(byte[] treated, int x, int y)
+    {
+        var at = ((y * BoxSide) + x) * 4;
+        return (treated[at], treated[at + 1], treated[at + 2], treated[at + 3]);
+    }
+
+    private static (byte, byte, byte, byte) OriginalAt(byte[] rgb, int x, int y)
+    {
+        var at = (((8 + y) * 48) + 8 + x) * 3;
+        return (rgb[at + 2], rgb[at + 1], rgb[at], 255);
+    }
+
+    [Theory]
+    [InlineData(RedactionImageTreatment.Pixelate)]
+    [InlineData(RedactionImageTreatment.Blur)]
+    public async Task VerifierFailsAPartThatIsHalfFilledOrHalfOriginal(RedactionImageTreatment treatment)
+    {
+        using var folder = new TempFolder();
+        var (expectation, rgb, treated, _) = await TreatedPatternAsync(folder, treatment);
+
+        // The controls: the hand-built file with the whole treated box passes, and so does the whole fill (the area fell back).
+        Assert.True((await VerifyAsync(await DoctoredAsync(folder, rgb, (x, y) => TreatedAt(treated, x, y)), expectation)).IsClean);
+        Assert.True((await VerifyAsync(await DoctoredAsync(folder, rgb, (_, _) => FillPixel), expectation)).IsClean);
+
+        // Partial treatment: the upper half is the fill, the lower half the block result. Every pixel is the fill or the expected pixel,
+        // and the part still fails: the rule is for the whole part, not for each pixel.
+        var halfFill = await DoctoredAsync(folder, rgb, (x, y) => y < BoxSide / 2 ? FillPixel : TreatedAt(treated, x, y));
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(halfFill, expectation)).Findings).Kind);
+
+        // The upper half still shows the original pixels.
+        var halfOriginal = await DoctoredAsync(folder, rgb, (x, y) => y < BoxSide / 2 ? OriginalAt(rgb, x, y) : TreatedAt(treated, x, y));
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(halfOriginal, expectation)).Findings).Kind);
+
+        // One original pixel among the treated ones, and one filled pixel among them.
+        Assert.NotEqual(OriginalAt(rgb, 3, 5), TreatedAt(treated, 3, 5));
+        var onePixel = await DoctoredAsync(folder, rgb, (x, y) => x == 3 && y == 5 ? OriginalAt(rgb, x, y) : TreatedAt(treated, x, y));
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(onePixel, expectation)).Findings).Kind);
+        var oneFilled = await DoctoredAsync(folder, rgb, (x, y) => x == 20 && y == 20 ? FillPixel : TreatedAt(treated, x, y));
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(oneFilled, expectation)).Findings).Kind);
+    }
+
+    [Theory]
+    [InlineData(RedactionImageTreatment.Pixelate, 128)]
+    [InlineData(RedactionImageTreatment.Pixelate, 254)]
+    [InlineData(RedactionImageTreatment.Blur, 128)]
+    [InlineData(RedactionImageTreatment.Blur, 254)]
+    public async Task VerifierFailsATreatedAreaThatIsNotOpaque(RedactionImageTreatment treatment, int alpha)
+    {
+        using var folder = new TempFolder();
+        var (expectation, rgb, treated, _) = await TreatedPatternAsync(folder, treatment);
+
+        // Right colours, wrong alpha: the whole box, and a single pixel. The file reads back with the colours of the block result and
+        // that alpha, so only the alpha byte can fail it, for the blur too (its slack is for the colour channels).
+        var translucent = await DoctoredAsync(folder, rgb, (x, y) => (TreatedAt(treated, x, y).Item1, TreatedAt(treated, x, y).Item2, TreatedAt(treated, x, y).Item3, (byte)alpha));
+        await using (var reopened = await engine.OpenAsync(translucent, cancellationToken: Ct))
+        {
+            var part = Assert.Single(await reopened.GetImageAreaPixelsAsync(0, PatternArea, Ct));
+            for (var i = 0; i < part.Bgra.Length; i += 4)
+            {
+                Assert.Equal(treated[i..(i + 3)], part.Bgra[i..(i + 3)]);
+                Assert.Equal(alpha, part.Bgra[i + 3]);
+            }
+        }
+
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(translucent, expectation)).Findings).Kind);
+
+        var onePixel = await DoctoredAsync(folder, rgb, (x, y) => x == 10 && y == 10 ? (TreatedAt(treated, x, y).Item1, TreatedAt(treated, x, y).Item2, TreatedAt(treated, x, y).Item3, (byte)alpha) : TreatedAt(treated, x, y));
+        Assert.Equal(RedactionFindingKind.ImageTreatmentWrong, Assert.Single((await VerifyAsync(onePixel, expectation)).Findings).Kind);
     }
 }
