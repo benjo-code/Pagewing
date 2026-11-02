@@ -2085,6 +2085,33 @@
   <data name="RedactFillWhite" xml:space="preserve">
     <value>White</value>
   </data>
+  <data name="RedactFillCustom" xml:space="preserve">
+    <value>Colour …</value>
+  </data>
+  <data name="RedactFillCustomTip" xml:space="preserve">
+    <value>Choose another colour for the areas</value>
+  </data>
+  <data name="RedactFillHexLabel" xml:space="preserve">
+    <value>Colour as #RRGGBB</value>
+  </data>
+  <data name="RedactFillHexError" xml:space="preserve">
+    <value>Enter a colour as #RRGGBB, for example #336699.</value>
+  </data>
+  <data name="RedactFillPreset0" xml:space="preserve">
+    <value>Graphite</value>
+  </data>
+  <data name="RedactFillPreset1" xml:space="preserve">
+    <value>Grey</value>
+  </data>
+  <data name="RedactFillPreset2" xml:space="preserve">
+    <value>Light grey</value>
+  </data>
+  <data name="RedactFillPreset3" xml:space="preserve">
+    <value>Navy</value>
+  </data>
+  <data name="RedactFillPreset4" xml:space="preserve">
+    <value>Dark red</value>
+  </data>
   <data name="RedactDiscardButton" xml:space="preserve">
     <value>Discard</value>
   </data>

@@ -70,6 +70,12 @@ public sealed partial class TabViewModel
     /// <summary>Gets whether the areas are filled white.</summary>
     public bool IsRedactionFillWhite => RedactionFill == RedactionFill.White;
 
+    /// <summary>Gets whether the areas are filled with a colour of the colour field, neither black nor white.</summary>
+    public bool IsRedactionFillCustom => !IsRedactionFillBlack && !IsRedactionFillWhite;
+
+    /// <summary>Gets the fill written as <c>#RRGGBB</c> (the text of the colour field).</summary>
+    public string RedactionFillHex => RedactionFill.ToHex();
+
     /// <summary>Gets the counter of the marks, "4 marks on 2 pages" (the text of the toolbar and its name for screen readers).</summary>
     public string RedactionCounterText
     {

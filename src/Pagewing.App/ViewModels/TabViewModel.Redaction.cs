@@ -532,6 +532,8 @@ public sealed partial class TabViewModel
         OnPropertyChanged(nameof(RedactionFill));
         OnPropertyChanged(nameof(IsRedactionFillBlack));
         OnPropertyChanged(nameof(IsRedactionFillWhite));
+        OnPropertyChanged(nameof(IsRedactionFillCustom));
+        OnPropertyChanged(nameof(RedactionFillHex));
         OnPropertyChanged(nameof(RedactionCounterText));
         OnPropertyChanged(nameof(RedactionToolIsArea));
         OnPropertyChanged(nameof(RedactionToolIsText));

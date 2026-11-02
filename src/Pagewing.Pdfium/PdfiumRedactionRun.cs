@@ -7,10 +7,13 @@ namespace Pagewing.Pdfium;
 internal readonly record struct PdfiumRedactionArea(double Left, double Top, double Right, double Bottom);
 
 /// <summary>The colour of the opaque area that replaces what was removed.</summary>
-internal enum PdfiumRedactionFill
+internal readonly record struct PdfiumRedactionFill(byte Red, byte Green, byte Blue)
 {
-    Black,
-    White,
+    /// <summary>Gets black.</summary>
+    public static PdfiumRedactionFill Black { get; } = new(0, 0, 0);
+
+    /// <summary>Gets white.</summary>
+    public static PdfiumRedactionFill White { get; } = new(255, 255, 255);
 }
 
 /// <summary>
@@ -709,10 +712,9 @@ internal sealed partial class PdfiumRedactionRun : SteppedWork<PdfiumRedactionIm
                 changed = true;
             }
 
-            var gray = fill == PdfiumRedactionFill.White ? (byte)255 : (byte)0;
             foreach (var area in userAreas)
             {
-                var rectangle = PdfiumRedactionNative.CreateFillRectangle(area, gray);
+                var rectangle = PdfiumRedactionNative.CreateFillRectangle(area, fill.Red, fill.Green, fill.Blue);
                 if (rectangle == 0)
                 {
                     throw new InvalidOperationException("PDFium could not create the area.");

@@ -772,6 +772,20 @@ public static class Strings
     public static string RedactFillTip => Get("RedactFillTip");
     public static string RedactFillBlack => Get("RedactFillBlack");
     public static string RedactFillWhite => Get("RedactFillWhite");
+    public static string RedactFillCustom => Get("RedactFillCustom");
+    public static string RedactFillCustomTip => Get("RedactFillCustomTip");
+    public static string RedactFillHexLabel => Get("RedactFillHexLabel");
+    public static string RedactFillHexError => Get("RedactFillHexError");
+    public static string RedactFillPreset0 => Get("RedactFillPreset0");
+    public static string RedactFillPreset1 => Get("RedactFillPreset1");
+    public static string RedactFillPreset2 => Get("RedactFillPreset2");
+    public static string RedactFillPreset3 => Get("RedactFillPreset3");
+    public static string RedactFillPreset4 => Get("RedactFillPreset4");
+
+    /// <summary>Gets the name of a colour of the colour field for screen readers and tooltips, for example "Graphite #333333".</summary>
+    /// <param name="index">The index in <c>RedactionFill.Presets</c>.</param>
+    /// <param name="hex">The colour as <c>#RRGGBB</c>.</param>
+    public static string RedactFillPresetName(int index, string hex) => $"{Get("RedactFillPreset" + index.ToString(CultureInfo.InvariantCulture))} {hex}";
     public static string RedactDiscardButton => Get("RedactDiscardButton");
     public static string RedactDone => Get("RedactDone");
     public static string RedactDoneTooltip => Get("RedactDoneTooltip");

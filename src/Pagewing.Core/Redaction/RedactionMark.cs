@@ -31,6 +31,19 @@ public readonly record struct RedactionFill(byte Red, byte Green, byte Blue)
     /// <summary>Gets opaque white.</summary>
     public static RedactionFill White { get; } = new(255, 255, 255);
 
+    /// <summary>
+    /// Gets the five colours the colour field offers besides black and white (graphite, grey, light grey, navy, dark red): neutral
+    /// colours that read as "taken out" on paper, in the order of the field.
+    /// </summary>
+    public static IReadOnlyList<RedactionFill> Presets { get; } =
+    [
+        new(0x33, 0x33, 0x33),
+        new(0x80, 0x80, 0x80),
+        new(0xD9, 0xD9, 0xD9),
+        new(0x1F, 0x3A, 0x5F),
+        new(0x7A, 0x1F, 0x1F),
+    ];
+
     /// <summary>Reads a colour written as <c>#RRGGBB</c> (hexadecimal digits in either case); nothing else is accepted.</summary>
     /// <param name="text">The text.</param>
     /// <param name="fill">The colour; black if the text is not one.</param>

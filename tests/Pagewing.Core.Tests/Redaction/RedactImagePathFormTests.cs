@@ -224,6 +224,79 @@ public sealed class RedactImagePathFormTests
     }
 
     [Fact]
+    public async Task ImagePixelsTakeTheChosenColor()
+    {
+        // #336699 is blue 0x99, green 0x66, red 0x33 in the order of the pixels. Every kind of image (RGB, indexed, CMYK, stencil) is
+        // written back as RGB with alpha, so each takes the colour, and the alpha is 255.
+        var chosen = new RedactionFill(0x33, 0x66, 0x99);
+        using var folder = new TempFolder();
+        var path = Copy(folder, "redact-image.pdf");
+        await using (var document = await engine.OpenAsync(path, cancellationToken: Ct))
+        {
+            var impact = await document.RedactPageAsync(0, [FromUser(42, 40, 74, 72, 170)], chosen, Ct);
+            Assert.Equal(1, impact.ImagesOverwritten);
+            var after = await ReadImagesAsync(await SaveAsync(document, folder, "out.pdf"), 0);
+            var at = ((40 * 64) + 20) * 4;
+            Assert.Equal([0x99, 0x66, 0x33, 255], after[0].Bgra[at..(at + 4)]);
+        }
+
+        var kinds = Copy(folder, "redact-image-kinds.pdf");
+        var areas = KindLefts.Select(x => FromUser(x + 20, 30, x + 60, 60, 130)).ToList();
+        await using var other = await engine.OpenAsync(kinds, cancellationToken: Ct);
+        Assert.Equal(3, (await other.RedactPageAsync(0, areas, chosen, Ct)).ImagesOverwritten);
+        var written = await ReadImagesAsync(await SaveAsync(other, folder, "kinds-out.pdf"), 0);
+        foreach (var n in OverwrittenKinds)
+        {
+            var (w, h, _) = written[n];
+            var middle = (((h * 60 / 100) * w) + (w * 40 / 100)) * 4;
+            Assert.Equal([0x99, 0x66, 0x33, 255], written[n].Bgra[middle..(middle + 4)]);
+        }
+    }
+
+    [Fact]
+    public async Task FillRectangleHasTheChosenColor()
+    {
+        // The area is a rectangle of the page content: rendered, every pixel well inside it has exactly the colour (no tolerance).
+        var chosen = new RedactionFill(0x33, 0x66, 0x99);
+        using var folder = new TempFolder();
+        var area = new PageRect(200, 150, 290, 190);
+        string output;
+        var source = Copy(folder, "text-basic.pdf");
+        await using (var document = await engine.OpenAsync(source, cancellationToken: Ct))
+        {
+            var impact = await document.RedactPageAsync(0, [area], chosen, Ct);
+            Assert.Null(impact.Refusal);
+            output = await SaveAsync(document, folder, "out.pdf");
+        }
+
+        await using var reopened = await engine.OpenAsync(output, cancellationToken: Ct);
+        const double Scale = 2;
+        var image = await reopened.RenderPageAsync(0, Scale, new RenderOptions { Priority = PdfPriority.Background }, Ct);
+        var inside = 0;
+        for (var y = (int)((area.Top + 2) * Scale); y < (int)((area.Bottom - 2) * Scale); y++)
+        {
+            for (var x = (int)((area.Left + 2) * Scale); x < (int)((area.Right - 2) * Scale); x++)
+            {
+                var at = (y * image.Stride) + (x * 4);
+                var pixel = image.Pixels.Span;
+                Assert.True(pixel[at] == 0x99 && pixel[at + 1] == 0x66 && pixel[at + 2] == 0x33, $"Pixel {x},{y} is {pixel[at]:X2}{pixel[at + 1]:X2}{pixel[at + 2]:X2}.");
+                inside++;
+            }
+        }
+
+        Assert.True(inside > 1000);
+
+        // The default stays black.
+        await using var blackDocument = await engine.OpenAsync(source, cancellationToken: Ct);
+        await blackDocument.RedactPageAsync(0, [area], RedactionFill.Black, Ct);
+        var blackOut = await SaveAsync(blackDocument, folder, "black.pdf");
+        await using var blackReopened = await engine.OpenAsync(blackOut, cancellationToken: Ct);
+        var black = await blackReopened.RenderPageAsync(0, Scale, new RenderOptions { Priority = PdfPriority.Background }, Ct);
+        var center = (((int)(170 * Scale)) * black.Stride) + (((int)(245 * Scale)) * 4);
+        Assert.Equal([0, 0, 0], black.Pixels.Span[center..(center + 3)].ToArray());
+    }
+
+    [Fact]
     public async Task ImagePixelsOfAllKindsAreOverwrittenAndEveryOtherPixelStays()
     {
         // Indexed, CMYK, the inline image and the stencil of redact-image-kinds.pdf (each 100 x 100 pt at y 16, x 10 | 120 | 230 | 340):

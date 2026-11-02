@@ -54,7 +54,8 @@ internal sealed record CliOptions(
     bool RasterizeUnredactable = false,
     int RasterDpi = RedactionLimits.DefaultRasterDpi,
     IReadOnlyList<RedactionPatternKind>? Patterns = null,
-    bool IncludeUnchecked = false)
+    bool IncludeUnchecked = false,
+    RedactionFill Fill = default)
 {
     public const string DefaultDpi = "144";
 
@@ -90,7 +91,7 @@ internal sealed record CliOptions(
             "rotate" => ["--pages", "--angle", "--output", "--force", "--password"],
             "split" => ["--output", "--every", "--ranges", "--bookmarks", "--force", "--password"],
             "export" => ["--pages", "--dpi", "--output", "--no-annotations", "--force", "--password"],
-            "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--output", "--force", "--password"],
+            "redact" => ["--text", "--pattern", "--include-unchecked", "--rect", "--pages", "--rasterize-pages", "--rasterize-unredactable", "--dpi", "--match-case", "--dry-run", "--allow-unsearched", "--fill", "--output", "--force", "--password"],
             _ => throw new UsageException($"Unknown command '{command}'."),
         };
 
@@ -105,6 +106,7 @@ internal sealed record CliOptions(
         var texts = new List<string>();
         var patterns = new List<RedactionPatternKind>();
         var includeUnchecked = false;
+        var fill = RedactionFill.Black;
         var rects = new List<RedactRect>();
         var dryRun = false;
         var allowUnsearched = false;
@@ -250,6 +252,9 @@ internal sealed record CliOptions(
                     case "--pattern":
                         AddPattern(patterns, value);
                         break;
+                    case "--fill":
+                        fill = ParseFill(value);
+                        break;
                     default:
                         password = value;
                         break;
@@ -372,7 +377,7 @@ internal sealed record CliOptions(
                 throw new UsageException("The 'redact' command needs --output <out.pdf> (only --dry-run works without it).");
             }
 
-            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked);
+            return new CliOptions(command, file, pages, dpi, ".", annotations, password, MatchCase: matchCase, OutputFile: output, Force: force, Texts: texts, Rects: rects, DryRun: dryRun, AllowUnsearched: allowUnsearched, RasterizePages: rasterizePages, RasterizeUnredactable: rasterizeUnredactable, RasterDpi: rasterDpi, Patterns: patterns, IncludeUnchecked: includeUnchecked, Fill: fill);
         }
 
         if (isRotate)
@@ -401,6 +406,28 @@ internal sealed record CliOptions(
         }
 
         return new CliOptions(command, file, pages, dpi, output ?? ".", annotations, password, query, matchCase, wholeWord, Force: force);
+    }
+
+    /// <summary>Reads the value of <c>--fill</c>: <c>black</c>, <c>white</c> or a colour written as <c>#RRGGBB</c>.</summary>
+    private static RedactionFill ParseFill(string value)
+    {
+        if (string.Equals(value, "black", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionFill.Black;
+        }
+
+        if (string.Equals(value, "white", StringComparison.OrdinalIgnoreCase))
+        {
+            return RedactionFill.White;
+        }
+
+        if (RedactionFill.TryParse(value, out var fill))
+        {
+            return fill;
+        }
+
+        var shown = value.Length > 40 ? value[..40] + "..." : value;
+        throw new UsageException($"Invalid value for --fill: '{shown}' (use black, white or a colour written as #RRGGBB).");
     }
 
     private static void AddTerm(List<string> texts, string value)

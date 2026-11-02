@@ -228,7 +228,7 @@ internal static unsafe class PdfiumRedactionNative
     }
 
     /// <summary>A new opaque filled rectangle (user space) without a stroke.</summary>
-    public static nint CreateFillRectangle(UserRect rect, byte gray)
+    public static nint CreateFillRectangle(UserRect rect, byte red, byte green, byte blue)
     {
         var path = Fpdf.FPDFPageObj_CreateNewRect((float)rect.Left, (float)rect.Bottom, (float)(rect.Right - rect.Left), (float)(rect.Top - rect.Bottom));
         if (path == 0)
@@ -236,7 +236,7 @@ internal static unsafe class PdfiumRedactionNative
             return 0;
         }
 
-        if (Fpdf.FPDFPageObj_SetFillColor(path, gray, gray, gray, 255) == 0 || Fpdf.FPDFPath_SetDrawMode(path, FpdfConstants.FillModeWinding, 0) == 0)
+        if (Fpdf.FPDFPageObj_SetFillColor(path, red, green, blue, 255) == 0 || Fpdf.FPDFPath_SetDrawMode(path, FpdfConstants.FillModeWinding, 0) == 0)
         {
             Fpdf.FPDFPageObj_Destroy(path);
             return 0;

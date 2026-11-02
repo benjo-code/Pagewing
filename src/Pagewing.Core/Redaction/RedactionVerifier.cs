@@ -476,7 +476,6 @@ public static class RedactionVerifier
 
     private static async Task CheckPixelsAsync(PdfDocument reopened, RedactionPlan plan, RedactionFill fill, List<RedactionFinding> findings, NotCheckedLog notChecked, CancellationToken cancellationToken)
     {
-        var expected = fill == RedactionFill.White ? (byte)255 : (byte)0;
         var seen = new HashSet<(int, PageRect)>();
         var checkedAreas = 0;
         var skipped = 0;
@@ -507,7 +506,7 @@ public static class RedactionVerifier
                     var images = await reopened.GetImageAreaPixelsAsync(mark.Page, area, cancellationToken).ConfigureAwait(false);
                     foreach (var image in images)
                     {
-                        CheckImage(mark.Page, image, expected, findings);
+                        CheckImage(mark.Page, image, fill, findings);
                     }
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or RedactionException)
@@ -528,7 +527,7 @@ public static class RedactionVerifier
         notChecked.Add(RedactionNotCheckedKind.PixelsOnlyImages, "Pixels: only images that touch a marked area are read back; a color or shading that is not an image is covered by the render check of the apply step, not here.");
     }
 
-    private static void CheckImage(int page, ImageAreaPixels image, byte expected, List<RedactionFinding> findings)
+    private static void CheckImage(int page, ImageAreaPixels image, RedactionFill fill, List<RedactionFinding> findings)
     {
         if (image.Width <= 0 || image.Height <= 0 || image.Bgra.Length < image.Width * image.Height * 4)
         {
@@ -544,7 +543,8 @@ public static class RedactionVerifier
         var length = image.Width * image.Height * 4;
         for (var i = 0; i < length; i += 4)
         {
-            if (image.Bgra[i] != expected || image.Bgra[i + 1] != expected || image.Bgra[i + 2] != expected || image.Bgra[i + 3] != 255)
+            // Exact: blue, green, red and an opaque alpha. Another colour, even a near one, fails.
+            if (image.Bgra[i] != fill.Blue || image.Bgra[i + 1] != fill.Green || image.Bgra[i + 2] != fill.Red || image.Bgra[i + 3] != 255)
             {
                 wrong++;
                 if (first < 0)

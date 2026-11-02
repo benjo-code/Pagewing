@@ -535,6 +535,50 @@ public sealed class RedactionVerifierTests
         Assert.Contains(white.Findings, static f => f.Kind == RedactionFindingKind.ImagePixelNotOverwritten);
     }
 
+    private async Task<string> RedactedImageAsync(TempFolder folder, PageRect area, RedactionFill fill)
+    {
+        var output = Path.Combine(folder.Path, $"out-{fill.ToHex().TrimStart('#')}.pdf");
+        await using var document = await engine.OpenAsync(Copy(folder, "redact-image.pdf"), cancellationToken: Ct);
+        await document.RedactPageAsync(0, [area], fill, Ct);
+        await using var stream = File.Create(output);
+        await document.SaveRewriteAsync(stream, Ct);
+        return output;
+    }
+
+    [Fact]
+    public async Task VerifierExpectsTheChosenColor()
+    {
+        using var folder = new TempFolder();
+        var area = new PageRect(30, 40, 90, 100);
+        var chosen = new RedactionFill(0x33, 0x66, 0x99);
+        var output = await RedactedImageAsync(folder, area, chosen);
+
+        Assert.True((await VerifyAsync(output, Expect(PlanOf(0, area, fill: chosen)))).IsClean);
+
+        // The default plan colour, white and a colour one step away are all not what was written.
+        foreach (var other in new[] { RedactionFill.Black, RedactionFill.White, new RedactionFill(0x33, 0x66, 0x98) })
+        {
+            var check = await VerifyAsync(output, Expect(PlanOf(0, area, fill: other)));
+            Assert.Contains(check.Findings, static f => f.Kind == RedactionFindingKind.ImagePixelNotOverwritten);
+        }
+    }
+
+    [Fact]
+    public async Task VerifierFailsOnAnotherColor()
+    {
+        // The mutation: the engine wrote black, but the plan asked for #336699. A check that only looked for "dark" or "opaque" would pass.
+        using var folder = new TempFolder();
+        var area = new PageRect(30, 40, 90, 100);
+        var output = await RedactedImageAsync(folder, area, RedactionFill.Black);
+
+        var check = await VerifyAsync(output, Expect(PlanOf(0, area, fill: new RedactionFill(0x33, 0x66, 0x99))));
+
+        Assert.False(check.IsClean);
+        var finding = Assert.Single(check.Findings);
+        Assert.Equal(RedactionFindingKind.ImagePixelNotOverwritten, finding.Kind);
+        Assert.Equal(0, finding.Page);
+    }
+
     [Fact]
     public async Task RealRedactionOfTextOnARotatedPagePassesTheChecks()
     {

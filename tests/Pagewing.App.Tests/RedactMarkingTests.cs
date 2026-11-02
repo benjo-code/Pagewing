@@ -775,6 +775,86 @@ public sealed class RedactMarkingTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ToolbarOffersBlackWhiteAndFreeColorWithHexField()
+    {
+        var (window, viewModel, view) = Show();
+        var tab = await OpenCopyAsync(window, viewModel, view, "text-rich.pdf");
+        await EnterAsync(window, tab);
+        var toolbar = FindOrNull<RedactionToolbar>(window, "RedactionToolbar")!;
+        tab.AddAreaMark(0, new PageRect(10, 10, 60, 40));
+        Settle(window);
+        var black = Button<ToggleButton>(toolbar, "FillBlackButton");
+        var white = Button<ToggleButton>(toolbar, "FillWhiteButton");
+        var custom = Button<ToggleButton>(toolbar, "FillCustomButton");
+        var box = toolbar.FillHexBox;
+
+        // Black is the start: the free colour is not chosen, its swatch is hidden, and the field shows the colour as text.
+        Assert.True(black.IsChecked);
+        Assert.False(custom.IsChecked);
+        Assert.False(toolbar.FillSwatch.IsVisible);
+        Assert.IsType<Flyout>(custom.Flyout);
+        Assert.Equal("#000000", box.Text);
+        Assert.Equal(Strings.RedactFillCustom, AutomationProperties.GetName(custom));
+        Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(box)));
+
+        // A colour typed as #RRGGBB (either case) becomes the fill of the plan; the state is a frame and a swatch, not colour alone.
+        box.Text = "#336699";
+        Assert.True(toolbar.CommitFillText(showError: true));
+        Assert.Equal(new RedactionFill(0x33, 0x66, 0x99), tab.RedactionPlan!.Fill);
+        Assert.True(custom.IsChecked);
+        Assert.Contains("active", custom.Classes);
+        Assert.False(black.IsChecked);
+        Assert.False(white.IsChecked);
+        Assert.True(toolbar.FillSwatch.IsVisible);
+        Assert.False(toolbar.FillHexError.IsVisible);
+        box.Text = "#aabbcc";
+        Assert.True(toolbar.CommitFillText(showError: true));
+        Assert.Equal(new RedactionFill(0xAA, 0xBB, 0xCC), tab.RedactionFill);
+        Assert.Equal("#AABBCC", box.Text);
+
+        // Text that is no colour changes nothing: Enter tells why, leaving the field puts the colour of the plan back.
+        foreach (var bad in new[] { "#zz", "#FFF", "336699", "#1234567", string.Empty })
+        {
+            box.Text = bad;
+            Assert.False(toolbar.CommitFillText(showError: true), bad);
+            Assert.True(toolbar.FillHexError.IsVisible, bad);
+            Assert.Equal(new RedactionFill(0xAA, 0xBB, 0xCC), tab.RedactionFill);
+        }
+
+        box.Text = "#zz";
+        Assert.False(toolbar.CommitFillText(showError: false));
+        Assert.False(toolbar.FillHexError.IsVisible);
+        Assert.Equal("#AABBCC", box.Text);
+
+        // Five presets, each with a name (words and colour) and a mark when chosen.
+        Assert.Equal(5, toolbar.FillPresets.Children.Count);
+        for (var i = 0; i < 5; i++)
+        {
+            var preset = Assert.IsType<Button>(toolbar.FillPresets.Children[i]);
+            Assert.Equal($"FillPreset{i}", preset.Name);
+            Assert.Contains(RedactionFill.Presets[i].ToHex(), AutomationProperties.GetName(preset), StringComparison.Ordinal);
+            preset.Command!.Execute(preset.CommandParameter);
+            Assert.Equal(RedactionFill.Presets[i], tab.RedactionFill);
+            Assert.True(custom.IsChecked);
+            Assert.Equal(RedactionFill.Presets[i].ToHex(), box.Text);
+            Assert.Equal([preset], toolbar.FillPresets.Children.OfType<Button>().Where(b => b.Classes.Contains("active")).ToArray());
+        }
+
+        // Black and white stay one click away and un-choose the free colour.
+        white.Command!.Execute(white.CommandParameter);
+        Assert.True(white.IsChecked);
+        Assert.False(custom.IsChecked);
+        Assert.Equal("#FFFFFF", box.Text);
+        Assert.DoesNotContain(toolbar.FillPresets.Children.OfType<Button>(), b => b.Classes.Contains("active"));
+
+        // The names are in both languages.
+        Strings.Culture = new CultureInfo("de");
+        Assert.Equal("Farbe …", Strings.RedactFillCustom);
+        Assert.Equal("Graphit #333333", Strings.RedactFillPresetName(0, "#333333"));
+        Strings.Culture = new CultureInfo("en");
+    }
+
+    [AvaloniaFact]
     public async Task TheToolbarStaysUsableInANarrowWindow()
     {
         var (window, viewModel, view) = Show();
@@ -790,7 +870,7 @@ public sealed class RedactMarkingTests : IDisposable
         }
 
         // Everything that cannot lose its place stays in the row: the buttons, whatever else went.
-        foreach (var name in new[] { "AreaToolButton", "TextToolButton", "MarkSelectionButton", "FillBlackButton", "FillWhiteButton", "UndoButton", "RedoButton", "DeleteMarksButton", "DiscardButton", "DoneButton" })
+        foreach (var name in new[] { "AreaToolButton", "TextToolButton", "MarkSelectionButton", "FillBlackButton", "FillWhiteButton", "FillCustomButton", "UndoButton", "RedoButton", "DeleteMarksButton", "DiscardButton", "DoneButton" })
         {
             var button = Button<Control>(toolbar, name);
             Assert.True(button.IsVisible, name);
@@ -800,6 +880,17 @@ public sealed class RedactMarkingTests : IDisposable
         var content = toolbar.GetVisualDescendants().OfType<Grid>().First(grid => grid.Name == "ToolbarContent");
         var needed = Needs(content);
         Assert.True(needed <= content.Bounds.Width + 0.5, $"the toolbar needs {needed:F0} DIPs of {content.Bounds.Width:F0}");
+
+        // A free colour adds a swatch to its button; it goes with the label, and the row still fits.
+        tab.RedactionFill = new RedactionFill(0x33, 0x66, 0x99);
+        for (var i = 0; i < 4; i++)
+        {
+            Settle(window);
+        }
+
+        Assert.True(Button<ToggleButton>(toolbar, "FillCustomButton").IsChecked);
+        needed = Needs(content);
+        Assert.True(needed <= content.Bounds.Width + 0.5, $"with a free colour the toolbar needs {needed:F0} DIPs of {content.Bounds.Width:F0}");
     }
 
     [AvaloniaFact]
@@ -863,7 +954,8 @@ public sealed class RedactMarkingTests : IDisposable
         string[] keys =
         [
             "CommandRedactMarkSelection", "RedactToolbarName", "RedactToolArea", "RedactToolAreaTip", "RedactToolText", "RedactToolTextTip",
-            "RedactMarkSelection", "RedactFill", "RedactFillTip", "RedactFillBlack", "RedactFillWhite", "RedactDiscardButton", "RedactDone",
+            "RedactMarkSelection", "RedactFill", "RedactFillTip", "RedactFillBlack", "RedactFillWhite", "RedactFillCustom", "RedactFillCustomTip", "RedactFillHexLabel", "RedactFillHexError",
+            "RedactFillPreset0", "RedactFillPreset1", "RedactFillPreset2", "RedactFillPreset3", "RedactFillPreset4", "RedactDiscardButton", "RedactDone",
             "RedactDoneTooltip", "RedactCountNone", "RedactCountOneMark", "RedactCountOnePage", "RedactCountPages", "RedactPlanHint",
             "RedactMarkKindName", "RedactMarkNameOf", "RedactSelectionNotMarkable", "RedactCheckFailed",
         ];

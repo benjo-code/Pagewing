@@ -234,6 +234,35 @@ public sealed class RedactRasterApplyTests : IDisposable
     }
 
     [Fact]
+    public async Task RasterAreasTakeTheChosenColor()
+    {
+        // The whole way: the plan's colour is painted into the bitmap, and the check of the written file expects exactly that colour.
+        var path = TwoPageFile();
+        var area = new PageRect(15, 35, 115.3, 60.2);
+        var chosen = new RedactionFill(0x33, 0x66, 0x99);
+        await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
+        var plan = WithArea(RedactionPlan.Empty, 0, area).WithRasterPage(0, on: true).WithFill(chosen);
+
+        var result = await RedactionApplier.WriteAsync(engine, shown, path, null, FileStamp.Of(path), new RedactionApplyRequest(plan, Target()), null, Ct);
+        await using var reopened = result.Saved.Reopened;
+
+        Assert.True(result.Check.IsClean, RedactionRefusalText.Of(result.Check));
+        var whole = Assert.Single(await reopened.GetImageAreaPixelsAsync(0, new PageRect(0, 0, 300, 200), Ct));
+        var inside = 0;
+        for (var y = (int)(whole.Height * area.Top / 200) + 1; y < (int)(whole.Height * area.Bottom / 200) - 1; y++)
+        {
+            for (var x = (int)(whole.Width * area.Left / 300) + 1; x < (int)(whole.Width * area.Right / 300) - 1; x++)
+            {
+                var at = ((y * whole.Width) + x) * 4;
+                Assert.True(whole.Bgra[at] == 0x99 && whole.Bgra[at + 1] == 0x66 && whole.Bgra[at + 2] == 0x33 && whole.Bgra[at + 3] == 255, $"Pixel {x},{y}.");
+                inside++;
+            }
+        }
+
+        Assert.True(inside > 500);
+    }
+
+    [Fact]
     public async Task RotatedAndCroppedPageStaysUpright()
     {
         // MediaBox 400 x 300, CropBox [20 10 380 290], /Rotate 90: shown as 280 x 360 with a red marker at the top left.

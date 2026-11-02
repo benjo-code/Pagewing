@@ -25,7 +25,7 @@ public static class CliApp
           pagewing merge  --output <out.pdf> <file> [--pages <range>] [--password <pw>] <file> [--pages <range>] [--password <pw>] ... [--force]
           pagewing split  <file> --output <dir> (--every <n> | --ranges <ranges> | --bookmarks) [--force] [--password <pw>]
           pagewing export <file> [--pages <range>] [--dpi <n>] [--output <dir>] [--no-annotations] [--force] [--password <pw>]
-          pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]
+          pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--force] [--password <pw>]
           pagewing --version
           pagewing --help
 
@@ -125,6 +125,8 @@ public static class CliApp
                              read, an annotation or form field left out by a limit or damage). Without it the command
                              stops (exit 1, nothing written, also with --dry-run) and names the pages, because the
                              text may still be there. With it the report lists these pages as "Not searched (accepted)".
+          --fill <colour>    Redact: the colour of the areas that replace the removed content: black (default),
+                             white or a colour written as #RRGGBB. Pages that become images take it too.
           --match-case       Search and redact: distinguish upper and lower case (default: ignore case; with
                              redact every spelling found is removed).
           --whole-word       Search: match only whole words.

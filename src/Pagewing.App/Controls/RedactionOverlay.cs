@@ -52,6 +52,9 @@ internal sealed class RedactionOverlay : Control
     /// <summary>The thickness in DIPs of the thin edge of an area in the preview.</summary>
     internal const double PreviewEdgeThickness = 1;
 
+    /// <summary>The least contrast, 3:1 (WCAG 2.2, 1.4.11), between the thin edge of an area in the preview and its fill.</summary>
+    internal const double MinPreviewEdgeContrast = 3;
+
     /// <summary>The most selected marks that are elements for screen readers (the rest is drawn and counted in the toolbar).</summary>
     internal const int MaxAutomationFrames = 16;
 
@@ -77,6 +80,7 @@ internal sealed class RedactionOverlay : Control
     private RedactionPlan? _plan;
     private bool _preview;
     private Pen? _previewPen;
+    private SolidColorBrush? _previewFill;
     private Dictionary<int, List<RedactionMark>> _byPage = NoMarks;
     private IReadOnlySet<Guid> _selected = new HashSet<Guid>();
 
@@ -110,10 +114,18 @@ internal sealed class RedactionOverlay : Control
     internal bool IsPreview => _preview;
 
     /// <summary>
-    /// Gets the colour the areas of the preview are filled with: black or white, as the fill of the plan says (the colour of the
-    /// content that is written, not a colour of the interface).
+    /// Gets the colour the areas of the preview are filled with: the fill of the plan, any RGB colour (the colour of the content that
+    /// is written, not a colour of the interface).
     /// </summary>
-    internal Color PreviewFillColor => _plan?.Fill == RedactionFill.White ? Colors.White : Colors.Black;
+    internal Color PreviewFillColor => _plan is { Fill: var fill } ? Color.FromRgb(fill.Red, fill.Green, fill.Blue) : Colors.Black;
+
+    /// <summary>
+    /// Gets the colour of the thin edge of an area in the preview: the colour of the marks where that keeps
+    /// <see cref="MinPreviewEdgeContrast"/> against the fill, else black or white, whichever stands out more. The edge is what tells
+    /// an area from the page when the fill is the colour of the page (white on white, dark grey on a dark page), so it must stand out
+    /// from the fill for every colour the user can choose.
+    /// </summary>
+    internal Color PreviewEdgeColor => EdgeAgainst(MarkPens().Edge, PreviewFillColor);
 
     /// <summary>Gets how many times the plan was indexed (for tests: a scroll or a change of the selection indexes nothing).</summary>
     internal int IndexCount { get; private set; }
@@ -345,6 +357,33 @@ internal sealed class RedactionOverlay : Control
         return byPage;
     }
 
+    /// <summary>The colour for a thin edge on <paramref name="fill"/>: <paramref name="preferred"/> if it stands out 3:1, else black or white.</summary>
+    internal static Color EdgeAgainst(Color preferred, Color fill)
+    {
+        if (Contrast(preferred, fill) >= MinPreviewEdgeContrast)
+        {
+            return preferred;
+        }
+
+        return Contrast(Colors.Black, fill) >= Contrast(Colors.White, fill) ? Colors.Black : Colors.White;
+    }
+
+    private static double Contrast(Color first, Color second)
+    {
+        var a = Luminance(first);
+        var b = Luminance(second);
+        return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
+    }
+
+    private static double Luminance(Color color) =>
+        (0.2126 * Linear(color.R)) + (0.7152 * Linear(color.G)) + (0.0722 * Linear(color.B));
+
+    private static double Linear(byte channel)
+    {
+        var value = channel / 255.0;
+        return value <= 0.04045 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
+    }
+
     private static Rect ViewRect(Rect pageRect, double scale, PageRect rect) =>
         new Rect(
             new Point(pageRect.X + (rect.Left * scale), pageRect.Y + (rect.Top * scale)),
@@ -395,12 +434,19 @@ internal sealed class RedactionOverlay : Control
         {
             // What will be written: the area in its fill, exactly the rectangle; a thin edge in the colour of the marks keeps a white
             // area (and a black one on a dark page) visible, so the preview is not told by its fill alone.
-            context.DrawRectangle(_plan?.Fill == RedactionFill.White ? Brushes.White : Brushes.Black, null, rect);
+            var fillColor = PreviewFillColor;
+            if (_previewFill is not { } fillBrush || fillBrush.Color != fillColor)
+            {
+                _previewFill = fillBrush = new SolidColorBrush(fillColor);
+            }
+
+            context.DrawRectangle(fillBrush, null, rect);
             if (rect.Width > PreviewEdgeThickness && rect.Height > PreviewEdgeThickness)
             {
-                if (_previewPen is not { } previewPen || previewPen.Brush is not ISolidColorBrush known || known.Color != pens.Edge)
+                var edgeColor = EdgeAgainst(pens.Edge, fillColor);
+                if (_previewPen is not { } previewPen || previewPen.Brush is not ISolidColorBrush known || known.Color != edgeColor)
                 {
-                    _previewPen = previewPen = new Pen(new SolidColorBrush(pens.Edge), PreviewEdgeThickness);
+                    _previewPen = previewPen = new Pen(new SolidColorBrush(edgeColor), PreviewEdgeThickness);
                 }
 
                 context.DrawRectangle(null, previewPen, rect.Deflate(PreviewEdgeThickness / 2));

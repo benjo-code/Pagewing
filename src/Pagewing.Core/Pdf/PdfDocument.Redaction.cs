@@ -388,7 +388,7 @@ public sealed partial class PdfDocument
             copy[i] = new PdfiumRedactionArea(area.Left, area.Top, area.Right, area.Bottom);
         }
 
-        var pdfiumFill = fill == RedactionFill.White ? PdfiumRedactionFill.White : PdfiumRedactionFill.Black;
+        var pdfiumFill = new PdfiumRedactionFill(fill.Red, fill.Green, fill.Blue);
         if (!apply)
         {
             var dry = await document.Thread.InvokeSteppedAsync(

@@ -64,6 +64,38 @@ public sealed class RedactCommandTests : CliTestBase
     }
 
     [Fact]
+    public async Task CliFillAcceptsBlackWhiteAndHex()
+    {
+        // The area lies over the first image of the fixture: the check of the written file reads its pixels back and expects the colour.
+        var input = Copy("redact-image.pdf");
+        foreach (var fill in new[] { "black", "WHITE", "#336699", "#aabbcc" })
+        {
+            var output = Path.Combine(WorkDirectory.FullName, $"out-{fill.TrimStart('#')}.pdf");
+            var result = await RunAsync("redact", input, "--output", output, "--rect", "1:30,60,40,40", "--fill", fill);
+            Assert.True(result.ExitCode == 0, $"{fill}: {result.Error}");
+            Assert.True(File.Exists(output));
+        }
+
+        // Without --fill the areas are black, as before.
+        var plain = Path.Combine(WorkDirectory.FullName, "out-plain.pdf");
+        Assert.Equal(0, (await RunAsync("redact", input, "--output", plain, "--rect", "1:30,60,40,40")).ExitCode);
+
+        // Anything else is a usage error (exit 2) and writes nothing.
+        foreach (var bad in new[] { "#zz", "#FFF", "#1234567", "red", "336699", string.Empty })
+        {
+            var output = Path.Combine(WorkDirectory.FullName, "bad.pdf");
+            var result = await RunAsync("redact", input, "--output", output, "--rect", "1:30,60,40,40", "--fill", bad);
+            Assert.Equal(2, result.ExitCode);
+            Assert.Contains("--fill", result.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(output));
+        }
+
+        var twice = await RunAsync("redact", input, "--output", Path.Combine(WorkDirectory.FullName, "twice.pdf"), "--rect", "1:30,60,40,40", "--fill", "black", "--fill", "white");
+        Assert.Equal(2, twice.ExitCode);
+        Assert.Equal(2, (await RunAsync("redact", input, "--output", Path.Combine(WorkDirectory.FullName, "missing.pdf"), "--rect", "1:30,60,40,40", "--fill")).ExitCode);
+    }
+
+    [Fact]
     public async Task RedactOutputPassesTheVerifierAgain()
     {
         var input = Copy("redact-everywhere-nopattern.pdf");
@@ -613,8 +645,9 @@ public sealed class RedactCommandTests : CliTestBase
         var result = await RunAsync("--help");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("pagewing redact <file> --output <out.pdf> [--text <term>]... [--pattern <email|iban|phone|card>]... [--include-unchecked] [--rect <page>:<x>,<y>,<w>,<h>]... [--pages <range>] [--rasterize-pages <range>] [--rasterize-unredactable] [--dpi <72-300>] [--match-case] [--dry-run] [--allow-unsearched] [--fill <black|white|#RRGGBB>] [--force] [--password <pw>]", result.Output, StringComparison.Ordinal);
         Assert.Contains("--dry-run", result.Output, StringComparison.Ordinal);
+        Assert.Contains("--fill <colour>", result.Output, StringComparison.Ordinal);
         Assert.Contains("NOT checked", result.Output, StringComparison.Ordinal);
         Assert.Contains("--rasterize-pages <range>", result.Output, StringComparison.Ordinal);
         Assert.Contains("--rasterize-unredactable", result.Output, StringComparison.Ordinal);

@@ -825,7 +825,7 @@ internal sealed partial class PdfiumRedactionRun
 
         if (edit.Boxes.Count > 0)
         {
-            var gray = fill == PdfiumRedactionFill.White ? (byte)255 : (byte)0;
+            // Every image is written back as RGB with alpha (gray, indexed and CMYK ones included), so any colour fits.
             foreach (var box in edit.Boxes)
             {
                 for (var y = box.Y0; y < box.Y1; y++)
@@ -834,9 +834,9 @@ internal sealed partial class PdfiumRedactionRun
                     for (var x = 0; x < box.Width; x++)
                     {
                         var at = (row + x) * 4;
-                        pixels[at] = gray;
-                        pixels[at + 1] = gray;
-                        pixels[at + 2] = gray;
+                        pixels[at] = fill.Blue;
+                        pixels[at + 1] = fill.Green;
+                        pixels[at + 2] = fill.Red;
                         pixels[at + 3] = 255;
                     }
                 }

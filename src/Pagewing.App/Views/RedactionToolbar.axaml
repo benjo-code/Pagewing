@@ -133,6 +133,38 @@
                                 AutomationProperties.Name="{x:Static res:Strings.RedactFillWhite}">
           <TextBlock Classes="body" Margin="0" Text="{x:Static res:Strings.RedactFillWhite}" />
         </ctl:ActionToggleButton>
+        <!-- "Colour …": any other colour. A flyout with the hex field (#RRGGBB) and five presets (built in the code behind from
+             RedactionFill.Presets, each with its name and a check mark when chosen, so no colour is told by colour alone). The
+             button shows a swatch of the colour and an accent frame when the fill is neither black nor white. -->
+        <ctl:ActionToggleButton Name="FillCustomButton" Classes="icon tool" Margin="2,0,0,0"
+                                Classes.active="{Binding IsRedactionFillCustom}" IsChecked="{Binding IsRedactionFillCustom, Mode=OneWay}"
+                                ToolTip.Tip="{x:Static res:Strings.RedactFillCustomTip}"
+                                AutomationProperties.Name="{x:Static res:Strings.RedactFillCustom}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:StrokeIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Pw.Icon.Droplet}" />
+            <StackPanel Name="FillCustomDetail" Orientation="Horizontal" Spacing="6">
+              <Border Name="FillSwatch" Width="14" Height="14" CornerRadius="2" VerticalAlignment="Center"
+                      BorderThickness="1" BorderBrush="{DynamicResource Pw.Brush.Border.Strong}"
+                      IsVisible="{Binding IsRedactionFillCustom}" />
+              <TextBlock Name="FillCustomLabel" Classes="body" Margin="0" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactFillCustom}" />
+            </StackPanel>
+          </StackPanel>
+          <ctl:ActionToggleButton.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft">
+              <StackPanel Name="FillFlyoutContent" Spacing="8" MinWidth="220">
+                <TextBlock Classes="body" Text="{x:Static res:Strings.RedactFillHexLabel}"
+                           Foreground="{DynamicResource Pw.Brush.Text.Secondary}" />
+                <TextBox Name="FillHexBox" MaxLength="7"
+                         AutomationProperties.Name="{x:Static res:Strings.RedactFillHexLabel}" />
+                <TextBlock Name="FillHexError" Classes="body" TextWrapping="Wrap" IsVisible="False"
+                           Foreground="{DynamicResource Pw.Brush.Text.Primary}"
+                           Text="{x:Static res:Strings.RedactFillHexError}"
+                           AutomationProperties.LiveSetting="Polite" />
+                <StackPanel Name="FillPresets" Orientation="Horizontal" Spacing="4" />
+              </StackPanel>
+            </Flyout>
+          </ctl:ActionToggleButton.Flyout>
+        </ctl:ActionToggleButton>
 
         <Border Classes="toolbarSeparator" />
 

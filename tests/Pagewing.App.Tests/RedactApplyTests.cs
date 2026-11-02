@@ -125,6 +125,54 @@ public sealed partial class RedactApplyTests : IDisposable
         Assert.Null(viewModel.PendingSave);
     }
 
+    [AvaloniaFact]
+    public async Task FreeColorOfTooLowContrastToTheSelectionMarkerStillShowsTheMarker()
+    {
+        var (window, viewModel, view, tab, _) = await MarkedAsync();
+        viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(FakeAnalysis());
+        tab.RedactionPreviewDelay = TimeSpan.Zero;
+        tab.ClearMarkSelection();
+        var overlay = view.RedactionOverlay!;
+        var area = MarkArea(view, Mark);
+        tab.ToggleRedactionPreviewCommand.Execute(null);
+        await WaitUntilAsync(window, () => tab.RedactionPreviewText is not null && tab.RedactionPreviewText != Strings.RedactPreviewWorking);
+
+        // Whatever the user chooses, the thin edge that tells an area from the page stands out 3:1 from its fill: the colour of the
+        // marks itself, the colour of the light page and of the dark page, greys and the presets.
+        var mark = overlay.EdgeColor;
+        var fills = new List<RedactionFill>
+        {
+            new(mark.R, mark.G, mark.B),
+            new(0xE4, 0x47, 0x4C),
+            new(0xFF, 0xFF, 0xFF),
+            new(0x00, 0x00, 0x00),
+            new(0x80, 0x80, 0x80),
+            new(0x7F, 0x7F, 0x7F),
+            new(0xFB, 0x6A, 0x6E),
+            new(0x1E, 0x1F, 0x24),
+            new(0xF5, 0xF5, 0xF5),
+        };
+        fills.AddRange(RedactionFill.Presets);
+        foreach (var fill in fills)
+        {
+            tab.RedactionFill = fill;
+            Settle(window);
+            Assert.Equal(Avalonia.Media.Color.FromRgb(fill.Red, fill.Green, fill.Blue), overlay.PreviewFillColor);
+            var ratio = Wcag.Contrast(overlay.PreviewEdgeColor, overlay.PreviewFillColor);
+            Assert.True(ratio >= 3, $"{fill.ToHex()}: the edge has {ratio:F2}:1 against the fill");
+        }
+
+        // Seen, not only computed: with the fill of the colour of the marks, the pixel of the edge differs from the pixel inside.
+        tab.RedactionFill = new RedactionFill(mark.R, mark.G, mark.B);
+        Settle(window);
+        using var frame = FramePixels.Snapshot(LayersOf(view));
+        var inside = Pixel(frame, area.Center);
+        var onEdge = Pixel(frame, new Point(area.Left + (RedactionOverlay.PreviewEdgeThickness / 2) + 0.01, area.Center.Y));
+        Assert.Equal(overlay.PreviewFillColor, inside);
+        Assert.NotEqual(inside, onEdge);
+        Assert.True(Wcag.Contrast(inside, onEdge) >= 3, $"the edge shows {Wcag.Contrast(inside, onEdge):F2}:1 against the area");
+    }
+
     // ------------------------------------------------------------------ the questions before the card
 
     [AvaloniaFact]
