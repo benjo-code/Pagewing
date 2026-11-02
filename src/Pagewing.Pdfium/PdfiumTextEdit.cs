@@ -17,6 +17,7 @@ internal enum PdfiumTextLock
     MarkedContent,
     TooManyRuns,
     RunTooLong,
+    Ligature,
 }
 
 /// <summary>A box in points from the top left of the displayed page.</summary>
@@ -301,7 +302,41 @@ internal static unsafe class PdfiumTextEdit
             return PdfiumTextLock.RunTooLong;
         }
 
-        return IsVertical(t, read) ? PdfiumTextLock.Vertical : PdfiumTextLock.None;
+        if (IsVertical(t, read))
+        {
+            return PdfiumTextLock.Vertical;
+        }
+
+        return HasLigature(t, read) ? PdfiumTextLock.Ligature : PdfiumTextLock.None;
+    }
+
+    // A glyph that stands for several characters ("fi") reads as characters at one origin; writing the line again would stack them.
+    private static bool HasLigature(RawText t, PageRead read)
+    {
+        if (t.Chars.Count < 2 || !t.Facts.MatrixRead)
+        {
+            return false;
+        }
+
+        var table = read.Table;
+        for (var k = 1; k < t.Chars.Count; k++)
+        {
+            var current = t.Chars[k];
+            var previous = t.Chars[k - 1];
+            if (char.IsLowSurrogate((char)table.Unicode[current]))
+            {
+                continue;
+            }
+
+            var vx = table.OriginX[current] - table.OriginX[previous];
+            var vy = table.OriginY[current] - table.OriginY[previous];
+            if (Math.Abs(TextX(vx, vy, t.Facts.Matrix)) < 0.001 * Math.Max(1.0, t.Facts.Size) && Math.Abs(TextY(vx, vy, t.Facts.Matrix)) < 0.001 * Math.Max(1.0, t.Facts.Size))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsVertical(RawText t, PageRead read)
@@ -754,6 +789,7 @@ internal static unsafe class PdfiumTextEdit
         }
 
         nint geist = 0;
+        List<nint> takenOut = [];
         try
         {
             if (!PdfiumRedactionNative.ImportPage(scratch, document.Access(), pageIndex))
@@ -777,7 +813,7 @@ internal static unsafe class PdfiumTextEdit
                 var old = Range(before, index, 1, fingerprint);
                 others = before.Texts.Where(t => t != old[0]).Select(static t => t.Text).ToList();
                 imageBefore = Render(page, pixels.Width, pixels.Height);
-                _ = Apply(
+                (takenOut, _) = Apply(
                     scratch,
                     page,
                     before,
@@ -826,6 +862,13 @@ internal static unsafe class PdfiumTextEdit
                     throw new PdfiumTextEditException(PdfiumTextEditFailure.NotRewritable, PdfiumTextLock.None, "Rewriting the page changes other text.");
                 }
 
+                // What stands in the place of the run reads back as the text that was asked for (a glyph the font cannot draw would read back as another character).
+                var written = string.Concat(after.Texts.Where(t => t.Depth == 0 && t.Index >= index && t.Index < index + Math.Max(inserted, 0)).Select(static t => t.Text));
+                if (!string.Equals(written, string.Concat(segments.Select(static s => s.Text)), StringComparison.Ordinal))
+                {
+                    throw new PdfiumTextEditException(PdfiumTextEditFailure.NotRewritable, PdfiumTextLock.None, "The new text does not read back as written.");
+                }
+
                 var union = boxBefore.Union(BoxOf(after, after.Texts.Where(t => t.Index >= index && t.Index < index + inserted)));
                 if (!SameOutside(imageBefore, Render(reloaded, pixels.Width, pixels.Height), pixels, union))
                 {
@@ -839,6 +882,12 @@ internal static unsafe class PdfiumTextEdit
         }
         finally
         {
+            // The object taken out of the copy goes with it (it holds the font program it was read with).
+            foreach (var item in takenOut)
+            {
+                Fpdf.FPDFPageObj_Destroy(item);
+            }
+
             if (geist != 0)
             {
                 Fpdf.FPDFFont_Close(geist);

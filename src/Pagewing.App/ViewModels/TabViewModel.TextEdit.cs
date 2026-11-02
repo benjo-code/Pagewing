@@ -46,6 +46,9 @@ public sealed partial class TabViewModel
     /// <summary>Raised when a run was edited and the view should look at the page again; the argument is the 0-based page.</summary>
     internal event Action<int>? TextEditApplied;
 
+    /// <summary>Raised when a choice of the bar was made and the keys belong back in the open field.</summary>
+    internal event Action? TextEditFocusRequested;
+
     /// <summary>Gets the 0-based pages the view shows now (set by the view while the mode is on).</summary>
     internal Func<IEnumerable<int>>? VisibleTextEditPages { get; set; }
 
@@ -125,7 +128,7 @@ public sealed partial class TabViewModel
         {
             if (_isTextEditing)
             {
-                EndTextEdit();
+                _ = EndTextEditAfterFlushAsync();
             }
             else
             {
@@ -133,6 +136,17 @@ public sealed partial class TabViewModel
             }
         },
         () => _isTextEditing ? !_disposed : TextEditBlockedReason is null);
+
+    // "Done" with a text in the field applies it first (the commit runs in the background) and then ends the mode, in one click.
+    private async Task EndTextEditAfterFlushAsync()
+    {
+        if (!FlushTextEditDraft() && (_textEditCommit is not { } commit || !await commit))
+        {
+            return;
+        }
+
+        EndTextEdit();
+    }
 
     /// <summary>Enters the mode; does nothing while <see cref="TextEditBlockedReason"/> holds.</summary>
     public bool BeginTextEdit()
@@ -324,6 +338,7 @@ public sealed partial class TabViewModel
         TextEditLockReason.MarkedContent => Strings.TextEditLockMarkedContent,
         TextEditLockReason.NotSavable => Strings.TextEditLockNotSavable,
         TextEditLockReason.PageNotRewritable => Strings.TextEditLockPageNotRewritable,
+        TextEditLockReason.Ligature => Strings.TextEditLockLigature,
         TextEditLockReason.TooManyRuns => Strings.TextEditLockTooManyRuns,
         TextEditLockReason.RunTooLong => Strings.TextEditLockRunTooLong,
         _ => Strings.TextEditNotNow,
@@ -502,6 +517,7 @@ public sealed partial class TabViewModel
         _textEditWholeRun = value;
         RaiseTextEditFieldChanged();
         _ = RefreshTextEditHintAsync();
+        TextEditFocusRequested?.Invoke();
     }
 
     private async Task RefreshTextEditHintAsync()

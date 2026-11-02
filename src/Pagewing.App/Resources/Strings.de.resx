@@ -3540,4 +3540,7 @@
   <data name="TextEditLockRunTooLong" xml:space="preserve">
     <value>Diese Zeile ist zu lang zum Bearbeiten.</value>
   </data>
+  <data name="TextEditLockLigature" xml:space="preserve">
+    <value>Diese Zeile hat eine Ligatur (mehrere Buchstaben in einem Glyph, zum Beispiel „fi“). Beim Neuschreiben lägen sie übereinander.</value>
+  </data>
 </root>

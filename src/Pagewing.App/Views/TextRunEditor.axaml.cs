@@ -19,6 +19,7 @@ namespace Pagewing.App.Views;
 public sealed partial class TextRunEditor : UserControl
 {
     private static readonly IBrush Paper = new ImmutableSolidColorBrush(Colors.White);
+    private static readonly IBrush DarkPaper = new ImmutableSolidColorBrush(Avalonia.Media.Color.FromRgb(0x20, 0x20, 0x20));
 
     private bool _starting;
 
@@ -70,7 +71,7 @@ public sealed partial class TextRunEditor : UserControl
     internal bool HasProblem => ProblemFrame.IsVisible;
 
     /// <summary>Starts the field for a run: its text and colour (content of the PDF, so set in code).</summary>
-    internal void Start(TabViewModel tab, TextRun run)
+    internal void Start(TabViewModel tab, TextRun run, string? text = null)
     {
         _starting = true;
         try
@@ -79,10 +80,14 @@ public sealed partial class TextRunEditor : UserControl
             Run = run;
             var ink = new ImmutableSolidColorBrush(Avalonia.Media.Color.FromRgb(run.Color.R, run.Color.G, run.Color.B));
 
+            // The paper behind the text: white, but dark for light ink (white text of a slide stays readable while it is typed).
+            var luminance = ((0.299 * run.Color.R) + (0.587 * run.Color.G) + (0.114 * run.Color.B)) / 255;
+            IBrush paper = luminance > 0.6 ? DarkPaper : Paper;
+
             // The paper behind the text in every state of the field (Fluent paints its own surface on focus and hover).
             foreach (var key in (ReadOnlySpan<string>)["TextControlBackground", "TextControlBackgroundFocused", "TextControlBackgroundPointerOver"])
             {
-                Field.Resources[key] = Paper;
+                Field.Resources[key] = paper;
             }
 
             foreach (var key in (ReadOnlySpan<string>)["TextControlForeground", "TextControlForegroundFocused", "TextControlForegroundPointerOver"])
@@ -90,10 +95,10 @@ public sealed partial class TextRunEditor : UserControl
                 Field.Resources[key] = ink;
             }
 
-            Field.Background = Paper;
+            Field.Background = paper;
             Field.Foreground = ink;
-            Field.Text = run.Text;
-            Field.CaretIndex = run.Text.Length;
+            Field.Text = text ?? run.Text;
+            Field.CaretIndex = Field.Text.Length;
             ShowProblem(null);
         }
         finally

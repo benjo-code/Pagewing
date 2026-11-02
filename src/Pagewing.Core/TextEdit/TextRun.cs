@@ -46,6 +46,9 @@ public enum TextEditLockReason
     /// <summary>The check on a copy of the page found that rewriting the page would change something else; found when a run is replaced.</summary>
     PageNotRewritable,
 
+    /// <summary>Two characters of the line stand at one place (a ligature glyph that stands for several characters): writing it again would draw them on top of each other.</summary>
+    Ligature,
+
     /// <summary>The page has more runs than <see cref="TextEditLimits.MaxRunsPerPage"/>.</summary>
     TooManyRuns,
 

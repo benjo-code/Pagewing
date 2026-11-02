@@ -3540,4 +3540,7 @@
   <data name="TextEditLockRunTooLong" xml:space="preserve">
     <value>This line is too long to edit.</value>
   </data>
+  <data name="TextEditLockLigature" xml:space="preserve">
+    <value>This line has a ligature (several letters in one glyph, for example “fi”). Writing it again would draw them on top of each other.</value>
+  </data>
 </root>

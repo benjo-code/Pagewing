@@ -534,6 +534,7 @@ public static class Strings
     public static string TextEditLockPageNotRewritable => Get("TextEditLockPageNotRewritable");
     public static string TextEditLockTooManyRuns => Get("TextEditLockTooManyRuns");
     public static string TextEditLockRunTooLong => Get("TextEditLockRunTooLong");
+    public static string TextEditLockLigature => Get("TextEditLockLigature");
     public static string SignatureCardTitle => Get("SignatureCardTitle");
     public static string SignatureClose => Get("SignatureClose");
     public static string SignatureTabDraw => Get("SignatureTabDraw");

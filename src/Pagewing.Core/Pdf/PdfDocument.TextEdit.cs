@@ -288,6 +288,7 @@ public sealed partial class PdfDocument
         PdfiumTextLock.MarkedContent => TextEditLockReason.MarkedContent,
         PdfiumTextLock.TooManyRuns => TextEditLockReason.TooManyRuns,
         PdfiumTextLock.RunTooLong => TextEditLockReason.RunTooLong,
+        PdfiumTextLock.Ligature => TextEditLockReason.Ligature,
         _ => TextEditLockReason.PageNotRewritable,
     };
 

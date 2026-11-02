@@ -44,6 +44,7 @@ public sealed partial class DocumentView
                 tab.TextEditMarksChanged += OnTextEditMarksChanged;
                 tab.TextEditFieldChanged += OnTextEditMarksChanged;
                 tab.TextEditApplied += OnTextEditApplied;
+                tab.TextEditFocusRequested += OnTextEditFocusRequested;
                 tab.VisibleTextEditPages = VisibleFormPages;
             }
 
@@ -66,6 +67,7 @@ public sealed partial class DocumentView
             tab.TextEditMarksChanged -= OnTextEditMarksChanged;
             tab.TextEditFieldChanged -= OnTextEditMarksChanged;
             tab.TextEditApplied -= OnTextEditApplied;
+            tab.TextEditFocusRequested -= OnTextEditFocusRequested;
             tab.VisibleTextEditPages = null;
             _textEditTab = null;
         }
@@ -91,6 +93,9 @@ public sealed partial class DocumentView
 
     private void OnTextRunsChanged(int page) => RefreshTextEdit();
 
+    // The bar gave a choice back to the line: the keys return to the field.
+    private void OnTextEditFocusRequested() => TextRunEditor?.FocusField();
+
     private void OnTextEditMarksChanged() => RefreshTextEdit();
 
     // A line was edited: its page is looked at again (the runs are read again by the tab).
@@ -102,7 +107,13 @@ public sealed partial class DocumentView
         }
 
         RefreshTextEdit();
-        Focus(NavigationMethod.Unspecified);
+
+        // The keys go back to the view only when nothing else took them meanwhile (a commit that ends after the user went elsewhere does not pull them back).
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Visual;
+        if (focused is null || IsInTextRunEditor(focused) || ReferenceEquals(focused, this))
+        {
+            Focus(NavigationMethod.Unspecified);
+        }
     }
 
     /// <summary>Gives the layer the lines to outline, and opens, moves or closes the field.</summary>
@@ -129,7 +140,7 @@ public sealed partial class DocumentView
         var opened = !ReferenceEquals(editor.Run, run) || !editor.IsVisible;
         if (opened)
         {
-            editor.Start(tab, run);
+            editor.Start(tab, run, tab.TextEditDraft);
             editor.IsVisible = true;
         }
 
@@ -189,6 +200,12 @@ public sealed partial class DocumentView
     private void OnTextRunCommitRequested(TextRunEditor editor, bool focusLeft)
     {
         if (!ReferenceEquals(editor, TextRunEditor) || editor.Tab is not { } tab)
+        {
+            return;
+        }
+
+        // The focus went to the bar of the mode (the switch "Whole line in replacement font"): the text waits for it, nothing is applied now.
+        if (focusLeft && TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is Visual target && target.FindAncestorOfType<TextEditHintBar>(includeSelf: true) is not null)
         {
             return;
         }
