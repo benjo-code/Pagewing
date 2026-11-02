@@ -707,3 +707,32 @@ Muster erzeugen: `PAGEWING_INTEROP_OUT=<Ordner> dotnet test tests/Pagewing.Core.
 - [ ] Ein Lauf auf einer **signierten** Datei: die Warnung vor dem Speichern nennt den hinzugefügten Text; Abbrechen ändert nichts.
 - [ ] Linux: `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*Ocr" --filter-namespace "*Cli"` mit `libtesseract.so` (UTF-8-Pfade, `OcrEngineTests`, `OcrRunnerNativeTests`), danach die App mit einem Scan.
 - [ ] Startzeit-Check auf dem Haupt-PC (Workflow `hardware-measure.yml`): die Budgets bleiben unverändert (der Hinweis liest erst nach dem ersten scharfen Bild; die Bibliothek wird beim Start nie geladen).
+
+## Text bearbeiten prüfen (M16)
+
+### Muster im Fremdviewer (Aufgabe 2 und 7)
+
+Muster erzeugen: `PAGEWING_INTEROP_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-method "*WritesTextEditSamplesForOtherViewers"` schreibt `text-edit-standard-edited.pdf` (Helvetica-Zeile, Korrektur), `text-edit-subset-edited.pdf` (eingebettete Teilmenge, alle Zeichen in der Schrift), `text-edit-subset-geist-edited.pdf` (die „9“ in Geist Regular), `text-edit-rotated-edited.pdf` (um 90° gedrehte Seite mit CropBox, längerer Text) und `README-text-edit.txt` mit den Zeilen. Die Befunde des Spikes stehen in `Docs/DECISIONS.md`, „Text bearbeiten: Spike (M16)“; `PAGEWING_SPIKE_OUT=<Ordner> dotnet test tests/Pagewing.Core.Tests --filter-class "*TextEditSpikeTests"` schreibt dort ebenfalls Muster.
+
+Prüfliste je Viewer (Chrome, Acrobat Reader, Pagewing):
+
+1. Die neue Zeile steht dort, wo die alte stand, in derselben Schrift (beim Muster mit Geist ist nur die „9“ in einer anderen Schrift); nichts anderes auf der Seite hat sich bewegt.
+2. Suchen nach dem neuen Text findet ihn, Suchen nach dem alten findet ihn **nicht**; Auswählen und Kopieren der Zeile liefert den neuen Text.
+3. Das gedrehte Muster steht aufrecht und liest sich von links nach rechts; die anderen beiden Zeilen der Seite sind unverändert.
+4. Acrobat: lässt sich die Zeile mit dem eigenen Bearbeiten weiter bearbeiten? **Eine ehrliche Antwort, kein Ziel** („ja/nein/mit welcher Schrift“). Danach einmal in Acrobat speichern und die Datei in Pagewing öffnen: ist der Text noch der neue?
+5. Die Datei ist größer als das Original (die Seite wird neu geschrieben und das Schriftprogramm der Seite mitgeschrieben; mit Geist rund 25 KB mehr); das Original steht unverändert am Anfang der Datei (`fc /b` oder `cmp` auf die ersten Bytes).
+
+### Eigene echte Datei
+
+Eine eigene PDF mit einem echten Tippfehler in einer Textzeile (Word-Export, Browserdruck, LibreOffice): Zeile anklicken, korrigieren, Enter, speichern. Notieren: Schrift des Programms, das die Datei erzeugt hat; ob die Zeile **gesperrt** war und mit welchem Grund; ob die Schrift Zeichen hergegeben hat (der Hinweis „In dieser Schrift fehlen …“ erscheint bei einer ganzen Schrift für Zeichen, die auf der Seite noch nicht stehen); ob das Ergebnis im Viewer und in Acrobat gleich aussieht.
+
+### Modus, Feld und Hinweisleiste (Sichtprüfung)
+
+In Hell, Dunkel, Hochkontrast (Windows), „Kompakt“, 150 % und 200 % Skalierung und mit einem Bildschirmleser (Narrator, NVDA, Orca): Umriss der Zeile unter dem Zeiger (nie nur Farbe: gesperrte gestrichelt mit Schloss), das Feld über der Zeile (Größe, Farbe, Fokusring), die Hinweisleiste (Umbruch im schmalen Fenster, der Live-Hinweis wird vorgelesen), der Schalter „Ganze Zeile in Ersatzschrift“, die Statusleisten-Notiz nach dem ersten Speichern. Tab verlässt das Feld und fängt den Fokus nie.
+
+### Linux und Startzeit
+
+- Linux: `dotnet test tests/Pagewing.Core.Tests --filter-namespace "*TextEdit"` und `dotnet test tests/Pagewing.App.Tests --filter-class "*TextEdit*"` (nur dort offen; PDFium schreibt Schriften und Seitenelemente je Betriebssystem gleich, die Ersatzschriften nicht benutzter Standardschriften können je OS verschieden sein).
+- Startzeit: der Modus liegt nicht im Startpfad (`TextEditUiTests.NothingOfTheFeatureIsCreatedBeforeUse`); der Startzeit-Check auf dem Haupt-PC (`Hardware measurement`) bleibt wie bei M14 und M15 eine Handprüfung vor dem Release.
+
+Das Ergebnis ist der Nachweis der Handprüfung zu Milestone 16 in `Docs/roadmap.json` (Release `v1.0.0`, Kriterium „Verschoben aus Milestone 16“; danach `dotnet run tools/roadmap.cs -- generate`). Als `evidence`: Datum, Programm und Version, Betriebssystem, für jeden Punkt „wie erwartet“ oder die Abweichung; Punkt 4 immer mit der ausdrücklichen Antwort. Ein **Fund unter Punkt 1 oder 2** (die Zeile steht anders oder der alte Text ist noch zu finden) ist ein Fehler im Bearbeiten und wird sofort gemeldet, nicht gesammelt.
