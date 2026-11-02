@@ -2830,7 +2830,7 @@
     <value>Bildpunkte: {0} markierte(r) Bereich(e) hinter den ersten {1} wurden nicht zurückgelesen.</value>
   </data>
   <data name="RedactNcPixelsOnly" xml:space="preserve">
-    <value>Bildpunkte: Zurückgelesen werden nur Bilder, die einen markierten Bereich berühren; eine Farbe oder ein Verlauf, der kein Bild ist, wird von der Render-Prüfung des Anwendens abgedeckt, nicht hier.</value>
+    <value>Bildpunkte: Die Füllfarbe wird nur in Bildern zurückgelesen, die einen markierten Bereich berühren. Bei einer Fläche ohne Bild (nur Text oder Vektoren) wird geprüft, dass der Inhalt entfernt ist, die Farbe des gezeichneten Rechtecks wird aber nicht aus der geschriebenen Datei zurückgelesen.</value>
   </data>
   <data name="RedactNcOtherViewer" xml:space="preserve">
     <value>Ein anderes Programm kann die Datei anders lesen; öffnen Sie das Ergebnis in einem zweiten Programm, um nachzusehen.</value>

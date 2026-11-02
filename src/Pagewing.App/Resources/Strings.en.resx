@@ -2830,7 +2830,7 @@
     <value>Pixels: {0} marked area(s) beyond the first {1} were not read back.</value>
   </data>
   <data name="RedactNcPixelsOnly" xml:space="preserve">
-    <value>Pixels: only images that touch a marked area are read back; a color or shading that is not an image is covered by the render check of the apply step, not here.</value>
+    <value>Pixels: the colour of the fill is read back only in images that touch a marked area. For an area without an image (text or vector content only) the removal of the content is checked, but the colour of the drawn rectangle is not read back from the written file.</value>
   </data>
   <data name="RedactNcOtherViewer" xml:space="preserve">
     <value>Another program may read the file differently; open the result in a second viewer to be sure.</value>

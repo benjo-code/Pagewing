@@ -524,7 +524,7 @@ public static class RedactionVerifier
             notChecked.Add(RedactionNotCheckedKind.PixelsBeyond, string.Create(CultureInfo.InvariantCulture, $"Pixels: {skipped} marked area(s) beyond the first {MaxPixelAreas} were not read back."), skipped, MaxPixelAreas);
         }
 
-        notChecked.Add(RedactionNotCheckedKind.PixelsOnlyImages, "Pixels: only images that touch a marked area are read back; a color or shading that is not an image is covered by the render check of the apply step, not here.");
+        notChecked.Add(RedactionNotCheckedKind.PixelsOnlyImages, "Pixels: the colour of the fill is read back only in images that touch a marked area. For an area without an image (text or vector content only) the removal of the content is checked, but the colour of the drawn rectangle is not read back from the written file.");
     }
 
     private static void CheckImage(int page, ImageAreaPixels image, RedactionFill fill, List<RedactionFinding> findings)

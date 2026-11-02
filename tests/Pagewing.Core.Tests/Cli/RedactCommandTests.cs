@@ -4,6 +4,7 @@ using Pagewing.Cli;
 using Pagewing.Cli.Commands;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Tests.Redaction;
+using Pagewing.Core.Text;
 using Pagewing.TestSupport;
 using Xunit;
 
@@ -63,22 +64,43 @@ public sealed class RedactCommandTests : CliTestBase
         Assert.Empty(TemporaryFiles());
     }
 
+    /// <summary>The pixel (blue, green, red, alpha) at a column and row of the first image of page 1 of a written file.</summary>
+    private async Task<byte[]> ImagePixelAsync(string path, int x, int y)
+    {
+        await using var document = await Engine.OpenAsync(path, cancellationToken: Ct);
+        var image = (await document.GetImageAreaPixelsAsync(0, new PageRect(0, 0, 300, 170), Ct))[0];
+        var at = ((y * image.Width) + x) * 4;
+        return image.Bgra[at..(at + 4)];
+    }
+
     [Fact]
     public async Task CliFillAcceptsBlackWhiteAndHex()
     {
-        // The area lies over the first image of the fixture: the check of the written file reads its pixels back and expects the colour.
+        // The area lies over the first image of the fixture (64 x 64 px at 2 pt per pixel, its lower left corner at 10|16 on a page 170
+        // high): the pixels 10 to 30 across and 17 to 37 down are under it. What the command wrote is read back from the output file,
+        // not only checked by exit code: an ignored --fill would leave black there.
         var input = Copy("redact-image.pdf");
-        foreach (var fill in new[] { "black", "WHITE", "#336699", "#aabbcc" })
+        var cases = new (string Option, byte[] Expected)[]
         {
-            var output = Path.Combine(WorkDirectory.FullName, $"out-{fill.TrimStart('#')}.pdf");
-            var result = await RunAsync("redact", input, "--output", output, "--rect", "1:30,60,40,40", "--fill", fill);
-            Assert.True(result.ExitCode == 0, $"{fill}: {result.Error}");
-            Assert.True(File.Exists(output));
+            ("black", [0, 0, 0, 255]),
+            ("WHITE", [255, 255, 255, 255]),
+            ("#336699", [0x99, 0x66, 0x33, 255]),
+            ("#aabbcc", [0xCC, 0xBB, 0xAA, 255]),
+        };
+        foreach (var (option, expected) in cases)
+        {
+            var output = Path.Combine(WorkDirectory.FullName, $"out-{option.TrimStart('#')}.pdf");
+            var result = await RunAsync("redact", input, "--output", output, "--rect", "1:30,60,40,40", "--fill", option);
+            Assert.True(result.ExitCode == 0, $"{option}: {result.Error}");
+            Assert.Equal(expected, await ImagePixelAsync(output, 20, 27));
+            Assert.Equal(expected, await ImagePixelAsync(output, 12, 19));
+            Assert.Equal(expected, await ImagePixelAsync(output, 28, 35));
         }
 
         // Without --fill the areas are black, as before.
         var plain = Path.Combine(WorkDirectory.FullName, "out-plain.pdf");
         Assert.Equal(0, (await RunAsync("redact", input, "--output", plain, "--rect", "1:30,60,40,40")).ExitCode);
+        Assert.Equal(new byte[] { 0, 0, 0, 255 }, await ImagePixelAsync(plain, 20, 27));
 
         // Anything else is a usage error (exit 2) and writes nothing.
         foreach (var bad in new[] { "#zz", "#FFF", "#1234567", "red", "336699", string.Empty })
