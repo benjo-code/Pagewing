@@ -128,18 +128,23 @@ public sealed partial class PdfDocument
     {
         ThrowIfDisposed();
         ThrowIfNotAPage(page);
+        var unreadable = SummarySeam?.BoundsUnreadable;
         var summary = await document.Thread.InvokeAsync(
-            () => PdfiumRedactionRaster.Summarize(document, page),
+            () => PdfiumRedactionRaster.Summarize(document, page, unreadable),
             PdfiumPriority.Background,
             cancellationToken).ConfigureAwait(false);
-        return new PageObjectSummary(
+        var result = new PageObjectSummary(
             summary.Images,
             summary.Paths,
             summary.Texts,
             summary.Others,
             summary.Annotations,
             summary.PathBounds is null ? null : [.. summary.PathBounds.Select(static b => new PageRect(b.Left, b.Top, b.Right, b.Bottom))]);
+        return SummarySeam?.Override is { } change ? change(result) : result;
     }
+
+    /// <summary>Hooks for tests of the check of a page that became an image; <see langword="null"/> in production.</summary>
+    internal PageSummarySeam? SummarySeam { get; set; }
 }
 
 /// <summary>The decided overlay text of a page that becomes an image: what is drawn, what is left out and why, and the colour.</summary>
@@ -174,4 +179,14 @@ internal sealed class RasterOverlay
 
     /// <summary>Gets whether the budget of the document is reached after this page.</summary>
     public bool LimitReached => Plan.LimitReached;
+}
+
+/// <summary>Hooks for tests of <see cref="PdfDocument.GetPageObjectSummaryAsync"/>: a bound that PDFium cannot give, and a summary that is changed after it was read (a count that does not match, bounds that are missing). Production code sets neither.</summary>
+internal sealed class PageSummarySeam
+{
+    /// <summary>Gets or sets the question, asked with the index of a path object on the PDFium thread, whether its bounds are unreadable.</summary>
+    public Func<int, bool>? BoundsUnreadable { get; set; }
+
+    /// <summary>Gets or sets the change made to the summary before it is returned.</summary>
+    public Func<PageObjectSummary, PageObjectSummary>? Override { get; set; }
 }

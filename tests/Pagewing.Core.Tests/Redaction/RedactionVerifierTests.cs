@@ -5,6 +5,7 @@ using Pagewing.Core.Redaction;
 using Pagewing.Core.Saving;
 using Pagewing.Core.Tests.Annotations;
 using Pagewing.Core.Text;
+using Pagewing.Pdfium;
 using Pagewing.TestSupport;
 using Xunit;
 
@@ -1150,6 +1151,93 @@ public sealed class RedactionVerifierTests
         // A page that was not asked to become an image has no rule about paths at all.
         var notRaster = await VerifyAsync(Write(folder, "plain.pdf", RasterPdf(0, extraContent: "0 0 1 rg 5 5 20 20 re f")), new RedactionExpectation(PlanOf(0, RasterArea), [], RedactionFill.Black));
         Assert.DoesNotContain(notRaster.Findings, static f => f.Kind == RedactionFindingKind.RasterPageInvalid);
+    }
+
+    private async Task<RedactionCheck> VerifyWithSeamAsync(string path, RedactionExpectation expectation, PageSummarySeam seam)
+    {
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        document.SummarySeam = seam;
+        await using var stream = File.OpenRead(path);
+        return await RedactionVerifier.VerifyAsync(document, stream, expectation, RawScanLimits.Default, Ct);
+    }
+
+    [Fact]
+    public async Task PathSlackOnARasterPageIsExactlyFiveHundredthsOfAPoint()
+    {
+        using var folder = new TempFolder();
+
+        // The mark is 50..150 across and 50..100 from the top (user y 100..150). Over each edge by 0.04 pt passes, by 0.06 pt fails.
+        Assert.Equal(0.05, RedactionVerifier.PathSlack);
+        foreach (var (name, content, passes) in new[]
+        {
+            ("right-in", "60 110 90.04 20 re f", true),
+            ("right-out", "60 110 90.06 20 re f", false),
+            ("left-in", "49.96 110 40 20 re f", true),
+            ("left-out", "49.94 110 40 20 re f", false),
+            ("top-in", "60 100 20 50.04 re f", true),
+            ("top-out", "60 100 20 50.06 re f", false),
+            ("bottom-in", "60 99.96 20 40 re f", true),
+            ("bottom-out", "60 99.94 20 40 re f", false),
+        })
+        {
+            var check = await VerifyAsync(Write(folder, name + ".pdf", RasterPdf(0, extraContent: "0 0 1 rg " + content)), RasterExpect(0));
+            if (passes)
+            {
+                Assert.True(check.IsClean, $"{name}: " + string.Join('\n', check.Findings.Select(static f => f.Detail)));
+            }
+            else
+            {
+                Assert.Contains("outside the marked areas", SingleRasterFinding(check).Detail, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RasterPageWhosePathPlacesAreMissingMismatchedOrTooManyFailsClosed()
+    {
+        using var folder = new TempFolder();
+        var good = Write(folder, "good.pdf", RasterPdf(0, extraContent: "0 0 1 rg 60 110 20 20 re f 90 110 20 20 re f"));
+
+        // The check as it stands: clean.
+        Assert.True((await VerifyAsync(good, RasterExpect(0))).IsClean);
+
+        // No places at all although there are paths.
+        var none = await VerifyWithSeamAsync(good, RasterExpect(0), new PageSummarySeam { Override = static s => s with { PathBounds = null } });
+        Assert.Contains("whose place could not be read", SingleRasterFinding(none).Detail, StringComparison.Ordinal);
+
+        // One place fewer or one more than there are paths.
+        var fewer = await VerifyWithSeamAsync(good, RasterExpect(0), new PageSummarySeam { Override = static s => s with { PathBounds = [.. s.PathBounds!.Take(1)] } });
+        Assert.Contains("whose place could not be read", SingleRasterFinding(fewer).Detail, StringComparison.Ordinal);
+        var more = await VerifyWithSeamAsync(good, RasterExpect(0), new PageSummarySeam { Override = static s => s with { PathBounds = [.. s.PathBounds!, .. s.PathBounds!] } });
+        Assert.Contains("whose place could not be read", SingleRasterFinding(more).Detail, StringComparison.Ordinal);
+
+        // More paths than the check reads places for: the summary has none, so the page fails.
+        var cap = PdfiumRedactionRaster.MaxPathBounds + 1;
+        var crowded = Write(folder, "crowded.pdf", RasterPdf(0, extraContent: "0 0 1 rg " + string.Concat(Enumerable.Repeat("60 110 1 1 re f\n", cap))));
+        var tooMany = SingleRasterFinding(await VerifyAsync(crowded, RasterExpect(0)));
+        Assert.Contains($"{cap} path object(s) whose place could not be read", tooMany.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task APathWhoseBoundsPdfiumCannotGiveFailsEvenAtTheCornerOfAFullPageMark()
+    {
+        using var folder = new TempFolder();
+
+        // A mark over the whole page covers the corner (0, 0, 0, 0) that an unread bound used to turn into.
+        var plan = PlanOf(0, new PageRect(0, 0, 300, 200)).WithRasterPage(0, on: true);
+        var expectation = new RedactionExpectation(plan, [], plan.Fill, [0]);
+        var path = Write(folder, "full.pdf", RasterPdf(0, extraContent: "0 0 1 rg 60 110 20 20 re f 90 110 20 20 re f"));
+        Assert.True((await VerifyAsync(path, expectation)).IsClean);
+
+        // Bounds that fail on the first path, then on the last: the page fails and the finding carries no content.
+        foreach (var failing in new[] { 1, 2 })
+        {
+            var seen = 0;
+            var check = await VerifyWithSeamAsync(path, expectation, new PageSummarySeam { BoundsUnreadable = _ => ++seen == failing });
+            var finding = SingleRasterFinding(check);
+            Assert.Contains("whose place could not be read", finding.Detail, StringComparison.Ordinal);
+            Assert.Equal(0, finding.Page);
+        }
     }
 
     [Fact]

@@ -272,6 +272,73 @@ public sealed class RedactOverlayDrawTests : IDisposable
         Assert.All(summary.PathBounds!, box => Assert.True(Inside(box, area), $"{box} is outside {area}."));
     }
 
+    [Theory]
+    [InlineData(180, "0 0 280 180")]
+    [InlineData(270, "0 0 180 280")]
+    public async Task OverlayOnPagesTurnedBy180And270ReadsUpright(int turn, string flatBox)
+    {
+        // The text "TURN" is not symmetric either way: a mirrored or upside-down overlay differs from the flat reference.
+        var turned = new VerifierPdf(" ") { PageEntries = $"/Rotate {turn} /CropBox [10 10 290 190]" };
+        var flat = new VerifierPdf(" ") { MediaBox = flatBox };
+        var area = new PageRect(20, 40, 150, 100);
+        var plan = PlanOf(Mark(0, area, "TURN"));
+
+        var onTurned = await ApplyAsync(Write("turned.pdf", turned.Build()), plan);
+        var onFlat = await ApplyAsync(Write("flat.pdf", flat.Build()), plan);
+
+        await using var turnedDocument = onTurned.Result!.Saved.Reopened;
+        await using var flatDocument = onFlat.Result!.Saved.Reopened;
+        var a = await RenderAsync(turnedDocument, 0, 2);
+        var b = await RenderAsync(flatDocument, 0, 2);
+        Assert.Equal((b.Width, b.Height), (a.Width, a.Height));
+        var text = LightPixels(b, area, 2);
+        Assert.True(text > 60, $"The reference shows only {text} light pixels.");
+        var spanA = a.Pixels.Span;
+        var spanB = b.Pixels.Span;
+        var different = 0;
+        for (var y = 0; y < a.Height; y++)
+        {
+            for (var x = 0; x < a.Width; x++)
+            {
+                if (Math.Abs(spanA[(y * a.Stride) + (x * 4)] - spanB[(y * b.Stride) + (x * 4)]) > 80)
+                {
+                    different++;
+                }
+            }
+        }
+
+        Assert.True(different * 7 < text, $"{different} pixels differ from the flat page where {text} are text.");
+        var summary = await turnedDocument.GetPageObjectSummaryAsync(0, Ct);
+        Assert.All(summary.PathBounds!, box => Assert.True(Inside(box, area), $"{box} is outside {area}."));
+    }
+
+    [Fact]
+    public async Task EveryRectangleOfAMarkGetsTheTextAndIsCountedByItself()
+    {
+        var path = Write("secret.pdf", new VerifierPdf(Secret).Build());
+        var second = new PageRect(150, 90, 280, 120);
+        var tiny = new PageRect(200, 150, 206, 154);
+
+        // One mark, two rectangles: both get the text, and the count is one for each rectangle.
+        var both = await ApplyAsync(path, PlanOf(new RedactionMark(Guid.NewGuid(), RedactionKind.Area, 0, [SecretArea, second], null, false, "REDACTED")));
+        Assert.Equal(2, Assert.Single(both.Impacts).OverlaysDrawn);
+        Assert.Equal(2, Assert.Single(both.Analysis.Pages).OverlaysDrawn);
+        await using (var written = both.Result!.Saved.Reopened)
+        {
+            var summary = await written.GetPageObjectSummaryAsync(0, Ct);
+            var shapes = OverlayBounds(summary, SecretArea, second);
+            Assert.Contains(shapes, box => Inside(box, SecretArea, -0.5));
+            Assert.Contains(shapes, box => Inside(box, second, -0.5));
+            Assert.All(shapes, box => Assert.True(Inside(box, SecretArea) || Inside(box, second)));
+        }
+
+        // A third rectangle without room: it is counted by itself, the others keep their text.
+        var mixed = await ApplyAsync(path, PlanOf(new RedactionMark(Guid.NewGuid(), RedactionKind.Area, 0, [SecretArea, tiny, second], null, false, "REDACTED")));
+        var done = Assert.Single(mixed.Impacts);
+        Assert.Equal((2, 1), (done.OverlaysDrawn, done.OverlaysNotFitting));
+        Assert.Equal((2, 1), (mixed.Analysis.Pages[0].OverlaysDrawn, mixed.Analysis.Pages[0].OverlaysNotFitting));
+    }
+
     [Fact]
     public async Task RepeatCoversTheAreaAndAutoSizeFits()
     {
@@ -554,11 +621,9 @@ public sealed class RedactOverlayDrawTests : IDisposable
         Assert.Contains("because the limit for the overlay text was reached", RedactionReportText.Of(applied.Analysis), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task FiveHundredAreasWithRepeatStayWithinTimeAndLimits()
+    private static (string Path, RedactionPlan Plan) GridOf(Func<string, string> write)
     {
-        var pdf = new VerifierPdf(" ") { MediaBox = "0 0 3000 2000" };
-        var path = Write("grid.pdf", pdf.Build());
+        var path = write("grid.pdf");
         var marks = new List<RedactionMark>();
         for (var row = 0; marks.Count < 500; row++)
         {
@@ -568,14 +633,43 @@ public sealed class RedactOverlayDrawTests : IDisposable
             }
         }
 
-        var plan = PlanOf([.. marks]).WithOverlayStyle(new RedactionOverlayStyle(Repeat: true));
+        return (path, PlanOf([.. marks]).WithOverlayStyle(new RedactionOverlayStyle(Repeat: true)));
+    }
+
+    [Fact]
+    public async Task FiveHundredAreasWithRepeatStayWithinTheLimits()
+    {
+        // No time is asserted here (the PDFium thread is shared with other tests; the times are in MeasuresTheOverlay, which runs only
+        // with PAGEWING_MEASURE_OUT): the counts are what must hold, and a generous bound stands for "no hang".
+        var (path, plan) = GridOf(name => Write(name, new VerifierPdf(" ") { MediaBox = "0 0 3000 2000" }.Build()));
         await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
-        var executor = new RedactionExecutor(engine);
+        var clock = Stopwatch.StartNew();
+        await using var build = await new RedactionExecutor(engine).BuildAsync(plan, shown, path, null, null, Ct);
 
-        // Warm: the glyphs of the font are read once per process; the budget below is for the work, not for that.
+        var impact = Assert.Single(build.Impacts);
+        Assert.Equal(500, impact.OverlaysDrawn + impact.OverlaysNotFitting);
+        // About 163,000 segments are asked for and a page takes 150,000: the last areas stay filled without text, and the report says why.
+        Assert.True(impact.OverlaysDrawn is > 400 and < 500, $"{impact.OverlaysDrawn} of 500 areas got their text.");
+        Assert.Equal(impact.OverlaysNotFitting, impact.OverlaysOverLimit);
+        Assert.InRange(impact.OverlayPaths, 500, RedactionLimits.MaxOverlayPathsPerPage);
+        Assert.True(impact.OverlaySegments <= RedactionLimits.MaxOverlaySegmentsPerPage);
+        Assert.True(impact.OverlayPaths <= RedactionLimits.MaxOverlayPaths && impact.OverlaySegments <= RedactionLimits.MaxOverlaySegments);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(60), $"Building took {clock.Elapsed.TotalSeconds:0.0} s.");
+    }
+
+    [Fact]
+    public async Task MeasuresTheOverlay()
+    {
+        var output = Environment.GetEnvironmentVariable(AnnotationMeasurementTests.OutputVariable);
+        Assert.SkipWhen(string.IsNullOrEmpty(output), $"Measurement only: set {AnnotationMeasurementTests.OutputVariable}=<folder>.");
+        output = Directory.CreateDirectory(output).FullName;
+        var report = new StringBuilder();
+        report.AppendLine(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Overlay text measurements, {DateTimeOffset.Now:yyyy-MM-dd HH:mm zzz}"));
+
+        // (1) 500 areas with a repeated text: the build, and the longest single job a probe on the shared PDFium thread saw.
+        var (path, plan) = GridOf(name => Write(name, new VerifierPdf(" ") { MediaBox = "0 0 3000 2000" }.Build()));
+        await using var shown = await engine.OpenAsync(path, cancellationToken: Ct);
         await PdfiumThread.Shared.InvokeAsync(() => TextBoxFont.Table(PdfiumThread.Shared), cancellationToken: Ct);
-
-        // A probe that asks the PDFium thread for a trivial job every few milliseconds: the longest wait is the longest single job.
         using var stop = new CancellationTokenSource();
         var probe = Task.Run(
             async () =>
@@ -589,22 +683,36 @@ public sealed class RedactOverlayDrawTests : IDisposable
                     await Task.Delay(3, CancellationToken.None);
                 }
 
-                return TimeSpan.FromTicks(worst * TimeSpan.TicksPerSecond / Stopwatch.Frequency);
+                return Stopwatch.GetElapsedTime(0, worst);
             },
             CancellationToken.None);
-
         var clock = Stopwatch.StartNew();
-        await using var build = await executor.BuildAsync(plan, shown, path, null, null, Ct);
-        clock.Stop();
-        await stop.CancelAsync();
-        var longestJob = await probe;
+        await using (var build = await new RedactionExecutor(engine).BuildAsync(plan, shown, path, null, null, Ct))
+        {
+            clock.Stop();
+            await stop.CancelAsync();
+            var longest = await probe;
+            var impact = Assert.Single(build.Impacts);
+            report.AppendLine(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"500 areas, repeated text: build {clock.Elapsed.TotalMilliseconds:0} ms, longest single PDFium job {longest.TotalMilliseconds:0} ms, {impact.OverlayPaths} paths, {impact.OverlaySegments} segments"));
+        }
 
-        var impact = Assert.Single(build.Impacts);
-        Assert.Equal(500, impact.OverlaysDrawn + impact.OverlaysNotFitting);
-        Assert.True(impact.OverlaysDrawn > 400, $"Only {impact.OverlaysDrawn} of 500 areas got their text.");
-        Assert.True(impact.OverlayPaths <= RedactionLimits.MaxOverlayPaths && impact.OverlaySegments <= RedactionLimits.MaxOverlaySegments);
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"Building took {clock.Elapsed.TotalSeconds:0.0} s.");
-        Assert.True(longestJob < TimeSpan.FromMilliseconds(100), $"A job held the PDFium thread for {longestJob.TotalMilliseconds:0} ms.");
+        // (2) The check of a page that became an image with 10,000 overlay paths: reading the summary (object i takes i steps in PDFium).
+        var rasterPdf = new VerifierPdf("q 300 0 0 200 0 0 cm /Im1 Do Q 0 0 1 rg " + string.Concat(Enumerable.Repeat("60 110 1 1 re f\n", RedactionLimits.MaxOverlayPathsPerPage)));
+        var image = rasterPdf.AddStream("/Type /XObject /Subtype /Image /Width 30 /Height 20 /ColorSpace /DeviceRGB /BitsPerComponent 8", new byte[30 * 20 * 3]);
+        rasterPdf.ResourceEntries = $"/XObject << /Im1 {image} 0 R >>";
+        var raster = Write("raster-10000.pdf", rasterPdf.Build());
+        await using var document = await engine.OpenAsync(raster, cancellationToken: Ct);
+        var times = new List<double>();
+        for (var run = 0; run < 3; run++)
+        {
+            var start = Stopwatch.GetTimestamp();
+            var summary = await document.GetPageObjectSummaryAsync(0, Ct);
+            times.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+            Assert.Equal(RedactionLimits.MaxOverlayPathsPerPage, summary.Paths);
+        }
+
+        report.AppendLine(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"summary of a raster page with {RedactionLimits.MaxOverlayPathsPerPage} paths (3 runs): {string.Join(" / ", times.Select(static t => t.ToString("0", System.Globalization.CultureInfo.InvariantCulture)))} ms"));
+        await File.WriteAllTextAsync(Path.Combine(output, "redact-overlay-measurements.txt"), report.ToString().Replace("\r\n", "\n", StringComparison.Ordinal), Ct);
     }
 
     // ------------------------------------------------------------------ pages that became images

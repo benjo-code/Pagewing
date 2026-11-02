@@ -172,9 +172,12 @@ internal static unsafe class PdfiumRedactionRaster
     }
 
     /// <summary>Counts the page objects of the page by kind, and its annotations.</summary>
+    /// <param name="document">The document.</param>
+    /// <param name="pageIndex">The 0-based page.</param>
+    /// <param name="boundsUnreadable">A hook for tests: asked for the index of a path object whether its bounds count as unreadable. Production code passes <see langword="null"/>.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is not a page of the document.</exception>
     /// <exception cref="InvalidOperationException">PDFium could not load the page, or it has more than <see cref="PdfiumRedaction.MaxObjects"/> objects.</exception>
-    public static PdfiumPageObjectSummary Summarize(PdfiumDocument document, int pageIndex)
+    public static PdfiumPageObjectSummary Summarize(PdfiumDocument document, int pageIndex, Func<int, bool>? boundsUnreadable = null)
     {
         using var page = PdfiumRedaction.OpenPage(document, pageIndex);
 
@@ -187,6 +190,7 @@ internal static unsafe class PdfiumRedactionRaster
 
         int images = 0, paths = 0, texts = 0, others = 0;
         var bounds = new List<UserRect>();
+        var boundsFailed = false;
         for (var i = 0; i < count; i++)
         {
             var obj = page.GetObject(i);
@@ -199,8 +203,15 @@ internal static unsafe class PdfiumRedactionRaster
                     paths++;
                     if (paths <= MaxPathBounds)
                     {
-                        var box = page.Describe(obj);
-                        bounds.Add(new UserRect(box.Left, box.Bottom, box.Right, box.Top));
+                        // A bound PDFium cannot give is not (0, 0, 0, 0), which would lie inside any area at the corner of the page: the page fails.
+                        if (boundsUnreadable?.Invoke(i) == true || !page.TryGetBounds(obj, out var left, out var bottom, out var right, out var top))
+                        {
+                            boundsFailed = true;
+                        }
+                        else
+                        {
+                            bounds.Add(new UserRect(left, bottom, right, top));
+                        }
                     }
 
                     break;
@@ -213,7 +224,7 @@ internal static unsafe class PdfiumRedactionRaster
             }
         }
 
-        return new PdfiumPageObjectSummary(images, paths, texts, others, Fpdf.FPDFPage_GetAnnotCount(page.Access()), paths > 0 && paths <= MaxPathBounds ? DisplayedBounds(page.Access(), bounds) : null);
+        return new PdfiumPageObjectSummary(images, paths, texts, others, Fpdf.FPDFPage_GetAnnotCount(page.Access()), paths > 0 && paths <= MaxPathBounds && !boundsFailed ? DisplayedBounds(page.Access(), bounds) : null);
     }
 
     /// <summary>The bounds in points from the top left of the displayed page, or <see langword="null"/> when a position cannot be worked out (the check then fails: it never reads a position it does not have).</summary>
