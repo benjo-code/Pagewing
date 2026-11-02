@@ -166,12 +166,15 @@ public sealed class CommandCatalog
         // layout, which a text field keeps for itself) turns the selected text into marks; "Find and redact" shows or hides the panel
         // with the search and the list of marks (no key: it is a button of the toolbar, and the palette lists it); "Preview" and "Apply"
         // are buttons of the toolbar too (no key; Ctrl+S opens the card of "Apply" while marks wait).
+        // "Page as image" (milestone 14.1) turns the page of the selected marks, else the page in view, into an image in the plan; it has no key
+        // (a button of the panel and an entry of the palette; no free combination is worth taking for a step that loses a page's text).
         Tab("redact.mode", () => Strings.CommandRedactMode, EditGroup, CtrlShift(Key.P), tab => tab.RedactCommand, ready: true),
         RedactTab("redact.markSelection", () => Strings.CommandRedactMarkSelection, Ctrl(Key.Enter), tab => tab.MarkSelectionCommand) with { YieldsToTextInput = true },
         RedactTab("redact.find", () => Strings.CommandRedactFind, null, tab => tab.ToggleRedactionPanelCommand),
         RedactTab("redact.preview", () => Strings.CommandRedactPreview, null, tab => tab.ToggleRedactionPreviewCommand),
         RedactTab("redact.apply", () => Strings.CommandRedactApply, null, tab => tab.ApplyRedactionsCommand),
         RedactTab("redact.deleteMarks", () => Strings.CommandRedactDeleteMarks, null, tab => tab.DeleteMarksCommand),
+        RedactTab("redact.rasterPage", () => Strings.CommandRedactRasterPage, null, tab => tab.ToggleRasterPageCommand),
         RedactTab("redact.discard", () => Strings.CommandRedactDiscard, null, tab => tab.DiscardRedactionsCommand),
 
         // Writing new files from the open document (milestone 13): the selected pages as a new PDF, the document in several files,

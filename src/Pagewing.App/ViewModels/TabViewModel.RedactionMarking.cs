@@ -71,7 +71,15 @@ public sealed partial class TabViewModel
     public bool IsRedactionFillWhite => RedactionFill == RedactionFill.White;
 
     /// <summary>Gets the counter of the marks, "4 marks on 2 pages" (the text of the toolbar and its name for screen readers).</summary>
-    public string RedactionCounterText => Strings.RedactCount(RedactionPlan?.Marks.Count ?? 0, RedactionPlan?.Pages.Count ?? 0);
+    public string RedactionCounterText
+    {
+        get
+        {
+            var marks = Strings.RedactCount(RedactionPlan?.Marks.Count ?? 0, RedactionPlan?.Pages.Count ?? 0);
+            var raster = RedactionPlan?.RasterPages.Count ?? 0;
+            return raster == 0 ? marks : (RedactionPlan?.Marks.Count ?? 0) == 0 ? Strings.RedactRasterCount(raster) : marks + ", " + Strings.RedactRasterCount(raster);
+        }
+    }
 
     /// <summary>Chooses the tool of the pointer (parameter: a <see cref="RedactionTool"/>).</summary>
     public ICommand ChooseRedactionToolCommand => _chooseRedactionToolCommand ??= new RelayCommand<RedactionTool>(

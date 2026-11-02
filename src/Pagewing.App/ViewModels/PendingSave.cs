@@ -77,6 +77,13 @@ public enum PendingSaveKind
     /// </summary>
     RedactionRefused,
 
+    /// <summary>
+    /// The file cannot be redacted only because of some pages (milestone 14.1): the card names them and offers to turn each into an image
+    /// instead (<see cref="PendingSave.Rescue"/>, never preselected). "Continue" (only with a page chosen) puts the choice into the plan
+    /// and the analysis runs again; "Back" (default) leaves everything as it was. Nothing was written, the marks stay.
+    /// </summary>
+    RedactionRescue,
+
     /// <summary>The check of the written file found something: the card names the findings, "Back" alone. Nothing was written, the marks stay.</summary>
     RedactionFailed,
 
@@ -119,6 +126,9 @@ public enum PendingSaveChoice
 
     /// <summary>Close the report of a redaction (only <see cref="PendingSaveKind.RedactionReport"/>).</summary>
     Close,
+
+    /// <summary>Put the chosen pages into the plan as images and analyse again (only <see cref="PendingSaveKind.RedactionRescue"/>).</summary>
+    Continue,
 }
 
 /// <summary>
@@ -165,10 +175,18 @@ public sealed class PendingSave
         string? firstFieldName = null,
         Func<string>? title = null,
         ApplyPagesInfo? apply = null,
-        RedactionApplyInfo? redaction = null)
+        RedactionApplyInfo? redaction = null,
+        RedactionRescueOffer? rescue = null)
     {
         Apply = apply;
         Redaction = redaction;
+        Rescue = rescue;
+        if (rescue is not null)
+        {
+            // The choice of a page makes "Continue" possible: the card asks its buttons again.
+            rescue.Changed += () => ArmedChanged?.Invoke();
+        }
+
         _message = message;
         _title = title;
         Kind = kind;
@@ -220,6 +238,9 @@ public sealed class PendingSave
     /// <summary>Gets what the cards of the redaction show (numbers, fallbacks, cleanup, losses, refusals, findings, report), or <see langword="null"/>.</summary>
     public RedactionApplyInfo? Redaction { get; }
 
+    /// <summary>Gets the pages the user may turn into images (<see cref="PendingSaveKind.RedactionRescue"/>), or <see langword="null"/>.</summary>
+    public RedactionRescueOffer? Rescue { get; }
+
     /// <summary>Gets the answers the card offers, in the order of its buttons.</summary>
     public IReadOnlyList<PendingSaveChoice> Choices { get; }
 
@@ -244,6 +265,7 @@ public sealed class PendingSave
         PendingSaveKind.SaveAnnotationsFirst => Format(Strings.SaveFirstTitle, FileName),
         PendingSaveKind.ApplyRedactions => Format(Strings.RedactApplyTitle, FileName),
         PendingSaveKind.RedactionRefused => Format(Strings.RedactRefusedTitle, FileName),
+        PendingSaveKind.RedactionRescue => Format(Strings.RedactRescueTitle, FileName),
         PendingSaveKind.RedactionFailed => Format(Strings.RedactFailedTitle, FileName),
         PendingSaveKind.RedactionReport => Format(Strings.RedactReportTitle, FileName),
         PendingSaveKind.SignatureWarning => Strings.SignatureWarningTitle,
@@ -266,6 +288,7 @@ public sealed class PendingSave
         PendingSaveKind.SaveAnnotationsFirst => Strings.SaveFirstText,
         PendingSaveKind.ApplyRedactions => Strings.RedactIrreversible,
         PendingSaveKind.RedactionRefused => Strings.RedactRefusedNothing,
+        PendingSaveKind.RedactionRescue => Strings.RedactRefusedNothing,
         PendingSaveKind.RedactionFailed => Strings.RedactFailedNothing,
         PendingSaveKind.RedactionReport => Strings.RedactReportIntro,
         PendingSaveKind.SignatureWarning when FormsOnly && Level == DocMdpLevel.FormsOnly => Strings.SignatureWarningFormsText,
@@ -285,7 +308,7 @@ public sealed class PendingSave
     /// </summary>
     public bool IsWarning => Kind is PendingSaveKind.SignatureWarning or PendingSaveKind.FileChanged or PendingSaveKind.SaveError
         or PendingSaveKind.DiscardChanges or PendingSaveKind.ApplyPages or PendingSaveKind.ApplyRedactions or PendingSaveKind.RedactionRefused
-        or PendingSaveKind.RedactionFailed;
+        or PendingSaveKind.RedactionRescue or PendingSaveKind.RedactionFailed;
 
     /// <summary>Gets whether the question was answered.</summary>
     public bool IsResolved => _choice.Task.IsCompleted;
@@ -308,6 +331,7 @@ public sealed class PendingSave
         PendingSaveChoice.GoToField => Strings.SaveChoiceGoToField,
         PendingSaveChoice.SaveInOriginal => Strings.SaveChoiceSaveInOriginal,
         PendingSaveChoice.Close => Strings.SaveChoiceClose,
+        PendingSaveChoice.Continue => Strings.SaveChoiceContinue,
         _ => Strings.SaveChoiceCancel,
     };
 
@@ -321,8 +345,11 @@ public sealed class PendingSave
     /// and for a dangerous choice <see cref="ArmingDelay"/> has passed since the card was laid out.
     /// </summary>
     public bool IsArmed(PendingSaveChoice choice) =>
-        !IsResolved && Choices.Contains(choice)
+        !IsResolved && Choices.Contains(choice) && CanAnswer(choice)
         && (!IsDangerous(choice) || (_shownAt is { } shown && Clock.GetElapsedTime(shown) >= ArmingDelay));
+
+    // "Continue" needs a page the user chose: the card of a rejected page never goes on without one.
+    private bool CanAnswer(PendingSaveChoice choice) => choice != PendingSaveChoice.Continue || Rescue is { CanContinue: true };
 
     /// <summary>A button of the card: answers with <paramref name="choice"/> while it is armed (<see cref="IsArmed"/>).</summary>
     /// <returns><see langword="false"/> when the choice is locked, not offered, or the question was answered.</returns>
@@ -355,7 +382,7 @@ public sealed class PendingSave
     /// <returns><see langword="false"/> when the question was answered already or does not offer <paramref name="choice"/>.</returns>
     public bool Resolve(PendingSaveChoice choice)
     {
-        if (!Choices.Contains(choice) || !_choice.TrySetResult(choice))
+        if (!Choices.Contains(choice) || !CanAnswer(choice) || !_choice.TrySetResult(choice))
         {
             return false;
         }
@@ -446,6 +473,17 @@ public sealed class PendingSave
     {
         ArgumentNullException.ThrowIfNull(info);
         return new(PendingSaveKind.RedactionRefused, tab, path, [PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info);
+    }
+
+    /// <summary>
+    /// The card of a file that is refused only because of pages that can become images (milestone 14.1): the reasons of <paramref name="info"/>,
+    /// the offer with a check box for each page (never preselected), "Continue" (waits for a chosen page) and "Back", which is the default.
+    /// </summary>
+    internal static PendingSave RedactionRescue(TabViewModel tab, string path, RedactionApplyInfo info, RedactionRescueOffer offer)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        ArgumentNullException.ThrowIfNull(offer);
+        return new(PendingSaveKind.RedactionRescue, tab, path, [PendingSaveChoice.Continue, PendingSaveChoice.Cancel], PendingSaveChoice.Cancel, redaction: info, rescue: offer);
     }
 
     /// <summary>The card of a check that found something (nothing was written): the findings, "Back" alone.</summary>

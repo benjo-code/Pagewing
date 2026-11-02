@@ -2808,4 +2808,121 @@
   <data name="RedactRefusalPageUnknown" xml:space="preserve">
     <value>{0} cannot be redacted. The file is not redacted.</value>
   </data>
+  <data name="CommandRedactRasterPage" xml:space="preserve">
+    <value>Turn page into an image (or back)</value>
+  </data>
+  <data name="RedactRasterButton" xml:space="preserve">
+    <value>Page as image</value>
+  </data>
+  <data name="RedactRasterToggleTip" xml:space="preserve">
+    <value>Turns the page of the selected marks, or the page in view, into an image, or back. All text, links, comments and form fields of the page are lost.</value>
+  </data>
+  <data name="RedactRasterDpiLabel" xml:space="preserve">
+    <value>Resolution of pages as images</value>
+  </data>
+  <data name="RedactRasterDpi150" xml:space="preserve">
+    <value>150 dpi</value>
+  </data>
+  <data name="RedactRasterDpi200" xml:space="preserve">
+    <value>200 dpi</value>
+  </data>
+  <data name="RedactRasterDpi300" xml:space="preserve">
+    <value>300 dpi</value>
+  </data>
+  <data name="RedactRasterRowKindFormat" xml:space="preserve">
+    <value>As image, {0} dpi</value>
+  </data>
+  <data name="RedactRasterRowNameFormat" xml:space="preserve">
+    <value>Page {0} becomes an image, {1} dpi</value>
+  </data>
+  <data name="RedactCountRasterOne" xml:space="preserve">
+    <value>1 page as image</value>
+  </data>
+  <data name="RedactCountRaster" xml:space="preserve">
+    <value>{0} pages as images</value>
+  </data>
+  <data name="RedactSumRasterOne" xml:space="preserve">
+    <value>{0} page turned into an image</value>
+  </data>
+  <data name="RedactSumRaster" xml:space="preserve">
+    <value>{0} pages turned into images</value>
+  </data>
+  <data name="SaveChoiceContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="RedactRescueTitle" xml:space="preserve">
+    <value>“{0}” cannot be redacted as it is</value>
+  </data>
+  <data name="RedactRescueIntro" xml:space="preserve">
+    <value>Instead, each of these pages can be turned into an image. All text on the page is lost; it is an image afterwards. Links, comments and form fields of the page are dropped. Nothing is converted unless you choose it.</value>
+  </data>
+  <data name="RedactRescueChoice" xml:space="preserve">
+    <value>Convert this page into an image instead</value>
+  </data>
+  <data name="RedactRescueChoiceName" xml:space="preserve">
+    <value>Page {0}: convert this page into an image instead</value>
+  </data>
+  <data name="RedactRescueDpiLabel" xml:space="preserve">
+    <value>Resolution</value>
+  </data>
+  <data name="RedactRescueEstimate" xml:space="preserve">
+    <value>At {0} dpi: {1} × {2} pixels; the file grows by up to about {3}.</value>
+  </data>
+  <data name="RedactRescueEstimateLowered" xml:space="preserve">
+    <value>At {0} dpi, lower than the {4} dpi chosen because the page is large: {1} × {2} pixels; the file grows by up to about {3}.</value>
+  </data>
+  <data name="RedactRescueTooLarge" xml:space="preserve">
+    <value>Page {0} is too large to be turned into an image, even at 72 dpi.</value>
+  </data>
+  <data name="RedactRescueStuck" xml:space="preserve">
+    <value>Page {0} is set to become an image, but it cannot be redacted that way either. Undo that choice to go on.</value>
+  </data>
+  <data name="RedactRescueHeadingStuck" xml:space="preserve">
+    <value>Pages that cannot be turned into images</value>
+  </data>
+  <data name="RedactRescueNotStaged" xml:space="preserve">
+    <value>The choice could not be added to the plan. Nothing was written.</value>
+  </data>
+  <data name="RedactSecRaster" xml:space="preserve">
+    <value>Turned into images</value>
+  </data>
+  <data name="RedactRasterIntro" xml:space="preserve">
+    <value>The whole text of these pages is lost; each is an image afterwards. Their links, comments and form fields are dropped.</value>
+  </data>
+  <data name="RedactRasterPage" xml:space="preserve">
+    <value>Page {0} becomes an image at {1} dpi ({2} × {3} pixels; the file grows by up to about {4}).</value>
+  </data>
+  <data name="RedactRasterPageLowered" xml:space="preserve">
+    <value>Page {0} becomes an image at {1} dpi, lower than chosen because the page is large ({2} × {3} pixels; the file grows by up to about {4}).</value>
+  </data>
+  <data name="RedactRasterLost" xml:space="preserve">
+    <value>Page {0} loses: {1}.</value>
+  </data>
+  <data name="RedactRasterLostText" xml:space="preserve">
+    <value>all of its text</value>
+  </data>
+  <data name="RedactRasterLostLinkOne" xml:space="preserve">
+    <value>{0} link</value>
+  </data>
+  <data name="RedactRasterLostLinks" xml:space="preserve">
+    <value>{0} links</value>
+  </data>
+  <data name="RedactRasterLostAnnotationOne" xml:space="preserve">
+    <value>{0} annotation (comments, links and form fields are among them)</value>
+  </data>
+  <data name="RedactRasterLostAnnotations" xml:space="preserve">
+    <value>{0} annotations (comments, links and form fields are among them)</value>
+  </data>
+  <data name="RedactRasterLostFieldOne" xml:space="preserve">
+    <value>{0} form field, no longer fillable</value>
+  </data>
+  <data name="RedactRasterLostFields" xml:space="preserve">
+    <value>{0} form fields, no longer fillable</value>
+  </data>
+  <data name="RedactRasterLostNothing" xml:space="preserve">
+    <value>nothing else; it has no text, links, annotations or form fields</value>
+  </data>
+  <data name="RedactRasterOthers" xml:space="preserve">
+    <value>All other pages keep their text and vectors.</value>
+  </data>
 </root>

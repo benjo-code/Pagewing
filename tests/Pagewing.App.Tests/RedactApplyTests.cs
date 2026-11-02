@@ -366,22 +366,24 @@ public sealed partial class RedactApplyTests : IDisposable
         var (window, viewModel, _, tab, _) = await MarkedAsync();
         viewModel.RedactionAnalyzer = (_, _, _, _) => Task.FromResult(CleanAnalysis(
         [
-            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [2], RenderCheckReason),
+            new RedactionRefusal(RedactionRefusalKind.PageNotRedactable, [1], RenderCheckReason),
         ]));
 
         var apply = viewModel.ApplyRedactionsAsync(tab);
-        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRefused);
+        var card = await WaitForCardAsync<RedactApplyCard>(window, viewModel, PendingSaveKind.RedactionRescue);
 
-        // "This page cannot be redacted, because ...": the page and the reason of the check; no greyed offer.
+        // "This page cannot be redacted, because ...": the page and the reason of the check. Since milestone 14.1 the card also offers the
+        // page as an image (RedactApplyRasterTests), by the user's choice only.
         var section = Assert.Single(viewModel.PendingSave!.Redaction!.Sections);
         Assert.Equal(Strings.RedactRefusalHeadingPage, section.Heading);
         Assert.Equal(
-            "Page 3 cannot be redacted, because redacting it would change content outside the marked areas (PDFium cannot write this page again without changing it). The file is not redacted.",
+            "Page 2 cannot be redacted, because redacting it would change content outside the marked areas (PDFium cannot write this page again without changing it). The file is not redacted.",
             Assert.Single(section.Lines));
-        Assert.Equal(["Back"], ShownChoices(card));
-        Assert.All(card.GetVisualDescendants().OfType<Button>(), button => Assert.True(button.IsEnabled || !button.IsVisible));
+        Assert.Equal(["Continue", "Back"], ShownChoices(card));
+        Assert.False(card.ButtonOf(PendingSaveChoice.Continue)!.IsEnabled);
+        Assert.True(card.ButtonOf(PendingSaveChoice.Cancel)!.IsEnabled);
 
-        // Nothing in any language promises a later version or another way: that belongs to a later milestone.
+        // Nothing in the texts of the reasons promises a later version or another way: that belongs to a later milestone.
         foreach (var language in new[] { "en", "de" })
         {
             Strings.Culture = new CultureInfo(language);

@@ -2808,4 +2808,121 @@
   <data name="RedactRefusalPageUnknown" xml:space="preserve">
     <value>{0} lässt sich nicht schwärzen. Die Datei wird nicht geschwärzt.</value>
   </data>
+  <data name="CommandRedactRasterPage" xml:space="preserve">
+    <value>Seite in Bild umwandeln (oder zurück)</value>
+  </data>
+  <data name="RedactRasterButton" xml:space="preserve">
+    <value>Seite als Bild</value>
+  </data>
+  <data name="RedactRasterToggleTip" xml:space="preserve">
+    <value>Wandelt die Seite der ausgewählten Markierungen oder die Seite im Blick in ein Bild um oder wieder zurück. Aller Text, alle Links, Kommentare und Formularfelder der Seite gehen verloren.</value>
+  </data>
+  <data name="RedactRasterDpiLabel" xml:space="preserve">
+    <value>Auflösung der Seiten als Bild</value>
+  </data>
+  <data name="RedactRasterDpi150" xml:space="preserve">
+    <value>150 dpi</value>
+  </data>
+  <data name="RedactRasterDpi200" xml:space="preserve">
+    <value>200 dpi</value>
+  </data>
+  <data name="RedactRasterDpi300" xml:space="preserve">
+    <value>300 dpi</value>
+  </data>
+  <data name="RedactRasterRowKindFormat" xml:space="preserve">
+    <value>Als Bild, {0} dpi</value>
+  </data>
+  <data name="RedactRasterRowNameFormat" xml:space="preserve">
+    <value>Seite {0} wird ein Bild, {1} dpi</value>
+  </data>
+  <data name="RedactCountRasterOne" xml:space="preserve">
+    <value>1 Seite als Bild</value>
+  </data>
+  <data name="RedactCountRaster" xml:space="preserve">
+    <value>{0} Seiten als Bilder</value>
+  </data>
+  <data name="RedactSumRasterOne" xml:space="preserve">
+    <value>{0} Seite in ein Bild umgewandelt</value>
+  </data>
+  <data name="RedactSumRaster" xml:space="preserve">
+    <value>{0} Seiten in Bilder umgewandelt</value>
+  </data>
+  <data name="SaveChoiceContinue" xml:space="preserve">
+    <value>Weiter</value>
+  </data>
+  <data name="RedactRescueTitle" xml:space="preserve">
+    <value>„{0}“ lässt sich so nicht schwärzen</value>
+  </data>
+  <data name="RedactRescueIntro" xml:space="preserve">
+    <value>Stattdessen lässt sich jede dieser Seiten in ein Bild umwandeln. Der gesamte Text der Seite geht verloren; sie ist danach ein Bild. Links, Kommentare und Formularfelder der Seite entfallen. Nichts wird umgewandelt, wenn Sie es nicht wählen.</value>
+  </data>
+  <data name="RedactRescueChoice" xml:space="preserve">
+    <value>Diese Seite stattdessen in ein Bild umwandeln</value>
+  </data>
+  <data name="RedactRescueChoiceName" xml:space="preserve">
+    <value>Seite {0}: Diese Seite stattdessen in ein Bild umwandeln</value>
+  </data>
+  <data name="RedactRescueDpiLabel" xml:space="preserve">
+    <value>Auflösung</value>
+  </data>
+  <data name="RedactRescueEstimate" xml:space="preserve">
+    <value>Bei {0} dpi: {1} × {2} Pixel; die Datei wächst um bis zu etwa {3}.</value>
+  </data>
+  <data name="RedactRescueEstimateLowered" xml:space="preserve">
+    <value>Bei {0} dpi, weniger als die gewählten {4} dpi, weil die Seite groß ist: {1} × {2} Pixel; die Datei wächst um bis zu etwa {3}.</value>
+  </data>
+  <data name="RedactRescueTooLarge" xml:space="preserve">
+    <value>Seite {0} ist zu groß, um in ein Bild umgewandelt zu werden, selbst bei 72 dpi.</value>
+  </data>
+  <data name="RedactRescueStuck" xml:space="preserve">
+    <value>Seite {0} ist als Bild vorgesehen, lässt sich aber auch so nicht schwärzen. Machen Sie die Wahl rückgängig, um fortzufahren.</value>
+  </data>
+  <data name="RedactRescueHeadingStuck" xml:space="preserve">
+    <value>Seiten, die sich nicht in Bilder umwandeln lassen</value>
+  </data>
+  <data name="RedactRescueNotStaged" xml:space="preserve">
+    <value>Die Wahl konnte nicht in den Plan übernommen werden. Es wurde nichts geschrieben.</value>
+  </data>
+  <data name="RedactSecRaster" xml:space="preserve">
+    <value>Wird in ein Bild umgewandelt</value>
+  </data>
+  <data name="RedactRasterIntro" xml:space="preserve">
+    <value>Der gesamte Text dieser Seiten geht verloren; jede ist danach ein Bild. Links, Kommentare und Formularfelder dieser Seiten entfallen.</value>
+  </data>
+  <data name="RedactRasterPage" xml:space="preserve">
+    <value>Seite {0} wird ein Bild mit {1} dpi ({2} × {3} Pixel; die Datei wächst um bis zu etwa {4}).</value>
+  </data>
+  <data name="RedactRasterPageLowered" xml:space="preserve">
+    <value>Seite {0} wird ein Bild mit {1} dpi, weniger als gewählt, weil die Seite groß ist ({2} × {3} Pixel; die Datei wächst um bis zu etwa {4}).</value>
+  </data>
+  <data name="RedactRasterLost" xml:space="preserve">
+    <value>Seite {0} verliert: {1}.</value>
+  </data>
+  <data name="RedactRasterLostText" xml:space="preserve">
+    <value>ihren gesamten Text</value>
+  </data>
+  <data name="RedactRasterLostLinkOne" xml:space="preserve">
+    <value>{0} Link</value>
+  </data>
+  <data name="RedactRasterLostLinks" xml:space="preserve">
+    <value>{0} Links</value>
+  </data>
+  <data name="RedactRasterLostAnnotationOne" xml:space="preserve">
+    <value>{0} Annotation (Kommentare, Links und Formularfelder zählen dazu)</value>
+  </data>
+  <data name="RedactRasterLostAnnotations" xml:space="preserve">
+    <value>{0} Annotationen (Kommentare, Links und Formularfelder zählen dazu)</value>
+  </data>
+  <data name="RedactRasterLostFieldOne" xml:space="preserve">
+    <value>{0} Formularfeld, nicht mehr ausfüllbar</value>
+  </data>
+  <data name="RedactRasterLostFields" xml:space="preserve">
+    <value>{0} Formularfelder, nicht mehr ausfüllbar</value>
+  </data>
+  <data name="RedactRasterLostNothing" xml:space="preserve">
+    <value>nichts weiter; sie hat keinen Text, keine Links, Annotationen oder Formularfelder</value>
+  </data>
+  <data name="RedactRasterOthers" xml:space="preserve">
+    <value>Alle anderen Seiten behalten Text und Vektoren.</value>
+  </data>
 </root>

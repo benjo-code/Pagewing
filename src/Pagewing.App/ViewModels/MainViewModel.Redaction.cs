@@ -106,28 +106,42 @@ public sealed partial class MainViewModel
                 return RedactionOutcome.None;
             }
 
-            // The analysis comes before anything is built, and a refusal is honoured here: the build does not read it again.
+            // The analysis comes before anything is built, and a refusal is honoured here: the build does not read it again. A file
+            // that is refused for pages alone gets the offer to turn those pages into images; what the user chooses goes into the plan
+            // and the analysis runs again (a page that is refused even as an image is not offered again, so this ends).
             RedactionAnalysis analysis;
-            try
+            while (true)
             {
-                analysis = await AnalyzeRedactionsAsync(plan, document, current, token);
-            }
-            catch (SaveFailureException ex) when (ex.Reason is SaveFailureReason.SourceModified or SaveFailureReason.OriginalChanged)
-            {
-                await AskIfShownAsync(tab, PendingSave.PageApplyError(tab, current, static () => Strings.RedactErrorFileChanged), token);
-                return RedactionOutcome.None;
-            }
-            catch (Exception ex) when (ex is RedactionException or PdfOpenException or InvalidDataException or IOException or InvalidOperationException or ObjectDisposedException or SaveFailureException)
-            {
-                // A mark on a page the document does not have, a page that cannot be read: nothing is written.
-                await AskIfShownAsync(tab, PendingSave.PageApplyError(tab, current, static () => Strings.RedactErrorNotPrepared), CancellationToken.None);
-                return RedactionOutcome.None;
-            }
+                if (await AnalyzeOrExplainAsync(tab, plan, document, current, token) is not { } made)
+                {
+                    return RedactionOutcome.None;
+                }
 
-            if (analysis.IsRefused)
-            {
-                await AskAsync(PendingSave.RedactionRefused(tab, current, RedactionApplyInfo.ForRefusals(analysis.Refusals)), token);
-                return RedactionOutcome.None;
+                analysis = made;
+                if (!analysis.IsRefused)
+                {
+                    break;
+                }
+
+                var (refusal, offer) = await BuildRescueAsync(plan, analysis, document, token);
+                if (offer is null)
+                {
+                    await AskAsync(PendingSave.RedactionRefused(tab, current, refusal), token);
+                    return RedactionOutcome.None;
+                }
+
+                if (await AskAsync(PendingSave.RedactionRescue(tab, current, refusal, offer), token) != PendingSaveChoice.Continue)
+                {
+                    return RedactionOutcome.None;
+                }
+
+                if (!tab.StageRasterChoice(offer.ChosenPages, offer.Dpi) || tab.RedactionPlan is not { } staged)
+                {
+                    await AskIfShownAsync(tab, PendingSave.PageApplyError(tab, current, static () => Strings.RedactRescueNotStaged), token);
+                    return RedactionOutcome.None;
+                }
+
+                plan = staged;
             }
 
             var choice = await AskAsync(PendingSave.ApplyRedactions(tab, current, RedactionApplyInfo.Create(analysis)), token);

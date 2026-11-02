@@ -1076,6 +1076,59 @@ public static class Strings
     public static string RedactCauseAnnotations => Get("RedactCauseAnnotations");
     public static string RedactRefusalPageUnknown => Get("RedactRefusalPageUnknown");
 
+    public static string CommandRedactRasterPage => Get("CommandRedactRasterPage");
+    public static string RedactRasterButton => Get("RedactRasterButton");
+    public static string RedactRasterToggleTip => Get("RedactRasterToggleTip");
+    public static string RedactRasterDpiLabel => Get("RedactRasterDpiLabel");
+    public static string RedactRasterDpi150 => Get("RedactRasterDpi150");
+    public static string RedactRasterDpi200 => Get("RedactRasterDpi200");
+    public static string RedactRasterDpi300 => Get("RedactRasterDpi300");
+    public static string RedactRasterRowKindFormat => Get("RedactRasterRowKindFormat");
+    public static string RedactRasterRowNameFormat => Get("RedactRasterRowNameFormat");
+    public static string RedactCountRasterOne => Get("RedactCountRasterOne");
+    public static string RedactCountRaster => Get("RedactCountRaster");
+    public static string RedactSumRasterOne => Get("RedactSumRasterOne");
+    public static string RedactSumRaster => Get("RedactSumRaster");
+    public static string SaveChoiceContinue => Get("SaveChoiceContinue");
+    public static string RedactRescueTitle => Get("RedactRescueTitle");
+    public static string RedactRescueIntro => Get("RedactRescueIntro");
+    public static string RedactRescueChoice => Get("RedactRescueChoice");
+    public static string RedactRescueChoiceName => Get("RedactRescueChoiceName");
+    public static string RedactRescueDpiLabel => Get("RedactRescueDpiLabel");
+    public static string RedactRescueEstimate => Get("RedactRescueEstimate");
+    public static string RedactRescueEstimateLowered => Get("RedactRescueEstimateLowered");
+    public static string RedactRescueTooLarge => Get("RedactRescueTooLarge");
+    public static string RedactRescueStuck => Get("RedactRescueStuck");
+    public static string RedactRescueHeadingStuck => Get("RedactRescueHeadingStuck");
+    public static string RedactRescueNotStaged => Get("RedactRescueNotStaged");
+    public static string RedactSecRaster => Get("RedactSecRaster");
+    public static string RedactRasterIntro => Get("RedactRasterIntro");
+    public static string RedactRasterPage => Get("RedactRasterPage");
+    public static string RedactRasterPageLowered => Get("RedactRasterPageLowered");
+    public static string RedactRasterLost => Get("RedactRasterLost");
+    public static string RedactRasterLostText => Get("RedactRasterLostText");
+    public static string RedactRasterLostLinkOne => Get("RedactRasterLostLinkOne");
+    public static string RedactRasterLostLinks => Get("RedactRasterLostLinks");
+    public static string RedactRasterLostAnnotationOne => Get("RedactRasterLostAnnotationOne");
+    public static string RedactRasterLostAnnotations => Get("RedactRasterLostAnnotations");
+    public static string RedactRasterLostFieldOne => Get("RedactRasterLostFieldOne");
+    public static string RedactRasterLostFields => Get("RedactRasterLostFields");
+    public static string RedactRasterLostNothing => Get("RedactRasterLostNothing");
+    public static string RedactRasterOthers => Get("RedactRasterOthers");
+
+    /// <summary>Gets the kind of the row of a page that becomes an image, "As image, 200 dpi".</summary>
+    /// <param name="dpi">The resolution in dots per inch.</param>
+    public static string RedactRasterRowKind(int dpi) => string.Format(Culture, CompositeFormat.Parse(RedactRasterRowKindFormat), dpi);
+
+    /// <summary>Gets the name of that row for screen readers.</summary>
+    /// <param name="page">The 1-based page.</param>
+    /// <param name="dpi">The resolution in dots per inch.</param>
+    public static string RedactRasterRowName(int page, int dpi) => string.Format(Culture, CompositeFormat.Parse(RedactRasterRowNameFormat), page, dpi);
+
+    /// <summary>Gets the counter of the pages that become images, "2 pages as images".</summary>
+    /// <param name="pages">The number of pages.</param>
+    public static string RedactRasterCount(int pages) => string.Format(Culture, CompositeFormat.Parse(pages == 1 ? RedactCountRasterOne : RedactCountRaster), pages);
+
     private static ResourceManager Select(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName == "de" ? German : English;
 

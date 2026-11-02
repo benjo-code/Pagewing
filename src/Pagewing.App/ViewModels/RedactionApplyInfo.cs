@@ -44,6 +44,11 @@ public sealed class RedactionApplyInfo
     {
         ArgumentNullException.ThrowIfNull(analysis);
         var sections = new List<RedactionSection>();
+        if (RasterLines(analysis) is { Count: > 0 } raster)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecRaster, raster));
+        }
+
         if (FallbackLines(analysis) is { Count: > 0 } fallbacks)
         {
             sections.Add(new RedactionSection(Strings.RedactSecFallbacks, fallbacks));
@@ -74,6 +79,9 @@ public sealed class RedactionApplyInfo
         return new RedactionApplyInfo(string.Empty, sections);
     }
 
+    /// <summary>A card made of the given parts alone (the card of a refusal with the offer of the rescue adds its own).</summary>
+    internal static RedactionApplyInfo WithSections(IReadOnlyList<RedactionSection> sections) => new(string.Empty, sections);
+
     /// <summary>The card of a check that found something (nothing was written): one line for each finding, by kind and page.</summary>
     /// <param name="check">The check from the failure, or <see langword="null"/> when the check itself could not be completed.</param>
     public static RedactionApplyInfo ForFailure(RedactionCheck? check)
@@ -98,6 +106,11 @@ public sealed class RedactionApplyInfo
         {
             new(Strings.RedactSecRemoved, RemovedLines(analysis)),
         };
+        if (RasterLines(analysis) is { Count: > 0 } raster)
+        {
+            sections.Add(new RedactionSection(Strings.RedactSecRaster, raster));
+        }
+
         if (FallbackLines(analysis) is { Count: > 0 } fallbacks)
         {
             sections.Add(new RedactionSection(Strings.RedactSecFallbacks, fallbacks));
@@ -363,6 +376,12 @@ public sealed class RedactionApplyInfo
         }
 
         var text = Join(Parts(chars, images, annotations, paths, forms), textWhole);
+        if (analysis.Raster is { Count: > 0 } raster)
+        {
+            var pagesAsImages = CountText(raster.Count, Strings.RedactSumRasterOne, Strings.RedactSumRaster);
+            text = text.Length == 0 ? pagesAsImages : text + "; " + pagesAsImages;
+        }
+
         return text.Length == 0
             ? Format(Strings.RedactSumFormat, Strings.RedactSumNothing)
             : Format(Strings.RedactSumFormat, text);
@@ -521,6 +540,78 @@ public sealed class RedactionApplyInfo
         analysis.Raster is not { Count: > 0 }
             ? Strings.RedactCheckList
             : InPlacePages(analysis) > 0 ? Strings.RedactCheckListRaster : Strings.RedactCheckListRasterOnly;
+
+    // Pages that become images: the sentence of what that costs, then for each page the resolution it really gets with the size, and what
+    // the page loses (counted on the original page).
+    private static List<string> RasterLines(RedactionAnalysis analysis)
+    {
+        var lines = new List<string>();
+        if (analysis.Raster is not { Count: > 0 } raster)
+        {
+            return lines;
+        }
+
+        lines.Add(Strings.RedactRasterIntro);
+        foreach (var info in raster)
+        {
+            var number = (info.Page + 1).ToString(Strings.Culture);
+            lines.Add(Format(
+                info.Lowered ? Strings.RedactRasterPageLowered : Strings.RedactRasterPage,
+                number,
+                info.Dpi.ToString(Strings.Culture),
+                Number(info.WidthPx),
+                Number(info.HeightPx),
+                SizeText(info.EstimatedBytes)));
+            lines.Add(Format(Strings.RedactRasterLost, number, LostOnRasterPage(info)));
+        }
+
+        lines.Add(Strings.RedactRasterOthers);
+        return lines;
+    }
+
+    private static string LostOnRasterPage(RasterPageInfo info)
+    {
+        var parts = new List<string>();
+        if (info.HasText)
+        {
+            parts.Add(Strings.RedactRasterLostText);
+        }
+
+        Add(parts, info.Links, Strings.RedactRasterLostLinkOne, Strings.RedactRasterLostLinks);
+        Add(parts, info.Annotations, Strings.RedactRasterLostAnnotationOne, Strings.RedactRasterLostAnnotations);
+        Add(parts, info.FormFields, Strings.RedactRasterLostFieldOne, Strings.RedactRasterLostFields);
+        return parts.Count == 0 ? Strings.RedactRasterLostNothing : string.Join("; ", parts);
+    }
+
+    /// <summary>
+    /// What turning a page into an image costs at <paramref name="dpi"/>, in the language of the interface: the resolution it really
+    /// gets (lower when the page would be too large), the pixels and the size the file grows by <em>at most</em>; <see langword="null"/>
+    /// for a page that is too large even at the lowest resolution.
+    /// </summary>
+    internal static string? RasterEstimate(double widthPoints, double heightPoints, int dpi)
+    {
+        RasterSize size;
+        try
+        {
+            size = RasterGeometry.Resolve(widthPoints, heightPoints, dpi);
+        }
+        catch (RedactionException)
+        {
+            return null;
+        }
+
+        return Format(
+            size.Lowered ? Strings.RedactRescueEstimateLowered : Strings.RedactRescueEstimate,
+            size.Dpi.ToString(Strings.Culture),
+            Number(size.WidthPx),
+            Number(size.HeightPx),
+            SizeText((long)size.WidthPx * size.HeightPx * 3),
+            dpi.ToString(Strings.Culture));
+    }
+
+    // Megabytes with at most one decimal; never below 0.1 (a size is an upper bound, "about 0" would read as nothing).
+    internal static string SizeText(long bytes) =>
+        Math.Max(0.1, Math.Round(bytes / (1024.0 * 1024.0), 1)).ToString("0.#", Strings.Culture) + " MB";
 
     private static string Number(long value) => value.ToString("N0", Strings.Culture);
 

@@ -246,7 +246,8 @@
      </StackPanel>
     </ScrollViewer>
 
-    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="14,8,6,4">
+    <StackPanel Grid.Row="2" Margin="14,8,6,4" Spacing="6">
+    <Grid ColumnDefinitions="*,Auto">
       <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <TextBlock Classes="strong" VerticalAlignment="Center" Text="{x:Static res:Strings.RedactMarksHeader}" />
         <TextBlock Name="MarksCounter" Classes="caption note" VerticalAlignment="Center"
@@ -262,6 +263,30 @@
         <ctl:StrokeIcon Width="16" Height="16" Data="{StaticResource Pw.Icon.Trash}" />
       </Button>
     </Grid>
+
+    <!-- Pages that become images (milestone 14.1): the page of the selected marks, else the page in view; the resolution once a page does. -->
+    <ctl:ActionToggleButton Name="RasterPageButton" HorizontalAlignment="Left"
+                            IsChecked="{Binding RasterTargetsAreImages, Mode=OneWay}"
+                            Command="{Binding ToggleRasterPageCommand}"
+                            ToolTip.Tip="{x:Static res:Strings.RedactRasterToggleTip}"
+                            AutomationProperties.Name="{x:Static res:Strings.RedactRasterButton}">
+      <TextBlock Text="{x:Static res:Strings.RedactRasterButton}" />
+    </ctl:ActionToggleButton>
+    <StackPanel Name="RasterDpiRow" IsVisible="{Binding HasRasterPages}" Spacing="2">
+      <TextBlock Classes="caption note" Text="{x:Static res:Strings.RedactRasterDpiLabel}" />
+      <WrapPanel Orientation="Horizontal">
+        <RadioButton Name="RasterDpi150" GroupName="PanelRasterDpi" Margin="0,0,12,0" IsChecked="{Binding IsRasterDpi150, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.RedactRasterDpi150}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactRasterDpi150}" />
+        <RadioButton Name="RasterDpi200" GroupName="PanelRasterDpi" Margin="0,0,12,0" IsChecked="{Binding IsRasterDpi200, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.RedactRasterDpi200}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactRasterDpi200}" />
+        <RadioButton Name="RasterDpi300" GroupName="PanelRasterDpi" IsChecked="{Binding IsRasterDpi300, Mode=TwoWay}"
+                     Content="{x:Static res:Strings.RedactRasterDpi300}"
+                     AutomationProperties.Name="{x:Static res:Strings.RedactRasterDpi300}" />
+      </WrapPanel>
+    </StackPanel>
+    </StackPanel>
 
     <Grid Grid.Row="3">
       <TextBlock Name="MarksEmpty" Classes="caption note" Margin="14,4,14,0" VerticalAlignment="Top"

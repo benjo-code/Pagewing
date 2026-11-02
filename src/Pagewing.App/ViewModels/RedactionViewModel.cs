@@ -53,6 +53,7 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
     private readonly BulkCollection<RedactionMarkRowViewModel> _rows = [];
     private readonly Dictionary<Guid, RedactionMarkRowViewModel> _markRows = [];
     private readonly Dictionary<int, RedactionMarkRowViewModel> _headerRows = [];
+    private readonly Dictionary<int, RedactionMarkRowViewModel> _rasterRows = [];
     private readonly RelayCommand _searchCommand;
     private readonly RelayCommand _stopCommand;
     private readonly RelayCommand _markAllCommand;
@@ -301,6 +302,36 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
 
     /// <summary>Removes the selected marks from the plan (the command of the tab).</summary>
     public ICommand DeleteMarksCommand => _tab.DeleteMarksCommand;
+
+    /// <summary>Turns the page of the selected marks, else the page in view, into an image, or back (the command of the tab).</summary>
+    public ICommand ToggleRasterPageCommand => _tab.ToggleRasterPageCommand;
+
+    /// <summary>Gets whether the pages the button "Page as image" concerns all become images (its state).</summary>
+    public bool RasterTargetsAreImages => _tab.RasterTargetsAreImages;
+
+    /// <summary>Gets whether the plan turns a page into an image (the choice of the resolution shows then).</summary>
+    public bool HasRasterPages => _tab.HasRasterPages;
+
+    /// <summary>Gets or sets whether the pages that become images get 150 dpi (a step of the plan).</summary>
+    public bool IsRasterDpi150
+    {
+        get => _tab.IsRasterDpi150;
+        set => _tab.IsRasterDpi150 = value;
+    }
+
+    /// <summary>Gets or sets whether the pages that become images get 200 dpi.</summary>
+    public bool IsRasterDpi200
+    {
+        get => _tab.IsRasterDpi200;
+        set => _tab.IsRasterDpi200 = value;
+    }
+
+    /// <summary>Gets or sets whether the pages that become images get 300 dpi.</summary>
+    public bool IsRasterDpi300
+    {
+        get => _tab.IsRasterDpi300;
+        set => _tab.IsRasterDpi300 = value;
+    }
 
     /// <summary>
     /// A click, Enter or Space on a row of the list of marks: selects the mark and shows its place on the page (the view scrolls to it
@@ -675,6 +706,21 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
             case nameof(TabViewModel.SelectedMarks):
                 SyncSelection();
                 break;
+            case nameof(TabViewModel.RasterTargetsAreImages):
+                OnPropertyChanged(nameof(RasterTargetsAreImages));
+                break;
+            case nameof(TabViewModel.HasRasterPages):
+                OnPropertyChanged(nameof(HasRasterPages));
+                break;
+            case nameof(TabViewModel.IsRasterDpi150):
+                OnPropertyChanged(nameof(IsRasterDpi150));
+                break;
+            case nameof(TabViewModel.IsRasterDpi200):
+                OnPropertyChanged(nameof(IsRasterDpi200));
+                break;
+            case nameof(TabViewModel.IsRasterDpi300):
+                OnPropertyChanged(nameof(IsRasterDpi300));
+                break;
             case nameof(TabViewModel.IsRedacting) or nameof(TabViewModel.HasShownSharpPage) or nameof(TabViewModel.Document):
                 _searchCommand.RaiseCanExecuteChanged();
                 RaiseMarkStateChanged();
@@ -701,10 +747,16 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
             list.Add(mark);
         }
 
-        var wanted = new List<RedactionMarkRowViewModel>(marks.Count + byPage.Count);
+        // A page that becomes an image is listed too, even without a mark: its row says so and with which resolution.
+        var plan = _tab.RedactionPlan;
+        var rasterPages = plan?.RasterPages ?? (IReadOnlySet<int>)new HashSet<int>();
+        var pages = new SortedSet<int>(byPage.Keys);
+        pages.UnionWith(rasterPages);
+        var wanted = new List<RedactionMarkRowViewModel>(marks.Count + pages.Count + rasterPages.Count);
         var markRows = new Dictionary<Guid, RedactionMarkRowViewModel>(marks.Count);
-        var headerRows = new Dictionary<int, RedactionMarkRowViewModel>(byPage.Count);
-        foreach (var (page, list) in byPage)
+        var headerRows = new Dictionary<int, RedactionMarkRowViewModel>(pages.Count);
+        var rasterRows = new Dictionary<int, RedactionMarkRowViewModel>(rasterPages.Count);
+        foreach (var page in pages)
         {
             if (!_headerRows.TryGetValue(page, out var header))
             {
@@ -713,15 +765,29 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
 
             headerRows[page] = header;
             wanted.Add(header);
-            foreach (var mark in list)
+            if (byPage.TryGetValue(page, out var list))
             {
-                if (!_markRows.TryGetValue(mark.Id, out var row) || !ReferenceEquals(row.Mark, mark))
+                foreach (var mark in list)
                 {
-                    row = RedactionMarkRowViewModel.Of(mark);
+                    if (!_markRows.TryGetValue(mark.Id, out var row) || !ReferenceEquals(row.Mark, mark))
+                    {
+                        row = RedactionMarkRowViewModel.Of(mark);
+                    }
+
+                    markRows[mark.Id] = row;
+                    wanted.Add(row);
+                }
+            }
+
+            if (rasterPages.Contains(page) && plan is not null)
+            {
+                if (!_rasterRows.TryGetValue(page, out var raster) || raster.RasterDpi != plan.RasterDpi)
+                {
+                    raster = RedactionMarkRowViewModel.Raster(page, plan.RasterDpi);
                 }
 
-                markRows[mark.Id] = row;
-                wanted.Add(row);
+                rasterRows[page] = raster;
+                wanted.Add(raster);
             }
         }
 
@@ -735,6 +801,12 @@ public sealed class RedactionViewModel : ViewModelBase, IDisposable
         foreach (var pair in headerRows)
         {
             _headerRows[pair.Key] = pair.Value;
+        }
+
+        _rasterRows.Clear();
+        foreach (var pair in rasterRows)
+        {
+            _rasterRows[pair.Key] = pair.Value;
         }
 
         _rows.Apply(wanted, DiffLimit);
