@@ -617,4 +617,138 @@ public sealed class RedactImageTreatmentTests
         await using var original = await engine.OpenAsync(path, cancellationToken: Ct);
         Assert.Empty(await document.VerifyRedactionRenderAsync(original, [RedactionPageAreas.For([area], impact)], Ct));
     }
+
+    [Fact]
+    public async Task AsymmetricCropBoxTreatmentOfANonSquareImageIsAligned()
+    {
+        // MediaBox 300 x 200 with the CropBox 30,15 to 270,185 (different offsets on the two axes): the shown point (x, y) is the user space
+        // point (30 + x, 185 - y). The image (60 x 40 px) is shown 120 x 120 pt, so a pixel is 2 pt wide and 3 pt high; its lower left corner
+        // is at 50,40 (x 50 to 170, y 40 to 160).
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        var image = pdf.AddStream("/Type /XObject /Subtype /Image /Width 60 /Height 40 /BitsPerComponent 8 /ColorSpace /DeviceRGB", Gradient(60, 40));
+        pdf.AddPage("/MediaBox [0 0 300 200] /CropBox [30 15 270 185]", $"<< /XObject << /Im1 {image} 0 R >> >>", "q 120 0 0 120 50 40 cm /Im1 Do Q\n");
+        var path = Path.Combine(folder.Path, "crop-asymmetric.pdf");
+        await File.WriteAllBytesAsync(path, pdf.Build(), Ct);
+        var before = (await ReadImagesAsync(path))[0];
+
+        // Shown x 40 to 100 is user x 70 to 130: columns (70 - 50) / 2 = 10 to (130 - 50) / 2 = 40. Shown y 31 to 91 is user y 154 down to 94:
+        // rows (160 - 154) / 3 = 2 to (160 - 94) / 3 = 22.
+        var area = new PageRect(40, 31, 100, 91);
+        var box = new PixelRect(10, 2, 30, 20);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, RedactionImageTreatment.Blur, RedactionImageStrength.Coarse, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.ImageAreasTreated);
+        Assert.Equal(0, impact.ImageAreasSolid);
+        var output = await SaveAsync(document, folder, "out.pdf");
+        var after = (await ReadImagesAsync(output))[0];
+        var grid = ImageBlocks.Plan(box.Width, box.Height, RedactionImageStrength.Coarse)!;
+        Assert.Equal(ImageBlocks.Expected(before.Bgra, 60, 40, box, grid, RedactionImageTreatment.Blur), Region(after.Bgra, 60, box));
+        AssertOutsideIdentical(before.Bgra, after.Bgra, 60, 40, box);
+
+        // The box the check reads back from the written file is the same rectangle of the same pixels.
+        await using var reopened = await engine.OpenAsync(output, cancellationToken: Ct);
+        var parts = await reopened.GetImageAreaPixelsAsync(0, area, Ct);
+        Assert.Equal((box.Width, box.Height), (parts.Single().Width, parts.Single().Height));
+        Assert.Equal(Region(after.Bgra, 60, box), parts.Single().Bgra);
+        await using var original = await engine.OpenAsync(path, cancellationToken: Ct);
+        Assert.Empty(await document.VerifyRedactionRenderAsync(original, [RedactionPageAreas.For([area], impact)], Ct));
+    }
+
+    [Fact]
+    public async Task AnImageWithASoftMaskIsTreatedOpaqueInsideTheBoxAndKeepsItsMaskOutside()
+    {
+        // 32 x 32 pixels with an /SMask whose alpha varies from pixel to pixel, shown 64 x 64 pt at 20,20 (2 pt per pixel) on 120 x 120.
+        // The area is user x 36 to 68, y 36 to 68: columns 8 to 24 and rows (84 - 68) / 2 = 8 to 24.
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        var mask = new byte[32 * 32];
+        for (var y = 0; y < 32; y++)
+        {
+            for (var x = 0; x < 32; x++)
+            {
+                mask[(y * 32) + x] = (byte)(40 + (((x * 5) + (y * 3)) % 160));
+            }
+        }
+
+        var maskId = pdf.AddStream("/Type /XObject /Subtype /Image /Width 32 /Height 32 /BitsPerComponent 8 /ColorSpace /DeviceGray", mask);
+        var image = pdf.AddStream($"/Type /XObject /Subtype /Image /Width 32 /Height 32 /BitsPerComponent 8 /ColorSpace /DeviceRGB /SMask {maskId} 0 R", Gradient(32, 32));
+        pdf.AddPage("/MediaBox [0 0 120 120]", $"<< /XObject << /Im1 {image} 0 R >> >>", "q 64 0 0 64 20 20 cm /Im1 Do Q\n");
+        var path = Path.Combine(folder.Path, "smask.pdf");
+        await File.WriteAllBytesAsync(path, pdf.Build(), Ct);
+        var before = (await ReadImagesAsync(path)).Single();
+        Assert.Contains(Enumerable.Range(0, 32 * 32), i => before.Bgra[(i * 4) + 3] is > 0 and < 255);
+
+        var area = FromUser(36, 36, 68, 68, 120);
+        var box = new PixelRect(8, 8, 16, 16);
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.ImageAreasTreated);
+        var after = (await ReadImagesAsync(await SaveAsync(document, folder, "out.pdf"))).Single();
+
+        // Inside the box the blocks of the colours, opaque (the original alpha does not reach the result), and outside every pixel,
+        // alpha included, as it was.
+        var grid = ImageBlocks.Plan(box.Width, box.Height, RedactionImageStrength.Coarse)!;
+        var inside = Region(after.Bgra, 32, box);
+        Assert.Equal(ImageBlocks.Expected(before.Bgra, 32, 32, box, grid, RedactionImageTreatment.Pixelate), inside);
+        for (var i = 3; i < inside.Length; i += 4)
+        {
+            Assert.Equal(255, inside[i]);
+        }
+
+        AssertOutsideIdentical(before.Bgra, after.Bgra, 32, 32, box);
+    }
+
+    [Fact]
+    public async Task AnImageInsideAFormXObjectIsTreatedWhereItIsShown()
+    {
+        // The form is placed at 40,30 on a 200 x 200 page; inside it the image (48 x 48 px, 2 pt per pixel) has its lower left corner at 10,20,
+        // so on the page it lies at x 50 to 146 and y 50 to 146. The area is user x 66 to 114 (columns 8 to 32) and y 70 to 118 (rows
+        // (146 - 118) / 2 = 14 to (146 - 70) / 2 = 38).
+        using var folder = new TempFolder();
+        var pdf = new MiniPdf();
+        var image = pdf.AddStream("/Type /XObject /Subtype /Image /Width 48 /Height 48 /BitsPerComponent 8 /ColorSpace /DeviceRGB", Gradient(48, 48));
+        var form = pdf.AddStream($"/Type /XObject /Subtype /Form /BBox [0 0 200 200] /Resources << /XObject << /Im1 {image} 0 R >> >>", System.Text.Encoding.Latin1.GetBytes("q 96 0 0 96 10 20 cm /Im1 Do Q\n"));
+        pdf.AddPage("/MediaBox [0 0 200 200]", $"<< /XObject << /Fm1 {form} 0 R >> >>", "q 1 0 0 1 40 30 cm /Fm1 Do Q\n");
+        var path = Path.Combine(folder.Path, "in-form.pdf");
+        await File.WriteAllBytesAsync(path, pdf.Build(), Ct);
+
+        var area = FromUser(66, 70, 114, 118, 200);
+        var box = new PixelRect(8, 14, 24, 24);
+        await using var original = await engine.OpenAsync(path, cancellationToken: Ct);
+        var originalPart = (await original.GetImageAreaPixelsAsync(0, area, Ct)).Single();
+        Assert.Equal((box.Width, box.Height), (originalPart.Width, originalPart.Height));
+        var generated = GradientBgra(48, 48);
+        Assert.Equal(Region(generated, 48, box), originalPart.Bgra);
+
+        await using var document = await engine.OpenAsync(path, cancellationToken: Ct);
+        var impact = await document.RedactPageAsync(0, [area], RedactionFill.Black, RedactionImageTreatment.Pixelate, RedactionImageStrength.Coarse, Ct);
+        Assert.Null(impact.Refusal);
+        Assert.Equal(1, impact.ImageAreasTreated);
+        Assert.Equal(0, impact.ImageAreasSolid);
+        var output = await SaveAsync(document, folder, "out.pdf");
+        await using var reopened = await engine.OpenAsync(output, cancellationToken: Ct);
+        var after = (await reopened.GetImageAreaPixelsAsync(0, area, Ct)).Single();
+        var grid = ImageBlocks.Plan(box.Width, box.Height, RedactionImageStrength.Coarse)!;
+        Assert.Equal((box.Width, box.Height), (after.Width, after.Height));
+        Assert.Equal(ImageBlocks.Expected(generated, 48, 48, box, grid, RedactionImageTreatment.Pixelate), after.Bgra);
+        Assert.Empty(await document.VerifyRedactionRenderAsync(original, [RedactionPageAreas.For([area], impact)], Ct));
+    }
+
+    private static byte[] GradientBgra(int width, int height)
+    {
+        var rgb = Gradient(width, height);
+        var bgra = new byte[width * height * 4];
+        for (var i = 0; i < width * height; i++)
+        {
+            bgra[i * 4] = rgb[(i * 3) + 2];
+            bgra[(i * 4) + 1] = rgb[(i * 3) + 1];
+            bgra[(i * 4) + 2] = rgb[i * 3];
+            bgra[(i * 4) + 3] = 255;
+        }
+
+        return bgra;
+    }
 }

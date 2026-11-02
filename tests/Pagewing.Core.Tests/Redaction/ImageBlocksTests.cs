@@ -190,6 +190,24 @@ public sealed class ImageBlocksTests
     }
 
     [Fact]
+    public void BlurGivesTheHandWorkedValuesOnAnUnequalGrid()
+    {
+        // 3 columns of 8, 9 and 9 pixels and 2 rows of 8 and 9 pixels: the centres of the blocks are not evenly spaced.
+        var grid = ImageBlocks.Plan(ImageBlockVectors.UnequalWidth, ImageBlockVectors.UnequalHeight, RedactionImageStrength.Coarse)!;
+        Assert.Equal([0, 8, 17, 26], grid.ColumnEdges);
+        Assert.Equal([0, 8, 17], grid.RowEdges);
+        var box = new PixelRect(0, 0, ImageBlockVectors.UnequalWidth, ImageBlockVectors.UnequalHeight);
+        var result = ImageBlocks.Expected(ImageBlockVectors.UnequalImage(), ImageBlockVectors.UnequalWidth, ImageBlockVectors.UnequalHeight, box, grid, RedactionImageTreatment.Blur);
+        foreach (var sample in ImageBlockVectors.UnequalSamples)
+        {
+            var at = ((sample.Y * ImageBlockVectors.UnequalWidth) + sample.X) * 4;
+            Assert.True(
+                result[at] == sample.Value && result[at + 1] == sample.Value && result[at + 2] == sample.Value && result[at + 3] == 255,
+                $"Pixel ({sample.X}, {sample.Y}) is {result[at]},{result[at + 1]},{result[at + 2]},{result[at + 3]}, expected {sample.Value}.");
+        }
+    }
+
+    [Fact]
     public void BlurDependsOnlyOnBlockMeans()
     {
         var one = ImageBlockVectors.BlurImage();
@@ -324,6 +342,21 @@ public sealed class ImageBlocksTests
                     Assert.Equal([mean, mean, mean, (byte)255], pixels[at..(at + 4)]);
                 }
             }
+        }
+    }
+
+    [Fact]
+    public void ThePdfiumApplyAgreesOnTheUnequalGrid()
+    {
+        Assert.True(PdfiumImageBlocks.TryPlan(ImageBlockVectors.UnequalWidth, ImageBlockVectors.UnequalHeight, veryCoarse: false, out var columns, out var rows));
+        var pixels = ImageBlockVectors.UnequalImage();
+        PdfiumImageBlocks.Apply(pixels, ImageBlockVectors.UnequalWidth, new PixelBox(0, 0, ImageBlockVectors.UnequalWidth, ImageBlockVectors.UnequalHeight), columns, rows, blur: true);
+        foreach (var sample in ImageBlockVectors.UnequalSamples)
+        {
+            var at = ((sample.Y * ImageBlockVectors.UnequalWidth) + sample.X) * 4;
+            Assert.True(
+                pixels[at] == sample.Value && pixels[at + 1] == sample.Value && pixels[at + 2] == sample.Value && pixels[at + 3] == 255,
+                $"Pixel ({sample.X}, {sample.Y}) is {pixels[at]},{pixels[at + 1]},{pixels[at + 2]},{pixels[at + 3]}, expected {sample.Value}.");
         }
     }
 

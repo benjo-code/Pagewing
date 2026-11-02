@@ -400,4 +400,63 @@ public sealed partial class NativeBindingsTests
 
         protected override void ReleaseOwnedResources() => Interlocked.Increment(ref ownedResourcesReleased);
     }
+
+    /// <summary>
+    /// Guards the experimental clipping path API that decides whether an image can be pixelated or blurred (milestone 14.1):
+    /// <c>FPDFPageObj_GetClipPath</c>, <c>FPDFClipPath_CountPaths</c>, <c>FPDFClipPath_CountPathSegments</c> and
+    /// <c>FPDFClipPath_GetPathSegment</c> are still experimental in the header, and they answer as the rule assumes: an image that nothing
+    /// cuts has no path in its clip (the header says -1 is a failure, PDFium also answers -1 for a clip without content, so -1 and 0
+    /// both mean "no cut"), an image cut to a rectangle has one path of a closed rectangle (a move and four lines). If an update of PDFium
+    /// fails this, check the header and the behaviour before you change <c>PdfiumRedactionObjects.IsClipped</c>; do not loosen it.
+    /// </summary>
+    [Fact]
+    public async Task ClipPathApiAnswersAsTheTreatmentAssumes()
+    {
+        var header = File.ReadAllText(Path.Combine(HeaderDirectory(), "fpdf_transformpage.h")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        foreach (var name in new[] { "FPDFPageObj_GetClipPath(", "FPDFClipPath_CountPaths(", "FPDFClipPath_CountPathSegments(", "FPDFClipPath_GetPathSegment(" })
+        {
+            var block = header.Split("\n\n").SingleOrDefault(b => b.Contains(name, StringComparison.Ordinal));
+            Assert.True(block is not null, $"{name} is not declared in fpdf_transformpage.h.");
+            Assert.StartsWith("// Experimental API.", block, StringComparison.Ordinal);
+        }
+
+        var images = await PdfiumThread.Shared.InvokeAsync(
+            () =>
+            {
+                using var document = PdfiumDocument.Open(PdfiumThread.Shared, TestData.Pdf("redact-image-blocks.pdf"), null);
+                using var page = PdfiumRedaction.OpenPage(document, 0);
+                var found = new List<(int Paths, int Segments, int FirstType, bool Clipped)>();
+                for (var i = 0; i < page.CountObjects(); i++)
+                {
+                    var obj = page.GetObject(i);
+                    if (Fpdf.FPDFPageObj_GetType(obj) != FpdfConstants.PageObjImage)
+                    {
+                        continue;
+                    }
+
+                    var clip = Fpdf.FPDFPageObj_GetClipPath(obj);
+                    Assert.NotEqual(0, clip);
+                    var paths = Fpdf.FPDFClipPath_CountPaths(clip);
+                    var segments = paths > 0 ? Fpdf.FPDFClipPath_CountPathSegments(clip, 0) : 0;
+                    var firstType = segments > 0 ? Fpdf.FPDFPathSegment_GetType(Fpdf.FPDFClipPath_GetPathSegment(clip, 0, 0)) : -1;
+                    found.Add((paths, segments, firstType, PdfiumRedactionObjects.IsClipped(obj)));
+                }
+
+                return found;
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, images.Count);
+        foreach (var plain in images.Take(4))
+        {
+            Assert.True(plain.Paths <= 0, $"An image nothing cuts has {plain.Paths} clip paths.");
+            Assert.False(plain.Clipped);
+        }
+
+        var clipped = images[4];
+        Assert.Equal(1, clipped.Paths);
+        Assert.Equal(5, clipped.Segments);
+        Assert.Equal(FpdfConstants.SegmentMoveTo, clipped.FirstType);
+        Assert.True(clipped.Clipped);
+    }
 }

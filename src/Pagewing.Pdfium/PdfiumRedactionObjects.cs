@@ -115,13 +115,16 @@ internal static unsafe class PdfiumRedactionObjects
             return true;
         }
 
+        // A null handle is the documented failure of FPDFPageObj_GetClipPath (a valid object always has one): fail closed.
         var clip = Fpdf.FPDFPageObj_GetClipPath(pageObject);
         if (clip == 0)
         {
-            return false;
+            return true;
         }
 
-        // PDFium answers -1 for an object that has no clipping path at all (it is not an error), and the paths otherwise.
+        // The header says -1 is a failure, but PDFium answers -1 for an object whose clipping path has no content at all (found by treating
+        // every -1 as "clipped": the unclipped images of the fixtures then all fell back to solid). It cannot be told apart from a failure,
+        // so it counts as no clip; the guard NativeBindingsTests.ClipPathApiAnswersAsTheTreatmentAssumes pins the behaviour.
         var paths = Fpdf.FPDFClipPath_CountPaths(clip);
         if (paths <= 0)
         {
