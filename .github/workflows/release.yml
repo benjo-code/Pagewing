@@ -242,8 +242,11 @@ jobs:
       - name: Check the licence inventory
         run: dotnet run tools/licenses.cs -- check --publish-dir out/app --publish-dir out/cli
 
+      - name: Fetch the OCR library and the language data
+        run: dotnet run tools/package.cs -- native-fetch --rid win-x64 --out out/native
+
       - name: Package layout
-        run: dotnet run tools/package.cs -- layout --rid win-x64 --app out/app --cli out/cli --out out/layout
+        run: dotnet run tools/package.cs -- layout --rid win-x64 --app out/app --cli out/cli --out out/layout --native out/native
 
       - name: Portable ZIP
         run: dotnet run tools/package.cs -- zip --layout out/layout --version $env:VERSION --out "out/release/Pagewing-$env:VERSION-win-x64-portable.zip"
