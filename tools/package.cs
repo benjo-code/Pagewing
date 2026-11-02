@@ -3113,11 +3113,11 @@ static class NativeTesseract
 
     public static string Tag => $"native-tesseract-{TesseractVersion}-{BuildNumber}";
 
-    // Pinned after the run of native-tesseract.yml; an empty hash means "not built yet" and native-fetch refuses.
+    // Pinned after the run 41452499461 of native-tesseract.yml (2026-11-02, commit 75d2d54); an empty hash would mean "not built yet" and native-fetch refuses.
     public static readonly NativeFile[] Libraries =
     [
-        new("win-x64", "tesseract.dll", "tesseract.dll", 0, string.Empty),
-        new("linux-x64", "libtesseract.so", "libtesseract.so", 0, string.Empty),
+        new("win-x64", "tesseract.dll", "tesseract.dll", 3684864, "248de9ef2aeaadea588c0269d45098cc06a334564ec1e08ed0b66c37700b044f"),
+        new("linux-x64", "libtesseract.so", "libtesseract.so", 6948376, "a1611008fc2dfbf2692bf883ea3d7b1b1412c1310180ba9ca90ef287763997e4"),
     ];
 
     // tessdata_fast 4.1.0 (Apache-2.0), downloaded from the public repository; hashes computed from the files on 2026-11-02.
