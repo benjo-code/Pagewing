@@ -655,6 +655,21 @@ internal static unsafe partial class Fpdf
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial int FPDFPageObjMark_GetParamKey(nint mark, CULong index, ushort* buffer, CULong buflen, CULong* outLength);
 
+    /// <summary>Experimental API: the type of the value of a property of a content mark (<c>FPDF_OBJECT_NUMBER</c> is 2); the key is a byte string.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_GetParamValueType(nint mark, byte* key);
+
+    /// <summary>Experimental API: the value of a number property of a content mark as an int.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_GetParamIntValue(nint mark, byte* key, int* value);
+
+    /// <summary>Experimental API: sets (or adds) an int property of a content mark of a page object.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial int FPDFPageObjMark_SetIntParam(nint document, nint pageObject, nint mark, byte* key, int value);
+
     /// <summary>The clipping path of a page object (<c>FPDF_CLIPPATH</c>, owned by the object; never null for a valid object).</summary>
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

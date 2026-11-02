@@ -3025,10 +3025,11 @@ static class TextEditPdfs
         return doc.Build();
     }
 
-    // Page 300 x 200. Line 1 at 20,170: "Total: " (Helvetica 14, black), "1,250.00" (Helvetica-Bold 14, red), " EUR" (Helvetica 14, black) in one text object.
-    // Line 2 at 20,130: "Pagewing" as a TJ array with kerning shifts (Helvetica 14). Line 3 at 20,90: "Tracked text spacing" with character spacing 1 and
-    // word spacing 4 (Helvetica 12). Line 4 at 20,50: "Mixed " in Helvetica 12 followed by "fonts here" in Times-Roman 12 in one object. The
-    // origins of the later parts of a line are computed from the AFM widths of Helvetica (58.9 = 20 + width of "Total: ").
+    // Page 1, 300 x 200. Line 1 at 20,170: "Total: " (Helvetica 14, black), "1,250.00" (Helvetica-Bold 14, red), " EUR" (Helvetica 14, black) in one text
+    // object. Line 2 at 20,130: "Pagewing" as a TJ array with kerning shifts (Helvetica 14). Line 3 at 20,90: "Mixed " in Helvetica 12 followed by "fonts here"
+    // in Times-Roman 12 in one object. The origins of the later parts of a line are computed from the AFM widths of Helvetica (58.9 = 20 + width of
+    // "Total: "). Page 2, 300 x 200: "Tracked one" at 20,170 and "Tracked two" at 20,130 (Helvetica 12) with character spacing 1 and word spacing 4:
+    // PDFium does not write Tc and Tw, so rewriting this page would change the line that is not edited.
     private static byte[] Styles(StringBuilder runs)
     {
         var doc = new PdfDoc("Pagewing Textbearbeitung: Stile");
@@ -3041,16 +3042,23 @@ static class TextEditPdfs
             """
             BT 20 170 Td /F1 14 Tf (Total: ) Tj /F2 14 Tf 1 0 0 rg (1,250.00) Tj /F1 14 Tf 0 g ( EUR) Tj ET
             BT /F1 14 Tf 20 130 Td [(Pa) 20 (ge) -15 (wi) 10 (ng)] TJ ET
-            BT /F1 12 Tf 1 Tc 4 Tw 20 90 Td (Tracked text spacing) Tj 0 Tc 0 Tw ET
-            BT 20 50 Td /F1 12 Tf (Mixed ) Tj /F3 12 Tf (fonts here) Tj ET
+            BT 20 90 Td /F1 12 Tf (Mixed ) Tj /F3 12 Tf (fonts here) Tj ET
+            """);
+        doc.AddPage(
+            "/MediaBox [0 0 300 200]",
+            $"<< /Font << /F1 {helvetica} 0 R >> >>",
+            """
+            BT /F1 12 Tf 1 Tc 4 Tw 20 170 Td (Tracked one) Tj 0 Tc 0 Tw ET
+            BT /F1 12 Tf 1 Tc 4 Tw 20 130 Td (Tracked two) Tj 0 Tc 0 Tw ET
             """);
         Record(runs, "text-edit-styles.pdf", 1, "Total: ", "Standard14", 20, 30, 14);
         Record(runs, "text-edit-styles.pdf", 1, "1,250.00", "Standard14", 58.9, 30, 14);
         Record(runs, "text-edit-styles.pdf", 1, " EUR", "Standard14", 113.4, 30, 14);
         Record(runs, "text-edit-styles.pdf", 1, "Pagewing", "Standard14", 20, 70, 14);
-        Record(runs, "text-edit-styles.pdf", 1, "Tracked text spacing", "Standard14", 20, 110, 12);
-        Record(runs, "text-edit-styles.pdf", 1, "Mixed ", "Standard14", 20, 150, 12);
-        Record(runs, "text-edit-styles.pdf", 1, "fonts here", "Standard14", 55.3, 150, 12);
+        Record(runs, "text-edit-styles.pdf", 1, "Mixed ", "Standard14", 20, 110, 12);
+        Record(runs, "text-edit-styles.pdf", 1, "fonts here", "Standard14", 55.3, 110, 12);
+        Record(runs, "text-edit-styles.pdf", 2, "Tracked one", "Standard14", 20, 30, 12);
+        Record(runs, "text-edit-styles.pdf", 2, "Tracked two", "Standard14", 20, 70, 12);
         return doc.Build();
     }
 
@@ -3077,11 +3085,11 @@ static class TextEditPdfs
         return doc.Build();
     }
 
-    // Two pages 300 x 300, lines of size 14 (baselines from the top in brackets). Page 1: "Editable control line" (Helvetica, 20), "Invisible text layer"
-    // (render mode 3, 45), "ABBA" (Type 3 font, 70), "Shown text" (inside /Span with /ActualText, 95), "Shared header text" (Form XObject that page 2
+    // Three pages 300 x 300, lines of size 14 (baselines from the top in brackets). Page 1: "Editable control line" (Helvetica, 20), "Invisible text layer"
+    // (render mode 3, 45), "Shown text" (inside /Span with /ActualText, 95), "Shared header text" (Form XObject that page 2
     // uses as well, 135), "Nested form text" (Form XObject inside a Form XObject, 195), "Stroked outline text" (render mode 1, 225), "Clipping text mode"
     // (render mode 4, inside q Q, 255), "Vertical" (Type0 Identity-V, from the top down at x = 270). Page 2: "Shared header text" (135) and
-    // "Editable on page two" (20).
+    // "Editable on page two" (20). Page 3: "ABBA" (Type 3 font, 20) and "Line beside Type 3" (45): PDFium cannot write Type 3 text, so no line of this page is editable.
     private static byte[] Locked(TtfInfo ttf, StringBuilder runs)
     {
         var doc = new PdfDoc("Pagewing Textbearbeitung: gesperrte Läufe");
@@ -3107,11 +3115,10 @@ static class TextEditPdfs
 
         doc.AddPage(
             "/MediaBox [0 0 300 300]",
-            $"<< /Font << /F1 {helvetica} 0 R /F3 {type3} 0 R /F4 {type0} 0 R >> /XObject << /Fm1 {shared} 0 R /Fm2 {outer} 0 R >> >>",
+            $"<< /Font << /F1 {helvetica} 0 R /F4 {type0} 0 R >> /XObject << /Fm1 {shared} 0 R /Fm2 {outer} 0 R >> >>",
             $"""
             BT /F1 14 Tf 20 280 Td (Editable control line) Tj ET
             BT /F1 14 Tf 3 Tr 20 255 Td (Invisible text layer) Tj 0 Tr ET
-            BT /F3 14 Tf 20 230 Td (ABBA) Tj ET
             /Span << /ActualText (Replacement) >> BDC BT /F1 14 Tf 20 205 Td (Shown text) Tj ET EMC
             q 1 0 0 1 0 150 cm /Fm1 Do Q
             q 1 0 0 1 0 90 cm /Fm2 Do Q
@@ -3126,10 +3133,17 @@ static class TextEditPdfs
             BT /F1 14 Tf 20 280 Td (Editable on page two) Tj ET
             q 1 0 0 1 0 150 cm /Fm1 Do Q
             """);
+        doc.AddPage(
+            "/MediaBox [0 0 300 300]",
+            $"<< /Font << /F1 {helvetica} 0 R /F3 {type3} 0 R >> >>",
+            """
+            BT /F3 14 Tf 20 280 Td (ABBA) Tj ET
+            BT /F1 14 Tf 20 255 Td (Line beside Type 3) Tj ET
+            """);
         const string file = "text-edit-locked.pdf";
         Record(runs, file, 1, "Editable control line", "Standard14", 20, 20, 14);
         Record(runs, file, 1, "Invisible text layer", "Standard14", 20, 45, 14);
-        Record(runs, file, 1, "ABBA", "Type3", 20, 70, 14);
+        
         Record(runs, file, 1, "Shown text", "Standard14", 20, 95, 14);
         Record(runs, file, 1, "Shared header text", "Standard14", 20, 135, 14);
         Record(runs, file, 1, "Nested form text", "Standard14", 20, 195, 14);
@@ -3138,6 +3152,8 @@ static class TextEditPdfs
         Record(runs, file, 1, vertical, "EmbeddedFull", 270, 20, 14);
         Record(runs, file, 2, "Editable on page two", "Standard14", 20, 20, 14);
         Record(runs, file, 2, "Shared header text", "Standard14", 20, 135, 14);
+        Record(runs, file, 3, "ABBA", "Type3", 20, 20, 14);
+        Record(runs, file, 3, "Line beside Type 3", "Standard14", 20, 45, 14);
         return doc.Build();
     }
 

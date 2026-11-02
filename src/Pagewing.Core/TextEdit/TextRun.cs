@@ -37,8 +37,8 @@ public enum TextEditLockReason
     /// <summary>The text is in a Form XObject; PDFium does not write the content of forms, and a shared form would change other pages.</summary>
     FormXObject,
 
-    /// <summary>The marked content has <c>/ActualText</c>, <c>/Alt</c> or <c>/E</c>: search and copy would go on delivering the old text.</summary>
-    ActualText,
+    /// <summary>The marked content has <c>/ActualText</c>, <c>/Alt</c> or <c>/E</c> (search and copy would go on delivering the old text) or belongs to an optional content layer (<c>/OC</c>, which a new object would leave).</summary>
+    MarkedContent,
 
     /// <summary>The document cannot be saved by Pagewing (encrypted, or the file changed outside).</summary>
     NotSavable,
@@ -63,10 +63,6 @@ public enum TextEditMode
     WholeRunInGeist,
 }
 
-/// <summary>The positions of the characters of a run, so that unchanged characters keep their spacing and an undo can write the old spacing again.</summary>
-/// <param name="Offsets">For every Unicode scalar of the text the distance of its origin from the origin of the run, along the writing direction in text space units; the first is 0.</param>
-public sealed record TextRunLayout(IReadOnlyList<float> Offsets);
-
 /// <summary>
 /// A piece of text in one font, size and colour on one line that Pagewing can replace as a whole: one text object of PDFium, or after an edit the
 /// consecutive objects it was replaced by.
@@ -82,7 +78,6 @@ public sealed record TextRunLayout(IReadOnlyList<float> Offsets);
 /// <param name="Color">The fill colour.</param>
 /// <param name="Fingerprint">A hash of the text, matrix, font and size of the objects; a replacement refuses a run whose fingerprint no longer matches.</param>
 /// <param name="Lock">Why the run cannot be edited, or <see langword="null"/>.</param>
-/// <param name="Layout">The spacing of the characters; <see langword="null"/> for a run that is locked.</param>
 public sealed record TextRun(
     int Page,
     int ObjectIndex,
@@ -94,8 +89,7 @@ public sealed record TextRun(
     double FontSize,
     AnnotationColor Color,
     string Fingerprint,
-    TextEditLockReason? Lock,
-    TextRunLayout? Layout = null)
+    TextEditLockReason? Lock)
 {
     /// <summary>Gets whether the run cannot be edited.</summary>
     public bool IsLocked => Lock is not null;

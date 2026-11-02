@@ -91,7 +91,7 @@ public sealed class TextEditSpikeTests
         // inside a text object makes PDFium cut it, so each part is a run of its own.
         var texts = await OnPageAsync("text-edit-styles.pdf", 0, static (_, page, textPage) => TextEditProbe.ReadTexts(page, textPage).Select(static t => t.Text).ToArray());
 
-        Assert.Equal(["Total: ", "1,250.00 ", " EUR", "Pagewing", "Tracked text spacing", "Mixed ", "fonts here"], texts);
+        Assert.Equal(["Total: ", "1,250.00 ", " EUR", "Pagewing", "Mixed ", "fonts here"], texts);
     }
 
     [Fact]
@@ -101,6 +101,7 @@ public sealed class TextEditSpikeTests
         var standard = await OnPageAsync("text-edit-standard.pdf", 0, static (_, page, textPage) => TextEditProbe.ReadTexts(page, textPage));
         var full = await OnPageAsync("text-edit-full.pdf", 0, static (_, page, textPage) => TextEditProbe.ReadTexts(page, textPage));
         var locked = await OnPageAsync("text-edit-locked.pdf", 0, static (_, page, textPage) => TextEditProbe.ReadTexts(page, textPage));
+        var type3 = await OnPageAsync("text-edit-locked.pdf", 2, static (_, page, textPage) => TextEditProbe.ReadTexts(page, textPage));
 
         Assert.All(subset, static t => Assert.True(t.Embedded));
         Assert.All(full, static t => Assert.True(t.Embedded));
@@ -111,8 +112,8 @@ public sealed class TextEditSpikeTests
         Assert.Equal(["AAAAAA+Geist", "Geist"], subset.Select(static t => t.Font));
 
         // A Type 3 font has no base font name; that is how it is told apart.
-        Assert.Equal(string.Empty, locked.Single(static t => t.Text == "ABBA").Font);
-        Assert.All(locked.Where(static t => t.Text != "ABBA" && t.Text != "Vertical"), static t => Assert.NotEqual(string.Empty, t.Font));
+        Assert.Equal(string.Empty, type3.Single(static t => t.Text == "ABBA").Font);
+        Assert.All(locked.Where(static t => t.Text != "Vertical"), static t => Assert.NotEqual(string.Empty, t.Font));
     }
 
     [Fact]
@@ -203,12 +204,12 @@ public sealed class TextEditSpikeTests
     [Fact]
     public async Task InPlaceReplacementLosesTheCharacterSpacingOfTheTextStateAfterSaving()
     {
-        // The text state of the object (Tc here) stays on the object, but PDFium writes the page content without it: after saving, the characters
-        // that stayed are laid out naturally. The replacement therefore checks the result on a scratch copy and falls back to a new object.
-        const string OldText = "Tracked text spacing";
-        var before = await OnPageAsync("text-edit-styles.pdf", 0, static (_, page, textPage) => SpikeEditor.CharsOf(page, TextEditProbe.ReadTexts(page, textPage).Single(static t => t.Text.StartsWith("Tracked", StringComparison.Ordinal)).Object));
-        var bytes = await EditAsync("text-edit-styles.pdf", 0, OldText, (document, page, item) => SpikeEditor.Replace(document.Access(), page, item, "Tracked test spacing"));
-        var after = await OnSavedAsync(bytes, 0, static (_, page, textPage) => SpikeEditor.CharsOf(page, TextEditProbe.ReadTexts(page, textPage).Single(static t => t.Text.StartsWith("Tracked", StringComparison.Ordinal)).Object));
+        // The text state of the object (Tc here) stays on the object, but PDFium writes the page content without it: after saving, the line next to
+        // the edited one that was not touched is laid out naturally. The replacement therefore checks the result on a copy of the page and refuses a
+        // page it would change.
+        var before = await OnPageAsync("text-edit-styles.pdf", 1, static (_, page, textPage) => SpikeEditor.CharsOf(page, TextEditProbe.ReadTexts(page, textPage).Single(static t => t.Text == "Tracked two").Object));
+        var bytes = await EditAsync("text-edit-styles.pdf", 1, "Tracked one", (document, page, item) => SpikeEditor.Replace(document.Access(), page, item, "Tracked ones"));
+        var after = await OnSavedAsync(bytes, 1, static (_, page, textPage) => SpikeEditor.CharsOf(page, TextEditProbe.ReadTexts(page, textPage).Single(static t => t.Text == "Tracked two").Object));
 
         Assert.Equal(before.X.Length, after.X.Length);
         Assert.Equal(before.X[1] - 1.0, after.X[1], 0.05);
@@ -385,10 +386,10 @@ public sealed class TextEditSpikeTests
     {
         // PDFium cannot write a Type 3 text object: after the page content is regenerated, "ABBA" is gone from the saved page, so every run of
         // such a page is locked (the whole page content is written again, not only the edited object).
-        var bytes = await EditAsync("text-edit-locked.pdf", 0, "Editable control line", (document, page, item) => SpikeEditor.Replace(document.Access(), page, item, "Editable control lines"));
-        var all = await OnSavedAsync(bytes, 0, static (_, _, textPage) => TextEditProbe.TextOfPage(textPage));
+        var bytes = await EditAsync("text-edit-locked.pdf", 2, "Line beside Type 3", (document, page, item) => SpikeEditor.Replace(document.Access(), page, item, "Line beside Type 3!"));
+        var all = await OnSavedAsync(bytes, 2, static (_, _, textPage) => TextEditProbe.TextOfPage(textPage));
 
-        Assert.Contains("Editable control lines", all, StringComparison.Ordinal);
+        Assert.Contains("Line beside Type 3!", all, StringComparison.Ordinal);
         Assert.DoesNotContain("ABBA", all, StringComparison.Ordinal);
     }
 
