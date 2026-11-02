@@ -326,7 +326,8 @@ public sealed class PdfDocumentTextEditTests
         for (var i = 1; i < boxes.Length; i++)
         {
             Assert.True(boxes[i].Left > boxes[i - 1].Left - 0.01);
-            Assert.Equal(boxes[0].Bottom, boxes[i].Bottom, 3.0);
+            // The same band on every system: the boxes differ with the substitute font (Linux has another Helvetica), a wrongly turned line would differ by tens of points.
+            Assert.Equal(boxes[0].Bottom, boxes[i].Bottom, 7.0);
         }
 
         Assert.True(result.BoundsAfter.Right > result.BoundsBefore.Right);
