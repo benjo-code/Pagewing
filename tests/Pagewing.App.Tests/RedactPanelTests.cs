@@ -365,7 +365,7 @@ public sealed class RedactPanelTests : IDisposable
             "RedactHitsOne", "RedactHitsMany", "RedactStopped", "RedactFailed", "RedactIncompletePages", "RedactMorePages",
             "RedactLimitReached", "RedactAcknowledge", "RedactNotSearchedToggle", "RedactNotSearchedReplies", "RedactNotSearchedAuthor",
             "RedactNotSearchedTooltips", "RedactNotSearchedRichText", "RedactNotSearchedAppearance", "RedactNotSearchedCovered", "RedactNotSearchedNoForm",
-            "RedactMarkAll", "RedactMarkAllTip", "RedactMarkChecked", "RedactCheckAll", "RedactUncheckAll", "RedactHitSourceText",
+            "RedactNotSearchedPatterns", "RedactMarkAll", "RedactMarkAllTip", "RedactMarkChecked", "RedactCheckAll", "RedactUncheckAll", "RedactHitSourceText",
             "RedactHitSourceComment", "RedactHitSourceField", "RedactHitInvisible", "RedactHitShort", "RedactHitNameOf",
             "RedactHitChecked", "RedactHitUnchecked", "RedactHitNotMarkable", "RedactReasonNoArea", "RedactReasonLossy",
             "RedactReasonTooManyLines", "RedactReasonBlank", "RedactReasonTooLong", "RedactMarkedOf", "RedactSkippedOf",

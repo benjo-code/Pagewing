@@ -1,3 +1,4 @@
+using System.Text;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Text;
 
@@ -20,8 +21,38 @@ namespace Pagewing.Core.Redaction;
 /// <param name="Text">The text as the page held it.</param>
 /// <param name="Everywhere">Whether the text must be gone from the whole document.</param>
 /// <param name="OccurrencesBefore">How often the text occurred in the text of the whole original document (with <see cref="Everywhere"/> it is not used).</param>
-public sealed record RemovedText(int Page, string Text, bool Everywhere, int OccurrencesBefore)
+/// <param name="RawForm">
+/// For a pattern hit that is written in groups ("DE89 3704 ..."): the text without its separators (<see cref="RawFormOf"/>), which the
+/// raw-bytes check looks for as well, because the spaces between groups are not in the content stream when they come from the spacing
+/// of the glyphs. <see langword="null"/> for everything else.
+/// </param>
+public sealed record RemovedText(int Page, string Text, bool Everywhere, int OccurrencesBefore, string? RawForm = null)
 {
+    /// <summary>
+    /// The form of a text without separators for the raw-bytes check: spaces (also no-break, narrow no-break and thin spaces), hyphens,
+    /// slashes, dots and round brackets removed. A form that is not shorter than the text itself carries nothing new and a form under
+    /// <see cref="RedactionLimits.MinRawCheckLength"/> characters would match by chance; both give <see langword="null"/>.
+    /// </summary>
+    /// <param name="text">The text of the hit.</param>
+    /// <returns>The form without separators, or <see langword="null"/>.</returns>
+    public static string? RawFormOf(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var builder = new StringBuilder(text.Length);
+        foreach (var c in text)
+        {
+            if (!IsSeparator(c))
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.Length < text.Length && builder.Length >= RedactionLimits.MinRawCheckLength ? builder.ToString() : null;
+    }
+
+    private static bool IsSeparator(char c) =>
+        char.IsWhiteSpace(c) || c is '-' or '‐' or '‑' or '/' or '.' or '(' or ')' or '[' or ']' or '­';
+
     /// <summary>
     /// Builds an entry with <see cref="OccurrencesBefore"/> counted in the ORIGINAL document, document-wide, with the matcher and the
     /// text cut (<see cref="RedactionLimits.MaxTermLength"/>) the check uses.

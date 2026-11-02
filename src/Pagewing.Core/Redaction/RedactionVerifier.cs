@@ -104,7 +104,7 @@ public static class RedactionVerifier
         // OccurrencesBefore either, see RemovedText.FromOriginalAsync), so the mark is no place that the count may subtract.
         var imagePages = expectation.RasterPages is { Count: > 0 } raster ? raster.ToHashSet() : [];
 
-        void Add(string? text, bool everywhere, int before, bool isPlace, int page)
+        void Add(string? text, bool everywhere, int before, bool isPlace, int page, string? rawForm = null)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -138,6 +138,18 @@ public static class RedactionVerifier
                 byText[text] = entry;
             }
 
+            if (entry.RawForm is null && rawForm is { Length: >= RedactionLimits.MinRawCheckLength } && !string.Equals(rawForm, text, StringComparison.Ordinal))
+            {
+                // The form without separators is only the form of a text that the page shows in groups; it is looked up in the page
+                // text as well, so a remaining copy that the page shows without spaces is not mistaken for a leak.
+                var rawNeedle = TextMatcher.Normalize(rawForm, matchCase: true);
+                if (rawNeedle.Length > 0 && !rawForm.Contains('�', StringComparison.Ordinal) && !rawForm.Contains('\0', StringComparison.Ordinal))
+                {
+                    entry.RawForm = rawForm;
+                    entry.RawNeedle = rawNeedle;
+                }
+            }
+
             entry.Everywhere |= everywhere;
             entry.Pages.Add(page);
             entry.Before = Math.Max(entry.Before, before);
@@ -150,7 +162,7 @@ public static class RedactionVerifier
         foreach (var removed in expectation.Removed)
         {
             ArgumentNullException.ThrowIfNull(removed);
-            Add(removed.Text, removed.Everywhere, removed.OccurrencesBefore, isPlace: !imagePages.Contains(removed.Page), removed.Page);
+            Add(removed.Text, removed.Everywhere, removed.OccurrencesBefore, isPlace: !imagePages.Contains(removed.Page), removed.Page, removed.RawForm);
         }
 
         foreach (var mark in expectation.Plan.Marks)
@@ -210,7 +222,8 @@ public static class RedactionVerifier
             findings.Add(new RedactionFinding(RedactionFindingKind.PageChangedOutsideAreas, page, "The result has fewer pages than the plan expects."));
         }
 
-        var needles = texts.Select(static t => t.Needle).ToArray();
+        // The needles of the texts, then those of the forms without separators (empty where a text has none: an empty needle counts nothing).
+        var needles = texts.Select(static t => t.Needle).Concat(texts.Select(static t => t.RawNeedle ?? string.Empty)).ToArray();
         for (var page = 0; page < pageCount; page++)
         {
             // A page turned into an image has no text, so the position check of characters does not apply to it: a character on it is a
@@ -247,10 +260,11 @@ public static class RedactionVerifier
 
             if (texts.Count > 0)
             {
-                var counts = new int[texts.Count];
+                var counts = new int[needles.Length];
                 TextMatcher.CountNormalized(text.Chars, matchCase: true, needles, counts);
-                for (var i = 0; i < counts.Length; i++)
+                for (var i = 0; i < texts.Count; i++)
                 {
+                    texts[i].RawFormOccurrences += counts[texts.Count + i];
                     if (counts[i] > 0)
                     {
                         texts[i].Occurrences += counts[i];
@@ -366,7 +380,10 @@ public static class RedactionVerifier
                 RedactionLimits.MinRawCheckLength);
         }
 
-        if (searched.Count == 0)
+        // The forms without separators of pattern hits are searched next to the texts (a text under the minimum length has none that
+        // is long enough, so this adds nothing for it).
+        var withRawForm = texts.Where(static t => t.RawForm is not null).ToList();
+        if (searched.Count == 0 && withRawForm.Count == 0)
         {
             if (texts.Count == 0)
             {
@@ -376,7 +393,7 @@ public static class RedactionVerifier
             return;
         }
 
-        var terms = searched.Select(static t => t.Text).ToArray();
+        var terms = searched.Select(static t => t.Text).Concat(withRawForm.Select(static t => t.RawForm!)).ToArray();
         var result = await Task.Run(() => RawContentScanner.Scan(file, terms, limits, cancellationToken), cancellationToken).ConfigureAwait(false);
         for (var i = 0; i < searched.Count; i++)
         {
@@ -395,10 +412,32 @@ public static class RedactionVerifier
             }
         }
 
-        var remaining = searched.Where(static t => !t.Everywhere && t.Occurrences > 0).ToList();
+        // The form without separators: the file bytes may hold it at most as often as the page text accounts for it, that is as often as
+        // the grouped text occurs there (the spacing between the groups is not in the content stream) plus the occurrences of the form
+        // itself (a copy that the page shows without spaces). A copy that the scanner could not recognise (split over a line break) is
+        // one of those, so it never fails the check; a copy in an attachment, metadata or an old revision is not and does.
+        for (var i = 0; i < withRawForm.Count; i++)
+        {
+            var text = withRawForm[i];
+            var raw = result.Counts[searched.Count + i];
+            var allowed = text.Everywhere ? 0 : text.Occurrences + text.RawFormOccurrences;
+            if (raw > allowed)
+            {
+                findings.Add(new RedactionFinding(
+                    RedactionFindingKind.RawBytesStillPresent,
+                    null,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Removed text #{text.Index + 1} ({text.Text.Length} characters) is still in the bytes of the file {raw} time(s) without the separators between its groups (in an old revision, metadata, an attachment or a stream); the page text accounts for {allowed}."),
+                    [.. text.Pages]));
+            }
+        }
+
+        // The copies of the form without separators that the page shows count with the text itself: that many leaks could hide behind them.
+        var remaining = searched.Where(static t => !t.Everywhere && (t.Occurrences > 0 || t.RawFormOccurrences > 0)).ToList();
         if (remaining.Count > 0)
         {
-            var total = remaining.Sum(static t => t.Occurrences);
+            var total = remaining.Sum(static t => t.Occurrences + t.RawFormOccurrences);
             notChecked.Add(
                 RedactionNotCheckedKind.RawStillOccur,
                 string.Create(
@@ -586,6 +625,15 @@ public static class RedactionVerifier
         public int Before { get; set; }
 
         public int Occurrences { get; set; }
+
+        /// <summary>Gets or sets the form without separators for the raw-bytes check, or <see langword="null"/>.</summary>
+        public string? RawForm { get; set; }
+
+        /// <summary>Gets or sets the normalized <see cref="RawForm"/> for the page text.</summary>
+        public string? RawNeedle { get; set; }
+
+        /// <summary>Gets or sets how often <see cref="RawNeedle"/> occurs in the page text of the result.</summary>
+        public int RawFormOccurrences { get; set; }
 
         public int FirstPage { get; set; } = -1;
     }

@@ -286,7 +286,11 @@ public sealed partial class RedactionExecutor
                 $"{mark.Page}|{mark.Everywhere}|{term}|{string.Join(';', mark.Areas.Select(static a => string.Create(CultureInfo.InvariantCulture, $"{a.Left:R},{a.Top:R},{a.Right:R},{a.Bottom:R}")))}");
             if (seen.Add(place))
             {
-                candidates.Add(new RemovedText(mark.Page, term, mark.Everywhere, 0));
+                // The groups of an IBAN, a card number or a telephone number are laid out by the spacing of the glyphs, so their spaces are
+                // not in the content stream: the raw-bytes check looks for the form without separators as well. An e-mail address has
+                // no layout separators (its dots and hyphens are part of it).
+                var rawForm = mark.Pattern is RedactionPatternKind.Iban or RedactionPatternKind.Card or RedactionPatternKind.Phone ? RemovedText.RawFormOf(term) : null;
+                candidates.Add(new RemovedText(mark.Page, term, mark.Everywhere, 0, rawForm));
             }
         }
 

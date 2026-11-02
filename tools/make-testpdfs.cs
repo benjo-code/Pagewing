@@ -137,6 +137,7 @@ static class TestPdfs
         new("redact-paths.pdf", RedactPaths()),
         new("redact-structure.pdf", RedactStructure()),
         new("redact-objstm.pdf", RedactObjectStreams()),
+        new("redact-patterns.pdf", RedactPatterns()),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -1681,6 +1682,63 @@ static class TestPdfs
         doc.CatalogEntries = $"/OpenAction {script} 0 R /Names << /JavaScript << /Names [(init) {script} 0 R] >> >> /PageLabels << /Nums [0 << /P ({RedactTerm} - ) >>] >> "
             + $"/Metadata {catalogXmp} 0 R /StructTreeRoot {structRoot} 0 R /OCProperties << /OCGs [{layer} 0 R] /D << /BaseState /ON /OFF [{layer} 0 R] >> >> "
             + AcroFormEntry(doc, [parent]);
+        return doc.Build();
+    }
+
+    // Patterns for "search and redact" (milestone 14.1). One page 400 x 600, Helvetica 10, one text object per line from y = 570 down
+    // in steps of 16. Page text: IBANs (valid DE, GB, FR; DE with a wrong check digit; NL ungrouped; GB grouped with no-break spaces),
+    // cards (Luhn-valid 4111..., hyphenated 4111-..., 5555...; Luhn-invalid grouped 1234 ...), telephone numbers (+49, 0711/, (0711)),
+    // e-mail addresses (two good, "john@localhost" and "@example.com" as non-addresses), traps (a date, an ISBN, a version, a 20-digit
+    // run) and an IBAN split across two lines. A Text annotation carries an IBAN, two text fields carry an e-mail address and a
+    // telephone number. Expected hits (test FixtureYieldsTheExpectedHitsPerKindAndCertainty): Iban 6 ChecksumOk + 1 ChecksumFailed,
+    // Card 3 ChecksumOk + 1 ChecksumFailed, Phone 4 ShapeOnly, Email 3 ShapeOnly.
+    private static byte[] RedactPatterns()
+    {
+        var doc = new PdfDoc("Pagewing Schwärzen: Muster");
+        var helvetica = doc.Add(Helvetica);
+        var page1 = doc.Reserve();
+        var lines = new[]
+        {
+            "IBAN DE89 3704 0044 0532 0130 00",
+            "IBAN GB82 WEST 1234 5698 7654 32",
+            "IBAN FR14 2004 1010 0505 0001 3M02 606",
+            "IBAN (typo) DE88 3704 0044 0532 0130 00",
+            "IBAN NL91ABNA0417164300",
+            "IBAN GB82\\240WEST\\2401234\\2405698\\2407654\\24032",
+            "Card 4111 1111 1111 1111",
+            "Card 4111-1111-1111-1111",
+            "Card 5555 5555 5555 4444",
+            "Card (typo) 1234 5678 9012 3456",
+            "Tel +49 711 1234567",
+            "Fax 0711/1234567",
+            "Mobil (0711) 123 45 67",
+            "Mail max.mustermann@example.com",
+            "Mail a+b@sub.example.co.uk",
+            "No mail john@localhost and @example.com",
+            "Datum 01.02.2024 und ISBN 978-3-16-148410-0 Version 1.2.3",
+            "Run 12345678901234567890",
+            "Konto DE89 3704 0044 0",
+            "532 0130 00 (split)",
+        };
+
+        var content = new StringBuilder();
+        var y = 570;
+        foreach (var line in lines)
+        {
+            content.Append(CultureInfo.InvariantCulture, $"BT /F1 10 Tf 20 {y} Td ({line}) Tj ET\n");
+            y -= 16;
+        }
+
+        var note = doc.Add($"<< /Type /Annot /Subtype /Text /Rect [350 560 368 578] /Name /Note /F 28 /NM (pattern-note-0001) /Contents (Please transfer to DE89 3704 0044 0532 0130 00 today) /C [1 1 0] /P {page1} 0 R >>");
+        var mail = FormField(doc, page1, FormRect(20, 100, 220, 125), $"/FT /Tx /T (Mail) /V (form@example.org) {FormDa}");
+        var phone = FormField(doc, page1, FormRect(20, 60, 220, 85), $"/FT /Tx /T (Phone) /V (+49 711 7654321) {FormDa}");
+
+        doc.AddPage(
+            $"/MediaBox [0 0 400 600] /Annots [{AnnotRefs([note, mail, phone])}]",
+            $"<< /Font << /F1 {helvetica} 0 R >> >>",
+            content.ToString(),
+            page1);
+        doc.CatalogEntries = AcroFormEntry(doc, [mail, phone]);
         return doc.Build();
     }
 

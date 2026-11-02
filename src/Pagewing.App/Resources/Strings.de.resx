@@ -2208,6 +2208,9 @@
   <data name="RedactNotSearchedNoForm" xml:space="preserve">
     <value>Die Werte von Formularfeldern in einer Datei ohne Formular (Widgets ohne /AcroForm) werden nicht durchsucht.</value>
   </data>
+  <data name="RedactNotSearchedPatterns" xml:space="preserve">
+    <value>Muster finden nur, was der Text zeigt: Eine Nummer, die über einen Zeilenumbruch oder eine Seitengrenze geteilt ist, Ziffern, die durch andere Zeichen als die üblichen Trenner unterbrochen sind, und Nummern in Bildern werden nicht gefunden.</value>
+  </data>
   <data name="RedactMarkAll" xml:space="preserve">
     <value>Alle markieren</value>
   </data>

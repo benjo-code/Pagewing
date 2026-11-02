@@ -829,6 +829,7 @@ public static class Strings
     public static string RedactNotSearchedAppearance => Get("RedactNotSearchedAppearance");
     public static string RedactNotSearchedCovered => Get("RedactNotSearchedCovered");
     public static string RedactNotSearchedNoForm => Get("RedactNotSearchedNoForm");
+    public static string RedactNotSearchedPatterns => Get("RedactNotSearchedPatterns");
     public static string RedactMarkAll => Get("RedactMarkAll");
     public static string RedactMarkAllTip => Get("RedactMarkAllTip");
     public static string RedactMarkChecked => Get("RedactMarkChecked");
@@ -873,6 +874,7 @@ public static class Strings
         RedactNotSearchedAppearance,
         RedactNotSearchedCovered,
         RedactNotSearchedNoForm,
+        RedactNotSearchedPatterns,
     ];
 
     public static string RedactSearching(int hits) => string.Format(Culture, CompositeFormat.Parse(RedactSearchingOf), hits);

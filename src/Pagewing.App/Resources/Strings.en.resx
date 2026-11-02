@@ -2208,6 +2208,9 @@
   <data name="RedactNotSearchedNoForm" xml:space="preserve">
     <value>The values of form fields in a file without a form (widgets without /AcroForm) are not searched.</value>
   </data>
+  <data name="RedactNotSearchedPatterns" xml:space="preserve">
+    <value>Patterns find only what the text shows: a number split across a line break or a page boundary, digits interrupted by other characters than the usual separators, and numbers inside images are not found.</value>
+  </data>
   <data name="RedactMarkAll" xml:space="preserve">
     <value>Mark all</value>
   </data>
