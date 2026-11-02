@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using Pagewing.Core.Forms;
+using Pagewing.Core.Ocr;
 using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
 using Pagewing.Core.Signatures;
@@ -157,6 +158,21 @@ public sealed class AnnotationEditor
             lock (gate)
             {
                 return history.HasOnlyFormChanges;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether a text recognition run was applied since the last save (<see cref="AnnotationHistory.HasOcrChanges"/>), also one
+    /// undone since: the warning before saving a signed document names the invisible text that is added.
+    /// </summary>
+    public bool HasOcrChanges
+    {
+        get
+        {
+            lock (gate)
+            {
+                return history.HasOcrChanges;
             }
         }
     }
@@ -521,6 +537,105 @@ public sealed class AnnotationEditor
         });
     }
 
+    /// <summary>
+    /// Writes the result of a text recognition run into the document as Pagewing's invisible text layer and makes the whole run <b>one</b> step of
+    /// the history (undo takes the layers out, redo writes them again; saving it is the saving of the document, incremental like any annotation).
+    /// With <paramref name="replace"/> the layer a page already has is replaced (undo brings it back); without it a page that already has a layer
+    /// keeps it, is not written a second time and is listed in <see cref="OcrApplyResult.AlreadyRecognized"/>. A page without a usable word is
+    /// left alone. If the step would not fit into the budget of the history, <see cref="AnnotationHistoryFullException"/> comes <i>before</i> the
+    /// document changes; if PDFium fails part-way, the pages already written are taken back and nothing is left.
+    /// </summary>
+    /// <param name="result">The result of a run of <see cref="OcrRunner"/>.</param>
+    /// <param name="replace">Whether Pagewing's layer of a page is replaced.</param>
+    /// <returns>What was written, or <see langword="null"/> when there was nothing to write (no step then).</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="result"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A page of the result is not a page of the document (nothing changes).</exception>
+    /// <exception cref="AnnotationHistoryFullException">The step does not fit into the history any more; nothing changes (save first).</exception>
+    /// <exception cref="InvalidOperationException">The session has no ready document, or PDFium refused (nothing is left of the run).</exception>
+    public Task<OcrApplyResult?> ApplyOcrAsync(OcrRunResult result, bool replace)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return RunAsync<OcrApplyResult?>(async document =>
+        {
+            var before = new SortedDictionary<int, IReadOnlyList<OcrPageWord>>();
+            var after = new SortedDictionary<int, IReadOnlyList<OcrPageWord>>();
+            var already = new List<int>();
+            foreach (var page in result.Pages.OrderBy(static p => p.Page))
+            {
+                var words = page.Words.Where(static w => w.IsUsable).ToList();
+                if (words.Count == 0)
+                {
+                    continue;
+                }
+
+                // Reading first: a page that is not there fails before anything is written.
+                var existing = await document.ReadOcrLayerAsync(page.Page).ConfigureAwait(false);
+                if (existing.Count > 0 && !replace)
+                {
+                    already.Add(page.Page);
+                    continue;
+                }
+
+                after[page.Page] = words;
+                if (existing.Count > 0)
+                {
+                    before[page.Page] = existing;
+                }
+            }
+
+            if (after.Count == 0)
+            {
+                return null;
+            }
+
+            var step = new AnnotationCommand.OcrLayer(before, after);
+            RequireRoomFor(step.EstimatedBytes);
+
+            var written = 0;
+            var leftOut = 0;
+            var touched = new List<int>();
+            try
+            {
+                foreach (var (page, words) in after)
+                {
+                    touched.Add(page);
+                    await document.RemoveOcrLayerAsync(page).ConfigureAwait(false);
+                    var added = await document.AddOcrLayerAsync(page, words).ConfigureAwait(false);
+                    written += added.Written;
+                    leftOut += added.Skipped;
+                }
+            }
+            catch
+            {
+                await RestoreOcrAsync(document, touched, before).ConfigureAwait(false);
+                throw;
+            }
+
+            Record(new HashSet<int>(after.Keys), step);
+            return new OcrApplyResult([.. after.Keys], written, leftOut, already);
+        });
+    }
+
+    /// <summary>Puts the layers of the pages back as they were before a step that failed part-way (best effort: an error here is not reported, the original one is).</summary>
+    private static async Task RestoreOcrAsync(PdfDocument document, List<int> pages, SortedDictionary<int, IReadOnlyList<OcrPageWord>> before)
+    {
+        foreach (var page in pages)
+        {
+            try
+            {
+                await document.RemoveOcrLayerAsync(page).ConfigureAwait(false);
+                if (before.TryGetValue(page, out var old))
+                {
+                    await document.AddOcrLayerAsync(page, old).ConfigureAwait(false);
+                }
+            }
+            catch (Exception e) when (e is InvalidOperationException or ArgumentException or ObjectDisposedException)
+            {
+                // The page cannot be taken back either; the exception of the run stays the one the caller sees.
+            }
+        }
+    }
+
     /// <summary>Undoes the newest change; does nothing when there is none.</summary>
     /// <exception cref="InvalidOperationException">The session has no ready document, or PDFium refused; the history is as before.</exception>
     public Task UndoAsync() => StepAsync(undo: true);
@@ -747,11 +862,15 @@ public sealed class AnnotationEditor
 
     /// <summary>Refuses a step that would keep <paramref name="image"/> in a history that has no room for it (nothing has changed yet).</summary>
     /// <exception cref="AnnotationHistoryFullException">The image does not fit.</exception>
-    private void RequireRoomFor(PackedSignatureImage image)
+    private void RequireRoomFor(PackedSignatureImage image) => RequireRoomFor(image.Deflated.Length);
+
+    /// <summary>Refuses a step that would keep <paramref name="bytes"/> of images or word lists in a history that has no room for them (nothing has changed yet).</summary>
+    /// <exception cref="AnnotationHistoryFullException">The step does not fit.</exception>
+    private void RequireRoomFor(long bytes)
     {
         lock (gate)
         {
-            if (!history.Fits(image.Deflated.Length, ImageBudget))
+            if (!history.Fits(bytes, ImageBudget))
             {
                 throw new AnnotationHistoryFullException();
             }
@@ -765,6 +884,21 @@ public sealed class AnnotationEditor
         {
             var change = await document.SetFormValueAsync(form.FieldName, undo ? form.Before : form.After, CancellationToken.None).ConfigureAwait(false);
             return change.Pages;
+        }
+
+        if (command is AnnotationCommand.OcrLayer ocr)
+        {
+            // The layer of every page the step touched is taken out and the other side of the step is written (undo: what the run found, redo: what it wrote).
+            foreach (var page in ocr.Pages)
+            {
+                await document.RemoveOcrLayerAsync(page).ConfigureAwait(false);
+                if ((undo ? ocr.Before : ocr.After).TryGetValue(page, out var words))
+                {
+                    await document.AddOcrLayerAsync(page, words).ConfigureAwait(false);
+                }
+            }
+
+            return new HashSet<int>(ocr.Pages);
         }
 
         await ApplyAnnotationAsync(document, command, undo).ConfigureAwait(false);
