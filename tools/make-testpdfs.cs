@@ -139,6 +139,7 @@ static class TestPdfs
         new("redact-objstm.pdf", RedactObjectStreams()),
         new("redact-patterns.pdf", RedactPatterns()),
         new("redact-image-blocks.pdf", RedactImageBlocks()),
+        .. OcrScans.Files(),
         new("not-a-pdf.pdf", Encoding.ASCII.GetBytes("This is not a PDF.")),
         new("empty.pdf", []),
     ];
@@ -2156,6 +2157,168 @@ sealed class TtfInfo
         return U16(hmtx + (Math.Min(glyph, numberOfHMetrics - 1) * 4));
     }
 
+    // The outline of a glyph: its contours as points in font units (y up) with the on-curve flag; a composite glyph is resolved (offsets and
+    // scales of its components applied, no point matching). An empty glyph (a space) has no contours.
+    public List<List<(double X, double Y, bool On)>> GlyphContours(int glyph, int depth = 0)
+    {
+        if (depth > 8)
+        {
+            throw new InvalidOperationException("Verschachtelte Teilglyphen zu tief.");
+        }
+
+        var head = tables["head"].Offset;
+        var longOffsets = U16(head + 50) == 1;
+        var glyf = tables["glyf"].Offset;
+        var loca = tables["loca"].Offset;
+        int start = longOffsets ? (int)U32(loca + (glyph * 4)) : U16(loca + (glyph * 2)) * 2;
+        int end = longOffsets ? (int)U32(loca + ((glyph + 1) * 4)) : U16(loca + ((glyph + 1) * 2)) * 2;
+        var contours = new List<List<(double X, double Y, bool On)>>();
+        if (end <= start)
+        {
+            return contours;
+        }
+
+        var at = glyf + start;
+        var count = S16(at);
+        at += 10;
+        if (count >= 0)
+        {
+            var ends = new int[count];
+            for (var i = 0; i < count; i++)
+            {
+                ends[i] = U16(at + (i * 2));
+            }
+
+            at += count * 2;
+            at += 2 + U16(at); // the instructions
+            var pointCount = count == 0 ? 0 : ends[^1] + 1;
+            var flags = new byte[pointCount];
+            for (var i = 0; i < pointCount;)
+            {
+                var flag = Data[at++];
+                flags[i++] = flag;
+                if ((flag & 8) != 0)
+                {
+                    var repeat = Data[at++];
+                    while (repeat-- > 0 && i < pointCount)
+                    {
+                        flags[i++] = flag;
+                    }
+                }
+            }
+
+            var xs = new int[pointCount];
+            var ys = new int[pointCount];
+            var value = 0;
+            for (var i = 0; i < pointCount; i++)
+            {
+                if ((flags[i] & 2) != 0)
+                {
+                    var delta = Data[at++];
+                    value += (flags[i] & 16) != 0 ? delta : -delta;
+                }
+                else if ((flags[i] & 16) == 0)
+                {
+                    value += S16(at);
+                    at += 2;
+                }
+
+                xs[i] = value;
+            }
+
+            value = 0;
+            for (var i = 0; i < pointCount; i++)
+            {
+                if ((flags[i] & 4) != 0)
+                {
+                    var delta = Data[at++];
+                    value += (flags[i] & 32) != 0 ? delta : -delta;
+                }
+                else if ((flags[i] & 32) == 0)
+                {
+                    value += S16(at);
+                    at += 2;
+                }
+
+                ys[i] = value;
+            }
+
+            var first = 0;
+            foreach (var last in ends)
+            {
+                var contour = new List<(double X, double Y, bool On)>();
+                for (var i = first; i <= last; i++)
+                {
+                    contour.Add((xs[i], ys[i], (flags[i] & 1) != 0));
+                }
+
+                contours.Add(contour);
+                first = last + 1;
+            }
+
+            return contours;
+        }
+
+        // A composite glyph: components with an offset and an optional scale.
+        while (true)
+        {
+            var flags = U16(at);
+            var component = U16(at + 2);
+            at += 4;
+            if ((flags & 2) == 0)
+            {
+                throw new InvalidOperationException("Teilglyphen mit Punktzuordnung werden nicht unterstuetzt.");
+            }
+
+            double dx, dy;
+            if ((flags & 1) != 0)
+            {
+                dx = S16(at);
+                dy = S16(at + 2);
+                at += 4;
+            }
+            else
+            {
+                dx = (sbyte)Data[at];
+                dy = (sbyte)Data[at + 1];
+                at += 2;
+            }
+
+            double a = 1, b = 0, c = 0, d = 1;
+            if ((flags & 8) != 0)
+            {
+                a = d = S16(at) / 16384.0;
+                at += 2;
+            }
+            else if ((flags & 0x40) != 0)
+            {
+                a = S16(at) / 16384.0;
+                d = S16(at + 2) / 16384.0;
+                at += 4;
+            }
+            else if ((flags & 0x80) != 0)
+            {
+                a = S16(at) / 16384.0;
+                b = S16(at + 2) / 16384.0;
+                c = S16(at + 4) / 16384.0;
+                d = S16(at + 6) / 16384.0;
+                at += 8;
+            }
+
+            foreach (var part in GlyphContours(component, depth + 1))
+            {
+                contours.Add([.. part.Select(p => ((a * p.X) + (c * p.Y) + dx, (b * p.X) + (d * p.Y) + dy, p.On))]);
+            }
+
+            if ((flags & 0x20) == 0)
+            {
+                break;
+            }
+        }
+
+        return contours;
+    }
+
     private int U16(int offset) => (Data[offset] << 8) | Data[offset + 1];
 
     private int S16(int offset) => (short)U16(offset);
@@ -2470,5 +2633,489 @@ sealed class PdfDoc
         }
 
         return hex.Append('>').ToString();
+    }
+}
+
+// The scan fixtures of milestone 15 (OCR): pages that are one 1-bit image of text. The text is drawn with Geist Regular by a small
+// scan converter of its own (outlines of the TrueType file, exact area coverage, no platform font code), so the output is the same
+// bytes on every system. Resolution 200 dpi; a page of 1000 x 1400 pixels is 360 x 504 points. ocr-words.tsv lists the ink box of
+// every word in points from the top left of the displayed page (the tests look the recognized words up there).
+static class OcrScans
+{
+    private const int Dpi = 200;
+    private const int WidthPx = 1000;
+    private const int HeightPx = 1400;
+    private const double PointsPerPixel = 72.0 / Dpi;
+
+    private readonly record struct Line(string Text, double X, double Baseline, double Size);
+
+    private readonly record struct Ink(string Text, int Left, int Top, int Right, int Bottom);
+
+    // The pages of ocr-scan.pdf: English, German with umlauts, two columns.
+    private static readonly Line[][] ScanPages =
+    [
+        [
+            new("Invoice 2026-114", 80, 180, 72),
+            new("Pagewing OCR test page", 80, 300, 44),
+            new("The quick brown fox jumps", 80, 400, 44),
+            new("over the lazy dog 0123456789", 80, 480, 44),
+            new("Total due 1,284.50 EUR", 80, 600, 44),
+            new("Thank you for your business", 80, 680, 44),
+        ],
+        [
+            new("Müller Straße Größe", 80, 200, 72),
+            new("Äpfel, Öl und Übung", 80, 330, 52),
+            new("Zürich Köln München", 80, 430, 52),
+            new("Hauptstraße 12, 80331 München", 80, 540, 44),
+        ],
+        [
+            new("Left column", 80, 200, 52),
+            new("alpha beta gamma", 80, 300, 44),
+            new("delta epsilon", 80, 380, 44),
+            new("zeta eta theta", 80, 460, 44),
+            new("Right column", 540, 200, 52),
+            new("one two three", 540, 300, 44),
+            new("four five six", 540, 380, 44),
+            new("seven eight nine", 540, 460, 44),
+        ],
+    ];
+
+    // The page of ocr-mixed.pdf that is a scan with a real page number on it.
+    private static readonly Line[] MixedScanPage =
+    [
+        new("Scanned page with a number", 80, 200, 52),
+        new("Only the number at the bottom is text", 80, 320, 40),
+        new("Everything else is a picture", 80, 400, 40),
+    ];
+
+    public static IEnumerable<KeyValuePair<string, byte[]>> Files()
+    {
+        var ttf = new TtfInfo(File.ReadAllBytes(RepositoryFile("src", "Pagewing.Core", "Assets", "Fonts", "Geist-Regular.ttf")));
+        var words = new StringBuilder();
+        var pages = ScanPages.Select(lines => Render(ttf, lines)).ToList();
+        for (var i = 0; i < pages.Count; i++)
+        {
+            Record(words, "ocr-scan.pdf", i + 1, pages[i].Ink);
+        }
+
+        Record(words, "ocr-scan-rotated.pdf", 1, pages[0].Ink);
+        var mixed = Render(ttf, MixedScanPage);
+        Record(words, "ocr-mixed.pdf", 2, mixed.Ink);
+
+        yield return new("ocr-scan.pdf", ScanPdf(pages.Select(static p => p.Bits).ToList()));
+        yield return new("ocr-scan-rotated.pdf", RotatedPdf(pages[0].Bits));
+        yield return new("ocr-mixed.pdf", MixedPdf(mixed.Bits));
+        yield return new("ocr-hostile.pdf", HostilePdf());
+        yield return new("ocr-words.tsv", Encoding.UTF8.GetBytes(words.ToString()));
+    }
+
+    private static void Record(StringBuilder into, string file, int page, List<Ink> ink)
+    {
+        foreach (var word in ink)
+        {
+            into.Append(CultureInfo.InvariantCulture, $"{file}\t{page}\t{word.Text}\t{word.Left * PointsPerPixel:0.00}\t{word.Top * PointsPerPixel:0.00}\t{word.Right * PointsPerPixel:0.00}\t{word.Bottom * PointsPerPixel:0.00}\n");
+        }
+    }
+
+    // One image per page: 1000 x 1400 pixels, 1 bit, 1 = paper.
+    private static byte[] ScanPdf(List<byte[]> bits)
+    {
+        var doc = new PdfDoc("Pagewing Scan-Probe (OCR)");
+        foreach (var page in bits)
+        {
+            var image = doc.AddStream(ImageEntries(WidthPx, HeightPx), page);
+            doc.AddPage(string.Create(CultureInfo.InvariantCulture, $"/MediaBox [0 0 {WidthPx * PointsPerPixel:0.##} {HeightPx * PointsPerPixel:0.##}]"), $"<< /XObject << /Im0 {image} 0 R >> >>", $"q {WidthPx * PointsPerPixel:0.##} 0 0 {HeightPx * PointsPerPixel:0.##} 0 0 cm /Im0 Do Q");
+        }
+
+        return doc.Build();
+    }
+
+    // The same first page, stored turned a quarter counter-clockwise and shown with /Rotate 90 inside a crop box that does not start at the origin.
+    private static byte[] RotatedPdf(byte[] upright)
+    {
+        var doc = new PdfDoc("Pagewing Scan-Probe gedreht (OCR)");
+        var turned = TurnCounterClockwise(upright, WidthPx, HeightPx);
+        var image = doc.AddStream(ImageEntries(HeightPx, WidthPx), turned);
+        var wide = HeightPx * PointsPerPixel;
+        var high = WidthPx * PointsPerPixel;
+        doc.AddPage(
+            string.Create(CultureInfo.InvariantCulture, $"/MediaBox [0 0 600 500] /CropBox [50 40 {50 + wide:0.##} {40 + high:0.##}] /Rotate 90"),
+            $"<< /XObject << /Im0 {image} 0 R >> >>",
+            string.Create(CultureInfo.InvariantCulture, $"q {wide:0.##} 0 0 {high:0.##} 50 40 cm /Im0 Do Q"));
+        return doc.Build();
+    }
+
+    // Page 1 real text (long enough to need no recognition), page 2 a scan with a real page number (5 characters), page 3 blank.
+    private static byte[] MixedPdf(byte[] scan)
+    {
+        var doc = new PdfDoc("Pagewing Mischprobe (OCR)");
+        var font = doc.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+        var size = string.Create(CultureInfo.InvariantCulture, $"/MediaBox [0 0 {WidthPx * PointsPerPixel:0.##} {HeightPx * PointsPerPixel:0.##}]");
+        doc.AddPage(size, $"<< /Font << /F1 {font} 0 R >> >>", """
+            BT
+            /F1 14 Tf
+            30 440 Td
+            (This page has real text and needs no recognition.) Tj
+            0 -20 Td
+            (It is long enough to pass the threshold of fifty characters.) Tj
+            ET
+            """);
+        var image = doc.AddStream(ImageEntries(WidthPx, HeightPx), scan);
+        doc.AddPage(size, $"<< /Font << /F1 {font} 0 R >> /XObject << /Im0 {image} 0 R >> >>", string.Create(
+            CultureInfo.InvariantCulture,
+            $"q {WidthPx * PointsPerPixel:0.##} 0 0 {HeightPx * PointsPerPixel:0.##} 0 0 cm /Im0 Do Q\nBT /F1 10 Tf 170 20 Td (- 2 -) Tj ET"));
+        doc.AddPage(size, "<< >>", string.Empty);
+        return doc.Build();
+    }
+
+    // Page 1 is 14,400 x 14,400 points (the largest page size) with a small picture stretched over it, page 2 a letter page whose picture holds
+    // over 100,000 tiny marks (specks that look like words to a page analysis).
+    private static byte[] HostilePdf()
+    {
+        var doc = new PdfDoc("Pagewing feindliche Scan-Probe (OCR)");
+        var small = doc.AddStream(ImageEntries(8, 8), new byte[8]);
+        doc.AddPage("/MediaBox [0 0 14400 14400]", $"<< /XObject << /Im0 {small} 0 R >> >>", "q 14400 0 0 14400 0 0 cm /Im0 Do Q");
+
+        const int Width = 1700;
+        const int Height = 2200;
+        var stride = (Width + 7) / 8;
+        var bits = new byte[stride * Height];
+        Array.Fill(bits, (byte)0xFF);
+        for (var y = 10; y + 3 <= Height - 10; y += 6)
+        {
+            for (var x = 10; x + 3 <= Width - 10; x += 5)
+            {
+                for (var dy = 0; dy < 3; dy++)
+                {
+                    for (var dx = 0; dx < 3; dx++)
+                    {
+                        bits[((y + dy) * stride) + ((x + dx) >> 3)] &= (byte)~(0x80 >> ((x + dx) & 7));
+                    }
+                }
+            }
+        }
+
+        var image = doc.AddStream(ImageEntries(Width, Height), bits);
+        doc.AddPage("/MediaBox [0 0 612 792]", $"<< /XObject << /Im0 {image} 0 R >> >>", "q 612 0 0 792 0 0 cm /Im0 Do Q");
+        return doc.Build();
+    }
+
+    private static string ImageEntries(int width, int height) =>
+        $"/Type /XObject /Subtype /Image /Width {width} /Height {height} /ColorSpace /DeviceGray /BitsPerComponent 1";
+
+    // Rotates a 1-bit image a quarter turn counter-clockwise: the top edge becomes the left edge.
+    private static byte[] TurnCounterClockwise(byte[] bits, int width, int height)
+    {
+        var sourceStride = (width + 7) / 8;
+        var targetStride = (height + 7) / 8;
+        var target = new byte[targetStride * width];
+        Array.Fill(target, (byte)0xFF);
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                if ((bits[(y * sourceStride) + (x >> 3)] & (0x80 >> (x & 7))) == 0)
+                {
+                    var targetX = y;
+                    var targetY = width - 1 - x;
+                    target[(targetY * targetStride) + (targetX >> 3)] &= (byte)~(0x80 >> (targetX & 7));
+                }
+            }
+        }
+
+        return target;
+    }
+
+    // Draws the lines into a coverage buffer and returns the 1-bit page and the ink box of every word.
+    private static (byte[] Bits, List<Ink> Ink) Render(TtfInfo ttf, Line[] lines)
+    {
+        var raster = new CoverageRaster(WidthPx, HeightPx);
+        var boxes = new List<(string Text, double Left, double Right, double Top, double Bottom)>();
+        foreach (var line in lines)
+        {
+            var scale = line.Size / ttf.UnitsPerEm;
+            var x = line.X;
+            var word = new StringBuilder();
+            double wordLeft = 0;
+            foreach (var character in line.Text + " ")
+            {
+                var glyph = ttf.GlyphFor(character);
+                if (character == ' ')
+                {
+                    if (word.Length > 0)
+                    {
+                        boxes.Add((word.ToString(), wordLeft, x, line.Baseline - (ttf.Ascent * scale), line.Baseline - (ttf.Descent * scale)));
+                        word.Clear();
+                    }
+                }
+                else
+                {
+                    if (word.Length == 0)
+                    {
+                        wordLeft = x;
+                    }
+
+                    word.Append(character);
+                    raster.Fill(ttf.GlyphContours(glyph), x, line.Baseline, scale);
+                }
+
+                x += ttf.AdvanceOf(glyph) * scale;
+            }
+        }
+
+        var coverage = raster.Coverage();
+        var stride = (WidthPx + 7) / 8;
+        var bits = new byte[stride * HeightPx];
+        Array.Fill(bits, (byte)0xFF);
+        for (var y = 0; y < HeightPx; y++)
+        {
+            for (var x = 0; x < WidthPx; x++)
+            {
+                if (coverage[(y * WidthPx) + x] >= 0.5f)
+                {
+                    bits[(y * stride) + (x >> 3)] &= (byte)~(0x80 >> (x & 7));
+                }
+            }
+        }
+
+        // The ink box of a word: the dark pixels inside its advance box (a little taller than the glyphs, the box of the line).
+        var ink = new List<Ink>();
+        foreach (var (text, left, right, top, bottom) in boxes)
+        {
+            int l = int.MaxValue, t = int.MaxValue, r = -1, b = -1;
+            for (var y = Math.Max(0, (int)top); y <= Math.Min(HeightPx - 1, (int)Math.Ceiling(bottom)); y++)
+            {
+                for (var x = Math.Max(0, (int)Math.Floor(left)); x <= Math.Min(WidthPx - 1, (int)Math.Ceiling(right)); x++)
+                {
+                    if ((bits[(y * stride) + (x >> 3)] & (0x80 >> (x & 7))) == 0)
+                    {
+                        l = Math.Min(l, x);
+                        t = Math.Min(t, y);
+                        r = Math.Max(r, x + 1);
+                        b = Math.Max(b, y + 1);
+                    }
+                }
+            }
+
+            if (r < 0)
+            {
+                throw new InvalidOperationException($"Das Wort \"{text}\" hat keine Tinte.");
+            }
+
+            ink.Add(new Ink(text, l, t, r, b));
+        }
+
+        return (bits, ink);
+    }
+
+    private static string RepositoryFile(params string[] parts)
+    {
+        for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Pagewing.slnx")))
+            {
+                return Path.Combine([directory.FullName, .. parts]);
+            }
+        }
+
+        throw new InvalidOperationException("Pagewing.slnx nicht gefunden.");
+    }
+}
+
+// Exact area coverage of filled outlines (the signed-area accumulation of font-rs): every edge adds the area it covers to the pixels of its
+// scan line; a running sum along the rows gives the coverage. Outlines must be closed; overlaps are clamped to full coverage.
+sealed class CoverageRaster(int width, int height)
+{
+    private readonly int stride = width + 4;
+    private readonly float[] area = new float[(width + 4) * (height + 1)];
+
+    public void Fill(List<List<(double X, double Y, bool On)>> contours, double originX, double baseline, double scale)
+    {
+        foreach (var contour in contours)
+        {
+            var path = Flatten(contour);
+            for (var i = 0; i < path.Count; i++)
+            {
+                var from = path[i];
+                var to = path[(i + 1) % path.Count];
+                Line(originX + (from.X * scale), baseline - (from.Y * scale), originX + (to.X * scale), baseline - (to.Y * scale));
+            }
+        }
+    }
+
+    public float[] Coverage()
+    {
+        var result = new float[width * height];
+        float sum = 0;
+        for (var y = 0; y < height; y++)
+        {
+            sum = 0;
+            for (var x = 0; x < stride; x++)
+            {
+                sum += area[(y * stride) + x];
+                if (x < width)
+                {
+                    result[(y * width) + x] = Math.Min(Math.Abs(sum), 1f);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    // The outline as a polygon: on-curve points are corners, runs of off-curve points are quadratic curves (implied on-curve points between
+    // two off-curve points), each curve cut into 12 straight pieces.
+    private static List<(double X, double Y)> Flatten(List<(double X, double Y, bool On)> points)
+    {
+        var path = new List<(double X, double Y)>();
+        var count = points.Count;
+        if (count < 2)
+        {
+            return path;
+        }
+
+        var start = 0;
+        (double X, double Y) first;
+        if (points[0].On)
+        {
+            first = (points[0].X, points[0].Y);
+            start = 1;
+        }
+        else if (points[count - 1].On)
+        {
+            first = (points[count - 1].X, points[count - 1].Y);
+            count--;
+        }
+        else
+        {
+            first = ((points[0].X + points[count - 1].X) / 2, (points[0].Y + points[count - 1].Y) / 2);
+        }
+
+        path.Add(first);
+        var current = first;
+        (double X, double Y)? control = null;
+        for (var i = start; i < count; i++)
+        {
+            var point = points[i];
+            if (point.On)
+            {
+                if (control is { } c)
+                {
+                    Curve(path, current, c, (point.X, point.Y));
+                    control = null;
+                }
+                else
+                {
+                    path.Add((point.X, point.Y));
+                }
+
+                current = (point.X, point.Y);
+            }
+            else
+            {
+                if (control is { } c)
+                {
+                    var middle = ((c.X + point.X) / 2, (c.Y + point.Y) / 2);
+                    Curve(path, current, c, middle);
+                    current = middle;
+                }
+
+                control = (point.X, point.Y);
+            }
+        }
+
+        if (control is { } last)
+        {
+            Curve(path, current, last, first);
+        }
+
+        return path;
+    }
+
+    private static void Curve(List<(double X, double Y)> path, (double X, double Y) from, (double X, double Y) control, (double X, double Y) to)
+    {
+        const int Pieces = 12;
+        for (var i = 1; i <= Pieces; i++)
+        {
+            var t = i / (double)Pieces;
+            var u = 1 - t;
+            path.Add(((u * u * from.X) + (2 * u * t * control.X) + (t * t * to.X), (u * u * from.Y) + (2 * u * t * control.Y) + (t * t * to.Y)));
+        }
+    }
+
+    private void Line(double x0, double y0, double x1, double y1)
+    {
+        if (y0 == y1)
+        {
+            return;
+        }
+
+        double direction = 1;
+        if (y0 > y1)
+        {
+            (x0, y0, x1, y1) = (x1, y1, x0, y0);
+            direction = -1;
+        }
+
+        var slope = (x1 - x0) / (y1 - y0);
+        var x = x0;
+        var firstRow = (int)Math.Max(0, Math.Floor(y0));
+        if (y0 < 0)
+        {
+            x -= y0 * slope;
+        }
+
+        for (var y = firstRow; y < Math.Min(height, (int)Math.Ceiling(y1)); y++)
+        {
+            var rowStart = y * stride;
+            var dy = Math.Min(y + 1, y1) - Math.Max(y, y0);
+            var next = x + (slope * dy);
+            var d = dy * direction;
+            var (left, right) = x < next ? (x, next) : (next, x);
+            var leftFloor = Math.Floor(left);
+            var leftIndex = (int)leftFloor;
+            var rightCeil = Math.Ceiling(right);
+            var rightIndex = (int)rightCeil;
+            if (leftIndex < 0 || rightIndex >= stride - 1)
+            {
+                throw new InvalidOperationException("Eine Umrisslinie liegt ausserhalb der Seite.");
+            }
+
+            if (rightIndex <= leftIndex + 1)
+            {
+                var middle = (0.5 * (x + next)) - leftFloor;
+                area[rowStart + leftIndex] += (float)(d - (d * middle));
+                area[rowStart + leftIndex + 1] += (float)(d * middle);
+            }
+            else
+            {
+                var s = 1.0 / (right - left);
+                var leftFraction = left - leftFloor;
+                var a0 = 0.5 * s * (1 - leftFraction) * (1 - leftFraction);
+                var rightFraction = right - rightCeil + 1;
+                var am = 0.5 * s * rightFraction * rightFraction;
+                area[rowStart + leftIndex] += (float)(d * a0);
+                if (rightIndex == leftIndex + 2)
+                {
+                    area[rowStart + leftIndex + 1] += (float)(d * (1 - a0 - am));
+                }
+                else
+                {
+                    var a1 = s * (1.5 - leftFraction);
+                    area[rowStart + leftIndex + 1] += (float)(d * (a1 - a0));
+                    for (var xi = leftIndex + 2; xi < rightIndex - 1; xi++)
+                    {
+                        area[rowStart + xi] += (float)(d * s);
+                    }
+
+                    var a2 = a1 + ((rightIndex - leftIndex - 3) * s);
+                    area[rowStart + rightIndex - 1] += (float)(d * (1 - a2 - am));
+                }
+
+                area[rowStart + rightIndex] += (float)(d * am);
+            }
+
+            x = next;
+        }
     }
 }
