@@ -138,6 +138,12 @@ public sealed record AppSettings
     /// <summary>Whether Pagewing checks for a newer version by itself (at most once in 24 hours). Off means no network access at all.</summary>
     public bool UpdateCheck { get; set; } = true;
 
+    /// <summary>
+    /// The languages of the last text recognition (<c>deu+eng</c>, in the order of their priority), or <see langword="null"/> for the default
+    /// (the interface language and English). After <see cref="Normalized"/> a valid selection (<see cref="Ocr.OcrLanguages.Normalize"/>) or <see langword="null"/>.
+    /// </summary>
+    public string? OcrLanguages { get; set; }
+
     /// <summary>The longest author name that is kept (a longer name is dropped).</summary>
     public const int MaxAuthorNameLength = 128;
 
@@ -296,6 +302,7 @@ public sealed record AppSettings
         var defaults = Default;
         return this with
         {
+            OcrLanguages = Ocr.OcrLanguages.Normalize(OcrLanguages),
             AuthorName = string.IsNullOrWhiteSpace(AuthorName) || AuthorName.Length > MaxAuthorNameLength ? null : AuthorName,
             HighlightColor = Enum.IsDefined(HighlightColor) ? HighlightColor : defaults.HighlightColor,
             UnderlineColor = Enum.IsDefined(UnderlineColor) ? UnderlineColor : defaults.UnderlineColor,

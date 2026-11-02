@@ -290,4 +290,13 @@ public sealed class AppSettingsTests
             Directory.Delete(directory, recursive: true);
         }
     }
+
+    [Fact]
+    public void OcrLanguagesAreNormalizedAndDefaultIsNull()
+    {
+        Assert.Null(AppSettings.Default.OcrLanguages);
+        Assert.Equal("deu+eng", (AppSettings.Default with { OcrLanguages = " deu + eng " }).Normalized().OcrLanguages);
+        Assert.Null((AppSettings.Default with { OcrLanguages = "../eng" }).Normalized().OcrLanguages);
+        Assert.Null((AppSettings.Default with { OcrLanguages = string.Empty }).Normalized().OcrLanguages);
+    }
 }
