@@ -138,7 +138,9 @@ public static class RedactionVerifier
                 byText[text] = entry;
             }
 
-            if (entry.RawForm is null && rawForm is { Length: >= RedactionLimits.MinRawCheckLength } && !string.Equals(rawForm, text, StringComparison.Ordinal))
+            // A form is shorter than its text and has the minimum length, so its text is always one of the texts searched in the bytes
+            // (CheckRawAsync adds the two raw counts of a text and has no rule for a form alone).
+            if (entry.RawForm is null && rawForm is { Length: >= RedactionLimits.MinRawCheckLength } && rawForm.Length < text.Length)
             {
                 // The form without separators is only the form of a text that the page shows in groups; it is looked up in the page
                 // text as well, so a remaining copy that the page shows without spaces is not mistaken for a leak.
@@ -395,40 +397,34 @@ public static class RedactionVerifier
 
         var terms = searched.Select(static t => t.Text).Concat(withRawForm.Select(static t => t.RawForm!)).ToArray();
         var result = await Task.Run(() => RawContentScanner.Scan(file, terms, limits, cancellationToken), cancellationToken).ConfigureAwait(false);
+
+        // One rule per text. For a word the file bytes may hold it at most as often as the page text shows it. For the text of a pattern
+        // hit that is laid out in groups the form without separators counts with it: a copy that stays on the page is in the bytes once,
+        // either with its spaces (the text itself) or without them (the spacing between the groups is not in the content stream, or the
+        // page shows the form), never once in each writing. So the two raw counts are added and measured against the page text, which
+        // is as often as the text occurs there plus as often as the form occurs there. A copy that the scanner could not recognise
+        // (split over a line break) is one of those and never fails the check; a copy in an attachment, metadata or an old revision is
+        // not and does. Evaluating the two writings separately would let one legitimate copy hide a leak in the other writing.
+        var rawFormCounts = new Dictionary<CheckedText, long>();
+        for (var i = 0; i < withRawForm.Count; i++)
+        {
+            rawFormCounts[withRawForm[i]] = result.Counts[searched.Count + i];
+        }
+
         for (var i = 0; i < searched.Count; i++)
         {
             var text = searched[i];
             var raw = result.Counts[i];
-            var allowed = text.Everywhere ? 0 : text.Occurrences;
-            if (raw > allowed)
+            var hasForm = rawFormCounts.TryGetValue(text, out var rawForm);
+            var allowed = text.Everywhere ? 0 : text.Occurrences + (hasForm ? text.RawFormOccurrences : 0);
+            if (raw + rawForm > allowed)
             {
                 findings.Add(new RedactionFinding(
                     RedactionFindingKind.RawBytesStillPresent,
                     null,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"Removed text #{text.Index + 1} ({text.Text.Length} characters) is still in the bytes of the file {raw} time(s) (in an old revision, metadata, an attachment, a pattern or a stream); the page text accounts for {allowed}."),
-                    [.. text.Pages]));
-            }
-        }
-
-        // The form without separators: the file bytes may hold it at most as often as the page text accounts for it, that is as often as
-        // the grouped text occurs there (the spacing between the groups is not in the content stream) plus the occurrences of the form
-        // itself (a copy that the page shows without spaces). A copy that the scanner could not recognise (split over a line break) is
-        // one of those, so it never fails the check; a copy in an attachment, metadata or an old revision is not and does.
-        for (var i = 0; i < withRawForm.Count; i++)
-        {
-            var text = withRawForm[i];
-            var raw = result.Counts[searched.Count + i];
-            var allowed = text.Everywhere ? 0 : text.Occurrences + text.RawFormOccurrences;
-            if (raw > allowed)
-            {
-                findings.Add(new RedactionFinding(
-                    RedactionFindingKind.RawBytesStillPresent,
-                    null,
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"Removed text #{text.Index + 1} ({text.Text.Length} characters) is still in the bytes of the file {raw} time(s) without the separators between its groups (in an old revision, metadata, an attachment or a stream); the page text accounts for {allowed}."),
+                        $"Removed text #{text.Index + 1} ({text.Text.Length} characters) is still in the bytes of the file {raw + rawForm} time(s) (in an old revision, metadata, an attachment, a pattern or a stream{(hasForm ? ", also without the separators between its groups" : string.Empty)}); the page text accounts for {allowed}."),
                     [.. text.Pages]));
             }
         }

@@ -287,8 +287,10 @@ public sealed partial class RedactionExecutor
             if (seen.Add(place))
             {
                 // The groups of an IBAN, a card number or a telephone number are laid out by the spacing of the glyphs, so their spaces are
-                // not in the content stream: the raw-bytes check looks for the form without separators as well. An e-mail address has
-                // no layout separators (its dots and hyphens are part of it).
+                // not in the content stream: the raw-bytes check looks for the form without separators as well. E-MAIL IS LEFT OUT ON
+                // PURPOSE (deliberate deviation from "every mark with a pattern", milestone 14.1 task 8): the dots and hyphens of an
+                // address belong to it, so "johndoe@examplecom" would be a string no file holds and the check would test nothing. The
+                // address itself is still searched in the bytes like any term.
                 var rawForm = mark.Pattern is RedactionPatternKind.Iban or RedactionPatternKind.Card or RedactionPatternKind.Phone ? RemovedText.RawFormOf(term) : null;
                 candidates.Add(new RemovedText(mark.Page, term, mark.Everywhere, 0, rawForm));
             }

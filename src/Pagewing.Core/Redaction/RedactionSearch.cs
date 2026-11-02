@@ -201,10 +201,16 @@ public static class RedactionSearch
             throw new RedactionException(RedactionError.InvalidArea, hit.NotMarkableReason ?? "The hit cannot be marked.");
         }
 
-        // A pattern hit is exactly the place the scanner found: the pattern finds every place it can recognise, so the mark never
-        // demands "gone from the whole document" (a copy the scanner could not recognise must not make the check fail).
-        return new RedactionMark(Guid.NewGuid(), RedactionKind.Hit, hit.Page, [.. hit.Areas], hit.Text, hit.Pattern is null && everywhere && !options.WholeWord, null, hit.Pattern);
+        return MarkOf(hit, everywhere && !options.WholeWord);
     }
+
+    /// <summary>
+    /// The mark of a markable hit. A pattern hit is exactly the place the scanner found: the pattern finds every place it can
+    /// recognise, so its mark never demands "gone from the whole document" (a copy the scanner could not recognise must not make
+    /// the check fail), whatever <paramref name="everywhere"/> says.
+    /// </summary>
+    private static RedactionMark MarkOf(RedactionHit hit, bool everywhere) =>
+        new(Guid.NewGuid(), RedactionKind.Hit, hit.Page, [.. hit.Areas], hit.Text, hit.Pattern is null && everywhere, null, hit.Pattern);
 
     /// <summary>
     /// Makes marks of all hits that can become one, for <see cref="RedactionPlan.WithRange"/>; the others are counted, not made
@@ -224,12 +230,38 @@ public static class RedactionSearch
     /// <summary>
     /// Makes marks of the hits of a pattern search (<see cref="RedactionPatternSearch"/>), which have no query: every mark carries
     /// <see cref="RedactionMark.Pattern"/> and is never "everywhere". Hits that are not <see cref="RedactionHit.Markable"/> are counted, not made.
+    /// Only hits of a pattern search belong here: a hit of a term (<see cref="RedactionHit.Pattern"/> <see langword="null"/>) needs its
+    /// query and the choice "everywhere", so it is refused instead of being turned into a mark that would silently differ from the others.
     /// </summary>
-    /// <param name="hits">The hits.</param>
+    /// <param name="hits">The hits of <see cref="RedactionPatternSearch.FindAsync"/>.</param>
     /// <param name="notMarkable">How many hits were left out because they are not <see cref="RedactionHit.Markable"/>.</param>
     /// <returns>The marks in the order of the hits.</returns>
-    public static IReadOnlyList<RedactionMark> ToMarks(IEnumerable<RedactionHit> hits, out int notMarkable) =>
-        ToMarksCore(hits, "pattern", everywhere: false, default, out notMarkable);
+    /// <exception cref="ArgumentNullException"><paramref name="hits"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">A hit is not a pattern hit; nothing is returned.</exception>
+    public static IReadOnlyList<RedactionMark> ToMarks(IEnumerable<RedactionHit> hits, out int notMarkable)
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+        var marks = new List<RedactionMark>();
+        notMarkable = 0;
+        foreach (var hit in hits)
+        {
+            if (hit.Pattern is null)
+            {
+                throw new ArgumentException("Only hits of a pattern search can be turned into marks without a query; use the overload with the query for the hits of a term.", nameof(hits));
+            }
+
+            if (hit.Markable)
+            {
+                marks.Add(MarkOf(hit, everywhere: false));
+            }
+            else
+            {
+                notMarkable++;
+            }
+        }
+
+        return marks;
+    }
 
     private static List<RedactionMark> ToMarksCore(IEnumerable<RedactionHit> hits, string term, bool everywhere, SearchOptions options, out int notMarkable)
     {

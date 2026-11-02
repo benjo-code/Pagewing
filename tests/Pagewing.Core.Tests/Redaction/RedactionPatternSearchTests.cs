@@ -162,6 +162,15 @@ public sealed class RedactionPatternSearchTests : IDisposable
         Assert.Null(word.Pattern);
         Assert.Null(word.Certainty);
         Assert.Null(RedactionSearch.ToMark(word, "form@example.org", everywhere: false, default).Pattern);
+
+        // The overload without a query is for pattern hits only: a hit of a term is refused, nothing is made of the others.
+        var refused = Assert.Throws<ArgumentException>(() => RedactionSearch.ToMarks([hits[0], word], out _));
+        Assert.Equal("hits", refused.ParamName);
+        Assert.Empty(RedactionSearch.ToMarks([], out var none));
+        Assert.Equal(0, none);
+        var unmarkable = hits[0] with { Markable = false, NotMarkableReason = "test" };
+        Assert.Single(RedactionSearch.ToMarks([hits[1], unmarkable], out var skipped));
+        Assert.Equal(1, skipped);
     }
 
     private static async Task<List<RedactionHit>> FindWordAsync(PdfDocument document, string term)
@@ -419,6 +428,47 @@ public sealed class RedactionPatternSearchTests : IDisposable
         // A copy that the page shows without any space is a legitimate occurrence of the form itself.
         var plain = await VerifyAsync(Write("plain.pdf", new VerifierPdf(PageWith("Old " + UngroupedIban)).Build()), Expect(GroupedIban, before: 1, withRawForm: true));
         Assert.DoesNotContain(plain.Findings, static f => f.Kind == RedactionFindingKind.RawBytesStillPresent);
+    }
+
+    [Fact]
+    public async Task ALegitimateGroupedCopyDoesNotHideALeakedUngroupedCopy()
+    {
+        // The page keeps one unmarked copy with real spaces; the bytes hold it once in the content stream. A second, ungrouped copy sits
+        // in the information dictionary, outside the page text. One legitimate place may cover one raw copy, not one in each writing.
+        var leaking = new VerifierPdf(PageWith("Konto " + GroupedIban + " Ende"));
+        var info = leaking.Add($"<< /Subject ({UngroupedIban}) >>");
+        leaking.TrailerEntries = $"/Info {info} 0 R";
+        var leakPath = Write("legit-and-ungrouped-leak.pdf", leaking.Build());
+        await using (var document = await engine.OpenAsync(leakPath, cancellationToken: Ct))
+        {
+            var text = await document.GetPageTextAsync(0, Ct);
+            Assert.Single(TextMatcher.Find(text.Chars, GroupedIban, new SearchOptions(MatchCase: true)));
+            Assert.Empty(TextMatcher.Find(text.Chars, UngroupedIban, new SearchOptions(MatchCase: true)));
+        }
+
+        using (var stream = File.OpenRead(leakPath))
+        {
+            Assert.Equal(1, RawContentScanner.Count(stream, GroupedIban, RawScanLimits.Default, out _, Ct));
+            Assert.Equal(1, RawContentScanner.Count(stream, UngroupedIban, RawScanLimits.Default, out _, Ct));
+        }
+
+        var leak = await VerifyAsync(leakPath, Expect(GroupedIban, before: 2, withRawForm: true));
+        var finding = Assert.Single(leak.Findings, static f => f.Kind == RedactionFindingKind.RawBytesStillPresent);
+        Assert.DoesNotContain("DE89", finding.Detail, StringComparison.Ordinal);
+        Assert.Contains("2 time(s)", finding.Detail, StringComparison.Ordinal);
+        Assert.Contains("accounts for 1", finding.Detail, StringComparison.Ordinal);
+
+        // The sibling with exactly the allowed total passes: the legitimate copy alone, and two legitimate copies in the two writings.
+        var one = await VerifyAsync(Write("legit-one.pdf", new VerifierPdf(PageWith("Konto " + GroupedIban + " Ende")).Build()), Expect(GroupedIban, before: 2, withRawForm: true));
+        Assert.DoesNotContain(one.Findings, static f => f.Kind == RedactionFindingKind.RawBytesStillPresent);
+        var both = await VerifyAsync(
+            Write("legit-both.pdf", new VerifierPdf(PageWith("Konto " + GroupedIban + " Ende"), PageWith("Old " + UngroupedIban)).Build()),
+            Expect(GroupedIban, before: 3, withRawForm: true));
+        Assert.DoesNotContain(both.Findings, static f => f.Kind == RedactionFindingKind.RawBytesStillPresent);
+
+        // Without the form the same file is the old rule for a word: one raw copy against one in the page text.
+        var word = await VerifyAsync(leakPath, Expect(GroupedIban, before: 2, withRawForm: false));
+        Assert.DoesNotContain(word.Findings, static f => f.Kind == RedactionFindingKind.RawBytesStillPresent);
     }
 
     [Fact]
