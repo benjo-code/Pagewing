@@ -705,9 +705,9 @@ public sealed class RedactionApplyInfo
             dpi.ToString(Strings.Culture));
     }
 
-    // Megabytes with at most one decimal; never below 0.1 (a size is an upper bound, "about 0" would read as nothing).
+    // Mebibytes (1024 x 1024 bytes, as the command line says) with at most one decimal; never below 0.1 (a size is an upper bound, "about 0" would read as nothing).
     internal static string SizeText(long bytes) =>
-        Math.Max(0.1, Math.Round(bytes / (1024.0 * 1024.0), 1)).ToString("0.#", Strings.Culture) + " MB";
+        Math.Max(0.1, Math.Round(bytes / (1024.0 * 1024.0), 1)).ToString("0.#", Strings.Culture) + " MiB";
 
     private static string Number(long value) => value.ToString("N0", Strings.Culture);
 

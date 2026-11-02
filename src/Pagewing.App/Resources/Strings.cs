@@ -1154,6 +1154,7 @@ public static class Strings
     public static string RedactImageVeryCoarseTip => Get("RedactImageVeryCoarseTip");
     public static string RedactImageCaution => Get("RedactImageCaution");
     public static string RedactPreviewImageNote => Get("RedactPreviewImageNote");
+    public static string RedactPreviewOverlayNote => Get("RedactPreviewOverlayNote");
     public static string RedactSecImageAreas => Get("RedactSecImageAreas");
     public static string RedactTreatmentPixelated => Get("RedactTreatmentPixelated");
     public static string RedactTreatmentBlurred => Get("RedactTreatmentBlurred");

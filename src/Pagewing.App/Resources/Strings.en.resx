@@ -2236,7 +2236,7 @@
     <value>The values of form fields in a file without a form (widgets without /AcroForm) are not searched.</value>
   </data>
   <data name="RedactNotSearchedPatterns" xml:space="preserve">
-    <value>Patterns find only what the text shows: a number split across a line break or a page boundary, digits interrupted by other characters than the usual separators, and numbers inside images are not found.</value>
+    <value>Patterns find only what the text shows and what their built-in rules know: a number split across a line break or a page boundary, digits interrupted by other characters than the usual separators, numbers inside images, IBANs of countries outside the built-in table, telephone numbers that do not start with +, 0 or (, digit chains of more than 64 groups, e-mail addresses whose local part has unusual characters (&amp; = * !), and card numbers grouped in other layouts are not found.</value>
   </data>
   <data name="RedactMarkAll" xml:space="preserve">
     <value>Mark all</value>
@@ -2338,7 +2338,7 @@
     <value>Pattern</value>
   </data>
   <data name="RedactPatternKindsName" xml:space="preserve">
-    <value>Kinds of numbers to find</value>
+    <value>Kinds of data to find</value>
   </data>
   <data name="RedactPatternEmail" xml:space="preserve">
     <value>E-mail</value>
@@ -3051,6 +3051,9 @@
   <data name="RedactPreviewImageNote" xml:space="preserve">
     <value>Pixelating or blurring is chosen: a dashed frame marks every area. Over images the written file shows coarse blocks instead of the fill where the rule applies (the numbers above count them); the preview never shows the pixels of the image.</value>
   </data>
+  <data name="RedactPreviewOverlayNote" xml:space="preserve">
+    <value>The preview shows the fill only, not the overlay text.</value>
+  </data>
   <data name="RedactSecImageAreas" xml:space="preserve">
     <value>Image areas</value>
   </data>
@@ -3091,7 +3094,7 @@
     <value>too many treated images lie under one area</value>
   </data>
   <data name="RedactCheckedAreasTreated" xml:space="preserve">
-    <value>Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are either the colour of the area or exactly the block averages worked out from the original (blur: within one level per colour channel; always opaque); no other pixel of the original is left there.</value>
+    <value>Marked areas: no character of the written file lies inside a marked area, and the pixels of images under them are either the colour of the area or exactly the block averages worked out from the original (blur: within one level per colour channel; always opaque); the image keeps no pixel data of the original beyond these block averages.</value>
   </data>
   <data name="RedactNcImageText" xml:space="preserve">
     <value>Image parts: {0} image parts read back were compared with the block averages of the original, {1} are filled solid (an image under several marks counts once for each, pages turned into images count too, and the analysis counts areas, so the numbers can differ). Whether text in a pixelated or blurred image can still be read is not checked, and Pagewing does not recognise text in images. For text in an image choose the solid fill.</value>

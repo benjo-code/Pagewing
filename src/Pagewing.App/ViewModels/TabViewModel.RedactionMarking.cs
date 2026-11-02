@@ -136,9 +136,16 @@ public sealed partial class TabViewModel
 
     /// <summary>
     /// Gets the note under the preview: that it changes nothing in the file and, with pixelating or blurring chosen, that a dashed frame
-    /// marks the areas and the preview never shows the pixels of the image.
+    /// marks the areas and the preview never shows the pixels of the image, and, when a mark has an overlay text, that the preview shows the fill only.
     /// </summary>
-    public string RedactionPreviewNote => IsRedactionImageTreated ? Strings.RedactPreviewNote + " " + Strings.RedactPreviewImageNote : Strings.RedactPreviewNote;
+    public string RedactionPreviewNote
+    {
+        get
+        {
+            var note = IsRedactionImageTreated ? Strings.RedactPreviewNote + " " + Strings.RedactPreviewImageNote : Strings.RedactPreviewNote;
+            return RedactionPlan?.Marks.Any(static m => m.OverlayText is not null) == true ? note + " " + Strings.RedactPreviewOverlayNote : note;
+        }
+    }
 
     /// <summary>Gets the counter of the marks, "4 marks on 2 pages" (the text of the toolbar and its name for screen readers).</summary>
     public string RedactionCounterText

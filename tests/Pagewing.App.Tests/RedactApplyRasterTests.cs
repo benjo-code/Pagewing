@@ -163,10 +163,10 @@ public sealed partial class RedactApplyTests
     }
 
     [AvaloniaFact]
-    public async Task CardNamesWhatIsLostBeforeApplyingEnglish() => await CardNamesWhatIsLostAsync("en", "200 dpi", "1,654 × 2,339", "up to about 11.1 MB", "all of its text", "2 links", "5 annotations", "3 form fields");
+    public async Task CardNamesWhatIsLostBeforeApplyingEnglish() => await CardNamesWhatIsLostAsync("en", "200 dpi", "1,654 × 2,339", "up to about 11.1 MiB", "all of its text", "2 links", "5 annotations", "3 form fields");
 
     [AvaloniaFact]
-    public async Task CardNamesWhatIsLostBeforeApplyingGerman() => await CardNamesWhatIsLostAsync("de", "200 dpi", "1.654 × 2.339", "bis zu etwa 11,1 MB", "ihren gesamten Text", "2 Links", "5 Annotationen", "3 Formularfelder");
+    public async Task CardNamesWhatIsLostBeforeApplyingGerman() => await CardNamesWhatIsLostAsync("de", "200 dpi", "1.654 × 2.339", "bis zu etwa 11,1 MiB", "ihren gesamten Text", "2 Links", "5 Annotationen", "3 Formularfelder");
 
     private async Task CardNamesWhatIsLostAsync(string language, params string[] expected)
     {

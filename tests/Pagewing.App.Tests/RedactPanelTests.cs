@@ -1218,8 +1218,10 @@ public sealed class RedactPanelTests : IDisposable
         }
 
         // The field shows the text of the selected mark; another mark shows its own.
+        Assert.DoesNotContain(Strings.RedactPreviewOverlayNote, tab.RedactionPreviewNote, StringComparison.Ordinal);
         Assert.True(tab.SetOverlayText(Ids(first), "Akte 17"));
         Settle(window);
+        Assert.EndsWith(Strings.RedactPreviewOverlayNote, tab.RedactionPreviewNote, StringComparison.Ordinal);
         Assert.Equal("Akte 17", OverlayField(panel).Text);
         tab.SelectMarks([second]);
         Settle(window);

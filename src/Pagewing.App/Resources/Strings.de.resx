@@ -2236,7 +2236,7 @@
     <value>Die Werte von Formularfeldern in einer Datei ohne Formular (Widgets ohne /AcroForm) werden nicht durchsucht.</value>
   </data>
   <data name="RedactNotSearchedPatterns" xml:space="preserve">
-    <value>Muster finden nur, was der Text zeigt: Eine Nummer, die über einen Zeilenumbruch oder eine Seitengrenze geteilt ist, Ziffern, die durch andere Zeichen als die üblichen Trenner unterbrochen sind, und Nummern in Bildern werden nicht gefunden.</value>
+    <value>Muster finden nur, was der Text zeigt und was ihre eingebauten Regeln kennen: Eine Nummer, die über einen Zeilenumbruch oder eine Seitengrenze geteilt ist, Ziffern, die durch andere Zeichen als die üblichen Trenner unterbrochen sind, Nummern in Bildern, IBANs von Ländern außerhalb der eingebauten Tabelle, Telefonnummern, die nicht mit +, 0 oder ( beginnen, Zifferfolgen aus mehr als 64 Gruppen, E-Mail-Adressen mit ungewöhnlichen Zeichen vor dem @ (&amp; = * !) und Kartennummern in anderen Gruppierungen werden nicht gefunden.</value>
   </data>
   <data name="RedactMarkAll" xml:space="preserve">
     <value>Alle markieren</value>
@@ -2362,7 +2362,7 @@
     <value>Prüfsumme stimmt nicht</value>
   </data>
   <data name="RedactAddFailedOf" xml:space="preserve">
-    <value>Alle {0} mit nicht stimmender Prüfsumme hinzunehmen</value>
+    <value>Alle {0} mit nicht stimmender Prüfsumme hinzuzufügen</value>
   </data>
   <data name="RedactAddFailedHint" xml:space="preserve">
     <value>Diese haben die Form der Nummer, bestehen aber deren Prüfung nicht. Sie sind nicht angehakt, doch auch eine Nummer mit Tippfehler ist oft noch sensibel.</value>
@@ -3051,6 +3051,9 @@
   <data name="RedactPreviewImageNote" xml:space="preserve">
     <value>Verpixeln oder Weichzeichnen ist gewählt: Ein gestrichelter Rahmen kennzeichnet jede Fläche. Über Bildern zeigt die geschriebene Datei dort grobe Blöcke statt der Füllung, wo die Regel gilt (die Zahlen oben zählen sie); die Vorschau zeigt nie die Pixel des Bildes.</value>
   </data>
+  <data name="RedactPreviewOverlayNote" xml:space="preserve">
+    <value>Die Vorschau zeigt nur die Füllung, nicht den Überlagerungstext.</value>
+  </data>
   <data name="RedactSecImageAreas" xml:space="preserve">
     <value>Bildflächen</value>
   </data>
@@ -3091,7 +3094,7 @@
     <value>unter einer Fläche liegen zu viele behandelte Bilder</value>
   </data>
   <data name="RedactCheckedAreasTreated" xml:space="preserve">
-    <value>Markierte Bereiche: Kein Zeichen der geschriebenen Datei liegt in einem markierten Bereich, und die Pixel von Bildern darunter haben entweder die Farbe des Bereichs oder genau die aus dem Original berechneten Blockmittelwerte (Weichzeichnen: höchstens eine Stufe Abweichung je Farbkanal; immer deckend); kein anderes Pixel des Originals ist dort geblieben.</value>
+    <value>Markierte Bereiche: Kein Zeichen der geschriebenen Datei liegt in einem markierten Bereich, und die Pixel von Bildern darunter haben entweder die Farbe des Bereichs oder genau die aus dem Original berechneten Blockmittelwerte (Weichzeichnen: höchstens eine Stufe Abweichung je Farbkanal; immer deckend); das Bild behält keine Pixeldaten des Originals über diese Blockmittelwerte hinaus.</value>
   </data>
   <data name="RedactNcImageText" xml:space="preserve">
     <value>Bildteile: {0} zurückgelesene Bildteile wurden mit den Blockmittelwerten des Originals verglichen, {1} sind voll gefüllt (ein Bild unter mehreren Markierungen zählt je Markierung, in Bilder umgewandelte Seiten zählen mit, und die Analyse zählt Flächen, deshalb können die Zahlen abweichen). Ob Text in einem verpixelten oder weichgezeichneten Bild noch lesbar ist, wird nicht geprüft, und Pagewing erkennt keinen Text in Bildern. Für Text im Bild die Volltonfläche wählen.</value>
