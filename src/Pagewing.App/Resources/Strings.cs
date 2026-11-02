@@ -502,6 +502,8 @@ public static class Strings
     public static string SaveChoiceGoToField => Get("SaveChoiceGoToField");
     public static string SignatureWarningFormsText => Get("SignatureWarningFormsText");
     public static string SignatureWarningOcr => Get("SignatureWarningOcr");
+    public static string SignatureWarningTextEdit => Get("SignatureWarningTextEdit");
+    public static string TextEditSaveNote => Get("TextEditSaveNote");
     public static string SignatureCardTitle => Get("SignatureCardTitle");
     public static string SignatureClose => Get("SignatureClose");
     public static string SignatureTabDraw => Get("SignatureTabDraw");

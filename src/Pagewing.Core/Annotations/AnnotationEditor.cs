@@ -5,6 +5,7 @@ using Pagewing.Core.Pdf;
 using Pagewing.Core.Saving;
 using Pagewing.Core.Signatures;
 using Pagewing.Core.Text;
+using Pagewing.Core.TextEdit;
 using Pagewing.Core.Viewing;
 using Pagewing.Pdfium;
 
@@ -173,6 +174,21 @@ public sealed class AnnotationEditor
             lock (gate)
             {
                 return history.HasOcrChanges;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether a text edit was made since the last save (<see cref="AnnotationHistory.HasTextEdits"/>), also one undone since: the
+    /// warning before saving a signed document names the changed text.
+    /// </summary>
+    public bool HasTextEdits
+    {
+        get
+        {
+            lock (gate)
+            {
+                return history.HasTextEdits;
             }
         }
     }
@@ -592,6 +608,60 @@ public sealed class AnnotationEditor
         });
     }
 
+    /// <summary>
+    /// Replaces the text of a run (<see cref="PdfDocument.ReplaceTextRunAsync"/>) as <b>one</b> step of the history: undo puts the old objects back
+    /// exactly as they were, redo the new ones. An unchanged text is no step (the editor stays as clean as it was). An empty text removes the run.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="TextEditWriteException"/> means PDFium failed while writing: the page is redrawn and counts as changed, the editor is
+    /// <see cref="IsDirty"/>, there is no step, and the exception reaches the caller. The other exceptions of <see cref="PdfDocument.ReplaceTextRunAsync"/>
+    /// come before anything is changed.
+    /// </remarks>
+    /// <param name="run">The run as <see cref="PdfDocument.GetTextRunsAsync"/> gave it.</param>
+    /// <param name="newText">The new text.</param>
+    /// <param name="mode">Whether the font of the run stays or the whole run goes to Geist.</param>
+    /// <returns>What happened, or <see langword="null"/> when the text is the old one.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="run"/> or <paramref name="newText"/> is <see langword="null"/>.</exception>
+    /// <exception cref="AnnotationHistoryFullException">The step does not fit into the history any more; nothing changes (save first).</exception>
+    /// <exception cref="TextRunStaleException">The page no longer has this run; nothing changes.</exception>
+    /// <exception cref="TextRunLockedException">The run is locked, or rewriting its page would change something else; nothing changes.</exception>
+    /// <exception cref="TextEditRejectedException">A new character is in neither font, or the text is too long; nothing changes.</exception>
+    /// <exception cref="TextEditWriteException">PDFium failed while writing (see the remarks).</exception>
+    /// <exception cref="InvalidOperationException">The session has no ready document.</exception>
+    public Task<TextReplaceResult?> ApplyTextEditAsync(TextRun run, string newText, TextEditMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(newText);
+        return RunAsync<TextReplaceResult?>(async document =>
+        {
+            RequireRoomFor(400 + (2L * (run.Text.Length + newText.Length)));
+            TextReplaceResult result;
+            try
+            {
+                result = await document.ReplaceTextRunAsync(run, newText, mode, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (TextEditWriteException)
+            {
+                lock (gate)
+                {
+                    changedPages.Add(run.Page);
+                    history.MarkTextChanged();
+                }
+
+                session.InvalidatePages(new HashSet<int> { run.Page });
+                throw;
+            }
+
+            if (result.Decision!.Outcome == TextEditOutcome.Unchanged)
+            {
+                return null;
+            }
+
+            Record(run.Page, new AnnotationCommand.TextEdit(run.Page, run, result.After) { Stash = result.Stash });
+            return result;
+        });
+    }
+
     /// <summary>Undoes the newest change; does nothing when there is none.</summary>
     /// <exception cref="InvalidOperationException">The session has no ready document, or PDFium refused; the history is as before.</exception>
     public Task UndoAsync() => StepAsync(undo: true);
@@ -857,6 +927,15 @@ public sealed class AnnotationEditor
             return new HashSet<int>(ocr.Pages);
         }
 
+        if (command is AnnotationCommand.TextEdit text)
+        {
+            // The objects that wait in the document take the place of the run that stands now (after the edit its new run, after an undo the old one);
+            // the objects taken out wait for the other direction.
+            var result = await document.RestoreTextRunAsync(text.Page, text.Before.ObjectIndex, undo ? text.After : text.Before, text.Stash).ConfigureAwait(false);
+            text.Stash = result.Stash;
+            return new HashSet<int> { text.Page };
+        }
+
         await ApplyAnnotationAsync(document, command, undo).ConfigureAwait(false);
         return new HashSet<int> { PageOf(command) };
     }
@@ -877,6 +956,7 @@ public sealed class AnnotationEditor
         AnnotationCommand.Create create => create.Created.Page,
         AnnotationCommand.Delete delete => delete.Removed.Page,
         AnnotationCommand.Edit edit => edit.After.Page,
+        AnnotationCommand.TextEdit text => text.Page,
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unknown command."),
     };
 

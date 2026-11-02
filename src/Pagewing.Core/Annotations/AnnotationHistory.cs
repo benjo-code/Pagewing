@@ -1,6 +1,7 @@
 using Pagewing.Core.Forms;
 using Pagewing.Core.Ocr;
 using Pagewing.Core.Signatures;
+using Pagewing.Core.TextEdit;
 
 namespace Pagewing.Core.Annotations;
 
@@ -65,6 +66,26 @@ public abstract record AnnotationCommand
             return bytes;
         }
     }
+
+    /// <summary>
+    /// A line of text was edited (milestone 16): <paramref name="Before"/> is the run as it was, <paramref name="After"/> the run that stands now, or
+    /// <see langword="null"/> when the edit removed the run. The objects that are not on the page wait in the document (<see cref="Stash"/>), so undo and
+    /// redo put back exactly what was there. The document keeps them until it closes.
+    /// </summary>
+    /// <param name="Page">The 0-based page.</param>
+    /// <param name="Before">The run before the edit.</param>
+    /// <param name="After">The run after the edit; <see langword="null"/> when the run was removed.</param>
+    public sealed record TextEdit(int Page, TextRun Before, TextRun? After) : AnnotationCommand
+    {
+        /// <summary>
+        /// Gets or sets the token of the objects waiting in the document: those of the old run while the edit stands, those of the new run while it is
+        /// undone. It changes with every undo and redo.
+        /// </summary>
+        public long Stash { get; set; }
+
+        /// <summary>The memory the step takes, estimated: the texts of both runs and the records (what the history budget counts).</summary>
+        public long EstimatedBytes => 400 + (2L * (Before.Text.Length + (After?.Text.Length ?? 0)));
+    }
 }
 
 /// <summary>The packed images of the signatures in the history would be more than <see cref="SignatureLimits.MaxHistoryImageBytes"/>: save first.</summary>
@@ -94,6 +115,7 @@ public sealed class AnnotationHistory
     private bool _formSteps;
     private bool _otherSteps;
     private bool _ocrSteps;
+    private bool _textSteps;
 
     /// <summary>
     /// Gets the bytes of the packed images and the word lists of text recognition in both stacks (the memory the history holds for them).
@@ -138,6 +160,12 @@ public sealed class AnnotationHistory
     /// </summary>
     public bool HasOcrChanges => _ocrSteps;
 
+    /// <summary>
+    /// Gets whether a text edit step was pushed since the last <see cref="Clear"/>, also one undone, dropped or forgotten since: the document was
+    /// touched by it. Saving a signed document says then that text of the pages is changed.
+    /// </summary>
+    public bool HasTextEdits => _textSteps;
+
     private static long ImageBytesOf(List<AnnotationCommand> commands)
     {
         long bytes = 0;
@@ -148,6 +176,7 @@ public sealed class AnnotationHistory
                 AnnotationCommand.Create create => create.Image?.Deflated.Length ?? 0,
                 AnnotationCommand.Delete delete => delete.Image?.Deflated.Length ?? 0,
                 AnnotationCommand.OcrLayer ocr => ocr.EstimatedBytes,
+                AnnotationCommand.TextEdit text => text.EstimatedBytes,
                 _ => 0,
             };
         }
@@ -174,6 +203,11 @@ public sealed class AnnotationHistory
             _ocrSteps = true;
         }
 
+        if (command is AnnotationCommand.TextEdit)
+        {
+            _textSteps = true;
+        }
+
         _redo.Clear();
         if (_undo.Count >= MaxCommands)
         {
@@ -181,6 +215,16 @@ public sealed class AnnotationHistory
         }
 
         _undo.Add(command);
+        Version++;
+    }
+
+    /// <summary>
+    /// Counts a text edit whose write failed after the first change to the page as an unsaved change without a step (<see cref="HasTextEdits"/>):
+    /// the page may differ from what the history knows, there is nothing to undo.
+    /// </summary>
+    public void MarkTextChanged()
+    {
+        _textSteps = true;
         Version++;
     }
 
@@ -263,6 +307,7 @@ public sealed class AnnotationHistory
         _formSteps = false;
         _otherSteps = false;
         _ocrSteps = false;
+        _textSteps = false;
         Version++;
     }
 }

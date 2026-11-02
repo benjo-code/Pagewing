@@ -3444,4 +3444,10 @@
   <data name="SignatureWarningOcr" xml:space="preserve">
     <value>The recognized text is added to the file as invisible text.</value>
   </data>
+  <data name="SignatureWarningTextEdit" xml:space="preserve">
+    <value>The changed text is written to the file as a new version.</value>
+  </data>
+  <data name="TextEditSaveNote" xml:space="preserve">
+    <value>The old text stays in earlier versions of the file. To remove it for good, use Redact.</value>
+  </data>
 </root>

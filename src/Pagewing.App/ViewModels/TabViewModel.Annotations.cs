@@ -401,6 +401,11 @@ public sealed partial class TabViewModel
 
         var editor = _editor;
         IsDirty = editor?.IsDirty == true || _pendingEdits > 0 || _nudge is not null || HasTextBoxText || HasFormDraft;
+        if (IsDirty && HasTextEditSaveNote)
+        {
+            TextEditSaveNote = string.Empty;
+        }
+
         CanUndo = editor?.CanUndo == true;
         CanRedo = editor?.CanRedo == true;
         OnFormEditVersion();
@@ -427,6 +432,7 @@ public sealed partial class TabViewModel
         _signature = null;
         _signatureNoteShown = false;
         UnsaveableReason = null;
+        ResetTextEdit();
         ResetAnnotateMode();
         ResetPageEdits();
         ResetRedaction();

@@ -3444,4 +3444,10 @@
   <data name="SignatureWarningOcr" xml:space="preserve">
     <value>Der erkannte Text wird der Datei als unsichtbarer Text hinzugefügt.</value>
   </data>
+  <data name="SignatureWarningTextEdit" xml:space="preserve">
+    <value>Der geänderte Text wird der Datei als neue Fassung hinzugefügt.</value>
+  </data>
+  <data name="TextEditSaveNote" xml:space="preserve">
+    <value>Der alte Text bleibt in früheren Fassungen der Datei. Zum echten Entfernen: Schwärzen.</value>
+  </data>
 </root>
